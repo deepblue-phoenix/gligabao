@@ -39,6 +39,7 @@ func TestRecall(t *testing.T) {
 	// ids: Alice=1 Acme=2 Bob=3 Rome=4; edges: works_at=1 lives_in=2
 	llm := &recordingLLM{outs: []string{
 		ex,
+		`{"events":[]}`,
 		"```json\n" + `{"answer":"Alice works at Acme.","entities":[1,999],"edges":[1,42]}` + "\n```",
 		`{"answer":"Nothing relevant.","entities":[],"edges":[]}`,
 	}}
@@ -73,7 +74,7 @@ func TestRecall(t *testing.T) {
 		t.Errorf("entities = %+v", res.Evidence.Entities)
 	}
 	// Context sent to the LLM holds Alice's neighbourhood but not the unrelated Bob/Rome.
-	prompt := llm.reqs[1].Messages[0].Content
+	prompt := llm.reqs[2].Messages[0].Content
 	if !strings.Contains(prompt, "Alice") || !strings.Contains(prompt, "works_at") || strings.Contains(prompt, "Bob") {
 		t.Errorf("unexpected prompt:\n%s", prompt)
 	}

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/ivan/gligabao/internal/memory"
 )
@@ -15,6 +16,9 @@ const maxRememberBytes = 1 << 20 // 1 MiB
 
 type rememberRequest struct {
 	Text string `json:"text"`
+	// ReferenceTime (RFC 3339, optional) is when the text was written; relative dates in it ("yesterday") are
+	// resolved against it. Defaults to now.
+	ReferenceTime string `json:"reference_time"`
 }
 
 // Register mounts the API routes on mux. llm may be nil, in which case LLM-backed routes return 503.
@@ -41,7 +45,15 @@ func remember(d *sql.DB, llm memory.LLM) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "text is required"})
 			return
 		}
-		res, err := memory.Remember(r.Context(), d, llm, req.Text)
+		var ref time.Time
+		if req.ReferenceTime != "" {
+			var err error
+			if ref, err = time.Parse(time.RFC3339, req.ReferenceTime); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "reference_time must be RFC 3339, e.g. 2025-01-31T09:00:00Z"})
+				return
+			}
+		}
+		res, err := memory.Remember(r.Context(), d, llm, req.Text, ref)
 		if err != nil {
 			log.Printf("remember: %v", err)
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to process text"})

@@ -1,4 +1,4 @@
-// Package memory extracts entities and edges from free text with an LLM and stores them in SQLite.
+// Package memory extracts entities, edges and temporal events from free text with an LLM and stores them in SQLite.
 package memory
 
 import (
@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ivan/gligabao/internal/ai"
 )
@@ -94,30 +95,53 @@ func parseExtraction(s string) (*Extraction, error) {
 
 // Result summarizes what was stored by Remember.
 type Result struct {
-	MemoryID int64    `json:"memory_id"`
-	Entities []Entity `json:"entities"`
-	Edges    []Edge   `json:"edges"`
+	MemoryID          int64    `json:"memory_id"`
+	Entities          []Entity `json:"entities"`
+	Edges             []Edge   `json:"edges"`
+	Events            []Event  `json:"events"`
+	InvalidatedEvents []int64  `json:"invalidated_events"` // IDs of events superseded by this memory
 }
 
-// Remember extracts entities/edges from text and stores them (with the raw text) in one transaction.
-func Remember(ctx context.Context, d *sql.DB, llm LLM, text string) (*Result, error) {
+// Remember extracts entities, edges and temporal events from text and stores them (with the raw text) in one
+// transaction. ref is the time the text was written/observed ("now" for relative dates in it); the zero
+// value means the current time. If any LLM step fails nothing is stored.
+func Remember(ctx context.Context, d *sql.DB, llm LLM, text string, ref time.Time) (*Result, error) {
+	now := time.Now().UTC()
+	if ref.IsZero() {
+		ref = now
+	}
+	ref = ref.UTC()
+
 	ex, err := Extract(ctx, llm, text)
 	if err != nil {
 		return nil, err
 	}
-	return Store(ctx, d, text, ex)
+	evs, err := ExtractEvents(ctx, llm, text, ref, ex)
+	if err != nil {
+		return nil, err
+	}
+	cands, err := loadCandidates(ctx, d, evs)
+	if err != nil {
+		return nil, err
+	}
+	plan, err := resolveEvents(ctx, llm, evs, cands)
+	if err != nil {
+		return nil, err
+	}
+	return Store(ctx, d, text, ref, now, ex, evs, plan)
 }
 
 // Store persists an extraction. Entities are deduplicated by (normalized name, type); edges by
 // (source, target, relation). Edges naming an unlisted entity create it with type "other".
-func Store(ctx context.Context, d *sql.DB, text string, ex *Extraction) (*Result, error) {
+// Events are written according to plan (see EventPlan); now is the system time stamped on them.
+func Store(ctx context.Context, d *sql.DB, text string, ref, now time.Time, ex *Extraction, evs []Event, plan *EventPlan) (*Result, error) {
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 
-	res, err := tx.ExecContext(ctx, `INSERT INTO gb_memories (text) VALUES (?)`, text)
+	res, err := tx.ExecContext(ctx, `INSERT INTO gb_memories (text, reference_time) VALUES (?, ?)`, text, ref.UTC().Format(timeLayout))
 	if err != nil {
 		return nil, fmt.Errorf("insert memory: %w", err)
 	}
@@ -126,7 +150,7 @@ func Store(ctx context.Context, d *sql.DB, text string, ex *Extraction) (*Result
 		return nil, err
 	}
 
-	out := &Result{MemoryID: memID, Entities: []Entity{}, Edges: []Edge{}}
+	out := &Result{MemoryID: memID, Entities: []Entity{}, Edges: []Edge{}, Events: []Event{}, InvalidatedEvents: []int64{}}
 	ids := map[string]int64{} // normalized name -> entity id (first listed type wins for edge lookup)
 	seenEnt := map[string]bool{}
 
@@ -202,6 +226,27 @@ func Store(ctx context.Context, d *sql.DB, text string, ex *Extraction) (*Result
 			return nil, fmt.Errorf("upsert edge: %w", err)
 		}
 		out.Edges = append(out.Edges, e)
+	}
+
+	// Event participants: entities from this extraction, else an already-stored entity of any type, else a new "other".
+	participant := func(name string) (int64, error) {
+		if id, ok := ids[key(name)]; ok {
+			return id, nil
+		}
+		var id int64
+		err := tx.QueryRowContext(ctx, `SELECT id FROM gb_entities WHERE name_key = ? ORDER BY id LIMIT 1`, key(name)).Scan(&id)
+		if err == nil {
+			ids[key(name)] = id
+			return id, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return 0, err
+		}
+		return resolve(name)
+	}
+	out.Events, out.InvalidatedEvents, err = storeEvents(ctx, tx, memID, ref, now, evs, plan, participant)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := tx.Commit(); err != nil {
