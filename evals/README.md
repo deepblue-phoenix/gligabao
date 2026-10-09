@@ -2,7 +2,7 @@
 
 End-to-end checks that run against a real gligabao server (and the real LLM), so `ANTHROPIC_API_KEY` is required.
 
-Run from the repo root: `./run_evals.sh` (optionally pass case names, e.g. `./run_evals.sh remember_recall`).
+Run from the repo root: `./run_evals.sh [-v] [case-name ...]`, e.g. `./run_evals.sh -v remember_recall`. `-v` prints the input and output of every LLM call.
 
 The runner is pure Go (`evals/main.go`; `run_evals.sh` just invokes `go run ./evals`). Each case gets a fresh temporary SQLite DB and an in-process HTTP server using the real handlers, so cases are independent.
 

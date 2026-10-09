@@ -3,13 +3,16 @@
 // Each case in evals/cases/*.json gets a fresh temporary database and an in-process
 // HTTP server. The case is run through the public API: remember, then recall.
 //
-// Usage: go run ./evals [case-name ...]   (requires ANTHROPIC_API_KEY)
+// Usage: go run ./evals [-v] [case-name ...]   (requires ANTHROPIC_API_KEY)
+// With -v, every LLM call's input and output is printed.
 package main
 
 import (
 	"bytes"
+	"context"
 	"embed"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,6 +25,7 @@ import (
 
 	"github.com/ivan/gligabao/internal/ai"
 	"github.com/ivan/gligabao/internal/db"
+	"github.com/ivan/gligabao/internal/memory"
 	"github.com/ivan/gligabao/internal/server"
 )
 
@@ -84,8 +88,40 @@ func contains(list []string, s string) bool {
 
 //---------------------------------------------------------------------------------------------
 
+// verboseLLM wraps an LLM and prints the input and output of every call.
+type verboseLLM struct {
+	inner memory.LLM
+	calls int
+}
+
+func (v *verboseLLM) Complete(ctx context.Context, req ai.Request) (*ai.Response, error) {
+	v.calls++
+	n := v.calls
+	fmt.Printf("  ┌─ LLM call #%d input (model=%q max_tokens=%d)\n", n, req.Model, req.MaxTokens)
+	if req.System != "" {
+		fmt.Printf("  │ [system]\n%s\n", indent(req.System))
+	}
+	for _, m := range req.Messages {
+		fmt.Printf("  │ [%s]\n%s\n", m.Role, indent(m.Content))
+	}
+	resp, err := v.inner.Complete(ctx, req)
+	if err != nil {
+		fmt.Printf("  └─ LLM call #%d error: %v\n", n, err)
+		return resp, err
+	}
+	fmt.Printf("  ├─ LLM call #%d output (model=%s stop=%s in=%d out=%d cost=$%.6f)\n%s\n  └─\n",
+		n, resp.Model, resp.StopReason, resp.InputTokens, resp.OutputTokens, resp.CostUSD, indent(resp.Text))
+	return resp, nil
+}
+
+func indent(s string) string {
+	return "  │   " + strings.ReplaceAll(strings.TrimRight(s, "\n"), "\n", "\n  │   ")
+}
+
+//---------------------------------------------------------------------------------------------
+
 // run executes one case against a fresh database and returns the recall answer.
-func run(c Case, llm *ai.Client) (answer string, err error) {
+func run(c Case, llm memory.LLM) (answer string, err error) {
 	dir, err := os.MkdirTemp("", "gligabao-eval-*")
 	if err != nil {
 		return "", err
@@ -140,6 +176,9 @@ func main() {
 }
 
 func mainErr() error {
+	verbose := flag.Bool("v", false, "print the input and output of every LLM call")
+	flag.Parse()
+
 	key := os.Getenv("ANTHROPIC_API_KEY")
 	if key == "" {
 		return fmt.Errorf("ANTHROPIC_API_KEY must be set to run evals")
@@ -148,14 +187,19 @@ func mainErr() error {
 	if err != nil {
 		return err
 	}
-	cases, err := loadCases(os.Args[1:])
+	cases, err := loadCases(flag.Args())
 	if err != nil {
 		return err
 	}
 
 	failed := 0
 	for _, c := range cases {
-		answer, err := run(c, llm)
+		var l memory.LLM = llm
+		if *verbose {
+			fmt.Printf("=== %s\n", c.Name)
+			l = &verboseLLM{inner: llm}
+		}
+		answer, err := run(c, l)
 		if err != nil {
 			fmt.Printf("FAIL %s: %v\n", c.Name, err)
 			failed++
