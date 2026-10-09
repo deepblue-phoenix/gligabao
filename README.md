@@ -1,4 +1,5 @@
 # gligabao
+<img width="800" height="447" alt="image" src="https://github.com/user-attachments/assets/a4cf6b9f-2bdb-4c16-8ed4-558eca33e4a7" />
 
 Minimal memory system for AI.
 
