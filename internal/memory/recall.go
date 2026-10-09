@@ -56,19 +56,6 @@ type RecallResult struct {
 
 //---------------------------------------------------------------------------------------------
 
-const recallSystemPrompt = `You answer questions using ONLY a knowledge graph given in <graph>.
-
-The graph lists entities as "[entity ID] name (type): description" and edges as
-"[edge ID] source(ID) --relation--> target(ID): description".
-
-Return ONLY a JSON object (no prose, no markdown fences) of this shape:
-{"answer": "...", "entities": [1, 2], "edges": [3]}
-
-Rules:
-- "answer" is a concise natural-language reply to the question, based only on the graph. Do not mention IDs in it.
-- If the graph does not contain the information needed, say so in "answer" and return empty arrays.
-- "entities" and "edges" are the IDs of the entities and edges you actually used to produce the answer. Only use IDs that appear in the graph.`
-
 // Recall answers query using the knowledge graph: relevant entities and their edges are retrieved,
 // the LLM answers from that context, and the entities/edges it used are returned as evidence.
 func Recall(ctx context.Context, d *sql.DB, llm LLM, query string) (*RecallResult, error) {

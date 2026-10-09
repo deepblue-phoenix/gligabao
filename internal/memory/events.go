@@ -68,22 +68,6 @@ type rawEvent struct {
 
 //---------------------------------------------------------------------------------------------
 
-const eventSystemPrompt = `You extract temporal events from text.
-
-An event is something that happened, started, ended, changed or was planned, and that has (or implies) a point or period in time: "Alice joined Acme in March 2023", "Bob moved from Rome to Paris last summer", "The launch is scheduled for 5 May 2025".
-
-Return ONLY a JSON object (no prose, no markdown fences) of this shape:
-{"events": [{"name": "...", "description": "...", "participants": ["..."], "valid_at": "...", "invalid_at": "..."}]}
-
-Rules:
-- "name" is a short lowercase snake_case label, e.g. joined_company, moved_city.
-- "description" is a self-contained sentence stating the fact, using full names instead of pronouns.
-- "participants" are the names of the entities involved. Use the exact names from <entities> when they match; otherwise use the most complete name.
-- "valid_at" is the ISO 8601 UTC datetime (e.g. 2023-03-01T00:00:00Z) at which the event started or became true. "invalid_at" is the datetime at which it stopped being true, if the text says so. Use null when the text gives no information; never guess.
-- Resolve relative expressions ("yesterday", "last year", "two weeks ago") against <reference_time>. For a date with partial precision use its earliest instant (a month -> the 1st at 00:00:00Z, a year -> 1 January).
-- If the text says something stopped ("Alice left Acme in June 2024"), the event describes the thing that stopped ("Alice worked at Acme") and "invalid_at" is the stop time.
-- Do not invent events. Facts with no temporal meaning at all (static attributes) are not events. If there is nothing to extract, return {"events": []}.`
-
 // ExtractEvents asks the LLM to pull temporal events out of text. ref anchors relative dates; ex (may be nil)
 // supplies the entities found in the same text so participants use consistent names.
 func ExtractEvents(ctx context.Context, llm LLM, text string, ref time.Time, ex *Extraction) ([]Event, error) {
@@ -156,20 +140,6 @@ func normalizeEvents(raw []rawEvent) []Event {
 }
 
 //---------------------------------------------------------------------------------------------
-
-const resolveSystemPrompt = `You compare NEW events with EXISTING events in a temporal knowledge base.
-
-New events are listed as "[n] description (valid_at -> invalid_at)" in <new_events>; existing ones as "[id] description (valid_at -> invalid_at)" in <existing_events>. "?" means unknown.
-
-Return ONLY a JSON object (no prose, no markdown fences) of this shape:
-{"duplicates": [{"new": 0, "existing": 12}], "contradictions": [{"new": 1, "existing": 7}]}
-
-Rules:
-- "duplicates": a new event states exactly the same fact as an existing event (wording may differ).
-- "contradictions": an existing event can no longer be true at the same time as a new event, because the new one replaces, ends or conflicts with it (e.g. "Alice works at Acme" vs "Alice joined Globex"; "Bob lives in Rome" vs "Bob moved to Paris"). Events that merely both involve the same entities, or can both be true together, are NOT contradictions.
-- A pair is never both a duplicate and a contradiction.
-- "new" is the number from <new_events>; "existing" is the ID from <existing_events>. Use only numbers and IDs that appear there.
-- If there are no duplicates or contradictions, return empty arrays.`
 
 // resolveEvents compares new events with existing candidates. Exact repeats (same description and
 // participants) are detected without the LLM; the LLM is only called for what remains.

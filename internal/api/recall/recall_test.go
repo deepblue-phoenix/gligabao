@@ -1,4 +1,4 @@
-package api
+package recall
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ivan/gligabao/internal/ai"
 	"github.com/ivan/gligabao/internal/db"
@@ -44,17 +45,17 @@ func TestRecall(t *testing.T) {
 		`{"answer":"Nothing relevant.","entities":[],"edges":[]}`,
 	}}
 	mux := http.NewServeMux()
-	Register(mux, d, llm)
+	mux.HandleFunc("POST /v1/gb/recall", Handler(d, llm))
+
+	if _, err := memory.Remember(context.Background(), d, llm, "x", time.Time{}); err != nil {
+		t.Fatal(err)
+	}
 
 	post := func(path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest("POST", path, strings.NewReader(body)))
 		return rec
 	}
-	if rec := post("/v1/gb/remember", `{"text":"x"}`); rec.Code != 200 {
-		t.Fatalf("remember: %d %s", rec.Code, rec.Body)
-	}
-
 	rec := post("/v1/gb/recall", `{"query":"Where does Alice work?"}`)
 	if rec.Code != 200 {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body)
@@ -97,7 +98,7 @@ func TestRecallEmptyGraph(t *testing.T) {
 	}
 	defer d.Close()
 	mux := http.NewServeMux()
-	Register(mux, d, &recordingLLM{}) // must not call the LLM
+	mux.HandleFunc("POST /v1/gb/recall", Handler(d, &recordingLLM{})) // must not call the LLM
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/recall", strings.NewReader(`{"query":"hi"}`)))
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"edges":[]`) {
@@ -107,59 +108,10 @@ func TestRecallEmptyGraph(t *testing.T) {
 
 func TestRecallNoLLM(t *testing.T) {
 	mux := http.NewServeMux()
-	Register(mux, nil, nil)
+	mux.HandleFunc("POST /v1/gb/recall", Handler(nil, nil))
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/recall", strings.NewReader(`{"query":"x"}`)))
 	if rec.Code != 503 {
 		t.Errorf("status = %d", rec.Code)
 	}
-}
-
-func TestLLMCallsRecorded(t *testing.T) {
-	d, err := db.Open(filepath.Join(t.TempDir(), "t.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer d.Close()
-
-	llm := &costLLM{outs: []string{
-		`{"entities":[{"name":"Alice","type":"person"}],"edges":[]}`,
-		`{"events":[]}`,
-		`{"answer":"Alice.","entities":[1],"edges":[]}`,
-	}}
-	mux := http.NewServeMux()
-	Register(mux, d, llm)
-	for path, body := range map[string]string{"/v1/gb/remember": `{"text":"Alice"}`, "/v1/gb/recall": `{"query":"Alice?"}`} {
-		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest("POST", path, strings.NewReader(body)))
-		if rec.Code != 200 {
-			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
-		}
-	}
-	rows, err := d.Query(`SELECT type, COUNT(*), SUM(input_tokens), SUM(output_tokens), SUM(cost_usd) FROM gb_llm_calls GROUP BY type ORDER BY type`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	got := map[string][4]float64{}
-	for rows.Next() {
-		var typ string
-		var v [4]float64
-		if err := rows.Scan(&typ, &v[0], &v[1], &v[2], &v[3]); err != nil {
-			t.Fatal(err)
-		}
-		got[typ] = v
-	}
-	// remember makes 2 LLM calls (entities, events; no candidates so no resolve call), recall makes 1.
-	if got["remember"] != [4]float64{2, 20, 10, 0.02} || got["recall"] != [4]float64{1, 10, 5, 0.01} {
-		t.Fatalf("got %v", got)
-	}
-}
-
-type costLLM struct{ outs []string }
-
-func (f *costLLM) Complete(_ context.Context, _ ai.Request) (*ai.Response, error) {
-	out := f.outs[0]
-	f.outs = f.outs[1:]
-	return &ai.Response{Text: out, StopReason: "end_turn", Provider: ai.ProviderAnthropic, Model: "m", InputTokens: 10, OutputTokens: 5, CostUSD: 0.01}, nil
 }

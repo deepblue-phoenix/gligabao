@@ -1,4 +1,4 @@
-package api
+package recall
 
 import (
 	"database/sql"
@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/ivan/gligabao/internal/api/httputil"
 	"github.com/ivan/gligabao/internal/memory"
 )
 
@@ -18,28 +19,29 @@ type recallRequest struct {
 
 //---------------------------------------------------------------------------------------------
 
-func recall(d *sql.DB, llm memory.LLM) http.HandlerFunc {
+// Handler serves POST /v1/gb/recall.
+func Handler(d *sql.DB, llm memory.LLM) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if llm == nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "LLM not configured (set ANTHROPIC_API_KEY)"})
+			httputil.Error(w, http.StatusServiceUnavailable, "LLM not configured (set ANTHROPIC_API_KEY)")
 			return
 		}
 		var req recallRequest
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRecallBytes)).Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body: " + err.Error()})
+			httputil.Error(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 			return
 		}
 		req.Query = strings.TrimSpace(req.Query)
 		if req.Query == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "query is required"})
+			httputil.Error(w, http.StatusBadRequest, "query is required")
 			return
 		}
 		res, err := memory.Recall(r.Context(), d, llm, req.Query)
 		if err != nil {
 			log.Printf("recall: %v", err)
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to answer query"})
+			httputil.Error(w, http.StatusBadGateway, "failed to answer query")
 			return
 		}
-		writeJSON(w, http.StatusOK, res)
+		httputil.WriteJSON(w, http.StatusOK, res)
 	}
 }

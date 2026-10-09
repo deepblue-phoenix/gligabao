@@ -1,4 +1,4 @@
-package api
+package remember
 
 import (
 	"context"
@@ -28,7 +28,7 @@ func TestRemember(t *testing.T) {
 	llm := fakeLLM{"```json\n" + `{"entities":[{"name":"Alice","type":"Person","description":"engineer"},{"name":"Acme","type":"organization"}],
 	"edges":[{"source":"Alice","target":"Acme","relation":"Works At"},{"source":"Alice","target":"Paris","relation":"lives in"}]}` + "\n```"}
 	mux := http.NewServeMux()
-	Register(mux, d, llm)
+	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm))
 
 	for i := 0; i < 2; i++ { // second call must be idempotent for entities/edges
 		rec := httptest.NewRecorder()
@@ -60,7 +60,7 @@ func TestRemember(t *testing.T) {
 
 func TestRememberNoLLM(t *testing.T) {
 	mux := http.NewServeMux()
-	Register(mux, nil, nil)
+	mux.HandleFunc("POST /v1/gb/remember", Handler(nil, nil))
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"text":"x"}`)))
 	if rec.Code != 503 {

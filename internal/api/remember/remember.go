@@ -1,0 +1,60 @@
+// Package remember is the HTTP handler for storing text in memory.
+package remember
+
+import (
+	"database/sql"
+	"encoding/json"
+	"log"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/ivan/gligabao/internal/api/httputil"
+	"github.com/ivan/gligabao/internal/memory"
+)
+
+const maxRememberBytes = 1 << 20 // 1 MiB
+
+type rememberRequest struct {
+	Text string `json:"text"`
+	// ReferenceTime (RFC 3339, optional) is when the text was written; relative dates in it ("yesterday") are
+	// resolved against it. Defaults to now.
+	ReferenceTime string `json:"reference_time"`
+}
+
+//---------------------------------------------------------------------------------------------
+
+// Handler serves POST /v1/gb/remember.
+func Handler(d *sql.DB, llm memory.LLM) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if llm == nil {
+			httputil.Error(w, http.StatusServiceUnavailable, "LLM not configured (set ANTHROPIC_API_KEY)")
+			return
+		}
+		var req rememberRequest
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRememberBytes)).Decode(&req); err != nil {
+			httputil.Error(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+			return
+		}
+		req.Text = strings.TrimSpace(req.Text)
+		if req.Text == "" {
+			httputil.Error(w, http.StatusBadRequest, "text is required")
+			return
+		}
+		var ref time.Time
+		if req.ReferenceTime != "" {
+			var err error
+			if ref, err = time.Parse(time.RFC3339, req.ReferenceTime); err != nil {
+				httputil.Error(w, http.StatusBadRequest, "reference_time must be RFC 3339, e.g. 2025-01-31T09:00:00Z")
+				return
+			}
+		}
+		res, err := memory.Remember(r.Context(), d, llm, req.Text, ref)
+		if err != nil {
+			log.Printf("remember: %v", err)
+			httputil.Error(w, http.StatusBadGateway, "failed to process text")
+			return
+		}
+		httputil.WriteJSON(w, http.StatusOK, res)
+	}
+}

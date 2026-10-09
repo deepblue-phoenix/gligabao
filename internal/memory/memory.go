@@ -43,28 +43,11 @@ type LLM interface {
 
 //---------------------------------------------------------------------------------------------
 
-const systemPrompt = `You extract a knowledge graph from text.
-
-Return ONLY a JSON object (no prose, no markdown fences) of this shape:
-{
-  "entities": [{"name": "...", "type": "...", "description": "..."}],
-  "edges": [{"source": "...", "target": "...", "relation": "...", "description": "..."}]
-}
-
-Rules:
-- Entities are specific, meaningful things: people, organizations, places, projects, products, concepts, events, etc.
-- "type" is a single lowercase word such as person, organization, place, project, product, concept, event, other.
-- "description" is a short factual summary based only on the text (may be empty).
-- Edges are directed: source --relation--> target. "relation" is a short lowercase snake_case verb phrase, e.g. works_at, lives_in, founded, part_of.
-- "source" and "target" MUST exactly match the "name" of an entity you listed.
-- Use the most complete, canonical name for each entity; do not list the same entity twice.
-- Only include facts stated or clearly implied by the text. If there is nothing to extract, return {"entities": [], "edges": []}.`
-
 // Extract asks the LLM to pull entities and edges out of text.
 func Extract(ctx context.Context, llm LLM, text string) (*Extraction, error) {
 	temp := 0.0
 	resp, err := llm.Complete(ctx, ai.Request{
-		System:      systemPrompt,
+		System:      entitySystemPrompt,
 		Messages:    []ai.Message{{Role: ai.RoleUser, Content: "<text>\n" + text + "\n</text>"}},
 		MaxTokens:   4096,
 		Temperature: &temp,

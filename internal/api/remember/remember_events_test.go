@@ -1,6 +1,7 @@
-package api
+package remember
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,9 +9,23 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ivan/gligabao/internal/ai"
 	"github.com/ivan/gligabao/internal/db"
 	"github.com/ivan/gligabao/internal/memory"
 )
+
+// recordingLLM returns canned outputs in order and records requests.
+type recordingLLM struct {
+	outs []string
+	reqs []ai.Request
+}
+
+func (f *recordingLLM) Complete(_ context.Context, r ai.Request) (*ai.Response, error) {
+	f.reqs = append(f.reqs, r)
+	out := f.outs[0]
+	f.outs = f.outs[1:]
+	return &ai.Response{Text: out, StopReason: "end_turn"}, nil
+}
 
 func TestRememberEventsBiTemporal(t *testing.T) {
 	d, err := db.Open(filepath.Join(t.TempDir(), "t.db"))
@@ -43,7 +58,7 @@ func TestRememberEventsBiTemporal(t *testing.T) {
 		`{"events":[{"name":"joined_company","description":"alice joined  globex.","participants":["globex","Alice"],"valid_at":null,"invalid_at":"2025-01-01T00:00:00Z"}]}`,
 	}}
 	mux := http.NewServeMux()
-	Register(mux, d, llm)
+	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm))
 
 	post := func(body string) memory.Result {
 		t.Helper()
@@ -124,7 +139,7 @@ func TestRememberEventsBiTemporal(t *testing.T) {
 
 func TestRememberBadReferenceTime(t *testing.T) {
 	mux := http.NewServeMux()
-	Register(mux, nil, fakeLLM{})
+	mux.HandleFunc("POST /v1/gb/remember", Handler(nil, fakeLLM{}))
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"text":"x","reference_time":"yesterday"}`)))
 	if rec.Code != 400 {
