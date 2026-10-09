@@ -1,6 +1,6 @@
 package memory
 
-// Datasets are hard logical containers (modelled on Cognee): every memory, entity and edge belongs to exactly
+// Datasets are hard logical containers: every memory, entity and edge belongs to exactly
 // one dataset, and the same entity in two datasets is two separate rows. Nothing is ever linked or queried
 // across datasets. Deleting a dataset is soft (gb_datasets.deleted = 1): its rows stay, but it can no longer be
 // read or written, and its name can be reused by a new, empty dataset.

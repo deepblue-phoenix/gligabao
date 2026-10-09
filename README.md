@@ -22,7 +22,7 @@ gligabao is a small, self-hosted HTTP service that gives an AI application long-
 
 ## Datasets
 
-Memory is organized in datasets, like Cognee: a hard container for everything stored (episodes, entities, edges). Every dataset has an owner, a `user_id`, which covers everything in it; all endpoints require `user_id` (in the JSON body, or the query string for `GET`/`DELETE`), and dataset names are unique per user. `remember` and `recall` take an optional `"dataset"` name, default `main`. Datasets are isolated: the same entity in two datasets is two separate nodes, and a recall only sees its own dataset's graph. Deleting a dataset is soft (`deleted = true`). Details: [docs/datasets.md](docs/datasets.md), [docs/identity.md](docs/identity.md).
+Memory is organized in datasets: a hard container for everything stored (episodes, entities, edges). Every dataset has an owner, a `user_id`, which covers everything in it; all endpoints require `user_id` (in the JSON body, or the query string for `GET`/`DELETE`), and dataset names are unique per user. `remember` and `recall` take an optional `"dataset"` name, default `main`. Datasets are isolated: the same entity in two datasets is two separate nodes, and a recall only sees its own dataset's graph. Deleting a dataset is soft (`deleted = true`). Details: [docs/datasets.md](docs/datasets.md), [docs/identity.md](docs/identity.md).
 
 ## Remember
 
