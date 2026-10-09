@@ -17,16 +17,16 @@ gligabao is a small, self-hosted HTTP service that gives an AI application long-
 | -------- | ------- | ---- |
 | `POST /v1/gb/remember` | Extract a temporal knowledge graph from text and store it | [docs/remember.md](docs/remember.md), [docs/temporal.md](docs/temporal.md) |
 | `POST /v1/gb/recall` | Answer a question from the graph, with evidence | [docs/recall.md](docs/recall.md) |
-| `POST /v1/gb/datasets`, `GET /v1/gb/datasets`, `DELETE /v1/gb/datasets/{name}` | Create, list and (soft) delete datasets | [docs/datasets.md](docs/datasets.md) |
+| `POST /v1/gb/datasets`, `GET /v1/gb/datasets?user_id=`, `DELETE /v1/gb/datasets/{name}?user_id=` | Create, list and (soft) delete datasets | [docs/datasets.md](docs/datasets.md) |
 | `GET /health` | Health check | |
 
 ## Datasets
 
-Memory is organized in datasets, like Cognee: a hard container for everything stored (episodes, entities, edges). `remember` and `recall` take an optional `"dataset"` name, default `main`. Datasets are isolated: the same entity in two datasets is two separate nodes, and a recall only sees its own dataset's graph. Deleting a dataset is soft (`deleted = true`). Details: [docs/datasets.md](docs/datasets.md).
+Memory is organized in datasets, like Cognee: a hard container for everything stored (episodes, entities, edges). Every dataset has an owner, a `user_id`, which covers everything in it; all endpoints require `user_id` (in the JSON body, or the query string for `GET`/`DELETE`), and dataset names are unique per user. `remember` and `recall` take an optional `"dataset"` name, default `main`. Datasets are isolated: the same entity in two datasets is two separate nodes, and a recall only sees its own dataset's graph. Deleting a dataset is soft (`deleted = true`). Details: [docs/datasets.md](docs/datasets.md), [docs/identity.md](docs/identity.md).
 
 ## Remember
 
-`POST /v1/gb/remember` with `{"text": "Alice works at Acme and lives in Paris."}` stores the text as an episode and adds the facts it states to the graph, with the time they became true. An optional `reference_time` (RFC 3339, default now) says when the text was written, so relative dates in it can be resolved.
+`POST /v1/gb/remember` with `{"user_id": "u1", "text": "Alice works at Acme and lives in Paris."}` stores the text as an episode and adds the facts it states to the graph, with the time they became true. An optional `reference_time` (RFC 3339, default now) says when the text was written, so relative dates in it can be resolved.
 
 1. **Extract**: the text is sent to an LLM (Anthropic, default `claude-haiku-4-5`, temperature 0), which returns JSON listing entities (`name`, `type`, `description`) and edges (`source`, `target`, `relation`, `description`, `valid_at`, `invalid_at`).
 2. **Normalize**: entity types are lowercased (empty becomes `other`), and relations are lowercased with spaces replaced by `_`.
@@ -54,7 +54,7 @@ When a new fact contradicts a stored one, the older fact is closed (`invalid_at`
 
 ## Recall
 
-`POST /v1/gb/recall` with `{"query": "Where does Alice work?"}` answers from the graph and returns the evidence it used.
+`POST /v1/gb/recall` with `{"user_id": "u1", "query": "Where does Alice work?"}` answers from the graph and returns the evidence it used.
 
 1. **Retrieve**: the query is split into terms (stopwords and very short words are dropped). Entities are scored by keyword match against names (including whole-name matches such as "New York") and descriptions. The top 10 become *seeds*; if nothing matches, the 25 most recently updated entities are used so vague questions still work.
 2. **Expand**: every edge touching a seed is added (newest first, up to 100) along with the entity at its other end, giving a one-hop subgraph.

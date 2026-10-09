@@ -23,15 +23,20 @@ const DefaultDataset = db.DefaultDataset
 
 var (
 	ErrInvalidDataset  = errors.New("invalid dataset")
+	ErrInvalidUser     = errors.New("invalid user_id")
 	ErrDatasetNotFound = errors.New("dataset not found")
 	ErrDatasetExists   = errors.New("dataset already exists")
 )
 
 var datasetNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
+// MaxUserIDLen is the maximum length of a user_id in bytes.
+const MaxUserIDLen = 128
+
 // Dataset describes a dataset.
 type Dataset struct {
 	ID          int64      `json:"id"`
+	UserID      string     `json:"user_id"`
 	Name        string     `json:"name"`
 	Description string     `json:"description,omitempty"`
 	Tags        []string   `json:"tags"`
@@ -41,6 +46,23 @@ type Dataset struct {
 }
 
 //---------------------------------------------------------------------------------------------
+
+// ResolveUserID trims userID and returns ErrInvalidUser if it is empty, too long or has control characters.
+func ResolveUserID(userID string) (string, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return "", fmt.Errorf("%w: user_id is required", ErrInvalidUser)
+	}
+	if len(userID) > MaxUserIDLen {
+		return "", fmt.Errorf("%w: at most %d bytes", ErrInvalidUser, MaxUserIDLen)
+	}
+	for _, r := range userID {
+		if r < 0x20 || r == 0x7f {
+			return "", fmt.Errorf("%w: control characters are not allowed", ErrInvalidUser)
+		}
+	}
+	return userID, nil
+}
 
 // ResolveDatasetName trims name and applies the default for an empty one. It returns ErrInvalidDataset if the
 // name is not 1-64 characters of letters, digits, '.', '_' or '-' (starting with a letter or digit).
@@ -69,21 +91,25 @@ func normTags(tags []string) []string {
 
 //---------------------------------------------------------------------------------------------
 
-// CreateDataset creates a dataset. The name is required (no default is applied). It returns ErrDatasetExists if
-// a live dataset with that name exists.
-func CreateDataset(ctx context.Context, d *sql.DB, name, description string, tags []string) (*Dataset, error) {
+// CreateDataset creates a dataset owned by userID. The name is required (no default is applied). It returns
+// ErrDatasetExists if a live dataset with that name exists for the user.
+func CreateDataset(ctx context.Context, d *sql.DB, userID, name, description string, tags []string) (*Dataset, error) {
+	userID, err := ResolveUserID(userID)
+	if err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(name) == "" {
 		return nil, fmt.Errorf("%w: name is required", ErrInvalidDataset)
 	}
-	name, err := ResolveDatasetName(name)
+	name, err = ResolveDatasetName(name)
 	if err != nil {
 		return nil, err
 	}
 	tagsJSON, _ := json.Marshal(normTags(tags))
 	res, err := d.ExecContext(ctx, `
-		INSERT INTO gb_datasets (name, description, tags, created_at)
-		SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM gb_datasets WHERE name = ? AND deleted = 0)`,
-		name, strings.TrimSpace(description), string(tagsJSON), time.Now().UTC().Format(timeLayout), name)
+		INSERT INTO gb_datasets (user_id, name, description, tags, created_at)
+		SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM gb_datasets WHERE user_id = ? AND name = ? AND deleted = 0)`,
+		userID, name, strings.TrimSpace(description), string(tagsJSON), time.Now().UTC().Format(timeLayout), userID, name)
 	if err != nil {
 		return nil, fmt.Errorf("create dataset: %w", err)
 	}
@@ -97,13 +123,17 @@ func CreateDataset(ctx context.Context, d *sql.DB, name, description string, tag
 	return getDataset(ctx, d, id)
 }
 
-// ListDatasets returns datasets oldest first; deleted ones only if includeDeleted.
-func ListDatasets(ctx context.Context, d *sql.DB, includeDeleted bool) ([]Dataset, error) {
-	q := datasetSelect
-	if !includeDeleted {
-		q += ` WHERE deleted = 0`
+// ListDatasets returns userID's datasets oldest first; deleted ones only if includeDeleted.
+func ListDatasets(ctx context.Context, d *sql.DB, userID string, includeDeleted bool) ([]Dataset, error) {
+	userID, err := ResolveUserID(userID)
+	if err != nil {
+		return nil, err
 	}
-	rows, err := d.QueryContext(ctx, q+` ORDER BY id`)
+	q := datasetSelect + ` WHERE user_id = ?`
+	if !includeDeleted {
+		q += ` AND deleted = 0`
+	}
+	rows, err := d.QueryContext(ctx, q+` ORDER BY id`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list datasets: %w", err)
 	}
@@ -119,15 +149,19 @@ func ListDatasets(ctx context.Context, d *sql.DB, includeDeleted bool) ([]Datase
 	return out, rows.Err()
 }
 
-// DeleteDataset soft-deletes the live dataset called name (sets deleted = 1). It returns ErrDatasetNotFound if
-// there is none.
-func DeleteDataset(ctx context.Context, d *sql.DB, name string) error {
-	name, err := ResolveDatasetName(name)
+// DeleteDataset soft-deletes userID's live dataset called name (sets deleted = 1). It returns ErrDatasetNotFound
+// if there is none.
+func DeleteDataset(ctx context.Context, d *sql.DB, userID, name string) error {
+	userID, err := ResolveUserID(userID)
 	if err != nil {
 		return err
 	}
-	res, err := d.ExecContext(ctx, `UPDATE gb_datasets SET deleted = 1, deleted_at = ? WHERE name = ? AND deleted = 0`,
-		time.Now().UTC().Format(timeLayout), name)
+	name, err = ResolveDatasetName(name)
+	if err != nil {
+		return err
+	}
+	res, err := d.ExecContext(ctx, `UPDATE gb_datasets SET deleted = 1, deleted_at = ? WHERE user_id = ? AND name = ? AND deleted = 0`,
+		time.Now().UTC().Format(timeLayout), userID, name)
 	if err != nil {
 		return fmt.Errorf("delete dataset: %w", err)
 	}
@@ -139,14 +173,14 @@ func DeleteDataset(ctx context.Context, d *sql.DB, name string) error {
 
 //---------------------------------------------------------------------------------------------
 
-const datasetSelect = `SELECT id, name, description, tags, created_at, deleted, deleted_at FROM gb_datasets`
+const datasetSelect = `SELECT id, user_id, name, description, tags, created_at, deleted, deleted_at FROM gb_datasets`
 
 func scanDataset(r scanner) (*Dataset, error) {
 	var ds Dataset
 	var tags, created string
 	var deleted int
 	var deletedAt sql.NullString
-	if err := r.Scan(&ds.ID, &ds.Name, &ds.Description, &tags, &created, &deleted, &deletedAt); err != nil {
+	if err := r.Scan(&ds.ID, &ds.UserID, &ds.Name, &ds.Description, &tags, &created, &deleted, &deletedAt); err != nil {
 		return nil, err
 	}
 	ds.Tags = []string{}
@@ -169,23 +203,24 @@ type queryer interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
-// datasetID returns the ID of the live dataset called name (already resolved), or ErrDatasetNotFound.
-func datasetID(ctx context.Context, q queryer, name string) (int64, error) {
+// datasetID returns the ID of userID's live dataset called name (both already resolved), or ErrDatasetNotFound.
+func datasetID(ctx context.Context, q queryer, userID, name string) (int64, error) {
 	var id int64
-	err := q.QueryRowContext(ctx, `SELECT id FROM gb_datasets WHERE name = ? AND deleted = 0`, name).Scan(&id)
+	err := q.QueryRowContext(ctx, `SELECT id FROM gb_datasets WHERE user_id = ? AND name = ? AND deleted = 0`, userID, name).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, ErrDatasetNotFound
 	}
 	return id, err
 }
 
-// ensureDatasetID is datasetID, creating the dataset first if it does not exist (remember creates on demand).
-func ensureDatasetID(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
+// ensureDatasetID is datasetID, creating the dataset (owned by userID) first if it does not exist (remember
+// creates on demand).
+func ensureDatasetID(ctx context.Context, tx *sql.Tx, userID, name string) (int64, error) {
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO gb_datasets (name, created_at)
-		SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM gb_datasets WHERE name = ? AND deleted = 0)`,
-		name, time.Now().UTC().Format(timeLayout), name); err != nil {
+		INSERT INTO gb_datasets (user_id, name, created_at)
+		SELECT ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM gb_datasets WHERE user_id = ? AND name = ? AND deleted = 0)`,
+		userID, name, time.Now().UTC().Format(timeLayout), userID, name); err != nil {
 		return 0, fmt.Errorf("create dataset: %w", err)
 	}
-	return datasetID(ctx, tx, name)
+	return datasetID(ctx, tx, userID, name)
 }

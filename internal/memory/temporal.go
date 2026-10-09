@@ -162,10 +162,10 @@ func scanEdge(r scanner) (Edge, error) {
 	return e, nil
 }
 
-// loadCandidates returns live (not expired) edges of the dataset touching at least one entity named in edges,
+// loadCandidates returns live (not expired) edges of the user's dataset touching at least one entity named in edges,
 // newest first. A dataset that does not exist yet has none.
-func loadCandidates(ctx context.Context, d *sql.DB, dataset string, edges []Edge) ([]Edge, error) {
-	dsID, err := datasetID(ctx, d, dataset)
+func loadCandidates(ctx context.Context, d *sql.DB, userID, dataset string, edges []Edge) ([]Edge, error) {
+	dsID, err := datasetID(ctx, d, userID, dataset)
 	if errors.Is(err, ErrDatasetNotFound) {
 		return nil, nil
 	}

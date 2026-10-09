@@ -8,9 +8,10 @@ Takes a block of text, stores it as an episode, uses an LLM to extract a small k
 POST /v1/gb/remember
 content-type: application/json
 
-{"text": "Alice works at Acme and lives in Paris.", "reference_time": "2025-01-31T09:00:00Z"}
+{"user_id": "u1", "text": "Alice works at Acme and lives in Paris.", "reference_time": "2025-01-31T09:00:00Z"}
 ```
 
+- `user_id` (required): the user who owns the dataset. `400` if missing.
 - `text` (required): non-empty string. The request body is limited to 1 MiB.
 - `dataset` (optional): name of the [dataset](datasets.md) to store into; created if it does not exist. Defaults to `main`. Entities and edges are deduplicated and reconciled only within the dataset.
 - `reference_time` (optional): RFC 3339 timestamp of when the text was written or observed. Relative dates in the text ("yesterday", "last March") are resolved against it. Defaults to the current time.
@@ -21,6 +22,7 @@ content-type: application/json
 
 ```json
 {
+  "user_id": "u1",
   "dataset": "main",
   "memory_id": 1,
   "valid_at": "2025-01-31T09:00:00Z",
@@ -110,7 +112,7 @@ export ANTHROPIC_API_KEY=...
 ./run_build.sh
 ./bin/gligabao serve &
 curl -s localhost:8080/v1/gb/remember \
-  -d '{"text":"Alice works at Acme and lives in Paris."}'
+  -d '{"user_id":"u1","text":"Alice works at Acme and lives in Paris."}'
 ```
 
 ## Limitations

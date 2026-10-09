@@ -64,13 +64,17 @@ type RecallResult struct {
 
 // Recall answers query using the knowledge graph: relevant entities and their edges are retrieved,
 // the LLM answers from that context, and the entities/edges it used are returned as evidence. Only the named
-// dataset (empty means DefaultDataset) is searched; ErrDatasetNotFound is returned if it does not exist.
-func Recall(ctx context.Context, d *sql.DB, llm LLM, dataset, query string) (*RecallResult, error) {
-	dataset, err := ResolveDatasetName(dataset)
+// dataset of userID (empty means DefaultDataset) is searched; ErrDatasetNotFound is returned if it does not exist.
+func Recall(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, query string) (*RecallResult, error) {
+	userID, err := ResolveUserID(userID)
 	if err != nil {
 		return nil, err
 	}
-	dsID, err := datasetID(ctx, d, dataset)
+	dataset, err = ResolveDatasetName(dataset)
+	if err != nil {
+		return nil, err
+	}
+	dsID, err := datasetID(ctx, d, userID, dataset)
 	if err != nil {
 		return nil, err
 	}

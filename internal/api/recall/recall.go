@@ -15,6 +15,8 @@ import (
 const maxRecallBytes = 64 << 10 // 64 KiB
 
 type recallRequest struct {
+	// UserID owns the dataset. Required.
+	UserID string `json:"user_id"`
 	// Dataset is the dataset to search. Defaults to "main".
 	Dataset string `json:"dataset"`
 	Query   string `json:"query"`
@@ -39,8 +41,8 @@ func Handler(d *sql.DB, llm memory.LLM) http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, "query is required")
 			return
 		}
-		res, err := memory.Recall(r.Context(), d, llm, req.Dataset, req.Query)
-		if errors.Is(err, memory.ErrInvalidDataset) {
+		res, err := memory.Recall(r.Context(), d, llm, req.UserID, req.Dataset, req.Query)
+		if errors.Is(err, memory.ErrInvalidDataset) || errors.Is(err, memory.ErrInvalidUser) {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}

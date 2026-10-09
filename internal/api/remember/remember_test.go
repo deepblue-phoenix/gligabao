@@ -32,7 +32,7 @@ func TestRemember(t *testing.T) {
 
 	for i := 0; i < 2; i++ { // second call must be idempotent for entities/edges
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"text":"Alice works at Acme and lives in Paris."}`)))
+		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"user_id":"u1","text":"Alice works at Acme and lives in Paris."}`)))
 		if rec.Code != 200 {
 			t.Fatalf("status %d: %s", rec.Code, rec.Body)
 		}
@@ -52,7 +52,7 @@ func TestRemember(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"text":"  "}`)))
+	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"user_id":"u1","text":"  "}`)))
 	if rec.Code != 400 {
 		t.Errorf("empty text status = %d", rec.Code)
 	}
@@ -62,7 +62,7 @@ func TestRememberNoLLM(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/gb/remember", Handler(nil, nil))
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"text":"x"}`)))
+	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"user_id":"u1","text":"x"}`)))
 	if rec.Code != 503 {
 		t.Errorf("status = %d", rec.Code)
 	}

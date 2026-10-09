@@ -77,13 +77,19 @@ func TestDatasets(t *testing.T) {
 		return ns
 	}
 
-	// The default dataset exists from the start.
-	if got := names("/v1/gb/datasets"); strings.Join(got, ",") != "main" {
+	// A user has no datasets until one is created.
+	if got := names("/v1/gb/datasets?user_id=u1"); len(got) != 0 {
 		t.Fatalf("initial datasets = %v", got)
 	}
+	// user_id is required everywhere.
+	want(do("GET", "/v1/gb/datasets", ""), 400)
+	want(do("POST", "/v1/gb/datasets", `{"name":"x"}`), 400)
+	want(do("DELETE", "/v1/gb/datasets/x", ""), 400)
+	want(do("POST", "/v1/gb/remember", `{"text":"x"}`), 400)
+	want(do("POST", "/v1/gb/recall", `{"query":"x"}`), 400)
 
 	// Create.
-	rec := do("POST", "/v1/gb/datasets", `{"name":"ds1","tags":["a"," b ","a",""],"description":"first"}`)
+	rec := do("POST", "/v1/gb/datasets", `{"user_id":"u1","name":"ds1","tags":["a"," b ","a",""],"description":"first"}`)
 	want(rec, 201)
 	var ds struct {
 		ID        int64
@@ -95,14 +101,14 @@ func TestDatasets(t *testing.T) {
 	if strings.Join(ds.Tags, ",") != "a,b" || ds.CreatedAt == "" || ds.Deleted {
 		t.Errorf("created dataset: %s", rec.Body)
 	}
-	want(do("POST", "/v1/gb/datasets", `{"name":"ds1"}`), 409)
-	want(do("POST", "/v1/gb/datasets", `{"name":""}`), 400)
-	want(do("POST", "/v1/gb/datasets", `{"name":"a b/c"}`), 400)
+	want(do("POST", "/v1/gb/datasets", `{"user_id":"u1","name":"ds1"}`), 409)
+	want(do("POST", "/v1/gb/datasets", `{"user_id":"u1","name":""}`), 400)
+	want(do("POST", "/v1/gb/datasets", `{"user_id":"u1","name":"a b/c"}`), 400)
 
 	// remember/recall are scoped: the same entity in two datasets is two rows, never linked.
-	want(do("POST", "/v1/gb/remember", `{"text":"x","dataset":"ds1"}`), 200)
-	want(do("POST", "/v1/gb/remember", `{"text":"x","dataset":"ds2"}`), 200) // created on demand
-	want(do("POST", "/v1/gb/remember", `{"text":"x"}`), 200)                 // default: main
+	want(do("POST", "/v1/gb/remember", `{"user_id":"u1","text":"x","dataset":"ds1"}`), 200)
+	want(do("POST", "/v1/gb/remember", `{"user_id":"u1","text":"x","dataset":"ds2"}`), 200) // created on demand
+	want(do("POST", "/v1/gb/remember", `{"user_id":"u1","text":"x"}`), 200)                 // default: main
 	if n := count(`SELECT COUNT(*) FROM gb_entities WHERE name = 'Alice'`); n != 3 {
 		t.Errorf("Alice rows = %d, want 3 (one per dataset)", n)
 	}
@@ -113,36 +119,51 @@ func TestDatasets(t *testing.T) {
 	if n := count(`SELECT COUNT(*) FROM gb_edges e JOIN gb_datasets d ON d.id = e.dataset_id WHERE d.name = 'main'`); n != 1 {
 		t.Errorf("main edges = %d, want 1", n)
 	}
-	if got := names("/v1/gb/datasets"); strings.Join(got, ",") != "main,ds1,ds2" {
+	if got := names("/v1/gb/datasets?user_id=u1"); strings.Join(got, ",") != "ds1,ds2,main" {
 		t.Errorf("datasets = %v", got)
 	}
 
 	// recall: unknown dataset is a 404, an empty one answers without evidence.
-	want(do("POST", "/v1/gb/recall", `{"query":"Alice?","dataset":"nope"}`), 404)
-	want(do("POST", "/v1/gb/recall", `{"query":"Alice?","dataset":"bad name"}`), 400)
-	want(do("POST", "/v1/gb/recall", `{"query":"Alice?","dataset":"ds1"}`), 200)
-	want(do("POST", "/v1/gb/recall", `{"query":"Alice?"}`), 200)
+	want(do("POST", "/v1/gb/recall", `{"user_id":"u1","query":"Alice?","dataset":"nope"}`), 404)
+	want(do("POST", "/v1/gb/recall", `{"user_id":"u1","query":"Alice?","dataset":"bad name"}`), 400)
+	want(do("POST", "/v1/gb/recall", `{"user_id":"u1","query":"Alice?","dataset":"ds1"}`), 200)
+	want(do("POST", "/v1/gb/recall", `{"user_id":"u1","query":"Alice?"}`), 200)
 
 	// Soft delete: the row stays with deleted = 1, but the dataset is gone for remember/recall/list.
-	want(do("DELETE", "/v1/gb/datasets/ds1", ""), 204)
-	want(do("DELETE", "/v1/gb/datasets/ds1", ""), 404)
+	want(do("DELETE", "/v1/gb/datasets/ds1?user_id=u1", ""), 204)
+	want(do("DELETE", "/v1/gb/datasets/ds1?user_id=u1", ""), 404)
 	if n := count(`SELECT COUNT(*) FROM gb_datasets WHERE name = 'ds1' AND deleted = 1 AND deleted_at IS NOT NULL`); n != 1 {
 		t.Errorf("soft-deleted rows = %d", n)
 	}
 	if n := count(`SELECT COUNT(*) FROM gb_entities WHERE dataset_id = ?`, ds.ID); n != 2 {
 		t.Errorf("deleted dataset's entities = %d, want kept (2)", n)
 	}
-	want(do("POST", "/v1/gb/recall", `{"query":"Alice?","dataset":"ds1"}`), 404)
-	if got := names("/v1/gb/datasets"); strings.Join(got, ",") != "main,ds2" {
+	want(do("POST", "/v1/gb/recall", `{"user_id":"u1","query":"Alice?","dataset":"ds1"}`), 404)
+	if got := names("/v1/gb/datasets?user_id=u1"); strings.Join(got, ",") != "ds2,main" {
 		t.Errorf("datasets after delete = %v", got)
 	}
-	if got := names("/v1/gb/datasets?include_deleted=true"); strings.Join(got, ",") != "main,ds1(deleted),ds2" {
+	if got := names("/v1/gb/datasets?user_id=u1&include_deleted=true"); strings.Join(got, ",") != "ds1(deleted),ds2,main" {
 		t.Errorf("datasets incl. deleted = %v", got)
 	}
 
 	// The name can be reused: a new dataset with a new id and an empty graph.
-	want(do("POST", "/v1/gb/datasets", `{"name":"ds1"}`), 201)
+	want(do("POST", "/v1/gb/datasets", `{"user_id":"u1","name":"ds1"}`), 201)
 	if n := count(`SELECT COUNT(*) FROM gb_entities e JOIN gb_datasets d ON d.id = e.dataset_id WHERE d.name = 'ds1' AND d.deleted = 0`); n != 0 {
 		t.Errorf("recreated dataset has %d entities", n)
+	}
+
+	// Datasets belong to a user: another user sees none of u1's, can reuse its names, and cannot delete or recall them.
+	if got := names("/v1/gb/datasets?user_id=u2"); len(got) != 0 {
+		t.Errorf("u2 datasets = %v, want none", got)
+	}
+	want(do("POST", "/v1/gb/recall", `{"user_id":"u2","query":"Alice?","dataset":"ds2"}`), 404)
+	want(do("DELETE", "/v1/gb/datasets/ds2?user_id=u2", ""), 404)
+	want(do("POST", "/v1/gb/datasets", `{"user_id":"u2","name":"ds2"}`), 201)
+	want(do("POST", "/v1/gb/remember", `{"user_id":"u2","text":"x","dataset":"ds2"}`), 200)
+	if n := count(`SELECT COUNT(*) FROM gb_datasets WHERE name = 'ds2' AND deleted = 0`); n != 2 {
+		t.Errorf("live ds2 datasets = %d, want 2 (one per user)", n)
+	}
+	if n := count(`SELECT COUNT(*) FROM gb_entities e JOIN gb_datasets d ON d.id = e.dataset_id WHERE d.user_id = 'u2'`); n != 2 {
+		t.Errorf("u2 entities = %d, want 2", n)
 	}
 }

@@ -15,11 +15,13 @@ CREATE TABLE IF NOT EXISTS gb_items (
 );
 
 -- A dataset is a hard logical container: every memory, entity and edge belongs to exactly one dataset, and
--- datasets never share nodes. Deletion is soft (deleted = 1); the rows stay but are invisible, and the name can
+-- datasets never share nodes. A dataset is owned by one user (user_id); everything in it belongs to that user.
+-- Names are unique per user. Deletion is soft (deleted = 1); the rows stay but are invisible, and the name can
 -- be reused by a new dataset (with a new id and an empty graph).
 --   tags: JSON array of strings; created_at / deleted_at: RFC 3339 UTC
 CREATE TABLE IF NOT EXISTS gb_datasets (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
+	user_id     TEXT NOT NULL,
 	name        TEXT NOT NULL,
 	description TEXT NOT NULL DEFAULT '',
 	tags        TEXT NOT NULL DEFAULT '[]',
@@ -27,7 +29,7 @@ CREATE TABLE IF NOT EXISTS gb_datasets (
 	deleted     INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1)),
 	deleted_at  TEXT
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_datasets_name ON gb_datasets(name) WHERE deleted = 0;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_datasets_user_name ON gb_datasets(user_id, name) WHERE deleted = 0;
 
 -- A memory is a Graphiti "episode": the raw input text plus when it happened.
 --   valid_at   (event time): RFC 3339 UTC, when the text was written/observed; relative dates in it resolve against it
@@ -92,19 +94,13 @@ CREATE INDEX IF NOT EXISTS idx_gb_llm_calls_type ON gb_llm_calls(type);`
 
 //---------------------------------------------------------------------------------------------
 
-// DefaultDataset is the dataset used when a request names none. It is created at startup.
+// DefaultDataset is the dataset used when a request names none. It is created per user on first remember.
 const DefaultDataset = "main"
 
-// initSchema applies the database schema and makes sure the default dataset exists.
+// initSchema applies the database schema.
 func initSchema(d *sql.DB) error {
 	if _, err := d.Exec(schema); err != nil {
 		return fmt.Errorf("init schema: %w", err)
-	}
-	if _, err := d.Exec(`
-		INSERT INTO gb_datasets (name, created_at)
-		SELECT ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-		WHERE NOT EXISTS (SELECT 1 FROM gb_datasets WHERE name = ? AND deleted = 0)`, DefaultDataset, DefaultDataset); err != nil {
-		return fmt.Errorf("init default dataset: %w", err)
 	}
 	return nil
 }

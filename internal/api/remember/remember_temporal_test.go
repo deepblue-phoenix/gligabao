@@ -64,7 +64,7 @@ func TestRememberBiTemporal(t *testing.T) {
 		return res
 	}
 
-	r1 := post(`{"text":"Alice works at Acme.","reference_time":"2023-01-01T00:00:00Z"}`)
+	r1 := post(`{"user_id":"u1","text":"Alice works at Acme.","reference_time":"2023-01-01T00:00:00Z"}`)
 	if r1.ValidAt.Year() != 2023 || r1.CreatedAt.IsZero() {
 		t.Errorf("episode times: %+v", r1)
 	}
@@ -77,7 +77,7 @@ func TestRememberBiTemporal(t *testing.T) {
 		t.Errorf("extract prompt lacks reference time:\n%s", got)
 	}
 
-	r2 := post(`{"text":"Alice works at Globex since June 2024.","reference_time":"2024-07-01T00:00:00Z"}`)
+	r2 := post(`{"user_id":"u1","text":"Alice works at Globex since June 2024.","reference_time":"2024-07-01T00:00:00Z"}`)
 	if len(r2.InvalidatedEdges) != 1 || r2.InvalidatedEdges[0] != 1 {
 		t.Fatalf("invalidated = %v", r2.InvalidatedEdges)
 	}
@@ -90,7 +90,7 @@ func TestRememberBiTemporal(t *testing.T) {
 		t.Errorf("resolve prompt:\n%s", p)
 	}
 
-	r3 := post(`{"text":"Alice works at Globex.","reference_time":"2024-08-01T00:00:00Z"}`)
+	r3 := post(`{"user_id":"u1","text":"Alice works at Globex.","reference_time":"2024-08-01T00:00:00Z"}`)
 	if len(r3.Edges) != 1 || r3.Edges[0].ID != 2 || r3.Edges[0].InvalidAt == nil || r3.Edges[0].InvalidAt.Year() != 2025 {
 		t.Fatalf("edge 3: %+v", r3.Edges)
 	}
@@ -122,8 +122,8 @@ func TestRememberSupersedesOlderFact(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm))
 	for _, body := range []string{
-		`{"text":"Alice works at Acme.","reference_time":"2023-01-01T00:00:00Z"}`,
-		`{"text":"Alice started working at Globex.","reference_time":"2024-03-01T00:00:00Z"}`,
+		`{"user_id":"u1","text":"Alice works at Acme.","reference_time":"2023-01-01T00:00:00Z"}`,
+		`{"user_id":"u1","text":"Alice started working at Globex.","reference_time":"2024-03-01T00:00:00Z"}`,
 	} {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
@@ -178,9 +178,9 @@ func TestRememberOlderNewsIsSuperseded(t *testing.T) {
 		json.Unmarshal(rec.Body.Bytes(), &res)
 		return res
 	}
-	post(`{"text":"a","reference_time":"2024-01-01T00:00:00Z"}`)
+	post(`{"user_id":"u1","text":"a","reference_time":"2024-01-01T00:00:00Z"}`)
 	// News about 2019 arrives later: it is older than the stored fact, so the *new* fact ends when the stored one starts.
-	r2 := post(`{"text":"b","reference_time":"2019-01-01T00:00:00Z"}`)
+	r2 := post(`{"user_id":"u1","text":"b","reference_time":"2019-01-01T00:00:00Z"}`)
 	if len(r2.InvalidatedEdges) != 1 || r2.InvalidatedEdges[0] != 2 {
 		t.Fatalf("invalidated = %v", r2.InvalidatedEdges)
 	}
@@ -194,7 +194,7 @@ func TestRememberOlderNewsIsSuperseded(t *testing.T) {
 		t.Errorf("stored edge must be untouched: invalid_at=%v expired_at=%v", invalid, expired)
 	}
 
-	r3 := post(`{"text":"c"}`)
+	r3 := post(`{"user_id":"u1","text":"c"}`)
 	if len(r3.Edges) != 1 || r3.Edges[0].ID != 1 {
 		t.Errorf("repeat: %+v", r3.Edges)
 	}
@@ -212,7 +212,7 @@ func TestRememberBadReferenceTime(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/gb/remember", Handler(nil, fakeLLM{}))
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"text":"x","reference_time":"yesterday"}`)))
+	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"user_id":"u1","text":"x","reference_time":"yesterday"}`)))
 	if rec.Code != 400 {
 		t.Errorf("status = %d", rec.Code)
 	}

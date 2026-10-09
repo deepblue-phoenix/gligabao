@@ -8,11 +8,12 @@ Answers a question from the knowledge graph built by [`remember`](remember.md). 
 POST /v1/gb/recall
 content-type: application/json
 
-{"query": "Where does Alice work?"}
+{"user_id": "u1", "query": "Where does Alice work?"}
 ```
 
 - `query` (required): non-empty string. The request body is limited to 64 KiB.
-- `dataset` (optional): name of the [dataset](datasets.md) to search. Defaults to `main`. Only that dataset's graph is used. `404` if it does not exist.
+- `user_id` (required): the user who owns the dataset. `400` if missing.
+- `dataset` (optional): name of the [dataset](datasets.md) to search. Defaults to `main`. Only that user's dataset graph is used. `404` if it does not exist.
 
 ## Response
 
@@ -103,8 +104,8 @@ The cited IDs are validated against the subgraph that was actually sent:
 export ANTHROPIC_API_KEY=...
 ./run_build.sh
 ./bin/gligabao serve &
-curl -s localhost:8080/v1/gb/remember -d '{"text":"Alice works at Acme and lives in Paris."}'
-curl -s localhost:8080/v1/gb/recall   -d '{"query":"Where does Alice work?"}'
+curl -s localhost:8080/v1/gb/remember -d '{"user_id":"u1","text":"Alice works at Acme and lives in Paris."}'
+curl -s localhost:8080/v1/gb/recall   -d '{"user_id":"u1","query":"Where does Alice work?"}'
 ```
 
 ## Limitations

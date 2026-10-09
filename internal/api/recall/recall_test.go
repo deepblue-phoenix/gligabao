@@ -46,7 +46,7 @@ func TestRecall(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/gb/recall", Handler(d, llm))
 
-	if _, err := memory.Remember(context.Background(), d, llm, "", "x", time.Time{}); err != nil {
+	if _, err := memory.Remember(context.Background(), d, llm, "u1", "", "x", time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -55,7 +55,7 @@ func TestRecall(t *testing.T) {
 		mux.ServeHTTP(rec, httptest.NewRequest("POST", path, strings.NewReader(body)))
 		return rec
 	}
-	rec := post("/v1/gb/recall", `{"query":"Where does Alice work?"}`)
+	rec := post("/v1/gb/recall", `{"user_id":"u1","query":"Where does Alice work?"}`)
 	if rec.Code != 200 {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body)
 	}
@@ -80,12 +80,12 @@ func TestRecall(t *testing.T) {
 	}
 
 	// No match: falls back to recent entities; empty evidence is serialized as [] not null.
-	rec = post("/v1/gb/recall", `{"query":"zzz"}`)
+	rec = post("/v1/gb/recall", `{"user_id":"u1","query":"zzz"}`)
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"entities":[]`) || !strings.Contains(rec.Body.String(), `"edges":[]`) {
 		t.Errorf("fallback: %d %s", rec.Code, rec.Body)
 	}
 
-	if rec := post("/v1/gb/recall", `{"query":"  "}`); rec.Code != 400 {
+	if rec := post("/v1/gb/recall", `{"user_id":"u1","query":"  "}`); rec.Code != 400 {
 		t.Errorf("empty query status = %d", rec.Code)
 	}
 }
@@ -96,10 +96,13 @@ func TestRecallEmptyGraph(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer d.Close()
+	if _, err := memory.CreateDataset(context.Background(), d, "u1", "main", "", nil); err != nil {
+		t.Fatal(err)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/gb/recall", Handler(d, &recordingLLM{})) // must not call the LLM
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/recall", strings.NewReader(`{"query":"hi"}`)))
+	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/recall", strings.NewReader(`{"user_id":"u1","query":"hi"}`)))
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"edges":[]`) {
 		t.Errorf("%d %s", rec.Code, rec.Body)
 	}
@@ -109,7 +112,7 @@ func TestRecallNoLLM(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/gb/recall", Handler(nil, nil))
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/recall", strings.NewReader(`{"query":"x"}`)))
+	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/recall", strings.NewReader(`{"user_id":"u1","query":"x"}`)))
 	if rec.Code != 503 {
 		t.Errorf("status = %d", rec.Code)
 	}

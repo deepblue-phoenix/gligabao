@@ -15,6 +15,7 @@ import (
 const maxBodyBytes = 64 << 10 // 64 KiB
 
 type createRequest struct {
+	UserID      string   `json:"user_id"`
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Tags        []string `json:"tags"`
@@ -30,9 +31,9 @@ func Create(d *sql.DB) http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 			return
 		}
-		ds, err := memory.CreateDataset(r.Context(), d, req.Name, req.Description, req.Tags)
+		ds, err := memory.CreateDataset(r.Context(), d, req.UserID, req.Name, req.Description, req.Tags)
 		switch {
-		case errors.Is(err, memory.ErrInvalidDataset):
+		case errors.Is(err, memory.ErrInvalidDataset), errors.Is(err, memory.ErrInvalidUser):
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 		case errors.Is(err, memory.ErrDatasetExists):
 			httputil.Error(w, http.StatusConflict, "dataset already exists")
@@ -45,10 +46,15 @@ func Create(d *sql.DB) http.HandlerFunc {
 	}
 }
 
-// List serves GET /v1/gb/datasets (?include_deleted=true also returns soft-deleted datasets).
+// List serves GET /v1/gb/datasets?user_id=... (&include_deleted=true also returns soft-deleted datasets).
 func List(d *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		list, err := memory.ListDatasets(r.Context(), d, r.URL.Query().Get("include_deleted") == "true")
+		q := r.URL.Query()
+		list, err := memory.ListDatasets(r.Context(), d, q.Get("user_id"), q.Get("include_deleted") == "true")
+		if errors.Is(err, memory.ErrInvalidUser) {
+			httputil.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		if err != nil {
 			log.Printf("list datasets: %v", err)
 			httputil.Error(w, http.StatusInternalServerError, "failed to list datasets")
@@ -58,11 +64,13 @@ func List(d *sql.DB) http.HandlerFunc {
 	}
 }
 
-// Delete serves DELETE /v1/gb/datasets/{name}: a soft delete (the row is kept with deleted = true).
+// Delete serves DELETE /v1/gb/datasets/{name}?user_id=...: a soft delete (the row is kept with deleted = true).
 func Delete(d *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		err := memory.DeleteDataset(r.Context(), d, r.PathValue("name"))
+		err := memory.DeleteDataset(r.Context(), d, r.URL.Query().Get("user_id"), r.PathValue("name"))
 		switch {
+		case errors.Is(err, memory.ErrInvalidUser):
+			httputil.Error(w, http.StatusBadRequest, err.Error())
 		case errors.Is(err, memory.ErrInvalidDataset), errors.Is(err, memory.ErrDatasetNotFound):
 			httputil.Error(w, http.StatusNotFound, "dataset not found")
 		case err != nil:

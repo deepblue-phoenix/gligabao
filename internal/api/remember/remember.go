@@ -16,6 +16,8 @@ import (
 const maxRememberBytes = 1 << 20 // 1 MiB
 
 type rememberRequest struct {
+	// UserID owns the dataset. Required.
+	UserID string `json:"user_id"`
 	// Dataset is the dataset to store into (created if missing). Defaults to "main".
 	Dataset string `json:"dataset"`
 	Text    string `json:"text"`
@@ -51,11 +53,15 @@ func Handler(d *sql.DB, llm memory.LLM) http.HandlerFunc {
 				return
 			}
 		}
+		if _, err := memory.ResolveUserID(req.UserID); err != nil {
+			httputil.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		if _, err := memory.ResolveDatasetName(req.Dataset); err != nil {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		res, err := memory.Remember(r.Context(), d, llm, req.Dataset, req.Text, ref)
+		res, err := memory.Remember(r.Context(), d, llm, req.UserID, req.Dataset, req.Text, ref)
 		if err != nil {
 			log.Printf("remember: %v", err)
 			httputil.Error(w, http.StatusBadGateway, "failed to process text")

@@ -20,6 +20,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -37,6 +38,9 @@ var casesFS embed.FS
 
 // evalDataset is the dataset every eval remembers into and recalls from.
 const evalDataset = "test"
+
+// evalUser owns the eval dataset.
+const evalUser = "eval"
 
 //---------------------------------------------------------------------------------------------
 
@@ -168,7 +172,7 @@ func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string
 	}
 
 	for i, m := range c.Remember {
-		body := map[string]any{"text": m.Text, "dataset": evalDataset}
+		body := map[string]any{"user_id": evalUser, "text": m.Text, "dataset": evalDataset}
 		if m.ReferenceTime != "" {
 			body["reference_time"] = m.ReferenceTime
 		}
@@ -183,7 +187,7 @@ func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string
 		SELECT e.id, s.name, t.name, e.relation, e.valid_at, e.invalid_at, e.expired_at
 		FROM gb_edges e JOIN gb_entities s ON s.id = e.source_id JOIN gb_entities t ON t.id = e.target_id
 		JOIN gb_datasets ds ON ds.id = e.dataset_id
-		WHERE ds.name = ? AND ds.deleted = 0 ORDER BY e.id`, evalDataset)
+		WHERE ds.user_id = ? AND ds.name = ? AND ds.deleted = 0 ORDER BY e.id`, evalUser, evalDataset)
 	if err != nil {
 		return "", nil, err
 	}
@@ -241,7 +245,7 @@ func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string
 	var rec struct {
 		Answer string `json:"answer"`
 	}
-	if err := post(srv.URL+"/v1/gb/recall", map[string]any{"query": c.Query, "dataset": evalDataset}, &rec); err != nil {
+	if err := post(srv.URL+"/v1/gb/recall", map[string]any{"user_id": evalUser, "query": c.Query, "dataset": evalDataset}, &rec); err != nil {
 		return "", problems, fmt.Errorf("recall: %w", err)
 	}
 	return rec.Answer, problems, nil
@@ -249,7 +253,7 @@ func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string
 
 // deleteDataset soft-deletes a dataset through the API; a dataset that does not exist is not an error.
 func deleteDataset(baseURL, name string) error {
-	req, err := http.NewRequest(http.MethodDelete, baseURL+"/v1/gb/datasets/"+name, nil)
+	req, err := http.NewRequest(http.MethodDelete, baseURL+"/v1/gb/datasets/"+name+"?user_id="+url.QueryEscape(evalUser), nil)
 	if err != nil {
 		return err
 	}

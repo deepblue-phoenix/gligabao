@@ -25,7 +25,7 @@ func TestLLMCallsRecorded(t *testing.T) {
 	}}
 	mux := http.NewServeMux()
 	Register(mux, d, llm)
-	for _, c := range [][2]string{{"/v1/gb/remember", `{"text":"Alice"}`}, {"/v1/gb/recall", `{"query":"Alice?"}`}} { // order matters: recall needs the graph
+	for _, c := range [][2]string{{"/v1/gb/remember", `{"user_id":"u1","text":"Alice"}`}, {"/v1/gb/recall", `{"user_id":"u1","query":"Alice?"}`}} { // order matters: recall needs the graph
 		path, body := c[0], c[1]
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest("POST", path, strings.NewReader(body)))

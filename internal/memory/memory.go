@@ -126,6 +126,7 @@ func parseExtraction(s string, ref time.Time) (*Extraction, error) {
 
 // Result summarizes what was stored by Remember.
 type Result struct {
+	UserID           string    `json:"user_id"`
 	Dataset          string    `json:"dataset"`
 	MemoryID         int64     `json:"memory_id"`
 	ValidAt          time.Time `json:"valid_at"`   // event time of the episode
@@ -136,11 +137,15 @@ type Result struct {
 }
 
 // Remember extracts entities and temporal edges from text and stores them (with the raw text as an episode) in
-// one transaction, inside the named dataset (empty means DefaultDataset; it is created if missing). ref is the
+// one transaction, inside userID's named dataset (empty means DefaultDataset; it is created if missing). ref is the
 // time the text was written/observed; the zero value means the current time. If any LLM step fails nothing is
 // stored.
-func Remember(ctx context.Context, d *sql.DB, llm LLM, dataset, text string, ref time.Time) (*Result, error) {
-	dataset, err := ResolveDatasetName(dataset)
+func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, text string, ref time.Time) (*Result, error) {
+	userID, err := ResolveUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	dataset, err = ResolveDatasetName(dataset)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +160,7 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, dataset, text string, ref
 	if err != nil {
 		return nil, err
 	}
-	cands, err := loadCandidates(ctx, d, dataset, ex.Edges)
+	cands, err := loadCandidates(ctx, d, userID, dataset, ex.Edges)
 	if err != nil {
 		return nil, err
 	}
@@ -163,25 +168,29 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, dataset, text string, ref
 	if err != nil {
 		return nil, err
 	}
-	return Store(ctx, d, dataset, text, ref, now, ex, plan)
+	return Store(ctx, d, userID, dataset, text, ref, now, ex, plan)
 }
 
-// Store persists an episode and its extraction into the named dataset (created if missing). Entities are
+// Store persists an episode and its extraction into userID's named dataset (created if missing). Entities are
 // deduplicated within the dataset by (normalized name, type); nothing is shared across datasets. Edges are
 // written according to plan (see EdgePlan); now is the system time stamped on them. Edges naming an unlisted
 // entity create it with type "other".
-func Store(ctx context.Context, d *sql.DB, dataset, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan) (*Result, error) {
+func Store(ctx context.Context, d *sql.DB, userID, dataset, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan) (*Result, error) {
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 
+	userID, err = ResolveUserID(userID)
+	if err != nil {
+		return nil, err
+	}
 	dataset, err = ResolveDatasetName(dataset)
 	if err != nil {
 		return nil, err
 	}
-	dsID, err := ensureDatasetID(ctx, tx, dataset)
+	dsID, err := ensureDatasetID(ctx, tx, userID, dataset)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +205,7 @@ func Store(ctx context.Context, d *sql.DB, dataset, text string, ref, now time.T
 		return nil, err
 	}
 
-	out := &Result{Dataset: dataset, MemoryID: memID, ValidAt: ref.UTC(), CreatedAt: now.UTC(),
+	out := &Result{UserID: userID, Dataset: dataset, MemoryID: memID, ValidAt: ref.UTC(), CreatedAt: now.UTC(),
 		Entities: []Entity{}, Edges: []Edge{}, InvalidatedEdges: []int64{}}
 	ids := map[string]int64{} // normalized name -> entity id (first listed type wins for edge lookup)
 	seenEnt := map[string]bool{}
