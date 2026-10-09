@@ -12,7 +12,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ivan/gligabao/internal/ai"
+	"github.com/ivan/gligabao/internal/api"
 	"github.com/ivan/gligabao/internal/db"
+	"github.com/ivan/gligabao/internal/memory"
 )
 
 var (
@@ -41,6 +44,14 @@ var serveCmd = &cobra.Command{
 			}
 			fmt.Fprintln(w, "ok")
 		})
+
+		var llm memory.LLM
+		if c, err := ai.New(""); err != nil {
+			log.Printf("warning: %v; /v1/gb/remember will return 503", err)
+		} else {
+			llm = c
+		}
+		api.Register(mux, database, llm)
 
 		srv := &http.Server{Addr: serveAddr, Handler: mux}
 
