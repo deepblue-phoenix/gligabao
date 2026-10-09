@@ -21,7 +21,6 @@ func TestLLMCallsRecorded(t *testing.T) {
 
 	llm := &costLLM{outs: []string{
 		`{"entities":[{"name":"Alice","type":"person"}],"edges":[]}`,
-		`{"events":[]}`,
 		`{"answer":"Alice.","entities":[1],"edges":[]}`,
 	}}
 	mux := http.NewServeMux()
@@ -48,8 +47,8 @@ func TestLLMCallsRecorded(t *testing.T) {
 		}
 		got[typ] = v
 	}
-	// remember makes 2 LLM calls (entities, events; no candidates so no resolve call), recall makes 1.
-	if got["remember"] != [4]float64{2, 20, 10, 0.02} || got["recall"] != [4]float64{1, 10, 5, 0.01} {
+	// remember makes 1 LLM call when there is nothing stored to compare against, recall makes 1.
+	if got["remember"] != [4]float64{1, 10, 5, 0.01} || got["recall"] != [4]float64{1, 10, 5, 0.01} {
 		t.Fatalf("got %v", got)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/ivan/gligabao/internal/ai"
@@ -40,6 +41,11 @@ type EvidenceEdge struct {
 	Relation    string `json:"relation"`
 	Description string `json:"description,omitempty"`
 	MemoryID    *int64 `json:"memory_id,omitempty"`
+	// Bi-temporal validity of the fact (see temporal.go).
+	ValidAt   *time.Time `json:"valid_at,omitempty"`
+	InvalidAt *time.Time `json:"invalid_at,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+	ExpiredAt *time.Time `json:"expired_at,omitempty"`
 }
 
 // Evidence lists the entities and edges the answer is based on.
@@ -74,8 +80,8 @@ func Recall(ctx context.Context, d *sql.DB, llm LLM, query string) (*RecallResul
 	temp := 0.0
 	resp, err := llm.Complete(ctx, ai.Request{
 		System: recallSystemPrompt,
-		Messages: []ai.Message{{Role: ai.RoleUser, Content: "<graph>\n" + g.render() +
-			"</graph>\n\n<question>\n" + query + "\n</question>"}},
+		Messages: []ai.Message{{Role: ai.RoleUser, Content: "<current_time>\n" + time.Now().UTC().Format(timeLayout) +
+			"\n</current_time>\n\n<graph>\n" + g.render() + "</graph>\n\n<question>\n" + query + "\n</question>"}},
 		MaxTokens:   2048,
 		Temperature: &temp,
 	})
@@ -140,7 +146,14 @@ func (g *graphContext) render() string {
 		if e.Description != "" {
 			sb.WriteString(": " + e.Description)
 		}
-		sb.WriteByte('\n')
+		sb.WriteString(" [valid_at=" + e.ValidAt.UTC().Format(timeLayout))
+		if e.InvalidAt != nil {
+			sb.WriteString(", invalid_at=" + e.InvalidAt.UTC().Format(timeLayout))
+		}
+		if e.ExpiredAt != nil {
+			sb.WriteString(", superseded")
+		}
+		sb.WriteString("]\n")
 	}
 	return sb.String()
 }
@@ -219,7 +232,8 @@ func retrieve(ctx context.Context, d *sql.DB, query string) (*graphContext, erro
 	args = append(args, args...)
 	args = append(args, maxContextEdges)
 	rows, err := d.QueryContext(ctx, `
-		SELECT e.id, e.source_id, e.target_id, s.name, t.name, e.relation, e.description, e.memory_id
+		SELECT e.id, e.source_id, e.target_id, s.name, t.name, e.relation, e.description, e.memory_id,
+			e.valid_at, e.invalid_at, e.created_at, e.expired_at
 		FROM gb_edges e
 		JOIN gb_entities s ON s.id = e.source_id
 		JOIN gb_entities t ON t.id = e.target_id
@@ -236,9 +250,12 @@ func retrieve(ctx context.Context, d *sql.DB, query string) (*graphContext, erro
 	for rows.Next() {
 		var e EvidenceEdge
 		var mem sql.NullInt64
-		if err := rows.Scan(&e.ID, &e.SourceID, &e.TargetID, &e.Source, &e.Target, &e.Relation, &e.Description, &mem); err != nil {
+		var valid, invalid, created, expired sql.NullString
+		if err := rows.Scan(&e.ID, &e.SourceID, &e.TargetID, &e.Source, &e.Target, &e.Relation, &e.Description, &mem,
+			&valid, &invalid, &created, &expired); err != nil {
 			return nil, err
 		}
+		e.ValidAt, e.InvalidAt, e.CreatedAt, e.ExpiredAt = parseTime(valid.String), parseTime(invalid.String), parseTime(created.String), parseTime(expired.String)
 		if mem.Valid {
 			e.MemoryID = &mem.Int64
 		}

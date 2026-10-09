@@ -1,7 +1,8 @@
 // Command evals runs end-to-end evals against the real LLM.
 //
 // Each case in evals/cases/*.json gets a fresh temporary database and an in-process
-// HTTP server. The case is run through the public API: remember, then recall.
+// HTTP server. The case is run through the public API: remember (once per memory, in order), then recall.
+// Besides the answer, the stored temporal facts (edges with valid_at / invalid_at) are checked in the database.
 //
 // Usage: go run ./evals [-v] [case-name ...]   (requires ANTHROPIC_API_KEY)
 // With -v, every LLM call's input and output is printed.
@@ -10,6 +11,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"embed"
 	"encoding/json"
 	"flag"
@@ -34,12 +36,29 @@ var casesFS embed.FS
 
 //---------------------------------------------------------------------------------------------
 
-// Case is one eval: remember some text, then ask a question about it.
+// Case is one eval: remember some texts in order, then ask a question about them.
 type Case struct {
-	Name           string   `json:"name"`
-	Remember       string   `json:"remember"`
-	Query          string   `json:"query"`
-	ExpectContains []string `json:"expect_contains"`
+	Name           string       `json:"name"`
+	Remember       []Memory     `json:"remember"`
+	Query          string       `json:"query"`
+	ExpectContains []string     `json:"expect_contains"`
+	ExpectEdges    []ExpectEdge `json:"expect_edges"`
+}
+
+// Memory is one text to remember; ReferenceTime (RFC 3339) is when it was written.
+type Memory struct {
+	Text          string `json:"text"`
+	ReferenceTime string `json:"reference_time"`
+}
+
+// ExpectEdge is a temporal fact that must be stored between two entities (any relation, names case-insensitive).
+// Empty ValidAt / InvalidAt are not checked. Ended says whether the fact must have an invalid_at.
+type ExpectEdge struct {
+	Source    string `json:"source"`
+	Target    string `json:"target"`
+	ValidAt   string `json:"valid_at"`
+	InvalidAt string `json:"invalid_at"`
+	Ended     bool   `json:"ended"`
 }
 
 func loadCases(only []string) ([]Case, error) {
@@ -120,36 +139,100 @@ func indent(s string) string {
 
 //---------------------------------------------------------------------------------------------
 
-// run executes one case against a fresh database and returns the recall answer.
-func run(c Case, llm memory.LLM) (answer string, err error) {
+// run executes one case against a fresh database. It returns the recall answer and a list of failed
+// temporal-fact expectations.
+func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string, err error) {
 	dir, err := os.MkdirTemp("", "gligabao-eval-*")
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	defer os.RemoveAll(dir)
 
 	database, err := db.Open(filepath.Join(dir, "eval.db"))
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	defer database.Close()
 
 	srv := httptest.NewServer(server.NewHandler(database, llm))
 	defer srv.Close()
 
-	var rem struct {
-		MemoryID int64 `json:"memory_id"`
+	for i, m := range c.Remember {
+		body := map[string]any{"text": m.Text}
+		if m.ReferenceTime != "" {
+			body["reference_time"] = m.ReferenceTime
+		}
+		var rem struct {
+			MemoryID int64 `json:"memory_id"`
+		}
+		if err := post(srv.URL+"/v1/gb/remember", body, &rem); err != nil {
+			return "", nil, fmt.Errorf("remember #%d: %w", i+1, err)
+		}
 	}
-	if err := post(srv.URL+"/v1/gb/remember", map[string]any{"text": c.Remember}, &rem); err != nil {
-		return "", fmt.Errorf("remember: %w", err)
+	rows, err := database.Query(`
+		SELECT e.id, s.name, t.name, e.relation, e.valid_at, e.invalid_at, e.expired_at
+		FROM gb_edges e JOIN gb_entities s ON s.id = e.source_id JOIN gb_entities t ON t.id = e.target_id ORDER BY e.id`)
+	if err != nil {
+		return "", nil, err
 	}
+	type edge struct {
+		id                       int64
+		source, target, relation string
+		validAt                  string
+		invalidAt, expiredAt     sql.NullString
+	}
+	var edges []edge
+	for rows.Next() {
+		var e edge
+		if err := rows.Scan(&e.id, &e.source, &e.target, &e.relation, &e.validAt, &e.invalidAt, &e.expiredAt); err != nil {
+			rows.Close()
+			return "", nil, err
+		}
+		edges = append(edges, e)
+	}
+	rows.Close()
+	if verbose {
+		fmt.Println("  stored edges:")
+		for _, e := range edges {
+			fmt.Printf("    [%d] %s --%s--> %s valid_at=%s invalid_at=%q expired_at=%q\n",
+				e.id, e.source, e.relation, e.target, e.validAt, e.invalidAt.String, e.expiredAt.String)
+		}
+	}
+	for _, want := range c.ExpectEdges {
+		var found *edge
+		for i, e := range edges {
+			if strings.EqualFold(e.source, want.Source) && strings.EqualFold(e.target, want.Target) {
+				found = &edges[i]
+				break
+			}
+		}
+		desc := want.Source + " -> " + want.Target
+		switch {
+		case found == nil:
+			problems = append(problems, desc+": no edge stored")
+		default:
+			if want.ValidAt != "" && found.validAt != want.ValidAt {
+				problems = append(problems, fmt.Sprintf("%s: valid_at = %s, want %s", desc, found.validAt, want.ValidAt))
+			}
+			if want.InvalidAt != "" && found.invalidAt.String != want.InvalidAt {
+				problems = append(problems, fmt.Sprintf("%s: invalid_at = %q, want %s", desc, found.invalidAt.String, want.InvalidAt))
+			}
+			if want.Ended != found.invalidAt.Valid {
+				problems = append(problems, fmt.Sprintf("%s: ended = %v, want %v", desc, found.invalidAt.Valid, want.Ended))
+			}
+			if want.Ended && !found.expiredAt.Valid {
+				problems = append(problems, desc+": ended but expired_at is not set")
+			}
+		}
+	}
+
 	var rec struct {
 		Answer string `json:"answer"`
 	}
 	if err := post(srv.URL+"/v1/gb/recall", map[string]any{"query": c.Query}, &rec); err != nil {
-		return "", fmt.Errorf("recall: %w", err)
+		return "", problems, fmt.Errorf("recall: %w", err)
 	}
-	return rec.Answer, nil
+	return rec.Answer, problems, nil
 }
 
 func post(url string, body, out any) error {
@@ -199,9 +282,14 @@ func mainErr() error {
 			fmt.Printf("=== %s\n", c.Name)
 			l = &verboseLLM{inner: llm}
 		}
-		answer, err := run(c, l)
+		answer, problems, err := run(c, l, *verbose)
 		if err != nil {
 			fmt.Printf("FAIL %s: %v\n", c.Name, err)
+			failed++
+			continue
+		}
+		if len(problems) > 0 {
+			fmt.Printf("FAIL %s: temporal facts:\n     %s\n     answer: %s\n", c.Name, strings.Join(problems, "\n     "), answer)
 			failed++
 			continue
 		}

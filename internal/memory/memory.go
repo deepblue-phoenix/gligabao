@@ -1,4 +1,9 @@
-// Package memory extracts entities, edges and temporal events from free text with an LLM and stores them in SQLite.
+// Package memory turns free text into a bi-temporal knowledge graph (modelled on Graphiti) with an LLM and stores it in SQLite.
+//
+// Every input is an episode (a row in gb_memories) with an event time (ValidAt: when the text was written or
+// observed) and a system time (CreatedAt: when it was ingested). The facts extracted from it are edges between
+// entities; each edge carries its own event time (ValidAt / InvalidAt) and system time (CreatedAt / ExpiredAt).
+// See temporal.go for how facts are reconciled with what is already stored.
 package memory
 
 import (
@@ -22,12 +27,18 @@ type Entity struct {
 	Description string `json:"description,omitempty"`
 }
 
-// Edge is a directed relation between two entities, referenced by name.
+// Edge is a fact relating two entities (referenced by name), with its bi-temporal validity.
+// Description is the fact as a sentence, e.g. "Alice works at Acme."
 type Edge struct {
-	Source      string `json:"source"`
-	Target      string `json:"target"`
-	Relation    string `json:"relation"`
-	Description string `json:"description,omitempty"`
+	ID          int64      `json:"id,omitempty"`
+	Source      string     `json:"source"`
+	Target      string     `json:"target"`
+	Relation    string     `json:"relation"`
+	Description string     `json:"description,omitempty"`
+	ValidAt     *time.Time `json:"valid_at,omitempty"`   // when the fact became true
+	InvalidAt   *time.Time `json:"invalid_at,omitempty"` // when it stopped being true; nil while it is still true
+	CreatedAt   *time.Time `json:"created_at,omitempty"` // when we learned about it
+	ExpiredAt   *time.Time `json:"expired_at,omitempty"` // when we learned it was superseded
 }
 
 // Extraction is the structured result of processing a block of text.
@@ -43,12 +54,14 @@ type LLM interface {
 
 //---------------------------------------------------------------------------------------------
 
-// Extract asks the LLM to pull entities and edges out of text.
-func Extract(ctx context.Context, llm LLM, text string) (*Extraction, error) {
+// Extract asks the LLM to pull entities and temporal edges out of text. ref is the episode's time; it anchors
+// relative dates and is the ValidAt of every fact whose start the text does not state.
+func Extract(ctx context.Context, llm LLM, text string, ref time.Time) (*Extraction, error) {
 	temp := 0.0
 	resp, err := llm.Complete(ctx, ai.Request{
-		System:      entitySystemPrompt,
-		Messages:    []ai.Message{{Role: ai.RoleUser, Content: "<text>\n" + text + "\n</text>"}},
+		System: entitySystemPrompt,
+		Messages: []ai.Message{{Role: ai.RoleUser, Content: "<reference_time>\n" + ref.UTC().Format(timeLayout) +
+			"\n</reference_time>\n\n<text>\n" + text + "\n</text>"}},
 		MaxTokens:   4096,
 		Temperature: &temp,
 	})
@@ -58,74 +71,107 @@ func Extract(ctx context.Context, llm LLM, text string) (*Extraction, error) {
 	if resp.StopReason == "max_tokens" {
 		return nil, errors.New("memory: LLM output truncated; text too large")
 	}
-	return parseExtraction(resp.Text)
+	return parseExtraction(resp.Text, ref)
 }
 
-// parseExtraction decodes the LLM's JSON, tolerating surrounding prose or code fences.
-func parseExtraction(s string) (*Extraction, error) {
-	start, end := strings.Index(s, "{"), strings.LastIndex(s, "}")
-	if start < 0 || end < start {
-		return nil, fmt.Errorf("memory: no JSON object in LLM output")
+// parseExtraction decodes the LLM's JSON, tolerating surrounding prose or code fences, and normalizes the edges.
+func parseExtraction(s string, ref time.Time) (*Extraction, error) {
+	js, err := jsonObject(s)
+	if err != nil {
+		return nil, err
 	}
-	var ex Extraction
-	if err := json.Unmarshal([]byte(s[start:end+1]), &ex); err != nil {
+	var raw struct {
+		Entities []Entity `json:"entities"`
+		Edges    []struct {
+			Source      string `json:"source"`
+			Target      string `json:"target"`
+			Relation    string `json:"relation"`
+			Description string `json:"description"`
+			ValidAt     string `json:"valid_at"`
+			InvalidAt   string `json:"invalid_at"`
+		} `json:"edges"`
+	}
+	if err := json.Unmarshal([]byte(js), &raw); err != nil {
 		return nil, fmt.Errorf("memory: decode LLM output: %w", err)
 	}
-	return &ex, nil
+	ex := &Extraction{Entities: raw.Entities}
+	for _, r := range raw.Edges {
+		e := Edge{
+			Source:      strings.TrimSpace(r.Source),
+			Target:      strings.TrimSpace(r.Target),
+			Relation:    normRelation(r.Relation),
+			Description: strings.TrimSpace(r.Description),
+			ValidAt:     parseTime(r.ValidAt),
+			InvalidAt:   parseTime(r.InvalidAt),
+		}
+		if e.Source == "" || e.Target == "" || e.Relation == "" {
+			continue
+		}
+		if e.Description == "" {
+			e.Description = e.Source + " " + strings.ReplaceAll(e.Relation, "_", " ") + " " + e.Target + "."
+		}
+		if e.ValidAt == nil { // a fact inherits the time of the episode that states it
+			v := ref.UTC()
+			e.ValidAt = &v
+		}
+		if e.InvalidAt != nil && !e.InvalidAt.After(*e.ValidAt) { // inconsistent stop time
+			e.InvalidAt = nil
+		}
+		ex.Edges = append(ex.Edges, e)
+	}
+	return ex, nil
 }
 
 //---------------------------------------------------------------------------------------------
 
 // Result summarizes what was stored by Remember.
 type Result struct {
-	MemoryID          int64    `json:"memory_id"`
-	Entities          []Entity `json:"entities"`
-	Edges             []Edge   `json:"edges"`
-	Events            []Event  `json:"events"`
-	InvalidatedEvents []int64  `json:"invalidated_events"` // IDs of events superseded by this memory
+	MemoryID         int64     `json:"memory_id"`
+	ValidAt          time.Time `json:"valid_at"`   // event time of the episode
+	CreatedAt        time.Time `json:"created_at"` // ingestion time of the episode
+	Entities         []Entity  `json:"entities"`
+	Edges            []Edge    `json:"edges"`             // the facts from this text in their stored state
+	InvalidatedEdges []int64   `json:"invalidated_edges"` // IDs of edges closed because of this memory
 }
 
-// Remember extracts entities, edges and temporal events from text and stores them (with the raw text) in one
-// transaction. ref is the time the text was written/observed ("now" for relative dates in it); the zero
-// value means the current time. If any LLM step fails nothing is stored.
+// Remember extracts entities and temporal edges from text and stores them (with the raw text as an episode) in
+// one transaction. ref is the time the text was written/observed; the zero value means the current time. If any
+// LLM step fails nothing is stored.
 func Remember(ctx context.Context, d *sql.DB, llm LLM, text string, ref time.Time) (*Result, error) {
-	now := time.Now().UTC()
+	now := time.Now().UTC().Truncate(time.Second)
 	if ref.IsZero() {
 		ref = now
 	}
-	ref = ref.UTC()
+	ref = ref.UTC().Truncate(time.Second)
 	llm = withRecording(llm, d, CallRemember)
 
-	ex, err := Extract(ctx, llm, text)
+	ex, err := Extract(ctx, llm, text, ref)
 	if err != nil {
 		return nil, err
 	}
-	evs, err := ExtractEvents(ctx, llm, text, ref, ex)
+	cands, err := loadCandidates(ctx, d, ex.Edges)
 	if err != nil {
 		return nil, err
 	}
-	cands, err := loadCandidates(ctx, d, evs)
+	plan, err := resolveEdges(ctx, llm, ex.Edges, cands)
 	if err != nil {
 		return nil, err
 	}
-	plan, err := resolveEvents(ctx, llm, evs, cands)
-	if err != nil {
-		return nil, err
-	}
-	return Store(ctx, d, text, ref, now, ex, evs, plan)
+	return Store(ctx, d, text, ref, now, ex, plan)
 }
 
-// Store persists an extraction. Entities are deduplicated by (normalized name, type); edges by
-// (source, target, relation). Edges naming an unlisted entity create it with type "other".
-// Events are written according to plan (see EventPlan); now is the system time stamped on them.
-func Store(ctx context.Context, d *sql.DB, text string, ref, now time.Time, ex *Extraction, evs []Event, plan *EventPlan) (*Result, error) {
+// Store persists an episode and its extraction. Entities are deduplicated by (normalized name, type). Edges are
+// written according to plan (see EdgePlan); now is the system time stamped on them. Edges naming an unlisted
+// entity create it with type "other".
+func Store(ctx context.Context, d *sql.DB, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan) (*Result, error) {
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 
-	res, err := tx.ExecContext(ctx, `INSERT INTO gb_memories (text, reference_time) VALUES (?, ?)`, text, ref.UTC().Format(timeLayout))
+	res, err := tx.ExecContext(ctx, `INSERT INTO gb_memories (text, valid_at, created_at) VALUES (?, ?, ?)`,
+		text, ref.UTC().Format(timeLayout), now.UTC().Format(timeLayout))
 	if err != nil {
 		return nil, fmt.Errorf("insert memory: %w", err)
 	}
@@ -134,7 +180,8 @@ func Store(ctx context.Context, d *sql.DB, text string, ref, now time.Time, ex *
 		return nil, err
 	}
 
-	out := &Result{MemoryID: memID, Entities: []Entity{}, Edges: []Edge{}, Events: []Event{}, InvalidatedEvents: []int64{}}
+	out := &Result{MemoryID: memID, ValidAt: ref.UTC(), CreatedAt: now.UTC(),
+		Entities: []Entity{}, Edges: []Edge{}, InvalidatedEdges: []int64{}}
 	ids := map[string]int64{} // normalized name -> entity id (first listed type wins for edge lookup)
 	seenEnt := map[string]bool{}
 
@@ -173,62 +220,25 @@ func Store(ctx context.Context, d *sql.DB, text string, ref, now time.Time, ex *
 		}
 	}
 
-	resolve := func(name string) (int64, error) {
-		if id, ok := ids[key(name)]; ok {
-			return id, nil
-		}
-		id, err := upsertEntity(Entity{Name: name, Type: "other"})
-		if err != nil {
-			return 0, err
-		}
-		ids[key(name)] = id
-		out.Entities = append(out.Entities, Entity{Name: name, Type: "other"})
-		return id, nil
-	}
-
-	for _, e := range ex.Edges {
-		e.Source, e.Target = strings.TrimSpace(e.Source), strings.TrimSpace(e.Target)
-		e.Relation = normRelation(e.Relation)
-		e.Description = strings.TrimSpace(e.Description)
-		if e.Source == "" || e.Target == "" || e.Relation == "" {
-			continue
-		}
-		src, err := resolve(e.Source)
-		if err != nil {
-			return nil, err
-		}
-		dst, err := resolve(e.Target)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO gb_edges (source_id, target_id, relation, description, memory_id) VALUES (?, ?, ?, ?, ?)
-			ON CONFLICT (source_id, target_id, relation) DO UPDATE SET
-				description = CASE WHEN excluded.description != '' THEN excluded.description ELSE gb_edges.description END,
-				memory_id   = excluded.memory_id`,
-			src, dst, e.Relation, e.Description, memID); err != nil {
-			return nil, fmt.Errorf("upsert edge: %w", err)
-		}
-		out.Edges = append(out.Edges, e)
-	}
-
-	// Event participants: entities from this extraction, else an already-stored entity of any type, else a new "other".
-	participant := func(name string) (int64, error) {
+	// Edge endpoints: an entity from this extraction, else an already-stored entity of any type, else a new "other".
+	entityID := func(name string) (int64, error) {
 		if id, ok := ids[key(name)]; ok {
 			return id, nil
 		}
 		var id int64
 		err := tx.QueryRowContext(ctx, `SELECT id FROM gb_entities WHERE name_key = ? ORDER BY id LIMIT 1`, key(name)).Scan(&id)
-		if err == nil {
-			ids[key(name)] = id
-			return id, nil
+		if errors.Is(err, sql.ErrNoRows) {
+			if id, err = upsertEntity(Entity{Name: name, Type: "other"}); err == nil {
+				out.Entities = append(out.Entities, Entity{Name: name, Type: "other"})
+			}
 		}
-		if !errors.Is(err, sql.ErrNoRows) {
+		if err != nil {
 			return 0, err
 		}
-		return resolve(name)
+		ids[key(name)] = id
+		return id, nil
 	}
-	out.Events, out.InvalidatedEvents, err = storeEvents(ctx, tx, memID, ref, now, evs, plan, participant)
+	out.Edges, out.InvalidatedEdges, err = storeEdges(ctx, tx, memID, ref, now, ex.Edges, plan, entityID)
 	if err != nil {
 		return nil, err
 	}

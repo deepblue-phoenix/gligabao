@@ -14,11 +14,14 @@ CREATE TABLE IF NOT EXISTS gb_items (
 	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- A memory is a Graphiti "episode": the raw input text plus when it happened.
+--   valid_at   (event time): RFC 3339 UTC, when the text was written/observed; relative dates in it resolve against it
+--   created_at (system time): when it was ingested
 CREATE TABLE IF NOT EXISTS gb_memories (
 	id         INTEGER PRIMARY KEY AUTOINCREMENT,
 	text       TEXT NOT NULL,
-	reference_time TEXT, -- RFC 3339 UTC: "now" for relative dates in the text (Graphiti's episode valid_at)
-	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	valid_at   TEXT NOT NULL,
+	created_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS gb_entities (
@@ -32,39 +35,26 @@ CREATE TABLE IF NOT EXISTS gb_entities (
 	UNIQUE (name_key, type)
 );
 
+-- An edge is a Graphiti entity edge: a fact (description) relating two entities, stored bi-temporally.
+-- All timestamps are RFC 3339 UTC strings.
+--   event time  (when the fact is true in the world): valid_at, invalid_at  (invalid_at NULL = still true)
+--   system time (when we learned about it):           created_at, expired_at (expired_at NULL = not superseded)
+-- memory_id is the episode the fact was extracted from. There is no uniqueness on (source, target, relation):
+-- a fact can end and later become true again, which is a new row.
 CREATE TABLE IF NOT EXISTS gb_edges (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
 	source_id   INTEGER NOT NULL REFERENCES gb_entities(id) ON DELETE CASCADE,
 	target_id   INTEGER NOT NULL REFERENCES gb_entities(id) ON DELETE CASCADE,
 	relation    TEXT NOT NULL,
 	description TEXT NOT NULL DEFAULT '',
-	memory_id   INTEGER REFERENCES gb_memories(id) ON DELETE SET NULL,
-	created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	UNIQUE (source_id, target_id, relation)
+	valid_at    TEXT NOT NULL,
+	invalid_at  TEXT,
+	created_at  TEXT NOT NULL,
+	expired_at  TEXT,
+	memory_id   INTEGER REFERENCES gb_memories(id) ON DELETE SET NULL
 );
+CREATE INDEX IF NOT EXISTS idx_gb_edges_source ON gb_edges(source_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_target ON gb_edges(target_id);
-
--- Events follow Graphiti's bi-temporal model. All timestamps are RFC 3339 UTC strings.
---   event time  (when it is true in the world): valid_at, invalid_at  (NULL = unknown / still true)
---   system time (when we learned about it):     created_at, expired_at (NULL = not superseded)
-CREATE TABLE IF NOT EXISTS gb_events (
-	id              INTEGER PRIMARY KEY AUTOINCREMENT,
-	name            TEXT NOT NULL,
-	description     TEXT NOT NULL,
-	description_key TEXT NOT NULL, -- normalized description used for dedup
-	valid_at        TEXT,
-	invalid_at      TEXT,
-	created_at      TEXT NOT NULL,
-	expired_at      TEXT,
-	memory_id       INTEGER REFERENCES gb_memories(id) ON DELETE SET NULL
-);
-
-CREATE TABLE IF NOT EXISTS gb_event_participants (
-	event_id  INTEGER NOT NULL REFERENCES gb_events(id) ON DELETE CASCADE,
-	entity_id INTEGER NOT NULL REFERENCES gb_entities(id) ON DELETE CASCADE,
-	PRIMARY KEY (event_id, entity_id)
-);
-CREATE INDEX IF NOT EXISTS idx_gb_event_participants_entity ON gb_event_participants(entity_id);
 
 -- One row per LLM/embedding API call. type is the operation that made the call: 'remember' or 'recall'.
 CREATE TABLE IF NOT EXISTS gb_llm_calls (

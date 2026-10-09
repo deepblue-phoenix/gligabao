@@ -1,6 +1,12 @@
 {
   "name": "remember_recall",
-  "remember": "Alice works at Acme and lives in Paris.",
+  "remember": [
+    {"text": "Alice works at Acme and lives in Paris.", "reference_time": "2023-01-01T00:00:00Z"}
+  ],
   "query": "Where does Alice work?",
-  "expect_contains": ["Acme"]
+  "expect_contains": ["Acme"],
+  "expect_edges": [
+    {"source": "Alice", "target": "Acme", "valid_at": "2023-01-01T00:00:00Z", "ended": false},
+    {"source": "Alice", "target": "Paris", "valid_at": "2023-01-01T00:00:00Z", "ended": false}
+  ]
 }

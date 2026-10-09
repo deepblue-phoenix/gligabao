@@ -6,17 +6,30 @@ Run from the repo root: `./run_evals.sh [-v] [case-name ...]`, e.g. `./run_evals
 
 The runner is pure Go (`evals/main.go`; `run_evals.sh` just invokes `go run ./evals`). Each case gets a fresh temporary SQLite DB and an in-process HTTP server using the real handlers, so cases are independent.
 
+## Cases
+
+- `remember_recall`: one text, stored with its temporal validity (`valid_at` = the episode's time, still true), then a question about it.
+- `job_change`: "Alice works at Acme" is remembered, then later "Alice started working at Globex". The Acme fact must be closed (`invalid_at` = time of the second text), the Globex fact must be live, and "Where does Alice work now?" must be answered with Globex.
+
 ## Case format
 
 ```json
 {
-  "name": "remember_recall",
-  "remember": "Alice works at Acme and lives in Paris.",
-  "query": "Where does Alice work?",
-  "expect_contains": ["Acme"]
+  "name": "job_change",
+  "remember": [
+    {"text": "Alice works at Acme and lives in Paris.", "reference_time": "2023-01-01T00:00:00Z"},
+    {"text": "Alice started working at Globex.", "reference_time": "2024-03-01T00:00:00Z"}
+  ],
+  "query": "Where does Alice work now?",
+  "expect_contains": ["Globex"],
+  "expect_edges": [
+    {"source": "Alice", "target": "Acme", "valid_at": "2023-01-01T00:00:00Z", "invalid_at": "2024-03-01T00:00:00Z", "ended": true},
+    {"source": "Alice", "target": "Globex", "valid_at": "2024-03-01T00:00:00Z", "ended": false}
+  ]
 }
 ```
 
-1. `POST /v1/gb/remember` with `remember` as the text.
-2. `POST /v1/gb/recall` with `query`.
-3. Passes if the answer contains every `expect_contains` string (case-insensitive).
+1. `POST /v1/gb/remember` for each `remember` entry, in order, with its `text` and `reference_time`.
+2. The stored edges (`gb_edges`) are checked against `expect_edges`: an edge between `source` and `target` (any relation) must exist; `valid_at` / `invalid_at` are compared exactly when given; `ended` says whether it must have an `invalid_at` (and then also an `expired_at`).
+3. `POST /v1/gb/recall` with `query`.
+4. Passes if the temporal checks pass and the answer contains every `expect_contains` string (case-insensitive). `-v` also prints the stored edges.

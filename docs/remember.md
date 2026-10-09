@@ -1,6 +1,6 @@
 # POST /v1/gb/remember
 
-Takes a block of text, uses an LLM to extract a small knowledge graph (entities and edges) and temporal events, and stores everything in SQLite. Events have their own bi-temporal tables and pipeline, described in [events.md](events.md).
+Takes a block of text, stores it as an episode, uses an LLM to extract a small knowledge graph (entities and edges) whose edges are bi-temporal facts, and stores everything in SQLite. The temporal model is described in [temporal.md](temporal.md).
 
 ## Request
 
@@ -21,31 +21,27 @@ content-type: application/json
 ```json
 {
   "memory_id": 1,
+  "valid_at": "2025-01-31T09:00:00Z",
+  "created_at": "2025-01-31T09:00:05Z",
   "entities": [
     {"name": "Alice", "type": "person", "description": "engineer"},
     {"name": "Acme", "type": "organization"},
     {"name": "Paris", "type": "other"}
   ],
   "edges": [
-    {"source": "Alice", "target": "Acme", "relation": "works_at"},
-    {"source": "Alice", "target": "Paris", "relation": "lives_in"}
+    {"id": 1, "source": "Alice", "target": "Acme", "relation": "works_at", "description": "Alice works at Acme.",
+     "valid_at": "2025-01-31T09:00:00Z", "created_at": "2025-01-31T09:00:05Z"},
+    {"id": 2, "source": "Alice", "target": "Paris", "relation": "lives_in", "description": "Alice lives in Paris.",
+     "valid_at": "2025-01-31T09:00:00Z", "created_at": "2025-01-31T09:00:05Z"}
   ],
-  "events": [
-    {
-      "id": 1,
-      "name": "joined_company",
-      "description": "Alice joined Acme.",
-      "participants": ["Alice", "Acme"],
-      "valid_at": "2020-01-01T00:00:00Z",
-      "created_at": "2025-01-31T09:00:05Z"
-    }
-  ],
-  "invalidated_events": []
+  "invalidated_edges": []
 }
 ```
 
-- `entities` and `edges` are what the LLM extracted from this text (after normalization).
-- `events` are the temporal events from this text in their stored state; `invalidated_events` lists IDs of older events that this memory closed. Both are always arrays. Their fields are explained in [events.md](events.md).
+- `memory_id`, `valid_at`, `created_at`: the episode and its event time (the `reference_time`) and ingestion time.
+- `entities` are what the LLM extracted from this text (after normalization).
+- `edges` are the facts from this text in their stored state; if a new edge repeated a stored one, the stored edge is returned. Edge fields `invalid_at`, `expired_at` are omitted when null.
+- `invalidated_edges` lists IDs of edges closed because of this memory (see [temporal.md](temporal.md)). Always an array.
 
 Errors are returned as `{"error": "..."}`:
 
@@ -59,33 +55,30 @@ Errors are returned as `{"error": "..."}`:
 
 All steps use the LLM from `internal/ai` (Anthropic Messages API, default model `claude-haiku-4-5`, temperature 0). Code is in `internal/memory`.
 
-1. **Extract the graph** (`Extract`, 1 LLM call, max 4096 output tokens): the model is asked to return only JSON of the form:
+1. **Extract the graph** (`Extract`, 1 LLM call, max 4096 output tokens): given the reference time and the text, the model is asked to return only JSON of the form:
    ```json
    {
      "entities": [{"name": "...", "type": "...", "description": "..."}],
-     "edges": [{"source": "...", "target": "...", "relation": "...", "description": "..."}]
+     "edges": [{"source": "...", "target": "...", "relation": "...", "description": "...", "valid_at": "...", "invalid_at": "..."}]
    }
    ```
-   Code fences or surrounding prose around the JSON are tolerated.
-2. **Extract events** (`ExtractEvents`, 1 LLM call): given the text, the reference time and the entities from step 1, the model lists dated events with their participants.
-3. **Resolve events** (`resolveEvents`, 1 LLM call only if needed): new events are compared with stored live events that share a participant. Exact repeats are detected without the LLM; the model flags remaining duplicates and contradictions.
-4. **Store** (`Store`): everything is written in a single transaction:
-   - the raw text and its reference time go into `gb_memories`;
+   Code fences or surrounding prose around the JSON are tolerated. An edge without `valid_at` gets the reference time.
+2. **Resolve edges** (`resolveEdges`, 1 LLM call only if needed): new edges are compared with stored live edges that touch the same entities. Exact repeats are detected without the LLM; the model flags remaining duplicates and contradictions.
+3. **Store** (`Store`): everything is written in a single transaction:
+   - the raw text and its reference time go into `gb_memories` (the episode);
    - entities are upserted into `gb_entities`;
-   - edges are upserted into `gb_edges`, linked to the memory they came from;
-   - events are inserted into `gb_events` and linked to their participants in `gb_event_participants`; duplicates are merged and contradicted events are closed (see [events.md](events.md)).
+   - edges are inserted into `gb_edges`, linked to the episode they came from; duplicates are merged and contradicted edges are closed (see [temporal.md](temporal.md)).
 
-The request makes 2 LLM calls, or 3 when stored events need to be compared. If any step fails, nothing is stored.
+The request makes 1 LLM call, or 2 when stored edges need to be compared. If any step fails, nothing is stored.
 
 ### Normalization and deduplication
 
 - Entity `type` is lowercased (empty becomes `other`).
 - Edge `relation` is lowercased with spaces replaced by `_`.
 - Entities are unique on (lowercased, whitespace-collapsed name, type). Re-submitting an entity updates its description only if the new description is non-empty.
-- Edges are unique on (source, target, relation). Re-submitting updates the description (if non-empty) and the source memory.
-- An edge that references an entity the LLM did not list creates that entity with type `other`.
-- Event participants resolve to an entity from this text, else a stored entity of any type with the same name, else a new entity of type `other`.
-- Sending the same text twice adds a second `gb_memories` row but no duplicate entities, edges or events.
+- Edge endpoints resolve to an entity from this text, else a stored entity of any type with the same name, else a new entity of type `other`.
+- A new edge with the same source, target and relation as a stored edge that is still true is a duplicate and is not inserted again.
+- Sending the same text twice adds a second `gb_memories` row but no duplicate entities or edges.
 
 ## Schema
 
@@ -93,14 +86,12 @@ All tables are prefixed with `gb_` (see `internal/db/db_schema.go`).
 
 | Table | Columns |
 | ----- | ------- |
-| `gb_memories` | `id`, `text`, `reference_time`, `created_at` |
+| `gb_memories` | `id`, `text`, `valid_at`, `created_at` |
 | `gb_entities` | `id`, `name`, `name_key`, `type`, `description`, `created_at`, `updated_at`; unique (`name_key`, `type`) |
-| `gb_edges` | `id`, `source_id` → `gb_entities`, `target_id` → `gb_entities`, `relation`, `description`, `memory_id` → `gb_memories`, `created_at`; unique (`source_id`, `target_id`, `relation`) |
-| `gb_events` | `id`, `name`, `description`, `description_key`, `valid_at`, `invalid_at`, `created_at`, `expired_at`, `memory_id` → `gb_memories` |
-| `gb_event_participants` | `event_id` → `gb_events`, `entity_id` → `gb_entities`; primary key (`event_id`, `entity_id`) |
+| `gb_edges` | `id`, `source_id` → `gb_entities`, `target_id` → `gb_entities`, `relation`, `description`, `valid_at`, `invalid_at`, `created_at`, `expired_at`, `memory_id` → `gb_memories` |
 | `gb_items` | `id`, `name`, `created_at` (placeholder) |
 
-Foreign keys are enabled on every connection. Deleting an entity cascades to its edges and event participations; deleting an event cascades to its participations; deleting a memory sets `memory_id` to NULL on its edges and events.
+Foreign keys are enabled on every connection. Deleting an entity cascades to its edges; deleting a memory sets `memory_id` to NULL on its edges.
 
 Existing database files are not migrated when the schema changes: delete the file and the server recreates it.
 
@@ -123,4 +114,3 @@ curl -s localhost:8080/v1/gb/remember \
 
 - No authentication.
 - Very long input can exceed the LLM's output limit; the request then fails with 502 and nothing is stored.
-- `recall` does not use events yet.
