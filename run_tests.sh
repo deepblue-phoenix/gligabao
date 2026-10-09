@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")"
-CGO_ENABLED=0 go test -count=1 ./...
+source ./cgo_env.sh
+go test -count=1 ./...
