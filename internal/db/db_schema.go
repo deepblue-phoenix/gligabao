@@ -64,7 +64,20 @@ CREATE TABLE IF NOT EXISTS gb_event_participants (
 	entity_id INTEGER NOT NULL REFERENCES gb_entities(id) ON DELETE CASCADE,
 	PRIMARY KEY (event_id, entity_id)
 );
-CREATE INDEX IF NOT EXISTS idx_gb_event_participants_entity ON gb_event_participants(entity_id);`
+CREATE INDEX IF NOT EXISTS idx_gb_event_participants_entity ON gb_event_participants(entity_id);
+
+-- One row per LLM/embedding API call. type is the operation that made the call: 'remember' or 'recall'.
+CREATE TABLE IF NOT EXISTS gb_llm_calls (
+	id            INTEGER PRIMARY KEY AUTOINCREMENT,
+	type          TEXT NOT NULL,
+	provider      TEXT NOT NULL,
+	model         TEXT NOT NULL,
+	input_tokens  INTEGER NOT NULL,
+	output_tokens INTEGER NOT NULL,
+	cost_usd      REAL NOT NULL, -- total cost of the call in USD (0 if the model's price is unknown)
+	created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_gb_llm_calls_type ON gb_llm_calls(type);`
 
 //---------------------------------------------------------------------------------------------
 

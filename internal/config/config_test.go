@@ -83,3 +83,25 @@ func TestKeysFileOverridesEnv(t *testing.T) {
 		t.Fatalf("got %+v", cfg)
 	}
 }
+
+func TestPrices(t *testing.T) {
+	cfg, err := Load(write(t, "[prices.\"claude-haiku-4-5\"]\ninput = 1.5\noutput = 7\ncache_read = 0\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := cfg.Prices["claude-haiku-4-5"]
+	if p.Input != 1.5 || p.Output != 7 || p.CacheWrite != nil || p.CacheRead == nil || *p.CacheRead != 0 {
+		t.Fatalf("got %+v", p)
+	}
+}
+
+func TestPricesErrors(t *testing.T) {
+	for name, content := range map[string]string{
+		"negative":    "[prices.m]\ninput = -1\n",
+		"unknown key": "[prices.m]\ninpt = 1\n",
+	} {
+		if _, err := Load(write(t, content)); err == nil {
+			t.Errorf("%s: expected error", name)
+		}
+	}
+}

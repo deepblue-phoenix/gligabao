@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -34,6 +35,17 @@ type Config struct {
 	Port         int    `toml:"port"`
 	AnthropicKey string `toml:"anthropic_api_key"`
 	OpenAIKey    string `toml:"openai_api_key"`
+	// Prices overrides/extends the built-in per-model price table used to compute LLM call costs.
+	// Keys are model-name prefixes (the longest matching prefix wins).
+	Prices map[string]Price `toml:"prices"`
+}
+
+// Price is a model's price in USD per 1M tokens. Omitted cache prices default to the input price.
+type Price struct {
+	Input      float64  `toml:"input"`
+	Output     float64  `toml:"output"`
+	CacheWrite *float64 `toml:"cache_write"`
+	CacheRead  *float64 `toml:"cache_read"`
 }
 
 //---------------------------------------------------------------------------------------------
@@ -69,7 +81,24 @@ func (c *Config) Validate() error {
 	if c.Port < 1 || c.Port > 65535 {
 		return fmt.Errorf("config: port %d out of range (1-65535)", c.Port)
 	}
+	for model, p := range c.Prices {
+		if strings.TrimSpace(model) == "" {
+			return errors.New("config: prices: empty model name")
+		}
+		for _, v := range []float64{p.Input, p.Output, deref(p.CacheWrite), deref(p.CacheRead)} {
+			if v < 0 {
+				return fmt.Errorf("config: prices.%q: prices must not be negative", model)
+			}
+		}
+	}
 	return nil
+}
+
+func deref(p *float64) float64 {
+	if p == nil {
+		return 0
+	}
+	return *p
 }
 
 // Load parses the TOML file at path. Unset fields keep their defaults.

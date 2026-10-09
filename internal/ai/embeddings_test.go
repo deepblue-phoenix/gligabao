@@ -51,3 +51,19 @@ func TestCosineSimilarity(t *testing.T) {
 		t.Fatalf("got %v", s)
 	}
 }
+
+func TestEmbedUsageCost(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":[{"index":0,"embedding":[1]}],"usage":{"prompt_tokens":1000000,"total_tokens":1000000}}`))
+	}))
+	defer srv.Close()
+
+	e, _ := NewEmbedder("k", WithEmbedBaseURL(srv.URL))
+	_, u, err := e.EmbedBatchUsage(context.Background(), []string{"a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.InputTokens != 1000000 || u.CostUSD < 0.0199 || u.CostUSD > 0.0201 || u.Provider != ProviderOpenAI {
+		t.Fatalf("bad usage: %+v", u)
+	}
+}

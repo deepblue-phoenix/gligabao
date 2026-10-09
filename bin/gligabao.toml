@@ -1,2 +1,28 @@
 # gligabao configuration
 port = 8080
+
+# Model prices in USD per 1M tokens, used to compute the cost of each LLM call (stored in gb_llm_calls).
+# Keys are model-name prefixes: the longest matching prefix wins, so "claude-haiku-4-5" also matches
+# "claude-haiku-4-5-20251001". Entries here override the built-in prices or add new models.
+# cache_write / cache_read are optional and default to `input`.
+[prices."claude-haiku-4-5"]
+input = 1.0
+output = 5.0
+cache_write = 1.25
+cache_read = 0.1
+
+[prices."claude-sonnet-4-5"]
+input = 3.0
+output = 15.0
+cache_write = 3.75
+cache_read = 0.3
+
+[prices."claude-opus-4-5"]
+input = 5.0
+output = 25.0
+cache_write = 6.25
+cache_read = 0.5
+
+[prices."text-embedding-3-small"]
+input = 0.02
+output = 0.0

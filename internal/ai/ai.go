@@ -49,11 +49,15 @@ type Request struct {
 
 // Response is the result of an LLM call.
 type Response struct {
-	Text         string
-	Model        string
-	StopReason   string
+	Text       string
+	Provider   string
+	Model      string
+	StopReason string
+	// InputTokens includes prompt-cache read/write tokens; OutputTokens is the generated tokens.
 	InputTokens  int
 	OutputTokens int
+	// CostUSD is computed from token usage and the price table (0 if the model's price is unknown).
+	CostUSD float64
 }
 
 //---------------------------------------------------------------------------------------------
@@ -64,6 +68,7 @@ type Client struct {
 	baseURL    string
 	model      string
 	maxTokens  int
+	prices     *PriceTable
 	httpClient *http.Client
 }
 
@@ -75,6 +80,9 @@ func WithModel(m string) Option { return func(c *Client) { c.model = m } }
 
 // WithMaxTokens sets the default max output tokens.
 func WithMaxTokens(n int) Option { return func(c *Client) { c.maxTokens = n } }
+
+// WithPrices sets the price table used to compute call costs (default: DefaultPrices).
+func WithPrices(p *PriceTable) Option { return func(c *Client) { c.prices = p } }
 
 // WithBaseURL overrides the API base URL (useful for tests/proxies).
 func WithBaseURL(u string) Option { return func(c *Client) { c.baseURL = strings.TrimRight(u, "/") } }
@@ -92,6 +100,7 @@ func New(apiKey string, opts ...Option) (*Client, error) {
 		baseURL:    defaultBaseURL,
 		model:      defaultModel,
 		maxTokens:  defaultMaxTokens,
+		prices:     NewPriceTable(nil),
 		httpClient: &http.Client{Timeout: 2 * time.Minute},
 	}
 	for _, o := range opts {
@@ -163,12 +172,21 @@ func (c *Client) Complete(ctx context.Context, req Request) (*Response, error) {
 			sb.WriteString(b.Text)
 		}
 	}
+	u := ar.Usage
+	cost, _ := c.prices.Cost(ar.Model, Usage{
+		InputTokens:      u.InputTokens,
+		OutputTokens:     u.OutputTokens,
+		CacheWriteTokens: u.CacheCreationInputTokens,
+		CacheReadTokens:  u.CacheReadInputTokens,
+	})
 	return &Response{
 		Text:         sb.String(),
+		Provider:     ProviderAnthropic,
 		Model:        ar.Model,
 		StopReason:   ar.StopReason,
-		InputTokens:  ar.Usage.InputTokens,
-		OutputTokens: ar.Usage.OutputTokens,
+		InputTokens:  u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens,
+		OutputTokens: u.OutputTokens,
+		CostUSD:      cost,
 	}, nil
 }
 
@@ -200,8 +218,10 @@ type apiResponse struct {
 		Text string `json:"text"`
 	} `json:"content"`
 	Usage struct {
-		InputTokens  int `json:"input_tokens"`
-		OutputTokens int `json:"output_tokens"`
+		InputTokens              int `json:"input_tokens"`
+		OutputTokens             int `json:"output_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 	} `json:"usage"`
 }
 

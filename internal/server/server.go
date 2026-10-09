@@ -30,6 +30,8 @@ type Options struct {
 	DBPath string
 	// AnthropicKey is the Anthropic API key. If empty, LLM endpoints return 503.
 	AnthropicKey string
+	// Prices overrides/extends the built-in model price table used for call costs. May be nil.
+	Prices map[string]ai.Price
 }
 
 //---------------------------------------------------------------------------------------------
@@ -64,7 +66,7 @@ func Run(ctx context.Context, opts Options) error {
 	defer database.Close()
 
 	var llm memory.LLM
-	if c, err := ai.New(opts.AnthropicKey); err != nil {
+	if c, err := ai.New(opts.AnthropicKey, ai.WithPrices(ai.NewPriceTable(opts.Prices))); err != nil {
 		log.Printf("warning: %v; /v1/gb/remember and /v1/gb/recall will return 503", err)
 	} else {
 		llm = c

@@ -71,7 +71,7 @@ export ANTHROPIC_API_KEY=...        # required for remember/recall
 ./run_tests.sh                      # runs all tests
 ```
 
-Configuration is read from `bin/gligabao.toml` (override with `--config`). It sets `port`, and optionally `anthropic_api_key` and `openai_api_key`, which default to the `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` environment variables. The SQLite file defaults to `bin/gligabao.db` (override with `serve --db <path>`).
+Configuration is read from `bin/gligabao.toml` (override with `--config`). It sets `port`, and optionally `anthropic_api_key` and `openai_api_key`, which default to the `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` environment variables. A `[prices."<model-prefix>"]` table (`input`, `output`, optional `cache_write`/`cache_read`, USD per 1M tokens) overrides or extends the built-in model prices used to compute the cost of each LLM call; the longest matching prefix wins. Each call's tokens and cost are stored in the `gb_llm_calls` table. The SQLite file defaults to `bin/gligabao.db` (override with `serve --db <path>`).
 
 ## License
 

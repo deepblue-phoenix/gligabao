@@ -34,6 +34,7 @@ type Embedder struct {
 	baseURL    string
 	model      string
 	dimensions int // 0 = model default
+	prices     *PriceTable
 	httpClient *http.Client
 }
 
@@ -50,6 +51,9 @@ func WithEmbedHTTPClient(h *http.Client) EmbedderOption {
 	return func(e *Embedder) { e.httpClient = h }
 }
 
+// WithEmbedPrices sets the price table used to compute costs (default: DefaultPrices).
+func WithEmbedPrices(p *PriceTable) EmbedderOption { return func(e *Embedder) { e.prices = p } }
+
 // WithEmbedDimensions requests shortened embeddings (supported by the 3-series models).
 func WithEmbedDimensions(n int) EmbedderOption { return func(e *Embedder) { e.dimensions = n } }
 
@@ -63,6 +67,7 @@ func NewEmbedder(apiKey string, opts ...EmbedderOption) (*Embedder, error) {
 		apiKey:     apiKey,
 		baseURL:    defaultOpenAIBaseURL,
 		model:      EmbeddingModel,
+		prices:     NewPriceTable(nil),
 		httpClient: &http.Client{Timeout: 2 * time.Minute},
 	}
 	for _, o := range opts {
@@ -84,27 +89,44 @@ func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
 
 // EmbedBatch returns one embedding per input, in the same order.
 func (e *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+	vs, _, err := e.EmbedBatchUsage(ctx, texts)
+	return vs, err
+}
+
+// EmbedUsage is the token usage and cost of embedding requests.
+type EmbedUsage struct {
+	Provider    string
+	Model       string
+	InputTokens int
+	CostUSD     float64 // 0 if the model's price is unknown
+}
+
+// EmbedBatchUsage is EmbedBatch that also reports the total tokens used and cost (summed over all requests).
+func (e *Embedder) EmbedBatchUsage(ctx context.Context, texts []string) ([][]float32, *EmbedUsage, error) {
 	if len(texts) == 0 {
-		return nil, errors.New("ai: no input texts")
+		return nil, nil, errors.New("ai: no input texts")
 	}
 	for i, t := range texts {
 		if strings.TrimSpace(t) == "" {
-			return nil, fmt.Errorf("ai: input %d is empty", i)
+			return nil, nil, fmt.Errorf("ai: input %d is empty", i)
 		}
 	}
 	out := make([][]float32, 0, len(texts))
+	usage := &EmbedUsage{Provider: ProviderOpenAI, Model: e.model}
 	for start := 0; start < len(texts); start += maxEmbedBatch {
 		end := min(start+maxEmbedBatch, len(texts))
-		vs, err := e.embedRequest(ctx, texts[start:end])
+		vs, tokens, err := e.embedRequest(ctx, texts[start:end])
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		out = append(out, vs...)
+		usage.InputTokens += tokens
 	}
-	return out, nil
+	usage.CostUSD, _ = e.prices.Cost(e.model, Usage{InputTokens: usage.InputTokens})
+	return out, usage, nil
 }
 
-func (e *Embedder) embedRequest(ctx context.Context, texts []string) ([][]float32, error) {
+func (e *Embedder) embedRequest(ctx context.Context, texts []string) ([][]float32, int, error) {
 	body, err := json.Marshal(embedRequest{
 		Model:          e.model,
 		Input:          texts,
@@ -112,47 +134,47 @@ func (e *Embedder) embedRequest(ctx context.Context, texts []string) ([][]float3
 		EncodingFormat: "float",
 	})
 	if err != nil {
-		return nil, fmt.Errorf("ai: marshal embeddings request: %w", err)
+		return nil, 0, fmt.Errorf("ai: marshal embeddings request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.baseURL+"/v1/embeddings", bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("ai: build embeddings request: %w", err)
+		return nil, 0, fmt.Errorf("ai: build embeddings request: %w", err)
 	}
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("authorization", "Bearer "+e.apiKey)
 
 	resp, err := e.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("ai: send embeddings request: %w", err)
+		return nil, 0, fmt.Errorf("ai: send embeddings request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("ai: read embeddings response: %w", err)
+		return nil, 0, fmt.Errorf("ai: read embeddings response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		var ae openAIError
 		if json.Unmarshal(data, &ae) == nil && ae.Error.Message != "" {
-			return nil, fmt.Errorf("ai: openai %d %s: %s", resp.StatusCode, ae.Error.Type, ae.Error.Message)
+			return nil, 0, fmt.Errorf("ai: openai %d %s: %s", resp.StatusCode, ae.Error.Type, ae.Error.Message)
 		}
-		return nil, fmt.Errorf("ai: openai status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+		return nil, 0, fmt.Errorf("ai: openai status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
 	}
 
 	var er embedResponse
 	if err := json.Unmarshal(data, &er); err != nil {
-		return nil, fmt.Errorf("ai: decode embeddings response: %w", err)
+		return nil, 0, fmt.Errorf("ai: decode embeddings response: %w", err)
 	}
 	if len(er.Data) != len(texts) {
-		return nil, fmt.Errorf("ai: expected %d embeddings, got %d", len(texts), len(er.Data))
+		return nil, 0, fmt.Errorf("ai: expected %d embeddings, got %d", len(texts), len(er.Data))
 	}
 	sort.Slice(er.Data, func(i, j int) bool { return er.Data[i].Index < er.Data[j].Index })
 	out := make([][]float32, len(er.Data))
 	for i, d := range er.Data {
 		out[i] = d.Embedding
 	}
-	return out, nil
+	return out, er.Usage.PromptTokens, nil
 }
 
 //---------------------------------------------------------------------------------------------
@@ -187,6 +209,9 @@ type embedRequest struct {
 }
 
 type embedResponse struct {
+	Usage struct {
+		PromptTokens int `json:"prompt_tokens"`
+	} `json:"usage"`
 	Data []struct {
 		Index     int       `json:"index"`
 		Embedding []float32 `json:"embedding"`

@@ -111,6 +111,7 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, text string, ref time.Tim
 		ref = now
 	}
 	ref = ref.UTC()
+	llm = withRecording(llm, d, CallRemember)
 
 	ex, err := Extract(ctx, llm, text)
 	if err != nil {

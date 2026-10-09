@@ -83,6 +83,7 @@ func Recall(ctx context.Context, d *sql.DB, llm LLM, query string) (*RecallResul
 		}, nil
 	}
 
+	llm = withRecording(llm, d, CallRecall)
 	temp := 0.0
 	resp, err := llm.Complete(ctx, ai.Request{
 		System: recallSystemPrompt,
