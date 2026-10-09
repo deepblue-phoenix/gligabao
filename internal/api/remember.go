@@ -23,6 +23,8 @@ func Register(mux *http.ServeMux, d *sql.DB, llm memory.LLM) {
 	mux.HandleFunc("POST /v1/gb/recall", recall(d, llm))
 }
 
+//---------------------------------------------------------------------------------------------
+
 func remember(d *sql.DB, llm memory.LLM) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if llm == nil {
@@ -48,6 +50,8 @@ func remember(d *sql.DB, llm memory.LLM) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, res)
 	}
 }
+
+//---------------------------------------------------------------------------------------------
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("content-type", "application/json")

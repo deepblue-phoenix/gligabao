@@ -16,6 +16,8 @@ type recallRequest struct {
 	Query string `json:"query"`
 }
 
+//---------------------------------------------------------------------------------------------
+
 func recall(d *sql.DB, llm memory.LLM) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if llm == nil {

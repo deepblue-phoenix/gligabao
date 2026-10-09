@@ -16,6 +16,8 @@ var (
 	cfg *config.Config
 )
 
+//---------------------------------------------------------------------------------------------
+
 var rootCmd = &cobra.Command{
 	Use:   "gligabao",
 	Short: "gligabao CLI",

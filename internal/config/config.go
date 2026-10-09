@@ -24,6 +24,8 @@ const (
 // DefaultPort is used when the config does not set a port.
 const DefaultPort = 8080
 
+//---------------------------------------------------------------------------------------------
+
 // Config holds the application configuration.
 //
 // API keys are read from the ANTHROPIC_API_KEY and OPENAI_API_KEY environment
@@ -33,6 +35,8 @@ type Config struct {
 	AnthropicKey string `toml:"anthropic_api_key"`
 	OpenAIKey    string `toml:"openai_api_key"`
 }
+
+//---------------------------------------------------------------------------------------------
 
 // DefaultPath returns the default config location: next to the running binary.
 // If the binary location cannot be determined, FileName (relative to the
