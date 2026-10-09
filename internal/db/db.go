@@ -10,12 +10,7 @@ import (
 	_ "modernc.org/sqlite" // pure-Go SQLite driver (no CGO)
 )
 
-const schema = `
-CREATE TABLE IF NOT EXISTS items (
-	id         INTEGER PRIMARY KEY AUTOINCREMENT,
-	name       TEXT NOT NULL,
-	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-);`
+//---------------------------------------------------------------------------------------------
 
 // Open opens (creating if needed) the SQLite database at path and applies the schema.
 func Open(path string) (*sql.DB, error) {
@@ -26,9 +21,9 @@ func Open(path string) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
-	if _, err := d.Exec(schema); err != nil {
+	if err := initSchema(d); err != nil {
 		d.Close()
-		return nil, fmt.Errorf("init schema: %w", err)
+		return nil, err
 	}
 	return d, nil
 }
