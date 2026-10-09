@@ -1,0 +1,6 @@
+{
+  "name": "remember_recall",
+  "remember": "Alice works at Acme and lives in Paris.",
+  "query": "Where does Alice work?",
+  "expect_contains": ["Acme"]
+}
