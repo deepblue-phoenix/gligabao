@@ -19,7 +19,6 @@ import (
 )
 
 var (
-	serveAddr   string
 	serveDBPath string
 )
 
@@ -53,14 +52,15 @@ var serveCmd = &cobra.Command{
 		}
 		api.Register(mux, database, llm)
 
-		srv := &http.Server{Addr: serveAddr, Handler: mux}
+		addr := cfg.Addr()
+		srv := &http.Server{Addr: addr, Handler: mux}
 
 		ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 		defer stop()
 
 		errCh := make(chan error, 1)
 		go func() {
-			log.Printf("listening on %s (db: %s)", serveAddr, serveDBPath)
+			log.Printf("listening on %s (db: %s)", addr, serveDBPath)
 			errCh <- srv.ListenAndServe()
 		}()
 
@@ -80,7 +80,6 @@ var serveCmd = &cobra.Command{
 }
 
 func init() {
-	serveCmd.Flags().StringVar(&serveAddr, "addr", ":8080", "HTTP listen address")
 	serveCmd.Flags().StringVar(&serveDBPath, "db", "bin/gligabao.db", "SQLite database file path")
 	rootCmd.AddCommand(serveCmd)
 }
