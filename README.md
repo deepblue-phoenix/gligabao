@@ -72,8 +72,12 @@ export ANTHROPIC_API_KEY=...        # required for remember/recall
 ./run_tests.sh                      # runs all tests
 ```
 
-Configuration is read from `bin/gligabao.toml` (override with `--config`). It sets `port`, and optionally `anthropic_api_key` and `openai_api_key`, which default to the `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` environment variables. A `[prices."<model-prefix>"]` table (`input`, `output`, optional `cache_write`/`cache_read`, USD per 1M tokens) overrides or extends the built-in model prices used to compute the cost of each LLM call; the longest matching prefix wins. Each call's tokens and cost are stored in the `gb_llm_calls` table. The SQLite file defaults to `bin/gligabao.db` (override with `serve --db <path>`).
+Configuration is read from `bin/gligabao.toml` (override with `--config`). It sets `port`, and optionally `anthropic_api_key`, `openai_api_key` and `pinecone_api_key`, which default to the `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` and `PINECONE_API_KEY` environment variables. `vector_store` picks where embeddings are stored (`internal/vectordb`, one namespace per dataset): `"sqlite"` (default; [sqlite-vec](https://github.com/asg017/sqlite-vec) in a separate file next to the main DB, override with `serve --vector-db <path>`) or `"pinecone"`. `embedding_dimensions` (default 1536) is the vector size; the sqlite store fixes it when its file is created and a Pinecone index must match it. For Pinecone, set `pinecone_index_host` (default: `PINECONE_INDEX_HOST`), the data-plane host of the index. A `[prices."<model-prefix>"]` table (`input`, `output`, optional `cache_write`/`cache_read`, USD per 1M tokens) overrides or extends the built-in model prices used to compute the cost of each LLM call; the longest matching prefix wins. Each call's tokens and cost are stored in the `gb_llm_calls` table. The SQLite file defaults to `bin/gligabao.db` (override with `serve --db <path>`).
 
 ## License
 
 See [LICENSE](LICENSE).
+
+## Building
+
+The sqlite-vec vector store needs CGO (a C compiler such as gcc/clang) and `mattn/go-sqlite3`. sqlite-vec's Go bindings include `sqlite3.h`, so builds need `CGO_ENABLED=1` and that header on the include path; `source ./cgo_env.sh` sets both. `run_build.sh`, `run_tests.sh`, `run_evals.sh` and the Dockerfile already do this. For a plain `go build`/`go test`, run `source ./cgo_env.sh` first.

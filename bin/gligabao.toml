@@ -1,6 +1,23 @@
 # gligabao configuration
 port = 8080
 
+# API keys default to the ANTHROPIC_API_KEY / OPENAI_API_KEY / PINECONE_API_KEY environment variables;
+# a value set here overrides the environment.
+# anthropic_api_key = ""
+# openai_api_key = ""
+
+# Vector store for embeddings: "sqlite" (default; sqlite-vec, a local file next to the main database,
+# see `serve --vector-db`) or "pinecone".
+vector_store = "sqlite"
+# Embedding size (text-embedding-3-small = 1536). Fixed when the sqlite vector database is created;
+# a Pinecone index must be created with the same dimension.
+embedding_dimensions = 1536
+
+# Pinecone settings (used when vector_store = "pinecone"). The host is the index's data-plane host from the
+# Pinecone console (also settable with PINECONE_INDEX_HOST). Leave unset to disable.
+# pinecone_api_key = ""
+# pinecone_index_host = "my-index-abc123.svc.aped-1234.pinecone.io"
+
 # Model prices in USD per 1M tokens, used to compute the cost of each LLM call (stored in gb_llm_calls).
 # Keys are model-name prefixes: the longest matching prefix wins, so "claude-haiku-4-5" also matches
 # "claude-haiku-4-5-20251001". Entries here override the built-in prices or add new models.

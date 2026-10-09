@@ -20,7 +20,18 @@ const FileName = "gligabao.toml"
 const (
 	EnvAnthropicKey = "ANTHROPIC_API_KEY"
 	EnvOpenAIKey    = "OPENAI_API_KEY"
+	EnvPineconeKey  = "PINECONE_API_KEY"
+	EnvPineconeHost = "PINECONE_INDEX_HOST"
 )
+
+// Vector stores selectable with the vector_store setting.
+const (
+	VectorStoreSQLite   = "sqlite"
+	VectorStorePinecone = "pinecone"
+)
+
+// DefaultEmbeddingDimensions is the output size of the default embedding model (text-embedding-3-small).
+const DefaultEmbeddingDimensions = 1536
 
 // DefaultPort is used when the config does not set a port.
 const DefaultPort = 8080
@@ -29,12 +40,23 @@ const DefaultPort = 8080
 
 // Config holds the application configuration.
 //
-// API keys are read from the ANTHROPIC_API_KEY and OPENAI_API_KEY environment
-// variables; a key set in the TOML file overrides the environment value.
+// API keys are read from the ANTHROPIC_API_KEY, OPENAI_API_KEY and PINECONE_API_KEY
+// environment variables; a key set in the TOML file overrides the environment value.
+// The Pinecone index host likewise defaults to PINECONE_INDEX_HOST.
 type Config struct {
 	Port         int    `toml:"port"`
 	AnthropicKey string `toml:"anthropic_api_key"`
 	OpenAIKey    string `toml:"openai_api_key"`
+	// VectorStore selects where embeddings are stored: "sqlite" (default, sqlite-vec, a local file
+	// next to the main database) or "pinecone".
+	VectorStore string `toml:"vector_store"`
+	// EmbeddingDimensions is the size of the stored embeddings. The sqlite store fixes it when its
+	// database is created; a Pinecone index must have been created with the same dimension.
+	EmbeddingDimensions int `toml:"embedding_dimensions"`
+	// PineconeKey and PineconeIndexHost configure the Pinecone vector DB used to store embeddings.
+	// The host is the index's data-plane host from the Pinecone console. Both empty = vector DB disabled.
+	PineconeKey       string `toml:"pinecone_api_key"`
+	PineconeIndexHost string `toml:"pinecone_index_host"`
 	// Prices overrides/extends the built-in per-model price table used to compute LLM call costs.
 	// Keys are model-name prefixes (the longest matching prefix wins).
 	Prices map[string]Price `toml:"prices"`
@@ -65,9 +87,15 @@ func DefaultPath() string {
 // taken from the environment.
 func Default() *Config {
 	return &Config{
-		Port:         DefaultPort,
-		AnthropicKey: os.Getenv(EnvAnthropicKey),
-		OpenAIKey:    os.Getenv(EnvOpenAIKey),
+		Port: DefaultPort,
+
+		VectorStore:         VectorStoreSQLite,
+		EmbeddingDimensions: DefaultEmbeddingDimensions,
+		AnthropicKey:        os.Getenv(EnvAnthropicKey),
+		OpenAIKey:           os.Getenv(EnvOpenAIKey),
+
+		PineconeKey:       os.Getenv(EnvPineconeKey),
+		PineconeIndexHost: os.Getenv(EnvPineconeHost),
 	}
 }
 
@@ -80,6 +108,14 @@ func (c *Config) Addr() string {
 func (c *Config) Validate() error {
 	if c.Port < 1 || c.Port > 65535 {
 		return fmt.Errorf("config: port %d out of range (1-65535)", c.Port)
+	}
+	switch c.VectorStore {
+	case VectorStoreSQLite, VectorStorePinecone:
+	default:
+		return fmt.Errorf("config: vector_store %q must be %q or %q", c.VectorStore, VectorStoreSQLite, VectorStorePinecone)
+	}
+	if c.EmbeddingDimensions < 1 {
+		return fmt.Errorf("config: embedding_dimensions %d must be positive", c.EmbeddingDimensions)
 	}
 	for model, p := range c.Prices {
 		if strings.TrimSpace(model) == "" {

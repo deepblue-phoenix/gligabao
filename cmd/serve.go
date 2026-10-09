@@ -9,7 +9,8 @@ import (
 )
 
 var (
-	serveDBPath string
+	serveDBPath       string
+	serveVectorDBPath string
 )
 
 //---------------------------------------------------------------------------------------------
@@ -19,10 +20,15 @@ var serveCmd = &cobra.Command{
 	Short: "Start the HTTP server",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return server.Run(cmd.Context(), server.Options{
-			Addr:         cfg.Addr(),
-			DBPath:       serveDBPath,
-			AnthropicKey: cfg.AnthropicKey,
-			Prices:       aiPrices(cfg),
+			Addr:                cfg.Addr(),
+			DBPath:              serveDBPath,
+			AnthropicKey:        cfg.AnthropicKey,
+			VectorStore:         cfg.VectorStore,
+			VectorDBPath:        serveVectorDBPath,
+			EmbeddingDimensions: cfg.EmbeddingDimensions,
+			PineconeKey:         cfg.PineconeKey,
+			PineconeIndexHost:   cfg.PineconeIndexHost,
+			Prices:              aiPrices(cfg),
 		})
 	},
 }
@@ -49,5 +55,6 @@ func aiPrices(c *config.Config) map[string]ai.Price {
 
 func init() {
 	serveCmd.Flags().StringVar(&serveDBPath, "db", "bin/gligabao.db", "SQLite database file path")
+	serveCmd.Flags().StringVar(&serveVectorDBPath, "vector-db", "", "sqlite-vec database file path (default: next to --db)")
 	rootCmd.AddCommand(serveCmd)
 }

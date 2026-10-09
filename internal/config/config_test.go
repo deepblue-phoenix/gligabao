@@ -105,3 +105,48 @@ func TestPricesErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestPinecone(t *testing.T) {
+	t.Setenv(EnvPineconeKey, "p-env")
+	t.Setenv(EnvPineconeHost, "")
+	cfg, err := Load(write(t, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.PineconeKey != "p-env" || cfg.PineconeIndexHost != "" {
+		t.Fatalf("got %+v", cfg)
+	}
+	cfg, err = Load(write(t, "pinecone_api_key = \"p-file\"\npinecone_index_host = \"idx.pinecone.io\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.PineconeKey != "p-file" || cfg.PineconeIndexHost != "idx.pinecone.io" {
+		t.Fatalf("got %+v", cfg)
+	}
+}
+
+func TestVectorStore(t *testing.T) {
+	cfg, err := Load(write(t, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.VectorStore != VectorStoreSQLite || cfg.EmbeddingDimensions != DefaultEmbeddingDimensions {
+		t.Fatalf("defaults: %+v", cfg)
+	}
+	cfg, err = Load(write(t, "vector_store = \"pinecone\"\nembedding_dimensions = 512\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.VectorStore != VectorStorePinecone || cfg.EmbeddingDimensions != 512 {
+		t.Fatalf("got %+v", cfg)
+	}
+	for name, content := range map[string]string{
+		"unknown store": "vector_store = \"qdrant\"",
+		"empty store":   "vector_store = \"\"",
+		"zero dims":     "embedding_dimensions = 0",
+	} {
+		if _, err := Load(write(t, content)); err == nil {
+			t.Errorf("%s: expected error", name)
+		}
+	}
+}
