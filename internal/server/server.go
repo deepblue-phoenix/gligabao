@@ -63,7 +63,7 @@ func Run(ctx context.Context, opts Options) error {
 
 	var llm memory.LLM
 	if c, err := ai.New(""); err != nil {
-		log.Printf("warning: %v; /v1/gb/remember will return 503", err)
+		log.Printf("warning: %v; /v1/gb/remember and /v1/gb/recall will return 503", err)
 	} else {
 		llm = c
 	}
