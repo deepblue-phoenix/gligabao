@@ -18,15 +18,32 @@ gligabao is a small, self-hosted HTTP service that gives an AI application long-
 | `POST /v1/gb/recall` | Answer a question from the graph, with evidence | [docs/recall.md](docs/recall.md) |
 | `GET /health` | Health check | |
 
-## Project layout
+## Remember
 
-- `main.go`, `cmd/`: CLI entry point (cobra); `gligabao serve` starts the server.
-- `internal/server`: HTTP server setup.
-- `internal/api`: HTTP handlers.
-- `internal/memory`: remember/recall logic.
-- `internal/ai`: LLM (Anthropic) and embeddings (OpenAI) clients.
-- `internal/db`: SQLite connection and schema.
-- `internal/config`: TOML config loading.
+`POST /v1/gb/remember` with `{"text": "Alice works at Acme and lives in Paris."}` stores the text as a memory and adds what it says to the graph.
+
+1. **Extract**: the text is sent to an LLM (Anthropic, default `claude-haiku-4-5`, temperature 0), which returns JSON listing entities (`name`, `type`, `description`) and edges (`source`, `target`, `relation`, `description`).
+2. **Normalize**: entity types are lowercased (empty becomes `other`), and relations are lowercased with spaces replaced by `_`.
+3. **Store**: in one transaction, the raw text goes into `gb_memories`, entities are upserted into `gb_entities`, and edges are upserted into `gb_edges`, each pointing back to its source memory.
+
+Deduplication:
+- Entities are unique on (normalized name, type). Re-submitting one only updates its description if the new one is non-empty.
+- Edges are unique on (source, target, relation).
+- An edge that mentions an entity the LLM didn't list creates that entity with type `other`.
+- Sending the same text twice adds a second memory row but no duplicate entities or edges.
+
+The response returns the `memory_id` and the entities and edges that were extracted. If the LLM fails or its output is unusable, the request returns 502 and nothing is stored. Details: [docs/remember.md](docs/remember.md).
+
+## Recall
+
+`POST /v1/gb/recall` with `{"query": "Where does Alice work?"}` answers from the graph and returns the evidence it used.
+
+1. **Retrieve**: the query is split into terms (stopwords and very short words are dropped). Entities are scored by keyword match against names (including whole-name matches such as "New York") and descriptions. The top 10 become *seeds*; if nothing matches, the 25 most recently updated entities are used so vague questions still work.
+2. **Expand**: every edge touching a seed is added (newest first, up to 100) along with the entity at its other end, giving a one-hop subgraph.
+3. **Answer**: the subgraph is rendered as text with IDs and sent to the LLM with the question. The model is told to answer only from the graph and to return JSON with the `answer` plus the IDs of the entities and edges it used.
+4. **Verify evidence**: cited IDs are checked against the subgraph that was actually sent, so hallucinated IDs are dropped. The endpoints of every cited edge are included, and each edge carries its `memory_id` so a fact can be traced to the original text.
+
+If the graph is empty, a fixed "I don't have any information" answer is returned without calling the LLM. If the graph lacks the needed information, the answer says so. Details: [docs/recall.md](docs/recall.md).
 
 ## Getting started
 
