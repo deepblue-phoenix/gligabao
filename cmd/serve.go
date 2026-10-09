@@ -1,83 +1,29 @@
 package cmd
 
 import (
-	"context"
-	"errors"
-	"fmt"
-	"log"
-	"net/http"
-	"os/signal"
-	"syscall"
-	"time"
-
 	"github.com/spf13/cobra"
 
-	"github.com/ivan/gligabao/internal/ai"
-	"github.com/ivan/gligabao/internal/api"
-	"github.com/ivan/gligabao/internal/db"
-	"github.com/ivan/gligabao/internal/memory"
+	"github.com/ivan/gligabao/internal/server"
 )
 
 var (
 	serveDBPath string
 )
 
+//---------------------------------------------------------------------------------------------
+
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start the HTTP server",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		database, err := db.Open(serveDBPath)
-		if err != nil {
-			return err
-		}
-		defer database.Close()
-
-		mux := http.NewServeMux()
-		mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-			fmt.Fprintln(w, "gligabao is running")
+		return server.Run(cmd.Context(), server.Options{
+			Addr:   cfg.Addr(),
+			DBPath: serveDBPath,
 		})
-		mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-			if err := database.PingContext(r.Context()); err != nil {
-				http.Error(w, "db unavailable", http.StatusServiceUnavailable)
-				return
-			}
-			fmt.Fprintln(w, "ok")
-		})
-
-		var llm memory.LLM
-		if c, err := ai.New(""); err != nil {
-			log.Printf("warning: %v; /v1/gb/remember will return 503", err)
-		} else {
-			llm = c
-		}
-		api.Register(mux, database, llm)
-
-		addr := cfg.Addr()
-		srv := &http.Server{Addr: addr, Handler: mux}
-
-		ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
-		defer stop()
-
-		errCh := make(chan error, 1)
-		go func() {
-			log.Printf("listening on %s (db: %s)", addr, serveDBPath)
-			errCh <- srv.ListenAndServe()
-		}()
-
-		select {
-		case err := <-errCh:
-			if !errors.Is(err, http.ErrServerClosed) {
-				return err
-			}
-		case <-ctx.Done():
-			log.Println("shutting down")
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			return srv.Shutdown(shutdownCtx)
-		}
-		return nil
 	},
 }
+
+//---------------------------------------------------------------------------------------------
 
 func init() {
 	serveCmd.Flags().StringVar(&serveDBPath, "db", "bin/gligabao.db", "SQLite database file path")
