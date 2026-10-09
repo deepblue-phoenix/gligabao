@@ -162,8 +162,16 @@ func scanEdge(r scanner) (Edge, error) {
 	return e, nil
 }
 
-// loadCandidates returns live (not expired) stored edges touching at least one entity named in edges, newest first.
-func loadCandidates(ctx context.Context, d *sql.DB, edges []Edge) ([]Edge, error) {
+// loadCandidates returns live (not expired) edges of the dataset touching at least one entity named in edges,
+// newest first. A dataset that does not exist yet has none.
+func loadCandidates(ctx context.Context, d *sql.DB, dataset string, edges []Edge) ([]Edge, error) {
+	dsID, err := datasetID(ctx, d, dataset)
+	if errors.Is(err, ErrDatasetNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
 	var keys []any
 	seen := map[string]bool{}
 	for _, e := range edges {
@@ -178,9 +186,9 @@ func loadCandidates(ctx context.Context, d *sql.DB, edges []Edge) ([]Edge, error
 		return nil, nil
 	}
 	ph := qmarks(len(keys))
-	args := append(append(append([]any{}, keys...), keys...), maxCandidates)
+	args := append(append(append([]any{dsID}, keys...), keys...), maxCandidates)
 	rows, err := d.QueryContext(ctx, `SELECT `+edgeColumns+edgeFrom+`
-		WHERE e.expired_at IS NULL AND (s.name_key IN (`+ph+`) OR t.name_key IN (`+ph+`))
+		WHERE e.dataset_id = ? AND e.expired_at IS NULL AND (s.name_key IN (`+ph+`) OR t.name_key IN (`+ph+`))
 		ORDER BY e.id DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("load edge candidates: %w", err)
@@ -198,8 +206,9 @@ func loadCandidates(ctx context.Context, d *sql.DB, edges []Edge) ([]Edge, error
 }
 
 // loadEdge reads one edge with its endpoint names.
-func loadEdge(ctx context.Context, tx *sql.Tx, id int64) (*Edge, error) {
-	e, err := scanEdge(tx.QueryRowContext(ctx, `SELECT `+edgeColumns+edgeFrom+` WHERE e.id = ?`, id))
+// It is looked up inside the dataset only; an edge of another dataset is sql.ErrNoRows.
+func loadEdge(ctx context.Context, tx *sql.Tx, dsID, id int64) (*Edge, error) {
+	e, err := scanEdge(tx.QueryRowContext(ctx, `SELECT `+edgeColumns+edgeFrom+` WHERE e.id = ? AND e.dataset_id = ?`, id, dsID))
 	if err != nil {
 		return nil, fmt.Errorf("load edge %d: %w", id, err)
 	}
@@ -211,7 +220,7 @@ func loadEdge(ctx context.Context, tx *sql.Tx, id int64) (*Edge, error) {
 // storeEdges writes edges inside tx according to plan and returns the resulting edges (new ones, or the
 // existing ones they duplicate) plus the IDs of edges that were invalidated. entityID maps an entity name to
 // its ID, creating the entity if needed.
-func storeEdges(ctx context.Context, tx *sql.Tx, memID int64, ref, now time.Time, edges []Edge, plan *EdgePlan,
+func storeEdges(ctx context.Context, tx *sql.Tx, dsID, memID int64, ref, now time.Time, edges []Edge, plan *EdgePlan,
 	entityID func(name string) (int64, error)) ([]Edge, []int64, error) {
 	if plan == nil {
 		plan = &EdgePlan{}
@@ -225,8 +234,8 @@ func storeEdges(ctx context.Context, tx *sql.Tx, memID int64, ref, now time.Time
 	for i, e := range edges {
 		if existing, ok := plan.Duplicates[i]; ok {
 			// Same fact seen again: keep the stored edge, just record its end if the text says it ended.
-			if _, err := tx.ExecContext(ctx, `UPDATE gb_edges SET invalid_at = COALESCE(invalid_at, ?) WHERE id = ?`,
-				fmtTime(e.InvalidAt), existing); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE gb_edges SET invalid_at = COALESCE(invalid_at, ?) WHERE id = ? AND dataset_id = ?`,
+				fmtTime(e.InvalidAt), existing, dsID); err != nil {
 				return nil, nil, fmt.Errorf("merge duplicate edge: %w", err)
 			}
 			ids[i] = existing
@@ -254,9 +263,9 @@ func storeEdges(ctx context.Context, tx *sql.Tx, memID int64, ref, now time.Time
 			validAt = e.ValidAt.UTC()
 		}
 		res, err := tx.ExecContext(ctx, `
-			INSERT INTO gb_edges (source_id, target_id, relation, description, valid_at, invalid_at, created_at, memory_id)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			src, dst, e.Relation, e.Description, validAt.Format(timeLayout), fmtTime(e.InvalidAt), nowS, memID)
+			INSERT INTO gb_edges (dataset_id, source_id, target_id, relation, description, valid_at, invalid_at, created_at, memory_id)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			dsID, src, dst, e.Relation, e.Description, validAt.Format(timeLayout), fmtTime(e.InvalidAt), nowS, memID)
 		if err != nil {
 			return nil, nil, fmt.Errorf("insert edge: %w", err)
 		}
@@ -275,7 +284,7 @@ func storeEdges(ctx context.Context, tx *sql.Tx, memID int64, ref, now time.Time
 		if c.New < 0 || c.New >= len(edges) {
 			continue
 		}
-		inv, err := contradict(ctx, tx, ids[c.New], c.Existing, ref, nowS)
+		inv, err := contradict(ctx, tx, dsID, ids[c.New], c.Existing, ref, nowS)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -284,7 +293,7 @@ func storeEdges(ctx context.Context, tx *sql.Tx, memID int64, ref, now time.Time
 
 	out := make([]Edge, 0, len(order))
 	for _, id := range order {
-		e, err := loadEdge(ctx, tx, id)
+		e, err := loadEdge(ctx, tx, dsID, id)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -296,16 +305,16 @@ func storeEdges(ctx context.Context, tx *sql.Tx, memID int64, ref, now time.Time
 // contradict applies Graphiti's invalidation rule to a new edge and an existing one that conflicts with it.
 // The fact that started earlier is the one that ended: it gets invalid_at = start of the later fact and
 // expired_at = now. Facts whose periods don't overlap are left alone. It returns the IDs invalidated.
-func contradict(ctx context.Context, tx *sql.Tx, newID, oldID int64, ref time.Time, nowS string) ([]int64, error) {
+func contradict(ctx context.Context, tx *sql.Tx, dsID, newID, oldID int64, ref time.Time, nowS string) ([]int64, error) {
 	if newID == oldID {
 		return nil, nil
 	}
-	nw, err := loadEdge(ctx, tx, newID)
+	nw, err := loadEdge(ctx, tx, dsID, newID)
 	if err != nil {
 		return nil, err
 	}
-	old, err := loadEdge(ctx, tx, oldID)
-	if errors.Is(err, sql.ErrNoRows) { // deleted since the candidates were read
+	old, err := loadEdge(ctx, tx, dsID, oldID)
+	if errors.Is(err, sql.ErrNoRows) { // deleted (or from another dataset) since the candidates were read
 		return nil, nil
 	}
 	if err != nil {

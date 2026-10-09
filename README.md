@@ -17,7 +17,12 @@ gligabao is a small, self-hosted HTTP service that gives an AI application long-
 | -------- | ------- | ---- |
 | `POST /v1/gb/remember` | Extract a temporal knowledge graph from text and store it | [docs/remember.md](docs/remember.md), [docs/temporal.md](docs/temporal.md) |
 | `POST /v1/gb/recall` | Answer a question from the graph, with evidence | [docs/recall.md](docs/recall.md) |
+| `POST /v1/gb/datasets`, `GET /v1/gb/datasets`, `DELETE /v1/gb/datasets/{name}` | Create, list and (soft) delete datasets | [docs/datasets.md](docs/datasets.md) |
 | `GET /health` | Health check | |
+
+## Datasets
+
+Memory is organized in datasets, like Cognee: a hard container for everything stored (episodes, entities, edges). `remember` and `recall` take an optional `"dataset"` name, default `main`. Datasets are isolated: the same entity in two datasets is two separate nodes, and a recall only sees its own dataset's graph. Deleting a dataset is soft (`deleted = true`). Details: [docs/datasets.md](docs/datasets.md).
 
 ## Remember
 

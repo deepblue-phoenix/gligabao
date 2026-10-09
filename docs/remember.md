@@ -12,6 +12,7 @@ content-type: application/json
 ```
 
 - `text` (required): non-empty string. The request body is limited to 1 MiB.
+- `dataset` (optional): name of the [dataset](datasets.md) to store into; created if it does not exist. Defaults to `main`. Entities and edges are deduplicated and reconciled only within the dataset.
 - `reference_time` (optional): RFC 3339 timestamp of when the text was written or observed. Relative dates in the text ("yesterday", "last March") are resolved against it. Defaults to the current time.
 
 ## Response
@@ -20,6 +21,7 @@ content-type: application/json
 
 ```json
 {
+  "dataset": "main",
   "memory_id": 1,
   "valid_at": "2025-01-31T09:00:00Z",
   "created_at": "2025-01-31T09:00:05Z",
@@ -86,9 +88,10 @@ All tables are prefixed with `gb_` (see `internal/db/db_schema.go`).
 
 | Table | Columns |
 | ----- | ------- |
-| `gb_memories` | `id`, `text`, `valid_at`, `created_at` |
-| `gb_entities` | `id`, `name`, `name_key`, `type`, `description`, `created_at`, `updated_at`; unique (`name_key`, `type`) |
-| `gb_edges` | `id`, `source_id` → `gb_entities`, `target_id` → `gb_entities`, `relation`, `description`, `valid_at`, `invalid_at`, `created_at`, `expired_at`, `memory_id` → `gb_memories` |
+| `gb_datasets` | `id`, `name`, `description`, `tags` (JSON), `created_at`, `deleted`, `deleted_at`; unique `name` among non-deleted |
+| `gb_memories` | `id`, `dataset_id` → `gb_datasets`, `text`, `valid_at`, `created_at` |
+| `gb_entities` | `id`, `dataset_id` → `gb_datasets`, `name`, `name_key`, `type`, `description`, `created_at`, `updated_at`; unique (`dataset_id`, `name_key`, `type`) |
+| `gb_edges` | `id`, `dataset_id` → `gb_datasets`, `source_id` → `gb_entities`, `target_id` → `gb_entities`, `relation`, `description`, `valid_at`, `invalid_at`, `created_at`, `expired_at`, `memory_id` → `gb_memories` |
 | `gb_items` | `id`, `name`, `created_at` (placeholder) |
 
 Foreign keys are enabled on every connection. Deleting an entity cascades to its edges; deleting a memory sets `memory_id` to NULL on its edges.

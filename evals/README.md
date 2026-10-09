@@ -6,6 +6,8 @@ Run from the repo root: `./run_evals.sh [-v] [case-name ...]`, e.g. `./run_evals
 
 The runner is pure Go (`evals/main.go`; `run_evals.sh` just invokes `go run ./evals`). Each case gets a fresh temporary SQLite DB and an in-process HTTP server using the real handlers, so cases are independent.
 
+All cases use the dataset `test`. At the start of each case it is deleted (`DELETE /v1/gb/datasets/test`, a soft delete; a missing dataset is fine), so `remember` recreates it fresh, and the stored-edge checks only look at the live `test` dataset.
+
 ## Cases
 
 - `remember_recall`: one text, stored with its temporal validity (`valid_at` = the episode's time, still true), then a question about it.
@@ -29,7 +31,7 @@ The runner is pure Go (`evals/main.go`; `run_evals.sh` just invokes `go run ./ev
 }
 ```
 
-1. `POST /v1/gb/remember` for each `remember` entry, in order, with its `text` and `reference_time`.
+1. `POST /v1/gb/remember` (with `"dataset": "test"`) for each `remember` entry, in order, with its `text` and `reference_time`.
 2. The stored edges (`gb_edges`) are checked against `expect_edges`: an edge between `source` and `target` (any relation) must exist; `valid_at` / `invalid_at` are compared exactly when given; `ended` says whether it must have an `invalid_at` (and then also an `expired_at`).
-3. `POST /v1/gb/recall` with `query`.
+3. `POST /v1/gb/recall` (dataset `test`) with `query`.
 4. Passes if the temporal checks pass and the answer contains every `expect_contains` string (case-insensitive). `-v` also prints the stored edges.

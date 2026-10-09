@@ -3,6 +3,7 @@ package recall
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strings"
@@ -14,7 +15,9 @@ import (
 const maxRecallBytes = 64 << 10 // 64 KiB
 
 type recallRequest struct {
-	Query string `json:"query"`
+	// Dataset is the dataset to search. Defaults to "main".
+	Dataset string `json:"dataset"`
+	Query   string `json:"query"`
 }
 
 //---------------------------------------------------------------------------------------------
@@ -36,7 +39,15 @@ func Handler(d *sql.DB, llm memory.LLM) http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, "query is required")
 			return
 		}
-		res, err := memory.Recall(r.Context(), d, llm, req.Query)
+		res, err := memory.Recall(r.Context(), d, llm, req.Dataset, req.Query)
+		if errors.Is(err, memory.ErrInvalidDataset) {
+			httputil.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if errors.Is(err, memory.ErrDatasetNotFound) {
+			httputil.Error(w, http.StatusNotFound, "dataset not found")
+			return
+		}
 		if err != nil {
 			log.Printf("recall: %v", err)
 			httputil.Error(w, http.StatusBadGateway, "failed to answer query")

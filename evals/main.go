@@ -2,6 +2,7 @@
 //
 // Each case in evals/cases/*.json gets a fresh temporary database and an in-process
 // HTTP server. The case is run through the public API: remember (once per memory, in order), then recall.
+// All memories go to the dataset "test", which is deleted at the start of each case so it is recreated fresh.
 // Besides the answer, the stored temporal facts (edges with valid_at / invalid_at) are checked in the database.
 //
 // Usage: go run ./evals [-v] [case-name ...]   (requires ANTHROPIC_API_KEY)
@@ -33,6 +34,9 @@ import (
 
 //go:embed cases/*.json
 var casesFS embed.FS
+
+// evalDataset is the dataset every eval remembers into and recalls from.
+const evalDataset = "test"
 
 //---------------------------------------------------------------------------------------------
 
@@ -157,8 +161,14 @@ func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string
 	srv := httptest.NewServer(server.NewHandler(database, llm))
 	defer srv.Close()
 
+	// Start from a clean dataset: soft-delete any previous "test" (404 just means there was none); remember
+	// below recreates it with a new id and an empty graph.
+	if err := deleteDataset(srv.URL, evalDataset); err != nil {
+		return "", nil, fmt.Errorf("delete dataset %q: %w", evalDataset, err)
+	}
+
 	for i, m := range c.Remember {
-		body := map[string]any{"text": m.Text}
+		body := map[string]any{"text": m.Text, "dataset": evalDataset}
 		if m.ReferenceTime != "" {
 			body["reference_time"] = m.ReferenceTime
 		}
@@ -171,7 +181,9 @@ func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string
 	}
 	rows, err := database.Query(`
 		SELECT e.id, s.name, t.name, e.relation, e.valid_at, e.invalid_at, e.expired_at
-		FROM gb_edges e JOIN gb_entities s ON s.id = e.source_id JOIN gb_entities t ON t.id = e.target_id ORDER BY e.id`)
+		FROM gb_edges e JOIN gb_entities s ON s.id = e.source_id JOIN gb_entities t ON t.id = e.target_id
+		JOIN gb_datasets ds ON ds.id = e.dataset_id
+		WHERE ds.name = ? AND ds.deleted = 0 ORDER BY e.id`, evalDataset)
 	if err != nil {
 		return "", nil, err
 	}
@@ -229,10 +241,28 @@ func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string
 	var rec struct {
 		Answer string `json:"answer"`
 	}
-	if err := post(srv.URL+"/v1/gb/recall", map[string]any{"query": c.Query}, &rec); err != nil {
+	if err := post(srv.URL+"/v1/gb/recall", map[string]any{"query": c.Query, "dataset": evalDataset}, &rec); err != nil {
 		return "", problems, fmt.Errorf("recall: %w", err)
 	}
 	return rec.Answer, problems, nil
+}
+
+// deleteDataset soft-deletes a dataset through the API; a dataset that does not exist is not an error.
+func deleteDataset(baseURL, name string) error {
+	req, err := http.NewRequest(http.MethodDelete, baseURL+"/v1/gb/datasets/"+name, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := (&http.Client{Timeout: time.Minute}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
+		data, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+	}
+	return nil
 }
 
 func post(url string, body, out any) error {

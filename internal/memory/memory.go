@@ -126,6 +126,7 @@ func parseExtraction(s string, ref time.Time) (*Extraction, error) {
 
 // Result summarizes what was stored by Remember.
 type Result struct {
+	Dataset          string    `json:"dataset"`
 	MemoryID         int64     `json:"memory_id"`
 	ValidAt          time.Time `json:"valid_at"`   // event time of the episode
 	CreatedAt        time.Time `json:"created_at"` // ingestion time of the episode
@@ -135,9 +136,14 @@ type Result struct {
 }
 
 // Remember extracts entities and temporal edges from text and stores them (with the raw text as an episode) in
-// one transaction. ref is the time the text was written/observed; the zero value means the current time. If any
-// LLM step fails nothing is stored.
-func Remember(ctx context.Context, d *sql.DB, llm LLM, text string, ref time.Time) (*Result, error) {
+// one transaction, inside the named dataset (empty means DefaultDataset; it is created if missing). ref is the
+// time the text was written/observed; the zero value means the current time. If any LLM step fails nothing is
+// stored.
+func Remember(ctx context.Context, d *sql.DB, llm LLM, dataset, text string, ref time.Time) (*Result, error) {
+	dataset, err := ResolveDatasetName(dataset)
+	if err != nil {
+		return nil, err
+	}
 	now := time.Now().UTC().Truncate(time.Second)
 	if ref.IsZero() {
 		ref = now
@@ -149,7 +155,7 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, text string, ref time.Tim
 	if err != nil {
 		return nil, err
 	}
-	cands, err := loadCandidates(ctx, d, ex.Edges)
+	cands, err := loadCandidates(ctx, d, dataset, ex.Edges)
 	if err != nil {
 		return nil, err
 	}
@@ -157,21 +163,31 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, text string, ref time.Tim
 	if err != nil {
 		return nil, err
 	}
-	return Store(ctx, d, text, ref, now, ex, plan)
+	return Store(ctx, d, dataset, text, ref, now, ex, plan)
 }
 
-// Store persists an episode and its extraction. Entities are deduplicated by (normalized name, type). Edges are
+// Store persists an episode and its extraction into the named dataset (created if missing). Entities are
+// deduplicated within the dataset by (normalized name, type); nothing is shared across datasets. Edges are
 // written according to plan (see EdgePlan); now is the system time stamped on them. Edges naming an unlisted
 // entity create it with type "other".
-func Store(ctx context.Context, d *sql.DB, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan) (*Result, error) {
+func Store(ctx context.Context, d *sql.DB, dataset, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan) (*Result, error) {
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 
-	res, err := tx.ExecContext(ctx, `INSERT INTO gb_memories (text, valid_at, created_at) VALUES (?, ?, ?)`,
-		text, ref.UTC().Format(timeLayout), now.UTC().Format(timeLayout))
+	dataset, err = ResolveDatasetName(dataset)
+	if err != nil {
+		return nil, err
+	}
+	dsID, err := ensureDatasetID(ctx, tx, dataset)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := tx.ExecContext(ctx, `INSERT INTO gb_memories (dataset_id, text, valid_at, created_at) VALUES (?, ?, ?, ?)`,
+		dsID, text, ref.UTC().Format(timeLayout), now.UTC().Format(timeLayout))
 	if err != nil {
 		return nil, fmt.Errorf("insert memory: %w", err)
 	}
@@ -180,7 +196,7 @@ func Store(ctx context.Context, d *sql.DB, text string, ref, now time.Time, ex *
 		return nil, err
 	}
 
-	out := &Result{MemoryID: memID, ValidAt: ref.UTC(), CreatedAt: now.UTC(),
+	out := &Result{Dataset: dataset, MemoryID: memID, ValidAt: ref.UTC(), CreatedAt: now.UTC(),
 		Entities: []Entity{}, Edges: []Edge{}, InvalidatedEdges: []int64{}}
 	ids := map[string]int64{} // normalized name -> entity id (first listed type wins for edge lookup)
 	seenEnt := map[string]bool{}
@@ -188,12 +204,12 @@ func Store(ctx context.Context, d *sql.DB, text string, ref, now time.Time, ex *
 	upsertEntity := func(e Entity) (int64, error) {
 		var id int64
 		err := tx.QueryRowContext(ctx, `
-			INSERT INTO gb_entities (name, name_key, type, description) VALUES (?, ?, ?, ?)
-			ON CONFLICT (name_key, type) DO UPDATE SET
+			INSERT INTO gb_entities (dataset_id, name, name_key, type, description) VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT (dataset_id, name_key, type) DO UPDATE SET
 				description = CASE WHEN excluded.description != '' THEN excluded.description ELSE gb_entities.description END,
 				updated_at  = CURRENT_TIMESTAMP
 			RETURNING id`,
-			e.Name, key(e.Name), e.Type, e.Description).Scan(&id)
+			dsID, e.Name, key(e.Name), e.Type, e.Description).Scan(&id)
 		if err != nil {
 			return 0, fmt.Errorf("upsert entity %q: %w", e.Name, err)
 		}
@@ -226,7 +242,7 @@ func Store(ctx context.Context, d *sql.DB, text string, ref, now time.Time, ex *
 			return id, nil
 		}
 		var id int64
-		err := tx.QueryRowContext(ctx, `SELECT id FROM gb_entities WHERE name_key = ? ORDER BY id LIMIT 1`, key(name)).Scan(&id)
+		err := tx.QueryRowContext(ctx, `SELECT id FROM gb_entities WHERE dataset_id = ? AND name_key = ? ORDER BY id LIMIT 1`, dsID, key(name)).Scan(&id)
 		if errors.Is(err, sql.ErrNoRows) {
 			if id, err = upsertEntity(Entity{Name: name, Type: "other"}); err == nil {
 				out.Entities = append(out.Entities, Entity{Name: name, Type: "other"})
@@ -238,7 +254,7 @@ func Store(ctx context.Context, d *sql.DB, text string, ref, now time.Time, ex *
 		ids[key(name)] = id
 		return id, nil
 	}
-	out.Edges, out.InvalidatedEdges, err = storeEdges(ctx, tx, memID, ref, now, ex.Edges, plan, entityID)
+	out.Edges, out.InvalidatedEdges, err = storeEdges(ctx, tx, dsID, memID, ref, now, ex.Edges, plan, entityID)
 	if err != nil {
 		return nil, err
 	}

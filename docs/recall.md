@@ -12,6 +12,7 @@ content-type: application/json
 ```
 
 - `query` (required): non-empty string. The request body is limited to 64 KiB.
+- `dataset` (optional): name of the [dataset](datasets.md) to search. Defaults to `main`. Only that dataset's graph is used. `404` if it does not exist.
 
 ## Response
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"net/http"
 
+	"github.com/ivan/gligabao/internal/api/datasets"
 	"github.com/ivan/gligabao/internal/api/recall"
 	"github.com/ivan/gligabao/internal/api/remember"
 	"github.com/ivan/gligabao/internal/memory"
@@ -14,4 +15,7 @@ import (
 func Register(mux *http.ServeMux, d *sql.DB, llm memory.LLM) {
 	mux.HandleFunc("POST /v1/gb/remember", remember.Handler(d, llm))
 	mux.HandleFunc("POST /v1/gb/recall", recall.Handler(d, llm))
+	mux.HandleFunc("POST /v1/gb/datasets", datasets.Create(d))
+	mux.HandleFunc("GET /v1/gb/datasets", datasets.List(d))
+	mux.HandleFunc("DELETE /v1/gb/datasets/{name}", datasets.Delete(d))
 }

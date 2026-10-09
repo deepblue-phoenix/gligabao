@@ -63,9 +63,18 @@ type RecallResult struct {
 //---------------------------------------------------------------------------------------------
 
 // Recall answers query using the knowledge graph: relevant entities and their edges are retrieved,
-// the LLM answers from that context, and the entities/edges it used are returned as evidence.
-func Recall(ctx context.Context, d *sql.DB, llm LLM, query string) (*RecallResult, error) {
-	g, err := retrieve(ctx, d, query)
+// the LLM answers from that context, and the entities/edges it used are returned as evidence. Only the named
+// dataset (empty means DefaultDataset) is searched; ErrDatasetNotFound is returned if it does not exist.
+func Recall(ctx context.Context, d *sql.DB, llm LLM, dataset, query string) (*RecallResult, error) {
+	dataset, err := ResolveDatasetName(dataset)
+	if err != nil {
+		return nil, err
+	}
+	dsID, err := datasetID(ctx, d, dataset)
+	if err != nil {
+		return nil, err
+	}
+	g, err := retrieve(ctx, d, dsID, query)
 	if err != nil {
 		return nil, fmt.Errorf("retrieve context: %w", err)
 	}
@@ -200,15 +209,15 @@ func sortedKeys[V any](m map[int64]V) []int64 {
 
 // retrieve finds entities matching the query text, then adds the edges touching them and the entities
 // at the other end. If no entity matches, the most recently updated entities are used instead.
-func retrieve(ctx context.Context, d *sql.DB, query string) (*graphContext, error) {
+func retrieve(ctx context.Context, d *sql.DB, dsID int64, query string) (*graphContext, error) {
 	g := &graphContext{entities: map[int64]EvidenceEntity{}, edges: map[int64]EvidenceEdge{}}
 
-	seeds, err := matchEntities(ctx, d, query)
+	seeds, err := matchEntities(ctx, d, dsID, query)
 	if err != nil {
 		return nil, err
 	}
 	if len(seeds) == 0 {
-		rows, err := d.QueryContext(ctx, `SELECT id FROM gb_entities ORDER BY updated_at DESC, id DESC LIMIT ?`, maxFallbackSeed)
+		rows, err := d.QueryContext(ctx, `SELECT id FROM gb_entities WHERE dataset_id = ? ORDER BY updated_at DESC, id DESC LIMIT ?`, dsID, maxFallbackSeed)
 		if err != nil {
 			return nil, err
 		}
@@ -230,6 +239,7 @@ func retrieve(ctx context.Context, d *sql.DB, query string) (*graphContext, erro
 
 	ph, args := placeholders(seeds)
 	args = append(args, args...)
+	args = append([]any{dsID}, args...)
 	args = append(args, maxContextEdges)
 	rows, err := d.QueryContext(ctx, `
 		SELECT e.id, e.source_id, e.target_id, s.name, t.name, e.relation, e.description, e.memory_id,
@@ -237,7 +247,7 @@ func retrieve(ctx context.Context, d *sql.DB, query string) (*graphContext, erro
 		FROM gb_edges e
 		JOIN gb_entities s ON s.id = e.source_id
 		JOIN gb_entities t ON t.id = e.target_id
-		WHERE e.source_id IN (`+ph+`) OR e.target_id IN (`+ph+`)
+		WHERE e.dataset_id = ? AND (e.source_id IN (`+ph+`) OR e.target_id IN (`+ph+`))
 		ORDER BY e.id DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
@@ -287,7 +297,7 @@ func retrieve(ctx context.Context, d *sql.DB, query string) (*graphContext, erro
 }
 
 // matchEntities returns the IDs of the best entities whose name or description mention query terms.
-func matchEntities(ctx context.Context, d *sql.DB, query string) ([]int64, error) {
+func matchEntities(ctx context.Context, d *sql.DB, dsID int64, query string) ([]int64, error) {
 	toks := tokenize(query)
 	qkey := key(query)
 
@@ -303,8 +313,8 @@ func matchEntities(ctx context.Context, d *sql.DB, query string) ([]int64, error
 		scoreArgs = append(scoreArgs, t, t)
 	}
 	// Placeholder order in the SQL text: WHERE, ORDER BY, LIMIT.
-	args := append(append(whereArgs, scoreArgs...), maxSeedEntities)
-	rows, err := d.QueryContext(ctx, `SELECT id FROM gb_entities WHERE `+strings.Join(conds, " OR ")+`
+	args := append(append(append([]any{dsID}, whereArgs...), scoreArgs...), maxSeedEntities)
+	rows, err := d.QueryContext(ctx, `SELECT id FROM gb_entities WHERE dataset_id = ? AND (`+strings.Join(conds, " OR ")+`)
 		ORDER BY (`+strings.Join(score, " + ")+`) DESC, updated_at DESC, id DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, err

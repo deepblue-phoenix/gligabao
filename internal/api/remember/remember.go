@@ -16,7 +16,9 @@ import (
 const maxRememberBytes = 1 << 20 // 1 MiB
 
 type rememberRequest struct {
-	Text string `json:"text"`
+	// Dataset is the dataset to store into (created if missing). Defaults to "main".
+	Dataset string `json:"dataset"`
+	Text    string `json:"text"`
 	// ReferenceTime (RFC 3339, optional) is when the text was written; relative dates in it ("yesterday") are
 	// resolved against it. Defaults to now.
 	ReferenceTime string `json:"reference_time"`
@@ -49,7 +51,11 @@ func Handler(d *sql.DB, llm memory.LLM) http.HandlerFunc {
 				return
 			}
 		}
-		res, err := memory.Remember(r.Context(), d, llm, req.Text, ref)
+		if _, err := memory.ResolveDatasetName(req.Dataset); err != nil {
+			httputil.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		res, err := memory.Remember(r.Context(), d, llm, req.Dataset, req.Text, ref)
 		if err != nil {
 			log.Printf("remember: %v", err)
 			httputil.Error(w, http.StatusBadGateway, "failed to process text")
