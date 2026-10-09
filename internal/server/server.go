@@ -28,6 +28,8 @@ type Options struct {
 	Addr string
 	// DBPath is the SQLite database file path.
 	DBPath string
+	// AnthropicKey is the Anthropic API key. If empty, LLM endpoints return 503.
+	AnthropicKey string
 }
 
 //---------------------------------------------------------------------------------------------
@@ -62,7 +64,7 @@ func Run(ctx context.Context, opts Options) error {
 	defer database.Close()
 
 	var llm memory.LLM
-	if c, err := ai.New(""); err != nil {
+	if c, err := ai.New(opts.AnthropicKey); err != nil {
 		log.Printf("warning: %v; /v1/gb/remember and /v1/gb/recall will return 503", err)
 	} else {
 		llm = c

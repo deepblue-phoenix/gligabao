@@ -9,7 +9,6 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -55,11 +54,8 @@ func WithEmbedHTTPClient(h *http.Client) EmbedderOption {
 func WithEmbedDimensions(n int) EmbedderOption { return func(e *Embedder) { e.dimensions = n } }
 
 // NewEmbedder creates an Embedder using text-embedding-3-small.
-// If apiKey is empty, OPENAI_API_KEY is used.
+// apiKey is the OpenAI API key (see config.Config).
 func NewEmbedder(apiKey string, opts ...EmbedderOption) (*Embedder, error) {
-	if apiKey == "" {
-		apiKey = os.Getenv("OPENAI_API_KEY")
-	}
 	if apiKey == "" {
 		return nil, errors.New("ai: missing API key (set OPENAI_API_KEY)")
 	}

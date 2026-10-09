@@ -15,12 +15,23 @@ import (
 // FileName is the default config file name.
 const FileName = "gligabao.toml"
 
+// Environment variables the API keys are loaded from.
+const (
+	EnvAnthropicKey = "ANTHROPIC_API_KEY"
+	EnvOpenAIKey    = "OPENAI_API_KEY"
+)
+
 // DefaultPort is used when the config does not set a port.
 const DefaultPort = 8080
 
 // Config holds the application configuration.
+//
+// API keys are read from the ANTHROPIC_API_KEY and OPENAI_API_KEY environment
+// variables; a key set in the TOML file overrides the environment value.
 type Config struct {
-	Port int `toml:"port"`
+	Port         int    `toml:"port"`
+	AnthropicKey string `toml:"anthropic_api_key"`
+	OpenAIKey    string `toml:"openai_api_key"`
 }
 
 // DefaultPath returns the default config location: next to the running binary.
@@ -34,9 +45,14 @@ func DefaultPath() string {
 	return filepath.Join(filepath.Dir(exe), FileName)
 }
 
-// Default returns a Config populated with default values.
+// Default returns a Config populated with default values. API keys are
+// taken from the environment.
 func Default() *Config {
-	return &Config{Port: DefaultPort}
+	return &Config{
+		Port:         DefaultPort,
+		AnthropicKey: os.Getenv(EnvAnthropicKey),
+		OpenAIKey:    os.Getenv(EnvOpenAIKey),
+	}
 }
 
 // Addr returns the HTTP listen address derived from the port (e.g. ":8080").

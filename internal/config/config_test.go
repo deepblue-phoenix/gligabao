@@ -56,3 +56,30 @@ func TestLoadMissing(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestKeysFromEnv(t *testing.T) {
+	t.Setenv(EnvAnthropicKey, "a-env")
+	t.Setenv(EnvOpenAIKey, "o-env")
+	cfg, err := Load(write(t, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AnthropicKey != "a-env" || cfg.OpenAIKey != "o-env" {
+		t.Fatalf("got %+v", cfg)
+	}
+	if d := Default(); d.AnthropicKey != "a-env" || d.OpenAIKey != "o-env" {
+		t.Fatalf("default: %+v", d)
+	}
+}
+
+func TestKeysFileOverridesEnv(t *testing.T) {
+	t.Setenv(EnvAnthropicKey, "a-env")
+	t.Setenv(EnvOpenAIKey, "o-env")
+	cfg, err := Load(write(t, "anthropic_api_key = \"a-file\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AnthropicKey != "a-file" || cfg.OpenAIKey != "o-env" {
+		t.Fatalf("got %+v", cfg)
+	}
+}

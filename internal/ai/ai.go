@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 )
@@ -83,11 +82,8 @@ func WithBaseURL(u string) Option { return func(c *Client) { c.baseURL = strings
 // WithHTTPClient sets a custom HTTP client.
 func WithHTTPClient(h *http.Client) Option { return func(c *Client) { c.httpClient = h } }
 
-// New creates a Client. If apiKey is empty, ANTHROPIC_API_KEY is used.
+// New creates a Client using the given Anthropic API key (see config.Config).
 func New(apiKey string, opts ...Option) (*Client, error) {
-	if apiKey == "" {
-		apiKey = os.Getenv("ANTHROPIC_API_KEY")
-	}
 	if apiKey == "" {
 		return nil, errors.New("ai: missing API key (set ANTHROPIC_API_KEY)")
 	}

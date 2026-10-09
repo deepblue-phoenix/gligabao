@@ -17,8 +17,9 @@ var serveCmd = &cobra.Command{
 	Short: "Start the HTTP server",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return server.Run(cmd.Context(), server.Options{
-			Addr:   cfg.Addr(),
-			DBPath: serveDBPath,
+			Addr:         cfg.Addr(),
+			DBPath:       serveDBPath,
+			AnthropicKey: cfg.AnthropicKey,
 		})
 	},
 }
