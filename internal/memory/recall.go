@@ -11,7 +11,7 @@ import (
 	"unicode"
 
 	"github.com/ivan/gligabao/internal/ai"
-	"github.com/ivan/gligabao/internal/db"
+	"github.com/ivan/gligabao/internal/db/relational"
 )
 
 const (
@@ -24,10 +24,10 @@ const (
 //---------------------------------------------------------------------------------------------
 
 // EvidenceEntity is a graph entity cited by an answer.
-type EvidenceEntity = db.EvidenceEntity
+type EvidenceEntity = relational.EvidenceEntity
 
 // EvidenceEdge is a graph edge cited by an answer, with the bi-temporal validity of the fact (see temporal.go).
-type EvidenceEdge = db.EvidenceEdge
+type EvidenceEdge = relational.EvidenceEdge
 
 // Evidence lists the entities and edges the answer is based on.
 type Evidence struct {
@@ -73,7 +73,7 @@ func Recall(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, query stri
 	llm = withRecording(llm, d, CallRecall)
 	resp, err := llm.Complete(ctx, ai.Request{
 		System: recallSystemPrompt,
-		Messages: []ai.Message{{Role: ai.RoleUser, Content: "<current_time>\n" + db.FormatTime(db.Now()) +
+		Messages: []ai.Message{{Role: ai.RoleUser, Content: "<current_time>\n" + relational.FormatTime(relational.Now()) +
 			"\n</current_time>\n\n<graph>\n" + g.render() + "</graph>\n\n<question>\n" + query + "\n</question>"}},
 		MaxTokens: 2048,
 	})
@@ -138,9 +138,9 @@ func (g *graphContext) render() string {
 		if e.Description != "" {
 			sb.WriteString(": " + e.Description)
 		}
-		sb.WriteString(" [valid_at=" + db.FormatTime(*e.ValidAt))
+		sb.WriteString(" [valid_at=" + relational.FormatTime(*e.ValidAt))
 		if e.InvalidAt != nil {
-			sb.WriteString(", invalid_at=" + db.FormatTime(*e.InvalidAt))
+			sb.WriteString(", invalid_at=" + relational.FormatTime(*e.InvalidAt))
 		}
 		if e.ExpiredAt != nil {
 			sb.WriteString(", superseded")
@@ -195,12 +195,12 @@ func sortedKeys[V any](m map[int64]V) []int64 {
 func retrieve(ctx context.Context, d *sql.DB, dsID int64, query string) (*graphContext, error) {
 	g := &graphContext{entities: map[int64]EvidenceEntity{}, edges: map[int64]EvidenceEdge{}}
 
-	seeds, err := db.MatchEntities(ctx, d, dsID, key(query), tokenize(query), maxSeedEntities)
+	seeds, err := relational.MatchEntities(ctx, d, dsID, key(query), tokenize(query), maxSeedEntities)
 	if err != nil {
 		return nil, err
 	}
 	if len(seeds) == 0 {
-		if seeds, err = db.FallbackSeedEntities(ctx, d, dsID, maxFallbackSeed); err != nil {
+		if seeds, err = relational.FallbackSeedEntities(ctx, d, dsID, maxFallbackSeed); err != nil {
 			return nil, err
 		}
 	}
@@ -208,7 +208,7 @@ func retrieve(ctx context.Context, d *sql.DB, dsID int64, query string) (*graphC
 		return g, nil
 	}
 
-	edges, err := db.EdgesAround(ctx, d, dsID, seeds, maxContextEdges)
+	edges, err := relational.EdgesAround(ctx, d, dsID, seeds, maxContextEdges)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +225,7 @@ func retrieve(ctx context.Context, d *sql.DB, dsID int64, query string) (*graphC
 	for id := range ids {
 		all = append(all, id)
 	}
-	ents, err := db.EntitiesByID(ctx, d, all)
+	ents, err := relational.EntitiesByID(ctx, d, all)
 	if err != nil {
 		return nil, err
 	}

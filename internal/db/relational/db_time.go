@@ -1,11 +1,11 @@
-package db
+package relational
 
 import (
 	"time"
 
 	"github.com/ivan/gligabao/internal/config"
-	"github.com/ivan/gligabao/internal/db/postgres"
-	"github.com/ivan/gligabao/internal/db/sqlite"
+	"github.com/ivan/gligabao/internal/db/relational/postgres"
+	"github.com/ivan/gligabao/internal/db/relational/sqlite"
 )
 
 // Timestamp helpers route to the backend in use, which owns the storage convention (sqlite: RFC 3339 text with

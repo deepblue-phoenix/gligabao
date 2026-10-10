@@ -13,11 +13,11 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ivan/gligabao/internal/db"
+	"github.com/ivan/gligabao/internal/db/relational"
 )
 
 // DefaultDataset is used when a request names no dataset.
-const DefaultDataset = db.DefaultDataset
+const DefaultDataset = relational.DefaultDataset
 
 var (
 	ErrInvalidDataset  = errors.New("invalid dataset")
@@ -32,7 +32,7 @@ var datasetNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 const MaxUserIDLen = 128
 
 // Dataset describes a dataset.
-type Dataset = db.Dataset
+type Dataset = relational.Dataset
 
 //---------------------------------------------------------------------------------------------
 
@@ -94,8 +94,8 @@ func CreateDataset(ctx context.Context, d *sql.DB, userID, name, description str
 	if err != nil {
 		return nil, err
 	}
-	ds, err := db.CreateDataset(ctx, d, userID, name, strings.TrimSpace(description), normTags(tags))
-	if errors.Is(err, db.ErrExists) {
+	ds, err := relational.CreateDataset(ctx, d, userID, name, strings.TrimSpace(description), normTags(tags))
+	if errors.Is(err, relational.ErrExists) {
 		return nil, ErrDatasetExists
 	}
 	return ds, err
@@ -107,7 +107,7 @@ func ListDatasets(ctx context.Context, d *sql.DB, userID string, includeDeleted 
 	if err != nil {
 		return nil, err
 	}
-	return db.ListDatasets(ctx, d, userID, includeDeleted)
+	return relational.ListDatasets(ctx, d, userID, includeDeleted)
 }
 
 // DeleteDataset soft-deletes userID's live dataset called name (sets deleted = 1). It returns ErrDatasetNotFound
@@ -121,7 +121,7 @@ func DeleteDataset(ctx context.Context, d *sql.DB, userID, name string) error {
 	if err != nil {
 		return err
 	}
-	if err := db.DeleteDataset(ctx, d, userID, name); errors.Is(err, db.ErrNotFound) {
+	if err := relational.DeleteDataset(ctx, d, userID, name); errors.Is(err, relational.ErrNotFound) {
 		return ErrDatasetNotFound
 	} else {
 		return err
@@ -132,8 +132,8 @@ func DeleteDataset(ctx context.Context, d *sql.DB, userID, name string) error {
 
 // datasetID returns the ID of userID's live dataset called name (both already resolved), or ErrDatasetNotFound.
 func datasetID(ctx context.Context, d *sql.DB, userID, name string) (int64, error) {
-	id, err := db.DatasetID(ctx, d, userID, name)
-	if errors.Is(err, db.ErrNotFound) {
+	id, err := relational.DatasetID(ctx, d, userID, name)
+	if errors.Is(err, relational.ErrNotFound) {
 		return 0, ErrDatasetNotFound
 	}
 	return id, err

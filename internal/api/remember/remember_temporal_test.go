@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/ivan/gligabao/internal/ai"
-	"github.com/ivan/gligabao/internal/db"
-	"github.com/ivan/gligabao/internal/db/dbtest"
+	"github.com/ivan/gligabao/internal/db/relational"
+	"github.com/ivan/gligabao/internal/db/relational/dbtest"
 	"github.com/ivan/gligabao/internal/memory"
 )
 
@@ -30,16 +30,16 @@ func (f *recordingLLM) Complete(_ context.Context, r ai.Request) (*ai.Response, 
 }
 
 // edges returns the stored edges of user u1's default dataset by ID, and edge returns the one with the given ID.
-func edges(t *testing.T, d *sql.DB) []db.Edge {
+func edges(t *testing.T, d *sql.DB) []relational.Edge {
 	t.Helper()
-	list, err := db.ListEdges(context.Background(), d, "u1", db.DefaultDataset)
+	list, err := relational.ListEdges(context.Background(), d, "u1", relational.DefaultDataset)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return list
 }
 
-func edge(t *testing.T, d *sql.DB, id int64) db.Edge {
+func edge(t *testing.T, d *sql.DB, id int64) relational.Edge {
 	t.Helper()
 	for _, e := range edges(t, d) {
 		if e.ID == id {
@@ -47,7 +47,7 @@ func edge(t *testing.T, d *sql.DB, id int64) db.Edge {
 		}
 	}
 	t.Fatalf("no edge %d", id)
-	return db.Edge{}
+	return relational.Edge{}
 }
 
 // ts formats a stored time as RFC 3339 UTC, or "<nil>" if unset.
@@ -159,11 +159,11 @@ func testRememberSupersedesOlderFact(t *testing.T, d *sql.DB) {
 	if ts(globex.ValidAt) != "2024-03-01T00:00:00Z" || globex.InvalidAt != nil || globex.ExpiredAt != nil {
 		t.Errorf("globex: %+v", globex)
 	}
-	dsID, err := db.DatasetID(context.Background(), d, "u1", db.DefaultDataset)
+	dsID, err := relational.DatasetID(context.Background(), d, "u1", relational.DefaultDataset)
 	if err != nil {
 		t.Fatal(err)
 	}
-	mems, err := db.ListMemories(context.Background(), d, dsID)
+	mems, err := relational.ListMemories(context.Background(), d, dsID)
 	if err != nil || len(mems) != 2 {
 		t.Fatalf("memories: %v, %v", mems, err)
 	}

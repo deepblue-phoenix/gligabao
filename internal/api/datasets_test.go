@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/ivan/gligabao/internal/ai"
-	"github.com/ivan/gligabao/internal/db"
-	"github.com/ivan/gligabao/internal/db/dbtest"
+	"github.com/ivan/gligabao/internal/db/relational"
+	"github.com/ivan/gligabao/internal/db/relational/dbtest"
 )
 
 // echoLLM answers extraction requests with a fixed graph and recall requests with a fixed answer.
@@ -51,14 +51,14 @@ func testDatasets(t *testing.T, d *sql.DB) {
 		}
 	}
 	// datasets returns userID's datasets (live ones, or also deleted ones), oldest first.
-	datasets := func(userID string, includeDeleted bool) []db.Dataset {
+	datasets := func(userID string, includeDeleted bool) []relational.Dataset {
 		t.Helper()
-		list, err := db.ListDatasets(ctx, d, userID, includeDeleted)
+		list, err := relational.ListDatasets(ctx, d, userID, includeDeleted)
 		must(err)
 		return list
 	}
 	// dataset returns userID's live dataset called name.
-	dataset := func(userID, name string) db.Dataset {
+	dataset := func(userID, name string) relational.Dataset {
 		t.Helper()
 		for _, ds := range datasets(userID, false) {
 			if ds.Name == name {
@@ -66,11 +66,11 @@ func testDatasets(t *testing.T, d *sql.DB) {
 			}
 		}
 		t.Fatalf("%s has no live dataset %q", userID, name)
-		return db.Dataset{}
+		return relational.Dataset{}
 	}
-	counts := func(dsID int64) db.Counts {
+	counts := func(dsID int64) relational.Counts {
 		t.Helper()
-		c, err := db.DatasetCounts(ctx, d, dsID)
+		c, err := relational.DatasetCounts(ctx, d, dsID)
 		must(err)
 		return c
 	}
@@ -133,7 +133,7 @@ func testDatasets(t *testing.T, d *sql.DB) {
 	want(do("POST", "/v1/gb/remember", `{"user_id":"u1","text":"x"}`), 200)                 // default: main
 	alice := 0
 	for _, ds := range datasets("u1", false) {
-		ents, err := db.ListEntities(ctx, d, ds.ID)
+		ents, err := relational.ListEntities(ctx, d, ds.ID)
 		must(err)
 		for _, e := range ents {
 			if e.Name == "Alice" {
@@ -144,7 +144,7 @@ func testDatasets(t *testing.T, d *sql.DB) {
 	if alice != 3 {
 		t.Errorf("Alice rows = %d, want 3 (one per dataset)", alice)
 	}
-	if n, err := db.CountCrossDatasetEdges(ctx, d); err != nil || n != 0 {
+	if n, err := relational.CountCrossDatasetEdges(ctx, d); err != nil || n != 0 {
 		t.Errorf("%d edges cross datasets (err %v)", n, err)
 	}
 	if n := counts(dataset("u1", "main").ID).Edges; n != 1 {

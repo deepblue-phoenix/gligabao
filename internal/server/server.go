@@ -18,7 +18,7 @@ import (
 	"github.com/ivan/gligabao/internal/ai"
 	"github.com/ivan/gligabao/internal/api"
 	"github.com/ivan/gligabao/internal/config"
-	"github.com/ivan/gligabao/internal/db"
+	"github.com/ivan/gligabao/internal/db/relational"
 	"github.com/ivan/gligabao/internal/memory"
 	"github.com/ivan/gligabao/internal/vectordb"
 )
@@ -111,7 +111,7 @@ func Run(ctx context.Context, opts Options) error {
 	if opts.DBBackend == config.DBBackendPostgres {
 		dbTarget = opts.PostgresDSN
 	}
-	database, err := db.Open(opts.DBBackend, dbTarget)
+	database, err := relational.Open(opts.DBBackend, dbTarget)
 	if err != nil {
 		return err
 	}

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/ivan/gligabao/internal/ai"
-	"github.com/ivan/gligabao/internal/db/dbtest"
+	"github.com/ivan/gligabao/internal/db/relational/dbtest"
 	"github.com/ivan/gligabao/internal/memory"
 )
 

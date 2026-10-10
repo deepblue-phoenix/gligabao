@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/ivan/gligabao/internal/ai"
-	"github.com/ivan/gligabao/internal/db"
-	"github.com/ivan/gligabao/internal/db/dbtest"
+	"github.com/ivan/gligabao/internal/db/relational"
+	"github.com/ivan/gligabao/internal/db/relational/dbtest"
 )
 
 type fakeLLM struct{ out string }
@@ -35,11 +35,11 @@ func testRemember(t *testing.T, d *sql.DB) {
 			t.Fatalf("status %d: %s", rec.Code, rec.Body)
 		}
 	}
-	dsID, err := db.DatasetID(context.Background(), d, "u1", db.DefaultDataset)
+	dsID, err := relational.DatasetID(context.Background(), d, "u1", relational.DefaultDataset)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := db.DatasetCounts(context.Background(), d, dsID)
+	c, err := relational.DatasetCounts(context.Background(), d, dsID)
 	if err != nil {
 		t.Fatal(err)
 	}

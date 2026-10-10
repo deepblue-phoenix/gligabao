@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/ivan/gligabao/internal/ai"
-	"github.com/ivan/gligabao/internal/db"
-	"github.com/ivan/gligabao/internal/db/dbtest"
+	"github.com/ivan/gligabao/internal/db/relational"
+	"github.com/ivan/gligabao/internal/db/relational/dbtest"
 )
 
 func TestLLMCallsRecorded(t *testing.T) { dbtest.Run(t, testLLMCallsRecorded) }
@@ -30,12 +30,12 @@ func testLLMCallsRecorded(t *testing.T, d *sql.DB) {
 			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
 		}
 	}
-	got, err := db.LLMCallStats(context.Background(), d)
+	got, err := relational.LLMCallStats(context.Background(), d)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// remember makes 1 LLM call when there is nothing stored to compare against, recall makes 1.
-	want := db.LLMCallStat{Calls: 1, InputTokens: 10, OutputTokens: 5, CostUSD: 0.01}
+	want := relational.LLMCallStat{Calls: 1, InputTokens: 10, OutputTokens: 5, CostUSD: 0.01}
 	if len(got) != 2 || got["remember"] != want || got["recall"] != want {
 		t.Fatalf("got %v", got)
 	}

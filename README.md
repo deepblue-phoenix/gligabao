@@ -77,7 +77,7 @@ db_backend = "postgres"
 postgres_dsn = "postgres://user:password@localhost:5432/gligabao?sslmode=disable"   # or the POSTGRES_DSN env var
 ```
 
-The schema is created on startup. SQLite takes its file from `serve --db` (default `bin/gligabao.db`). All SQL lives in the backend packages (`internal/db/sqlite`, `internal/db/postgres`), each with its own schema and dialect; the rest of the code calls the routing functions in `internal/db`, which dispatch to the backend in use. Tests run against SQLite, and also against PostgreSQL when `POSTGRES_TEST_DSN` is set (each test gets a temporary schema):
+The schema is created on startup. SQLite takes its file from `serve --db` (default `bin/gligabao.db`). All SQL lives in the backend packages (`internal/db/relational/sqlite`, `internal/db/relational/postgres`), each with its own schema and dialect; the rest of the code calls the routing functions in `internal/db/relational`, which dispatch to the backend in use. Tests run against SQLite, and also against PostgreSQL when `POSTGRES_TEST_DSN` is set (each test gets a temporary schema):
 
 ```sh
 POSTGRES_TEST_DSN='postgres://user:pw@localhost:5432/gb?sslmode=disable' ./run_tests.sh

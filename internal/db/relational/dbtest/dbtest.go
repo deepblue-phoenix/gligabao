@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/ivan/gligabao/internal/config"
-	"github.com/ivan/gligabao/internal/db"
+	"github.com/ivan/gligabao/internal/db/relational"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -46,7 +46,7 @@ func Run(t *testing.T, fn func(t *testing.T, d *sql.DB)) {
 // OpenSQLite opens an empty SQLite database in a temporary directory.
 func OpenSQLite(t *testing.T) *sql.DB {
 	t.Helper()
-	d, err := db.Open(config.DBBackendSQLite, filepath.Join(t.TempDir(), "t.db"))
+	d, err := relational.Open(config.DBBackendSQLite, filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func OpenPostgres(t *testing.T, dsn string) *sql.DB {
 		admin.Close()
 		t.Fatal(err)
 	}
-	d, err := db.Open(config.DBBackendPostgres, withSearchPath(dsn, schema))
+	d, err := relational.Open(config.DBBackendPostgres, withSearchPath(dsn, schema))
 	if err != nil {
 		admin.Exec(`DROP SCHEMA ` + schema + ` CASCADE`)
 		admin.Close()

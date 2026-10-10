@@ -1,8 +1,8 @@
-// Package db opens the database selected in the config and routes every database operation to the backend
-// subpackage in use (sqlite or postgres). All SQL lives in the backends (internal/db/sqlite, internal/db/postgres);
+// Package relational opens the database selected in the config and routes every database operation to the backend
+// subpackage in use (sqlite or postgres). All SQL lives in the backends (internal/db/relational/sqlite, internal/db/relational/postgres);
 // other packages only call the functions here and never write SQL. Each backend owns its schema, its SQL dialect
 // and its timestamp storage format.
-package db
+package relational
 
 import (
 	"context"
@@ -11,9 +11,9 @@ import (
 	"sync/atomic"
 
 	"github.com/ivan/gligabao/internal/config"
-	"github.com/ivan/gligabao/internal/db/model"
-	"github.com/ivan/gligabao/internal/db/postgres"
-	"github.com/ivan/gligabao/internal/db/sqlite"
+	"github.com/ivan/gligabao/internal/db/relational/model"
+	"github.com/ivan/gligabao/internal/db/relational/postgres"
+	"github.com/ivan/gligabao/internal/db/relational/sqlite"
 )
 
 // Types shared with the backends (see package model).
