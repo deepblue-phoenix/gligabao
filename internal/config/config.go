@@ -22,11 +22,13 @@ const (
 	EnvOpenAIKey    = "OPENAI_API_KEY"
 	EnvPineconeKey  = "PINECONE_API_KEY"
 	EnvPineconeHost = "PINECONE_INDEX_HOST"
+	EnvPostgresDSN  = "POSTGRES_DSN"
 )
 
 // Database backends selectable with the db_backend setting.
 const (
-	DBBackendSQLite = "sqlite"
+	DBBackendSQLite   = "sqlite"
+	DBBackendPostgres = "postgres"
 )
 
 // Vector stores selectable with the vector_store setting.
@@ -47,13 +49,16 @@ const DefaultPort = 8080
 //
 // API keys are read from the ANTHROPIC_API_KEY, OPENAI_API_KEY and PINECONE_API_KEY
 // environment variables; a key set in the TOML file overrides the environment value.
-// The Pinecone index host likewise defaults to PINECONE_INDEX_HOST.
+// The Pinecone index host likewise defaults to PINECONE_INDEX_HOST, and the PostgreSQL connection string to POSTGRES_DSN.
 type Config struct {
 	Port         int    `toml:"port"`
 	AnthropicKey string `toml:"anthropic_api_key"`
 	OpenAIKey    string `toml:"openai_api_key"`
-	// DBBackend selects the main database: "sqlite" (default).
+	// DBBackend selects the main database: "sqlite" (default) or "postgres".
 	DBBackend string `toml:"db_backend"`
+	// PostgresDSN is the PostgreSQL connection string (a URL like postgres://user:pass@host:5432/dbname).
+	// Required when db_backend = "postgres". The sqlite database file is set with `serve --db`.
+	PostgresDSN string `toml:"postgres_dsn"`
 	// VectorStore selects where embeddings are stored: "sqlite" (default, sqlite-vec, a local file
 	// next to the main database) or "pinecone".
 	VectorStore string `toml:"vector_store"`
@@ -99,6 +104,7 @@ func Default() *Config {
 		DBBackend:           DBBackendSQLite,
 		VectorStore:         VectorStoreSQLite,
 		EmbeddingDimensions: DefaultEmbeddingDimensions,
+		PostgresDSN:         os.Getenv(EnvPostgresDSN),
 		AnthropicKey:        os.Getenv(EnvAnthropicKey),
 		OpenAIKey:           os.Getenv(EnvOpenAIKey),
 
@@ -119,8 +125,12 @@ func (c *Config) Validate() error {
 	}
 	switch c.DBBackend {
 	case DBBackendSQLite:
+	case DBBackendPostgres:
+		if strings.TrimSpace(c.PostgresDSN) == "" {
+			return fmt.Errorf("config: postgres_dsn (or %s) is required when db_backend is %q", EnvPostgresDSN, DBBackendPostgres)
+		}
 	default:
-		return fmt.Errorf("config: db_backend %q must be %q", c.DBBackend, DBBackendSQLite)
+		return fmt.Errorf("config: db_backend %q must be %q or %q", c.DBBackend, DBBackendSQLite, DBBackendPostgres)
 	}
 	switch c.VectorStore {
 	case VectorStoreSQLite, VectorStorePinecone:

@@ -171,3 +171,21 @@ func TestDBBackend(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadPostgres(t *testing.T) {
+	t.Setenv(EnvPostgresDSN, "")
+	if _, err := Load(write(t, "db_backend = \"postgres\"\n")); err == nil {
+		t.Fatal("postgres without a DSN should be rejected")
+	}
+	cfg, err := Load(write(t, "db_backend = \"postgres\"\npostgres_dsn = \"postgres://u:p@h/db\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DBBackend != DBBackendPostgres || cfg.PostgresDSN != "postgres://u:p@h/db" {
+		t.Fatalf("got %+v", cfg)
+	}
+	t.Setenv(EnvPostgresDSN, "postgres://env/db")
+	if cfg, err = Load(write(t, "db_backend = \"postgres\"\n")); err != nil || cfg.PostgresDSN != "postgres://env/db" {
+		t.Fatalf("env DSN: %+v, %v", cfg, err)
+	}
+}

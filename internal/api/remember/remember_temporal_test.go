@@ -2,16 +2,17 @@ package remember
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ivan/gligabao/internal/ai"
-	"github.com/ivan/gligabao/internal/config"
 	"github.com/ivan/gligabao/internal/db"
+	"github.com/ivan/gligabao/internal/db/dbtest"
 	"github.com/ivan/gligabao/internal/memory"
 )
 
@@ -28,12 +29,38 @@ func (f *recordingLLM) Complete(_ context.Context, r ai.Request) (*ai.Response, 
 	return &ai.Response{Text: out, StopReason: "end_turn"}, nil
 }
 
-func TestRememberBiTemporal(t *testing.T) {
-	d, err := db.Open(config.DBBackendSQLite, filepath.Join(t.TempDir(), "t.db"))
+// edges returns the stored edges of user u1's default dataset by ID, and edge returns the one with the given ID.
+func edges(t *testing.T, d *sql.DB) []db.Edge {
+	t.Helper()
+	list, err := db.ListEdges(context.Background(), d, "u1", db.DefaultDataset)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer d.Close()
+	return list
+}
+
+func edge(t *testing.T, d *sql.DB, id int64) db.Edge {
+	t.Helper()
+	for _, e := range edges(t, d) {
+		if e.ID == id {
+			return e
+		}
+	}
+	t.Fatalf("no edge %d", id)
+	return db.Edge{}
+}
+
+// ts formats a stored time as RFC 3339 UTC, or "<nil>" if unset.
+func ts(t *time.Time) string {
+	if t == nil {
+		return "<nil>"
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
+func TestRememberBiTemporal(t *testing.T) { dbtest.Run(t, testRememberBiTemporal) }
+
+func testRememberBiTemporal(t *testing.T, d *sql.DB) {
 
 	ents := func(org, relation, validAt, invalidAt string) string {
 		return `{"entities":[{"name":"Alice","type":"person"},{"name":"` + org + `","type":"organization"}],
@@ -82,10 +109,8 @@ func TestRememberBiTemporal(t *testing.T) {
 	if len(r2.InvalidatedEdges) != 1 || r2.InvalidatedEdges[0] != 1 {
 		t.Fatalf("invalidated = %v", r2.InvalidatedEdges)
 	}
-	var invalid, expired *string
-	d.QueryRow(`SELECT invalid_at, expired_at FROM gb_edges WHERE id = 1`).Scan(&invalid, &expired)
-	if invalid == nil || *invalid != "2024-06-01T00:00:00Z" || expired == nil {
-		t.Errorf("edge 1 invalid_at=%v expired_at=%v", invalid, expired)
+	if e := edge(t, d, 1); ts(e.InvalidAt) != "2024-06-01T00:00:00Z" || e.ExpiredAt == nil {
+		t.Errorf("edge 1 invalid_at=%v expired_at=%v", ts(e.InvalidAt), ts(e.ExpiredAt))
 	}
 	if p := llm.reqs[2].Messages[0].Content; !strings.Contains(p, "[1] Alice works at Acme.") {
 		t.Errorf("resolve prompt:\n%s", p)
@@ -98,19 +123,14 @@ func TestRememberBiTemporal(t *testing.T) {
 	if len(llm.outs) != 0 {
 		t.Errorf("unused LLM outputs: %d", len(llm.outs))
 	}
-	var n int
-	d.QueryRow(`SELECT COUNT(*) FROM gb_edges`).Scan(&n)
-	if n != 2 {
+	if n := len(edges(t, d)); n != 2 {
 		t.Errorf("edges = %d, want 2", n)
 	}
 }
 
-func TestRememberSupersedesOlderFact(t *testing.T) {
-	d, err := db.Open(config.DBBackendSQLite, filepath.Join(t.TempDir(), "t.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer d.Close()
+func TestRememberSupersedesOlderFact(t *testing.T) { dbtest.Run(t, testRememberSupersedesOlderFact) }
+
+func testRememberSupersedesOlderFact(t *testing.T, d *sql.DB) {
 	fact := func(org, validAt string) string {
 		return `{"entities":[{"name":"Alice","type":"person"},{"name":"` + org + `","type":"organization"}],
 		"edges":[{"source":"Alice","target":"` + org + `","relation":"works_at","description":"Alice works at ` + org + `.","valid_at":` + validAt + `}]}`
@@ -132,31 +152,31 @@ func TestRememberSupersedesOlderFact(t *testing.T) {
 			t.Fatalf("status %d: %s", rec.Code, rec.Body)
 		}
 	}
-	type row struct{ valid, invalid, expired *string }
-	get := func(id int) (r row) {
-		d.QueryRow(`SELECT valid_at, invalid_at, expired_at FROM gb_edges WHERE id = ?`, id).Scan(&r.valid, &r.invalid, &r.expired)
-		return
-	}
-	acme, globex := get(1), get(2)
-	if *acme.valid != "2023-01-01T00:00:00Z" || acme.invalid == nil || *acme.invalid != "2024-03-01T00:00:00Z" || acme.expired == nil {
+	acme, globex := edge(t, d, 1), edge(t, d, 2)
+	if ts(acme.ValidAt) != "2023-01-01T00:00:00Z" || ts(acme.InvalidAt) != "2024-03-01T00:00:00Z" || acme.ExpiredAt == nil {
 		t.Errorf("acme: %+v", acme)
 	}
-	if *globex.valid != "2024-03-01T00:00:00Z" || globex.invalid != nil || globex.expired != nil {
+	if ts(globex.ValidAt) != "2024-03-01T00:00:00Z" || globex.InvalidAt != nil || globex.ExpiredAt != nil {
 		t.Errorf("globex: %+v", globex)
 	}
-	var valid string
-	d.QueryRow(`SELECT valid_at FROM gb_memories WHERE id = 2`).Scan(&valid)
-	if valid != "2024-03-01T00:00:00Z" {
-		t.Errorf("episode valid_at = %q", valid)
+	dsID, err := db.DatasetID(context.Background(), d, "u1", db.DefaultDataset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mems, err := db.ListMemories(context.Background(), d, dsID)
+	if err != nil || len(mems) != 2 {
+		t.Fatalf("memories: %v, %v", mems, err)
+	}
+	if got := mems[1].ValidAt.Format(time.RFC3339); got != "2024-03-01T00:00:00Z" {
+		t.Errorf("episode valid_at = %q", got)
 	}
 }
 
 func TestRememberOlderNewsIsSuperseded(t *testing.T) {
-	d, err := db.Open(config.DBBackendSQLite, filepath.Join(t.TempDir(), "t.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer d.Close()
+	dbtest.Run(t, testRememberOlderNewsIsSuperseded)
+}
+
+func testRememberOlderNewsIsSuperseded(t *testing.T, d *sql.DB) {
 	fact := func(org string) string {
 		return `{"entities":[{"name":"Alice","type":"person"},{"name":"` + org + `","type":"organization"}],
 		"edges":[{"source":"Alice","target":"` + org + `","relation":"works_at","description":"Alice works at ` + org + `."}]}`
@@ -189,10 +209,8 @@ func TestRememberOlderNewsIsSuperseded(t *testing.T) {
 	if e.InvalidAt == nil || e.InvalidAt.Format("2006-01-02") != "2024-01-01" || e.ExpiredAt == nil {
 		t.Errorf("new edge: %+v", e)
 	}
-	var invalid, expired *string
-	d.QueryRow(`SELECT invalid_at, expired_at FROM gb_edges WHERE id = 1`).Scan(&invalid, &expired)
-	if invalid != nil || expired != nil {
-		t.Errorf("stored edge must be untouched: invalid_at=%v expired_at=%v", invalid, expired)
+	if e := edge(t, d, 1); e.InvalidAt != nil || e.ExpiredAt != nil {
+		t.Errorf("stored edge must be untouched: invalid_at=%v expired_at=%v", ts(e.InvalidAt), ts(e.ExpiredAt))
 	}
 
 	r3 := post(`{"user_id":"u1","text":"c"}`)
@@ -202,9 +220,7 @@ func TestRememberOlderNewsIsSuperseded(t *testing.T) {
 	if len(llm.outs) != 0 {
 		t.Errorf("unused LLM outputs: %d", len(llm.outs))
 	}
-	var n int
-	d.QueryRow(`SELECT COUNT(*) FROM gb_edges`).Scan(&n)
-	if n != 2 {
+	if n := len(edges(t, d)); n != 2 {
 		t.Errorf("edges = %d, want 2", n)
 	}
 }

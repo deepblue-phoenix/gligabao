@@ -6,8 +6,10 @@ port = 8080
 # anthropic_api_key = ""
 # openai_api_key = ""
 
-# Main database backend: "sqlite" (default).
+# Main database backend: "sqlite" (default; the file is set with `serve --db`) or "postgres".
 db_backend = "sqlite"
+# PostgreSQL connection string, required when db_backend = "postgres" (also settable with POSTGRES_DSN).
+# postgres_dsn = "postgres://user:password@localhost:5432/gligabao?sslmode=disable"
 
 # Vector store for embeddings: "sqlite" (default; sqlite-vec, a local file next to the main database,
 # see `serve --vector-db`) or "pinecone".

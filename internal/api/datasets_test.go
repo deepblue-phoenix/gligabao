@@ -2,16 +2,16 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/ivan/gligabao/internal/ai"
-	"github.com/ivan/gligabao/internal/config"
 	"github.com/ivan/gligabao/internal/db"
+	"github.com/ivan/gligabao/internal/db/dbtest"
 )
 
 // echoLLM answers extraction requests with a fixed graph and recall requests with a fixed answer.
@@ -26,12 +26,10 @@ func (echoLLM) Complete(_ context.Context, r ai.Request) (*ai.Response, error) {
 	return &ai.Response{Text: out, StopReason: "end_turn"}, nil
 }
 
-func TestDatasets(t *testing.T) {
-	d, err := db.Open(config.DBBackendSQLite, filepath.Join(t.TempDir(), "t.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer d.Close()
+func TestDatasets(t *testing.T) { dbtest.Run(t, testDatasets) }
+
+func testDatasets(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
 	mux := http.NewServeMux()
 	Register(mux, d, echoLLM{})
 
@@ -46,12 +44,35 @@ func TestDatasets(t *testing.T) {
 			t.Fatalf("status %d, want %d: %s", rec.Code, code, rec.Body)
 		}
 	}
-	count := func(q string, args ...any) (n int) {
+	must := func(err error) {
 		t.Helper()
-		if err := d.QueryRow(q, args...).Scan(&n); err != nil {
+		if err != nil {
 			t.Fatal(err)
 		}
-		return
+	}
+	// datasets returns userID's datasets (live ones, or also deleted ones), oldest first.
+	datasets := func(userID string, includeDeleted bool) []db.Dataset {
+		t.Helper()
+		list, err := db.ListDatasets(ctx, d, userID, includeDeleted)
+		must(err)
+		return list
+	}
+	// dataset returns userID's live dataset called name.
+	dataset := func(userID, name string) db.Dataset {
+		t.Helper()
+		for _, ds := range datasets(userID, false) {
+			if ds.Name == name {
+				return ds
+			}
+		}
+		t.Fatalf("%s has no live dataset %q", userID, name)
+		return db.Dataset{}
+	}
+	counts := func(dsID int64) db.Counts {
+		t.Helper()
+		c, err := db.DatasetCounts(ctx, d, dsID)
+		must(err)
+		return c
 	}
 	names := func(path string) []string {
 		t.Helper()
@@ -110,14 +131,23 @@ func TestDatasets(t *testing.T) {
 	want(do("POST", "/v1/gb/remember", `{"user_id":"u1","text":"x","dataset":"ds1"}`), 200)
 	want(do("POST", "/v1/gb/remember", `{"user_id":"u1","text":"x","dataset":"ds2"}`), 200) // created on demand
 	want(do("POST", "/v1/gb/remember", `{"user_id":"u1","text":"x"}`), 200)                 // default: main
-	if n := count(`SELECT COUNT(*) FROM gb_entities WHERE name = 'Alice'`); n != 3 {
-		t.Errorf("Alice rows = %d, want 3 (one per dataset)", n)
+	alice := 0
+	for _, ds := range datasets("u1", false) {
+		ents, err := db.ListEntities(ctx, d, ds.ID)
+		must(err)
+		for _, e := range ents {
+			if e.Name == "Alice" {
+				alice++
+			}
+		}
 	}
-	if n := count(`SELECT COUNT(*) FROM gb_edges e JOIN gb_entities s ON s.id = e.source_id JOIN gb_entities t ON t.id = e.target_id
-		WHERE e.dataset_id != s.dataset_id OR e.dataset_id != t.dataset_id`); n != 0 {
-		t.Errorf("%d edges cross datasets", n)
+	if alice != 3 {
+		t.Errorf("Alice rows = %d, want 3 (one per dataset)", alice)
 	}
-	if n := count(`SELECT COUNT(*) FROM gb_edges e JOIN gb_datasets d ON d.id = e.dataset_id WHERE d.name = 'main'`); n != 1 {
+	if n, err := db.CountCrossDatasetEdges(ctx, d); err != nil || n != 0 {
+		t.Errorf("%d edges cross datasets (err %v)", n, err)
+	}
+	if n := counts(dataset("u1", "main").ID).Edges; n != 1 {
 		t.Errorf("main edges = %d, want 1", n)
 	}
 	if got := names("/v1/gb/datasets?user_id=u1"); strings.Join(got, ",") != "ds1,ds2,main" {
@@ -133,10 +163,16 @@ func TestDatasets(t *testing.T) {
 	// Soft delete: the row stays with deleted = 1, but the dataset is gone for remember/recall/list.
 	want(do("DELETE", "/v1/gb/datasets/ds1?user_id=u1", ""), 204)
 	want(do("DELETE", "/v1/gb/datasets/ds1?user_id=u1", ""), 404)
-	if n := count(`SELECT COUNT(*) FROM gb_datasets WHERE name = 'ds1' AND deleted = 1 AND deleted_at IS NOT NULL`); n != 1 {
-		t.Errorf("soft-deleted rows = %d", n)
+	softDeleted := 0
+	for _, x := range datasets("u1", true) {
+		if x.Name == "ds1" && x.Deleted && x.DeletedAt != nil {
+			softDeleted++
+		}
 	}
-	if n := count(`SELECT COUNT(*) FROM gb_entities WHERE dataset_id = ?`, ds.ID); n != 2 {
+	if softDeleted != 1 {
+		t.Errorf("soft-deleted rows = %d", softDeleted)
+	}
+	if n := counts(ds.ID).Entities; n != 2 {
 		t.Errorf("deleted dataset's entities = %d, want kept (2)", n)
 	}
 	want(do("POST", "/v1/gb/recall", `{"user_id":"u1","query":"Alice?","dataset":"ds1"}`), 404)
@@ -149,7 +185,7 @@ func TestDatasets(t *testing.T) {
 
 	// The name can be reused: a new dataset with a new id and an empty graph.
 	want(do("POST", "/v1/gb/datasets", `{"user_id":"u1","name":"ds1"}`), 201)
-	if n := count(`SELECT COUNT(*) FROM gb_entities e JOIN gb_datasets d ON d.id = e.dataset_id WHERE d.name = 'ds1' AND d.deleted = 0`); n != 0 {
+	if n := counts(dataset("u1", "ds1").ID).Entities; n != 0 {
 		t.Errorf("recreated dataset has %d entities", n)
 	}
 
@@ -161,10 +197,22 @@ func TestDatasets(t *testing.T) {
 	want(do("DELETE", "/v1/gb/datasets/ds2?user_id=u2", ""), 404)
 	want(do("POST", "/v1/gb/datasets", `{"user_id":"u2","name":"ds2"}`), 201)
 	want(do("POST", "/v1/gb/remember", `{"user_id":"u2","text":"x","dataset":"ds2"}`), 200)
-	if n := count(`SELECT COUNT(*) FROM gb_datasets WHERE name = 'ds2' AND deleted = 0`); n != 2 {
-		t.Errorf("live ds2 datasets = %d, want 2 (one per user)", n)
+	live := 0
+	for _, user := range []string{"u1", "u2"} {
+		for _, x := range datasets(user, false) {
+			if x.Name == "ds2" {
+				live++
+			}
+		}
 	}
-	if n := count(`SELECT COUNT(*) FROM gb_entities e JOIN gb_datasets d ON d.id = e.dataset_id WHERE d.user_id = 'u2'`); n != 2 {
-		t.Errorf("u2 entities = %d, want 2", n)
+	if live != 2 {
+		t.Errorf("live ds2 datasets = %d, want 2 (one per user)", live)
+	}
+	u2Entities := 0
+	for _, ds := range datasets("u2", false) {
+		u2Entities += counts(ds.ID).Entities
+	}
+	if u2Entities != 2 {
+		t.Errorf("u2 entities = %d, want 2", u2Entities)
 	}
 }

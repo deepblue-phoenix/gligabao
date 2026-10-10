@@ -23,6 +23,7 @@ var serveCmd = &cobra.Command{
 			Addr:                cfg.Addr(),
 			DBBackend:           cfg.DBBackend,
 			DBPath:              serveDBPath,
+			PostgresDSN:         cfg.PostgresDSN,
 			AnthropicKey:        cfg.AnthropicKey,
 			VectorStore:         cfg.VectorStore,
 			VectorDBPath:        serveVectorDBPath,

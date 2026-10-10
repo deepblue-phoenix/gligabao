@@ -2,15 +2,15 @@ package remember
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/ivan/gligabao/internal/ai"
-	"github.com/ivan/gligabao/internal/config"
 	"github.com/ivan/gligabao/internal/db"
+	"github.com/ivan/gligabao/internal/db/dbtest"
 )
 
 type fakeLLM struct{ out string }
@@ -19,12 +19,9 @@ func (f fakeLLM) Complete(context.Context, ai.Request) (*ai.Response, error) {
 	return &ai.Response{Text: f.out, StopReason: "end_turn"}, nil
 }
 
-func TestRemember(t *testing.T) {
-	d, err := db.Open(config.DBBackendSQLite, filepath.Join(t.TempDir(), "t.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer d.Close()
+func TestRemember(t *testing.T) { dbtest.Run(t, testRemember) }
+
+func testRemember(t *testing.T, d *sql.DB) {
 
 	llm := fakeLLM{"```json\n" + `{"entities":[{"name":"Alice","type":"Person","description":"engineer"},{"name":"Acme","type":"organization"}],
 	"edges":[{"source":"Alice","target":"Acme","relation":"Works At"},{"source":"Alice","target":"Paris","relation":"lives in"}]}` + "\n```"}
@@ -38,18 +35,22 @@ func TestRemember(t *testing.T) {
 			t.Fatalf("status %d: %s", rec.Code, rec.Body)
 		}
 	}
-	count := func(table string) (n int) {
-		d.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&n)
-		return
+	dsID, err := db.DatasetID(context.Background(), d, "u1", db.DefaultDataset)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if n := count("gb_entities"); n != 3 {
-		t.Errorf("entities = %d, want 3", n)
+	c, err := db.DatasetCounts(context.Background(), d, dsID)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if n := count("gb_edges"); n != 2 {
-		t.Errorf("edges = %d, want 2", n)
+	if c.Entities != 3 {
+		t.Errorf("entities = %d, want 3", c.Entities)
 	}
-	if n := count("gb_memories"); n != 2 {
-		t.Errorf("memories = %d, want 2", n)
+	if c.Edges != 2 {
+		t.Errorf("edges = %d, want 2", c.Edges)
+	}
+	if c.Memories != 2 {
+		t.Errorf("memories = %d, want 2", c.Memories)
 	}
 
 	rec := httptest.NewRecorder()

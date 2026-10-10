@@ -31,10 +31,12 @@ const shutdownTimeout = 5 * time.Second
 type Options struct {
 	// Addr is the listen address, e.g. "127.0.0.1:8080".
 	Addr string
-	// DBBackend is the main database type: config.DBBackendSQLite (default if empty).
+	// DBBackend is the main database type: config.DBBackendSQLite (default if empty) or config.DBBackendPostgres.
 	DBBackend string
 	// DBPath is the SQLite database file path (sqlite backend).
 	DBPath string
+	// PostgresDSN is the PostgreSQL connection string (postgres backend).
+	PostgresDSN string
 	// AnthropicKey is the Anthropic API key. If empty, LLM endpoints return 503.
 	AnthropicKey string
 	// VectorStore is the vector store type: config.VectorStoreSQLite (default if empty) or config.VectorStorePinecone.
@@ -105,7 +107,11 @@ func NewVectorStore(opts Options) (vectordb.Store, error) {
 // Run opens the database, starts the server and blocks until ctx is
 // cancelled or SIGINT/SIGTERM is received, then shuts down gracefully.
 func Run(ctx context.Context, opts Options) error {
-	database, err := db.Open(opts.DBBackend, opts.DBPath)
+	dbTarget := opts.DBPath
+	if opts.DBBackend == config.DBBackendPostgres {
+		dbTarget = opts.PostgresDSN
+	}
+	database, err := db.Open(opts.DBBackend, dbTarget)
 	if err != nil {
 		return err
 	}
@@ -135,7 +141,11 @@ func Run(ctx context.Context, opts Options) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Printf("listening on %s (db: %s)", opts.Addr, opts.DBPath)
+		if opts.DBBackend == config.DBBackendPostgres {
+			log.Printf("listening on %s (db: postgres)", opts.Addr) // the DSN may hold a password
+		} else {
+			log.Printf("listening on %s (db: %s)", opts.Addr, opts.DBPath)
+		}
 		errCh <- srv.ListenAndServe()
 	}()
 

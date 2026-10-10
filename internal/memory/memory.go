@@ -1,4 +1,4 @@
-// Package memory turns free text into a bi-temporal knowledge graph (modelled on Graphiti) with an LLM and stores it in SQLite.
+// Package memory turns free text into a bi-temporal knowledge graph (modelled on Graphiti) with an LLM and stores it in the configured database (see internal/db).
 //
 // Every input is an episode (a row in gb_memories) with an event time (ValidAt: when the text was written or
 // observed) and a system time (CreatedAt: when it was ingested). The facts extracted from it are edges between
@@ -22,25 +22,11 @@ import (
 //---------------------------------------------------------------------------------------------
 
 // Entity is a thing mentioned in the text (person, place, project, concept, ...).
-type Entity struct {
-	Name        string `json:"name"`
-	Type        string `json:"type"`
-	Description string `json:"description,omitempty"`
-}
+type Entity = db.Entity
 
 // Edge is a fact relating two entities (referenced by name), with its bi-temporal validity.
 // Description is the fact as a sentence, e.g. "Alice works at Acme."
-type Edge struct {
-	ID          int64      `json:"id,omitempty"`
-	Source      string     `json:"source"`
-	Target      string     `json:"target"`
-	Relation    string     `json:"relation"`
-	Description string     `json:"description,omitempty"`
-	ValidAt     *time.Time `json:"valid_at,omitempty"`   // when the fact became true
-	InvalidAt   *time.Time `json:"invalid_at,omitempty"` // when it stopped being true; nil while it is still true
-	CreatedAt   *time.Time `json:"created_at,omitempty"` // when we learned about it
-	ExpiredAt   *time.Time `json:"expired_at,omitempty"` // when we learned it was superseded
-}
+type Edge = db.Edge
 
 // Extraction is the structured result of processing a block of text.
 type Extraction struct {
@@ -177,7 +163,7 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, text str
 // written according to plan (see EdgePlan); now is the system time stamped on them. Edges naming an unlisted
 // entity create it with type "other".
 func Store(ctx context.Context, d *sql.DB, userID, dataset, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan) (*Result, error) {
-	tx, err := d.BeginTx(ctx, nil)
+	tx, err := db.Begin(ctx, d)
 	if err != nil {
 		return nil, err
 	}
@@ -191,17 +177,12 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, text string, ref, no
 	if err != nil {
 		return nil, err
 	}
-	dsID, err := ensureDatasetID(ctx, tx, userID, dataset)
+	dsID, err := tx.EnsureDataset(ctx, userID, dataset)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := tx.ExecContext(ctx, `INSERT INTO gb_memories (dataset_id, text, valid_at, created_at) VALUES (?, ?, ?, ?)`,
-		dsID, text, db.FormatTime(ref), db.FormatTime(now))
-	if err != nil {
-		return nil, fmt.Errorf("insert memory: %w", err)
-	}
-	memID, err := res.LastInsertId()
+	memID, err := tx.InsertMemory(ctx, dsID, text, ref, now)
 	if err != nil {
 		return nil, err
 	}
@@ -211,20 +192,7 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, text string, ref, no
 	ids := map[string]int64{} // normalized name -> entity id (first listed type wins for edge lookup)
 	seenEnt := map[string]bool{}
 
-	upsertEntity := func(e Entity) (int64, error) {
-		var id int64
-		err := tx.QueryRowContext(ctx, `
-			INSERT INTO gb_entities (dataset_id, name, name_key, type, description) VALUES (?, ?, ?, ?, ?)
-			ON CONFLICT (dataset_id, name_key, type) DO UPDATE SET
-				description = CASE WHEN excluded.description != '' THEN excluded.description ELSE gb_entities.description END,
-				updated_at  = `+db.SQLNow+`
-			RETURNING id`,
-			dsID, e.Name, key(e.Name), e.Type, e.Description).Scan(&id)
-		if err != nil {
-			return 0, fmt.Errorf("upsert entity %q: %w", e.Name, err)
-		}
-		return id, nil
-	}
+	upsertEntity := func(e Entity) (int64, error) { return tx.UpsertEntity(ctx, dsID, e, key(e.Name)) }
 
 	for _, e := range ex.Entities {
 		e.Name = strings.TrimSpace(e.Name)
@@ -251,9 +219,8 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, text string, ref, no
 		if id, ok := ids[key(name)]; ok {
 			return id, nil
 		}
-		var id int64
-		err := tx.QueryRowContext(ctx, `SELECT id FROM gb_entities WHERE dataset_id = ? AND name_key = ? ORDER BY id LIMIT 1`, dsID, key(name)).Scan(&id)
-		if errors.Is(err, sql.ErrNoRows) {
+		id, err := tx.FindEntityID(ctx, dsID, key(name))
+		if errors.Is(err, db.ErrNotFound) {
 			if id, err = upsertEntity(Entity{Name: name, Type: "other"}); err == nil {
 				out.Entities = append(out.Entities, Entity{Name: name, Type: "other"})
 			}

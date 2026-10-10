@@ -12,7 +12,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"embed"
 	"encoding/json"
 	"flag"
@@ -189,41 +188,27 @@ func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string
 			return "", nil, fmt.Errorf("remember #%d: %w", i+1, err)
 		}
 	}
-	rows, err := database.Query(`
-		SELECT e.id, s.name, t.name, e.relation, e.valid_at, e.invalid_at, e.expired_at
-		FROM gb_edges e JOIN gb_entities s ON s.id = e.source_id JOIN gb_entities t ON t.id = e.target_id
-		JOIN gb_datasets ds ON ds.id = e.dataset_id
-		WHERE ds.user_id = ? AND ds.name = ? AND ds.deleted = 0 ORDER BY e.id`, evalUser, evalDataset)
+	edges, err := db.ListEdges(context.Background(), database, evalUser, evalDataset)
 	if err != nil {
 		return "", nil, err
 	}
-	type edge struct {
-		id                       int64
-		source, target, relation string
-		validAt                  string
-		invalidAt, expiredAt     sql.NullString
-	}
-	var edges []edge
-	for rows.Next() {
-		var e edge
-		if err := rows.Scan(&e.id, &e.source, &e.target, &e.relation, &e.validAt, &e.invalidAt, &e.expiredAt); err != nil {
-			rows.Close()
-			return "", nil, err
+	tstr := func(t *time.Time) string {
+		if t == nil {
+			return ""
 		}
-		edges = append(edges, e)
+		return db.FormatTime(*t)
 	}
-	rows.Close()
 	if verbose {
 		fmt.Println("  stored edges:")
 		for _, e := range edges {
 			fmt.Printf("    [%d] %s --%s--> %s valid_at=%s invalid_at=%q expired_at=%q\n",
-				e.id, e.source, e.relation, e.target, e.validAt, e.invalidAt.String, e.expiredAt.String)
+				e.ID, e.Source, e.Relation, e.Target, tstr(e.ValidAt), tstr(e.InvalidAt), tstr(e.ExpiredAt))
 		}
 	}
 	for _, want := range c.ExpectEdges {
-		var found *edge
+		var found *db.Edge
 		for i, e := range edges {
-			if strings.EqualFold(e.source, want.Source) && strings.EqualFold(e.target, want.Target) {
+			if strings.EqualFold(e.Source, want.Source) && strings.EqualFold(e.Target, want.Target) {
 				found = &edges[i]
 				break
 			}
@@ -233,16 +218,16 @@ func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string
 		case found == nil:
 			problems = append(problems, desc+": no edge stored")
 		default:
-			if want.ValidAt != "" && found.validAt != want.ValidAt {
-				problems = append(problems, fmt.Sprintf("%s: valid_at = %s, want %s", desc, found.validAt, want.ValidAt))
+			if want.ValidAt != "" && tstr(found.ValidAt) != want.ValidAt {
+				problems = append(problems, fmt.Sprintf("%s: valid_at = %s, want %s", desc, tstr(found.ValidAt), want.ValidAt))
 			}
-			if want.InvalidAt != "" && found.invalidAt.String != want.InvalidAt {
-				problems = append(problems, fmt.Sprintf("%s: invalid_at = %q, want %s", desc, found.invalidAt.String, want.InvalidAt))
+			if want.InvalidAt != "" && tstr(found.InvalidAt) != want.InvalidAt {
+				problems = append(problems, fmt.Sprintf("%s: invalid_at = %q, want %s", desc, tstr(found.InvalidAt), want.InvalidAt))
 			}
-			if want.Ended != found.invalidAt.Valid {
-				problems = append(problems, fmt.Sprintf("%s: ended = %v, want %v", desc, found.invalidAt.Valid, want.Ended))
+			if want.Ended != (found.InvalidAt != nil) {
+				problems = append(problems, fmt.Sprintf("%s: ended = %v, want %v", desc, found.InvalidAt != nil, want.Ended))
 			}
-			if want.Ended && !found.expiredAt.Valid {
+			if want.Ended && found.ExpiredAt == nil {
 				problems = append(problems, desc+": ended but expired_at is not set")
 			}
 		}

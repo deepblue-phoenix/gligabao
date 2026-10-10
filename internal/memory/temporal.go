@@ -147,21 +147,6 @@ func span(valid, invalid *time.Time) string {
 
 //---------------------------------------------------------------------------------------------
 
-const edgeColumns = `e.id, s.name, t.name, e.relation, e.description, e.valid_at, e.invalid_at, e.created_at, e.expired_at`
-const edgeFrom = ` FROM gb_edges e JOIN gb_entities s ON s.id = e.source_id JOIN gb_entities t ON t.id = e.target_id`
-
-type scanner interface{ Scan(dest ...any) error }
-
-func scanEdge(r scanner) (Edge, error) {
-	var e Edge
-	var valid, invalid, created, expired sql.NullString
-	if err := r.Scan(&e.ID, &e.Source, &e.Target, &e.Relation, &e.Description, &valid, &invalid, &created, &expired); err != nil {
-		return e, err
-	}
-	e.ValidAt, e.InvalidAt, e.CreatedAt, e.ExpiredAt = db.ParseTime(valid.String), db.ParseTime(invalid.String), db.ParseTime(created.String), db.ParseTime(expired.String)
-	return e, nil
-}
-
 // loadCandidates returns live (not expired) edges of the user's dataset touching at least one entity named in edges,
 // newest first. A dataset that does not exist yet has none.
 func loadCandidates(ctx context.Context, d *sql.DB, userID, dataset string, edges []Edge) ([]Edge, error) {
@@ -172,7 +157,7 @@ func loadCandidates(ctx context.Context, d *sql.DB, userID, dataset string, edge
 	if err != nil {
 		return nil, err
 	}
-	var keys []any
+	var keys []string
 	seen := map[string]bool{}
 	for _, e := range edges {
 		for _, n := range []string{e.Source, e.Target} {
@@ -182,37 +167,7 @@ func loadCandidates(ctx context.Context, d *sql.DB, userID, dataset string, edge
 			}
 		}
 	}
-	if len(keys) == 0 {
-		return nil, nil
-	}
-	ph := qmarks(len(keys))
-	args := append(append(append([]any{dsID}, keys...), keys...), maxCandidates)
-	rows, err := d.QueryContext(ctx, `SELECT `+edgeColumns+edgeFrom+`
-		WHERE e.dataset_id = ? AND e.expired_at IS NULL AND (s.name_key IN (`+ph+`) OR t.name_key IN (`+ph+`))
-		ORDER BY e.id DESC LIMIT ?`, args...)
-	if err != nil {
-		return nil, fmt.Errorf("load edge candidates: %w", err)
-	}
-	defer rows.Close()
-	var out []Edge
-	for rows.Next() {
-		e, err := scanEdge(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, e)
-	}
-	return out, rows.Err()
-}
-
-// loadEdge reads one edge with its endpoint names.
-// It is looked up inside the dataset only; an edge of another dataset is sql.ErrNoRows.
-func loadEdge(ctx context.Context, tx *sql.Tx, dsID, id int64) (*Edge, error) {
-	e, err := scanEdge(tx.QueryRowContext(ctx, `SELECT `+edgeColumns+edgeFrom+` WHERE e.id = ? AND e.dataset_id = ?`, id, dsID))
-	if err != nil {
-		return nil, fmt.Errorf("load edge %d: %w", id, err)
-	}
-	return &e, nil
+	return db.LoadCandidateEdges(ctx, d, dsID, keys, maxCandidates)
 }
 
 //---------------------------------------------------------------------------------------------
@@ -220,12 +175,11 @@ func loadEdge(ctx context.Context, tx *sql.Tx, dsID, id int64) (*Edge, error) {
 // storeEdges writes edges inside tx according to plan and returns the resulting edges (new ones, or the
 // existing ones they duplicate) plus the IDs of edges that were invalidated. entityID maps an entity name to
 // its ID, creating the entity if needed.
-func storeEdges(ctx context.Context, tx *sql.Tx, dsID, memID int64, ref, now time.Time, edges []Edge, plan *EdgePlan,
+func storeEdges(ctx context.Context, tx db.Tx, dsID, memID int64, ref, now time.Time, edges []Edge, plan *EdgePlan,
 	entityID func(name string) (int64, error)) ([]Edge, []int64, error) {
 	if plan == nil {
 		plan = &EdgePlan{}
 	}
-	nowS := db.FormatTime(now)
 	ids := make([]int64, len(edges)) // stored ID for each new edge
 	batch := map[string]int64{}      // repeats inside this memory
 	var order []int64
@@ -234,9 +188,8 @@ func storeEdges(ctx context.Context, tx *sql.Tx, dsID, memID int64, ref, now tim
 	for i, e := range edges {
 		if existing, ok := plan.Duplicates[i]; ok {
 			// Same fact seen again: keep the stored edge, just record its end if the text says it ended.
-			if _, err := tx.ExecContext(ctx, `UPDATE gb_edges SET invalid_at = COALESCE(invalid_at, ?) WHERE id = ? AND dataset_id = ?`,
-				db.FormatTimePtr(e.InvalidAt), existing, dsID); err != nil {
-				return nil, nil, fmt.Errorf("merge duplicate edge: %w", err)
+			if err := tx.MergeDuplicateEdge(ctx, dsID, existing, e.InvalidAt); err != nil {
+				return nil, nil, err
 			}
 			ids[i] = existing
 			if !inOrder[existing] {
@@ -262,14 +215,8 @@ func storeEdges(ctx context.Context, tx *sql.Tx, dsID, memID int64, ref, now tim
 		if e.ValidAt != nil {
 			validAt = e.ValidAt.UTC()
 		}
-		res, err := tx.ExecContext(ctx, `
-			INSERT INTO gb_edges (dataset_id, source_id, target_id, relation, description, valid_at, invalid_at, created_at, memory_id)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			dsID, src, dst, e.Relation, e.Description, db.FormatTime(validAt), db.FormatTimePtr(e.InvalidAt), nowS, memID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("insert edge: %w", err)
-		}
-		id, err := res.LastInsertId()
+		id, err := tx.InsertEdge(ctx, db.NewEdge{DatasetID: dsID, SourceID: src, TargetID: dst, Relation: e.Relation,
+			Description: e.Description, ValidAt: validAt, InvalidAt: e.InvalidAt, CreatedAt: now, MemoryID: memID})
 		if err != nil {
 			return nil, nil, err
 		}
@@ -284,7 +231,7 @@ func storeEdges(ctx context.Context, tx *sql.Tx, dsID, memID int64, ref, now tim
 		if c.New < 0 || c.New >= len(edges) {
 			continue
 		}
-		inv, err := contradict(ctx, tx, dsID, ids[c.New], c.Existing, ref, nowS)
+		inv, err := contradict(ctx, tx, dsID, ids[c.New], c.Existing, ref, now)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -293,7 +240,7 @@ func storeEdges(ctx context.Context, tx *sql.Tx, dsID, memID int64, ref, now tim
 
 	out := make([]Edge, 0, len(order))
 	for _, id := range order {
-		e, err := loadEdge(ctx, tx, dsID, id)
+		e, err := tx.GetEdge(ctx, dsID, id)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -305,16 +252,16 @@ func storeEdges(ctx context.Context, tx *sql.Tx, dsID, memID int64, ref, now tim
 // contradict applies Graphiti's invalidation rule to a new edge and an existing one that conflicts with it.
 // The fact that started earlier is the one that ended: it gets invalid_at = start of the later fact and
 // expired_at = now. Facts whose periods don't overlap are left alone. It returns the IDs invalidated.
-func contradict(ctx context.Context, tx *sql.Tx, dsID, newID, oldID int64, ref time.Time, nowS string) ([]int64, error) {
+func contradict(ctx context.Context, tx db.Tx, dsID, newID, oldID int64, ref, now time.Time) ([]int64, error) {
 	if newID == oldID {
 		return nil, nil
 	}
-	nw, err := loadEdge(ctx, tx, dsID, newID)
+	nw, err := tx.GetEdge(ctx, dsID, newID)
 	if err != nil {
 		return nil, err
 	}
-	old, err := loadEdge(ctx, tx, dsID, oldID)
-	if errors.Is(err, sql.ErrNoRows) { // deleted (or from another dataset) since the candidates were read
+	old, err := tx.GetEdge(ctx, dsID, oldID)
+	if errors.Is(err, db.ErrNotFound) { // deleted (or from another dataset) since the candidates were read
 		return nil, nil
 	}
 	if err != nil {
@@ -341,9 +288,8 @@ func contradict(ctx context.Context, tx *sql.Tx, dsID, newID, oldID int64, ref t
 		// The new information is about an earlier time than what we already know: the new fact is the one superseded.
 		loser, endsAt = newID, *old.ValidAt
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE gb_edges SET invalid_at = ?, expired_at = ? WHERE id = ?`,
-		db.FormatTime(endsAt), nowS, loser); err != nil {
-		return nil, fmt.Errorf("invalidate edge: %w", err)
+	if err := tx.InvalidateEdge(ctx, loser, endsAt, now); err != nil {
+		return nil, err
 	}
 	return []int64{loser}, nil
 }
@@ -357,8 +303,4 @@ func jsonObject(s string) (string, error) {
 		return "", errors.New("memory: no JSON object in LLM output")
 	}
 	return s[start : end+1], nil
-}
-
-func qmarks(n int) string {
-	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
 }

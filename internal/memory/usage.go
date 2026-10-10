@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/ivan/gligabao/internal/ai"
+	"github.com/ivan/gligabao/internal/db"
 )
 
 // Call types stored in gb_llm_calls.type.
@@ -42,8 +43,5 @@ func (r *recordingLLM) Complete(ctx context.Context, req ai.Request) (*ai.Respon
 
 // RecordCall stores one LLM/embedding API call.
 func RecordCall(ctx context.Context, d *sql.DB, kind, provider, model string, inputTokens, outputTokens int, costUSD float64) error {
-	_, err := d.ExecContext(ctx, `
-		INSERT INTO gb_llm_calls (type, provider, model, input_tokens, output_tokens, cost_usd) VALUES (?, ?, ?, ?, ?, ?)`,
-		kind, provider, model, inputTokens, outputTokens, costUSD)
-	return err
+	return db.RecordLLMCall(ctx, d, kind, provider, model, inputTokens, outputTokens, costUSD)
 }

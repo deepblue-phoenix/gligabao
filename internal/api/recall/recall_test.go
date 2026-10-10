@@ -2,17 +2,16 @@ package recall
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/ivan/gligabao/internal/ai"
-	"github.com/ivan/gligabao/internal/config"
-	"github.com/ivan/gligabao/internal/db"
+	"github.com/ivan/gligabao/internal/db/dbtest"
 	"github.com/ivan/gligabao/internal/memory"
 )
 
@@ -29,12 +28,9 @@ func (f *recordingLLM) Complete(_ context.Context, r ai.Request) (*ai.Response, 
 	return &ai.Response{Text: out, StopReason: "end_turn"}, nil
 }
 
-func TestRecall(t *testing.T) {
-	d, err := db.Open(config.DBBackendSQLite, filepath.Join(t.TempDir(), "t.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer d.Close()
+func TestRecall(t *testing.T) { dbtest.Run(t, testRecall) }
+
+func testRecall(t *testing.T, d *sql.DB) {
 
 	ex := `{"entities":[{"name":"Alice","type":"person","description":"engineer"},{"name":"Acme","type":"organization"},{"name":"Bob","type":"person"},{"name":"Rome","type":"place"}],
 	"edges":[{"source":"Alice","target":"Acme","relation":"works_at"},{"source":"Bob","target":"Rome","relation":"lives_in"}]}`
@@ -91,12 +87,9 @@ func TestRecall(t *testing.T) {
 	}
 }
 
-func TestRecallEmptyGraph(t *testing.T) {
-	d, err := db.Open(config.DBBackendSQLite, filepath.Join(t.TempDir(), "t.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer d.Close()
+func TestRecallEmptyGraph(t *testing.T) { dbtest.Run(t, testRecallEmptyGraph) }
+
+func testRecallEmptyGraph(t *testing.T, d *sql.DB) {
 	if _, err := memory.CreateDataset(context.Background(), d, "u1", "main", "", nil); err != nil {
 		t.Fatal(err)
 	}

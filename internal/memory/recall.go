@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/ivan/gligabao/internal/ai"
@@ -25,29 +24,10 @@ const (
 //---------------------------------------------------------------------------------------------
 
 // EvidenceEntity is a graph entity cited by an answer.
-type EvidenceEntity struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	Type        string `json:"type"`
-	Description string `json:"description,omitempty"`
-}
+type EvidenceEntity = db.EvidenceEntity
 
-// EvidenceEdge is a graph edge cited by an answer.
-type EvidenceEdge struct {
-	ID          int64  `json:"id"`
-	SourceID    int64  `json:"source_id"`
-	TargetID    int64  `json:"target_id"`
-	Source      string `json:"source"`
-	Target      string `json:"target"`
-	Relation    string `json:"relation"`
-	Description string `json:"description,omitempty"`
-	MemoryID    *int64 `json:"memory_id,omitempty"`
-	// Bi-temporal validity of the fact (see temporal.go).
-	ValidAt   *time.Time `json:"valid_at,omitempty"`
-	InvalidAt *time.Time `json:"invalid_at,omitempty"`
-	CreatedAt *time.Time `json:"created_at,omitempty"`
-	ExpiredAt *time.Time `json:"expired_at,omitempty"`
-}
+// EvidenceEdge is a graph edge cited by an answer, with the bi-temporal validity of the fact (see temporal.go).
+type EvidenceEdge = db.EvidenceEdge
 
 // Evidence lists the entities and edges the answer is based on.
 type Evidence struct {
@@ -217,24 +197,12 @@ func sortedKeys[V any](m map[int64]V) []int64 {
 func retrieve(ctx context.Context, d *sql.DB, dsID int64, query string) (*graphContext, error) {
 	g := &graphContext{entities: map[int64]EvidenceEntity{}, edges: map[int64]EvidenceEdge{}}
 
-	seeds, err := matchEntities(ctx, d, dsID, query)
+	seeds, err := db.MatchEntities(ctx, d, dsID, key(query), tokenize(query), maxSeedEntities)
 	if err != nil {
 		return nil, err
 	}
 	if len(seeds) == 0 {
-		rows, err := d.QueryContext(ctx, `SELECT id FROM gb_entities WHERE dataset_id = ? ORDER BY updated_at DESC, id DESC LIMIT ?`, dsID, maxFallbackSeed)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var id int64
-			if err := rows.Scan(&id); err != nil {
-				return nil, err
-			}
-			seeds = append(seeds, id)
-		}
-		if err := rows.Err(); err != nil {
+		if seeds, err = db.FallbackSeedEntities(ctx, d, dsID, maxFallbackSeed); err != nil {
 			return nil, err
 		}
 	}
@@ -242,106 +210,31 @@ func retrieve(ctx context.Context, d *sql.DB, dsID int64, query string) (*graphC
 		return g, nil
 	}
 
-	ph, args := placeholders(seeds)
-	args = append(args, args...)
-	args = append([]any{dsID}, args...)
-	args = append(args, maxContextEdges)
-	rows, err := d.QueryContext(ctx, `
-		SELECT e.id, e.source_id, e.target_id, s.name, t.name, e.relation, e.description, e.memory_id,
-			e.valid_at, e.invalid_at, e.created_at, e.expired_at
-		FROM gb_edges e
-		JOIN gb_entities s ON s.id = e.source_id
-		JOIN gb_entities t ON t.id = e.target_id
-		WHERE e.dataset_id = ? AND (e.source_id IN (`+ph+`) OR e.target_id IN (`+ph+`))
-		ORDER BY e.id DESC LIMIT ?`, args...)
+	edges, err := db.EdgesAround(ctx, d, dsID, seeds, maxContextEdges)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	ids := map[int64]bool{}
 	for _, id := range seeds {
 		ids[id] = true
 	}
-	for rows.Next() {
-		var e EvidenceEdge
-		var mem sql.NullInt64
-		var valid, invalid, created, expired sql.NullString
-		if err := rows.Scan(&e.ID, &e.SourceID, &e.TargetID, &e.Source, &e.Target, &e.Relation, &e.Description, &mem,
-			&valid, &invalid, &created, &expired); err != nil {
-			return nil, err
-		}
-		e.ValidAt, e.InvalidAt, e.CreatedAt, e.ExpiredAt = db.ParseTime(valid.String), db.ParseTime(invalid.String), db.ParseTime(created.String), db.ParseTime(expired.String)
-		if mem.Valid {
-			e.MemoryID = &mem.Int64
-		}
+	for _, e := range edges {
 		g.edges[e.ID] = e
 		ids[e.SourceID], ids[e.TargetID] = true, true
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 
 	all := make([]int64, 0, len(ids))
 	for id := range ids {
 		all = append(all, id)
 	}
-	ph, args = placeholders(all)
-	erows, err := d.QueryContext(ctx, `SELECT id, name, type, description FROM gb_entities WHERE id IN (`+ph+`)`, args...)
+	ents, err := db.EntitiesByID(ctx, d, all)
 	if err != nil {
 		return nil, err
 	}
-	defer erows.Close()
-	for erows.Next() {
-		var e EvidenceEntity
-		if err := erows.Scan(&e.ID, &e.Name, &e.Type, &e.Description); err != nil {
-			return nil, err
-		}
+	for _, e := range ents {
 		g.entities[e.ID] = e
 	}
-	return g, erows.Err()
-}
-
-// matchEntities returns the IDs of the best entities whose name or description mention query terms.
-func matchEntities(ctx context.Context, d *sql.DB, dsID int64, query string) ([]int64, error) {
-	toks := tokenize(query)
-	qkey := key(query)
-
-	// Score: 5 if the full entity name appears in the query; per token, 3 for a name hit and 1 for a description hit.
-	conds := []string{"instr(?, name_key) > 0"}
-	whereArgs := []any{qkey}
-	score := []string{"(CASE WHEN instr(?, name_key) > 0 THEN 5 ELSE 0 END)"}
-	scoreArgs := []any{qkey}
-	for _, t := range toks {
-		conds = append(conds, "instr(name_key, ?) > 0", "instr(lower(description), ?) > 0")
-		whereArgs = append(whereArgs, t, t)
-		score = append(score, "(CASE WHEN instr(name_key, ?) > 0 THEN 3 ELSE 0 END)", "(CASE WHEN instr(lower(description), ?) > 0 THEN 1 ELSE 0 END)")
-		scoreArgs = append(scoreArgs, t, t)
-	}
-	// Placeholder order in the SQL text: WHERE, ORDER BY, LIMIT.
-	args := append(append(append([]any{dsID}, whereArgs...), scoreArgs...), maxSeedEntities)
-	rows, err := d.QueryContext(ctx, `SELECT id FROM gb_entities WHERE dataset_id = ? AND (`+strings.Join(conds, " OR ")+`)
-		ORDER BY (`+strings.Join(score, " + ")+`) DESC, updated_at DESC, id DESC LIMIT ?`, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var ids []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
-}
-
-func placeholders(ids []int64) (string, []any) {
-	args := make([]any, len(ids))
-	for i, id := range ids {
-		args[i] = id
-	}
-	return strings.TrimSuffix(strings.Repeat("?,", len(ids)), ","), args
+	return g, nil
 }
 
 var stopwords = map[string]bool{}
