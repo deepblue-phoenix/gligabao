@@ -1,0 +1,89 @@
+// Package gligabao is the public API for embedding gligabao in other Go programs.
+//
+// Everything else lives under internal/ and cannot be imported from outside this module.
+// The standalone CLI (package cmd) uses this package too, so both behave identically.
+//
+//	cfg, err := gligabao.LoadConfig("gligabao.toml") // or gligabao.DefaultConfig()
+//	...
+//	err = gligabao.Serve(ctx, cfg, gligabao.ServeOptions{DBPath: "data/gligabao.db"})
+package gligabao
+
+import (
+	"context"
+
+	"github.com/ivan/gligabao/internal/ai"
+	"github.com/ivan/gligabao/internal/config"
+	"github.com/ivan/gligabao/internal/server"
+)
+
+// Config is the gligabao configuration (the contents of gligabao.toml).
+type Config = config.Config
+
+// Price is a per-model price override, USD per 1M tokens.
+type Price = config.Price
+
+// DefaultDBPath is the SQLite database file used when ServeOptions.DBPath is empty.
+const DefaultDBPath = "bin/gligabao.db"
+
+// ServeOptions holds the settings that are not part of the Config file.
+type ServeOptions struct {
+	// DBPath is the SQLite database file (sqlite backend). Default: DefaultDBPath.
+	DBPath string
+	// VectorDBPath is the sqlite-vec database file. Default: next to DBPath.
+	VectorDBPath string
+}
+
+//---------------------------------------------------------------------------------------------
+
+// DefaultConfig returns the default configuration; API keys are taken from the environment.
+func DefaultConfig() *Config { return config.Default() }
+
+// DefaultConfigPath returns the default config location (next to the running binary).
+func DefaultConfigPath() string { return config.DefaultPath() }
+
+// LoadConfig parses and validates the TOML config file at path.
+// A missing file yields an error wrapping fs.ErrNotExist.
+func LoadConfig(path string) (*Config, error) { return config.Load(path) }
+
+//---------------------------------------------------------------------------------------------
+
+// Serve starts the HTTP server and blocks until ctx is cancelled or SIGINT/SIGTERM is
+// received, then shuts down gracefully. A nil cfg means DefaultConfig().
+func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
+	if cfg == nil {
+		cfg = config.Default()
+	}
+	if opts.DBPath == "" {
+		opts.DBPath = DefaultDBPath
+	}
+	return server.Run(ctx, server.Options{
+		Addr:                cfg.Addr(),
+		DBBackend:           cfg.DBBackend,
+		DBPath:              opts.DBPath,
+		PostgresDSN:         cfg.PostgresDSN,
+		AnthropicKey:        cfg.AnthropicKey,
+		VectorStore:         cfg.VectorStore,
+		VectorDBPath:        opts.VectorDBPath,
+		EmbeddingDimensions: cfg.EmbeddingDimensions,
+		PineconeKey:         cfg.PineconeKey,
+		PineconeIndexHost:   cfg.PineconeIndexHost,
+		Prices:              aiPrices(cfg),
+	})
+}
+
+// aiPrices converts the configured prices; omitted cache prices default to the input price.
+func aiPrices(c *Config) map[string]ai.Price {
+	out := make(map[string]ai.Price, len(c.Prices))
+	for model, p := range c.Prices {
+		ap := ai.Price{Input: p.Input, Output: p.Output, CacheWrite: p.Input, CacheRead: p.Input,
+			LongThreshold: p.LongThreshold, LongInput: p.LongInput, LongOutput: p.LongOutput}
+		if p.CacheWrite != nil {
+			ap.CacheWrite = *p.CacheWrite
+		}
+		if p.CacheRead != nil {
+			ap.CacheRead = *p.CacheRead
+		}
+		out[model] = ap
+	}
+	return out
+}

@@ -99,6 +99,24 @@ export ANTHROPIC_API_KEY=...        # required for remember/recall
 
 Configuration is read from `bin/gligabao.toml` (override with `--config`). It sets `port`, and optionally `anthropic_api_key`, `openai_api_key` and `pinecone_api_key`, which default to the `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` and `PINECONE_API_KEY` environment variables. `db_backend` picks the main database, `"sqlite"` (default) or `"postgres"` with `postgres_dsn` (see [Database](#database)). `vector_store` picks where embeddings are stored (`internal/db/vector`, one namespace per dataset): `"sqlite"` (default; [sqlite-vec](https://github.com/asg017/sqlite-vec) in a separate file next to the main DB, override with `serve --vector-db <path>`) or `"pinecone"`. `embedding_dimensions` (default 1536) is the vector size; the sqlite store fixes it when its file is created and a Pinecone index must match it. For Pinecone, set `pinecone_index_host` (default: `PINECONE_INDEX_HOST`), the data-plane host of the index. A `[prices."<model-prefix>"]` table (`input`, `output`, optional `cache_write`/`cache_read`, USD per 1M tokens) overrides or extends the built-in model prices used to compute the cost of each LLM call; the longest matching prefix wins. Each call's tokens and cost are stored in the `gb_llm_calls` table.
 
+## Embedding in Go programs
+
+gligabao is also a Go library. All server code is under `internal/` (not importable); the public API is the `pkg/gligabao` package, which the CLI itself uses, so embedded and standalone behave the same.
+
+```go
+import "github.com/ivan/gligabao/pkg/gligabao"
+
+cfg, err := gligabao.LoadConfig("gligabao.toml") // or gligabao.DefaultConfig()
+if err != nil { /* ... */ }
+err = gligabao.Serve(ctx, cfg, gligabao.ServeOptions{DBPath: "data/gligabao.db"})
+```
+
+- `Config` / `Price`: the configuration described above; `DefaultConfig()` takes API keys from the environment, and fields can be set in code instead of a TOML file.
+- `ServeOptions`: `DBPath` (default `bin/gligabao.db`) and `VectorDBPath` (default: next to `DBPath`), the equivalents of `serve --db` / `--vector-db`.
+- `Serve(ctx, cfg, opts)` blocks until `ctx` is cancelled or SIGINT/SIGTERM arrives, then shuts down gracefully. A nil `cfg` means `DefaultConfig()`.
+
+The sqlite-vec store needs CGO, so the embedding program must be built with it too (see [Building](#building)). A working example with a cobra `serve` command is in the sibling `gligabao_int` project, which uses `replace github.com/ivan/gligabao => ../gligabao` during local development.
+
 ## License
 
 See [LICENSE](LICENSE).
