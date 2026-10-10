@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
@@ -22,7 +23,7 @@ func TestOntologies(t *testing.T) { dbtest.Run(t, testOntologies) }
 func testOntologies(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	mux := http.NewServeMux()
-	Register(mux, d, nil, nil) // loading an ontology needs no LLM
+	Register(mux, &db.DB{Relational: d, Graph: d}, nil) // loading an ontology needs no LLM
 
 	doc, err := os.ReadFile("../../ontology/market.owl")
 	if err != nil {
@@ -133,7 +134,7 @@ const smallOntology = `<?xml version="1.0"?>
 func testOntologyUpdate(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	mux := http.NewServeMux()
-	Register(mux, d, nil, nil)
+	Register(mux, &db.DB{Relational: d, Graph: d}, nil)
 
 	doc, err := os.ReadFile("../../ontology/market.owl")
 	if err != nil {
@@ -245,7 +246,7 @@ func TestOntologyMerge(t *testing.T) { dbtest.Run(t, testOntologyMerge) }
 func testOntologyMerge(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	mux := http.NewServeMux()
-	Register(mux, d, nil, nil)
+	Register(mux, &db.DB{Relational: d, Graph: d}, nil)
 
 	doc, err := os.ReadFile("../../ontology/market.owl")
 	if err != nil {

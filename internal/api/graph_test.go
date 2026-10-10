@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 )
 
@@ -15,7 +16,7 @@ func TestGraphExport(t *testing.T) { dbtest.Run(t, testGraphExport) }
 
 func testGraphExport(t *testing.T, d *sql.DB) {
 	mux := http.NewServeMux()
-	Register(mux, d, echoLLM{}, nil)
+	Register(mux, &db.DB{Relational: d, Graph: d}, echoLLM{})
 	do := func(method, path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest(method, path, strings.NewReader(body)))

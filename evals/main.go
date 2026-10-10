@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/config"
+	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
@@ -162,16 +162,13 @@ func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string
 	}
 	defer os.RemoveAll(dir)
 
-	database, err := relational.Open(config.DBBackendSQLite, filepath.Join(dir, "eval.db"))
+	database, err := db.Open(db.Config{SQLitePath: filepath.Join(dir, "eval.db")})
 	if err != nil {
 		return "", nil, err
 	}
 	defer database.Close()
-	if err := graph.Open(config.DBBackendSQLite, database); err != nil {
-		return "", nil, err
-	}
 
-	srv := httptest.NewServer(server.NewHandler(database, llm, nil))
+	srv := httptest.NewServer(server.NewHandler(database, llm))
 	defer srv.Close()
 
 	// Start from a clean dataset: soft-delete any previous "test" (404 just means there was none); remember
@@ -192,7 +189,7 @@ func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string
 			return "", nil, fmt.Errorf("remember #%d: %w", i+1, err)
 		}
 	}
-	edges, err := graph.ListEdges(context.Background(), database, evalUser, evalDataset)
+	edges, err := graph.ListEdges(context.Background(), database.Graph, evalUser, evalDataset)
 	if err != nil {
 		return "", nil, err
 	}

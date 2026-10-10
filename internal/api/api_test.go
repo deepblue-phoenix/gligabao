@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 )
@@ -21,7 +22,7 @@ func testLLMCallsRecorded(t *testing.T, d *sql.DB) {
 		`{"answer":"Alice.","entities":[1],"edges":[]}`,
 	}}
 	mux := http.NewServeMux()
-	Register(mux, d, llm, nil)
+	Register(mux, &db.DB{Relational: d, Graph: d}, llm)
 	for _, c := range [][2]string{{"/v1/gb/remember", `{"user_id":"u1","text":"Alice"}`}, {"/v1/gb/recall", `{"user_id":"u1","query":"Alice?"}`}} { // order matters: recall needs the graph
 		path, body := c[0], c[1]
 		rec := httptest.NewRecorder()

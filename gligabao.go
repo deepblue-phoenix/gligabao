@@ -13,6 +13,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/config"
+	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/server"
 )
 
@@ -23,7 +24,7 @@ type Config = config.Config
 type Price = config.Price
 
 // DefaultDBPath is the SQLite database file used when ServeOptions.DBPath is empty.
-const DefaultDBPath = "bin/gligabao.db"
+const DefaultDBPath = db.DefaultSQLitePath
 
 // ServeOptions holds the settings that are not part of the Config file.
 type ServeOptions struct {
@@ -57,17 +58,10 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 		opts.DBPath = DefaultDBPath
 	}
 	return server.Run(ctx, server.Options{
-		Addr:                cfg.Addr(),
-		DBBackend:           cfg.DBBackend,
-		DBPath:              opts.DBPath,
-		PostgresDSN:         cfg.PostgresDSN,
-		AnthropicKey:        cfg.AnthropicKey,
-		VectorStore:         cfg.VectorStore,
-		VectorDir:           opts.VectorDir,
-		EmbeddingDimensions: cfg.EmbeddingDimensions,
-		PineconeKey:         cfg.PineconeKey,
-		PineconeIndexHost:   cfg.PineconeIndexHost,
-		Prices:              aiPrices(cfg),
+		Addr:         cfg.Addr(),
+		DB:           db.ConfigFrom(cfg, opts.DBPath, opts.VectorDir),
+		AnthropicKey: cfg.AnthropicKey,
+		Prices:       aiPrices(cfg),
 	})
 }
 

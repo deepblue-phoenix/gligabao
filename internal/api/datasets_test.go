@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
@@ -43,7 +44,7 @@ func testDatasets(t *testing.T, d *sql.DB) {
 	mux := http.NewServeMux()
 	vectors, err := vector.NewChromem(":memory:", 2)
 	must0(t, err)
-	Register(mux, d, echoLLM{}, vectors)
+	Register(mux, &db.DB{Relational: d, Graph: d, Vector: vectors}, echoLLM{})
 
 	do := func(method, path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
