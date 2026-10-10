@@ -6,6 +6,9 @@ port = 8080
 # anthropic_api_key = ""
 # openai_api_key = ""
 
+# Main database backend: "sqlite" (default).
+db_backend = "sqlite"
+
 # Vector store for embeddings: "sqlite" (default; sqlite-vec, a local file next to the main database,
 # see `serve --vector-db`) or "pinecone".
 vector_store = "sqlite"

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ivan/gligabao/internal/ai"
+	"github.com/ivan/gligabao/internal/config"
 	"github.com/ivan/gligabao/internal/db"
 )
 
@@ -19,7 +20,7 @@ func (f fakeLLM) Complete(context.Context, ai.Request) (*ai.Response, error) {
 }
 
 func TestRemember(t *testing.T) {
-	d, err := db.Open(filepath.Join(t.TempDir(), "t.db"))
+	d, err := db.Open(config.DBBackendSQLite, filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

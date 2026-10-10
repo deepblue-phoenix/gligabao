@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/ivan/gligabao/internal/ai"
+	"github.com/ivan/gligabao/internal/config"
 	"github.com/ivan/gligabao/internal/db"
 	"github.com/ivan/gligabao/internal/memory"
 	"github.com/ivan/gligabao/internal/server"
@@ -161,7 +162,7 @@ func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string
 	}
 	defer os.RemoveAll(dir)
 
-	database, err := db.Open(filepath.Join(dir, "eval.db"))
+	database, err := db.Open(config.DBBackendSQLite, filepath.Join(dir, "eval.db"))
 	if err != nil {
 		return "", nil, err
 	}

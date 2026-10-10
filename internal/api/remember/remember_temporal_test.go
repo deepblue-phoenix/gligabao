@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/ivan/gligabao/internal/ai"
+	"github.com/ivan/gligabao/internal/config"
 	"github.com/ivan/gligabao/internal/db"
 	"github.com/ivan/gligabao/internal/memory"
 )
@@ -28,7 +29,7 @@ func (f *recordingLLM) Complete(_ context.Context, r ai.Request) (*ai.Response, 
 }
 
 func TestRememberBiTemporal(t *testing.T) {
-	d, err := db.Open(filepath.Join(t.TempDir(), "t.db"))
+	d, err := db.Open(config.DBBackendSQLite, filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +106,7 @@ func TestRememberBiTemporal(t *testing.T) {
 }
 
 func TestRememberSupersedesOlderFact(t *testing.T) {
-	d, err := db.Open(filepath.Join(t.TempDir(), "t.db"))
+	d, err := db.Open(config.DBBackendSQLite, filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +152,7 @@ func TestRememberSupersedesOlderFact(t *testing.T) {
 }
 
 func TestRememberOlderNewsIsSuperseded(t *testing.T) {
-	d, err := db.Open(filepath.Join(t.TempDir(), "t.db"))
+	d, err := db.Open(config.DBBackendSQLite, filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

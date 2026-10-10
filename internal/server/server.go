@@ -31,7 +31,9 @@ const shutdownTimeout = 5 * time.Second
 type Options struct {
 	// Addr is the listen address, e.g. "127.0.0.1:8080".
 	Addr string
-	// DBPath is the SQLite database file path.
+	// DBBackend is the main database type: config.DBBackendSQLite (default if empty).
+	DBBackend string
+	// DBPath is the SQLite database file path (sqlite backend).
 	DBPath string
 	// AnthropicKey is the Anthropic API key. If empty, LLM endpoints return 503.
 	AnthropicKey string
@@ -103,7 +105,7 @@ func NewVectorStore(opts Options) (vectordb.Store, error) {
 // Run opens the database, starts the server and blocks until ctx is
 // cancelled or SIGINT/SIGTERM is received, then shuts down gracefully.
 func Run(ctx context.Context, opts Options) error {
-	database, err := db.Open(opts.DBPath)
+	database, err := db.Open(opts.DBBackend, opts.DBPath)
 	if err != nil {
 		return err
 	}

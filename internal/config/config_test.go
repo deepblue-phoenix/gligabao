@@ -150,3 +150,24 @@ func TestVectorStore(t *testing.T) {
 		}
 	}
 }
+
+func TestDBBackend(t *testing.T) {
+	cfg, err := Load(write(t, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DBBackend != DBBackendSQLite {
+		t.Fatalf("default: %q", cfg.DBBackend)
+	}
+	if _, err := Load(write(t, "db_backend = \"sqlite\"")); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range map[string]string{
+		"unknown backend": "db_backend = \"mysql\"",
+		"empty backend":   "db_backend = \"\"",
+	} {
+		if _, err := Load(write(t, content)); err == nil {
+			t.Errorf("%s: expected error", name)
+		}
+	}
+}

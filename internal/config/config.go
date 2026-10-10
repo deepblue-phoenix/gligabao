@@ -24,6 +24,11 @@ const (
 	EnvPineconeHost = "PINECONE_INDEX_HOST"
 )
 
+// Database backends selectable with the db_backend setting.
+const (
+	DBBackendSQLite = "sqlite"
+)
+
 // Vector stores selectable with the vector_store setting.
 const (
 	VectorStoreSQLite   = "sqlite"
@@ -47,6 +52,8 @@ type Config struct {
 	Port         int    `toml:"port"`
 	AnthropicKey string `toml:"anthropic_api_key"`
 	OpenAIKey    string `toml:"openai_api_key"`
+	// DBBackend selects the main database: "sqlite" (default).
+	DBBackend string `toml:"db_backend"`
 	// VectorStore selects where embeddings are stored: "sqlite" (default, sqlite-vec, a local file
 	// next to the main database) or "pinecone".
 	VectorStore string `toml:"vector_store"`
@@ -89,6 +96,7 @@ func Default() *Config {
 	return &Config{
 		Port: DefaultPort,
 
+		DBBackend:           DBBackendSQLite,
 		VectorStore:         VectorStoreSQLite,
 		EmbeddingDimensions: DefaultEmbeddingDimensions,
 		AnthropicKey:        os.Getenv(EnvAnthropicKey),
@@ -108,6 +116,11 @@ func (c *Config) Addr() string {
 func (c *Config) Validate() error {
 	if c.Port < 1 || c.Port > 65535 {
 		return fmt.Errorf("config: port %d out of range (1-65535)", c.Port)
+	}
+	switch c.DBBackend {
+	case DBBackendSQLite:
+	default:
+		return fmt.Errorf("config: db_backend %q must be %q", c.DBBackend, DBBackendSQLite)
 	}
 	switch c.VectorStore {
 	case VectorStoreSQLite, VectorStorePinecone:

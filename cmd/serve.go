@@ -21,6 +21,7 @@ var serveCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return server.Run(cmd.Context(), server.Options{
 			Addr:                cfg.Addr(),
+			DBBackend:           cfg.DBBackend,
 			DBPath:              serveDBPath,
 			AnthropicKey:        cfg.AnthropicKey,
 			VectorStore:         cfg.VectorStore,
