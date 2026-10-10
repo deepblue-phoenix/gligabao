@@ -5,7 +5,8 @@
 // All memories go to the dataset "test", which is deleted at the start of each case so it is recreated fresh.
 // Besides the answer, the stored temporal facts (edges with valid_at / invalid_at) are checked in the database.
 //
-// Usage: go run ./evals [-v] [case-name ...]   (requires ANTHROPIC_API_KEY)
+// Usage: go run ./evals [-v] [-suites dir] [case-name ...]   (requires ANTHROPIC_API_KEY)
+// With -suites, suites are read from that directory instead of the embedded evals/suites (used by gligabao_int).
 // With -v, every LLM call's input and output is printed.
 package main
 
@@ -17,10 +18,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -69,15 +72,23 @@ type ExpectEdge struct {
 	Ended     bool   `json:"ended"`
 }
 
-func loadCases(only []string) ([]Case, error) {
-	entries, err := suitesFS.ReadDir("suites")
+func loadCases(only []string, suitesDir string) ([]Case, error) {
+	var fsys fs.FS = suitesFS
+	dir := "suites"
+	if suitesDir != "" {
+		fsys, dir = os.DirFS(suitesDir), "."
+	}
+	entries, err := fs.ReadDir(fsys, dir)
 	if err != nil {
 		return nil, err
 	}
 	var cases []Case
 	seen := map[string]bool{}
 	for _, e := range entries {
-		data, err := suitesFS.ReadFile("suites/" + e.Name())
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		data, err := fs.ReadFile(fsys, path.Join(dir, e.Name()))
 		if err != nil {
 			return nil, err
 		}
@@ -286,6 +297,7 @@ func main() {
 
 func mainErr() error {
 	verbose := flag.Bool("v", false, "print the input and output of every LLM call")
+	suitesDir := flag.String("suites", "", "read suites from this directory instead of the embedded ones")
 	flag.Parse()
 
 	key := os.Getenv("ANTHROPIC_API_KEY")
@@ -296,7 +308,7 @@ func mainErr() error {
 	if err != nil {
 		return err
 	}
-	cases, err := loadCases(flag.Args())
+	cases, err := loadCases(flag.Args(), *suitesDir)
 	if err != nil {
 		return err
 	}
