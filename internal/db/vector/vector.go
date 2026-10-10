@@ -1,6 +1,6 @@
 // Package vector stores and searches embeddings in a vector database.
 //
-// Store is the backend-neutral interface; Pinecone is the current implementation.
+// Store is the backend-neutral interface; Chromem (embedded, pure Go, the default) and Pinecone (hosted) are the implementations.
 package vector
 
 import "context"
@@ -24,7 +24,7 @@ type Match struct {
 type QueryOptions struct {
 	// TopK is the max number of matches to return (default 10).
 	TopK int
-	// Filter is an optional metadata filter in the backend's syntax
+	// Filter is an optional metadata filter in the backend's syntax (Chromem: equality only)
 	// (Pinecone: https://docs.pinecone.io/guides/search/filter-by-metadata).
 	Filter map[string]any
 	// IncludeValues also returns the stored embeddings.

@@ -40,10 +40,10 @@ type Options struct {
 	PostgresDSN string
 	// AnthropicKey is the Anthropic API key. If empty, LLM endpoints return 503.
 	AnthropicKey string
-	// VectorStore is the vector store type: config.VectorStoreSQLite (default if empty) or config.VectorStorePinecone.
+	// VectorStore is the vector store type: config.VectorStoreChromem (default if empty) or config.VectorStorePinecone.
 	VectorStore string
-	// VectorDBPath is the sqlite-vec database file (sqlite store only). Default: next to DBPath.
-	VectorDBPath string
+	// VectorDir is the chromem vector store directory (chromem store only). Default: next to DBPath.
+	VectorDir string
 	// EmbeddingDimensions is the embedding size (default config.DefaultEmbeddingDimensions).
 	EmbeddingDimensions int
 	// PineconeKey and PineconeIndexHost configure the Pinecone store.
@@ -55,9 +55,9 @@ type Options struct {
 
 //---------------------------------------------------------------------------------------------
 
-// NewHandler builds the HTTP handler for the given database and LLM.
-// llm may be nil, in which case endpoints requiring it return 503.
-func NewHandler(database *sql.DB, llm memory.LLM) http.Handler {
+// NewHandler builds the HTTP handler for the given database, LLM and vector store.
+// llm may be nil, in which case endpoints requiring it return 503. vectors may be nil.
+func NewHandler(database *sql.DB, llm memory.LLM, vectors vector.Store) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "gligabao is running")
@@ -69,7 +69,7 @@ func NewHandler(database *sql.DB, llm memory.LLM) http.Handler {
 		}
 		fmt.Fprintln(w, "ok")
 	})
-	api.Register(mux, database, llm)
+	api.Register(mux, database, llm, vectors)
 	return mux
 }
 
@@ -82,16 +82,16 @@ func NewVectorStore(opts Options) (vector.Store, error) {
 		dims = config.DefaultEmbeddingDimensions
 	}
 	switch opts.VectorStore {
-	case "", config.VectorStoreSQLite:
-		path := opts.VectorDBPath
-		if path == "" {
-			path = strings.TrimSuffix(opts.DBPath, filepath.Ext(opts.DBPath)) + ".vectors.db"
+	case "", config.VectorStoreChromem:
+		dir := opts.VectorDir
+		if dir == "" {
+			dir = strings.TrimSuffix(opts.DBPath, filepath.Ext(opts.DBPath)) + ".vectors"
 		}
-		s, err := vector.NewSQLite(path, dims)
+		s, err := vector.NewChromem(dir, dims)
 		if err != nil {
 			return nil, err
 		}
-		log.Printf("vector store: sqlite-vec (%s, %d dims)", path, dims)
+		log.Printf("vector store: chromem-go (%s, %d dims)", dir, dims)
 		return s, nil
 	case config.VectorStorePinecone:
 		p, err := vector.NewPinecone(opts.PineconeKey, opts.PineconeIndexHost)
@@ -128,8 +128,8 @@ func Run(ctx context.Context, opts Options) error {
 		llm = c
 	}
 
-	// The vector store is not used by the API handlers yet; it is opened here so that a bad
-	// configuration is reported at startup.
+	// One namespace per dataset (memory.VectorNamespace). Opening it here also reports a bad
+	// configuration at startup.
 	vectors, err := NewVectorStore(opts)
 	if err != nil {
 		return err
@@ -138,7 +138,7 @@ func Run(ctx context.Context, opts Options) error {
 		defer c.Close()
 	}
 
-	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(database, llm)}
+	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(database, llm, vectors)}
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

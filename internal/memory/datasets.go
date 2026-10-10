@@ -10,10 +10,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 )
 
 // DefaultDataset is used when a request names no dataset.
@@ -110,9 +113,21 @@ func ListDatasets(ctx context.Context, d *sql.DB, userID string, includeDeleted 
 	return relational.ListDatasets(ctx, d, userID, includeDeleted)
 }
 
-// DeleteDataset soft-deletes userID's live dataset called name (sets deleted = 1). It returns ErrDatasetNotFound
-// if there is none.
-func DeleteDataset(ctx context.Context, d *sql.DB, userID, name string) error {
+// VectorNamespace is the vector store namespace that holds the embeddings of a dataset. It is keyed by the dataset's
+// ID (not its name), so datasets never share vectors, and a name reused after a soft delete starts with an empty
+// namespace. In the chromem store a namespace is one collection.
+func VectorNamespace(datasetID int64) string {
+	return "dataset-" + strconv.FormatInt(datasetID, 10)
+}
+
+// DeleteDataset soft-deletes userID's live dataset called name (sets deleted = 1) and removes the dataset's vectors
+// from vectors, which may be nil. The relational rows are kept; the vectors are not, because a deleted dataset can
+// never be read again (its name gets a new dataset with a new ID) and they would only occupy memory/storage.
+// It returns ErrDatasetNotFound if there is no such dataset.
+//
+// A failure to remove the vectors does not fail the call (the dataset is deleted either way and the namespace is
+// unreachable); it is logged.
+func DeleteDataset(ctx context.Context, d *sql.DB, vectors vector.Store, userID, name string) error {
 	userID, err := ResolveUserID(userID)
 	if err != nil {
 		return err
@@ -121,11 +136,21 @@ func DeleteDataset(ctx context.Context, d *sql.DB, userID, name string) error {
 	if err != nil {
 		return err
 	}
-	if err := relational.DeleteDataset(ctx, d, userID, name); errors.Is(err, relational.ErrNotFound) {
-		return ErrDatasetNotFound
-	} else {
+	id, err := datasetID(ctx, d, userID, name)
+	if err != nil {
 		return err
 	}
+	if err := relational.DeleteDataset(ctx, d, userID, name); errors.Is(err, relational.ErrNotFound) {
+		return ErrDatasetNotFound
+	} else if err != nil {
+		return err
+	}
+	if vectors != nil {
+		if err := vectors.DeleteAll(ctx, VectorNamespace(id)); err != nil {
+			log.Printf("delete dataset %d: removing vectors: %v", id, err)
+		}
+	}
+	return nil
 }
 
 //---------------------------------------------------------------------------------------------

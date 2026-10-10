@@ -33,7 +33,7 @@ const (
 
 // Vector stores selectable with the vector_store setting.
 const (
-	VectorStoreSQLite   = "sqlite"
+	VectorStoreChromem  = "chromem"
 	VectorStorePinecone = "pinecone"
 )
 
@@ -59,11 +59,11 @@ type Config struct {
 	// PostgresDSN is the PostgreSQL connection string (a URL like postgres://user:pass@host:5432/dbname).
 	// Required when db_backend = "postgres". The sqlite database file is set with `serve --db`.
 	PostgresDSN string `toml:"postgres_dsn"`
-	// VectorStore selects where embeddings are stored: "sqlite" (default, sqlite-vec, a local file
+	// VectorStore selects where embeddings are stored: "chromem" (default; chromem-go, pure Go, a local directory
 	// next to the main database) or "pinecone".
 	VectorStore string `toml:"vector_store"`
-	// EmbeddingDimensions is the size of the stored embeddings. The sqlite store fixes it when its
-	// database is created; a Pinecone index must have been created with the same dimension.
+	// EmbeddingDimensions is the size of the stored embeddings. The chromem store fixes it when its
+	// directory is created; a Pinecone index must have been created with the same dimension.
 	EmbeddingDimensions int `toml:"embedding_dimensions"`
 	// PineconeKey and PineconeIndexHost configure the Pinecone vector DB used to store embeddings.
 	// The host is the index's data-plane host from the Pinecone console. Both empty = vector DB disabled.
@@ -107,7 +107,7 @@ func Default() *Config {
 		Port: DefaultPort,
 
 		DBBackend:           DBBackendSQLite,
-		VectorStore:         VectorStoreSQLite,
+		VectorStore:         VectorStoreChromem,
 		EmbeddingDimensions: DefaultEmbeddingDimensions,
 		PostgresDSN:         os.Getenv(EnvPostgresDSN),
 		AnthropicKey:        os.Getenv(EnvAnthropicKey),
@@ -138,9 +138,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("config: db_backend %q must be %q or %q", c.DBBackend, DBBackendSQLite, DBBackendPostgres)
 	}
 	switch c.VectorStore {
-	case VectorStoreSQLite, VectorStorePinecone:
+	case VectorStoreChromem, VectorStorePinecone:
 	default:
-		return fmt.Errorf("config: vector_store %q must be %q or %q", c.VectorStore, VectorStoreSQLite, VectorStorePinecone)
+		return fmt.Errorf("config: vector_store %q must be %q or %q", c.VectorStore, VectorStoreChromem, VectorStorePinecone)
 	}
 	if c.EmbeddingDimensions < 1 {
 		return fmt.Errorf("config: embedding_dimensions %d must be positive", c.EmbeddingDimensions)

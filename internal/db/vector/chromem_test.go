@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-func newTestSQLite(t *testing.T) *SQLite {
+func newTestChromem(t *testing.T) *Chromem {
 	t.Helper()
-	s, err := NewSQLite(filepath.Join(t.TempDir(), "v.db"), 3)
+	s, err := NewChromem(filepath.Join(t.TempDir(), "vectors"), 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,9 +24,9 @@ func ids(ms []Match) []string {
 	return out
 }
 
-func TestSQLiteUpsertQuery(t *testing.T) {
+func TestChromemUpsertQuery(t *testing.T) {
 	ctx := context.Background()
-	s := newTestSQLite(t)
+	s := newTestChromem(t)
 	err := s.Upsert(ctx, "main", []Vector{
 		{ID: "x", Values: []float32{1, 0, 0}, Metadata: map[string]any{"type": "person"}},
 		{ID: "y", Values: []float32{0, 1, 0}, Metadata: map[string]any{"type": "org"}},
@@ -69,9 +69,9 @@ func TestSQLiteUpsertQuery(t *testing.T) {
 	}
 }
 
-func TestSQLiteUpsertReplaces(t *testing.T) {
+func TestChromemUpsertReplaces(t *testing.T) {
 	ctx := context.Background()
-	s := newTestSQLite(t)
+	s := newTestChromem(t)
 	s.Upsert(ctx, "n", []Vector{{ID: "a", Values: []float32{1, 0, 0}, Metadata: map[string]any{"v": 1}}})
 	if err := s.Upsert(ctx, "n", []Vector{{ID: "a", Values: []float32{0, 1, 0}, Metadata: map[string]any{"v": 2}}}); err != nil {
 		t.Fatal(err)
@@ -82,9 +82,9 @@ func TestSQLiteUpsertReplaces(t *testing.T) {
 	}
 }
 
-func TestSQLiteDelete(t *testing.T) {
+func TestChromemDelete(t *testing.T) {
 	ctx := context.Background()
-	s := newTestSQLite(t)
+	s := newTestChromem(t)
 	s.Upsert(ctx, "n", []Vector{{ID: "a", Values: []float32{1, 0, 0}}, {ID: "b", Values: []float32{0, 1, 0}}})
 	s.Upsert(ctx, "m", []Vector{{ID: "a", Values: []float32{1, 0, 0}}})
 	if err := s.Delete(ctx, "n", []string{"a", "nope"}); err != nil {
@@ -105,9 +105,9 @@ func TestSQLiteDelete(t *testing.T) {
 	}
 }
 
-func TestSQLiteErrors(t *testing.T) {
+func TestChromemErrors(t *testing.T) {
 	ctx := context.Background()
-	s := newTestSQLite(t)
+	s := newTestChromem(t)
 	if err := s.Upsert(ctx, "n", []Vector{{ID: "a", Values: []float32{1}}}); err == nil {
 		t.Error("expected dimension error")
 	}
@@ -119,20 +119,20 @@ func TestSQLiteErrors(t *testing.T) {
 	}
 }
 
-func TestSQLitePersistsAndChecksDimensions(t *testing.T) {
+func TestChromemPersistsAndChecksDimensions(t *testing.T) {
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "v.db")
-	s, err := NewSQLite(path, 3)
+	path := filepath.Join(t.TempDir(), "vectors")
+	s, err := NewChromem(path, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
 	s.Upsert(ctx, "n", []Vector{{ID: "a", Values: []float32{1, 0, 0}}})
 	s.Close()
 
-	if _, err := NewSQLite(path, 4); err == nil {
+	if _, err := NewChromem(path, 4); err == nil {
 		t.Fatal("expected dimension mismatch error")
 	}
-	s, err = NewSQLite(path, 3)
+	s, err = NewChromem(path, 3)
 	if err != nil {
 		t.Fatal(err)
 	}

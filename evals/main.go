@@ -171,7 +171,7 @@ func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string
 		return "", nil, err
 	}
 
-	srv := httptest.NewServer(server.NewHandler(database, llm))
+	srv := httptest.NewServer(server.NewHandler(database, llm, nil))
 	defer srv.Close()
 
 	// Start from a clean dataset: soft-delete any previous "test" (404 just means there was none); remember

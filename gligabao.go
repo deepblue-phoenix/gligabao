@@ -29,8 +29,8 @@ const DefaultDBPath = "bin/gligabao.db"
 type ServeOptions struct {
 	// DBPath is the SQLite database file (sqlite backend). Default: DefaultDBPath.
 	DBPath string
-	// VectorDBPath is the sqlite-vec database file. Default: next to DBPath.
-	VectorDBPath string
+	// VectorDir is the directory of the chromem vector store. Default: next to DBPath.
+	VectorDir string
 }
 
 //---------------------------------------------------------------------------------------------
@@ -63,7 +63,7 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 		PostgresDSN:         cfg.PostgresDSN,
 		AnthropicKey:        cfg.AnthropicKey,
 		VectorStore:         cfg.VectorStore,
-		VectorDBPath:        opts.VectorDBPath,
+		VectorDir:           opts.VectorDir,
 		EmbeddingDimensions: cfg.EmbeddingDimensions,
 		PineconeKey:         cfg.PineconeKey,
 		PineconeIndexHost:   cfg.PineconeIndexHost,

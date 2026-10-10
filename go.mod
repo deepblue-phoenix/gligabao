@@ -4,9 +4,8 @@ go 1.26.0
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/asg017/sqlite-vec-go-bindings v0.1.6
 	github.com/jackc/pgx/v5 v5.7.5
-	github.com/mattn/go-sqlite3 v1.14.52
+	github.com/philippgille/chromem-go v0.7.0
 	github.com/spf13/cobra v1.10.2
 	modernc.org/sqlite v1.60.1
 )

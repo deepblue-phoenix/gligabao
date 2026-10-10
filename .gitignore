@@ -1,3 +1,2 @@
 bin/*
 !bin/gligabao.toml
-.cgo-include/

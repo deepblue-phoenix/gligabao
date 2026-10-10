@@ -1,15 +1,12 @@
 # syntax=docker/dockerfile:1
 
-# Debian (glibc) rather than alpine: sqlite-vec's C source doesn't compile against musl.
-# The golang image already ships gcc. The runtime image must have the same libc as the build one.
+# Pure-Go build (no CGO): the binary is static, so the build image and a minimal runtime image need no matching libc.
 FROM golang:1.26-bookworm AS build
-SHELL ["/bin/bash", "-c"]
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-# CGO build (sqlite-vec); cgo_env.sh enables CGO and adds the sqlite3.h include path.
-RUN source ./cgo_env.sh && go build -trimpath -ldflags="-s -w" -o /out/gligabao ./cmd/gligabao
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/gligabao ./cmd/gligabao
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
@@ -23,5 +20,6 @@ USER gligabao
 VOLUME /data
 EXPOSE 8080
 # Pass ANTHROPIC_API_KEY / OPENAI_API_KEY (and PINECONE_API_KEY if vector_store = "pinecone") as environment variables.
+# The SQLite database (/data/gligabao.db) and the chromem vector store (/data/gligabao.vectors/) both live in /data.
 ENTRYPOINT ["/app/gligabao"]
 CMD ["serve", "--db", "/data/gligabao.db"]

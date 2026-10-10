@@ -11,10 +11,10 @@ db_backend = "sqlite"
 # PostgreSQL connection string, required when db_backend = "postgres" (also settable with POSTGRES_DSN).
 # postgres_dsn = "postgres://user:password@localhost:5432/gligabao?sslmode=disable"
 
-# Vector store for embeddings: "sqlite" (default; sqlite-vec, a local file next to the main database,
-# see `serve --vector-db`) or "pinecone".
-vector_store = "sqlite"
-# Embedding size (text-embedding-3-small = 1536). Fixed when the sqlite vector database is created;
+# Vector store for embeddings: "chromem" (default; chromem-go, pure Go, a local directory next to the main
+# database, see `serve --vector-dir`) or "pinecone".
+vector_store = "chromem"
+# Embedding size (text-embedding-3-small = 1536). Fixed when the chromem vector store is created;
 # a Pinecone index must be created with the same dimension.
 embedding_dimensions = 1536
 

@@ -13,7 +13,16 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/memory"
 )
+
+func must0(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
 
 // echoLLM answers extraction requests with a fixed graph and recall requests with a fixed answer.
 type echoLLM struct{}
@@ -32,7 +41,9 @@ func TestDatasets(t *testing.T) { dbtest.Run(t, testDatasets) }
 func testDatasets(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	mux := http.NewServeMux()
-	Register(mux, d, echoLLM{})
+	vectors, err := vector.NewChromem(":memory:", 2)
+	must0(t, err)
+	Register(mux, d, echoLLM{}, vectors)
 
 	do := func(method, path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
@@ -161,9 +172,29 @@ func testDatasets(t *testing.T, d *sql.DB) {
 	want(do("POST", "/v1/gb/recall", `{"user_id":"u1","query":"Alice?","dataset":"ds1"}`), 200)
 	want(do("POST", "/v1/gb/recall", `{"user_id":"u1","query":"Alice?"}`), 200)
 
+	// Each dataset has its own vector namespace, keyed by dataset ID.
+	for _, name := range []string{"ds1", "ds2"} {
+		must(vectors.Upsert(ctx, memory.VectorNamespace(dataset("u1", name).ID), []vector.Vector{{ID: "v", Values: []float32{1, 0}}}))
+	}
+	vectorCount := func(dsID int64) int {
+		t.Helper()
+		got, err := vectors.Query(ctx, memory.VectorNamespace(dsID), []float32{1, 0}, vector.QueryOptions{})
+		must(err)
+		return len(got)
+	}
+	if vectorCount(ds.ID) != 1 || vectorCount(dataset("u1", "ds2").ID) != 1 || memory.VectorNamespace(ds.ID) == memory.VectorNamespace(dataset("u1", "ds2").ID) {
+		t.Fatal("datasets do not have separate vector namespaces")
+	}
+
 	// Soft delete: the row stays with deleted = 1, but the dataset is gone for remember/recall/list.
 	want(do("DELETE", "/v1/gb/datasets/ds1?user_id=u1", ""), 204)
 	want(do("DELETE", "/v1/gb/datasets/ds1?user_id=u1", ""), 404)
+	if n := vectorCount(ds.ID); n != 0 {
+		t.Errorf("deleted dataset still has %d vectors", n)
+	}
+	if n := vectorCount(dataset("u1", "ds2").ID); n != 1 {
+		t.Errorf("other dataset has %d vectors after delete, want 1", n)
+	}
 	softDeleted := 0
 	for _, x := range datasets("u1", true) {
 		if x.Name == "ds1" && x.Deleted && x.DeletedAt != nil {
@@ -188,6 +219,9 @@ func testDatasets(t *testing.T, d *sql.DB) {
 	want(do("POST", "/v1/gb/datasets", `{"user_id":"u1","name":"ds1"}`), 201)
 	if n := counts(dataset("u1", "ds1").ID).Entities; n != 0 {
 		t.Errorf("recreated dataset has %d entities", n)
+	}
+	if n := vectorCount(dataset("u1", "ds1").ID); n != 0 {
+		t.Errorf("recreated dataset has %d vectors", n)
 	}
 
 	// Datasets belong to a user: another user sees none of u1's, can reuse its names, and cannot delete or recall them.

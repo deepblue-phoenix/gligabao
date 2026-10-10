@@ -130,7 +130,7 @@ func TestVectorStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.VectorStore != VectorStoreSQLite || cfg.EmbeddingDimensions != DefaultEmbeddingDimensions {
+	if cfg.VectorStore != VectorStoreChromem || cfg.EmbeddingDimensions != DefaultEmbeddingDimensions {
 		t.Fatalf("defaults: %+v", cfg)
 	}
 	cfg, err = Load(write(t, "vector_store = \"pinecone\"\nembedding_dimensions = 512\n"))

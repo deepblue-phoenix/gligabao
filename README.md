@@ -24,7 +24,7 @@ gligabao is a small, self-hosted HTTP service that gives an AI application long-
 
 ## Datasets
 
-Memory is organized in datasets: a hard container for everything stored (episodes, entities, edges). Every dataset has an owner, a `user_id`, which covers everything in it; all endpoints require `user_id` (in the JSON body, or the query string for `GET`/`DELETE`), and dataset names are unique per user. `remember` and `recall` take an optional `"dataset"` name, default `main`. Datasets are isolated: the same entity in two datasets is two separate nodes, and a recall only sees its own dataset's graph. Deleting a dataset is soft (`deleted = true`). Details: [docs/datasets.md](docs/datasets.md), [docs/identity.md](docs/identity.md).
+Memory is organized in datasets: a hard container for everything stored (episodes, entities, edges). Every dataset has an owner, a `user_id`, which covers everything in it; all endpoints require `user_id` (in the JSON body, or the query string for `GET`/`DELETE`), and dataset names are unique per user. `remember` and `recall` take an optional `"dataset"` name, default `main`. Datasets are isolated: the same entity in two datasets is two separate nodes, and a recall only sees its own dataset's graph. Deleting a dataset is soft (`deleted = true`) and also removes its embeddings, which are stored in a per-dataset vector namespace. Details: [docs/datasets.md](docs/datasets.md), [docs/identity.md](docs/identity.md), [docs/vectors.md](docs/vectors.md).
 
 ## Ontologies
 
@@ -97,7 +97,7 @@ export ANTHROPIC_API_KEY=...        # required for remember/recall
 ./run_tests.sh                      # runs all tests
 ```
 
-Configuration is read from `bin/gligabao.toml` (override with `--config`). It sets `port`, and optionally `anthropic_api_key`, `openai_api_key` and `pinecone_api_key`, which default to the `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` and `PINECONE_API_KEY` environment variables. `db_backend` picks the main database, `"sqlite"` (default) or `"postgres"` with `postgres_dsn` (see [Database](#database)). `vector_store` picks where embeddings are stored (`internal/db/vector`, one namespace per dataset): `"sqlite"` (default; [sqlite-vec](https://github.com/asg017/sqlite-vec) in a separate file next to the main DB, override with `serve --vector-db <path>`) or `"pinecone"`. `embedding_dimensions` (default 1536) is the vector size; the sqlite store fixes it when its file is created and a Pinecone index must match it. For Pinecone, set `pinecone_index_host` (default: `PINECONE_INDEX_HOST`), the data-plane host of the index. A `[prices."<model-prefix>"]` table (`input`, `output`, optional `cache_write`/`cache_read`, USD per 1M tokens) overrides or extends the built-in model prices used to compute the cost of each LLM call; the longest matching prefix wins. Each call's tokens and cost are stored in the `gb_llm_calls` table.
+Configuration is read from `bin/gligabao.toml` (override with `--config`). It sets `port`, and optionally `anthropic_api_key`, `openai_api_key` and `pinecone_api_key`, which default to the `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` and `PINECONE_API_KEY` environment variables. `db_backend` picks the main database, `"sqlite"` (default) or `"postgres"` with `postgres_dsn` (see [Database](#database)). `vector_store` picks where embeddings are stored (`internal/db/vector`, one namespace per dataset): `"chromem"` (default; [chromem-go](https://github.com/philippgille/chromem-go), a pure-Go embedded vector database stored in a directory next to the main DB, override with `serve --vector-dir <path>`) or `"pinecone"` (hosted, independent of chromem). `embedding_dimensions` (default 1536) is the vector size; the chromem store fixes it when its directory is created and a Pinecone index must match it. Details: [docs/vectors.md](docs/vectors.md). For Pinecone, set `pinecone_index_host` (default: `PINECONE_INDEX_HOST`), the data-plane host of the index. A `[prices."<model-prefix>"]` table (`input`, `output`, optional `cache_write`/`cache_read`, USD per 1M tokens) overrides or extends the built-in model prices used to compute the cost of each LLM call; the longest matching prefix wins. Each call's tokens and cost are stored in the `gb_llm_calls` table.
 
 ## Embedding in Go programs
 
@@ -112,10 +112,10 @@ err = gligabao.Serve(ctx, cfg, gligabao.ServeOptions{DBPath: "data/gligabao.db"}
 ```
 
 - `Config` / `Price`: the configuration described above; `DefaultConfig()` takes API keys from the environment, and fields can be set in code instead of a TOML file.
-- `ServeOptions`: `DBPath` (default `bin/gligabao.db`) and `VectorDBPath` (default: next to `DBPath`), the equivalents of `serve --db` / `--vector-db`.
+- `ServeOptions`: `DBPath` (default `bin/gligabao.db`) and `VectorDir` (the chromem directory; default: next to `DBPath`, as `<name>.vectors`), the equivalents of `serve --db` / `--vector-dir`.
 - `Serve(ctx, cfg, opts)` blocks until `ctx` is cancelled or SIGINT/SIGTERM arrives, then shuts down gracefully. A nil `cfg` means `DefaultConfig()`.
 
-The sqlite-vec store needs CGO, so the embedding program must be built with it too (see [Building](#building)). A working example with a cobra `serve` command is in the sibling `gligabao_int` project, which uses `replace github.com/deepblue-phoenix/gligabao => ../gligabao` during local development.
+gligabao needs no CGO, so the embedding program can be built with `CGO_ENABLED=0` (see [Building](#building)). A working example with a cobra `serve` command is in the sibling `gligabao_int` project, which uses `replace github.com/deepblue-phoenix/gligabao => ../gligabao` during local development.
 
 ## License
 
@@ -123,4 +123,4 @@ See [LICENSE](LICENSE).
 
 ## Building
 
-The sqlite-vec vector store needs CGO (a C compiler such as gcc/clang) and `mattn/go-sqlite3`. sqlite-vec's Go bindings include `sqlite3.h`, so builds need `CGO_ENABLED=1` and that header on the include path; `source ./cgo_env.sh` sets both. `run_build.sh`, `run_tests.sh`, `run_evals.sh` and the Dockerfile already do this. For a plain `go build`/`go test`, run `source ./cgo_env.sh` first.
+gligabao is pure Go and builds with `CGO_ENABLED=0`: SQLite uses the `modernc.org/sqlite` driver and the default vector store is [chromem-go](https://github.com/philippgille/chromem-go), so no C compiler is needed. `./run_build.sh` builds `bin/gligabao`, `./run_tests.sh` runs the tests, and `docker build .` (or `./run_build_container.sh`) builds a static binary in a container; the Dockerfile builds with `CGO_ENABLED=0`. Plain `go build ./cmd/gligabao` / `go test ./...` work as they are.

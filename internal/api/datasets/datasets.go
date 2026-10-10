@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
+	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 )
 
@@ -65,9 +66,10 @@ func List(d *sql.DB) http.HandlerFunc {
 }
 
 // Delete serves DELETE /v1/gb/datasets/{name}?user_id=...: a soft delete (the row is kept with deleted = true).
-func Delete(d *sql.DB) http.HandlerFunc {
+// The dataset's vector namespace (memory.VectorNamespace) is removed from vectors, which may be nil.
+func Delete(d *sql.DB, vectors vector.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		err := memory.DeleteDataset(r.Context(), d, r.URL.Query().Get("user_id"), r.PathValue("name"))
+		err := memory.DeleteDataset(r.Context(), d, vectors, r.URL.Query().Get("user_id"), r.PathValue("name"))
 		switch {
 		case errors.Is(err, memory.ErrInvalidUser):
 			httputil.Error(w, http.StatusBadRequest, err.Error())
