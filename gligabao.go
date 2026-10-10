@@ -1,7 +1,7 @@
 // Package gligabao is the public API for embedding gligabao in other Go programs.
 //
 // Everything else lives under internal/ and cannot be imported from outside this module.
-// The standalone CLI (package cmd) uses this package too, so both behave identically.
+// The standalone CLI (`cmd/gligabao`) uses this package too, so both behave identically.
 //
 //	cfg, err := gligabao.LoadConfig("gligabao.toml") // or gligabao.DefaultConfig()
 //	...
@@ -11,9 +11,9 @@ package gligabao
 import (
 	"context"
 
-	"github.com/ivan/gligabao/internal/ai"
-	"github.com/ivan/gligabao/internal/config"
-	"github.com/ivan/gligabao/internal/server"
+	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/config"
+	"github.com/deepblue-phoenix/gligabao/internal/server"
 )
 
 // Config is the gligabao configuration (the contents of gligabao.toml).

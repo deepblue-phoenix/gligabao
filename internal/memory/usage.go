@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"log"
 
-	"github.com/ivan/gligabao/internal/ai"
-	"github.com/ivan/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 )
 
 // Call types stored in gb_llm_calls.type.

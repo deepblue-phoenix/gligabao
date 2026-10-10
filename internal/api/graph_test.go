@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ivan/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 )
 
 func TestGraphExport(t *testing.T) { dbtest.Run(t, testGraphExport) }

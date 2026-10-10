@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/ivan/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 )
 
 // GraphExport is a whole dataset graph: its entities (nodes) and every edge (facts, expired ones included).

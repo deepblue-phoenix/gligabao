@@ -10,10 +10,10 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/ivan/gligabao/internal/config"
-	"github.com/ivan/gligabao/internal/db/relational/model"
-	"github.com/ivan/gligabao/internal/db/relational/postgres"
-	"github.com/ivan/gligabao/internal/db/relational/sqlite"
+	"github.com/deepblue-phoenix/gligabao/internal/config"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational/model"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational/postgres"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational/sqlite"
 )
 
 // Types shared with the backends (see package model).

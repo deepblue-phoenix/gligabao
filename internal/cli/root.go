@@ -1,4 +1,5 @@
-package cmd
+// Package cli defines the gligabao command-line interface.
+package cli
 
 import (
 	"errors"
@@ -7,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ivan/gligabao/internal/config"
+	"github.com/deepblue-phoenix/gligabao/internal/config"
 )
 
 var (

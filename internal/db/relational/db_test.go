@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ivan/gligabao/internal/db/relational"
-	"github.com/ivan/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 )
 
 // TestBackends runs the same scenario against every available backend (see dbtest).

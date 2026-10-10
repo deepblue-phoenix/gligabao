@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	rsqlite "github.com/ivan/gligabao/internal/db/relational/sqlite"
+	rsqlite "github.com/deepblue-phoenix/gligabao/internal/db/relational/sqlite"
 )
 
 //---------------------------------------------------------------------------------------------

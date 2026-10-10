@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ivan/gligabao/internal/db/relational/model"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational/model"
 )
 
 //---------------------------------------------------------------------------------------------

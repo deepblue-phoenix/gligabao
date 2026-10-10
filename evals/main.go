@@ -25,12 +25,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ivan/gligabao/internal/ai"
-	"github.com/ivan/gligabao/internal/config"
-	"github.com/ivan/gligabao/internal/db/graph"
-	"github.com/ivan/gligabao/internal/db/relational"
-	"github.com/ivan/gligabao/internal/memory"
-	"github.com/ivan/gligabao/internal/server"
+	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/config"
+	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/server"
 )
 
 //go:embed suites/*.json

@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ivan/gligabao/internal/db/relational/model"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational/model"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver, registered as "pgx"
 )

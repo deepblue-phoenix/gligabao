@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ivan/gligabao/internal/db/relational/model"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational/model"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver (no CGO)
 )

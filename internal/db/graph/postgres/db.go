@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ivan/gligabao/internal/db/graph/model"
-	rpostgres "github.com/ivan/gligabao/internal/db/relational/postgres"
+	"github.com/deepblue-phoenix/gligabao/internal/db/graph/model"
+	rpostgres "github.com/deepblue-phoenix/gligabao/internal/db/relational/postgres"
 )
 
 //---------------------------------------------------------------------------------------------

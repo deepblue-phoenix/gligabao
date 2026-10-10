@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ivan/gligabao/internal/db/graph/model"
-	rsqlite "github.com/ivan/gligabao/internal/db/relational/sqlite"
+	"github.com/deepblue-phoenix/gligabao/internal/db/graph/model"
+	rsqlite "github.com/deepblue-phoenix/gligabao/internal/db/relational/sqlite"
 )
 
 //---------------------------------------------------------------------------------------------

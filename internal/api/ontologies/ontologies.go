@@ -8,8 +8,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/ivan/gligabao/internal/api/httputil"
-	"github.com/ivan/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
+	"github.com/deepblue-phoenix/gligabao/internal/memory"
 )
 
 const maxBodyBytes = memory.MaxOntologyBytes + 64<<10 // the document is JSON-escaped, leave room for it and the other fields

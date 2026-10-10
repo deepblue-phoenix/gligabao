@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/ivan/gligabao/internal/db/graph/model"
+	"github.com/deepblue-phoenix/gligabao/internal/db/graph/model"
 )
 
 //---------------------------------------------------------------------------------------------

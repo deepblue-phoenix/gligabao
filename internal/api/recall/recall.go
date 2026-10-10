@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/ivan/gligabao/internal/api/httputil"
-	"github.com/ivan/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
+	"github.com/deepblue-phoenix/gligabao/internal/memory"
 )
 
 const maxRecallBytes = 64 << 10 // 64 KiB

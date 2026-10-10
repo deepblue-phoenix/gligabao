@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	rpostgres "github.com/ivan/gligabao/internal/db/relational/postgres"
+	rpostgres "github.com/deepblue-phoenix/gligabao/internal/db/relational/postgres"
 )
 
 //---------------------------------------------------------------------------------------------

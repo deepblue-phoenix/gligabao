@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ivan/gligabao/internal/ai"
-	"github.com/ivan/gligabao/internal/db/relational"
-	"github.com/ivan/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 )
 
 func TestLLMCallsRecorded(t *testing.T) { dbtest.Run(t, testLLMCallsRecorded) }

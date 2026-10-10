@@ -9,7 +9,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 # CGO build (sqlite-vec); cgo_env.sh enables CGO and adds the sqlite3.h include path.
-RUN source ./cgo_env.sh && go build -trimpath -ldflags="-s -w" -o /out/gligabao .
+RUN source ./cgo_env.sh && go build -trimpath -ldflags="-s -w" -o /out/gligabao ./cmd/gligabao
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \

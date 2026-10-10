@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ivan/gligabao/internal/ai"
-	"github.com/ivan/gligabao/internal/db/graph"
-	"github.com/ivan/gligabao/internal/db/relational"
-	"github.com/ivan/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 )
 
 // echoLLM answers extraction requests with a fixed graph and recall requests with a fixed answer.

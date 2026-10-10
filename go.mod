@@ -1,4 +1,4 @@
-module github.com/ivan/gligabao
+module github.com/deepblue-phoenix/gligabao
 
 go 1.26.0
 

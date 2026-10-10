@@ -5,11 +5,11 @@ import (
 	"database/sql"
 	"net/http"
 
-	"github.com/ivan/gligabao/internal/api/datasets"
-	"github.com/ivan/gligabao/internal/api/ontologies"
-	"github.com/ivan/gligabao/internal/api/recall"
-	"github.com/ivan/gligabao/internal/api/remember"
-	"github.com/ivan/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/api/datasets"
+	"github.com/deepblue-phoenix/gligabao/internal/api/ontologies"
+	"github.com/deepblue-phoenix/gligabao/internal/api/recall"
+	"github.com/deepblue-phoenix/gligabao/internal/api/remember"
+	"github.com/deepblue-phoenix/gligabao/internal/memory"
 )
 
 // Register mounts the API routes on mux. llm may be nil, in which case LLM-backed routes return 503.

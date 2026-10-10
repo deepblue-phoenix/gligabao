@@ -1,9 +1,9 @@
-package cmd
+package cli
 
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/ivan/gligabao/pkg/gligabao"
+	"github.com/deepblue-phoenix/gligabao"
 )
 
 var (

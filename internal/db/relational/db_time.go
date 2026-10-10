@@ -3,9 +3,9 @@ package relational
 import (
 	"time"
 
-	"github.com/ivan/gligabao/internal/config"
-	"github.com/ivan/gligabao/internal/db/relational/postgres"
-	"github.com/ivan/gligabao/internal/db/relational/sqlite"
+	"github.com/deepblue-phoenix/gligabao/internal/config"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational/postgres"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational/sqlite"
 )
 
 // Timestamp helpers route to the backend in use, which owns the storage convention (sqlite: RFC 3339 text with

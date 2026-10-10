@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ivan/gligabao/internal/ai"
-	"github.com/ivan/gligabao/internal/db/relational/dbtest"
-	"github.com/ivan/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/memory"
 )
 
 // recordingLLM returns canned outputs in order and records requests.

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ivan/gligabao/internal/api/httputil"
-	"github.com/ivan/gligabao/internal/db/relational"
-	"github.com/ivan/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/memory"
 )
 
 const maxRememberBytes = 1 << 20 // 1 MiB

@@ -101,10 +101,10 @@ Configuration is read from `bin/gligabao.toml` (override with `--config`). It se
 
 ## Embedding in Go programs
 
-gligabao is also a Go library. All server code is under `internal/` (not importable); the public API is the `pkg/gligabao` package, which the CLI itself uses, so embedded and standalone behave the same.
+gligabao is also a Go library. All server code is under `internal/` (not importable); the public API is the root package `github.com/deepblue-phoenix/gligabao`, which the CLI (`cmd/gligabao`, `internal/cli`) itself uses, so embedded and standalone behave the same.
 
 ```go
-import "github.com/ivan/gligabao/pkg/gligabao"
+import "github.com/deepblue-phoenix/gligabao"
 
 cfg, err := gligabao.LoadConfig("gligabao.toml") // or gligabao.DefaultConfig()
 if err != nil { /* ... */ }
@@ -115,7 +115,7 @@ err = gligabao.Serve(ctx, cfg, gligabao.ServeOptions{DBPath: "data/gligabao.db"}
 - `ServeOptions`: `DBPath` (default `bin/gligabao.db`) and `VectorDBPath` (default: next to `DBPath`), the equivalents of `serve --db` / `--vector-db`.
 - `Serve(ctx, cfg, opts)` blocks until `ctx` is cancelled or SIGINT/SIGTERM arrives, then shuts down gracefully. A nil `cfg` means `DefaultConfig()`.
 
-The sqlite-vec store needs CGO, so the embedding program must be built with it too (see [Building](#building)). A working example with a cobra `serve` command is in the sibling `gligabao_int` project, which uses `replace github.com/ivan/gligabao => ../gligabao` during local development.
+The sqlite-vec store needs CGO, so the embedding program must be built with it too (see [Building](#building)). A working example with a cobra `serve` command is in the sibling `gligabao_int` project, which uses `replace github.com/deepblue-phoenix/gligabao => ../gligabao` during local development.
 
 ## License
 

@@ -19,9 +19,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ivan/gligabao/internal/db/graph"
-	"github.com/ivan/gligabao/internal/db/relational"
-	"github.com/ivan/gligabao/internal/ontology"
+	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/ontology"
 )
 
 var (
