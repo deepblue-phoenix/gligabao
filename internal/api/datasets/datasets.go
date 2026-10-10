@@ -81,3 +81,22 @@ func Delete(d *sql.DB) http.HandlerFunc {
 		}
 	}
 }
+
+// Graph serves GET /v1/gb/datasets/{name}/graph?user_id=...: the whole graph of the dataset as JSON
+// (entities and edges, expired edges included).
+func Graph(d *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		g, err := memory.ExportGraph(r.Context(), d, r.URL.Query().Get("user_id"), r.PathValue("name"))
+		switch {
+		case errors.Is(err, memory.ErrInvalidUser):
+			httputil.Error(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, memory.ErrInvalidDataset), errors.Is(err, memory.ErrDatasetNotFound):
+			httputil.Error(w, http.StatusNotFound, "dataset not found")
+		case err != nil:
+			log.Printf("export graph: %v", err)
+			httputil.Error(w, http.StatusInternalServerError, "failed to export graph")
+		default:
+			httputil.WriteJSON(w, http.StatusOK, g)
+		}
+	}
+}

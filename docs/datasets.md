@@ -19,3 +19,5 @@ Deleting sets `deleted = true` (and `deleted_at`); no rows are removed. A delete
 `GET /v1/gb/datasets?user_id=u1`: lists that user's datasets: `{"datasets": [{"id": 1, "user_id": "u1", "name": "main", "tags": [], "created_at": "...", "deleted": false}, ...]}`, oldest first. `?include_deleted=true` also lists soft-deleted ones.
 
 `DELETE /v1/gb/datasets/{name}?user_id=u1`: soft-deletes the dataset. `204`, or `404` if the user has no live dataset with that name.
+
+`GET /v1/gb/datasets/{name}/graph?user_id=u1`: exports the dataset's whole graph as JSON; see [graph.md](graph.md).

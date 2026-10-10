@@ -267,6 +267,17 @@ func ListEntities(ctx context.Context, d *sql.DB, dsID int64) ([]EvidenceEntity,
 	return nil, unsupported()
 }
 
+// ListGraphEdges returns every edge of the dataset (expired ones included) with its endpoint IDs and names, by ID.
+func ListGraphEdges(ctx context.Context, d *sql.DB, dsID int64) ([]EvidenceEdge, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListGraphEdges(ctx, d, dsID)
+	case config.DBBackendPostgres:
+		return postgres.ListGraphEdges(ctx, d, dsID)
+	}
+	return nil, unsupported()
+}
+
 // CountCrossDatasetEdges returns the number of edges whose dataset differs from that of one of their endpoints
 // (always 0 unless datasets leak into each other).
 func CountCrossDatasetEdges(ctx context.Context, d *sql.DB) (int, error) {

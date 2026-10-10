@@ -18,4 +18,5 @@ func Register(mux *http.ServeMux, d *sql.DB, llm memory.LLM) {
 	mux.HandleFunc("POST /v1/gb/datasets", datasets.Create(d))
 	mux.HandleFunc("GET /v1/gb/datasets", datasets.List(d))
 	mux.HandleFunc("DELETE /v1/gb/datasets/{name}", datasets.Delete(d))
+	mux.HandleFunc("GET /v1/gb/datasets/{name}/graph", datasets.Graph(d))
 }

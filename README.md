@@ -18,6 +18,7 @@ gligabao is a small, self-hosted HTTP service that gives an AI application long-
 | `POST /v1/gb/remember` | Extract a temporal knowledge graph from text and store it | [docs/remember.md](docs/remember.md), [docs/temporal.md](docs/temporal.md) |
 | `POST /v1/gb/recall` | Answer a question from the graph, with evidence | [docs/recall.md](docs/recall.md) |
 | `POST /v1/gb/datasets`, `GET /v1/gb/datasets?user_id=`, `DELETE /v1/gb/datasets/{name}?user_id=` | Create, list and (soft) delete datasets | [docs/datasets.md](docs/datasets.md) |
+| `GET /v1/gb/datasets/{name}/graph?user_id=` | Export a dataset's whole graph as JSON | [docs/graph.md](docs/graph.md) |
 | `GET /health` | Health check | |
 
 ## Datasets
@@ -62,6 +63,10 @@ When a new fact contradicts a stored one, the older fact is closed (`invalid_at`
 4. **Verify evidence**: cited IDs are checked against the subgraph that was actually sent, so hallucinated IDs are dropped. The endpoints of every cited edge are included, and each edge carries its `memory_id` so a fact can be traced to the original text.
 
 If the graph is empty, a fixed "I don't have any information" answer is returned without calling the LLM. If the graph lacks the needed information, the answer says so. Details: [docs/recall.md](docs/recall.md).
+
+## Graph export
+
+`GET /v1/gb/datasets/{name}/graph?user_id=u1` returns the whole graph of a dataset as JSON: `dataset`, `entities` (`id`, `name`, `type`, `description`) and `edges` (`id`, `source_id`, `target_id`, `source`, `target`, `relation`, `description`, `memory_id` and the bi-temporal fields). Edges reference entities by `source_id`/`target_id`. Superseded edges are included, with `invalid_at`/`expired_at` set, so the output is the full history, not just current facts. It makes no LLM call. An empty dataset returns empty lists; an unknown or deleted dataset returns 404. Details: [docs/graph.md](docs/graph.md).
 
 ## Database
 

@@ -383,6 +383,38 @@ func ListEntities(ctx context.Context, d *sql.DB, dsID int64) ([]model.EvidenceE
 	return out, rows.Err()
 }
 
+// ListGraphEdges returns every edge of the dataset (expired ones included) with its endpoint IDs and names, by ID.
+func ListGraphEdges(ctx context.Context, d *sql.DB, dsID int64) ([]model.EvidenceEdge, error) {
+	rows, err := d.QueryContext(ctx, `
+		SELECT e.id, e.source_id, e.target_id, s.name, t.name, e.relation, e.description, e.memory_id,
+			e.valid_at, e.invalid_at, e.created_at, e.expired_at
+		FROM gb_edges e
+		JOIN gb_entities s ON s.id = e.source_id
+		JOIN gb_entities t ON t.id = e.target_id
+		WHERE e.dataset_id = ?
+		ORDER BY e.id`, dsID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.EvidenceEdge
+	for rows.Next() {
+		var e model.EvidenceEdge
+		var mem sql.NullInt64
+		var valid, invalid, created, expired sql.NullString
+		if err := rows.Scan(&e.ID, &e.SourceID, &e.TargetID, &e.Source, &e.Target, &e.Relation, &e.Description, &mem,
+			&valid, &invalid, &created, &expired); err != nil {
+			return nil, err
+		}
+		e.ValidAt, e.InvalidAt, e.CreatedAt, e.ExpiredAt = ParseTime(valid.String), ParseTime(invalid.String), ParseTime(created.String), ParseTime(expired.String)
+		if mem.Valid {
+			e.MemoryID = &mem.Int64
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // CountCrossDatasetEdges returns the number of edges whose dataset differs from that of one of their endpoints
 // (always 0 unless datasets leak into each other).
 func CountCrossDatasetEdges(ctx context.Context, d *sql.DB) (int, error) {
