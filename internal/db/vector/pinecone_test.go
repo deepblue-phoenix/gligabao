@@ -1,4 +1,4 @@
-package vectordb
+package vector
 
 import (
 	"context"
@@ -101,7 +101,7 @@ func TestAPIError(t *testing.T) {
 
 	p, _ := NewPinecone("k", srv.URL)
 	_, err := p.Query(context.Background(), "", []float32{1}, QueryOptions{})
-	if err == nil || err.Error() != "vectordb: pinecone 401: bad key" {
+	if err == nil || err.Error() != "vector: pinecone 401: bad key" {
 		t.Fatalf("got %v", err)
 	}
 }

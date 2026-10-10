@@ -19,8 +19,8 @@ import (
 	"github.com/ivan/gligabao/internal/api"
 	"github.com/ivan/gligabao/internal/config"
 	"github.com/ivan/gligabao/internal/db/relational"
+	"github.com/ivan/gligabao/internal/db/vector"
 	"github.com/ivan/gligabao/internal/memory"
-	"github.com/ivan/gligabao/internal/vectordb"
 )
 
 const shutdownTimeout = 5 * time.Second
@@ -75,7 +75,7 @@ func NewHandler(database *sql.DB, llm memory.LLM) http.Handler {
 //---------------------------------------------------------------------------------------------
 
 // NewVectorStore opens the vector store selected by opts.
-func NewVectorStore(opts Options) (vectordb.Store, error) {
+func NewVectorStore(opts Options) (vector.Store, error) {
 	dims := opts.EmbeddingDimensions
 	if dims == 0 {
 		dims = config.DefaultEmbeddingDimensions
@@ -86,14 +86,14 @@ func NewVectorStore(opts Options) (vectordb.Store, error) {
 		if path == "" {
 			path = strings.TrimSuffix(opts.DBPath, filepath.Ext(opts.DBPath)) + ".vectors.db"
 		}
-		s, err := vectordb.NewSQLite(path, dims)
+		s, err := vector.NewSQLite(path, dims)
 		if err != nil {
 			return nil, err
 		}
 		log.Printf("vector store: sqlite-vec (%s, %d dims)", path, dims)
 		return s, nil
 	case config.VectorStorePinecone:
-		p, err := vectordb.NewPinecone(opts.PineconeKey, opts.PineconeIndexHost)
+		p, err := vector.NewPinecone(opts.PineconeKey, opts.PineconeIndexHost)
 		if err != nil {
 			return nil, err
 		}

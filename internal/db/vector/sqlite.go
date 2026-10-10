@@ -1,4 +1,4 @@
-package vectordb
+package vector
 
 import (
 	"context"
@@ -40,20 +40,20 @@ var _ Store = (*SQLite)(nil)
 // Use ":memory:" for a throwaway in-memory store.
 func NewSQLite(path string, dimensions int) (*SQLite, error) {
 	if dimensions < 1 {
-		return nil, fmt.Errorf("vectordb: invalid dimensions %d", dimensions)
+		return nil, fmt.Errorf("vector: invalid dimensions %d", dimensions)
 	}
 	registerVec.Do(sqlitevec.Auto)
 
 	dsn := path
 	if path != ":memory:" {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return nil, fmt.Errorf("vectordb: create dir: %w", err)
+			return nil, fmt.Errorf("vector: create dir: %w", err)
 		}
 		dsn = "file:" + path + "?_busy_timeout=5000&_journal_mode=WAL"
 	}
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("vectordb: open sqlite: %w", err)
+		return nil, fmt.Errorf("vector: open sqlite: %w", err)
 	}
 	// One connection: serializes writes (no SQLITE_BUSY) and keeps ":memory:" a single database.
 	db.SetMaxOpenConns(1)
@@ -72,21 +72,21 @@ func (s *SQLite) Close() error { return s.db.Close() }
 func (s *SQLite) init() error {
 	var ver string
 	if err := s.db.QueryRow(`SELECT vec_version()`).Scan(&ver); err != nil {
-		return fmt.Errorf("vectordb: sqlite-vec not available: %w", err)
+		return fmt.Errorf("vector: sqlite-vec not available: %w", err)
 	}
 	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS gb_vector_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`); err != nil {
-		return fmt.Errorf("vectordb: init: %w", err)
+		return fmt.Errorf("vector: init: %w", err)
 	}
 	var stored string
 	err := s.db.QueryRow(`SELECT value FROM gb_vector_meta WHERE key = 'dimensions'`).Scan(&stored)
 	switch {
 	case err == nil:
 		if stored != strconv.Itoa(s.dims) {
-			return fmt.Errorf("vectordb: database has %s-dimensional vectors, configured embedding_dimensions is %d", stored, s.dims)
+			return fmt.Errorf("vector: database has %s-dimensional vectors, configured embedding_dimensions is %d", stored, s.dims)
 		}
 		return nil
 	case !errors.Is(err, sql.ErrNoRows):
-		return fmt.Errorf("vectordb: init: %w", err)
+		return fmt.Errorf("vector: init: %w", err)
 	}
 	// vkey is "<namespace>/<id>" (see rowKey); id and metadata are auxiliary (stored, not indexed) columns.
 	_, err = s.db.Exec(fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS gb_vectors USING vec0(
@@ -97,10 +97,10 @@ func (s *SQLite) init() error {
 		+metadata TEXT
 	)`, s.dims))
 	if err != nil {
-		return fmt.Errorf("vectordb: create vector table: %w", err)
+		return fmt.Errorf("vector: create vector table: %w", err)
 	}
 	if _, err := s.db.Exec(`INSERT INTO gb_vector_meta (key, value) VALUES ('dimensions', ?)`, strconv.Itoa(s.dims)); err != nil {
-		return fmt.Errorf("vectordb: init: %w", err)
+		return fmt.Errorf("vector: init: %w", err)
 	}
 	return nil
 }
@@ -122,19 +122,19 @@ func (s *SQLite) Upsert(ctx context.Context, namespace string, vectors []Vector)
 	rows := make([]row, len(vectors))
 	for i, v := range vectors {
 		if v.ID == "" {
-			return fmt.Errorf("vectordb: vector %d has no ID", i)
+			return fmt.Errorf("vector: vector %d has no ID", i)
 		}
 		if len(v.Values) != s.dims {
-			return fmt.Errorf("vectordb: vector %q has %d dimensions, want %d", v.ID, len(v.Values), s.dims)
+			return fmt.Errorf("vector: vector %q has %d dimensions, want %d", v.ID, len(v.Values), s.dims)
 		}
 		blob, err := sqlitevec.SerializeFloat32(v.Values)
 		if err != nil {
-			return fmt.Errorf("vectordb: serialize %q: %w", v.ID, err)
+			return fmt.Errorf("vector: serialize %q: %w", v.ID, err)
 		}
 		meta := []byte("{}")
 		if len(v.Metadata) > 0 {
 			if meta, err = json.Marshal(v.Metadata); err != nil {
-				return fmt.Errorf("vectordb: marshal metadata of %q: %w", v.ID, err)
+				return fmt.Errorf("vector: marshal metadata of %q: %w", v.ID, err)
 			}
 		}
 		rows[i] = row{key: rowKey(namespace, v.ID), id: v.ID, blob: blob, meta: meta}
@@ -142,30 +142,30 @@ func (s *SQLite) Upsert(ctx context.Context, namespace string, vectors []Vector)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("vectordb: begin: %w", err)
+		return fmt.Errorf("vector: begin: %w", err)
 	}
 	defer tx.Rollback()
 	// vec0 tables don't support INSERT OR REPLACE, so replace = delete + insert.
 	del, err := tx.PrepareContext(ctx, `DELETE FROM gb_vectors WHERE vkey = ?`)
 	if err != nil {
-		return fmt.Errorf("vectordb: prepare: %w", err)
+		return fmt.Errorf("vector: prepare: %w", err)
 	}
 	defer del.Close()
 	ins, err := tx.PrepareContext(ctx, `INSERT INTO gb_vectors (vkey, namespace, embedding, id, metadata) VALUES (?, ?, ?, ?, ?)`)
 	if err != nil {
-		return fmt.Errorf("vectordb: prepare: %w", err)
+		return fmt.Errorf("vector: prepare: %w", err)
 	}
 	defer ins.Close()
 	for _, r := range rows {
 		if _, err := del.ExecContext(ctx, r.key); err != nil {
-			return fmt.Errorf("vectordb: upsert %q: %w", r.id, err)
+			return fmt.Errorf("vector: upsert %q: %w", r.id, err)
 		}
 		if _, err := ins.ExecContext(ctx, r.key, namespace, r.blob, r.id, string(r.meta)); err != nil {
-			return fmt.Errorf("vectordb: upsert %q: %w", r.id, err)
+			return fmt.Errorf("vector: upsert %q: %w", r.id, err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("vectordb: commit: %w", err)
+		return fmt.Errorf("vector: commit: %w", err)
 	}
 	return nil
 }
@@ -177,7 +177,7 @@ func (s *SQLite) Upsert(ctx context.Context, namespace string, vectors []Vector)
 // (up to 4096 candidates), so it never returns more than TopK matches.
 func (s *SQLite) Query(ctx context.Context, namespace string, vector []float32, opts QueryOptions) ([]Match, error) {
 	if len(vector) != s.dims {
-		return nil, fmt.Errorf("vectordb: query vector has %d dimensions, want %d", len(vector), s.dims)
+		return nil, fmt.Errorf("vector: query vector has %d dimensions, want %d", len(vector), s.dims)
 	}
 	filter, err := parseEqFilter(opts.Filter)
 	if err != nil {
@@ -193,13 +193,13 @@ func (s *SQLite) Query(ctx context.Context, namespace string, vector []float32, 
 	}
 	blob, err := sqlitevec.SerializeFloat32(vector)
 	if err != nil {
-		return nil, fmt.Errorf("vectordb: serialize query: %w", err)
+		return nil, fmt.Errorf("vector: serialize query: %w", err)
 	}
 
 	rows, err := s.db.QueryContext(ctx, `SELECT id, metadata, distance, embedding FROM gb_vectors
 		WHERE embedding MATCH ? AND k = ? AND namespace = ? ORDER BY distance`, blob, k, namespace)
 	if err != nil {
-		return nil, fmt.Errorf("vectordb: query: %w", err)
+		return nil, fmt.Errorf("vector: query: %w", err)
 	}
 	defer rows.Close()
 
@@ -211,11 +211,11 @@ func (s *SQLite) Query(ctx context.Context, namespace string, vector []float32, 
 			emb          []byte
 		)
 		if err := rows.Scan(&id, &metaJSON, &dist, &emb); err != nil {
-			return nil, fmt.Errorf("vectordb: scan: %w", err)
+			return nil, fmt.Errorf("vector: scan: %w", err)
 		}
 		var meta map[string]any
 		if err := json.Unmarshal([]byte(metaJSON), &meta); err != nil {
-			return nil, fmt.Errorf("vectordb: decode metadata of %q: %w", id, err)
+			return nil, fmt.Errorf("vector: decode metadata of %q: %w", id, err)
 		}
 		if !filter.match(meta) {
 			continue
@@ -227,7 +227,7 @@ func (s *SQLite) Query(ctx context.Context, namespace string, vector []float32, 
 		out = append(out, m)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("vectordb: query: %w", err)
+		return nil, fmt.Errorf("vector: query: %w", err)
 	}
 	return out, nil
 }
@@ -239,16 +239,16 @@ func (s *SQLite) Delete(ctx context.Context, namespace string, ids []string) err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("vectordb: begin: %w", err)
+		return fmt.Errorf("vector: begin: %w", err)
 	}
 	defer tx.Rollback()
 	for _, id := range ids {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM gb_vectors WHERE vkey = ?`, rowKey(namespace, id)); err != nil {
-			return fmt.Errorf("vectordb: delete %q: %w", id, err)
+			return fmt.Errorf("vector: delete %q: %w", id, err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("vectordb: commit: %w", err)
+		return fmt.Errorf("vector: commit: %w", err)
 	}
 	return nil
 }
@@ -256,7 +256,7 @@ func (s *SQLite) Delete(ctx context.Context, namespace string, ids []string) err
 // DeleteAll removes every vector in the namespace.
 func (s *SQLite) DeleteAll(ctx context.Context, namespace string) error {
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM gb_vectors WHERE namespace = ?`, namespace); err != nil {
-		return fmt.Errorf("vectordb: delete namespace: %w", err)
+		return fmt.Errorf("vector: delete namespace: %w", err)
 	}
 	return nil
 }
@@ -279,12 +279,12 @@ func parseEqFilter(in map[string]any) (eqFilter, error) {
 	out := make(eqFilter, len(in))
 	for k, v := range in {
 		if strings.HasPrefix(k, "$") {
-			return nil, fmt.Errorf("vectordb: sqlite filter: unsupported operator %q (only equality)", k)
+			return nil, fmt.Errorf("vector: sqlite filter: unsupported operator %q (only equality)", k)
 		}
 		if op, ok := v.(map[string]any); ok {
 			eq, only := op["$eq"]
 			if !only || len(op) != 1 {
-				return nil, fmt.Errorf("vectordb: sqlite filter on %q: only $eq is supported", k)
+				return nil, fmt.Errorf("vector: sqlite filter on %q: only $eq is supported", k)
 			}
 			v = eq
 		}

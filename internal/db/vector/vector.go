@@ -1,7 +1,7 @@
-// Package vectordb stores and searches embeddings in a vector database.
+// Package vector stores and searches embeddings in a vector database.
 //
 // Store is the backend-neutral interface; Pinecone is the current implementation.
-package vectordb
+package vector
 
 import "context"
 

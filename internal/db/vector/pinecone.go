@@ -1,4 +1,4 @@
-package vectordb
+package vector
 
 import (
 	"bytes"
@@ -43,11 +43,11 @@ func WithPineconeHTTPClient(h *http.Client) PineconeOption {
 // A scheme prefix is accepted (useful for tests/proxies); https is assumed otherwise.
 func NewPinecone(apiKey, indexHost string, opts ...PineconeOption) (*Pinecone, error) {
 	if apiKey == "" {
-		return nil, errors.New("vectordb: missing Pinecone API key (set PINECONE_API_KEY)")
+		return nil, errors.New("vector: missing Pinecone API key (set PINECONE_API_KEY)")
 	}
 	host := strings.TrimRight(strings.TrimSpace(indexHost), "/")
 	if host == "" {
-		return nil, errors.New("vectordb: missing Pinecone index host (set pinecone_index_host)")
+		return nil, errors.New("vector: missing Pinecone index host (set pinecone_index_host)")
 	}
 	if !strings.Contains(host, "://") {
 		host = "https://" + host
@@ -69,10 +69,10 @@ func NewPinecone(apiKey, indexHost string, opts ...PineconeOption) (*Pinecone, e
 func (p *Pinecone) Upsert(ctx context.Context, namespace string, vectors []Vector) error {
 	for i, v := range vectors {
 		if v.ID == "" {
-			return fmt.Errorf("vectordb: vector %d has no ID", i)
+			return fmt.Errorf("vector: vector %d has no ID", i)
 		}
 		if len(v.Values) == 0 {
-			return fmt.Errorf("vectordb: vector %q has no values", v.ID)
+			return fmt.Errorf("vector: vector %q has no values", v.ID)
 		}
 	}
 	for start := 0; start < len(vectors); start += maxUpsertBatch {
@@ -91,7 +91,7 @@ func (p *Pinecone) Upsert(ctx context.Context, namespace string, vectors []Vecto
 // Query returns the vectors closest to the given embedding, best first.
 func (p *Pinecone) Query(ctx context.Context, namespace string, vector []float32, opts QueryOptions) ([]Match, error) {
 	if len(vector) == 0 {
-		return nil, errors.New("vectordb: empty query vector")
+		return nil, errors.New("vector: empty query vector")
 	}
 	topK := opts.TopK
 	if topK <= 0 {
@@ -145,18 +145,18 @@ type pineconeError struct {
 }
 
 func (e *pineconeError) Error() string {
-	return fmt.Sprintf("vectordb: pinecone %d: %s", e.Status, e.Message)
+	return fmt.Sprintf("vector: pinecone %d: %s", e.Status, e.Message)
 }
 
 // do POSTs in as JSON to path and decodes the response into out (if non-nil).
 func (p *Pinecone) do(ctx context.Context, path string, in, out any) error {
 	body, err := json.Marshal(in)
 	if err != nil {
-		return fmt.Errorf("vectordb: marshal request: %w", err)
+		return fmt.Errorf("vector: marshal request: %w", err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+path, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("vectordb: build request: %w", err)
+		return fmt.Errorf("vector: build request: %w", err)
 	}
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("api-key", p.apiKey)
@@ -164,12 +164,12 @@ func (p *Pinecone) do(ctx context.Context, path string, in, out any) error {
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("vectordb: send request: %w", err)
+		return fmt.Errorf("vector: send request: %w", err)
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("vectordb: read response: %w", err)
+		return fmt.Errorf("vector: read response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		msg := strings.TrimSpace(string(data))
@@ -190,7 +190,7 @@ func (p *Pinecone) do(ctx context.Context, path string, in, out any) error {
 	}
 	if out != nil {
 		if err := json.Unmarshal(data, out); err != nil {
-			return fmt.Errorf("vectordb: decode response: %w", err)
+			return fmt.Errorf("vector: decode response: %w", err)
 		}
 	}
 	return nil
