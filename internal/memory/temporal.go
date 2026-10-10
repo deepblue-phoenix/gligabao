@@ -22,10 +22,10 @@ import (
 	"time"
 
 	"github.com/ivan/gligabao/internal/ai"
+	"github.com/ivan/gligabao/internal/db"
 )
 
 const (
-	timeLayout    = "2006-01-02T15:04:05Z"
 	maxCandidates = 50 // existing edges shown to the LLM for dedup / contradiction checks
 )
 
@@ -140,7 +140,7 @@ func span(valid, invalid *time.Time) string {
 		if t == nil {
 			return "?"
 		}
-		return t.UTC().Format(timeLayout)
+		return db.FormatTime(*t)
 	}
 	return "(" + f(valid) + " -> " + f(invalid) + ")"
 }
@@ -158,7 +158,7 @@ func scanEdge(r scanner) (Edge, error) {
 	if err := r.Scan(&e.ID, &e.Source, &e.Target, &e.Relation, &e.Description, &valid, &invalid, &created, &expired); err != nil {
 		return e, err
 	}
-	e.ValidAt, e.InvalidAt, e.CreatedAt, e.ExpiredAt = parseTime(valid.String), parseTime(invalid.String), parseTime(created.String), parseTime(expired.String)
+	e.ValidAt, e.InvalidAt, e.CreatedAt, e.ExpiredAt = db.ParseTime(valid.String), db.ParseTime(invalid.String), db.ParseTime(created.String), db.ParseTime(expired.String)
 	return e, nil
 }
 
@@ -225,7 +225,7 @@ func storeEdges(ctx context.Context, tx *sql.Tx, dsID, memID int64, ref, now tim
 	if plan == nil {
 		plan = &EdgePlan{}
 	}
-	nowS := now.UTC().Format(timeLayout)
+	nowS := db.FormatTime(now)
 	ids := make([]int64, len(edges)) // stored ID for each new edge
 	batch := map[string]int64{}      // repeats inside this memory
 	var order []int64
@@ -235,7 +235,7 @@ func storeEdges(ctx context.Context, tx *sql.Tx, dsID, memID int64, ref, now tim
 		if existing, ok := plan.Duplicates[i]; ok {
 			// Same fact seen again: keep the stored edge, just record its end if the text says it ended.
 			if _, err := tx.ExecContext(ctx, `UPDATE gb_edges SET invalid_at = COALESCE(invalid_at, ?) WHERE id = ? AND dataset_id = ?`,
-				fmtTime(e.InvalidAt), existing, dsID); err != nil {
+				db.FormatTimePtr(e.InvalidAt), existing, dsID); err != nil {
 				return nil, nil, fmt.Errorf("merge duplicate edge: %w", err)
 			}
 			ids[i] = existing
@@ -265,7 +265,7 @@ func storeEdges(ctx context.Context, tx *sql.Tx, dsID, memID int64, ref, now tim
 		res, err := tx.ExecContext(ctx, `
 			INSERT INTO gb_edges (dataset_id, source_id, target_id, relation, description, valid_at, invalid_at, created_at, memory_id)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			dsID, src, dst, e.Relation, e.Description, validAt.Format(timeLayout), fmtTime(e.InvalidAt), nowS, memID)
+			dsID, src, dst, e.Relation, e.Description, db.FormatTime(validAt), db.FormatTimePtr(e.InvalidAt), nowS, memID)
 		if err != nil {
 			return nil, nil, fmt.Errorf("insert edge: %w", err)
 		}
@@ -342,7 +342,7 @@ func contradict(ctx context.Context, tx *sql.Tx, dsID, newID, oldID int64, ref t
 		loser, endsAt = newID, *old.ValidAt
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE gb_edges SET invalid_at = ?, expired_at = ? WHERE id = ?`,
-		endsAt.UTC().Format(timeLayout), nowS, loser); err != nil {
+		db.FormatTime(endsAt), nowS, loser); err != nil {
 		return nil, fmt.Errorf("invalidate edge: %w", err)
 	}
 	return []int64{loser}, nil
@@ -357,29 +357,6 @@ func jsonObject(s string) (string, error) {
 		return "", errors.New("memory: no JSON object in LLM output")
 	}
 	return s[start : end+1], nil
-}
-
-// parseTime accepts the date formats an LLM tends to produce and returns UTC, or nil if empty/unparseable.
-func parseTime(s string) *time.Time {
-	s = strings.TrimSpace(s)
-	if s == "" || strings.EqualFold(s, "null") {
-		return nil
-	}
-	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05", "2006-01-02 15:04:05", "2006-01-02", "2006-01"} {
-		if t, err := time.Parse(layout, s); err == nil {
-			t = t.UTC()
-			return &t
-		}
-	}
-	return nil
-}
-
-// fmtTime formats t for storage; nil becomes NULL.
-func fmtTime(t *time.Time) any {
-	if t == nil {
-		return nil
-	}
-	return t.UTC().Format(timeLayout)
 }
 
 func qmarks(n int) string {

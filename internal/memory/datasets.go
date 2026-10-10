@@ -109,7 +109,7 @@ func CreateDataset(ctx context.Context, d *sql.DB, userID, name, description str
 	res, err := d.ExecContext(ctx, `
 		INSERT INTO gb_datasets (user_id, name, description, tags, created_at)
 		SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM gb_datasets WHERE user_id = ? AND name = ? AND deleted = 0)`,
-		userID, name, strings.TrimSpace(description), string(tagsJSON), time.Now().UTC().Format(timeLayout), userID, name)
+		userID, name, strings.TrimSpace(description), string(tagsJSON), db.FormatTime(db.Now()), userID, name)
 	if err != nil {
 		return nil, fmt.Errorf("create dataset: %w", err)
 	}
@@ -161,7 +161,7 @@ func DeleteDataset(ctx context.Context, d *sql.DB, userID, name string) error {
 		return err
 	}
 	res, err := d.ExecContext(ctx, `UPDATE gb_datasets SET deleted = 1, deleted_at = ? WHERE user_id = ? AND name = ? AND deleted = 0`,
-		time.Now().UTC().Format(timeLayout), userID, name)
+		db.FormatTime(db.Now()), userID, name)
 	if err != nil {
 		return fmt.Errorf("delete dataset: %w", err)
 	}
@@ -187,11 +187,11 @@ func scanDataset(r scanner) (*Dataset, error) {
 	if err := json.Unmarshal([]byte(tags), &ds.Tags); err != nil || ds.Tags == nil {
 		ds.Tags = []string{}
 	}
-	if t := parseTime(created); t != nil {
+	if t := db.ParseTime(created); t != nil {
 		ds.CreatedAt = *t
 	}
 	ds.Deleted = deleted == 1
-	ds.DeletedAt = parseTime(deletedAt.String)
+	ds.DeletedAt = db.ParseTime(deletedAt.String)
 	return &ds, nil
 }
 
@@ -219,7 +219,7 @@ func ensureDatasetID(ctx context.Context, tx *sql.Tx, userID, name string) (int6
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO gb_datasets (user_id, name, created_at)
 		SELECT ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM gb_datasets WHERE user_id = ? AND name = ? AND deleted = 0)`,
-		userID, name, time.Now().UTC().Format(timeLayout), userID, name); err != nil {
+		userID, name, db.FormatTime(db.Now()), userID, name); err != nil {
 		return 0, fmt.Errorf("create dataset: %w", err)
 	}
 	return datasetID(ctx, tx, userID, name)

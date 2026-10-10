@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/ivan/gligabao/internal/ai"
+	"github.com/ivan/gligabao/internal/db"
 )
 
 const (
@@ -93,7 +94,7 @@ func Recall(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, query stri
 	temp := 0.0
 	resp, err := llm.Complete(ctx, ai.Request{
 		System: recallSystemPrompt,
-		Messages: []ai.Message{{Role: ai.RoleUser, Content: "<current_time>\n" + time.Now().UTC().Format(timeLayout) +
+		Messages: []ai.Message{{Role: ai.RoleUser, Content: "<current_time>\n" + db.FormatTime(db.Now()) +
 			"\n</current_time>\n\n<graph>\n" + g.render() + "</graph>\n\n<question>\n" + query + "\n</question>"}},
 		MaxTokens:   2048,
 		Temperature: &temp,
@@ -159,9 +160,9 @@ func (g *graphContext) render() string {
 		if e.Description != "" {
 			sb.WriteString(": " + e.Description)
 		}
-		sb.WriteString(" [valid_at=" + e.ValidAt.UTC().Format(timeLayout))
+		sb.WriteString(" [valid_at=" + db.FormatTime(*e.ValidAt))
 		if e.InvalidAt != nil {
-			sb.WriteString(", invalid_at=" + e.InvalidAt.UTC().Format(timeLayout))
+			sb.WriteString(", invalid_at=" + db.FormatTime(*e.InvalidAt))
 		}
 		if e.ExpiredAt != nil {
 			sb.WriteString(", superseded")
@@ -269,7 +270,7 @@ func retrieve(ctx context.Context, d *sql.DB, dsID int64, query string) (*graphC
 			&valid, &invalid, &created, &expired); err != nil {
 			return nil, err
 		}
-		e.ValidAt, e.InvalidAt, e.CreatedAt, e.ExpiredAt = parseTime(valid.String), parseTime(invalid.String), parseTime(created.String), parseTime(expired.String)
+		e.ValidAt, e.InvalidAt, e.CreatedAt, e.ExpiredAt = db.ParseTime(valid.String), db.ParseTime(invalid.String), db.ParseTime(created.String), db.ParseTime(expired.String)
 		if mem.Valid {
 			e.MemoryID = &mem.Int64
 		}

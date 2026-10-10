@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ivan/gligabao/internal/api/httputil"
+	"github.com/ivan/gligabao/internal/db"
 	"github.com/ivan/gligabao/internal/memory"
 )
 
@@ -48,7 +49,7 @@ func Handler(d *sql.DB, llm memory.LLM) http.HandlerFunc {
 		var ref time.Time
 		if req.ReferenceTime != "" {
 			var err error
-			if ref, err = time.Parse(time.RFC3339, req.ReferenceTime); err != nil {
+			if ref, err = db.ParseTimeStrict(req.ReferenceTime); err != nil {
 				httputil.Error(w, http.StatusBadRequest, "reference_time must be RFC 3339, e.g. 2025-01-31T09:00:00Z")
 				return
 			}

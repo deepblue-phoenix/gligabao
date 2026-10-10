@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/ivan/gligabao/internal/ai"
+	"github.com/ivan/gligabao/internal/db"
 )
 
 //---------------------------------------------------------------------------------------------
@@ -60,7 +61,7 @@ func Extract(ctx context.Context, llm LLM, text string, ref time.Time) (*Extract
 	temp := 0.0
 	resp, err := llm.Complete(ctx, ai.Request{
 		System: entitySystemPrompt,
-		Messages: []ai.Message{{Role: ai.RoleUser, Content: "<reference_time>\n" + ref.UTC().Format(timeLayout) +
+		Messages: []ai.Message{{Role: ai.RoleUser, Content: "<reference_time>\n" + db.FormatTime(ref) +
 			"\n</reference_time>\n\n<text>\n" + text + "\n</text>"}},
 		MaxTokens:   4096,
 		Temperature: &temp,
@@ -101,8 +102,8 @@ func parseExtraction(s string, ref time.Time) (*Extraction, error) {
 			Target:      strings.TrimSpace(r.Target),
 			Relation:    normRelation(r.Relation),
 			Description: strings.TrimSpace(r.Description),
-			ValidAt:     parseTime(r.ValidAt),
-			InvalidAt:   parseTime(r.InvalidAt),
+			ValidAt:     db.ParseTime(r.ValidAt),
+			InvalidAt:   db.ParseTime(r.InvalidAt),
 		}
 		if e.Source == "" || e.Target == "" || e.Relation == "" {
 			continue
@@ -149,11 +150,11 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, text str
 	if err != nil {
 		return nil, err
 	}
-	now := time.Now().UTC().Truncate(time.Second)
+	now := db.Now()
 	if ref.IsZero() {
 		ref = now
 	}
-	ref = ref.UTC().Truncate(time.Second)
+	ref = db.Normalize(ref)
 	llm = withRecording(llm, d, CallRemember)
 
 	ex, err := Extract(ctx, llm, text, ref)
@@ -196,7 +197,7 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, text string, ref, no
 	}
 
 	res, err := tx.ExecContext(ctx, `INSERT INTO gb_memories (dataset_id, text, valid_at, created_at) VALUES (?, ?, ?, ?)`,
-		dsID, text, ref.UTC().Format(timeLayout), now.UTC().Format(timeLayout))
+		dsID, text, db.FormatTime(ref), db.FormatTime(now))
 	if err != nil {
 		return nil, fmt.Errorf("insert memory: %w", err)
 	}
@@ -216,7 +217,7 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, text string, ref, no
 			INSERT INTO gb_entities (dataset_id, name, name_key, type, description) VALUES (?, ?, ?, ?, ?)
 			ON CONFLICT (dataset_id, name_key, type) DO UPDATE SET
 				description = CASE WHEN excluded.description != '' THEN excluded.description ELSE gb_entities.description END,
-				updated_at  = CURRENT_TIMESTAMP
+				updated_at  = `+db.SQLNow+`
 			RETURNING id`,
 			dsID, e.Name, key(e.Name), e.Type, e.Description).Scan(&id)
 		if err != nil {
