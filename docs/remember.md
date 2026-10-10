@@ -57,7 +57,7 @@ Errors are returned as `{"error": "..."}`:
 
 ## How it works
 
-All steps use the LLM from `internal/ai` (Anthropic Messages API, default model `claude-haiku-4-5`, temperature 0). Code is in `internal/memory`.
+All steps use the LLM from `internal/ai` (Anthropic Messages API, default model `claude-haiku-5-5`). Code is in `internal/memory`.
 
 1. **Extract the graph** (`Extract`, 1 LLM call, max 4096 output tokens): given the reference time and the text, the model is asked to return only JSON of the form:
    ```json

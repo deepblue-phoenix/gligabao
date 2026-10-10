@@ -76,7 +76,7 @@ The subgraph is rendered as text, with IDs, inside `<graph>` tags:
 [edge 1] Alice(1) --works_at--> Acme(2): Alice works at Acme. [valid_at=2023-01-01T00:00:00Z, invalid_at=2024-03-01T00:00:00Z, superseded]
 ```
 
-It is sent with the question and the current time (`<current_time>`) to the LLM (`internal/ai`, default model `claude-haiku-4-5`, temperature 0, max 2048 output tokens). The system prompt tells the model to answer only from the graph, to treat edges with an `invalid_at` as no longer true (use them only for questions about the past), and to return only JSON:
+It is sent with the question and the current time (`<current_time>`) to the LLM (`internal/ai`, default model `claude-haiku-5-5`, max 2048 output tokens). The system prompt tells the model to answer only from the graph, to treat edges with an `invalid_at` as no longer true (use them only for questions about the past), and to return only JSON:
 
 ```json
 {"answer": "...", "entities": [1, 2], "edges": [1]}

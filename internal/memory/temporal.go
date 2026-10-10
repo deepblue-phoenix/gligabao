@@ -79,12 +79,10 @@ func resolveEdges(ctx context.Context, llm LLM, edges, cands []Edge) (*EdgePlan,
 	}
 	b.WriteString("</existing_facts>")
 
-	temp := 0.0
 	resp, err := llm.Complete(ctx, ai.Request{
-		System:      resolveSystemPrompt,
-		Messages:    []ai.Message{{Role: ai.RoleUser, Content: b.String()}},
-		MaxTokens:   2048,
-		Temperature: &temp,
+		System:    resolveSystemPrompt,
+		Messages:  []ai.Message{{Role: ai.RoleUser, Content: b.String()}},
+		MaxTokens: 2048,
 	})
 	if err != nil {
 		return nil, err

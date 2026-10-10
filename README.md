@@ -28,7 +28,7 @@ Memory is organized in datasets: a hard container for everything stored (episode
 
 `POST /v1/gb/remember` with `{"user_id": "u1", "text": "Alice works at Acme and lives in Paris."}` stores the text as an episode and adds the facts it states to the graph, with the time they became true. An optional `reference_time` (RFC 3339, default now) says when the text was written, so relative dates in it can be resolved.
 
-1. **Extract**: the text is sent to an LLM (Anthropic, default `claude-haiku-4-5`, temperature 0), which returns JSON listing entities (`name`, `type`, `description`) and edges (`source`, `target`, `relation`, `description`, `valid_at`, `invalid_at`).
+1. **Extract**: the text is sent to an LLM (Anthropic, default `claude-haiku-5-5`), which returns JSON listing entities (`name`, `type`, `description`) and edges (`source`, `target`, `relation`, `description`, `valid_at`, `invalid_at`).
 2. **Normalize**: entity types are lowercased (empty becomes `other`), and relations are lowercased with spaces replaced by `_`.
 3. **Reconcile**: new edges are compared with stored live edges that touch the same entities (see [Temporal facts](#temporal-facts)).
 4. **Store**: in one transaction, the raw text goes into `gb_memories` (the episode), entities are upserted into `gb_entities`, and edges are inserted into `gb_edges` (each pointing back to its episode).

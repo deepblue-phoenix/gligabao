@@ -35,7 +35,7 @@ There is no uniqueness on (source, target, relation): a fact can end and later b
 
 Run by `memory.Remember`:
 
-1. **Extract** (`Extract`, 1 LLM call, temperature 0): the model receives the reference time and the text and returns entities and edges with `description`, `valid_at` and `invalid_at`.
+1. **Extract** (`Extract`, 1 LLM call): the model receives the reference time and the text and returns entities and edges with `description`, `valid_at` and `invalid_at`.
 2. **Find candidates** (`loadCandidates`): live (not expired) stored edges that touch at least one entity named in the new edges (matched by normalized name), newest first, at most 50.
 3. **Resolve** (`resolveEdges`):
    - *Exact repeats* (same normalized source, target and relation as a candidate that has no `invalid_at`) are detected in Go, with no LLM call.

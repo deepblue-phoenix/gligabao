@@ -17,7 +17,7 @@ import (
 
 const (
 	defaultBaseURL   = "https://api.anthropic.com"
-	defaultModel     = "claude-haiku-4-5"
+	defaultModel     = "claude-haiku-5-5"
 	defaultMaxTokens = 1024
 	apiVersion       = "2023-06-01"
 )
@@ -40,11 +40,10 @@ type Message struct {
 
 // Request describes a single LLM call. Zero values fall back to client defaults.
 type Request struct {
-	System      string
-	Messages    []Message
-	Model       string
-	MaxTokens   int
-	Temperature *float64
+	System    string
+	Messages  []Message
+	Model     string
+	MaxTokens int
 }
 
 // Response is the result of an LLM call.
@@ -126,11 +125,10 @@ func (c *Client) Complete(ctx context.Context, req Request) (*Response, error) {
 	}
 
 	body, err := json.Marshal(apiRequest{
-		Model:       model,
-		MaxTokens:   maxTokens,
-		System:      req.System,
-		Messages:    req.Messages,
-		Temperature: req.Temperature,
+		Model:     model,
+		MaxTokens: maxTokens,
+		System:    req.System,
+		Messages:  req.Messages,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("ai: marshal request: %w", err)
@@ -203,11 +201,10 @@ func (c *Client) Ask(ctx context.Context, prompt string) (string, error) {
 // Wire types.
 
 type apiRequest struct {
-	Model       string    `json:"model"`
-	MaxTokens   int       `json:"max_tokens"`
-	System      string    `json:"system,omitempty"`
-	Messages    []Message `json:"messages"`
-	Temperature *float64  `json:"temperature,omitempty"`
+	Model     string    `json:"model"`
+	MaxTokens int       `json:"max_tokens"`
+	System    string    `json:"system,omitempty"`
+	Messages  []Message `json:"messages"`
 }
 
 type apiResponse struct {

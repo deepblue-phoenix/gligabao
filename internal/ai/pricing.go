@@ -19,6 +19,12 @@ type Price struct {
 	Output     float64
 	CacheWrite float64 // Anthropic prompt-cache writes
 	CacheRead  float64 // Anthropic prompt-cache hits
+
+	// Optional long-context tier: when a call's total input tokens (including cache) exceed
+	// LongThreshold, the whole call's Input/Output use LongInput/LongOutput. 0 disables the tier.
+	LongThreshold int
+	LongInput     float64
+	LongOutput    float64
 }
 
 // DefaultPrices returns the built-in price table, keyed by model-name prefix. Neither API returns the
@@ -33,6 +39,7 @@ func DefaultPrices() map[string]Price {
 		"claude-sonnet-4-5": {Input: 3, Output: 15, CacheWrite: 3.75, CacheRead: 0.3},
 		"claude-sonnet-4":   {Input: 3, Output: 15, CacheWrite: 3.75, CacheRead: 0.3},
 		"claude-3-7-sonnet": {Input: 3, Output: 15, CacheWrite: 3.75, CacheRead: 0.3},
+		"claude-haiku-5-5":  {Input: 0.1, Output: 0.5, CacheWrite: 0.125, CacheRead: 0.01, LongThreshold: 100_000, LongInput: 0.5, LongOutput: 2.5},
 		"claude-haiku-4-5":  {Input: 1, Output: 5, CacheWrite: 1.25, CacheRead: 0.1},
 		"claude-3-5-haiku":  {Input: 0.8, Output: 4, CacheWrite: 1, CacheRead: 0.08},
 		"claude-3-haiku":    {Input: 0.25, Output: 1.25, CacheWrite: 0.3, CacheRead: 0.03},
@@ -86,7 +93,11 @@ func (t *PriceTable) Cost(model string, u Usage) (cost float64, ok bool) {
 	if !ok {
 		return 0, false
 	}
-	cost = (float64(u.InputTokens)*p.Input + float64(u.OutputTokens)*p.Output +
+	in, out := p.Input, p.Output
+	if total := u.InputTokens + u.CacheWriteTokens + u.CacheReadTokens; p.LongThreshold > 0 && total > p.LongThreshold {
+		in, out = p.LongInput, p.LongOutput
+	}
+	cost = (float64(u.InputTokens)*in + float64(u.OutputTokens)*out +
 		float64(u.CacheWriteTokens)*p.CacheWrite + float64(u.CacheReadTokens)*p.CacheRead) / 1e6
 	return cost, true
 }

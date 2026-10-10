@@ -44,13 +44,11 @@ type LLM interface {
 // Extract asks the LLM to pull entities and temporal edges out of text. ref is the episode's time; it anchors
 // relative dates and is the ValidAt of every fact whose start the text does not state.
 func Extract(ctx context.Context, llm LLM, text string, ref time.Time) (*Extraction, error) {
-	temp := 0.0
 	resp, err := llm.Complete(ctx, ai.Request{
 		System: entitySystemPrompt,
 		Messages: []ai.Message{{Role: ai.RoleUser, Content: "<reference_time>\n" + db.FormatTime(ref) +
 			"\n</reference_time>\n\n<text>\n" + text + "\n</text>"}},
-		MaxTokens:   4096,
-		Temperature: &temp,
+		MaxTokens: 4096,
 	})
 	if err != nil {
 		return nil, err

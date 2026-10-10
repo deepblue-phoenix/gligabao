@@ -71,13 +71,11 @@ func Recall(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, query stri
 	}
 
 	llm = withRecording(llm, d, CallRecall)
-	temp := 0.0
 	resp, err := llm.Complete(ctx, ai.Request{
 		System: recallSystemPrompt,
 		Messages: []ai.Message{{Role: ai.RoleUser, Content: "<current_time>\n" + db.FormatTime(db.Now()) +
 			"\n</current_time>\n\n<graph>\n" + g.render() + "</graph>\n\n<question>\n" + query + "\n</question>"}},
-		MaxTokens:   2048,
-		Temperature: &temp,
+		MaxTokens: 2048,
 	})
 	if err != nil {
 		return nil, err
