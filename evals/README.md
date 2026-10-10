@@ -13,9 +13,12 @@ All cases use the dataset `test`. At the start of each case it is deleted (`DELE
 - `remember_recall`: one text, stored with its temporal validity (`valid_at` = the episode's time, still true), then a question about it.
 - `job_change`: "Alice works at Acme" is remembered, then later "Alice started working at Globex". The Acme fact must be closed (`invalid_at` = time of the second text), the Globex fact must be live, and "Where does Alice work now?" must be answered with Globex.
 
-## Case format
+## Suite format
+
+Each file in `evals/suites/` is a suite: a JSON list of cases (embedded into the binary). Case names must be unique across all suites. `basic.json` holds the two cases above.
 
 ```json
+[
 {
   "name": "job_change",
   "remember": [
@@ -29,6 +32,7 @@ All cases use the dataset `test`. At the start of each case it is deleted (`DELE
     {"source": "Alice", "target": "Globex", "valid_at": "2024-03-01T00:00:00Z", "ended": false}
   ]
 }
+]
 ```
 
 1. `POST /v1/gb/remember` (with `"dataset": "test"`) for each `remember` entry, in order, with its `text` and `reference_time`.

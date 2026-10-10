@@ -1,6 +1,6 @@
 // Command evals runs end-to-end evals against the real LLM.
 //
-// Each case in evals/cases/*.json gets a fresh temporary database and an in-process
+// Each suite in evals/suites/*.json is a JSON list of cases. Each case gets a fresh temporary database and an in-process
 // HTTP server. The case is run through the public API: remember (once per memory, in order), then recall.
 // All memories go to the dataset "test", which is deleted at the start of each case so it is recreated fresh.
 // Besides the answer, the stored temporal facts (edges with valid_at / invalid_at) are checked in the database.
@@ -23,7 +23,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -33,8 +32,8 @@ import (
 	"github.com/ivan/gligabao/internal/server"
 )
 
-//go:embed cases/*.json
-var casesFS embed.FS
+//go:embed suites/*.json
+var suitesFS embed.FS
 
 // evalDataset is the dataset every eval remembers into and recalls from.
 const evalDataset = "test"
@@ -70,28 +69,34 @@ type ExpectEdge struct {
 }
 
 func loadCases(only []string) ([]Case, error) {
-	entries, err := casesFS.ReadDir("cases")
+	entries, err := suitesFS.ReadDir("suites")
 	if err != nil {
 		return nil, err
 	}
 	var cases []Case
+	seen := map[string]bool{}
 	for _, e := range entries {
-		data, err := casesFS.ReadFile("cases/" + e.Name())
+		data, err := suitesFS.ReadFile("suites/" + e.Name())
 		if err != nil {
 			return nil, err
 		}
-		var c Case
-		if err := json.Unmarshal(data, &c); err != nil {
+		var suite []Case
+		if err := json.Unmarshal(data, &suite); err != nil {
 			return nil, fmt.Errorf("%s: %w", e.Name(), err)
 		}
-		if c.Name == "" {
-			c.Name = strings.TrimSuffix(e.Name(), ".json")
-		}
-		if len(only) == 0 || contains(only, c.Name) {
-			cases = append(cases, c)
+		for i, c := range suite {
+			if c.Name == "" {
+				return nil, fmt.Errorf("%s: case %d has no name", e.Name(), i)
+			}
+			if seen[c.Name] {
+				return nil, fmt.Errorf("%s: duplicate case name %q", e.Name(), c.Name)
+			}
+			seen[c.Name] = true
+			if len(only) == 0 || contains(only, c.Name) {
+				cases = append(cases, c)
+			}
 		}
 	}
-	sort.Slice(cases, func(i, j int) bool { return cases[i].Name < cases[j].Name })
 	for _, name := range only {
 		found := false
 		for _, c := range cases {
