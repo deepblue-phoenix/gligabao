@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ivan/gligabao/internal/ai"
+	"github.com/ivan/gligabao/internal/db/graph"
 	"github.com/ivan/gligabao/internal/db/relational"
 	"github.com/ivan/gligabao/internal/db/relational/dbtest"
 	"github.com/ivan/gligabao/internal/memory"
@@ -30,16 +31,16 @@ func (f *recordingLLM) Complete(_ context.Context, r ai.Request) (*ai.Response, 
 }
 
 // edges returns the stored edges of user u1's default dataset by ID, and edge returns the one with the given ID.
-func edges(t *testing.T, d *sql.DB) []relational.Edge {
+func edges(t *testing.T, d *sql.DB) []graph.Edge {
 	t.Helper()
-	list, err := relational.ListEdges(context.Background(), d, "u1", relational.DefaultDataset)
+	list, err := graph.ListEdges(context.Background(), d, "u1", relational.DefaultDataset)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return list
 }
 
-func edge(t *testing.T, d *sql.DB, id int64) relational.Edge {
+func edge(t *testing.T, d *sql.DB, id int64) graph.Edge {
 	t.Helper()
 	for _, e := range edges(t, d) {
 		if e.ID == id {
@@ -47,7 +48,7 @@ func edge(t *testing.T, d *sql.DB, id int64) relational.Edge {
 		}
 	}
 	t.Fatalf("no edge %d", id)
-	return relational.Edge{}
+	return graph.Edge{}
 }
 
 // ts formats a stored time as RFC 3339 UTC, or "<nil>" if unset.
@@ -163,7 +164,7 @@ func testRememberSupersedesOlderFact(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mems, err := relational.ListMemories(context.Background(), d, dsID)
+	mems, err := graph.ListMemories(context.Background(), d, dsID)
 	if err != nil || len(mems) != 2 {
 		t.Fatalf("memories: %v, %v", mems, err)
 	}

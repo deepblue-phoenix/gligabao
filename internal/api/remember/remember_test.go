@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ivan/gligabao/internal/ai"
+	"github.com/ivan/gligabao/internal/db/graph"
 	"github.com/ivan/gligabao/internal/db/relational"
 	"github.com/ivan/gligabao/internal/db/relational/dbtest"
 )
@@ -39,7 +40,7 @@ func testRemember(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := relational.DatasetCounts(context.Background(), d, dsID)
+	c, err := graph.DatasetCounts(context.Background(), d, dsID)
 	if err != nil {
 		t.Fatal(err)
 	}

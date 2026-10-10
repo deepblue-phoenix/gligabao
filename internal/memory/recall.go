@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/ivan/gligabao/internal/ai"
+	"github.com/ivan/gligabao/internal/db/graph"
 	"github.com/ivan/gligabao/internal/db/relational"
 )
 
@@ -24,10 +25,10 @@ const (
 //---------------------------------------------------------------------------------------------
 
 // EvidenceEntity is a graph entity cited by an answer.
-type EvidenceEntity = relational.EvidenceEntity
+type EvidenceEntity = graph.EvidenceEntity
 
 // EvidenceEdge is a graph edge cited by an answer, with the bi-temporal validity of the fact (see temporal.go).
-type EvidenceEdge = relational.EvidenceEdge
+type EvidenceEdge = graph.EvidenceEdge
 
 // Evidence lists the entities and edges the answer is based on.
 type Evidence struct {
@@ -195,12 +196,12 @@ func sortedKeys[V any](m map[int64]V) []int64 {
 func retrieve(ctx context.Context, d *sql.DB, dsID int64, query string) (*graphContext, error) {
 	g := &graphContext{entities: map[int64]EvidenceEntity{}, edges: map[int64]EvidenceEdge{}}
 
-	seeds, err := relational.MatchEntities(ctx, d, dsID, key(query), tokenize(query), maxSeedEntities)
+	seeds, err := graph.MatchEntities(ctx, d, dsID, key(query), tokenize(query), maxSeedEntities)
 	if err != nil {
 		return nil, err
 	}
 	if len(seeds) == 0 {
-		if seeds, err = relational.FallbackSeedEntities(ctx, d, dsID, maxFallbackSeed); err != nil {
+		if seeds, err = graph.FallbackSeedEntities(ctx, d, dsID, maxFallbackSeed); err != nil {
 			return nil, err
 		}
 	}
@@ -208,7 +209,7 @@ func retrieve(ctx context.Context, d *sql.DB, dsID int64, query string) (*graphC
 		return g, nil
 	}
 
-	edges, err := relational.EdgesAround(ctx, d, dsID, seeds, maxContextEdges)
+	edges, err := graph.EdgesAround(ctx, d, dsID, seeds, maxContextEdges)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +226,7 @@ func retrieve(ctx context.Context, d *sql.DB, dsID int64, query string) (*graphC
 	for id := range ids {
 		all = append(all, id)
 	}
-	ents, err := relational.EntitiesByID(ctx, d, all)
+	ents, err := graph.EntitiesByID(ctx, d, all)
 	if err != nil {
 		return nil, err
 	}

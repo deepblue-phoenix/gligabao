@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/ivan/gligabao/internal/ai"
+	"github.com/ivan/gligabao/internal/db/graph"
 	"github.com/ivan/gligabao/internal/db/relational"
 )
 
@@ -165,7 +166,7 @@ func loadCandidates(ctx context.Context, d *sql.DB, userID, dataset string, edge
 			}
 		}
 	}
-	return relational.LoadCandidateEdges(ctx, d, dsID, keys, maxCandidates)
+	return graph.LoadCandidateEdges(ctx, d, dsID, keys, maxCandidates)
 }
 
 //---------------------------------------------------------------------------------------------
@@ -173,7 +174,7 @@ func loadCandidates(ctx context.Context, d *sql.DB, userID, dataset string, edge
 // storeEdges writes edges inside tx according to plan and returns the resulting edges (new ones, or the
 // existing ones they duplicate) plus the IDs of edges that were invalidated. entityID maps an entity name to
 // its ID, creating the entity if needed.
-func storeEdges(ctx context.Context, tx relational.Tx, dsID, memID int64, ref, now time.Time, edges []Edge, plan *EdgePlan,
+func storeEdges(ctx context.Context, tx graph.Tx, dsID, memID int64, ref, now time.Time, edges []Edge, plan *EdgePlan,
 	entityID func(name string) (int64, error)) ([]Edge, []int64, error) {
 	if plan == nil {
 		plan = &EdgePlan{}
@@ -213,7 +214,7 @@ func storeEdges(ctx context.Context, tx relational.Tx, dsID, memID int64, ref, n
 		if e.ValidAt != nil {
 			validAt = e.ValidAt.UTC()
 		}
-		id, err := tx.InsertEdge(ctx, relational.NewEdge{DatasetID: dsID, SourceID: src, TargetID: dst, Relation: e.Relation,
+		id, err := tx.InsertEdge(ctx, graph.NewEdge{DatasetID: dsID, SourceID: src, TargetID: dst, Relation: e.Relation,
 			Description: e.Description, ValidAt: validAt, InvalidAt: e.InvalidAt, CreatedAt: now, MemoryID: memID})
 		if err != nil {
 			return nil, nil, err
@@ -250,7 +251,7 @@ func storeEdges(ctx context.Context, tx relational.Tx, dsID, memID int64, ref, n
 // contradict applies Graphiti's invalidation rule to a new edge and an existing one that conflicts with it.
 // The fact that started earlier is the one that ended: it gets invalid_at = start of the later fact and
 // expired_at = now. Facts whose periods don't overlap are left alone. It returns the IDs invalidated.
-func contradict(ctx context.Context, tx relational.Tx, dsID, newID, oldID int64, ref, now time.Time) ([]int64, error) {
+func contradict(ctx context.Context, tx graph.Tx, dsID, newID, oldID int64, ref, now time.Time) ([]int64, error) {
 	if newID == oldID {
 		return nil, nil
 	}
@@ -259,7 +260,7 @@ func contradict(ctx context.Context, tx relational.Tx, dsID, newID, oldID int64,
 		return nil, err
 	}
 	old, err := tx.GetEdge(ctx, dsID, oldID)
-	if errors.Is(err, relational.ErrNotFound) { // deleted (or from another dataset) since the candidates were read
+	if errors.Is(err, graph.ErrNotFound) { // deleted (or from another dataset) since the candidates were read
 		return nil, nil
 	}
 	if err != nil {

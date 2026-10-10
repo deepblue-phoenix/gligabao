@@ -1,4 +1,4 @@
-// Package memory turns free text into a bi-temporal knowledge graph (modelled on Graphiti) with an LLM and stores it in the configured database (see internal/db/relational).
+// Package memory turns free text into a bi-temporal knowledge graph (modelled on Graphiti) with an LLM and stores it in the configured database (see internal/db/graph).
 //
 // Every input is an episode (a row in gb_memories) with an event time (ValidAt: when the text was written or
 // observed) and a system time (CreatedAt: when it was ingested). The facts extracted from it are edges between
@@ -16,17 +16,18 @@ import (
 	"time"
 
 	"github.com/ivan/gligabao/internal/ai"
+	"github.com/ivan/gligabao/internal/db/graph"
 	"github.com/ivan/gligabao/internal/db/relational"
 )
 
 //---------------------------------------------------------------------------------------------
 
 // Entity is a thing mentioned in the text (person, place, project, concept, ...).
-type Entity = relational.Entity
+type Entity = graph.Entity
 
 // Edge is a fact relating two entities (referenced by name), with its bi-temporal validity.
 // Description is the fact as a sentence, e.g. "Alice works at Acme."
-type Edge = relational.Edge
+type Edge = graph.Edge
 
 // Extraction is the structured result of processing a block of text.
 type Extraction struct {
@@ -161,13 +162,7 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, text str
 // written according to plan (see EdgePlan); now is the system time stamped on them. Edges naming an unlisted
 // entity create it with type "other".
 func Store(ctx context.Context, d *sql.DB, userID, dataset, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan) (*Result, error) {
-	tx, err := relational.Begin(ctx, d)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
-	userID, err = ResolveUserID(userID)
+	userID, err := ResolveUserID(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -175,10 +170,16 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, text string, ref, no
 	if err != nil {
 		return nil, err
 	}
-	dsID, err := tx.EnsureDataset(ctx, userID, dataset)
+	// The dataset belongs to the relational store and the graph to the graph store, so they are written separately.
+	dsID, err := relational.EnsureDataset(ctx, d, userID, dataset)
 	if err != nil {
 		return nil, err
 	}
+	tx, err := graph.Begin(ctx, d)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
 
 	memID, err := tx.InsertMemory(ctx, dsID, text, ref, now)
 	if err != nil {
@@ -218,7 +219,7 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, text string, ref, no
 			return id, nil
 		}
 		id, err := tx.FindEntityID(ctx, dsID, key(name))
-		if errors.Is(err, relational.ErrNotFound) {
+		if errors.Is(err, graph.ErrNotFound) {
 			if id, err = upsertEntity(Entity{Name: name, Type: "other"}); err == nil {
 				out.Entities = append(out.Entities, Entity{Name: name, Type: "other"})
 			}

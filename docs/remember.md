@@ -86,7 +86,7 @@ The request makes 1 LLM call, or 2 when stored edges need to be compared. If any
 
 ## Schema
 
-All tables are prefixed with `gb_` (see `internal/db/relational/db_schema.go`).
+All tables are prefixed with `gb_` (see `internal/db/relational/{sqlite,postgres}/db_schema.go` for datasets and `internal/db/graph/{sqlite,postgres}/db_schema.go` for the graph tables).
 
 | Table | Columns |
 | ----- | ------- |

@@ -18,6 +18,7 @@ import (
 	"github.com/ivan/gligabao/internal/ai"
 	"github.com/ivan/gligabao/internal/api"
 	"github.com/ivan/gligabao/internal/config"
+	"github.com/ivan/gligabao/internal/db/graph"
 	"github.com/ivan/gligabao/internal/db/relational"
 	"github.com/ivan/gligabao/internal/db/vector"
 	"github.com/ivan/gligabao/internal/memory"
@@ -116,6 +117,9 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 	defer database.Close()
+	if err := graph.Open(opts.DBBackend, database); err != nil {
+		return err
+	}
 
 	var llm memory.LLM
 	if c, err := ai.New(opts.AnthropicKey, ai.WithPrices(ai.NewPriceTable(opts.Prices))); err != nil {

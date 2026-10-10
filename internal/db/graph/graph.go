@@ -1,0 +1,224 @@
+// Package graph stores and queries the knowledge graph (memories, entities and bi-temporal edges) of the datasets.
+// Every graph operation goes through the functions here, which route to the backend in use. Today the backends
+// (graph/sqlite, graph/postgres) keep the graph in tables of the relational database opened by package relational;
+// they belong here, and not in package relational, because they are graph operations that merely happen to be
+// implemented on a relational store. Dedicated graph databases are meant to be added as further backends of this
+// package. All SQL lives in the backends; other packages only call the functions here and never write SQL.
+package graph
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"sync/atomic"
+
+	"github.com/ivan/gligabao/internal/config"
+	"github.com/ivan/gligabao/internal/db/graph/model"
+	"github.com/ivan/gligabao/internal/db/graph/postgres"
+	"github.com/ivan/gligabao/internal/db/graph/sqlite"
+)
+
+// Types shared with the backends (see package model).
+type (
+	Entity         = model.Entity
+	Edge           = model.Edge
+	EvidenceEntity = model.EvidenceEntity
+	EvidenceEdge   = model.EvidenceEdge
+	NewEdge        = model.NewEdge
+	Memory         = model.Memory
+	Counts         = model.Counts
+	Tx             = model.Tx
+)
+
+// ErrNotFound is returned (wrapped) when a graph record does not exist.
+var ErrNotFound = model.ErrNotFound
+
+//---------------------------------------------------------------------------------------------
+
+// active is the backend selected by the last successful Open.
+var active atomic.Value // string
+
+func backend() string {
+	if b, _ := active.Load().(string); b != "" {
+		return b
+	}
+	return config.DBBackendSQLite
+}
+
+func unsupported() error { return fmt.Errorf("unknown graph backend %q", backend()) }
+
+// Open prepares the graph store of the given backend (config.DBBackendSQLite or config.DBBackendPostgres; empty
+// means sqlite) and makes it the backend all other functions of this package route to. The relational backends
+// keep the graph in the database d they were opened with, so call it with the *sql.DB returned by
+// relational.Open (whose schema the graph tables reference), using the same backend name.
+func Open(backendName string, d *sql.DB) error {
+	if backendName == "" {
+		backendName = config.DBBackendSQLite
+	}
+	var err error
+	switch backendName {
+	case config.DBBackendSQLite:
+		err = sqlite.Open(d)
+	case config.DBBackendPostgres:
+		err = postgres.Open(d)
+	default:
+		return fmt.Errorf("unknown graph backend %q", backendName)
+	}
+	if err != nil {
+		return err
+	}
+	active.Store(backendName)
+	return nil
+}
+
+//---------------------------------------------------------------------------------------------
+// Writing a memory
+
+// Begin starts a transaction on the backend in use. The returned Tx is that backend's implementation.
+func Begin(ctx context.Context, d *sql.DB) (Tx, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		tx, err := sqlite.Begin(ctx, d)
+		if err != nil {
+			return nil, err
+		}
+		return tx, nil
+	case config.DBBackendPostgres:
+		tx, err := postgres.Begin(ctx, d)
+		if err != nil {
+			return nil, err
+		}
+		return tx, nil
+	}
+	return nil, unsupported()
+}
+
+//---------------------------------------------------------------------------------------------
+// Reading edges and the graph
+
+// LoadCandidateEdges returns live (not expired) edges of the dataset touching at least one entity whose normalized
+// name is in nameKeys, newest first, at most limit.
+func LoadCandidateEdges(ctx context.Context, d *sql.DB, dsID int64, nameKeys []string, limit int) ([]Edge, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.LoadCandidateEdges(ctx, d, dsID, nameKeys, limit)
+	case config.DBBackendPostgres:
+		return postgres.LoadCandidateEdges(ctx, d, dsID, nameKeys, limit)
+	}
+	return nil, unsupported()
+}
+
+// ListEdges returns every edge (expired ones included) of userID's live dataset called name, by ID.
+func ListEdges(ctx context.Context, d *sql.DB, userID, name string) ([]Edge, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListEdges(ctx, d, userID, name)
+	case config.DBBackendPostgres:
+		return postgres.ListEdges(ctx, d, userID, name)
+	}
+	return nil, unsupported()
+}
+
+// FallbackSeedEntities returns the IDs of the most recently updated entities of the dataset.
+func FallbackSeedEntities(ctx context.Context, d *sql.DB, dsID int64, limit int) ([]int64, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.FallbackSeedEntities(ctx, d, dsID, limit)
+	case config.DBBackendPostgres:
+		return postgres.FallbackSeedEntities(ctx, d, dsID, limit)
+	}
+	return nil, unsupported()
+}
+
+// MatchEntities returns the IDs of the best entities whose name or description mention the query terms, best
+// first. queryKey is the normalized query; tokens are its distinct terms.
+func MatchEntities(ctx context.Context, d *sql.DB, dsID int64, queryKey string, tokens []string, limit int) ([]int64, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.MatchEntities(ctx, d, dsID, queryKey, tokens, limit)
+	case config.DBBackendPostgres:
+		return postgres.MatchEntities(ctx, d, dsID, queryKey, tokens, limit)
+	}
+	return nil, unsupported()
+}
+
+// EdgesAround returns the edges of the dataset that start or end at one of the entity IDs, newest first.
+func EdgesAround(ctx context.Context, d *sql.DB, dsID int64, entityIDs []int64, limit int) ([]EvidenceEdge, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.EdgesAround(ctx, d, dsID, entityIDs, limit)
+	case config.DBBackendPostgres:
+		return postgres.EdgesAround(ctx, d, dsID, entityIDs, limit)
+	}
+	return nil, unsupported()
+}
+
+// EntitiesByID returns the entities with the given IDs.
+func EntitiesByID(ctx context.Context, d *sql.DB, ids []int64) ([]EvidenceEntity, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.EntitiesByID(ctx, d, ids)
+	case config.DBBackendPostgres:
+		return postgres.EntitiesByID(ctx, d, ids)
+	}
+	return nil, unsupported()
+}
+
+//---------------------------------------------------------------------------------------------
+// Inspection (read-only summaries of what is stored; used to verify behaviour, e.g. in tests)
+
+// DatasetCounts returns the number of memories, entities and edges in the dataset.
+func DatasetCounts(ctx context.Context, d *sql.DB, dsID int64) (Counts, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.DatasetCounts(ctx, d, dsID)
+	case config.DBBackendPostgres:
+		return postgres.DatasetCounts(ctx, d, dsID)
+	}
+	return Counts{}, unsupported()
+}
+
+// ListMemories returns the episodes of the dataset by ID.
+func ListMemories(ctx context.Context, d *sql.DB, dsID int64) ([]Memory, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListMemories(ctx, d, dsID)
+	case config.DBBackendPostgres:
+		return postgres.ListMemories(ctx, d, dsID)
+	}
+	return nil, unsupported()
+}
+
+// ListEntities returns the entities of the dataset by ID.
+func ListEntities(ctx context.Context, d *sql.DB, dsID int64) ([]EvidenceEntity, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListEntities(ctx, d, dsID)
+	case config.DBBackendPostgres:
+		return postgres.ListEntities(ctx, d, dsID)
+	}
+	return nil, unsupported()
+}
+
+// ListGraphEdges returns every edge of the dataset (expired ones included) with its endpoint IDs and names, by ID.
+func ListGraphEdges(ctx context.Context, d *sql.DB, dsID int64) ([]EvidenceEdge, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListGraphEdges(ctx, d, dsID)
+	case config.DBBackendPostgres:
+		return postgres.ListGraphEdges(ctx, d, dsID)
+	}
+	return nil, unsupported()
+}
+
+// CountCrossDatasetEdges returns the number of edges whose dataset differs from that of one of their endpoints
+// (always 0 unless datasets leak into each other).
+func CountCrossDatasetEdges(ctx context.Context, d *sql.DB) (int, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.CountCrossDatasetEdges(ctx, d)
+	case config.DBBackendPostgres:
+		return postgres.CountCrossDatasetEdges(ctx, d)
+	}
+	return 0, unsupported()
+}

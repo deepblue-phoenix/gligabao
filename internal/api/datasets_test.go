@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/ivan/gligabao/internal/ai"
+	"github.com/ivan/gligabao/internal/db/graph"
 	"github.com/ivan/gligabao/internal/db/relational"
 	"github.com/ivan/gligabao/internal/db/relational/dbtest"
 )
@@ -68,9 +69,9 @@ func testDatasets(t *testing.T, d *sql.DB) {
 		t.Fatalf("%s has no live dataset %q", userID, name)
 		return relational.Dataset{}
 	}
-	counts := func(dsID int64) relational.Counts {
+	counts := func(dsID int64) graph.Counts {
 		t.Helper()
-		c, err := relational.DatasetCounts(ctx, d, dsID)
+		c, err := graph.DatasetCounts(ctx, d, dsID)
 		must(err)
 		return c
 	}
@@ -133,7 +134,7 @@ func testDatasets(t *testing.T, d *sql.DB) {
 	want(do("POST", "/v1/gb/remember", `{"user_id":"u1","text":"x"}`), 200)                 // default: main
 	alice := 0
 	for _, ds := range datasets("u1", false) {
-		ents, err := relational.ListEntities(ctx, d, ds.ID)
+		ents, err := graph.ListEntities(ctx, d, ds.ID)
 		must(err)
 		for _, e := range ents {
 			if e.Name == "Alice" {
@@ -144,7 +145,7 @@ func testDatasets(t *testing.T, d *sql.DB) {
 	if alice != 3 {
 		t.Errorf("Alice rows = %d, want 3 (one per dataset)", alice)
 	}
-	if n, err := relational.CountCrossDatasetEdges(ctx, d); err != nil || n != 0 {
+	if n, err := graph.CountCrossDatasetEdges(ctx, d); err != nil || n != 0 {
 		t.Errorf("%d edges cross datasets (err %v)", n, err)
 	}
 	if n := counts(dataset("u1", "main").ID).Edges; n != 1 {

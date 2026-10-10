@@ -1,5 +1,5 @@
 // Package relational opens the database selected in the config and routes every database operation to the backend
-// subpackage in use (sqlite or postgres). All SQL lives in the backends (internal/db/relational/sqlite, internal/db/relational/postgres);
+// subpackage in use (sqlite or postgres). It covers datasets and the LLM call log; graph operations are in internal/db/graph. All SQL lives in the backends (internal/db/relational/sqlite, internal/db/relational/postgres);
 // other packages only call the functions here and never write SQL. Each backend owns its schema, its SQL dialect
 // and its timestamp storage format.
 package relational
@@ -18,13 +18,8 @@ import (
 
 // Types shared with the backends (see package model).
 type (
-	Dataset        = model.Dataset
-	Entity         = model.Entity
-	Edge           = model.Edge
-	EvidenceEntity = model.EvidenceEntity
-	EvidenceEdge   = model.EvidenceEdge
-	NewEdge        = model.NewEdge
-	Tx             = model.Tx
+	Dataset     = model.Dataset
+	LLMCallStat = model.LLMCallStat
 )
 
 // Errors returned by the functions below.
@@ -121,27 +116,19 @@ func DatasetID(ctx context.Context, d *sql.DB, userID, name string) (int64, erro
 	return 0, unsupported()
 }
 
-//---------------------------------------------------------------------------------------------
-// Writing a memory
-
-// Begin starts a transaction on the backend in use. The returned Tx is that backend's implementation.
-func Begin(ctx context.Context, d *sql.DB) (Tx, error) {
+// EnsureDataset returns the ID of userID's live dataset called name, creating it first if needed.
+func EnsureDataset(ctx context.Context, d *sql.DB, userID, name string) (int64, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		tx, err := sqlite.Begin(ctx, d)
-		if err != nil {
-			return nil, err
-		}
-		return tx, nil
+		return sqlite.EnsureDataset(ctx, d, userID, name)
 	case config.DBBackendPostgres:
-		tx, err := postgres.Begin(ctx, d)
-		if err != nil {
-			return nil, err
-		}
-		return tx, nil
+		return postgres.EnsureDataset(ctx, d, userID, name)
 	}
-	return nil, unsupported()
+	return 0, unsupported()
 }
+
+//---------------------------------------------------------------------------------------------
+// LLM call log
 
 // RecordLLMCall stores one LLM/embedding API call.
 func RecordLLMCall(ctx context.Context, d *sql.DB, kind, provider, modelName string, inputTokens, outputTokens int, costUSD float64) error {
@@ -152,142 +139,6 @@ func RecordLLMCall(ctx context.Context, d *sql.DB, kind, provider, modelName str
 		return postgres.RecordLLMCall(ctx, d, kind, provider, modelName, inputTokens, outputTokens, costUSD)
 	}
 	return unsupported()
-}
-
-//---------------------------------------------------------------------------------------------
-// Reading edges and the graph
-
-// LoadCandidateEdges returns live (not expired) edges of the dataset touching at least one entity whose normalized
-// name is in nameKeys, newest first, at most limit.
-func LoadCandidateEdges(ctx context.Context, d *sql.DB, dsID int64, nameKeys []string, limit int) ([]Edge, error) {
-	switch backend() {
-	case config.DBBackendSQLite:
-		return sqlite.LoadCandidateEdges(ctx, d, dsID, nameKeys, limit)
-	case config.DBBackendPostgres:
-		return postgres.LoadCandidateEdges(ctx, d, dsID, nameKeys, limit)
-	}
-	return nil, unsupported()
-}
-
-// ListEdges returns every edge (expired ones included) of userID's live dataset called name, by ID.
-func ListEdges(ctx context.Context, d *sql.DB, userID, name string) ([]Edge, error) {
-	switch backend() {
-	case config.DBBackendSQLite:
-		return sqlite.ListEdges(ctx, d, userID, name)
-	case config.DBBackendPostgres:
-		return postgres.ListEdges(ctx, d, userID, name)
-	}
-	return nil, unsupported()
-}
-
-// FallbackSeedEntities returns the IDs of the most recently updated entities of the dataset.
-func FallbackSeedEntities(ctx context.Context, d *sql.DB, dsID int64, limit int) ([]int64, error) {
-	switch backend() {
-	case config.DBBackendSQLite:
-		return sqlite.FallbackSeedEntities(ctx, d, dsID, limit)
-	case config.DBBackendPostgres:
-		return postgres.FallbackSeedEntities(ctx, d, dsID, limit)
-	}
-	return nil, unsupported()
-}
-
-// MatchEntities returns the IDs of the best entities whose name or description mention the query terms, best
-// first. queryKey is the normalized query; tokens are its distinct terms.
-func MatchEntities(ctx context.Context, d *sql.DB, dsID int64, queryKey string, tokens []string, limit int) ([]int64, error) {
-	switch backend() {
-	case config.DBBackendSQLite:
-		return sqlite.MatchEntities(ctx, d, dsID, queryKey, tokens, limit)
-	case config.DBBackendPostgres:
-		return postgres.MatchEntities(ctx, d, dsID, queryKey, tokens, limit)
-	}
-	return nil, unsupported()
-}
-
-// EdgesAround returns the edges of the dataset that start or end at one of the entity IDs, newest first.
-func EdgesAround(ctx context.Context, d *sql.DB, dsID int64, entityIDs []int64, limit int) ([]EvidenceEdge, error) {
-	switch backend() {
-	case config.DBBackendSQLite:
-		return sqlite.EdgesAround(ctx, d, dsID, entityIDs, limit)
-	case config.DBBackendPostgres:
-		return postgres.EdgesAround(ctx, d, dsID, entityIDs, limit)
-	}
-	return nil, unsupported()
-}
-
-// EntitiesByID returns the entities with the given IDs.
-func EntitiesByID(ctx context.Context, d *sql.DB, ids []int64) ([]EvidenceEntity, error) {
-	switch backend() {
-	case config.DBBackendSQLite:
-		return sqlite.EntitiesByID(ctx, d, ids)
-	case config.DBBackendPostgres:
-		return postgres.EntitiesByID(ctx, d, ids)
-	}
-	return nil, unsupported()
-}
-
-//---------------------------------------------------------------------------------------------
-// Inspection (read-only summaries of what is stored; used to verify behaviour, e.g. in tests)
-
-type (
-	Memory      = model.Memory
-	Counts      = model.DatasetCounts
-	LLMCallStat = model.LLMCallStat
-)
-
-// DatasetCounts returns the number of memories, entities and edges in the dataset.
-func DatasetCounts(ctx context.Context, d *sql.DB, dsID int64) (Counts, error) {
-	switch backend() {
-	case config.DBBackendSQLite:
-		return sqlite.DatasetCounts(ctx, d, dsID)
-	case config.DBBackendPostgres:
-		return postgres.DatasetCounts(ctx, d, dsID)
-	}
-	return Counts{}, unsupported()
-}
-
-// ListMemories returns the episodes of the dataset by ID.
-func ListMemories(ctx context.Context, d *sql.DB, dsID int64) ([]Memory, error) {
-	switch backend() {
-	case config.DBBackendSQLite:
-		return sqlite.ListMemories(ctx, d, dsID)
-	case config.DBBackendPostgres:
-		return postgres.ListMemories(ctx, d, dsID)
-	}
-	return nil, unsupported()
-}
-
-// ListEntities returns the entities of the dataset by ID.
-func ListEntities(ctx context.Context, d *sql.DB, dsID int64) ([]EvidenceEntity, error) {
-	switch backend() {
-	case config.DBBackendSQLite:
-		return sqlite.ListEntities(ctx, d, dsID)
-	case config.DBBackendPostgres:
-		return postgres.ListEntities(ctx, d, dsID)
-	}
-	return nil, unsupported()
-}
-
-// ListGraphEdges returns every edge of the dataset (expired ones included) with its endpoint IDs and names, by ID.
-func ListGraphEdges(ctx context.Context, d *sql.DB, dsID int64) ([]EvidenceEdge, error) {
-	switch backend() {
-	case config.DBBackendSQLite:
-		return sqlite.ListGraphEdges(ctx, d, dsID)
-	case config.DBBackendPostgres:
-		return postgres.ListGraphEdges(ctx, d, dsID)
-	}
-	return nil, unsupported()
-}
-
-// CountCrossDatasetEdges returns the number of edges whose dataset differs from that of one of their endpoints
-// (always 0 unless datasets leak into each other).
-func CountCrossDatasetEdges(ctx context.Context, d *sql.DB) (int, error) {
-	switch backend() {
-	case config.DBBackendSQLite:
-		return sqlite.CountCrossDatasetEdges(ctx, d)
-	case config.DBBackendPostgres:
-		return postgres.CountCrossDatasetEdges(ctx, d)
-	}
-	return 0, unsupported()
 }
 
 // LLMCallStats sums the logged LLM calls by type.

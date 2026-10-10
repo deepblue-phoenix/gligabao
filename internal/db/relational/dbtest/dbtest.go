@@ -1,4 +1,4 @@
-// Package dbtest runs tests against every available database backend.
+// Package dbtest runs tests against every available database backend (relational and graph tables).
 //
 // SQLite is always used (a fresh database file per test). PostgreSQL is used too when the environment variable
 // POSTGRES_TEST_DSN names a database (e.g. postgres://postgres:pw@127.0.0.1:5432/gb?sslmode=disable); each test
@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/ivan/gligabao/internal/config"
+	"github.com/ivan/gligabao/internal/db/graph"
 	"github.com/ivan/gligabao/internal/db/relational"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -30,7 +31,7 @@ var counter atomic.Int64
 
 // Run calls fn as a subtest once per backend ("sqlite", and "postgres" if POSTGRES_TEST_DSN is set), each time with
 // a freshly opened, empty database. The database is closed (and, for postgres, its schema dropped) afterwards.
-// Subtests run sequentially, because package db routes to the backend of the last Open.
+// Subtests run sequentially, because packages relational and graph route to the backend of the last Open.
 func Run(t *testing.T, fn func(t *testing.T, d *sql.DB)) {
 	t.Helper()
 	t.Run(config.DBBackendSQLite, func(t *testing.T) { fn(t, OpenSQLite(t)) })
@@ -48,6 +49,10 @@ func OpenSQLite(t *testing.T) *sql.DB {
 	t.Helper()
 	d, err := relational.Open(config.DBBackendSQLite, filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Open(config.DBBackendSQLite, d); err != nil {
+		d.Close()
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { d.Close() })
@@ -68,6 +73,11 @@ func OpenPostgres(t *testing.T, dsn string) *sql.DB {
 		t.Fatal(err)
 	}
 	d, err := relational.Open(config.DBBackendPostgres, withSearchPath(dsn, schema))
+	if err == nil {
+		if err = graph.Open(config.DBBackendPostgres, d); err != nil {
+			d.Close()
+		}
+	}
 	if err != nil {
 		admin.Exec(`DROP SCHEMA ` + schema + ` CASCADE`)
 		admin.Close()

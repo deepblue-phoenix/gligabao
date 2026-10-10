@@ -27,6 +27,7 @@ import (
 
 	"github.com/ivan/gligabao/internal/ai"
 	"github.com/ivan/gligabao/internal/config"
+	"github.com/ivan/gligabao/internal/db/graph"
 	"github.com/ivan/gligabao/internal/db/relational"
 	"github.com/ivan/gligabao/internal/memory"
 	"github.com/ivan/gligabao/internal/server"
@@ -166,6 +167,9 @@ func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string
 		return "", nil, err
 	}
 	defer database.Close()
+	if err := graph.Open(config.DBBackendSQLite, database); err != nil {
+		return "", nil, err
+	}
 
 	srv := httptest.NewServer(server.NewHandler(database, llm))
 	defer srv.Close()
@@ -188,7 +192,7 @@ func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string
 			return "", nil, fmt.Errorf("remember #%d: %w", i+1, err)
 		}
 	}
-	edges, err := relational.ListEdges(context.Background(), database, evalUser, evalDataset)
+	edges, err := graph.ListEdges(context.Background(), database, evalUser, evalDataset)
 	if err != nil {
 		return "", nil, err
 	}
@@ -206,7 +210,7 @@ func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string
 		}
 	}
 	for _, want := range c.ExpectEdges {
-		var found *relational.Edge
+		var found *graph.Edge
 		for i, e := range edges {
 			if strings.EqualFold(e.Source, want.Source) && strings.EqualFold(e.Target, want.Target) {
 				found = &edges[i]
