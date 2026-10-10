@@ -29,6 +29,24 @@ CREATE TABLE IF NOT EXISTS gb_datasets (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_datasets_user_name ON gb_datasets(user_id, name) WHERE NOT deleted;
 
+CREATE TABLE IF NOT EXISTS gb_ontologies (
+	id          BIGSERIAL PRIMARY KEY,
+	user_id     TEXT NOT NULL,
+	name        TEXT NOT NULL,
+	description TEXT NOT NULL DEFAULT '',
+	iri         TEXT NOT NULL DEFAULT '',
+	title       TEXT NOT NULL DEFAULT '',
+	format      TEXT NOT NULL,
+	size_bytes  BIGINT NOT NULL,
+	sha256      TEXT NOT NULL,
+	classes     BIGINT NOT NULL,
+	properties  BIGINT NOT NULL,
+	edges       BIGINT NOT NULL,
+	created_at  TIMESTAMPTZ NOT NULL,
+	updated_at  TIMESTAMPTZ NOT NULL,
+	UNIQUE (user_id, name)
+);
+
 CREATE TABLE IF NOT EXISTS gb_llm_calls (
 	id            BIGSERIAL PRIMARY KEY,
 	type          TEXT NOT NULL,

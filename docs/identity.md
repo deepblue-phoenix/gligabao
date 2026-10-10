@@ -11,6 +11,7 @@ Every request to gligabao says which user it acts for, with a `user_id`. gligaba
 | `POST /v1/gb/datasets` | JSON body: `"user_id"` |
 | `GET /v1/gb/datasets` | query string: `?user_id=u1` |
 | `DELETE /v1/gb/datasets/{name}` | query string: `?user_id=u1` |
+| `POST /v1/gb/ontologies`, `PUT /v1/gb/ontologies/{name}` | JSON body: `"user_id"` (ontologies are owned by a user; names are unique per user, see [ontologies.md](ontologies.md)) |
 
 `GET /health` takes none.
 

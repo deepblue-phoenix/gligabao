@@ -19,11 +19,16 @@ gligabao is a small, self-hosted HTTP service that gives an AI application long-
 | `POST /v1/gb/recall` | Answer a question from the graph, with evidence | [docs/recall.md](docs/recall.md) |
 | `POST /v1/gb/datasets`, `GET /v1/gb/datasets?user_id=`, `DELETE /v1/gb/datasets/{name}?user_id=` | Create, list and (soft) delete datasets | [docs/datasets.md](docs/datasets.md) |
 | `GET /v1/gb/datasets/{name}/graph?user_id=` | Export a dataset's whole graph as JSON | [docs/graph.md](docs/graph.md) |
+| `POST /v1/gb/ontologies`, `PUT /v1/gb/ontologies/{name}` | Load an OWL ontology (RDF/XML) under a name, or update the one stored under it (merge or replace) | [docs/ontologies.md](docs/ontologies.md) |
 | `GET /health` | Health check | |
 
 ## Datasets
 
 Memory is organized in datasets: a hard container for everything stored (episodes, entities, edges). Every dataset has an owner, a `user_id`, which covers everything in it; all endpoints require `user_id` (in the JSON body, or the query string for `GET`/`DELETE`), and dataset names are unique per user. `remember` and `recall` take an optional `"dataset"` name, default `main`. Datasets are isolated: the same entity in two datasets is two separate nodes, and a recall only sees its own dataset's graph. Deleting a dataset is soft (`deleted = true`). Details: [docs/datasets.md](docs/datasets.md), [docs/identity.md](docs/identity.md).
+
+## Ontologies
+
+An ontology describes the concepts of a domain and how they relate. `POST /v1/gb/ontologies` with `{"user_id": "u1", "name": "market", "content": "<rdf:RDF ...>"}` loads an OWL ontology written in RDF/XML under a name (unique per user). Its metadata (name, owner, IRI, SHA-256 of the document, counts) is tracked in the relational database (`gb_ontologies`), and the ontology itself is loaded into the graph database as a graph of its own: classes become nodes, and `rdfs:subClassOf` and object properties (domain to range) become edges. `PUT /v1/gb/ontologies/{name}` updates the one stored under that name: by default the supplied classes and properties are merged into it (new ones are added, ones that exist already are overwritten, nothing is deleted), and with `"replace": true` the supplied ontology replaces it entirely. It is separate from the memory graph, and `remember` and `recall` do not use it yet. [`ontology/market.owl`](ontology/market.owl) is a basic ontology of markets with the 20 most important concepts and their relationships. Details: [docs/ontologies.md](docs/ontologies.md).
 
 ## Remember
 

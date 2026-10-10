@@ -32,6 +32,27 @@ CREATE TABLE IF NOT EXISTS gb_datasets (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_datasets_user_name ON gb_datasets(user_id, name) WHERE deleted = 0;
 
+-- Metadata of a loaded ontology. The ontology itself (classes and relationships) is in the graph tables
+-- gb_onto_classes and gb_onto_edges (internal/db/graph), which reference this row. Names are unique per user.
+--   sha256: hex digest of the loaded document; classes/properties/edges: what was stored in the graph
+CREATE TABLE IF NOT EXISTS gb_ontologies (
+	id          INTEGER PRIMARY KEY AUTOINCREMENT,
+	user_id     TEXT NOT NULL,
+	name        TEXT NOT NULL,
+	description TEXT NOT NULL DEFAULT '',
+	iri         TEXT NOT NULL DEFAULT '',
+	title       TEXT NOT NULL DEFAULT '',
+	format      TEXT NOT NULL,
+	size_bytes  INTEGER NOT NULL,
+	sha256      TEXT NOT NULL,
+	classes     INTEGER NOT NULL,
+	properties  INTEGER NOT NULL,
+	edges       INTEGER NOT NULL,
+	created_at  DATETIME NOT NULL,
+	updated_at  DATETIME NOT NULL,
+	UNIQUE (user_id, name)
+);
+
 -- One row per LLM/embedding API call. type is the operation that made the call: 'remember' or 'recall'.
 CREATE TABLE IF NOT EXISTS gb_llm_calls (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,

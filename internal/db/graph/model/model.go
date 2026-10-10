@@ -84,6 +84,38 @@ type Counts struct {
 	Memories, Entities, Edges int
 }
 
+// OntologyClass is a class of an ontology (a node of the ontology graph).
+type OntologyClass struct {
+	IRI     string `json:"iri"`
+	Name    string `json:"name"`
+	Label   string `json:"label,omitempty"`
+	Comment string `json:"comment,omitempty"`
+	// Declared only matters to MergeOntology: true if the document defines the class itself, false if it merely
+	// mentions it as an edge endpoint. It is not stored.
+	Declared bool `json:"-"`
+}
+
+// OntologyCounts is the size of a stored ontology.
+type OntologyCounts struct {
+	Classes    int
+	Properties int // distinct properties among the edges
+	Edges      int
+}
+
+// OntologyEdge is a relationship between two classes of an ontology, referenced by IRI. Kind is "subclass_of",
+// "equivalent_class", "disjoint_with" or "property"; Relation is the edge name (the property name for "property");
+// IRI is the property or predicate IRI. Label, Comment and InverseOf describe a property.
+type OntologyEdge struct {
+	SourceIRI string `json:"source"`
+	TargetIRI string `json:"target"`
+	Relation  string `json:"relation"`
+	Kind      string `json:"kind"`
+	IRI       string `json:"iri"`
+	Label     string `json:"label,omitempty"`
+	Comment   string `json:"comment,omitempty"`
+	InverseOf string `json:"inverse_of,omitempty"`
+}
+
 //---------------------------------------------------------------------------------------------
 
 // Tx is a backend transaction covering all the graph writes of one Remember. All "not found" results are ErrNotFound.

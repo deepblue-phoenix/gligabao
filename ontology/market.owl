@@ -1,0 +1,338 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A basic, general ontology of markets: the 20 most important concepts and how they relate.
+  Load it with POST /v1/gb/ontologies (see docs/ontologies.md).
+-->
+<rdf:RDF
+    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+    xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+    xmlns:owl="http://www.w3.org/2002/07/owl#"
+    xmlns="https://gligabao.example/ontology/market#"
+    xml:base="https://gligabao.example/ontology/market">
+
+  <owl:Ontology rdf:about="https://gligabao.example/ontology/market">
+    <rdfs:label>Market ontology</rdfs:label>
+    <rdfs:comment>A general ontology of markets: participants, assets, orders, trades, prices and regulation.</rdfs:comment>
+  </owl:Ontology>
+
+  <!-- Classes -->
+
+  <owl:Class rdf:about="#Market">
+    <rdfs:label>Market</rdfs:label>
+    <rdfs:comment>A place or system where buyers and sellers meet to trade assets at prices set by supply and demand.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Exchange">
+    <rdfs:label>Exchange</rdfs:label>
+    <rdfs:comment>An organized, regulated market with fixed rules and a central venue for trading listed assets.</rdfs:comment>
+    <rdfs:subClassOf rdf:resource="#Market"/>
+  </owl:Class>
+
+  <owl:Class rdf:about="#MarketParticipant">
+    <rdfs:label>Market Participant</rdfs:label>
+    <rdfs:comment>Any person or organization that takes part in a market.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Buyer">
+    <rdfs:label>Buyer</rdfs:label>
+    <rdfs:comment>A participant that acquires assets.</rdfs:comment>
+    <rdfs:subClassOf rdf:resource="#MarketParticipant"/>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Seller">
+    <rdfs:label>Seller</rdfs:label>
+    <rdfs:comment>A participant that offers or disposes of assets.</rdfs:comment>
+    <rdfs:subClassOf rdf:resource="#MarketParticipant"/>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Intermediary">
+    <rdfs:label>Intermediary</rdfs:label>
+    <rdfs:comment>A participant such as a broker, dealer or market maker that facilitates trades between others.</rdfs:comment>
+    <rdfs:subClassOf rdf:resource="#MarketParticipant"/>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Regulator">
+    <rdfs:label>Regulator</rdfs:label>
+    <rdfs:comment>An authority that supervises markets and their participants and enforces regulation.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Asset">
+    <rdfs:label>Asset</rdfs:label>
+    <rdfs:comment>Anything of value that can be traded in a market.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Commodity">
+    <rdfs:label>Commodity</rdfs:label>
+    <rdfs:comment>A standardized, interchangeable physical good such as oil, wheat or gold.</rdfs:comment>
+    <rdfs:subClassOf rdf:resource="#Asset"/>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Security">
+    <rdfs:label>Security</rdfs:label>
+    <rdfs:comment>A tradable financial instrument such as a share or a bond.</rdfs:comment>
+    <rdfs:subClassOf rdf:resource="#Asset"/>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Currency">
+    <rdfs:label>Currency</rdfs:label>
+    <rdfs:comment>A medium of exchange and unit of account; also traded as an asset.</rdfs:comment>
+    <rdfs:subClassOf rdf:resource="#Asset"/>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Derivative">
+    <rdfs:label>Derivative</rdfs:label>
+    <rdfs:comment>A contract whose value depends on an underlying asset, e.g. a future or an option.</rdfs:comment>
+    <rdfs:subClassOf rdf:resource="#Asset"/>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Order">
+    <rdfs:label>Order</rdfs:label>
+    <rdfs:comment>An instruction by a participant to buy or sell an asset, possibly with a limit price.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Trade">
+    <rdfs:label>Trade</rdfs:label>
+    <rdfs:comment>An executed transaction in which an asset changes hands between a buyer and a seller.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Price">
+    <rdfs:label>Price</rdfs:label>
+    <rdfs:comment>The amount, in a currency, at which an asset is offered, bid or traded.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Supply">
+    <rdfs:label>Supply</rdfs:label>
+    <rdfs:comment>The quantity of an asset that sellers are willing to offer at given prices.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Demand">
+    <rdfs:label>Demand</rdfs:label>
+    <rdfs:comment>The quantity of an asset that buyers are willing to acquire at given prices.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="#MarketIndex">
+    <rdfs:label>Market Index</rdfs:label>
+    <rdfs:comment>A measure of the value of a selected group of assets, used to track a market or segment.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Regulation">
+    <rdfs:label>Regulation</rdfs:label>
+    <rdfs:comment>A rule or law that governs how markets operate and how participants behave.</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Risk">
+    <rdfs:label>Risk</rdfs:label>
+    <rdfs:comment>The possibility of loss or adverse price movement associated with holding or trading an asset.</rdfs:comment>
+  </owl:Class>
+
+  <!-- Relationships (object properties) -->
+
+  <owl:ObjectProperty rdf:about="#participatesIn">
+    <rdfs:label>participates in</rdfs:label>
+    <rdfs:comment>A participant takes part in a market.</rdfs:comment>
+    <rdfs:domain rdf:resource="#MarketParticipant"/>
+    <rdfs:range rdf:resource="#Market"/>
+    <owl:inverseOf rdf:resource="#hasParticipant"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#hasParticipant">
+    <rdfs:label>has participant</rdfs:label>
+    <rdfs:comment>A market has a participant.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Market"/>
+    <rdfs:range rdf:resource="#MarketParticipant"/>
+    <owl:inverseOf rdf:resource="#participatesIn"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#tradedOn">
+    <rdfs:label>traded on</rdfs:label>
+    <rdfs:comment>An asset is traded on a market.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Asset"/>
+    <rdfs:range rdf:resource="#Market"/>
+    <owl:inverseOf rdf:resource="#listsAsset"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#listsAsset">
+    <rdfs:label>lists asset</rdfs:label>
+    <rdfs:comment>A market offers an asset for trading.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Market"/>
+    <rdfs:range rdf:resource="#Asset"/>
+    <owl:inverseOf rdf:resource="#tradedOn"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#placedBy">
+    <rdfs:label>placed by</rdfs:label>
+    <rdfs:comment>An order is placed by a participant.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Order"/>
+    <rdfs:range rdf:resource="#MarketParticipant"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#ordersAsset">
+    <rdfs:label>orders asset</rdfs:label>
+    <rdfs:comment>An order is an instruction to trade a given asset.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Order"/>
+    <rdfs:range rdf:resource="#Asset"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#resultsIn">
+    <rdfs:label>results in</rdfs:label>
+    <rdfs:comment>An order is (partly) executed as a trade.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Order"/>
+    <rdfs:range rdf:resource="#Trade"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#hasBuyer">
+    <rdfs:label>has buyer</rdfs:label>
+    <rdfs:comment>A trade has a buyer.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Trade"/>
+    <rdfs:range rdf:resource="#Buyer"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#hasSeller">
+    <rdfs:label>has seller</rdfs:label>
+    <rdfs:comment>A trade has a seller.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Trade"/>
+    <rdfs:range rdf:resource="#Seller"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#tradesAsset">
+    <rdfs:label>trades asset</rdfs:label>
+    <rdfs:comment>A trade transfers an asset.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Trade"/>
+    <rdfs:range rdf:resource="#Asset"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#executedOn">
+    <rdfs:label>executed on</rdfs:label>
+    <rdfs:comment>A trade is executed on a market.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Trade"/>
+    <rdfs:range rdf:resource="#Market"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#facilitates">
+    <rdfs:label>facilitates</rdfs:label>
+    <rdfs:comment>An intermediary helps a trade take place.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Intermediary"/>
+    <rdfs:range rdf:resource="#Trade"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#hasPrice">
+    <rdfs:label>has price</rdfs:label>
+    <rdfs:comment>An asset, order or trade has a price.</rdfs:comment>
+    <rdfs:domain>
+      <owl:Class>
+        <owl:unionOf rdf:parseType="Collection">
+          <owl:Class rdf:about="#Asset"/>
+          <owl:Class rdf:about="#Order"/>
+          <owl:Class rdf:about="#Trade"/>
+        </owl:unionOf>
+      </owl:Class>
+    </rdfs:domain>
+    <rdfs:range rdf:resource="#Price"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#denominatedIn">
+    <rdfs:label>denominated in</rdfs:label>
+    <rdfs:comment>A price is expressed in a currency.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Price"/>
+    <rdfs:range rdf:resource="#Currency"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#underlying">
+    <rdfs:label>underlying</rdfs:label>
+    <rdfs:comment>A derivative derives its value from an underlying asset.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Derivative"/>
+    <rdfs:range rdf:resource="#Asset"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#regulates">
+    <rdfs:label>regulates</rdfs:label>
+    <rdfs:comment>A regulator supervises a market or its participants.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Regulator"/>
+    <rdfs:range>
+      <owl:Class>
+        <owl:unionOf rdf:parseType="Collection">
+          <owl:Class rdf:about="#Market"/>
+          <owl:Class rdf:about="#MarketParticipant"/>
+        </owl:unionOf>
+      </owl:Class>
+    </rdfs:range>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#enforces">
+    <rdfs:label>enforces</rdfs:label>
+    <rdfs:comment>A regulator enforces a regulation.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Regulator"/>
+    <rdfs:range rdf:resource="#Regulation"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#governs">
+    <rdfs:label>governs</rdfs:label>
+    <rdfs:comment>A regulation governs a market.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Regulation"/>
+    <rdfs:range rdf:resource="#Market"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#determines">
+    <rdfs:label>determines</rdfs:label>
+    <rdfs:comment>Supply and demand together determine the price of an asset.</rdfs:comment>
+    <rdfs:domain>
+      <owl:Class>
+        <owl:unionOf rdf:parseType="Collection">
+          <owl:Class rdf:about="#Supply"/>
+          <owl:Class rdf:about="#Demand"/>
+        </owl:unionOf>
+      </owl:Class>
+    </rdfs:domain>
+    <rdfs:range rdf:resource="#Price"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#supplyOf">
+    <rdfs:label>supply of</rdfs:label>
+    <rdfs:comment>The supply concerns an asset.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Supply"/>
+    <rdfs:range rdf:resource="#Asset"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#demandFor">
+    <rdfs:label>demand for</rdfs:label>
+    <rdfs:comment>The demand concerns an asset.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Demand"/>
+    <rdfs:range rdf:resource="#Asset"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#offeredBy">
+    <rdfs:label>offered by</rdfs:label>
+    <rdfs:comment>Supply comes from sellers.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Supply"/>
+    <rdfs:range rdf:resource="#Seller"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#expressedBy">
+    <rdfs:label>expressed by</rdfs:label>
+    <rdfs:comment>Demand comes from buyers.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Demand"/>
+    <rdfs:range rdf:resource="#Buyer"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#tracks">
+    <rdfs:label>tracks</rdfs:label>
+    <rdfs:comment>An index tracks a market.</rdfs:comment>
+    <rdfs:domain rdf:resource="#MarketIndex"/>
+    <rdfs:range rdf:resource="#Market"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#composedOf">
+    <rdfs:label>composed of</rdfs:label>
+    <rdfs:comment>An index is made up of assets.</rdfs:comment>
+    <rdfs:domain rdf:resource="#MarketIndex"/>
+    <rdfs:range rdf:resource="#Asset"/>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#exposesTo">
+    <rdfs:label>exposes to</rdfs:label>
+    <rdfs:comment>Holding or trading an asset exposes a participant to a risk.</rdfs:comment>
+    <rdfs:domain rdf:resource="#Asset"/>
+    <rdfs:range rdf:resource="#Risk"/>
+  </owl:ObjectProperty>
+
+</rdf:RDF>

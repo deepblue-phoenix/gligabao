@@ -20,6 +20,7 @@ import (
 type (
 	Dataset     = model.Dataset
 	LLMCallStat = model.LLMCallStat
+	Ontology    = model.Ontology
 )
 
 // Errors returned by the functions below.
@@ -125,6 +126,68 @@ func EnsureDataset(ctx context.Context, d *sql.DB, userID, name string) (int64, 
 		return postgres.EnsureDataset(ctx, d, userID, name)
 	}
 	return 0, unsupported()
+}
+
+//---------------------------------------------------------------------------------------------
+// Ontologies (metadata only; the classes and relationships are stored by package graph)
+
+// CreateOntology stores the metadata of an ontology (o.ID and o.CreatedAt are ignored and filled in the result).
+// It returns ErrExists if the user already has an ontology with that name.
+func CreateOntology(ctx context.Context, d *sql.DB, o Ontology) (*Ontology, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.CreateOntology(ctx, d, o)
+	case config.DBBackendPostgres:
+		return postgres.CreateOntology(ctx, d, o)
+	}
+	return nil, unsupported()
+}
+
+// GetOntology returns the metadata of userID's ontology called name, or ErrNotFound.
+func GetOntology(ctx context.Context, d *sql.DB, userID, name string) (*Ontology, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.GetOntology(ctx, d, userID, name)
+	case config.DBBackendPostgres:
+		return postgres.GetOntology(ctx, d, userID, name)
+	}
+	return nil, unsupported()
+}
+
+// UpdateOntology overwrites the metadata of the ontology o.ID with the other fields of o (description, IRI, title,
+// format, size, hash, counts and UpdatedAt); the owner, name and creation time never change. It returns the stored
+// row, or ErrNotFound.
+func UpdateOntology(ctx context.Context, d *sql.DB, o Ontology) (*Ontology, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.UpdateOntology(ctx, d, o)
+	case config.DBBackendPostgres:
+		return postgres.UpdateOntology(ctx, d, o)
+	}
+	return nil, unsupported()
+}
+
+// ListOntologies returns userID's ontologies, oldest first.
+func ListOntologies(ctx context.Context, d *sql.DB, userID string) ([]Ontology, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListOntologies(ctx, d, userID)
+	case config.DBBackendPostgres:
+		return postgres.ListOntologies(ctx, d, userID)
+	}
+	return nil, unsupported()
+}
+
+// DeleteOntology removes the metadata row of an ontology (and, through the foreign keys, whatever graph rows
+// still reference it). It is used to undo a failed load.
+func DeleteOntology(ctx context.Context, d *sql.DB, id int64) error {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.DeleteOntology(ctx, d, id)
+	case config.DBBackendPostgres:
+		return postgres.DeleteOntology(ctx, d, id)
+	}
+	return unsupported()
 }
 
 //---------------------------------------------------------------------------------------------

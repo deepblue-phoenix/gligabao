@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/ivan/gligabao/internal/api/datasets"
+	"github.com/ivan/gligabao/internal/api/ontologies"
 	"github.com/ivan/gligabao/internal/api/recall"
 	"github.com/ivan/gligabao/internal/api/remember"
 	"github.com/ivan/gligabao/internal/memory"
@@ -19,4 +20,6 @@ func Register(mux *http.ServeMux, d *sql.DB, llm memory.LLM) {
 	mux.HandleFunc("GET /v1/gb/datasets", datasets.List(d))
 	mux.HandleFunc("DELETE /v1/gb/datasets/{name}", datasets.Delete(d))
 	mux.HandleFunc("GET /v1/gb/datasets/{name}/graph", datasets.Graph(d))
+	mux.HandleFunc("POST /v1/gb/ontologies", ontologies.Load(d))
+	mux.HandleFunc("PUT /v1/gb/ontologies/{name}", ontologies.Update(d))
 }
