@@ -27,6 +27,17 @@ embedding_dimensions = 1536
 # Keys are model-name prefixes: the longest matching prefix wins, so "claude-haiku-4-5" also matches
 # "claude-haiku-4-5-20251001". Entries here override the built-in prices or add new models.
 # cache_write / cache_read are optional and default to `input`.
+# long_threshold / long_input / long_output are optional: when a call's total input tokens (including cache)
+# exceed long_threshold, the whole call is billed at long_input / long_output instead of input / output.
+[prices."claude-haiku-5-5"]
+input = 0.1
+output = 0.5
+cache_write = 0.125
+cache_read = 0.01
+long_threshold = 100000
+long_input = 0.5
+long_output = 2.5
+
 [prices."claude-haiku-4-5"]
 input = 1.0
 output = 5.0

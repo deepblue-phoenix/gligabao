@@ -80,6 +80,11 @@ type Price struct {
 	Output     float64  `toml:"output"`
 	CacheWrite *float64 `toml:"cache_write"`
 	CacheRead  *float64 `toml:"cache_read"`
+	// Optional long-context tier: when a call's total input tokens exceed LongThreshold, the whole call
+	// is billed at LongInput / LongOutput instead of Input / Output. 0 disables the tier.
+	LongThreshold int     `toml:"long_threshold"`
+	LongInput     float64 `toml:"long_input"`
+	LongOutput    float64 `toml:"long_output"`
 }
 
 //---------------------------------------------------------------------------------------------
@@ -144,7 +149,7 @@ func (c *Config) Validate() error {
 		if strings.TrimSpace(model) == "" {
 			return errors.New("config: prices: empty model name")
 		}
-		for _, v := range []float64{p.Input, p.Output, deref(p.CacheWrite), deref(p.CacheRead)} {
+		for _, v := range []float64{p.Input, p.Output, deref(p.CacheWrite), deref(p.CacheRead), p.LongInput, p.LongOutput, float64(p.LongThreshold)} {
 			if v < 0 {
 				return fmt.Errorf("config: prices.%q: prices must not be negative", model)
 			}
