@@ -38,6 +38,6 @@ func init() {
 	serveCmd.Flags().StringVar(&serveDBPath, "db", gligabao.DefaultDBPath, "SQLite database file path")
 	serveCmd.Flags().StringVar(&serveVectorDir, "vector-dir", "", "chromem vector store directory (default: next to --db)")
 	serveCmd.Flags().BoolVar(&serveEval, "eval", false, "register the eval endpoints that return ATIF trajectories (config: eval)")
-	serveCmd.Flags().BoolVar(&serveAdminUI, "admin-ui", false, "serve the admin UI at /admin/ (config: admin_ui)")
+	serveCmd.Flags().BoolVar(&serveAdminUI, "admin-ui", false, "serve the admin UI at /v1/gb/admin/ (config: admin_ui)")
 	rootCmd.AddCommand(serveCmd)
 }

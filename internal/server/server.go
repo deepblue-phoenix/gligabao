@@ -38,12 +38,12 @@ const banner = `
 func adminURL(addr string) string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		return "http://" + addr + "/admin/"
+		return "http://" + addr + "/v1/gb/admin/"
 	}
 	if host == "" || host == "0.0.0.0" || host == "::" {
 		host = "localhost"
 	}
-	return "http://" + net.JoinHostPort(host, port) + "/admin/"
+	return "http://" + net.JoinHostPort(host, port) + "/v1/gb/admin/"
 }
 
 //---------------------------------------------------------------------------------------------
@@ -64,7 +64,7 @@ type Options struct {
 	// Eval registers the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/recall), which return ATIF
 	// trajectories with their results. Off by default.
 	Eval bool
-	// AdminUI registers the admin UI handlers (served at /admin/ from the assets embedded in the binary).
+	// AdminUI registers the admin UI handlers (served at /v1/gb/admin/ from the assets embedded in the binary).
 	AdminUI bool
 }
 
@@ -72,7 +72,7 @@ type Options struct {
 
 // NewHandler builds the HTTP handler for the given databases and LLM.
 // llm may be nil, in which case endpoints requiring it return 503. The eval endpoints are registered only if eval is true,
-// the admin UI (/admin/) only if adminUI is true and its assets were built into the binary.
+// the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary.
 func NewHandler(d *db.DB, llm memory.LLM, eval, adminUI bool) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
@@ -95,16 +95,16 @@ func NewHandler(d *db.DB, llm memory.LLM, eval, adminUI bool) http.Handler {
 	return mux
 }
 
-// registerAdminUI serves the embedded admin UI assets under /admin/. It is a no-op (with a warning) if the
+// registerAdminUI serves the embedded admin UI assets under /v1/gb/admin/. It is a no-op (with a warning) if the
 // assets were not built into the binary (see admin_ui/ and run_build.sh).
 func registerAdminUI(mux *http.ServeMux) {
 	if !adminui.Available() {
 		log.Warn("admin_ui is enabled but the web assets are not embedded in this binary; build with ./run_build.sh (admin UI build enabled)")
 		return
 	}
-	mux.Handle("GET /admin/", http.StripPrefix("/admin/", http.FileServerFS(adminui.Assets())))
-	mux.HandleFunc("GET /admin", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/admin/", http.StatusMovedPermanently)
+	mux.Handle("GET /v1/gb/admin/", http.StripPrefix("/v1/gb/admin/", http.FileServerFS(adminui.Assets())))
+	mux.HandleFunc("GET /v1/gb/admin", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/v1/gb/admin/", http.StatusMovedPermanently)
 	})
 }
 
