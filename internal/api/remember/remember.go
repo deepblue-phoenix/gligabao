@@ -12,6 +12,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/monitoring"
 )
 
 const maxRememberBytes = 1 << 20 // 1 MiB
@@ -62,12 +63,30 @@ func Handler(d *sql.DB, llm memory.LLM) http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		start := time.Now()
 		res, err := memory.Remember(r.Context(), d, llm, req.UserID, req.Dataset, req.Text, ref)
 		if err != nil {
 			log.Printf("remember: %v", err)
+			monitoring.EmitSystemEvent(r.Context(), "remember.failed", monitoring.Event{
+				"user_id":     req.UserID,
+				"dataset":     req.Dataset,
+				"text_bytes":  len(req.Text),
+				"duration_ms": time.Since(start).Milliseconds(),
+				"error":       err.Error(),
+			})
 			httputil.Error(w, http.StatusBadGateway, "failed to process text")
 			return
 		}
+		monitoring.EmitSystemEvent(r.Context(), "remember.completed", monitoring.Event{
+			"user_id":           res.UserID,
+			"dataset":           res.Dataset,
+			"memory_id":         res.MemoryID,
+			"text_bytes":        len(req.Text),
+			"entities":          len(res.Entities),
+			"edges":             len(res.Edges),
+			"invalidated_edges": len(res.InvalidatedEdges),
+			"duration_ms":       time.Since(start).Milliseconds(),
+		})
 		httputil.WriteJSON(w, http.StatusOK, res)
 	}
 }

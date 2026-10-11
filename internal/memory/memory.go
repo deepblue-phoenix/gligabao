@@ -204,7 +204,7 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, text string, ref, no
 		CreatedAt: now.UTC(),
 		Entities: []Entity{},
 		Edges: []Edge{},
-		InvalidatedEdges: []int64{}
+		InvalidatedEdges: []int64{},
 	}
 	ids := map[string]int64{} // normalized name -> entity id (first listed type wins for edge lookup)
 	seenEnt := map[string]bool{}

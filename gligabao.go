@@ -15,6 +15,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/server"
+	"github.com/deepblue-phoenix/gligabao/monitoring"
 )
 
 // Config is the gligabao configuration (the contents of gligabao.toml).
@@ -26,12 +27,20 @@ type Price = config.Price
 // DefaultDBPath is the SQLite database file used when ServeOptions.DBPath is empty.
 const DefaultDBPath = db.DefaultSQLitePath
 
+// Hooks is a set of callbacks gligabao invokes (e.g. for system events); see package monitoring.
+type Hooks = monitoring.Hooks
+
+// SystemEvent is the key/value data attached to a system event.
+type SystemEvent = monitoring.Event
+
 // ServeOptions holds the settings that are not part of the Config file.
 type ServeOptions struct {
 	// DBPath is the SQLite database file (sqlite backend). Default: DefaultDBPath.
 	DBPath string
 	// VectorDir is the directory of the chromem vector store. Default: next to DBPath.
 	VectorDir string
+	// Hooks are installed for the lifetime of Serve; every one is called for each event.
+	Hooks []Hooks
 }
 
 //---------------------------------------------------------------------------------------------
@@ -57,6 +66,8 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 	if opts.DBPath == "" {
 		opts.DBPath = DefaultDBPath
 	}
+	monitoring.SetHooks(opts.Hooks)
+	defer monitoring.SetHooks(nil)
 	return server.Run(ctx, server.Options{
 		Addr:         cfg.Addr(),
 		DB:           db.ConfigFrom(cfg, opts.DBPath, opts.VectorDir),

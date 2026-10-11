@@ -7,9 +7,11 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/monitoring"
 )
 
 const maxRecallBytes = 64 << 10 // 64 KiB
@@ -41,7 +43,17 @@ func Handler(d *sql.DB, llm memory.LLM) http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, "query is required")
 			return
 		}
+		start := time.Now()
 		res, err := memory.Recall(r.Context(), d, llm, req.UserID, req.Dataset, req.Query)
+		if err != nil {
+			monitoring.EmitSystemEvent(r.Context(), "recall.failed", monitoring.Event{
+				"user_id":     req.UserID,
+				"dataset":     req.Dataset,
+				"query_bytes": len(req.Query),
+				"duration_ms": time.Since(start).Milliseconds(),
+				"error":       err.Error(),
+			})
+		}
 		if errors.Is(err, memory.ErrInvalidDataset) || errors.Is(err, memory.ErrInvalidUser) {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
@@ -55,6 +67,14 @@ func Handler(d *sql.DB, llm memory.LLM) http.HandlerFunc {
 			httputil.Error(w, http.StatusBadGateway, "failed to answer query")
 			return
 		}
+		monitoring.EmitSystemEvent(r.Context(), "recall.completed", monitoring.Event{
+			"user_id":           req.UserID,
+			"dataset":           req.Dataset,
+			"query_bytes":       len(req.Query),
+			"evidence_entities": len(res.Evidence.Entities),
+			"evidence_edges":    len(res.Evidence.Edges),
+			"duration_ms":       time.Since(start).Milliseconds(),
+		})
 		httputil.WriteJSON(w, http.StatusOK, res)
 	}
 }
