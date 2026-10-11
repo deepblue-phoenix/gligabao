@@ -45,12 +45,18 @@ type LLM interface {
 // Extract asks the LLM to pull entities and temporal edges out of text. ref is the episode's time; it anchors
 // relative dates and is the ValidAt of every fact whose start the text does not state.
 func Extract(ctx context.Context, llm LLM, text string, ref time.Time) (*Extraction, error) {
+
+	//-----------------------
+	// LLM
 	resp, err := llm.Complete(ctx, ai.Request{
 		System: entitySystemPrompt,
 		Messages: []ai.Message{{Role: ai.RoleUser, Content: "<reference_time>\n" + relational.FormatTime(ref) +
 			"\n</reference_time>\n\n<text>\n" + text + "\n</text>"}},
 		MaxTokens: 4096,
 	})
+
+	//-----------------------
+
 	if err != nil {
 		return nil, err
 	}
@@ -66,6 +72,8 @@ func parseExtraction(s string, ref time.Time) (*Extraction, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// ENTITY
 	var raw struct {
 		Entities []Entity `json:"entities"`
 		Edges    []struct {
@@ -82,6 +90,8 @@ func parseExtraction(s string, ref time.Time) (*Extraction, error) {
 	}
 	ex := &Extraction{Entities: raw.Entities}
 	for _, r := range raw.Edges {
+		
+		// EDGE
 		e := Edge{
 			Source:      strings.TrimSpace(r.Source),
 			Target:      strings.TrimSpace(r.Target),
@@ -186,8 +196,16 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, text string, ref, no
 		return nil, err
 	}
 
-	out := &Result{UserID: userID, Dataset: dataset, MemoryID: memID, ValidAt: ref.UTC(), CreatedAt: now.UTC(),
-		Entities: []Entity{}, Edges: []Edge{}, InvalidatedEdges: []int64{}}
+	out := &Result{
+		UserID: userID,
+		Dataset: dataset,
+		MemoryID: memID,
+		ValidAt: ref.UTC(),
+		CreatedAt: now.UTC(),
+		Entities: []Entity{},
+		Edges: []Edge{},
+		InvalidatedEdges: []int64{}
+	}
 	ids := map[string]int64{} // normalized name -> entity id (first listed type wins for edge lookup)
 	seenEnt := map[string]bool{}
 
