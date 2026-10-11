@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os/signal"
 	"syscall"
@@ -15,6 +14,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	log "github.com/sirupsen/logrus"
 )
 
 const shutdownTimeout = 5 * time.Second
@@ -63,11 +63,18 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 	defer database.Close()
-	log.Printf("databases: %s", database) // String omits secrets such as the DSN
+	// Only non-secret fields are logged (never the DSN).
+	log.WithFields(log.Fields{
+		"backend":              database.Backend,
+		"sqlite_path":          database.SQLitePath,
+		"vector_store":         database.VectorStore,
+		"vector_dir":           database.VectorDir,
+		"embedding_dimensions": database.EmbeddingDimensions,
+	}).Info("databases opened")
 
 	var llm memory.LLM
 	if c, err := ai.New(opts.AnthropicKey, ai.WithPrices(ai.NewPriceTable(opts.Prices))); err != nil {
-		log.Printf("warning: %v; /v1/gb/remember and /v1/gb/recall will return 503", err)
+		log.WithError(err).Warn("LLM client unavailable; /v1/gb/remember and /v1/gb/recall will return 503")
 	} else {
 		llm = c
 	}
@@ -79,7 +86,7 @@ func Run(ctx context.Context, opts Options) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Printf("listening on %s", opts.Addr)
+		log.WithField("addr", opts.Addr).Info("listening")
 		errCh <- srv.ListenAndServe()
 	}()
 
@@ -89,7 +96,7 @@ func Run(ctx context.Context, opts Options) error {
 			return err
 		}
 	case <-ctx.Done():
-		log.Println("shutting down")
+		log.Info("shutting down")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
 		return srv.Shutdown(shutdownCtx)

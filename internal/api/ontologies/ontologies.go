@@ -5,11 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	log "github.com/sirupsen/logrus"
 )
 
 const maxBodyBytes = memory.MaxOntologyBytes + 64<<10 // the document is JSON-escaped, leave room for it and the other fields
@@ -86,7 +86,7 @@ func fail(w http.ResponseWriter, op string, err error) {
 	case errors.Is(err, memory.ErrOntologyNotFound):
 		httputil.Error(w, http.StatusNotFound, "ontology not found")
 	default:
-		log.Printf("%s ontology: %v", op, err)
+		log.WithError(err).WithField("op", op).Error("ontology request failed")
 		httputil.Error(w, http.StatusInternalServerError, "failed to "+op+" ontology")
 	}
 }

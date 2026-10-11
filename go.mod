@@ -6,6 +6,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/philippgille/chromem-go v0.7.0
+	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.10.2
 	modernc.org/sqlite v1.60.1
 )

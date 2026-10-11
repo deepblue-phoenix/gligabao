@@ -4,7 +4,6 @@ package remember
 import (
 	"database/sql"
 	"encoding/json"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/monitoring"
+	log "github.com/sirupsen/logrus"
 )
 
 const maxRememberBytes = 1 << 20 // 1 MiB
@@ -66,7 +66,10 @@ func Handler(d *sql.DB, llm memory.LLM) http.HandlerFunc {
 		start := time.Now()
 		res, err := memory.Remember(r.Context(), d, llm, req.UserID, req.Dataset, req.Text, ref)
 		if err != nil {
-			log.Printf("remember: %v", err)
+			log.WithError(err).WithFields(log.Fields{
+				"user_id": req.UserID,
+				"dataset": req.Dataset,
+			}).Error("remember failed")
 			monitoring.EmitSystemEvent(r.Context(), "remember.failed", monitoring.Event{
 				"user_id":     req.UserID,
 				"dataset":     req.Dataset,
@@ -77,6 +80,14 @@ func Handler(d *sql.DB, llm memory.LLM) http.HandlerFunc {
 			httputil.Error(w, http.StatusBadGateway, "failed to process text")
 			return
 		}
+		log.WithFields(log.Fields{
+			"user_id":     res.UserID,
+			"dataset":     res.Dataset,
+			"memory_id":   res.MemoryID,
+			"entities":    len(res.Entities),
+			"edges":       len(res.Edges),
+			"duration_ms": time.Since(start).Milliseconds(),
+		}).Debug("remember completed")
 		monitoring.EmitSystemEvent(r.Context(), "remember.completed", monitoring.Event{
 			"user_id":           res.UserID,
 			"dataset":           res.Dataset,

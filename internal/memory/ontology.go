@@ -14,7 +14,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 	"time"
@@ -22,6 +21,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/ontology"
+
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -126,7 +127,7 @@ func LoadOntology(ctx context.Context, d *sql.DB, userID, name, description stri
 	if err := graph.LoadOntology(ctx, d, meta.ID, p.classes, p.edges); err != nil {
 		// The graph load is atomic; undo the metadata so that the name is free again.
 		if derr := relational.DeleteOntology(context.WithoutCancel(ctx), d, meta.ID); derr != nil {
-			log.Printf("load ontology %q: cleanup after failure: %v", name, derr)
+			log.WithError(derr).WithField("ontology", name).Error("load ontology: cleanup after failure")
 		}
 		return nil, err
 	}
@@ -211,7 +212,7 @@ func UpdateOntology(ctx context.Context, d *sql.DB, userID, name, description st
 	}
 	if err != nil {
 		if _, rerr := relational.UpdateOntology(context.WithoutCancel(ctx), d, *old); rerr != nil {
-			log.Printf("update ontology %q: restoring metadata after failure: %v", name, rerr)
+			log.WithError(rerr).WithField("ontology", name).Error("update ontology: restoring metadata after failure")
 		}
 		return nil, err
 	}
@@ -221,7 +222,7 @@ func UpdateOntology(ctx context.Context, d *sql.DB, userID, name, description st
 		p.meta.Classes, p.meta.Properties, p.meta.Edges = counts.Classes, counts.Properties, counts.Edges
 		if meta, err = relational.UpdateOntology(ctx, d, p.meta); err != nil {
 			// The graph change is committed already; only the counts in the metadata are stale.
-			log.Printf("update ontology %q: recording counts: %v", name, err)
+			log.WithError(err).WithField("ontology", name).Error("update ontology: recording counts")
 			return nil, err
 		}
 	}

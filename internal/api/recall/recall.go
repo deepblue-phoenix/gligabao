@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/monitoring"
+	log "github.com/sirupsen/logrus"
 )
 
 const maxRecallBytes = 64 << 10 // 64 KiB
@@ -63,10 +63,18 @@ func Handler(d *sql.DB, llm memory.LLM) http.HandlerFunc {
 			return
 		}
 		if err != nil {
-			log.Printf("recall: %v", err)
+			log.WithError(err).WithFields(log.Fields{
+				"user_id": req.UserID,
+				"dataset": req.Dataset,
+			}).Error("recall failed")
 			httputil.Error(w, http.StatusBadGateway, "failed to answer query")
 			return
 		}
+		log.WithFields(log.Fields{
+			"user_id":     req.UserID,
+			"dataset":     req.Dataset,
+			"duration_ms": time.Since(start).Milliseconds(),
+		}).Debug("recall completed")
 		monitoring.EmitSystemEvent(r.Context(), "recall.completed", monitoring.Event{
 			"user_id":           req.UserID,
 			"dataset":           req.Dataset,

@@ -10,13 +10,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // DefaultDataset is used when a request names no dataset.
@@ -147,7 +148,7 @@ func DeleteDataset(ctx context.Context, d *sql.DB, vectors vector.Store, userID,
 	}
 	if vectors != nil {
 		if err := vectors.DeleteAll(ctx, VectorNamespace(id)); err != nil {
-			log.Printf("delete dataset %d: removing vectors: %v", id, err)
+			log.WithError(err).WithField("dataset_id", id).Error("delete dataset: removing vectors")
 		}
 	}
 	return nil

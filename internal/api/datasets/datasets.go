@@ -5,12 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	log "github.com/sirupsen/logrus"
 )
 
 const maxBodyBytes = 64 << 10 // 64 KiB
@@ -39,7 +39,7 @@ func Create(d *sql.DB) http.HandlerFunc {
 		case errors.Is(err, memory.ErrDatasetExists):
 			httputil.Error(w, http.StatusConflict, "dataset already exists")
 		case err != nil:
-			log.Printf("create dataset: %v", err)
+			log.WithError(err).WithField("user_id", req.UserID).WithField("dataset", req.Name).Error("create dataset failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to create dataset")
 		default:
 			httputil.WriteJSON(w, http.StatusCreated, ds)
@@ -57,7 +57,7 @@ func List(d *sql.DB) http.HandlerFunc {
 			return
 		}
 		if err != nil {
-			log.Printf("list datasets: %v", err)
+			log.WithError(err).WithField("user_id", q.Get("user_id")).Error("list datasets failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to list datasets")
 			return
 		}
@@ -76,7 +76,10 @@ func Delete(d *sql.DB, vectors vector.Store) http.HandlerFunc {
 		case errors.Is(err, memory.ErrInvalidDataset), errors.Is(err, memory.ErrDatasetNotFound):
 			httputil.Error(w, http.StatusNotFound, "dataset not found")
 		case err != nil:
-			log.Printf("delete dataset: %v", err)
+			log.WithError(err).WithFields(log.Fields{
+				"user_id": r.URL.Query().Get("user_id"),
+				"dataset": r.PathValue("name"),
+			}).Error("delete dataset failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to delete dataset")
 		default:
 			w.WriteHeader(http.StatusNoContent)
@@ -95,7 +98,10 @@ func Graph(d *sql.DB) http.HandlerFunc {
 		case errors.Is(err, memory.ErrInvalidDataset), errors.Is(err, memory.ErrDatasetNotFound):
 			httputil.Error(w, http.StatusNotFound, "dataset not found")
 		case err != nil:
-			log.Printf("export graph: %v", err)
+			log.WithError(err).WithFields(log.Fields{
+				"user_id": r.URL.Query().Get("user_id"),
+				"dataset": r.PathValue("name"),
+			}).Error("export graph failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to export graph")
 		default:
 			httputil.WriteJSON(w, http.StatusOK, g)

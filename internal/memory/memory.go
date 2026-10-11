@@ -9,11 +9,12 @@ package memory
 import (
 	"context"
 	"database/sql"
-	"log"
 	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+
+	log "github.com/sirupsen/logrus"
 )
 
 //---------------------------------------------------------------------------------------------
@@ -52,8 +53,24 @@ func (r *recordingLLM) Complete(ctx context.Context, req ai.Request) (*ai.Respon
 	}
 	// Detached from ctx so a cancelled request still records money that was spent.
 	if err := RecordCall(context.WithoutCancel(ctx), r.db, r.kind, resp.Provider, resp.Model, resp.InputTokens, resp.OutputTokens, resp.CostUSD); err != nil {
-		log.Printf("record llm call: %v", err)
+		log.WithError(err).WithFields(log.Fields{
+			"kind":          r.kind,
+			"provider":      resp.Provider,
+			"model":         resp.Model,
+			"input_tokens":  resp.InputTokens,
+			"output_tokens": resp.OutputTokens,
+			"cost_usd":      resp.CostUSD,
+		}).Error("record llm call")
+		return resp, nil
 	}
+	log.WithFields(log.Fields{
+		"kind":          r.kind,
+		"provider":      resp.Provider,
+		"model":         resp.Model,
+		"input_tokens":  resp.InputTokens,
+		"output_tokens": resp.OutputTokens,
+		"cost_usd":      resp.CostUSD,
+	}).Debug("llm call recorded")
 	return resp, nil
 }
 
