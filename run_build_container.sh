@@ -5,4 +5,4 @@ cd "$(dirname "$0")"
 IMAGE="${1:-gligabao:latest}"
 docker build -t "$IMAGE" .
 echo "Built image $IMAGE"
-echo "Run: docker run --rm -p 8080:8080 -e ANTHROPIC_API_KEY -v gligabao-data:/data $IMAGE"
+echo "Run: docker run --rm -p 7878:7878 -e ANTHROPIC_API_KEY -v gligabao-data:/data $IMAGE"

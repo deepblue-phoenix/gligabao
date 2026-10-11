@@ -55,7 +55,7 @@ Errors are `{"error": "..."}`. It makes no LLM call. Example, loading the bundle
 
 ```sh
 jq -n --rawfile c ontology/market.owl '{user_id:"u1", name:"market", content:$c}' \
-  | curl -s localhost:8080/v1/gb/ontologies -d @-
+  | curl -s localhost:7878/v1/gb/ontologies -d @-
 ```
 
 ## PUT /v1/gb/ontologies/{name}
@@ -83,11 +83,11 @@ Only the owner's ontology can be updated. Response `200` with the new metadata. 
 ```sh
 # merge a fragment into the stored ontology
 jq -n --rawfile c extension.owl '{user_id:"u1", content:$c}' \
-  | curl -s -X PUT localhost:8080/v1/gb/ontologies/market -d @-
+  | curl -s -X PUT localhost:7878/v1/gb/ontologies/market -d @-
 
 # replace it with a complete one
 jq -n --rawfile c ontology/market.owl '{user_id:"u1", content:$c, replace:true}' \
-  | curl -s -X PUT localhost:8080/v1/gb/ontologies/market -d @-
+  | curl -s -X PUT localhost:7878/v1/gb/ontologies/market -d @-
 ```
 
 Either way, the update is all or nothing. The classes and edges are changed in one transaction, so readers never see a mix of old and new, and if the update fails (an unparseable document, a database error) the stored ontology is left exactly as it was.

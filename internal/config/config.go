@@ -41,7 +41,7 @@ const (
 const DefaultEmbeddingDimensions = 1536
 
 // DefaultPort is used when the config does not set a port.
-const DefaultPort = 8080
+const DefaultPort = 7878
 
 //---------------------------------------------------------------------------------------------
 
@@ -124,7 +124,7 @@ func Default() *Config {
 	}
 }
 
-// Addr returns the HTTP listen address derived from the port (e.g. ":8080").
+// Addr returns the HTTP listen address derived from the port (e.g. ":7878").
 func (c *Config) Addr() string {
 	return ":" + strconv.Itoa(c.Port)
 }

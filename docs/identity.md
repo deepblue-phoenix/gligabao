@@ -16,8 +16,8 @@ Every request to gligabao says which user it acts for, with a `user_id`. gligaba
 `GET /health` takes none.
 
 ```
-curl -s localhost:8080/v1/gb/remember -d '{"user_id":"u1","text":"Alice works at Acme."}'
-curl -s "localhost:8080/v1/gb/datasets?user_id=u1"
+curl -s localhost:7878/v1/gb/remember -d '{"user_id":"u1","text":"Alice works at Acme."}'
+curl -s "localhost:7878/v1/gb/datasets?user_id=u1"
 ```
 
 ## Format

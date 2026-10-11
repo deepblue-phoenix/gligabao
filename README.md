@@ -93,7 +93,7 @@ POSTGRES_TEST_DSN='postgres://user:pw@localhost:5432/gb?sslmode=disable' ./run_t
 ```sh
 ./run_build.sh                      # builds bin/gligabao
 export ANTHROPIC_API_KEY=...        # required for remember/recall
-./bin/gligabao serve                # listens on :8080 by default
+./bin/gligabao serve                # listens on :7878 by default
 ./run_tests.sh                      # runs all tests
 ```
 

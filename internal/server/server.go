@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
@@ -21,11 +23,34 @@ import (
 
 const shutdownTimeout = 5 * time.Second
 
+const banner = `
+                              GLIGABAO
+   .+------+     +------+     +------+     +------+     +------+.
+ .' |      |    /|      |     |      |     |      |\    |      | ` + "`" + `.
++   |      |   + |      |     +      +     |      | +   |      |   +
+|   |      |   | |      |     |      |     |      | |   |      |   |
+|  .+------+   | +------+     +------+     +------+ |   +------+.  |
+|.'      .'    |/      /      |      |      \      \|    ` + "`" + `.      ` + "`" + `.|
++------+'      +------+       +------+       +------+      ` + "`+------+" + `
+`
+
+// adminURL returns the URL at which the admin UI is reachable for the listen address addr.
+func adminURL(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "http://" + addr + "/admin/"
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "localhost"
+	}
+	return "http://" + net.JoinHostPort(host, port) + "/admin/"
+}
+
 //---------------------------------------------------------------------------------------------
 
 // Options configures the server.
 type Options struct {
-	// Addr is the listen address, e.g. "127.0.0.1:8080".
+	// Addr is the listen address, e.g. "127.0.0.1:7878".
 	Addr string
 	// DB selects and locates the databases (relational, graph, vector).
 	DB db.Config
@@ -88,6 +113,7 @@ func registerAdminUI(mux *http.ServeMux) {
 // Run opens the database, starts the server and blocks until ctx is
 // cancelled or SIGINT/SIGTERM is received, then shuts down gracefully.
 func Run(ctx context.Context, opts Options) error {
+	fmt.Fprint(os.Stderr, banner)
 	database, err := db.Open(opts.DB)
 	if err != nil {
 		return err
@@ -115,8 +141,12 @@ func Run(ctx context.Context, opts Options) error {
 		log.WithField("trajectory_dir", memory.TrajectoryDir).Info("ATIF trajectories are stored here")
 	}
 
-	if opts.AdminUI {
-		log.WithField("path", "/admin/").Info("admin UI enabled")
+	if opts.AdminUI && adminui.Available() {
+		log.WithField("url", adminURL(opts.Addr)).Info("admin UI is active")
+	} else if opts.AdminUI {
+		log.Warn("admin UI is enabled but not active: web assets are not embedded in this binary")
+	} else {
+		log.Info("admin UI is not active (enable with admin_ui = true or --admin-ui)")
 	}
 
 	var llm memory.LLM

@@ -8,7 +8,7 @@ from typing import Any
 
 from .errors import GligabaoError
 
-DEFAULT_BASE_URL = "http://127.0.0.1:8080"
+DEFAULT_BASE_URL = "http://127.0.0.1:7878"
 
 
 class Client:

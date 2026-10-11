@@ -88,5 +88,5 @@ Errors are `{"error": "..."}`.
 ## Example
 
 ```
-curl 'http://localhost:8080/v1/gb/datasets/main/graph?user_id=u1' > graph.json
+curl 'http://localhost:7878/v1/gb/datasets/main/graph?user_id=u1' > graph.json
 ```

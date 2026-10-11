@@ -119,7 +119,7 @@ Existing database files are not migrated when the schema changes: delete the fil
 export ANTHROPIC_API_KEY=...
 ./run_build.sh
 ./bin/gligabao serve &
-curl -s localhost:8080/v1/gb/remember \
+curl -s localhost:7878/v1/gb/remember \
   -d '{"user_id":"u1","text":"Alice works at Acme and lives in Paris."}'
 ```
 

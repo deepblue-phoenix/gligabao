@@ -104,8 +104,8 @@ The cited IDs are validated against the subgraph that was actually sent:
 export ANTHROPIC_API_KEY=...
 ./run_build.sh
 ./bin/gligabao serve &
-curl -s localhost:8080/v1/gb/remember -d '{"user_id":"u1","text":"Alice works at Acme and lives in Paris."}'
-curl -s localhost:8080/v1/gb/recall   -d '{"user_id":"u1","query":"Where does Alice work?"}'
+curl -s localhost:7878/v1/gb/remember -d '{"user_id":"u1","text":"Alice works at Acme and lives in Paris."}'
+curl -s localhost:7878/v1/gb/recall   -d '{"user_id":"u1","query":"Where does Alice work?"}'
 ```
 
 ## Limitations

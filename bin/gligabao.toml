@@ -1,5 +1,5 @@
 # gligabao configuration
-port = 8080
+port = 7878
 
 # API keys default to the ANTHROPIC_API_KEY / OPENAI_API_KEY / PINECONE_API_KEY environment variables;
 # a value set here overrides the environment.
