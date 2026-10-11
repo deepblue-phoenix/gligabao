@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 )
@@ -117,14 +118,21 @@ type Result struct {
 	Entities         []Entity  `json:"entities"`
 	Edges            []Edge    `json:"edges"`             // the facts from this text in their stored state
 	InvalidatedEdges []int64   `json:"invalidated_edges"` // IDs of edges closed because of this memory
+	// TrajectoryID identifies the ATIF trajectory of this call, stored in TrajectoryDir.
+	TrajectoryID string `json:"trajectory_id,omitempty"`
+	// Trajectory is the trajectory itself; only set when the call was made with WithEval.
+	Trajectory *atif.Trajectory `json:"trajectory,omitempty"`
 }
 
 // Remember extracts entities and temporal edges from text and stores them (with the raw text as an episode) in
 // one transaction, inside userID's named dataset (empty means DefaultDataset; it is created if missing). ref is the
 // time the text was written/observed; the zero value means the current time. If any LLM step fails nothing is
 // stored.
-func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, text string, ref time.Time) (*Result, error) {
-	userID, err := ResolveUserID(userID)
+//
+// The call is recorded as an ATIF trajectory, stored as JSON in TrajectoryDir; its ID is Result.TrajectoryID. With
+// WithEval the trajectory is also returned in Result.Trajectory.
+func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, text string, ref time.Time, opts ...Option) (res *Result, err error) {
+	userID, err = ResolveUserID(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -139,6 +147,17 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, text str
 	ref = relational.Normalize(ref)
 	llm = withRecording(llm, d, CallRemember)
 
+	tr := startTrace(CallRemember, newCallOptions(opts))
+	defer func() {
+		id, traj := tr.finish(err)
+		if res != nil {
+			res.TrajectoryID, res.Trajectory = id, traj
+		}
+	}()
+	llm = tr.wrap(llm)
+	tr.b.User(text)
+	tr.b.SetExtra("input", map[string]any{"user_id": userID, "dataset": dataset, "reference_time": relational.FormatTime(ref)})
+
 	ex, err := Extract(ctx, llm, text, ref)
 	if err != nil {
 		return nil, err
@@ -147,11 +166,21 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, text str
 	if err != nil {
 		return nil, err
 	}
+	tr.tool("Loaded stored facts that new facts may duplicate or contradict.", "load_candidates",
+		map[string]any{"user_id": userID, "dataset": dataset, "new_edges": len(ex.Edges)},
+		map[string]any{"candidates": len(cands)})
 	plan, err := resolveEdges(ctx, llm, ex.Edges, cands)
 	if err != nil {
 		return nil, err
 	}
-	return Store(ctx, d, userID, dataset, text, ref, now, ex, plan)
+	res, err = Store(ctx, d, userID, dataset, text, ref, now, ex, plan)
+	if err != nil {
+		return nil, err
+	}
+	tr.tool("Stored the episode, entities and edges.", "store_memory",
+		map[string]any{"user_id": userID, "dataset": dataset},
+		map[string]any{"memory_id": res.MemoryID, "entities": res.Entities, "edges": res.Edges, "invalidated_edges": res.InvalidatedEdges})
+	return res, nil
 }
 
 // Store persists an episode and its extraction into userID's named dataset (created if missing). Entities are

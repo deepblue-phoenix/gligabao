@@ -39,6 +39,8 @@ type ServeOptions struct {
 	DBPath string
 	// VectorDir is the directory of the chromem vector store. Default: next to DBPath.
 	VectorDir string
+	// TrajectoryDir is where remember/recall ATIF trajectories are stored as JSON. Default: "atif" next to DBPath.
+	TrajectoryDir string
 	// Hooks are installed for the lifetime of Serve; every one is called for each event.
 	Hooks []Hooks
 }
@@ -73,6 +75,8 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 		DB:           db.ConfigFrom(cfg, opts.DBPath, opts.VectorDir),
 		AnthropicKey: cfg.AnthropicKey,
 		Prices:       aiPrices(cfg),
+
+		TrajectoryDir: opts.TrajectoryDir,
 	})
 }
 

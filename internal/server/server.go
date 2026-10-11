@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -31,6 +32,9 @@ type Options struct {
 	AnthropicKey string
 	// Prices overrides/extends the built-in model price table used for call costs. May be nil.
 	Prices map[string]ai.Price
+	// TrajectoryDir is where remember/recall ATIF trajectories are stored as JSON.
+	// Default: an "atif" directory next to the SQLite file (memory.TrajectoryDir if there is none).
+	TrajectoryDir string
 }
 
 //---------------------------------------------------------------------------------------------
@@ -71,6 +75,14 @@ func Run(ctx context.Context, opts Options) error {
 		"vector_dir":           database.VectorDir,
 		"embedding_dimensions": database.EmbeddingDimensions,
 	}).Info("databases opened")
+
+	switch {
+	case opts.TrajectoryDir != "":
+		memory.TrajectoryDir = opts.TrajectoryDir
+	case database.SQLitePath != "":
+		memory.TrajectoryDir = filepath.Join(filepath.Dir(database.SQLitePath), "atif")
+	}
+	log.WithField("trajectory_dir", memory.TrajectoryDir).Info("ATIF trajectories")
 
 	var llm memory.LLM
 	if c, err := ai.New(opts.AnthropicKey, ai.WithPrices(ai.NewPriceTable(opts.Prices))); err != nil {

@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 )
@@ -40,6 +41,10 @@ type Evidence struct {
 type RecallResult struct {
 	Answer   string   `json:"answer"`
 	Evidence Evidence `json:"evidence"`
+	// TrajectoryID identifies the ATIF trajectory of this call, stored in TrajectoryDir.
+	TrajectoryID string `json:"trajectory_id,omitempty"`
+	// Trajectory is the trajectory itself; only set when the call was made with WithEval.
+	Trajectory *atif.Trajectory `json:"trajectory,omitempty"`
 }
 
 //---------------------------------------------------------------------------------------------
@@ -47,8 +52,11 @@ type RecallResult struct {
 // Recall answers query using the knowledge graph: relevant entities and their edges are retrieved,
 // the LLM answers from that context, and the entities/edges it used are returned as evidence. Only the named
 // dataset of userID (empty means DefaultDataset) is searched; ErrDatasetNotFound is returned if it does not exist.
-func Recall(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, query string) (*RecallResult, error) {
-	userID, err := ResolveUserID(userID)
+//
+// The call is recorded as an ATIF trajectory, stored as JSON in TrajectoryDir; its ID is RecallResult.TrajectoryID.
+// With WithEval the trajectory is also returned in RecallResult.Trajectory.
+func Recall(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, query string, opts ...Option) (res *RecallResult, err error) {
+	userID, err = ResolveUserID(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -60,18 +68,33 @@ func Recall(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, query stri
 	if err != nil {
 		return nil, err
 	}
+
+	tr := startTrace(CallRecall, newCallOptions(opts))
+	defer func() {
+		id, traj := tr.finish(err)
+		if res != nil {
+			res.TrajectoryID, res.Trajectory = id, traj
+		}
+	}()
+	tr.b.User(query)
+	tr.b.SetExtra("input", map[string]any{"user_id": userID, "dataset": dataset})
+
 	g, err := retrieve(ctx, d, dsID, query)
 	if err != nil {
 		return nil, fmt.Errorf("retrieve context: %w", err)
 	}
+	tr.tool("Retrieved the subgraph around the entities matching the query.", "retrieve_graph",
+		map[string]any{"user_id": userID, "dataset": dataset, "query": query}, g.render())
 	if len(g.entities) == 0 {
+		const none = "I don't have any information in memory to answer that."
+		tr.b.Agent(atif.Step{Message: none})
 		return &RecallResult{
-			Answer:   "I don't have any information in memory to answer that.",
+			Answer:   none,
 			Evidence: Evidence{Entities: []EvidenceEntity{}, Edges: []EvidenceEdge{}},
 		}, nil
 	}
 
-	llm = withRecording(llm, d, CallRecall)
+	llm = tr.wrap(withRecording(llm, d, CallRecall))
 	resp, err := llm.Complete(ctx, ai.Request{
 		System: recallSystemPrompt,
 		Messages: []ai.Message{{Role: ai.RoleUser, Content: "<current_time>\n" + relational.FormatTime(relational.Now()) +
