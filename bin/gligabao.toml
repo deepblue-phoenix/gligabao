@@ -23,6 +23,10 @@ embedding_dimensions = 1536
 # pinecone_api_key = ""
 # pinecone_index_host = "my-index-abc123.svc.aped-1234.pinecone.io"
 
+# Register the eval endpoints (POST /v1/gb/eval/remember, /v1/gb/eval/recall), which return ATIF trajectories
+# with their results. Default false; `serve --eval` turns it on.
+eval = false
+
 # Model prices in USD per 1M tokens, used to compute the cost of each LLM call (stored in gb_llm_calls).
 # Keys are model-name prefixes: the longest matching prefix wins, so "claude-haiku-4-5" also matches
 # "claude-haiku-4-5-20251001". Entries here override the built-in prices or add new models.

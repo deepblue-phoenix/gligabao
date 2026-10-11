@@ -27,7 +27,17 @@ type recallRequest struct {
 //---------------------------------------------------------------------------------------------
 
 // Handler serves POST /v1/gb/recall.
-func Handler(d *sql.DB, llm memory.LLM) http.HandlerFunc {
+func Handler(d *sql.DB, llm memory.LLM) http.HandlerFunc { return handler(d, llm, false) }
+
+// EvalHandler serves POST /v1/gb/eval/recall: like Handler, but the response also carries the call's ATIF
+// trajectory. It is only registered when the server runs in eval mode.
+func EvalHandler(d *sql.DB, llm memory.LLM) http.HandlerFunc { return handler(d, llm, true) }
+
+func handler(d *sql.DB, llm memory.LLM, eval bool) http.HandlerFunc {
+	var opts []memory.Option
+	if eval {
+		opts = append(opts, memory.WithEval())
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if llm == nil {
 			httputil.Error(w, http.StatusServiceUnavailable, "LLM not configured (set ANTHROPIC_API_KEY)")
@@ -44,7 +54,7 @@ func Handler(d *sql.DB, llm memory.LLM) http.HandlerFunc {
 			return
 		}
 		start := time.Now()
-		res, err := memory.Recall(r.Context(), d, llm, req.UserID, req.Dataset, req.Query)
+		res, err := memory.Recall(r.Context(), d, llm, req.UserID, req.Dataset, req.Query, opts...)
 		if err != nil {
 			monitoring.EmitSystemEvent(r.Context(), "recall.failed", monitoring.Event{
 				"user_id":     req.UserID,

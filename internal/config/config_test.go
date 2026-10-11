@@ -189,3 +189,13 @@ func TestLoadPostgres(t *testing.T) {
 		t.Fatalf("env DSN: %+v, %v", cfg, err)
 	}
 }
+
+func TestLoadEval(t *testing.T) {
+	cfg, err := Load(write(t, ""))
+	if err != nil || cfg.Eval {
+		t.Fatalf("default: %v %+v", err, cfg)
+	}
+	if cfg, err = Load(write(t, "eval = true\n")); err != nil || !cfg.Eval {
+		t.Fatalf("eval = true: %v %+v", err, cfg)
+	}
+}

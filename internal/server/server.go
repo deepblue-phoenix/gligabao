@@ -35,13 +35,16 @@ type Options struct {
 	// TrajectoryDir is where remember/recall ATIF trajectories are stored as JSON.
 	// Default: an "atif" directory next to the SQLite file (memory.TrajectoryDir if there is none).
 	TrajectoryDir string
+	// Eval registers the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/recall), which return ATIF
+	// trajectories with their results. Off by default.
+	Eval bool
 }
 
 //---------------------------------------------------------------------------------------------
 
 // NewHandler builds the HTTP handler for the given databases and LLM.
-// llm may be nil, in which case endpoints requiring it return 503.
-func NewHandler(d *db.DB, llm memory.LLM) http.Handler {
+// llm may be nil, in which case endpoints requiring it return 503. The eval endpoints are registered only if eval is true.
+func NewHandler(d *db.DB, llm memory.LLM, eval bool) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "gligabao is running")
@@ -54,6 +57,9 @@ func NewHandler(d *db.DB, llm memory.LLM) http.Handler {
 		fmt.Fprintln(w, "ok")
 	})
 	api.Register(mux, d, llm)
+	if eval {
+		api.RegisterEval(mux, d, llm)
+	}
 	return mux
 }
 
@@ -82,6 +88,9 @@ func Run(ctx context.Context, opts Options) error {
 	case database.SQLitePath != "":
 		memory.TrajectoryDir = filepath.Join(filepath.Dir(database.SQLitePath), "atif")
 	}
+	if opts.Eval {
+		log.Warn("eval mode: /v1/gb/eval/remember and /v1/gb/eval/recall are enabled")
+	}
 	log.WithField("trajectory_dir", memory.TrajectoryDir).Info("ATIF trajectories")
 
 	var llm memory.LLM
@@ -91,7 +100,7 @@ func Run(ctx context.Context, opts Options) error {
 		llm = c
 	}
 
-	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(database, llm)}
+	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(database, llm, opts.Eval)}
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

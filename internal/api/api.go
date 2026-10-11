@@ -24,3 +24,10 @@ func Register(mux *http.ServeMux, d *db.DB, llm memory.LLM) {
 	mux.HandleFunc("POST /v1/gb/ontologies", ontologies.Load(d.Relational))
 	mux.HandleFunc("PUT /v1/gb/ontologies/{name}", ontologies.Update(d.Relational))
 }
+
+// RegisterEval mounts the eval-only routes: remember and recall that also return their ATIF trajectories.
+// They are not part of Register; the server mounts them only in eval mode.
+func RegisterEval(mux *http.ServeMux, d *db.DB, llm memory.LLM) {
+	mux.HandleFunc("POST /v1/gb/eval/remember", remember.EvalHandler(d.Relational, llm))
+	mux.HandleFunc("POST /v1/gb/eval/recall", recall.EvalHandler(d.Relational, llm))
+}

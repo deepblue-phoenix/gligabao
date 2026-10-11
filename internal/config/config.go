@@ -69,6 +69,9 @@ type Config struct {
 	// The host is the index's data-plane host from the Pinecone console. Both empty = vector DB disabled.
 	PineconeKey       string `toml:"pinecone_api_key"`
 	PineconeIndexHost string `toml:"pinecone_index_host"`
+	// Eval registers the eval endpoints (/v1/gb/eval/remember, /v1/gb/eval/recall) that return ATIF trajectories
+	// with their results. Default false; `serve --eval` turns it on.
+	Eval bool `toml:"eval"`
 	// Prices overrides/extends the built-in per-model price table used to compute LLM call costs.
 	// Keys are model-name prefixes (the longest matching prefix wins).
 	Prices map[string]Price `toml:"prices"`

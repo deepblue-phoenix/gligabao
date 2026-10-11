@@ -77,6 +77,7 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 		Prices:       aiPrices(cfg),
 
 		TrajectoryDir: opts.TrajectoryDir,
+		Eval:          cfg.Eval,
 	})
 }
 

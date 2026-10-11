@@ -1,13 +1,16 @@
 // Command evals runs end-to-end evals against the real LLM.
 //
 // Each suite in evals/suites/*.json is a JSON list of cases. Each case gets a fresh temporary database and an in-process
-// HTTP server. The case is run through the public API: remember (once per memory, in order), then recall.
+// HTTP server running in eval mode. The case is run through the eval endpoints (/v1/gb/eval/remember and
+// /v1/gb/eval/recall): remember (once per memory, in order), then recall. These return the ATIF trajectory of
+// every call along with its result.
 // All memories go to the dataset "test", which is deleted at the start of each case so it is recreated fresh.
 // Besides the answer, the stored temporal facts (edges with valid_at / invalid_at) are checked in the database.
 //
 // Usage: go run ./evals [-v] [-suites dir] [case-name ...]   (requires ANTHROPIC_API_KEY)
 // With -suites, suites are read from that directory instead of the embedded evals/suites (used by gligabao_int).
 // With -v, every LLM call's input and output is printed.
+// With -atif dir, the trajectories are also stored there as JSON (default: only the in-memory copies are used).
 package main
 
 import (
@@ -15,6 +18,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -29,6 +33,7 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
@@ -164,28 +169,54 @@ func indent(s string) string {
 
 //---------------------------------------------------------------------------------------------
 
-// run executes one case against a fresh database. It returns the recall answer and a list of failed
-// temporal-fact expectations.
-func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string, err error) {
+// atifDir is where the server also stores the trajectories (-atif); empty = a throwaway per-case directory.
+var atifDir string
+
+// Outcome is what one eval case produced.
+type Outcome struct {
+	Answer   string
+	Problems []string // failed temporal-fact expectations
+	// Trajectories are the ATIF trajectories returned by the eval endpoints: one per remember, then the recall's.
+	Trajectories []*atif.Trajectory
+}
+
+// Cost is the total LLM cost of all trajectories, in USD.
+func (o *Outcome) Cost() (usd float64, steps int) {
+	for _, t := range o.Trajectories {
+		if t.FinalMetrics != nil {
+			usd += t.FinalMetrics.TotalCostUSD
+			steps += t.FinalMetrics.TotalSteps
+		}
+	}
+	return usd, steps
+}
+
+// run executes one case against a fresh database through the eval endpoints. The outcome is returned even
+// when err is set, holding whatever was collected before the failure.
+func run(c Case, llm memory.LLM, verbose bool) (out *Outcome, err error) {
+	out = &Outcome{}
 	dir, err := os.MkdirTemp("", "gligabao-eval-*")
 	if err != nil {
-		return "", nil, err
+		return out, err
 	}
 	defer os.RemoveAll(dir)
+	if atifDir == "" { // the trajectories come back in the responses, so the stored copies are throwaway
+		memory.TrajectoryDir = filepath.Join(dir, "atif")
+	}
 
 	database, err := db.Open(db.Config{SQLitePath: filepath.Join(dir, "eval.db")})
 	if err != nil {
-		return "", nil, err
+		return out, err
 	}
 	defer database.Close()
 
-	srv := httptest.NewServer(server.NewHandler(database, llm))
+	srv := httptest.NewServer(server.NewHandler(database, llm, true))
 	defer srv.Close()
 
 	// Start from a clean dataset: soft-delete any previous "test" (404 just means there was none); remember
 	// below recreates it with a new id and an empty graph.
 	if err := deleteDataset(srv.URL, evalDataset); err != nil {
-		return "", nil, fmt.Errorf("delete dataset %q: %w", evalDataset, err)
+		return out, fmt.Errorf("delete dataset %q: %w", evalDataset, err)
 	}
 
 	for i, m := range c.Remember {
@@ -194,15 +225,20 @@ func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string
 			body["reference_time"] = m.ReferenceTime
 		}
 		var rem struct {
-			MemoryID int64 `json:"memory_id"`
+			MemoryID   int64            `json:"memory_id"`
+			Trajectory *atif.Trajectory `json:"trajectory"`
 		}
-		if err := post(srv.URL+"/v1/gb/remember", body, &rem); err != nil {
-			return "", nil, fmt.Errorf("remember #%d: %w", i+1, err)
+		if err := post(srv.URL+"/v1/gb/eval/remember", body, &rem); err != nil {
+			return out, fmt.Errorf("remember #%d: %w", i+1, err)
 		}
+		if rem.Trajectory == nil {
+			return out, fmt.Errorf("remember #%d: response has no trajectory (is the server in eval mode?)", i+1)
+		}
+		out.Trajectories = append(out.Trajectories, rem.Trajectory)
 	}
 	edges, err := graph.ListEdges(context.Background(), database.Graph, evalUser, evalDataset)
 	if err != nil {
-		return "", nil, err
+		return out, err
 	}
 	tstr := func(t *time.Time) string {
 		if t == nil {
@@ -228,30 +264,36 @@ func run(c Case, llm memory.LLM, verbose bool) (answer string, problems []string
 		desc := want.Source + " -> " + want.Target
 		switch {
 		case found == nil:
-			problems = append(problems, desc+": no edge stored")
+			out.Problems = append(out.Problems, desc+": no edge stored")
 		default:
 			if want.ValidAt != "" && tstr(found.ValidAt) != want.ValidAt {
-				problems = append(problems, fmt.Sprintf("%s: valid_at = %s, want %s", desc, tstr(found.ValidAt), want.ValidAt))
+				out.Problems = append(out.Problems, fmt.Sprintf("%s: valid_at = %s, want %s", desc, tstr(found.ValidAt), want.ValidAt))
 			}
 			if want.InvalidAt != "" && tstr(found.InvalidAt) != want.InvalidAt {
-				problems = append(problems, fmt.Sprintf("%s: invalid_at = %q, want %s", desc, tstr(found.InvalidAt), want.InvalidAt))
+				out.Problems = append(out.Problems, fmt.Sprintf("%s: invalid_at = %q, want %s", desc, tstr(found.InvalidAt), want.InvalidAt))
 			}
 			if want.Ended != (found.InvalidAt != nil) {
-				problems = append(problems, fmt.Sprintf("%s: ended = %v, want %v", desc, found.InvalidAt != nil, want.Ended))
+				out.Problems = append(out.Problems, fmt.Sprintf("%s: ended = %v, want %v", desc, found.InvalidAt != nil, want.Ended))
 			}
 			if want.Ended && found.ExpiredAt == nil {
-				problems = append(problems, desc+": ended but expired_at is not set")
+				out.Problems = append(out.Problems, desc+": ended but expired_at is not set")
 			}
 		}
 	}
 
 	var rec struct {
-		Answer string `json:"answer"`
+		Answer     string           `json:"answer"`
+		Trajectory *atif.Trajectory `json:"trajectory"`
 	}
-	if err := post(srv.URL+"/v1/gb/recall", map[string]any{"user_id": evalUser, "query": c.Query, "dataset": evalDataset}, &rec); err != nil {
-		return "", problems, fmt.Errorf("recall: %w", err)
+	if err := post(srv.URL+"/v1/gb/eval/recall", map[string]any{"user_id": evalUser, "query": c.Query, "dataset": evalDataset}, &rec); err != nil {
+		return out, fmt.Errorf("recall: %w", err)
 	}
-	return rec.Answer, problems, nil
+	if rec.Trajectory == nil {
+		return out, errors.New("recall: response has no trajectory (is the server in eval mode?)")
+	}
+	out.Answer = rec.Answer
+	out.Trajectories = append(out.Trajectories, rec.Trajectory)
+	return out, nil
 }
 
 // deleteDataset soft-deletes a dataset through the API; a dataset that does not exist is not an error.
@@ -298,7 +340,11 @@ func main() {
 func mainErr() error {
 	verbose := flag.Bool("v", false, "print the input and output of every LLM call")
 	suitesDir := flag.String("suites", "", "read suites from this directory instead of the embedded ones")
+	flag.StringVar(&atifDir, "atif", "", "also store every ATIF trajectory as JSON in this directory")
 	flag.Parse()
+	if atifDir != "" {
+		memory.TrajectoryDir = atifDir
+	}
 
 	key := os.Getenv("ANTHROPIC_API_KEY")
 	if key == "" {
@@ -320,7 +366,12 @@ func mainErr() error {
 			fmt.Printf("=== %s\n", c.Name)
 			l = &verboseLLM{inner: llm}
 		}
-		answer, problems, err := run(c, l, *verbose)
+		out, err := run(c, l, *verbose)
+		answer, problems := out.Answer, out.Problems
+		cost, steps := out.Cost()
+		if *verbose {
+			fmt.Printf("  trajectories: %d, steps: %d, cost: $%.6f\n", len(out.Trajectories), steps, cost)
+		}
 		if err != nil {
 			fmt.Printf("FAIL %s: %v\n", c.Name, err)
 			failed++
