@@ -6,7 +6,7 @@ Code: `internal/memory/memory.go` (`Extract`, `Remember`, `Store`), `internal/me
 
 ## Artifacts
 
-Every input to `POST /v1/gb/remember` is stored as an **artifact** (a `gb_artifacts` row), a piece of data ingested to be remembered. The request's `kind` field picks the kind: `knowledge` (the default; knowledge that is not strictly episodic) or `episode` (a Graphiti-style episode, anchored in time). The kind is stored but does not change extraction or reconciliation yet: both kinds get the same bi-temporal treatment.
+See [artifacts.md](artifacts.md) for the full picture. Every input to `POST /v1/gb/remember` is stored as an **artifact** (a `gb_artifacts` row), a piece of data ingested to be remembered. The request's `kind` field picks the kind: `knowledge` (the default; knowledge that is not strictly episodic) or `episode` (a Graphiti-style episode, anchored in time). The kind is stored but does not change extraction or reconciliation yet: both kinds get the same bi-temporal treatment.
 
 | Column | Meaning |
 | ------ | ------- |

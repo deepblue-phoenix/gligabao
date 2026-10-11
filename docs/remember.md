@@ -1,6 +1,6 @@
 # POST /v1/gb/remember
 
-Takes a block of text, stores it as an artifact (an episode), uses an LLM to extract a small knowledge graph (entities and edges) whose edges are bi-temporal facts, and stores everything in SQLite. The temporal model is described in [temporal.md](temporal.md).
+Takes a block of text, stores it as an [artifact](artifacts.md), uses an LLM to extract a small knowledge graph (entities and edges) whose edges are bi-temporal facts, and stores everything in SQLite. The temporal model is described in [temporal.md](temporal.md).
 
 ## Request
 
@@ -102,7 +102,7 @@ All tables are prefixed with `gb_` (see `internal/db/relational/{sqlite,postgres
 
 Foreign keys are enabled on every connection. Deleting an entity cascades to its edges and its `gb_entity_artifacts` links, and deleting an edge removes its `gb_edge_artifacts` links; deleting an artifact sets `artifact_id` to NULL on its edges and removes its `gb_edge_artifacts` and `gb_entity_artifacts` links.
 
-**Why edges have a link table too.** `gb_edges.artifact_id` is only the artifact that created the edge. When a later artifact states the same fact, the new edge is recognized as a duplicate (exactly, or by the LLM) and merged into the stored one instead of being inserted, so without a link table the fact that this artifact also supports it would be lost. `gb_edge_artifacts` holds the creating artifact and every artifact whose duplicate was merged in, so a fact's full provenance is kept (how many sources back it, which texts to cite). Contradicted edges are not linked: a contradiction is not a restatement.
+**Why edges have a link table too.** (More on artifacts and their links in [artifacts.md](artifacts.md).) `gb_edges.artifact_id` is only the artifact that created the edge. When a later artifact states the same fact, the new edge is recognized as a duplicate (exactly, or by the LLM) and merged into the stored one instead of being inserted, so without a link table the fact that this artifact also supports it would be lost. `gb_edge_artifacts` holds the creating artifact and every artifact whose duplicate was merged in, so a fact's full provenance is kept (how many sources back it, which texts to cite). Contradicted edges are not linked: a contradiction is not a restatement.
 
 **Why entities have a link table.** An edge is created by exactly one artifact, so it carries a plain `artifact_id`. An entity is not: entities are deduplicated per dataset on (`name_key`, `type`), so "Alice" mentioned in artifacts 1, 5 and 9 is one row, and one `artifact_id` column could only remember where she first appeared. The many-to-many `gb_entity_artifacts` table records every artifact an entity was inferred from, so you can ask which artifacts ground an entity and which entities an artifact contributes to, and an artifact can be removed without losing entities that other artifacts still support.
 
