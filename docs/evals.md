@@ -76,7 +76,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 | call | tool | what it records |
 |---|---|---|
 | remember | `load_candidates` | how many stored facts could duplicate or contradict the new ones |
-| remember | `store_memory` | `memory_id`, entities, edges and `invalidated_edges` that were stored |
+| remember | `store_artifact` | `artifact_id`, entities, edges and `invalidated_edges` that were stored |
 | recall | `retrieve_graph` | the subgraph handed to the LLM, as rendered in its prompt |
 
 ### Remember
@@ -85,7 +85,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 2. LLM call: entity/edge extraction (`system`, `user`, `agent`).
 3. tool `load_candidates`.
 4. LLM call: duplicate/contradiction resolution (only when there are stored facts to compare against; see [temporal.md](temporal.md)).
-5. tool `store_memory`.
+5. tool `store_artifact`.
 
 ### Recall
 

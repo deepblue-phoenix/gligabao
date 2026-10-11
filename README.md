@@ -7,7 +7,7 @@ gligabao is a small, self-hosted HTTP service that gives an AI application long-
 
 ## How it works
 
-- **Remember**: an LLM reads the text and extracts *entities* (people, organizations, places, ...) and *edges* (relations such as `works_at` between two entities). Entities are deduplicated, and each edge is linked back to the original text it came from. Following [Graphiti](https://github.com/getzep/graphiti), each text is stored as a timestamped *episode*, and every edge is a bi-temporal fact that records when it was true.
+- **Remember**: an LLM reads the text and extracts *entities* (people, organizations, places, ...) and *edges* (relations such as `works_at` between two entities). Entities are deduplicated, and each edge and entity is anchored to the artifact (the original text) it was inferred from. Following [Graphiti](https://github.com/getzep/graphiti), each text is stored as a timestamped *artifact*, of kind *episode* (Graphiti-style, anchored in time) or *knowledge* (the default, not strictly episodic), and every edge is a bi-temporal fact that records when it was true.
 - **Recall**: the query is used to find relevant entities in the graph, the surrounding subgraph is expanded by one hop, and an LLM answers using only that context. The response includes the evidence (entities and edges) behind the answer.
 - **Storage**: SQLite (a single file, the default) or PostgreSQL; see [Database](#database).
 
@@ -24,7 +24,7 @@ gligabao is a small, self-hosted HTTP service that gives an AI application long-
 
 ## Datasets
 
-Memory is organized in datasets: a hard container for everything stored (episodes, entities, edges). Every dataset has an owner, a `user_id`, which covers everything in it; all endpoints require `user_id` (in the JSON body, or the query string for `GET`/`DELETE`), and dataset names are unique per user. `remember` and `recall` take an optional `"dataset"` name, default `main`. Datasets are isolated: the same entity in two datasets is two separate nodes, and a recall only sees its own dataset's graph. Deleting a dataset is soft (`deleted = true`) and also removes its embeddings, which are stored in a per-dataset vector namespace. Details: [docs/datasets.md](docs/datasets.md), [docs/identity.md](docs/identity.md), [docs/vectors.md](docs/vectors.md).
+Memory is organized in datasets: a hard container for everything stored (artifacts, entities, edges). Every dataset has an owner, a `user_id`, which covers everything in it; all endpoints require `user_id` (in the JSON body, or the query string for `GET`/`DELETE`), and dataset names are unique per user. `remember` and `recall` take an optional `"dataset"` name, default `main`. Datasets are isolated: the same entity in two datasets is two separate nodes, and a recall only sees its own dataset's graph. Deleting a dataset is soft (`deleted = true`) and also removes its embeddings, which are stored in a per-dataset vector namespace. Details: [docs/datasets.md](docs/datasets.md), [docs/identity.md](docs/identity.md), [docs/vectors.md](docs/vectors.md).
 
 ## Ontologies
 
@@ -32,26 +32,26 @@ An ontology describes the concepts of a domain and how they relate. `POST /v1/gb
 
 ## Remember
 
-`POST /v1/gb/remember` with `{"user_id": "u1", "text": "Alice works at Acme and lives in Paris."}` stores the text as an episode and adds the facts it states to the graph, with the time they became true. An optional `reference_time` (RFC 3339, default now) says when the text was written, so relative dates in it can be resolved.
+`POST /v1/gb/remember` with `{"user_id": "u1", "text": "Alice works at Acme and lives in Paris."}` stores the text as an artifact and adds the facts it states to the graph, with the time they became true. An optional `kind` (`knowledge`, the default, or `episode`) says what sort of artifact it is. An optional `reference_time` (RFC 3339, default now) says when the text was written, so relative dates in it can be resolved.
 
 1. **Extract**: the text is sent to an LLM (Anthropic, default `claude-haiku-5-5`), which returns JSON listing entities (`name`, `type`, `description`) and edges (`source`, `target`, `relation`, `description`, `valid_at`, `invalid_at`).
 2. **Normalize**: entity types are lowercased (empty becomes `other`), and relations are lowercased with spaces replaced by `_`.
 3. **Reconcile**: new edges are compared with stored live edges that touch the same entities (see [Temporal facts](#temporal-facts)).
-4. **Store**: in one transaction, the raw text goes into `gb_memories` (the episode), entities are upserted into `gb_entities`, and edges are inserted into `gb_edges` (each pointing back to its episode).
+4. **Store**: in one transaction, the raw text goes into `gb_artifacts`, entities are upserted into `gb_entities` and linked to the artifact in `gb_entity_artifacts` (an entity is shared by every artifact that mentions it), and edges are inserted into `gb_edges` (each with the `artifact_id` that created it, and linked in `gb_edge_artifacts`; a repeated fact adds the new artifact to the stored edge's links instead of being inserted again).
 
 Deduplication:
 - Entities are unique on (normalized name, type). Re-submitting one only updates its description if the new one is non-empty.
 - A new edge that repeats a stored fact that is still true (same source, target, relation) is merged instead of inserted.
 - An edge that mentions an entity the LLM didn't list creates that entity with type `other`.
-- Sending the same text twice adds a second episode but no duplicate entities or edges.
+- Sending the same text twice adds a second artifact but no duplicate entities or edges.
 
-The response returns the `memory_id`, the entities, the `edges` (with their temporal fields) and `invalidated_edges`. If any LLM call fails or its output is unusable, the request returns 502 and nothing is stored. Details: [docs/remember.md](docs/remember.md).
+The response returns the `artifact_id` and `kind`, the entities, the `edges` (with their temporal fields) and `invalidated_edges`. If any LLM call fails or its output is unusable, the request returns 502 and nothing is stored. Details: [docs/remember.md](docs/remember.md).
 
 ## Temporal facts
 
-Graphiti's bi-temporal model. Every input is an **episode** (`gb_memories`): the raw text, `valid_at` (when it was written or observed, the `reference_time`) and `created_at` (ingestion time). The facts extracted from it are **edges** (`gb_edges`), each with:
+Graphiti's bi-temporal model. Every input is an **artifact** (`gb_artifacts`, with a `kind`): the raw text, `valid_at` (when it was written or observed, the `reference_time`) and `created_at` (ingestion time). The facts extracted from it are **edges** (`gb_edges`), each with:
 
-- **Event time** (`valid_at`, `invalid_at`): when the fact became true and stopped being true in the world. `valid_at` inherits the episode's time unless the text says otherwise; `invalid_at` is null while the fact is still true.
+- **Event time** (`valid_at`, `invalid_at`): when the fact became true and stopped being true in the world. `valid_at` inherits the artifact's time unless the text says otherwise; `invalid_at` is null while the fact is still true.
 - **System time** (`created_at`, `expired_at`): when gligabao learned the fact, and when newer knowledge superseded it.
 
 When a new fact contradicts a stored one, the older fact is closed (`invalid_at` = start of the new fact, `expired_at` = now) instead of being deleted, so history is preserved. If the news is about an earlier time than what is already known, the new fact is the one that gets closed. Example: "Alice works at Acme" (2023) followed by "Alice started working at Globex" (2024-03-01) leaves the Acme edge with `invalid_at` = 2024-03-01 and a new live edge for Globex.
@@ -65,13 +65,13 @@ When a new fact contradicts a stored one, the older fact is closed (`invalid_at`
 1. **Retrieve**: the query is split into terms (stopwords and very short words are dropped). Entities are scored by keyword match against names (including whole-name matches such as "New York") and descriptions. The top 10 become *seeds*; if nothing matches, the 25 most recently updated entities are used so vague questions still work.
 2. **Expand**: every edge touching a seed is added (newest first, up to 100) along with the entity at its other end, giving a one-hop subgraph.
 3. **Answer**: the subgraph is rendered as text with IDs and sent to the LLM with the question. The model is told to answer only from the graph and to return JSON with the `answer` plus the IDs of the entities and edges it used.
-4. **Verify evidence**: cited IDs are checked against the subgraph that was actually sent, so hallucinated IDs are dropped. The endpoints of every cited edge are included, and each edge carries its `memory_id` so a fact can be traced to the original text.
+4. **Verify evidence**: cited IDs are checked against the subgraph that was actually sent, so hallucinated IDs are dropped. The endpoints of every cited edge are included, and each edge carries its `artifact_id` so a fact can be traced to the original text.
 
 If the graph is empty, a fixed "I don't have any information" answer is returned without calling the LLM. If the graph lacks the needed information, the answer says so. Details: [docs/recall.md](docs/recall.md).
 
 ## Graph export
 
-`GET /v1/gb/datasets/{name}/graph?user_id=u1` returns the whole graph of a dataset as JSON: `dataset`, `entities` (`id`, `name`, `type`, `description`) and `edges` (`id`, `source_id`, `target_id`, `source`, `target`, `relation`, `description`, `memory_id` and the bi-temporal fields). Edges reference entities by `source_id`/`target_id`. Superseded edges are included, with `invalid_at`/`expired_at` set, so the output is the full history, not just current facts. It makes no LLM call. An empty dataset returns empty lists; an unknown or deleted dataset returns 404. Details: [docs/graph.md](docs/graph.md).
+`GET /v1/gb/datasets/{name}/graph?user_id=u1` returns the whole graph of a dataset as JSON: `dataset`, `entities` (`id`, `name`, `type`, `description`) and `edges` (`id`, `source_id`, `target_id`, `source`, `target`, `relation`, `description`, `artifact_id` and the bi-temporal fields). Edges reference entities by `source_id`/`target_id`. Superseded edges are included, with `invalid_at`/`expired_at` set, so the output is the full history, not just current facts. It makes no LLM call. An empty dataset returns empty lists; an unknown or deleted dataset returns 404. Details: [docs/graph.md](docs/graph.md).
 
 ## Database
 
@@ -82,7 +82,7 @@ db_backend = "postgres"
 postgres_dsn = "postgres://user:password@localhost:5432/gligabao?sslmode=disable"   # or the POSTGRES_DSN env var
 ```
 
-The schema is created on startup. SQLite takes its file from `serve --db` (default `bin/gligabao.db`). All SQL lives in the backend packages, each with its own schema and dialect; the rest of the code calls the routing functions, which dispatch to the backend in use. Datasets and the LLM call log are in `internal/db/relational` (`sqlite`, `postgres`); the knowledge graph (memories, entities, edges) is in `internal/db/graph` (currently `sqlite` and `postgres` tables in the same database; dedicated graph databases are meant to be added there). Tests run against SQLite, and also against PostgreSQL when `POSTGRES_TEST_DSN` is set (each test gets a temporary schema):
+The schema is created on startup. SQLite takes its file from `serve --db` (default `bin/gligabao.db`). All SQL lives in the backend packages, each with its own schema and dialect; the rest of the code calls the routing functions, which dispatch to the backend in use. Datasets and the LLM call log are in `internal/db/relational` (`sqlite`, `postgres`); the knowledge graph (artifacts, entities, edges) is in `internal/db/graph` (currently `sqlite` and `postgres` tables in the same database; dedicated graph databases are meant to be added there). Tests run against SQLite, and also against PostgreSQL when `POSTGRES_TEST_DSN` is set (each test gets a temporary schema):
 
 ```sh
 POSTGRES_TEST_DSN='postgres://user:pw@localhost:5432/gb?sslmode=disable' ./run_tests.sh

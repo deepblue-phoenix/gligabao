@@ -1,4 +1,4 @@
-// Package graph stores and queries the knowledge graph (memories, entities and bi-temporal edges) of the datasets.
+// Package graph stores and queries the knowledge graph (artifacts, entities and bi-temporal edges) of the datasets.
 // Every graph operation goes through the functions here, which route to the backend in use. Today the backends
 // (graph/sqlite, graph/postgres) keep the graph in tables of the relational database opened by package relational;
 // they belong here, and not in package relational, because they are graph operations that merely happen to be
@@ -18,6 +18,12 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph/sqlite"
 )
 
+// Artifact kinds (see model.Artifact).
+const (
+	ArtifactEpisode   = model.ArtifactEpisode
+	ArtifactKnowledge = model.ArtifactKnowledge
+)
+
 // Types shared with the backends (see package model).
 type (
 	Entity         = model.Entity
@@ -25,7 +31,9 @@ type (
 	EvidenceEntity = model.EvidenceEntity
 	EvidenceEdge   = model.EvidenceEdge
 	NewEdge        = model.NewEdge
-	Memory         = model.Memory
+	EntityArtifact = model.EntityArtifact
+	EdgeArtifact   = model.EdgeArtifact
+	Artifact       = model.Artifact
 	Counts         = model.Counts
 	Tx             = model.Tx
 	OntologyClass  = model.OntologyClass
@@ -170,7 +178,7 @@ func EntitiesByID(ctx context.Context, d *sql.DB, ids []int64) ([]EvidenceEntity
 //---------------------------------------------------------------------------------------------
 // Inspection (read-only summaries of what is stored; used to verify behaviour, e.g. in tests)
 
-// DatasetCounts returns the number of memories, entities and edges in the dataset.
+// DatasetCounts returns the number of artifacts, entities and edges in the dataset.
 func DatasetCounts(ctx context.Context, d *sql.DB, dsID int64) (Counts, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
@@ -181,13 +189,37 @@ func DatasetCounts(ctx context.Context, d *sql.DB, dsID int64) (Counts, error) {
 	return Counts{}, unsupported()
 }
 
-// ListMemories returns the episodes of the dataset by ID.
-func ListMemories(ctx context.Context, d *sql.DB, dsID int64) ([]Memory, error) {
+// ListArtifacts returns the artifacts of the dataset by ID.
+func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]Artifact, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListMemories(ctx, d, dsID)
+		return sqlite.ListArtifacts(ctx, d, dsID)
 	case config.DBBackendPostgres:
-		return postgres.ListMemories(ctx, d, dsID)
+		return postgres.ListArtifacts(ctx, d, dsID)
+	}
+	return nil, unsupported()
+}
+
+// ListEntityArtifacts returns the entity-to-artifact links (which artifacts each entity was inferred from) of the
+// dataset, by entity ID then artifact ID.
+func ListEntityArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]EntityArtifact, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListEntityArtifacts(ctx, d, dsID)
+	case config.DBBackendPostgres:
+		return postgres.ListEntityArtifacts(ctx, d, dsID)
+	}
+	return nil, unsupported()
+}
+
+// ListEdgeArtifacts returns the edge-to-artifact links (every artifact each edge was inferred from) of the dataset,
+// by edge ID then artifact ID.
+func ListEdgeArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]EdgeArtifact, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListEdgeArtifacts(ctx, d, dsID)
+	case config.DBBackendPostgres:
+		return postgres.ListEdgeArtifacts(ctx, d, dsID)
 	}
 	return nil, unsupported()
 }

@@ -174,13 +174,13 @@ func loadCandidates(ctx context.Context, d *sql.DB, userID, dataset string, edge
 // storeEdges writes edges inside tx according to plan and returns the resulting edges (new ones, or the
 // existing ones they duplicate) plus the IDs of edges that were invalidated. entityID maps an entity name to
 // its ID, creating the entity if needed.
-func storeEdges(ctx context.Context, tx graph.Tx, dsID, memID int64, ref, now time.Time, edges []Edge, plan *EdgePlan,
+func storeEdges(ctx context.Context, tx graph.Tx, dsID, artID int64, ref, now time.Time, edges []Edge, plan *EdgePlan,
 	entityID func(name string) (int64, error)) ([]Edge, []int64, error) {
 	if plan == nil {
 		plan = &EdgePlan{}
 	}
 	ids := make([]int64, len(edges)) // stored ID for each new edge
-	batch := map[string]int64{}      // repeats inside this memory
+	batch := map[string]int64{}      // repeats inside this artifact
 	var order []int64
 	inOrder := map[int64]bool{}
 
@@ -188,6 +188,10 @@ func storeEdges(ctx context.Context, tx graph.Tx, dsID, memID int64, ref, now ti
 		if existing, ok := plan.Duplicates[i]; ok {
 			// Same fact seen again: keep the stored edge, just record its end if the text says it ended.
 			if err := tx.MergeDuplicateEdge(ctx, dsID, existing, e.InvalidAt); err != nil {
+				return nil, nil, err
+			}
+			// The stored edge keeps its own artifact_id (its creator); this artifact is recorded as another source.
+			if err := tx.LinkEdge(ctx, existing, artID); err != nil {
 				return nil, nil, err
 			}
 			ids[i] = existing
@@ -215,8 +219,11 @@ func storeEdges(ctx context.Context, tx graph.Tx, dsID, memID int64, ref, now ti
 			validAt = e.ValidAt.UTC()
 		}
 		id, err := tx.InsertEdge(ctx, graph.NewEdge{DatasetID: dsID, SourceID: src, TargetID: dst, Relation: e.Relation,
-			Description: e.Description, ValidAt: validAt, InvalidAt: e.InvalidAt, CreatedAt: now, MemoryID: memID})
+			Description: e.Description, ValidAt: validAt, InvalidAt: e.InvalidAt, CreatedAt: now, ArtifactID: artID})
 		if err != nil {
+			return nil, nil, err
+		}
+		if err := tx.LinkEdge(ctx, id, artID); err != nil {
 			return nil, nil, err
 		}
 		ids[i] = id

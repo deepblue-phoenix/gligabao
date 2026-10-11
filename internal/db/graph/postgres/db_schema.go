@@ -14,9 +14,10 @@ import (
 // BIGSERIAL ids and TIMESTAMPTZ times. They reference gb_datasets, which is created by the relational backend
 // (internal/db/relational/postgres), so that schema must be applied first.
 const schema = `
-CREATE TABLE IF NOT EXISTS gb_memories (
+CREATE TABLE IF NOT EXISTS gb_artifacts (
 	id         BIGSERIAL PRIMARY KEY,
 	dataset_id BIGINT NOT NULL REFERENCES gb_datasets(id),
+	kind       TEXT NOT NULL DEFAULT 'knowledge',
 	text       TEXT NOT NULL,
 	valid_at   TIMESTAMPTZ NOT NULL,
 	created_at TIMESTAMPTZ NOT NULL
@@ -45,7 +46,23 @@ CREATE TABLE IF NOT EXISTS gb_edges (
 	invalid_at  TIMESTAMPTZ,
 	created_at  TIMESTAMPTZ NOT NULL,
 	expired_at  TIMESTAMPTZ,
-	memory_id   BIGINT REFERENCES gb_memories(id) ON DELETE SET NULL
+	artifact_id BIGINT REFERENCES gb_artifacts(id) ON DELETE SET NULL
+);
+
+-- Edge <-> artifact provenance, many-to-many: gb_edges.artifact_id is only the artifact that created the edge; this
+-- also records every later artifact whose duplicate of the fact was merged into it (see sqlite/db_schema.go).
+CREATE TABLE IF NOT EXISTS gb_edge_artifacts (
+	edge_id     BIGINT NOT NULL REFERENCES gb_edges(id) ON DELETE CASCADE,
+	artifact_id BIGINT NOT NULL REFERENCES gb_artifacts(id) ON DELETE CASCADE,
+	PRIMARY KEY (edge_id, artifact_id)
+);
+
+-- Entity <-> artifact provenance, many-to-many: an entity is deduplicated per dataset and so is inferred from many
+-- artifacts, which one artifact_id column could not express (see sqlite/db_schema.go for the full rationale).
+CREATE TABLE IF NOT EXISTS gb_entity_artifacts (
+	entity_id   BIGINT NOT NULL REFERENCES gb_entities(id) ON DELETE CASCADE,
+	artifact_id BIGINT NOT NULL REFERENCES gb_artifacts(id) ON DELETE CASCADE,
+	PRIMARY KEY (entity_id, artifact_id)
 );
 
 CREATE TABLE IF NOT EXISTS gb_onto_classes (
@@ -73,11 +90,14 @@ CREATE TABLE IF NOT EXISTS gb_onto_edges (
 CREATE INDEX IF NOT EXISTS idx_gb_onto_edges_source ON gb_onto_edges(source_id);
 CREATE INDEX IF NOT EXISTS idx_gb_onto_edges_target ON gb_onto_edges(target_id);
 
-CREATE INDEX IF NOT EXISTS idx_gb_memories_dataset ON gb_memories(dataset_id);
+CREATE INDEX IF NOT EXISTS idx_gb_artifacts_dataset ON gb_artifacts(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_entities_dataset ON gb_entities(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_dataset ON gb_edges(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_source ON gb_edges(source_id);
-CREATE INDEX IF NOT EXISTS idx_gb_edges_target ON gb_edges(target_id);`
+CREATE INDEX IF NOT EXISTS idx_gb_edges_target ON gb_edges(target_id);
+CREATE INDEX IF NOT EXISTS idx_gb_edges_artifact ON gb_edges(artifact_id);
+CREATE INDEX IF NOT EXISTS idx_gb_edge_artifacts_artifact ON gb_edge_artifacts(artifact_id);
+CREATE INDEX IF NOT EXISTS idx_gb_entity_artifacts_artifact ON gb_entity_artifacts(artifact_id);`
 
 // initSchema applies the graph schema. Concurrent starters are serialized with an advisory lock, because
 // CREATE ... IF NOT EXISTS can still race in PostgreSQL.

@@ -28,14 +28,24 @@ def _serve(status, payload, seen):
 
 def test_remember():
     seen = {}
-    srv = _serve(200, {"memory_id": 1}, seen)
+    srv = _serve(200, {"artifact_id": 1}, seen)
     try:
         res = Client(f"http://127.0.0.1:{srv.server_port}").remember("u1", "hi", dataset="d")
     finally:
         srv.shutdown()
-    assert res == {"memory_id": 1}
+    assert res == {"artifact_id": 1}
     assert seen["path"] == "/v1/gb/remember"
     assert seen["body"] == {"user_id": "u1", "text": "hi", "dataset": "d"}
+
+
+def test_remember_kind():
+    seen = {}
+    srv = _serve(200, {"artifact_id": 1}, seen)
+    try:
+        Client(f"http://127.0.0.1:{srv.server_port}").remember("u1", "hi", kind="episode")
+    finally:
+        srv.shutdown()
+    assert seen["body"] == {"user_id": "u1", "text": "hi", "kind": "episode"}
 
 
 def test_remember_error():

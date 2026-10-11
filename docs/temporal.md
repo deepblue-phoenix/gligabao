@@ -4,12 +4,13 @@ gligabao follows the bi-temporal model of [Graphiti](https://github.com/getzep/g
 
 Code: `internal/memory/memory.go` (`Extract`, `Remember`, `Store`), `internal/memory/temporal.go` (reconciliation), `internal/db/graph/{sqlite,postgres}/db_schema.go` (tables).
 
-## Episodes
+## Artifacts
 
-Every input to `POST /v1/gb/remember` is stored as an **episode** (a `gb_memories` row):
+Every input to `POST /v1/gb/remember` is stored as an **artifact** (a `gb_artifacts` row), a piece of data ingested to be remembered. The request's `kind` field picks the kind: `knowledge` (the default; knowledge that is not strictly episodic) or `episode` (a Graphiti-style episode, anchored in time). The kind is stored but does not change extraction or reconciliation yet: both kinds get the same bi-temporal treatment.
 
 | Column | Meaning |
 | ------ | ------- |
+| `kind` | `knowledge` (default) or `episode` |
 | `text` | The raw input |
 | `valid_at` | Event time: when the text was written or observed. This is the request's `reference_time` (default: now). Relative dates in the text are resolved against it. |
 | `created_at` | System time: when it was ingested |
@@ -23,11 +24,11 @@ Entities (`Alice`, `Acme`) are connected by **edges** (`Alice --works_at--> Acme
 | Event time (the world) | `valid_at`, `invalid_at` | When the fact became true / stopped being true. `invalid_at` is `NULL` while the fact is still true. |
 | System time (our knowledge) | `created_at`, `expired_at` | When we learned about it / when newer knowledge superseded it. `NULL` `expired_at` means the fact is live. |
 
-Each edge also has `memory_id`, the episode it was extracted from.
+Each edge also has `artifact_id`, the artifact it was extracted from. Every artifact that states the edge is also recorded in `gb_edge_artifacts`, and entities are linked to artifacts in `gb_entity_artifacts` (see [remember.md](remember.md#schema)).
 
 All timestamps are RFC 3339 UTC strings (`2006-01-02T15:04:05Z`).
 
-`valid_at` is always set: it is the date the text states, or the episode's `valid_at` when the text gives none ("Alice works at Acme", "Alice started working at Globex"). `invalid_at` is only set when the text says the fact ended ("Alice left Acme in June 2024"). Partial dates use their earliest instant (a month becomes the 1st, a year becomes 1 January). Unparseable dates count as missing, and an `invalid_at` that is not after `valid_at` is discarded.
+`valid_at` is always set: it is the date the text states, or the artifact's `valid_at` when the text gives none ("Alice works at Acme", "Alice started working at Globex"). `invalid_at` is only set when the text says the fact ended ("Alice left Acme in June 2024"). Partial dates use their earliest instant (a month becomes the 1st, a year becomes 1 January). Unparseable dates count as missing, and an `invalid_at` that is not after `valid_at` is discarded.
 
 There is no uniqueness on (source, target, relation): a fact can end and later become true again, which is a new row.
 
@@ -41,7 +42,7 @@ Run by `memory.Remember`:
    - *Exact repeats* (same normalized source, target and relation as a candidate that has no `invalid_at`) are detected in Go, with no LLM call.
    - The rest are sent to a second LLM call together with the candidates. It returns `duplicates` (same fact, different wording) and `contradictions` (an existing fact can't be true at the same time as a new one). IDs and indexes that weren't in the prompt are dropped.
    - If there are no candidates or nothing is left after the exact-repeat check, this call is skipped.
-4. **Store** (`Store`), in one transaction: the episode, entities and edges are written.
+4. **Store** (`Store`), in one transaction: the artifact, entities, entity-artifact links and edges are written.
    - Duplicates are not inserted again; the existing edge just gets an `invalid_at` if the text says it ended.
    - New edges are inserted with `created_at` = now.
    - Contradictions are applied with the invalidation rule below.
@@ -56,7 +57,7 @@ For a new fact N contradicting an existing live fact O (N's start is its `valid_
 
 The closed edge's ID is reported in `invalidated_edges`.
 
-Example: "Alice works at Acme" (episode at 2023-01-01), then "Alice started working at Globex" (episode at 2024-03-01):
+Example: "Alice works at Acme" (artifact at 2023-01-01), then "Alice started working at Globex" (artifact at 2024-03-01):
 
 | id | fact | valid_at | invalid_at | expired_at |
 | -- | ---- | -------- | ---------- | ---------- |
@@ -75,6 +76,6 @@ Example: "Alice works at Acme" (episode at 2023-01-01), then "Alice started work
 ## Limitations
 
 - Contradiction detection is limited to live edges sharing an entity with the new edges, and to the 50 newest.
-- A duplicate does not record the additional episode it was seen in.
+- A duplicate edge is merged into the stored one; the additional artifact it was seen in is recorded in `gb_edge_artifacts`, but the stored edge keeps its own `artifact_id`, `created_at` and `valid_at`.
 - Dates have no precision field: a month-only date is stored as its first instant.
 - Timestamps have one-second resolution.

@@ -164,12 +164,60 @@ func testRememberSupersedesOlderFact(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mems, err := graph.ListMemories(context.Background(), d, dsID)
+	mems, err := graph.ListArtifacts(context.Background(), d, dsID)
 	if err != nil || len(mems) != 2 {
-		t.Fatalf("memories: %v, %v", mems, err)
+		t.Fatalf("artifacts: %v, %v", mems, err)
 	}
 	if got := mems[1].ValidAt.Format(time.RFC3339); got != "2024-03-01T00:00:00Z" {
 		t.Errorf("episode valid_at = %q", got)
+	}
+
+	// Provenance: each edge is anchored to the artifact it came from, and the entity shared by both artifacts
+	// (Alice) is linked to both, while each organization is linked only to its own.
+	gedges, err := graph.ListGraphEdges(context.Background(), d, dsID)
+	if err != nil || len(gedges) != 2 {
+		t.Fatalf("edges: %v, %v", gedges, err)
+	}
+	for i, e := range gedges {
+		if e.ArtifactID == nil || *e.ArtifactID != mems[i].ID {
+			t.Errorf("edge %d artifact_id = %v, want %d", e.ID, e.ArtifactID, mems[i].ID)
+		}
+	}
+	ents, err := graph.ListEntities(context.Background(), d, dsID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]int64{}
+	for _, e := range ents {
+		byName[e.Name] = e.ID
+	}
+	links, err := graph.ListEntityArtifacts(context.Background(), d, dsID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[int64][]int64{}
+	for _, l := range links {
+		got[l.EntityID] = append(got[l.EntityID], l.ArtifactID)
+	}
+	same := func(a, b []int64) bool {
+		if len(a) != len(b) {
+			return false
+		}
+		for i := range a {
+			if a[i] != b[i] {
+				return false
+			}
+		}
+		return true
+	}
+	for name, want := range map[string][]int64{
+		"Alice":  {mems[0].ID, mems[1].ID},
+		"Acme":   {mems[0].ID},
+		"Globex": {mems[1].ID},
+	} {
+		if !same(got[byName[name]], want) {
+			t.Errorf("%s linked to artifacts %v, want %v", name, got[byName[name]], want)
+		}
 	}
 }
 

@@ -2,9 +2,9 @@
 //
 // Each suite in evals/suites/*.json is a JSON list of cases. Each case gets a fresh temporary database and an in-process
 // HTTP server running in eval mode. The case is run through the eval endpoints (/v1/gb/eval/remember and
-// /v1/gb/eval/recall): remember (once per memory, in order), then recall. These return the ATIF trajectory of
+// /v1/gb/eval/recall): remember (once per artifact, in order), then recall. These return the ATIF trajectory of
 // every call along with its result.
-// All memories go to the dataset "test", which is deleted at the start of each case so it is recreated fresh.
+// All artifacts go to the dataset "test", which is deleted at the start of each case so it is recreated fresh.
 // Besides the answer, the stored temporal facts (edges with valid_at / invalid_at) are checked in the database.
 //
 // Usage: go run ./evals [-v] [-suites dir] [case-name ...]   (requires ANTHROPIC_API_KEY)
@@ -55,14 +55,16 @@ const evalUser = "eval"
 // Case is one eval: remember some texts in order, then ask a question about them.
 type Case struct {
 	Name           string       `json:"name"`
-	Remember       []Memory     `json:"remember"`
+	Remember       []Artifact   `json:"remember"`
 	Query          string       `json:"query"`
 	ExpectContains []string     `json:"expect_contains"`
 	ExpectEdges    []ExpectEdge `json:"expect_edges"`
 }
 
-// Memory is one text to remember; ReferenceTime (RFC 3339) is when it was written.
-type Memory struct {
+// Artifact is one text to remember; ReferenceTime (RFC 3339) is when it was written. Kind is the artifact kind
+// ("knowledge" or "episode"); empty uses the server default.
+type Artifact struct {
+	Kind          string `json:"kind"`
 	Text          string `json:"text"`
 	ReferenceTime string `json:"reference_time"`
 }
@@ -221,11 +223,14 @@ func run(c Case, llm memory.LLM, verbose bool) (out *Outcome, err error) {
 
 	for i, m := range c.Remember {
 		body := map[string]any{"user_id": evalUser, "text": m.Text, "dataset": evalDataset}
+		if m.Kind != "" {
+			body["kind"] = m.Kind
+		}
 		if m.ReferenceTime != "" {
 			body["reference_time"] = m.ReferenceTime
 		}
 		var rem struct {
-			MemoryID   int64            `json:"memory_id"`
+			ArtifactID int64            `json:"artifact_id"`
 			Trajectory *atif.Trajectory `json:"trajectory"`
 		}
 		if err := post(srv.URL+"/v1/gb/eval/remember", body, &rem); err != nil {

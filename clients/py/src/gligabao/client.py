@@ -24,16 +24,21 @@ class Client:
         text: str,
         dataset: str | None = None,
         reference_time: datetime | str | None = None,
+        kind: str | None = None,
     ) -> dict[str, Any]:
         """Store `text` in memory (POST /v1/gb/remember).
 
         `dataset` defaults to "main" on the server. `reference_time` (a datetime or an
         RFC 3339 string) is when the text was written; it defaults to now on the server.
-        Returns the decoded JSON response (memory_id, entities, edges, ...).
+        `kind` is the artifact kind: "knowledge" (the server default, not strictly episodic) or
+        "episode" (a Graphiti-style episode, anchored in time).
+        Returns the decoded JSON response (artifact_id, entities, edges, ...).
         """
         body: dict[str, Any] = {"user_id": user_id, "text": text}
         if dataset is not None:
             body["dataset"] = dataset
+        if kind is not None:
+            body["kind"] = kind
         if reference_time is not None:
             body["reference_time"] = (
                 reference_time.isoformat() if isinstance(reference_time, datetime) else reference_time

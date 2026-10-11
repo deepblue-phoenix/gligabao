@@ -23,6 +23,9 @@ type rememberRequest struct {
 	// Dataset is the dataset to store into (created if missing). Defaults to "main".
 	Dataset string `json:"dataset"`
 	Text    string `json:"text"`
+	// Kind is the artifact kind: "knowledge" (default; not strictly episodic) or "episode" (a Graphiti-style episode,
+	// anchored in time).
+	Kind string `json:"kind"`
 	// ReferenceTime (RFC 3339, optional) is when the text was written; relative dates in it ("yesterday") are
 	// resolved against it. Defaults to now.
 	ReferenceTime string `json:"reference_time"`
@@ -73,8 +76,12 @@ func handler(d *sql.DB, llm memory.LLM, eval bool) http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		if _, err := memory.ResolveKind(req.Kind); err != nil {
+			httputil.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		start := time.Now()
-		res, err := memory.Remember(r.Context(), d, llm, req.UserID, req.Dataset, req.Text, ref, opts...)
+		res, err := memory.Remember(r.Context(), d, llm, req.UserID, req.Dataset, req.Kind, req.Text, ref, opts...)
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
 				"user_id": req.UserID,
@@ -93,7 +100,8 @@ func handler(d *sql.DB, llm memory.LLM, eval bool) http.HandlerFunc {
 		log.WithFields(log.Fields{
 			"user_id":     res.UserID,
 			"dataset":     res.Dataset,
-			"memory_id":   res.MemoryID,
+			"artifact_id": res.ArtifactID,
+			"kind":        res.Kind,
 			"entities":    len(res.Entities),
 			"edges":       len(res.Edges),
 			"duration_ms": time.Since(start).Milliseconds(),
@@ -101,7 +109,8 @@ func handler(d *sql.DB, llm memory.LLM, eval bool) http.HandlerFunc {
 		monitoring.EmitSystemEvent(r.Context(), "remember.completed", monitoring.Event{
 			"user_id":           res.UserID,
 			"dataset":           res.Dataset,
-			"memory_id":         res.MemoryID,
+			"artifact_id":       res.ArtifactID,
+			"kind":              res.Kind,
 			"text_bytes":        len(req.Text),
 			"entities":          len(res.Entities),
 			"edges":             len(res.Edges),

@@ -32,7 +32,7 @@ Anything else is allowed (UUIDs, emails, numeric IDs as strings, ...). IDs are c
 
 ## Ownership
 
-A [dataset](datasets.md) is owned by the user who created it, and that ownership covers everything in it. Memories (episodes), entities and edges belong to a dataset (`dataset_id`), so they have no `user_id` of their own: they belong to whoever owns the dataset. The owner is shown as `user_id` on dataset objects and in the `remember` response.
+A [dataset](datasets.md) is owned by the user who created it, and that ownership covers everything in it. Artifacts, entities and edges belong to a dataset (`dataset_id`), so they have no `user_id` of their own: they belong to whoever owns the dataset. The owner is shown as `user_id` on dataset objects and in the `remember` response.
 
 - Dataset names are unique per user. Two users can each have a dataset called `work`, and they are unrelated: separate ids, separate graphs and separate vector namespaces.
 - `list` returns only the caller's datasets.
@@ -47,7 +47,7 @@ Because a user's dataset is looked up by `(user_id, name)`, a user cannot reach 
 
 ```
 gb_datasets (id, user_id, name, ...)   UNIQUE (user_id, name) WHERE deleted = 0
-  └─ gb_memories, gb_entities, gb_edges (dataset_id)
+  └─ gb_artifacts, gb_entities, gb_edges (dataset_id); gb_edge_artifacts and gb_entity_artifacts link edges and entities to artifacts
 ```
 
 The schema has no migration. A database created before `user_id` was added must be recreated.

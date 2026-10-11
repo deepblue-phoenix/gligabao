@@ -43,7 +43,7 @@ func testRecall(t *testing.T, d *sql.DB) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/gb/recall", Handler(d, llm))
 
-	if _, err := memory.Remember(context.Background(), d, llm, "u1", "", "x", time.Time{}); err != nil {
+	if _, err := memory.Remember(context.Background(), d, llm, "u1", "", "", "x", time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 

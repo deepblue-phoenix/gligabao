@@ -29,7 +29,7 @@ content-type: application/json
     ],
     "edges": [
       {"id": 1, "source_id": 1, "target_id": 2, "source": "Alice", "target": "Acme",
-       "relation": "works_at", "memory_id": 1, "valid_at": "2025-01-31T09:00:00Z", "created_at": "2025-01-31T09:00:05Z"}
+       "relation": "works_at", "artifact_id": 1, "valid_at": "2025-01-31T09:00:00Z", "created_at": "2025-01-31T09:00:05Z"}
     ]
   }
 }
@@ -37,7 +37,7 @@ content-type: application/json
 
 - `answer`: the LLM's reply, based only on the retrieved graph context. If the graph lacks the information, the answer says so.
 - `evidence.entities`: entities used for the answer. `id` is the `gb_entities` row ID.
-- `evidence.edges`: edges used for the answer. `id` is the `gb_edges` row ID, `source_id`/`target_id` point at entities, and `memory_id` (omitted if unset) is the `gb_memories` row the edge came from. This links each fact back to the original text. `valid_at`, `invalid_at`, `created_at` and `expired_at` (the last two omitted when null) are the fact's bi-temporal fields, see [temporal.md](temporal.md).
+- `evidence.edges`: edges used for the answer. `id` is the `gb_edges` row ID, `source_id`/`target_id` point at entities, and `artifact_id` (omitted if unset) is the `gb_artifacts` row the edge was inferred from (its artifact). This links each fact back to the original text. `valid_at`, `invalid_at`, `created_at` and `expired_at` (the last two omitted when null) are the fact's bi-temporal fields, see [temporal.md](temporal.md).
 - Both evidence lists are always arrays (`[]` when empty, never `null`).
 
 Errors are returned as `{"error": "..."}`:
@@ -113,5 +113,5 @@ curl -s localhost:8080/v1/gb/recall   -d '{"user_id":"u1","query":"Where does Al
 - Retrieval is keyword-based and one hop deep. A question that shares no words with entity names or descriptions (for example a paraphrase or a pronoun-only question) may fall back to recent entities and miss the relevant facts. Multi-hop questions ("who works with people who live in Paris?") only see edges adjacent to the matched entities.
 - Edge `relation` and `description` text is not searched during retrieval, only entity names and descriptions.
 - Evidence reflects what the LLM *says* it used. IDs are validated, but the model could cite something it did not truly rely on, or omit something it did.
-- Only the graph is used; the raw text in `gb_memories` is not sent to the LLM.
+- Only the graph is used; the raw text in `gb_artifacts` is not sent to the LLM.
 - No authentication.

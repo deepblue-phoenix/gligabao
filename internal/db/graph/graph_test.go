@@ -35,7 +35,7 @@ func scenario(t *testing.T, d *sql.DB) {
 	check(err)
 	defer tx.Rollback()
 	now := relational.Now()
-	memID, err := tx.InsertMemory(ctx, dsID, "Alice works at Acme", now.Add(-time.Hour), now)
+	artID, err := tx.InsertArtifact(ctx, dsID, graph.ArtifactEpisode, "Alice works at Acme", now.Add(-time.Hour), now)
 	check(err)
 	alice, err := tx.UpsertEntity(ctx, dsID, graph.Entity{Name: "Alice", Type: "person", Description: "an engineer"}, "alice")
 	check(err)
@@ -52,10 +52,22 @@ func scenario(t *testing.T, d *sql.DB) {
 	if _, err := tx.FindEntityID(ctx, dsID, "zzz"); !errors.Is(err, graph.ErrNotFound) {
 		t.Fatalf("FindEntityID missing: %v", err)
 	}
+	// Entity provenance: Alice is mentioned by two artifacts, Acme only by the first. Linking twice is a no-op.
+	art2, err := tx.InsertArtifact(ctx, dsID, graph.ArtifactKnowledge, "Alice is an engineer", now, now)
+	check(err)
+	check(tx.LinkEntity(ctx, alice, artID))
+	check(tx.LinkEntity(ctx, alice, artID))
+	check(tx.LinkEntity(ctx, alice, art2))
+	check(tx.LinkEntity(ctx, acme, artID))
 	valid := now.Add(-time.Hour)
 	e1, err := tx.InsertEdge(ctx, graph.NewEdge{DatasetID: dsID, SourceID: alice, TargetID: acme, Relation: "works_at",
-		Description: "Alice works at Acme.", ValidAt: valid, CreatedAt: now, MemoryID: memID})
+		Description: "Alice works at Acme.", ValidAt: valid, CreatedAt: now, ArtifactID: artID})
 	check(err)
+	// Edge provenance: the creator, then a later artifact that stated the same fact (a merged duplicate). Linking
+	// twice is a no-op.
+	check(tx.LinkEdge(ctx, e1, artID))
+	check(tx.LinkEdge(ctx, e1, art2))
+	check(tx.LinkEdge(ctx, e1, art2))
 	check(tx.MergeDuplicateEdge(ctx, dsID, e1, nil))
 	edge, err := tx.GetEdge(ctx, dsID, e1)
 	check(err)
@@ -104,7 +116,7 @@ func scenario(t *testing.T, d *sql.DB) {
 	}
 	around, err := graph.EdgesAround(ctx, d, dsID, []int64{alice}, 10)
 	check(err)
-	if len(around) != 1 || around[0].SourceID != alice || around[0].TargetID != acme || around[0].MemoryID == nil || *around[0].MemoryID != memID || around[0].ExpiredAt == nil {
+	if len(around) != 1 || around[0].SourceID != alice || around[0].TargetID != acme || around[0].ArtifactID == nil || *around[0].ArtifactID != artID || around[0].ExpiredAt == nil {
 		t.Fatalf("EdgesAround: %+v", around)
 	}
 	ents, err := graph.EntitiesByID(ctx, d, []int64{alice, acme})
@@ -114,11 +126,25 @@ func scenario(t *testing.T, d *sql.DB) {
 	}
 
 	// Inspection.
-	if c, err := graph.DatasetCounts(ctx, d, dsID); err != nil || c != (graph.Counts{Memories: 1, Entities: 2, Edges: 1}) {
+	if c, err := graph.DatasetCounts(ctx, d, dsID); err != nil || c != (graph.Counts{Artifacts: 2, Entities: 2, Edges: 1}) {
 		t.Fatalf("DatasetCounts: %+v, %v", c, err)
 	}
-	if mems, err := graph.ListMemories(ctx, d, dsID); err != nil || len(mems) != 1 || mems[0].ID != memID || mems[0].Text != "Alice works at Acme" || !mems[0].ValidAt.Equal(now.Add(-time.Hour)) {
-		t.Fatalf("ListMemories: %+v, %v", mems, err)
+	links, err := graph.ListEntityArtifacts(ctx, d, dsID)
+	want := []graph.EntityArtifact{{EntityID: alice, ArtifactID: artID}, {EntityID: alice, ArtifactID: art2}, {EntityID: acme, ArtifactID: artID}}
+	if err != nil || len(links) != len(want) {
+		t.Fatalf("ListEntityArtifacts: %+v, %v", links, err)
+	}
+	for i := range want {
+		if links[i] != want[i] {
+			t.Errorf("ListEntityArtifacts[%d] = %+v, want %+v", i, links[i], want[i])
+		}
+	}
+	elinks, err := graph.ListEdgeArtifacts(ctx, d, dsID)
+	if err != nil || len(elinks) != 2 || elinks[0] != (graph.EdgeArtifact{EdgeID: e1, ArtifactID: artID}) || elinks[1] != (graph.EdgeArtifact{EdgeID: e1, ArtifactID: art2}) {
+		t.Fatalf("ListEdgeArtifacts: %+v, %v", elinks, err)
+	}
+	if mems, err := graph.ListArtifacts(ctx, d, dsID); err != nil || len(mems) != 2 || mems[0].ID != artID || mems[0].Kind != graph.ArtifactEpisode || mems[1].Kind != graph.ArtifactKnowledge || mems[0].Text != "Alice works at Acme" || !mems[0].ValidAt.Equal(now.Add(-time.Hour)) {
+		t.Fatalf("ListArtifacts: %+v, %v", mems, err)
 	}
 	if ents, err := graph.ListEntities(ctx, d, dsID); err != nil || len(ents) != 2 || ents[0].Name != "Alice" || ents[0].Description != "an engineer" {
 		t.Fatalf("ListEntities: %+v, %v", ents, err)

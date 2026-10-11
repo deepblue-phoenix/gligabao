@@ -1,8 +1,8 @@
 # Datasets
 
-A dataset is a hard logical container. Every memory (episode), entity and edge belongs to exactly one dataset (`dataset_id`), and datasets never share nodes: the same entity remembered into two datasets is two separate rows, and recall only sees the graph of the dataset it targets. Its embeddings are isolated the same way, in a vector namespace of its own (see [Vectors](#vectors)).
+A dataset is a hard logical container. Every artifact, entity and edge belongs to exactly one dataset (`dataset_id`), and datasets never share nodes: the same entity remembered into two datasets is two separate rows, and recall only sees the graph of the dataset it targets. Its embeddings are isolated the same way, in a vector namespace of its own (see [Vectors](#vectors)).
 
-- Every dataset is owned by a `user_id`, and that ownership covers all its memories, entities and edges. All endpoints require `user_id` (see [identity.md](identity.md)) (a non-empty string of at most 128 bytes): in the JSON body for `POST`, in the query string for `GET` and `DELETE`. A missing or invalid one returns `400`. A user only sees and changes their own datasets; names are unique per user, so two users can each have a dataset called `work`.
+- Every dataset is owned by a `user_id`, and that ownership covers all its artifacts, entities and edges. All endpoints require `user_id` (see [identity.md](identity.md)) (a non-empty string of at most 128 bytes): in the JSON body for `POST`, in the query string for `GET` and `DELETE`. A missing or invalid one returns `400`. A user only sees and changes their own datasets; names are unique per user, so two users can each have a dataset called `work`.
 - `remember` and `recall` take an optional `dataset` (name). If omitted, the default dataset `main` is used. There is no dataset until it is created: `main` is created for a user by their first `remember`.
 - `remember` creates the dataset on demand if it does not exist. `recall` on a dataset that does not exist (or was deleted) returns `404`.
 - Names are 1-64 characters of letters, digits, `.`, `_`, `-`, starting with a letter or digit. Invalid names return `400`.

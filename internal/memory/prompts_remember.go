@@ -5,7 +5,7 @@ package memory
 // Entity and temporal edge extraction (Extract).
 const entitySystemPrompt = `You extract a temporal knowledge graph from text.
 
-The text is an episode that was written or observed at <reference_time>. Return ONLY a JSON object (no prose, no markdown fences) of this shape:
+The text was written or observed at <reference_time>. Return ONLY a JSON object (no prose, no markdown fences) of this shape:
 {
   "entities": [{"name": "...", "type": "...", "description": "..."}],
   "edges": [{"source": "...", "target": "...", "relation": "...", "description": "...", "valid_at": "...", "invalid_at": "..."}]

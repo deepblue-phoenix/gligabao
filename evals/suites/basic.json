@@ -2,7 +2,7 @@
   {
     "name": "remember_recall",
     "remember": [
-      {"text": "Alice works at Acme and lives in Paris.", "reference_time": "2023-01-01T00:00:00Z"}
+      {"kind": "episode", "text": "Alice works at Acme and lives in Paris.", "reference_time": "2023-01-01T00:00:00Z"}
     ],
     "query": "Where does Alice work?",
     "expect_contains": ["Acme"],
@@ -14,8 +14,8 @@
   {
     "name": "job_change",
     "remember": [
-      {"text": "Alice works at Acme and lives in Paris.", "reference_time": "2023-01-01T00:00:00Z"},
-      {"text": "Alice started working at Globex.", "reference_time": "2024-03-01T00:00:00Z"}
+      {"kind": "episode", "text": "Alice works at Acme and lives in Paris.", "reference_time": "2023-01-01T00:00:00Z"},
+      {"kind": "episode", "text": "Alice started working at Globex.", "reference_time": "2024-03-01T00:00:00Z"}
     ],
     "query": "Where does Alice work now?",
     "expect_contains": ["Globex"],

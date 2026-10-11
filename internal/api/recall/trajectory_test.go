@@ -21,7 +21,7 @@ func testTrajectories(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 
 	// Without eval nothing is generated or stored.
-	rem, err := memory.Remember(ctx, d, llm, "u1", "", "Alice works at Acme", time.Time{}, memory.WithTrajectoryDir(dir))
+	rem, err := memory.Remember(ctx, d, llm, "u1", "", "", "Alice works at Acme", time.Time{}, memory.WithTrajectoryDir(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func testTrajectories(t *testing.T, d *sql.DB) {
 		t.Fatalf("without eval: %d files stored", len(files))
 	}
 	llm.outs = append([]string{ex}, llm.outs...) // the eval Remember below needs its own extraction
-	rem, err = memory.Remember(ctx, d, llm, "u1", "", "Alice works at Acme", time.Time{}, memory.WithTrajectoryDir(dir), memory.WithEval())
+	rem, err = memory.Remember(ctx, d, llm, "u1", "", "", "Alice works at Acme", time.Time{}, memory.WithTrajectoryDir(dir), memory.WithEval())
 	if err != nil {
 		t.Fatal(err)
 	}

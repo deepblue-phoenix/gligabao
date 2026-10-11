@@ -52,7 +52,7 @@ type EvidenceEdge struct {
 	Target      string `json:"target"`
 	Relation    string `json:"relation"`
 	Description string `json:"description,omitempty"`
-	MemoryID    *int64 `json:"memory_id,omitempty"`
+	ArtifactID  *int64 `json:"artifact_id,omitempty"`
 	// Bi-temporal validity of the fact.
 	ValidAt   *time.Time `json:"valid_at,omitempty"`
 	InvalidAt *time.Time `json:"invalid_at,omitempty"`
@@ -67,21 +67,42 @@ type NewEdge struct {
 	ValidAt                       time.Time
 	InvalidAt                     *time.Time
 	CreatedAt                     time.Time
-	MemoryID                      int64
+	ArtifactID                    int64
 }
 
-// Memory is a stored episode (the raw text plus when it happened and when it was ingested).
-type Memory struct {
+// Artifact kinds.
+const (
+	// ArtifactEpisode is a Graphiti-style episode: a text anchored in time, written or observed at ValidAt.
+	ArtifactEpisode = "episode"
+	// ArtifactKnowledge is knowledge that is not strictly episodic (a reference text, a note, ...).
+	ArtifactKnowledge = "knowledge"
+)
+
+// Artifact is a piece of data ingested to be remembered: the raw text, plus when it happened and when it was
+// ingested. Every entity and edge of the graph is anchored to the artifact(s) it was inferred from.
+type Artifact struct {
 	ID        int64
 	DatasetID int64
+	Kind      string // ArtifactEpisode or ArtifactKnowledge
 	Text      string
 	ValidAt   time.Time
 	CreatedAt time.Time
 }
 
+// EntityArtifact says that an entity was inferred from (mentioned in) an artifact.
+type EntityArtifact struct {
+	EntityID, ArtifactID int64
+}
+
+// EdgeArtifact says that an edge (a fact) was inferred from an artifact: the one that created it, or one that
+// stated the same fact again.
+type EdgeArtifact struct {
+	EdgeID, ArtifactID int64
+}
+
 // Counts is the number of rows of each kind a dataset holds.
 type Counts struct {
-	Memories, Entities, Edges int
+	Artifacts, Entities, Edges int
 }
 
 // OntologyClass is a class of an ontology (a node of the ontology graph).
@@ -124,11 +145,19 @@ type Tx interface {
 	// Rollback is safe to call after Commit.
 	Rollback() error
 
-	// InsertMemory stores an episode.
-	InsertMemory(ctx context.Context, dsID int64, text string, validAt, createdAt time.Time) (int64, error)
+	// InsertArtifact stores an artifact of the given kind (ArtifactEpisode or ArtifactKnowledge).
+	InsertArtifact(ctx context.Context, dsID int64, kind, text string, validAt, createdAt time.Time) (int64, error)
 	// UpsertEntity inserts the entity, or updates the one with the same (dataset, nameKey, type): a non-empty
 	// description replaces the stored one. It returns the entity ID.
 	UpsertEntity(ctx context.Context, dsID int64, e Entity, nameKey string) (int64, error)
+	// LinkEntity records that the entity was inferred from the artifact. It is idempotent: linking the same pair
+	// again is a no-op. Call it for every entity an artifact mentions, whether the entity was just created or
+	// already existed (see the gb_entity_artifacts schema comment for why entities need a link table).
+	LinkEntity(ctx context.Context, entityID, artifactID int64) error
+	// LinkEdge records that the edge was inferred from the artifact. It is idempotent. Call it for the artifact
+	// that created the edge and for every later artifact that states the same fact (a duplicate merged into the
+	// stored edge), see the gb_edge_artifacts schema comment.
+	LinkEdge(ctx context.Context, edgeID, artifactID int64) error
 	// FindEntityID returns the oldest entity of the dataset with the given nameKey, of any type.
 	FindEntityID(ctx context.Context, dsID int64, nameKey string) (int64, error)
 	// InsertEdge stores an edge and returns its ID.

@@ -30,7 +30,7 @@ type Extraction struct {
 	Edges    []Edge   `json:"edges"`
 }
 
-// Extract asks the LLM to pull entities and temporal edges out of text. ref is the episode's time; it anchors
+// Extract asks the LLM to pull entities and temporal edges out of text. ref is the artifact's time; it anchors
 // relative dates and is the ValidAt of every fact whose start the text does not state.
 func Extract(ctx context.Context, llm LLM, text string, ref time.Time) (*Extraction, error) {
 
@@ -94,7 +94,7 @@ func parseExtraction(s string, ref time.Time) (*Extraction, error) {
 		if e.Description == "" {
 			e.Description = e.Source + " " + strings.ReplaceAll(e.Relation, "_", " ") + " " + e.Target + "."
 		}
-		if e.ValidAt == nil { // a fact inherits the time of the episode that states it
+		if e.ValidAt == nil { // a fact inherits the time of the artifact that states it
 			v := ref.UTC()
 			e.ValidAt = &v
 		}
@@ -108,35 +108,61 @@ func parseExtraction(s string, ref time.Time) (*Extraction, error) {
 
 //---------------------------------------------------------------------------------------------
 
+// ErrInvalidKind means the artifact kind is neither graph.ArtifactKnowledge nor graph.ArtifactEpisode.
+var ErrInvalidKind = errors.New("invalid kind")
+
+// DefaultKind is the artifact kind used when the caller gives none: knowledge that is not strictly episodic.
+const DefaultKind = graph.ArtifactKnowledge
+
+// ResolveKind trims and lowercases kind and applies DefaultKind to an empty one. It returns ErrInvalidKind for
+// anything other than "knowledge" or "episode".
+func ResolveKind(kind string) (string, error) {
+	switch k := strings.ToLower(strings.TrimSpace(kind)); k {
+	case "":
+		return DefaultKind, nil
+	case graph.ArtifactKnowledge, graph.ArtifactEpisode:
+		return k, nil
+	}
+	return "", fmt.Errorf("%w: kind must be %q or %q", ErrInvalidKind, graph.ArtifactKnowledge, graph.ArtifactEpisode)
+}
+
+//---------------------------------------------------------------------------------------------
+
 // Result summarizes what was stored by Remember.
 type Result struct {
 	UserID           string    `json:"user_id"`
 	Dataset          string    `json:"dataset"`
-	MemoryID         int64     `json:"memory_id"`
-	ValidAt          time.Time `json:"valid_at"`   // event time of the episode
-	CreatedAt        time.Time `json:"created_at"` // ingestion time of the episode
+	Kind             string    `json:"kind"` // artifact kind: "knowledge" or "episode"
+	ArtifactID       int64     `json:"artifact_id"`
+	ValidAt          time.Time `json:"valid_at"`   // event time of the artifact
+	CreatedAt        time.Time `json:"created_at"` // ingestion time of the artifact
 	Entities         []Entity  `json:"entities"`
 	Edges            []Edge    `json:"edges"`             // the facts from this text in their stored state
-	InvalidatedEdges []int64   `json:"invalidated_edges"` // IDs of edges closed because of this memory
+	InvalidatedEdges []int64   `json:"invalidated_edges"` // IDs of edges closed because of this artifact
 	// TrajectoryID and Trajectory are the ATIF trajectory of this call (also stored in TrajectoryDir); only set when
 	// the call was made with WithEval.
 	TrajectoryID string           `json:"trajectory_id,omitempty"`
 	Trajectory   *atif.Trajectory `json:"trajectory,omitempty"`
 }
 
-// Remember extracts entities and temporal edges from text and stores them (with the raw text as an episode) in
-// one transaction, inside userID's named dataset (empty means DefaultDataset; it is created if missing). ref is the
+// Remember extracts entities and temporal edges from text and stores them (with the raw text as an artifact of the
+// given kind; empty means DefaultKind, i.e. knowledge) in one transaction, inside userID's named dataset (empty
+// means DefaultDataset; it is created if missing). ref is the
 // time the text was written/observed; the zero value means the current time. If any LLM step fails nothing is
 // stored.
 //
 // Only with WithEval is the call recorded as an ATIF trajectory (stored as JSON in TrajectoryDir and returned in
 // Result.Trajectory, with its ID in Result.TrajectoryID).
-func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, text string, ref time.Time, opts ...Option) (res *Result, err error) {
+func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, kind, text string, ref time.Time, opts ...Option) (res *Result, err error) {
 	userID, err = ResolveUserID(userID)
 	if err != nil {
 		return nil, err
 	}
 	dataset, err = ResolveDatasetName(dataset)
+	if err != nil {
+		return nil, err
+	}
+	kind, err = ResolveKind(kind)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +181,7 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, text str
 	}()
 	llm = tr.wrap(llm)
 	tr.user(text)
-	tr.input(map[string]any{"user_id": userID, "dataset": dataset, "reference_time": relational.FormatTime(ref)})
+	tr.input(map[string]any{"user_id": userID, "dataset": dataset, "kind": kind, "reference_time": relational.FormatTime(ref)})
 
 	ex, err := Extract(ctx, llm, text, ref)
 	if err != nil {
@@ -172,21 +198,21 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, text str
 	if err != nil {
 		return nil, err
 	}
-	res, err = Store(ctx, d, userID, dataset, text, ref, now, ex, plan)
+	res, err = Store(ctx, d, userID, dataset, kind, text, ref, now, ex, plan)
 	if err != nil {
 		return nil, err
 	}
-	tr.tool("Stored the episode, entities and edges.", "store_memory",
-		map[string]any{"user_id": userID, "dataset": dataset},
-		map[string]any{"memory_id": res.MemoryID, "entities": res.Entities, "edges": res.Edges, "invalidated_edges": res.InvalidatedEdges})
+	tr.tool("Stored the artifact, entities and edges.", "store_artifact",
+		map[string]any{"user_id": userID, "dataset": dataset, "kind": kind},
+		map[string]any{"artifact_id": res.ArtifactID, "entities": res.Entities, "edges": res.Edges, "invalidated_edges": res.InvalidatedEdges})
 	return res, nil
 }
 
-// Store persists an episode and its extraction into userID's named dataset (created if missing). Entities are
+// Store persists an artifact of the given kind (already resolved, see ResolveKind) and its extraction into userID's named dataset (created if missing). Entities are
 // deduplicated within the dataset by (normalized name, type); nothing is shared across datasets. Edges are
 // written according to plan (see EdgePlan); now is the system time stamped on them. Edges naming an unlisted
 // entity create it with type "other".
-func Store(ctx context.Context, d *sql.DB, userID, dataset, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan) (*Result, error) {
+func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan) (*Result, error) {
 	userID, err := ResolveUserID(userID)
 	if err != nil {
 		return nil, err
@@ -206,7 +232,7 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, text string, ref, no
 	}
 	defer tx.Rollback()
 
-	memID, err := tx.InsertMemory(ctx, dsID, text, ref, now)
+	artID, err := tx.InsertArtifact(ctx, dsID, kind, text, ref, now)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +240,8 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, text string, ref, no
 	out := &Result{
 		UserID:           userID,
 		Dataset:          dataset,
-		MemoryID:         memID,
+		Kind:             kind,
+		ArtifactID:       artID,
 		ValidAt:          ref.UTC(),
 		CreatedAt:        now.UTC(),
 		Entities:         []Entity{},
@@ -224,7 +251,15 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, text string, ref, no
 	ids := map[string]int64{} // normalized name -> entity id (first listed type wins for edge lookup)
 	seenEnt := map[string]bool{}
 
-	upsertEntity := func(e Entity) (int64, error) { return tx.UpsertEntity(ctx, dsID, e, key(e.Name)) }
+	// Every entity this artifact touches is linked to it, whether it was created now or already existed: entities
+	// are shared across artifacts (deduplicated per dataset), so the link, not the entity row, records provenance.
+	upsertEntity := func(e Entity) (int64, error) {
+		id, err := tx.UpsertEntity(ctx, dsID, e, key(e.Name))
+		if err != nil {
+			return 0, err
+		}
+		return id, tx.LinkEntity(ctx, id, artID)
+	}
 
 	for _, e := range ex.Entities {
 		e.Name = strings.TrimSpace(e.Name)
@@ -256,6 +291,9 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, text string, ref, no
 			if id, err = upsertEntity(Entity{Name: name, Type: "other"}); err == nil {
 				out.Entities = append(out.Entities, Entity{Name: name, Type: "other"})
 			}
+		} else if err == nil {
+			// An edge names an already stored entity that this extraction did not list: it is still mentioned here.
+			err = tx.LinkEntity(ctx, id, artID)
 		}
 		if err != nil {
 			return 0, err
@@ -263,7 +301,7 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, text string, ref, no
 		ids[key(name)] = id
 		return id, nil
 	}
-	out.Edges, out.InvalidatedEdges, err = storeEdges(ctx, tx, dsID, memID, ref, now, ex.Edges, plan, entityID)
+	out.Edges, out.InvalidatedEdges, err = storeEdges(ctx, tx, dsID, artID, ref, now, ex.Edges, plan, entityID)
 	if err != nil {
 		return nil, err
 	}

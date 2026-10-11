@@ -143,7 +143,7 @@ func testDatasetLifecycle(t *testing.T, d *sql.DB) {
 	tx, err := graph.Begin(ctx, d)
 	must(err)
 	defer tx.Rollback()
-	memID, err := tx.InsertMemory(ctx, id, "Alice works at Acme.", now, now)
+	artID, err := tx.InsertArtifact(ctx, id, graph.ArtifactEpisode, "Alice works at Acme.", now, now)
 	must(err)
 	alice, err := tx.UpsertEntity(ctx, id, graph.Entity{Name: "Alice", Type: "person"}, "alice")
 	must(err)
@@ -151,12 +151,12 @@ func testDatasetLifecycle(t *testing.T, d *sql.DB) {
 	must(err)
 	_, err = tx.InsertEdge(ctx, graph.NewEdge{
 		DatasetID: id, SourceID: alice, TargetID: acme, Relation: "works_at", Description: "Alice works at Acme.",
-		ValidAt: now, CreatedAt: now, MemoryID: memID,
+		ValidAt: now, CreatedAt: now, ArtifactID: artID,
 	})
 	must(err)
 	must(tx.Commit())
 
-	if c, err := graph.DatasetCounts(ctx, d, id); err != nil || c != (graph.Counts{Memories: 1, Entities: 2, Edges: 1}) {
+	if c, err := graph.DatasetCounts(ctx, d, id); err != nil || c != (graph.Counts{Artifacts: 1, Entities: 2, Edges: 1}) {
 		t.Errorf("graph counts = %+v (err %v), want 1 memory, 2 entities, 1 edge", c, err)
 	}
 	g := exportGraph()
@@ -203,7 +203,7 @@ func testDatasetLifecycle(t *testing.T, d *sql.DB) {
 	do("DELETE", "/v1/gb/datasets/"+dsName+"?user_id="+userID, "", 404) // already deleted
 
 	// Graph: deletion is soft, so the rows stay in storage, but the dataset can no longer be read through the API.
-	if c, err := graph.DatasetCounts(ctx, d, id); err != nil || c != (graph.Counts{Memories: 1, Entities: 2, Edges: 1}) {
+	if c, err := graph.DatasetCounts(ctx, d, id); err != nil || c != (graph.Counts{Artifacts: 1, Entities: 2, Edges: 1}) {
 		t.Errorf("graph counts after delete = %+v (err %v), want the rows kept", c, err)
 	}
 	do("GET", "/v1/gb/datasets/"+dsName+"/graph?user_id="+userID, "", 404)

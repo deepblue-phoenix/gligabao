@@ -1,4 +1,4 @@
-// Package sqlite stores the knowledge graph (memories, entities, edges) in SQLite tables and runs every SQL
+// Package sqlite stores the knowledge graph (artifacts, entities, edges) in SQLite tables and runs every SQL
 // statement for it. The functions here are reached through the routing functions of package graph.
 //
 // The tables live in the same database as the relational data (they reference its datasets), so this package
@@ -159,7 +159,7 @@ func EdgesAround(ctx context.Context, d *sql.DB, dsID int64, entityIDs []int64, 
 	args = append(args, limit)
 	rows, err := d.QueryContext(ctx, `
 		SELECT
-			e.id, e.source_id, e.target_id, s.name, t.name, e.relation, e.description, e.memory_id,
+			e.id, e.source_id, e.target_id, s.name, t.name, e.relation, e.description, e.artifact_id,
 			e.valid_at, e.invalid_at, e.created_at, e.expired_at
 		FROM gb_edges e
 		JOIN gb_entities s ON s.id = e.source_id
@@ -183,7 +183,7 @@ func EdgesAround(ctx context.Context, d *sql.DB, dsID int64, entityIDs []int64, 
 		}
 		e.ValidAt, e.InvalidAt, e.CreatedAt, e.ExpiredAt = rsqlite.ParseTime(valid.String), rsqlite.ParseTime(invalid.String), rsqlite.ParseTime(created.String), rsqlite.ParseTime(expired.String)
 		if mem.Valid {
-			e.MemoryID = &mem.Int64
+			e.ArtifactID = &mem.Int64
 		}
 		out = append(out, e)
 	}
@@ -240,33 +240,33 @@ func qmarks(n int) string {
 //---------------------------------------------------------------------------------------------
 // Inspection (read-only summaries of what is stored; used to verify behaviour, e.g. in tests)
 
-// DatasetCounts returns the number of memories, entities and edges in the dataset.
+// DatasetCounts returns the number of artifacts, entities and edges in the dataset.
 func DatasetCounts(ctx context.Context, d *sql.DB, dsID int64) (model.Counts, error) {
 	var c model.Counts
 	err := d.QueryRowContext(ctx, `
 		SELECT
-			(SELECT COUNT(*) FROM gb_memories WHERE dataset_id = ?),
+			(SELECT COUNT(*) FROM gb_artifacts WHERE dataset_id = ?),
 			(SELECT COUNT(*) FROM gb_entities WHERE dataset_id = ?),
-			(SELECT COUNT(*) FROM gb_edges WHERE dataset_id = ?)`, dsID, dsID, dsID).Scan(&c.Memories, &c.Entities, &c.Edges)
+			(SELECT COUNT(*) FROM gb_edges WHERE dataset_id = ?)`, dsID, dsID, dsID).Scan(&c.Artifacts, &c.Entities, &c.Edges)
 	return c, err
 }
 
-// ListMemories returns the episodes of the dataset by ID.
-func ListMemories(ctx context.Context, d *sql.DB, dsID int64) ([]model.Memory, error) {
+// ListArtifacts returns the artifacts of the dataset by ID.
+func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.Artifact, error) {
 	rows, err := d.QueryContext(ctx, `
-		SELECT id, dataset_id, text, valid_at, created_at
-		FROM gb_memories
+		SELECT id, dataset_id, kind, text, valid_at, created_at
+		FROM gb_artifacts
 		WHERE dataset_id = ?
 		ORDER BY id`, dsID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []model.Memory
+	var out []model.Artifact
 	for rows.Next() {
-		var m model.Memory
+		var m model.Artifact
 		var valid, created string
-		if err := rows.Scan(&m.ID, &m.DatasetID, &m.Text, &valid, &created); err != nil {
+		if err := rows.Scan(&m.ID, &m.DatasetID, &m.Kind, &m.Text, &valid, &created); err != nil {
 			return nil, err
 		}
 		if t := rsqlite.ParseTime(valid); t != nil {
@@ -276,6 +276,52 @@ func ListMemories(ctx context.Context, d *sql.DB, dsID int64) ([]model.Memory, e
 			m.CreatedAt = *t
 		}
 		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// ListEdgeArtifacts returns the edge-to-artifact links of the dataset, by edge ID then artifact ID.
+func ListEdgeArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.EdgeArtifact, error) {
+	rows, err := d.QueryContext(ctx, `
+		SELECT ea.edge_id, ea.artifact_id
+		FROM gb_edge_artifacts ea
+		JOIN gb_edges e ON e.id = ea.edge_id
+		WHERE e.dataset_id = ?
+		ORDER BY ea.edge_id, ea.artifact_id`, dsID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.EdgeArtifact
+	for rows.Next() {
+		var l model.EdgeArtifact
+		if err := rows.Scan(&l.EdgeID, &l.ArtifactID); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
+// ListEntityArtifacts returns the entity-to-artifact links of the dataset, by entity ID then artifact ID.
+func ListEntityArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.EntityArtifact, error) {
+	rows, err := d.QueryContext(ctx, `
+		SELECT ea.entity_id, ea.artifact_id
+		FROM gb_entity_artifacts ea
+		JOIN gb_entities e ON e.id = ea.entity_id
+		WHERE e.dataset_id = ?
+		ORDER BY ea.entity_id, ea.artifact_id`, dsID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.EntityArtifact
+	for rows.Next() {
+		var l model.EntityArtifact
+		if err := rows.Scan(&l.EntityID, &l.ArtifactID); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
 	}
 	return out, rows.Err()
 }
@@ -306,7 +352,7 @@ func ListEntities(ctx context.Context, d *sql.DB, dsID int64) ([]model.EvidenceE
 func ListGraphEdges(ctx context.Context, d *sql.DB, dsID int64) ([]model.EvidenceEdge, error) {
 	rows, err := d.QueryContext(ctx, `
 		SELECT
-			e.id, e.source_id, e.target_id, s.name, t.name, e.relation, e.description, e.memory_id,
+			e.id, e.source_id, e.target_id, s.name, t.name, e.relation, e.description, e.artifact_id,
 			e.valid_at, e.invalid_at, e.created_at, e.expired_at
 		FROM gb_edges e
 		JOIN gb_entities s ON s.id = e.source_id
@@ -328,7 +374,7 @@ func ListGraphEdges(ctx context.Context, d *sql.DB, dsID int64) ([]model.Evidenc
 		}
 		e.ValidAt, e.InvalidAt, e.CreatedAt, e.ExpiredAt = rsqlite.ParseTime(valid.String), rsqlite.ParseTime(invalid.String), rsqlite.ParseTime(created.String), rsqlite.ParseTime(expired.String)
 		if mem.Valid {
-			e.MemoryID = &mem.Int64
+			e.ArtifactID = &mem.Int64
 		}
 		out = append(out, e)
 	}
@@ -369,15 +415,35 @@ func Begin(ctx context.Context, d *sql.DB) (*Tx, error) {
 func (t *Tx) Commit() error   { return t.tx.Commit() }
 func (t *Tx) Rollback() error { return t.tx.Rollback() }
 
-func (t *Tx) InsertMemory(ctx context.Context, dsID int64, text string, validAt, createdAt time.Time) (int64, error) {
+func (t *Tx) InsertArtifact(ctx context.Context, dsID int64, kind, text string, validAt, createdAt time.Time) (int64, error) {
 	res, err := t.tx.ExecContext(ctx, `
-		INSERT INTO gb_memories (dataset_id, text, valid_at, created_at)
-		VALUES (?, ?, ?, ?)`,
-		dsID, text, rsqlite.FormatTime(validAt), rsqlite.FormatTime(createdAt))
+		INSERT INTO gb_artifacts (dataset_id, kind, text, valid_at, created_at)
+		VALUES (?, ?, ?, ?, ?)`,
+		dsID, kind, text, rsqlite.FormatTime(validAt), rsqlite.FormatTime(createdAt))
 	if err != nil {
-		return 0, fmt.Errorf("insert memory: %w", err)
+		return 0, fmt.Errorf("insert artifact: %w", err)
 	}
 	return res.LastInsertId()
+}
+
+func (t *Tx) LinkEdge(ctx context.Context, edgeID, artifactID int64) error {
+	if _, err := t.tx.ExecContext(ctx, `
+		INSERT INTO gb_edge_artifacts (edge_id, artifact_id)
+		VALUES (?, ?)
+		ON CONFLICT (edge_id, artifact_id) DO NOTHING`, edgeID, artifactID); err != nil {
+		return fmt.Errorf("link edge %d to artifact %d: %w", edgeID, artifactID, err)
+	}
+	return nil
+}
+
+func (t *Tx) LinkEntity(ctx context.Context, entityID, artifactID int64) error {
+	if _, err := t.tx.ExecContext(ctx, `
+		INSERT INTO gb_entity_artifacts (entity_id, artifact_id)
+		VALUES (?, ?)
+		ON CONFLICT (entity_id, artifact_id) DO NOTHING`, entityID, artifactID); err != nil {
+		return fmt.Errorf("link entity %d to artifact %d: %w", entityID, artifactID, err)
+	}
+	return nil
 }
 
 func (t *Tx) UpsertEntity(ctx context.Context, dsID int64, e model.Entity, nameKey string) (int64, error) {
@@ -415,10 +481,10 @@ func (t *Tx) FindEntityID(ctx context.Context, dsID int64, nameKey string) (int6
 
 func (t *Tx) InsertEdge(ctx context.Context, e model.NewEdge) (int64, error) {
 	res, err := t.tx.ExecContext(ctx, `
-		INSERT INTO gb_edges (dataset_id, source_id, target_id, relation, description, valid_at, invalid_at, created_at, memory_id)
+		INSERT INTO gb_edges (dataset_id, source_id, target_id, relation, description, valid_at, invalid_at, created_at, artifact_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.DatasetID, e.SourceID, e.TargetID, e.Relation, e.Description, rsqlite.FormatTime(e.ValidAt), rsqlite.FormatTimePtr(e.InvalidAt),
-		rsqlite.FormatTime(e.CreatedAt), e.MemoryID)
+		rsqlite.FormatTime(e.CreatedAt), e.ArtifactID)
 	if err != nil {
 		return 0, fmt.Errorf("insert edge: %w", err)
 	}

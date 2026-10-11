@@ -35,7 +35,7 @@ Only the owner's live dataset can be exported. Datasets of other users, and soft
       "target": "Acme",
       "relation": "works_at",
       "description": "Alice works at Acme.",
-      "memory_id": 1,
+      "artifact_id": 1,
       "valid_at": "2024-01-01T00:00:00Z",
       "created_at": "2025-06-01T10:00:00Z"
     }
@@ -61,7 +61,7 @@ Only the owner's live dataset can be exported. Datasets of other users, and soft
 | `source`, `target` | Names of those entities, for convenience. Names are not unique (the same name can have different types), so use the IDs to link nodes. |
 | `relation` | Lowercase relation with `_` for spaces, e.g. `works_at`. |
 | `description` | Optional; the fact as a sentence. |
-| `memory_id` | Optional; the episode (text) the edge came from. |
+| `artifact_id` | Optional; the artifact (the ingested text) the edge came from. |
 | `valid_at`, `invalid_at` | When the fact became true and when it stopped being true (omitted while unknown or still true). |
 | `created_at`, `expired_at` | When the fact was learned and when it was found superseded (omitted if not). |
 
