@@ -51,7 +51,9 @@ func utc(n sql.NullTime) *time.Time {
 // Datasets
 
 const datasetColumns = `id, user_id, name, description, tags::text, created_at, deleted, deleted_at`
-const datasetSelect = `SELECT ` + datasetColumns + ` FROM gb_datasets`
+const datasetSelect = `
+	SELECT ` + datasetColumns + `
+	FROM gb_datasets`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -76,7 +78,8 @@ func scanDataset(r scanner) (*model.Dataset, error) {
 func CreateDataset(ctx context.Context, d *sql.DB, userID, name, description string, tags []string) (*model.Dataset, error) {
 	tagsJSON, _ := json.Marshal(tags)
 	ds, err := scanDataset(d.QueryRowContext(ctx, `
-		INSERT INTO gb_datasets (user_id, name, description, tags, created_at) VALUES ($1, $2, $3, $4::jsonb, $5)
+		INSERT INTO gb_datasets (user_id, name, description, tags, created_at)
+		VALUES ($1, $2, $3, $4::jsonb, $5)
 		ON CONFLICT (user_id, name) WHERE NOT deleted DO NOTHING
 		RETURNING `+datasetColumns, userID, name, description, string(tagsJSON), Now()))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -90,11 +93,14 @@ func CreateDataset(ctx context.Context, d *sql.DB, userID, name, description str
 
 // ListDatasets returns userID's datasets oldest first; deleted ones only if includeDeleted.
 func ListDatasets(ctx context.Context, d *sql.DB, userID string, includeDeleted bool) ([]model.Dataset, error) {
-	q := datasetSelect + ` WHERE user_id = $1`
+	q := datasetSelect + `
+		WHERE user_id = $1`
 	if !includeDeleted {
-		q += ` AND NOT deleted`
+		q += `
+		AND NOT deleted`
 	}
-	rows, err := d.QueryContext(ctx, q+` ORDER BY id`, userID)
+	rows, err := d.QueryContext(ctx, q+`
+		ORDER BY id`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list datasets: %w", err)
 	}
@@ -112,7 +118,10 @@ func ListDatasets(ctx context.Context, d *sql.DB, userID string, includeDeleted 
 
 // DeleteDataset soft-deletes userID's live dataset called name. It returns model.ErrNotFound if there is none.
 func DeleteDataset(ctx context.Context, d *sql.DB, userID, name string) error {
-	res, err := d.ExecContext(ctx, `UPDATE gb_datasets SET deleted = TRUE, deleted_at = $1 WHERE user_id = $2 AND name = $3 AND NOT deleted`,
+	res, err := d.ExecContext(ctx, `
+		UPDATE gb_datasets
+		SET deleted = TRUE, deleted_at = $1
+		WHERE user_id = $2 AND name = $3 AND NOT deleted`,
 		Now(), userID, name)
 	if err != nil {
 		return fmt.Errorf("delete dataset: %w", err)
@@ -129,7 +138,10 @@ type queryer interface {
 
 func datasetID(ctx context.Context, q queryer, userID, name string) (int64, error) {
 	var id int64
-	err := q.QueryRowContext(ctx, `SELECT id FROM gb_datasets WHERE user_id = $1 AND name = $2 AND NOT deleted`, userID, name).Scan(&id)
+	err := q.QueryRowContext(ctx, `
+		SELECT id
+		FROM gb_datasets
+		WHERE user_id = $1 AND name = $2 AND NOT deleted`, userID, name).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, model.ErrNotFound
 	}
@@ -147,14 +159,18 @@ func DatasetID(ctx context.Context, d *sql.DB, userID, name string) (int64, erro
 // RecordLLMCall stores one LLM/embedding API call.
 func RecordLLMCall(ctx context.Context, d *sql.DB, kind, provider, modelName string, inputTokens, outputTokens int, costUSD float64) error {
 	_, err := d.ExecContext(ctx, `
-		INSERT INTO gb_llm_calls (type, provider, model, input_tokens, output_tokens, cost_usd) VALUES ($1, $2, $3, $4, $5, $6)`,
+		INSERT INTO gb_llm_calls (type, provider, model, input_tokens, output_tokens, cost_usd)
+		VALUES ($1, $2, $3, $4, $5, $6)`,
 		kind, provider, modelName, inputTokens, outputTokens, costUSD)
 	return err
 }
 
 // LLMCallStats sums the logged LLM calls by type.
 func LLMCallStats(ctx context.Context, d *sql.DB) (map[string]model.LLMCallStat, error) {
-	rows, err := d.QueryContext(ctx, `SELECT type, COUNT(*), SUM(input_tokens)::bigint, SUM(output_tokens)::bigint, SUM(cost_usd) FROM gb_llm_calls GROUP BY type`)
+	rows, err := d.QueryContext(ctx, `
+		SELECT type, COUNT(*), SUM(input_tokens)::bigint, SUM(output_tokens)::bigint, SUM(cost_usd)
+		FROM gb_llm_calls
+		GROUP BY type`)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +190,8 @@ func LLMCallStats(ctx context.Context, d *sql.DB) (map[string]model.LLMCallStat,
 // EnsureDataset returns the ID of userID's live dataset called name, creating it first if needed.
 func EnsureDataset(ctx context.Context, d *sql.DB, userID, name string) (int64, error) {
 	if _, err := d.ExecContext(ctx, `
-		INSERT INTO gb_datasets (user_id, name, created_at) VALUES ($1, $2, $3)
+		INSERT INTO gb_datasets (user_id, name, created_at)
+		VALUES ($1, $2, $3)
 		ON CONFLICT (user_id, name) WHERE NOT deleted DO NOTHING`,
 		userID, name, Now()); err != nil {
 		return 0, fmt.Errorf("create dataset: %w", err)

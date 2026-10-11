@@ -27,7 +27,9 @@ CREATE TABLE IF NOT EXISTS gb_datasets (
 	deleted     BOOLEAN NOT NULL DEFAULT FALSE,
 	deleted_at  TIMESTAMPTZ
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_datasets_user_name ON gb_datasets(user_id, name) WHERE NOT deleted;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_datasets_user_name
+	ON gb_datasets(user_id, name)
+	WHERE NOT deleted;
 
 CREATE TABLE IF NOT EXISTS gb_ontologies (
 	id          BIGSERIAL PRIMARY KEY,

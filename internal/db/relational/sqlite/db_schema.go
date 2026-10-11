@@ -30,7 +30,9 @@ CREATE TABLE IF NOT EXISTS gb_datasets (
 	deleted     INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1)),
 	deleted_at  DATETIME
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_datasets_user_name ON gb_datasets(user_id, name) WHERE deleted = 0;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_datasets_user_name
+	ON gb_datasets(user_id, name)
+	WHERE deleted = 0;
 
 -- Metadata of a loaded ontology. The ontology itself (classes and relationships) is in the graph tables
 -- gb_onto_classes and gb_onto_edges (internal/db/graph), which reference this row. Names are unique per user.

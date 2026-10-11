@@ -36,7 +36,9 @@ func Open(path string) (*sql.DB, error) {
 //---------------------------------------------------------------------------------------------
 // Datasets
 
-const datasetSelect = `SELECT id, user_id, name, description, tags, created_at, deleted, deleted_at FROM gb_datasets`
+const datasetSelect = `
+	SELECT id, user_id, name, description, tags, created_at, deleted, deleted_at
+	FROM gb_datasets`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -66,7 +68,12 @@ func CreateDataset(ctx context.Context, d *sql.DB, userID, name, description str
 	tagsJSON, _ := json.Marshal(tags)
 	res, err := d.ExecContext(ctx, `
 		INSERT INTO gb_datasets (user_id, name, description, tags, created_at)
-		SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM gb_datasets WHERE user_id = ? AND name = ? AND deleted = 0)`,
+		SELECT ?, ?, ?, ?, ?
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM gb_datasets
+			WHERE user_id = ? AND name = ? AND deleted = 0
+		)`,
 		userID, name, description, string(tagsJSON), FormatTime(Now()), userID, name)
 	if err != nil {
 		return nil, fmt.Errorf("create dataset: %w", err)
@@ -78,16 +85,20 @@ func CreateDataset(ctx context.Context, d *sql.DB, userID, name, description str
 	if err != nil {
 		return nil, err
 	}
-	return scanDataset(d.QueryRowContext(ctx, datasetSelect+` WHERE id = ?`, id))
+	return scanDataset(d.QueryRowContext(ctx, datasetSelect+`
+		WHERE id = ?`, id))
 }
 
 // ListDatasets returns userID's datasets oldest first; deleted ones only if includeDeleted.
 func ListDatasets(ctx context.Context, d *sql.DB, userID string, includeDeleted bool) ([]model.Dataset, error) {
-	q := datasetSelect + ` WHERE user_id = ?`
+	q := datasetSelect + `
+		WHERE user_id = ?`
 	if !includeDeleted {
-		q += ` AND deleted = 0`
+		q += `
+		AND deleted = 0`
 	}
-	rows, err := d.QueryContext(ctx, q+` ORDER BY id`, userID)
+	rows, err := d.QueryContext(ctx, q+`
+		ORDER BY id`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list datasets: %w", err)
 	}
@@ -105,7 +116,10 @@ func ListDatasets(ctx context.Context, d *sql.DB, userID string, includeDeleted 
 
 // DeleteDataset soft-deletes userID's live dataset called name. It returns model.ErrNotFound if there is none.
 func DeleteDataset(ctx context.Context, d *sql.DB, userID, name string) error {
-	res, err := d.ExecContext(ctx, `UPDATE gb_datasets SET deleted = 1, deleted_at = ? WHERE user_id = ? AND name = ? AND deleted = 0`,
+	res, err := d.ExecContext(ctx, `
+		UPDATE gb_datasets
+		SET deleted = 1, deleted_at = ?
+		WHERE user_id = ? AND name = ? AND deleted = 0`,
 		FormatTime(Now()), userID, name)
 	if err != nil {
 		return fmt.Errorf("delete dataset: %w", err)
@@ -122,7 +136,10 @@ type queryer interface {
 
 func datasetID(ctx context.Context, q queryer, userID, name string) (int64, error) {
 	var id int64
-	err := q.QueryRowContext(ctx, `SELECT id FROM gb_datasets WHERE user_id = ? AND name = ? AND deleted = 0`, userID, name).Scan(&id)
+	err := q.QueryRowContext(ctx, `
+		SELECT id
+		FROM gb_datasets
+		WHERE user_id = ? AND name = ? AND deleted = 0`, userID, name).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, model.ErrNotFound
 	}
@@ -140,14 +157,18 @@ func DatasetID(ctx context.Context, d *sql.DB, userID, name string) (int64, erro
 // RecordLLMCall stores one LLM/embedding API call.
 func RecordLLMCall(ctx context.Context, d *sql.DB, kind, provider, modelName string, inputTokens, outputTokens int, costUSD float64) error {
 	_, err := d.ExecContext(ctx, `
-		INSERT INTO gb_llm_calls (type, provider, model, input_tokens, output_tokens, cost_usd) VALUES (?, ?, ?, ?, ?, ?)`,
+		INSERT INTO gb_llm_calls (type, provider, model, input_tokens, output_tokens, cost_usd)
+		VALUES (?, ?, ?, ?, ?, ?)`,
 		kind, provider, modelName, inputTokens, outputTokens, costUSD)
 	return err
 }
 
 // LLMCallStats sums the logged LLM calls by type.
 func LLMCallStats(ctx context.Context, d *sql.DB) (map[string]model.LLMCallStat, error) {
-	rows, err := d.QueryContext(ctx, `SELECT type, COUNT(*), SUM(input_tokens), SUM(output_tokens), SUM(cost_usd) FROM gb_llm_calls GROUP BY type`)
+	rows, err := d.QueryContext(ctx, `
+		SELECT type, COUNT(*), SUM(input_tokens), SUM(output_tokens), SUM(cost_usd)
+		FROM gb_llm_calls
+		GROUP BY type`)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +189,12 @@ func LLMCallStats(ctx context.Context, d *sql.DB) (map[string]model.LLMCallStat,
 func EnsureDataset(ctx context.Context, d *sql.DB, userID, name string) (int64, error) {
 	if _, err := d.ExecContext(ctx, `
 		INSERT INTO gb_datasets (user_id, name, created_at)
-		SELECT ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM gb_datasets WHERE user_id = ? AND name = ? AND deleted = 0)`,
+		SELECT ?, ?, ?
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM gb_datasets
+			WHERE user_id = ? AND name = ? AND deleted = 0
+		)`,
 		userID, name, FormatTime(Now()), userID, name); err != nil {
 		return 0, fmt.Errorf("create dataset: %w", err)
 	}

@@ -19,7 +19,9 @@ func LoadOntology(ctx context.Context, d *sql.DB, ontologyID int64, classes []mo
 	}
 	defer tx.Rollback()
 	for _, table := range []string{"gb_onto_edges", "gb_onto_classes"} {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE ontology_id = ?`, ontologyID); err != nil {
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM `+table+`
+			WHERE ontology_id = ?`, ontologyID); err != nil {
 			return fmt.Errorf("clear ontology: %w", err)
 		}
 	}
@@ -41,10 +43,15 @@ func MergeOntology(ctx context.Context, d *sql.DB, ontologyID int64, classes []m
 	if err := mergeOntology(ctx, tx, ontologyID, classes, edges); err != nil {
 		return c, err
 	}
-	err = tx.QueryRowContext(ctx, `SELECT
-		(SELECT COUNT(*) FROM gb_onto_classes WHERE ontology_id = ?),
-		(SELECT COUNT(DISTINCT iri) FROM gb_onto_edges WHERE ontology_id = ? AND kind = 'property'),
-		(SELECT COUNT(*) FROM gb_onto_edges WHERE ontology_id = ?)`, ontologyID, ontologyID, ontologyID).
+	err = tx.QueryRowContext(ctx, `
+		SELECT
+			(SELECT COUNT(*) FROM gb_onto_classes WHERE ontology_id = ?),
+			(
+				SELECT COUNT(DISTINCT iri)
+				FROM gb_onto_edges
+				WHERE ontology_id = ? AND kind = 'property'
+			),
+			(SELECT COUNT(*) FROM gb_onto_edges WHERE ontology_id = ?)`, ontologyID, ontologyID, ontologyID).
 		Scan(&c.Classes, &c.Properties, &c.Edges)
 	if err != nil {
 		return c, fmt.Errorf("count ontology: %w", err)
@@ -61,12 +68,17 @@ func mergeOntology(ctx context.Context, tx *sql.Tx, ontologyID int64, classes []
 		// is a no-op update, which is there only so that RETURNING yields the ID of the existing row.
 		onConflict := `DO UPDATE SET iri = gb_onto_classes.iri`
 		if c.Declared {
-			onConflict = `DO UPDATE SET name = excluded.name, label = excluded.label, comment = excluded.comment`
+			onConflict = `DO UPDATE SET
+				name    = excluded.name,
+				label   = excluded.label,
+				comment = excluded.comment`
 		}
 		var id int64
 		err := tx.QueryRowContext(ctx, `
-			INSERT INTO gb_onto_classes (ontology_id, iri, name, label, comment) VALUES (?, ?, ?, ?, ?)
-			ON CONFLICT (ontology_id, iri) `+onConflict+` RETURNING id`,
+			INSERT INTO gb_onto_classes (ontology_id, iri, name, label, comment)
+			VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT (ontology_id, iri) `+onConflict+`
+			RETURNING id`,
 			ontologyID, c.IRI, c.Name, c.Label, c.Comment).Scan(&id)
 		if err != nil {
 			return fmt.Errorf("store ontology class %q: %w", c.IRI, err)
@@ -84,7 +96,10 @@ func mergeOntology(ctx context.Context, tx *sql.Tx, ontologyID int64, classes []
 			INSERT INTO gb_onto_edges (ontology_id, source_id, target_id, relation, kind, iri, label, comment, inverse_of)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT (ontology_id, source_id, target_id, kind, iri) DO UPDATE SET
-				relation = excluded.relation, label = excluded.label, comment = excluded.comment, inverse_of = excluded.inverse_of`,
+				relation   = excluded.relation,
+				label      = excluded.label,
+				comment    = excluded.comment,
+				inverse_of = excluded.inverse_of`,
 			ontologyID, src, tgt, e.Relation, e.Kind, e.IRI, e.Label, e.Comment, e.InverseOf); err != nil {
 			return fmt.Errorf("store ontology edge %q: %w", e.Relation, err)
 		}
@@ -94,7 +109,11 @@ func mergeOntology(ctx context.Context, tx *sql.Tx, ontologyID int64, classes []
 
 // ListOntologyClasses returns the classes of the ontology, in the order they were stored.
 func ListOntologyClasses(ctx context.Context, d *sql.DB, ontologyID int64) ([]model.OntologyClass, error) {
-	rows, err := d.QueryContext(ctx, `SELECT iri, name, label, comment FROM gb_onto_classes WHERE ontology_id = ? ORDER BY id`, ontologyID)
+	rows, err := d.QueryContext(ctx, `
+		SELECT iri, name, label, comment
+		FROM gb_onto_classes
+		WHERE ontology_id = ?
+		ORDER BY id`, ontologyID)
 	if err != nil {
 		return nil, err
 	}
@@ -114,8 +133,11 @@ func ListOntologyClasses(ctx context.Context, d *sql.DB, ontologyID int64) ([]mo
 func ListOntologyEdges(ctx context.Context, d *sql.DB, ontologyID int64) ([]model.OntologyEdge, error) {
 	rows, err := d.QueryContext(ctx, `
 		SELECT s.iri, t.iri, e.relation, e.kind, e.iri, e.label, e.comment, e.inverse_of
-		FROM gb_onto_edges e JOIN gb_onto_classes s ON s.id = e.source_id JOIN gb_onto_classes t ON t.id = e.target_id
-		WHERE e.ontology_id = ? ORDER BY e.id`, ontologyID)
+		FROM gb_onto_edges e
+		JOIN gb_onto_classes s ON s.id = e.source_id
+		JOIN gb_onto_classes t ON t.id = e.target_id
+		WHERE e.ontology_id = ?
+		ORDER BY e.id`, ontologyID)
 	if err != nil {
 		return nil, err
 	}

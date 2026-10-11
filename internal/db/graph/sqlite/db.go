@@ -27,8 +27,13 @@ type scanner interface{ Scan(dest ...any) error }
 //---------------------------------------------------------------------------------------------
 // Edges
 
-const edgeColumns = `e.id, s.name, t.name, e.relation, e.description, e.valid_at, e.invalid_at, e.created_at, e.expired_at`
-const edgeFrom = ` FROM gb_edges e JOIN gb_entities s ON s.id = e.source_id JOIN gb_entities t ON t.id = e.target_id`
+const edgeColumns = `
+	e.id, s.name, t.name, e.relation, e.description,
+	e.valid_at, e.invalid_at, e.created_at, e.expired_at`
+const edgeFrom = `
+	FROM gb_edges e
+	JOIN gb_entities s ON s.id = e.source_id
+	JOIN gb_entities t ON t.id = e.target_id`
 
 func scanEdge(r scanner) (model.Edge, error) {
 	var e model.Edge
@@ -66,9 +71,13 @@ func LoadCandidateEdges(ctx context.Context, d *sql.DB, dsID int64, keys []strin
 		}
 	}
 	args = append(args, limit)
-	rows, err := d.QueryContext(ctx, `SELECT `+edgeColumns+edgeFrom+`
-		WHERE e.dataset_id = ? AND e.expired_at IS NULL AND (s.name_key IN (`+ph+`) OR t.name_key IN (`+ph+`))
-		ORDER BY e.id DESC LIMIT ?`, args...)
+	rows, err := d.QueryContext(ctx, `
+		SELECT `+edgeColumns+edgeFrom+`
+		WHERE e.dataset_id = ?
+			AND e.expired_at IS NULL
+			AND (s.name_key IN (`+ph+`) OR t.name_key IN (`+ph+`))
+		ORDER BY e.id DESC
+		LIMIT ?`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("load edge candidates: %w", err)
 	}
@@ -78,9 +87,11 @@ func LoadCandidateEdges(ctx context.Context, d *sql.DB, dsID int64, keys []strin
 
 // ListEdges returns every edge of userID's live dataset called name, by ID (expired ones included).
 func ListEdges(ctx context.Context, d *sql.DB, userID, name string) ([]model.Edge, error) {
-	rows, err := d.QueryContext(ctx, `SELECT `+edgeColumns+edgeFrom+`
+	rows, err := d.QueryContext(ctx, `
+		SELECT `+edgeColumns+edgeFrom+`
 		JOIN gb_datasets ds ON ds.id = e.dataset_id
-		WHERE ds.user_id = ? AND ds.name = ? AND ds.deleted = 0 ORDER BY e.id`, userID, name)
+		WHERE ds.user_id = ? AND ds.name = ? AND ds.deleted = 0
+		ORDER BY e.id`, userID, name)
 	if err != nil {
 		return nil, fmt.Errorf("list edges: %w", err)
 	}
@@ -93,7 +104,12 @@ func ListEdges(ctx context.Context, d *sql.DB, userID, name string) ([]model.Edg
 
 // FallbackSeedEntities returns the IDs of the most recently updated entities of the dataset.
 func FallbackSeedEntities(ctx context.Context, d *sql.DB, dsID int64, limit int) ([]int64, error) {
-	rows, err := d.QueryContext(ctx, `SELECT id FROM gb_entities WHERE dataset_id = ? ORDER BY updated_at DESC, id DESC LIMIT ?`, dsID, limit)
+	rows, err := d.QueryContext(ctx, `
+		SELECT id
+		FROM gb_entities
+		WHERE dataset_id = ?
+		ORDER BY updated_at DESC, id DESC
+		LIMIT ?`, dsID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -116,8 +132,20 @@ func MatchEntities(ctx context.Context, d *sql.DB, dsID int64, queryKey string, 
 	}
 	// Placeholder order in the SQL text: WHERE, ORDER BY, LIMIT.
 	args := append(append(append([]any{dsID}, whereArgs...), scoreArgs...), limit)
-	rows, err := d.QueryContext(ctx, `SELECT id FROM gb_entities WHERE dataset_id = ? AND (`+strings.Join(conds, " OR ")+`)
-		ORDER BY (`+strings.Join(score, " + ")+`) DESC, updated_at DESC, id DESC LIMIT ?`, args...)
+	rows, err := d.QueryContext(ctx, `
+		SELECT id
+		FROM gb_entities
+		WHERE dataset_id = ?
+			AND (
+				`+strings.Join(conds, "\n\t\t\t\tOR ")+`
+			)
+		ORDER BY
+			(
+				`+strings.Join(score, "\n\t\t\t\t+ ")+`
+			) DESC,
+			updated_at DESC,
+			id DESC
+		LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -130,13 +158,16 @@ func EdgesAround(ctx context.Context, d *sql.DB, dsID int64, entityIDs []int64, 
 	args := append(append([]any{dsID}, ids...), ids...)
 	args = append(args, limit)
 	rows, err := d.QueryContext(ctx, `
-		SELECT e.id, e.source_id, e.target_id, s.name, t.name, e.relation, e.description, e.memory_id,
+		SELECT
+			e.id, e.source_id, e.target_id, s.name, t.name, e.relation, e.description, e.memory_id,
 			e.valid_at, e.invalid_at, e.created_at, e.expired_at
 		FROM gb_edges e
 		JOIN gb_entities s ON s.id = e.source_id
 		JOIN gb_entities t ON t.id = e.target_id
-		WHERE e.dataset_id = ? AND (e.source_id IN (`+ph+`) OR e.target_id IN (`+ph+`))
-		ORDER BY e.id DESC LIMIT ?`, args...)
+		WHERE e.dataset_id = ?
+			AND (e.source_id IN (`+ph+`) OR e.target_id IN (`+ph+`))
+		ORDER BY e.id DESC
+		LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +193,10 @@ func EdgesAround(ctx context.Context, d *sql.DB, dsID int64, entityIDs []int64, 
 // EntitiesByID returns the entities with the given IDs.
 func EntitiesByID(ctx context.Context, d *sql.DB, ids []int64) ([]model.EvidenceEntity, error) {
 	ph, args := placeholders(ids)
-	rows, err := d.QueryContext(ctx, `SELECT id, name, type, description FROM gb_entities WHERE id IN (`+ph+`)`, args...)
+	rows, err := d.QueryContext(ctx, `
+		SELECT id, name, type, description
+		FROM gb_entities
+		WHERE id IN (`+ph+`)`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -209,16 +243,21 @@ func qmarks(n int) string {
 // DatasetCounts returns the number of memories, entities and edges in the dataset.
 func DatasetCounts(ctx context.Context, d *sql.DB, dsID int64) (model.Counts, error) {
 	var c model.Counts
-	err := d.QueryRowContext(ctx, `SELECT
-		(SELECT COUNT(*) FROM gb_memories WHERE dataset_id = ?),
-		(SELECT COUNT(*) FROM gb_entities WHERE dataset_id = ?),
-		(SELECT COUNT(*) FROM gb_edges WHERE dataset_id = ?)`, dsID, dsID, dsID).Scan(&c.Memories, &c.Entities, &c.Edges)
+	err := d.QueryRowContext(ctx, `
+		SELECT
+			(SELECT COUNT(*) FROM gb_memories WHERE dataset_id = ?),
+			(SELECT COUNT(*) FROM gb_entities WHERE dataset_id = ?),
+			(SELECT COUNT(*) FROM gb_edges WHERE dataset_id = ?)`, dsID, dsID, dsID).Scan(&c.Memories, &c.Entities, &c.Edges)
 	return c, err
 }
 
 // ListMemories returns the episodes of the dataset by ID.
 func ListMemories(ctx context.Context, d *sql.DB, dsID int64) ([]model.Memory, error) {
-	rows, err := d.QueryContext(ctx, `SELECT id, dataset_id, text, valid_at, created_at FROM gb_memories WHERE dataset_id = ? ORDER BY id`, dsID)
+	rows, err := d.QueryContext(ctx, `
+		SELECT id, dataset_id, text, valid_at, created_at
+		FROM gb_memories
+		WHERE dataset_id = ?
+		ORDER BY id`, dsID)
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +282,11 @@ func ListMemories(ctx context.Context, d *sql.DB, dsID int64) ([]model.Memory, e
 
 // ListEntities returns the entities of the dataset by ID.
 func ListEntities(ctx context.Context, d *sql.DB, dsID int64) ([]model.EvidenceEntity, error) {
-	rows, err := d.QueryContext(ctx, `SELECT id, name, type, description FROM gb_entities WHERE dataset_id = ? ORDER BY id`, dsID)
+	rows, err := d.QueryContext(ctx, `
+		SELECT id, name, type, description
+		FROM gb_entities
+		WHERE dataset_id = ?
+		ORDER BY id`, dsID)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +305,8 @@ func ListEntities(ctx context.Context, d *sql.DB, dsID int64) ([]model.EvidenceE
 // ListGraphEdges returns every edge of the dataset (expired ones included) with its endpoint IDs and names, by ID.
 func ListGraphEdges(ctx context.Context, d *sql.DB, dsID int64) ([]model.EvidenceEdge, error) {
 	rows, err := d.QueryContext(ctx, `
-		SELECT e.id, e.source_id, e.target_id, s.name, t.name, e.relation, e.description, e.memory_id,
+		SELECT
+			e.id, e.source_id, e.target_id, s.name, t.name, e.relation, e.description, e.memory_id,
 			e.valid_at, e.invalid_at, e.created_at, e.expired_at
 		FROM gb_edges e
 		JOIN gb_entities s ON s.id = e.source_id
@@ -295,9 +339,13 @@ func ListGraphEdges(ctx context.Context, d *sql.DB, dsID int64) ([]model.Evidenc
 // (always 0 unless datasets leak into each other).
 func CountCrossDatasetEdges(ctx context.Context, d *sql.DB) (int, error) {
 	var n int
-	err := d.QueryRowContext(ctx, `SELECT COUNT(*) FROM gb_edges e
-		JOIN gb_entities s ON s.id = e.source_id JOIN gb_entities t ON t.id = e.target_id
-		WHERE e.dataset_id != s.dataset_id OR e.dataset_id != t.dataset_id`).Scan(&n)
+	err := d.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM gb_edges e
+		JOIN gb_entities s ON s.id = e.source_id
+		JOIN gb_entities t ON t.id = e.target_id
+		WHERE e.dataset_id != s.dataset_id
+			OR e.dataset_id != t.dataset_id`).Scan(&n)
 	return n, err
 }
 
@@ -322,7 +370,9 @@ func (t *Tx) Commit() error   { return t.tx.Commit() }
 func (t *Tx) Rollback() error { return t.tx.Rollback() }
 
 func (t *Tx) InsertMemory(ctx context.Context, dsID int64, text string, validAt, createdAt time.Time) (int64, error) {
-	res, err := t.tx.ExecContext(ctx, `INSERT INTO gb_memories (dataset_id, text, valid_at, created_at) VALUES (?, ?, ?, ?)`,
+	res, err := t.tx.ExecContext(ctx, `
+		INSERT INTO gb_memories (dataset_id, text, valid_at, created_at)
+		VALUES (?, ?, ?, ?)`,
 		dsID, text, rsqlite.FormatTime(validAt), rsqlite.FormatTime(createdAt))
 	if err != nil {
 		return 0, fmt.Errorf("insert memory: %w", err)
@@ -333,9 +383,13 @@ func (t *Tx) InsertMemory(ctx context.Context, dsID int64, text string, validAt,
 func (t *Tx) UpsertEntity(ctx context.Context, dsID int64, e model.Entity, nameKey string) (int64, error) {
 	var id int64
 	err := t.tx.QueryRowContext(ctx, `
-		INSERT INTO gb_entities (dataset_id, name, name_key, type, description) VALUES (?, ?, ?, ?, ?)
+		INSERT INTO gb_entities (dataset_id, name, name_key, type, description)
+		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (dataset_id, name_key, type) DO UPDATE SET
-			description = CASE WHEN excluded.description != '' THEN excluded.description ELSE gb_entities.description END,
+			description = CASE
+				WHEN excluded.description != '' THEN excluded.description
+				ELSE gb_entities.description
+			END,
 			updated_at  = `+rsqlite.SQLNow+`
 		RETURNING id`,
 		dsID, e.Name, nameKey, e.Type, e.Description).Scan(&id)
@@ -347,7 +401,12 @@ func (t *Tx) UpsertEntity(ctx context.Context, dsID int64, e model.Entity, nameK
 
 func (t *Tx) FindEntityID(ctx context.Context, dsID int64, nameKey string) (int64, error) {
 	var id int64
-	err := t.tx.QueryRowContext(ctx, `SELECT id FROM gb_entities WHERE dataset_id = ? AND name_key = ? ORDER BY id LIMIT 1`, dsID, nameKey).Scan(&id)
+	err := t.tx.QueryRowContext(ctx, `
+		SELECT id
+		FROM gb_entities
+		WHERE dataset_id = ? AND name_key = ?
+		ORDER BY id
+		LIMIT 1`, dsID, nameKey).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, model.ErrNotFound
 	}
@@ -367,7 +426,10 @@ func (t *Tx) InsertEdge(ctx context.Context, e model.NewEdge) (int64, error) {
 }
 
 func (t *Tx) MergeDuplicateEdge(ctx context.Context, dsID, id int64, invalidAt *time.Time) error {
-	if _, err := t.tx.ExecContext(ctx, `UPDATE gb_edges SET invalid_at = COALESCE(invalid_at, ?) WHERE id = ? AND dataset_id = ?`,
+	if _, err := t.tx.ExecContext(ctx, `
+		UPDATE gb_edges
+		SET invalid_at = COALESCE(invalid_at, ?)
+		WHERE id = ? AND dataset_id = ?`,
 		rsqlite.FormatTimePtr(invalidAt), id, dsID); err != nil {
 		return fmt.Errorf("merge duplicate edge: %w", err)
 	}
@@ -375,7 +437,9 @@ func (t *Tx) MergeDuplicateEdge(ctx context.Context, dsID, id int64, invalidAt *
 }
 
 func (t *Tx) GetEdge(ctx context.Context, dsID, id int64) (*model.Edge, error) {
-	e, err := scanEdge(t.tx.QueryRowContext(ctx, `SELECT `+edgeColumns+edgeFrom+` WHERE e.id = ? AND e.dataset_id = ?`, id, dsID))
+	e, err := scanEdge(t.tx.QueryRowContext(ctx, `
+		SELECT `+edgeColumns+edgeFrom+`
+		WHERE e.id = ? AND e.dataset_id = ?`, id, dsID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("load edge %d: %w", id, model.ErrNotFound)
 	}
@@ -386,7 +450,10 @@ func (t *Tx) GetEdge(ctx context.Context, dsID, id int64) (*model.Edge, error) {
 }
 
 func (t *Tx) InvalidateEdge(ctx context.Context, id int64, invalidAt, expiredAt time.Time) error {
-	if _, err := t.tx.ExecContext(ctx, `UPDATE gb_edges SET invalid_at = ?, expired_at = ? WHERE id = ?`,
+	if _, err := t.tx.ExecContext(ctx, `
+		UPDATE gb_edges
+		SET invalid_at = ?, expired_at = ?
+		WHERE id = ?`,
 		rsqlite.FormatTime(invalidAt), rsqlite.FormatTime(expiredAt), id); err != nil {
 		return fmt.Errorf("invalidate edge: %w", err)
 	}
