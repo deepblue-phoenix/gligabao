@@ -1,0 +1,93 @@
+$bg: #0f1115;
+$surface: #181b22;
+$border: #2a2f3a;
+$text: #e6e8ee;
+$muted: #8b92a3;
+$accent: #6ea8fe;
+$ok: #3fb950;
+$err: #f85149;
+
+@mixin badge($color) {
+  color: $color;
+  border-color: $color;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: $bg;
+  color: $text;
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.muted { color: $muted; font-weight: normal; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  background: $surface;
+  border-bottom: 1px solid $border;
+
+  h1 { margin: 0; font-size: 1.15rem; }
+}
+
+.badge {
+  padding: 0.1rem 0.6rem;
+  border: 1px solid $border;
+  border-radius: 999px;
+  font-size: 0.8rem;
+
+  &-ok { @include badge($ok); }
+  &-error { @include badge($err); }
+  &-unknown { @include badge($muted); }
+}
+
+main { max-width: 56rem; margin: 1.5rem auto; padding: 0 1rem; }
+
+.card {
+  background: $surface;
+  border: 1px solid $border;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+
+  h2 { margin-top: 0; font-size: 1.05rem; }
+}
+
+.row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+.check { color: $muted; display: flex; gap: 0.35rem; align-items: center; }
+
+input[type="text"], input:not([type]) {
+  background: $bg;
+  color: $text;
+  border: 1px solid $border;
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+
+  &:focus { outline: 1px solid $accent; }
+}
+
+button {
+  background: $accent;
+  color: #0b1220;
+  border: 0;
+  border-radius: 6px;
+  padding: 0.4rem 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover { filter: brightness(1.1); }
+}
+
+table {
+  width: 100%;
+  margin-top: 1rem;
+  border-collapse: collapse;
+
+  th, td { text-align: left; padding: 0.45rem 0.5rem; border-bottom: 1px solid $border; }
+  th { color: $muted; font-weight: 600; }
+}
+
+.error { color: $err; }

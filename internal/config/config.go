@@ -72,6 +72,9 @@ type Config struct {
 	// Eval registers the eval endpoints (/v1/gb/eval/remember, /v1/gb/eval/recall) that return ATIF trajectories
 	// with their results. Default false; `serve --eval` turns it on.
 	Eval bool `toml:"eval"`
+	// AdminUI registers the admin UI handlers (served at /admin/). Default false; `serve --admin-ui` turns it on.
+	// Needs a binary built with the web assets embedded (./run_build.sh, on by default).
+	AdminUI bool `toml:"admin_ui"`
 	// Prices overrides/extends the built-in per-model price table used to compute LLM call costs.
 	// Keys are model-name prefixes (the longest matching prefix wins).
 	Prices map[string]Price `toml:"prices"`

@@ -1,0 +1,14 @@
+{
+  "name": "gligabao-admin-ui",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Simple admin panel for gligabao; built into admin_ui/dist and embedded in the Go binary.",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "sass": "^1.96.0",
+    "typescript": "^5.9.3"
+  }
+}

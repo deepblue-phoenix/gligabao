@@ -27,6 +27,10 @@ embedding_dimensions = 1536
 # with their results. Default false; `serve --eval` turns it on.
 eval = false
 
+# Serve the admin UI at /admin/ (the web assets are embedded in the binary when built with ./run_build.sh).
+# Default false; `serve --admin-ui` turns it on.
+admin_ui = false
+
 # Model prices in USD per 1M tokens, used to compute the cost of each LLM call (stored in gb_llm_calls).
 # Keys are model-name prefixes: the longest matching prefix wins, so "claude-haiku-4-5" also matches
 # "claude-haiku-4-5-20251001". Entries here override the built-in prices or add new models.

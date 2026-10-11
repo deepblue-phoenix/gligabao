@@ -212,7 +212,7 @@ func run(c Case, llm memory.LLM, verbose bool) (out *Outcome, err error) {
 	}
 	defer database.Close()
 
-	srv := httptest.NewServer(server.NewHandler(database, llm, true))
+	srv := httptest.NewServer(server.NewHandler(database, llm, true, false))
 	defer srv.Close()
 
 	// Start from a clean dataset: soft-delete any previous "test" (404 just means there was none); remember

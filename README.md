@@ -103,6 +103,10 @@ Configuration is read from `bin/gligabao.toml` (override with `--config`). It se
 
 With `serve --eval` (or `eval = true` in the config; default `false`) the server also registers `POST /v1/gb/eval/remember` and `POST /v1/gb/eval/recall`. They take the same bodies as the regular endpoints, record the call as an [ATIF](https://github.com/laude-institute/harbor) trajectory, store it as pretty-printed JSON in an `atif/` directory next to the SQLite file, and return the full `trajectory` (and its `trajectory_id`) in the response. They are not registered otherwise, and the regular endpoints never generate trajectories. Details: [docs/evals.md](docs/evals.md). `go run ./evals` runs through these endpoints (`-atif <dir>` also keeps the trajectories as files).
 
+### Admin UI
+
+`admin_ui/` holds a small admin panel (TypeScript, SCSS, HTML). `./run_build.sh` builds it (needs node/npm) and embeds `admin_ui/dist` into the binary with `go:embed`; pass `--no-admin-ui` (or `BUILD_ADMIN_UI=false`) to skip it. With `admin_ui = true` in the config (or `serve --admin-ui`; default `false`) the server serves it at `/admin/`. If the assets were not embedded, the server logs a warning and does not register the handlers.
+
 ## Embedding in Go programs
 
 gligabao is also a Go library. All server code is under `internal/` (not importable); the public API is the root package `github.com/deepblue-phoenix/gligabao`, which the CLI (`cmd/gligabao`, `internal/cli`) itself uses, so embedded and standalone behave the same.

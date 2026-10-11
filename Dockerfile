@@ -1,11 +1,20 @@
 # syntax=docker/dockerfile:1
 
+# Admin UI web assets (TypeScript/SCSS -> admin_ui/dist), embedded into the binary by the Go build below.
+FROM node:22-bookworm-slim AS admin_ui
+WORKDIR /src/admin_ui
+COPY admin_ui/package.json admin_ui/package-lock.json ./
+RUN npm ci
+COPY admin_ui/ ./
+RUN npm run build
+
 # Pure-Go build (no CGO): the binary is static, so the build image and a minimal runtime image need no matching libc.
 FROM golang:1.26-bookworm AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+COPY --from=admin_ui /src/admin_ui/dist ./admin_ui/dist
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/gligabao ./cmd/gligabao
 
 FROM debian:bookworm-slim

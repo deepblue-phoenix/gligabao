@@ -10,6 +10,7 @@ var (
 	serveDBPath    string
 	serveVectorDir string
 	serveEval      bool
+	serveAdminUI   bool
 )
 
 //---------------------------------------------------------------------------------------------
@@ -20,6 +21,9 @@ var serveCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if cmd.Flags().Changed("eval") {
 			cfg.Eval = serveEval
+		}
+		if cmd.Flags().Changed("admin-ui") {
+			cfg.AdminUI = serveAdminUI
 		}
 		return gligabao.Serve(cmd.Context(), cfg, gligabao.ServeOptions{
 			DBPath:    serveDBPath,
@@ -34,5 +38,6 @@ func init() {
 	serveCmd.Flags().StringVar(&serveDBPath, "db", gligabao.DefaultDBPath, "SQLite database file path")
 	serveCmd.Flags().StringVar(&serveVectorDir, "vector-dir", "", "chromem vector store directory (default: next to --db)")
 	serveCmd.Flags().BoolVar(&serveEval, "eval", false, "register the eval endpoints that return ATIF trajectories (config: eval)")
+	serveCmd.Flags().BoolVar(&serveAdminUI, "admin-ui", false, "serve the admin UI at /admin/ (config: admin_ui)")
 	rootCmd.AddCommand(serveCmd)
 }

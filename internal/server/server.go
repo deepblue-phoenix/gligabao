@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	adminui "github.com/deepblue-phoenix/gligabao/admin_ui"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
@@ -38,13 +39,16 @@ type Options struct {
 	// Eval registers the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/recall), which return ATIF
 	// trajectories with their results. Off by default.
 	Eval bool
+	// AdminUI registers the admin UI handlers (served at /admin/ from the assets embedded in the binary).
+	AdminUI bool
 }
 
 //---------------------------------------------------------------------------------------------
 
 // NewHandler builds the HTTP handler for the given databases and LLM.
-// llm may be nil, in which case endpoints requiring it return 503. The eval endpoints are registered only if eval is true.
-func NewHandler(d *db.DB, llm memory.LLM, eval bool) http.Handler {
+// llm may be nil, in which case endpoints requiring it return 503. The eval endpoints are registered only if eval is true,
+// the admin UI (/admin/) only if adminUI is true and its assets were built into the binary.
+func NewHandler(d *db.DB, llm memory.LLM, eval, adminUI bool) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "gligabao is running")
@@ -60,7 +64,23 @@ func NewHandler(d *db.DB, llm memory.LLM, eval bool) http.Handler {
 	if eval {
 		api.RegisterEval(mux, d, llm)
 	}
+	if adminUI {
+		registerAdminUI(mux)
+	}
 	return mux
+}
+
+// registerAdminUI serves the embedded admin UI assets under /admin/. It is a no-op (with a warning) if the
+// assets were not built into the binary (see admin_ui/ and run_build.sh).
+func registerAdminUI(mux *http.ServeMux) {
+	if !adminui.Available() {
+		log.Warn("admin_ui is enabled but the web assets are not embedded in this binary; build with ./run_build.sh (admin UI build enabled)")
+		return
+	}
+	mux.Handle("GET /admin/", http.StripPrefix("/admin/", http.FileServerFS(adminui.Assets())))
+	mux.HandleFunc("GET /admin", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/admin/", http.StatusMovedPermanently)
+	})
 }
 
 //---------------------------------------------------------------------------------------------
@@ -95,6 +115,10 @@ func Run(ctx context.Context, opts Options) error {
 		log.WithField("trajectory_dir", memory.TrajectoryDir).Info("ATIF trajectories are stored here")
 	}
 
+	if opts.AdminUI {
+		log.WithField("path", "/admin/").Info("admin UI enabled")
+	}
+
 	var llm memory.LLM
 	if c, err := ai.New(opts.AnthropicKey, ai.WithPrices(ai.NewPriceTable(opts.Prices))); err != nil {
 		log.WithError(err).Warn("LLM client unavailable; /v1/gb/remember and /v1/gb/recall will return 503")
@@ -102,7 +126,7 @@ func Run(ctx context.Context, opts Options) error {
 		llm = c
 	}
 
-	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(database, llm, opts.Eval)}
+	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(database, llm, opts.Eval, opts.AdminUI)}
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
