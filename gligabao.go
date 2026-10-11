@@ -39,7 +39,7 @@ type ServeOptions struct {
 	DBPath string
 	// VectorDir is the directory of the chromem vector store. Default: next to DBPath.
 	VectorDir string
-	// TrajectoryDir is where remember/recall ATIF trajectories are stored as JSON. Default: "atif" next to DBPath.
+	// TrajectoryDir is where the ATIF trajectories of the eval endpoints are stored as JSON. Default: "atif" next to DBPath.
 	TrajectoryDir string
 	// Hooks are installed for the lifetime of Serve; every one is called for each event.
 	Hooks []Hooks

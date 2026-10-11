@@ -60,8 +60,8 @@ func testEvalEndpoints(t *testing.T, d *sql.DB) {
 		{"/v1/gb/remember", "/v1/gb/eval/remember", `{"user_id":"u1","text":"Alice"}`},
 		{"/v1/gb/recall", "/v1/gb/eval/recall", `{"user_id":"u1","query":"Alice?"}`},
 	} {
-		// The regular endpoint returns the ID only, the eval endpoint also the trajectory.
-		if r := decode(do(eval, c.plain, c.body)); r.TrajectoryID == "" || r.Trajectory != nil {
+		// Only the eval endpoint generates a trajectory.
+		if r := decode(do(eval, c.plain, c.body)); r.TrajectoryID != "" || r.Trajectory != nil {
 			t.Fatalf("%s: %+v", c.plain, r)
 		}
 		r := decode(do(eval, c.eval, c.body))

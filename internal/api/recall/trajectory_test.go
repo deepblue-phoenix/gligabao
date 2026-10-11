@@ -20,12 +20,24 @@ func testTrajectories(t *testing.T, d *sql.DB) {
 	dir := t.TempDir()
 	ctx := context.Background()
 
+	// Without eval nothing is generated or stored.
 	rem, err := memory.Remember(ctx, d, llm, "u1", "", "Alice works at Acme", time.Time{}, memory.WithTrajectoryDir(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rem.TrajectoryID == "" || rem.Trajectory != nil {
+	if rem.TrajectoryID != "" || rem.Trajectory != nil {
 		t.Fatalf("without eval: id=%q traj=%v", rem.TrajectoryID, rem.Trajectory)
+	}
+	if files, _ := os.ReadDir(dir); len(files) != 0 {
+		t.Fatalf("without eval: %d files stored", len(files))
+	}
+	llm.outs = append([]string{ex}, llm.outs...) // the eval Remember below needs its own extraction
+	rem, err = memory.Remember(ctx, d, llm, "u1", "", "Alice works at Acme", time.Time{}, memory.WithTrajectoryDir(dir), memory.WithEval())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rem.Trajectory == nil || rem.TrajectoryID != rem.Trajectory.TrajectoryID {
+		t.Fatalf("with eval: %+v", rem)
 	}
 	rec, err := memory.Recall(ctx, d, llm, "u1", "", "Where does Alice work?", memory.WithTrajectoryDir(dir), memory.WithEval())
 	if err != nil {

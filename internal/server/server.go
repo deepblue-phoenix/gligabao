@@ -32,7 +32,7 @@ type Options struct {
 	AnthropicKey string
 	// Prices overrides/extends the built-in model price table used for call costs. May be nil.
 	Prices map[string]ai.Price
-	// TrajectoryDir is where remember/recall ATIF trajectories are stored as JSON.
+	// TrajectoryDir is where the ATIF trajectories of the eval endpoints are stored as JSON.
 	// Default: an "atif" directory next to the SQLite file (memory.TrajectoryDir if there is none).
 	TrajectoryDir string
 	// Eval registers the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/recall), which return ATIF
@@ -91,7 +91,9 @@ func Run(ctx context.Context, opts Options) error {
 	if opts.Eval {
 		log.Warn("eval mode: /v1/gb/eval/remember and /v1/gb/eval/recall are enabled")
 	}
-	log.WithField("trajectory_dir", memory.TrajectoryDir).Info("ATIF trajectories")
+	if opts.Eval {
+		log.WithField("trajectory_dir", memory.TrajectoryDir).Info("ATIF trajectories are stored here")
+	}
 
 	var llm memory.LLM
 	if c, err := ai.New(opts.AnthropicKey, ai.WithPrices(ai.NewPriceTable(opts.Prices))); err != nil {

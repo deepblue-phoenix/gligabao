@@ -118,10 +118,10 @@ type Result struct {
 	Entities         []Entity  `json:"entities"`
 	Edges            []Edge    `json:"edges"`             // the facts from this text in their stored state
 	InvalidatedEdges []int64   `json:"invalidated_edges"` // IDs of edges closed because of this memory
-	// TrajectoryID identifies the ATIF trajectory of this call, stored in TrajectoryDir.
-	TrajectoryID string `json:"trajectory_id,omitempty"`
-	// Trajectory is the trajectory itself; only set when the call was made with WithEval.
-	Trajectory *atif.Trajectory `json:"trajectory,omitempty"`
+	// TrajectoryID and Trajectory are the ATIF trajectory of this call (also stored in TrajectoryDir); only set when
+	// the call was made with WithEval.
+	TrajectoryID string           `json:"trajectory_id,omitempty"`
+	Trajectory   *atif.Trajectory `json:"trajectory,omitempty"`
 }
 
 // Remember extracts entities and temporal edges from text and stores them (with the raw text as an episode) in
@@ -129,8 +129,8 @@ type Result struct {
 // time the text was written/observed; the zero value means the current time. If any LLM step fails nothing is
 // stored.
 //
-// The call is recorded as an ATIF trajectory, stored as JSON in TrajectoryDir; its ID is Result.TrajectoryID. With
-// WithEval the trajectory is also returned in Result.Trajectory.
+// Only with WithEval is the call recorded as an ATIF trajectory (stored as JSON in TrajectoryDir and returned in
+// Result.Trajectory, with its ID in Result.TrajectoryID).
 func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, text string, ref time.Time, opts ...Option) (res *Result, err error) {
 	userID, err = ResolveUserID(userID)
 	if err != nil {
@@ -149,14 +149,13 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, text str
 
 	tr := startTrace(CallRemember, newCallOptions(opts))
 	defer func() {
-		id, traj := tr.finish(err)
-		if res != nil {
-			res.TrajectoryID, res.Trajectory = id, traj
+		if traj := tr.finish(err); res != nil && traj != nil {
+			res.TrajectoryID, res.Trajectory = traj.TrajectoryID, traj
 		}
 	}()
 	llm = tr.wrap(llm)
-	tr.b.User(text)
-	tr.b.SetExtra("input", map[string]any{"user_id": userID, "dataset": dataset, "reference_time": relational.FormatTime(ref)})
+	tr.user(text)
+	tr.input(map[string]any{"user_id": userID, "dataset": dataset, "reference_time": relational.FormatTime(ref)})
 
 	ex, err := Extract(ctx, llm, text, ref)
 	if err != nil {

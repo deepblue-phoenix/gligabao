@@ -101,7 +101,7 @@ Configuration is read from `bin/gligabao.toml` (override with `--config`). It se
 
 ### Eval mode
 
-Every remember/recall call is recorded as an [ATIF](https://github.com/laude-institute/harbor) trajectory, stored as pretty-printed JSON in an `atif/` directory next to the SQLite file; the responses carry its `trajectory_id`. With `serve --eval` (or `eval = true` in the config; default `false`) the server also registers `POST /v1/gb/eval/remember` and `POST /v1/gb/eval/recall`. They take the same bodies as the regular endpoints and additionally return the full `trajectory` in the response. They are not registered otherwise. `go run ./evals` runs through these endpoints (`-atif <dir>` also keeps the trajectories as files).
+With `serve --eval` (or `eval = true` in the config; default `false`) the server also registers `POST /v1/gb/eval/remember` and `POST /v1/gb/eval/recall`. They take the same bodies as the regular endpoints, record the call as an [ATIF](https://github.com/laude-institute/harbor) trajectory, store it as pretty-printed JSON in an `atif/` directory next to the SQLite file, and return the full `trajectory` (and its `trajectory_id`) in the response. They are not registered otherwise, and the regular endpoints never generate trajectories. `go run ./evals` runs through these endpoints (`-atif <dir>` also keeps the trajectories as files).
 
 ## Embedding in Go programs
 

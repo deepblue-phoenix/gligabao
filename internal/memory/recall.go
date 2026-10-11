@@ -41,10 +41,10 @@ type Evidence struct {
 type RecallResult struct {
 	Answer   string   `json:"answer"`
 	Evidence Evidence `json:"evidence"`
-	// TrajectoryID identifies the ATIF trajectory of this call, stored in TrajectoryDir.
-	TrajectoryID string `json:"trajectory_id,omitempty"`
-	// Trajectory is the trajectory itself; only set when the call was made with WithEval.
-	Trajectory *atif.Trajectory `json:"trajectory,omitempty"`
+	// TrajectoryID and Trajectory are the ATIF trajectory of this call (also stored in TrajectoryDir); only set when
+	// the call was made with WithEval.
+	TrajectoryID string           `json:"trajectory_id,omitempty"`
+	Trajectory   *atif.Trajectory `json:"trajectory,omitempty"`
 }
 
 //---------------------------------------------------------------------------------------------
@@ -53,8 +53,8 @@ type RecallResult struct {
 // the LLM answers from that context, and the entities/edges it used are returned as evidence. Only the named
 // dataset of userID (empty means DefaultDataset) is searched; ErrDatasetNotFound is returned if it does not exist.
 //
-// The call is recorded as an ATIF trajectory, stored as JSON in TrajectoryDir; its ID is RecallResult.TrajectoryID.
-// With WithEval the trajectory is also returned in RecallResult.Trajectory.
+// Only with WithEval is the call recorded as an ATIF trajectory (stored as JSON in TrajectoryDir and returned in
+// RecallResult.Trajectory, with its ID in RecallResult.TrajectoryID).
 func Recall(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, query string, opts ...Option) (res *RecallResult, err error) {
 	userID, err = ResolveUserID(userID)
 	if err != nil {
@@ -71,13 +71,12 @@ func Recall(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, query stri
 
 	tr := startTrace(CallRecall, newCallOptions(opts))
 	defer func() {
-		id, traj := tr.finish(err)
-		if res != nil {
-			res.TrajectoryID, res.Trajectory = id, traj
+		if traj := tr.finish(err); res != nil && traj != nil {
+			res.TrajectoryID, res.Trajectory = traj.TrajectoryID, traj
 		}
 	}()
-	tr.b.User(query)
-	tr.b.SetExtra("input", map[string]any{"user_id": userID, "dataset": dataset})
+	tr.user(query)
+	tr.input(map[string]any{"user_id": userID, "dataset": dataset})
 
 	g, err := retrieve(ctx, d, dsID, query)
 	if err != nil {
@@ -87,7 +86,7 @@ func Recall(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, query stri
 		map[string]any{"user_id": userID, "dataset": dataset, "query": query}, g.render())
 	if len(g.entities) == 0 {
 		const none = "I don't have any information in memory to answer that."
-		tr.b.Agent(atif.Step{Message: none})
+		tr.agent(none)
 		return &RecallResult{
 			Answer:   none,
 			Evidence: Evidence{Entities: []EvidenceEntity{}, Edges: []EvidenceEdge{}},

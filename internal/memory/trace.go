@@ -19,7 +19,7 @@ const agentVersion = "0.1"
 
 //---------------------------------------------------------------------------------------------
 
-// Option customizes a single Remember or Recall call.
+// Option customizes a single Remember or Recall call. Without WithEval no trajectory is generated.
 type Option func(*callOptions)
 
 type callOptions struct {
@@ -35,8 +35,9 @@ func newCallOptions(opts []Option) callOptions {
 	return o
 }
 
-// WithEval makes the call also return its ATIF trajectory (Result.Trajectory / RecallResult.Trajectory).
-// It is meant for evals and is only available to direct Go callers; the HTTP endpoints never set it.
+// WithEval makes the call generate an ATIF trajectory: it is stored in TrajectoryDir and returned, with its ID, in
+// Result / RecallResult (TrajectoryID, Trajectory). Without it nothing is generated. It is meant for evals; only the
+// eval HTTP endpoints set it.
 func WithEval() Option { return func(o *callOptions) { o.eval = true } }
 
 // WithTrajectoryDir overrides TrajectoryDir for this call.
@@ -44,40 +45,71 @@ func WithTrajectoryDir(dir string) Option { return func(o *callOptions) { o.dir 
 
 //---------------------------------------------------------------------------------------------
 
-// trace records one Remember/Recall call as an ATIF trajectory.
+// trace records one Remember/Recall call as an ATIF trajectory. A nil *trace (eval not requested) is valid and
+// records nothing, so callers need no checks.
 type trace struct {
-	b *atif.Builder
-	o callOptions
+	b   *atif.Builder
+	dir string
 }
 
+// startTrace returns nil unless o asks for eval.
 func startTrace(kind string, o callOptions) *trace {
-	return &trace{b: atif.NewBuilder(atif.Agent{Name: "gligabao-" + kind, Version: agentVersion}), o: o}
+	if !o.eval {
+		return nil
+	}
+	return &trace{b: atif.NewBuilder(atif.Agent{Name: "gligabao-" + kind, Version: agentVersion}), dir: o.dir}
 }
 
 // wrap returns llm with every call recorded as steps of the trajectory.
-func (t *trace) wrap(llm LLM) LLM { return &tracingLLM{LLM: llm, b: t.b} }
+func (t *trace) wrap(llm LLM) LLM {
+	if t == nil {
+		return llm
+	}
+	return &tracingLLM{LLM: llm, b: t.b}
+}
 
-// finish stores the trajectory and returns its ID, plus the trajectory itself if eval was requested. A failed
-// call is stored too (with the error in the notes), but the caller only sees the ID of a successful one.
-// Failing to store the trajectory never fails the call.
-func (t *trace) finish(callErr error) (string, *atif.Trajectory) {
+func (t *trace) user(message string) {
+	if t != nil {
+		t.b.User(message)
+	}
+}
+
+func (t *trace) agent(message string) {
+	if t != nil {
+		t.b.Agent(atif.Step{Message: message})
+	}
+}
+
+func (t *trace) input(v map[string]any) {
+	if t != nil {
+		t.b.SetExtra("input", v)
+	}
+}
+
+// finish stores the trajectory and returns it (nil if there is no trace). A failed call is stored too (with the
+// error in the notes), but the caller only sees the trajectory of a successful one. Failing to store the
+// trajectory never fails the call.
+func (t *trace) finish(callErr error) *atif.Trajectory {
+	if t == nil {
+		return nil
+	}
 	if callErr != nil {
 		t.b.SetNotes("failed: " + callErr.Error())
 	}
 	traj := t.b.Build()
-	if path, err := atif.WriteFile(t.o.dir, traj); err != nil {
+	if path, err := atif.WriteFile(t.dir, traj); err != nil {
 		log.WithError(err).WithField("trajectory_id", traj.TrajectoryID).Error("store ATIF trajectory")
 	} else {
 		log.WithFields(log.Fields{"trajectory_id": traj.TrajectoryID, "path": path}).Debug("ATIF trajectory stored")
 	}
-	if t.o.eval {
-		return traj.TrajectoryID, traj
-	}
-	return traj.TrajectoryID, nil
+	return traj
 }
 
 // tool records a tool step whose arguments and result are summarized from Go values.
 func (t *trace) tool(message, name string, args map[string]any, result any) {
+	if t == nil {
+		return
+	}
 	res, ok := result.(string)
 	if !ok {
 		b, _ := json.Marshal(result)
