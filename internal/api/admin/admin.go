@@ -30,6 +30,44 @@ type overview struct {
 	Totals Counts `json:"totals"`
 }
 
+// Named is a database shown in the admin UI under a name (e.g. "standard", "eval").
+type Named struct {
+	Name string
+	DB   *sql.DB
+}
+
+// Databases serves GET /admin/api/databases: the names of the databases the UI can show, in display order.
+func Databases(dbs []Named) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		names := make([]string, 0, len(dbs))
+		for _, d := range dbs {
+			names = append(names, d.Name)
+		}
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"databases": names})
+	}
+}
+
+// OverviewOf serves GET /admin/api/overview[?db=<name>][&include_deleted=true] for one of dbs; without db it
+// serves the first one.
+func OverviewOf(dbs []Named) http.HandlerFunc {
+	handlers := make(map[string]http.HandlerFunc, len(dbs))
+	for _, d := range dbs {
+		handlers[d.Name] = Overview(d.DB)
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := r.URL.Query().Get("db")
+		if name == "" && len(dbs) > 0 {
+			name = dbs[0].Name
+		}
+		h, ok := handlers[name]
+		if !ok {
+			httputil.Error(w, http.StatusNotFound, "unknown database")
+			return
+		}
+		h(w, r)
+	}
+}
+
 // Overview serves GET /admin/api/overview[?include_deleted=true]: the datasets of all users, each with its
 // artifact/entity/edge counts, plus the totals for the whole system.
 func Overview(d *sql.DB) http.HandlerFunc {

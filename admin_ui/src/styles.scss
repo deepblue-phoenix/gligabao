@@ -93,7 +93,7 @@ table {
 
 th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
-main > .card + .card { margin-top: 1rem; }
+#databases > .card { margin-top: 1rem; }
 
 .stats {
   display: flex;

@@ -172,6 +172,10 @@ func indent(s string) string {
 //---------------------------------------------------------------------------------------------
 
 // atifDir is where the server also stores the trajectories (-atif); empty = a throwaway per-case directory.
+// evalDBPath (-db) is the SQLite file all cases run in ("" = a throwaway database per case). Cases stay independent
+// because each one soft-deletes the dataset "test" first, so remember starts from a new, empty dataset.
+var evalDBPath string
+
 var atifDir string
 
 // Outcome is what one eval case produced.
@@ -206,7 +210,12 @@ func run(c Case, llm memory.LLM, verbose bool) (out *Outcome, err error) {
 		memory.TrajectoryDir = filepath.Join(dir, "atif")
 	}
 
-	database, err := db.Open(db.Config{SQLitePath: filepath.Join(dir, "eval.db")})
+	// The persistent eval database (-db), which the server's admin UI can show; throwaway if -db is empty.
+	dbPath := evalDBPath
+	if dbPath == "" {
+		dbPath = filepath.Join(dir, "eval.db")
+	}
+	database, err := db.Open(db.Config{SQLitePath: dbPath})
 	if err != nil {
 		return out, err
 	}
@@ -346,6 +355,7 @@ func mainErr() error {
 	verbose := flag.Bool("v", false, "print the input and output of every LLM call")
 	suitesDir := flag.String("suites", "", "read suites from this directory instead of the embedded ones")
 	flag.StringVar(&atifDir, "atif", "", "also store every ATIF trajectory as JSON in this directory")
+	flag.StringVar(&evalDBPath, "db", "bin/gligabao-eval.db", `SQLite file the cases run in (show it with ./run_server_local.sh); "" = a throwaway database per case`)
 	flag.Parse()
 	if atifDir != "" {
 		memory.TrajectoryDir = atifDir

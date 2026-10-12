@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net"
@@ -17,7 +18,10 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
+	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
+	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	log "github.com/sirupsen/logrus"
 )
@@ -65,6 +69,10 @@ type Options struct {
 	// Eval registers the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/recall), which return ATIF
 	// trajectories with their results. Off by default.
 	Eval bool
+	// EvalDBPath is a second SQLite file (the one the evals write to, see evals/main.go) that the admin UI shows
+	// next to the main database. Opened for the admin UI only; ignored (with a warning) unless the main database is
+	// SQLite. Empty = not shown.
+	EvalDBPath string
 	// AdminUI registers the admin UI handlers (served at /v1/gb/admin/ from the assets embedded in the binary).
 	AdminUI bool
 }
@@ -74,7 +82,7 @@ type Options struct {
 // NewHandler builds the HTTP handler for the given databases and LLM.
 // llm may be nil, in which case endpoints requiring it return 503. The eval endpoints are registered only if eval is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary.
-func NewHandler(d *db.DB, llm memory.LLM, eval, adminUI bool) http.Handler {
+func NewHandler(d *db.DB, llm memory.LLM, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "gligabao is running")
@@ -91,23 +99,40 @@ func NewHandler(d *db.DB, llm memory.LLM, eval, adminUI bool) http.Handler {
 		api.RegisterEval(mux, d, llm)
 	}
 	if adminUI {
-		registerAdminUI(mux, d)
+		registerAdminUI(mux, d, extraAdminDBs)
 	}
 	return mux
 }
 
 // registerAdminUI serves the embedded admin UI assets under /v1/gb/admin/. It is a no-op (with a warning) if the
 // assets were not built into the binary (see admin_ui/ and run_build.sh).
-func registerAdminUI(mux *http.ServeMux, d *db.DB) {
+func registerAdminUI(mux *http.ServeMux, d *db.DB, extra []admin.Named) {
 	if !adminui.Available() {
 		log.Warn("admin_ui is enabled but the web assets are not embedded in this binary; build with ./run_build.sh (admin UI build enabled)")
 		return
 	}
-	mux.HandleFunc("GET /v1/gb/admin/api/overview", admin.Overview(d.Relational))
+	dbs := append([]admin.Named{{Name: "standard", DB: d.Relational}}, extra...)
+	mux.HandleFunc("GET /v1/gb/admin/api/databases", admin.Databases(dbs))
+	mux.HandleFunc("GET /v1/gb/admin/api/overview", admin.OverviewOf(dbs))
 	mux.Handle("GET /v1/gb/admin/", http.StripPrefix("/v1/gb/admin/", http.FileServerFS(adminui.Assets())))
 	mux.HandleFunc("GET /v1/gb/admin", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/v1/gb/admin/", http.StatusMovedPermanently)
 	})
+}
+
+//---------------------------------------------------------------------------------------------
+
+// openAdminDB opens a SQLite file (creating it with the schema if missing) for the admin UI; no vector store.
+func openAdminDB(path string) (*sql.DB, error) {
+	rel, err := relational.Open(config.DBBackendSQLite, path)
+	if err != nil {
+		return nil, err
+	}
+	if err := graph.Open(config.DBBackendSQLite, rel); err != nil {
+		rel.Close()
+		return nil, err
+	}
+	return rel, nil
 }
 
 //---------------------------------------------------------------------------------------------
@@ -158,7 +183,20 @@ func Run(ctx context.Context, opts Options) error {
 		llm = c
 	}
 
-	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(database, llm, opts.Eval, opts.AdminUI)}
+	var extra []admin.Named
+	if opts.AdminUI && opts.EvalDBPath != "" {
+		if database.Backend != config.DBBackendSQLite {
+			log.Warn("eval database not shown in the admin UI: only supported with the sqlite backend")
+		} else if evalDB, err := openAdminDB(opts.EvalDBPath); err != nil {
+			log.WithError(err).WithField("path", opts.EvalDBPath).Warn("eval database not shown in the admin UI")
+		} else {
+			defer evalDB.Close()
+			log.WithField("path", opts.EvalDBPath).Info("eval database is shown in the admin UI")
+			extra = append(extra, admin.Named{Name: "eval", DB: evalDB})
+		}
+	}
+
+	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(database, llm, opts.Eval, opts.AdminUI, extra...)}
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

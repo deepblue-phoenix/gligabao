@@ -53,7 +53,7 @@ Each trajectory is written as pretty-printed JSON to `<dir>/<trajectory_id>.json
 
 A call that fails is stored too, with `notes` set to `failed: <error>`, but the caller only gets the trajectory of a successful call. A failure to write the file is logged and never fails the call.
 
-The eval runner (`go run ./evals`) uses a throwaway directory per case, since it reads the trajectories from the responses; `-atif <dir>` keeps them as files.
+The eval runner (`go run ./evals`) writes its database to `bin/gligabao-eval.db` (`-db`; the admin UI can show it, `serve --eval-db`) and uses a throwaway trajectory directory per case, since it reads the trajectories from the responses; `-atif <dir>` keeps them as files.
 
 ## Trajectory format
 
