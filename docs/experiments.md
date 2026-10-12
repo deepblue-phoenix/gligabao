@@ -42,3 +42,9 @@ run, err := t.Finish(ctx)            // totals the evals, sets passed / failed
 ```
 
 `d` is `database.Relational`. Reading: `experiments.Get(ctx, d, name)` (with `Evals`), `List`, `Runs(ctx, d, experimentID)`, `GetRun(ctx, d, runID)` (evals and trajectory references included) and `FindTrajectory(ctx, d, trajectoryID)`, which leads from a trajectory ID back to its eval (`RunEvalID`), run and experiment. `Record` fails with `ErrRunNotRunning` after `Finish`.
+
+## Admin UI
+
+With the admin UI enabled (`serve --admin-ui`, see the README), the **Evals** block shows the experiments of the main database: totals (experiments, runs, distinct evals, passed/total eval results, cost), the experiment list and, by clicking an experiment, its runs. Clicking a run opens its evals; expanding an eval shows its answer, failed checks and error, plus its ATIF traces. **View trace** draws a trajectory as a labeled process flow (d3): start → steps (system / user / agent; edges are labeled with the time between steps) → tool calls (`calls`) → tool results (`returns`) → end. Clicking a node shows its full content (message, reasoning, arguments, result, tokens, cost).
+
+The JSON behind it is under `/v1/gb/admin/api/evals`: `GET /` (overview), `GET /experiments/{id}`, `GET /runs/{id}` and `GET /trajectories/{trajectory_id}`. A trajectory is served only if an experiment recorded its ID. Its file is read from the server's trajectory directory (the `atif/` directory next to the database), then from the `path` stored with the reference, so the server must be able to read the directory the evals wrote to.

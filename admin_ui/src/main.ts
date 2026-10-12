@@ -1,6 +1,8 @@
-// gligabao admin UI: a health indicator, system totals and the datasets of all users. Talks to the server's own HTTP API.
+// gligabao admin UI: a health indicator, system totals, the datasets of all users and the evals block (evals.ts). Talks to the server's own HTTP API.
 
+import { initEvals } from "./evals.js";
 import { initGraphModal, showGraph } from "./graph.js";
+import { initTraceModal } from "./trace.js";
 
 interface Dataset {
   user_id: string;
@@ -159,6 +161,8 @@ $<HTMLFormElement>("datasets-form").addEventListener("submit", (e) => {
 $("include-deleted").addEventListener("change", () => void loadAll(includeDeleted()));
 
 initGraphModal();
+initTraceModal();
+initEvals();
 void loadAll(false);
 void checkHealth();
 setInterval(() => void checkHealth(), 15000);

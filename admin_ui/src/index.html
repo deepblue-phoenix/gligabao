@@ -20,7 +20,39 @@
         <button type="submit">Refresh</button>
       </form>
       <div id="databases"></div>
+
+      <section id="evals" class="card">
+        <div class="row between">
+          <h2>Evals</h2>
+          <button type="button" id="evals-refresh">Refresh</button>
+        </div>
+        <dl id="evals-stats" class="stats"></dl>
+        <p id="evals-status" class="muted"></p>
+        <div id="evals-experiments"></div>
+        <div id="evals-runs"></div>
+      </section>
     </main>
+
+    <dialog id="run-modal" class="modal">
+      <div class="modal-head">
+        <h2 id="run-title">Run</h2>
+        <span id="run-status" class="muted"></span>
+        <button type="button" id="run-close">Close</button>
+      </div>
+      <div id="run-content" class="modal-body"></div>
+    </dialog>
+
+    <dialog id="trace-modal" class="modal">
+      <div class="modal-head">
+        <h2 id="trace-title">Trace</h2>
+        <span id="trace-status" class="muted"></span>
+        <button type="button" id="trace-close">Close</button>
+      </div>
+      <div class="trace-body">
+        <div id="trace-canvas"></div>
+        <aside id="trace-detail"></aside>
+      </div>
+    </dialog>
 
     <dialog id="graph-modal" class="modal">
       <div class="modal-head">

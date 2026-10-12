@@ -46,7 +46,7 @@ body {
   &-unknown { @include badge($muted); }
 }
 
-main { max-width: 56rem; margin: 1.5rem auto; padding: 0 1rem; }
+main { max-width: 64rem; margin: 1.5rem auto; padding: 0 1rem; }
 
 .card {
   background: $surface;
@@ -193,3 +193,90 @@ button.small { padding: 0.15rem 0.6rem; font-size: 0.8rem; }
 }
 
 .graph-span { margin-left: 0.5rem; color: $muted; font-style: italic; }
+
+// --- Evals block, run modal and trace modal ---
+
+#evals { margin-top: 1rem; }
+.row.between { justify-content: space-between; h2 { margin: 0; } }
+#evals-stats { margin-top: 0.75rem; flex-wrap: wrap; dd { font-size: 1.3rem; } }
+#evals-runs h3 { margin: 1.25rem 0 0.25rem; font-size: 0.95rem; }
+
+table.clickable tbody tr:not(.detail) {
+  cursor: pointer;
+  &:hover { background: rgba($accent, 0.08); }
+  &.selected { background: rgba($accent, 0.16); }
+}
+tr.detail > td { padding: 0.5rem 0.75rem 1rem; background: $bg; }
+tr[hidden] { display: none; }
+
+.badge { white-space: nowrap; }
+
+dl.props {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.8rem;
+  margin: 0.4rem 0;
+  font-size: 0.85rem;
+
+  dt { color: $muted; }
+  dd { margin: 0; overflow-wrap: anywhere; }
+}
+
+h4 { margin: 0.8rem 0 0.3rem; font-size: 0.8rem; color: $muted; }
+ul.problems { margin: 0; padding-left: 1.2rem; color: $err; font-size: 0.85rem; }
+ul.traces { list-style: none; margin: 0; padding: 0; font-size: 0.85rem; li { padding: 0.25rem 0; } }
+code { font-size: 0.8rem; color: $muted; }
+
+.modal-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0.5rem 1rem 1rem; }
+
+.trace-body { flex: 1; min-height: 0; display: flex; }
+#trace-canvas {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  background: $bg;
+
+  svg { display: block; cursor: grab; }
+}
+#trace-detail {
+  flex: 0 0 26rem;
+  max-width: 40%;
+  overflow-y: auto;
+  padding: 0.6rem 0.9rem;
+  border-left: 1px solid $border;
+  font-size: 0.8rem;
+
+  h3 { margin: 0 0 0.4rem; font-size: 0.95rem; }
+  pre {
+    margin: 0;
+    padding: 0.5rem;
+    max-height: 22rem;
+    overflow: auto;
+    background: $bg;
+    border: 1px solid $border;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 0.75rem;
+  }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 0.1rem 0.6rem; margin: 0; }
+  dt { color: $muted; }
+  dd { margin: 0; overflow-wrap: anywhere; }
+}
+
+.trace-edge { fill: none; stroke: $muted; stroke-width: 1.5; }
+.trace-edge-call, .trace-edge-return { stroke: $accent; stroke-dasharray: 4 3; stroke-width: 1.2; }
+.trace-arrow-head { fill: $muted; }
+.trace-edge-label { font-size: 10px; fill: $muted; paint-order: stroke; stroke: $bg; stroke-width: 3px; pointer-events: none; }
+.trace-edge-label-call, .trace-edge-label-return { fill: $accent; font-style: italic; }
+.trace-node {
+  cursor: pointer;
+  rect { fill: $surface; stroke-width: 1.5; }
+  &.selected rect { fill: #232834; stroke-width: 3; }
+  &.selected circle { stroke: $text; stroke-width: 2; }
+}
+.trace-title { font-size: 12px; font-weight: 600; fill: $text; pointer-events: none; }
+.trace-subtitle { font-size: 10.5px; fill: $muted; pointer-events: none; }
+.trace-end-label { font-size: 11px; fill: $muted; pointer-events: none; }
+#trace-canvas .graph-legend { top: auto; bottom: 0.5rem; }
+#run-modal[open] { height: fit-content; min-height: 20rem; max-height: 88vh; }

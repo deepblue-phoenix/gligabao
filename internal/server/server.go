@@ -115,6 +115,11 @@ func registerAdminUI(mux *http.ServeMux, d *db.DB, extra []admin.Named) {
 	mux.HandleFunc("GET /v1/gb/admin/api/databases", admin.Databases(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/overview", admin.OverviewOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/graph", admin.GraphOf(dbs))
+	// Experiments live in the main database only (the eval database is reset before every eval run).
+	mux.HandleFunc("GET /v1/gb/admin/api/evals", admin.EvalOverview(d.Relational))
+	mux.HandleFunc("GET /v1/gb/admin/api/evals/experiments/{id}", admin.EvalExperiment(d.Relational))
+	mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}", admin.EvalRun(d.Relational))
+	mux.HandleFunc("GET /v1/gb/admin/api/evals/trajectories/{id}", admin.EvalTrajectory(d.Relational))
 	mux.Handle("GET /v1/gb/admin/", http.StripPrefix("/v1/gb/admin/", http.FileServerFS(adminui.Assets())))
 	mux.HandleFunc("GET /v1/gb/admin", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/v1/gb/admin/", http.StatusMovedPermanently)
