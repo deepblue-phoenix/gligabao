@@ -420,3 +420,30 @@ func FindExperimentTrajectory(ctx context.Context, d *sql.DB, trajectoryID strin
 	}
 	return t, err
 }
+
+// ListExperimentEvalHistory returns the results of one eval over the runs of the experiment, oldest run first.
+func ListExperimentEvalHistory(ctx context.Context, d *sql.DB, experimentID int64, suite, name string) ([]model.ExperimentEvalPoint, error) {
+	rows, err := d.QueryContext(ctx, `
+		SELECT r.id, e.id, r.status, r.started_at, e.status, e.problems::text, e.passed_checks::text, e.error, e.steps, e.cost_usd, e.started_at, e.finished_at
+		FROM gb_experiment_run_evals e
+		JOIN gb_experiment_runs r ON r.id = e.run_id
+		WHERE r.experiment_id = $1 AND e.suite = $2 AND e.eval_name = $3
+		ORDER BY r.id, e.id`, experimentID, suite, name)
+	if err != nil {
+		return nil, fmt.Errorf("list experiment eval history: %w", err)
+	}
+	defer rows.Close()
+	out := []model.ExperimentEvalPoint{}
+	for rows.Next() {
+		var p model.ExperimentEvalPoint
+		var problems, passed string
+		if err := rows.Scan(&p.RunID, &p.RunEvalID, &p.RunStatus, &p.RunStartedAt, &p.Status, &problems, &passed, &p.Error, &p.Steps,
+			&p.CostUSD, &p.StartedAt, &p.FinishedAt); err != nil {
+			return nil, err
+		}
+		p.Problems, p.PassedChecks = parseList(problems), parseList(passed)
+		p.RunStartedAt, p.StartedAt, p.FinishedAt = p.RunStartedAt.UTC(), p.StartedAt.UTC(), p.FinishedAt.UTC()
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}

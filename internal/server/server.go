@@ -127,6 +127,7 @@ func registerAdminUI(mux *http.ServeMux, d *db.DB, extra []admin.Named) {
 		}
 		mux.HandleFunc("GET /v1/gb/admin/api/evals", admin.EvalOverview(e.DB))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/experiments/{id}", admin.EvalExperiment(e.DB))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/experiments/{id}/history", admin.EvalHistory(e.DB))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}", admin.EvalRun(e.DB))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/run-evals/{id}/graph", admin.EvalRunEvalGraph(e.DB))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/trajectories/{id}", admin.EvalTrajectory(e.DB, e.TrajectoryDir))

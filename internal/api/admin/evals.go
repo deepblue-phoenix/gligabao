@@ -51,6 +51,13 @@ type experimentDetail struct {
 	Runs []experiments.Run `json:"runs"`
 }
 
+// evalHistory is the progression of one eval over the runs of an experiment.
+type evalHistory struct {
+	Suite  string                  `json:"suite"`
+	Name   string                  `json:"name"`
+	Points []experiments.EvalPoint `json:"points"`
+}
+
 func evalFail(w http.ResponseWriter, err error, what string) {
 	if errors.Is(err, experiments.ErrNotFound) {
 		httputil.Error(w, http.StatusNotFound, what+" not found")
@@ -157,6 +164,28 @@ func EvalExperiment(d *sql.DB) http.HandlerFunc {
 			return
 		}
 		httputil.Error(w, http.StatusNotFound, "experiment not found")
+	}
+}
+
+// EvalHistory serves GET /admin/api/evals/experiments/{id}/history?suite=..&name=..: the status of one eval in each run
+// of the experiment, oldest run first.
+func EvalHistory(d *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		suite, name := r.URL.Query().Get("suite"), r.URL.Query().Get("name")
+		if suite == "" || name == "" {
+			httputil.Error(w, http.StatusBadRequest, "suite and name are required")
+			return
+		}
+		points, err := experiments.EvalHistory(r.Context(), d, id, suite, name)
+		if err != nil {
+			evalFail(w, err, "eval history")
+			return
+		}
+		httputil.WriteJSON(w, http.StatusOK, evalHistory{Suite: suite, Name: name, Points: points})
 	}
 }
 

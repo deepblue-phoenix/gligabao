@@ -2,6 +2,7 @@
 // the ATIF trajectories of each eval (opened as a flow graph by trace.ts). Talks to /admin/api/evals/*.
 
 import { showGraphAt } from "./graph.js";
+import { showEvalHistory } from "./history.js";
 import { showTrace } from "./trace.js";
 
 interface Run {
@@ -161,7 +162,18 @@ async function loadExperiment(id: number): Promise<void> {
     const extra: HTMLElement[] = [];
     if (exp.description) extra.push(h("p", "muted", exp.description));
     if (exp.config && Object.keys(exp.config).length) extra.push(props([["config", JSON.stringify(exp.config)]]));
-    if (exp.evals?.length) extra.push(props([["evals", exp.evals.map((e) => `${e.suite}/${e.name}`).join(", ")]]));
+    if (exp.evals?.length) {
+      const ul = h("ul", "eval-list");
+      for (const e of exp.evals) {
+        const li = h("li");
+        const btn = h("button", "small", "History");
+        btn.type = "button";
+        btn.addEventListener("click", () => void showEvalHistory(exp.id, exp.name, e.suite, e.name, (id) => void showRun(id, exp.name)));
+        li.append(btn, " ", h("code", undefined, `${e.suite}/${e.name}`));
+        ul.append(li);
+      }
+      extra.push(h("h4", undefined, "Evals"), ul);
+    }
 
     const { table: tbl, body } = table([
       ["Run", false], ["Status", false], ["Passed", true], ["Failed", true], ["Total", true], ["Cost", true],
@@ -228,7 +240,7 @@ async function showRun(runID: number, experiment: string): Promise<void> {
       detail.className = "detail";
       const cell = detail.insertCell();
       cell.colSpan = 7;
-      cell.append(...evalRecord(run, e));
+      cell.append(...evalRecord(run, e, experiment));
       tr.addEventListener("click", () => {
         detail.hidden = !detail.hidden;
         tr.classList.toggle("selected", !detail.hidden);
@@ -244,7 +256,7 @@ async function showRun(runID: number, experiment: string): Promise<void> {
 }
 
 // The detail of one eval: its result and the list of its ATIF trajectories, each opening the flow graph.
-function evalRecord(run: Run, e: RunEval): HTMLElement[] {
+function evalRecord(run: Run, e: RunEval, experiment: string): HTMLElement[] {
   const out: HTMLElement[] = [
     props([
       ["started", `${fmtTime(e.started_at)} UTC`], ["answer", e.answer], ["error", e.error],
@@ -259,6 +271,13 @@ function evalRecord(run: Run, e: RunEval): HTMLElement[] {
     for (const p of failed) ul.append(h("li", "fail", p));
     out.push(ul);
   }
+  const hbtn = h("button", "small", "History");
+  hbtn.type = "button";
+  hbtn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    void showEvalHistory(run.experiment_id, experiment, e.suite, e.name, (id) => void showRun(id, experiment));
+  });
+  out.push(h("h4", undefined, "History"), hbtn);
   out.push(h("h4", undefined, "Knowledge graph"));
   if (e.dataset_id != null) {
     const gbtn = h("button", "small", "View graph");

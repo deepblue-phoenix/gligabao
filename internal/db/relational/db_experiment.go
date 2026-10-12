@@ -129,3 +129,15 @@ func FindExperimentTrajectory(ctx context.Context, d *sql.DB, trajectoryID strin
 	}
 	return nil, unsupported()
 }
+
+// ListExperimentEvalHistory returns the results of one eval (suite and case name) over the runs of the experiment,
+// oldest run first. It is empty if the eval was never recorded.
+func ListExperimentEvalHistory(ctx context.Context, d *sql.DB, experimentID int64, suite, name string) ([]ExperimentEvalPoint, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListExperimentEvalHistory(ctx, d, experimentID, suite, name)
+	case config.DBBackendPostgres:
+		return postgres.ListExperimentEvalHistory(ctx, d, experimentID, suite, name)
+	}
+	return nil, unsupported()
+}

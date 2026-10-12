@@ -26,6 +26,7 @@ type (
 	ExperimentRun        = model.ExperimentRun
 	ExperimentRunEval    = model.ExperimentRunEval
 	ExperimentTrajectory = model.ExperimentTrajectory
+	ExperimentEvalPoint  = model.ExperimentEvalPoint
 	ExperimentArtifact   = model.ExperimentArtifact
 )
 

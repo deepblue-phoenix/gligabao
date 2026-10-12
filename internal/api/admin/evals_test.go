@@ -83,6 +83,23 @@ func testEvals(t *testing.T, d *sql.DB) {
 		t.Fatalf("bad id: %d", c)
 	}
 
+	var hist struct {
+		Points []struct {
+			RunID  int64  `json:"run_id"`
+			Status string `json:"status"`
+		}
+	}
+	if c := get(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.RawQuery = "suite=s&name=a"
+		admin.EvalHistory(d)(w, r)
+	}, "/x/{id}", strconv.FormatInt(tr.Experiment.ID, 10), &hist); c != 200 || len(hist.Points) != 1 ||
+		hist.Points[0].RunID != tr.Run.ID || hist.Points[0].Status != "passed" {
+		t.Fatalf("history: %d %+v", c, hist)
+	}
+	if c := get(admin.EvalHistory(d), "/x/{id}", strconv.FormatInt(tr.Experiment.ID, 10), nil); c != http.StatusBadRequest {
+		t.Fatalf("history without eval: %d", c)
+	}
+
 	var run struct {
 		Evals []struct {
 			Trajectories []struct {

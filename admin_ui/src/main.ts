@@ -2,6 +2,7 @@
 
 import { initEvals } from "./evals.js";
 import { initGraphModal, showGraph } from "./graph.js";
+import { initHistoryModal } from "./history.js";
 import { initTraceModal } from "./trace.js";
 
 interface Dataset {
@@ -162,6 +163,7 @@ $("include-deleted").addEventListener("change", () => void loadAll(includeDelete
 
 initGraphModal();
 initTraceModal();
+initHistoryModal();
 initEvals();
 void loadAll(false);
 void checkHealth();

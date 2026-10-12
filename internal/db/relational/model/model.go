@@ -137,6 +137,22 @@ type ExperimentRunEval struct {
 	Trajectories []ExperimentTrajectory `json:"trajectories,omitempty"`
 }
 
+// ExperimentEvalPoint is the result of one eval in one run of an experiment: a point of the eval's history.
+type ExperimentEvalPoint struct {
+	RunID        int64     `json:"run_id"`
+	RunEvalID    int64     `json:"run_eval_id"`
+	RunStatus    string    `json:"run_status"`
+	RunStartedAt time.Time `json:"run_started_at"`
+	Status       string    `json:"status"`        // ExperimentPassed, ExperimentFailed or ExperimentErrored
+	Problems     []string  `json:"problems"`      // failed checks
+	PassedChecks []string  `json:"passed_checks"` // checks that held
+	Error        string    `json:"error,omitempty"`
+	Steps        int       `json:"steps"`
+	CostUSD      float64   `json:"cost_usd"`
+	StartedAt    time.Time `json:"started_at"`
+	FinishedAt   time.Time `json:"finished_at"`
+}
+
 // ExperimentTrajectory references the ATIF trajectory of one remember or recall call of an eval. The trajectory
 // itself is the JSON file <TrajectoryID>.json (Path, when it was stored) of the trajectory directory.
 type ExperimentTrajectory struct {

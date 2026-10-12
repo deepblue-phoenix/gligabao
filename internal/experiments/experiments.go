@@ -35,6 +35,7 @@ type (
 	RunEval    = relational.ExperimentRunEval
 	Trajectory = relational.ExperimentTrajectory
 	Artifact   = relational.ExperimentArtifact
+	EvalPoint  = relational.ExperimentEvalPoint
 )
 
 // Statuses of runs and evals.
@@ -221,6 +222,12 @@ func List(ctx context.Context, d *sql.DB) ([]Experiment, error) {
 // Runs returns the runs of the experiment, oldest first (without their evals; see GetRun).
 func Runs(ctx context.Context, d *sql.DB, experimentID int64) ([]Run, error) {
 	return relational.ListExperimentRuns(ctx, d, experimentID)
+}
+
+// EvalHistory returns the results of one eval (suite and case name) over the runs of the experiment, oldest run first:
+// how its status progressed over time.
+func EvalHistory(ctx context.Context, d *sql.DB, experimentID int64, suite, name string) ([]EvalPoint, error) {
+	return relational.ListExperimentEvalHistory(ctx, d, experimentID, suite, name)
 }
 
 // GetRun returns a run with all its evals and their trajectory references, or ErrNotFound. The artifacts of each
