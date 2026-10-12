@@ -1,7 +1,9 @@
 // Command evals runs end-to-end evals against the real LLM.
 //
-// Each suite in evals/suites/*.json is a JSON list of cases. Each case gets a fresh temporary database and an in-process
-// HTTP server running in eval mode. The case is run through the eval endpoints (/v1/gb/eval/remember and
+// Each suite in evals/suites/*.json is a JSON list of cases. The cases run in the eval database (-db) behind an
+// in-process HTTP server running in eval mode. That database is reset at the start of every invocation (unless
+// -keep-db), so the artifacts, entities and edges the cases create do not pile up between runs. The experiments
+// are not kept there: they live in the main database (-main-db), which is never reset, so they survive the resets. The case is run through the eval endpoints (/v1/gb/eval/remember and
 // /v1/gb/eval/recall): remember (once per artifact, in order), then recall. These return the ATIF trajectory of
 // every call along with its result.
 // All artifacts go to the dataset "test", which is deleted at the start of each case so it is recreated fresh.
@@ -10,12 +12,12 @@
 // Usage: go run ./evals [-v] [-suites dir] [case-name ...]   (requires ANTHROPIC_API_KEY)
 // With -suites, suites are read from that directory instead of the embedded evals/suites (used by gligabao_int).
 // With -v, every LLM call's input and output is printed.
-// With -atif dir, the trajectories are stored there as JSON (default: an "atif" directory next to the -db file;
-// with -db "" only the in-memory copies are used).
+// With -atif dir, the trajectories are stored there as JSON (default: an "atif" directory next to the -main-db file,
+// since the experiments reference them; with -main-db "" only the in-memory copies are used).
 //
-// Every invocation is a run of an experiment (-experiment, default "default"), persisted in the eval database
+// Every invocation is a run of an experiment (-experiment, default "default"), persisted in the main database
 // together with the evals (suite + case) it executed, their results and the IDs of their ATIF trajectories; see
-// internal/experiments. With -db "" nothing is persisted.
+// internal/experiments. With -main-db "" nothing is persisted.
 package main
 
 import (
@@ -181,12 +183,42 @@ func indent(s string) string {
 
 //---------------------------------------------------------------------------------------------
 
-// evalDBPath (-db) is the SQLite file all cases run in ("" = a throwaway database per case). Cases stay independent
-// because each one soft-deletes the dataset "test" first, so remember starts from a new, empty dataset.
-// The experiments are stored in it too.
+// evalDBPath (-db) is the SQLite file all cases run in ("" = a throwaway database per case). It is reset at the start
+// of each invocation (see resetEvalDB), and cases stay independent because each one soft-deletes the dataset "test"
+// first, so remember starts from a new, empty dataset. It holds no experiments, those are in mainDBPath.
 var evalDBPath string
 
-// atifDir is where the server stores the trajectories (-atif); empty = a throwaway per-case directory.
+// mainDBPath (-main-db) is the SQLite file of the main (non-eval) database, where the experiments and their runs are
+// recorded ("" = nothing is recorded). It is never reset.
+var mainDBPath string
+
+// resetEvalDB deletes the eval database at path (SQLite file and its -wal/-shm/-journal companions) together with its
+// chromem vector directory, so the next open starts empty. Missing files are fine. It refuses to touch the main
+// database, which holds the experiments.
+func resetEvalDB(path, mainPath string) error {
+	if path == "" {
+		return nil
+	}
+	abs := func(p string) string {
+		if a, err := filepath.Abs(p); err == nil {
+			return a
+		}
+		return filepath.Clean(p)
+	}
+	if mainPath != "" && abs(path) == abs(mainPath) {
+		return fmt.Errorf("the eval database %q is the main database, which holds the experiments and is never reset", path)
+	}
+	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+		if err := os.Remove(path + suffix); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	// The default vector directory of db.Open: next to the database file.
+	return os.RemoveAll(strings.TrimSuffix(path, filepath.Ext(path)) + ".vectors")
+}
+
+// atifDir is where the server stores the trajectories (-atif); empty = a throwaway per-case directory. The experiments
+// reference the files, so the default is next to the main database, not the (reset) eval one.
 var atifDir string
 
 // Outcome is what one eval case produced.
@@ -223,7 +255,8 @@ func run(c Case, llm memory.LLM, verbose bool) (out *Outcome, err error) {
 		memory.TrajectoryDir = filepath.Join(dir, "atif")
 	}
 
-	// The persistent eval database (-db), which the server's admin UI can show; throwaway if -db is empty.
+	// The eval database (-db), which the server's admin UI can show (reset at the start of the invocation);
+	// throwaway if -db is empty.
 	dbPath := evalDBPath
 	if dbPath == "" {
 		dbPath = filepath.Join(dir, "eval.db")
@@ -431,14 +464,16 @@ func main() {
 func mainErr() error {
 	verbose := flag.Bool("v", false, "print the input and output of every LLM call")
 	suitesDir := flag.String("suites", "", "read suites from this directory instead of the embedded ones")
-	flag.StringVar(&atifDir, "atif", "", `store every ATIF trajectory as JSON in this directory (default: "atif" next to the -db file)`)
-	experiment := flag.String("experiment", "default", "name of the experiment this run belongs to (created if new; needs -db)")
+	flag.StringVar(&atifDir, "atif", "", `store every ATIF trajectory as JSON in this directory (default: "atif" next to the -main-db file)`)
+	experiment := flag.String("experiment", "default", "name of the experiment this run belongs to (created if new; needs -main-db)")
 	experimentDesc := flag.String("experiment-desc", "", "description of the experiment, used when it is created")
-	flag.StringVar(&evalDBPath, "db", "bin/gligabao-eval.db", `SQLite file the cases run in (show it with ./run_server_local.sh); "" = a throwaway database per case`)
+	flag.StringVar(&evalDBPath, "db", "bin/gligabao-eval.db", `SQLite file the cases run in (show it with ./run_server_local.sh); reset at the start of every run; "" = a throwaway database per case`)
+	flag.StringVar(&mainDBPath, "main-db", db.DefaultSQLitePath, `SQLite file of the main database, where the experiments and their runs are recorded (never reset); "" = record nothing`)
+	keepDB := flag.Bool("keep-db", false, "do not reset the eval database (-db) before running")
 	flag.Parse()
-	if atifDir == "" && evalDBPath != "" {
-		// The experiments reference the trajectories by ID, so keep their files next to the database.
-		atifDir = filepath.Join(filepath.Dir(evalDBPath), "atif")
+	if atifDir == "" && mainDBPath != "" {
+		// The experiments reference the trajectories by ID, so keep their files next to the main database.
+		atifDir = filepath.Join(filepath.Dir(mainDBPath), "atif")
 	}
 	if atifDir != "" {
 		memory.TrajectoryDir = atifDir
@@ -457,10 +492,18 @@ func mainErr() error {
 		return err
 	}
 
-	// The experiment run is recorded in the eval database; without -db there is nowhere to keep it.
+	// Start from an empty eval database: what the previous run's cases stored there is dropped.
+	if !*keepDB {
+		if err := resetEvalDB(evalDBPath, mainDBPath); err != nil {
+			return fmt.Errorf("reset eval database: %w", err)
+		}
+	}
+
+	// The experiment run is recorded in the main database, which outlives the eval database resets; without
+	// -main-db there is nowhere to keep it.
 	var tracker *experiments.Tracker
-	if evalDBPath != "" {
-		trackDB, err := db.Open(db.Config{SQLitePath: evalDBPath})
+	if mainDBPath != "" {
+		trackDB, err := db.Open(db.Config{SQLitePath: mainDBPath})
 		if err != nil {
 			return err
 		}

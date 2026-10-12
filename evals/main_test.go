@@ -28,16 +28,16 @@ func (l *scriptedLLM) Complete(_ context.Context, req ai.Request) (*ai.Response,
 // experiment run holds: the evals with their suite, the results and the trajectory IDs.
 func TestRunCasesTracksExperiment(t *testing.T) {
 	dir := t.TempDir()
-	evalDBPath, atifDir = filepath.Join(dir, "eval.db"), filepath.Join(dir, "atif")
+	evalDBPath, mainDBPath, atifDir = filepath.Join(dir, "eval.db"), filepath.Join(dir, "main.db"), filepath.Join(dir, "atif")
 	memory.TrajectoryDir = atifDir
-	t.Cleanup(func() { evalDBPath, atifDir = "", "" })
+	t.Cleanup(func() { evalDBPath, mainDBPath, atifDir = "", "", "" })
 
 	cases := []Case{
 		{Suite: "s1", Name: "good", Remember: []Artifact{{Text: "Alice is here."}}, Query: "Who?", ExpectContains: []string{"alice"}},
 		{Suite: "s2", Name: "bad", Remember: []Artifact{{Text: "Alice is here."}, {Text: "Alice again."}}, Query: "Who?", ExpectContains: []string{"Bob"}},
 	}
 
-	trackDB, err := db.Open(db.Config{SQLitePath: evalDBPath})
+	trackDB, err := db.Open(db.Config{SQLitePath: mainDBPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,5 +94,67 @@ func TestLoadCasesSetsSuite(t *testing.T) {
 		if c.Suite == "" {
 			t.Fatalf("case %q has no suite", c.Name)
 		}
+	}
+}
+
+// TestResetEvalDB checks that the reset empties the eval database (and its vectors) but leaves the experiments in the
+// main database alone, and that it refuses to reset the main database itself.
+func TestResetEvalDB(t *testing.T) {
+	dir := t.TempDir()
+	evalPath, mainPath := filepath.Join(dir, "eval.db"), filepath.Join(dir, "main.db")
+	ctx := context.Background()
+
+	evalDB, err := db.Open(db.Config{SQLitePath: evalPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := evalDB.Relational.ExecContext(ctx, `CREATE TABLE leftover (x INTEGER)`); err != nil {
+		t.Fatal(err)
+	}
+	evalDB.Close()
+	mainDB, err := db.Open(db.Config{SQLitePath: mainPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := experiments.Start(ctx, mainDB.Relational, experiments.Options{Name: "keep"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tr.Finish(ctx); err != nil {
+		t.Fatal(err)
+	}
+	mainDB.Close()
+
+	if err := resetEvalDB(evalPath, mainPath); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{evalPath, filepath.Join(dir, "eval.vectors")} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Fatalf("%s still exists after reset (err %v)", p, err)
+		}
+	}
+	evalDB, err = db.Open(db.Config{SQLitePath: evalPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer evalDB.Close()
+	if _, err := evalDB.Relational.ExecContext(ctx, `SELECT x FROM leftover`); err == nil {
+		t.Fatal("eval database was not emptied")
+	}
+
+	mainDB, err = db.Open(db.Config{SQLitePath: mainPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mainDB.Close()
+	if _, err := experiments.Get(ctx, mainDB.Relational, "keep"); err != nil {
+		t.Fatalf("experiment lost: %v", err)
+	}
+
+	if err := resetEvalDB(mainPath, mainPath); err == nil {
+		t.Fatal("resetting the main database must fail")
+	}
+	if err := resetEvalDB("", mainPath); err != nil {
+		t.Fatal(err)
 	}
 }

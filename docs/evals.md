@@ -53,7 +53,7 @@ Each trajectory is written as pretty-printed JSON to `<dir>/<trajectory_id>.json
 
 A call that fails is stored too, with `notes` set to `failed: <error>`, but the caller only gets the trajectory of a successful call. A failure to write the file is logged and never fails the call.
 
-The eval runner (`go run ./evals`) writes its database to `bin/gligabao-eval.db` (`-db`; the admin UI can show it, `serve --eval-db`) and stores the trajectories in an `atif/` directory next to it (`-atif <dir>` changes it), because the experiment runs it records reference them by ID, see [experiments.md](experiments.md). With `-db ""` the trajectory directory is a throwaway one per case.
+The eval runner (`go run ./evals`) writes the artifacts, entities and edges of its cases to `bin/gligabao-eval.db` (`-db`; the admin UI can show it, `serve --eval-db`). That database is **reset at the start of every run** (`-keep-db` to skip). The experiment runs it records live in the main database (`-main-db`, default `bin/gligabao.db`), which is never reset, and reference the trajectories by ID, so the trajectories are stored in an `atif/` directory next to the main database (`-atif <dir>` changes it), see [experiments.md](experiments.md). With `-db ""` the eval database is a throwaway one per case; with `-main-db ""` nothing is recorded and the trajectory directory is a throwaway one per case.
 
 ## Trajectory format
 

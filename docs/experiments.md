@@ -1,6 +1,6 @@
 # Eval experiments
 
-An **experiment** is a named series of eval runs. Every time the eval runner (`go run ./evals`, `./run_evals.sh`) executes, it records one **run** of an experiment in the eval database: which evals of which suites it executed, how each ended, and the IDs of the [ATIF trajectories](evals.md) of their calls. Go code lives in `internal/experiments`; the tables are in `internal/db/relational/{sqlite,postgres}/db_schema.go`, the structs in `internal/db/relational/model`.
+An **experiment** is a named series of eval runs. Every time the eval runner (`go run ./evals`, `./run_evals.sh`) executes, it records one **run** of an experiment in the **main** database (not the eval one, which is reset before every run, so the experiments' history survives): which evals of which suites it executed, how each ended, and the IDs of the [ATIF trajectories](evals.md) of their calls. Go code lives in `internal/experiments`; the tables are in `internal/db/relational/{sqlite,postgres}/db_schema.go`, the structs in `internal/db/relational/model`.
 
 ## Data model
 
@@ -14,7 +14,7 @@ An **experiment** is a named series of eval runs. Every time the eval runner (`g
 
 A suite is a file in `evals/suites/` and its name is the file name without `.json`; an eval is a case in it, so `suite` + `eval_name` identifies it. Rows cascade: deleting an experiment removes its runs, evals and trajectory references.
 
-Only the trajectory *reference* is stored in the database; the trajectory is the file `<trajectory_id>.json` in the trajectory directory. The runner stores the files in an `atif/` directory next to the eval database (`bin/atif/` by default) so the IDs stay resolvable; `-atif <dir>` changes it. `gb_experiment_trajectories.path` records where each file went.
+Only the trajectory *reference* is stored in the database; the trajectory is the file `<trajectory_id>.json` in the trajectory directory. The runner stores the files in an `atif/` directory next to the main database (`bin/atif/` by default) so the IDs stay resolvable; `-atif <dir>` changes it. `gb_experiment_trajectories.path` records where each file went.
 
 A run is `passed` when every recorded eval passed. An eval fails when a stored-edge check does not hold or the answer lacks an expected string (`problems` lists them).
 
@@ -24,7 +24,7 @@ A run is `passed` when every recorded eval passed. An eval fails when a stored-e
 ./run_evals.sh [-experiment name] [-experiment-desc text] [-v] [case-name ...]
 ```
 
-`-experiment` (default `default`) names the experiment; it is created on first use and later runs with the same name are further runs of it. With `-db ""` (a throwaway database per case) nothing is persisted. The runner prints `experiment "<name>" run <id>: <status>, cost $...` at the end.
+`-experiment` (default `default`) names the experiment; it is created on first use and later runs with the same name are further runs of it. The runner records into `-main-db` (default `bin/gligabao.db`); with `-main-db ""` nothing is persisted. The eval database (`-db`) is reset at the start of each run (`-keep-db` skips it) and never holds experiments. The runner prints `experiment "<name>" run <id>: <status>, cost $...` at the end.
 
 ## From Go
 

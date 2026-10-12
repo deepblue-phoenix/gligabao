@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # LOCAL/DEV ONLY (not for production): runs the server binary ./bin/gligabao (build it first with ./run_build.sh). Extra args are passed to `serve`.
 # The admin UI is turned on (--admin-ui).
-# The admin UI shows two databases: the standard one and the eval one (bin/gligabao-eval.db, written by ./run_evals.sh;
+# The admin UI shows two databases: the standard one and the eval one (bin/gligabao-eval.db, written by ./run_evals.sh and reset on each run;
 # override the path with EVAL_DB=...).
 # Run from the project root so the default DB path (bin/gligabao.db) resolves into bin/;
 # the config is read from bin/gligabao.toml (next to the binary).
