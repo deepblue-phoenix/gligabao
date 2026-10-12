@@ -107,6 +107,9 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .error { color: $err; }
 
 button.small { padding: 0.15rem 0.6rem; font-size: 0.8rem; }
+button.small + button.small { margin-left: 0.4rem; }
+button[hidden] { display: none; }
+button.danger { background: $err; color: #fff; vertical-align: middle; svg { display: block; } }
 
 .modal {
   width: min(96vw, 80rem);
@@ -335,3 +338,9 @@ code { font-size: 0.8rem; color: $muted; }
   pointer-events: none;
 }
 .eval-list { list-style: none; padding: 0; margin: 0.4rem 0; li { margin: 0.2rem 0; } }
+
+tr.removing {
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+}

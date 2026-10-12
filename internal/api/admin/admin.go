@@ -10,6 +10,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	log "github.com/sirupsen/logrus"
 )
@@ -40,6 +41,9 @@ type Named struct {
 	// TrajectoryDir is where the ATIF trajectories of the experiments recorded in DB are stored ("" = unknown);
 	// only used for the eval database.
 	TrajectoryDir string
+	// Vectors is the vector store holding the embeddings of DB's datasets; nil if there is none (the vectors of a
+	// deleted dataset are then not cleaned up).
+	Vectors vector.Store
 }
 
 // Databases serves GET /admin/api/databases: the names of the databases the UI can show, in display order.
@@ -139,5 +143,36 @@ func Graph(d *sql.DB) http.HandlerFunc {
 		default:
 			httputil.WriteJSON(w, http.StatusOK, g)
 		}
+	}
+}
+
+// DeleteDatasetOf serves DELETE /admin/api/datasets?db=<name>&user_id=...&dataset=... for one of dbs (the first
+// without db): a soft delete of the dataset (see memory.DeleteDataset).
+func DeleteDatasetOf(dbs []Named) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		name := q.Get("db")
+		if name == "" && len(dbs) > 0 {
+			name = dbs[0].Name
+		}
+		for _, n := range dbs {
+			if n.Name != name {
+				continue
+			}
+			err := memory.DeleteDataset(r.Context(), n.DB, n.Vectors, q.Get("user_id"), q.Get("dataset"))
+			switch {
+			case errors.Is(err, memory.ErrInvalidUser):
+				httputil.Error(w, http.StatusBadRequest, err.Error())
+			case errors.Is(err, memory.ErrInvalidDataset), errors.Is(err, memory.ErrDatasetNotFound):
+				httputil.Error(w, http.StatusNotFound, "dataset not found")
+			case err != nil:
+				log.WithError(err).WithFields(log.Fields{"user_id": q.Get("user_id"), "dataset": q.Get("dataset")}).Error("admin: delete dataset failed")
+				httputil.Error(w, http.StatusInternalServerError, "failed to delete dataset")
+			default:
+				w.WriteHeader(http.StatusNoContent)
+			}
+			return
+		}
+		httputil.Error(w, http.StatusNotFound, "unknown database")
 	}
 }

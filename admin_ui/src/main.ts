@@ -42,7 +42,7 @@ async function checkHealth(): Promise<void> {
 
 const COLUMNS: [string, boolean][] = [
   ["User", false], ["Name", false], ["Description", false], ["Tags", false],
-  ["Artifacts", true], ["Entities", true], ["Edges", true], ["Graph", false],
+  ["Artifacts", true], ["Entities", true], ["Edges", true], ["Actions", false],
 ];
 
 // Builds the card of one database (system totals + datasets table) and returns the parts that get filled in later.
@@ -120,6 +120,34 @@ async function loadOverview(name: string, s: ReturnType<typeof makeSection>, inc
         btn.className = "small";
         btn.textContent = "View graph";
         btn.addEventListener("click", () => void showGraph(name, ds.user_id, ds.name));
+
+        const del = graphCell.appendChild(document.createElement("button"));
+        del.type = "button";
+        del.className = "small danger";
+        del.title = "Delete dataset";
+        del.setAttribute("aria-label", `Delete dataset ${ds.name}`);
+        del.innerHTML = TRASH_ICON; // static markup, no server data
+
+        // Two-step delete without a dialog: the trash button reveals a "?" button right next to it, which confirms.
+        const confirmBtn = graphCell.appendChild(document.createElement("button"));
+        confirmBtn.type = "button";
+        confirmBtn.className = "small danger";
+        confirmBtn.title = "Confirm delete";
+        confirmBtn.setAttribute("aria-label", `Confirm delete of dataset ${ds.name}`);
+        confirmBtn.textContent = "?";
+        confirmBtn.hidden = true;
+        del.addEventListener("click", () => {
+          confirmBtn.hidden = !confirmBtn.hidden;
+        });
+        // Moving away from the row without confirming cancels.
+        tr.addEventListener("mouseleave", () => {
+          confirmBtn.hidden = true;
+        });
+        confirmBtn.addEventListener("click", () => {
+          del.disabled = true;
+          confirmBtn.disabled = true;
+          void deleteDataset(name, ds.user_id, ds.name, s, tr);
+        });
       }
     }
     s.status.textContent = `${list.length} dataset${list.length === 1 ? "" : "s"}.`;
@@ -127,6 +155,37 @@ async function loadOverview(name: string, s: ReturnType<typeof makeSection>, inc
   } catch (err) {
     s.status.className = "error";
     s.status.textContent = `Failed to load datasets: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+const FADE_OUT_MS = 500; // keep in sync with tr.removing in styles.scss
+
+const TRASH_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
+
+// Soft-deletes a dataset and reloads the database's table, so it disappears from the list (it stays, marked
+// "(deleted)", only while "include deleted datasets" is ticked) and the totals are updated.
+async function deleteDataset(db: string, userID: string, dataset: string, s: ReturnType<typeof makeSection>, row: HTMLTableRowElement): Promise<void> {
+  const params = new URLSearchParams({ db, user_id: userID, dataset });
+  let failure = "";
+  try {
+    const res = await fetch(`api/datasets?${params}`, { method: "DELETE" });
+    // 404: already gone (e.g. deleted elsewhere); the reload shows the current state.
+    if (!res.ok && res.status !== 404) throw new Error(`${res.status}: ${(await res.text()).trim()}`);
+  } catch (err) {
+    failure = `Failed to delete dataset "${dataset}": ${err instanceof Error ? err.message : String(err)}`;
+  }
+  // Fade the row out (0.5s, see tr.removing) before the reload drops it; with deleted datasets shown it stays.
+  if (!failure && !includeDeleted()) {
+    row.classList.add("removing");
+    await new Promise((resolve) => setTimeout(resolve, FADE_OUT_MS));
+  }
+  await loadOverview(db, s, includeDeleted());
+  if (failure) {
+    s.status.className = "error";
+    s.status.textContent = failure;
   }
 }
 

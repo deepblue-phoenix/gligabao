@@ -86,3 +86,35 @@ func testGraph(t *testing.T, d *sql.DB) {
 		t.Fatalf("unknown dataset: %d", w.Code)
 	}
 }
+
+// TestDeleteDataset checks that the admin delete endpoint soft-deletes a dataset and 404s on unknown ones.
+func TestDeleteDataset(t *testing.T) { dbtest.Run(t, testDeleteDataset) }
+
+func testDeleteDataset(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	if _, err := memory.CreateDataset(ctx, d, "alice", "a", "", nil); err != nil {
+		t.Fatal(err)
+	}
+	del := func(url string) int {
+		w := httptest.NewRecorder()
+		admin.DeleteDatasetOf([]admin.Named{{Name: "standard", DB: d}})(w, httptest.NewRequest(http.MethodDelete, url, nil))
+		return w.Code
+	}
+	if c := del("/admin/api/datasets?user_id=alice&dataset=a"); c != http.StatusNoContent {
+		t.Fatalf("delete: %d", c)
+	}
+	if c := del("/admin/api/datasets?user_id=alice&dataset=a"); c != http.StatusNotFound {
+		t.Fatalf("delete again: %d", c)
+	}
+	if c := del("/admin/api/datasets?db=nope&user_id=alice&dataset=a"); c != http.StatusNotFound {
+		t.Fatalf("unknown db: %d", c)
+	}
+	live, err := memory.ListDatasets(ctx, d, "alice", false)
+	if err != nil || len(live) != 0 {
+		t.Fatalf("live: %v %v", live, err)
+	}
+	all, err := memory.ListDatasets(ctx, d, "alice", true)
+	if err != nil || len(all) != 1 || !all[0].Deleted {
+		t.Fatalf("all: %v %v", all, err)
+	}
+}
