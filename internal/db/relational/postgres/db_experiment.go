@@ -56,6 +56,22 @@ func parseList(s string) []string {
 	return l
 }
 
+func jsonArtifacts(a []model.ExperimentArtifact) string {
+	if a == nil {
+		a = []model.ExperimentArtifact{}
+	}
+	b, _ := json.Marshal(a)
+	return string(b)
+}
+
+func parseArtifacts(s string) []model.ExperimentArtifact {
+	a := []model.ExperimentArtifact{}
+	if err := json.Unmarshal([]byte(s), &a); err != nil || a == nil {
+		return []model.ExperimentArtifact{}
+	}
+	return a
+}
+
 //---------------------------------------------------------------------------------------------
 
 const experimentColumns = `id, name, description, config::text, created_at`
@@ -223,11 +239,11 @@ func RecordExperimentRunEval(ctx context.Context, d *sql.DB, e model.ExperimentR
 
 	err = tx.QueryRowContext(ctx, `
 		INSERT INTO gb_experiment_run_evals (
-			run_id, suite, eval_name, status, answer, problems, error, steps, cost_usd, started_at, finished_at
+			run_id, suite, eval_name, status, answer, problems, passed_checks, graph, error, steps, cost_usd, started_at, finished_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11)
+		VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11, $12, $13)
 		RETURNING id`,
-		e.RunID, e.Suite, e.Name, e.Status, e.Answer, jsonList(e.Problems), e.Error, e.Steps, e.CostUSD,
+		e.RunID, e.Suite, e.Name, e.Status, e.Answer, jsonList(e.Problems), jsonList(e.PassedChecks), e.Graph, e.Error, e.Steps, e.CostUSD,
 		Normalize(e.StartedAt), Normalize(e.FinishedAt)).Scan(&e.ID)
 	if err != nil {
 		return nil, fmt.Errorf("record experiment eval: %w", err)
@@ -246,11 +262,11 @@ func RecordExperimentRunEval(ctx context.Context, d *sql.DB, e model.ExperimentR
 		t.RunEvalID, t.Seq, t.CreatedAt = e.ID, i+1, Now()
 		err := tx.QueryRowContext(ctx, `
 			INSERT INTO gb_experiment_trajectories (
-				run_eval_id, seq, kind, trajectory_id, agent_name, steps, cost_usd, path, created_at
+				run_eval_id, seq, kind, trajectory_id, agent_name, steps, cost_usd, path, artifacts, created_at
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
 			RETURNING id`,
-			t.RunEvalID, t.Seq, t.Kind, t.TrajectoryID, t.AgentName, t.Steps, t.CostUSD, t.Path, t.CreatedAt).Scan(&t.ID)
+			t.RunEvalID, t.Seq, t.Kind, t.TrajectoryID, t.AgentName, t.Steps, t.CostUSD, t.Path, jsonArtifacts(t.Artifacts), t.CreatedAt).Scan(&t.ID)
 		if err != nil {
 			return nil, fmt.Errorf("record experiment trajectory: %w", err)
 		}
@@ -306,13 +322,15 @@ func ListExperimentRuns(ctx context.Context, d *sql.DB, experimentID int64) ([]m
 	return out, rows.Err()
 }
 
-const trajectoryColumns = `id, run_eval_id, seq, kind, trajectory_id, agent_name, steps, cost_usd, path, created_at`
+const trajectoryColumns = `id, run_eval_id, seq, kind, trajectory_id, agent_name, steps, cost_usd, path, artifacts::text, created_at`
 
 func scanTrajectory(r scanner) (*model.ExperimentTrajectory, error) {
 	var t model.ExperimentTrajectory
-	if err := r.Scan(&t.ID, &t.RunEvalID, &t.Seq, &t.Kind, &t.TrajectoryID, &t.AgentName, &t.Steps, &t.CostUSD, &t.Path, &t.CreatedAt); err != nil {
+	var artifacts string
+	if err := r.Scan(&t.ID, &t.RunEvalID, &t.Seq, &t.Kind, &t.TrajectoryID, &t.AgentName, &t.Steps, &t.CostUSD, &t.Path, &artifacts, &t.CreatedAt); err != nil {
 		return nil, err
 	}
+	t.Artifacts = parseArtifacts(artifacts)
 	t.CreatedAt = t.CreatedAt.UTC()
 	return &t, nil
 }
@@ -324,7 +342,7 @@ func GetExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*model.Exper
 		return nil, err
 	}
 	rows, err := d.QueryContext(ctx, `
-		SELECT id, run_id, suite, eval_name, status, answer, problems::text, error, steps, cost_usd, started_at, finished_at
+		SELECT id, run_id, suite, eval_name, status, answer, problems::text, passed_checks::text, graph <> '', error, steps, cost_usd, started_at, finished_at
 		FROM gb_experiment_run_evals
 		WHERE run_id = $1
 		ORDER BY id`, runID)
@@ -336,12 +354,13 @@ func GetExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*model.Exper
 	byID := map[int64]int{}
 	for rows.Next() {
 		var e model.ExperimentRunEval
-		var problems string
-		if err := rows.Scan(&e.ID, &e.RunID, &e.Suite, &e.Name, &e.Status, &e.Answer, &problems, &e.Error, &e.Steps,
+		var problems, passed string
+		if err := rows.Scan(&e.ID, &e.RunID, &e.Suite, &e.Name, &e.Status, &e.Answer, &problems, &passed, &e.HasGraph, &e.Error, &e.Steps,
 			&e.CostUSD, &e.StartedAt, &e.FinishedAt); err != nil {
 			return nil, err
 		}
 		e.Problems = parseList(problems)
+		e.PassedChecks = parseList(passed)
 		e.StartedAt, e.FinishedAt = e.StartedAt.UTC(), e.FinishedAt.UTC()
 		e.Trajectories = []model.ExperimentTrajectory{}
 		byID[e.ID] = len(run.Evals)
@@ -370,6 +389,17 @@ func GetExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*model.Exper
 		run.Evals[i].Trajectories = append(run.Evals[i].Trajectories, *t)
 	}
 	return run, trows.Err()
+}
+
+// GetExperimentRunEvalGraph returns the JSON snapshot of the knowledge graph the eval built, or model.ErrNotFound if
+// the eval does not exist or has none.
+func GetExperimentRunEvalGraph(ctx context.Context, d *sql.DB, runEvalID int64) (string, error) {
+	var g string
+	err := d.QueryRowContext(ctx, `SELECT graph FROM gb_experiment_run_evals WHERE id = $1`, runEvalID).Scan(&g)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && g == "") {
+		return "", model.ErrNotFound
+	}
+	return g, err
 }
 
 // FindExperimentTrajectory returns the reference to the trajectory with the given ATIF trajectory_id, or

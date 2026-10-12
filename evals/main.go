@@ -241,6 +241,13 @@ var atifDir string
 type Outcome struct {
 	Answer   string
 	Problems []string // failed temporal-fact expectations
+	// Graph is the JSON snapshot of the knowledge graph the case built (memory.GraphExport); nil if not captured.
+	Graph []byte
+	// PassedChecks are the temporal-fact expectations that held.
+	PassedChecks []string
+	// Artifacts[i] are the artifacts of Trajectories[i]: a remember call's input artifact, the artifacts a recall's
+	// evidence was sourced from.
+	Artifacts [][]experiments.Artifact
 	// Trajectories are the ATIF trajectories returned by the eval endpoints: one per remember, then the recall's.
 	Trajectories []*atif.Trajectory
 	// TrajectoryDir is where the trajectory files were stored ("" if they were throwaway).
@@ -303,6 +310,9 @@ func run(c Case, llm memory.LLM, verbose bool) (out *Outcome, err error) {
 		}
 		var rem struct {
 			ArtifactID int64            `json:"artifact_id"`
+			Kind       string           `json:"kind"`
+			ValidAt    time.Time        `json:"valid_at"`
+			CreatedAt  time.Time        `json:"created_at"`
 			Trajectory *atif.Trajectory `json:"trajectory"`
 		}
 		if err := post(srv.URL+"/v1/gb/eval/remember", body, &rem); err != nil {
@@ -312,6 +322,15 @@ func run(c Case, llm memory.LLM, verbose bool) (out *Outcome, err error) {
 			return out, fmt.Errorf("remember #%d: response has no trajectory (is the server in eval mode?)", i+1)
 		}
 		out.Trajectories = append(out.Trajectories, rem.Trajectory)
+		out.Artifacts = append(out.Artifacts, []experiments.Artifact{
+			{ID: rem.ArtifactID, Kind: rem.Kind, Text: m.Text, ValidAt: rem.ValidAt, CreatedAt: rem.CreatedAt},
+		})
+	}
+	if g, err := memory.ExportGraph(context.Background(), database.Relational, evalUser, dataset); err != nil {
+		// Not worth failing the eval for.
+		fmt.Fprintf(os.Stderr, "warning: %s: export the graph: %v\n", c.Name, err)
+	} else if out.Graph, err = json.Marshal(g); err != nil {
+		return out, err
 	}
 	edges, err := graph.ListEdges(context.Background(), database.Graph, evalUser, dataset)
 	if err != nil {
@@ -339,27 +358,42 @@ func run(c Case, llm memory.LLM, verbose bool) (out *Outcome, err error) {
 			}
 		}
 		desc := want.Source + " -> " + want.Target
-		switch {
-		case found == nil:
-			out.Problems = append(out.Problems, desc+": no edge stored")
-		default:
-			if want.ValidAt != "" && tstr(found.ValidAt) != want.ValidAt {
-				out.Problems = append(out.Problems, fmt.Sprintf("%s: valid_at = %s, want %s", desc, tstr(found.ValidAt), want.ValidAt))
+		// check records a held check (pass) or a failed one (fail).
+		check := func(ok bool, pass, fail string) {
+			if ok {
+				out.PassedChecks = append(out.PassedChecks, pass)
+			} else {
+				out.Problems = append(out.Problems, fail)
 			}
-			if want.InvalidAt != "" && tstr(found.InvalidAt) != want.InvalidAt {
-				out.Problems = append(out.Problems, fmt.Sprintf("%s: invalid_at = %q, want %s", desc, tstr(found.InvalidAt), want.InvalidAt))
-			}
-			if want.Ended != (found.InvalidAt != nil) {
-				out.Problems = append(out.Problems, fmt.Sprintf("%s: ended = %v, want %v", desc, found.InvalidAt != nil, want.Ended))
-			}
-			if want.Ended && found.ExpiredAt == nil {
-				out.Problems = append(out.Problems, desc+": ended but expired_at is not set")
-			}
+		}
+		if found == nil {
+			check(false, "", desc+": no edge stored")
+			continue
+		}
+		check(true, desc+": edge stored", "")
+		if want.ValidAt != "" {
+			check(tstr(found.ValidAt) == want.ValidAt, fmt.Sprintf("%s: valid_at = %s", desc, want.ValidAt),
+				fmt.Sprintf("%s: valid_at = %s, want %s", desc, tstr(found.ValidAt), want.ValidAt))
+		}
+		if want.InvalidAt != "" {
+			check(tstr(found.InvalidAt) == want.InvalidAt, fmt.Sprintf("%s: invalid_at = %s", desc, want.InvalidAt),
+				fmt.Sprintf("%s: invalid_at = %q, want %s", desc, tstr(found.InvalidAt), want.InvalidAt))
+		}
+		check(want.Ended == (found.InvalidAt != nil), fmt.Sprintf("%s: ended = %v", desc, want.Ended),
+			fmt.Sprintf("%s: ended = %v, want %v", desc, found.InvalidAt != nil, want.Ended))
+		if want.Ended {
+			check(found.ExpiredAt != nil, desc+": ended and expired_at is set", desc+": ended but expired_at is not set")
 		}
 	}
 
 	var rec struct {
-		Answer     string           `json:"answer"`
+		Answer   string `json:"answer"`
+		Evidence struct {
+			Edges []struct {
+				ID         int64  `json:"id"`
+				ArtifactID *int64 `json:"artifact_id"`
+			} `json:"edges"`
+		} `json:"evidence"`
 		Trajectory *atif.Trajectory `json:"trajectory"`
 	}
 	if err := post(srv.URL+"/v1/gb/eval/recall", map[string]any{"user_id": evalUser, "query": c.Query, "dataset": dataset}, &rec); err != nil {
@@ -370,6 +404,51 @@ func run(c Case, llm memory.LLM, verbose bool) (out *Outcome, err error) {
 	}
 	out.Answer = rec.Answer
 	out.Trajectories = append(out.Trajectories, rec.Trajectory)
+	cited := map[int64]*int64{} // cited edge ID -> artifact that created it
+	for _, e := range rec.Evidence.Edges {
+		cited[e.ID] = e.ArtifactID
+	}
+	arts, err := sourceArtifacts(context.Background(), database, dataset, cited)
+	if err != nil {
+		// Not worth failing the eval for: the recall itself worked.
+		fmt.Fprintf(os.Stderr, "warning: %s: collect the recall's source artifacts: %v\n", c.Name, err)
+	}
+	out.Artifacts = append(out.Artifacts, arts)
+	return out, nil
+}
+
+// sourceArtifacts returns the artifacts of the dataset that back the given edges (provenance): the artifact that
+// created each edge and every later one that restated the fact (gb_edge_artifacts), by artifact ID.
+func sourceArtifacts(ctx context.Context, database *db.DB, dataset string, edgeArtifact map[int64]*int64) ([]experiments.Artifact, error) {
+	dsID, err := relational.DatasetID(ctx, database.Relational, evalUser, dataset)
+	if err != nil {
+		return nil, err
+	}
+	links, err := graph.ListEdgeArtifacts(ctx, database.Graph, dsID)
+	if err != nil {
+		return nil, err
+	}
+	want := map[int64]bool{}
+	for edgeID, creator := range edgeArtifact {
+		if creator != nil {
+			want[*creator] = true
+		}
+		for _, l := range links {
+			if l.EdgeID == edgeID {
+				want[l.ArtifactID] = true
+			}
+		}
+	}
+	all, err := graph.ListArtifacts(ctx, database.Graph, dsID)
+	if err != nil {
+		return nil, err
+	}
+	out := []experiments.Artifact{}
+	for _, a := range all {
+		if want[a.ID] {
+			out = append(out, experiments.Artifact{ID: a.ID, Kind: a.Kind, Text: a.Text, ValidAt: a.ValidAt, CreatedAt: a.CreatedAt})
+		}
+	}
 	return out, nil
 }
 
@@ -425,18 +504,22 @@ func runCases(cases []Case, llm memory.LLM, verbose bool, tracker *experiments.T
 		}
 
 		// Everything that makes the case fail: temporal-fact problems, then expected answer text that is missing.
+		passed := append([]string(nil), out.PassedChecks...)
 		var missing []string
-		if err == nil && len(problems) == 0 {
+		if err == nil {
 			for _, want := range c.ExpectContains {
 				if !strings.Contains(strings.ToLower(answer), strings.ToLower(want)) {
 					missing = append(missing, want)
+				} else {
+					passed = append(passed, fmt.Sprintf("answer contains %q", want))
 				}
 			}
 		}
 		if tracker != nil {
 			res := experiments.EvalResult{
 				Suite: c.Suite, Name: c.Name, Answer: answer, Err: err,
-				Problems:  problems,
+				Problems: problems, PassedChecks: passed,
+				Artifacts: out.Artifacts, Graph: out.Graph,
 				StartedAt: started, FinishedAt: time.Now(),
 				Trajectories: out.Trajectories, TrajectoryDir: out.TrajectoryDir,
 			}

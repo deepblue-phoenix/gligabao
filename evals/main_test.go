@@ -69,6 +69,15 @@ func TestRunCasesTracksExperiment(t *testing.T) {
 	if bad.Suite != "s2" || bad.Status != experiments.StatusFailed || len(bad.Problems) != 1 || len(bad.Trajectories) != 3 {
 		t.Fatalf("bad: %+v", bad)
 	}
+	if len(good.PassedChecks) != 1 || len(bad.PassedChecks) != 0 {
+		t.Fatalf("passed checks: good %v, bad %v", good.PassedChecks, bad.PassedChecks)
+	}
+	if a := good.Trajectories[0].Artifacts; len(a) != 1 || a[0].Text != "Alice is here." || a[0].ID == 0 {
+		t.Fatalf("remember artifacts: %+v", a)
+	}
+	if g, err := experiments.RunEvalGraph(ctx, trackDB.Relational, good.ID); err != nil || !good.HasGraph || !strings.Contains(string(g), `"entities"`) {
+		t.Fatalf("graph: %s, %v, has_graph=%v", g, err, good.HasGraph)
+	}
 	for _, e := range full.Evals {
 		for _, tr := range e.Trajectories {
 			if _, err := os.Stat(tr.Path); err != nil {

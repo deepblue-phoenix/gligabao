@@ -1,6 +1,7 @@
 // Evals block of the admin UI: experiments (counts + listing), their runs, a run's evals with their records, and
 // the ATIF trajectories of each eval (opened as a flow graph by trace.ts). Talks to /admin/api/evals/*.
 
+import { showGraphAt } from "./graph.js";
 import { showTrace } from "./trace.js";
 
 interface Run {
@@ -10,9 +11,11 @@ interface Run {
 }
 interface Trajectory {
   seq: number; kind: string; trajectory_id: string; agent_name: string; steps: number; cost_usd: number;
+  artifacts?: Artifact[];
 }
+interface Artifact { id: number; kind: string; text: string; valid_at: string; created_at: string }
 interface RunEval {
-  id: number; suite: string; name: string; status: string; answer?: string; problems?: string[]; error?: string;
+  id: number; suite: string; name: string; status: string; answer?: string; problems?: string[]; passed_checks?: string[]; has_graph?: boolean; error?: string;
   steps: number; cost_usd: number; started_at: string; finished_at: string; trajectories?: Trajectory[];
 }
 interface ExperimentRow {
@@ -247,11 +250,26 @@ function evalRecord(run: Run, e: RunEval): HTMLElement[] {
       ["started", `${fmtTime(e.started_at)} UTC`], ["answer", e.answer], ["error", e.error],
     ]),
   ];
-  if (e.problems?.length) {
-    out.push(h("h4", undefined, "Failed checks"));
-    const ul = h("ul", "problems");
-    for (const p of e.problems) ul.append(h("li", undefined, p));
+  const passed = e.passed_checks ?? [];
+  const failed = e.problems ?? [];
+  if (passed.length || failed.length) {
+    out.push(h("h4", undefined, `Checks (${passed.length} passed, ${failed.length} failed)`));
+    const ul = h("ul", "checks");
+    for (const p of passed) ul.append(h("li", "pass", p));
+    for (const p of failed) ul.append(h("li", "fail", p));
     out.push(ul);
+  }
+  out.push(h("h4", undefined, "Knowledge graph"));
+  if (e.has_graph) {
+    const gbtn = h("button", "small", "View graph");
+    gbtn.type = "button";
+    gbtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      void showGraphAt(`${e.suite}/${e.name} (run #${run.id})`, `api/evals/run-evals/${e.id}/graph`);
+    });
+    out.push(gbtn);
+  } else {
+    out.push(h("p", "muted", "No graph recorded."));
   }
   out.push(h("h4", undefined, "ATIF traces"));
   const trajs = e.trajectories ?? [];
@@ -268,8 +286,21 @@ function evalRecord(run: Run, e: RunEval): HTMLElement[] {
       ev.stopPropagation();
       void showTrace(t.trajectory_id, `${e.suite}/${e.name} · #${t.seq} ${t.kind} (run #${run.id})`);
     });
+    const artBtn = h("button", "small", "View artifacts");
+    artBtn.type = "button";
+    let panel: HTMLElement | undefined;
+    artBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (!panel) {
+        panel = artifactsPanel(t);
+        li.append(panel);
+      } else {
+        panel.hidden = !panel.hidden;
+      }
+      artBtn.textContent = panel.hidden ? "View artifacts" : "Hide artifacts";
+    });
     li.append(
-      btn, " ", h("strong", undefined, `#${t.seq} ${t.kind}`),
+      btn, " ", artBtn, " ", h("strong", undefined, `#${t.seq} ${t.kind}`),
       h("span", "muted", ` ${t.steps} step${t.steps === 1 ? "" : "s"} · ${fmtCost(t.cost_usd)} · `),
       h("code", undefined, t.trajectory_id),
     );
@@ -277,6 +308,28 @@ function evalRecord(run: Run, e: RunEval): HTMLElement[] {
   }
   out.push(list);
   return out;
+}
+
+// The artifacts of one trajectory: for a remember call the input artifact the caller gave, for a recall the artifacts
+// the answer was sourced from (the provenance of its evidence).
+function artifactsPanel(t: Trajectory): HTMLElement {
+  const box = h("div", "artifacts");
+  const arts = t.artifacts ?? [];
+  box.append(h("h4", undefined, t.kind === "remember" ? "Input artifact" : "Source artifacts (provenance of the answer)"));
+  if (arts.length === 0) {
+    box.append(h("p", "muted", t.kind === "remember" ? "No input artifact recorded." : "The answer cites no artifacts."));
+    return box;
+  }
+  for (const a of arts) {
+    const item = h("div", "artifact");
+    item.append(
+      h("strong", undefined, `artifact #${a.id}`),
+      h("span", "muted", ` ${a.kind} · valid ${fmtTime(a.valid_at)} · ingested ${fmtTime(a.created_at)}`),
+      h("pre", undefined, a.text),
+    );
+    box.append(item);
+  }
+  return box;
 }
 
 export function initEvals(): void {

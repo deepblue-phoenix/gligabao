@@ -116,18 +116,24 @@ type ExperimentRun struct {
 
 // ExperimentRunEval is the result of one eval within a run.
 type ExperimentRunEval struct {
-	ID         int64     `json:"id"`
-	RunID      int64     `json:"run_id"`
-	Suite      string    `json:"suite"`
-	Name       string    `json:"name"`
-	Status     string    `json:"status"` // ExperimentPassed, ExperimentFailed or ExperimentErrored
-	Answer     string    `json:"answer,omitempty"`
-	Problems   []string  `json:"problems"`        // failed checks
-	Error      string    `json:"error,omitempty"` // why the eval could not be run to the end
-	Steps      int       `json:"steps"`           // total ATIF steps over its trajectories
-	CostUSD    float64   `json:"cost_usd"`
-	StartedAt  time.Time `json:"started_at"`
-	FinishedAt time.Time `json:"finished_at"`
+	ID       int64    `json:"id"`
+	RunID    int64    `json:"run_id"`
+	Suite    string   `json:"suite"`
+	Name     string   `json:"name"`
+	Status   string   `json:"status"` // ExperimentPassed, ExperimentFailed or ExperimentErrored
+	Answer   string   `json:"answer,omitempty"`
+	Problems []string `json:"problems"` // failed checks
+	// PassedChecks are the checks that held (Problems are the ones that did not).
+	PassedChecks []string  `json:"passed_checks"`
+	Error        string    `json:"error,omitempty"` // why the eval could not be run to the end
+	Steps        int       `json:"steps"`           // total ATIF steps over its trajectories
+	CostUSD      float64   `json:"cost_usd"`
+	StartedAt    time.Time `json:"started_at"`
+	FinishedAt   time.Time `json:"finished_at"`
+	// HasGraph says that a snapshot of the knowledge graph the eval built was stored (see GetExperimentRunEvalGraph).
+	HasGraph bool `json:"has_graph"`
+	// Graph is the JSON snapshot to store (RecordExperimentRunEval only; never read back with the eval).
+	Graph string `json:"-"`
 	// Trajectories are the ATIF trajectories of the eval, in call order (remember calls, then the recall).
 	Trajectories []ExperimentTrajectory `json:"trajectories,omitempty"`
 }
@@ -135,14 +141,27 @@ type ExperimentRunEval struct {
 // ExperimentTrajectory references the ATIF trajectory of one remember or recall call of an eval. The trajectory
 // itself is the JSON file <TrajectoryID>.json (Path, when it was stored) of the trajectory directory.
 type ExperimentTrajectory struct {
-	ID           int64     `json:"id"`
-	RunEvalID    int64     `json:"run_eval_id"`
-	Seq          int       `json:"seq"`           // position within the eval, from 1
-	Kind         string    `json:"kind"`          // TrajectoryRemember or TrajectoryRecall
-	TrajectoryID string    `json:"trajectory_id"` // ATIF trajectory_id
-	AgentName    string    `json:"agent_name"`
-	Steps        int       `json:"steps"`
-	CostUSD      float64   `json:"cost_usd"`
-	Path         string    `json:"path,omitempty"` // where the trajectory JSON was stored ("" if it was not)
-	CreatedAt    time.Time `json:"created_at"`
+	ID           int64   `json:"id"`
+	RunEvalID    int64   `json:"run_eval_id"`
+	Seq          int     `json:"seq"`           // position within the eval, from 1
+	Kind         string  `json:"kind"`          // TrajectoryRemember or TrajectoryRecall
+	TrajectoryID string  `json:"trajectory_id"` // ATIF trajectory_id
+	AgentName    string  `json:"agent_name"`
+	Steps        int     `json:"steps"`
+	CostUSD      float64 `json:"cost_usd"`
+	Path         string  `json:"path,omitempty"` // where the trajectory JSON was stored ("" if it was not)
+	// Artifacts are the artifacts the call is about, as they were when the eval ran: for a remember call the input
+	// artifact the caller gave, for a recall the artifacts the answer's evidence was sourced from (provenance).
+	Artifacts []ExperimentArtifact `json:"artifacts"`
+	CreatedAt time.Time            `json:"created_at"`
+}
+
+// ExperimentArtifact is a snapshot of an artifact (see the graph package) taken while an eval ran, because the
+// eval database is reset between runs.
+type ExperimentArtifact struct {
+	ID        int64     `json:"id"`
+	Kind      string    `json:"kind"`
+	Text      string    `json:"text"`
+	ValidAt   time.Time `json:"valid_at"`
+	CreatedAt time.Time `json:"created_at"`
 }

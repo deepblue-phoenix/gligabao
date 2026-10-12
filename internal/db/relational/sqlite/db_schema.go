@@ -107,7 +107,8 @@ CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_ru
 
 -- The result of one eval within a run. status: 'passed', 'failed' (a check did not hold) or 'error' (the eval
 -- could not be run to the end).
---   problems: JSON array of strings, the failed checks
+--   problems: JSON array of strings, the failed checks; passed_checks: JSON array of strings, the checks that held
+--   graph: JSON snapshot of the knowledge graph the eval built ('' if none), the same shape the admin graph view shows
 CREATE TABLE IF NOT EXISTS gb_experiment_run_evals (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
 	run_id      INTEGER NOT NULL REFERENCES gb_experiment_runs(id) ON DELETE CASCADE,
@@ -116,6 +117,8 @@ CREATE TABLE IF NOT EXISTS gb_experiment_run_evals (
 	status      TEXT NOT NULL CHECK (status IN ('passed', 'failed', 'error')),
 	answer      TEXT NOT NULL DEFAULT '',
 	problems    TEXT NOT NULL DEFAULT '[]',
+	passed_checks TEXT NOT NULL DEFAULT '[]',
+	graph       TEXT NOT NULL DEFAULT '',
 	error       TEXT NOT NULL DEFAULT '',
 	steps       INTEGER NOT NULL DEFAULT 0,
 	cost_usd    REAL NOT NULL DEFAULT 0,
@@ -127,6 +130,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_experiment_run_evals_run ON gb_experiment_run_
 -- The ATIF trajectories of an eval (internal/ai/atif), in call order. Only the reference is kept here:
 -- trajectory_id is the ATIF trajectory_id, and path is the JSON file the trajectory was stored in ('' if none).
 --   kind: 'remember' or 'recall'
+--   artifacts: JSON array of the artifacts the call is about (remember: its input; recall: the evidence's sources)
 CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
 	run_eval_id   INTEGER NOT NULL REFERENCES gb_experiment_run_evals(id) ON DELETE CASCADE,
@@ -137,6 +141,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
 	steps         INTEGER NOT NULL DEFAULT 0,
 	cost_usd      REAL NOT NULL DEFAULT 0,
 	path          TEXT NOT NULL DEFAULT '',
+	artifacts     TEXT NOT NULL DEFAULT '[]',
 	created_at    DATETIME NOT NULL,
 	UNIQUE (run_eval_id, seq)
 );

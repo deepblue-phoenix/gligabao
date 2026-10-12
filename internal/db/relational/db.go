@@ -26,6 +26,7 @@ type (
 	ExperimentRun        = model.ExperimentRun
 	ExperimentRunEval    = model.ExperimentRunEval
 	ExperimentTrajectory = model.ExperimentTrajectory
+	ExperimentArtifact   = model.ExperimentArtifact
 )
 
 // Experiment, run and trajectory constants (see package model).

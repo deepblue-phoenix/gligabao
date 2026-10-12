@@ -176,6 +176,25 @@ func EvalRun(d *sql.DB) http.HandlerFunc {
 	}
 }
 
+// EvalRunEvalGraph serves GET /admin/api/evals/run-evals/{id}/graph: the knowledge graph the eval built, as it was
+// when the eval ran (same JSON as /admin/api/graph).
+func EvalRunEvalGraph(d *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		g, err := experiments.RunEvalGraph(r.Context(), d, id)
+		if err != nil {
+			evalFail(w, err, "graph")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(g)
+	}
+}
+
 // EvalTrajectory serves GET /admin/api/evals/trajectories/{id}: the ATIF trajectory JSON of a trajectory that an
 // experiment recorded. The ID must be one of the recorded references; the file is looked up in the trajectory
 // directory (memory.TrajectoryDir, read per request) first, then at the path stored with the reference.

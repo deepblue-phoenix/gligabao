@@ -8,7 +8,7 @@ interface Edge {
   // Bi-temporal validity of the fact: event time (valid_at/invalid_at) and system time (created_at/expired_at).
   valid_at?: string; invalid_at?: string; created_at?: string; expired_at?: string;
 }
-interface GraphData { dataset: string; entities: Entity[]; edges: Edge[] }
+export interface GraphData { dataset: string; entities: Entity[]; edges: Edge[] }
 
 interface Node extends d3.SimulationNodeDatum, Entity { degree: number }
 interface Link extends d3.SimulationLinkDatum<Node> { edge: Edge; slot: number }
@@ -27,21 +27,36 @@ function clear(): void {
   el("graph-canvas").replaceChildren();
 }
 
-// Opens the modal and shows the graph of the dataset (fetched from the admin API).
-export async function showGraph(db: string, userID: string, dataset: string): Promise<void> {
+async function fetchGraph(url: string): Promise<GraphData> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${res.status}: ${(await res.text()).trim()}`);
+  return (await res.json()) as GraphData;
+}
+
+// Opens the modal and shows the graph of a live dataset (fetched from the admin API).
+export function showGraph(db: string, userID: string, dataset: string): Promise<void> {
+  const params = new URLSearchParams({ db, user_id: userID, dataset });
+  return showGraphFrom(`${userID} / ${dataset}`, () => fetchGraph(`api/graph?${params}`));
+}
+
+// Opens the modal and shows the graph stored at url (an admin API endpoint answering with a GraphData JSON), e.g. the
+// graph an eval built. This and showGraph are the entry points; any other place that shows a graph should use them.
+export function showGraphAt(title: string, url: string): Promise<void> {
+  return showGraphFrom(title, () => fetchGraph(url));
+}
+
+// Opens the modal titled title and draws the graph that load returns.
+export async function showGraphFrom(title: string, load: () => Promise<GraphData>): Promise<void> {
   const modal = el<HTMLDialogElement>("graph-modal");
   const status = el("graph-status");
-  el("graph-title").textContent = `${userID} / ${dataset}`;
+  el("graph-title").textContent = title;
   status.className = "muted";
   status.textContent = "Loading…";
   clear();
   if (!modal.open) modal.showModal();
 
   try {
-    const params = new URLSearchParams({ db, user_id: userID, dataset });
-    const res = await fetch(`api/graph?${params}`);
-    if (!res.ok) throw new Error(`${res.status}: ${(await res.text()).trim()}`);
-    const data = (await res.json()) as GraphData;
+    const data = await load();
     if (!modal.open) return; // closed while loading
     if (data.entities.length === 0) {
       status.textContent = "The graph is empty.";

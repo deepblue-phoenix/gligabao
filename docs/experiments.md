@@ -9,8 +9,8 @@ An **experiment** is a named series of eval runs. Every time the eval runner (`g
 | `gb_experiments` | `Experiment` | `name` (unique), `description`, `config` (free-form JSON: the settings under test) |
 | `gb_experiment_evals` | `Experiment.Evals` (`EvalRef`) | the evals (`suite` + case `eval_name`) that any run of the experiment executed; added the first time an eval is recorded |
 | `gb_experiment_runs` | `ExperimentRun` | one execution: `status` (`running`, then `passed` or `failed`), `params` (how it was invoked), totals (`total_evals`, `passed_evals`, `failed_evals`, `cost_usd`), `started_at`, `finished_at` |
-| `gb_experiment_run_evals` | `ExperimentRunEval` | one eval's result in a run: `status` (`passed`, `failed`: a check did not hold, `error`: it could not run to the end), `answer`, `problems`, `error`, `steps`, `cost_usd`, times |
-| `gb_experiment_trajectories` | `ExperimentTrajectory` | the ATIF trajectories of an eval, in call order (`seq`): `kind` (`remember` / `recall`), `trajectory_id`, `agent_name`, `steps`, `cost_usd`, `path` of the JSON file |
+| `gb_experiment_run_evals` | `ExperimentRunEval` | one eval's result in a run: `status` (`passed`, `failed`: a check did not hold, `error`: it could not run to the end), `answer`, `problems` (failed checks), `passed_checks`, `graph` (JSON snapshot of the knowledge graph the eval built, the shape of `memory.GraphExport`), `error`, `steps`, `cost_usd`, times |
+| `gb_experiment_trajectories` | `ExperimentTrajectory` | the ATIF trajectories of an eval, in call order (`seq`): `kind` (`remember` / `recall`), `trajectory_id`, `agent_name`, `steps`, `cost_usd`, `path` of the JSON file, `artifacts` (snapshot of the call's artifacts: a remember's input artifact, or the artifacts a recall's evidence edges were sourced from via the edge provenance links) |
 
 A suite is a file in `evals/suites/` and its name is the file name without `.json`; an eval is a case in it, so `suite` + `eval_name` identifies it. Rows cascade: deleting an experiment removes its runs, evals and trajectory references.
 
@@ -35,7 +35,8 @@ t, err := experiments.Start(ctx, d, experiments.Options{
 })                                   // get-or-create the experiment, start a run
 _, err = t.Record(ctx, experiments.EvalResult{
     Suite: "basic", Name: "job_change", Answer: answer,
-    Problems: problems,              // failed checks; Err: why it could not run
+    Problems: problems,              // failed checks; PassedChecks: the ones that held; Err: why it could not run
+    Artifacts: arts,                 // per trajectory: its artifacts
     Trajectories: trajs, TrajectoryDir: dir,
 })
 run, err := t.Finish(ctx)            // totals the evals, sets passed / failed
@@ -45,6 +46,6 @@ run, err := t.Finish(ctx)            // totals the evals, sets passed / failed
 
 ## Admin UI
 
-With the admin UI enabled (`serve --admin-ui`, see the README), the **Evals** block shows the experiments of the main database: totals (experiments, runs, distinct evals, passed/total eval results, cost), the experiment list and, by clicking an experiment, its runs. Clicking a run opens its evals; expanding an eval shows its answer, failed checks and error, plus its ATIF traces. **View trace** draws a trajectory as a labeled process flow (d3): start → steps (system / user / agent; edges are labeled with the time between steps) → tool calls (`calls`) → tool results (`returns`) → end. Clicking a node shows its full content (message, reasoning, arguments, result, tokens, cost).
+With the admin UI enabled (`serve --admin-ui`, see the README), the **Evals** block shows the experiments of the main database: totals (experiments, runs, distinct evals, passed/total eval results, cost), the experiment list and, by clicking an experiment, its runs. Clicking a run opens its evals; expanding an eval shows its answer, all its checks (passed and failed) and error, plus its ATIF traces. Each eval also has a **View graph** button that opens the knowledge graph it built, in the same graph view as the datasets' **View graph** (`showGraphAt` in `graph.ts`). Each trace also has a **View artifacts** button: the input artifact for a `remember` call, the source artifacts of the answer for a `recall`. **View trace** draws a trajectory as a labeled process flow (d3): start → steps (system / user / agent; edges are labeled with the time between steps) → tool calls (`calls`) → tool results (`returns`) → end. Clicking a node shows its full content (message, reasoning, arguments, result, tokens, cost).
 
-The JSON behind it is under `/v1/gb/admin/api/evals`: `GET /` (overview), `GET /experiments/{id}`, `GET /runs/{id}` and `GET /trajectories/{trajectory_id}`. A trajectory is served only if an experiment recorded its ID. Its file is read from the server's trajectory directory (the `atif/` directory next to the database), then from the `path` stored with the reference, so the server must be able to read the directory the evals wrote to.
+The JSON behind it is under `/v1/gb/admin/api/evals`: `GET /` (overview), `GET /experiments/{id}`, `GET /runs/{id}`, `GET /run-evals/{id}/graph` and `GET /trajectories/{trajectory_id}`. A trajectory is served only if an experiment recorded its ID. Its file is read from the server's trajectory directory (the `atif/` directory next to the database), then from the `path` stored with the reference, so the server must be able to read the directory the evals wrote to.

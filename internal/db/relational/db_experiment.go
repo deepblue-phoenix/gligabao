@@ -106,6 +106,18 @@ func GetExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*ExperimentR
 	return nil, unsupported()
 }
 
+// GetExperimentRunEvalGraph returns the JSON snapshot of the knowledge graph an eval built (the shape of
+// memory.GraphExport), or ErrNotFound if the eval does not exist or stored none.
+func GetExperimentRunEvalGraph(ctx context.Context, d *sql.DB, runEvalID int64) (string, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.GetExperimentRunEvalGraph(ctx, d, runEvalID)
+	case config.DBBackendPostgres:
+		return postgres.GetExperimentRunEvalGraph(ctx, d, runEvalID)
+	}
+	return "", unsupported()
+}
+
 // FindExperimentTrajectory returns the reference to the trajectory with the given ATIF trajectory_id, or ErrNotFound.
 // Its RunEvalID leads to the eval, and through it to the run and the experiment.
 func FindExperimentTrajectory(ctx context.Context, d *sql.DB, trajectoryID string) (*ExperimentTrajectory, error) {

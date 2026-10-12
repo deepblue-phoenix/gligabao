@@ -119,6 +119,7 @@ func registerAdminUI(mux *http.ServeMux, d *db.DB, extra []admin.Named) {
 	mux.HandleFunc("GET /v1/gb/admin/api/evals", admin.EvalOverview(d.Relational))
 	mux.HandleFunc("GET /v1/gb/admin/api/evals/experiments/{id}", admin.EvalExperiment(d.Relational))
 	mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}", admin.EvalRun(d.Relational))
+	mux.HandleFunc("GET /v1/gb/admin/api/evals/run-evals/{id}/graph", admin.EvalRunEvalGraph(d.Relational))
 	mux.HandleFunc("GET /v1/gb/admin/api/evals/trajectories/{id}", admin.EvalTrajectory(d.Relational))
 	mux.Handle("GET /v1/gb/admin/", http.StripPrefix("/v1/gb/admin/", http.FileServerFS(adminui.Assets())))
 	mux.HandleFunc("GET /v1/gb/admin", func(w http.ResponseWriter, r *http.Request) {

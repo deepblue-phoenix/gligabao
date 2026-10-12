@@ -99,6 +99,8 @@ CREATE TABLE IF NOT EXISTS gb_experiment_run_evals (
 	status      TEXT NOT NULL CHECK (status IN ('passed', 'failed', 'error')),
 	answer      TEXT NOT NULL DEFAULT '',
 	problems    JSONB NOT NULL DEFAULT '[]',
+	passed_checks JSONB NOT NULL DEFAULT '[]',
+	graph       TEXT NOT NULL DEFAULT '',
 	error       TEXT NOT NULL DEFAULT '',
 	steps       BIGINT NOT NULL DEFAULT 0,
 	cost_usd    DOUBLE PRECISION NOT NULL DEFAULT 0,
@@ -117,6 +119,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
 	steps         BIGINT NOT NULL DEFAULT 0,
 	cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
 	path          TEXT NOT NULL DEFAULT '',
+	artifacts     JSONB NOT NULL DEFAULT '[]',
 	created_at    TIMESTAMPTZ NOT NULL,
 	UNIQUE (run_eval_id, seq)
 );

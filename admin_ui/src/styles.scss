@@ -224,6 +224,26 @@ dl.props {
 
 h4 { margin: 0.8rem 0 0.3rem; font-size: 0.8rem; color: $muted; }
 ul.problems { margin: 0; padding-left: 1.2rem; color: $err; font-size: 0.85rem; }
+ul.checks { margin: 0; padding-left: 0; list-style: none; font-size: 0.85rem; li { padding: 0.1rem 0; } }
+ul.checks li.pass::before { content: "✓ "; color: $ok; }
+ul.checks li.fail { color: $err; }
+ul.checks li.fail::before { content: "✗ "; }
+.artifacts {
+  margin: 0.4rem 0 0.4rem 1rem;
+  .artifact { margin: 0.4rem 0; }
+  pre {
+    margin: 0.2rem 0 0;
+    padding: 0.5rem;
+    max-height: 16rem;
+    overflow: auto;
+    background: $bg;
+    border: 1px solid $border;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 0.75rem;
+  }
+}
 ul.traces { list-style: none; margin: 0; padding: 0; font-size: 0.85rem; li { padding: 0.25rem 0; } }
 code { font-size: 0.8rem; color: $muted; }
 

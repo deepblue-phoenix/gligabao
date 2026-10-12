@@ -33,6 +33,7 @@ type (
 	Run        = relational.ExperimentRun
 	RunEval    = relational.ExperimentRunEval
 	Trajectory = relational.ExperimentTrajectory
+	Artifact   = relational.ExperimentArtifact
 )
 
 // Statuses of runs and evals.
@@ -100,7 +101,9 @@ type EvalResult struct {
 	Answer      string
 	// Problems are the failed checks. Err is why the eval could not be run to the end. Without either the eval passed.
 	Problems []string
-	Err      error
+	// PassedChecks are the checks that held.
+	PassedChecks []string
+	Err          error
 	// StartedAt and FinishedAt bound the eval; zero values are replaced by the time of Record.
 	StartedAt, FinishedAt time.Time
 	// Trajectories are the ATIF trajectories of the eval's calls in order (remember calls, then the recall), also
@@ -108,6 +111,11 @@ type EvalResult struct {
 	// were not stored); it is kept as a reference next to each trajectory ID.
 	Trajectories  []*atif.Trajectory
 	TrajectoryDir string
+	// Artifacts[i] are the artifacts of Trajectories[i]: the input artifact of a remember call, the artifacts the
+	// answer was sourced from for a recall. May be shorter than Trajectories (or nil).
+	Artifacts [][]Artifact
+	// Graph is the JSON snapshot of the knowledge graph the eval built (a memory.GraphExport); empty = none.
+	Graph []byte
 }
 
 // Status is the status the eval is recorded with.
@@ -135,22 +143,27 @@ func (t *Tracker) Record(ctx context.Context, r EvalResult) (*RunEval, error) {
 		r.StartedAt = r.FinishedAt
 	}
 	e := RunEval{
-		RunID:      t.Run.ID,
-		Suite:      r.Suite,
-		Name:       r.Name,
-		Status:     r.Status(),
-		Answer:     r.Answer,
-		Problems:   r.Problems,
-		StartedAt:  relational.Normalize(r.StartedAt),
-		FinishedAt: relational.Normalize(r.FinishedAt),
+		RunID:        t.Run.ID,
+		Suite:        r.Suite,
+		Name:         r.Name,
+		Status:       r.Status(),
+		Answer:       r.Answer,
+		Problems:     r.Problems,
+		PassedChecks: r.PassedChecks,
+		Graph:        string(r.Graph),
+		StartedAt:    relational.Normalize(r.StartedAt),
+		FinishedAt:   relational.Normalize(r.FinishedAt),
 	}
 	if r.Err != nil {
 		e.Error = r.Err.Error()
 	}
-	for _, traj := range r.Trajectories {
+	for i, traj := range r.Trajectories {
 		ref, err := TrajectoryRef(traj, r.TrajectoryDir)
 		if err != nil {
 			return nil, err
+		}
+		if i < len(r.Artifacts) {
+			ref.Artifacts = r.Artifacts[i]
 		}
 		e.Steps += ref.Steps
 		e.CostUSD += ref.CostUSD
@@ -210,6 +223,12 @@ func Runs(ctx context.Context, d *sql.DB, experimentID int64) ([]Run, error) {
 // GetRun returns a run with all its evals and their trajectory references, or ErrNotFound.
 func GetRun(ctx context.Context, d *sql.DB, runID int64) (*Run, error) {
 	return relational.GetExperimentRun(ctx, d, runID)
+}
+
+// RunEvalGraph returns the JSON snapshot of the knowledge graph an eval built (as stored by Record), or ErrNotFound.
+func RunEvalGraph(ctx context.Context, d *sql.DB, runEvalID int64) ([]byte, error) {
+	g, err := relational.GetExperimentRunEvalGraph(ctx, d, runEvalID)
+	return []byte(g), err
 }
 
 // FindTrajectory returns the reference to the trajectory with the given ATIF trajectory_id, or ErrNotFound. Its
