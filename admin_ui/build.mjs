@@ -1,5 +1,5 @@
 // Builds the admin UI into dist/: tsc (src/*.ts -> dist/*.js), sass (src/styles.scss -> dist/styles.css)
-// and a copy of src/index.html. Run via `npm run build` (run_build.sh does this).
+// a copy of src/index.html and of the d3 bundle (loaded as a global by index.html). Run via `npm run build` (run_build.sh does this).
 import { execFileSync } from "node:child_process";
 import { copyFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -17,5 +17,6 @@ for (const f of readdirSync(dist)) {
 
 execFileSync(bin("tsc"), ["-p", root], { stdio: "inherit" });
 execFileSync(bin("sass"), ["--no-source-map", "--style=compressed", join(root, "src/styles.scss"), join(dist, "styles.css")], { stdio: "inherit" });
+copyFileSync(join(root, "node_modules/d3/dist/d3.min.js"), join(dist, "d3.min.js"));
 copyFileSync(join(root, "src/index.html"), join(dist, "index.html"));
 console.log("Built admin_ui/dist");

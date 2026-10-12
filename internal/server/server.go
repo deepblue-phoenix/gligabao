@@ -114,6 +114,7 @@ func registerAdminUI(mux *http.ServeMux, d *db.DB, extra []admin.Named) {
 	dbs := append([]admin.Named{{Name: "standard", DB: d.Relational}}, extra...)
 	mux.HandleFunc("GET /v1/gb/admin/api/databases", admin.Databases(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/overview", admin.OverviewOf(dbs))
+	mux.HandleFunc("GET /v1/gb/admin/api/graph", admin.GraphOf(dbs))
 	mux.Handle("GET /v1/gb/admin/", http.StripPrefix("/v1/gb/admin/", http.FileServerFS(adminui.Assets())))
 	mux.HandleFunc("GET /v1/gb/admin", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/v1/gb/admin/", http.StatusMovedPermanently)

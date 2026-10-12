@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>gligabao admin</title>
     <link rel="stylesheet" href="styles.css" />
+    <script src="d3.min.js"></script>
     <script type="module" src="main.js"></script>
   </head>
   <body>
@@ -20,5 +21,14 @@
       </form>
       <div id="databases"></div>
     </main>
+
+    <dialog id="graph-modal" class="modal">
+      <div class="modal-head">
+        <h2 id="graph-title">Graph</h2>
+        <span id="graph-status" class="muted"></span>
+        <button type="button" id="graph-close">Close</button>
+      </div>
+      <div id="graph-canvas"></div>
+    </dialog>
   </body>
 </html>

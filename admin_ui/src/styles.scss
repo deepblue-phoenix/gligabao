@@ -105,3 +105,91 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 
 .error { color: $err; }
+
+button.small { padding: 0.15rem 0.6rem; font-size: 0.8rem; }
+
+.modal {
+  width: min(96vw, 80rem);
+  height: 88vh;
+  padding: 0;
+  background: $surface;
+  color: $text;
+  border: 1px solid $border;
+  border-radius: 8px;
+
+  &[open] { display: flex; flex-direction: column; }
+  &::backdrop { background: rgba(0, 0, 0, 0.6); }
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid $border;
+
+  h2 { margin: 0; font-size: 1rem; }
+  .muted, .error { flex: 1; font-size: 0.85rem; }
+}
+
+#graph-canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: $bg;
+
+  svg { display: block; cursor: grab; }
+}
+
+.graph-link { stroke: $muted; stroke-opacity: 0.6; stroke-width: 1; }
+.graph-link.expired { stroke-dasharray: 3 3; stroke-opacity: 0.3; }
+.graph-node { cursor: pointer; circle { stroke: $bg; stroke-width: 1.5; } }
+.graph-label { font-size: 6px; fill: $text; pointer-events: none; paint-order: stroke; stroke: $bg; stroke-width: 2px; }
+
+.graph-legend {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.4rem 0.6rem;
+  background: rgba($surface, 0.85);
+  border: 1px solid $border;
+  border-radius: 6px;
+  font-size: 0.75rem;
+
+  i { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-right: 0.4rem; }
+}
+.graph-edge-label { fill: $accent; font-size: 5px; }
+
+.graph-node.selected circle { stroke: $text; stroke-width: 2.5; }
+
+.graph-overlay {
+  position: absolute;
+  width: 20rem;
+  max-height: 70%;
+  overflow-y: auto;
+  padding: 0.6rem 0.8rem;
+  background: rgba($surface, 0.96);
+  border: 1px solid $accent;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  font-size: 0.78rem;
+
+  &[hidden] { display: none; }
+  h3 { margin: 0 0 0.4rem; font-size: 0.95rem; }
+  h4 { margin: 0.6rem 0 0.3rem; font-size: 0.8rem; color: $muted; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 0.1rem 0.6rem; margin: 0; }
+  dt { color: $muted; }
+  dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+}
+
+.graph-fact {
+  padding: 0.35rem 0;
+  border-top: 1px solid $border;
+
+  &.expired strong { opacity: 0.6; text-decoration: line-through; }
+}
+
+.graph-span { margin-left: 0.5rem; color: $muted; font-style: italic; }

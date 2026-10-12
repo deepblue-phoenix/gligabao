@@ -1,5 +1,7 @@
 // gligabao admin UI: a health indicator, system totals and the datasets of all users. Talks to the server's own HTTP API.
 
+import { initGraphModal, showGraph } from "./graph.js";
+
 interface Dataset {
   user_id: string;
   name: string;
@@ -37,7 +39,7 @@ async function checkHealth(): Promise<void> {
 
 const COLUMNS: [string, boolean][] = [
   ["User", false], ["Name", false], ["Description", false], ["Tags", false],
-  ["Artifacts", true], ["Entities", true], ["Edges", true],
+  ["Artifacts", true], ["Entities", true], ["Edges", true], ["Graph", false],
 ];
 
 // Builds the card of one database (system totals + datasets table) and returns the parts that get filled in later.
@@ -108,6 +110,14 @@ async function loadOverview(name: string, s: ReturnType<typeof makeSection>, inc
         td.className = "num";
         td.textContent = String(n);
       }
+      const graphCell = tr.insertCell();
+      if (!ds.deleted) {
+        const btn = graphCell.appendChild(document.createElement("button"));
+        btn.type = "button";
+        btn.className = "small";
+        btn.textContent = "View graph";
+        btn.addEventListener("click", () => void showGraph(name, ds.user_id, ds.name));
+      }
     }
     s.status.textContent = `${list.length} dataset${list.length === 1 ? "" : "s"}.`;
     s.table.hidden = false;
@@ -148,6 +158,7 @@ $<HTMLFormElement>("datasets-form").addEventListener("submit", (e) => {
 });
 $("include-deleted").addEventListener("change", () => void loadAll(includeDeleted()));
 
+initGraphModal();
 void loadAll(false);
 void checkHealth();
 setInterval(() => void checkHealth(), 15000);

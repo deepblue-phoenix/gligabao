@@ -59,3 +59,30 @@ func testOverview(t *testing.T, d *sql.DB) {
 		t.Fatalf("include_deleted: %+v", all.Datasets)
 	}
 }
+
+// TestGraph checks that the admin graph endpoint returns the graph of a live dataset and 404s otherwise.
+func TestGraph(t *testing.T) { dbtest.Run(t, testGraph) }
+
+func testGraph(t *testing.T, d *sql.DB) {
+	if _, err := memory.CreateDataset(context.Background(), d, "alice", "a", "", nil); err != nil {
+		t.Fatal(err)
+	}
+	get := func(url string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		admin.Graph(d)(w, httptest.NewRequest(http.MethodGet, url, nil))
+		return w
+	}
+	w := get("/admin/api/graph?user_id=alice&dataset=a")
+	if w.Code != http.StatusOK {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	var g struct {
+		Entities, Edges []any
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &g); err != nil || g.Entities == nil || g.Edges == nil {
+		t.Fatalf("bad graph: %v %s", err, w.Body)
+	}
+	if w := get("/admin/api/graph?user_id=alice&dataset=nope"); w.Code != http.StatusNotFound {
+		t.Fatalf("unknown dataset: %d", w.Code)
+	}
+}
