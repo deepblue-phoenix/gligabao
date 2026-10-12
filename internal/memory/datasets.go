@@ -114,19 +114,42 @@ func ListDatasets(ctx context.Context, d *sql.DB, userID string, includeDeleted 
 	return relational.ListDatasets(ctx, d, userID, includeDeleted)
 }
 
-// VectorNamespace is the vector store namespace that holds the embeddings of a dataset. It is keyed by the dataset's
-// ID (not its name), so datasets never share vectors, and a name reused after a soft delete starts with an empty
-// namespace. In the chromem store a namespace is one collection.
-func VectorNamespace(datasetID int64) string {
-	return "dataset-" + strconv.FormatInt(datasetID, 10)
+// VectorIndex is the purpose of a set of vectors of a dataset: what they are embeddings of. Each index of a
+// dataset is a dataset of its own in the vector store (see VectorDataset).
+type VectorIndex string
+
+// The vector indexes of a gligabao dataset.
+const (
+	// IndexEntities holds one vector per entity (vector ID EntityVectorID).
+	IndexEntities VectorIndex = "entities"
+	// IndexEdges holds one vector per edge, embedding the fact's description (vector ID EdgeVectorID).
+	IndexEdges VectorIndex = "edges"
+)
+
+// VectorIndexes lists every vector index a dataset can have.
+var VectorIndexes = []VectorIndex{IndexEntities, IndexEdges}
+
+// VectorDataset is the name, in the vector store (package vector), of the dataset that holds one index of a
+// gligabao dataset: "dataset-<id>-<index>", e.g. "dataset-7-entities". The vector store isolates vectors by
+// dataset: a chromem collection, a Pinecone namespace. A gligabao dataset has one per purpose, and the name says
+// which one it is. It is keyed by the gligabao dataset's ID (not its name), so datasets never share vectors, and a
+// name reused after a soft delete starts with empty ones.
+func VectorDataset(datasetID int64, index VectorIndex) string {
+	return "dataset-" + strconv.FormatInt(datasetID, 10) + "-" + string(index)
 }
+
+// EntityDataset is the vector store dataset of the entity index of a dataset (VectorDataset with IndexEntities).
+func EntityDataset(datasetID int64) string { return VectorDataset(datasetID, IndexEntities) }
+
+// EdgeDataset is the vector store dataset of the edge index of a dataset (VectorDataset with IndexEdges).
+func EdgeDataset(datasetID int64) string { return VectorDataset(datasetID, IndexEdges) }
 
 // DeleteDataset soft-deletes userID's live dataset called name (sets deleted = 1) and removes the dataset's vectors
 // from vectors, which may be nil. The relational rows are kept; the vectors are not, because a deleted dataset can
 // never be read again (its name gets a new dataset with a new ID) and they would only occupy memory/storage.
 // It returns ErrDatasetNotFound if there is no such dataset.
 //
-// A failure to remove the vectors does not fail the call (the dataset is deleted either way and the namespace is
+// A failure to remove the vectors does not fail the call (the dataset is deleted either way and the vector datasets are
 // unreachable); it is logged.
 func DeleteDataset(ctx context.Context, d *sql.DB, vectors vector.Store, userID, name string) error {
 	userID, err := ResolveUserID(userID)
@@ -147,8 +170,10 @@ func DeleteDataset(ctx context.Context, d *sql.DB, vectors vector.Store, userID,
 		return err
 	}
 	if vectors != nil {
-		if err := vectors.DeleteAll(ctx, VectorNamespace(id)); err != nil {
-			log.WithError(err).WithField("dataset_id", id).Error("delete dataset: removing vectors")
+		for _, idx := range VectorIndexes {
+			if err := vectors.DeleteAll(ctx, VectorDataset(id, idx)); err != nil {
+				log.WithError(err).WithFields(log.Fields{"dataset_id": id, "index": idx}).Error("delete dataset: removing vectors")
+			}
 		}
 	}
 	return nil

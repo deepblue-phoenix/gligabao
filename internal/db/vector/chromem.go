@@ -18,7 +18,7 @@ import (
 const (
 	// chromemMemory is the path that selects a throwaway in-memory store.
 	chromemMemory = ":memory:"
-	// defaultCollection is the chromem collection used for the empty namespace (chromem rejects empty names).
+	// defaultCollection is the chromem collection used for the empty dataset name (chromem rejects empty names).
 	defaultCollection = "_default"
 	// dimensionsFile records the embedding size next to the persisted collections.
 	dimensionsFile = "gligabao-dimensions"
@@ -29,10 +29,10 @@ const (
 )
 
 // Chromem is a Store backed by chromem-go (https://github.com/philippgille/chromem-go), a pure-Go
-// (no CGO) embeddable vector database. Each namespace is one chromem collection; with a directory
+// (no CGO) embeddable vector database. Each dataset is one chromem collection (named after the dataset); with a directory
 // the collections are persisted there (one file per vector) and loaded into memory on startup.
 //
-// Search is an exhaustive cosine-similarity scan of the namespace, and Match.Score is the cosine
+// Search is an exhaustive cosine-similarity scan of the dataset, and Match.Score is the cosine
 // similarity, like a Pinecone cosine index. Stored vectors are normalized to unit length, so
 // Match.Values are normalized too.
 type Chromem struct {
@@ -91,25 +91,25 @@ func checkDimensions(path string, dims int) error {
 // Close is a no-op: chromem writes every change to disk immediately.
 func (s *Chromem) Close() error { return nil }
 
-func collectionName(namespace string) string {
-	if namespace == "" {
+func collectionName(dataset string) string {
+	if dataset == "" {
 		return defaultCollection
 	}
-	return namespace
+	return dataset
 }
 
-// collection returns the namespace's collection, creating it if create is set (nil otherwise if missing).
+// collection returns the dataset's collection, creating it if create is set (nil otherwise if missing).
 // Embeddings are always supplied by the caller, so the collection's embedding function is a stub.
-func (s *Chromem) collection(namespace string, create bool) (*chromem.Collection, error) {
+func (s *Chromem) collection(dataset string, create bool) (*chromem.Collection, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	name := collectionName(namespace)
+	name := collectionName(dataset)
 	if c := s.db.GetCollection(name, noEmbed); c != nil || !create {
 		return c, nil
 	}
 	c, err := s.db.CreateCollection(name, nil, noEmbed)
 	if err != nil {
-		return nil, fmt.Errorf("vector: create namespace %q: %w", namespace, err)
+		return nil, fmt.Errorf("vector: create dataset %q: %w", dataset, err)
 	}
 	return c, nil
 }
@@ -121,7 +121,7 @@ func noEmbed(context.Context, string) ([]float32, error) {
 //---------------------------------------------------------------------------------------------
 
 // Upsert inserts or overwrites vectors by ID. All vectors are validated before any is written.
-func (s *Chromem) Upsert(ctx context.Context, namespace string, vectors []Vector) error {
+func (s *Chromem) Upsert(ctx context.Context, dataset string, vectors []Vector) error {
 	docs := make([]chromem.Document, len(vectors))
 	for i, v := range vectors {
 		if v.ID == "" {
@@ -142,7 +142,7 @@ func (s *Chromem) Upsert(ctx context.Context, namespace string, vectors []Vector
 	if len(docs) == 0 {
 		return nil
 	}
-	c, err := s.collection(namespace, true)
+	c, err := s.collection(dataset, true)
 	if err != nil {
 		return err
 	}
@@ -159,7 +159,7 @@ func (s *Chromem) Upsert(ctx context.Context, namespace string, vectors []Vector
 // opts.Filter supports equality only: {"key": value} or {"key": {"$eq": value}}, all of which
 // must match (values are compared by their printed form). It is applied before the search, so
 // up to TopK matches are returned whenever that many vectors match.
-func (s *Chromem) Query(ctx context.Context, namespace string, vector []float32, opts QueryOptions) ([]Match, error) {
+func (s *Chromem) Query(ctx context.Context, dataset string, vector []float32, opts QueryOptions) ([]Match, error) {
 	if len(vector) != s.dims {
 		return nil, fmt.Errorf("vector: query vector has %d dimensions, want %d", len(vector), s.dims)
 	}
@@ -174,7 +174,7 @@ func (s *Chromem) Query(ctx context.Context, namespace string, vector []float32,
 	if topK <= 0 {
 		topK = defaultTopK
 	}
-	c, err := s.collection(namespace, false)
+	c, err := s.collection(dataset, false)
 	if err != nil {
 		return nil, err
 	}
@@ -206,11 +206,11 @@ func (s *Chromem) Query(ctx context.Context, namespace string, vector []float32,
 }
 
 // Delete removes vectors by ID. Unknown IDs are ignored.
-func (s *Chromem) Delete(ctx context.Context, namespace string, ids []string) error {
+func (s *Chromem) Delete(ctx context.Context, dataset string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	c, err := s.collection(namespace, false)
+	c, err := s.collection(dataset, false)
 	if err != nil || c == nil {
 		return err
 	}
@@ -220,12 +220,12 @@ func (s *Chromem) Delete(ctx context.Context, namespace string, ids []string) er
 	return nil
 }
 
-// DeleteAll removes every vector in the namespace.
-func (s *Chromem) DeleteAll(_ context.Context, namespace string) error {
+// DeleteAll removes every vector in the dataset by deleting its collection.
+func (s *Chromem) DeleteAll(_ context.Context, dataset string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.db.DeleteCollection(collectionName(namespace)); err != nil {
-		return fmt.Errorf("vector: delete namespace: %w", err)
+	if err := s.db.DeleteCollection(collectionName(dataset)); err != nil {
+		return fmt.Errorf("vector: delete dataset: %w", err)
 	}
 	return nil
 }

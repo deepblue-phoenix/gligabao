@@ -238,7 +238,7 @@ func (o *Outcome) Cost() (usd float64, steps int) {
 func run(c Case, runID int64, database *db.DB, llm memory.LLM, verbose bool) (out *Outcome, err error) {
 	out = &Outcome{TrajectoryDir: atifDir}
 
-	srv := httptest.NewServer(server.NewHandler(database, llm, true, false))
+	srv := httptest.NewServer(server.NewHandler(database, llm, nil, true, false))
 	defer srv.Close()
 
 	dataset := datasetName(c, runID)

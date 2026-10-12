@@ -6,6 +6,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -25,6 +26,9 @@ type Option func(*callOptions)
 type callOptions struct {
 	eval bool
 	dir  string
+
+	vectors  vector.Store // see WithVectors
+	embedder Embedder
 }
 
 func newCallOptions(opts []Option) callOptions {

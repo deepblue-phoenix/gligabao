@@ -68,5 +68,5 @@ Example. "Alice works at Acme" is remembered twice as artifacts 1 and 2:
 - There is no endpoint to read, list or delete artifacts yet. The raw text can only be read from the database.
 - `recall` does not use artifact text: it answers from the graph only.
 - The `gb_edge_artifacts` and `gb_entity_artifacts` links are stored but not exposed by the API yet.
-- Artifacts are not embedded: `remember` does not write vectors yet.
+- Artifacts are not embedded: `remember` embeds the entities and edges extracted from them (see [vectors.md](vectors.md)), not the artifact text.
 - A text that is too long for one extraction call fails the whole request (`502`); artifacts are not chunked.

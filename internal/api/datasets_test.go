@@ -44,7 +44,7 @@ func testDatasets(t *testing.T, d *sql.DB) {
 	mux := http.NewServeMux()
 	vectors, err := vector.NewChromem(":memory:", 2)
 	must0(t, err)
-	Register(mux, &db.DB{Relational: d, Graph: d, Vector: vectors}, echoLLM{})
+	Register(mux, &db.DB{Relational: d, Graph: d, Vector: vectors}, echoLLM{}, nil)
 
 	do := func(method, path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
@@ -173,18 +173,18 @@ func testDatasets(t *testing.T, d *sql.DB) {
 	want(do("POST", "/v1/gb/recall", `{"user_id":"u1","query":"Alice?","dataset":"ds1"}`), 200)
 	want(do("POST", "/v1/gb/recall", `{"user_id":"u1","query":"Alice?"}`), 200)
 
-	// Each dataset has its own vector namespace, keyed by dataset ID.
+	// Each dataset has its own vector dataset, keyed by dataset ID.
 	for _, name := range []string{"ds1", "ds2"} {
-		must(vectors.Upsert(ctx, memory.VectorNamespace(dataset("u1", name).ID), []vector.Vector{{ID: "v", Values: []float32{1, 0}}}))
+		must(vectors.Upsert(ctx, memory.EntityDataset(dataset("u1", name).ID), []vector.Vector{{ID: "v", Values: []float32{1, 0}}}))
 	}
 	vectorCount := func(dsID int64) int {
 		t.Helper()
-		got, err := vectors.Query(ctx, memory.VectorNamespace(dsID), []float32{1, 0}, vector.QueryOptions{})
+		got, err := vectors.Query(ctx, memory.EntityDataset(dsID), []float32{1, 0}, vector.QueryOptions{})
 		must(err)
 		return len(got)
 	}
-	if vectorCount(ds.ID) != 1 || vectorCount(dataset("u1", "ds2").ID) != 1 || memory.VectorNamespace(ds.ID) == memory.VectorNamespace(dataset("u1", "ds2").ID) {
-		t.Fatal("datasets do not have separate vector namespaces")
+	if vectorCount(ds.ID) != 1 || vectorCount(dataset("u1", "ds2").ID) != 1 || memory.EntityDataset(ds.ID) == memory.EntityDataset(dataset("u1", "ds2").ID) {
+		t.Fatal("datasets do not have separate vector datasets")
 	}
 
 	// Soft delete: the row stays with deleted = 1, but the dataset is gone for remember/recall/list.

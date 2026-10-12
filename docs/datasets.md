@@ -1,6 +1,6 @@
 # Datasets
 
-A dataset is a hard logical container. Every artifact, entity and edge belongs to exactly one dataset (`dataset_id`), and datasets never share nodes: the same entity remembered into two datasets is two separate rows, and recall only sees the graph of the dataset it targets. Its embeddings are isolated the same way, in a vector namespace of its own (see [Vectors](#vectors)).
+A dataset is a hard logical container. Every artifact, entity and edge belongs to exactly one dataset (`dataset_id`), and datasets never share nodes: the same entity remembered into two datasets is two separate rows, and recall only sees the graph of the dataset it targets. Its embeddings are isolated the same way, in vector datasets of its own, one per purpose (see [Vectors](#vectors)).
 
 - Every dataset is owned by a `user_id`, and that ownership covers all its artifacts, entities and edges. All endpoints require `user_id` (see [identity.md](identity.md)) (a non-empty string of at most 128 bytes): in the JSON body for `POST`, in the query string for `GET` and `DELETE`. A missing or invalid one returns `400`. A user only sees and changes their own datasets; names are unique per user, so two users can each have a dataset called `work`.
 - `remember` and `recall` take an optional `dataset` (name). If omitted, the default dataset `main` is used. There is no dataset until it is created: `main` is created for a user by their first `remember`.
@@ -10,19 +10,26 @@ A dataset is a hard logical container. Every artifact, entity and edge belongs t
 
 ## Vectors
 
-Each dataset has one namespace in the vector store (chromem by default, or Pinecone; see [vectors.md](vectors.md)), named `dataset-<id>` after the dataset's numeric `id` (`memory.VectorNamespace`). It is keyed by the id, not the name, so:
+The vector store isolates vectors by dataset too (a chromem collection, a Pinecone namespace; see [vectors.md](vectors.md#datasets)): a gligabao dataset keeps its vectors in one vector dataset per purpose, an index, named `dataset-<id>-<index>` after the dataset's numeric `id` (`memory.VectorDataset`):
+
+| Index | Vector dataset | Vectors |
+|---|---|---|
+| entities | `dataset-<id>-entities` | one per entity, ID `entity-<entity id>`, metadata `kind`, `entity_id`, `name`, `type`; text `Name (type): description` |
+| edges | `dataset-<id>-edges` | one per edge, ID `edge-<edge id>`, metadata `kind`, `edge_id`, `source`, `target`, `relation`; text is the edge's description |
+
+They are keyed by the id, not the name, so:
 
 - datasets never share vectors, including two users' datasets with the same name;
-- a name reused after a delete is a new dataset with a new id, and so a new, empty namespace;
-- no setup is needed on create: the namespace appears with the first vector stored in it, and a dataset without vectors has no namespace.
+- a name reused after a delete is a new dataset with a new id, and so new, empty vector datasets;
+- no setup is needed on create: a vector dataset appears with the first vector stored in it, and a dataset without vectors has none.
 
-`remember` and `recall` do not read or write vectors yet.
+`remember` writes both indexes, see [vectors.md](vectors.md#what-remember-writes) for what is embedded and how a failure is handled. `recall` does not read vectors yet.
 
 ## Soft delete
 
 Deleting sets `deleted = true` (and `deleted_at`); no relational rows are removed. A deleted dataset is invisible to list, remember and recall. Its name can be reused: creating (or remembering into) that name makes a new dataset with a new id and an empty graph. The old rows stay in the database under the old id.
 
-The vectors are the exception: they are removed with the dataset (`DeleteAll` on its `dataset-<id>` namespace), since a deleted dataset can never be read again and its vectors could only take up memory or storage. If that cleanup fails, the delete still succeeds (the namespace is unreachable) and the error is logged.
+The vectors are the exception: they are removed with the dataset (`DeleteAll` on each of its `dataset-<id>-<index>` vector datasets), since a deleted dataset can never be read again and its vectors could only take up memory or storage. If that cleanup fails, the delete still succeeds (the vector datasets are unreachable) and the error is logged.
 
 ## Endpoints
 

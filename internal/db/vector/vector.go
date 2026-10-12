@@ -31,15 +31,16 @@ type QueryOptions struct {
 	IncludeValues bool
 }
 
-// Store is a vector database. Namespaces isolate vectors from each other; gligabao
-// uses one namespace per dataset. An empty namespace is the backend's default one.
+// Store is a vector database. A dataset is gligabao's unit of vector isolation: vectors of different datasets
+// never mix, and a query only sees the vectors of the dataset it names. Each backend maps it to its own isolation
+// primitive: a chromem collection, a Pinecone namespace. An empty dataset name is the backend's default one.
 type Store interface {
 	// Upsert inserts or overwrites vectors by ID.
-	Upsert(ctx context.Context, namespace string, vectors []Vector) error
+	Upsert(ctx context.Context, dataset string, vectors []Vector) error
 	// Query returns the vectors closest to the given embedding, best first.
-	Query(ctx context.Context, namespace string, vector []float32, opts QueryOptions) ([]Match, error)
+	Query(ctx context.Context, dataset string, vector []float32, opts QueryOptions) ([]Match, error)
 	// Delete removes vectors by ID. Unknown IDs are ignored.
-	Delete(ctx context.Context, namespace string, ids []string) error
-	// DeleteAll removes every vector in the namespace.
-	DeleteAll(ctx context.Context, namespace string) error
+	Delete(ctx context.Context, dataset string, ids []string) error
+	// DeleteAll removes every vector in the dataset (and the dataset itself, if the backend has such a thing).
+	DeleteAll(ctx context.Context, dataset string) error
 }

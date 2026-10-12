@@ -77,6 +77,7 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 		Addr:         cfg.Addr(),
 		DB:           db.ConfigFrom(cfg, opts.DBPath, opts.VectorDir),
 		AnthropicKey: cfg.AnthropicKey,
+		OpenAIKey:    cfg.OpenAIKey,
 		Prices:       aiPrices(cfg),
 
 		TrajectoryDir: opts.TrajectoryDir,

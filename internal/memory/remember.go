@@ -139,6 +139,10 @@ type Result struct {
 	Entities         []Entity  `json:"entities"`
 	Edges            []Edge    `json:"edges"`             // the facts from this text in their stored state
 	InvalidatedEdges []int64   `json:"invalidated_edges"` // IDs of edges closed because of this artifact
+	// EmbeddedEntities and EmbeddedEdges are the number of entity and edge embeddings written to the dataset's
+	// entity and edge indexes (0 unless the call was made with WithVectors).
+	EmbeddedEntities int `json:"embedded_entities,omitempty"`
+	EmbeddedEdges    int `json:"embedded_edges,omitempty"`
 	// TrajectoryID and Trajectory are the ATIF trajectory of this call (also stored in TrajectoryDir); only set when
 	// the call was made with WithEval.
 	TrajectoryID string           `json:"trajectory_id,omitempty"`
@@ -198,13 +202,14 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, kind, te
 	if err != nil {
 		return nil, err
 	}
-	res, err = Store(ctx, d, userID, dataset, kind, text, ref, now, ex, plan)
+	res, err = Store(ctx, d, userID, dataset, kind, text, ref, now, ex, plan, opts...)
 	if err != nil {
 		return nil, err
 	}
 	tr.tool("Stored the artifact, entities and edges.", "store_artifact",
 		map[string]any{"user_id": userID, "dataset": dataset, "kind": kind},
-		map[string]any{"artifact_id": res.ArtifactID, "entities": res.Entities, "edges": res.Edges, "invalidated_edges": res.InvalidatedEdges})
+		map[string]any{"artifact_id": res.ArtifactID, "entities": res.Entities, "edges": res.Edges, "invalidated_edges": res.InvalidatedEdges,
+			"embedded_entities": res.EmbeddedEntities, "embedded_edges": res.EmbeddedEdges})
 	return res, nil
 }
 
@@ -212,7 +217,15 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, kind, te
 // deduplicated within the dataset by (normalized name, type); nothing is shared across datasets. Edges are
 // written according to plan (see EdgePlan); now is the system time stamped on them. Edges naming an unlisted
 // entity create it with type "other".
-func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan) (*Result, error) {
+//
+// With WithVectors, every entity this artifact mentions through the extraction (created or already stored) and
+// every edge it states (new, or the stored one it duplicates) is also embedded: entities from their stored name,
+// type and description into the dataset's entity index, edges from their description into its edge index (see
+// VectorDataset). The embedding is computed before the transaction commits, so an embedder failure stores
+// nothing; the vectors are written right after the commit, so a vector store failure returns an error after the
+// relational data is saved (the vectors are written again the next time the entity or fact is mentioned).
+func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan, opts ...Option) (*Result, error) {
+	co := newCallOptions(opts)
 	userID, err := ResolveUserID(userID)
 	if err != nil {
 		return nil, err
@@ -250,6 +263,8 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 	}
 	ids := map[string]int64{} // normalized name -> entity id (first listed type wins for edge lookup)
 	seenEnt := map[string]bool{}
+	var embedIDs []int64 // entities to embed: those upserted by this call, once each
+	seenID := map[int64]bool{}
 
 	// Every entity this artifact touches is linked to it, whether it was created now or already existed: entities
 	// are shared across artifacts (deduplicated per dataset), so the link, not the entity row, records provenance.
@@ -257,6 +272,10 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		id, err := tx.UpsertEntity(ctx, dsID, e, key(e.Name))
 		if err != nil {
 			return 0, err
+		}
+		if !seenID[id] {
+			seenID[id] = true
+			embedIDs = append(embedIDs, id)
 		}
 		return id, tx.LinkEntity(ctx, id, artID)
 	}
@@ -306,8 +325,18 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		return nil, err
 	}
 
+	pv, err := prepareVectors(ctx, d, tx, co, dsID, embedIDs, out.Edges)
+	if err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
+	}
+	if err := pv.write(ctx); err != nil {
+		return nil, err
+	}
+	if pv != nil {
+		out.EmbeddedEntities, out.EmbeddedEdges = pv.entities, pv.edges
 	}
 	return out, nil
 }

@@ -4,7 +4,7 @@ port = 7878
 # API keys default to the ANTHROPIC_API_KEY / OPENAI_API_KEY / PINECONE_API_KEY environment variables;
 # a value set here overrides the environment.
 # anthropic_api_key = ""
-# openai_api_key = ""
+# openai_api_key = ""   # used by remember to embed entities and edges; without it no vectors are stored
 
 # Main database backend: "sqlite" (default; the file is set with `serve --db`) or "postgres".
 db_backend = "sqlite"
@@ -14,8 +14,8 @@ db_backend = "sqlite"
 # Vector store for embeddings: "chromem" (default; chromem-go, pure Go, a local directory next to the main
 # database, see `serve --vector-dir`) or "pinecone".
 vector_store = "chromem"
-# Embedding size (text-embedding-3-small = 1536). Fixed when the chromem vector store is created;
-# a Pinecone index must be created with the same dimension.
+# Embedding size (text-embedding-3-small = 1536); also the output size requested from OpenAI. Fixed when the
+# chromem vector store is created; a Pinecone index must be created with the same dimension.
 embedding_dimensions = 1536
 
 # Pinecone settings (used when vector_store = "pinecone"). The host is the index's data-plane host from the

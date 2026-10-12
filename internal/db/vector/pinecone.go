@@ -21,7 +21,9 @@ const (
 	defaultTopK    = 10
 )
 
-// Pinecone is a Store backed by a Pinecone index, using its REST data-plane API.
+// Pinecone is a Store backed by a Pinecone index, using its REST data-plane API. A dataset is a Pinecone
+// namespace of the index (its own isolation primitive: namespaces are created on first write and are searched
+// separately), so all datasets share one index and its dimension.
 type Pinecone struct {
 	apiKey     string
 	baseURL    string
@@ -66,7 +68,7 @@ func NewPinecone(apiKey, indexHost string, opts ...PineconeOption) (*Pinecone, e
 //---------------------------------------------------------------------------------------------
 
 // Upsert inserts or overwrites vectors by ID.
-func (p *Pinecone) Upsert(ctx context.Context, namespace string, vectors []Vector) error {
+func (p *Pinecone) Upsert(ctx context.Context, dataset string, vectors []Vector) error {
 	for i, v := range vectors {
 		if v.ID == "" {
 			return fmt.Errorf("vector: vector %d has no ID", i)
@@ -77,7 +79,7 @@ func (p *Pinecone) Upsert(ctx context.Context, namespace string, vectors []Vecto
 	}
 	for start := 0; start < len(vectors); start += maxUpsertBatch {
 		end := min(start+maxUpsertBatch, len(vectors))
-		req := pcUpsertRequest{Namespace: namespace, Vectors: make([]pcVector, 0, end-start)}
+		req := pcUpsertRequest{Namespace: dataset, Vectors: make([]pcVector, 0, end-start)}
 		for _, v := range vectors[start:end] {
 			req.Vectors = append(req.Vectors, pcVector{ID: v.ID, Values: v.Values, Metadata: v.Metadata})
 		}
@@ -89,7 +91,7 @@ func (p *Pinecone) Upsert(ctx context.Context, namespace string, vectors []Vecto
 }
 
 // Query returns the vectors closest to the given embedding, best first.
-func (p *Pinecone) Query(ctx context.Context, namespace string, vector []float32, opts QueryOptions) ([]Match, error) {
+func (p *Pinecone) Query(ctx context.Context, dataset string, vector []float32, opts QueryOptions) ([]Match, error) {
 	if len(vector) == 0 {
 		return nil, errors.New("vector: empty query vector")
 	}
@@ -99,7 +101,7 @@ func (p *Pinecone) Query(ctx context.Context, namespace string, vector []float32
 	}
 	var resp pcQueryResponse
 	err := p.do(ctx, "/query", pcQueryRequest{
-		Namespace:       namespace,
+		Namespace:       dataset,
 		Vector:          vector,
 		TopK:            topK,
 		Filter:          opts.Filter,
@@ -117,19 +119,19 @@ func (p *Pinecone) Query(ctx context.Context, namespace string, vector []float32
 }
 
 // Delete removes vectors by ID.
-func (p *Pinecone) Delete(ctx context.Context, namespace string, ids []string) error {
+func (p *Pinecone) Delete(ctx context.Context, dataset string, ids []string) error {
 	for start := 0; start < len(ids); start += maxDeleteBatch {
 		end := min(start+maxDeleteBatch, len(ids))
-		if err := p.do(ctx, "/vectors/delete", pcDeleteRequest{Namespace: namespace, IDs: ids[start:end]}, nil); err != nil {
+		if err := p.do(ctx, "/vectors/delete", pcDeleteRequest{Namespace: dataset, IDs: ids[start:end]}, nil); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// DeleteAll removes every vector in the namespace. A namespace that does not exist is not an error.
-func (p *Pinecone) DeleteAll(ctx context.Context, namespace string) error {
-	err := p.do(ctx, "/vectors/delete", pcDeleteRequest{Namespace: namespace, DeleteAll: true}, nil)
+// DeleteAll removes every vector in the dataset's namespace. A dataset that does not exist is not an error.
+func (p *Pinecone) DeleteAll(ctx context.Context, dataset string) error {
+	err := p.do(ctx, "/vectors/delete", pcDeleteRequest{Namespace: dataset, DeleteAll: true}, nil)
 	var he *pineconeError
 	if errors.As(err, &he) && he.Status == http.StatusNotFound {
 		return nil

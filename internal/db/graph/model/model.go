@@ -160,6 +160,8 @@ type Tx interface {
 	LinkEdge(ctx context.Context, edgeID, artifactID int64) error
 	// FindEntityID returns the oldest entity of the dataset with the given nameKey, of any type.
 	FindEntityID(ctx context.Context, dsID int64, nameKey string) (int64, error)
+	// GetEntity reads one entity (its stored state), inside the dataset only. It returns ErrNotFound if there is none.
+	GetEntity(ctx context.Context, dsID, id int64) (*EvidenceEntity, error)
 	// InsertEdge stores an edge and returns its ID.
 	InsertEdge(ctx context.Context, e NewEdge) (int64, error)
 	// MergeDuplicateEdge records the end of an already stored fact if it has none yet (invalidAt may be nil).

@@ -1,0 +1,149 @@
+package memory
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"strconv"
+
+	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+
+	log "github.com/sirupsen/logrus"
+)
+
+// Embedder turns texts into embeddings (see ai.Embedder), one per text and in the same order, and reports the usage.
+type Embedder interface {
+	EmbedBatchUsage(ctx context.Context, texts []string) ([][]float32, *ai.EmbedUsage, error)
+}
+
+// WithVectors makes Remember embed the entities and edges it stores and write the embeddings to store, into the
+// dataset's vector datasets (one per index, see VectorDataset). Without it (or if either argument is nil)
+// Remember does not touch vectors.
+func WithVectors(store vector.Store, emb Embedder) Option {
+	return func(o *callOptions) { o.vectors, o.embedder = store, emb }
+}
+
+// Values of the metadata key "kind" of the vectors written here (one per index).
+const (
+	VectorKindEntity = "entity"
+	VectorKindEdge   = "edge"
+)
+
+// EntityVectorID is the vector ID of an entity in the entity index of its dataset.
+func EntityVectorID(entityID int64) string {
+	return VectorKindEntity + "-" + strconv.FormatInt(entityID, 10)
+}
+
+// EdgeVectorID is the vector ID of an edge in the edge index of its dataset.
+func EdgeVectorID(edgeID int64) string { return VectorKindEdge + "-" + strconv.FormatInt(edgeID, 10) }
+
+// entityText is the text that is embedded for an entity.
+func entityText(e *graph.EvidenceEntity) string {
+	s := e.Name + " (" + e.Type + ")"
+	if e.Description != "" {
+		s += ": " + e.Description
+	}
+	return s
+}
+
+// edgeText is the text that is embedded for an edge: the fact as a sentence.
+func edgeText(e *Edge) string {
+	if e.Description != "" {
+		return e.Description
+	}
+	return e.Source + " " + e.Relation + " " + e.Target + "."
+}
+
+//---------------------------------------------------------------------------------------------
+
+// pendingVectors are the embeddings of a Store call, computed before its transaction commits and written after it.
+type pendingVectors struct {
+	store vector.Store
+	// byDataset are the vectors to write, per vector store dataset (index).
+	byDataset map[string][]vector.Vector
+	entities  int
+	edges     int
+}
+
+// prepareVectors embeds the entities (IDs, in order, without duplicates; read as stored through tx) and the edges
+// of dataset dsID in one request. It returns nil if opts ask for no vectors or there is nothing to embed. The
+// embedding cost is recorded as it is spent, like the LLM's.
+func prepareVectors(ctx context.Context, d *sql.DB, tx graph.Tx, o callOptions, dsID int64, entityIDs []int64, edges []Edge) (*pendingVectors, error) {
+	if o.vectors == nil || o.embedder == nil || len(entityIDs)+len(edges) == 0 {
+		return nil, nil
+	}
+	ents := make([]*graph.EvidenceEntity, 0, len(entityIDs))
+	texts := make([]string, 0, len(entityIDs)+len(edges))
+	for _, id := range entityIDs {
+		e, err := tx.GetEntity(ctx, dsID, id)
+		if err != nil {
+			return nil, err
+		}
+		ents = append(ents, e)
+		texts = append(texts, entityText(e))
+	}
+	for i := range edges {
+		texts = append(texts, edgeText(&edges[i]))
+	}
+
+	embs, usage, err := o.embedder.EmbedBatchUsage(ctx, texts)
+	if err != nil {
+		return nil, fmt.Errorf("memory: embed entities and edges: %w", err)
+	}
+	if len(embs) != len(texts) {
+		return nil, fmt.Errorf("memory: embedder returned %d embeddings for %d texts", len(embs), len(texts))
+	}
+	if usage != nil {
+		// Detached from ctx so a cancelled request still records money that was spent.
+		if err := RecordCall(context.WithoutCancel(ctx), d, CallRemember, usage.Provider, usage.Model, usage.InputTokens, 0, usage.CostUSD); err != nil {
+			log.WithError(err).WithField("model", usage.Model).Error("record embedding call")
+		}
+	}
+
+	p := &pendingVectors{store: o.vectors, byDataset: map[string][]vector.Vector{}, entities: len(ents), edges: len(edges)}
+	for i, e := range ents {
+		ns := EntityDataset(dsID)
+		p.byDataset[ns] = append(p.byDataset[ns], vector.Vector{
+			ID:     EntityVectorID(e.ID),
+			Values: embs[i],
+			Metadata: map[string]any{
+				"kind":      VectorKindEntity,
+				"entity_id": e.ID,
+				"name":      e.Name,
+				"type":      e.Type,
+			},
+		})
+	}
+	for i, e := range edges {
+		ns := EdgeDataset(dsID)
+		p.byDataset[ns] = append(p.byDataset[ns], vector.Vector{
+			ID:     EdgeVectorID(e.ID),
+			Values: embs[len(ents)+i],
+			// Only what never changes: the validity of a fact does, so it is read from the database.
+			Metadata: map[string]any{
+				"kind":     VectorKindEdge,
+				"edge_id":  e.ID,
+				"source":   e.Source,
+				"target":   e.Target,
+				"relation": e.Relation,
+			},
+		})
+	}
+	return p, nil
+}
+
+// write upserts the vectors into their datasets. Vectors are keyed by entity / edge ID, so writing them again
+// (when an entity or fact is mentioned by a later artifact) overwrites rather than duplicates.
+func (p *pendingVectors) write(ctx context.Context) error {
+	if p == nil {
+		return nil
+	}
+	for ns, vs := range p.byDataset {
+		if err := p.store.Upsert(ctx, ns, vs); err != nil {
+			return fmt.Errorf("memory: store vectors in dataset %s: %w", ns, err)
+		}
+	}
+	return nil
+}

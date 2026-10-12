@@ -34,14 +34,19 @@ type rememberRequest struct {
 //---------------------------------------------------------------------------------------------
 
 // Handler serves POST /v1/gb/remember.
-func Handler(d *sql.DB, llm memory.LLM) http.HandlerFunc { return handler(d, llm, false) }
+// mo are extra options for every memory.Remember call (e.g. memory.WithVectors).
+func Handler(d *sql.DB, llm memory.LLM, mo ...memory.Option) http.HandlerFunc {
+	return handler(d, llm, false, mo)
+}
 
 // EvalHandler serves POST /v1/gb/eval/remember: like Handler, but the response also carries the call's ATIF
 // trajectory. It is only registered when the server runs in eval mode.
-func EvalHandler(d *sql.DB, llm memory.LLM) http.HandlerFunc { return handler(d, llm, true) }
+func EvalHandler(d *sql.DB, llm memory.LLM, mo ...memory.Option) http.HandlerFunc {
+	return handler(d, llm, true, mo)
+}
 
-func handler(d *sql.DB, llm memory.LLM, eval bool) http.HandlerFunc {
-	var opts []memory.Option
+func handler(d *sql.DB, llm memory.LLM, eval bool, mo []memory.Option) http.HandlerFunc {
+	opts := append([]memory.Option(nil), mo...)
 	if eval {
 		opts = append(opts, memory.WithEval())
 	}

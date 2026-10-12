@@ -50,7 +50,7 @@ func TestChromemUpsertQuery(t *testing.T) {
 		t.Fatalf("got %+v", got[0])
 	}
 
-	// Namespaces are isolated.
+	// Datasets are isolated.
 	got, _ = s.Query(ctx, "other", []float32{1, 0, 0}, QueryOptions{})
 	if len(got) != 1 || got[0].ID != "x" || got[0].Score > 0.01 {
 		t.Fatalf("got %+v", got)
@@ -101,7 +101,7 @@ func TestChromemDelete(t *testing.T) {
 		t.Fatalf("got %v", ids(got))
 	}
 	if got, _ = s.Query(ctx, "m", []float32{1, 0, 0}, QueryOptions{}); len(got) != 1 {
-		t.Fatalf("other namespace affected: %v", ids(got))
+		t.Fatalf("other dataset affected: %v", ids(got))
 	}
 }
 

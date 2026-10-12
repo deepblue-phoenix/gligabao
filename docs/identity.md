@@ -34,7 +34,7 @@ Anything else is allowed (UUIDs, emails, numeric IDs as strings, ...). IDs are c
 
 A [dataset](datasets.md) is owned by the user who created it, and that ownership covers everything in it. Artifacts, entities and edges belong to a dataset (`dataset_id`), so they have no `user_id` of their own: they belong to whoever owns the dataset. The owner is shown as `user_id` on dataset objects and in the `remember` response.
 
-- Dataset names are unique per user. Two users can each have a dataset called `work`, and they are unrelated: separate ids, separate graphs and separate vector namespaces.
+- Dataset names are unique per user. Two users can each have a dataset called `work`, and they are unrelated: separate ids, separate graphs and separate vector datasets.
 - `list` returns only the caller's datasets.
 - `remember` and `recall` look the dataset up by `(user_id, name)`. `remember` creates it for that user if missing. `recall` returns `404` if the user has no live dataset with that name, even when another user has one.
 - `delete` soft-deletes only the caller's dataset, and returns `404` for another user's.

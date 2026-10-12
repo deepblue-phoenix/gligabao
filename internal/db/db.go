@@ -76,7 +76,7 @@ type DB struct {
 	// the relational database, so this is the same handle as Relational; a dedicated graph database will get its
 	// own client here.
 	Graph *sql.DB
-	// Vector is the embedding store (one namespace per dataset). Never nil on an opened DB.
+	// Vector is the embedding store (isolated per dataset). Never nil on an opened DB.
 	Vector vector.Store
 
 	// Backend is the relational/graph backend in use (config.DBBackendSQLite or config.DBBackendPostgres).

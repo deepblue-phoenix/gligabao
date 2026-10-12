@@ -61,6 +61,9 @@ type Options struct {
 	DB db.Config
 	// AnthropicKey is the Anthropic API key. If empty, LLM endpoints return 503.
 	AnthropicKey string
+	// OpenAIKey is the OpenAI API key used to embed entities (dimensions: DB.EmbeddingDimensions). If empty,
+	// remember stores no embeddings.
+	OpenAIKey string
 	// Prices overrides/extends the built-in model price table used for call costs. May be nil.
 	Prices map[string]ai.Price
 	// TrajectoryDir is where the ATIF trajectories of the eval endpoints are stored as JSON.
@@ -85,9 +88,9 @@ type Options struct {
 const EvalDBName = "eval"
 
 // NewHandler builds the HTTP handler for the given databases and LLM.
-// llm may be nil, in which case endpoints requiring it return 503. The eval endpoints are registered only if eval is true,
+// llm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities. The eval endpoints are registered only if eval is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary.
-func NewHandler(d *db.DB, llm memory.LLM, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
+func NewHandler(d *db.DB, llm memory.LLM, emb memory.Embedder, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "gligabao is running")
@@ -99,9 +102,9 @@ func NewHandler(d *db.DB, llm memory.LLM, eval, adminUI bool, extraAdminDBs ...a
 		}
 		fmt.Fprintln(w, "ok")
 	})
-	api.Register(mux, d, llm)
+	api.Register(mux, d, llm, emb)
 	if eval {
-		api.RegisterEval(mux, d, llm)
+		api.RegisterEval(mux, d, llm, emb)
 	}
 	if adminUI {
 		registerAdminUI(mux, d, extraAdminDBs)
@@ -203,6 +206,13 @@ func Run(ctx context.Context, opts Options) error {
 		llm = c
 	}
 
+	var emb memory.Embedder
+	if e, err := ai.NewEmbedder(opts.OpenAIKey, ai.WithEmbedPrices(ai.NewPriceTable(opts.Prices)), ai.WithEmbedDimensions(database.EmbeddingDimensions)); err != nil {
+		log.WithError(err).Warn("embedder unavailable; /v1/gb/remember will not embed entities")
+	} else {
+		emb = e
+	}
+
 	var extra []admin.Named
 	if opts.AdminUI && opts.EvalDBPath != "" {
 		if database.Backend != config.DBBackendSQLite {
@@ -216,7 +226,7 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 
-	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(database, llm, opts.Eval, opts.AdminUI, extra...)}
+	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(database, llm, emb, opts.Eval, opts.AdminUI, extra...)}
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

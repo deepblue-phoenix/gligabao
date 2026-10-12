@@ -24,9 +24,9 @@ func testEvalEndpoints(t *testing.T, d *sql.DB) {
 	}}
 	database := &db.DB{Relational: d, Graph: d}
 	plain, eval := http.NewServeMux(), http.NewServeMux()
-	Register(plain, database, llm)
-	Register(eval, database, llm)
-	RegisterEval(eval, database, llm)
+	Register(plain, database, llm, nil)
+	Register(eval, database, llm, nil)
+	RegisterEval(eval, database, llm, nil)
 
 	do := func(mux *http.ServeMux, path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()

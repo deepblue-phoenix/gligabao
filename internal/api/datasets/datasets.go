@@ -66,7 +66,7 @@ func List(d *sql.DB) http.HandlerFunc {
 }
 
 // Delete serves DELETE /v1/gb/datasets/{name}?user_id=...: a soft delete (the row is kept with deleted = true).
-// The dataset's vector namespace (memory.VectorNamespace) is removed from vectors, which may be nil.
+// The dataset's vectors (one vector store dataset per index, memory.VectorDataset) are removed from vectors, which may be nil.
 func Delete(d *sql.DB, vectors vector.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		err := memory.DeleteDataset(r.Context(), d, vectors, r.URL.Query().Get("user_id"), r.PathValue("name"))

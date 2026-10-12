@@ -30,7 +30,7 @@ func TestUpsertBatchesAndHeaders(t *testing.T) {
 		var req pcUpsertRequest
 		json.NewDecoder(r.Body).Decode(&req)
 		if req.Namespace != "main" {
-			t.Errorf("namespace %q", req.Namespace)
+			t.Errorf("dataset (namespace) %q", req.Namespace)
 		}
 		batches = append(batches, len(req.Vectors))
 		w.Write([]byte(`{"upsertedCount":1}`))
@@ -85,7 +85,7 @@ func TestDelete(t *testing.T) {
 	}
 	status = http.StatusNotFound
 	if err := p.DeleteAll(context.Background(), "n"); err != nil {
-		t.Fatalf("missing namespace should be ignored: %v", err)
+		t.Fatalf("missing dataset should be ignored: %v", err)
 	}
 	if err := p.Delete(context.Background(), "n", []string{"a"}); err == nil {
 		t.Fatal("expected error")

@@ -1,6 +1,6 @@
 # POST /v1/gb/remember
 
-Takes a block of text, stores it as an [artifact](artifacts.md), uses an LLM to extract a small knowledge graph (entities and edges) whose edges are bi-temporal facts, and stores everything in SQLite. The temporal model is described in [temporal.md](temporal.md).
+Takes a block of text, stores it as an [artifact](artifacts.md), uses an LLM to extract a small knowledge graph (entities and edges) whose edges are bi-temporal facts, stores everything in the database, and embeds the entities and edges into the dataset's [vector datasets](vectors.md#datasets). The temporal model is described in [temporal.md](temporal.md).
 
 ## Request
 
@@ -40,7 +40,9 @@ content-type: application/json
     {"id": 2, "source": "Alice", "target": "Paris", "relation": "lives_in", "description": "Alice lives in Paris.",
      "valid_at": "2025-01-31T09:00:00Z", "created_at": "2025-01-31T09:00:05Z"}
   ],
-  "invalidated_edges": []
+  "invalidated_edges": [],
+  "embedded_entities": 3,
+  "embedded_edges": 2
 }
 ```
 
@@ -48,13 +50,14 @@ content-type: application/json
 - `entities` are what the LLM extracted from this text (after normalization).
 - `edges` are the facts from this text in their stored state; if a new edge repeated a stored one, the stored edge is returned. Edge fields `invalid_at`, `expired_at` are omitted when null.
 - `invalidated_edges` lists IDs of edges closed because of this artifact (see [temporal.md](temporal.md)). Always an array.
+- `embedded_entities` and `embedded_edges` are the number of vectors written to the dataset's entity and edge indexes (see [Embed](#how-it-works)). Both are omitted when nothing was embedded (no `OPENAI_API_KEY`). `embedded_entities` counts the entities the text mentions, including those that already existed, and `embedded_edges` the facts it states, including repeated ones; they can be more than the number of new rows.
 
 Errors are returned as `{"error": "..."}`:
 
 | Status | Meaning |
 | ------ | ------- |
 | 400 | Invalid JSON body, `text` is empty, `kind` is not `knowledge` or `episode`, or `reference_time` is not RFC 3339 |
-| 502 | An LLM call failed, or its output could not be parsed or was truncated |
+| 502 | An LLM call failed, or its output could not be parsed or was truncated; or embedding failed (nothing stored); or the vectors could not be written to the vector store (after the database was saved, see [Embed](#how-it-works)) |
 | 503 | LLM not configured (`ANTHROPIC_API_KEY` is not set) |
 
 ## How it works
@@ -75,7 +78,9 @@ All steps use the LLM from `internal/ai` (Anthropic Messages API, default model 
    - entities are upserted into `gb_entities` and linked to the artifact in `gb_entity_artifacts`, including stored entities that an edge names but the extraction did not list;
    - edges are inserted into `gb_edges`, anchored to the artifact that created them (`artifact_id`) and linked to it in `gb_edge_artifacts`; a duplicate of a stored edge is not inserted but the new artifact is added to that edge's `gb_edge_artifacts` links; duplicates are merged and contradicted edges are closed (see [temporal.md](temporal.md)).
 
-The request makes 1 LLM call, or 2 when stored edges need to be compared. If any step fails, nothing is stored.
+4. **Embed** (`WithVectors`, 1 embeddings request, only if an OpenAI key is configured): the entities this text mentions and the edges it states are embedded together with `text-embedding-3-small`: an entity as `Name (type): description`, an edge as its description. This happens inside step 3, after the rows are written and before the transaction commits, so a failure stores nothing. Right after the commit the vectors are written, with `Upsert`, to the dataset's two vector datasets: `dataset-<id>-entities` (vector `entity-<entity id>`) and `dataset-<id>-edges` (vector `edge-<edge id>`). Vectors are keyed by ID, so remembering an entity or fact again overwrites its vector. Details, metadata and failure handling: [vectors.md](vectors.md#what-remember-writes).
+
+The request makes 1 LLM call, or 2 when stored edges need to be compared, plus 1 embeddings request. If any step before the commit fails, nothing is stored. If the vector write after the commit fails, the request returns `502` but the artifact, entities and edges are already saved; the vectors are written again the next time the entities and facts are mentioned.
 
 ### Normalization and deduplication
 
@@ -84,7 +89,7 @@ The request makes 1 LLM call, or 2 when stored edges need to be compared. If any
 - Entities are unique on (lowercased, whitespace-collapsed name, type). Re-submitting an entity updates its description only if the new description is non-empty.
 - Edge endpoints resolve to an entity from this text, else a stored entity of any type with the same name, else a new entity of type `other`.
 - A new edge with the same source, target and relation as a stored edge that is still true is a duplicate and is not inserted again.
-- Sending the same text twice adds a second `gb_artifacts` row (linking the existing entities and edges to it) but no duplicate entities or edges.
+- Sending the same text twice adds a second `gb_artifacts` row (linking the existing entities and edges to it) but no duplicate entities or edges, and no duplicate vectors: the existing ones are overwritten.
 
 ## Schema
 
@@ -106,17 +111,22 @@ Foreign keys are enabled on every connection. Deleting an entity cascades to its
 
 **Why entities have a link table.** An edge is created by exactly one artifact, so it carries a plain `artifact_id`. An entity is not: entities are deduplicated per dataset on (`name_key`, `type`), so "Alice" mentioned in artifacts 1, 5 and 9 is one row, and one `artifact_id` column could only remember where she first appeared. The many-to-many `gb_entity_artifacts` table records every artifact an entity was inferred from, so you can ask which artifacts ground an entity and which entities an artifact contributes to, and an artifact can be removed without losing entities that other artifacts still support.
 
+The vectors are not in these tables: they live in the vector store, isolated per dataset, one vector dataset per index (see [vectors.md](vectors.md#datasets)). They are keyed by the `id` of the entity or edge row.
+
 Existing database files are not migrated when the schema changes: delete the file and the server recreates it.
 
 ## Configuration
 
 - `ANTHROPIC_API_KEY`: required for this endpoint. If missing, the server still starts and the endpoint returns 503.
+- `OPENAI_API_KEY` (or `openai_api_key` in `gligabao.toml`): used to embed entities and edges. Optional: without it the endpoint works and stores the graph, but no vectors, and the server logs a warning at startup.
+- `embedding_dimensions` (default 1536) is the size of the embeddings; `vector_store` selects where they go (`chromem`, or `pinecone`). See [vectors.md](vectors.md).
 - `gligabao serve --db <path>` selects the SQLite file (default `bin/gligabao.db`).
 
 ## Example
 
 ```sh
 export ANTHROPIC_API_KEY=...
+export OPENAI_API_KEY=...    # optional: embeds the entities and edges
 ./run_build.sh
 ./bin/gligabao serve &
 curl -s localhost:7878/v1/gb/remember \
@@ -126,4 +136,6 @@ curl -s localhost:7878/v1/gb/remember \
 ## Limitations
 
 - No authentication.
+- The database and the vector store are not updated atomically (see [vectors.md](vectors.md#what-remember-writes)), and there is no re-embedding of entities and edges stored before embedding was configured.
+- The embeddings are not used by `recall` yet.
 - Very long input can exceed the LLM's output limit; the request then fails with 502 and nothing is stored.

@@ -479,6 +479,21 @@ func (t *Tx) FindEntityID(ctx context.Context, dsID int64, nameKey string) (int6
 	return id, err
 }
 
+func (t *Tx) GetEntity(ctx context.Context, dsID, id int64) (*model.EvidenceEntity, error) {
+	e := &model.EvidenceEntity{}
+	err := t.tx.QueryRowContext(ctx, `
+		SELECT id, name, type, description
+		FROM gb_entities
+		WHERE dataset_id = ? AND id = ?`, dsID, id).Scan(&e.ID, &e.Name, &e.Type, &e.Description)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, model.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get entity %d: %w", id, err)
+	}
+	return e, nil
+}
+
 func (t *Tx) InsertEdge(ctx context.Context, e model.NewEdge) (int64, error) {
 	res, err := t.tx.ExecContext(ctx, `
 		INSERT INTO gb_edges (dataset_id, source_id, target_id, relation, description, valid_at, invalid_at, created_at, artifact_id)
