@@ -116,6 +116,30 @@ func ListDatasets(ctx context.Context, d *sql.DB, userID string, includeDeleted 
 	return out, rows.Err()
 }
 
+// ListAllDatasets returns the datasets of all users, oldest first; deleted ones only if includeDeleted.
+func ListAllDatasets(ctx context.Context, d *sql.DB, includeDeleted bool) ([]model.Dataset, error) {
+	q := datasetSelect
+	if !includeDeleted {
+		q += `
+		WHERE NOT deleted`
+	}
+	rows, err := d.QueryContext(ctx, q+`
+		ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("list all datasets: %w", err)
+	}
+	defer rows.Close()
+	out := []model.Dataset{}
+	for rows.Next() {
+		ds, err := scanDataset(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *ds)
+	}
+	return out, rows.Err()
+}
+
 // DeleteDataset soft-deletes userID's live dataset called name. It returns model.ErrNotFound if there is none.
 func DeleteDataset(ctx context.Context, d *sql.DB, userID, name string) error {
 	res, err := d.ExecContext(ctx, `

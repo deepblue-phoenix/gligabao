@@ -26,7 +26,8 @@ body {
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  gap: 1rem;
   padding: 0.75rem 1.5rem;
   background: $surface;
   border-bottom: 1px solid $border;
@@ -88,6 +89,19 @@ table {
 
   th, td { text-align: left; padding: 0.45rem 0.5rem; border-bottom: 1px solid $border; }
   th { color: $muted; font-weight: 600; }
+}
+
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+main > .card + .card { margin-top: 1rem; }
+
+.stats {
+  display: flex;
+  gap: 2rem;
+  margin: 0;
+
+  dt { color: $muted; font-size: 0.8rem; }
+  dd { margin: 0; font-size: 1.5rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 }
 
 .error { color: $err; }

@@ -95,6 +95,18 @@ func ListDatasets(ctx context.Context, d *sql.DB, userID string, includeDeleted 
 	return nil, unsupported()
 }
 
+// ListAllDatasets returns the datasets of all users, oldest first; deleted ones only if includeDeleted.
+// It is meant for admin tooling; the user-facing API only ever lists a single user's datasets.
+func ListAllDatasets(ctx context.Context, d *sql.DB, includeDeleted bool) ([]Dataset, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListAllDatasets(ctx, d, includeDeleted)
+	case config.DBBackendPostgres:
+		return postgres.ListAllDatasets(ctx, d, includeDeleted)
+	}
+	return nil, unsupported()
+}
+
 // DeleteDataset soft-deletes userID's live dataset called name. It returns ErrNotFound if there is none.
 func DeleteDataset(ctx context.Context, d *sql.DB, userID, name string) error {
 	switch backend() {

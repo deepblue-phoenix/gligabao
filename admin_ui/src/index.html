@@ -15,16 +15,24 @@
 
     <main>
       <section class="card">
+        <h2>System</h2>
+        <dl class="stats">
+          <div><dt>Artifacts</dt><dd id="total-artifacts">–</dd></div>
+          <div><dt>Entities</dt><dd id="total-entities">–</dd></div>
+          <div><dt>Edges</dt><dd id="total-edges">–</dd></div>
+        </dl>
+      </section>
+
+      <section class="card">
         <h2>Datasets</h2>
         <form id="datasets-form" class="row">
-          <input id="user-id" name="user_id" placeholder="user id" autocomplete="off" required />
           <label class="check"><input type="checkbox" id="include-deleted" /> include deleted</label>
-          <button type="submit">Load</button>
+          <button type="submit">Refresh</button>
         </form>
         <p id="datasets-status" class="muted"></p>
         <table id="datasets-table" hidden>
           <thead>
-            <tr><th>Name</th><th>Description</th><th>Tags</th></tr>
+            <tr><th>User</th><th>Name</th><th>Description</th><th>Tags</th><th class="num">Artifacts</th><th class="num">Entities</th><th class="num">Edges</th></tr>
           </thead>
           <tbody></tbody>
         </table>

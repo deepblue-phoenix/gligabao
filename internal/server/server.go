@@ -16,6 +16,7 @@ import (
 	adminui "github.com/deepblue-phoenix/gligabao/admin_ui"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api"
+	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	log "github.com/sirupsen/logrus"
@@ -90,18 +91,19 @@ func NewHandler(d *db.DB, llm memory.LLM, eval, adminUI bool) http.Handler {
 		api.RegisterEval(mux, d, llm)
 	}
 	if adminUI {
-		registerAdminUI(mux)
+		registerAdminUI(mux, d)
 	}
 	return mux
 }
 
 // registerAdminUI serves the embedded admin UI assets under /v1/gb/admin/. It is a no-op (with a warning) if the
 // assets were not built into the binary (see admin_ui/ and run_build.sh).
-func registerAdminUI(mux *http.ServeMux) {
+func registerAdminUI(mux *http.ServeMux, d *db.DB) {
 	if !adminui.Available() {
 		log.Warn("admin_ui is enabled but the web assets are not embedded in this binary; build with ./run_build.sh (admin UI build enabled)")
 		return
 	}
+	mux.HandleFunc("GET /v1/gb/admin/api/overview", admin.Overview(d.Relational))
 	mux.Handle("GET /v1/gb/admin/", http.StripPrefix("/v1/gb/admin/", http.FileServerFS(adminui.Assets())))
 	mux.HandleFunc("GET /v1/gb/admin", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/v1/gb/admin/", http.StatusMovedPermanently)

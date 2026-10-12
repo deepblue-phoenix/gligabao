@@ -251,6 +251,18 @@ func DatasetCounts(ctx context.Context, d *sql.DB, dsID int64) (model.Counts, er
 	return c, err
 }
 
+// TotalCounts returns the number of artifacts, entities and edges in the whole system (all datasets, deleted
+// ones included, since their rows are kept).
+func TotalCounts(ctx context.Context, d *sql.DB) (model.Counts, error) {
+	var c model.Counts
+	err := d.QueryRowContext(ctx, `
+		SELECT
+			(SELECT COUNT(*) FROM gb_artifacts),
+			(SELECT COUNT(*) FROM gb_entities),
+			(SELECT COUNT(*) FROM gb_edges)`).Scan(&c.Artifacts, &c.Entities, &c.Edges)
+	return c, err
+}
+
 // ListArtifacts returns the artifacts of the dataset by ID.
 func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.Artifact, error) {
 	rows, err := d.QueryContext(ctx, `

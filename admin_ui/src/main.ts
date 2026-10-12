@@ -1,9 +1,19 @@
-// gligabao admin UI: a health indicator and a dataset list. Talks to the server's own HTTP API.
+// gligabao admin UI: a health indicator, system totals and the datasets of all users. Talks to the server's own HTTP API.
 
 interface Dataset {
+  user_id: string;
   name: string;
   description?: string;
   tags?: string[];
+  deleted: boolean;
+  artifacts: number;
+  entities: number;
+  edges: number;
+}
+
+interface Overview {
+  datasets: Dataset[];
+  totals: { artifacts: number; entities: number; edges: number };
 }
 
 function $<T extends HTMLElement>(id: string): T {
@@ -25,7 +35,7 @@ async function checkHealth(): Promise<void> {
   }
 }
 
-async function loadDatasets(userId: string, includeDeleted: boolean): Promise<void> {
+async function loadOverview(includeDeleted: boolean): Promise<void> {
   const status = $("datasets-status");
   const table = $<HTMLTableElement>("datasets-table");
   const body = table.tBodies[0];
@@ -34,17 +44,21 @@ async function loadDatasets(userId: string, includeDeleted: boolean): Promise<vo
   table.hidden = true;
   body.replaceChildren();
 
-  const params = new URLSearchParams({ user_id: userId });
+  const params = new URLSearchParams();
   if (includeDeleted) params.set("include_deleted", "true");
 
   try {
-    const res = await fetch(`/v1/gb/datasets?${params}`);
+    const res = await fetch(`api/overview?${params}`);
     if (!res.ok) {
       const msg = await res.text();
       throw new Error(`${res.status}: ${msg.trim()}`);
     }
-    const data: unknown = await res.json();
-    const list: Dataset[] = Array.isArray(data) ? data : ((data as { datasets?: Dataset[] }).datasets ?? []);
+    const data = (await res.json()) as Overview;
+    $("total-artifacts").textContent = String(data.totals.artifacts);
+    $("total-entities").textContent = String(data.totals.entities);
+    $("total-edges").textContent = String(data.totals.edges);
+
+    const list = data.datasets ?? [];
     if (list.length === 0) {
       status.textContent = "No datasets.";
       return;
@@ -52,9 +66,15 @@ async function loadDatasets(userId: string, includeDeleted: boolean): Promise<vo
     for (const ds of list) {
       const tr = body.insertRow();
       // textContent only: never inject server data as HTML.
-      tr.insertCell().textContent = ds.name;
+      tr.insertCell().textContent = ds.user_id;
+      tr.insertCell().textContent = ds.deleted ? `${ds.name} (deleted)` : ds.name;
       tr.insertCell().textContent = ds.description ?? "";
       tr.insertCell().textContent = (ds.tags ?? []).join(", ");
+      for (const n of [ds.artifacts, ds.entities, ds.edges]) {
+        const td = tr.insertCell();
+        td.className = "num";
+        td.textContent = String(n);
+      }
     }
     status.textContent = `${list.length} dataset${list.length === 1 ? "" : "s"}.`;
     table.hidden = false;
@@ -64,10 +84,14 @@ async function loadDatasets(userId: string, includeDeleted: boolean): Promise<vo
   }
 }
 
+const includeDeleted = (): boolean => $<HTMLInputElement>("include-deleted").checked;
+
 $<HTMLFormElement>("datasets-form").addEventListener("submit", (e) => {
   e.preventDefault();
-  void loadDatasets($<HTMLInputElement>("user-id").value.trim(), $<HTMLInputElement>("include-deleted").checked);
+  void loadOverview(includeDeleted());
 });
+$("include-deleted").addEventListener("change", () => void loadOverview(includeDeleted()));
 
+void loadOverview(false);
 void checkHealth();
 setInterval(() => void checkHealth(), 15000);
