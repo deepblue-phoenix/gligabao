@@ -75,7 +75,9 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 
 | call | tool | what it records |
 |---|---|---|
-| remember | `load_candidates` | how many stored facts could duplicate or contradict the new ones |
+| remember | `search_similar_entities` | (only with vectors, on an existing dataset) the endpoints of the new facts that were embedded, and the stored entities they matched by similarity (aliases) with their scores; `model_name` and `metrics` for the embedding. An error here is recorded but not fatal |
+| remember | `load_candidates` | the stored facts that could duplicate or contradict the new ones, each with how it was found (`found_by`: `name`, `similar`, `name+similar`) |
+| remember | `embed` | the embedding request (only with a vector store): the texts of the entities and edges, with `model_name` and `metrics` (tokens, cost), so the embedding cost counts in `final_metrics` |
 | remember | `store_artifact` | `artifact_id`, entities, edges and `invalidated_edges` that were stored |
 | recall | `retrieve_graph` | the subgraph handed to the LLM, as rendered in its prompt |
 
@@ -83,9 +85,10 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 
 1. `user`: the text.
 2. LLM call: entity/edge extraction (`system`, `user`, `agent`).
-3. tool `load_candidates`.
+3. tool `search_similar_entities` (only when vectors are enabled and the dataset exists), then tool `load_candidates`.
 4. LLM call: duplicate/contradiction resolution (only when there are stored facts to compare against; see [temporal.md](temporal.md)).
-5. tool `store_artifact`.
+5. tool `embed` (only when vectors are enabled).
+6. tool `store_artifact`.
 
 ### Recall
 

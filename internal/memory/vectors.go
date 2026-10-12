@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
@@ -40,10 +41,12 @@ func EntityVectorID(entityID int64) string {
 func EdgeVectorID(edgeID int64) string { return VectorKindEdge + "-" + strconv.FormatInt(edgeID, 10) }
 
 // entityText is the text that is embedded for an entity.
-func entityText(e *graph.EvidenceEntity) string {
-	s := e.Name + " (" + e.Type + ")"
-	if e.Description != "" {
-		s += ": " + e.Description
+func entityText(e *graph.EvidenceEntity) string { return entityLabel(e.Name, e.Type, e.Description) }
+
+func entityLabel(name, typ, description string) string {
+	s := name + " (" + typ + ")"
+	if description != "" {
+		s += ": " + description
 	}
 	return s
 }
@@ -54,6 +57,91 @@ func edgeText(e *Edge) string {
 		return e.Description
 	}
 	return e.Source + " " + e.Relation + " " + e.Target + "."
+}
+
+//---------------------------------------------------------------------------------------------
+
+const (
+	// similarEntityTopK is how many stored entities are fetched per endpoint of a new fact.
+	similarEntityTopK = 3
+	// similarEntityMinScore is the cosine similarity a stored entity needs to count as the same thing under another
+	// name. A first guess: tune it with the evals.
+	similarEntityMinScore = 0.75
+)
+
+// similarEntity is a stored entity found by similarity for an endpoint of a new fact.
+type similarEntity struct {
+	endpoint string // the name the new fact uses
+	name     string // the stored entity's name
+	typ      string
+	score    float32
+}
+
+// findSimilarEntities looks for stored entities of dataset dsID that may be the endpoints of the new edges of ex under
+// another name (aliases, spelling): each endpoint is embedded (like an entity is, see entityText) and searched in the
+// dataset's entity index. Stored entities with the same normalized name as the endpoint are not reported (the exact
+// lookup already covers them), and neither are those scoring below similarEntityMinScore.
+//
+// It returns the texts that were embedded (empty if no search was made: no vectors configured, or no endpoints) and
+// the usage of the embedding request, which is already recorded as spent. It is only a hint for choosing candidate
+// facts: the caller treats an error as "no matches".
+func findSimilarEntities(ctx context.Context, d *sql.DB, o callOptions, dsID int64, ex *Extraction) (found []similarEntity, texts []string, usage *ai.EmbedUsage, err error) {
+	if o.vectors == nil || o.embedder == nil {
+		return nil, nil, nil, nil
+	}
+	typeOf := map[string]string{}
+	descOf := map[string]string{}
+	for _, e := range ex.Entities {
+		k := key(e.Name)
+		if _, ok := typeOf[k]; !ok {
+			typeOf[k], descOf[k] = normType(e.Type), strings.TrimSpace(e.Description)
+		}
+	}
+	var endpoints []string
+	seen := map[string]bool{}
+	for _, e := range ex.Edges {
+		for _, n := range []string{e.Source, e.Target} {
+			n = strings.TrimSpace(n)
+			if k := key(n); k != "" && !seen[k] {
+				seen[k] = true
+				endpoints = append(endpoints, n)
+				typ := typeOf[k]
+				if typ == "" {
+					typ = "other"
+				}
+				texts = append(texts, entityLabel(n, typ, descOf[k]))
+			}
+		}
+	}
+	if len(texts) == 0 {
+		return nil, nil, nil, nil
+	}
+
+	embs, usage, err := o.embedder.EmbedBatchUsage(ctx, texts)
+	recordEmbedUsage(ctx, d, usage) // no transaction is open here
+	if err != nil {
+		return nil, texts, usage, fmt.Errorf("memory: embed entities to search: %w", err)
+	}
+	if len(embs) != len(texts) {
+		return nil, texts, usage, fmt.Errorf("memory: embedder returned %d embeddings for %d texts", len(embs), len(texts))
+	}
+	got := map[string]bool{}
+	for i, ep := range endpoints {
+		ms, err := o.vectors.Query(ctx, EntityDataset(dsID), embs[i], vector.QueryOptions{TopK: similarEntityTopK})
+		if err != nil {
+			return found, texts, usage, fmt.Errorf("memory: search similar entities: %w", err)
+		}
+		for _, m := range ms {
+			name, _ := m.Metadata["name"].(string)
+			typ, _ := m.Metadata["type"].(string)
+			if name == "" || m.Score < similarEntityMinScore || key(name) == key(ep) || got[key(name)] {
+				continue
+			}
+			got[key(name)] = true
+			found = append(found, similarEntity{endpoint: ep, name: name, typ: typ, score: m.Score})
+		}
+	}
+	return found, texts, usage, nil
 }
 
 //---------------------------------------------------------------------------------------------
@@ -95,6 +183,7 @@ func prepareVectors(ctx context.Context, tx graph.Tx, o callOptions, dsID int64,
 	if err != nil {
 		return nil, nil, fmt.Errorf("memory: embed entities and edges: %w", err)
 	}
+	o.trace.embed(texts, len(entityIDs), len(edges), usage)
 	if len(embs) != len(texts) {
 		return nil, usage, fmt.Errorf("memory: embedder returned %d embeddings for %d texts", len(embs), len(texts))
 	}

@@ -177,7 +177,8 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, kind, te
 	ref = relational.Normalize(ref)
 	llm = withRecording(llm, d, CallRemember)
 
-	tr := startTrace(CallRemember, newCallOptions(opts))
+	co := newCallOptions(opts)
+	tr := startTrace(CallRemember, co)
 	defer func() {
 		if traj := tr.finish(err); res != nil && traj != nil {
 			res.TrajectoryID, res.Trajectory = traj.TrajectoryID, traj
@@ -191,18 +192,36 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, kind, te
 	if err != nil {
 		return nil, err
 	}
-	cands, err := loadCandidates(ctx, d, userID, dataset, ex.Edges)
+	// Candidates are facts (edges) ALREADY STORED in this user's dataset that the new facts in ex.Edges might repeat or
+	// contradict. A candidate is any stored edge that
+	//   - belongs to the same user and dataset (nothing is shared across datasets),
+	//   - is still live (expired_at IS NULL: not already superseded by a newer fact),
+	//   - touches at least one entity (as source or target) that is an endpoint of a new edge, found in two ways that
+	//     are merged by edge ID: by exact normalized name, and (with WithVectors) by similarity of the entity's
+	//     embedding, which finds aliases ("Alicia" for a stored "Alice Smith"); see findSimilarEntities,
+	// newest first, capped at maxCandidates (50). E.g. the new fact "Alice lives in Berlin" has Alice and Berlin as
+	// endpoints, so every live fact about Alice or Berlin is a candidate, such as "Alice lives in Paris".
+	// A dataset that does not exist yet (first Remember) has none.
+	//
+	// They are the only stored facts resolveEdges looks at: exact repeats (same endpoints and relation) are merged in
+	// Go, and the rest are shown to the LLM, which flags semantic duplicates and contradictions; the contradicted
+	// ones are invalidated (not deleted) by Store. Without candidates there is no LLM resolution call.
+	cs, err := loadCandidates(ctx, d, co, userID, dataset, ex)
 	if err != nil {
 		return nil, err
 	}
-	tr.tool("Loaded stored facts that new facts may duplicate or contradict.", "load_candidates",
+	cands := cs.Edges
+	tr.searchEntities(cs.SearchTexts, cs.Similar, cs.SearchUsage, cs.SearchErr)
+	tr.tool("Loaded the live facts already stored in this dataset that touch an entity named by the new facts, by "+
+		"exact name or by similarity (newest first, at most 50); the new facts are checked against them for "+
+		"duplicates and contradictions.", "load_candidates",
 		map[string]any{"user_id": userID, "dataset": dataset, "new_edges": len(ex.Edges)},
-		map[string]any{"candidates": len(cands)})
+		map[string]any{"candidates": len(cands), "facts": candidateFacts(cs)})
 	plan, err := resolveEdges(ctx, llm, ex.Edges, cands)
 	if err != nil {
 		return nil, err
 	}
-	res, err = Store(ctx, d, userID, dataset, kind, text, ref, now, ex, plan, opts...)
+	res, err = Store(ctx, d, userID, dataset, kind, text, ref, now, ex, plan, append(opts[:len(opts):len(opts)], withTrace(tr))...)
 	if err != nil {
 		return nil, err
 	}
@@ -211,6 +230,16 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, kind, te
 		map[string]any{"artifact_id": res.ArtifactID, "entities": res.Entities, "edges": res.Edges, "invalidated_edges": res.InvalidatedEdges,
 			"embedded_entities": res.EmbeddedEntities, "embedded_edges": res.EmbeddedEdges})
 	return res, nil
+}
+
+// candidateFacts summarizes candidate edges for the trajectory.
+func candidateFacts(cs *candidates) []map[string]any {
+	out := make([]map[string]any, 0, len(cs.Edges))
+	for _, c := range cs.Edges {
+		out = append(out, map[string]any{"id": c.ID, "found_by": cs.Via[c.ID], "source": c.Source, "relation": c.Relation, "target": c.Target,
+			"fact": c.Description, "valid": span(c.ValidAt, c.InvalidAt)})
+	}
+	return out
 }
 
 // Store persists an artifact of the given kind (already resolved, see ResolveKind) and its extraction into userID's named dataset (created if missing). Entities are

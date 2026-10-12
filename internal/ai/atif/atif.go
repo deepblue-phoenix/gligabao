@@ -154,17 +154,21 @@ func (b *Builder) Agent(s Step) {
 
 // Tool appends an agent step that calls one tool and records its result. The tool call ID is generated.
 func (b *Builder) Tool(message, name string, args map[string]any, result string) {
+	b.ToolStep(Step{Message: message}, name, args, result)
+}
+
+// ToolStep is Tool for a step that carries more than a message (model name, metrics, extra): s is completed with the
+// tool call and its result.
+func (b *Builder) ToolStep(s Step, name string, args map[string]any, result string) {
 	if args == nil {
 		args = map[string]any{}
 	}
 	b.mu.Lock()
 	callID := fmt.Sprintf("call_%d", len(b.t.Steps)+1)
 	b.mu.Unlock()
-	b.Agent(Step{
-		Message:     message,
-		ToolCalls:   []ToolCall{{ToolCallID: callID, FunctionName: name, Arguments: args}},
-		Observation: &Observation{Results: []ObservationResult{{SourceCallID: callID, Content: result}}},
-	})
+	s.ToolCalls = []ToolCall{{ToolCallID: callID, FunctionName: name, Arguments: args}}
+	s.Observation = &Observation{Results: []ObservationResult{{SourceCallID: callID, Content: result}}}
+	b.Agent(s)
 }
 
 func (b *Builder) add(s Step) {

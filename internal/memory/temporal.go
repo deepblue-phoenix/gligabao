@@ -7,8 +7,8 @@ package memory
 //   - system time: CreatedAt / ExpiredAt - when we learned about it / when newer knowledge superseded it.
 //
 // Pipeline (run by Remember, after Extract):
-//  1. loadCandidates + resolveEdges: stored live edges touching the same entities are compared with the new
-//     ones; exact repeats are found in Go, the LLM flags other duplicates and contradictions.
+//  1. loadCandidates + resolveEdges: stored live edges touching the same entities (by name, and by similarity when
+//     vectors are on) are compared with the new ones; exact repeats are found in Go, the LLM flags other duplicates and contradictions.
 //  2. storeEdges: duplicates are merged; for each contradiction the older fact is invalidated
 //     (InvalidAt = start of the newer one, ExpiredAt = now) instead of being deleted.
 
@@ -18,12 +18,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -146,19 +149,45 @@ func span(valid, invalid *time.Time) string {
 
 //---------------------------------------------------------------------------------------------
 
-// loadCandidates returns live (not expired) edges of the user's dataset touching at least one entity named in edges,
-// newest first. A dataset that does not exist yet has none.
-func loadCandidates(ctx context.Context, d *sql.DB, userID, dataset string, edges []Edge) ([]Edge, error) {
+// candidates are the stored facts a Remember call compares its new facts with, and how they were found.
+type candidates struct {
+	Edges []Edge
+	// Via says how each edge (by ID) was found: viaName, viaSimilar or both.
+	Via map[int64]string
+	// Similar are the stored entities found by similarity (see findSimilarEntities); SearchTexts are the texts that were
+	// embedded for that (empty: no search was made); SearchUsage is the embedding request's usage and SearchErr why the
+	// search failed (a failed search is not an error of the call: the candidates are then those of the exact names).
+	Similar     []similarEntity
+	SearchTexts []string
+	SearchUsage *ai.EmbedUsage
+	SearchErr   error
+}
+
+const (
+	viaName    = "name"
+	viaSimilar = "similar"
+	viaBoth    = viaName + "+" + viaSimilar
+)
+
+// loadCandidates returns the live (not expired) edges of the user's dataset that the new edges of ex may repeat or
+// contradict, newest first, at most maxCandidates. They are the union, merged by edge ID, of two lookups:
+//   - by name: edges touching at least one entity named by an endpoint of a new edge (exact, normalized name);
+//   - by similarity (only with WithVectors): edges touching a stored entity whose embedding is close to an endpoint's,
+//     which finds aliases the names do not (see findSimilarEntities).
+//
+// A dataset that does not exist yet has none.
+func loadCandidates(ctx context.Context, d *sql.DB, o callOptions, userID, dataset string, ex *Extraction) (*candidates, error) {
+	out := &candidates{Via: map[int64]string{}}
 	dsID, err := datasetID(ctx, d, userID, dataset)
 	if errors.Is(err, ErrDatasetNotFound) {
-		return nil, nil
+		return out, nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	var keys []string
 	seen := map[string]bool{}
-	for _, e := range edges {
+	for _, e := range ex.Edges {
 		for _, n := range []string{e.Source, e.Target} {
 			if k := key(n); !seen[k] {
 				seen[k] = true
@@ -166,7 +195,59 @@ func loadCandidates(ctx context.Context, d *sql.DB, userID, dataset string, edge
 			}
 		}
 	}
-	return graph.LoadCandidateEdges(ctx, d, dsID, keys, maxCandidates)
+	byName, err := graph.LoadCandidateEdges(ctx, d, dsID, keys, maxCandidates)
+	if err != nil {
+		return nil, err
+	}
+
+	out.Similar, out.SearchTexts, out.SearchUsage, out.SearchErr = findSimilarEntities(ctx, d, o, dsID, ex)
+	if out.SearchErr != nil {
+		log.WithError(out.SearchErr).Warn("similar entity search failed; candidates are matched by name only")
+	}
+	var aliasKeys []string
+	for _, s := range out.Similar {
+		if k := key(s.name); !seen[k] {
+			seen[k] = true
+			aliasKeys = append(aliasKeys, k)
+		}
+	}
+	bySimilar, err := graph.LoadCandidateEdges(ctx, d, dsID, aliasKeys, maxCandidates)
+	if err != nil {
+		return nil, err
+	}
+	out.Edges = mergeCandidates(byName, bySimilar, maxCandidates, out.Via)
+	return out, nil
+}
+
+// mergeCandidates merges the edges found by name and by similarity: an edge found by both appears once (edges are
+// identified by their ID), newest (highest ID) first, at most limit. via, if not nil, gets how each kept edge was found.
+func mergeCandidates(byName, bySimilar []Edge, limit int, via map[int64]string) []Edge {
+	how := map[int64]string{}
+	var all []Edge
+	for _, e := range byName {
+		if _, ok := how[e.ID]; !ok {
+			how[e.ID] = viaName
+			all = append(all, e)
+		}
+	}
+	for _, e := range bySimilar {
+		if how[e.ID] == "" {
+			how[e.ID] = viaSimilar
+			all = append(all, e)
+		} else if how[e.ID] == viaName {
+			how[e.ID] = viaBoth
+		}
+	}
+	sort.SliceStable(all, func(i, j int) bool { return all[i].ID > all[j].ID })
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	for _, e := range all {
+		if via != nil {
+			via[e.ID] = how[e.ID]
+		}
+	}
+	return all
 }
 
 //---------------------------------------------------------------------------------------------

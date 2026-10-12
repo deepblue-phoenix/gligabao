@@ -29,6 +29,8 @@ type callOptions struct {
 
 	vectors  vector.Store // see WithVectors
 	embedder Embedder
+
+	trace *trace // set by Remember for the Store it calls; nil otherwise
 }
 
 func newCallOptions(opts []Option) callOptions {
@@ -43,6 +45,9 @@ func newCallOptions(opts []Option) callOptions {
 // Result / RecallResult (TrajectoryID, Trajectory). Without it nothing is generated. It is meant for evals; only the
 // eval HTTP endpoints set it.
 func WithEval() Option { return func(o *callOptions) { o.eval = true } }
+
+// withTrace makes Store record its steps (the embedding) into tr, the trace of the enclosing Remember.
+func withTrace(tr *trace) Option { return func(o *callOptions) { o.trace = tr } }
 
 // WithTrajectoryDir overrides TrajectoryDir for this call.
 func WithTrajectoryDir(dir string) Option { return func(o *callOptions) { o.dir = dir } }
@@ -120,6 +125,45 @@ func (t *trace) tool(message, name string, args map[string]any, result any) {
 		res = string(b)
 	}
 	t.b.Tool(message, name, args, res)
+}
+
+// embed records an embedding request as a tool step with its tokens and cost, so they count in the trajectory's totals.
+func (t *trace) embed(texts []string, entities, edges int, usage *ai.EmbedUsage) {
+	t.embedStep("Embedded the entities and edges stored by this artifact.", "embed",
+		map[string]any{"entities": entities, "edges": edges, "texts": texts}, map[string]any{"vectors": len(texts)}, usage)
+}
+
+// searchEntities records the similarity search that adds candidate facts: the embedded endpoints and what they matched.
+func (t *trace) searchEntities(texts []string, found []similarEntity, usage *ai.EmbedUsage, err error) {
+	if t == nil || len(texts) == 0 {
+		return
+	}
+	matches := make([]map[string]any, 0, len(found))
+	for _, f := range found {
+		matches = append(matches, map[string]any{"endpoint": f.endpoint, "entity": f.name, "type": f.typ, "score": f.score})
+	}
+	res := map[string]any{"matches": matches}
+	if err != nil {
+		res["error"] = err.Error() // not fatal: the candidates then come from the exact names only
+	}
+	t.embedStep("Embedded the endpoints of the new facts and searched the dataset's entity index for similar stored "+
+		"entities (aliases), whose facts are added to the candidates.", "search_similar_entities",
+		map[string]any{"texts": texts, "top_k": similarEntityTopK, "min_score": similarEntityMinScore}, res, usage)
+}
+
+func (t *trace) embedStep(message, name string, args, res map[string]any, usage *ai.EmbedUsage) {
+	if t == nil {
+		return
+	}
+	step := atif.Step{Message: message}
+	if usage != nil {
+		step.ModelName = usage.Model
+		step.Metrics = &atif.Metrics{PromptTokens: usage.InputTokens, CostUSD: usage.CostUSD}
+		step.Extra = map[string]any{"provider": usage.Provider}
+		res["input_tokens"] = usage.InputTokens
+	}
+	b, _ := json.Marshal(res)
+	t.b.ToolStep(step, name, args, string(b))
 }
 
 //---------------------------------------------------------------------------------------------

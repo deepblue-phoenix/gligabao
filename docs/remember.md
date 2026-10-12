@@ -72,7 +72,7 @@ All steps use the LLM from `internal/ai` (Anthropic Messages API, default model 
    }
    ```
    Code fences or surrounding prose around the JSON are tolerated. An edge without `valid_at` gets the reference time.
-2. **Resolve edges** (`resolveEdges`, 1 LLM call only if needed): new edges are compared with stored live edges that touch the same entities. Exact repeats are detected without the LLM; the model flags remaining duplicates and contradictions.
+2. **Resolve edges** (`resolveEdges`, 1 LLM call only if needed): new edges are compared with the [candidate facts](#candidate-facts-load_candidates): stored live edges that touch the same entities. Exact repeats are detected without the LLM; the model flags remaining duplicates and contradictions.
 3. **Store** (`Store`): everything is written in a single transaction:
    - the raw text and its reference time go into `gb_artifacts` (with its `kind`);
    - entities are upserted into `gb_entities` and linked to the artifact in `gb_entity_artifacts`, including stored entities that an edge names but the extraction did not list;
@@ -80,7 +80,40 @@ All steps use the LLM from `internal/ai` (Anthropic Messages API, default model 
 
 4. **Embed** (`WithVectors`, 1 embeddings request, only if an OpenAI key is configured): the entities this text mentions and the edges it states are embedded together with `text-embedding-3-small`: an entity as `Name (type): description`, an edge as its description. This happens inside step 3, after the rows are written and before the transaction commits, so a failure stores nothing. Right after the commit the vectors are written, with `Upsert`, to the dataset's two vector datasets: `dataset-<id>-entities` (vector `entity-<entity id>`) and `dataset-<id>-edges` (vector `edge-<edge id>`). Vectors are keyed by ID, so remembering an entity or fact again overwrites its vector. Details, metadata and failure handling: [vectors.md](vectors.md#what-remember-writes).
 
-The request makes 1 LLM call, or 2 when stored edges need to be compared, plus 1 embeddings request. If any step before the commit fails, nothing is stored. If the vector write after the commit fails, the request returns `502` but the artifact, entities and edges are already saved; the vectors are written again the next time the entities and facts are mentioned.
+The request makes 1 LLM call, or 2 when stored edges need to be compared, plus 1 embeddings request, or 2 when the [candidate search](#candidate-facts-load_candidates) also embeds the endpoints of the new facts (only for a dataset that already exists). If any step before the commit fails, nothing is stored. If the vector write after the commit fails, the request returns `502` but the artifact, entities and edges are already saved; the vectors are written again the next time the entities and facts are mentioned.
+
+### Candidate facts (`load_candidates`)
+
+Before resolving, `Remember` loads the **candidates**: the facts already stored in the dataset that the new facts might repeat or contradict (`loadCandidates`). In an eval [trajectory](evals.md) this is the `load_candidates` tool step, which lists them and how each was found.
+
+**What qualifies.** A stored edge is a candidate if it
+
+- belongs to the same user's dataset (nothing is read across datasets),
+- is still live (`expired_at IS NULL`; a fact already superseded is never compared again),
+- touches (as source or target) an entity that is an endpoint of one of the new edges, found in either of two ways (below).
+
+They are returned newest first, capped at 50 (`maxCandidates`). A dataset that does not exist yet has none. Example: the new fact "Alice lives in Berlin" has the endpoints Alice and Berlin, so every live fact about Alice or Berlin is a candidate, including "Alice lives in Paris".
+
+**What they are used for.** They are the only stored facts the resolution looks at. Exact repeats are merged in Go; the other new facts and the candidates go to the LLM, which flags semantic duplicates and contradictions (see [temporal.md](temporal.md)). With no candidates there is no resolution LLM call. Anything not loaded here can never be merged or invalidated by this call.
+
+**Two lookups, merged by edge ID.**
+
+1. *By name* (always): a SQL lookup by normalized entity name (lowercased, whitespace-collapsed) of the endpoints (`graph.LoadCandidateEdges`).
+2. *By similarity* (only with `WithVectors`, i.e. an OpenAI key): each endpoint is embedded as an entity is (`Name (type): description`; type `other` if the extraction did not list it) and searched in the dataset's entity index (`dataset-<id>-entities`). The 3 closest stored entities per endpoint with a cosine similarity of at least 0.75 are kept, except one with the same normalized name as the endpoint (the name lookup has it). The live facts touching those entities are loaded the same way as in 1. This finds aliases: a text saying "Alicia" finds the stored "Alice Smith" and her facts.
+
+The two result sets are merged by edge ID: an edge found by both appears once, the merged list is sorted newest first and cut to 50 (so an alias match can lose its place to newer facts). In the trajectory each fact has `found_by`: `name`, `similar` or `name+similar`.
+
+The similarity lookup costs 1 embeddings request (recorded as a call like any other embedding spend, and shown as the `search_similar_entities` step with its tokens and cost) and is only an aid: the vector store is not updated atomically with the database (see [vectors.md](vectors.md#what-remember-writes)) and its metadata has no validity, so the matched entities are only used to look up their facts in the database, which filters to live edges. If the embedding or the search fails, the request does **not** fail: a warning is logged, the step records the error and the candidates are those of the names alone. The threshold (0.75) and `TopK` (3) are first guesses to tune with the evals.
+
+Remaining limits:
+
+- Edges are not searched by similarity: a paraphrased fact about entities that match neither by name nor by similarity is not a candidate.
+- A busy entity can still push old facts out of the newest-first cap of 50.
+- The endpoints are embedded in a request of their own, and `Store` embeds the entities and edges again afterwards. Sharing one request is possible but not done yet.
+
+#### Next step: similarity search over edges
+
+Querying the edge index (`dataset-<id>-edges`) with the new facts' descriptions would rank candidates by relevance instead of recency, so the cap of 50 keeps the right facts, and would reach paraphrases that share no entity. Worth adding if the evals show the cap or the missing reach losing facts; it would join the same merge by edge ID (`found_by` would get a third value).
 
 ### Normalization and deduplication
 
@@ -137,5 +170,5 @@ curl -s localhost:7878/v1/gb/remember \
 
 - No authentication.
 - The database and the vector store are not updated atomically (see [vectors.md](vectors.md#what-remember-writes)), and there is no re-embedding of entities and edges stored before embedding was configured.
-- The embeddings are not used by `recall` yet.
+- The embeddings are not used by `recall` yet, but the entity embeddings do help pick the [candidate facts](#candidate-facts-load_candidates) in `remember` (aliases); edge embeddings do not, and at most 50 candidates are compared.
 - Very long input can exceed the LLM's output limit; the request then fails with 502 and nothing is stored.

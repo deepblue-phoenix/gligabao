@@ -109,3 +109,92 @@ func testRememberEmbedsEntities(t *testing.T, d *sql.DB) {
 		t.Error("embedded without WithVectors")
 	}
 }
+
+func TestRememberTracesEmbedding(t *testing.T) { dbtest.Run(t, testRememberTracesEmbedding) }
+
+func testRememberTracesEmbedding(t *testing.T, d *sql.DB) {
+	vs, err := vector.NewChromem(":memory:", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := memory.Remember(context.Background(), d, extractLLM{}, "u1", "work", "", "Alice works at Acme.", relational.Now(),
+		memory.WithVectors(vs, &fakeEmbedder{}), memory.WithEval(), memory.WithTrajectoryDir(t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, s := range res.Trajectory.Steps {
+		for _, c := range s.ToolCalls {
+			names = append(names, c.FunctionName)
+		}
+		if len(s.ToolCalls) == 1 && s.ToolCalls[0].FunctionName == "embed" {
+			if s.Metrics == nil || s.Metrics.PromptTokens != 5 || s.ModelName != "m" {
+				t.Errorf("embed step metrics = %+v, model %q", s.Metrics, s.ModelName)
+			}
+		}
+	}
+	if got := strings.Join(names, ","); got != "load_candidates,embed,store_artifact" {
+		t.Errorf("tool steps = %s", got)
+	}
+}
+
+// aliasLLM extracts "Alicia lives in Berlin": an alias of the stored Alice, and a fact about no stored entity.
+type aliasLLM struct{}
+
+func (aliasLLM) Complete(context.Context, ai.Request) (*ai.Response, error) {
+	return &ai.Response{StopReason: "end_turn", Text: `{"entities":[{"name":"Alicia","type":"person"}],
+	"edges":[{"source":"Alicia","target":"Berlin","relation":"lives in"}]}`}, nil
+}
+
+func TestCandidatesBySimilarity(t *testing.T) { dbtest.Run(t, testCandidatesBySimilarity) }
+
+func testCandidatesBySimilarity(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	vs, err := vector.NewChromem(":memory:", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := []memory.Option{memory.WithVectors(vs, &fakeEmbedder{}), memory.WithEval(), memory.WithTrajectoryDir(t.TempDir())}
+	if _, err := memory.Remember(ctx, d, extractLLM{}, "u1", "work", "", "Alice works at Acme.", relational.Now(), opts...); err != nil {
+		t.Fatal(err)
+	}
+
+	// Names alone find nothing for Alicia / Berlin; the similar stored entities bring in their facts.
+	res, err := memory.Remember(ctx, d, aliasLLM{}, "u1", "work", "", "Alicia lives in Berlin.", relational.Now(), opts...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var search, load bool
+	for _, s := range res.Trajectory.Steps {
+		for _, c := range s.ToolCalls {
+			switch c.FunctionName {
+			case "search_similar_entities":
+				search = s.Metrics != nil && s.Metrics.PromptTokens > 0
+			case "load_candidates":
+				load = strings.Contains(s.Observation.Results[0].Content, `"found_by":"similar"`)
+			}
+		}
+	}
+	if !search || !load {
+		t.Errorf("search step with metrics = %v, candidates found by similarity = %v", search, load)
+	}
+
+	// Without vectors the same call (on a dataset with the same facts) has no search step and no candidates.
+	if _, err := memory.Remember(ctx, d, extractLLM{}, "u1", "plain", "", "Alice works at Acme.", relational.Now()); err != nil {
+		t.Fatal(err)
+	}
+	res, err = memory.Remember(ctx, d, aliasLLM{}, "u1", "plain", "", "Alicia lives in Berlin.", relational.Now(), memory.WithEval(), memory.WithTrajectoryDir(t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range res.Trajectory.Steps {
+		for _, c := range s.ToolCalls {
+			if c.FunctionName == "search_similar_entities" {
+				t.Error("searched without vectors")
+			}
+			if c.FunctionName == "load_candidates" && strings.Contains(s.Observation.Results[0].Content, `"found_by"`) {
+				t.Errorf("candidates without a name match: %s", s.Observation.Results[0].Content)
+			}
+		}
+	}
+}
