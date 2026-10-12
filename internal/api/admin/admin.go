@@ -28,7 +28,8 @@ type datasetView struct {
 
 type overview struct {
 	Datasets []datasetView `json:"datasets"`
-	// Totals covers the whole system, deleted datasets included (their rows are kept).
+	// Totals is the sum over Datasets, so it matches what is listed: deleted datasets (whose rows are kept, e.g. the
+	// previous runs of an eval that recreates its dataset) count only when include_deleted is set.
 	Totals Counts `json:"totals"`
 }
 
@@ -71,7 +72,7 @@ func OverviewOf(dbs []Named) http.HandlerFunc {
 }
 
 // Overview serves GET /admin/api/overview[?include_deleted=true]: the datasets of all users, each with its
-// artifact/entity/edge counts, plus the totals for the whole system.
+// artifact/entity/edge counts, plus the totals over the listed datasets.
 func Overview(d *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -90,14 +91,10 @@ func Overview(d *sql.DB) http.HandlerFunc {
 				return
 			}
 			out.Datasets = append(out.Datasets, datasetView{ds, Counts{c.Artifacts, c.Entities, c.Edges}})
+			out.Totals.Artifacts += c.Artifacts
+			out.Totals.Entities += c.Entities
+			out.Totals.Edges += c.Edges
 		}
-		t, err := graph.TotalCounts(ctx, d)
-		if err != nil {
-			log.WithError(err).Error("admin: total counts failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to count system contents")
-			return
-		}
-		out.Totals = Counts{t.Artifacts, t.Entities, t.Edges}
 		httputil.WriteJSON(w, http.StatusOK, out)
 	}
 }

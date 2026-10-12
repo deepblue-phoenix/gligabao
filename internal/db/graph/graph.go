@@ -189,17 +189,6 @@ func DatasetCounts(ctx context.Context, d *sql.DB, dsID int64) (Counts, error) {
 	return Counts{}, unsupported()
 }
 
-// TotalCounts returns the number of artifacts, entities and edges in the whole system (all datasets).
-func TotalCounts(ctx context.Context, d *sql.DB) (Counts, error) {
-	switch backend() {
-	case config.DBBackendSQLite:
-		return sqlite.TotalCounts(ctx, d)
-	case config.DBBackendPostgres:
-		return postgres.TotalCounts(ctx, d)
-	}
-	return Counts{}, unsupported()
-}
-
 // ListArtifacts returns the artifacts of the dataset by ID.
 func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]Artifact, error) {
 	switch backend() {

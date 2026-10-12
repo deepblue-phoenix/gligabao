@@ -6,7 +6,8 @@
 // are not kept there: they live in the main database (-main-db), which is never reset, so they survive the resets. The case is run through the eval endpoints (/v1/gb/eval/remember and
 // /v1/gb/eval/recall): remember (once per artifact, in order), then recall. These return the ATIF trajectory of
 // every call along with its result.
-// All artifacts go to the dataset "test", which is deleted at the start of each case so it is recreated fresh.
+// Each case remembers into its own dataset, named after the case (see datasetName), so every case's graph is kept. The
+// dataset is deleted at the start of the case, so it is recreated fresh (matters with -keep-db, where it may exist).
 // Besides the answer, the stored temporal facts (edges with valid_at / invalid_at) are checked in the database.
 //
 // Usage: go run ./evals [-v] [-suites dir] [case-name ...]   (requires ANTHROPIC_API_KEY)
@@ -52,8 +53,23 @@ import (
 //go:embed suites/*.json
 var suitesFS embed.FS
 
-// evalDataset is the dataset every eval remembers into and recalls from.
-const evalDataset = "test"
+// datasetName is the dataset a case remembers into and recalls from: one per case, named after it, so the graph of
+// every case stays in the eval database after the run (and can be viewed in the admin UI) instead of being replaced by
+// the next case. Characters a dataset name does not allow become "_"; the name is cut to the 64-byte limit.
+func datasetName(c Case) string {
+	b := []byte(c.Name)
+	for i, ch := range b {
+		ok := ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' ||
+			i > 0 && (ch == '.' || ch == '_' || ch == '-')
+		if !ok {
+			b[i] = '_'
+		}
+	}
+	if len(b) > 64 {
+		b = b[:64]
+	}
+	return string(b)
+}
 
 // evalUser owns the eval dataset.
 const evalUser = "eval"
@@ -184,8 +200,8 @@ func indent(s string) string {
 //---------------------------------------------------------------------------------------------
 
 // evalDBPath (-db) is the SQLite file all cases run in ("" = a throwaway database per case). It is reset at the start
-// of each invocation (see resetEvalDB), and cases stay independent because each one soft-deletes the dataset "test"
-// first, so remember starts from a new, empty dataset. It holds no experiments, those are in mainDBPath.
+// of each invocation (see resetEvalDB), and cases stay independent because each one has its own dataset (named after
+// the case), which is soft-deleted first so remember starts from a new, empty one; the graph of every case stays. It holds no experiments, those are in mainDBPath.
 var evalDBPath string
 
 // mainDBPath (-main-db) is the SQLite file of the main (non-eval) database, where the experiments and their runs are
@@ -270,14 +286,15 @@ func run(c Case, llm memory.LLM, verbose bool) (out *Outcome, err error) {
 	srv := httptest.NewServer(server.NewHandler(database, llm, true, false))
 	defer srv.Close()
 
-	// Start from a clean dataset: soft-delete any previous "test" (404 just means there was none); remember
-	// below recreates it with a new id and an empty graph.
-	if err := deleteDataset(srv.URL, evalDataset); err != nil {
-		return out, fmt.Errorf("delete dataset %q: %w", evalDataset, err)
+	// Start from a clean dataset: soft-delete any previous one of this case (404 just means there was none; only
+	// happens with -keep-db); remember below recreates it with a new id and an empty graph.
+	dataset := datasetName(c)
+	if err := deleteDataset(srv.URL, dataset); err != nil {
+		return out, fmt.Errorf("delete dataset %q: %w", dataset, err)
 	}
 
 	for i, m := range c.Remember {
-		body := map[string]any{"user_id": evalUser, "text": m.Text, "dataset": evalDataset}
+		body := map[string]any{"user_id": evalUser, "text": m.Text, "dataset": dataset}
 		if m.Kind != "" {
 			body["kind"] = m.Kind
 		}
@@ -296,7 +313,7 @@ func run(c Case, llm memory.LLM, verbose bool) (out *Outcome, err error) {
 		}
 		out.Trajectories = append(out.Trajectories, rem.Trajectory)
 	}
-	edges, err := graph.ListEdges(context.Background(), database.Graph, evalUser, evalDataset)
+	edges, err := graph.ListEdges(context.Background(), database.Graph, evalUser, dataset)
 	if err != nil {
 		return out, err
 	}
@@ -345,7 +362,7 @@ func run(c Case, llm memory.LLM, verbose bool) (out *Outcome, err error) {
 		Answer     string           `json:"answer"`
 		Trajectory *atif.Trajectory `json:"trajectory"`
 	}
-	if err := post(srv.URL+"/v1/gb/eval/recall", map[string]any{"user_id": evalUser, "query": c.Query, "dataset": evalDataset}, &rec); err != nil {
+	if err := post(srv.URL+"/v1/gb/eval/recall", map[string]any{"user_id": evalUser, "query": c.Query, "dataset": dataset}, &rec); err != nil {
 		return out, fmt.Errorf("recall: %w", err)
 	}
 	if rec.Trajectory == nil {

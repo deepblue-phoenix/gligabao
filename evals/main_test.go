@@ -158,3 +158,16 @@ func TestResetEvalDB(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDatasetName(t *testing.T) {
+	for name, want := range map[string]string{
+		"remember_recall":       "remember_recall",
+		"job change (v2)":       "job_change__v2_",
+		"-lead":                 "_lead",
+		strings.Repeat("a", 80): strings.Repeat("a", 64),
+	} {
+		if got := datasetName(Case{Name: name}); got != want {
+			t.Errorf("datasetName(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
