@@ -18,15 +18,32 @@ import (
 
 // Types shared with the backends (see package model).
 type (
-	Dataset     = model.Dataset
-	LLMCallStat = model.LLMCallStat
-	Ontology    = model.Ontology
+	Dataset              = model.Dataset
+	LLMCallStat          = model.LLMCallStat
+	Ontology             = model.Ontology
+	Experiment           = model.Experiment
+	EvalRef              = model.EvalRef
+	ExperimentRun        = model.ExperimentRun
+	ExperimentRunEval    = model.ExperimentRunEval
+	ExperimentTrajectory = model.ExperimentTrajectory
+)
+
+// Experiment, run and trajectory constants (see package model).
+const (
+	ExperimentRunning  = model.ExperimentRunning
+	ExperimentPassed   = model.ExperimentPassed
+	ExperimentFailed   = model.ExperimentFailed
+	ExperimentErrored  = model.ExperimentErrored
+	TrajectoryRemember = model.TrajectoryRemember
+	TrajectoryRecall   = model.TrajectoryRecall
 )
 
 // Errors returned by the functions below.
 var (
 	ErrNotFound = model.ErrNotFound
 	ErrExists   = model.ErrExists
+
+	ErrRunNotRunning = model.ErrRunNotRunning
 )
 
 //---------------------------------------------------------------------------------------------

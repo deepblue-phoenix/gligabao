@@ -66,7 +66,81 @@ CREATE TABLE IF NOT EXISTS gb_llm_calls (
 	cost_usd      REAL NOT NULL, -- total cost of the call in USD (0 if the model's price is unknown)
 	created_at    DATETIME NOT NULL DEFAULT (` + SQLNow + `)
 );
-CREATE INDEX IF NOT EXISTS idx_gb_llm_calls_type ON gb_llm_calls(type);`
+CREATE INDEX IF NOT EXISTS idx_gb_llm_calls_type ON gb_llm_calls(type);
+
+-- Eval experiments (evals/ and internal/experiments). An experiment is a named series of eval runs; names are unique.
+--   config: JSON object with the free-form settings under test
+CREATE TABLE IF NOT EXISTS gb_experiments (
+	id          INTEGER PRIMARY KEY AUTOINCREMENT,
+	name        TEXT NOT NULL UNIQUE,
+	description TEXT NOT NULL DEFAULT '',
+	config      TEXT NOT NULL DEFAULT '{}',
+	created_at  DATETIME NOT NULL
+);
+
+-- The evals (a case name within a suite, i.e. a suite file name without ".json") that an experiment has executed.
+-- A row is added the first time one of the experiment's runs executes the eval.
+CREATE TABLE IF NOT EXISTS gb_experiment_evals (
+	experiment_id INTEGER NOT NULL REFERENCES gb_experiments(id) ON DELETE CASCADE,
+	suite         TEXT NOT NULL,
+	eval_name     TEXT NOT NULL,
+	created_at    DATETIME NOT NULL,
+	PRIMARY KEY (experiment_id, suite, eval_name)
+);
+
+-- One execution of an experiment. status: 'running', then 'passed' or 'failed' once finished.
+--   params: JSON object describing how the run was invoked
+--   total_evals, passed_evals, failed_evals, cost_usd: totals over the run's evals, set when the run is finished
+CREATE TABLE IF NOT EXISTS gb_experiment_runs (
+	id            INTEGER PRIMARY KEY AUTOINCREMENT,
+	experiment_id INTEGER NOT NULL REFERENCES gb_experiments(id) ON DELETE CASCADE,
+	status        TEXT NOT NULL CHECK (status IN ('running', 'passed', 'failed')),
+	params        TEXT NOT NULL DEFAULT '{}',
+	total_evals   INTEGER NOT NULL DEFAULT 0,
+	passed_evals  INTEGER NOT NULL DEFAULT 0,
+	failed_evals  INTEGER NOT NULL DEFAULT 0,
+	cost_usd      REAL NOT NULL DEFAULT 0,
+	started_at    DATETIME NOT NULL,
+	finished_at   DATETIME
+);
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_runs(experiment_id);
+
+-- The result of one eval within a run. status: 'passed', 'failed' (a check did not hold) or 'error' (the eval
+-- could not be run to the end).
+--   problems: JSON array of strings, the failed checks
+CREATE TABLE IF NOT EXISTS gb_experiment_run_evals (
+	id          INTEGER PRIMARY KEY AUTOINCREMENT,
+	run_id      INTEGER NOT NULL REFERENCES gb_experiment_runs(id) ON DELETE CASCADE,
+	suite       TEXT NOT NULL,
+	eval_name   TEXT NOT NULL,
+	status      TEXT NOT NULL CHECK (status IN ('passed', 'failed', 'error')),
+	answer      TEXT NOT NULL DEFAULT '',
+	problems    TEXT NOT NULL DEFAULT '[]',
+	error       TEXT NOT NULL DEFAULT '',
+	steps       INTEGER NOT NULL DEFAULT 0,
+	cost_usd    REAL NOT NULL DEFAULT 0,
+	started_at  DATETIME NOT NULL,
+	finished_at DATETIME NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_run_evals_run ON gb_experiment_run_evals(run_id);
+
+-- The ATIF trajectories of an eval (internal/ai/atif), in call order. Only the reference is kept here:
+-- trajectory_id is the ATIF trajectory_id, and path is the JSON file the trajectory was stored in ('' if none).
+--   kind: 'remember' or 'recall'
+CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
+	id            INTEGER PRIMARY KEY AUTOINCREMENT,
+	run_eval_id   INTEGER NOT NULL REFERENCES gb_experiment_run_evals(id) ON DELETE CASCADE,
+	seq           INTEGER NOT NULL,
+	kind          TEXT NOT NULL CHECK (kind IN ('remember', 'recall')),
+	trajectory_id TEXT NOT NULL,
+	agent_name    TEXT NOT NULL DEFAULT '',
+	steps         INTEGER NOT NULL DEFAULT 0,
+	cost_usd      REAL NOT NULL DEFAULT 0,
+	path          TEXT NOT NULL DEFAULT '',
+	created_at    DATETIME NOT NULL,
+	UNIQUE (run_eval_id, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_trajectories_tid ON gb_experiment_trajectories(trajectory_id);`
 
 // initSchema applies the database schema.
 func initSchema(d *sql.DB) error {

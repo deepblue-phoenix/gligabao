@@ -10,7 +10,12 @@
 // Usage: go run ./evals [-v] [-suites dir] [case-name ...]   (requires ANTHROPIC_API_KEY)
 // With -suites, suites are read from that directory instead of the embedded evals/suites (used by gligabao_int).
 // With -v, every LLM call's input and output is printed.
-// With -atif dir, the trajectories are also stored there as JSON (default: only the in-memory copies are used).
+// With -atif dir, the trajectories are stored there as JSON (default: an "atif" directory next to the -db file;
+// with -db "" only the in-memory copies are used).
+//
+// Every invocation is a run of an experiment (-experiment, default "default"), persisted in the eval database
+// together with the evals (suite + case) it executed, their results and the IDs of their ATIF trajectories; see
+// internal/experiments. With -db "" nothing is persisted.
 package main
 
 import (
@@ -37,6 +42,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/experiments"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/server"
 )
@@ -54,6 +60,8 @@ const evalUser = "eval"
 
 // Case is one eval: remember some texts in order, then ask a question about them.
 type Case struct {
+	// Suite is the suite (file name without ".json") the case was loaded from; it is not part of the JSON.
+	Suite          string       `json:"-"`
 	Name           string       `json:"name"`
 	Remember       []Artifact   `json:"remember"`
 	Query          string       `json:"query"`
@@ -103,7 +111,9 @@ func loadCases(only []string, suitesDir string) ([]Case, error) {
 		if err := json.Unmarshal(data, &suite); err != nil {
 			return nil, fmt.Errorf("%s: %w", e.Name(), err)
 		}
+		suiteName := strings.TrimSuffix(e.Name(), ".json")
 		for i, c := range suite {
+			c.Suite = suiteName
 			if c.Name == "" {
 				return nil, fmt.Errorf("%s: case %d has no name", e.Name(), i)
 			}
@@ -171,11 +181,12 @@ func indent(s string) string {
 
 //---------------------------------------------------------------------------------------------
 
-// atifDir is where the server also stores the trajectories (-atif); empty = a throwaway per-case directory.
 // evalDBPath (-db) is the SQLite file all cases run in ("" = a throwaway database per case). Cases stay independent
 // because each one soft-deletes the dataset "test" first, so remember starts from a new, empty dataset.
+// The experiments are stored in it too.
 var evalDBPath string
 
+// atifDir is where the server stores the trajectories (-atif); empty = a throwaway per-case directory.
 var atifDir string
 
 // Outcome is what one eval case produced.
@@ -184,6 +195,8 @@ type Outcome struct {
 	Problems []string // failed temporal-fact expectations
 	// Trajectories are the ATIF trajectories returned by the eval endpoints: one per remember, then the recall's.
 	Trajectories []*atif.Trajectory
+	// TrajectoryDir is where the trajectory files were stored ("" if they were throwaway).
+	TrajectoryDir string
 }
 
 // Cost is the total LLM cost of all trajectories, in USD.
@@ -200,7 +213,7 @@ func (o *Outcome) Cost() (usd float64, steps int) {
 // run executes one case against a fresh database through the eval endpoints. The outcome is returned even
 // when err is set, holding whatever was collected before the failure.
 func run(c Case, llm memory.LLM, verbose bool) (out *Outcome, err error) {
-	out = &Outcome{}
+	out = &Outcome{TrajectoryDir: atifDir}
 	dir, err := os.MkdirTemp("", "gligabao-eval-*")
 	if err != nil {
 		return out, err
@@ -344,6 +357,70 @@ func post(url string, body, out any) error {
 
 //---------------------------------------------------------------------------------------------
 
+// runCases runs every case through llm, prints PASS/FAIL per case and returns how many failed. If tracker is not
+// nil, the result of each case is recorded in its experiment run.
+func runCases(cases []Case, llm memory.LLM, verbose bool, tracker *experiments.Tracker) (failed int) {
+	for _, c := range cases {
+		l := llm
+		if verbose {
+			fmt.Printf("=== %s\n", c.Name)
+			l = &verboseLLM{inner: llm}
+		}
+		started := time.Now()
+		out, err := run(c, l, verbose)
+		answer, problems := out.Answer, out.Problems
+		cost, steps := out.Cost()
+		if verbose {
+			fmt.Printf("  trajectories: %d, steps: %d, cost: $%.6f\n", len(out.Trajectories), steps, cost)
+		}
+
+		// Everything that makes the case fail: temporal-fact problems, then expected answer text that is missing.
+		var missing []string
+		if err == nil && len(problems) == 0 {
+			for _, want := range c.ExpectContains {
+				if !strings.Contains(strings.ToLower(answer), strings.ToLower(want)) {
+					missing = append(missing, want)
+				}
+			}
+		}
+		if tracker != nil {
+			res := experiments.EvalResult{
+				Suite: c.Suite, Name: c.Name, Answer: answer, Err: err,
+				Problems:  problems,
+				StartedAt: started, FinishedAt: time.Now(),
+				Trajectories: out.Trajectories, TrajectoryDir: out.TrajectoryDir,
+			}
+			if len(missing) > 0 {
+				res.Problems = append(append([]string(nil), problems...), fmt.Sprintf("answer missing %q", missing))
+			}
+			if _, rerr := tracker.Record(context.Background(), res); rerr != nil {
+				fmt.Fprintf(os.Stderr, "warning: record %s/%s in experiment %q: %v\n", c.Suite, c.Name, tracker.Experiment.Name, rerr)
+			}
+		}
+
+		if err != nil {
+			fmt.Printf("FAIL %s: %v\n", c.Name, err)
+			failed++
+			continue
+		}
+		if len(problems) > 0 {
+			fmt.Printf("FAIL %s: temporal facts:\n     %s\n     answer: %s\n", c.Name, strings.Join(problems, "\n     "), answer)
+			failed++
+			continue
+		}
+		if len(missing) > 0 {
+			fmt.Printf("FAIL %s: answer missing %q\n     answer: %s\n", c.Name, missing, answer)
+			failed++
+			continue
+		}
+		fmt.Printf("PASS %s: %s\n", c.Name, answer)
+	}
+
+	return failed
+}
+
+//---------------------------------------------------------------------------------------------
+
 func main() {
 	if err := mainErr(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
@@ -354,9 +431,15 @@ func main() {
 func mainErr() error {
 	verbose := flag.Bool("v", false, "print the input and output of every LLM call")
 	suitesDir := flag.String("suites", "", "read suites from this directory instead of the embedded ones")
-	flag.StringVar(&atifDir, "atif", "", "also store every ATIF trajectory as JSON in this directory")
+	flag.StringVar(&atifDir, "atif", "", `store every ATIF trajectory as JSON in this directory (default: "atif" next to the -db file)`)
+	experiment := flag.String("experiment", "default", "name of the experiment this run belongs to (created if new; needs -db)")
+	experimentDesc := flag.String("experiment-desc", "", "description of the experiment, used when it is created")
 	flag.StringVar(&evalDBPath, "db", "bin/gligabao-eval.db", `SQLite file the cases run in (show it with ./run_server_local.sh); "" = a throwaway database per case`)
 	flag.Parse()
+	if atifDir == "" && evalDBPath != "" {
+		// The experiments reference the trajectories by ID, so keep their files next to the database.
+		atifDir = filepath.Join(filepath.Dir(evalDBPath), "atif")
+	}
 	if atifDir != "" {
 		memory.TrajectoryDir = atifDir
 	}
@@ -374,44 +457,34 @@ func mainErr() error {
 		return err
 	}
 
-	failed := 0
-	for _, c := range cases {
-		var l memory.LLM = llm
-		if *verbose {
-			fmt.Printf("=== %s\n", c.Name)
-			l = &verboseLLM{inner: llm}
-		}
-		out, err := run(c, l, *verbose)
-		answer, problems := out.Answer, out.Problems
-		cost, steps := out.Cost()
-		if *verbose {
-			fmt.Printf("  trajectories: %d, steps: %d, cost: $%.6f\n", len(out.Trajectories), steps, cost)
-		}
+	// The experiment run is recorded in the eval database; without -db there is nowhere to keep it.
+	var tracker *experiments.Tracker
+	if evalDBPath != "" {
+		trackDB, err := db.Open(db.Config{SQLitePath: evalDBPath})
 		if err != nil {
-			fmt.Printf("FAIL %s: %v\n", c.Name, err)
-			failed++
-			continue
+			return err
 		}
-		if len(problems) > 0 {
-			fmt.Printf("FAIL %s: temporal facts:\n     %s\n     answer: %s\n", c.Name, strings.Join(problems, "\n     "), answer)
-			failed++
-			continue
+		defer trackDB.Close()
+		tracker, err = experiments.Start(context.Background(), trackDB.Relational, experiments.Options{
+			Name:        *experiment,
+			Description: *experimentDesc,
+			Params:      map[string]any{"suites_dir": *suitesDir, "cases": flag.Args(), "atif_dir": atifDir},
+		})
+		if err != nil {
+			return fmt.Errorf("start experiment: %w", err)
 		}
-		var missing []string
-		for _, want := range c.ExpectContains {
-			if !strings.Contains(strings.ToLower(answer), strings.ToLower(want)) {
-				missing = append(missing, want)
-			}
-		}
-		if len(missing) > 0 {
-			fmt.Printf("FAIL %s: answer missing %q\n     answer: %s\n", c.Name, missing, answer)
-			failed++
-			continue
-		}
-		fmt.Printf("PASS %s: %s\n", c.Name, answer)
 	}
 
+	failed := runCases(cases, llm, *verbose, tracker)
+
 	fmt.Printf("---\npassed: %d, failed: %d\n", len(cases)-failed, failed)
+	if tracker != nil {
+		if run, err := tracker.Finish(context.Background()); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: finish experiment run: %v\n", err)
+		} else {
+			fmt.Printf("experiment %q run %d: %s, cost $%.6f\n", tracker.Experiment.Name, run.ID, run.Status, run.CostUSD)
+		}
+	}
 	if failed > 0 {
 		os.Exit(1)
 	}

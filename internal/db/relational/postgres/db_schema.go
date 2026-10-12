@@ -59,7 +59,68 @@ CREATE TABLE IF NOT EXISTS gb_llm_calls (
 	cost_usd      DOUBLE PRECISION NOT NULL, -- total cost of the call in USD (0 if the model's price is unknown)
 	created_at    TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `
 );
-CREATE INDEX IF NOT EXISTS idx_gb_llm_calls_type ON gb_llm_calls(type);`
+CREATE INDEX IF NOT EXISTS idx_gb_llm_calls_type ON gb_llm_calls(type);
+
+CREATE TABLE IF NOT EXISTS gb_experiments (
+	id          BIGSERIAL PRIMARY KEY,
+	name        TEXT NOT NULL UNIQUE,
+	description TEXT NOT NULL DEFAULT '',
+	config      JSONB NOT NULL DEFAULT '{}',
+	created_at  TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS gb_experiment_evals (
+	experiment_id BIGINT NOT NULL REFERENCES gb_experiments(id) ON DELETE CASCADE,
+	suite         TEXT NOT NULL,
+	eval_name     TEXT NOT NULL,
+	created_at    TIMESTAMPTZ NOT NULL,
+	PRIMARY KEY (experiment_id, suite, eval_name)
+);
+
+CREATE TABLE IF NOT EXISTS gb_experiment_runs (
+	id            BIGSERIAL PRIMARY KEY,
+	experiment_id BIGINT NOT NULL REFERENCES gb_experiments(id) ON DELETE CASCADE,
+	status        TEXT NOT NULL CHECK (status IN ('running', 'passed', 'failed')),
+	params        JSONB NOT NULL DEFAULT '{}',
+	total_evals   BIGINT NOT NULL DEFAULT 0,
+	passed_evals  BIGINT NOT NULL DEFAULT 0,
+	failed_evals  BIGINT NOT NULL DEFAULT 0,
+	cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
+	started_at    TIMESTAMPTZ NOT NULL,
+	finished_at   TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_runs(experiment_id);
+
+CREATE TABLE IF NOT EXISTS gb_experiment_run_evals (
+	id          BIGSERIAL PRIMARY KEY,
+	run_id      BIGINT NOT NULL REFERENCES gb_experiment_runs(id) ON DELETE CASCADE,
+	suite       TEXT NOT NULL,
+	eval_name   TEXT NOT NULL,
+	status      TEXT NOT NULL CHECK (status IN ('passed', 'failed', 'error')),
+	answer      TEXT NOT NULL DEFAULT '',
+	problems    JSONB NOT NULL DEFAULT '[]',
+	error       TEXT NOT NULL DEFAULT '',
+	steps       BIGINT NOT NULL DEFAULT 0,
+	cost_usd    DOUBLE PRECISION NOT NULL DEFAULT 0,
+	started_at  TIMESTAMPTZ NOT NULL,
+	finished_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_run_evals_run ON gb_experiment_run_evals(run_id);
+
+CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
+	id            BIGSERIAL PRIMARY KEY,
+	run_eval_id   BIGINT NOT NULL REFERENCES gb_experiment_run_evals(id) ON DELETE CASCADE,
+	seq           BIGINT NOT NULL,
+	kind          TEXT NOT NULL CHECK (kind IN ('remember', 'recall')),
+	trajectory_id TEXT NOT NULL,
+	agent_name    TEXT NOT NULL DEFAULT '',
+	steps         BIGINT NOT NULL DEFAULT 0,
+	cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
+	path          TEXT NOT NULL DEFAULT '',
+	created_at    TIMESTAMPTZ NOT NULL,
+	UNIQUE (run_eval_id, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_trajectories_tid ON gb_experiment_trajectories(trajectory_id);`
 
 // initSchema applies the database schema. Concurrent starters are serialized with an advisory lock, because
 // CREATE ... IF NOT EXISTS can still race in PostgreSQL.
