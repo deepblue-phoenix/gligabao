@@ -167,3 +167,41 @@ func testVectors(t *testing.T, d *sql.DB) {
 		t.Fatalf("unknown db: %d", w.Code)
 	}
 }
+
+// TestVectorsOpenOnDemand checks that a database with OpenVectors gets the store from it (and sees what is written
+// to it later, e.g. by another process).
+func TestVectorsOpenOnDemand(t *testing.T) { dbtest.Run(t, testVectorsOpenOnDemand) }
+
+func testVectorsOpenOnDemand(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	ds, err := memory.CreateDataset(ctx, d, "alice", "a", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	h := admin.VectorsOf([]admin.Named{{Name: "eval", DB: d, OpenVectors: func() (vector.Store, error) { return vector.NewChromem(dir, 2) }}})
+	count := func() int {
+		w := httptest.NewRecorder()
+		h(w, httptest.NewRequest(http.MethodGet, "/admin/api/vectors?user_id=alice&dataset=a", nil))
+		var out struct {
+			Indexes []struct{ Count int } `json:"indexes"`
+		}
+		if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &out) != nil || len(out.Indexes) == 0 {
+			t.Fatalf("%d %s", w.Code, w.Body)
+		}
+		return out.Indexes[0].Count
+	}
+	if n := count(); n != 0 {
+		t.Fatalf("before: %d", n)
+	}
+	other, err := vector.NewChromem(dir, 2) // "another process"
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Upsert(ctx, memory.EntityDataset(ds.ID), []vector.Vector{{ID: "entity-1", Values: []float32{1, 0}}}); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(); n != 1 {
+		t.Fatalf("after: %d", n)
+	}
+}

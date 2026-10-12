@@ -22,6 +22,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	log "github.com/sirupsen/logrus"
 )
@@ -146,7 +147,7 @@ func registerAdminUI(mux *http.ServeMux, d *db.DB, extra []admin.Named) {
 
 //---------------------------------------------------------------------------------------------
 
-// openAdminDB opens a SQLite file (creating it with the schema if missing) for the admin UI; no vector store.
+// openAdminDB opens a SQLite file (creating it with the schema if missing) for the admin UI; vectors opened on demand (see admin.Named.OpenVectors).
 func openAdminDB(path string) (*sql.DB, error) {
 	rel, err := relational.Open(config.DBBackendSQLite, path)
 	if err != nil {
@@ -223,7 +224,17 @@ func Run(ctx context.Context, opts Options) error {
 		} else {
 			defer evalDB.Close()
 			log.WithField("path", opts.EvalDBPath).Info("eval database is shown in the admin UI")
-			extra = append(extra, admin.Named{Name: EvalDBName, DB: evalDB, TrajectoryDir: filepath.Join(filepath.Dir(opts.EvalDBPath), "atif")})
+			// The eval runner (a separate process) keeps the eval database's vectors next to it, always in chromem with the
+			// default dimensions (see evals/main.go), so open that directory afresh whenever it is needed.
+			vecDir := db.DefaultVectorDir(opts.EvalDBPath)
+			extra = append(extra, admin.Named{
+				Name:          EvalDBName,
+				DB:            evalDB,
+				TrajectoryDir: filepath.Join(filepath.Dir(opts.EvalDBPath), "atif"),
+				OpenVectors: func() (vector.Store, error) {
+					return vector.NewChromem(vecDir, config.DefaultEmbeddingDimensions)
+				},
+			})
 		}
 	}
 

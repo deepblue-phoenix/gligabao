@@ -5,6 +5,7 @@ package admin
 import (
 	"database/sql"
 	"errors"
+	"io"
 	"net/http"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
@@ -44,6 +45,27 @@ type Named struct {
 	// Vectors is the vector store holding the embeddings of DB's datasets; nil if there is none (the vectors of a
 	// deleted dataset are then not cleaned up).
 	Vectors vector.Store
+	// OpenVectors, if set, is used instead of Vectors: it opens the vector store afresh each time it is needed. For a
+	// database whose vectors are written by another process (the eval runner), a store opened at startup would
+	// keep showing what it loaded then (chromem reads its directory only when opened).
+	OpenVectors func() (vector.Store, error)
+}
+
+// vectors returns the vector store of n (nil if there is none) and a function that releases it.
+func (n Named) vectors() (vector.Store, func(), error) {
+	if n.OpenVectors == nil {
+		return n.Vectors, func() {}, nil
+	}
+	s, err := n.OpenVectors()
+	if err != nil {
+		return nil, nil, err
+	}
+	closer, _ := s.(io.Closer)
+	return s, func() {
+		if closer != nil {
+			closer.Close()
+		}
+	}, nil
 }
 
 // Databases serves GET /admin/api/databases: the names of the databases the UI can show, in display order.
@@ -159,7 +181,14 @@ func DeleteDatasetOf(dbs []Named) http.HandlerFunc {
 			if n.Name != name {
 				continue
 			}
-			err := memory.DeleteDataset(r.Context(), n.DB, n.Vectors, q.Get("user_id"), q.Get("dataset"))
+			vectors, release, err := n.vectors()
+			if err != nil {
+				log.WithError(err).Error("admin: open vector store failed")
+				httputil.Error(w, http.StatusInternalServerError, "failed to open vector store")
+				return
+			}
+			defer release()
+			err = memory.DeleteDataset(r.Context(), n.DB, vectors, q.Get("user_id"), q.Get("dataset"))
 			switch {
 			case errors.Is(err, memory.ErrInvalidUser):
 				httputil.Error(w, http.StatusBadRequest, err.Error())
@@ -190,7 +219,14 @@ func VectorsOf(dbs []Named) http.HandlerFunc {
 			if n.Name != name {
 				continue
 			}
-			st, err := memory.VectorStats(r.Context(), n.DB, n.Vectors, q.Get("user_id"), q.Get("dataset"))
+			vectors, release, err := n.vectors()
+			if err != nil {
+				log.WithError(err).Error("admin: open vector store failed")
+				httputil.Error(w, http.StatusInternalServerError, "failed to open vector store")
+				return
+			}
+			defer release()
+			st, err := memory.VectorStats(r.Context(), n.DB, vectors, q.Get("user_id"), q.Get("dataset"))
 			switch {
 			case errors.Is(err, memory.ErrInvalidUser):
 				httputil.Error(w, http.StatusBadRequest, err.Error())

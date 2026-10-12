@@ -134,7 +134,7 @@ func Open(cfg Config) (*DB, error) {
 	case config.VectorStoreChromem:
 		dir := cfg.VectorDir
 		if dir == "" {
-			dir = strings.TrimSuffix(cfg.SQLitePath, filepath.Ext(cfg.SQLitePath)) + ".vectors"
+			dir = DefaultVectorDir(cfg.SQLitePath)
 		}
 		s, err := vector.NewChromem(dir, cfg.EmbeddingDimensions)
 		if err != nil {
@@ -154,6 +154,12 @@ func Open(cfg Config) (*DB, error) {
 		return nil, fmt.Errorf("unknown vector store %q", cfg.VectorStore)
 	}
 	return d, nil
+}
+
+// DefaultVectorDir is the chromem directory used for the SQLite file sqlitePath when none is configured: the file's
+// path without extension plus ".vectors".
+func DefaultVectorDir(sqlitePath string) string {
+	return strings.TrimSuffix(sqlitePath, filepath.Ext(sqlitePath)) + ".vectors"
 }
 
 // Close closes every client. It is safe to call on a nil DB.
