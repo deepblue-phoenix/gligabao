@@ -42,7 +42,10 @@ type Chromem struct {
 	mu sync.Mutex // serializes collection creation/deletion
 }
 
-var _ Store = (*Chromem)(nil)
+var (
+	_ Store   = (*Chromem)(nil)
+	_ Statter = (*Chromem)(nil)
+)
 
 // NewChromem opens (creating if needed) the vector store persisted in the directory dir.
 // dimensions is the embedding size; it is fixed once the store is created.
@@ -228,6 +231,20 @@ func (s *Chromem) DeleteAll(_ context.Context, dataset string) error {
 		return fmt.Errorf("vector: delete dataset: %w", err)
 	}
 	return nil
+}
+
+// Stats returns the number of vectors in the dataset's collection.
+func (s *Chromem) Stats(_ context.Context, dataset string) (Stats, error) {
+	st := Stats{Backend: "chromem", Dimensions: s.dims}
+	c, err := s.collection(dataset, false)
+	if err != nil {
+		return st, err
+	}
+	if c != nil {
+		st.Count = c.Count()
+	}
+	st.Bytes = int64(st.Count) * int64(s.dims) * 4
+	return st, nil
 }
 
 //---------------------------------------------------------------------------------------------

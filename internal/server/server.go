@@ -123,6 +123,7 @@ func registerAdminUI(mux *http.ServeMux, d *db.DB, extra []admin.Named) {
 	mux.HandleFunc("GET /v1/gb/admin/api/databases", admin.Databases(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/overview", admin.OverviewOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/graph", admin.GraphOf(dbs))
+	mux.HandleFunc("GET /v1/gb/admin/api/vectors", admin.VectorsOf(dbs))
 	mux.HandleFunc("DELETE /v1/gb/admin/api/datasets", admin.DeleteDatasetOf(dbs))
 	// The experiments live in the eval database; without one there are none to show.
 	for _, e := range extra {

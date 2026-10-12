@@ -10,6 +10,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 )
 
@@ -116,5 +117,53 @@ func testDeleteDataset(t *testing.T, d *sql.DB) {
 	all, err := memory.ListDatasets(ctx, d, "alice", true)
 	if err != nil || len(all) != 1 || !all[0].Deleted {
 		t.Fatalf("all: %v %v", all, err)
+	}
+}
+
+// TestVectors checks that the admin vectors endpoint reports every index of a live dataset, and 404s otherwise.
+func TestVectors(t *testing.T) { dbtest.Run(t, testVectors) }
+
+func testVectors(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	ds, err := memory.CreateDataset(ctx, d, "alice", "a", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := vector.NewChromem(":memory:", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Upsert(ctx, memory.EntityDataset(ds.ID), []vector.Vector{{ID: "entity-1", Values: []float32{1, 0}}}); err != nil {
+		t.Fatal(err)
+	}
+	h := admin.VectorsOf([]admin.Named{{Name: "standard", DB: d, Vectors: store}})
+	get := func(url string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		h(w, httptest.NewRequest(http.MethodGet, url, nil))
+		return w
+	}
+	w := get("/admin/api/vectors?user_id=alice&dataset=a")
+	if w.Code != http.StatusOK {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	var out struct {
+		Backend string `json:"backend"`
+		Indexes []struct {
+			Index string `json:"index"`
+			Count int    `json:"count"`
+			Dims  int    `json:"dimensions"`
+		} `json:"indexes"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Backend != "chromem" || len(out.Indexes) != len(memory.VectorIndexes) || out.Indexes[0].Index != "entities" || out.Indexes[0].Count != 1 || out.Indexes[1].Count != 0 || out.Indexes[0].Dims != 2 {
+		t.Fatalf("%s", w.Body)
+	}
+	if w := get("/admin/api/vectors?user_id=alice&dataset=nope"); w.Code != http.StatusNotFound {
+		t.Fatalf("unknown dataset: %d", w.Code)
+	}
+	if w := get("/admin/api/vectors?db=nope&user_id=alice&dataset=a"); w.Code != http.StatusNotFound {
+		t.Fatalf("unknown db: %d", w.Code)
 	}
 }

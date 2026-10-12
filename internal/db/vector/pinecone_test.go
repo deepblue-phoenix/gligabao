@@ -105,3 +105,21 @@ func TestAPIError(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestPineconeStats(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/describe_index_stats" {
+			t.Errorf("path %s", r.URL.Path)
+		}
+		w.Write([]byte(`{"dimension":4,"namespaces":{"ds":{"vectorCount":5}}}`))
+	}))
+	defer srv.Close()
+	p, _ := NewPinecone("k", srv.URL)
+	st, err := p.Stats(context.Background(), "ds")
+	if err != nil || st.Count != 5 || st.Dimensions != 4 || st.Bytes != 80 {
+		t.Fatalf("%+v %v", st, err)
+	}
+	if st, _ = p.Stats(context.Background(), "none"); st.Count != 0 {
+		t.Fatalf("none: %+v", st)
+	}
+}

@@ -141,3 +141,21 @@ func TestChromemPersistsAndChecksDimensions(t *testing.T) {
 		t.Fatalf("got %v", ids(got))
 	}
 }
+
+func TestChromemStats(t *testing.T) {
+	ctx := context.Background()
+	s := newTestChromem(t)
+	st, err := s.Stats(ctx, "main")
+	if err != nil || st.Count != 0 || st.Dimensions != 3 || st.Backend != "chromem" {
+		t.Fatalf("empty: %+v %v", st, err)
+	}
+	if err := s.Upsert(ctx, "main", []Vector{{ID: "a", Values: []float32{1, 0, 0}}, {ID: "b", Values: []float32{0, 1, 0}}}); err != nil {
+		t.Fatal(err)
+	}
+	if st, err = s.Stats(ctx, "main"); err != nil || st.Count != 2 || st.Bytes != 24 {
+		t.Fatalf("stats: %+v %v", st, err)
+	}
+	if st, _ = s.Stats(ctx, "other"); st.Count != 0 {
+		t.Fatalf("other: %+v", st)
+	}
+}

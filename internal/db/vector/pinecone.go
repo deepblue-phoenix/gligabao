@@ -30,7 +30,10 @@ type Pinecone struct {
 	httpClient *http.Client
 }
 
-var _ Store = (*Pinecone)(nil)
+var (
+	_ Store   = (*Pinecone)(nil)
+	_ Statter = (*Pinecone)(nil)
+)
 
 // PineconeOption configures a Pinecone store.
 type PineconeOption func(*Pinecone)
@@ -137,6 +140,22 @@ func (p *Pinecone) DeleteAll(ctx context.Context, dataset string) error {
 		return nil
 	}
 	return err
+}
+
+// Stats returns the number of vectors in the dataset's namespace (from describe_index_stats). Dimensions is the index's.
+func (p *Pinecone) Stats(ctx context.Context, dataset string) (Stats, error) {
+	var resp struct {
+		Dimension  int `json:"dimension"`
+		Namespaces map[string]struct {
+			VectorCount int `json:"vectorCount"`
+		} `json:"namespaces"`
+	}
+	if err := p.do(ctx, "/describe_index_stats", struct{}{}, &resp); err != nil {
+		return Stats{}, err
+	}
+	st := Stats{Backend: "pinecone", Dimensions: resp.Dimension, Count: resp.Namespaces[dataset].VectorCount}
+	st.Bytes = int64(st.Count) * int64(st.Dimensions) * 4
+	return st, nil
 }
 
 //---------------------------------------------------------------------------------------------

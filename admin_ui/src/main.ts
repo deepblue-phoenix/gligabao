@@ -4,6 +4,7 @@ import { initEvals } from "./evals.js";
 import { initGraphModal, showGraph } from "./graph.js";
 import { initHistoryModal } from "./history.js";
 import { initTraceModal } from "./trace.js";
+import { initVectorsModal, showVectors } from "./vectors.js";
 
 interface Dataset {
   user_id: string;
@@ -118,8 +119,20 @@ async function loadOverview(name: string, s: ReturnType<typeof makeSection>, inc
         const btn = graphCell.appendChild(document.createElement("button"));
         btn.type = "button";
         btn.className = "small";
-        btn.textContent = "View graph";
+        btn.classList.add("icon");
+        btn.title = "View graph";
+        btn.setAttribute("aria-label", `View graph of dataset ${ds.name}`);
+        btn.innerHTML = GRAPH_ICON; // static markup, no server data
         btn.addEventListener("click", () => void showGraph(name, ds.user_id, ds.name));
+
+        const vec = graphCell.appendChild(document.createElement("button"));
+        vec.type = "button";
+        vec.className = "small";
+        vec.classList.add("icon");
+        vec.title = "View vec db";
+        vec.setAttribute("aria-label", `View vec db of dataset ${ds.name}`);
+        vec.innerHTML = VECTORS_ICON; // static markup, no server data
+        vec.addEventListener("click", () => void showVectors(name, ds.user_id, ds.name));
 
         const del = graphCell.appendChild(document.createElement("button"));
         del.type = "button";
@@ -159,6 +172,20 @@ async function loadOverview(name: string, s: ReturnType<typeof makeSection>, inc
 }
 
 const FADE_OUT_MS = 500; // keep in sync with tr.removing in styles.scss
+
+const ICON_ATTRS =
+  'viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+
+// Three connected nodes: the knowledge graph.
+const GRAPH_ICON =
+  `<svg ${ICON_ATTRS}><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="12" cy="19" r="2.5"/>` +
+  '<path d="M8.3 7l7.4.6"/><path d="M7.2 8.2l3.6 8.5"/><path d="M16.8 10.2l-3.6 6.5"/></svg>';
+
+// A database cylinder with a scatter of points: the vector database.
+const VECTORS_ICON =
+  `<svg ${ICON_ATTRS}><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/>` +
+  '<path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>';
 
 const TRASH_ICON =
   '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" ' +
@@ -221,6 +248,7 @@ $<HTMLFormElement>("datasets-form").addEventListener("submit", (e) => {
 $("include-deleted").addEventListener("change", () => void loadAll(includeDeleted()));
 
 initGraphModal();
+initVectorsModal();
 initTraceModal();
 initHistoryModal();
 initEvals();

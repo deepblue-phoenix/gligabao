@@ -176,3 +176,34 @@ func DeleteDatasetOf(dbs []Named) http.HandlerFunc {
 		httputil.Error(w, http.StatusNotFound, "unknown database")
 	}
 }
+
+// VectorsOf serves GET /admin/api/vectors?db=<name>&user_id=...&dataset=... for one of dbs (the first without db):
+// the vector statistics of a live dataset, per index (see memory.VectorStats).
+func VectorsOf(dbs []Named) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		name := q.Get("db")
+		if name == "" && len(dbs) > 0 {
+			name = dbs[0].Name
+		}
+		for _, n := range dbs {
+			if n.Name != name {
+				continue
+			}
+			st, err := memory.VectorStats(r.Context(), n.DB, n.Vectors, q.Get("user_id"), q.Get("dataset"))
+			switch {
+			case errors.Is(err, memory.ErrInvalidUser):
+				httputil.Error(w, http.StatusBadRequest, err.Error())
+			case errors.Is(err, memory.ErrInvalidDataset), errors.Is(err, memory.ErrDatasetNotFound):
+				httputil.Error(w, http.StatusNotFound, "dataset not found")
+			case err != nil:
+				log.WithError(err).WithFields(log.Fields{"user_id": q.Get("user_id"), "dataset": q.Get("dataset")}).Error("admin: vector stats failed")
+				httputil.Error(w, http.StatusInternalServerError, "failed to read vector stats")
+			default:
+				httputil.WriteJSON(w, http.StatusOK, st)
+			}
+			return
+		}
+		httputil.Error(w, http.StatusNotFound, "unknown database")
+	}
+}

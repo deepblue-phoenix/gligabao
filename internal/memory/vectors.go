@@ -147,3 +147,63 @@ func (p *pendingVectors) write(ctx context.Context) error {
 	}
 	return nil
 }
+
+//---------------------------------------------------------------------------------------------
+
+// IndexStats is the state of one vector index of a dataset.
+type IndexStats struct {
+	Index VectorIndex `json:"index"`
+	// VectorDataset is the dataset's name in the vector store.
+	VectorDataset string `json:"vector_dataset"`
+	// Expected is the number of rows (entities, edges) that should have a vector in this index.
+	Expected int `json:"expected"`
+	vector.Stats
+}
+
+// DatasetVectorStats is the state of all the vector indexes of a dataset.
+type DatasetVectorStats struct {
+	// Backend is "" if there is no vector store, or it cannot report statistics.
+	Backend string       `json:"backend"`
+	Indexes []IndexStats `json:"indexes"`
+}
+
+// VectorStats reports, for every vector index of userID's live dataset name, the vectors the store holds next to the
+// number of rows that should have one. vectors may be nil (no indexes are listed then).
+// It returns ErrDatasetNotFound if there is no such dataset.
+func VectorStats(ctx context.Context, d *sql.DB, vectors vector.Store, userID, name string) (*DatasetVectorStats, error) {
+	userID, err := ResolveUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	name, err = ResolveDatasetName(name)
+	if err != nil {
+		return nil, err
+	}
+	id, err := datasetID(ctx, d, userID, name)
+	if err != nil {
+		return nil, err
+	}
+	out := &DatasetVectorStats{Indexes: []IndexStats{}}
+	statter, ok := vectors.(vector.Statter)
+	if !ok {
+		return out, nil
+	}
+	counts, err := graph.DatasetCounts(ctx, d, id)
+	if err != nil {
+		return nil, err
+	}
+	for _, idx := range VectorIndexes {
+		ds := VectorDataset(id, idx)
+		st, err := statter.Stats(ctx, ds)
+		if err != nil {
+			return nil, fmt.Errorf("memory: stats of vector dataset %s: %w", ds, err)
+		}
+		expected := counts.Entities
+		if idx == IndexEdges {
+			expected = counts.Edges
+		}
+		out.Backend = st.Backend
+		out.Indexes = append(out.Indexes, IndexStats{Index: idx, VectorDataset: ds, Expected: expected, Stats: st})
+	}
+	return out, nil
+}

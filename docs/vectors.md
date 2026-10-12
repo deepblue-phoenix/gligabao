@@ -39,6 +39,10 @@ Further indexes are added the same way: another `memory.VectorIndex` and so anot
 
 `DELETE /v1/gb/datasets/{name}` soft-deletes the dataset (the relational rows are kept) and removes all its vector datasets with `DeleteAll` (one call per index), since a deleted dataset can never be read again. If removing one fails the request still succeeds, because they are unreachable; the error is logged and the other vector datasets are still removed. This works the same for chromem and Pinecone.
 
+## Admin UI: View vec db
+
+Each live dataset in the admin UI has a **View vec db** button. It opens a modal with one row per index (`GET /v1/gb/admin/api/vectors?db=&user_id=&dataset=`, `memory.VectorStats`): the vector dataset name, the number of vectors in it, the number of rows that should have one (entities / edges), how many are missing, the dimension and the raw embedding size. The numbers come from the optional `vector.Statter` interface, which chromem (collection count) and Pinecone (`describe_index_stats`) implement.
+
 ## What `remember` writes
 
 [`remember`](remember.md) embeds what it stores, in the same call:

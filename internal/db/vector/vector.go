@@ -44,3 +44,21 @@ type Store interface {
 	// DeleteAll removes every vector in the dataset (and the dataset itself, if the backend has such a thing).
 	DeleteAll(ctx context.Context, dataset string) error
 }
+
+// Stats describes the vectors of one dataset.
+type Stats struct {
+	// Backend names the store ("chromem", "pinecone").
+	Backend string `json:"backend"`
+	// Count is the number of vectors in the dataset (0 if it does not exist).
+	Count int `json:"count"`
+	// Dimensions is the size of each vector.
+	Dimensions int `json:"dimensions"`
+	// Bytes is the size of the raw embeddings (Count * Dimensions * 4), not counting IDs, metadata or index overhead.
+	Bytes int64 `json:"bytes"`
+}
+
+// Statter is implemented by stores that can report statistics about a dataset; both Chromem and Pinecone do.
+type Statter interface {
+	// Stats returns the statistics of the dataset. A dataset that does not exist has zero Count.
+	Stats(ctx context.Context, dataset string) (Stats, error)
+}

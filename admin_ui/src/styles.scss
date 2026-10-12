@@ -109,6 +109,7 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 button.small { padding: 0.15rem 0.6rem; font-size: 0.8rem; }
 button.small + button.small { margin-left: 0.4rem; }
 button[hidden] { display: none; }
+button.icon { vertical-align: middle; svg { display: block; } }
 button.danger { background: $err; color: #fff; vertical-align: middle; svg { display: block; } }
 
 .modal {
@@ -344,3 +345,5 @@ tr.removing {
   transition: opacity 0.5s ease;
   pointer-events: none;
 }
+
+#vectors-modal[open] { height: fit-content; min-height: 12rem; max-height: 88vh; }
