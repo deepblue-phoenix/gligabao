@@ -11,6 +11,7 @@ interface Dataset {
   name: string;
   description?: string;
   tags?: string[];
+  created_at: string;
   deleted: boolean;
   artifacts: number;
   entities: number;
@@ -20,6 +21,18 @@ interface Dataset {
 interface Overview {
   datasets: Dataset[];
   totals: { artifacts: number; entities: number; edges: number };
+}
+
+// "5 days ago" / "3 hours ago" / "12 mins ago" for an ISO timestamp (days, hours or minutes; "just now" under a minute).
+function timeAgo(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const mins = Math.max(0, Math.floor((Date.now() - t) / 60000));
+  const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"} ago`;
+  if (mins < 1) return "just now";
+  if (mins < 60) return plural(mins, "min");
+  if (mins < 1440) return plural(Math.floor(mins / 60), "hour");
+  return plural(Math.floor(mins / 1440), "day");
 }
 
 function $<T extends HTMLElement>(id: string): T {
@@ -42,7 +55,7 @@ async function checkHealth(): Promise<void> {
 }
 
 const COLUMNS: [string, boolean][] = [
-  ["User", false], ["Name", false], ["Description", false], ["Tags", false],
+  ["User", false], ["Name", false], ["Description", false], ["Tags", false], ["Created", false],
   ["Artifacts", true], ["Entities", true], ["Edges", true], ["Actions", false],
 ];
 
@@ -109,6 +122,9 @@ async function loadOverview(name: string, s: ReturnType<typeof makeSection>, inc
       tr.insertCell().textContent = ds.deleted ? `${ds.name} (deleted)` : ds.name;
       tr.insertCell().textContent = ds.description ?? "";
       tr.insertCell().textContent = (ds.tags ?? []).join(", ");
+      const created = tr.insertCell();
+      created.textContent = timeAgo(ds.created_at);
+      created.title = ds.created_at;
       for (const n of [ds.artifacts, ds.entities, ds.edges]) {
         const td = tr.insertCell();
         td.className = "num";
