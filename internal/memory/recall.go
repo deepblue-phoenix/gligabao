@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
@@ -78,13 +79,13 @@ func Recall(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, query stri
 	tr.user(query)
 	tr.input(map[string]any{"user_id": userID, "dataset": dataset})
 
-	g, err := retrieve(ctx, d, dsID, query)
+	rc, err := assembleContext(ctx, d, dsID, query)
 	if err != nil {
 		return nil, fmt.Errorf("retrieve context: %w", err)
 	}
 	tr.tool("Retrieved the subgraph around the entities matching the query.", "retrieve_graph",
-		map[string]any{"user_id": userID, "dataset": dataset, "query": query}, g.render())
-	if len(g.entities) == 0 {
+		map[string]any{"user_id": userID, "dataset": dataset, "query": query}, rc.Graph.render())
+	if len(rc.Graph.entities) == 0 {
 		const none = "I don't have any information in memory to answer that."
 		tr.agent(none)
 		return &RecallResult{
@@ -93,11 +94,45 @@ func Recall(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, query stri
 		}, nil
 	}
 
-	llm = tr.wrap(withRecording(llm, d, CallRecall))
+	out, err := recallLLM(ctx, tr.wrap(withRecording(llm, d, CallRecall)), rc)
+	if err != nil {
+		return nil, err
+	}
+	return &RecallResult{Answer: out.Answer, Evidence: getEvidence(rc.Graph, out)}, nil
+}
+
+//---------------------------------------------------------------------------------------------
+
+// recallContext is everything the recall LLM is given to answer a question: the memory (the retrieved subgraph),
+// the current time (to interpret the validity of temporal facts) and the question itself.
+type recallContext struct {
+	Now      time.Time
+	Graph    *graphContext
+	Question string
+}
+
+// assembleContext builds the recallContext for query: it retrieves the subgraph of dataset dsID around the
+// entities matching the query and stamps it with the current time.
+func assembleContext(ctx context.Context, d *sql.DB, dsID int64, query string) (*recallContext, error) {
+	g, err := retrieve(ctx, d, dsID, query)
+	if err != nil {
+		return nil, err
+	}
+	return &recallContext{Now: relational.Now(), Graph: g, Question: query}, nil
+}
+
+// render returns the user message sent to the LLM.
+func (c *recallContext) render() string {
+	return "<current_time>\n" + relational.FormatTime(c.Now) + "\n</current_time>\n\n" +
+		"<graph>\n" + c.Graph.render() + "</graph>\n\n" +
+		"<question>\n" + c.Question + "\n</question>"
+}
+
+// recallLLM asks the LLM to answer rc.Question from rc and parses its structured output.
+func recallLLM(ctx context.Context, llm LLM, rc *recallContext) (*recallOutput, error) {
 	resp, err := llm.Complete(ctx, ai.Request{
-		System: recallSystemPrompt,
-		Messages: []ai.Message{{Role: ai.RoleUser, Content: "<current_time>\n" + relational.FormatTime(relational.Now()) +
-			"\n</current_time>\n\n<graph>\n" + g.render() + "</graph>\n\n<question>\n" + query + "\n</question>"}},
+		System:    recallSystemPrompt,
+		Messages:  []ai.Message{{Role: ai.RoleUser, Content: rc.render()}},
 		MaxTokens: 2048,
 	})
 	if err != nil {
@@ -106,11 +141,7 @@ func Recall(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, query stri
 	if resp.StopReason == "max_tokens" {
 		return nil, errors.New("memory: LLM output truncated")
 	}
-	out, err := parseRecall(resp.Text)
-	if err != nil {
-		return nil, err
-	}
-	return g.result(out), nil
+	return parseRecall(resp.Text)
 }
 
 //---------------------------------------------------------------------------------------------
@@ -173,9 +204,9 @@ func (g *graphContext) render() string {
 	return sb.String()
 }
 
-// result builds the response, keeping only cited IDs that were present in the context. Endpoints of
-// cited edges are included as cited entities.
-func (g *graphContext) result(o *recallOutput) *RecallResult {
+// getEvidence returns the entities and edges the LLM cited in o, keeping only cited IDs that were present in the
+// context. Endpoints of cited edges are included as cited entities.
+func getEvidence(g *graphContext, o *recallOutput) Evidence {
 	ev := Evidence{Entities: []EvidenceEntity{}, Edges: []EvidenceEdge{}}
 	ents := map[int64]bool{}
 	for _, id := range o.Entities {
@@ -199,7 +230,7 @@ func (g *graphContext) result(o *recallOutput) *RecallResult {
 			ev.Entities = append(ev.Entities, g.entities[id])
 		}
 	}
-	return &RecallResult{Answer: o.Answer, Evidence: ev}
+	return ev
 }
 
 func sortedKeys[V any](m map[int64]V) []int64 {
