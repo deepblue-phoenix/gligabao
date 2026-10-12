@@ -41,6 +41,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
@@ -235,10 +236,10 @@ func (o *Outcome) Cost() (usd float64, steps int) {
 // run executes one case of the experiment run runID in the eval database through the eval endpoints, in a dataset
 // of its own (see datasetName). The outcome is returned even when err is set, holding whatever was collected
 // before the failure.
-func run(c Case, runID int64, database *db.DB, llm memory.LLM, verbose bool) (out *Outcome, err error) {
+func run(c Case, runID int64, database *db.DB, llm memory.LLM, emb memory.Embedder, verbose bool) (out *Outcome, err error) {
 	out = &Outcome{TrajectoryDir: atifDir}
 
-	srv := httptest.NewServer(server.NewHandler(database, llm, nil, true, false))
+	srv := httptest.NewServer(server.NewHandler(database, llm, emb, true, false))
 	defer srv.Close()
 
 	dataset := datasetName(c, runID)
@@ -401,9 +402,9 @@ func post(url string, body, out any) error {
 
 //---------------------------------------------------------------------------------------------
 
-// runCases runs every case through llm in the eval database, prints PASS/FAIL per case and returns how many failed.
+// runCases runs every case through llm (and embeds the entities and edges with emb, if not nil) in the eval database, prints PASS/FAIL per case and returns how many failed.
 // The result of each case is recorded in the tracker's experiment run (kept in the same database).
-func runCases(cases []Case, llm memory.LLM, verbose bool, database *db.DB, tracker *experiments.Tracker) (failed int) {
+func runCases(cases []Case, llm memory.LLM, emb memory.Embedder, verbose bool, database *db.DB, tracker *experiments.Tracker) (failed int) {
 	for _, c := range cases {
 		l := llm
 		if verbose {
@@ -411,7 +412,7 @@ func runCases(cases []Case, llm memory.LLM, verbose bool, database *db.DB, track
 			l = &verboseLLM{inner: llm}
 		}
 		started := time.Now()
-		out, err := run(c, tracker.Run.ID, database, l, verbose)
+		out, err := run(c, tracker.Run.ID, database, l, emb, verbose)
 		answer, problems := out.Answer, out.Problems
 		cost, steps := out.Cost()
 		if verbose {
@@ -501,6 +502,15 @@ func mainErr() error {
 	if err != nil {
 		return err
 	}
+	// remember embeds the entities and edges it stores into the eval database's vector store (see
+	// ../docs/vectors.md); without an embedder it stores none, so say so. emb stays a nil interface then.
+	var emb memory.Embedder
+	if e, err := ai.NewEmbedder(os.Getenv(config.EnvOpenAIKey), ai.WithEmbedDimensions(config.DefaultEmbeddingDimensions)); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: no embedder (%v): entities and edges will NOT be vector indexed\n", err)
+	} else {
+		emb = e
+	}
+
 	cases, err := loadCases(flag.Args(), *suitesDir)
 	if err != nil {
 		return err
@@ -520,7 +530,7 @@ func mainErr() error {
 		return fmt.Errorf("start experiment: %w", err)
 	}
 
-	failed := runCases(cases, llm, *verbose, database, tracker)
+	failed := runCases(cases, llm, emb, *verbose, database, tracker)
 
 	fmt.Printf("---\npassed: %d, failed: %d\n", len(cases)-failed, failed)
 	if run, err := tracker.Finish(context.Background()); err != nil {

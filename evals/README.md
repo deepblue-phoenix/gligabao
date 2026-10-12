@@ -1,6 +1,6 @@
 # Evals
 
-End-to-end checks that run against a real gligabao server (and the real LLM), so `ANTHROPIC_API_KEY` is required.
+End-to-end checks that run against a real gligabao server (and the real LLM), so `ANTHROPIC_API_KEY` is required. `OPENAI_API_KEY` is also needed for `remember` to vector-index the entities and edges (into `bin/gligabao-eval.vectors`, shown by "View vec db" in the admin UI); without it the runner warns and no vectors are stored.
 
 Run from the repo root: `./run_evals.sh [-v] [case-name ...]`, e.g. `./run_evals.sh -v remember_recall`. `-v` prints the input and output of every LLM call.
 

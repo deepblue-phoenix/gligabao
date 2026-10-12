@@ -239,6 +239,9 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 	if err != nil {
 		return nil, err
 	}
+	// Registered before the transaction's Rollback, so it runs after the transaction is finished (see prepareVectors).
+	var embedUsage *ai.EmbedUsage
+	defer func() { recordEmbedUsage(ctx, d, embedUsage) }()
 	tx, err := graph.Begin(ctx, d)
 	if err != nil {
 		return nil, err
@@ -325,7 +328,7 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		return nil, err
 	}
 
-	pv, err := prepareVectors(ctx, d, tx, co, dsID, embedIDs, out.Edges)
+	pv, embedUsage, err := prepareVectors(ctx, tx, co, dsID, embedIDs, out.Edges)
 	if err != nil {
 		return nil, err
 	}

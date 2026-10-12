@@ -48,7 +48,7 @@ func TestRunCasesTracksExperiment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failed := runCases(cases, &scriptedLLM{answer: "Alice."}, false, trackDB, tracker); failed != 1 {
+	if failed := runCases(cases, &scriptedLLM{answer: "Alice."}, nil, false, trackDB, tracker); failed != 1 {
 		t.Fatalf("failed = %d, want 1", failed)
 	}
 	run, err := tracker.Finish(ctx)
@@ -132,7 +132,7 @@ func TestRunsAreIsolatedAndKept(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if failed := runCases(cases, &scriptedLLM{answer: "Alice."}, false, database, tr); failed != 0 {
+		if failed := runCases(cases, &scriptedLLM{answer: "Alice."}, nil, false, database, tr); failed != 0 {
 			t.Fatalf("run %d failed", i)
 		}
 		if _, err := tr.Finish(ctx); err != nil {

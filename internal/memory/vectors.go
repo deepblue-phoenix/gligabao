@@ -68,18 +68,21 @@ type pendingVectors struct {
 }
 
 // prepareVectors embeds the entities (IDs, in order, without duplicates; read as stored through tx) and the edges
-// of dataset dsID in one request. It returns nil if opts ask for no vectors or there is nothing to embed. The
-// embedding cost is recorded as it is spent, like the LLM's.
-func prepareVectors(ctx context.Context, d *sql.DB, tx graph.Tx, o callOptions, dsID int64, entityIDs []int64, edges []Edge) (*pendingVectors, error) {
+// of dataset dsID in one request. It returns nil if opts ask for no vectors or there is nothing to embed.
+//
+// The usage of the embedding request is returned (non-nil whenever the request was made, even if the call fails
+// afterwards) for the caller to record with recordEmbedUsage once tx is finished: recording it here, through d,
+// would block on the write lock tx holds (SQLITE_BUSY).
+func prepareVectors(ctx context.Context, tx graph.Tx, o callOptions, dsID int64, entityIDs []int64, edges []Edge) (*pendingVectors, *ai.EmbedUsage, error) {
 	if o.vectors == nil || o.embedder == nil || len(entityIDs)+len(edges) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	ents := make([]*graph.EvidenceEntity, 0, len(entityIDs))
 	texts := make([]string, 0, len(entityIDs)+len(edges))
 	for _, id := range entityIDs {
 		e, err := tx.GetEntity(ctx, dsID, id)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		ents = append(ents, e)
 		texts = append(texts, entityText(e))
@@ -90,16 +93,10 @@ func prepareVectors(ctx context.Context, d *sql.DB, tx graph.Tx, o callOptions, 
 
 	embs, usage, err := o.embedder.EmbedBatchUsage(ctx, texts)
 	if err != nil {
-		return nil, fmt.Errorf("memory: embed entities and edges: %w", err)
+		return nil, nil, fmt.Errorf("memory: embed entities and edges: %w", err)
 	}
 	if len(embs) != len(texts) {
-		return nil, fmt.Errorf("memory: embedder returned %d embeddings for %d texts", len(embs), len(texts))
-	}
-	if usage != nil {
-		// Detached from ctx so a cancelled request still records money that was spent.
-		if err := RecordCall(context.WithoutCancel(ctx), d, CallRemember, usage.Provider, usage.Model, usage.InputTokens, 0, usage.CostUSD); err != nil {
-			log.WithError(err).WithField("model", usage.Model).Error("record embedding call")
-		}
+		return nil, usage, fmt.Errorf("memory: embedder returned %d embeddings for %d texts", len(embs), len(texts))
 	}
 
 	p := &pendingVectors{store: o.vectors, byDataset: map[string][]vector.Vector{}, entities: len(ents), edges: len(edges)}
@@ -131,7 +128,18 @@ func prepareVectors(ctx context.Context, d *sql.DB, tx graph.Tx, o callOptions, 
 			},
 		})
 	}
-	return p, nil
+	return p, usage, nil
+}
+
+// recordEmbedUsage records the cost of an embedding request, as it was spent, like the LLM's. Detached from ctx so a
+// cancelled request still records money that was spent. It must not run while a write transaction of d is open.
+func recordEmbedUsage(ctx context.Context, d *sql.DB, usage *ai.EmbedUsage) {
+	if usage == nil {
+		return
+	}
+	if err := RecordCall(context.WithoutCancel(ctx), d, CallRemember, usage.Provider, usage.Model, usage.InputTokens, 0, usage.CostUSD); err != nil {
+		log.WithError(err).WithField("model", usage.Model).Error("record embedding call")
+	}
 }
 
 // write upserts the vectors into their datasets. Vectors are keyed by entity / edge ID, so writing them again
