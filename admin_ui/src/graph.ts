@@ -224,14 +224,14 @@ function describe(n: Node, edges: Edge[], byID: Map<number, Node>): HTMLElement[
     const fact = facts.appendChild(document.createElement("div"));
     fact.className = e.expired_at ? "graph-fact expired" : "graph-fact";
     fact.appendChild(document.createElement("strong")).textContent = out ? `${e.relation} → ${other}` : `${other} → ${e.relation}`;
-    if (e.expired_at) {
-      // How long the fact held: from when it became true until it ended (invalid_at), else until it was superseded.
-      const span = fmtSpan(e.valid_at ?? e.created_at, e.invalid_at ?? e.expired_at);
-      if (span) {
-        const tag = fact.appendChild(document.createElement("span"));
-        tag.className = "graph-span";
-        tag.textContent = `valid for ${span}`;
-      }
+    // How long the fact held: from when it became true until it ended (invalid_at), else until it was superseded
+    // (expired_at); a fact that is still true has held until now.
+    const end = e.invalid_at ?? e.expired_at;
+    const span = fmtSpan(e.valid_at ?? e.created_at, end ?? new Date().toISOString());
+    if (span) {
+      const tag = fact.appendChild(document.createElement("span"));
+      tag.className = "graph-span";
+      tag.textContent = `valid for ${span}${end ? "" : " so far"}`;
     }
     const dl = fact.appendChild(document.createElement("dl"));
     for (const [k, v] of [["valid at", e.valid_at], ["invalid at", e.invalid_at], ["created at", e.created_at], ["expired at", e.expired_at]]) {
