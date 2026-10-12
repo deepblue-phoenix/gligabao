@@ -5,6 +5,7 @@ import (
 	"database/sql"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 )
 
 // GraphExport is a whole dataset graph: its entities (nodes) and every edge (facts, expired ones included).
@@ -29,6 +30,16 @@ func ExportGraph(ctx context.Context, d *sql.DB, userID, name string) (*GraphExp
 	if err != nil {
 		return nil, err
 	}
+	return exportGraph(ctx, d, dsID, name)
+}
+
+// ExportDatasetGraph returns the full graph of the dataset with the given ID and name, which may be a deleted one
+// (its rows are kept). It is meant for admin tooling that follows a stored dataset ID, such as an eval run's.
+func ExportDatasetGraph(ctx context.Context, d *sql.DB, ds *relational.Dataset) (*GraphExport, error) {
+	return exportGraph(ctx, d, ds.ID, ds.Name)
+}
+
+func exportGraph(ctx context.Context, d *sql.DB, dsID int64, name string) (*GraphExport, error) {
 	entities, err := graph.ListEntities(ctx, d, dsID)
 	if err != nil {
 		return nil, err

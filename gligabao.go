@@ -39,7 +39,8 @@ type ServeOptions struct {
 	DBPath string
 	// VectorDir is the directory of the chromem vector store. Default: next to DBPath.
 	VectorDir string
-	// EvalDBPath is the SQLite file the evals write to; with the admin UI on it is shown next to the main database.
+	// EvalDBPath is the eval database (the SQLite file ./run_evals.sh writes the datasets, experiments and runs to); with
+	// the admin UI on it is shown next to the main database and feeds its Evals block.
 	EvalDBPath string
 	// TrajectoryDir is where the ATIF trajectories of the eval endpoints are stored as JSON. Default: "atif" next to DBPath.
 	TrajectoryDir string

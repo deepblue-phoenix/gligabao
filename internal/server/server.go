@@ -69,15 +69,20 @@ type Options struct {
 	// Eval registers the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/recall), which return ATIF
 	// trajectories with their results. Off by default.
 	Eval bool
-	// EvalDBPath is a second SQLite file (the one the evals write to, see evals/main.go) that the admin UI shows
-	// next to the main database. Opened for the admin UI only; ignored (with a warning) unless the main database is
-	// SQLite. Empty = not shown.
+	// EvalDBPath is a second SQLite file, the eval database (see evals/main.go): the evaluation datasets, the
+	// experiments and their runs. The admin UI shows it next to the main database and reads the Evals block (and the
+	// ATIF files, from an "atif" directory next to it) from it. Opened for the admin UI only; ignored (with a warning)
+	// unless the main database is SQLite. Empty = not shown, and the Evals routes are not registered.
 	EvalDBPath string
 	// AdminUI registers the admin UI handlers (served at /v1/gb/admin/ from the assets embedded in the binary).
 	AdminUI bool
 }
 
 //---------------------------------------------------------------------------------------------
+
+// EvalDBName is the name of the eval database in the admin UI (see Options.EvalDBPath). It holds the evaluation
+// datasets, the experiments and their runs, kept apart from the main database.
+const EvalDBName = "eval"
 
 // NewHandler builds the HTTP handler for the given databases and LLM.
 // llm may be nil, in which case endpoints requiring it return 503. The eval endpoints are registered only if eval is true,
@@ -115,12 +120,18 @@ func registerAdminUI(mux *http.ServeMux, d *db.DB, extra []admin.Named) {
 	mux.HandleFunc("GET /v1/gb/admin/api/databases", admin.Databases(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/overview", admin.OverviewOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/graph", admin.GraphOf(dbs))
-	// Experiments live in the main database only (the eval database is reset before every eval run).
-	mux.HandleFunc("GET /v1/gb/admin/api/evals", admin.EvalOverview(d.Relational))
-	mux.HandleFunc("GET /v1/gb/admin/api/evals/experiments/{id}", admin.EvalExperiment(d.Relational))
-	mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}", admin.EvalRun(d.Relational))
-	mux.HandleFunc("GET /v1/gb/admin/api/evals/run-evals/{id}/graph", admin.EvalRunEvalGraph(d.Relational))
-	mux.HandleFunc("GET /v1/gb/admin/api/evals/trajectories/{id}", admin.EvalTrajectory(d.Relational))
+	// The experiments live in the eval database; without one there are none to show.
+	for _, e := range extra {
+		if e.Name != EvalDBName {
+			continue
+		}
+		mux.HandleFunc("GET /v1/gb/admin/api/evals", admin.EvalOverview(e.DB))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/experiments/{id}", admin.EvalExperiment(e.DB))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}", admin.EvalRun(e.DB))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/run-evals/{id}/graph", admin.EvalRunEvalGraph(e.DB))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/trajectories/{id}", admin.EvalTrajectory(e.DB, e.TrajectoryDir))
+		break
+	}
 	mux.Handle("GET /v1/gb/admin/", http.StripPrefix("/v1/gb/admin/", http.FileServerFS(adminui.Assets())))
 	mux.HandleFunc("GET /v1/gb/admin", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/v1/gb/admin/", http.StatusMovedPermanently)
@@ -199,7 +210,7 @@ func Run(ctx context.Context, opts Options) error {
 		} else {
 			defer evalDB.Close()
 			log.WithField("path", opts.EvalDBPath).Info("eval database is shown in the admin UI")
-			extra = append(extra, admin.Named{Name: "eval", DB: evalDB})
+			extra = append(extra, admin.Named{Name: EvalDBName, DB: evalDB, TrajectoryDir: filepath.Join(filepath.Dir(opts.EvalDBPath), "atif")})
 		}
 	}
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/experiments"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 )
@@ -28,16 +29,16 @@ func (l *scriptedLLM) Complete(_ context.Context, req ai.Request) (*ai.Response,
 // experiment run holds: the evals with their suite, the results and the trajectory IDs.
 func TestRunCasesTracksExperiment(t *testing.T) {
 	dir := t.TempDir()
-	evalDBPath, mainDBPath, atifDir = filepath.Join(dir, "eval.db"), filepath.Join(dir, "main.db"), filepath.Join(dir, "atif")
+	atifDir = filepath.Join(dir, "atif")
 	memory.TrajectoryDir = atifDir
-	t.Cleanup(func() { evalDBPath, mainDBPath, atifDir = "", "", "" })
+	t.Cleanup(func() { atifDir = "" })
 
 	cases := []Case{
 		{Suite: "s1", Name: "good", Remember: []Artifact{{Text: "Alice is here."}}, Query: "Who?", ExpectContains: []string{"alice"}},
 		{Suite: "s2", Name: "bad", Remember: []Artifact{{Text: "Alice is here."}, {Text: "Alice again."}}, Query: "Who?", ExpectContains: []string{"Bob"}},
 	}
 
-	trackDB, err := db.Open(db.Config{SQLitePath: mainDBPath})
+	trackDB, err := db.Open(db.Config{SQLitePath: filepath.Join(dir, "eval.db")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +48,7 @@ func TestRunCasesTracksExperiment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failed := runCases(cases, &scriptedLLM{answer: "Alice."}, false, tracker); failed != 1 {
+	if failed := runCases(cases, &scriptedLLM{answer: "Alice."}, false, trackDB, tracker); failed != 1 {
 		t.Fatalf("failed = %d, want 1", failed)
 	}
 	run, err := tracker.Finish(ctx)
@@ -75,8 +76,12 @@ func TestRunCasesTracksExperiment(t *testing.T) {
 	if a := good.Trajectories[0].Artifacts; len(a) != 1 || a[0].Text != "Alice is here." || a[0].ID == 0 {
 		t.Fatalf("remember artifacts: %+v", a)
 	}
-	if g, err := experiments.RunEvalGraph(ctx, trackDB.Relational, good.ID); err != nil || !good.HasGraph || !strings.Contains(string(g), `"entities"`) {
-		t.Fatalf("graph: %s, %v, has_graph=%v", g, err, good.HasGraph)
+	ds, err := experiments.RunEvalDataset(ctx, trackDB.Relational, good.ID)
+	if err != nil || good.DatasetID == nil || ds.ID != *good.DatasetID || ds.Name != datasetName(cases[0], run.ID) {
+		t.Fatalf("dataset: %+v, %v, dataset_id=%v", ds, err, good.DatasetID)
+	}
+	if g, err := memory.ExportDatasetGraph(ctx, trackDB.Relational, ds); err != nil || len(g.Entities) == 0 {
+		t.Fatalf("graph: %+v, %v", g, err)
 	}
 	for _, e := range full.Evals {
 		for _, tr := range e.Trajectories {
@@ -106,76 +111,58 @@ func TestLoadCasesSetsSuite(t *testing.T) {
 	}
 }
 
-// TestResetEvalDB checks that the reset empties the eval database (and its vectors) but leaves the experiments in the
-// main database alone, and that it refuses to reset the main database itself.
-func TestResetEvalDB(t *testing.T) {
+// TestRunsAreIsolatedAndKept runs the same experiment twice against the same eval database: the second run does not
+// wipe the first one's datasets, and each run works in datasets of its own.
+func TestRunsAreIsolatedAndKept(t *testing.T) {
 	dir := t.TempDir()
-	evalPath, mainPath := filepath.Join(dir, "eval.db"), filepath.Join(dir, "main.db")
+	atifDir = filepath.Join(dir, "atif")
+	memory.TrajectoryDir = atifDir
+	t.Cleanup(func() { atifDir = "" })
+	database, err := db.Open(db.Config{SQLitePath: filepath.Join(dir, "eval.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
 	ctx := context.Background()
+	cases := []Case{{Suite: "s", Name: "c", Remember: []Artifact{{Text: "Alice is here."}}, Query: "Who?", ExpectContains: []string{"alice"}}}
 
-	evalDB, err := db.Open(db.Config{SQLitePath: evalPath})
-	if err != nil {
-		t.Fatal(err)
+	var runs []int64
+	for i := 0; i < 2; i++ {
+		tr, err := experiments.Start(ctx, database.Relational, experiments.Options{Name: "exp"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if failed := runCases(cases, &scriptedLLM{answer: "Alice."}, false, database, tr); failed != 0 {
+			t.Fatalf("run %d failed", i)
+		}
+		if _, err := tr.Finish(ctx); err != nil {
+			t.Fatal(err)
+		}
+		runs = append(runs, tr.Run.ID)
 	}
-	if _, err := evalDB.Relational.ExecContext(ctx, `CREATE TABLE leftover (x INTEGER)`); err != nil {
-		t.Fatal(err)
-	}
-	evalDB.Close()
-	mainDB, err := db.Open(db.Config{SQLitePath: mainPath})
-	if err != nil {
-		t.Fatal(err)
-	}
-	tr, err := experiments.Start(ctx, mainDB.Relational, experiments.Options{Name: "keep"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tr.Finish(ctx); err != nil {
-		t.Fatal(err)
-	}
-	mainDB.Close()
-
-	if err := resetEvalDB(evalPath, mainPath); err != nil {
-		t.Fatal(err)
-	}
-	for _, p := range []string{evalPath, filepath.Join(dir, "eval.vectors")} {
-		if _, err := os.Stat(p); !os.IsNotExist(err) {
-			t.Fatalf("%s still exists after reset (err %v)", p, err)
+	for _, id := range runs {
+		name := datasetName(cases[0], id)
+		if _, err := relational.DatasetID(ctx, database.Relational, evalUser, name); err != nil {
+			t.Fatalf("dataset %q of run %d: %v", name, id, err)
 		}
 	}
-	evalDB, err = db.Open(db.Config{SQLitePath: evalPath})
-	if err != nil {
-		t.Fatal(err)
+	if runs[0] == runs[1] || datasetName(cases[0], runs[0]) == datasetName(cases[0], runs[1]) {
+		t.Fatalf("runs share datasets: %v", runs)
 	}
-	defer evalDB.Close()
-	if _, err := evalDB.Relational.ExecContext(ctx, `SELECT x FROM leftover`); err == nil {
-		t.Fatal("eval database was not emptied")
-	}
-
-	mainDB, err = db.Open(db.Config{SQLitePath: mainPath})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer mainDB.Close()
-	if _, err := experiments.Get(ctx, mainDB.Relational, "keep"); err != nil {
-		t.Fatalf("experiment lost: %v", err)
-	}
-
-	if err := resetEvalDB(mainPath, mainPath); err == nil {
-		t.Fatal("resetting the main database must fail")
-	}
-	if err := resetEvalDB("", mainPath); err != nil {
-		t.Fatal(err)
+	if list, err := experiments.Runs(ctx, database.Relational, 1); err != nil || len(list) != 2 {
+		t.Fatalf("runs: %v, %v", list, err)
 	}
 }
 
 func TestDatasetName(t *testing.T) {
 	for name, want := range map[string]string{
-		"remember_recall":       "remember_recall",
-		"job change (v2)":       "job_change__v2_",
-		"-lead":                 "_lead",
-		strings.Repeat("a", 80): strings.Repeat("a", 64),
+		"remember_recall":       "remember_recall_run7",
+		"job change (v2)":       "job_change__v2__run7",
+		"-lead":                 "_lead_run7",
+		strings.Repeat("a", 80): strings.Repeat("a", 59) + "_run7",
 	} {
-		if got := datasetName(Case{Name: name}); got != want {
+		got := datasetName(Case{Name: name}, 7)
+		if got != want || len(got) > 64 {
 			t.Errorf("datasetName(%q) = %q, want %q", name, got, want)
 		}
 	}

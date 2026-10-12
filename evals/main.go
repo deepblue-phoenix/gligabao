@@ -1,24 +1,23 @@
 // Command evals runs end-to-end evals against the real LLM.
 //
-// Each suite in evals/suites/*.json is a JSON list of cases. The cases run in the eval database (-db) behind an
-// in-process HTTP server running in eval mode. That database is reset at the start of every invocation (unless
-// -keep-db), so the artifacts, entities and edges the cases create do not pile up between runs. The experiments
-// are not kept there: they live in the main database (-main-db), which is never reset, so they survive the resets. The case is run through the eval endpoints (/v1/gb/eval/remember and
+// Each suite in evals/suites/*.json is a JSON list of cases. The cases run in the eval database (-db), which isolates
+// the evaluation data from the main database. It is never reset: every run of an experiment creates its own datasets
+// (one per case, named after the case and the run, see datasetName), so runs do not interfere with each other and
+// the graphs of all runs are kept. The experiments and their runs are recorded in the same eval database. The cases
+// are run behind an in-process HTTP server in eval mode through the eval endpoints (/v1/gb/eval/remember and
 // /v1/gb/eval/recall): remember (once per artifact, in order), then recall. These return the ATIF trajectory of
 // every call along with its result.
-// Each case remembers into its own dataset, named after the case (see datasetName), so every case's graph is kept. The
-// dataset is deleted at the start of the case, so it is recreated fresh (matters with -keep-db, where it may exist).
 // Besides the answer, the stored temporal facts (edges with valid_at / invalid_at) are checked in the database.
 //
 // Usage: go run ./evals [-v] [-suites dir] [case-name ...]   (requires ANTHROPIC_API_KEY)
 // With -suites, suites are read from that directory instead of the embedded evals/suites (used by gligabao_int).
 // With -v, every LLM call's input and output is printed.
-// With -atif dir, the trajectories are stored there as JSON (default: an "atif" directory next to the -main-db file,
-// since the experiments reference them; with -main-db "" only the in-memory copies are used).
+// With -atif dir, the trajectories are stored there as JSON (default: an "atif" directory next to the -db file,
+// since the experiments reference them).
 //
-// Every invocation is a run of an experiment (-experiment, default "default"), persisted in the main database
+// Every invocation is a run of an experiment (-experiment, default "default"), persisted in the eval database
 // together with the evals (suite + case) it executed, their results and the IDs of their ATIF trajectories; see
-// internal/experiments. With -main-db "" nothing is persisted.
+// internal/experiments.
 package main
 
 import (
@@ -33,10 +32,10 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -53,10 +52,12 @@ import (
 //go:embed suites/*.json
 var suitesFS embed.FS
 
-// datasetName is the dataset a case remembers into and recalls from: one per case, named after it, so the graph of
-// every case stays in the eval database after the run (and can be viewed in the admin UI) instead of being replaced by
-// the next case. Characters a dataset name does not allow become "_"; the name is cut to the 64-byte limit.
-func datasetName(c Case) string {
+// datasetName is the dataset a case remembers into and recalls from: one per case and run of the experiment
+// ("<case>_run<runID>"), so runs are isolated from each other and the graph of every case of every run stays in the
+// eval database (and can be viewed in the admin UI). Characters a dataset name does not allow become "_"; the case
+// part is cut so the whole name fits the 64-byte limit.
+func datasetName(c Case, runID int64) string {
+	suffix := fmt.Sprintf("_run%d", runID)
 	b := []byte(c.Name)
 	for i, ch := range b {
 		ok := ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' ||
@@ -65,10 +66,10 @@ func datasetName(c Case) string {
 			b[i] = '_'
 		}
 	}
-	if len(b) > 64 {
-		b = b[:64]
+	if max := 64 - len(suffix); len(b) > max {
+		b = b[:max]
 	}
-	return string(b)
+	return string(b) + suffix
 }
 
 // evalUser owns the eval dataset.
@@ -199,58 +200,24 @@ func indent(s string) string {
 
 //---------------------------------------------------------------------------------------------
 
-// evalDBPath (-db) is the SQLite file all cases run in ("" = a throwaway database per case). It is reset at the start
-// of each invocation (see resetEvalDB), and cases stay independent because each one has its own dataset (named after
-// the case), which is soft-deleted first so remember starts from a new, empty one; the graph of every case stays. It holds no experiments, those are in mainDBPath.
-var evalDBPath string
-
-// mainDBPath (-main-db) is the SQLite file of the main (non-eval) database, where the experiments and their runs are
-// recorded ("" = nothing is recorded). It is never reset.
-var mainDBPath string
-
-// resetEvalDB deletes the eval database at path (SQLite file and its -wal/-shm/-journal companions) together with its
-// chromem vector directory, so the next open starts empty. Missing files are fine. It refuses to touch the main
-// database, which holds the experiments.
-func resetEvalDB(path, mainPath string) error {
-	if path == "" {
-		return nil
-	}
-	abs := func(p string) string {
-		if a, err := filepath.Abs(p); err == nil {
-			return a
-		}
-		return filepath.Clean(p)
-	}
-	if mainPath != "" && abs(path) == abs(mainPath) {
-		return fmt.Errorf("the eval database %q is the main database, which holds the experiments and is never reset", path)
-	}
-	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
-		if err := os.Remove(path + suffix); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return err
-		}
-	}
-	// The default vector directory of db.Open: next to the database file.
-	return os.RemoveAll(strings.TrimSuffix(path, filepath.Ext(path)) + ".vectors")
-}
-
-// atifDir is where the server stores the trajectories (-atif); empty = a throwaway per-case directory. The experiments
-// reference the files, so the default is next to the main database, not the (reset) eval one.
+// atifDir is where the server stores the trajectories (-atif). The experiments reference the files, so the default is
+// next to the eval database.
 var atifDir string
 
 // Outcome is what one eval case produced.
 type Outcome struct {
 	Answer   string
 	Problems []string // failed temporal-fact expectations
-	// Graph is the JSON snapshot of the knowledge graph the case built (memory.GraphExport); nil if not captured.
-	Graph []byte
+	// DatasetID is the dataset the case ran in (0 if it was never created); it holds the graph the case built.
+	DatasetID int64
 	// PassedChecks are the temporal-fact expectations that held.
 	PassedChecks []string
-	// Artifacts[i] are the artifacts of Trajectories[i]: a remember call's input artifact, the artifacts a recall's
-	// evidence was sourced from.
-	Artifacts [][]experiments.Artifact
+	// ArtifactIDs[i] are the IDs, in DatasetID, of the artifacts of Trajectories[i]: the artifact a remember call
+	// stored, the artifacts a recall's evidence was sourced from.
+	ArtifactIDs [][]int64
 	// Trajectories are the ATIF trajectories returned by the eval endpoints: one per remember, then the recall's.
 	Trajectories []*atif.Trajectory
-	// TrajectoryDir is where the trajectory files were stored ("" if they were throwaway).
+	// TrajectoryDir is where the trajectory files were stored.
 	TrajectoryDir string
 }
 
@@ -265,40 +232,22 @@ func (o *Outcome) Cost() (usd float64, steps int) {
 	return usd, steps
 }
 
-// run executes one case against a fresh database through the eval endpoints. The outcome is returned even
-// when err is set, holding whatever was collected before the failure.
-func run(c Case, llm memory.LLM, verbose bool) (out *Outcome, err error) {
+// run executes one case of the experiment run runID in the eval database through the eval endpoints, in a dataset
+// of its own (see datasetName). The outcome is returned even when err is set, holding whatever was collected
+// before the failure.
+func run(c Case, runID int64, database *db.DB, llm memory.LLM, verbose bool) (out *Outcome, err error) {
 	out = &Outcome{TrajectoryDir: atifDir}
-	dir, err := os.MkdirTemp("", "gligabao-eval-*")
-	if err != nil {
-		return out, err
-	}
-	defer os.RemoveAll(dir)
-	if atifDir == "" { // the trajectories come back in the responses, so the stored copies are throwaway
-		memory.TrajectoryDir = filepath.Join(dir, "atif")
-	}
-
-	// The eval database (-db), which the server's admin UI can show (reset at the start of the invocation);
-	// throwaway if -db is empty.
-	dbPath := evalDBPath
-	if dbPath == "" {
-		dbPath = filepath.Join(dir, "eval.db")
-	}
-	database, err := db.Open(db.Config{SQLitePath: dbPath})
-	if err != nil {
-		return out, err
-	}
-	defer database.Close()
 
 	srv := httptest.NewServer(server.NewHandler(database, llm, true, false))
 	defer srv.Close()
 
-	// Start from a clean dataset: soft-delete any previous one of this case (404 just means there was none; only
-	// happens with -keep-db); remember below recreates it with a new id and an empty graph.
-	dataset := datasetName(c)
-	if err := deleteDataset(srv.URL, dataset); err != nil {
-		return out, fmt.Errorf("delete dataset %q: %w", dataset, err)
-	}
+	dataset := datasetName(c, runID)
+	defer func() {
+		// Recorded with the result, so the graph can be read back from the dataset later (also after a failure).
+		if id, err := relational.DatasetID(context.Background(), database.Relational, evalUser, dataset); err == nil {
+			out.DatasetID = id
+		}
+	}()
 
 	for i, m := range c.Remember {
 		body := map[string]any{"user_id": evalUser, "text": m.Text, "dataset": dataset}
@@ -310,9 +259,6 @@ func run(c Case, llm memory.LLM, verbose bool) (out *Outcome, err error) {
 		}
 		var rem struct {
 			ArtifactID int64            `json:"artifact_id"`
-			Kind       string           `json:"kind"`
-			ValidAt    time.Time        `json:"valid_at"`
-			CreatedAt  time.Time        `json:"created_at"`
 			Trajectory *atif.Trajectory `json:"trajectory"`
 		}
 		if err := post(srv.URL+"/v1/gb/eval/remember", body, &rem); err != nil {
@@ -322,15 +268,7 @@ func run(c Case, llm memory.LLM, verbose bool) (out *Outcome, err error) {
 			return out, fmt.Errorf("remember #%d: response has no trajectory (is the server in eval mode?)", i+1)
 		}
 		out.Trajectories = append(out.Trajectories, rem.Trajectory)
-		out.Artifacts = append(out.Artifacts, []experiments.Artifact{
-			{ID: rem.ArtifactID, Kind: rem.Kind, Text: m.Text, ValidAt: rem.ValidAt, CreatedAt: rem.CreatedAt},
-		})
-	}
-	if g, err := memory.ExportGraph(context.Background(), database.Relational, evalUser, dataset); err != nil {
-		// Not worth failing the eval for.
-		fmt.Fprintf(os.Stderr, "warning: %s: export the graph: %v\n", c.Name, err)
-	} else if out.Graph, err = json.Marshal(g); err != nil {
-		return out, err
+		out.ArtifactIDs = append(out.ArtifactIDs, []int64{rem.ArtifactID})
 	}
 	edges, err := graph.ListEdges(context.Background(), database.Graph, evalUser, dataset)
 	if err != nil {
@@ -408,18 +346,18 @@ func run(c Case, llm memory.LLM, verbose bool) (out *Outcome, err error) {
 	for _, e := range rec.Evidence.Edges {
 		cited[e.ID] = e.ArtifactID
 	}
-	arts, err := sourceArtifacts(context.Background(), database, dataset, cited)
+	ids, err := sourceArtifactIDs(context.Background(), database, dataset, cited)
 	if err != nil {
 		// Not worth failing the eval for: the recall itself worked.
 		fmt.Fprintf(os.Stderr, "warning: %s: collect the recall's source artifacts: %v\n", c.Name, err)
 	}
-	out.Artifacts = append(out.Artifacts, arts)
+	out.ArtifactIDs = append(out.ArtifactIDs, ids)
 	return out, nil
 }
 
-// sourceArtifacts returns the artifacts of the dataset that back the given edges (provenance): the artifact that
-// created each edge and every later one that restated the fact (gb_edge_artifacts), by artifact ID.
-func sourceArtifacts(ctx context.Context, database *db.DB, dataset string, edgeArtifact map[int64]*int64) ([]experiments.Artifact, error) {
+// sourceArtifactIDs returns the IDs of the artifacts of the dataset that back the given edges (provenance): the
+// artifact that created each edge and every later one that restated the fact (gb_edge_artifacts), ascending.
+func sourceArtifactIDs(ctx context.Context, database *db.DB, dataset string, edgeArtifact map[int64]*int64) ([]int64, error) {
 	dsID, err := relational.DatasetID(ctx, database.Relational, evalUser, dataset)
 	if err != nil {
 		return nil, err
@@ -439,35 +377,12 @@ func sourceArtifacts(ctx context.Context, database *db.DB, dataset string, edgeA
 			}
 		}
 	}
-	all, err := graph.ListArtifacts(ctx, database.Graph, dsID)
-	if err != nil {
-		return nil, err
+	ids := make([]int64, 0, len(want))
+	for id := range want {
+		ids = append(ids, id)
 	}
-	out := []experiments.Artifact{}
-	for _, a := range all {
-		if want[a.ID] {
-			out = append(out, experiments.Artifact{ID: a.ID, Kind: a.Kind, Text: a.Text, ValidAt: a.ValidAt, CreatedAt: a.CreatedAt})
-		}
-	}
-	return out, nil
-}
-
-// deleteDataset soft-deletes a dataset through the API; a dataset that does not exist is not an error.
-func deleteDataset(baseURL, name string) error {
-	req, err := http.NewRequest(http.MethodDelete, baseURL+"/v1/gb/datasets/"+name+"?user_id="+url.QueryEscape(evalUser), nil)
-	if err != nil {
-		return err
-	}
-	resp, err := (&http.Client{Timeout: time.Minute}).Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
-		data, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
-	}
-	return nil
+	slices.Sort(ids)
+	return ids, nil
 }
 
 func post(url string, body, out any) error {
@@ -486,9 +401,9 @@ func post(url string, body, out any) error {
 
 //---------------------------------------------------------------------------------------------
 
-// runCases runs every case through llm, prints PASS/FAIL per case and returns how many failed. If tracker is not
-// nil, the result of each case is recorded in its experiment run.
-func runCases(cases []Case, llm memory.LLM, verbose bool, tracker *experiments.Tracker) (failed int) {
+// runCases runs every case through llm in the eval database, prints PASS/FAIL per case and returns how many failed.
+// The result of each case is recorded in the tracker's experiment run (kept in the same database).
+func runCases(cases []Case, llm memory.LLM, verbose bool, database *db.DB, tracker *experiments.Tracker) (failed int) {
 	for _, c := range cases {
 		l := llm
 		if verbose {
@@ -496,7 +411,7 @@ func runCases(cases []Case, llm memory.LLM, verbose bool, tracker *experiments.T
 			l = &verboseLLM{inner: llm}
 		}
 		started := time.Now()
-		out, err := run(c, l, verbose)
+		out, err := run(c, tracker.Run.ID, database, l, verbose)
 		answer, problems := out.Answer, out.Problems
 		cost, steps := out.Cost()
 		if verbose {
@@ -515,11 +430,11 @@ func runCases(cases []Case, llm memory.LLM, verbose bool, tracker *experiments.T
 				}
 			}
 		}
-		if tracker != nil {
+		{
 			res := experiments.EvalResult{
 				Suite: c.Suite, Name: c.Name, Answer: answer, Err: err,
 				Problems: problems, PassedChecks: passed,
-				Artifacts: out.Artifacts, Graph: out.Graph,
+				ArtifactIDs: out.ArtifactIDs, DatasetID: out.DatasetID,
 				StartedAt: started, FinishedAt: time.Now(),
 				Trajectories: out.Trajectories, TrajectoryDir: out.TrajectoryDir,
 			}
@@ -564,20 +479,19 @@ func main() {
 func mainErr() error {
 	verbose := flag.Bool("v", false, "print the input and output of every LLM call")
 	suitesDir := flag.String("suites", "", "read suites from this directory instead of the embedded ones")
-	flag.StringVar(&atifDir, "atif", "", `store every ATIF trajectory as JSON in this directory (default: "atif" next to the -main-db file)`)
-	experiment := flag.String("experiment", "default", "name of the experiment this run belongs to (created if new; needs -main-db)")
+	flag.StringVar(&atifDir, "atif", "", `store every ATIF trajectory as JSON in this directory (default: "atif" next to the -db file)`)
+	experiment := flag.String("experiment", "default", "name of the experiment this run belongs to (created if new)")
 	experimentDesc := flag.String("experiment-desc", "", "description of the experiment, used when it is created")
-	flag.StringVar(&evalDBPath, "db", "bin/gligabao-eval.db", `SQLite file the cases run in (show it with ./run_server_local.sh); reset at the start of every run; "" = a throwaway database per case`)
-	flag.StringVar(&mainDBPath, "main-db", db.DefaultSQLitePath, `SQLite file of the main database, where the experiments and their runs are recorded (never reset); "" = record nothing`)
-	keepDB := flag.Bool("keep-db", false, "do not reset the eval database (-db) before running")
+	evalDBPath := flag.String("db", "bin/gligabao-eval.db", "SQLite file of the eval database: the datasets of the cases, the experiments and their runs (never reset; show it with ./run_server_local.sh)")
 	flag.Parse()
-	if atifDir == "" && mainDBPath != "" {
-		// The experiments reference the trajectories by ID, so keep their files next to the main database.
-		atifDir = filepath.Join(filepath.Dir(mainDBPath), "atif")
+	if *evalDBPath == "" {
+		return errors.New("-db must not be empty")
 	}
-	if atifDir != "" {
-		memory.TrajectoryDir = atifDir
+	if atifDir == "" {
+		// The experiments reference the trajectories by ID, so keep their files next to the eval database.
+		atifDir = filepath.Join(filepath.Dir(*evalDBPath), "atif")
 	}
+	memory.TrajectoryDir = atifDir
 
 	key := os.Getenv("ANTHROPIC_API_KEY")
 	if key == "" {
@@ -592,41 +506,27 @@ func mainErr() error {
 		return err
 	}
 
-	// Start from an empty eval database: what the previous run's cases stored there is dropped.
-	if !*keepDB {
-		if err := resetEvalDB(evalDBPath, mainDBPath); err != nil {
-			return fmt.Errorf("reset eval database: %w", err)
-		}
+	database, err := db.Open(db.Config{SQLitePath: *evalDBPath})
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+	tracker, err := experiments.Start(context.Background(), database.Relational, experiments.Options{
+		Name:        *experiment,
+		Description: *experimentDesc,
+		Params:      map[string]any{"suites_dir": *suitesDir, "cases": flag.Args(), "atif_dir": atifDir},
+	})
+	if err != nil {
+		return fmt.Errorf("start experiment: %w", err)
 	}
 
-	// The experiment run is recorded in the main database, which outlives the eval database resets; without
-	// -main-db there is nowhere to keep it.
-	var tracker *experiments.Tracker
-	if mainDBPath != "" {
-		trackDB, err := db.Open(db.Config{SQLitePath: mainDBPath})
-		if err != nil {
-			return err
-		}
-		defer trackDB.Close()
-		tracker, err = experiments.Start(context.Background(), trackDB.Relational, experiments.Options{
-			Name:        *experiment,
-			Description: *experimentDesc,
-			Params:      map[string]any{"suites_dir": *suitesDir, "cases": flag.Args(), "atif_dir": atifDir},
-		})
-		if err != nil {
-			return fmt.Errorf("start experiment: %w", err)
-		}
-	}
-
-	failed := runCases(cases, llm, *verbose, tracker)
+	failed := runCases(cases, llm, *verbose, database, tracker)
 
 	fmt.Printf("---\npassed: %d, failed: %d\n", len(cases)-failed, failed)
-	if tracker != nil {
-		if run, err := tracker.Finish(context.Background()); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: finish experiment run: %v\n", err)
-		} else {
-			fmt.Printf("experiment %q run %d: %s, cost $%.6f\n", tracker.Experiment.Name, run.ID, run.Status, run.CostUSD)
-		}
+	if run, err := tracker.Finish(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: finish experiment run: %v\n", err)
+	} else {
+		fmt.Printf("experiment %q run %d: %s, cost $%.6f\n", tracker.Experiment.Name, run.ID, run.Status, run.CostUSD)
 	}
 	if failed > 0 {
 		os.Exit(1)

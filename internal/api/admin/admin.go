@@ -37,6 +37,9 @@ type overview struct {
 type Named struct {
 	Name string
 	DB   *sql.DB
+	// TrajectoryDir is where the ATIF trajectories of the experiments recorded in DB are stored ("" = unknown);
+	// only used for the eval database.
+	TrajectoryDir string
 }
 
 // Databases serves GET /admin/api/databases: the names of the databases the UI can show, in display order.

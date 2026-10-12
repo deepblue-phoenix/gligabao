@@ -13,7 +13,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/experiments"
-	"github.com/deepblue-phoenix/gligabao/internal/memory"
 )
 
 // TestEvals checks the admin eval endpoints: experiment counts, run details and trajectory files.
@@ -22,9 +21,6 @@ func TestEvals(t *testing.T) { dbtest.Run(t, testEvals) }
 func testEvals(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	old := memory.TrajectoryDir
-	memory.TrajectoryDir = dir
-	t.Cleanup(func() { memory.TrajectoryDir = old })
 
 	b := atif.NewBuilder(atif.Agent{Name: "gligabao-recall", Version: "0.1"})
 	b.User("question")
@@ -100,11 +96,11 @@ func testEvals(t *testing.T, d *sql.DB) {
 	}
 
 	var got atif.Trajectory
-	if c := get(admin.EvalTrajectory(d), "/x/{id}", traj.TrajectoryID, &got); c != 200 || got.TrajectoryID != traj.TrajectoryID || len(got.Steps) != 2 {
+	if c := get(admin.EvalTrajectory(d, dir), "/x/{id}", traj.TrajectoryID, &got); c != 200 || got.TrajectoryID != traj.TrajectoryID || len(got.Steps) != 2 {
 		t.Fatalf("trajectory: %d %+v", c, got)
 	}
 	// Only recorded trajectories are served, never arbitrary files.
-	if c := get(admin.EvalTrajectory(d), "/x/{id}", "..%2Fetc%2Fpasswd", nil); c != http.StatusNotFound {
+	if c := get(admin.EvalTrajectory(d, dir), "/x/{id}", "..%2Fetc%2Fpasswd", nil); c != http.StatusNotFound {
 		t.Fatalf("unrecorded trajectory: %d", c)
 	}
 }

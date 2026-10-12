@@ -130,10 +130,9 @@ type ExperimentRunEval struct {
 	CostUSD      float64   `json:"cost_usd"`
 	StartedAt    time.Time `json:"started_at"`
 	FinishedAt   time.Time `json:"finished_at"`
-	// HasGraph says that a snapshot of the knowledge graph the eval built was stored (see GetExperimentRunEvalGraph).
-	HasGraph bool `json:"has_graph"`
-	// Graph is the JSON snapshot to store (RecordExperimentRunEval only; never read back with the eval).
-	Graph string `json:"-"`
+	// DatasetID is the dataset the eval ran in (nil if it was never created); the knowledge graph the eval built
+	// is the graph of that dataset (see GetExperimentRunEvalDataset).
+	DatasetID *int64 `json:"dataset_id,omitempty"`
 	// Trajectories are the ATIF trajectories of the eval, in call order (remember calls, then the recall).
 	Trajectories []ExperimentTrajectory `json:"trajectories,omitempty"`
 }
@@ -150,14 +149,15 @@ type ExperimentTrajectory struct {
 	Steps        int     `json:"steps"`
 	CostUSD      float64 `json:"cost_usd"`
 	Path         string  `json:"path,omitempty"` // where the trajectory JSON was stored ("" if it was not)
-	// Artifacts are the artifacts the call is about, as they were when the eval ran: for a remember call the input
-	// artifact the caller gave, for a recall the artifacts the answer's evidence was sourced from (provenance).
+	// ArtifactIDs are the IDs, in the dataset the eval ran in, of the artifacts the call is about: for a remember
+	// call the artifact it stored, for a recall the artifacts the answer's evidence was sourced from (provenance).
+	ArtifactIDs []int64 `json:"artifact_ids"`
+	// Artifacts are those artifacts, read from the dataset when the run is loaded (not stored with the reference).
 	Artifacts []ExperimentArtifact `json:"artifacts"`
 	CreatedAt time.Time            `json:"created_at"`
 }
 
-// ExperimentArtifact is a snapshot of an artifact (see the graph package) taken while an eval ran, because the
-// eval database is reset between runs.
+// ExperimentArtifact is an artifact (see the graph package) of the dataset an eval ran in.
 type ExperimentArtifact struct {
 	ID        int64     `json:"id"`
 	Kind      string    `json:"kind"`

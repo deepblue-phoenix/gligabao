@@ -15,7 +15,7 @@ interface Trajectory {
 }
 interface Artifact { id: number; kind: string; text: string; valid_at: string; created_at: string }
 interface RunEval {
-  id: number; suite: string; name: string; status: string; answer?: string; problems?: string[]; passed_checks?: string[]; has_graph?: boolean; error?: string;
+  id: number; suite: string; name: string; status: string; answer?: string; problems?: string[]; passed_checks?: string[]; dataset_id?: number; error?: string;
   steps: number; cost_usd: number; started_at: string; finished_at: string; trajectories?: Trajectory[];
 }
 interface ExperimentRow {
@@ -260,7 +260,7 @@ function evalRecord(run: Run, e: RunEval): HTMLElement[] {
     out.push(ul);
   }
   out.push(h("h4", undefined, "Knowledge graph"));
-  if (e.has_graph) {
+  if (e.dataset_id != null) {
     const gbtn = h("button", "small", "View graph");
     gbtn.type = "button";
     gbtn.addEventListener("click", (ev) => {
@@ -269,7 +269,7 @@ function evalRecord(run: Run, e: RunEval): HTMLElement[] {
     });
     out.push(gbtn);
   } else {
-    out.push(h("p", "muted", "No graph recorded."));
+    out.push(h("p", "muted", "No dataset recorded."));
   }
   out.push(h("h4", undefined, "ATIF traces"));
   const trajs = e.trajectories ?? [];

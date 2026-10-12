@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 )
 
@@ -111,11 +112,11 @@ type EvalResult struct {
 	// were not stored); it is kept as a reference next to each trajectory ID.
 	Trajectories  []*atif.Trajectory
 	TrajectoryDir string
-	// Artifacts[i] are the artifacts of Trajectories[i]: the input artifact of a remember call, the artifacts the
-	// answer was sourced from for a recall. May be shorter than Trajectories (or nil).
-	Artifacts [][]Artifact
-	// Graph is the JSON snapshot of the knowledge graph the eval built (a memory.GraphExport); empty = none.
-	Graph []byte
+	// ArtifactIDs[i] are the IDs, in DatasetID, of the artifacts of Trajectories[i]: the artifact a remember call
+	// stored, the artifacts the answer was sourced from for a recall. May be shorter than Trajectories (or nil).
+	ArtifactIDs [][]int64
+	// DatasetID is the dataset the eval ran in, which holds the knowledge graph it built; 0 = none.
+	DatasetID int64
 }
 
 // Status is the status the eval is recorded with.
@@ -150,9 +151,11 @@ func (t *Tracker) Record(ctx context.Context, r EvalResult) (*RunEval, error) {
 		Answer:       r.Answer,
 		Problems:     r.Problems,
 		PassedChecks: r.PassedChecks,
-		Graph:        string(r.Graph),
 		StartedAt:    relational.Normalize(r.StartedAt),
 		FinishedAt:   relational.Normalize(r.FinishedAt),
+	}
+	if r.DatasetID != 0 {
+		e.DatasetID = &r.DatasetID
 	}
 	if r.Err != nil {
 		e.Error = r.Err.Error()
@@ -162,8 +165,8 @@ func (t *Tracker) Record(ctx context.Context, r EvalResult) (*RunEval, error) {
 		if err != nil {
 			return nil, err
 		}
-		if i < len(r.Artifacts) {
-			ref.Artifacts = r.Artifacts[i]
+		if i < len(r.ArtifactIDs) {
+			ref.ArtifactIDs = r.ArtifactIDs[i]
 		}
 		e.Steps += ref.Steps
 		e.CostUSD += ref.CostUSD
@@ -220,15 +223,46 @@ func Runs(ctx context.Context, d *sql.DB, experimentID int64) ([]Run, error) {
 	return relational.ListExperimentRuns(ctx, d, experimentID)
 }
 
-// GetRun returns a run with all its evals and their trajectory references, or ErrNotFound.
+// GetRun returns a run with all its evals and their trajectory references, or ErrNotFound. The artifacts of each
+// trajectory are read from the dataset its eval ran in.
 func GetRun(ctx context.Context, d *sql.DB, runID int64) (*Run, error) {
-	return relational.GetExperimentRun(ctx, d, runID)
+	run, err := relational.GetExperimentRun(ctx, d, runID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range run.Evals {
+		e := &run.Evals[i]
+		var all map[int64]graph.Artifact // the dataset's artifacts, loaded when a trajectory needs them
+		for j := range e.Trajectories {
+			t := &e.Trajectories[j]
+			t.Artifacts = []Artifact{}
+			if len(t.ArtifactIDs) == 0 || e.DatasetID == nil {
+				continue
+			}
+			if all == nil {
+				list, err := graph.ListArtifacts(ctx, d, *e.DatasetID)
+				if err != nil {
+					return nil, fmt.Errorf("load the artifacts of eval %d: %w", e.ID, err)
+				}
+				all = make(map[int64]graph.Artifact, len(list))
+				for _, a := range list {
+					all[a.ID] = a
+				}
+			}
+			for _, id := range t.ArtifactIDs {
+				if a, ok := all[id]; ok {
+					t.Artifacts = append(t.Artifacts, Artifact{ID: a.ID, Kind: a.Kind, Text: a.Text, ValidAt: a.ValidAt, CreatedAt: a.CreatedAt})
+				}
+			}
+		}
+	}
+	return run, nil
 }
 
-// RunEvalGraph returns the JSON snapshot of the knowledge graph an eval built (as stored by Record), or ErrNotFound.
-func RunEvalGraph(ctx context.Context, d *sql.DB, runEvalID int64) ([]byte, error) {
-	g, err := relational.GetExperimentRunEvalGraph(ctx, d, runEvalID)
-	return []byte(g), err
+// RunEvalDataset returns the dataset an eval ran in (deleted or not), whose graph is the one the eval built, or
+// ErrNotFound if the eval does not exist or recorded no dataset.
+func RunEvalDataset(ctx context.Context, d *sql.DB, runEvalID int64) (*relational.Dataset, error) {
+	return relational.GetExperimentRunEvalDataset(ctx, d, runEvalID)
 }
 
 // FindTrajectory returns the reference to the trajectory with the given ATIF trajectory_id, or ErrNotFound. Its
