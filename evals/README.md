@@ -2,7 +2,7 @@
 
 End-to-end checks that run against a real gligabao server (and the real LLM), so `ANTHROPIC_API_KEY` is required. `OPENAI_API_KEY` is also needed for `remember` to vector-index the entities and edges (into `bin/gligabao-eval.vectors`, shown by "View vec db" in the admin UI); without it the runner warns and no vectors are stored.
 
-Run from the repo root: `./run_evals.sh [-v] [case-name ...]`, e.g. `./run_evals.sh -v remember_recall`. `-v` prints the input and output of every LLM call.
+Run from the repo root: `./run_evals.sh [-v] [-models stage=model,...] [case-name ...]`, e.g. `./run_evals.sh -v remember_recall`. `-v` prints the input and output of every LLM call. `-models` picks the LLM model of each `remember` stage for the whole run (see [Models](#models)).
 
 The runner is pure Go (`evals/main.go`; `run_evals.sh` just invokes `go run ./evals`). Everything it writes goes to the **eval database**, the SQLite DB `bin/gligabao-eval.db` (`-db <file>` to change it), which keeps the evaluation data apart from the main DB: the datasets of the cases, the experiments and their runs. It is **never reset**. The cases run behind an in-process HTTP server using the real handlers, in eval mode. `./run_server_local.sh` shows this DB in the admin UI next to the standard one (`EVAL_DB=...` overrides the path; each case of each run is listed as its own dataset with a "View graph" button, and the Evals block reads the experiments from it). The runner calls the eval endpoints, which return the ATIF trajectory of every call along with its result; see [docs/evals.md](../docs/evals.md). `-atif <dir>` changes where the trajectories are stored as JSON files (default: `atif/` next to the eval database, since the experiments reference them).
 
@@ -43,6 +43,15 @@ A `remember` entry has either `text` or `text_file`, a path relative to the suit
 2. The stored edges (`gb_edges`) are checked against `expect_edges`: an edge between `source` and `target` (any relation) must exist; `valid_at` / `invalid_at` are compared exactly when given; `ended` says whether it must have an `invalid_at` (and then also an `expired_at`).
 3. `POST /v1/gb/eval/recall` (the case's dataset) with `query`.
 4. Passes if the temporal checks pass and the answer contains every `expect_contains` string (case-insensitive). `-v` also prints the stored edges and the trajectory count, step count and cost.
+
+## Models
+
+The model of each LLM stage of `remember` can be varied, to compare models stage by stage. The stages are `extract_graph` (entities and edges), `resolve_edges` (duplicates and contradictions) and `extract_image`; a stage with no model uses the default model, so you only name the ones you want to change. Two places, combined stage by stage:
+
+- `-models extract_graph=claude-sonnet-4-5,resolve_edges=claude-haiku-5-5` on the command line sets the models for every case of the run (recorded in the experiment run's `params`);
+- `"models": {"extract_graph": "claude-sonnet-4-5"}` in a case sets them for that case, and wins over `-models` for the stages it names.
+
+The cases' `remember` requests carry them as `models`, so the stored entities and edges have the `extract_graph` model as their `model_id`, and the trajectories show the model of every LLM step. The recall is not affected. This is how to evaluate the precision of a model at one stage (change one stage per run and keep the rest on the default, e.g. `-experiment extract-models -models extract_graph=claude-sonnet-4-5`, then compare the pass/fail of the cases and the facts that failed across runs; `extract_graph` is checked by `expect_edges` and the answer, `resolve_edges` by a case with several texts about the same entities, like `job_change`), and to see how different models behave (the trajectories hold each model's raw output, each run keeps its own graph with the `extract_graph` model as `model_id`, and the cost of every case is recorded). An LLM is not deterministic, so repeat a setting a few times. More in [docs/evals.md](../docs/evals.md#using-it-precision-per-stage-and-how-models-behave). Details: [docs/evals.md](../docs/evals.md#models), [docs/remember.md](../docs/remember.md#choosing-the-model-of-each-stage).
 
 ## Experiments
 

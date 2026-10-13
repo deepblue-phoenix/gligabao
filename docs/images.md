@@ -18,6 +18,7 @@ content-type: application/json
 - `image`: the image, base64-encoded (standard alphabet): a JPEG, PNG, GIF or WebP, at most 5 MiB (the Anthropic API limit) before encoding. The type is detected from the bytes. A request with `image` is an image request; the body may be up to about 7 MiB (instead of 1 MiB for text).
 - `user_id` (required), `dataset` (optional, default `main`, created if missing) and `reference_time` (optional, RFC 3339, default now: when the image was captured or observed) work as for text.
 - `session_id` (optional) works as for text ([sessions.md](sessions.md)): it is stored on the new image artifact (`gb_image_artifacts.session_id`) and echoed as `session_id` in the response. Images add no entities or edges, so there are no session links beyond it. `400` if it is too long or has control characters.
+- `models` (optional): `{"extract_image": "<model>"}` picks the vision model that reads the image; without it the default model is used (see [remember.md](remember.md#choosing-the-model-of-each-stage)). A repeated image is answered from its stored extraction without an LLM call, so the model reported is the one that made it.
 - `text` and `kind` must not be given together with `image` (`400`): an image is not a text artifact.
 
 ## Response
@@ -73,7 +74,7 @@ In an eval trajectory a repeat is a single `find_existing_image` step instead of
 
 ## What the model returns
 
-One LLM call (`Complete` with the image as an image content block, max 8192 output tokens) with the default model, `claude-haiku-5-5`, whose price is in the built-in price table. It is asked for only JSON:
+One LLM call (`Complete` with the image as an image content block, max 8192 output tokens) with the default model, `claude-haiku-5-5` (or the `extract_image` model of the request's `models`), whose price is in the built-in price table. It is asked for only JSON:
 
 ```json
 {"theme": "...", "title": "...", "text_blocks": [{"kind": "...", "text": "..."}]}

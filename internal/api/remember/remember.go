@@ -44,6 +44,9 @@ type rememberRequest struct {
 	// ReferenceTime (RFC 3339, optional) is when the text was written; relative dates in it ("yesterday") are
 	// resolved against it. Defaults to now.
 	ReferenceTime string `json:"reference_time"`
+	// Models (optional) picks the LLM model of each stage of the pipeline ("extract_graph", "resolve_edges", "extract_image"); a stage left
+	// out uses the default model. See memory_core.Models.
+	Models map[string]string `json:"models"`
 }
 
 //---------------------------------------------------------------------------------------------
@@ -113,9 +116,14 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option)
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		models, err := memory_core.ResolveModels(req.Models)
+		if err != nil {
+			httputil.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		start := time.Now()
 		res, err := memory_remember.Remember(r.Context(), d, llm, req.UserID, req.Dataset, req.Kind, req.Text, ref,
-			append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID))...)
+			append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models))...)
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
 				"user_id":    req.UserID,
@@ -196,9 +204,14 @@ func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory
 		httputil.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	models, err := memory_core.ResolveModels(req.Models)
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	start := time.Now()
 	res, err := memory_image.RememberImage(r.Context(), d, llm, req.UserID, req.Dataset, data, ref,
-		append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID))...)
+		append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models))...)
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{
 			"user_id":    req.UserID,

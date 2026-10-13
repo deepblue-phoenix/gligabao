@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.7.0] - 2026-10-14
+
+### Added
+- Per-stage LLM models for `remember`. `POST /v1/gb/remember` (and `/v1/gb/eval/remember`) takes an optional `models` object that picks the model of each LLM-invoking stage: `extract_graph` (entities and edges), `resolve_edges` (duplicate/contradiction check) and `extract_image` (the image pipeline). It can be given with every call. A stage that is left out, or given as an empty string, uses the default model, so a call can change one stage and keep the others; without `models` nothing changes. An unknown stage or a malformed model name returns `400`.
+- The model that runs the `extract_graph` stage is the one recorded as the `model_id` of the entities and edges it yields (the model name as the provider reports it), so the stored knowledge reflects the model chosen for that stage.
+- Evals can vary the models too: `go run ./evals -models extract_graph=<model>,resolve_edges=<model>` sets them for a whole run (recorded in the experiment run's `params`), and a case of a suite can set `"models"` of its own, which wins stage by stage.
+- Go: `memory_core.WithModels`, `memory_core.Models` (`ResolveModels`, `ParseModels`, `Merge`), the `memory_core.Stage*` constants and `CallOptions.ModelLLM`. Eval trajectories record the requested `models` in `extra.input`.
+- The Python client's `remember` takes `models`.
+
 ## [0.6.1] - 2026-10-14
 
 ### Added

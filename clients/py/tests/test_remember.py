@@ -27,6 +27,16 @@ def _serve(status, payload, seen):
     return srv
 
 
+def test_remember_models():
+    seen = {}
+    srv = _serve(200, {"artifact_id": 1}, seen)
+    try:
+        Client(f"http://127.0.0.1:{srv.server_port}").remember("u1", "hi", models={"extract_graph": "m1"})
+    finally:
+        srv.shutdown()
+    assert seen["body"] == {"user_id": "u1", "text": "hi", "models": {"extract_graph": "m1"}}
+
+
 def test_remember():
     seen = {}
     srv = _serve(200, {"artifact_id": 1}, seen)

@@ -254,8 +254,12 @@ func RememberImage(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, 
 		}
 	}()
 	llm = tr.Wrap(llm)
-	tr.Input(map[string]any{"user_id": userID, "dataset": dataset, "media_type": mediaType, "sha256": hash,
-		"size_bytes": len(data), "reference_time": relational.FormatTime(ref), "session_id": sessionID})
+	input := map[string]any{"user_id": userID, "dataset": dataset, "media_type": mediaType, "sha256": hash,
+		"size_bytes": len(data), "reference_time": relational.FormatTime(ref), "session_id": sessionID}
+	if len(co.Models) > 0 {
+		input["models"] = co.Models
+	}
+	tr.Input(input)
 
 	// Seen before in this dataset? Then the stored result is the answer (a dataset that does not exist has none).
 	if dsID, err := relational.DatasetID(ctx, d, userID, dataset); err == nil {
@@ -278,7 +282,7 @@ func RememberImage(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, 
 		return nil, err
 	}
 
-	x, err := ExtractImage(ctx, llm, mediaType, data)
+	x, err := ExtractImage(ctx, co.ModelLLM(llm, memory_core.StageExtractImage), mediaType, data)
 	if err != nil {
 		return nil, err
 	}

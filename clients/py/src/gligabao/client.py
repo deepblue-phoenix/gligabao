@@ -28,6 +28,7 @@ class Client:
         reference_time: datetime | str | None = None,
         kind: str | None = None,
         image: bytes | str | os.PathLike[str] | None = None,
+        models: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Store `text`, or an `image`, in memory (POST /v1/gb/remember).
 
@@ -46,6 +47,12 @@ class Client:
         text in the image and classifies it by theme. `kind` does not apply to images.
         Returns the decoded JSON response (image_artifact_id, extraction_id, theme, title,
         text, text_blocks, ...).
+
+        `models` picks the LLM model of each stage of the pipeline, e.g.
+        {"extract_graph": "claude-sonnet-4-5", "resolve_edges": "claude-haiku-5-5"}. The stages are
+        "extract_graph" (text), "resolve_edges" (text) and "extract_image" (image); a stage left out uses the
+        server's default model. The model of "extract_graph" is the one recorded on the entities
+        and edges the text yields.
         """
         if (text is None) == (image is None):
             raise ValueError("remember takes exactly one of text and image")
@@ -63,6 +70,8 @@ class Client:
             body["dataset"] = dataset
         if kind is not None:
             body["kind"] = kind
+        if models:
+            body["models"] = models
         if reference_time is not None:
             body["reference_time"] = (
                 reference_time.isoformat() if isinstance(reference_time, datetime) else reference_time

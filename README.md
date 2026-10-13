@@ -35,7 +35,7 @@ An ontology describes the concepts of a domain and how they relate. `POST /v1/gb
 
 `POST /v1/gb/remember` with `{"user_id": "u1", "text": "Alice works at Acme and lives in Paris."}` stores the text as an artifact and adds the facts it states to the graph, with the time they became true. An optional `kind` (`knowledge`, the default, or `episode`) says what sort of artifact it is. An optional `reference_time` (RFC 3339, default now) says when the text was written, so relative dates in it can be resolved. An optional `session_id` (any string you choose) ties the artifact, and the entities and facts extracted from it, to the user/agent session it came from (see [Sessions](#sessions)).
 
-1. **Extract**: the text is sent to an LLM (Anthropic, default `claude-haiku-5-5`), which returns JSON listing entities (`name`, `type`, `description`) and edges (`source`, `target`, `relation`, `description`, `valid_at`, `invalid_at`).
+1. **Extract**: the text is sent to an LLM (Anthropic, default `claude-haiku-5-5`; see [Models per stage](#models-per-stage)), which returns JSON listing entities (`name`, `type`, `description`) and edges (`source`, `target`, `relation`, `description`, `valid_at`, `invalid_at`).
 2. **Normalize**: entity types are lowercased (empty becomes `other`), and relations are lowercased with spaces replaced by `_`.
 3. **Reconcile**: new edges are compared with stored live edges that touch the same entities (see [Temporal facts](#temporal-facts)).
 4. **Store**: in one transaction, the raw text goes into `gb_artifacts`, entities are upserted into `gb_entities` and linked to the artifact in `gb_entity_artifacts` (an entity is shared by every artifact that mentions it), and edges are inserted into `gb_edges` (each with the `artifact_id` that created it, and linked in `gb_edge_artifacts`; a repeated fact adds the new artifact to the stored edge's links instead of being inserted again).
@@ -52,6 +52,10 @@ A text of more than one chunk (1024 tokens by default) is a document: it is stor
 
 The response returns the `artifact_id` and `kind`, the entities, the `edges` (with their temporal fields) and `invalidated_edges`. If any LLM call fails or its output is unusable, the request returns 502 and nothing is stored. Details: [docs/remember.md](docs/remember.md), [docs/artifacts.md](docs/artifacts.md).
 
+### Models per stage
+
+Each LLM-invoking stage of `remember` can run on its own model. `POST /v1/gb/remember` takes an optional `models` object with the stages `extract_graph` (the entities and edges), `resolve_edges` (the duplicate/contradiction check) and `extract_image` (the image pipeline): `{"user_id": "u1", "text": "...", "models": {"extract_graph": "claude-sonnet-4-5", "resolve_edges": "claude-haiku-5-5"}}`. It can be given with every call. A stage you leave out uses the default model, so you can change one stage and keep the others. The model that runs `extract_graph` is what is recorded as the `model_id` of the entities and edges it yields (the extracted knowledge). The evals take the same choice: `models` in a case of a suite, or `go run ./evals -models extract_graph=...,resolve_edges=...`. Details: [docs/remember.md](docs/remember.md#choosing-the-model-of-each-stage), [docs/evals.md](docs/evals.md#models).
+
 ## Sessions
 
 `remember` and `recall` take an optional `session_id`, a label for one user/agent run. `remember` stores it on the artifact (`gb_artifacts.session_id`) and records it against every entity and edge the artifact yields in `gb_entity_sessions` and `gb_edge_sessions`, **also when the entity or fact already existed** and no new row was written for it, so the sessions an entity or fact was discovered in are all kept. `recall` echoes it and puts it in its trajectory and monitoring event, so a recall can be connected to the artifacts of its session; it does not change the answer. A session has no state of its own (no cache, no expiry). Details: [docs/sessions.md](docs/sessions.md); what a Cognee-style session memory would add, and why it is not included: [docs/not-included.md](docs/not-included.md).
@@ -65,7 +69,7 @@ Graphiti's bi-temporal model. Every input is an **artifact** (`gb_artifacts`, wi
 
 When a new fact contradicts a stored one, the older fact is closed (`invalid_at` = start of the new fact, `expired_at` = now) instead of being deleted, so history is preserved. If the news is about an earlier time than what is already known, the new fact is the one that gets closed. Example: "Alice works at Acme" (2023) followed by "Alice started working at Globex" (2024-03-01) leaves the Acme edge with `invalid_at` = 2024-03-01 and a new live edge for Globex.
 
-`remember` makes 1 LLM call, or 2 when there are stored facts to compare against. `recall` shows each edge's validity to the LLM, so it can distinguish current from past facts. Details: [docs/temporal.md](docs/temporal.md).
+`remember` makes 1 LLM call, or 2 when there are stored facts to compare against (each on its [own model](#models-per-stage), if the call chose them). `recall` shows each edge's validity to the LLM, so it can distinguish current from past facts. Details: [docs/temporal.md](docs/temporal.md).
 
 ## Recall
 

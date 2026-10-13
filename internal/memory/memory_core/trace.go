@@ -51,6 +51,10 @@ type CallOptions struct {
 	// SessionID is the user/agent session the call belongs to ("" for none), set by WithSessionID. Remember and
 	// RememberImage attach it to what they store; Recall only records it (it never changes the answer).
 	SessionID string
+
+	// Models is the model of each LLM stage of Remember and RememberImage, set by WithModels; a stage not in it uses the
+	// default model. See ModelLLM.
+	Models Models
 }
 
 // NewCallOptions applies opts on top of the defaults.

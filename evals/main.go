@@ -94,6 +94,9 @@ type Case struct {
 	// ExpectMinChunks, when > 0, turns on the chunking checks: the remembered texts must have been split into at
 	// least this many chunks in total, and the chunks must be stored consistently (see checkChunks).
 	ExpectMinChunks int `json:"expect_min_chunks"`
+	// Models picks the LLM model of each stage of remember for this case ("extract_graph", "resolve_edges", "extract_image"), on top of the
+	// runner's -models: a stage named here wins, a stage named by neither uses the default model.
+	Models map[string]string `json:"models,omitempty"`
 }
 
 // Artifact is one text to remember; ReferenceTime (RFC 3339) is when it was written. Kind is the artifact kind
@@ -261,8 +264,14 @@ func (o *Outcome) Cost() (usd float64, steps int) {
 // run executes one case of the experiment run runID in the eval database through the eval endpoints, in a dataset
 // of its own (see datasetName). The outcome is returned even when err is set, holding whatever was collected
 // before the failure.
-func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_core.Embedder, verbose bool) (out *Outcome, err error) {
+func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_core.Embedder, verbose bool, defaults memory_core.Models) (out *Outcome, err error) {
 	out = &Outcome{TrajectoryDir: atifDir}
+
+	caseModels, err := memory_core.ResolveModels(c.Models)
+	if err != nil {
+		return out, fmt.Errorf("models: %w", err)
+	}
+	models := defaults.Merge(caseModels)
 
 	if c.ChunkSize != 0 {
 		// The handlers read the chunking settings from the DB they are given: use a copy with the case's size.
@@ -302,6 +311,9 @@ func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_c
 		}
 		if m.ReferenceTime != "" {
 			body["reference_time"] = m.ReferenceTime
+		}
+		if len(models) > 0 {
+			body["models"] = models
 		}
 		var rem struct {
 			ArtifactID int64             `json:"artifact_id"`
@@ -559,7 +571,8 @@ func post(url string, body, out any) error {
 
 // runCases runs every case through llm (and embeds the entities and edges with emb, if not nil) in the eval database, prints PASS/FAIL per case and returns how many failed.
 // The result of each case is recorded in the tracker's experiment run (kept in the same database).
-func runCases(cases []Case, llm memory_core.LLM, emb memory_core.Embedder, verbose bool, database *db.DB, tracker *experiments.Tracker) (failed int) {
+// models are the runner's default model per remember stage (-models); a case's own models win over them.
+func runCases(cases []Case, llm memory_core.LLM, emb memory_core.Embedder, verbose bool, models memory_core.Models, database *db.DB, tracker *experiments.Tracker) (failed int) {
 	for _, c := range cases {
 		l := llm
 		if verbose {
@@ -567,7 +580,7 @@ func runCases(cases []Case, llm memory_core.LLM, emb memory_core.Embedder, verbo
 			l = &verboseLLM{inner: llm}
 		}
 		started := time.Now()
-		out, err := run(c, tracker.Run.ID, database, l, emb, verbose)
+		out, err := run(c, tracker.Run.ID, database, l, emb, verbose, models)
 		answer, problems := out.Answer, out.Problems
 		cost, steps := out.Cost()
 		if verbose && out.Chunks > 0 {
@@ -642,7 +655,12 @@ func mainErr() error {
 	experiment := flag.String("experiment", "default", "name of the experiment this run belongs to (created if new)")
 	experimentDesc := flag.String("experiment-desc", "", "description of the experiment, used when it is created")
 	evalDBPath := flag.String("db", "bin/gligabao-eval.db", "SQLite file of the eval database: the datasets of the cases, the experiments and their runs (never reset; show it with ./run_server_local.sh)")
+	modelsFlag := flag.String("models", "", `LLM model per remember stage, e.g. "extract_graph=claude-sonnet-4-5,resolve_edges=claude-haiku-5-5" (stages: `+strings.Join(memory_core.Stages, ", ")+`); a stage left out uses the default model; a case's "models" win`)
 	flag.Parse()
+	models, err := memory_core.ParseModels(*modelsFlag)
+	if err != nil {
+		return fmt.Errorf("-models: %w", err)
+	}
 	if *evalDBPath == "" {
 		return errors.New("-db must not be empty")
 	}
@@ -679,16 +697,20 @@ func mainErr() error {
 		return err
 	}
 	defer database.Close()
+	params := map[string]any{"suites_dir": *suitesDir, "cases": flag.Args(), "atif_dir": atifDir}
+	if len(models) > 0 {
+		params["models"] = models
+	}
 	tracker, err := experiments.Start(context.Background(), database.Relational, experiments.Options{
 		Name:        *experiment,
 		Description: *experimentDesc,
-		Params:      map[string]any{"suites_dir": *suitesDir, "cases": flag.Args(), "atif_dir": atifDir},
+		Params:      params,
 	})
 	if err != nil {
 		return fmt.Errorf("start experiment: %w", err)
 	}
 
-	failed := runCases(cases, llm, emb, *verbose, database, tracker)
+	failed := runCases(cases, llm, emb, *verbose, models, database, tracker)
 
 	fmt.Printf("---\npassed: %d, failed: %d\n", len(cases)-failed, failed)
 	if run, err := tracker.Finish(context.Background()); err != nil {

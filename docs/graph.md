@@ -55,7 +55,7 @@ Only the owner's live dataset can be exported. Datasets of other users, and soft
 | `name` | Entity name. |
 | `type` | Lowercase type (`person`, `organization`, `other`, ...). |
 | `description` | Optional; omitted if empty. |
-| `model_id` | Optional; the ID of the model that inferred the entity (see `models`). For a shared entity it is the model that wrote its stored state: its creator, then whoever last replaced its description. Omitted if unknown. |
+| `model_id` | Optional; the ID of the model that inferred the entity (see `models`): the model of the `extract_graph` stage of the `remember` call, which the caller can pick per call (see [remember.md](remember.md#choosing-the-model-of-each-stage)). For a shared entity it is the model that wrote its stored state: its creator, then whoever last replaced its description. Omitted if unknown. |
 
 ### Models
 
@@ -78,7 +78,7 @@ The models that the entities and edges refer to by `model_id`.
 | `relation` | Lowercase relation with `_` for spaces, e.g. `works_at`. |
 | `description` | Optional; the fact as a sentence. |
 | `artifact_id` | Optional; the artifact (the ingested text) the edge came from. |
-| `model_id` | Optional; the ID of the model that inferred the fact (see `models`). Omitted if unknown. |
+| `model_id` | Optional; the ID of the model that inferred the fact (see `models`): the model of the `extract_graph` stage of the `remember` call that created it, which the caller can pick per call (see [remember.md](remember.md#choosing-the-model-of-each-stage)). Omitted if unknown. |
 | `valid_at`, `invalid_at` | When the fact became true and when it stopped being true (omitted while unknown or still true). |
 | `created_at`, `expired_at` | When the fact was learned and when it was found superseded (omitted if not). |
 

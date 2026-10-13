@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
@@ -18,9 +19,16 @@ import (
 )
 
 // scriptedLLM answers by what the prompt asks for: the recall prompt gets an answer, anything else an extraction.
-type scriptedLLM struct{ answer string }
+type scriptedLLM struct {
+	answer string
+	mu     sync.Mutex
+	models []string // the Model of each request, in order
+}
 
 func (l *scriptedLLM) Complete(_ context.Context, req ai.Request) (*ai.Response, error) {
+	l.mu.Lock()
+	l.models = append(l.models, req.Model)
+	l.mu.Unlock()
 	out := `{"entities":[{"name":"Alice","type":"person"}],"edges":[]}`
 	if len(req.Messages) > 0 && strings.Contains(req.Messages[len(req.Messages)-1].Content, "<graph>") {
 		out = `{"answer":"` + l.answer + `","entities":[1],"edges":[]}`
@@ -51,7 +59,7 @@ func TestRunCasesTracksExperiment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failed := runCases(cases, &scriptedLLM{answer: "Alice."}, nil, false, trackDB, tracker); failed != 1 {
+	if failed := runCases(cases, &scriptedLLM{answer: "Alice."}, nil, false, nil, trackDB, tracker); failed != 1 {
 		t.Fatalf("failed = %d, want 1", failed)
 	}
 	run, err := tracker.Finish(ctx)
@@ -135,7 +143,7 @@ func TestRunsAreIsolatedAndKept(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if failed := runCases(cases, &scriptedLLM{answer: "Alice."}, nil, false, database, tr); failed != 0 {
+		if failed := runCases(cases, &scriptedLLM{answer: "Alice."}, nil, false, nil, database, tr); failed != 0 {
 			t.Fatalf("run %d failed", i)
 		}
 		if _, err := tr.Finish(ctx); err != nil {
@@ -225,7 +233,7 @@ func TestChunkingCase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failed := runCases([]Case{c}, llm, nil, false, database, tr); failed != 0 {
+	if failed := runCases([]Case{c}, llm, nil, false, nil, database, tr); failed != 0 {
 		t.Fatalf("failed = %d", failed)
 	}
 	if _, err := tr.Finish(ctx); err != nil {
@@ -241,7 +249,7 @@ func TestChunkingCase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failed := runCases([]Case{c}, llm, nil, false, database, tr); failed != 1 {
+	if failed := runCases([]Case{c}, llm, nil, false, nil, database, tr); failed != 1 {
 		t.Fatalf("with 1000 chunks expected: failed = %d, want 1", failed)
 	}
 }
@@ -260,5 +268,63 @@ func TestTextFileErrors(t *testing.T) {
 	write(`[{"name":"a","remember":[{"text":"x","text_file":"s.json"}]}]`)
 	if _, err := loadCases(nil, dir); err == nil {
 		t.Fatal("text and text_file accepted")
+	}
+}
+
+// TestCaseModels checks that the runner's -models are the default model of each remember stage, and that a case's own
+// "models" win over them stage by stage; recall is not affected.
+func TestCaseModels(t *testing.T) {
+	dir := t.TempDir()
+	atifDir = filepath.Join(dir, "atif")
+	memory_core.TrajectoryDir = atifDir
+	t.Cleanup(func() { atifDir = "" })
+
+	database, err := db.Open(db.Config{SQLitePath: filepath.Join(dir, "eval.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	ctx := context.Background()
+	defaults, err := memory_core.ParseModels("extract_graph=model-default,resolve_edges=model-resolve")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := memory_core.ParseModels("bogus=x"); err == nil {
+		t.Fatal("unknown stage accepted")
+	}
+
+	run1 := func(c Case) []string {
+		llm := &scriptedLLM{answer: "Alice."}
+		tr, err := experiments.Start(ctx, database.Relational, experiments.Options{Name: "exp"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if failed := runCases([]Case{c}, llm, nil, false, defaults, database, tr); failed != 0 {
+			t.Fatalf("failed = %d", failed)
+		}
+		if _, err := tr.Finish(ctx); err != nil {
+			t.Fatal(err)
+		}
+		return llm.models
+	}
+	base := Case{Suite: "s", Name: "m1", Remember: []Artifact{{Text: "Alice is here."}}, Query: "Who?", ExpectContains: []string{"alice"}}
+
+	// extract (remember) then answer (recall, no model).
+	if got := fmt.Sprint(run1(base)); got != "[model-default ]" {
+		t.Errorf("default models: request models = %s", got)
+	}
+	over := base
+	over.Name, over.Models = "m2", map[string]string{"extract_graph": "model-case"}
+	if got := fmt.Sprint(run1(over)); got != "[model-case ]" {
+		t.Errorf("case models: request models = %s", got)
+	}
+	bad := base
+	bad.Name, bad.Models = "m3", map[string]string{"nope": "x"}
+	tr, err := experiments.Start(ctx, database.Relational, experiments.Options{Name: "exp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed := runCases([]Case{bad}, &scriptedLLM{}, nil, false, nil, database, tr); failed != 1 {
+		t.Errorf("a case with an unknown stage: failed = %d, want 1", failed)
 	}
 }

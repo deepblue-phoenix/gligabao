@@ -223,6 +223,9 @@ type ChunkResult struct {
 // artifact, split into overlapping chunks that are artifacts too (its children), and each chunk is extracted,
 // reconciled, stored and embedded on its own (see rememberDocument and docs/chunking.md).
 //
+// With WithModels each LLM stage (extract_graph, resolve_edges) runs on the model the caller chose; a stage with none uses the
+// default model. The extract_graph stage's model is the one recorded on the entities and edges.
+//
 // Only with WithEval is the call recorded as an ATIF trajectory (stored as JSON in TrajectoryDir and returned in
 // Result.Trajectory, with its ID in Result.TrajectoryID).
 func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset, kind, text string, ref time.Time, opts ...memory_core.Option) (res *Result, err error) {
@@ -263,6 +266,9 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	if chunked {
 		input["chunk_size"], input["chunk_overlap_percent"] = cc.Size, cc.OverlapPercent
 	}
+	if len(co.Models) > 0 {
+		input["models"] = co.Models
+	}
 	tr.Input(input)
 
 	j := &job{d: d, llm: llm, tr: tr, co: co, opts: opts, userID: userID, dataset: dataset, kind: kind, ref: ref, now: now}
@@ -272,7 +278,7 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 
 	//--------------------------------------
 	// EXTRACT
-	ex, err := Extract(ctx, llm, text, ref)
+	ex, err := Extract(ctx, co.ModelLLM(llm, memory_core.StageExtractGraph), text, ref)
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +349,7 @@ func (j *job) resolveAndStore(ctx context.Context, text string, ex *Extraction, 
 		"candidates for duplicates and contradictions."+label, "load_candidates",
 		map[string]any{"user_id": userID, "dataset": dataset, "new_edges": len(ex.Edges), "by_name": len(cs.ByName), "by_similarity": len(cs.BySimilar)},
 		map[string]any{"candidates": len(cands), "facts": candidateFacts(cands, cs.Via)})
-	plan, err := resolveEdges(ctx, j.llm, ex.Edges, cands)
+	plan, err := resolveEdges(ctx, co.ModelLLM(j.llm, memory_core.StageResolveEdges), ex.Edges, cands)
 	if err != nil {
 		return nil, err
 	}

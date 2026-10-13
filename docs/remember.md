@@ -19,6 +19,8 @@ content-type: application/json
 - `reference_time` (optional): RFC 3339 timestamp of when the text was written or observed. Relative dates in the text ("yesterday", "last March") are resolved against it. Defaults to the current time.
 - `session_id` (optional): the user/agent session the call belongs to, a string you choose (at most 128 bytes, no control characters; `400` otherwise). It is stored on the artifact (`gb_artifacts.session_id`) and recorded against every entity and edge the artifact yields, in `gb_entity_sessions` and `gb_edge_sessions`, **including entities and facts that already existed** and so were not written again. See [sessions.md](sessions.md). Also accepted with `image`.
 
+- `models` (optional): an object that picks the LLM model of each LLM-invoking stage of the pipeline; see [Choosing the model of each stage](#choosing-the-model-of-each-stage). `400` for an unknown stage or a malformed model name.
+
 ## Response
 
 `200 OK`:
@@ -61,15 +63,15 @@ Errors are returned as `{"error": "..."}`:
 
 | Status | Meaning |
 | ------ | ------- |
-| 400 | Invalid JSON body, `text` is empty, `kind` is not `knowledge` or `episode`, `reference_time` is not RFC 3339, or `session_id` is too long or has control characters |
-| 502 | An LLM call failed, or its output could not be parsed or was truncated; or embedding failed (nothing stored); or the vectors could not be written to the vector store (after the database was saved, see [Embed](#how-it-works)) |
+| 400 | Invalid JSON body, `text` is empty, `kind` is not `knowledge` or `episode`, `reference_time` is not RFC 3339, `session_id` is too long or has control characters, or `models` names an unknown stage or has a malformed model name |
+| 502 | An LLM call failed (this includes a `models` entry the provider does not know), or its output could not be parsed or was truncated; or embedding failed (nothing stored); or the vectors could not be written to the vector store (after the database was saved, see [Embed](#how-it-works)) |
 | 503 | LLM not configured (`ANTHROPIC_API_KEY` is not set) |
 
 ## How it works
 
 This is the pipeline for a text that fits one chunk. A longer text runs the same steps on each of its chunks, one after the other; see [chunking.md](chunking.md).
 
-All steps use the LLM from `internal/ai` (Anthropic Messages API, default model `claude-haiku-5-5`). Code is in `internal/memory`.
+All steps use the LLM from `internal/ai` (Anthropic Messages API, default model `claude-haiku-5-5`, unless the request picks another one for a stage: see [Choosing the model of each stage](#choosing-the-model-of-each-stage)). Code is in `internal/memory`.
 
 1. **Extract the graph** (`Extract`, 1 LLM call, max 4096 output tokens): given the reference time and the text, the model is asked to return only JSON of the form:
    ```json
@@ -88,7 +90,33 @@ All steps use the LLM from `internal/ai` (Anthropic Messages API, default model 
 
 4. **Embed** (`WithVectors`, 1 embeddings request, only if an OpenAI key is configured): the entities this text mentions and the edges it states (and, if the text is a chunk of a longer one, the chunk's own text, into a third vector dataset: see [chunking.md](chunking.md#chunks-are-embedded)) are embedded together with `text-embedding-3-small`: an entity as `Name (type): description`, an edge as its description. This happens inside step 3, after the rows are written and before the transaction commits, so a failure stores nothing. Right after the commit the vectors are written, with `Upsert`, to the dataset's two vector datasets: `dataset-<id>-entities` (vector `entity-<entity id>`) and `dataset-<id>-edges` (vector `edge-<edge id>`). Vectors are keyed by ID, so remembering an entity or fact again overwrites its vector. Details, metadata and failure handling: [vectors.md](vectors.md#what-remember-writes).
 
-The request makes 1 LLM call, or 2 when stored edges need to be compared, plus 1 embeddings request, or 2 when the [candidate search](#candidate-facts-load_candidates) also embeds the endpoints of the new facts (only for a dataset that already exists). If any step before the commit fails, nothing is stored. If the vector write after the commit fails, the request returns `502` but the artifact, entities and edges are already saved; the vectors are written again the next time the entities and facts are mentioned.
+Steps 1 and 2 each run on their [own model](#choosing-the-model-of-each-stage). The request makes 1 LLM call, or 2 when stored edges need to be compared, plus 1 embeddings request, or 2 when the [candidate search](#candidate-facts-load_candidates) also embeds the endpoints of the new facts (only for a dataset that already exists). If any step before the commit fails, nothing is stored. If the vector write after the commit fails, the request returns `502` but the artifact, entities and edges are already saved; the vectors are written again the next time the entities and facts are mentioned.
+
+### Choosing the model of each stage
+
+The LLM-invoking stages of the pipeline can each run on a different model, for instance a stronger model to extract and a cheaper one to resolve. The caller picks them per request with `models`, a map from a stage name to a model name:
+
+```json
+{"user_id": "u1", "text": "Alice works at Acme.", "models": {"extract_graph": "claude-sonnet-4-5", "resolve_edges": "claude-haiku-5-5"}}
+```
+
+| Stage | Step | Used for |
+| ----- | ---- | -------- |
+| `extract_graph` | 1, `Extract` (once per chunk of a long text) | the entities and edges the text yields |
+| `resolve_edges` | 2, `resolveEdges` (only when there are candidates to compare) | the duplicate / contradiction check |
+| `extract_image` | the [image pipeline](images.md) | reading the image (applies only to a request with `image`) |
+
+The rules:
+
+- `models` is optional, and so is every stage in it. **A stage with no model (missing, or an empty string) uses the default model** of the server's LLM client (`claude-haiku-5-5`). So `{"models": {"extract_graph": "m"}}` changes only the extraction; `resolve_edges` stays on the default. A request without `models` runs everything on the default.
+- The choice is per request: nothing is stored server-side, and the next call starts from the defaults again.
+- A model name is any string of at most 128 bytes without whitespace or control characters; an unknown stage is a `400`. gligabao does not check that the provider knows the model: one it does not know fails the LLM call (`502`, nothing stored). The price of a model that is not in the price table (see `[prices]` in `gligabao.toml`) is recorded as 0.
+- A stage in `models` that the request does not run is ignored (`resolve_edges` when there is nothing to compare with, `extract_image` for a text, `extract_graph` and `resolve_edges` for an image).
+- Every call is recorded in `gb_llm_calls` with the model that answered, so the cost of each stage is known; an [eval trajectory](evals.md) shows the model of each LLM step (`model_name`) and the requested `models` in `extra.input`.
+
+**The model of the knowledge.** The model that runs the `extract_graph` stage is the model of what it extracts: every entity and edge of the extraction carries it as `model_id` (see [graph.md](graph.md#models)), and it is registered in `gb_models` if it is new. It is the model name as the provider's API reports it (a dated snapshot, say, when the request named an alias), never anything the LLM wrote in its output. The `resolve_edges` model only decides which new facts are duplicates or contradictions, so it does not appear on the knowledge: an edge's `model_id` is the model that extracted it, even if another model decided that an older edge was contradicted. For a chunked text each chunk is extracted with the same `extract_graph` model, so all its entities and edges carry it. A fact that is merged into a stored edge keeps that edge's `model_id`, and a stored entity keeps its own (see [graph.md](graph.md#entities)), so one dataset can hold knowledge from several models when the calls used different ones.
+
+**From Go**: `memory_core.WithModels(memory_core.Models{memory_core.StageExtractGraph: "m"})` is an option of `memory_remember.Remember` and `memory_image.RememberImage`; `memory_core.ResolveModels` validates a user-supplied map (the HTTP handler does). **From an eval**: see [evals.md](evals.md#models) and [`evals/README.md`](../evals/README.md).
 
 ### Candidate facts (`load_candidates`)
 

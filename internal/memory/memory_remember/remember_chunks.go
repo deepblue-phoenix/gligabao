@@ -64,7 +64,7 @@ func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Confi
 	exs := make([]*Extraction, len(chunks))
 	for i, c := range chunks {
 		part := &chunkPart{Chunk: c, Count: len(chunks)}
-		ex, err := Extract(ctx, j.llm, c.Text, j.ref)
+		ex, err := Extract(ctx, j.co.ModelLLM(j.llm, memory_core.StageExtractGraph), c.Text, j.ref)
 		if err != nil {
 			return nil, fmt.Errorf("memory: extract chunk %d of %d: %w", i+1, len(chunks), err)
 		}
