@@ -38,11 +38,13 @@ body {
   align-items: center;
   justify-content: center;
   gap: 1rem;
-  padding: 0.75rem 1.5rem;
-  background: $surface;
-  border-bottom: 1px solid $border;
+  padding: 0.25rem 1.5rem;
 
-  h1 { margin: 0; font-size: 1.15rem; }
+  h1 {
+    padding-top: 2px;
+    margin: 0;
+    font-size: 1.15rem; 
+  }
 }
 
 .badge {
