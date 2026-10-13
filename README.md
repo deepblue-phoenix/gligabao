@@ -21,6 +21,7 @@ gligabao is a small, self-hosted HTTP service that gives an AI application long-
 | `GET /v1/gb/datasets/{name}/graph?user_id=` | Export a dataset's whole graph as JSON | [docs/graph.md](docs/graph.md) |
 | `POST /v1/gb/ontologies`, `PUT /v1/gb/ontologies/{name}` | Load an OWL ontology (RDF/XML) under a name, or update the one stored under it (merge or replace) | [docs/ontologies.md](docs/ontologies.md) |
 | `GET /health` | Health check | |
+| `GET /version` | Version (and git commit) of the running binary | [Versioning](#versioning) |
 
 ## Datasets
 
@@ -132,3 +133,7 @@ See [LICENSE](LICENSE).
 ## Building
 
 gligabao is pure Go and builds with `CGO_ENABLED=0`: SQLite uses the `modernc.org/sqlite` driver and the default vector store is [chromem-go](https://github.com/philippgille/chromem-go), so no C compiler is needed. `./run_build.sh` builds `bin/gligabao`, `./run_tests.sh` runs the tests, and `docker build .` (or `./run_build_container.sh`) builds a static binary in a container; the Dockerfile builds with `CGO_ENABLED=0`. Plain `go build ./cmd/gligabao` / `go test ./...` work as they are.
+
+## Versioning
+
+The version is in [`VERSION`](VERSION) (semantic version) and the history in [`CHANGELOG.md`](CHANGELOG.md) ([Keep a Changelog](https://keepachangelog.com/) format). The version is embedded into the binary at build time (`go:embed`, see `version.go`), so a deployed binary always knows it: `gligabao --version`, `gligabao version` and `GET /version` (JSON, includes the git commit stamped by `go build`). Programs embedding gligabao get `gligabao.Version()` and can pass their own version in `ServeOptions.App`. Every change bumps `VERSION` and adds a changelog entry; `go test` fails if the two disagree. The rules for people and coding agents are in [AGENTS.md](AGENTS.md).

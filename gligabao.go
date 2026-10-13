@@ -12,6 +12,7 @@ import (
 	"context"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/buildinfo"
 	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/server"
@@ -44,6 +45,9 @@ type ServeOptions struct {
 	EvalDBPath string
 	// TrajectoryDir is where the ATIF trajectories of the eval endpoints are stored as JSON. Default: "atif" next to DBPath.
 	TrajectoryDir string
+	// App identifies the embedding program; if set, the server reports its version next to gligabao's
+	// (GET /version) and logs it at startup.
+	App *App
 	// Hooks are installed for the lifetime of Serve; every one is called for each event.
 	Hooks []Hooks
 }
@@ -70,6 +74,10 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 	}
 	if opts.DBPath == "" {
 		opts.DBPath = DefaultDBPath
+	}
+	if opts.App != nil {
+		buildinfo.SetApp(&buildinfo.Component{Name: opts.App.Name, Version: opts.App.Version, Commit: opts.App.Commit})
+		defer buildinfo.SetApp(nil)
 	}
 	monitoring.SetHooks(opts.Hooks)
 	defer monitoring.SetHooks(nil)

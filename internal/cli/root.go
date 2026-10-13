@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/deepblue-phoenix/gligabao/internal/buildinfo"
 	"github.com/deepblue-phoenix/gligabao/internal/config"
 )
 
@@ -38,6 +39,9 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
+	lib := buildinfo.Library()
+	rootCmd.Version = lib.Version
+	rootCmd.SetVersionTemplate(lib.String() + "\n")
 	rootCmd.PersistentFlags().StringVar(&configPath, "config", config.DefaultPath(), "path to TOML config file")
 }
 

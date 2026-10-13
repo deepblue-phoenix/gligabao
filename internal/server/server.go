@@ -4,6 +4,7 @@ package server
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -18,6 +19,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
+	"github.com/deepblue-phoenix/gligabao/internal/buildinfo"
 	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
@@ -103,6 +105,7 @@ func NewHandler(d *db.DB, llm memory.LLM, emb memory.Embedder, eval, adminUI boo
 		}
 		fmt.Fprintln(w, "ok")
 	})
+	mux.HandleFunc("GET /version", versionHandler)
 	api.Register(mux, d, llm, emb)
 	if eval {
 		api.RegisterEval(mux, d, llm, emb)
@@ -111,6 +114,16 @@ func NewHandler(d *db.DB, llm memory.LLM, emb memory.Embedder, eval, adminUI boo
 		registerAdminUI(mux, d, extraAdminDBs)
 	}
 	return mux
+}
+
+// versionHandler reports the version (and git commit) of gligabao and, if registered, of the embedding program.
+func versionHandler(w http.ResponseWriter, r *http.Request) {
+	out := map[string]any{"gligabao": buildinfo.Library()}
+	if app, ok := buildinfo.App(); ok {
+		out["app"] = app
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
 }
 
 // registerAdminUI serves the embedded admin UI assets under /v1/gb/admin/. It is a no-op (with a warning) if the
@@ -166,6 +179,12 @@ func openAdminDB(path string) (*sql.DB, error) {
 // cancelled or SIGINT/SIGTERM is received, then shuts down gracefully.
 func Run(ctx context.Context, opts Options) error {
 	fmt.Fprint(os.Stderr, banner)
+	lib := buildinfo.Library()
+	fields := log.Fields{"version": lib.Version, "commit": lib.Commit}
+	if app, ok := buildinfo.App(); ok {
+		fields["app"], fields["app_version"], fields["app_commit"] = app.Name, app.Version, app.Commit
+	}
+	log.WithFields(fields).Info("starting gligabao")
 	database, err := db.Open(opts.DB)
 	if err != nil {
 		return err
