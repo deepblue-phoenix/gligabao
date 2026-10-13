@@ -20,6 +20,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/ontology"
 
 	log "github.com/sirupsen/logrus"
@@ -68,7 +69,7 @@ type preparedOntology struct {
 // prepareOntology validates the inputs and parses the document. If description is empty, the ontology's own
 // rdfs:comment is used.
 func prepareOntology(userID, name, description string, content []byte) (userIDOut, nameOut string, p *preparedOntology, err error) {
-	if userID, err = ResolveUserID(userID); err != nil {
+	if userID, err = memory_core.ResolveUserID(userID); err != nil {
 		return
 	}
 	if name, err = ResolveOntologyName(name); err != nil {
@@ -231,7 +232,7 @@ func UpdateOntology(ctx context.Context, d *sql.DB, userID, name, description st
 
 // ListOntologies returns userID's ontologies, oldest first.
 func ListOntologies(ctx context.Context, d *sql.DB, userID string) ([]Ontology, error) {
-	userID, err := ResolveUserID(userID)
+	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
 		return nil, err
 	}

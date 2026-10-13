@@ -10,6 +10,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -34,7 +35,7 @@ func Create(d *sql.DB) http.HandlerFunc {
 		}
 		ds, err := memory.CreateDataset(r.Context(), d, req.UserID, req.Name, req.Description, req.Tags)
 		switch {
-		case errors.Is(err, memory.ErrInvalidDataset), errors.Is(err, memory.ErrInvalidUser):
+		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory_core.ErrInvalidUser):
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 		case errors.Is(err, memory.ErrDatasetExists):
 			httputil.Error(w, http.StatusConflict, "dataset already exists")
@@ -52,7 +53,7 @@ func List(d *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		list, err := memory.ListDatasets(r.Context(), d, q.Get("user_id"), q.Get("include_deleted") == "true")
-		if errors.Is(err, memory.ErrInvalidUser) {
+		if errors.Is(err, memory_core.ErrInvalidUser) {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -71,9 +72,9 @@ func Delete(d *sql.DB, vectors vector.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		err := memory.DeleteDataset(r.Context(), d, vectors, r.URL.Query().Get("user_id"), r.PathValue("name"))
 		switch {
-		case errors.Is(err, memory.ErrInvalidUser):
+		case errors.Is(err, memory_core.ErrInvalidUser):
 			httputil.Error(w, http.StatusBadRequest, err.Error())
-		case errors.Is(err, memory.ErrInvalidDataset), errors.Is(err, memory.ErrDatasetNotFound):
+		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory.ErrDatasetNotFound):
 			httputil.Error(w, http.StatusNotFound, "dataset not found")
 		case err != nil:
 			log.WithError(err).WithFields(log.Fields{
@@ -93,9 +94,9 @@ func Graph(d *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		g, err := memory.ExportGraph(r.Context(), d, r.URL.Query().Get("user_id"), r.PathValue("name"))
 		switch {
-		case errors.Is(err, memory.ErrInvalidUser):
+		case errors.Is(err, memory_core.ErrInvalidUser):
 			httputil.Error(w, http.StatusBadRequest, err.Error())
-		case errors.Is(err, memory.ErrInvalidDataset), errors.Is(err, memory.ErrDatasetNotFound):
+		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory.ErrDatasetNotFound):
 			httputil.Error(w, http.StatusNotFound, "dataset not found")
 		case err != nil:
 			log.WithError(err).WithFields(log.Fields{

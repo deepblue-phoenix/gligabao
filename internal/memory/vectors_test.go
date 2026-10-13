@@ -11,6 +11,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
 type extractLLM struct{}
@@ -118,7 +119,7 @@ func testRememberTracesEmbedding(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 	res, err := memory.Remember(context.Background(), d, extractLLM{}, "u1", "work", "", "Alice works at Acme.", relational.Now(),
-		memory.WithVectors(vs, &fakeEmbedder{}), memory.WithEval(), memory.WithTrajectoryDir(t.TempDir()))
+		memory.WithVectors(vs, &fakeEmbedder{}), memory_core.WithEval(), memory_core.WithTrajectoryDir(t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +155,7 @@ func testCandidatesBySimilarity(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := []memory.Option{memory.WithVectors(vs, &fakeEmbedder{}), memory.WithEval(), memory.WithTrajectoryDir(t.TempDir())}
+	opts := []memory_core.Option{memory.WithVectors(vs, &fakeEmbedder{}), memory_core.WithEval(), memory_core.WithTrajectoryDir(t.TempDir())}
 	if _, err := memory.Remember(ctx, d, extractLLM{}, "u1", "work", "", "Alice works at Acme.", relational.Now(), opts...); err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +184,7 @@ func testCandidatesBySimilarity(t *testing.T, d *sql.DB) {
 	if _, err := memory.Remember(ctx, d, extractLLM{}, "u1", "plain", "", "Alice works at Acme.", relational.Now()); err != nil {
 		t.Fatal(err)
 	}
-	res, err = memory.Remember(ctx, d, aliasLLM{}, "u1", "plain", "", "Alicia lives in Berlin.", relational.Now(), memory.WithEval(), memory.WithTrajectoryDir(t.TempDir()))
+	res, err = memory.Remember(ctx, d, aliasLLM{}, "u1", "plain", "", "Alicia lives in Berlin.", relational.Now(), memory_core.WithEval(), memory_core.WithTrajectoryDir(t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
 	}

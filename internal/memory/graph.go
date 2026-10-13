@@ -6,6 +6,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
 // GraphExport is a whole dataset graph: its entities (nodes) and every edge (facts, expired ones included).
@@ -20,11 +21,11 @@ type GraphExport struct {
 // ExportGraph returns the full graph of userID's live dataset called name (empty means the default dataset).
 // It returns ErrDatasetNotFound if there is no such dataset.
 func ExportGraph(ctx context.Context, d *sql.DB, userID, name string) (*GraphExport, error) {
-	userID, err := ResolveUserID(userID)
+	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
 		return nil, err
 	}
-	name, err = ResolveDatasetName(name)
+	name, err = memory_core.ResolveDatasetName(name)
 	if err != nil {
 		return nil, err
 	}

@@ -46,7 +46,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/experiments"
-	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/server"
 )
 
@@ -171,7 +171,7 @@ func contains(list []string, s string) bool {
 
 // verboseLLM wraps an LLM and prints the input and output of every call.
 type verboseLLM struct {
-	inner memory.LLM
+	inner memory_core.LLM
 	calls int
 }
 
@@ -236,7 +236,7 @@ func (o *Outcome) Cost() (usd float64, steps int) {
 // run executes one case of the experiment run runID in the eval database through the eval endpoints, in a dataset
 // of its own (see datasetName). The outcome is returned even when err is set, holding whatever was collected
 // before the failure.
-func run(c Case, runID int64, database *db.DB, llm memory.LLM, emb memory.Embedder, verbose bool) (out *Outcome, err error) {
+func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_core.Embedder, verbose bool) (out *Outcome, err error) {
 	out = &Outcome{TrajectoryDir: atifDir}
 
 	srv := httptest.NewServer(server.NewHandler(database, llm, emb, true, false))
@@ -404,7 +404,7 @@ func post(url string, body, out any) error {
 
 // runCases runs every case through llm (and embeds the entities and edges with emb, if not nil) in the eval database, prints PASS/FAIL per case and returns how many failed.
 // The result of each case is recorded in the tracker's experiment run (kept in the same database).
-func runCases(cases []Case, llm memory.LLM, emb memory.Embedder, verbose bool, database *db.DB, tracker *experiments.Tracker) (failed int) {
+func runCases(cases []Case, llm memory_core.LLM, emb memory_core.Embedder, verbose bool, database *db.DB, tracker *experiments.Tracker) (failed int) {
 	for _, c := range cases {
 		l := llm
 		if verbose {
@@ -492,7 +492,7 @@ func mainErr() error {
 		// The experiments reference the trajectories by ID, so keep their files next to the eval database.
 		atifDir = filepath.Join(filepath.Dir(*evalDBPath), "atif")
 	}
-	memory.TrajectoryDir = atifDir
+	memory_core.TrajectoryDir = atifDir
 
 	key := os.Getenv("ANTHROPIC_API_KEY")
 	if key == "" {
@@ -504,7 +504,7 @@ func mainErr() error {
 	}
 	// remember embeds the entities and edges it stores into the eval database's vector store (see
 	// ../docs/vectors.md); without an embedder it stores none, so say so. emb stays a nil interface then.
-	var emb memory.Embedder
+	var emb memory_core.Embedder
 	if e, err := ai.NewEmbedder(os.Getenv(config.EnvOpenAIKey), ai.WithEmbedDimensions(config.DefaultEmbeddingDimensions)); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: no embedder (%v): entities and edges will NOT be vector indexed\n", err)
 	} else {

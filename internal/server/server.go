@@ -25,7 +25,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
-	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -70,7 +70,7 @@ type Options struct {
 	// Prices overrides/extends the built-in model price table used for call costs. May be nil.
 	Prices map[string]ai.Price
 	// TrajectoryDir is where the ATIF trajectories of the eval endpoints are stored as JSON.
-	// Default: an "atif" directory next to the SQLite file (memory.TrajectoryDir if there is none).
+	// Default: an "atif" directory next to the SQLite file (memory_core.TrajectoryDir if there is none).
 	TrajectoryDir string
 	// Eval registers the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/recall), which return ATIF
 	// trajectories with their results. Off by default.
@@ -93,7 +93,7 @@ const EvalDBName = "eval"
 // NewHandler builds the HTTP handler for the given databases and LLM.
 // llm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities. The eval endpoints are registered only if eval is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary.
-func NewHandler(d *db.DB, llm memory.LLM, emb memory.Embedder, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
+func NewHandler(d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "gligabao is running")
@@ -204,15 +204,15 @@ func Run(ctx context.Context, opts Options) error {
 
 	switch {
 	case opts.TrajectoryDir != "":
-		memory.TrajectoryDir = opts.TrajectoryDir
+		memory_core.TrajectoryDir = opts.TrajectoryDir
 	case database.SQLitePath != "":
-		memory.TrajectoryDir = filepath.Join(filepath.Dir(database.SQLitePath), "atif")
+		memory_core.TrajectoryDir = filepath.Join(filepath.Dir(database.SQLitePath), "atif")
 	}
 	if opts.Eval {
 		log.Warn("eval mode: /v1/gb/eval/remember and /v1/gb/eval/recall are enabled")
 	}
 	if opts.Eval {
-		log.WithField("trajectory_dir", memory.TrajectoryDir).Info("ATIF trajectories are stored here")
+		log.WithField("trajectory_dir", memory_core.TrajectoryDir).Info("ATIF trajectories are stored here")
 	}
 
 	if opts.AdminUI && adminui.Available() {
@@ -223,14 +223,14 @@ func Run(ctx context.Context, opts Options) error {
 		log.Info("admin UI is not active (enable with admin_ui = true or --admin-ui)")
 	}
 
-	var llm memory.LLM
+	var llm memory_core.LLM
 	if c, err := ai.New(opts.AnthropicKey, ai.WithPrices(ai.NewPriceTable(opts.Prices))); err != nil {
 		log.WithError(err).Warn("LLM client unavailable; /v1/gb/remember and /v1/gb/recall will return 503")
 	} else {
 		llm = c
 	}
 
-	var emb memory.Embedder
+	var emb memory_core.Embedder
 	if e, err := ai.NewEmbedder(opts.OpenAIKey, ai.WithEmbedPrices(ai.NewPriceTable(opts.Prices)), ai.WithEmbedDimensions(database.EmbeddingDimensions)); err != nil {
 		log.WithError(err).Warn("embedder unavailable; /v1/gb/remember will not embed entities")
 	} else {

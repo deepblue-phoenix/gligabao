@@ -15,6 +15,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
 const (
@@ -56,12 +57,12 @@ type RecallResult struct {
 //
 // Only with WithEval is the call recorded as an ATIF trajectory (stored as JSON in TrajectoryDir and returned in
 // RecallResult.Trajectory, with its ID in RecallResult.TrajectoryID).
-func Recall(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, query string, opts ...Option) (res *RecallResult, err error) {
-	userID, err = ResolveUserID(userID)
+func Recall(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset, query string, opts ...memory_core.Option) (res *RecallResult, err error) {
+	userID, err = memory_core.ResolveUserID(userID)
 	if err != nil {
 		return nil, err
 	}
-	dataset, err = ResolveDatasetName(dataset)
+	dataset, err = memory_core.ResolveDatasetName(dataset)
 	if err != nil {
 		return nil, err
 	}
@@ -70,31 +71,31 @@ func Recall(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, query stri
 		return nil, err
 	}
 
-	tr := startTrace(CallRecall, newCallOptions(opts))
+	tr := memory_core.StartTrace(CallRecall, memory_core.NewCallOptions(opts))
 	defer func() {
-		if traj := tr.finish(err); res != nil && traj != nil {
+		if traj := tr.Finish(err); res != nil && traj != nil {
 			res.TrajectoryID, res.Trajectory = traj.TrajectoryID, traj
 		}
 	}()
-	tr.user(query)
-	tr.input(map[string]any{"user_id": userID, "dataset": dataset})
+	tr.User(query)
+	tr.Input(map[string]any{"user_id": userID, "dataset": dataset})
 
 	rc, err := assembleContext(ctx, d, dsID, query)
 	if err != nil {
 		return nil, fmt.Errorf("retrieve context: %w", err)
 	}
-	tr.tool("Retrieved the subgraph around the entities matching the query.", "retrieve_graph",
+	tr.Tool("Retrieved the subgraph around the entities matching the query.", "retrieve_graph",
 		map[string]any{"user_id": userID, "dataset": dataset, "query": query}, rc.Graph.render())
 	if len(rc.Graph.entities) == 0 {
 		const none = "I don't have any information in memory to answer that."
-		tr.agent(none)
+		tr.Agent(none)
 		return &RecallResult{
 			Answer:   none,
 			Evidence: Evidence{Entities: []EvidenceEntity{}, Edges: []EvidenceEdge{}},
 		}, nil
 	}
 
-	out, err := recallLLM(ctx, tr.wrap(withRecording(llm, d, CallRecall)), rc)
+	out, err := recallLLM(ctx, tr.Wrap(memory_core.WithRecording(llm, d, CallRecall)), rc)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +130,7 @@ func (c *recallContext) render() string {
 }
 
 // recallLLM asks the LLM to answer rc.Question from rc and parses its structured output.
-func recallLLM(ctx context.Context, llm LLM, rc *recallContext) (*recallOutput, error) {
+func recallLLM(ctx context.Context, llm memory_core.LLM, rc *recallContext) (*recallOutput, error) {
 	resp, err := llm.Complete(ctx, ai.Request{
 		System:    recallSystemPrompt,
 		Messages:  []ai.Message{{Role: ai.RoleUser, Content: rc.render()}},

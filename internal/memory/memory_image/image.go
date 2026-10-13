@@ -1,6 +1,6 @@
-package memory
+package memory_image
 
-// The image pipeline: Remember for images (RememberImage). It is independent of the text pipeline (remember.go):
+// The image pipeline (package memory_image): Remember for images (RememberImage). It is independent of the text pipeline (remember.go):
 // an image is sent to a vision LLM, which reads the text in it (OCR: title and text blocks) and classifies the whole
 // image by a theme ("graph", "plot", ...). The image file is kept in the image directory (ImageDir, see package
 // imagestore), tracked by an image artifact row (gb_image_artifacts: metadata and the file's path, never the bytes),
@@ -25,11 +25,32 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/imagestore"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 
 	log "github.com/sirupsen/logrus"
 )
 
 //---------------------------------------------------------------------------------------------
+
+// ImageDir is where RememberImage stores the image files (see package imagestore); the database only tracks them.
+// It is read on every call; set it once at startup, or override it per call with WithImageDir.
+var ImageDir = "bin/images"
+
+// WithImageDir overrides ImageDir for this call: the directory RememberImage and LoadImage keep the image files in.
+func WithImageDir(dir string) memory_core.Option {
+	return func(o *memory_core.CallOptions) { o.ImageDir = dir }
+}
+
+// imageDir is the image directory of a call.
+func imageDir(o memory_core.CallOptions) string {
+	if o.ImageDir != "" {
+		return o.ImageDir
+	}
+	return ImageDir
+}
+
+// CallRememberImage is the type of the LLM calls of RememberImage, stored in gb_llm_calls.type.
+const CallRememberImage = "remember_image"
 
 // MaxImageBytes is the largest image accepted (the Anthropic API limit for one image).
 const MaxImageBytes = 5 << 20
@@ -87,7 +108,7 @@ type ImageExtraction struct {
 }
 
 // ExtractImage sends the image (of a media type from ResolveImage) to the LLM, which reads its text and classifies it.
-func ExtractImage(ctx context.Context, llm LLM, mediaType string, data []byte) (*ImageExtraction, error) {
+func ExtractImage(ctx context.Context, llm memory_core.LLM, mediaType string, data []byte) (*ImageExtraction, error) {
 	resp, err := llm.Complete(ctx, ai.Request{
 		System: imageSystemPrompt,
 		Messages: []ai.Message{{
@@ -115,7 +136,7 @@ func ExtractImage(ctx context.Context, llm LLM, mediaType string, data []byte) (
 // parseImageExtraction decodes the LLM's JSON, tolerating surrounding prose or code fences, and normalizes it:
 // unknown themes and kinds become "other", blank blocks are dropped, and Text is built from the blocks.
 func parseImageExtraction(s string) (*ImageExtraction, error) {
-	js, err := jsonObject(s)
+	js, err := memory_core.JSONObject(s)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +209,7 @@ type ImageResult struct {
 const PipelineImage = "image"
 
 // RememberImage reads the image with the LLM and stores it as an image artifact, with the extraction, in userID's
-// named dataset (empty means DefaultDataset; it is created if missing); the file goes into the image directory
+// named dataset (empty means the default dataset; it is created if missing); the file goes into the image directory
 // (ImageDir, or WithImageDir) and only its path into the database. ref is the time the image was captured or
 // observed; the zero value means the current time.
 //
@@ -196,12 +217,12 @@ const PipelineImage = "image"
 // stored result is returned with Cached set, and nothing is called or stored (ref is ignored; the file is restored
 // if it went missing). Only the dataset is searched: datasets are isolated. If the LLM step fails nothing is stored (but the call's cost is
 // still recorded, as for Remember). Only with WithEval is the call recorded as an ATIF trajectory.
-func RememberImage(ctx context.Context, d *sql.DB, llm LLM, userID, dataset string, data []byte, ref time.Time, opts ...Option) (res *ImageResult, err error) {
-	userID, err = ResolveUserID(userID)
+func RememberImage(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset string, data []byte, ref time.Time, opts ...memory_core.Option) (res *ImageResult, err error) {
+	userID, err = memory_core.ResolveUserID(userID)
 	if err != nil {
 		return nil, err
 	}
-	dataset, err = ResolveDatasetName(dataset)
+	dataset, err = memory_core.ResolveDatasetName(dataset)
 	if err != nil {
 		return nil, err
 	}
@@ -216,17 +237,17 @@ func RememberImage(ctx context.Context, d *sql.DB, llm LLM, userID, dataset stri
 	ref = relational.Normalize(ref)
 	sum := sha256.Sum256(data)
 	hash := hex.EncodeToString(sum[:])
-	llm = withRecording(llm, d, CallRememberImage)
+	llm = memory_core.WithRecording(llm, d, CallRememberImage)
 
-	co := newCallOptions(opts)
-	tr := startTrace(CallRememberImage, co)
+	co := memory_core.NewCallOptions(opts)
+	tr := memory_core.StartTrace(CallRememberImage, co)
 	defer func() {
-		if traj := tr.finish(err); res != nil && traj != nil {
+		if traj := tr.Finish(err); res != nil && traj != nil {
 			res.TrajectoryID, res.Trajectory = traj.TrajectoryID, traj
 		}
 	}()
-	llm = tr.wrap(llm)
-	tr.input(map[string]any{"user_id": userID, "dataset": dataset, "media_type": mediaType, "sha256": hash,
+	llm = tr.Wrap(llm)
+	tr.Input(map[string]any{"user_id": userID, "dataset": dataset, "media_type": mediaType, "sha256": hash,
 		"size_bytes": len(data), "reference_time": relational.FormatTime(ref)})
 
 	// Seen before in this dataset? Then the stored result is the answer (a dataset that does not exist has none).
@@ -235,11 +256,11 @@ func RememberImage(ctx context.Context, d *sql.DB, llm LLM, userID, dataset stri
 		switch {
 		case err == nil:
 			// Same content, so the same file name: this only writes the file if it is gone.
-			if _, _, err := imagestore.Save(co.imageDir, dsID, art.MediaType, hash, data); err != nil {
+			if _, _, err := imagestore.Save(imageDir(co), dsID, art.MediaType, hash, data); err != nil {
 				return nil, err
 			}
 			res := newImageResult(userID, dataset, art, ext)
-			tr.tool("The dataset already holds this image (same SHA-256): returned its stored extraction, without calling the LLM.",
+			tr.Tool("The dataset already holds this image (same SHA-256): returned its stored extraction, without calling the LLM.",
 				"find_existing_image", map[string]any{"sha256": hash},
 				map[string]any{"image_artifact_id": art.ID, "extraction_id": ext.ID, "theme": ext.Theme, "title": ext.Title, "text_blocks": ext.TextBlocks})
 			return res, nil
@@ -254,7 +275,7 @@ func RememberImage(ctx context.Context, d *sql.DB, llm LLM, userID, dataset stri
 	if err != nil {
 		return nil, err
 	}
-	tr.tool("The LLM read the image: its theme, title and text blocks.", "extract_image",
+	tr.Tool("The LLM read the image: its theme, title and text blocks.", "extract_image",
 		map[string]any{"media_type": mediaType, "size_bytes": len(data)},
 		map[string]any{"theme": x.Theme, "title": x.Title, "text_blocks": x.TextBlocks})
 
@@ -264,7 +285,7 @@ func RememberImage(ctx context.Context, d *sql.DB, llm LLM, userID, dataset stri
 	}
 	// The file first, then the row that tracks it: a failed insert removes the file again (unless it was there already,
 	// from the same image in this dataset), so only a crash in between can leave an untracked file.
-	path, created, err := imagestore.Save(co.imageDir, dsID, mediaType, hash, data)
+	path, created, err := imagestore.Save(imageDir(co), dsID, mediaType, hash, data)
 	if err != nil {
 		return nil, err
 	}
@@ -284,13 +305,13 @@ func RememberImage(ctx context.Context, d *sql.DB, llm LLM, userID, dataset stri
 	})
 	if err != nil {
 		if created {
-			if rerr := imagestore.Remove(co.imageDir, path); rerr != nil {
+			if rerr := imagestore.Remove(imageDir(co), path); rerr != nil {
 				log.WithError(rerr).WithField("path", path).Error("remove image file after failed insert")
 			}
 		}
 		return nil, err
 	}
-	tr.tool("Stored the image file and tracked it with an image artifact and its extraction.", "store_image",
+	tr.Tool("Stored the image file and tracked it with an image artifact and its extraction.", "store_image",
 		map[string]any{"user_id": userID, "dataset": dataset},
 		map[string]any{"image_artifact_id": artID, "extraction_id": extID, "path": path, "text_blocks": len(x.TextBlocks)})
 	return &ImageResult{
@@ -336,14 +357,14 @@ func newImageResult(userID, dataset string, a *graph.ImageArtifact, x *graph.Ima
 	}
 }
 
-// LoadImage returns the bytes of an image artifact of userID's named dataset (empty means DefaultDataset), read from
+// LoadImage returns the bytes of an image artifact of userID's named dataset (empty means the default dataset), read from
 // the image directory (ImageDir, or WithImageDir). It returns an error wrapping ErrNotFound (graph or relational) if there is no such dataset or artifact.
-func LoadImage(ctx context.Context, d *sql.DB, userID, dataset string, artifactID int64, opts ...Option) ([]byte, error) {
-	userID, err := ResolveUserID(userID)
+func LoadImage(ctx context.Context, d *sql.DB, userID, dataset string, artifactID int64, opts ...memory_core.Option) ([]byte, error) {
+	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
 		return nil, err
 	}
-	dataset, err = ResolveDatasetName(dataset)
+	dataset, err = memory_core.ResolveDatasetName(dataset)
 	if err != nil {
 		return nil, err
 	}
@@ -355,5 +376,5 @@ func LoadImage(ctx context.Context, d *sql.DB, userID, dataset string, artifactI
 	if err != nil {
 		return nil, err
 	}
-	return imagestore.Read(newCallOptions(opts).imageDir, a.Path)
+	return imagestore.Read(imageDir(memory_core.NewCallOptions(opts)), a.Path)
 }

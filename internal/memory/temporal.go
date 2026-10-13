@@ -25,6 +25,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -49,7 +50,7 @@ type Contradiction struct {
 
 // resolveEdges compares new edges with existing candidates. Exact repeats (same endpoints and relation as a
 // fact that is still true) are detected without the LLM; the LLM is only called for what remains.
-func resolveEdges(ctx context.Context, llm LLM, edges, cands []Edge) (*EdgePlan, error) {
+func resolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []Edge) (*EdgePlan, error) {
 	plan := &EdgePlan{Duplicates: map[int]int64{}}
 
 	var rest []int // indices of new edges still undecided
@@ -96,7 +97,7 @@ func resolveEdges(ctx context.Context, llm LLM, edges, cands []Edge) (*EdgePlan,
 	if resp.StopReason == "max_tokens" {
 		return nil, errors.New("memory: LLM resolve output truncated")
 	}
-	js, err := jsonObject(resp.Text)
+	js, err := memory_core.JSONObject(resp.Text)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +177,7 @@ const (
 //     which finds aliases the names do not (see findSimilarEntities).
 //
 // A dataset that does not exist yet has none.
-func loadCandidates(ctx context.Context, d *sql.DB, o callOptions, userID, dataset string, ex *Extraction) (*candidates, error) {
+func loadCandidates(ctx context.Context, d *sql.DB, o memory_core.CallOptions, userID, dataset string, ex *Extraction) (*candidates, error) {
 	out := &candidates{Via: map[int64]string{}}
 	dsID, err := datasetID(ctx, d, userID, dataset)
 	if errors.Is(err, ErrDatasetNotFound) {
@@ -382,15 +383,4 @@ func contradict(ctx context.Context, tx graph.Tx, dsID, newID, oldID int64, ref,
 		return nil, err
 	}
 	return []int64{loser}, nil
-}
-
-//---------------------------------------------------------------------------------------------
-
-// jsonObject returns the outermost {...} in s, tolerating surrounding prose or code fences.
-func jsonObject(s string) (string, error) {
-	start, end := strings.Index(s, "{"), strings.LastIndex(s, "}")
-	if start < 0 || end < start {
-		return "", errors.New("memory: no JSON object in LLM output")
-	}
-	return s[start : end+1], nil
 }

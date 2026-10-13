@@ -19,6 +19,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_image"
 )
 
 // TestOverview checks that the admin overview lists the datasets of every user and counts the whole system.
@@ -235,7 +236,7 @@ func testImages(t *testing.T, d *sql.DB) {
 		if err := png.Encode(&buf, img); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := memory.RememberImage(ctx, d, fakeLLM{}, "alice", "a", append([]byte(nil), buf.Bytes()...), time.Time{}, memory.WithImageDir(dir)); err != nil {
+		if _, err := memory_image.RememberImage(ctx, d, fakeLLM{}, "alice", "a", append([]byte(nil), buf.Bytes()...), time.Time{}, memory_image.WithImageDir(dir)); err != nil {
 			t.Fatal(err)
 		}
 	}

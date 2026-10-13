@@ -1,4 +1,4 @@
-package memory
+package memory_image
 
 // LLM system prompt for the image pipeline (ExtractImage). The user message is the image itself.
 

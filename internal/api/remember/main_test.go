@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
 func TestMain(m *testing.M) {
@@ -12,7 +12,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	memory.TrajectoryDir = dir
+	memory_core.TrajectoryDir = dir
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)

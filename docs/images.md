@@ -4,7 +4,7 @@
 
 For now nothing is added to the graph: no entities, edges or vectors come out of an image, and `recall` does not see it. Grounding the extractions in the rest of the graph is planned; the extraction tables are the input for it.
 
-Code: `internal/memory/image.go` (`RememberImage`, `ExtractImage`), `internal/memory/prompts_image.go`, `internal/api/remember/remember.go` (the handler), `internal/imagestore` (the files), `internal/db/graph/{sqlite,postgres}/db_image.go` (SQL).
+Code: `internal/memory/memory_image/image.go` (`RememberImage`, `ExtractImage`), `internal/memory/memory_image/prompts_image.go`, `internal/api/remember/remember.go` (the handler), `internal/imagestore` (the files), `internal/db/graph/{sqlite,postgres}/db_image.go` (SQL).
 
 ## Request
 
@@ -88,11 +88,11 @@ The call is recorded in `gb_llm_calls` with type `remember_image` (the text pipe
 
 ## Where the files are
 
-Image bytes are never stored in the database. They are files in the image directory, `<db path without extension>.images` next to the SQLite file (e.g. `bin/gligabao.images`, or `/data/gligabao.images` in the container). Override it with `serve --image-dir <path>`, or `ServeOptions.ImageDir` when embedding; the directory is created when the first image is stored. In Go, `memory.ImageDir` is the default and `memory.WithImageDir(dir)` overrides it for one call.
+Image bytes are never stored in the database. They are files in the image directory, `<db path without extension>.images` next to the SQLite file (e.g. `bin/gligabao.images`, or `/data/gligabao.images` in the container). Override it with `serve --image-dir <path>`, or `ServeOptions.ImageDir` when embedding; the directory is created when the first image is stored. In Go, `memory_image.ImageDir` is the default and `memory_image.WithImageDir(dir)` overrides it for one call.
 
 A file is `<dataset id>/<sha256>.<ext>` (`jpg`, `png`, `gif` or `webp`) inside it, and `gb_image_artifacts.path` holds that relative path, so the directory can be moved. The name is the SHA-256 of the content, which is also how a repeated image is recognised (see [Repeated images](#repeated-images)). The file is written first (atomically, via a temporary file and a rename) and the rows after; if storing the rows fails, a file that this call created is removed again. Only a crash between the two steps can leave a file that no row tracks. With PostgreSQL the files still go to the local directory, so the directory must be on storage the server keeps (a volume, in the container).
 
-`memory.LoadImage(ctx, db, userID, dataset, imageArtifactID)` reads a stored image back.
+`memory_image.LoadImage(ctx, db, userID, dataset, imageArtifactID)` reads a stored image back.
 
 ## Schema
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/monitoring"
 	log "github.com/sirupsen/logrus"
 )
@@ -27,16 +28,16 @@ type recallRequest struct {
 //---------------------------------------------------------------------------------------------
 
 // Handler serves POST /v1/gb/recall.
-func Handler(d *sql.DB, llm memory.LLM) http.HandlerFunc { return handler(d, llm, false) }
+func Handler(d *sql.DB, llm memory_core.LLM) http.HandlerFunc { return handler(d, llm, false) }
 
 // EvalHandler serves POST /v1/gb/eval/recall: like Handler, but the response also carries the call's ATIF
 // trajectory. It is only registered when the server runs in eval mode.
-func EvalHandler(d *sql.DB, llm memory.LLM) http.HandlerFunc { return handler(d, llm, true) }
+func EvalHandler(d *sql.DB, llm memory_core.LLM) http.HandlerFunc { return handler(d, llm, true) }
 
-func handler(d *sql.DB, llm memory.LLM, eval bool) http.HandlerFunc {
-	var opts []memory.Option
+func handler(d *sql.DB, llm memory_core.LLM, eval bool) http.HandlerFunc {
+	var opts []memory_core.Option
 	if eval {
-		opts = append(opts, memory.WithEval())
+		opts = append(opts, memory_core.WithEval())
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if llm == nil {
@@ -64,7 +65,7 @@ func handler(d *sql.DB, llm memory.LLM, eval bool) http.HandlerFunc {
 				"error":       err.Error(),
 			})
 		}
-		if errors.Is(err, memory.ErrInvalidDataset) || errors.Is(err, memory.ErrInvalidUser) {
+		if errors.Is(err, memory_core.ErrInvalidDataset) || errors.Is(err, memory_core.ErrInvalidUser) {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}

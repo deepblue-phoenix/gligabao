@@ -12,6 +12,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/experiments"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
 // scriptedLLM answers by what the prompt asks for: the recall prompt gets an answer, anything else an extraction.
@@ -30,7 +31,7 @@ func (l *scriptedLLM) Complete(_ context.Context, req ai.Request) (*ai.Response,
 func TestRunCasesTracksExperiment(t *testing.T) {
 	dir := t.TempDir()
 	atifDir = filepath.Join(dir, "atif")
-	memory.TrajectoryDir = atifDir
+	memory_core.TrajectoryDir = atifDir
 	t.Cleanup(func() { atifDir = "" })
 
 	cases := []Case{
@@ -116,7 +117,7 @@ func TestLoadCasesSetsSuite(t *testing.T) {
 func TestRunsAreIsolatedAndKept(t *testing.T) {
 	dir := t.TempDir()
 	atifDir = filepath.Join(dir, "atif")
-	memory.TrajectoryDir = atifDir
+	memory_core.TrajectoryDir = atifDir
 	t.Cleanup(func() { atifDir = "" })
 	database, err := db.Open(db.Config{SQLitePath: filepath.Join(dir, "eval.db")})
 	if err != nil {

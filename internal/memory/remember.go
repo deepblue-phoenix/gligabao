@@ -13,6 +13,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
 //---------------------------------------------------------------------------------------------
@@ -38,7 +39,7 @@ type Extraction struct {
 
 // Extract asks the LLM to pull entities and temporal edges out of text. ref is the artifact's time; it anchors
 // relative dates and is the ValidAt of every fact whose start the text does not state.
-func Extract(ctx context.Context, llm LLM, text string, ref time.Time) (*Extraction, error) {
+func Extract(ctx context.Context, llm memory_core.LLM, text string, ref time.Time) (*Extraction, error) {
 
 	//-----------------------
 	// LLM
@@ -80,7 +81,7 @@ func (ex *Extraction) stampModel(provider, name string) {
 
 // parseExtraction decodes the LLM's JSON, tolerating surrounding prose or code fences, and normalizes the edges.
 func parseExtraction(s string, ref time.Time) (*Extraction, error) {
-	js, err := jsonObject(s)
+	js, err := memory_core.JSONObject(s)
 	if err != nil {
 		return nil, err
 	}
@@ -181,12 +182,12 @@ type Result struct {
 //
 // Only with WithEval is the call recorded as an ATIF trajectory (stored as JSON in TrajectoryDir and returned in
 // Result.Trajectory, with its ID in Result.TrajectoryID).
-func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, kind, text string, ref time.Time, opts ...Option) (res *Result, err error) {
-	userID, err = ResolveUserID(userID)
+func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset, kind, text string, ref time.Time, opts ...memory_core.Option) (res *Result, err error) {
+	userID, err = memory_core.ResolveUserID(userID)
 	if err != nil {
 		return nil, err
 	}
-	dataset, err = ResolveDatasetName(dataset)
+	dataset, err = memory_core.ResolveDatasetName(dataset)
 	if err != nil {
 		return nil, err
 	}
@@ -199,24 +200,24 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, kind, te
 		ref = now
 	}
 	ref = relational.Normalize(ref)
-	llm = withRecording(llm, d, CallRemember)
+	llm = memory_core.WithRecording(llm, d, CallRemember)
 
-	co := newCallOptions(opts)
-	tr := startTrace(CallRemember, co)
+	co := memory_core.NewCallOptions(opts)
+	tr := memory_core.StartTrace(CallRemember, co)
 	defer func() {
-		if traj := tr.finish(err); res != nil && traj != nil {
+		if traj := tr.Finish(err); res != nil && traj != nil {
 			res.TrajectoryID, res.Trajectory = traj.TrajectoryID, traj
 		}
 	}()
-	llm = tr.wrap(llm)
-	tr.user(text)
-	tr.input(map[string]any{"user_id": userID, "dataset": dataset, "kind": kind, "reference_time": relational.FormatTime(ref)})
+	llm = tr.Wrap(llm)
+	tr.User(text)
+	tr.Input(map[string]any{"user_id": userID, "dataset": dataset, "kind": kind, "reference_time": relational.FormatTime(ref)})
 
 	ex, err := Extract(ctx, llm, text, ref)
 	if err != nil {
 		return nil, err
 	}
-	tr.tool("The LLM extracted these entities and edges (new facts) from the text, before any stored fact is considered.",
+	tr.Tool("The LLM extracted these entities and edges (new facts) from the text, before any stored fact is considered.",
 		"extract_graph", map[string]any{"text_chars": len(text)},
 		map[string]any{"entities": ex.Entities, "edges": candidateFacts(ex.Edges, nil)})
 	// Candidates are facts (edges) ALREADY STORED in this user's dataset that the new facts in ex.Edges might repeat or
@@ -239,12 +240,12 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, kind, te
 	}
 	cands := cs.Edges
 	// Three steps in the trajectory: each lookup with what it found alone, then the merge.
-	tr.tool("Looked up the live stored facts touching an entity whose normalized name is an endpoint of a new fact "+
+	tr.Tool("Looked up the live stored facts touching an entity whose normalized name is an endpoint of a new fact "+
 		"(newest first, at most 50): the candidates found by exact name.", "find_candidates_by_name",
 		map[string]any{"user_id": userID, "dataset": dataset, "names": cs.Names},
 		map[string]any{"candidates": len(cs.ByName), "facts": candidateFacts(cs.ByName, nil)})
-	tr.searchEntities(cs.SearchTexts, cs.Similar, candidateFacts(cs.BySimilar, nil), cs.SearchUsage, cs.SearchErr)
-	tr.tool("Merged the two lookups by edge ID (newest first, at most 50); the new facts are checked against these "+
+	traceSearchEntities(tr, cs.SearchTexts, cs.Similar, candidateFacts(cs.BySimilar, nil), cs.SearchUsage, cs.SearchErr)
+	tr.Tool("Merged the two lookups by edge ID (newest first, at most 50); the new facts are checked against these "+
 		"candidates for duplicates and contradictions.", "load_candidates",
 		map[string]any{"user_id": userID, "dataset": dataset, "new_edges": len(ex.Edges), "by_name": len(cs.ByName), "by_similarity": len(cs.BySimilar)},
 		map[string]any{"candidates": len(cands), "facts": candidateFacts(cands, cs.Via)})
@@ -252,11 +253,11 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, kind, te
 	if err != nil {
 		return nil, err
 	}
-	res, err = Store(ctx, d, userID, dataset, kind, text, ref, now, ex, plan, append(opts[:len(opts):len(opts)], withTrace(tr))...)
+	res, err = Store(ctx, d, userID, dataset, kind, text, ref, now, ex, plan, append(opts[:len(opts):len(opts)], memory_core.WithTrace(tr))...)
 	if err != nil {
 		return nil, err
 	}
-	tr.tool("Stored the artifact, entities and edges.", "store_artifact",
+	tr.Tool("Stored the artifact, entities and edges.", "store_artifact",
 		map[string]any{"user_id": userID, "dataset": dataset, "kind": kind},
 		map[string]any{"artifact_id": res.ArtifactID, "entities": res.Entities, "edges": res.Edges, "invalidated_edges": res.InvalidatedEdges,
 			"embedded_entities": res.EmbeddedEntities, "embedded_edges": res.EmbeddedEdges})
@@ -283,13 +284,13 @@ func candidateFacts(edges []Edge, via map[int64]string) []map[string]any {
 // VectorDataset). The embedding is computed before the transaction commits, so an embedder failure stores
 // nothing; the vectors are written right after the commit, so a vector store failure returns an error after the
 // relational data is saved (the vectors are written again the next time the entity or fact is mentioned).
-func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan, opts ...Option) (*Result, error) {
-	co := newCallOptions(opts)
-	userID, err := ResolveUserID(userID)
+func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan, opts ...memory_core.Option) (*Result, error) {
+	co := memory_core.NewCallOptions(opts)
+	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
 		return nil, err
 	}
-	dataset, err = ResolveDatasetName(dataset)
+	dataset, err = memory_core.ResolveDatasetName(dataset)
 	if err != nil {
 		return nil, err
 	}

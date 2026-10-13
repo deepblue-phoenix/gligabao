@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.4.3] - 2026-10-14
+
+### Changed
+- Refactor, no behaviour change: the image pipeline (`RememberImage`, `LoadImage`, `ExtractImage`, `ImageDir`, `WithImageDir`, ...) moved from `internal/memory` to the new subpackage `internal/memory/memory_image`. What it shares with the text pipeline (the `LLM` interface and call recording, per-call options and the ATIF trace, user and dataset name validation, JSON extraction from LLM output) moved to the new subpackage `internal/memory/memory_core`. Go code that embeds gligabao must use the new import paths (e.g. `memory_core.LLM`, `memory_core.WithEval`, `memory_core.TrajectoryDir`, `memory_image.RememberImage`).
+
 ## [0.4.2] - 2026-10-14
 
 ### Changed

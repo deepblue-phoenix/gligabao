@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS gb_entity_artifacts (
 	PRIMARY KEY (entity_id, artifact_id)
 );
 
--- The image pipeline (see internal/memory/image.go), kept apart from gb_artifacts and the graph.
+-- The image pipeline (see internal/memory/memory_image/image.go), kept apart from gb_artifacts and the graph.
 --
 -- An image artifact is an image ingested to be remembered. The table only tracks it: its media type, SHA-256 and
 -- size, and path, the file's location relative to the image directory (the bytes live on the file system, never in

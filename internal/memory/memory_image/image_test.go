@@ -1,4 +1,4 @@
-package memory
+package memory_image
 
 import (
 	"bytes"

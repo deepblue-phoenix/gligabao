@@ -12,15 +12,17 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_image"
 	"github.com/deepblue-phoenix/gligabao/monitoring"
 	log "github.com/sirupsen/logrus"
 )
 
 const (
 	maxRememberBytes = 1 << 20 // 1 MiB: the largest text
-	// maxBodyBytes is the largest request body: room for a base64 image of memory.MaxImageBytes (4/3 larger) plus
+	// maxBodyBytes is the largest request body: room for a base64 image of memory_image.MaxImageBytes (4/3 larger) plus
 	// the rest of the JSON.
-	maxBodyBytes = memory.MaxImageBytes/3*4 + 1<<16
+	maxBodyBytes = memory_image.MaxImageBytes/3*4 + 1<<16
 )
 
 type rememberRequest struct {
@@ -30,8 +32,8 @@ type rememberRequest struct {
 	Dataset string `json:"dataset"`
 	// Text is the text to remember. Required unless Image is given.
 	Text string `json:"text"`
-	// Image (optional) is a base64-encoded JPEG, PNG, GIF or WebP, up to memory.MaxImageBytes: instead of text, an
-	// image to remember with the image pipeline (see memory.RememberImage). It excludes Text and Kind.
+	// Image (optional) is a base64-encoded JPEG, PNG, GIF or WebP, up to memory_image.MaxImageBytes: instead of text, an
+	// image to remember with the image pipeline (see memory_image.RememberImage). It excludes Text and Kind.
 	Image string `json:"image"`
 	// Kind is the artifact kind: "knowledge" (default; not strictly episodic) or "episode" (a Graphiti-style episode,
 	// anchored in time).
@@ -45,20 +47,20 @@ type rememberRequest struct {
 
 // Handler serves POST /v1/gb/remember.
 // mo are extra options for every memory.Remember call (e.g. memory.WithVectors).
-func Handler(d *sql.DB, llm memory.LLM, mo ...memory.Option) http.HandlerFunc {
+func Handler(d *sql.DB, llm memory_core.LLM, mo ...memory_core.Option) http.HandlerFunc {
 	return handler(d, llm, false, mo)
 }
 
 // EvalHandler serves POST /v1/gb/eval/remember: like Handler, but the response also carries the call's ATIF
 // trajectory. It is only registered when the server runs in eval mode.
-func EvalHandler(d *sql.DB, llm memory.LLM, mo ...memory.Option) http.HandlerFunc {
+func EvalHandler(d *sql.DB, llm memory_core.LLM, mo ...memory_core.Option) http.HandlerFunc {
 	return handler(d, llm, true, mo)
 }
 
-func handler(d *sql.DB, llm memory.LLM, eval bool, mo []memory.Option) http.HandlerFunc {
-	opts := append([]memory.Option(nil), mo...)
+func handler(d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option) http.HandlerFunc {
+	opts := append([]memory_core.Option(nil), mo...)
 	if eval {
-		opts = append(opts, memory.WithEval())
+		opts = append(opts, memory_core.WithEval())
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if llm == nil {
@@ -91,11 +93,11 @@ func handler(d *sql.DB, llm memory.LLM, eval bool, mo []memory.Option) http.Hand
 				return
 			}
 		}
-		if _, err := memory.ResolveUserID(req.UserID); err != nil {
+		if _, err := memory_core.ResolveUserID(req.UserID); err != nil {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if _, err := memory.ResolveDatasetName(req.Dataset); err != nil {
+		if _, err := memory_core.ResolveDatasetName(req.Dataset); err != nil {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -145,7 +147,7 @@ func handler(d *sql.DB, llm memory.LLM, eval bool, mo []memory.Option) http.Hand
 }
 
 // rememberImage serves a remember request that carries an image: the image pipeline.
-func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory.LLM, req rememberRequest, opts []memory.Option) {
+func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory_core.LLM, req rememberRequest, opts []memory_core.Option) {
 	if req.Text != "" || req.Kind != "" {
 		httputil.Error(w, http.StatusBadRequest, "image excludes text and kind")
 		return
@@ -162,20 +164,20 @@ func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory
 			return
 		}
 	}
-	if _, err := memory.ResolveUserID(req.UserID); err != nil {
+	if _, err := memory_core.ResolveUserID(req.UserID); err != nil {
 		httputil.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if _, err := memory.ResolveDatasetName(req.Dataset); err != nil {
+	if _, err := memory_core.ResolveDatasetName(req.Dataset); err != nil {
 		httputil.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if _, err := memory.ResolveImage(data); err != nil {
+	if _, err := memory_image.ResolveImage(data); err != nil {
 		httputil.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	start := time.Now()
-	res, err := memory.RememberImage(r.Context(), d, llm, req.UserID, req.Dataset, data, ref, opts...)
+	res, err := memory_image.RememberImage(r.Context(), d, llm, req.UserID, req.Dataset, data, ref, opts...)
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{
 			"user_id": req.UserID,

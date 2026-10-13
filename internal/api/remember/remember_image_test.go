@@ -22,6 +22,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_image"
 )
 
 const imageJSON = `{"theme":"Plot","title":"Revenue","text_blocks":[
@@ -53,7 +54,7 @@ func testRememberImage(t *testing.T, d *sql.DB) {
 		return &ai.Response{Text: imageJSON, StopReason: "end_turn", Provider: "anthropic", Model: "claude-haiku-5-5", InputTokens: 100, OutputTokens: 20, CostUSD: 0.001}, nil
 	})
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm, memory.WithImageDir(imgDir)))
+	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm, memory_image.WithImageDir(imgDir)))
 	post := func(body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
@@ -64,7 +65,7 @@ func testRememberImage(t *testing.T, d *sql.DB) {
 	if rec.Code != 200 {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body)
 	}
-	var res memory.ImageResult
+	var res memory_image.ImageResult
 	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
 		t.Fatal(err)
 	}
@@ -90,10 +91,10 @@ func testRememberImage(t *testing.T, d *sql.DB) {
 	if got, err := os.ReadFile(filepath.Join(imgDir, filepath.FromSlash(arts[0].Path))); err != nil || !bytes.Equal(got, data) {
 		t.Errorf("image file: %v", err)
 	}
-	if got, err := memory.LoadImage(ctx, d, "u1", "imgs", arts[0].ID, memory.WithImageDir(imgDir)); err != nil || !bytes.Equal(got, data) {
+	if got, err := memory_image.LoadImage(ctx, d, "u1", "imgs", arts[0].ID, memory_image.WithImageDir(imgDir)); err != nil || !bytes.Equal(got, data) {
 		t.Errorf("LoadImage: %v", err)
 	}
-	if _, err := memory.LoadImage(ctx, d, "u1", "imgs", 999, memory.WithImageDir(imgDir)); err == nil {
+	if _, err := memory_image.LoadImage(ctx, d, "u1", "imgs", 999, memory_image.WithImageDir(imgDir)); err == nil {
 		t.Error("LoadImage of a missing artifact: no error")
 	}
 	if n := countFiles(t, imgDir); n != 1 {
@@ -115,7 +116,7 @@ func testRememberImage(t *testing.T, d *sql.DB) {
 		t.Errorf("counts: %+v, %v", c, err)
 	}
 	// Its LLM call is recorded under its own type.
-	if stats, err := relational.LLMCallStats(ctx, d); err != nil || stats[memory.CallRememberImage].Calls != 1 || stats[memory.CallRemember].Calls != 0 {
+	if stats, err := relational.LLMCallStats(ctx, d); err != nil || stats[memory_image.CallRememberImage].Calls != 1 || stats[memory.CallRemember].Calls != 0 {
 		t.Errorf("llm call stats: %+v, %v", stats, err)
 	}
 
@@ -148,7 +149,7 @@ func testRememberImage(t *testing.T, d *sql.DB) {
 	if rec.Code != 200 {
 		t.Fatalf("second image: status %d: %s", rec.Code, rec.Body)
 	}
-	var again memory.ImageResult
+	var again memory_image.ImageResult
 	if err := json.Unmarshal(rec.Body.Bytes(), &again); err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +167,7 @@ func testRememberImage(t *testing.T, d *sql.DB) {
 	if xs, _ := graph.ListImageExtractions(ctx, d, dsID); len(xs) != 1 {
 		t.Errorf("a repeated image stored another extraction: %d", len(xs))
 	}
-	if stats, _ := relational.LLMCallStats(ctx, d); stats[memory.CallRememberImage].Calls != 1 {
+	if stats, _ := relational.LLMCallStats(ctx, d); stats[memory_image.CallRememberImage].Calls != 1 {
 		t.Errorf("llm call stats: %+v", stats)
 	}
 
@@ -183,7 +184,7 @@ func testRememberImage(t *testing.T, d *sql.DB) {
 
 	// Another dataset does not know the image: it is read (and stored) there.
 	rec = post(`{"user_id":"u1","dataset":"other","image":"` + b64 + `"}`)
-	var other memory.ImageResult
+	var other memory_image.ImageResult
 	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &other) != nil || other.Cached || calls != 2 {
 		t.Errorf("other dataset: status %d, %+v, calls %d", rec.Code, other, calls)
 	}
@@ -197,7 +198,7 @@ func testRememberImage(t *testing.T, d *sql.DB) {
 	var b2 bytes.Buffer
 	png.Encode(&b2, image.NewRGBA(image.Rect(0, 0, 5, 5)))
 	rec = post(`{"user_id":"u1","dataset":"imgs","image":"` + base64.StdEncoding.EncodeToString(b2.Bytes()) + `"}`)
-	var diff memory.ImageResult
+	var diff memory_image.ImageResult
 	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &diff) != nil || diff.Cached || diff.SHA256 == res.SHA256 || calls != 4 {
 		t.Errorf("different image: status %d, %+v, calls %d", rec.Code, diff, calls)
 	}
@@ -226,7 +227,7 @@ func testRememberImageLLMFailure(t *testing.T, d *sql.DB) {
 	})
 	mux := http.NewServeMux()
 	imgDir := t.TempDir()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm, memory.WithImageDir(imgDir)))
+	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm, memory_image.WithImageDir(imgDir)))
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember",
 		strings.NewReader(`{"user_id":"u1","image":"`+base64.StdEncoding.EncodeToString(pngBytes(t))+`"}`)))
@@ -251,12 +252,12 @@ func TestRememberImageEval(t *testing.T) {
 		return &ai.Response{Text: imageJSON, StopReason: "end_turn", Model: "m"}, nil
 	})
 	rec := httptest.NewRecorder()
-	EvalHandler(d, llm, memory.WithImageDir(t.TempDir())).ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/eval/remember",
+	EvalHandler(d, llm, memory_image.WithImageDir(t.TempDir())).ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/eval/remember",
 		strings.NewReader(`{"user_id":"u1","image":"`+base64.StdEncoding.EncodeToString(pngBytes(t))+`"}`)))
 	if rec.Code != 200 {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body)
 	}
-	var res memory.ImageResult
+	var res memory_image.ImageResult
 	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
 		t.Fatal(err)
 	}

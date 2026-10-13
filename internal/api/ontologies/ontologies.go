@@ -9,6 +9,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -79,7 +80,7 @@ func decode(w http.ResponseWriter, r *http.Request) (loadRequest, bool) {
 
 func fail(w http.ResponseWriter, op string, err error) {
 	switch {
-	case errors.Is(err, memory.ErrInvalidOntologyName), errors.Is(err, memory.ErrInvalidUser), errors.Is(err, memory.ErrInvalidOntology):
+	case errors.Is(err, memory.ErrInvalidOntologyName), errors.Is(err, memory_core.ErrInvalidUser), errors.Is(err, memory.ErrInvalidOntology):
 		httputil.Error(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, memory.ErrOntologyExists):
 		httputil.Error(w, http.StatusConflict, "ontology already exists")
