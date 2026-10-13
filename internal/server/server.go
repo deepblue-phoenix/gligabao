@@ -133,11 +133,12 @@ func registerAdminUI(mux *http.ServeMux, d *db.DB, extra []admin.Named) {
 		log.Warn("admin_ui is enabled but the web assets are not embedded in this binary; build with ./run_build.sh (admin UI build enabled)")
 		return
 	}
-	dbs := append([]admin.Named{{Name: "standard", DB: d.Relational, Vectors: d.Vector}}, extra...)
+	dbs := append([]admin.Named{{Name: "standard", DB: d.Relational, Vectors: d.Vector, ImageDir: d.ImageDir}}, extra...)
 	mux.HandleFunc("GET /v1/gb/admin/api/databases", admin.Databases(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/overview", admin.OverviewOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/graph", admin.GraphOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/vectors", admin.VectorsOf(dbs))
+	mux.HandleFunc("GET /v1/gb/admin/api/images", admin.ImagesOf(dbs))
 	mux.HandleFunc("DELETE /v1/gb/admin/api/datasets", admin.DeleteDatasetOf(dbs))
 	// The experiments live in the eval database; without one there are none to show.
 	for _, e := range extra {

@@ -3,6 +3,8 @@
 import { initEvals } from "./evals.js";
 import { initGraphModal, showGraph } from "./graph.js";
 import { initHistoryModal } from "./history.js";
+import { initImageOverlay } from "./image.js";
+import { initImageStats } from "./imagestats.js";
 import { initTraceModal } from "./trace.js";
 import { initVectorsModal, showVectors } from "./vectors.js";
 
@@ -268,6 +270,8 @@ initVectorsModal();
 initTraceModal();
 initHistoryModal();
 initEvals();
+initImageOverlay();
+initImageStats();
 void loadAll(false);
 void checkHealth();
 setInterval(() => void checkHealth(), 15000);

@@ -7,6 +7,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
@@ -42,6 +45,9 @@ type Named struct {
 	// TrajectoryDir is where the ATIF trajectories of the experiments recorded in DB are stored ("" = unknown);
 	// only used for the eval database.
 	TrajectoryDir string
+	// ImageDir is the directory of the image files of DB's image artifacts ("" = unknown: nothing is reported
+	// about the files on disk).
+	ImageDir string
 	// Vectors is the vector store holding the embeddings of DB's datasets; nil if there is none (the vectors of a
 	// deleted dataset are then not cleaned up).
 	Vectors vector.Store
@@ -242,4 +248,97 @@ func VectorsOf(dbs []Named) http.HandlerFunc {
 		}
 		httputil.Error(w, http.StatusNotFound, "unknown database")
 	}
+}
+
+//---------------------------------------------------------------------------------------------
+
+// imageDisk describes the image directory next to what the database tracks.
+type imageDisk struct {
+	Dir    string `json:"dir"`
+	Exists bool   `json:"exists"`
+	Files  int    `json:"files"`
+	Bytes  int64  `json:"bytes"`
+	// Missing is the number of image artifacts whose file is not in the directory.
+	Missing int `json:"missing"`
+	// Untracked is the number of files in the directory that no image artifact points to (e.g. left by a crash).
+	Untracked int `json:"untracked"`
+}
+
+type imagesView struct {
+	*graph.ImageStats
+	// Disk is nil if the image directory is not known.
+	Disk *imageDisk `json:"disk,omitempty"`
+}
+
+// ImagesOf serves GET /admin/api/images[?db=<name>] for one of dbs (the first without db): statistics of the image
+// store: the image artifacts and extractions in the database, and the files in the image directory.
+func ImagesOf(dbs []Named) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := r.URL.Query().Get("db")
+		if name == "" && len(dbs) > 0 {
+			name = dbs[0].Name
+		}
+		for _, n := range dbs {
+			if n.Name != name {
+				continue
+			}
+			st, err := graph.ImageStatistics(r.Context(), n.DB)
+			if err != nil {
+				log.WithError(err).Error("admin: image stats failed")
+				httputil.Error(w, http.StatusInternalServerError, "failed to read image statistics")
+				return
+			}
+			out := imagesView{ImageStats: st}
+			if n.ImageDir != "" {
+				out.Disk = scanImageDir(n.ImageDir, st.Paths)
+			}
+			httputil.WriteJSON(w, http.StatusOK, out)
+			return
+		}
+		httputil.Error(w, http.StatusNotFound, "unknown database")
+	}
+}
+
+// scanImageDir walks dir and compares its files with the paths the database tracks (relative to dir, slash-separated).
+func scanImageDir(dir string, tracked []string) *imageDisk {
+	d := &imageDisk{Dir: dir}
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		d.Missing = len(tracked)
+		return d
+	}
+	d.Exists = true
+	onDisk := map[string]bool{}
+	filepath.WalkDir(dir, func(p string, e os.DirEntry, err error) error {
+		if err != nil || e.IsDir() {
+			return nil // unreadable entries are skipped
+		}
+		rel, err := filepath.Rel(dir, p)
+		if err != nil || strings.HasPrefix(e.Name(), ".tmp-") { // a file being written is not yet one of the store
+			return nil
+		}
+		fi, err := e.Info()
+		if err != nil {
+			return nil
+		}
+		d.Files++
+		d.Bytes += fi.Size()
+		onDisk[filepath.ToSlash(rel)] = true
+		return nil
+	})
+	seen := map[string]bool{}
+	for _, p := range tracked {
+		if seen[p] { // the same file can back several artifacts
+			continue
+		}
+		seen[p] = true
+		if !onDisk[p] {
+			d.Missing++
+		}
+	}
+	for p := range onDisk {
+		if !seen[p] {
+			d.Untracked++
+		}
+	}
+	return d
 }

@@ -225,3 +225,57 @@ func ListImageExtractions(ctx context.Context, d *sql.DB, dsID int64) ([]model.I
 	}
 	return out, brows.Err()
 }
+
+// ImageStats returns the totals over all image artifacts and extractions, and the path of every image file.
+func ImageStats(ctx context.Context, d *sql.DB) (*model.ImageStats, error) {
+	var st model.ImageStats
+	if err := d.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(size_bytes), 0) FROM gb_image_artifacts`).Scan(&st.Images, &st.Bytes); err != nil {
+		return nil, err
+	}
+	if err := d.QueryRowContext(ctx, `
+		SELECT COUNT(*), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(cost_usd), 0)
+		FROM gb_image_extractions`).Scan(&st.Extractions, &st.InputTokens, &st.OutputTokens, &st.CostUSD); err != nil {
+		return nil, err
+	}
+	var err error
+	if st.MediaTypes, err = imageGroups(ctx, d, `
+		SELECT media_type, COUNT(*), COALESCE(SUM(size_bytes), 0) FROM gb_image_artifacts
+		GROUP BY media_type ORDER BY COUNT(*) DESC, media_type`); err != nil {
+		return nil, err
+	}
+	if st.Themes, err = imageGroups(ctx, d, `
+		SELECT theme, COUNT(*), 0 FROM gb_image_extractions
+		GROUP BY theme ORDER BY COUNT(*) DESC, theme`); err != nil {
+		return nil, err
+	}
+	rows, err := d.QueryContext(ctx, `SELECT path FROM gb_image_artifacts`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		st.Paths = append(st.Paths, p)
+	}
+	return &st, rows.Err()
+}
+
+func imageGroups(ctx context.Context, d *sql.DB, query string) ([]model.ImageGroup, error) {
+	rows, err := d.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.ImageGroup{}
+	for rows.Next() {
+		var g model.ImageGroup
+		if err := rows.Scan(&g.Name, &g.Count, &g.Bytes); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}

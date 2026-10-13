@@ -21,6 +21,16 @@
       </form>
       <div id="databases"></div>
 
+      <section id="images" class="card">
+        <div class="row between">
+          <h2>Image store</h2>
+          <button type="button" id="images-refresh">Refresh</button>
+        </div>
+        <dl id="images-stats" class="stats"></dl>
+        <p id="images-status" class="muted"></p>
+        <div id="images-detail" class="row image-stats-groups"></div>
+      </section>
+
       <section id="evals" class="card">
         <div class="row between">
           <h2>Evals</h2>
@@ -32,6 +42,29 @@
         <div id="evals-runs"></div>
       </section>
     </main>
+
+    <div id="image-overlay" class="image-overlay" hidden>
+      <div class="image-panel" role="dialog" aria-label="Remember image">
+        <div class="image-view">
+          <img id="image-preview" alt="Pasted image" />
+          <div id="image-spinner" class="spinner-wrap" hidden><div class="spinner" role="status" aria-label="Processing"></div></div>
+        </div>
+        <aside class="image-side">
+          <div class="modal-head">
+            <h2>Remember image</h2>
+            <span id="image-info" class="muted"></span>
+            <button type="button" id="image-close">Close</button>
+          </div>
+          <form id="image-form" class="row">
+            <input type="text" id="image-user" placeholder="user_id" required />
+            <input type="text" id="image-dataset" placeholder="dataset (main)" />
+            <button type="submit" id="image-submit">Remember</button>
+          </form>
+          <p id="image-message" class="muted"></p>
+          <div id="image-result"></div>
+        </aside>
+      </div>
+    </div>
 
     <dialog id="run-modal" class="modal">
       <div class="modal-head">

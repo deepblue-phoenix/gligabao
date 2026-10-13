@@ -65,3 +65,23 @@ type ImageExtraction struct {
 	CostUSD         float64
 	CreatedAt       time.Time
 }
+
+// ImageGroup is a number of images (or extractions) sharing a name (a media type or a theme), with their total size.
+type ImageGroup struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+	Bytes int64  `json:"bytes"`
+}
+
+// ImageStats summarizes all image artifacts and extractions of a database, over every dataset.
+type ImageStats struct {
+	Images       int          `json:"images"`
+	Bytes        int64        `json:"bytes"` // the sizes recorded in the database, not measured on disk
+	Extractions  int          `json:"extractions"`
+	InputTokens  int64        `json:"input_tokens"`
+	OutputTokens int64        `json:"output_tokens"`
+	CostUSD      float64      `json:"cost_usd"`
+	MediaTypes   []ImageGroup `json:"media_types"`
+	Themes       []ImageGroup `json:"themes"` // Bytes is unused (0)
+	Paths        []string     `json:"-"`      // the file of every image artifact, relative to the image directory
+}

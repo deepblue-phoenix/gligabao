@@ -39,6 +39,8 @@ type (
 	ImageTextBlock     = model.ImageTextBlock
 	ImageArtifact      = model.ImageArtifact
 	ImageExtraction    = model.ImageExtraction
+	ImageStats         = model.ImageStats
+	ImageGroup         = model.ImageGroup
 	Counts             = model.Counts
 	Tx                 = model.Tx
 	OntologyClass      = model.OntologyClass
@@ -165,6 +167,18 @@ func ListImageExtractions(ctx context.Context, d *sql.DB, dsID int64) ([]ImageEx
 		return sqlite.ListImageExtractions(ctx, d, dsID)
 	case config.DBBackendPostgres:
 		return postgres.ListImageExtractions(ctx, d, dsID)
+	}
+	return nil, unsupported()
+}
+
+// ImageStatistics returns the totals over all image artifacts and extractions of the database (every dataset, deleted
+// ones included), with the path of every image file.
+func ImageStatistics(ctx context.Context, d *sql.DB) (*ImageStats, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ImageStats(ctx, d)
+	case config.DBBackendPostgres:
+		return postgres.ImageStats(ctx, d)
 	}
 	return nil, unsupported()
 }
