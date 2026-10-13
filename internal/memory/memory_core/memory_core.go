@@ -1,4 +1,4 @@
-// Package memory_core holds what the pipelines of internal/memory (the text pipeline in package memory, the image
+// Package memory_core holds what the pipelines of internal/memory (the text pipeline in package memory_remember, the image
 // pipeline in memory_image) have in common: the LLM interface and its call recording, the per-call options, the ATIF
 // trace of a call, user and dataset name validation, and JSON extraction from LLM output.
 package memory_core

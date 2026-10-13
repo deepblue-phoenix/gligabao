@@ -1,13 +1,14 @@
-package memory
+package memory_core
 
 import (
+	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"testing"
 	"time"
 )
 
 func TestFact(t *testing.T) {
 	v := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
-	e := Edge{ID: 3, Source: "Alice", Target: "Acme", Relation: "works_at", ValidAt: &v}
+	e := graph.Edge{ID: 3, Source: "Alice", Target: "Acme", Relation: "works_at", ValidAt: &v}
 	f := FactFromEdge(e)
 
 	if got := f.Text(); got != "Alice works at Acme." {

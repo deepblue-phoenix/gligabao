@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	ErrDatasetNotFound = errors.New("dataset not found")
+	ErrDatasetNotFound = memory_core.ErrDatasetNotFound
 	ErrDatasetExists   = errors.New("dataset already exists")
 )
 
@@ -141,9 +141,5 @@ func DeleteDataset(ctx context.Context, d *sql.DB, vectors vector.Store, userID,
 
 // datasetID returns the ID of userID's live dataset called name (both already resolved), or ErrDatasetNotFound.
 func datasetID(ctx context.Context, d *sql.DB, userID, name string) (int64, error) {
-	id, err := relational.DatasetID(ctx, d, userID, name)
-	if errors.Is(err, relational.ErrNotFound) {
-		return 0, ErrDatasetNotFound
-	}
-	return id, err
+	return memory_core.DatasetID(ctx, d, userID, name)
 }

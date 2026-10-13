@@ -13,7 +13,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
-	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
 
 type fakeLLM struct{ out string }
@@ -150,7 +150,7 @@ func testRememberKind(t *testing.T, d *sql.DB) {
 		if rec.Code != 200 {
 			t.Fatalf("%s: status %d: %s", body, rec.Code, rec.Body)
 		}
-		var res memory.Result
+		var res memory_remember.Result
 		if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
 			t.Fatal(err)
 		}

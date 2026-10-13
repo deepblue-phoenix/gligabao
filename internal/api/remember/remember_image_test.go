@@ -21,8 +21,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
-	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_image"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
 
 const imageJSON = `{"theme":"Plot","title":"Revenue","text_blocks":[
@@ -116,7 +116,7 @@ func testRememberImage(t *testing.T, d *sql.DB) {
 		t.Errorf("counts: %+v, %v", c, err)
 	}
 	// Its LLM call is recorded under its own type.
-	if stats, err := relational.LLMCallStats(ctx, d); err != nil || stats[memory_image.CallRememberImage].Calls != 1 || stats[memory.CallRemember].Calls != 0 {
+	if stats, err := relational.LLMCallStats(ctx, d); err != nil || stats[memory_image.CallRememberImage].Calls != 1 || stats[memory_remember.CallRemember].Calls != 0 {
 		t.Errorf("llm call stats: %+v, %v", stats, err)
 	}
 

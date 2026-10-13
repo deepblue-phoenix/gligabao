@@ -1,4 +1,4 @@
-package memory
+package memory_remember
 
 // LLM system prompts for remember. User messages are assembled next to the code that calls the LLM.
 

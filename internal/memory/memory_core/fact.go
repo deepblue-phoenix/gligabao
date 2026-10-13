@@ -1,4 +1,4 @@
-package memory
+package memory_core
 
 import (
 	"fmt"
@@ -72,18 +72,18 @@ func (f Fact) Text() string {
 	if f.Statement != "" {
 		return f.Statement
 	}
-	return synthStatement(f.Source, f.Relation, f.Target)
+	return SynthStatement(f.Source, f.Relation, f.Target)
 }
 
-// synthStatement makes a sentence out of an edge: "Alice works_at Acme" -> "Alice works at Acme."
-func synthStatement(source, relation, target string) string {
+// SynthStatement makes a sentence out of an edge: "Alice works_at Acme" -> "Alice works at Acme."
+func SynthStatement(source, relation, target string) string {
 	return source + " " + strings.ReplaceAll(relation, "_", " ") + " " + target + "."
 }
 
 // SameAs reports whether f and o state the same edge: same endpoints (by normalized name) and relation. Time and
 // wording are not compared.
 func (f Fact) SameAs(o Fact) bool {
-	return key(f.Source) == key(o.Source) && key(f.Target) == key(o.Target) && f.Relation == o.Relation
+	return Key(f.Source) == Key(o.Source) && Key(f.Target) == Key(o.Target) && f.Relation == o.Relation
 }
 
 // Ended reports whether the fact stopped being true in the real world (it has an InvalidAt).
@@ -129,4 +129,14 @@ func (f Fact) Summary(via string) map[string]any {
 		m["found_by"] = via
 	}
 	return m
+}
+
+func span(valid, invalid *time.Time) string {
+	f := func(t *time.Time) string {
+		if t == nil {
+			return "?"
+		}
+		return relational.FormatTime(*t)
+	}
+	return "(" + f(valid) + " -> " + f(invalid) + ")"
 }

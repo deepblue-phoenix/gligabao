@@ -11,9 +11,9 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
-	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_image"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	"github.com/deepblue-phoenix/gligabao/monitoring"
 	log "github.com/sirupsen/logrus"
 )
@@ -46,7 +46,7 @@ type rememberRequest struct {
 //---------------------------------------------------------------------------------------------
 
 // Handler serves POST /v1/gb/remember.
-// mo are extra options for every memory.Remember call (e.g. memory.WithVectors).
+// mo are extra options for every memory_remember.Remember call (e.g. memory.WithVectors).
 func Handler(d *sql.DB, llm memory_core.LLM, mo ...memory_core.Option) http.HandlerFunc {
 	return handler(d, llm, false, mo)
 }
@@ -101,12 +101,12 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option)
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if _, err := memory.ResolveKind(req.Kind); err != nil {
+		if _, err := memory_remember.ResolveKind(req.Kind); err != nil {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		start := time.Now()
-		res, err := memory.Remember(r.Context(), d, llm, req.UserID, req.Dataset, req.Kind, req.Text, ref, opts...)
+		res, err := memory_remember.Remember(r.Context(), d, llm, req.UserID, req.Dataset, req.Kind, req.Text, ref, opts...)
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
 				"user_id": req.UserID,

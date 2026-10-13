@@ -12,6 +12,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
 
 type extractLLM struct{}
@@ -44,7 +45,7 @@ func testRememberEmbedsEntities(t *testing.T, d *sql.DB) {
 	emb := &fakeEmbedder{}
 	opt := memory.WithVectors(vs, emb)
 
-	res, err := memory.Remember(ctx, d, extractLLM{}, "u1", "work", "", "Alice works at Acme.", relational.Now(), opt)
+	res, err := memory_remember.Remember(ctx, d, extractLLM{}, "u1", "work", "", "Alice works at Acme.", relational.Now(), opt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +85,7 @@ func testRememberEmbedsEntities(t *testing.T, d *sql.DB) {
 	}
 
 	// Remembering again overwrites the same vectors, and another dataset gets its own vector dataset.
-	if _, err := memory.Remember(ctx, d, extractLLM{}, "u1", "work", "", "again", relational.Now(), opt); err != nil {
+	if _, err := memory_remember.Remember(ctx, d, extractLLM{}, "u1", "work", "", "again", relational.Now(), opt); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := vs.Query(ctx, memory.EntityDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 10}); len(got) != 3 {
@@ -93,7 +94,7 @@ func testRememberEmbedsEntities(t *testing.T, d *sql.DB) {
 	if got, _ := vs.Query(ctx, memory.EdgeDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 10}); len(got) != 2 {
 		t.Errorf("after second remember: %d edge vectors, want 2 (the repeated facts are the same edges)", len(got))
 	}
-	if _, err := memory.Remember(ctx, d, extractLLM{}, "u1", "other", "", "x", relational.Now(), opt); err != nil {
+	if _, err := memory_remember.Remember(ctx, d, extractLLM{}, "u1", "other", "", "x", relational.Now(), opt); err != nil {
 		t.Fatal(err)
 	}
 	otherID, _ := relational.DatasetID(ctx, d, "u1", "other")
@@ -103,7 +104,7 @@ func testRememberEmbedsEntities(t *testing.T, d *sql.DB) {
 
 	// Without WithVectors nothing is embedded.
 	n := len(emb.texts)
-	if _, err := memory.Remember(ctx, d, extractLLM{}, "u1", "work", "", "plain", relational.Now()); err != nil {
+	if _, err := memory_remember.Remember(ctx, d, extractLLM{}, "u1", "work", "", "plain", relational.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if len(emb.texts) != n {
@@ -118,7 +119,7 @@ func testRememberTracesEmbedding(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := memory.Remember(context.Background(), d, extractLLM{}, "u1", "work", "", "Alice works at Acme.", relational.Now(),
+	res, err := memory_remember.Remember(context.Background(), d, extractLLM{}, "u1", "work", "", "Alice works at Acme.", relational.Now(),
 		memory.WithVectors(vs, &fakeEmbedder{}), memory_core.WithEval(), memory_core.WithTrajectoryDir(t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
@@ -156,12 +157,12 @@ func testCandidatesBySimilarity(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 	opts := []memory_core.Option{memory.WithVectors(vs, &fakeEmbedder{}), memory_core.WithEval(), memory_core.WithTrajectoryDir(t.TempDir())}
-	if _, err := memory.Remember(ctx, d, extractLLM{}, "u1", "work", "", "Alice works at Acme.", relational.Now(), opts...); err != nil {
+	if _, err := memory_remember.Remember(ctx, d, extractLLM{}, "u1", "work", "", "Alice works at Acme.", relational.Now(), opts...); err != nil {
 		t.Fatal(err)
 	}
 
 	// Names alone find nothing for Alicia / Berlin; the similar stored entities bring in their facts.
-	res, err := memory.Remember(ctx, d, aliasLLM{}, "u1", "work", "", "Alicia lives in Berlin.", relational.Now(), opts...)
+	res, err := memory_remember.Remember(ctx, d, aliasLLM{}, "u1", "work", "", "Alicia lives in Berlin.", relational.Now(), opts...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,10 +182,10 @@ func testCandidatesBySimilarity(t *testing.T, d *sql.DB) {
 	}
 
 	// Without vectors the same call (on a dataset with the same facts) has no search step and no candidates.
-	if _, err := memory.Remember(ctx, d, extractLLM{}, "u1", "plain", "", "Alice works at Acme.", relational.Now()); err != nil {
+	if _, err := memory_remember.Remember(ctx, d, extractLLM{}, "u1", "plain", "", "Alice works at Acme.", relational.Now()); err != nil {
 		t.Fatal(err)
 	}
-	res, err = memory.Remember(ctx, d, aliasLLM{}, "u1", "plain", "", "Alicia lives in Berlin.", relational.Now(), memory_core.WithEval(), memory_core.WithTrajectoryDir(t.TempDir()))
+	res, err = memory_remember.Remember(ctx, d, aliasLLM{}, "u1", "plain", "", "Alicia lives in Berlin.", relational.Now(), memory_core.WithEval(), memory_core.WithTrajectoryDir(t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
 	}

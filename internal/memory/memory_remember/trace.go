@@ -1,4 +1,4 @@
-package memory
+package memory_remember
 
 import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"

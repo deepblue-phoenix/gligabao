@@ -14,7 +14,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
-	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
 
 // recordingLLM returns canned outputs in order and records requests.
@@ -79,14 +79,14 @@ func testRememberBiTemporal(t *testing.T, d *sql.DB) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm))
 
-	post := func(body string) memory.Result {
+	post := func(body string) memory_remember.Result {
 		t.Helper()
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
 		if rec.Code != 200 {
 			t.Fatalf("status %d: %s", rec.Code, rec.Body)
 		}
-		var res memory.Result
+		var res memory_remember.Result
 		if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
 			t.Fatal(err)
 		}
@@ -238,13 +238,13 @@ func testRememberOlderNewsIsSuperseded(t *testing.T, d *sql.DB) {
 	}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm))
-	post := func(body string) memory.Result {
+	post := func(body string) memory_remember.Result {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
 		if rec.Code != 200 {
 			t.Fatalf("status %d: %s", rec.Code, rec.Body)
 		}
-		var res memory.Result
+		var res memory_remember.Result
 		json.Unmarshal(rec.Body.Bytes(), &res)
 		return res
 	}

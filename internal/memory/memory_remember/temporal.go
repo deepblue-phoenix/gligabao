@@ -1,4 +1,4 @@
-package memory
+package memory_remember
 
 // Bi-temporal reconciliation of facts, modelled on Graphiti's entity edges.
 //
@@ -57,7 +57,7 @@ func resolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []Edge)
 	for i, e := range edges {
 		dup := false
 		for _, c := range cands {
-			if c.InvalidAt == nil && FactFromEdge(e).SameAs(FactFromEdge(c)) {
+			if c.InvalidAt == nil && memory_core.FactFromEdge(e).SameAs(memory_core.FactFromEdge(c)) {
 				plan.Duplicates[i] = c.ID
 				dup = true
 				break
@@ -74,14 +74,14 @@ func resolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []Edge)
 	var b strings.Builder
 	b.WriteString("<new_facts>\n")
 	for _, i := range rest {
-		f := FactFromEdge(edges[i])
+		f := memory_core.FactFromEdge(edges[i])
 		fmt.Fprintf(&b, "[%d] %s %s\n", i, f.Statement, f.Span())
 	}
 	b.WriteString("</new_facts>\n\n<existing_facts>\n")
 	known := map[int64]bool{}
 	for _, c := range cands {
 		known[c.ID] = true
-		f := FactFromEdge(c)
+		f := memory_core.FactFromEdge(c)
 		fmt.Fprintf(&b, "[%d] %s %s\n", c.ID, f.Statement, f.Span())
 	}
 	b.WriteString("</existing_facts>")
@@ -135,16 +135,6 @@ func resolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []Edge)
 	return plan, nil
 }
 
-func span(valid, invalid *time.Time) string {
-	f := func(t *time.Time) string {
-		if t == nil {
-			return "?"
-		}
-		return relational.FormatTime(*t)
-	}
-	return "(" + f(valid) + " -> " + f(invalid) + ")"
-}
-
 //---------------------------------------------------------------------------------------------
 
 // candidates are the stored facts a Remember call compares its new facts with, and how they were found.
@@ -179,8 +169,8 @@ const (
 // A dataset that does not exist yet has none.
 func loadCandidates(ctx context.Context, d *sql.DB, o memory_core.CallOptions, userID, dataset string, ex *Extraction) (*candidates, error) {
 	out := &candidates{Via: map[int64]string{}}
-	dsID, err := datasetID(ctx, d, userID, dataset)
-	if errors.Is(err, ErrDatasetNotFound) {
+	dsID, err := relational.DatasetID(ctx, d, userID, dataset)
+	if errors.Is(err, relational.ErrNotFound) {
 		return out, nil
 	}
 	if err != nil {
@@ -190,7 +180,7 @@ func loadCandidates(ctx context.Context, d *sql.DB, o memory_core.CallOptions, u
 	seen := map[string]bool{}
 	for _, e := range ex.Edges {
 		for _, n := range []string{e.Source, e.Target} {
-			if k := key(n); !seen[k] {
+			if k := memory_core.Key(n); !seen[k] {
 				seen[k] = true
 				keys = append(keys, k)
 			}
@@ -209,7 +199,7 @@ func loadCandidates(ctx context.Context, d *sql.DB, o memory_core.CallOptions, u
 	}
 	var aliasKeys []string
 	for _, s := range out.Similar {
-		if k := key(s.name); !seen[k] {
+		if k := memory_core.Key(s.name); !seen[k] {
 			seen[k] = true
 			aliasKeys = append(aliasKeys, k)
 		}
@@ -286,7 +276,7 @@ func storeEdges(ctx context.Context, tx graph.Tx, dsID, artID int64, ref, now ti
 			}
 			continue
 		}
-		bk := key(e.Source) + "\x00" + key(e.Target) + "\x00" + e.Relation
+		bk := memory_core.Key(e.Source) + "\x00" + memory_core.Key(e.Target) + "\x00" + e.Relation
 		if id, ok := batch[bk]; ok {
 			ids[i] = id
 			continue

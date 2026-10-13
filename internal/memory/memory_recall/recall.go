@@ -1,4 +1,5 @@
-package memory
+// Package memory_recall answers a question from the knowledge graph of a dataset with an LLM.
+package memory_recall
 
 import (
 	"context"
@@ -17,6 +18,9 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
+
+// CallRecall is the type of the LLM calls of Recall, stored in gb_llm_calls.type.
+const CallRecall = "recall"
 
 const (
 	maxQueryTokens  = 12
@@ -66,7 +70,7 @@ func Recall(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset
 	if err != nil {
 		return nil, err
 	}
-	dsID, err := datasetID(ctx, d, userID, dataset)
+	dsID, err := memory_core.DatasetID(ctx, d, userID, dataset)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +192,7 @@ func (g *graphContext) render() string {
 		sb.WriteByte('\n')
 	}
 	for _, id := range sortedKeys(g.edges) {
-		sb.WriteString(FactFromEvidence(g.edges[id]).ContextLine() + "\n")
+		sb.WriteString(memory_core.FactFromEvidence(g.edges[id]).ContextLine() + "\n")
 	}
 	return sb.String()
 }
@@ -238,7 +242,7 @@ func sortedKeys[V any](m map[int64]V) []int64 {
 func retrieve(ctx context.Context, d *sql.DB, dsID int64, query string) (*graphContext, error) {
 	g := &graphContext{entities: map[int64]EvidenceEntity{}, edges: map[int64]EvidenceEdge{}}
 
-	seeds, err := graph.MatchEntities(ctx, d, dsID, key(query), tokenize(query), maxSeedEntities)
+	seeds, err := graph.MatchEntities(ctx, d, dsID, memory_core.Key(query), tokenize(query), maxSeedEntities)
 	if err != nil {
 		return nil, err
 	}

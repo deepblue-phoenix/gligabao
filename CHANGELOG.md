@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.4.4] - 2026-10-14
+
+### Changed
+- Refactor, no behaviour change: the text pipeline moved out of `internal/memory` into two new subpackages. `internal/memory/memory_remember` has `Remember`, `Extract`, `Store`, `Result`, `ResolveKind`, `CallRemember` and the fact reconciliation, and `internal/memory/memory_recall` has `Recall`, `RecallResult`, the evidence types and `CallRecall`. What both share moved to `memory_core`: `Fact` (with `FactFromEdge`, `FactFromEvidence`), `Key`, `SynthStatement`, `DatasetID` and `ErrDatasetNotFound` (`memory.ErrDatasetNotFound` is still the same error). Go code that embeds gligabao must use the new import paths (e.g. `memory_remember.Remember`, `memory_recall.Recall`).
+
 ## [0.4.3] - 2026-10-14
 
 ### Changed

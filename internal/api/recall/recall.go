@@ -11,6 +11,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_recall"
 	"github.com/deepblue-phoenix/gligabao/monitoring"
 	log "github.com/sirupsen/logrus"
 )
@@ -55,7 +56,7 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool) http.HandlerFunc {
 			return
 		}
 		start := time.Now()
-		res, err := memory.Recall(r.Context(), d, llm, req.UserID, req.Dataset, req.Query, opts...)
+		res, err := memory_recall.Recall(r.Context(), d, llm, req.UserID, req.Dataset, req.Query, opts...)
 		if err != nil {
 			monitoring.EmitSystemEvent(r.Context(), "recall.failed", monitoring.Event{
 				"user_id":     req.UserID,

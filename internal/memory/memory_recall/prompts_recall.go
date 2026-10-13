@@ -1,4 +1,4 @@
-package memory
+package memory_recall
 
 // LLM system prompts for recall. User messages are assembled next to the code that calls the LLM.
 

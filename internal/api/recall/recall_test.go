@@ -13,6 +13,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_recall"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
 
 // recordingLLM returns canned outputs in order and records requests.
@@ -43,7 +45,7 @@ func testRecall(t *testing.T, d *sql.DB) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/gb/recall", Handler(d, llm))
 
-	if _, err := memory.Remember(context.Background(), d, llm, "u1", "", "", "x", time.Time{}); err != nil {
+	if _, err := memory_remember.Remember(context.Background(), d, llm, "u1", "", "", "x", time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -56,7 +58,7 @@ func testRecall(t *testing.T, d *sql.DB) {
 	if rec.Code != 200 {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body)
 	}
-	var res memory.RecallResult
+	var res memory_recall.RecallResult
 	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
 		t.Fatal(err)
 	}

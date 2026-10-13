@@ -30,14 +30,14 @@ Errors are the same as for the regular endpoints, and a failed call returns no t
 
 ## From Go
 
-`memory.Remember` and `memory.Recall` take options. `memory.WithEval()` is the only way to generate a trajectory; the eval endpoints are the only callers that pass it.
+`memory_remember.Remember` and `memory_recall.Recall` take options. `memory.WithEval()` is the only way to generate a trajectory; the eval endpoints are the only callers that pass it.
 
 ```go
 res, err := memory.Remember(ctx, db, llm, "u1", "main", text, time.Time{}, memory.WithEval())
 res.TrajectoryID // same as res.Trajectory.TrajectoryID
 res.Trajectory   // *atif.Trajectory
 
-ans, err := memory.Recall(ctx, db, llm, "u1", "main", query, memory.WithEval(), memory.WithTrajectoryDir(dir))
+ans, err := memory_recall.Recall(ctx, db, llm, "u1", "main", query, memory.WithEval(), memory.WithTrajectoryDir(dir))
 ```
 
 Without `WithEval()`, `TrajectoryID` and `Trajectory` are empty and nothing is written. `memory.WithTrajectoryDir(dir)` overrides the storage directory for one call.

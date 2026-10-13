@@ -1,6 +1,8 @@
 package memory_core
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"regexp"
@@ -13,8 +15,9 @@ import (
 const DefaultDataset = relational.DefaultDataset
 
 var (
-	ErrInvalidDataset = errors.New("invalid dataset")
-	ErrInvalidUser    = errors.New("invalid user_id")
+	ErrInvalidDataset  = errors.New("invalid dataset")
+	ErrDatasetNotFound = errors.New("dataset not found")
+	ErrInvalidUser     = errors.New("invalid user_id")
 )
 
 var datasetNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
@@ -50,4 +53,16 @@ func ResolveDatasetName(name string) (string, error) {
 		return "", fmt.Errorf("%w: name must be 1-64 characters of letters, digits, '.', '_' or '-', starting with a letter or digit", ErrInvalidDataset)
 	}
 	return name, nil
+}
+
+// Key normalizes an entity name for comparison: lowercase, with whitespace collapsed.
+func Key(name string) string { return strings.ToLower(strings.Join(strings.Fields(name), " ")) }
+
+// DatasetID returns the ID of userID's live dataset called name (both already resolved), or ErrDatasetNotFound.
+func DatasetID(ctx context.Context, d *sql.DB, userID, name string) (int64, error) {
+	id, err := relational.DatasetID(ctx, d, userID, name)
+	if errors.Is(err, relational.ErrNotFound) {
+		return 0, ErrDatasetNotFound
+	}
+	return id, err
 }

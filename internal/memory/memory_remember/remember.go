@@ -1,4 +1,7 @@
-package memory
+// Package memory_remember is the remember pipeline of internal/memory: it turns free text into a bi-temporal
+// knowledge graph (modelled on Graphiti) with an LLM and stores it (see internal/db/graph). See temporal.go for how
+// facts are reconciled with what is already stored.
+package memory_remember
 
 import (
 	"context"
@@ -15,6 +18,9 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
+
+// CallRemember is the type of the LLM calls of Remember, stored in gb_llm_calls.type.
+const CallRemember = "remember"
 
 //---------------------------------------------------------------------------------------------
 
@@ -117,7 +123,7 @@ func parseExtraction(s string, ref time.Time) (*Extraction, error) {
 			continue
 		}
 		if e.Description == "" {
-			e.Description = synthStatement(e.Source, e.Relation, e.Target)
+			e.Description = memory_core.SynthStatement(e.Source, e.Relation, e.Target)
 		}
 		if e.ValidAt == nil { // a fact inherits the time of the artifact that states it
 			v := ref.UTC()
@@ -155,19 +161,26 @@ func ResolveKind(kind string) (string, error) {
 
 // Result summarizes what was stored by Remember.
 type Result struct {
-	UserID           string    `json:"user_id"`
-	Dataset          string    `json:"dataset"`
-	Kind             string    `json:"kind"` // artifact kind: "knowledge" or "episode"
-	ArtifactID       int64     `json:"artifact_id"`
-	ValidAt          time.Time `json:"valid_at"`   // event time of the artifact
-	CreatedAt        time.Time `json:"created_at"` // ingestion time of the artifact
-	Entities         []Entity  `json:"entities"`
-	Edges            []Edge    `json:"edges"`             // the facts from this text in their stored state
-	InvalidatedEdges []int64   `json:"invalidated_edges"` // IDs of edges closed because of this artifact
+	UserID     string    `json:"user_id"`
+	Dataset    string    `json:"dataset"`
+	Kind       string    `json:"kind"` // artifact kind: "knowledge" or "episode"
+	ArtifactID int64     `json:"artifact_id"`
+	ValidAt    time.Time `json:"valid_at"`   // event time of the artifact
+	CreatedAt  time.Time `json:"created_at"` // ingestion time of the artifact
+
+	//--------------------------------------
+	Entities         []Entity `json:"entities"`
+	Edges            []Edge   `json:"edges"`             // the facts from this text in their stored state
+	InvalidatedEdges []int64  `json:"invalidated_edges"` // IDs of edges closed because of this artifact
+
+	//--------------------------------------
+
 	// EmbeddedEntities and EmbeddedEdges are the number of entity and edge embeddings written to the dataset's
 	// entity and edge indexes (0 unless the call was made with WithVectors).
 	EmbeddedEntities int `json:"embedded_entities,omitempty"`
 	EmbeddedEdges    int `json:"embedded_edges,omitempty"`
+
+	// TRAJECTORY
 	// TrajectoryID and Trajectory are the ATIF trajectory of this call (also stored in TrajectoryDir); only set when
 	// the call was made with WithEval.
 	TrajectoryID string           `json:"trajectory_id,omitempty"`
@@ -213,13 +226,20 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	tr.User(text)
 	tr.Input(map[string]any{"user_id": userID, "dataset": dataset, "kind": kind, "reference_time": relational.FormatTime(ref)})
 
+	//--------------------------------------
+	// EXTRACT
 	ex, err := Extract(ctx, llm, text, ref)
 	if err != nil {
 		return nil, err
 	}
+
 	tr.Tool("The LLM extracted these entities and edges (new facts) from the text, before any stored fact is considered.",
 		"extract_graph", map[string]any{"text_chars": len(text)},
 		map[string]any{"entities": ex.Entities, "edges": candidateFacts(ex.Edges, nil)})
+
+	//--------------------------------------
+	// LOAD_CANDIDATES
+
 	// Candidates are facts (edges) ALREADY STORED in this user's dataset that the new facts in ex.Edges might repeat or
 	// contradict. A candidate is any stored edge that
 	//   - belongs to the same user and dataset (nothing is shared across datasets),
@@ -239,11 +259,15 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 		return nil, err
 	}
 	cands := cs.Edges
+
 	// Three steps in the trajectory: each lookup with what it found alone, then the merge.
 	tr.Tool("Looked up the live stored facts touching an entity whose normalized name is an endpoint of a new fact "+
 		"(newest first, at most 50): the candidates found by exact name.", "find_candidates_by_name",
 		map[string]any{"user_id": userID, "dataset": dataset, "names": cs.Names},
 		map[string]any{"candidates": len(cs.ByName), "facts": candidateFacts(cs.ByName, nil)})
+
+	//--------------------------------------
+
 	traceSearchEntities(tr, cs.SearchTexts, cs.Similar, candidateFacts(cs.BySimilar, nil), cs.SearchUsage, cs.SearchErr)
 	tr.Tool("Merged the two lookups by edge ID (newest first, at most 50); the new facts are checked against these "+
 		"candidates for duplicates and contradictions.", "load_candidates",
@@ -268,7 +292,7 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 func candidateFacts(edges []Edge, via map[int64]string) []map[string]any {
 	out := make([]map[string]any, 0, len(edges))
 	for _, e := range edges {
-		out = append(out, FactFromEdge(e).Summary(via[e.ID]))
+		out = append(out, memory_core.FactFromEdge(e).Summary(via[e.ID]))
 	}
 	return out
 }
@@ -344,7 +368,7 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 	// Every entity this artifact touches is linked to it, whether it was created now or already existed: entities
 	// are shared across artifacts (deduplicated per dataset), so the link, not the entity row, records provenance.
 	upsertEntity := func(e Entity) (int64, error) {
-		id, err := tx.UpsertEntity(ctx, dsID, e, key(e.Name))
+		id, err := tx.UpsertEntity(ctx, dsID, e, memory_core.Key(e.Name))
 		if err != nil {
 			return 0, err
 		}
@@ -367,10 +391,10 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		if err != nil {
 			return nil, err
 		}
-		if _, ok := ids[key(e.Name)]; !ok {
-			ids[key(e.Name)] = id
+		if _, ok := ids[memory_core.Key(e.Name)]; !ok {
+			ids[memory_core.Key(e.Name)] = id
 		}
-		if k := key(e.Name) + "\x00" + e.Type; !seenEnt[k] {
+		if k := memory_core.Key(e.Name) + "\x00" + e.Type; !seenEnt[k] {
 			seenEnt[k] = true
 			out.Entities = append(out.Entities, e)
 		}
@@ -378,10 +402,10 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 
 	// Edge endpoints: an entity from this extraction, else an already-stored entity of any type, else a new "other".
 	entityID := func(name string) (int64, error) {
-		if id, ok := ids[key(name)]; ok {
+		if id, ok := ids[memory_core.Key(name)]; ok {
 			return id, nil
 		}
-		id, err := tx.FindEntityID(ctx, dsID, key(name))
+		id, err := tx.FindEntityID(ctx, dsID, memory_core.Key(name))
 		if errors.Is(err, graph.ErrNotFound) {
 			if id, err = upsertEntity(Entity{Name: name, Type: "other", ModelID: ex.ModelID}); err == nil {
 				out.Entities = append(out.Entities, Entity{Name: name, Type: "other", ModelID: ex.ModelID})
@@ -393,7 +417,7 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		if err != nil {
 			return 0, err
 		}
-		ids[key(name)] = id
+		ids[memory_core.Key(name)] = id
 		return id, nil
 	}
 	out.Edges, out.InvalidatedEdges, err = storeEdges(ctx, tx, dsID, artID, ref, now, ex.Edges, plan, entityID)
