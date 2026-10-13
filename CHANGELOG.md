@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.4.5] - 2026-10-14
+
+### Added
+- `docs/not-included.md`: a list of things gligabao deliberately leaves out, starting with session memory (the Cognee-style per-conversation cache), why it is excluded, and the rationale around exact/keyword matching.
+
 ## [0.4.4] - 2026-10-14
 
 ### Changed
