@@ -73,6 +73,7 @@ This is the pipeline for a text that fits one chunk. A longer text runs the same
 
 All steps use the LLM from `internal/ai` (Anthropic Messages API, default model `claude-haiku-5-5`, unless the request picks another one for a stage: see [Choosing the model of each stage](#choosing-the-model-of-each-stage)). Code is in `internal/memory`.
 
+0. **Classify complexity** (`classifyComplexity`, 1 call to Jev, only if a Jev API key is configured: `jev_api_key` / `JEV_API_KEY`): Jev, TypeSafe's system 1 model (package `internal/jev`, `POST /v1/systemone`), answers one `choice` question: is the text `simple` (up to 5 entities), `medium` (6 to 20) or `complex` (more than 20) in the number of entities it will yield? This predicts how much compute the later steps need per entity and edge. The answer's `confidence` (0 to 1) and the class probabilities are kept. For now the result is only logged (`jev: remember text complexity`: `complexity`, `confidence`, `latency_ms`). It is advisory (a failure is logged and the request goes on), it always runs on Jev (it is not in `models`), and it sees at most the first 32 KiB of the text. In an eval [trajectory](evals.md) it is the `classify_complexity` step, whose extra has `latency_ms` and `started_at`.
 1. **Extract the graph** (`Extract`, 1 LLM call, max 4096 output tokens): given the reference time and the text, the model is asked to return only JSON of the form:
    ```json
    {

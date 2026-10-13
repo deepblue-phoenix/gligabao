@@ -282,7 +282,7 @@ func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_c
 		}
 		database = &cp
 	}
-	srv := httptest.NewServer(server.NewHandler(database, llm, emb, true, false))
+	srv := httptest.NewServer(server.NewHandler(database, llm, emb, nil, true, false))
 	defer srv.Close()
 
 	dataset := datasetName(c, runID)

@@ -25,6 +25,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/jev"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	log "github.com/sirupsen/logrus"
 )
@@ -67,6 +68,9 @@ type Options struct {
 	// OpenAIKey is the OpenAI API key used to embed entities (dimensions: DB.EmbeddingDimensions). If empty,
 	// remember stores no embeddings.
 	OpenAIKey string
+	// JevKey, JevBaseURL and JevModel configure Jev, the system 1 model. Without a key remember skips
+	// every step that needs it.
+	JevKey, JevBaseURL, JevModel string
 	// Prices overrides/extends the built-in model price table used for call costs. May be nil.
 	Prices map[string]ai.Price
 	// TrajectoryDir is where the ATIF trajectories of the eval endpoints are stored as JSON.
@@ -91,9 +95,10 @@ type Options struct {
 const EvalDBName = "eval"
 
 // NewHandler builds the HTTP handler for the given databases and LLM.
-// llm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities. The eval endpoints are registered only if eval is true,
+// llm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities.
+// jv may be nil, in which case remember skips the steps that run on Jev. The eval endpoints are registered only if eval is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary.
-func NewHandler(d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
+func NewHandler(d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "gligabao is running")
@@ -106,9 +111,9 @@ func NewHandler(d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, eval, a
 		fmt.Fprintln(w, "ok")
 	})
 	mux.HandleFunc("GET /version", versionHandler)
-	api.Register(mux, d, llm, emb)
+	api.Register(mux, d, llm, emb, jv)
 	if eval {
-		api.RegisterEval(mux, d, llm, emb)
+		api.RegisterEval(mux, d, llm, emb, jv)
 	}
 	if adminUI {
 		registerAdminUI(mux, d, extraAdminDBs)
@@ -237,6 +242,17 @@ func Run(ctx context.Context, opts Options) error {
 		emb = e
 	}
 
+	// Jev only runs when its API key is supplied.
+	var jv memory_core.Classifier
+	if opts.JevKey == "" {
+		log.Info("Jev is not configured (no jev_api_key / JEV_API_KEY); remember skips the complexity classification")
+	} else if c, err := newJev(opts); err != nil {
+		log.WithError(err).Warn("Jev unavailable; remember skips the complexity classification")
+	} else {
+		jv = c
+		log.WithField("model", jevModel(opts)).Info("Jev is active: remember classifies the complexity of each text")
+	}
+
 	var extra []admin.Named
 	if opts.AdminUI && opts.EvalDBPath != "" {
 		if database.Backend != config.DBBackendSQLite {
@@ -260,7 +276,7 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 
-	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(database, llm, emb, opts.Eval, opts.AdminUI, extra...)}
+	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(database, llm, emb, jv, opts.Eval, opts.AdminUI, extra...)}
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -283,4 +299,16 @@ func Run(ctx context.Context, opts Options) error {
 		return srv.Shutdown(shutdownCtx)
 	}
 	return nil
+}
+
+// newJev builds the Jev client from the options.
+func newJev(opts Options) (*jev.Client, error) {
+	return jev.New(opts.JevKey, jev.WithBaseURL(opts.JevBaseURL), jev.WithModel(opts.JevModel))
+}
+
+func jevModel(opts Options) string {
+	if opts.JevModel != "" {
+		return opts.JevModel
+	}
+	return jev.DefaultModel
 }

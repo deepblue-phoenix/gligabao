@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/jev"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -28,6 +30,12 @@ type Embedder interface {
 	EmbedBatchUsage(ctx context.Context, texts []string) ([][]float32, *ai.EmbedUsage, error)
 }
 
+// Classifier is Jev (see package jev), the system 1 model, as far as the pipelines need it. *jev.Client implements it.
+type Classifier interface {
+	// Classify judges how many entities a text will yield. The jev.Call is valid even when the error is not nil.
+	Classify(ctx context.Context, text string) (*jev.Classification, jev.Call, error)
+}
+
 // Option customizes a single Remember, Recall or RememberImage call. Without WithEval no trajectory is generated.
 type Option func(*CallOptions)
 
@@ -41,6 +49,9 @@ type CallOptions struct {
 
 	Vectors  vector.Store // the vector store of the text pipeline
 	Embedder Embedder
+
+	// Jev is the system 1 model, set by WithJev; nil (the default) disables every step that needs it.
+	Jev Classifier
 
 	Trace *Trace // set by Remember for the Store it calls; nil otherwise
 
@@ -81,6 +92,10 @@ func WithSessionID(id string) Option { return func(o *CallOptions) { o.SessionID
 // WithChunking sets the chunk size (in tokens) and overlap that Remember uses for a text larger than one chunk. See
 // chunk.Config; an invalid one makes Remember fail. The default is chunk.DefaultConfig().
 func WithChunking(c chunk.Config) Option { return func(o *CallOptions) { o.Chunking = c } }
+
+// WithJev enables the steps of Remember that run on Jev (the complexity classification of the incoming text). A nil c
+// (Jev not configured) disables them. Jev is not a per-stage model: it is not part of Models.
+func WithJev(c Classifier) Option { return func(o *CallOptions) { o.Jev = c } }
 
 // WithTrace makes Store record its steps (the embedding) into tr, the trace of the enclosing Remember.
 func WithTrace(tr *Trace) Option { return func(o *CallOptions) { o.Trace = tr } }
@@ -182,6 +197,42 @@ func (t *Trace) EmbedStep(message, name string, args, res map[string]any, usage 
 	}
 	b, _ := json.Marshal(res)
 	t.b.ToolStep(step, name, args, string(b))
+}
+
+// ToolTiming is what TimedTool records about a step besides its arguments and result: which model ran it, when it
+// started and how long it took, and its tokens (0 if unknown; the cost is not known for models outside the price table).
+type ToolTiming struct {
+	Model, Provider  string
+	Started          time.Time
+	Latency          time.Duration
+	PromptTokens     int
+	CompletionTokens int
+}
+
+// TimedTool is Tool for a step that took measurable time (a call to a model other than the LLM client's): the step's
+// timestamp is the start of the call, and its extra holds latency_ms, started_at and the provider, so latency can be
+// compared across runs.
+func (t *Trace) TimedTool(message, name string, args map[string]any, result any, tm ToolTiming) {
+	if t == nil {
+		return
+	}
+	res, ok := result.(string)
+	if !ok {
+		b, _ := json.Marshal(result)
+		res = string(b)
+	}
+	step := atif.Step{Message: message, ModelName: tm.Model, Extra: map[string]any{
+		"provider":   tm.Provider,
+		"latency_ms": float64(tm.Latency.Microseconds()) / 1000,
+	}}
+	if !tm.Started.IsZero() {
+		step.Timestamp = tm.Started.UTC().Format(time.RFC3339Nano)
+		step.Extra["started_at"] = step.Timestamp
+	}
+	if tm.PromptTokens > 0 || tm.CompletionTokens > 0 {
+		step.Metrics = &atif.Metrics{PromptTokens: tm.PromptTokens, CompletionTokens: tm.CompletionTokens}
+	}
+	t.b.ToolStep(step, name, args, res)
 }
 
 //---------------------------------------------------------------------------------------------

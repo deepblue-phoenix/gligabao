@@ -22,6 +22,8 @@ const FileName = "gligabao.toml"
 const (
 	EnvAnthropicKey = "ANTHROPIC_API_KEY"
 	EnvOpenAIKey    = "OPENAI_API_KEY"
+	EnvJevKey       = "JEV_API_KEY"
+	EnvJevBaseURL   = "JEV_BASE_URL"
 	EnvPineconeKey  = "PINECONE_API_KEY"
 	EnvPineconeHost = "PINECONE_INDEX_HOST"
 	EnvPostgresDSN  = "POSTGRES_DSN"
@@ -49,13 +51,19 @@ const DefaultPort = 7878
 
 // Config holds the application configuration.
 //
-// API keys are read from the ANTHROPIC_API_KEY, OPENAI_API_KEY and PINECONE_API_KEY
+// API keys are read from the ANTHROPIC_API_KEY, OPENAI_API_KEY, JEV_API_KEY and PINECONE_API_KEY
 // environment variables; a key set in the TOML file overrides the environment value.
 // The Pinecone index host likewise defaults to PINECONE_INDEX_HOST, and the PostgreSQL connection string to POSTGRES_DSN.
 type Config struct {
 	Port         int    `toml:"port"`
 	AnthropicKey string `toml:"anthropic_api_key"`
 	OpenAIKey    string `toml:"openai_api_key"`
+	// JevKey is the TypeSafe API key of Jev, the system 1 model. Jev is only used when it is set.
+	JevKey string `toml:"jev_api_key"`
+	// JevBaseURL overrides the API root of Jev (default https://api.typesafe.ai; for tests and proxies).
+	JevBaseURL string `toml:"jev_base_url"`
+	// JevModel is the model sent to Jev. Default "jev-latest".
+	JevModel string `toml:"jev_model"`
 	// DBBackend selects the main database: "sqlite" (default) or "postgres".
 	DBBackend string `toml:"db_backend"`
 	// PostgresDSN is the PostgreSQL connection string (a URL like postgres://user:pass@host:5432/dbname).
@@ -128,6 +136,8 @@ func Default() *Config {
 		PostgresDSN:         os.Getenv(EnvPostgresDSN),
 		AnthropicKey:        os.Getenv(EnvAnthropicKey),
 		OpenAIKey:           os.Getenv(EnvOpenAIKey),
+		JevKey:              os.Getenv(EnvJevKey),
+		JevBaseURL:          os.Getenv(EnvJevBaseURL),
 
 		PineconeKey:       os.Getenv(EnvPineconeKey),
 		PineconeIndexHost: os.Getenv(EnvPineconeHost),

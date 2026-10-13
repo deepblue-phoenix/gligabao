@@ -89,6 +89,9 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 		DB:           db.ConfigFrom(cfg, opts.DBPath, opts.VectorDir, opts.ImageDir),
 		AnthropicKey: cfg.AnthropicKey,
 		OpenAIKey:    cfg.OpenAIKey,
+		JevKey:       cfg.JevKey,
+		JevBaseURL:   cfg.JevBaseURL,
+		JevModel:     cfg.JevModel,
 		Prices:       aiPrices(cfg),
 
 		TrajectoryDir: opts.TrajectoryDir,

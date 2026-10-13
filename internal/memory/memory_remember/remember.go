@@ -272,6 +272,11 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	tr.Input(input)
 
 	j := &job{d: d, llm: llm, tr: tr, co: co, opts: opts, userID: userID, dataset: dataset, kind: kind, ref: ref, now: now}
+
+	//--------------------------------------
+	// CLASSIFY_COMPLEXITY (Jev; only if configured)
+	j.classifyComplexity(ctx, text)
+
 	if chunked {
 		return j.rememberDocument(ctx, text, cc)
 	}

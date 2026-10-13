@@ -221,3 +221,24 @@ func TestChunkingSettings(t *testing.T) {
 		}
 	}
 }
+
+func TestJevConfig(t *testing.T) {
+	t.Setenv(EnvJevKey, "")
+	t.Setenv(EnvJevBaseURL, "")
+	cfg, err := Load(write(t, ""))
+	if err != nil || cfg.JevKey != "" {
+		t.Fatalf("Jev must be off by default: %+v, %v", cfg, err)
+	}
+	if cfg, err := Load(write(t, "jev_api_key = \"k\"\n")); err != nil || cfg.JevKey != "k" || cfg.JevBaseURL != "" {
+		t.Fatalf("a key alone must be enough: %+v, %v", cfg, err)
+	}
+	cfg, err = Load(write(t, "jev_api_key = \"k\"\njev_base_url = \"http://jev/v1\"\njev_model = \"m\"\n"))
+	if err != nil || cfg.JevKey != "k" || cfg.JevBaseURL != "http://jev/v1" || cfg.JevModel != "m" {
+		t.Fatalf("got %+v, %v", cfg, err)
+	}
+	t.Setenv(EnvJevKey, "envk")
+	t.Setenv(EnvJevBaseURL, "http://env/v1")
+	if cfg := Default(); cfg.JevKey != "envk" || cfg.JevBaseURL != "http://env/v1" {
+		t.Errorf("env not read: %+v", cfg)
+	}
+}

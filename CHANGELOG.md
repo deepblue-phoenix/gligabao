@@ -5,6 +5,17 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.8.0] - 2026-10-14
+
+### Added
+- Jev, TypeSafe's "system 1" model, as a small package (`internal/jev`) that wraps calls to its evaluation endpoint (`POST https://api.typesafe.ai/v1/systemone`, model `jev-latest`). It is only used when its API key is supplied: `jev_api_key` (default: the `JEV_API_KEY` environment variable). `jev_base_url` (`JEV_BASE_URL`) and `jev_model` are optional overrides. Without a key the server logs that Jev is off and nothing below runs. A call is one request and is not retried, so the measured latency is that of one request.
+- First use, a new first stage of `remember`, `classify_complexity`: Jev answers one `choice` question that classifies the incoming text as `simple` (up to 5 entities), `medium` (6 to 20) or `complex` (more than 20) in the number of entities it is expected to yield, as a prediction of the compute needed per entity and edge. The `confidence` Jev returns with its answer, and the probability of each class, are tracked. For now the result is only logged (`jev: remember text complexity`, with `complexity`, `confidence`, `latency_ms`, text size). The stage is advisory: a Jev failure is logged and never fails `remember`. It always runs on Jev, so it is not part of `models`. At most the first 32 KiB of a text are sent to Jev.
+- The stage is a step of the ATIF trajectory of the eval endpoints (`classify_complexity`) with its result (complexity, confidence, probabilities), the Jev model version and tokens, and `latency_ms` / `started_at` in the step's extra (also for a failed call), so Jev latency can be measured and compared across runs.
+- Go: `jev.Client` (`Evaluate`, `Classify`), `memory_core.WithJev`, `memory_core.Classifier`, `Trace.TimedTool`.
+
+### Changed
+- Go: `server.NewHandler`, `api.Register` and `api.RegisterEval` take one more argument, the Jev classifier (nil for none).
+
 ## [0.7.0] - 2026-10-14
 
 ### Added
