@@ -151,7 +151,10 @@ func span(valid, invalid *time.Time) string {
 
 // candidates are the stored facts a Remember call compares its new facts with, and how they were found.
 type candidates struct {
-	Edges []Edge
+	// Edges are the merged candidates; ByName and BySimilar are what each lookup found before merging (an edge found by
+	// both is in both), and Names are the endpoint names (normalized) that the name lookup searched.
+	Edges, ByName, BySimilar []Edge
+	Names                    []string
 	// Via says how each edge (by ID) was found: viaName, viaSimilar or both.
 	Via map[int64]string
 	// Similar are the stored entities found by similarity (see findSimilarEntities); SearchTexts are the texts that were
@@ -195,10 +198,12 @@ func loadCandidates(ctx context.Context, d *sql.DB, o callOptions, userID, datas
 			}
 		}
 	}
+	out.Names = keys
 	byName, err := graph.LoadCandidateEdges(ctx, d, dsID, keys, maxCandidates)
 	if err != nil {
 		return nil, err
 	}
+	out.ByName = byName
 
 	out.Similar, out.SearchTexts, out.SearchUsage, out.SearchErr = findSimilarEntities(ctx, d, o, dsID, ex)
 	if out.SearchErr != nil {
@@ -215,6 +220,7 @@ func loadCandidates(ctx context.Context, d *sql.DB, o callOptions, userID, datas
 	if err != nil {
 		return nil, err
 	}
+	out.BySimilar = bySimilar
 	out.Edges = mergeCandidates(byName, bySimilar, maxCandidates, out.Via)
 	return out, nil
 }

@@ -27,10 +27,12 @@ interface FlowNode {
   id: string; kind: Kind; x: number; y: number; w: number; h: number;
   title: string; subtitle: string; error?: boolean;
   detail: () => HTMLElement[];
+  // Set on the tool nodes of the remember pipeline that discover data (see viewFor): a "view" button opens it.
+  view?: { title: string; render: () => HTMLElement[] };
 }
 interface FlowEdge { from: FlowNode; to: FlowNode; label: string; kind: "next" | "call" | "return" }
 
-const STEP_W = 250, STEP_H = 50, TOOL_W = 210, TOOL_H = 44, GAP_X = 90, ROW_GAP = 46, END_R = 14;
+const STEP_W = 250, STEP_H = 50, TOOL_W = 240, TOOL_H = 44, GAP_X = 90, ROW_GAP = 46, END_R = 14;
 
 function el<T extends HTMLElement>(id: string): T {
   const e = document.getElementById(id);
@@ -130,6 +132,131 @@ function stepDetail(s: Step): HTMLElement[] {
   return out;
 }
 
+//---------------------------------------------------------------------------------------------
+// Views of what the remember pipeline discovers: the extraction and the candidate lookups.
+
+interface Fact { id?: number; source: string; relation: string; target: string; fact?: string; valid?: string; found_by?: string }
+interface Ent { name: string; type: string; description?: string }
+interface Match { endpoint: string; entity: string; type: string; score: number }
+
+// The tools that get a "view" button, with the title of the view.
+const VIEWS: Record<string, string> = {
+  extract_graph: "Entities and edges extracted by the LLM",
+  find_candidates_by_name: "Candidates found by exact name",
+  search_similar_entities: "Candidates found by similarity search",
+  load_candidates: "Candidates loaded (merged by edge ID)",
+};
+
+// Icons of the "view" buttons, one per stage, on a 16x16 grid drawn with strokes: the extracted graph (three linked
+// nodes), the exact-name lookup (an equals sign), the similarity search (a magnifier) and the merged candidates (two
+// streams joining into one).
+interface IconShape { tag: "path" | "circle"; attrs: Record<string, string | number> }
+const ICONS: Record<string, IconShape[]> = {
+  extract_graph: [
+    { tag: "path", attrs: { d: "M8 5.6L4.6 10.4M8 5.6L11.4 10.4M5.8 12.5H10.2" } },
+    { tag: "circle", attrs: { cx: 8, cy: 4, r: 1.9 } }, { tag: "circle", attrs: { cx: 4, cy: 12, r: 1.9 } }, { tag: "circle", attrs: { cx: 12, cy: 12, r: 1.9 } },
+  ],
+  find_candidates_by_name: [{ tag: "path", attrs: { d: "M3 5.5H13M3 10.5H13" } }],
+  search_similar_entities: [
+    { tag: "circle", attrs: { cx: 6.8, cy: 6.8, r: 4.2 } }, { tag: "path", attrs: { d: "M10 10L14 14" } },
+  ],
+  load_candidates: [{ tag: "path", attrs: { d: "M3 2.5L8 7.5L13 2.5M8 7.5V13.5M5.5 11.5L8 14L10.5 11.5" } }],
+  default: [{ tag: "circle", attrs: { cx: 8, cy: 8, r: 4 } }],
+};
+
+const VIA_LABEL: Record<string, string> = { name: "name", similar: "similarity", "name+similar": "both" };
+
+function tag(text: string, cls: string): HTMLElement {
+  const t = document.createElement("span");
+  t.className = `via via-${cls}`;
+  t.textContent = text;
+  return t;
+}
+
+function table(headers: string[], rows: (string | number | HTMLElement | undefined)[][]): HTMLElement {
+  const t = document.createElement("table");
+  t.className = "trace-table";
+  const head = t.createTHead().insertRow();
+  for (const h of headers) head.appendChild(document.createElement("th")).textContent = h;
+  const body = t.createTBody();
+  for (const r of rows) {
+    const tr = body.insertRow();
+    for (const c of r) {
+      const td = tr.insertCell();
+      if (c instanceof HTMLElement) td.appendChild(c);
+      else td.textContent = c === undefined ? "" : String(c);
+    }
+  }
+  return t;
+}
+
+function factsTable(facts: Fact[], opts: { id?: boolean } = {}): HTMLElement[] {
+  if (!facts.length) return [muted("none")];
+  const via = facts.some((f) => f.found_by);
+  const headers = [...(opts.id === false ? [] : ["id"]), "source", "relation", "target", "fact", "valid", ...(via ? ["found by"] : [])];
+  return [table(headers, facts.map((f) => [
+    ...(opts.id === false ? [] : [f.id]), f.source, f.relation, f.target, f.fact, f.valid,
+    ...(via ? [f.found_by ? tag(VIA_LABEL[f.found_by] ?? f.found_by, f.found_by === "name+similar" ? "both" : f.found_by) : ""] : []),
+  ]))];
+}
+
+function muted(text: string): HTMLElement {
+  const p = document.createElement("p");
+  p.className = "muted";
+  p.textContent = text;
+  return p;
+}
+
+// Builds the view of a tool result, or undefined if the tool has none (or the result is not what is expected).
+function viewFor(tool: string, content: string): FlowNode["view"] {
+  const title = VIEWS[tool];
+  if (!title) return undefined;
+  let r: { entities?: Ent[]; edges?: Fact[]; facts?: Fact[]; matches?: Match[]; error?: string };
+  try { r = JSON.parse(content); } catch { return undefined; }
+  if (!r || typeof r !== "object") return undefined;
+  const facts = r.facts ?? [];
+  return {
+    title,
+    render: () => {
+      switch (tool) {
+        case "extract_graph": {
+          const edges = r.edges ?? [];
+          const ents = r.entities ?? [];
+          return [
+            heading(`Entities (${ents.length})`),
+            ents.length ? table(["name", "type", "description"], ents.map((e) => [e.name, e.type, e.description])) : muted("none"),
+            heading(`Edges: the new facts (${edges.length})`),
+            ...factsTable(edges, { id: false }),
+          ];
+        }
+        case "search_similar_entities": {
+          const ms = r.matches ?? [];
+          return [
+            ...(r.error ? [pre(`search failed (not fatal): ${r.error}`)] : []),
+            heading(`Similar stored entities (${ms.length})`),
+            ms.length ? table(["new endpoint", "stored entity", "type", "score"], ms.map((m) => [m.endpoint, m.entity, m.type, m.score.toFixed(3)])) : muted("none above the threshold"),
+            heading(`Their live facts: the candidates found by similarity (${facts.length})`),
+            ...factsTable(facts),
+          ];
+        }
+        case "load_candidates": {
+          const n = (v: string): number => facts.filter((f) => f.found_by === v).length;
+          return [
+            props([
+              ["total", String(facts.length)], ["by name only", String(n("name"))],
+              ["by similarity only", String(n("similar"))], ["by both", String(n("name+similar"))],
+            ]),
+            heading("Candidates"),
+            ...factsTable(facts),
+          ];
+        }
+        default:
+          return [heading(`Candidates (${facts.length})`), ...factsTable(facts)];
+      }
+    },
+  };
+}
+
 // Lays the trajectory out and returns the nodes and edges of the flow.
 function layout(traj: Trajectory): { nodes: FlowNode[]; edges: FlowEdge[] } {
   const nodes: FlowNode[] = [];
@@ -180,7 +307,7 @@ function layout(traj: Trajectory): { nodes: FlowNode[]; edges: FlowEdge[] } {
       const args = c.arguments ?? {};
       const tool: FlowNode = {
         id: `tool-${s.step_id}-${i}`, kind: "tool", x: toolX, y: cy, w: TOOL_W, h: TOOL_H,
-        title: c.function_name, subtitle: oneLine(Object.keys(args).length ? json(args) : "(no arguments)", 30),
+        title: c.function_name, subtitle: oneLine(Object.keys(args).length ? json(args) : "(no arguments)", VIEWS[c.function_name] ? 26 : 30),
         detail: () => [props([["step", String(s.step_id)], ["call id", c.tool_call_id]]), heading("Function"), pre(c.function_name), heading("Arguments"), pre(json(args))],
       };
       nodes.push(tool);
@@ -189,6 +316,7 @@ function layout(traj: Trajectory): { nodes: FlowNode[]; edges: FlowEdge[] } {
         (results.length === calls.length && !results[i].source_call_id ? results[i] : undefined);
       if (res) {
         used.add(res);
+        tool.view = viewFor(c.function_name, res.content);
         const rn: FlowNode = {
           id: `result-${s.step_id}-${i}`, kind: "result", x: resultX, y: cy, w: TOOL_W, h: TOOL_H,
           title: `result of ${c.function_name}`, subtitle: oneLine(res.content, 30) || "(empty)",
@@ -277,6 +405,40 @@ function draw(container: HTMLElement, traj: Trajectory): void {
   boxes.append("text").attr("class", "trace-title").attr("x", 10).attr("y", 19).text((n) => oneLine(n.title, 34));
   boxes.append("text").attr("class", "trace-subtitle").attr("x", 10).attr("y", 36).text((n) => n.subtitle);
 
+  // "view" buttons: open the data a pipeline stage discovered in an overlay over the canvas.
+  const overlay = document.createElement("div");
+  overlay.className = "trace-view";
+  overlay.hidden = true;
+  const closeView = (): void => { overlay.hidden = true; overlay.replaceChildren(); };
+  const openView = (n: FlowNode): void => {
+    if (!n.view) return;
+    const head = document.createElement("div");
+    head.className = "trace-view-head";
+    const h = head.appendChild(document.createElement("h3"));
+    h.textContent = n.view.title;
+    const close = head.appendChild(document.createElement("button"));
+    close.type = "button";
+    close.textContent = "Close";
+    close.addEventListener("click", closeView);
+    const body = document.createElement("div");
+    body.className = "trace-view-body";
+    body.append(...n.view.render());
+    overlay.replaceChildren(head, body);
+    overlay.hidden = false;
+  };
+  const btn = boxes.filter((n) => !!n.view).append("g").attr("class", "trace-viewbtn")
+    .attr("transform", (n) => `translate(${n.w - 22},${n.h / 2})`)
+    .on("click", (ev, n) => { ev.stopPropagation(); openView(n); });
+  btn.append("title").text((n) => `${n.view?.title}: click to see the data this step discovered`);
+  btn.append("circle").attr("r", 13);
+  btn.append("g").attr("class", "trace-icon").attr("transform", "translate(-8,-8)").each(function (n) {
+    const g = d3.select(this);
+    for (const shape of ICONS[n.title] ?? ICONS.default) {
+      const e = g.append(shape.tag);
+      for (const [k, v] of Object.entries(shape.attrs)) e.attr(k, v);
+    }
+  });
+
   // Side panel with the full content of the selected node.
   const panel = el("trace-detail");
   const select = (n: FlowNode | undefined): void => {
@@ -304,7 +466,7 @@ function draw(container: HTMLElement, traj: Trajectory): void {
     item.append(label);
   }
 
-  container.append(svg.node() as SVGSVGElement, legend);
+  container.append(svg.node() as SVGSVGElement, legend, overlay);
 
   // Fit the flow to the canvas width, starting at the top (long traces are then scrolled/panned downwards).
   const bounds = { x0: Math.min(...nodes.map((n) => n.x)), x1: Math.max(...nodes.map((n) => n.x + n.w + (n.kind === "start" || n.kind === "end" ? 60 : 0))) };

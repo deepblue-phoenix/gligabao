@@ -75,8 +75,10 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 
 | call | tool | what it records |
 |---|---|---|
-| remember | `search_similar_entities` | (only with vectors, on an existing dataset) the endpoints of the new facts that were embedded, and the stored entities they matched by similarity (aliases) with their scores; `model_name` and `metrics` for the embedding. An error here is recorded but not fatal |
-| remember | `load_candidates` | the stored facts that could duplicate or contradict the new ones, each with how it was found (`found_by`: `name`, `similar`, `name+similar`) |
+| remember | `extract_graph` | the entities and edges (new facts) the LLM extracted from the text, before any stored fact is considered |
+| remember | `find_candidates_by_name` | the live stored facts touching an entity named like an endpoint of a new fact (exact normalized name), found by this lookup alone |
+| remember | `search_similar_entities` | (only with vectors, on an existing dataset) the endpoints of the new facts that were embedded, the stored entities they matched by similarity (aliases) with their scores, and their live facts (the candidates found by similarity alone); `model_name` and `metrics` for the embedding. An error here is recorded but not fatal |
+| remember | `load_candidates` | the two lookups merged by edge ID: the stored facts that could duplicate or contradict the new ones, each with how it was found (`found_by`: `name`, `similar`, `name+similar`) |
 | remember | `embed` | the embedding request (only with a vector store): the texts of the entities and edges, with `model_name` and `metrics` (tokens, cost), so the embedding cost counts in `final_metrics` |
 | remember | `store_artifact` | `artifact_id`, entities, edges and `invalidated_edges` that were stored |
 | recall | `retrieve_graph` | the subgraph handed to the LLM, as rendered in its prompt |
@@ -85,7 +87,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 
 1. `user`: the text.
 2. LLM call: entity/edge extraction (`system`, `user`, `agent`).
-3. tool `search_similar_entities` (only when vectors are enabled and the dataset exists), then tool `load_candidates`.
+3. tool `extract_graph`, then the candidates: tool `find_candidates_by_name`, tool `search_similar_entities` (only when vectors are enabled and the dataset exists), tool `load_candidates` (the merge).
 4. LLM call: duplicate/contradiction resolution (only when there are stored facts to compare against; see [temporal.md](temporal.md)).
 5. tool `embed` (only when vectors are enabled).
 6. tool `store_artifact`.
@@ -139,3 +141,7 @@ b.Tool("looking it up", "search", map[string]any{"q": "x"}, "result text")
 traj := b.Build()                  // steps numbered, final_metrics totalled
 path, err := atif.WriteFile(dir, traj) // <dir>/<trajectory_id>.json, pretty-printed
 ```
+
+## Viewing the pipeline's data in the admin UI
+
+In the trajectory graph of the admin UI, the tool nodes `extract_graph`, `find_candidates_by_name`, `search_similar_entities` and `load_candidates` have an icon button (graph, equals sign, magnifier, merge arrow). It opens a view over the graph with the data of that stage: the extracted entities and edges, the candidates each lookup found on its own (and, for the similarity search, the matched stored entities with their scores), and the merged candidates with how each was found (name, similarity, both). It is built from the tool result stored in the trajectory.

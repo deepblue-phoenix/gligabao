@@ -134,7 +134,7 @@ func (t *trace) embed(texts []string, entities, edges int, usage *ai.EmbedUsage)
 }
 
 // searchEntities records the similarity search that adds candidate facts: the embedded endpoints and what they matched.
-func (t *trace) searchEntities(texts []string, found []similarEntity, usage *ai.EmbedUsage, err error) {
+func (t *trace) searchEntities(texts []string, found []similarEntity, facts []map[string]any, usage *ai.EmbedUsage, err error) {
 	if t == nil || len(texts) == 0 {
 		return
 	}
@@ -142,12 +142,12 @@ func (t *trace) searchEntities(texts []string, found []similarEntity, usage *ai.
 	for _, f := range found {
 		matches = append(matches, map[string]any{"endpoint": f.endpoint, "entity": f.name, "type": f.typ, "score": f.score})
 	}
-	res := map[string]any{"matches": matches}
+	res := map[string]any{"matches": matches, "candidates": len(facts), "facts": facts}
 	if err != nil {
 		res["error"] = err.Error() // not fatal: the candidates then come from the exact names only
 	}
 	t.embedStep("Embedded the endpoints of the new facts and searched the dataset's entity index for similar stored "+
-		"entities (aliases), whose facts are added to the candidates.", "search_similar_entities",
+		"entities (aliases); their live facts are the candidates found by similarity.", "search_similar_entities",
 		map[string]any{"texts": texts, "top_k": similarEntityTopK, "min_score": similarEntityMinScore}, res, usage)
 }
 

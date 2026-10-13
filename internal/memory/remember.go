@@ -192,6 +192,9 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, kind, te
 	if err != nil {
 		return nil, err
 	}
+	tr.tool("The LLM extracted these entities and edges (new facts) from the text, before any stored fact is considered.",
+		"extract_graph", map[string]any{"text_chars": len(text)},
+		map[string]any{"entities": ex.Entities, "edges": candidateFacts(ex.Edges, nil)})
 	// Candidates are facts (edges) ALREADY STORED in this user's dataset that the new facts in ex.Edges might repeat or
 	// contradict. A candidate is any stored edge that
 	//   - belongs to the same user and dataset (nothing is shared across datasets),
@@ -211,12 +214,16 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, kind, te
 		return nil, err
 	}
 	cands := cs.Edges
-	tr.searchEntities(cs.SearchTexts, cs.Similar, cs.SearchUsage, cs.SearchErr)
-	tr.tool("Loaded the live facts already stored in this dataset that touch an entity named by the new facts, by "+
-		"exact name or by similarity (newest first, at most 50); the new facts are checked against them for "+
-		"duplicates and contradictions.", "load_candidates",
-		map[string]any{"user_id": userID, "dataset": dataset, "new_edges": len(ex.Edges)},
-		map[string]any{"candidates": len(cands), "facts": candidateFacts(cs)})
+	// Three steps in the trajectory: each lookup with what it found alone, then the merge.
+	tr.tool("Looked up the live stored facts touching an entity whose normalized name is an endpoint of a new fact "+
+		"(newest first, at most 50): the candidates found by exact name.", "find_candidates_by_name",
+		map[string]any{"user_id": userID, "dataset": dataset, "names": cs.Names},
+		map[string]any{"candidates": len(cs.ByName), "facts": candidateFacts(cs.ByName, nil)})
+	tr.searchEntities(cs.SearchTexts, cs.Similar, candidateFacts(cs.BySimilar, nil), cs.SearchUsage, cs.SearchErr)
+	tr.tool("Merged the two lookups by edge ID (newest first, at most 50); the new facts are checked against these "+
+		"candidates for duplicates and contradictions.", "load_candidates",
+		map[string]any{"user_id": userID, "dataset": dataset, "new_edges": len(ex.Edges), "by_name": len(cs.ByName), "by_similarity": len(cs.BySimilar)},
+		map[string]any{"candidates": len(cands), "facts": candidateFacts(cands, cs.Via)})
 	plan, err := resolveEdges(ctx, llm, ex.Edges, cands)
 	if err != nil {
 		return nil, err
@@ -232,12 +239,19 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, kind, te
 	return res, nil
 }
 
-// candidateFacts summarizes candidate edges for the trajectory.
-func candidateFacts(cs *candidates) []map[string]any {
-	out := make([]map[string]any, 0, len(cs.Edges))
-	for _, c := range cs.Edges {
-		out = append(out, map[string]any{"id": c.ID, "found_by": cs.Via[c.ID], "source": c.Source, "relation": c.Relation, "target": c.Target,
-			"fact": c.Description, "valid": span(c.ValidAt, c.InvalidAt)})
+// candidateFacts summarizes edges for the trajectory; via, if not nil, says how each (by ID) was found.
+func candidateFacts(edges []Edge, via map[int64]string) []map[string]any {
+	out := make([]map[string]any, 0, len(edges))
+	for _, c := range edges {
+		f := map[string]any{"source": c.Source, "relation": c.Relation, "target": c.Target, "fact": c.Description,
+			"valid": span(c.ValidAt, c.InvalidAt)}
+		if c.ID != 0 {
+			f["id"] = c.ID
+		}
+		if v := via[c.ID]; v != "" {
+			f["found_by"] = v
+		}
+		out = append(out, f)
 	}
 	return out
 }

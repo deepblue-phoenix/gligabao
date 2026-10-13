@@ -302,6 +302,49 @@ code { font-size: 0.8rem; color: $muted; }
 .trace-title { font-size: 12px; font-weight: 600; fill: $text; pointer-events: none; }
 .trace-subtitle { font-size: 10.5px; fill: $muted; pointer-events: none; }
 .trace-end-label { font-size: 11px; fill: $muted; pointer-events: none; }
+.trace-viewbtn {
+  cursor: pointer;
+  circle { fill: $bg; stroke: $accent; stroke-width: 1.2; }
+  .trace-icon { fill: none; stroke: $accent; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+  &:hover circle { fill: $accent; }
+  &:hover .trace-icon { stroke: $bg; }
+}
+.trace-view {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  background: $bg;
+  font-size: 0.8rem;
+
+  &[hidden] { display: none; }
+  &-head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid $border;
+    h3 { flex: 1; margin: 0; font-size: 0.95rem; }
+  }
+  &-body { flex: 1; min-height: 0; overflow: auto; padding: 0.4rem 1rem 1rem; h4 { margin: 1rem 0 0.4rem; } }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 0.1rem 0.8rem; margin: 0; width: fit-content; }
+  dt { color: $muted; }
+  dd { margin: 0; }
+}
+.trace-table {
+  th, td { padding: 0.25rem 0.5rem; vertical-align: top; overflow-wrap: anywhere; }
+  th { color: $muted; font-weight: normal; white-space: nowrap; }
+}
+.via {
+  padding: 0 0.5rem;
+  border: 1px solid $border;
+  border-radius: 999px;
+  white-space: nowrap;
+  &-name { color: $accent; border-color: $accent; }
+  &-similar { color: #b392f0; border-color: #b392f0; }
+  &-both { color: $ok; border-color: $ok; }
+}
 #trace-canvas .graph-legend { top: auto; bottom: 0.5rem; }
 #run-modal[open] { height: fit-content; min-height: 20rem; max-height: 88vh; }
 

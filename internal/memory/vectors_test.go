@@ -133,7 +133,7 @@ func testRememberTracesEmbedding(t *testing.T, d *sql.DB) {
 			}
 		}
 	}
-	if got := strings.Join(names, ","); got != "load_candidates,embed,store_artifact" {
+	if got := strings.Join(names, ","); got != "extract_graph,find_candidates_by_name,load_candidates,embed,store_artifact" {
 		t.Errorf("tool steps = %s", got)
 	}
 }
