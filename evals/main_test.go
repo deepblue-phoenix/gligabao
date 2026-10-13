@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -166,5 +168,97 @@ func TestDatasetName(t *testing.T) {
 		if got != want || len(got) > 64 {
 			t.Errorf("datasetName(%q) = %q, want %q", name, got, want)
 		}
+	}
+}
+
+// chunkingLLM is an offline stand-in for the LLM on a text of "<Name> lives in <City>" sentences: extraction lists
+// those facts of the text it is given, a resolution call finds nothing, a recall answers with answer.
+type chunkingLLM struct{ answer string }
+
+var livesIn = regexp.MustCompile(`([A-Z][a-z]+ [A-Z][a-z]+) (?:lives in|resides in|makes a home in) ([A-Z][a-z]+)`)
+
+func (l *chunkingLLM) Complete(_ context.Context, req ai.Request) (*ai.Response, error) {
+	last := req.Messages[len(req.Messages)-1].Content
+	var out string
+	switch {
+	case strings.Contains(last, "<graph>"):
+		out = `{"answer":"` + l.answer + `","entities":[1],"edges":[]}`
+	case strings.Contains(req.System, "You compare NEW facts"):
+		out = `{"duplicates":[],"contradictions":[]}`
+	default:
+		var ents, edges []string
+		for _, m := range livesIn.FindAllStringSubmatch(last, -1) {
+			ents = append(ents, fmt.Sprintf(`{"name":%q,"type":"person"},{"name":%q,"type":"place"}`, m[1], m[2]))
+			edges = append(edges, fmt.Sprintf(`{"source":%q,"target":%q,"relation":"lives_in","description":"%s lives in %s."}`, m[1], m[2], m[1], m[2]))
+		}
+		out = `{"entities":[` + strings.Join(ents, ",") + `],"edges":[` + strings.Join(edges, ",") + `]}`
+	}
+	return &ai.Response{Text: out, StopReason: "end_turn", Provider: ai.ProviderAnthropic, Model: "m"}, nil
+}
+
+// TestChunkingCase loads the chunking suite (whose text lives in a file) and runs its case offline: the corpus must
+// need many chunks and the chunking checks must pass. Raising expect_min_chunks above what the corpus yields must fail.
+func TestChunkingCase(t *testing.T) {
+	dir := t.TempDir()
+	atifDir = filepath.Join(dir, "atif")
+	memory_core.TrajectoryDir = atifDir
+	t.Cleanup(func() { atifDir = "" })
+
+	cases, err := loadCases([]string{"chunking_register"}, "")
+	if err != nil || len(cases) != 1 {
+		t.Fatalf("%v, %v", cases, err)
+	}
+	c := cases[0]
+	if len(c.Remember) != 1 || len(c.Remember[0].Text) < 20000 || c.ExpectMinChunks < 10 {
+		t.Fatalf("case: %d texts, %d bytes, expect_min_chunks %d", len(c.Remember), len(c.Remember[0].Text), c.ExpectMinChunks)
+	}
+	c.ExpectEdges = nil // the offline extractor only knows the "lives in" facts
+
+	database, err := db.Open(db.Config{SQLitePath: filepath.Join(dir, "eval.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	ctx := context.Background()
+	llm := &chunkingLLM{answer: "Silverlake Brewing Company, Brno, restoration binder"}
+	tr, err := experiments.Start(ctx, database.Relational, experiments.Options{Name: "exp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed := runCases([]Case{c}, llm, nil, false, database, tr); failed != 0 {
+		t.Fatalf("failed = %d", failed)
+	}
+	if _, err := tr.Finish(ctx); err != nil {
+		t.Fatal(err)
+	}
+	full, err := experiments.GetRun(ctx, database.Relational, tr.Run.ID)
+	if err != nil || len(full.Evals) != 1 || len(full.Evals[0].PassedChecks) < 7 {
+		t.Fatalf("run: %+v, %v", full, err)
+	}
+
+	c.ExpectMinChunks = 1000
+	tr, err = experiments.Start(ctx, database.Relational, experiments.Options{Name: "exp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed := runCases([]Case{c}, llm, nil, false, database, tr); failed != 1 {
+		t.Fatalf("with 1000 chunks expected: failed = %d, want 1", failed)
+	}
+}
+
+func TestTextFileErrors(t *testing.T) {
+	dir := t.TempDir()
+	write := func(body string) {
+		if err := os.WriteFile(filepath.Join(dir, "s.json"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(`[{"name":"a","remember":[{"text_file":"missing.txt"}]}]`)
+	if _, err := loadCases(nil, dir); err == nil {
+		t.Fatal("missing text_file accepted")
+	}
+	write(`[{"name":"a","remember":[{"text":"x","text_file":"s.json"}]}]`)
+	if _, err := loadCases(nil, dir); err == nil {
+		t.Fatal("text and text_file accepted")
 	}
 }

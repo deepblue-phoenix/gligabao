@@ -41,6 +41,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
@@ -50,7 +51,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/server"
 )
 
-//go:embed suites/*.json
+//go:embed suites/*.json suites/corpus/*.txt
 var suitesFS embed.FS
 
 // datasetName is the dataset a case remembers into and recalls from: one per case and run of the experiment
@@ -87,13 +88,21 @@ type Case struct {
 	Query          string       `json:"query"`
 	ExpectContains []string     `json:"expect_contains"`
 	ExpectEdges    []ExpectEdge `json:"expect_edges"`
+	// ChunkSize overrides the chunk size (in tokens) the case runs with; 0 keeps the default (1024). A smaller one
+	// lets a modest corpus need many chunks.
+	ChunkSize int `json:"chunk_size"`
+	// ExpectMinChunks, when > 0, turns on the chunking checks: the remembered texts must have been split into at
+	// least this many chunks in total, and the chunks must be stored consistently (see checkChunks).
+	ExpectMinChunks int `json:"expect_min_chunks"`
 }
 
 // Artifact is one text to remember; ReferenceTime (RFC 3339) is when it was written. Kind is the artifact kind
-// ("knowledge" or "episode"); empty uses the server default.
+// ("knowledge" or "episode"); empty uses the server default. TextFile, instead of Text, names a file (relative to the
+// suites directory, e.g. "corpus/doc.txt") whose content is the text; loadCases reads it into Text.
 type Artifact struct {
 	Kind          string `json:"kind"`
 	Text          string `json:"text"`
+	TextFile      string `json:"text_file,omitempty"`
 	ReferenceTime string `json:"reference_time"`
 }
 
@@ -139,6 +148,20 @@ func loadCases(only []string, suitesDir string) ([]Case, error) {
 			}
 			if seen[c.Name] {
 				return nil, fmt.Errorf("%s: duplicate case name %q", e.Name(), c.Name)
+			}
+			c.Remember = slices.Clone(c.Remember)
+			for j, m := range c.Remember {
+				if m.TextFile == "" {
+					continue
+				}
+				if m.Text != "" {
+					return nil, fmt.Errorf("%s: case %q remember #%d has both text and text_file", e.Name(), c.Name, j+1)
+				}
+				b, err := fs.ReadFile(fsys, path.Join(dir, m.TextFile))
+				if err != nil {
+					return nil, fmt.Errorf("%s: case %q remember #%d: %w", e.Name(), c.Name, j+1, err)
+				}
+				c.Remember[j].Text = string(b)
 			}
 			seen[c.Name] = true
 			if len(only) == 0 || contains(only, c.Name) {
@@ -220,6 +243,8 @@ type Outcome struct {
 	Trajectories []*atif.Trajectory
 	// TrajectoryDir is where the trajectory files were stored.
 	TrajectoryDir string
+	// Chunks is the total number of chunks the remember calls reported (0 if no text was chunked).
+	Chunks int
 }
 
 // Cost is the total LLM cost of all trajectories, in USD.
@@ -239,6 +264,15 @@ func (o *Outcome) Cost() (usd float64, steps int) {
 func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_core.Embedder, verbose bool) (out *Outcome, err error) {
 	out = &Outcome{TrajectoryDir: atifDir}
 
+	if c.ChunkSize != 0 {
+		// The handlers read the chunking settings from the DB they are given: use a copy with the case's size.
+		cp := *database
+		cp.Chunking = chunk.Config{Size: c.ChunkSize, OverlapPercent: chunk.DefaultOverlapPercent}
+		if err := cp.Chunking.Validate(); err != nil {
+			return out, fmt.Errorf("chunk_size: %w", err)
+		}
+		database = &cp
+	}
 	srv := httptest.NewServer(server.NewHandler(database, llm, emb, true, false))
 	defer srv.Close()
 
@@ -250,6 +284,17 @@ func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_c
 		}
 	}()
 
+	// check records a held check (pass) or a failed one (fail).
+	check := func(ok bool, pass, fail string) {
+		if ok {
+			out.PassedChecks = append(out.PassedChecks, pass)
+		} else {
+			out.Problems = append(out.Problems, fail)
+		}
+	}
+	var parents []int64            // artifact IDs of the remembered texts that were chunked
+	var reported []rememberedChunk // the chunks the remember calls reported
+
 	for i, m := range c.Remember {
 		body := map[string]any{"user_id": evalUser, "text": m.Text, "dataset": dataset}
 		if m.Kind != "" {
@@ -259,8 +304,9 @@ func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_c
 			body["reference_time"] = m.ReferenceTime
 		}
 		var rem struct {
-			ArtifactID int64            `json:"artifact_id"`
-			Trajectory *atif.Trajectory `json:"trajectory"`
+			ArtifactID int64             `json:"artifact_id"`
+			Chunks     []rememberedChunk `json:"chunks"`
+			Trajectory *atif.Trajectory  `json:"trajectory"`
 		}
 		if err := post(srv.URL+"/v1/gb/eval/remember", body, &rem); err != nil {
 			return out, fmt.Errorf("remember #%d: %w", i+1, err)
@@ -270,7 +316,12 @@ func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_c
 		}
 		out.Trajectories = append(out.Trajectories, rem.Trajectory)
 		out.ArtifactIDs = append(out.ArtifactIDs, []int64{rem.ArtifactID})
+		if len(rem.Chunks) > 0 {
+			parents = append(parents, rem.ArtifactID)
+			reported = append(reported, rem.Chunks...)
+		}
 	}
+	out.Chunks = len(reported)
 	edges, err := graph.ListEdges(context.Background(), database.Graph, evalUser, dataset)
 	if err != nil {
 		return out, err
@@ -297,14 +348,6 @@ func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_c
 			}
 		}
 		desc := want.Source + " -> " + want.Target
-		// check records a held check (pass) or a failed one (fail).
-		check := func(ok bool, pass, fail string) {
-			if ok {
-				out.PassedChecks = append(out.PassedChecks, pass)
-			} else {
-				out.Problems = append(out.Problems, fail)
-			}
-		}
 		if found == nil {
 			check(false, "", desc+": no edge stored")
 			continue
@@ -322,6 +365,12 @@ func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_c
 			fmt.Sprintf("%s: ended = %v, want %v", desc, found.InvalidAt != nil, want.Ended))
 		if want.Ended {
 			check(found.ExpiredAt != nil, desc+": ended and expired_at is set", desc+": ended but expired_at is not set")
+		}
+	}
+
+	if c.ExpectMinChunks > 0 {
+		if err := checkChunks(context.Background(), database, dataset, c, parents, reported, check); err != nil {
+			return out, fmt.Errorf("check chunks: %w", err)
 		}
 	}
 
@@ -356,6 +405,111 @@ func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_c
 	return out, nil
 }
 
+// rememberedChunk is a chunk as reported by the remember response.
+type rememberedChunk struct {
+	ArtifactID  int64 `json:"artifact_id"`
+	Index       int   `json:"index"`
+	Tokens      int   `json:"tokens"`
+	StartOffset int   `json:"start_offset"`
+	EndOffset   int   `json:"end_offset"`
+}
+
+// checkChunks verifies the chunking of the case's texts, using the chunks the remember calls reported and what is
+// stored in the dataset. None of it depends on what the LLM extracts, except the spread of the facts over the chunks:
+//   - at least ExpectMinChunks chunks, none larger than the chunk size;
+//   - each chunk is a stored child artifact of one of the texts, numbered from 0, and the stored ones are exactly the
+//     reported ones (no chunk lost, none stored twice);
+//   - the chunks of a text cover it: the first starts at 0, each one starts at or before the end of the previous one
+//     (the overlap) and after its start, and the last ends at the end of the text;
+//   - the facts were linked to the chunks (never to the parent), and to at least half of them: a corpus that spreads
+//     facts evenly must produce edges from the whole text, not just from its start.
+func checkChunks(ctx context.Context, database *db.DB, dataset string, c Case, parents []int64, reported []rememberedChunk,
+	check func(ok bool, pass, fail string)) error {
+	dsID, err := relational.DatasetID(ctx, database.Relational, evalUser, dataset)
+	if err != nil {
+		return err
+	}
+	arts, err := graph.ListArtifacts(ctx, database.Graph, dsID)
+	if err != nil {
+		return err
+	}
+	byID := map[int64]graph.Artifact{}
+	children := map[int64][]graph.Artifact{} // parent ID -> its chunks
+	for _, a := range arts {
+		byID[a.ID] = a
+		if a.ParentID != 0 {
+			children[a.ParentID] = append(children[a.ParentID], a)
+		}
+	}
+
+	size := database.Chunking.WithDefaults().Size
+	check(len(reported) >= c.ExpectMinChunks, fmt.Sprintf("chunking: %d chunks (at least %d)", len(reported), c.ExpectMinChunks),
+		fmt.Sprintf("chunking: %d chunks, want at least %d", len(reported), c.ExpectMinChunks))
+	largest := 0
+	for _, r := range reported {
+		largest = max(largest, r.Tokens)
+	}
+	check(largest <= size, fmt.Sprintf("chunking: largest chunk is %d tokens (chunk size %d)", largest, size),
+		fmt.Sprintf("chunking: a chunk has %d tokens, over the chunk size %d", largest, size))
+
+	stored := 0
+	for _, p := range parents {
+		stored += len(children[p])
+	}
+	check(stored == len(reported), fmt.Sprintf("chunking: %d chunk artifacts stored, as reported", stored),
+		fmt.Sprintf("chunking: %d chunk artifacts stored, %d reported", stored, len(reported)))
+
+	// Coverage, text by text.
+	ok, problem := true, ""
+	for _, p := range parents {
+		parent, kids := byID[p], children[p]
+		for i, k := range kids {
+			var prevEnd int
+			if i > 0 {
+				prevEnd = kids[i-1].EndOffset
+			}
+			switch {
+			case k.ChunkIndex != i:
+				ok, problem = false, fmt.Sprintf("artifact %d: chunk %d has chunk_index %d", p, i, k.ChunkIndex)
+			case i == 0 && k.StartOffset != 0:
+				ok, problem = false, fmt.Sprintf("artifact %d: first chunk starts at %d, not 0", p, k.StartOffset)
+			case i > 0 && (k.StartOffset > prevEnd || k.StartOffset <= kids[i-1].StartOffset):
+				ok, problem = false, fmt.Sprintf("artifact %d: chunk %d starts at %d (previous: %d-%d)", p, i, k.StartOffset, kids[i-1].StartOffset, prevEnd)
+			case k.EndOffset > len(parent.Text) || parent.Text[k.StartOffset:k.EndOffset] != k.Text:
+				ok, problem = false, fmt.Sprintf("artifact %d: chunk %d is not text[%d:%d] of its parent", p, i, k.StartOffset, k.EndOffset)
+			}
+		}
+		if len(kids) > 0 && kids[len(kids)-1].EndOffset != len(parent.Text) {
+			ok, problem = false, fmt.Sprintf("artifact %d: the last chunk ends at %d, the text at %d", p, kids[len(kids)-1].EndOffset, len(parent.Text))
+		}
+	}
+	check(ok, "chunking: the chunks are consecutive, overlap, and cover the whole text", "chunking: "+problem)
+
+	// Provenance.
+	links, err := graph.ListEdgeArtifacts(ctx, database.Graph, dsID)
+	if err != nil {
+		return err
+	}
+	isParent := map[int64]bool{}
+	for _, p := range parents {
+		isParent[p] = true
+	}
+	linkedChunks := map[int64]bool{}
+	toParent := 0
+	for _, l := range links {
+		if isParent[l.ArtifactID] {
+			toParent++
+		} else if byID[l.ArtifactID].ParentID != 0 {
+			linkedChunks[l.ArtifactID] = true
+		}
+	}
+	check(toParent == 0, "chunking: no edge is linked to the parent artifact", fmt.Sprintf("chunking: %d edge links point at the parent artifact, not at a chunk", toParent))
+	want := (c.ExpectMinChunks + 1) / 2
+	check(len(linkedChunks) >= want, fmt.Sprintf("chunking: edges come from %d chunks (at least %d)", len(linkedChunks), want),
+		fmt.Sprintf("chunking: edges come from only %d chunks, want at least %d", len(linkedChunks), want))
+	return nil
+}
+
 // sourceArtifactIDs returns the IDs of the artifacts of the dataset that back the given edges (provenance): the
 // artifact that created each edge and every later one that restated the fact (gb_edge_artifacts), ascending.
 func sourceArtifactIDs(ctx context.Context, database *db.DB, dataset string, edgeArtifact map[int64]*int64) ([]int64, error) {
@@ -388,7 +542,8 @@ func sourceArtifactIDs(ctx context.Context, database *db.DB, dataset string, edg
 
 func post(url string, body, out any) error {
 	b, _ := json.Marshal(body)
-	resp, err := (&http.Client{Timeout: 2 * time.Minute}).Post(url, "application/json", bytes.NewReader(b))
+	// A chunked text is extracted chunk by chunk in one request, so it can take long.
+	resp, err := (&http.Client{Timeout: 30 * time.Minute}).Post(url, "application/json", bytes.NewReader(b))
 	if err != nil {
 		return err
 	}
@@ -415,6 +570,9 @@ func runCases(cases []Case, llm memory_core.LLM, emb memory_core.Embedder, verbo
 		out, err := run(c, tracker.Run.ID, database, l, emb, verbose)
 		answer, problems := out.Answer, out.Problems
 		cost, steps := out.Cost()
+		if verbose && out.Chunks > 0 {
+			fmt.Printf("  chunks: %d\n", out.Chunks)
+		}
 		if verbose {
 			fmt.Printf("  trajectories: %d, steps: %d, cost: $%.6f\n", len(out.Trajectories), steps, cost)
 		}

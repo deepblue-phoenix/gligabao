@@ -13,9 +13,13 @@ Each run of an experiment creates its own datasets, which isolates the runs from
 - `remember_recall`: one text, stored with its temporal validity (`valid_at` = the artifact's time, still true), then a question about it.
 - `job_change`: "Alice works at Acme" is remembered, then later "Alice started working at Globex". The Acme fact must be closed (`invalid_at` = time of the second text), the Globex fact must be live, and "Where does Alice work now?" must be answered with Globex.
 
+- `chunking_register` (suite `chunking.json`): a ~3,700-word membership register of 60 people (`suites/corpus/harbor_cooperative.txt`), remembered with `chunk_size` 512 so it is split into ~20 chunks, each extracted, stored and embedded on its own (see [docs/chunking.md](../docs/chunking.md)). Besides the usual edge and answer checks (facts from the first, middle and last chunks must all be in the graph, and the question mixes the start and the end of the text), `expect_min_chunks` turns on the chunking checks: enough chunks, none over the chunk size, the chunk artifacts stored as children of the text and matching the response, the chunks consecutive/overlapping/covering the whole text, and the facts linked to the chunks (not the parent) and to at least half of them. It makes ~20 extraction calls (and some resolution ones), so it takes a few minutes.
+
 ## Suite format
 
-Each file in `evals/suites/` is a suite: a JSON list of cases (embedded into the binary). Case names must be unique across all suites. `basic.json` holds the two cases above.
+Each file in `evals/suites/` is a suite: a JSON list of cases (embedded into the binary). Case names must be unique across all suites. `basic.json` holds the first two cases above, `chunking.json` the third.
+
+A `remember` entry has either `text` or `text_file`, a path relative to the suites directory (e.g. `corpus/harbor_cooperative.txt`; the `.txt` files under `suites/corpus/` are embedded as well) whose content is the text, for corpora too large for JSON. A case may also set `chunk_size` (tokens; 32 to 8000, default 1024) to run with a smaller chunk size, and `expect_min_chunks` (see above).
 
 ```json
 [

@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.6.1] - 2026-10-14
+
+### Added
+- New eval case `chunking_register` (suite `evals/suites/chunking.json`): remembers a ~3,700-word, 60-person register (`evals/suites/corpus/harbor_cooperative.txt`) that needs about 20 chunks, then checks that facts from the start, middle and end were extracted and recalled, and that the chunks are stored correctly (count, size, child artifacts, coverage and overlap of the text, provenance of the facts).
+- Eval suites: a `remember` entry can take `text_file` (a file under the suites directory) instead of `text`; a case can set `chunk_size` and `expect_min_chunks` to turn on the chunking checks. See `evals/README.md`.
+
+### Changed
+- The eval runner waits up to 30 minutes (was 2) for a `remember` call, since a chunked text is extracted chunk by chunk in one request.
+
 ## [0.6.0] - 2026-10-14
 
 ### Added
