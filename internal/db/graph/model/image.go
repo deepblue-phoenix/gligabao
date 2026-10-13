@@ -9,6 +9,7 @@ import "time"
 // NewImage is an image artifact with its first extraction, stored together in one transaction.
 type NewImage struct {
 	DatasetID int64
+	SessionID string // the user/agent session that remembered it; "" if none
 	MediaType string // image/jpeg, image/png, image/gif or image/webp
 	SHA256    string // hex SHA-256 of the file
 	SizeBytes int64
@@ -42,6 +43,7 @@ type ImageTextBlock struct {
 type ImageArtifact struct {
 	ID        int64
 	DatasetID int64
+	SessionID string // the session that remembered it; "" if none
 	MediaType string
 	SHA256    string
 	SizeBytes int64

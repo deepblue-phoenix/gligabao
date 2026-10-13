@@ -188,11 +188,14 @@ type ImageResult struct {
 	// Pipeline is always "image": it tells this result from that of the text pipeline (Result).
 	Pipeline        string `json:"pipeline"`
 	ImageArtifactID int64  `json:"image_artifact_id"`
-	ExtractionID    int64  `json:"extraction_id"`
-	MediaType       string `json:"media_type"`
-	SHA256          string `json:"sha256"`
-	SizeBytes       int    `json:"size_bytes"`
-	Path            string `json:"path"` // the file, relative to the image directory
+	// SessionID is the session the image artifact is attached to (omitted if none). For a Cached result it is the
+	// session of the stored artifact, which is the one that first remembered the image, not necessarily this call's.
+	SessionID    string `json:"session_id,omitempty"`
+	ExtractionID int64  `json:"extraction_id"`
+	MediaType    string `json:"media_type"`
+	SHA256       string `json:"sha256"`
+	SizeBytes    int    `json:"size_bytes"`
+	Path         string `json:"path"` // the file, relative to the image directory
 	// Cached is true if the dataset already had this image (same SHA-256): nothing was sent to the LLM or stored, and
 	// this is the stored result of the earlier call, including its model, tokens and cost, which were spent then.
 	Cached    bool      `json:"cached"`
@@ -215,7 +218,8 @@ const PipelineImage = "image"
 // An image the dataset already holds (same SHA-256, an image artifact with an extraction) is not read again: the
 // stored result is returned with Cached set, and nothing is called or stored (ref is ignored; the file is restored
 // if it went missing). Only the dataset is searched: datasets are isolated. If the LLM step fails nothing is stored (but the call's cost is
-// still recorded, as for Remember). Only with WithEval is the call recorded as an ATIF trajectory.
+// still recorded, as for Remember). With WithSessionID the new image artifact is attached to that session (a Cached
+// result keeps the session of the stored artifact). Only with WithEval is the call recorded as an ATIF trajectory.
 func RememberImage(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset string, data []byte, ref time.Time, opts ...memory_core.Option) (res *ImageResult, err error) {
 	userID, err = memory_core.ResolveUserID(userID)
 	if err != nil {
@@ -229,6 +233,11 @@ func RememberImage(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, 
 	if err != nil {
 		return nil, err
 	}
+	co := memory_core.NewCallOptions(opts)
+	sessionID, err := memory_core.ResolveSessionID(co.SessionID)
+	if err != nil {
+		return nil, err
+	}
 	now := relational.Now()
 	if ref.IsZero() {
 		ref = now
@@ -238,7 +247,6 @@ func RememberImage(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, 
 	hash := hex.EncodeToString(sum[:])
 	llm = memory_core.WithRecording(llm, d, CallRememberImage)
 
-	co := memory_core.NewCallOptions(opts)
 	tr := memory_core.StartTrace(CallRememberImage, co)
 	defer func() {
 		if traj := tr.Finish(err); res != nil && traj != nil {
@@ -247,7 +255,7 @@ func RememberImage(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, 
 	}()
 	llm = tr.Wrap(llm)
 	tr.Input(map[string]any{"user_id": userID, "dataset": dataset, "media_type": mediaType, "sha256": hash,
-		"size_bytes": len(data), "reference_time": relational.FormatTime(ref)})
+		"size_bytes": len(data), "reference_time": relational.FormatTime(ref), "session_id": sessionID})
 
 	// Seen before in this dataset? Then the stored result is the answer (a dataset that does not exist has none).
 	if dsID, err := relational.DatasetID(ctx, d, userID, dataset); err == nil {
@@ -290,6 +298,7 @@ func RememberImage(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, 
 	}
 	artID, extID, err := graph.InsertImage(ctx, d, graph.NewImage{
 		DatasetID: dsID,
+		SessionID: sessionID,
 		MediaType: mediaType,
 		SHA256:    hash,
 		SizeBytes: int64(len(data)),
@@ -318,6 +327,7 @@ func RememberImage(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, 
 		Dataset:         dataset,
 		Pipeline:        PipelineImage,
 		ImageArtifactID: artID,
+		SessionID:       sessionID,
 		ExtractionID:    extID,
 		MediaType:       mediaType,
 		SHA256:          hash,
@@ -340,6 +350,7 @@ func newImageResult(userID, dataset string, a *graph.ImageArtifact, x *graph.Ima
 		Dataset:         dataset,
 		Pipeline:        PipelineImage,
 		ImageArtifactID: a.ID,
+		SessionID:       a.SessionID,
 		ExtractionID:    x.ID,
 		MediaType:       a.MediaType,
 		SHA256:          a.SHA256,

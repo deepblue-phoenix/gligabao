@@ -17,6 +17,7 @@ content-type: application/json
 
 - `image`: the image, base64-encoded (standard alphabet): a JPEG, PNG, GIF or WebP, at most 5 MiB (the Anthropic API limit) before encoding. The type is detected from the bytes. A request with `image` is an image request; the body may be up to about 7 MiB (instead of 1 MiB for text).
 - `user_id` (required), `dataset` (optional, default `main`, created if missing) and `reference_time` (optional, RFC 3339, default now: when the image was captured or observed) work as for text.
+- `session_id` (optional) works as for text ([sessions.md](sessions.md)): it is stored on the new image artifact (`gb_image_artifacts.session_id`) and echoed as `session_id` in the response. Images add no entities or edges, so there are no session links beyond it. `400` if it is too long or has control characters.
 - `text` and `kind` must not be given together with `image` (`400`): an image is not a text artifact.
 
 ## Response
@@ -29,6 +30,7 @@ content-type: application/json
   "dataset": "charts",
   "pipeline": "image",
   "image_artifact_id": 1,
+  "session_id": "chat-42",
   "extraction_id": 1,
   "media_type": "image/png",
   "sha256": "9f86d081...",
@@ -57,13 +59,13 @@ content-type: application/json
 
 | Status | Meaning |
 | ------ | ------- |
-| 400 | Invalid JSON body; `image` is not base64, is empty, larger than 5 MiB, or not a JPEG, PNG, GIF or WebP; `text` or `kind` given with it; or `reference_time` is not RFC 3339 |
+| 400 | Invalid JSON body; `image` is not base64, is empty, larger than 5 MiB, or not a JPEG, PNG, GIF or WebP; `text` or `kind` given with it; `reference_time` is not RFC 3339; or `session_id` is invalid |
 | 502 | The LLM call failed, or its output could not be parsed or was truncated (nothing stored) |
 | 503 | LLM not configured (`ANTHROPIC_API_KEY` is not set) |
 
 ## Repeated images
 
-The SHA-256 of the decoded image is compared with the image artifacts the dataset already holds. If one has the same hash, the image is not read again: `remember` returns the stored result of the earlier call (its newest extraction) with `"cached": true`, makes no LLM call and stores nothing new (no artifact, extraction, text block or `gb_llm_calls` row). In the response, `image_artifact_id`, `extraction_id`, `path`, `valid_at` and `created_at` are those of the stored artifact (a `reference_time` in the repeated request is ignored), and `model`, `provider`, `input_tokens`, `output_tokens` and `cost_usd` describe the call that made the extraction, which was spent then, not now. If the image file has gone missing from the image directory, it is written again from the uploaded bytes.
+The SHA-256 of the decoded image is compared with the image artifacts the dataset already holds. If one has the same hash, the image is not read again: `remember` returns the stored result of the earlier call (its newest extraction) with `"cached": true`, makes no LLM call and stores nothing new (no artifact, extraction, text block or `gb_llm_calls` row). In the response, `image_artifact_id`, `session_id`, `extraction_id`, `path`, `valid_at` and `created_at` are those of the stored artifact (so `session_id` is the session that first stored the image, not necessarily the one of this request; the repeat leaves no trace of its own session) (a `reference_time` in the repeated request is ignored), and `model`, `provider`, `input_tokens`, `output_tokens` and `cost_usd` describe the call that made the extraction, which was spent then, not now. If the image file has gone missing from the image directory, it is written again from the uploaded bytes.
 
 Only the same dataset of the same user is searched: datasets are isolated, so the same image in another dataset (or another user's) is read and stored again. The comparison is on the bytes: a re-encoded or resized copy is a different image. Two identical requests that arrive at the same moment may both miss and both be read.
 
@@ -100,7 +102,7 @@ Created on startup in the same database as the other tables (`internal/db/graph/
 
 | Table | Columns |
 | ----- | ------- |
-| `gb_image_artifacts` | `id`, `dataset_id` → `gb_datasets`, `media_type`, `sha256`, `size_bytes`, `path` (the file, relative to the image directory), `valid_at`, `created_at` |
+| `gb_image_artifacts` | `id`, `dataset_id` → `gb_datasets`, `session_id` (NULL if none), `media_type`, `sha256`, `size_bytes`, `path` (the file, relative to the image directory), `valid_at`, `created_at` |
 | `gb_image_extractions` | `id`, `image_artifact_id` → `gb_image_artifacts` (cascade), `provider`, `model`, `theme`, `title`, `text`, `raw_output` (the model's reply as received), `input_tokens`, `output_tokens`, `cost_usd`, `created_at` |
 | `gb_image_text_blocks` | `id`, `extraction_id` → `gb_image_extractions` (cascade), `position` (reading order from 0), `kind`, `text`; unique (`extraction_id`, `position`) |
 

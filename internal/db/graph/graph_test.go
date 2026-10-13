@@ -35,7 +35,7 @@ func scenario(t *testing.T, d *sql.DB) {
 	check(err)
 	defer tx.Rollback()
 	now := relational.Now()
-	artID, err := tx.InsertArtifact(ctx, dsID, graph.ArtifactEpisode, "Alice works at Acme", now.Add(-time.Hour), now)
+	artID, err := tx.InsertArtifact(ctx, dsID, graph.ArtifactEpisode, "Alice works at Acme", "sess-1", now.Add(-time.Hour), now)
 	check(err)
 	alice, err := tx.UpsertEntity(ctx, dsID, graph.Entity{Name: "Alice", Type: "person", Description: "an engineer"}, "alice")
 	check(err)
@@ -53,7 +53,7 @@ func scenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("FindEntityID missing: %v", err)
 	}
 	// Entity provenance: Alice is mentioned by two artifacts, Acme only by the first. Linking twice is a no-op.
-	art2, err := tx.InsertArtifact(ctx, dsID, graph.ArtifactKnowledge, "Alice is an engineer", now, now)
+	art2, err := tx.InsertArtifact(ctx, dsID, graph.ArtifactKnowledge, "Alice is an engineer", "", now, now)
 	check(err)
 	check(tx.LinkEntity(ctx, alice, artID))
 	check(tx.LinkEntity(ctx, alice, artID))
@@ -68,6 +68,15 @@ func scenario(t *testing.T, d *sql.DB) {
 	check(tx.LinkEdge(ctx, e1, artID))
 	check(tx.LinkEdge(ctx, e1, art2))
 	check(tx.LinkEdge(ctx, e1, art2))
+	// Session provenance: Alice was discovered in two sessions, Acme in one; the edge by the creator's session and by a
+	// later session that restated it. Linking twice is a no-op.
+	check(tx.LinkEntitySession(ctx, alice, "sess-1"))
+	check(tx.LinkEntitySession(ctx, alice, "sess-1"))
+	check(tx.LinkEntitySession(ctx, alice, "sess-2"))
+	check(tx.LinkEntitySession(ctx, acme, "sess-1"))
+	check(tx.LinkEdgeSession(ctx, e1, "sess-1"))
+	check(tx.LinkEdgeSession(ctx, e1, "sess-2"))
+	check(tx.LinkEdgeSession(ctx, e1, "sess-2"))
 	check(tx.MergeDuplicateEdge(ctx, dsID, e1, nil))
 	edge, err := tx.GetEdge(ctx, dsID, e1)
 	check(err)
@@ -143,7 +152,23 @@ func scenario(t *testing.T, d *sql.DB) {
 	if err != nil || len(elinks) != 2 || elinks[0] != (graph.EdgeArtifact{EdgeID: e1, ArtifactID: artID}) || elinks[1] != (graph.EdgeArtifact{EdgeID: e1, ArtifactID: art2}) {
 		t.Fatalf("ListEdgeArtifacts: %+v, %v", elinks, err)
 	}
-	if mems, err := graph.ListArtifacts(ctx, d, dsID); err != nil || len(mems) != 2 || mems[0].ID != artID || mems[0].Kind != graph.ArtifactEpisode || mems[1].Kind != graph.ArtifactKnowledge || mems[0].Text != "Alice works at Acme" || !mems[0].ValidAt.Equal(now.Add(-time.Hour)) {
+	esl, err := graph.ListEntitySessions(ctx, d, dsID)
+	wantES := []graph.EntitySession{{EntityID: alice, SessionID: "sess-1"}, {EntityID: alice, SessionID: "sess-2"}, {EntityID: acme, SessionID: "sess-1"}}
+	if err != nil || len(esl) != len(wantES) {
+		t.Fatalf("ListEntitySessions: %+v, %v", esl, err)
+	}
+	for i := range wantES {
+		if esl[i] != wantES[i] {
+			t.Errorf("ListEntitySessions[%d] = %+v, want %+v", i, esl[i], wantES[i])
+		}
+	}
+	if l, err := graph.ListEdgeSessions(ctx, d, dsID); err != nil || len(l) != 2 || l[0] != (graph.EdgeSession{EdgeID: e1, SessionID: "sess-1"}) || l[1] != (graph.EdgeSession{EdgeID: e1, SessionID: "sess-2"}) {
+		t.Fatalf("ListEdgeSessions: %+v, %v", l, err)
+	}
+	if l, err := graph.ListEntitySessions(ctx, d, other); err != nil || len(l) != 0 {
+		t.Fatalf("sessions of another dataset: %+v, %v", l, err)
+	}
+	if mems, err := graph.ListArtifacts(ctx, d, dsID); err != nil || len(mems) != 2 || mems[0].SessionID != "sess-1" || mems[1].SessionID != "" || mems[0].ID != artID || mems[0].Kind != graph.ArtifactEpisode || mems[1].Kind != graph.ArtifactKnowledge || mems[0].Text != "Alice works at Acme" || !mems[0].ValidAt.Equal(now.Add(-time.Hour)) {
 		t.Fatalf("ListArtifacts: %+v, %v", mems, err)
 	}
 	if ents, err := graph.ListEntities(ctx, d, dsID); err != nil || len(ents) != 2 || ents[0].Name != "Alice" || ents[0].Description != "an engineer" {
@@ -186,7 +211,7 @@ func modelIDScenario(t *testing.T, d *sql.DB) {
 	check(err)
 	defer tx.Rollback()
 	now := relational.Now()
-	artID, err := tx.InsertArtifact(ctx, dsID, graph.ArtifactKnowledge, "Alice works at Acme", now, now)
+	artID, err := tx.InsertArtifact(ctx, dsID, graph.ArtifactKnowledge, "Alice works at Acme", "", now, now)
 	check(err)
 
 	alice, err := tx.UpsertEntity(ctx, dsID, graph.Entity{Name: "Alice", Type: "person", Description: "an engineer", ModelID: ma}, "alice")

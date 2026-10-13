@@ -38,6 +38,9 @@ type rememberRequest struct {
 	// Kind is the artifact kind: "knowledge" (default; not strictly episodic) or "episode" (a Graphiti-style episode,
 	// anchored in time).
 	Kind string `json:"kind"`
+	// SessionID (optional) is the user/agent session the call belongs to: it is attached to the artifact (text or
+	// image) and recorded against the entities and edges extracted from it. At most memory_core.MaxSessionIDLen bytes.
+	SessionID string `json:"session_id"`
 	// ReferenceTime (RFC 3339, optional) is when the text was written; relative dates in it ("yesterday") are
 	// resolved against it. Defaults to now.
 	ReferenceTime string `json:"reference_time"`
@@ -105,16 +108,24 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option)
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		sessionID, err := memory_core.ResolveSessionID(req.SessionID)
+		if err != nil {
+			httputil.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		start := time.Now()
-		res, err := memory_remember.Remember(r.Context(), d, llm, req.UserID, req.Dataset, req.Kind, req.Text, ref, opts...)
+		res, err := memory_remember.Remember(r.Context(), d, llm, req.UserID, req.Dataset, req.Kind, req.Text, ref,
+			append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID))...)
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
-				"user_id": req.UserID,
-				"dataset": req.Dataset,
+				"user_id":    req.UserID,
+				"dataset":    req.Dataset,
+				"session_id": sessionID,
 			}).Error("remember failed")
 			monitoring.EmitSystemEvent(r.Context(), "remember.failed", monitoring.Event{
 				"user_id":     req.UserID,
 				"dataset":     req.Dataset,
+				"session_id":  sessionID,
 				"text_bytes":  len(req.Text),
 				"duration_ms": time.Since(start).Milliseconds(),
 				"error":       err.Error(),
@@ -126,6 +137,7 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option)
 			"user_id":     res.UserID,
 			"dataset":     res.Dataset,
 			"artifact_id": res.ArtifactID,
+			"session_id":  res.SessionID,
 			"kind":        res.Kind,
 			"entities":    len(res.Entities),
 			"edges":       len(res.Edges),
@@ -135,6 +147,7 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option)
 			"user_id":           res.UserID,
 			"dataset":           res.Dataset,
 			"artifact_id":       res.ArtifactID,
+			"session_id":        res.SessionID,
 			"kind":              res.Kind,
 			"text_bytes":        len(req.Text),
 			"entities":          len(res.Entities),
@@ -176,16 +189,24 @@ func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory
 		httputil.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	sessionID, err := memory_core.ResolveSessionID(req.SessionID)
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	start := time.Now()
-	res, err := memory_image.RememberImage(r.Context(), d, llm, req.UserID, req.Dataset, data, ref, opts...)
+	res, err := memory_image.RememberImage(r.Context(), d, llm, req.UserID, req.Dataset, data, ref,
+		append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID))...)
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{
-			"user_id": req.UserID,
-			"dataset": req.Dataset,
+			"user_id":    req.UserID,
+			"dataset":    req.Dataset,
+			"session_id": sessionID,
 		}).Error("remember image failed")
 		monitoring.EmitSystemEvent(r.Context(), "remember_image.failed", monitoring.Event{
 			"user_id":     req.UserID,
 			"dataset":     req.Dataset,
+			"session_id":  sessionID,
 			"image_bytes": len(data),
 			"duration_ms": time.Since(start).Milliseconds(),
 			"error":       err.Error(),
@@ -197,6 +218,7 @@ func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory
 		"user_id":           res.UserID,
 		"dataset":           res.Dataset,
 		"image_artifact_id": res.ImageArtifactID,
+		"session_id":        res.SessionID,
 		"theme":             res.Theme,
 		"text_blocks":       len(res.TextBlocks),
 		"duration_ms":       time.Since(start).Milliseconds(),
@@ -205,6 +227,7 @@ func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory
 		"user_id":           res.UserID,
 		"dataset":           res.Dataset,
 		"image_artifact_id": res.ImageArtifactID,
+		"session_id":        res.SessionID,
 		"extraction_id":     res.ExtractionID,
 		"media_type":        res.MediaType,
 		"image_bytes":       res.SizeBytes,

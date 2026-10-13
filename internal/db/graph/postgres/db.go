@@ -258,7 +258,7 @@ func DatasetCounts(ctx context.Context, d *sql.DB, dsID int64) (model.Counts, er
 // ListArtifacts returns the artifacts of the dataset by ID.
 func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.Artifact, error) {
 	rows, err := d.QueryContext(ctx, `
-		SELECT id, dataset_id, kind, text, valid_at, created_at
+		SELECT id, dataset_id, kind, text, COALESCE(session_id, ''), valid_at, created_at
 		FROM gb_artifacts
 		WHERE dataset_id = $1
 		ORDER BY id`, dsID)
@@ -270,7 +270,7 @@ func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.Artifact
 	for rows.Next() {
 		var m model.Artifact
 		var valid, created time.Time
-		if err := rows.Scan(&m.ID, &m.DatasetID, &m.Kind, &m.Text, &valid, &created); err != nil {
+		if err := rows.Scan(&m.ID, &m.DatasetID, &m.Kind, &m.Text, &m.SessionID, &valid, &created); err != nil {
 			return nil, err
 		}
 		m.ValidAt, m.CreatedAt = valid.UTC(), created.UTC()
@@ -318,6 +318,52 @@ func ListEntityArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.En
 	for rows.Next() {
 		var l model.EntityArtifact
 		if err := rows.Scan(&l.EntityID, &l.ArtifactID); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
+// ListEntitySessions returns the entity-to-session links of the dataset, by entity ID then session ID.
+func ListEntitySessions(ctx context.Context, d *sql.DB, dsID int64) ([]model.EntitySession, error) {
+	rows, err := d.QueryContext(ctx, `
+		SELECT es.entity_id, es.session_id
+		FROM gb_entity_sessions es
+		JOIN gb_entities e ON e.id = es.entity_id
+		WHERE e.dataset_id = $1
+		ORDER BY es.entity_id, es.session_id`, dsID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.EntitySession
+	for rows.Next() {
+		var l model.EntitySession
+		if err := rows.Scan(&l.EntityID, &l.SessionID); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
+// ListEdgeSessions returns the edge-to-session links of the dataset, by edge ID then session ID.
+func ListEdgeSessions(ctx context.Context, d *sql.DB, dsID int64) ([]model.EdgeSession, error) {
+	rows, err := d.QueryContext(ctx, `
+		SELECT es.edge_id, es.session_id
+		FROM gb_edge_sessions es
+		JOIN gb_edges e ON e.id = es.edge_id
+		WHERE e.dataset_id = $1
+		ORDER BY es.edge_id, es.session_id`, dsID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.EdgeSession
+	for rows.Next() {
+		var l model.EdgeSession
+		if err := rows.Scan(&l.EdgeID, &l.SessionID); err != nil {
 			return nil, err
 		}
 		out = append(out, l)
@@ -414,13 +460,13 @@ func Begin(ctx context.Context, d *sql.DB) (*Tx, error) {
 func (t *Tx) Commit() error   { return t.tx.Commit() }
 func (t *Tx) Rollback() error { return t.tx.Rollback() }
 
-func (t *Tx) InsertArtifact(ctx context.Context, dsID int64, kind, text string, validAt, createdAt time.Time) (int64, error) {
+func (t *Tx) InsertArtifact(ctx context.Context, dsID int64, kind, text, sessionID string, validAt, createdAt time.Time) (int64, error) {
 	var id int64
 	err := t.tx.QueryRowContext(ctx, `
-		INSERT INTO gb_artifacts (dataset_id, kind, text, valid_at, created_at)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO gb_artifacts (dataset_id, kind, text, session_id, valid_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id`,
-		dsID, kind, text, validAt.UTC(), createdAt.UTC()).Scan(&id)
+		dsID, kind, text, nullIfEmpty(sessionID), validAt.UTC(), createdAt.UTC()).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insert artifact: %w", err)
 	}
@@ -443,6 +489,26 @@ func (t *Tx) LinkEntity(ctx context.Context, entityID, artifactID int64) error {
 		VALUES ($1, $2)
 		ON CONFLICT (entity_id, artifact_id) DO NOTHING`, entityID, artifactID); err != nil {
 		return fmt.Errorf("link entity %d to artifact %d: %w", entityID, artifactID, err)
+	}
+	return nil
+}
+
+func (t *Tx) LinkEdgeSession(ctx context.Context, edgeID int64, sessionID string) error {
+	if _, err := t.tx.ExecContext(ctx, `
+		INSERT INTO gb_edge_sessions (edge_id, session_id)
+		VALUES ($1, $2)
+		ON CONFLICT (edge_id, session_id) DO NOTHING`, edgeID, sessionID); err != nil {
+		return fmt.Errorf("link edge %d to session %q: %w", edgeID, sessionID, err)
+	}
+	return nil
+}
+
+func (t *Tx) LinkEntitySession(ctx context.Context, entityID int64, sessionID string) error {
+	if _, err := t.tx.ExecContext(ctx, `
+		INSERT INTO gb_entity_sessions (entity_id, session_id)
+		VALUES ($1, $2)
+		ON CONFLICT (entity_id, session_id) DO NOTHING`, entityID, sessionID); err != nil {
+		return fmt.Errorf("link entity %d to session %q: %w", entityID, sessionID, err)
 	}
 	return nil
 }

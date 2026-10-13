@@ -5,6 +5,21 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.5.0] - 2026-10-14
+
+### Added
+- Optional `session_id` on `POST /v1/gb/remember` (text and image) and `POST /v1/gb/recall`: a string the caller chooses (at most 128 bytes, no control characters, else `400`) that labels one user/agent session. In Go it is the option `memory_core.WithSessionID`.
+- `remember` attaches the session to the artifact (`gb_artifacts.session_id`, and `gb_image_artifacts.session_id` for images) and echoes it as `session_id` in the response.
+- New tables `gb_entity_sessions` and `gb_edge_sessions` record which sessions each entity and each edge (fact) was discovered in. They are written for every entity and edge an artifact of a session mentions or states, including ones that already existed and were therefore not written again, so a session that only repeats known facts is still recorded. A call without a session adds no rows.
+- `recall` echoes `session_id`, and sets it as the `session_id` of its eval trajectory (previously always the trajectory's own ID; `remember` trajectories do the same), so the calls of one session can be grouped. It does not change retrieval or the answer, and nothing about the recall is stored. The session ID is also in the `remember.*` / `recall.*` monitoring events and log lines.
+- `docs/sessions.md`, and the session fields documented in `remember.md`, `recall.md`, `artifacts.md`, `images.md`, `evals.md` and the README.
+- Go: `graph.ListEntitySessions`, `graph.ListEdgeSessions`, `Artifact.SessionID`, `ImageArtifact.SessionID`, `atif.Builder.SetSessionID`.
+
+### Changed
+- DB schema: new `session_id` columns and the two link tables. There is no migration: existing databases must be recreated.
+- `graph.Tx.InsertArtifact` takes a `sessionID` argument; `Tx` gained `LinkEntitySession` and `LinkEdgeSession`.
+- `docs/not-included.md`: the session memory entry now says that the `session_id` label is included and only the per-session cache of turns is left out.
+
 ## [0.4.5] - 2026-10-14
 
 ### Added

@@ -33,6 +33,8 @@ type (
 	NewEdge            = model.NewEdge
 	EntityArtifact     = model.EntityArtifact
 	EdgeArtifact       = model.EdgeArtifact
+	EntitySession      = model.EntitySession
+	EdgeSession        = model.EdgeSession
 	Artifact           = model.Artifact
 	NewImage           = model.NewImage
 	NewImageExtraction = model.NewImageExtraction
@@ -299,6 +301,30 @@ func ListEdgeArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]EdgeArtifa
 		return sqlite.ListEdgeArtifacts(ctx, d, dsID)
 	case config.DBBackendPostgres:
 		return postgres.ListEdgeArtifacts(ctx, d, dsID)
+	}
+	return nil, unsupported()
+}
+
+// ListEntitySessions returns the entity-to-session links (which sessions each entity was discovered in, including
+// sessions in which it was a duplicate of a stored entity) of the dataset, by entity ID then session ID.
+func ListEntitySessions(ctx context.Context, d *sql.DB, dsID int64) ([]EntitySession, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListEntitySessions(ctx, d, dsID)
+	case config.DBBackendPostgres:
+		return postgres.ListEntitySessions(ctx, d, dsID)
+	}
+	return nil, unsupported()
+}
+
+// ListEdgeSessions returns the edge-to-session links (which sessions each edge, i.e. fact, was discovered in,
+// including sessions that restated it) of the dataset, by edge ID then session ID.
+func ListEdgeSessions(ctx context.Context, d *sql.DB, dsID int64) ([]EdgeSession, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListEdgeSessions(ctx, d, dsID)
+	case config.DBBackendPostgres:
+		return postgres.ListEdgeSessions(ctx, d, dsID)
 	}
 	return nil, unsupported()
 }

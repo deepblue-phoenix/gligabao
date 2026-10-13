@@ -33,7 +33,7 @@ An ontology describes the concepts of a domain and how they relate. `POST /v1/gb
 
 ## Remember
 
-`POST /v1/gb/remember` with `{"user_id": "u1", "text": "Alice works at Acme and lives in Paris."}` stores the text as an artifact and adds the facts it states to the graph, with the time they became true. An optional `kind` (`knowledge`, the default, or `episode`) says what sort of artifact it is. An optional `reference_time` (RFC 3339, default now) says when the text was written, so relative dates in it can be resolved.
+`POST /v1/gb/remember` with `{"user_id": "u1", "text": "Alice works at Acme and lives in Paris."}` stores the text as an artifact and adds the facts it states to the graph, with the time they became true. An optional `kind` (`knowledge`, the default, or `episode`) says what sort of artifact it is. An optional `reference_time` (RFC 3339, default now) says when the text was written, so relative dates in it can be resolved. An optional `session_id` (any string you choose) ties the artifact, and the entities and facts extracted from it, to the user/agent session it came from (see [Sessions](#sessions)).
 
 1. **Extract**: the text is sent to an LLM (Anthropic, default `claude-haiku-5-5`), which returns JSON listing entities (`name`, `type`, `description`) and edges (`source`, `target`, `relation`, `description`, `valid_at`, `invalid_at`).
 2. **Normalize**: entity types are lowercased (empty becomes `other`), and relations are lowercased with spaces replaced by `_`.
@@ -49,6 +49,10 @@ Deduplication:
 - Sending the same text twice adds a second artifact but no duplicate entities or edges.
 
 The response returns the `artifact_id` and `kind`, the entities, the `edges` (with their temporal fields) and `invalidated_edges`. If any LLM call fails or its output is unusable, the request returns 502 and nothing is stored. Details: [docs/remember.md](docs/remember.md), [docs/artifacts.md](docs/artifacts.md).
+
+## Sessions
+
+`remember` and `recall` take an optional `session_id`, a label for one user/agent run. `remember` stores it on the artifact (`gb_artifacts.session_id`) and records it against every entity and edge the artifact yields in `gb_entity_sessions` and `gb_edge_sessions`, **also when the entity or fact already existed** and no new row was written for it, so the sessions an entity or fact was discovered in are all kept. `recall` echoes it and puts it in its trajectory and monitoring event, so a recall can be connected to the artifacts of its session; it does not change the answer. A session has no state of its own (no cache, no expiry). Details: [docs/sessions.md](docs/sessions.md); what a Cognee-style session memory would add, and why it is not included: [docs/not-included.md](docs/not-included.md).
 
 ## Temporal facts
 

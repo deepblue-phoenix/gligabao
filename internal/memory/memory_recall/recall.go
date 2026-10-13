@@ -45,8 +45,12 @@ type Evidence struct {
 
 // RecallResult is the answer to a query together with its supporting evidence.
 type RecallResult struct {
-	Answer   string   `json:"answer"`
-	Evidence Evidence `json:"evidence"`
+	// SessionID is the session the call was made in (WithSessionID); omitted if there was none. It only labels the
+	// call, so that a recall can be connected to the artifacts remembered in the same session: it does not change
+	// what is retrieved or answered.
+	SessionID string   `json:"session_id,omitempty"`
+	Answer    string   `json:"answer"`
+	Evidence  Evidence `json:"evidence"`
 	// TrajectoryID and Trajectory are the ATIF trajectory of this call (also stored in TrajectoryDir); only set when
 	// the call was made with WithEval.
 	TrajectoryID string           `json:"trajectory_id,omitempty"`
@@ -58,6 +62,10 @@ type RecallResult struct {
 // Recall answers query using the knowledge graph: relevant entities and their edges are retrieved,
 // the LLM answers from that context, and the entities/edges it used are returned as evidence. Only the named
 // dataset of userID (empty means DefaultDataset) is searched; ErrDatasetNotFound is returned if it does not exist.
+//
+// With WithSessionID the result carries that session ID, and so does the call's trajectory (as its session_id,
+// the same one the trajectories of the session's Remember calls have). The session does not influence retrieval or
+// the answer: Recall is the same function of the graph and the query with or without it.
 //
 // Only with WithEval is the call recorded as an ATIF trajectory (stored as JSON in TrajectoryDir and returned in
 // RecallResult.Trajectory, with its ID in RecallResult.TrajectoryID).
@@ -75,14 +83,20 @@ func Recall(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset
 		return nil, err
 	}
 
-	tr := memory_core.StartTrace(CallRecall, memory_core.NewCallOptions(opts))
+	co := memory_core.NewCallOptions(opts)
+	sessionID, err := memory_core.ResolveSessionID(co.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	co.SessionID = sessionID
+	tr := memory_core.StartTrace(CallRecall, co)
 	defer func() {
 		if traj := tr.Finish(err); res != nil && traj != nil {
 			res.TrajectoryID, res.Trajectory = traj.TrajectoryID, traj
 		}
 	}()
 	tr.User(query)
-	tr.Input(map[string]any{"user_id": userID, "dataset": dataset})
+	tr.Input(map[string]any{"user_id": userID, "dataset": dataset, "session_id": sessionID})
 
 	rc, err := assembleContext(ctx, d, dsID, query)
 	if err != nil {
@@ -94,8 +108,9 @@ func Recall(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset
 		const none = "I don't have any information in memory to answer that."
 		tr.Agent(none)
 		return &RecallResult{
-			Answer:   none,
-			Evidence: Evidence{Entities: []EvidenceEntity{}, Edges: []EvidenceEdge{}},
+			SessionID: sessionID,
+			Answer:    none,
+			Evidence:  Evidence{Entities: []EvidenceEntity{}, Edges: []EvidenceEdge{}},
 		}, nil
 	}
 
@@ -103,7 +118,7 @@ func Recall(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset
 	if err != nil {
 		return nil, err
 	}
-	return &RecallResult{Answer: out.Answer, Evidence: getEvidence(rc.Graph, out)}, nil
+	return &RecallResult{SessionID: sessionID, Answer: out.Answer, Evidence: getEvidence(rc.Graph, out)}, nil
 }
 
 //---------------------------------------------------------------------------------------------

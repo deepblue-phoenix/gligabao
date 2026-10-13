@@ -8,12 +8,13 @@ Answers a question from the knowledge graph built by [`remember`](remember.md). 
 POST /v1/gb/recall
 content-type: application/json
 
-{"user_id": "u1", "query": "Where does Alice work?"}
+{"user_id": "u1", "query": "Where does Alice work?", "session_id": "chat-42"}
 ```
 
 - `query` (required): non-empty string. The request body is limited to 64 KiB.
 - `user_id` (required): the user who owns the dataset. `400` if missing.
 - `dataset` (optional): name of the [dataset](datasets.md) to search. Defaults to `main`. Only that user's dataset graph is used. `404` if it does not exist.
+- `session_id` (optional): the user/agent session the call belongs to, a string you choose (at most 128 bytes, no control characters; `400` otherwise). Use the same one as in the `remember` calls of that session, to connect the recall to the artifacts (and their entities and facts) of the same session, see [sessions.md](sessions.md). It is echoed in the response and recorded in the call's trajectory and monitoring event. It does **not** change retrieval or the answer.
 
 ## Response
 
@@ -21,6 +22,7 @@ content-type: application/json
 
 ```json
 {
+  "session_id": "chat-42",
   "answer": "Alice works at Acme.",
   "evidence": {
     "entities": [
@@ -35,6 +37,7 @@ content-type: application/json
 }
 ```
 
+- `session_id`: the session of the request; omitted if it had none.
 - `answer`: the LLM's reply, based only on the retrieved graph context. If the graph lacks the information, the answer says so.
 - `evidence.entities`: entities used for the answer. `id` is the `gb_entities` row ID.
 - `evidence.edges`: edges used for the answer. `id` is the `gb_edges` row ID, `source_id`/`target_id` point at entities, and `artifact_id` (omitted if unset) is the `gb_artifacts` row the edge was inferred from (its artifact). This links each fact back to the original text. `valid_at`, `invalid_at`, `created_at` and `expired_at` (the last two omitted when null) are the fact's bi-temporal fields, see [temporal.md](temporal.md).
@@ -44,7 +47,7 @@ Errors are returned as `{"error": "..."}`:
 
 | Status | Meaning |
 | ------ | ------- |
-| 400 | Invalid JSON body, or `query` is empty |
+| 400 | Invalid JSON body, `query` is empty, or `session_id` is too long or has control characters |
 | 502 | The LLM call failed, or its output could not be parsed, was empty or was truncated |
 | 503 | LLM not configured (`ANTHROPIC_API_KEY` is not set) |
 

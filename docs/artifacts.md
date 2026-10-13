@@ -29,6 +29,7 @@ Table `gb_artifacts`:
 | `dataset_id` | The [dataset](datasets.md) it belongs to. Artifacts are never shared between datasets. |
 | `kind` | `knowledge` or `episode` |
 | `text` | The raw input, unchanged |
+| `session_id` | The [session](sessions.md) that remembered it: the request's `session_id`, NULL if it had none |
 | `valid_at` | Event time: when the text was written or observed. This is the request's `reference_time` (default: now). Relative dates in the text are resolved against it, and facts without a date of their own inherit it. |
 | `created_at` | System time: when it was ingested |
 
@@ -60,15 +61,19 @@ Example. "Alice works at Acme" is remembered twice as artifacts 1 and 2:
 | `gb_edge_artifacts` | (edge, 1), (edge, 2) |
 | `gb_entity_artifacts` | (Alice, 1), (Alice, 2), (Acme, 1), (Acme, 2) |
 
+## Sessions
+
+An artifact carries the `session_id` of the `remember` call that created it, which connects the artifacts of one user/agent run (and, through `recall`'s `session_id`, the recalls). The session is also recorded against the entities and edges the artifact yields, in `gb_entity_sessions` and `gb_edge_sessions`, including entities and facts that already existed, so a session that only repeats known facts still leaves a trace. Image artifacts carry it too (`gb_image_artifacts.session_id`). See [sessions.md](sessions.md).
+
 ## Where artifacts show up
 
-- `POST /v1/gb/remember` returns the new `artifact_id`, its `kind`, `valid_at` and `created_at` ([remember.md](remember.md)).
+- `POST /v1/gb/remember` returns the new `artifact_id`, its `kind`, `session_id` (if any), `valid_at` and `created_at` ([remember.md](remember.md)).
 - Edges in the [graph export](graph.md) and in the recall `evidence` ([recall.md](recall.md)) carry `artifact_id` (the creating artifact).
 
 ## Limitations
 
 - There is no endpoint to read, list or delete artifacts yet. The raw text can only be read from the database.
 - `recall` does not use artifact text: it answers from the graph only.
-- The `gb_edge_artifacts` and `gb_entity_artifacts` links are stored but not exposed by the API yet.
+- The `gb_edge_artifacts` and `gb_entity_artifacts` links, and the session links (`gb_entity_sessions`, `gb_edge_sessions`), are stored but not exposed by the API yet.
 - Artifacts are not embedded: `remember` embeds the entities and edges extracted from them (see [vectors.md](vectors.md)), not the artifact text.
 - A text that is too long for one extraction call fails the whole request (`502`); artifacts are not chunked.

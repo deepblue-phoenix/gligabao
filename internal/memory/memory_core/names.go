@@ -18,6 +18,7 @@ var (
 	ErrInvalidDataset  = errors.New("invalid dataset")
 	ErrDatasetNotFound = errors.New("dataset not found")
 	ErrInvalidUser     = errors.New("invalid user_id")
+	ErrInvalidSession  = errors.New("invalid session_id")
 )
 
 var datasetNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
@@ -40,6 +41,24 @@ func ResolveUserID(userID string) (string, error) {
 		}
 	}
 	return userID, nil
+}
+
+// MaxSessionIDLen is the maximum length of a session_id in bytes.
+const MaxSessionIDLen = 128
+
+// ResolveSessionID trims sessionID and returns ErrInvalidSession if it is too long or has control characters. An
+// empty one is valid and means "no session".
+func ResolveSessionID(sessionID string) (string, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if len(sessionID) > MaxSessionIDLen {
+		return "", fmt.Errorf("%w: at most %d bytes", ErrInvalidSession, MaxSessionIDLen)
+	}
+	for _, r := range sessionID {
+		if r < 0x20 || r == 0x7f {
+			return "", fmt.Errorf("%w: control characters are not allowed", ErrInvalidSession)
+		}
+	}
+	return sessionID, nil
 }
 
 // ResolveDatasetName trims name and applies the default for an empty one. It returns ErrInvalidDataset if the

@@ -105,7 +105,7 @@ type Builder struct {
 	t   Trajectory
 }
 
-// NewBuilder starts a trajectory with a fresh trajectory ID (also used as the session ID).
+// NewBuilder starts a trajectory with a fresh trajectory ID (also used as the session ID until SetSessionID).
 func NewBuilder(agent Agent) *Builder {
 	id := NewID()
 	return &Builder{
@@ -122,6 +122,14 @@ func NewBuilder(agent Agent) *Builder {
 
 // ID returns the trajectory ID.
 func (b *Builder) ID() string { return b.t.TrajectoryID }
+
+// SetSessionID replaces the session ID (by default the trajectory ID) with a caller's, so that the trajectories of
+// one user/agent session share it.
+func (b *Builder) SetSessionID(id string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.t.SessionID = id
+}
 
 // SetNotes sets free-form notes on the trajectory (e.g. the error that ended the run).
 func (b *Builder) SetNotes(s string) {

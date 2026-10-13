@@ -113,3 +113,56 @@ func TestRecallNoLLM(t *testing.T) {
 		t.Errorf("status = %d", rec.Code)
 	}
 }
+
+func TestRecallSession(t *testing.T) { dbtest.Run(t, testRecallSession) }
+
+func testRecallSession(t *testing.T, d *sql.DB) {
+	ex := `{"entities":[{"name":"Alice","type":"person"},{"name":"Acme","type":"organization"}],"edges":[{"source":"Alice","target":"Acme","relation":"works_at"}]}`
+	llm := &recordingLLM{outs: []string{ex, `{"answer":"Acme.","entities":[1],"edges":[1]}`, `{"answer":"Acme.","entities":[1],"edges":[1]}`}}
+	if _, err := memory_remember.Remember(context.Background(), d, llm, "u1", "", "", "x", time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	prev := memory_core.TrajectoryDir
+	memory_core.TrajectoryDir = t.TempDir()
+	t.Cleanup(func() { memory_core.TrajectoryDir = prev })
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/gb/recall", Handler(d, llm))
+	mux.HandleFunc("POST /v1/gb/eval/recall", EvalHandler(d, llm))
+	post := func(path, body string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest("POST", path, strings.NewReader(body)))
+		return rec
+	}
+
+	// The session is echoed and does not change the answer or the evidence.
+	var withSession, without memory_recall.RecallResult
+	rec := post("/v1/gb/recall", `{"user_id":"u1","query":"Where does Alice work?","session_id":" s1 "}`)
+	if rec.Code != 200 {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body)
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &withSession); err != nil {
+		t.Fatal(err)
+	}
+	rec = post("/v1/gb/recall", `{"user_id":"u1","query":"Where does Alice work?"}`)
+	if err := json.Unmarshal(rec.Body.Bytes(), &without); err != nil {
+		t.Fatal(err)
+	}
+	if withSession.SessionID != "s1" || without.SessionID != "" || strings.Contains(rec.Body.String(), "session_id") {
+		t.Errorf("session IDs: %q, %q; body without: %s", withSession.SessionID, without.SessionID, rec.Body)
+	}
+	if withSession.Answer != without.Answer || len(withSession.Evidence.Edges) != len(without.Evidence.Edges) {
+		t.Errorf("the session changed the result: %+v vs %+v", withSession, without)
+	}
+
+	// With eval, the trajectory carries the session ID.
+	llm.outs = append(llm.outs, `{"answer":"Acme.","entities":[1],"edges":[1]}`)
+	rec = post("/v1/gb/eval/recall", `{"user_id":"u1","query":"Where does Alice work?","session_id":"s1"}`)
+	var ev memory_recall.RecallResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &ev); err != nil || ev.Trajectory == nil || ev.Trajectory.SessionID != "s1" || ev.Trajectory.TrajectoryID == "s1" {
+		t.Errorf("eval trajectory: %v %+v", err, ev.Trajectory)
+	}
+
+	if rec := post("/v1/gb/recall", `{"user_id":"u1","query":"x","session_id":"a\tb"}`); rec.Code != 400 {
+		t.Errorf("invalid session status = %d, want 400: %s", rec.Code, rec.Body)
+	}
+}

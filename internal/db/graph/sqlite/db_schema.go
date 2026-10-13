@@ -18,11 +18,15 @@ const schema = `
 --   kind       'knowledge' (default: not strictly episodic) or 'episode' (a Graphiti-style episode, anchored in time)
 --   valid_at   (event time): when the text was written/observed; relative dates in it resolve against it
 --   created_at (system time): when it was ingested
+--   session_id the user/agent session that remembered it (a caller-chosen string); NULL if none was given. It is
+--              what links artifacts from the same session; see gb_entity_sessions and gb_edge_sessions for the
+--              entities and edges.
 CREATE TABLE IF NOT EXISTS gb_artifacts (
 	id         INTEGER PRIMARY KEY AUTOINCREMENT,
 	dataset_id INTEGER NOT NULL REFERENCES gb_datasets(id),
 	kind       TEXT NOT NULL DEFAULT 'knowledge',
 	text       TEXT NOT NULL,
+	session_id TEXT,
 	valid_at   DATETIME NOT NULL,
 	created_at DATETIME NOT NULL
 );
@@ -94,6 +98,28 @@ CREATE TABLE IF NOT EXISTS gb_entity_artifacts (
 	PRIMARY KEY (entity_id, artifact_id)
 );
 
+-- Which sessions an entity was discovered in (many-to-many).
+--
+-- gb_entity_artifacts plus gb_artifacts.session_id would give the same answer only while the artifact rows exist,
+-- and only through a join. This table records the session directly, whenever an artifact of a session mentions the
+-- entity: when the entity is created, and also when it already existed and the mention was therefore a duplicate that
+-- writes no new entity row. Without it, the second session that mentions "Alice" would leave no trace of the fact
+-- that it saw her. session_id is the caller's string (not a reference: sessions have no table of their own). The
+-- link is idempotent (primary key); deleting the entity removes its links. Artifacts without a session add no row.
+CREATE TABLE IF NOT EXISTS gb_entity_sessions (
+	entity_id  INTEGER NOT NULL REFERENCES gb_entities(id) ON DELETE CASCADE,
+	session_id TEXT NOT NULL,
+	PRIMARY KEY (entity_id, session_id)
+);
+
+-- Which sessions an edge (a fact) was discovered in (many-to-many): the session of the artifact that created it and
+-- of every later artifact whose duplicate of the fact was merged into it. The edge counterpart of gb_entity_sessions.
+CREATE TABLE IF NOT EXISTS gb_edge_sessions (
+	edge_id    INTEGER NOT NULL REFERENCES gb_edges(id) ON DELETE CASCADE,
+	session_id TEXT NOT NULL,
+	PRIMARY KEY (edge_id, session_id)
+);
+
 -- The image pipeline (see internal/memory/memory_image/image.go), kept apart from gb_artifacts and the graph.
 --
 -- An image artifact is an image ingested to be remembered. The table only tracks it: its media type, SHA-256 and
@@ -103,6 +129,7 @@ CREATE TABLE IF NOT EXISTS gb_entity_artifacts (
 CREATE TABLE IF NOT EXISTS gb_image_artifacts (
 	id         INTEGER PRIMARY KEY AUTOINCREMENT,
 	dataset_id INTEGER NOT NULL REFERENCES gb_datasets(id),
+	session_id TEXT, -- the session that remembered it; NULL if none (see gb_artifacts)
 	media_type TEXT NOT NULL,
 	sha256     TEXT NOT NULL,
 	size_bytes INTEGER NOT NULL,
@@ -181,7 +208,11 @@ CREATE INDEX IF NOT EXISTS idx_gb_edges_source ON gb_edges(source_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_target ON gb_edges(target_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_artifact ON gb_edges(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edge_artifacts_artifact ON gb_edge_artifacts(artifact_id);
-CREATE INDEX IF NOT EXISTS idx_gb_entity_artifacts_artifact ON gb_entity_artifacts(artifact_id);`
+CREATE INDEX IF NOT EXISTS idx_gb_entity_artifacts_artifact ON gb_entity_artifacts(artifact_id);
+CREATE INDEX IF NOT EXISTS idx_gb_artifacts_session ON gb_artifacts(dataset_id, session_id);
+CREATE INDEX IF NOT EXISTS idx_gb_image_artifacts_session ON gb_image_artifacts(dataset_id, session_id);
+CREATE INDEX IF NOT EXISTS idx_gb_entity_sessions_session ON gb_entity_sessions(session_id);
+CREATE INDEX IF NOT EXISTS idx_gb_edge_sessions_session ON gb_edge_sessions(session_id);`
 
 // initSchema applies the graph schema.
 func initSchema(d *sql.DB) error {

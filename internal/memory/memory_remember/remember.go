@@ -161,12 +161,14 @@ func ResolveKind(kind string) (string, error) {
 
 // Result summarizes what was stored by Remember.
 type Result struct {
-	UserID     string    `json:"user_id"`
-	Dataset    string    `json:"dataset"`
-	Kind       string    `json:"kind"` // artifact kind: "knowledge" or "episode"
-	ArtifactID int64     `json:"artifact_id"`
-	ValidAt    time.Time `json:"valid_at"`   // event time of the artifact
-	CreatedAt  time.Time `json:"created_at"` // ingestion time of the artifact
+	UserID     string `json:"user_id"`
+	Dataset    string `json:"dataset"`
+	Kind       string `json:"kind"` // artifact kind: "knowledge" or "episode"
+	ArtifactID int64  `json:"artifact_id"`
+	// SessionID is the session the artifact was attached to (WithSessionID); omitted if there was none.
+	SessionID string    `json:"session_id,omitempty"`
+	ValidAt   time.Time `json:"valid_at"`   // event time of the artifact
+	CreatedAt time.Time `json:"created_at"` // ingestion time of the artifact
 
 	//--------------------------------------
 	Entities         []Entity `json:"entities"`
@@ -192,6 +194,8 @@ type Result struct {
 // means DefaultDataset; it is created if missing). ref is the
 // time the text was written/observed; the zero value means the current time. If any LLM step fails nothing is
 // stored.
+//
+// With WithSessionID the artifact is attached to that session, and so is every entity and edge it yields (see Store).
 //
 // Only with WithEval is the call recorded as an ATIF trajectory (stored as JSON in TrajectoryDir and returned in
 // Result.Trajectory, with its ID in Result.TrajectoryID).
@@ -224,7 +228,7 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	}()
 	llm = tr.Wrap(llm)
 	tr.User(text)
-	tr.Input(map[string]any{"user_id": userID, "dataset": dataset, "kind": kind, "reference_time": relational.FormatTime(ref)})
+	tr.Input(map[string]any{"user_id": userID, "dataset": dataset, "kind": kind, "reference_time": relational.FormatTime(ref), "session_id": co.SessionID})
 
 	//--------------------------------------
 	// EXTRACT
@@ -302,6 +306,11 @@ func candidateFacts(edges []Edge, via map[int64]string) []map[string]any {
 // written according to plan (see EdgePlan); now is the system time stamped on them. Edges naming an unlisted
 // entity create it with type "other".
 //
+// With WithSessionID the artifact carries the session ID, and the session is recorded against every entity the
+// artifact mentions and every edge it states, in gb_entity_sessions and gb_edge_sessions. That includes the entities
+// and edges that already existed (duplicates, for which nothing else is written), so the sessions an entity or fact
+// was discovered in are all kept. An edge that this artifact merely contradicted is not linked.
+//
 // With WithVectors, every entity this artifact mentions through the extraction (created or already stored) and
 // every edge it states (new, or the stored one it duplicates) is also embedded: entities from their stored name,
 // type and description into the dataset's entity index, edges from their description into its edge index (see
@@ -315,6 +324,10 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		return nil, err
 	}
 	dataset, err = memory_core.ResolveDatasetName(dataset)
+	if err != nil {
+		return nil, err
+	}
+	sessionID, err := memory_core.ResolveSessionID(co.SessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +357,7 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 	}
 	defer tx.Rollback()
 
-	artID, err := tx.InsertArtifact(ctx, dsID, kind, text, ref, now)
+	artID, err := tx.InsertArtifact(ctx, dsID, kind, text, sessionID, ref, now)
 	if err != nil {
 		return nil, err
 	}
@@ -354,6 +367,7 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		Dataset:          dataset,
 		Kind:             kind,
 		ArtifactID:       artID,
+		SessionID:        sessionID,
 		ValidAt:          ref.UTC(),
 		CreatedAt:        now.UTC(),
 		Entities:         []Entity{},
@@ -367,6 +381,16 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 
 	// Every entity this artifact touches is linked to it, whether it was created now or already existed: entities
 	// are shared across artifacts (deduplicated per dataset), so the link, not the entity row, records provenance.
+	// The same goes for the artifact's session.
+	linkEntity := func(id int64) error {
+		if err := tx.LinkEntity(ctx, id, artID); err != nil {
+			return err
+		}
+		if sessionID == "" {
+			return nil
+		}
+		return tx.LinkEntitySession(ctx, id, sessionID)
+	}
 	upsertEntity := func(e Entity) (int64, error) {
 		id, err := tx.UpsertEntity(ctx, dsID, e, memory_core.Key(e.Name))
 		if err != nil {
@@ -376,7 +400,7 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 			seenID[id] = true
 			embedIDs = append(embedIDs, id)
 		}
-		return id, tx.LinkEntity(ctx, id, artID)
+		return id, linkEntity(id)
 	}
 
 	for _, e := range ex.Entities {
@@ -412,7 +436,7 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 			}
 		} else if err == nil {
 			// An edge names an already stored entity that this extraction did not list: it is still mentioned here.
-			err = tx.LinkEntity(ctx, id, artID)
+			err = linkEntity(id)
 		}
 		if err != nil {
 			return 0, err
@@ -420,7 +444,7 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		ids[memory_core.Key(name)] = id
 		return id, nil
 	}
-	out.Edges, out.InvalidatedEdges, err = storeEdges(ctx, tx, dsID, artID, ref, now, ex.Edges, plan, entityID)
+	out.Edges, out.InvalidatedEdges, err = storeEdges(ctx, tx, dsID, artID, sessionID, ref, now, ex.Edges, plan, entityID)
 	if err != nil {
 		return nil, err
 	}

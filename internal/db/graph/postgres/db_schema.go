@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS gb_artifacts (
 	dataset_id BIGINT NOT NULL REFERENCES gb_datasets(id),
 	kind       TEXT NOT NULL DEFAULT 'knowledge',
 	text       TEXT NOT NULL,
+	session_id TEXT, -- the session that remembered it; NULL if none (see sqlite/db_schema.go)
 	valid_at   TIMESTAMPTZ NOT NULL,
 	created_at TIMESTAMPTZ NOT NULL
 );
@@ -67,10 +68,25 @@ CREATE TABLE IF NOT EXISTS gb_entity_artifacts (
 	PRIMARY KEY (entity_id, artifact_id)
 );
 
+-- Which sessions an entity / an edge was discovered in, many-to-many (see sqlite/db_schema.go): recorded for every
+-- artifact of a session that mentions the entity or states the fact, including duplicates of stored ones.
+CREATE TABLE IF NOT EXISTS gb_entity_sessions (
+	entity_id  BIGINT NOT NULL REFERENCES gb_entities(id) ON DELETE CASCADE,
+	session_id TEXT NOT NULL,
+	PRIMARY KEY (entity_id, session_id)
+);
+
+CREATE TABLE IF NOT EXISTS gb_edge_sessions (
+	edge_id    BIGINT NOT NULL REFERENCES gb_edges(id) ON DELETE CASCADE,
+	session_id TEXT NOT NULL,
+	PRIMARY KEY (edge_id, session_id)
+);
+
 -- The image pipeline (see sqlite/db_schema.go for what the columns mean).
 CREATE TABLE IF NOT EXISTS gb_image_artifacts (
 	id         BIGSERIAL PRIMARY KEY,
 	dataset_id BIGINT NOT NULL REFERENCES gb_datasets(id),
+	session_id TEXT, -- the session that remembered it; NULL if none
 	media_type TEXT NOT NULL,
 	sha256     TEXT NOT NULL,
 	size_bytes BIGINT NOT NULL,
@@ -137,7 +153,11 @@ CREATE INDEX IF NOT EXISTS idx_gb_edges_source ON gb_edges(source_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_target ON gb_edges(target_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_artifact ON gb_edges(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edge_artifacts_artifact ON gb_edge_artifacts(artifact_id);
-CREATE INDEX IF NOT EXISTS idx_gb_entity_artifacts_artifact ON gb_entity_artifacts(artifact_id);`
+CREATE INDEX IF NOT EXISTS idx_gb_entity_artifacts_artifact ON gb_entity_artifacts(artifact_id);
+CREATE INDEX IF NOT EXISTS idx_gb_artifacts_session ON gb_artifacts(dataset_id, session_id);
+CREATE INDEX IF NOT EXISTS idx_gb_image_artifacts_session ON gb_image_artifacts(dataset_id, session_id);
+CREATE INDEX IF NOT EXISTS idx_gb_entity_sessions_session ON gb_entity_sessions(session_id);
+CREATE INDEX IF NOT EXISTS idx_gb_edge_sessions_session ON gb_edge_sessions(session_id);`
 
 // initSchema applies the graph schema. Concurrent starters are serialized with an advisory lock, because
 // CREATE ... IF NOT EXISTS can still race in PostgreSQL.

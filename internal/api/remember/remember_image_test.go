@@ -268,3 +268,52 @@ func TestRememberImageEval(t *testing.T) {
 		t.Errorf("the trajectory should describe the image, not embed it: %s", b)
 	}
 }
+
+func TestRememberImageSession(t *testing.T) { dbtest.Run(t, testRememberImageSession) }
+
+func testRememberImageSession(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	imgDir := filepath.Join(t.TempDir(), "images")
+	b64 := base64.StdEncoding.EncodeToString(pngBytes(t))
+	llm := llmFunc(func(ai.Request) (*ai.Response, error) {
+		return &ai.Response{Text: imageJSON, StopReason: "end_turn", Model: "claude-haiku-5-5"}, nil
+	})
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm, memory_image.WithImageDir(imgDir)))
+	post := func(body string) memory_image.ImageResult {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
+		if rec.Code != 200 {
+			t.Fatalf("status %d: %s", rec.Code, rec.Body)
+		}
+		var res memory_image.ImageResult
+		if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+
+	first := post(`{"user_id":"u1","dataset":"imgs","image":"` + b64 + `","session_id":"sess-a"}`)
+	if first.SessionID != "sess-a" || first.Cached {
+		t.Errorf("first: session %q, cached %v", first.SessionID, first.Cached)
+	}
+	// The same image from another session is the cached one, which keeps the session that stored it.
+	again := post(`{"user_id":"u1","dataset":"imgs","image":"` + b64 + `","session_id":"sess-b"}`)
+	if !again.Cached || again.ImageArtifactID != first.ImageArtifactID || again.SessionID != "sess-a" {
+		t.Errorf("repeat: %+v", again)
+	}
+	dsID, err := relational.DatasetID(ctx, d, "u1", "imgs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if arts, err := graph.ListImageArtifacts(ctx, d, dsID); err != nil || len(arts) != 1 || arts[0].SessionID != "sess-a" {
+		t.Errorf("image artifacts: %+v, %v", arts, err)
+	}
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"user_id":"u1","dataset":"imgs","image":"`+b64+`","session_id":"a\u0000b"}`)))
+	if rec.Code != 400 {
+		t.Errorf("invalid session status = %d, want 400: %s", rec.Code, rec.Body)
+	}
+}

@@ -143,7 +143,7 @@ func testDatasetLifecycle(t *testing.T, d *sql.DB) {
 	tx, err := graph.Begin(ctx, d)
 	must(err)
 	defer tx.Rollback()
-	artID, err := tx.InsertArtifact(ctx, id, graph.ArtifactEpisode, "Alice works at Acme.", now, now)
+	artID, err := tx.InsertArtifact(ctx, id, graph.ArtifactEpisode, "Alice works at Acme.", "", now, now)
 	must(err)
 	alice, err := tx.UpsertEntity(ctx, id, graph.Entity{Name: "Alice", Type: "person"}, "alice")
 	must(err)

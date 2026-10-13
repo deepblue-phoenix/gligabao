@@ -92,6 +92,7 @@ type Artifact struct {
 	DatasetID int64
 	Kind      string // ArtifactEpisode or ArtifactKnowledge
 	Text      string
+	SessionID string // the user/agent session that remembered it; "" if none
 	ValidAt   time.Time
 	CreatedAt time.Time
 }
@@ -105,6 +106,20 @@ type EntityArtifact struct {
 // stated the same fact again.
 type EdgeArtifact struct {
 	EdgeID, ArtifactID int64
+}
+
+// EntitySession says that an entity was inferred from (mentioned in) an artifact of a session, whether or not that
+// artifact created the entity.
+type EntitySession struct {
+	EntityID  int64
+	SessionID string
+}
+
+// EdgeSession says that an edge (a fact) was inferred from an artifact of a session: the one that created it, or one
+// that stated the same fact again.
+type EdgeSession struct {
+	EdgeID    int64
+	SessionID string
 }
 
 // Counts is the number of rows of each kind a dataset holds.
@@ -152,8 +167,9 @@ type Tx interface {
 	// Rollback is safe to call after Commit.
 	Rollback() error
 
-	// InsertArtifact stores an artifact of the given kind (ArtifactEpisode or ArtifactKnowledge).
-	InsertArtifact(ctx context.Context, dsID int64, kind, text string, validAt, createdAt time.Time) (int64, error)
+	// InsertArtifact stores an artifact of the given kind (ArtifactEpisode or ArtifactKnowledge), attached to the
+	// session sessionID ("" for none).
+	InsertArtifact(ctx context.Context, dsID int64, kind, text, sessionID string, validAt, createdAt time.Time) (int64, error)
 	// UpsertEntity inserts the entity, or updates the one with the same (dataset, nameKey, type): a non-empty
 	// description replaces the stored one (and e.ModelID the stored model_id, which follows the description; an empty
 	// stored model_id is always filled). It returns the entity ID.
@@ -166,6 +182,15 @@ type Tx interface {
 	// that created the edge and for every later artifact that states the same fact (a duplicate merged into the
 	// stored edge), see the gb_edge_artifacts schema comment.
 	LinkEdge(ctx context.Context, edgeID, artifactID int64) error
+	// LinkEntitySession records that the entity was inferred from an artifact of the session. It is idempotent. Call
+	// it for every entity an artifact of the session mentions, whether the entity was just created or already
+	// existed: this is how the sessions an entity was discovered in are kept even when the entity is a duplicate
+	// that is not written again (see the gb_entity_sessions schema comment).
+	LinkEntitySession(ctx context.Context, entityID int64, sessionID string) error
+	// LinkEdgeSession records that the edge was inferred from an artifact of the session. It is idempotent. Call it
+	// for the session of the artifact that created the edge and of every later artifact that states the same fact
+	// (a duplicate merged into the stored edge), see the gb_edge_sessions schema comment.
+	LinkEdgeSession(ctx context.Context, edgeID int64, sessionID string) error
 	// FindEntityID returns the oldest entity of the dataset with the given nameKey, of any type.
 	FindEntityID(ctx context.Context, dsID int64, nameKey string) (int64, error)
 	// GetEntity reads one entity (its stored state), inside the dataset only. It returns ErrNotFound if there is none.

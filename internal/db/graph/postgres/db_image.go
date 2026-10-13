@@ -18,10 +18,10 @@ func InsertImage(ctx context.Context, d *sql.DB, img model.NewImage) (artifactID
 	defer tx.Rollback()
 
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO gb_image_artifacts (dataset_id, media_type, sha256, size_bytes, path, valid_at, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO gb_image_artifacts (dataset_id, session_id, media_type, sha256, size_bytes, path, valid_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id`,
-		img.DatasetID, img.MediaType, img.SHA256, img.SizeBytes, img.Path, img.ValidAt.UTC(), img.CreatedAt.UTC()).Scan(&artifactID)
+		img.DatasetID, nullIfEmpty(img.SessionID), img.MediaType, img.SHA256, img.SizeBytes, img.Path, img.ValidAt.UTC(), img.CreatedAt.UTC()).Scan(&artifactID)
 	if err != nil {
 		return 0, 0, fmt.Errorf("insert image artifact: %w", err)
 	}
@@ -50,11 +50,11 @@ func InsertImage(ctx context.Context, d *sql.DB, img model.NewImage) (artifactID
 	return artifactID, extractionID, nil
 }
 
-const imageArtifactColumns = `id, dataset_id, media_type, sha256, size_bytes, path, valid_at, created_at`
+const imageArtifactColumns = `id, dataset_id, COALESCE(session_id, ''), media_type, sha256, size_bytes, path, valid_at, created_at`
 
 func scanImageArtifact(r scanner) (model.ImageArtifact, error) {
 	var a model.ImageArtifact
-	if err := r.Scan(&a.ID, &a.DatasetID, &a.MediaType, &a.SHA256, &a.SizeBytes, &a.Path, &a.ValidAt, &a.CreatedAt); err != nil {
+	if err := r.Scan(&a.ID, &a.DatasetID, &a.SessionID, &a.MediaType, &a.SHA256, &a.SizeBytes, &a.Path, &a.ValidAt, &a.CreatedAt); err != nil {
 		return a, err
 	}
 	a.ValidAt, a.CreatedAt = a.ValidAt.UTC(), a.CreatedAt.UTC()

@@ -62,12 +62,12 @@ Package `internal/ai/atif` defines the types and a `Builder`; the schema version
 | field | meaning |
 |---|---|
 | `schema_version` | `ATIF-v1.6` |
-| `trajectory_id`, `session_id` | a random UUID (both the same for now) |
+| `trajectory_id`, `session_id` | `trajectory_id` is a random UUID. `session_id` is the request's [`session_id`](sessions.md) if it gave one (so the trajectories of one session share it), else the same UUID |
 | `agent` | `name` (`gligabao-remember` / `gligabao-recall`), `version` |
 | `steps` | the steps, below |
 | `notes` | set to `failed: <error>` if the call failed |
 | `final_metrics` | totals over all steps: prompt/completion tokens, `total_cost_usd`, `total_steps` |
-| `extra.input` | the call's `user_id`, `dataset` (and `reference_time` for remember) |
+| `extra.input` | the call's `user_id`, `dataset`, `session_id` (empty if none) (and `reference_time` for remember) |
 
 A step has `step_id` (from 1), `timestamp`, `source` (`system`, `user` or `agent`) and `message`. Agent steps may also have `model_name`, `metrics` (`prompt_tokens` including cache tokens, `completion_tokens`, `cost_usd`), `tool_calls` and an `observation` whose `source_call_id` points at the tool call.
 

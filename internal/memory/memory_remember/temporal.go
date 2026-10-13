@@ -248,11 +248,21 @@ func mergeCandidates(byName, bySimilar []Edge, limit int, via map[int64]string) 
 
 // storeEdges writes edges inside tx according to plan and returns the resulting edges (new ones, or the
 // existing ones they duplicate) plus the IDs of edges that were invalidated. entityID maps an entity name to
-// its ID, creating the entity if needed.
-func storeEdges(ctx context.Context, tx graph.Tx, dsID, artID int64, ref, now time.Time, edges []Edge, plan *EdgePlan,
+// its ID, creating the entity if needed. Every edge this artifact states, new or a duplicate of a stored one, is
+// linked to the artifact and, if sessionID is not empty, to its session.
+func storeEdges(ctx context.Context, tx graph.Tx, dsID, artID int64, sessionID string, ref, now time.Time, edges []Edge, plan *EdgePlan,
 	entityID func(name string) (int64, error)) ([]Edge, []int64, error) {
 	if plan == nil {
 		plan = &EdgePlan{}
+	}
+	link := func(edgeID int64) error {
+		if err := tx.LinkEdge(ctx, edgeID, artID); err != nil {
+			return err
+		}
+		if sessionID == "" {
+			return nil
+		}
+		return tx.LinkEdgeSession(ctx, edgeID, sessionID)
 	}
 	ids := make([]int64, len(edges)) // stored ID for each new edge
 	batch := map[string]int64{}      // repeats inside this artifact
@@ -266,7 +276,7 @@ func storeEdges(ctx context.Context, tx graph.Tx, dsID, artID int64, ref, now ti
 				return nil, nil, err
 			}
 			// The stored edge keeps its own artifact_id (its creator); this artifact is recorded as another source.
-			if err := tx.LinkEdge(ctx, existing, artID); err != nil {
+			if err := link(existing); err != nil {
 				return nil, nil, err
 			}
 			ids[i] = existing
@@ -298,7 +308,7 @@ func storeEdges(ctx context.Context, tx graph.Tx, dsID, artID int64, ref, now ti
 		if err != nil {
 			return nil, nil, err
 		}
-		if err := tx.LinkEdge(ctx, id, artID); err != nil {
+		if err := link(id); err != nil {
 			return nil, nil, err
 		}
 		ids[i] = id

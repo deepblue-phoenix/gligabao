@@ -42,6 +42,10 @@ type CallOptions struct {
 	Embedder Embedder
 
 	Trace *Trace // set by Remember for the Store it calls; nil otherwise
+
+	// SessionID is the user/agent session the call belongs to ("" for none), set by WithSessionID. Remember and
+	// RememberImage attach it to what they store; Recall only records it (it never changes the answer).
+	SessionID string
 }
 
 // NewCallOptions applies opts on top of the defaults.
@@ -57,6 +61,13 @@ func NewCallOptions(opts []Option) CallOptions {
 // the result (TrajectoryID, Trajectory). Without it nothing is generated. It is meant for evals; only the
 // eval HTTP endpoints set it.
 func WithEval() Option { return func(o *CallOptions) { o.Eval = true } }
+
+// WithSessionID attaches the call to a user/agent session, so that what comes from the same session can be
+// connected. Remember and Store attach it to the artifact and record it against every entity and edge the artifact
+// yields (see gb_entity_sessions, gb_edge_sessions), RememberImage to the image artifact; Recall only carries it
+// into its result and trajectory, and its answer does not depend on it. The ID is used as given: validate it with
+// ResolveSessionID first. Empty means no session.
+func WithSessionID(id string) Option { return func(o *CallOptions) { o.SessionID = id } }
 
 // WithTrace makes Store record its steps (the embedding) into tr, the trace of the enclosing Remember.
 func WithTrace(tr *Trace) Option { return func(o *CallOptions) { o.Trace = tr } }
@@ -78,7 +89,11 @@ func StartTrace(kind string, o CallOptions) *Trace {
 	if !o.Eval {
 		return nil
 	}
-	return &Trace{b: atif.NewBuilder(atif.Agent{Name: "gligabao-" + kind, Version: agentVersion}), dir: o.Dir}
+	t := &Trace{b: atif.NewBuilder(atif.Agent{Name: "gligabao-" + kind, Version: agentVersion}), dir: o.Dir}
+	if o.SessionID != "" { // the trajectories of one session share the session ID
+		t.b.SetSessionID(o.SessionID)
+	}
+	return t
 }
 
 // Wrap returns llm with every call recorded as steps of the trajectory.

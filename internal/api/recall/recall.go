@@ -23,6 +23,10 @@ type recallRequest struct {
 	// Dataset is the dataset to search. Defaults to "main".
 	Dataset string `json:"dataset"`
 	Query   string `json:"query"`
+	// SessionID (optional) is the user/agent session the call belongs to. It is echoed in the response and recorded
+	// in the call's trajectory and monitoring events, so that a recall can be connected to the artifacts remembered
+	// in the same session. It does not change what is retrieved or answered. At most memory_core.MaxSessionIDLen bytes.
+	SessionID string `json:"session_id"`
 }
 
 //---------------------------------------------------------------------------------------------
@@ -54,12 +58,19 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool) http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, "query is required")
 			return
 		}
+		sessionID, err := memory_core.ResolveSessionID(req.SessionID)
+		if err != nil {
+			httputil.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		start := time.Now()
-		res, err := memory_recall.Recall(r.Context(), d, llm, req.UserID, req.Dataset, req.Query, opts...)
+		res, err := memory_recall.Recall(r.Context(), d, llm, req.UserID, req.Dataset, req.Query,
+			append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID))...)
 		if err != nil {
 			monitoring.EmitSystemEvent(r.Context(), "recall.failed", monitoring.Event{
 				"user_id":     req.UserID,
 				"dataset":     req.Dataset,
+				"session_id":  sessionID,
 				"query_bytes": len(req.Query),
 				"duration_ms": time.Since(start).Milliseconds(),
 				"error":       err.Error(),
@@ -75,8 +86,9 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool) http.HandlerFunc {
 		}
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
-				"user_id": req.UserID,
-				"dataset": req.Dataset,
+				"user_id":    req.UserID,
+				"dataset":    req.Dataset,
+				"session_id": sessionID,
 			}).Error("recall failed")
 			httputil.Error(w, http.StatusBadGateway, "failed to answer query")
 			return
@@ -84,11 +96,13 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool) http.HandlerFunc {
 		log.WithFields(log.Fields{
 			"user_id":     req.UserID,
 			"dataset":     req.Dataset,
+			"session_id":  sessionID,
 			"duration_ms": time.Since(start).Milliseconds(),
 		}).Debug("recall completed")
 		monitoring.EmitSystemEvent(r.Context(), "recall.completed", monitoring.Event{
 			"user_id":           req.UserID,
 			"dataset":           req.Dataset,
+			"session_id":        sessionID,
 			"query_bytes":       len(req.Query),
 			"evidence_entities": len(res.Evidence.Entities),
 			"evidence_edges":    len(res.Evidence.Edges),
