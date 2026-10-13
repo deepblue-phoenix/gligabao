@@ -17,6 +17,19 @@ type Component struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 	Commit  string `json:"commit,omitempty"` // VCS revision the binary was built from (+dirty), if known
+	// CommitURL is the GitHub URL of the commit (gligabao library only; empty if the commit is unknown).
+	CommitURL string `json:"commit_url,omitempty"`
+}
+
+// RepoURL is the GitHub repository of gligabao.
+const RepoURL = "https://github.com/deepblue-phoenix/gligabao"
+
+// CommitURL returns the GitHub URL of the commit the running binary was built from, or "" if unknown.
+func CommitURL() string {
+	if rev := vcsRevision(); rev != "" {
+		return RepoURL + "/commit/" + rev
+	}
+	return ""
 }
 
 var (
@@ -62,12 +75,24 @@ func Parse(versionFile string) string { return strings.TrimSpace(versionFile) }
 // Commit returns the VCS revision the running binary was built from, as stamped by `go build` inside a git
 // checkout (shortened to 12 characters, "+dirty" appended for uncommitted changes), or "" if not available.
 func Commit() string {
+	rev, dirty := vcs()
+	if len(rev) > 12 {
+		rev = rev[:12]
+	}
+	if rev != "" && dirty {
+		rev += "+dirty"
+	}
+	return rev
+}
+
+// vcsRevision returns the full VCS revision stamped by `go build`, or "".
+func vcsRevision() string { rev, _ := vcs(); return rev }
+
+func vcs() (rev string, dirty bool) {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
-		return ""
+		return "", false
 	}
-	var rev string
-	var dirty bool
 	for _, s := range info.Settings {
 		switch s.Key {
 		case "vcs.revision":
@@ -76,13 +101,7 @@ func Commit() string {
 			dirty = s.Value == "true"
 		}
 	}
-	if len(rev) > 12 {
-		rev = rev[:12]
-	}
-	if rev != "" && dirty {
-		rev += "+dirty"
-	}
-	return rev
+	return rev, dirty
 }
 
 // String formats the component as "name version (commit)".

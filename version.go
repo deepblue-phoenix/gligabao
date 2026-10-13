@@ -23,6 +23,8 @@ func init() {
 		Name:    "gligabao",
 		Version: buildinfo.Parse(versionFile),
 		Commit:  buildinfo.Commit(),
+
+		CommitURL: buildinfo.CommitURL(),
 	})
 }
 

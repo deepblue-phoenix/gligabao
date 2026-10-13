@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.4.1] - 2026-10-14
+
+### Added
+- Admin UI: the lower right corner shows, in small text, the running gligabao version and a "github url" link to the commit the binary was built from (only when the binary was built inside a git checkout).
+- `GET /version`: the `gligabao` object has a new `commit_url` field (GitHub URL of the full commit).
+
 ## [0.4.0] - 2026-10-13
 
 ### Added

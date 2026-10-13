@@ -23,6 +23,16 @@ body {
 
 .muted { color: $muted; font-weight: normal; }
 
+.version-footer {
+  position: fixed;
+  right: 0.75rem;
+  bottom: 0.5rem;
+  font-size: 0.7rem;
+  color: $muted;
+
+  a { color: $accent; }
+}
+
 .topbar {
   display: flex;
   align-items: center;

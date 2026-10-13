@@ -56,6 +56,31 @@ async function checkHealth(): Promise<void> {
   }
 }
 
+// Shows the running version and a link to its GitHub commit in the lower right corner.
+async function showVersion(): Promise<void> {
+  try {
+    const res = await fetch("/version");
+    if (!res.ok) return;
+    const lib = (await res.json()).gligabao as { version?: string; commit?: string; commit_url?: string };
+    if (!lib?.version) return;
+    const el = $("version");
+    el.textContent = `v${lib.version}`;
+    if (lib.commit_url) {
+      el.append(" · ");
+      const a = document.createElement("a");
+      a.href = lib.commit_url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.title = lib.commit ?? "";
+      a.textContent = "github url";
+      el.append(a);
+    }
+    el.hidden = false;
+  } catch {
+    // version is informational only
+  }
+}
+
 const COLUMNS: [string, boolean][] = [
   ["User", false], ["Name", false], ["Description", false], ["Tags", false], ["Created", false],
   ["Artifacts", true], ["Entities", true], ["Edges", true], ["Actions", false],
@@ -274,4 +299,5 @@ initImageOverlay();
 initImageStats();
 void loadAll(false);
 void checkHealth();
+void showVersion();
 setInterval(() => void checkHealth(), 15000);
