@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import json
+import os
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -21,20 +23,42 @@ class Client:
     def remember(
         self,
         user_id: str,
-        text: str,
+        text: str | None = None,
         dataset: str | None = None,
         reference_time: datetime | str | None = None,
         kind: str | None = None,
+        image: bytes | str | os.PathLike[str] | None = None,
     ) -> dict[str, Any]:
-        """Store `text` in memory (POST /v1/gb/remember).
+        """Store `text`, or an `image`, in memory (POST /v1/gb/remember).
+
+        Give exactly one of `text` and `image`.
 
         `dataset` defaults to "main" on the server. `reference_time` (a datetime or an
-        RFC 3339 string) is when the text was written; it defaults to now on the server.
-        `kind` is the artifact kind: "knowledge" (the server default, not strictly episodic) or
-        "episode" (a Graphiti-style episode, anchored in time).
+        RFC 3339 string) is when the text was written, or the image captured; it defaults
+        to now on the server.
+
+        With `text`, `kind` is the artifact kind: "knowledge" (the server default, not
+        strictly episodic) or "episode" (a Graphiti-style episode, anchored in time).
         Returns the decoded JSON response (artifact_id, entities, edges, ...).
+
+        With `image` (the raw bytes of a JPEG, PNG, GIF or WebP up to 5 MiB, or the path of
+        such a file as a str or Path), the server runs the image pipeline: an LLM reads the
+        text in the image and classifies it by theme. `kind` does not apply to images.
+        Returns the decoded JSON response (image_artifact_id, extraction_id, theme, title,
+        text, text_blocks, ...).
         """
-        body: dict[str, Any] = {"user_id": user_id, "text": text}
+        if (text is None) == (image is None):
+            raise ValueError("remember takes exactly one of text and image")
+        body: dict[str, Any] = {"user_id": user_id}
+        if image is not None:
+            if kind is not None:
+                raise ValueError("kind does not apply to images")
+            if not isinstance(image, (bytes, bytearray, memoryview)):
+                with open(image, "rb") as f:
+                    image = f.read()
+            body["image"] = base64.b64encode(bytes(image)).decode("ascii")
+        else:
+            body["text"] = text
         if dataset is not None:
             body["dataset"] = dataset
         if kind is not None:

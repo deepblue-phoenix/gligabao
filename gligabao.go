@@ -40,6 +40,9 @@ type ServeOptions struct {
 	DBPath string
 	// VectorDir is the directory of the chromem vector store. Default: next to DBPath.
 	VectorDir string
+	// ImageDir is the directory the image files of the image pipeline are kept in (the database only tracks their
+	// paths). Default: next to DBPath, as <name>.images.
+	ImageDir string
 	// EvalDBPath is the eval database (the SQLite file ./run_evals.sh writes the datasets, experiments and runs to); with
 	// the admin UI on it is shown next to the main database and feeds its Evals block.
 	EvalDBPath string
@@ -83,7 +86,7 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 	defer monitoring.SetHooks(nil)
 	return server.Run(ctx, server.Options{
 		Addr:         cfg.Addr(),
-		DB:           db.ConfigFrom(cfg, opts.DBPath, opts.VectorDir),
+		DB:           db.ConfigFrom(cfg, opts.DBPath, opts.VectorDir, opts.ImageDir),
 		AnthropicKey: cfg.AnthropicKey,
 		OpenAIKey:    cfg.OpenAIKey,
 		Prices:       aiPrices(cfg),

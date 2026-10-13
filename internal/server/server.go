@@ -196,6 +196,7 @@ func Run(ctx context.Context, opts Options) error {
 		"sqlite_path":          database.SQLitePath,
 		"vector_store":         database.VectorStore,
 		"vector_dir":           database.VectorDir,
+		"image_dir":            database.ImageDir,
 		"embedding_dimensions": database.EmbeddingDimensions,
 	}).Info("databases opened")
 

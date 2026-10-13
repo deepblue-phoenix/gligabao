@@ -15,7 +15,7 @@ gligabao is a small, self-hosted HTTP service that gives an AI application long-
 
 | Endpoint | Purpose | Docs |
 | -------- | ------- | ---- |
-| `POST /v1/gb/remember` | Extract a temporal knowledge graph from text and store it | [docs/remember.md](docs/remember.md), [docs/artifacts.md](docs/artifacts.md), [docs/temporal.md](docs/temporal.md) |
+| `POST /v1/gb/remember` | Extract a temporal knowledge graph from text and store it; or, with `image`, read an image (OCR and theme) and store the extraction | [docs/remember.md](docs/remember.md), [docs/artifacts.md](docs/artifacts.md), [docs/temporal.md](docs/temporal.md), [docs/images.md](docs/images.md) |
 | `POST /v1/gb/recall` | Answer a question from the graph, with evidence | [docs/recall.md](docs/recall.md) |
 | `POST /v1/gb/datasets`, `GET /v1/gb/datasets?user_id=`, `DELETE /v1/gb/datasets/{name}?user_id=` | Create, list and (soft) delete datasets | [docs/datasets.md](docs/datasets.md) |
 | `GET /v1/gb/datasets/{name}/graph?user_id=` | Export a dataset's whole graph as JSON | [docs/graph.md](docs/graph.md) |
@@ -39,6 +39,8 @@ An ontology describes the concepts of a domain and how they relate. `POST /v1/gb
 2. **Normalize**: entity types are lowercased (empty becomes `other`), and relations are lowercased with spaces replaced by `_`.
 3. **Reconcile**: new edges are compared with stored live edges that touch the same entities (see [Temporal facts](#temporal-facts)).
 4. **Store**: in one transaction, the raw text goes into `gb_artifacts`, entities are upserted into `gb_entities` and linked to the artifact in `gb_entity_artifacts` (an entity is shared by every artifact that mentions it), and edges are inserted into `gb_edges` (each with the `artifact_id` that created it, and linked in `gb_edge_artifacts`; a repeated fact adds the new artifact to the stored edge's links instead of being inserted again).
+
+Images: `POST /v1/gb/remember` with `{"user_id": "u1", "image": "<base64 JPEG, PNG, GIF or WebP>"}` runs a separate image pipeline instead: a vision LLM (default `claude-haiku-5-5`) reads the text in the image (its title and text blocks) and classifies the whole image by a theme (`plot`, `graph`, `chart`, `table`, `document`, ...). The image file is kept in an image directory next to the database (`serve --image-dir`), tracked by `gb_image_artifacts` (metadata and path, never the bytes), and what was read goes into `gb_image_extractions` and `gb_image_text_blocks`; nothing is added to the graph yet. An image the dataset already holds (same SHA-256) is not read again: its stored result is returned with `"cached": true`. Details: [docs/images.md](docs/images.md).
 
 Deduplication:
 - Entities are unique on (normalized name, type). Re-submitting one only updates its description if the new one is non-empty.
@@ -121,7 +123,7 @@ err = gligabao.Serve(ctx, cfg, gligabao.ServeOptions{DBPath: "data/gligabao.db"}
 ```
 
 - `Config` / `Price`: the configuration described above; `DefaultConfig()` takes API keys from the environment, and fields can be set in code instead of a TOML file.
-- `ServeOptions`: `DBPath` (default `bin/gligabao.db`) and `VectorDir` (the chromem directory; default: next to `DBPath`, as `<name>.vectors`), the equivalents of `serve --db` / `--vector-dir`.
+- `ServeOptions`: `DBPath` (default `bin/gligabao.db`), `VectorDir` (the chromem directory; default: next to `DBPath`, as `<name>.vectors`) and `ImageDir` (the image files; default: next to `DBPath`, as `<name>.images`), the equivalents of `serve --db` / `--vector-dir` / `--image-dir`.
 - `Serve(ctx, cfg, opts)` blocks until `ctx` is cancelled or SIGINT/SIGTERM arrives, then shuts down gracefully. A nil `cfg` means `DefaultConfig()`.
 
 gligabao needs no CGO, so the embedding program can be built with `CGO_ENABLED=0` (see [Building](#building)). A working example with a cobra `serve` command is in the sibling `gligabao_int` project, which uses `replace github.com/deepblue-phoenix/gligabao => ../gligabao` during local development.

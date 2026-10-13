@@ -1,6 +1,6 @@
 # POST /v1/gb/remember
 
-Takes a block of text, stores it as an [artifact](artifacts.md), uses an LLM to extract a small knowledge graph (entities and edges) whose edges are bi-temporal facts, stores everything in the database, and embeds the entities and edges into the dataset's [vector datasets](vectors.md#datasets). The temporal model is described in [temporal.md](temporal.md).
+Takes a block of text (or, with `image`, an image: see [images.md](images.md)), stores it as an [artifact](artifacts.md), uses an LLM to extract a small knowledge graph (entities and edges) whose edges are bi-temporal facts, stores everything in the database, and embeds the entities and edges into the dataset's [vector datasets](vectors.md#datasets). The temporal model is described in [temporal.md](temporal.md).
 
 ## Request
 
@@ -12,7 +12,8 @@ content-type: application/json
 ```
 
 - `user_id` (required): the user who owns the dataset. `400` if missing.
-- `text` (required): non-empty string. The request body is limited to 1 MiB.
+- `text` (required unless `image` is given): non-empty string, at most 1 MiB.
+- `image` (optional): a base64-encoded image, instead of `text`. The request then goes through the separate [image pipeline](images.md) (OCR of the title and text blocks, and a theme such as `plot` or `graph`), with a different response; `text` and `kind` must not be given with it.
 - `dataset` (optional): name of the [dataset](datasets.md) to store into; created if it does not exist. Defaults to `main`. Entities and edges are deduplicated and reconciled only within the dataset.
 - `kind` (optional): the artifact kind, `knowledge` or `episode` (case-insensitive). Defaults to `knowledge`: a text that is not strictly episodic (a reference text, a note, ...). Use `episode` for a Graphiti-style episode, a text anchored in time (a message, a news item). Any other value returns `400`. The kind is stored on the artifact (`gb_artifacts.kind`) and echoed in the response; it does not change how the text is extracted or reconciled yet.
 - `reference_time` (optional): RFC 3339 timestamp of when the text was written or observed. Relative dates in the text ("yesterday", "last March") are resolved against it. Defaults to the current time.
@@ -169,6 +170,7 @@ curl -s localhost:7878/v1/gb/remember \
 ## Limitations
 
 - No authentication.
+- Images are only read and stored (see [images.md](images.md)); they add nothing to the graph yet, and an image the dataset already holds (same SHA-256) is answered from its stored extraction without an LLM call.
 - The database and the vector store are not updated atomically (see [vectors.md](vectors.md#what-remember-writes)), and there is no re-embedding of entities and edges stored before embedding was configured.
 - The embeddings are not used by `recall` yet, but the entity embeddings do help pick the [candidate facts](#candidate-facts-load_candidates) in `remember` (aliases); edge embeddings do not, and at most 50 candidates are compared.
 - Very long input can exceed the LLM's output limit; the request then fails with 502 and nothing is stored.

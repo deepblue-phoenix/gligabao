@@ -3,6 +3,8 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
@@ -16,6 +18,10 @@ import (
 // with WithTrajectoryDir.
 var TrajectoryDir = "bin/atif"
 
+// ImageDir is where RememberImage stores the image files (see package imagestore); the database only tracks them.
+// It is read on every call; set it once at startup, or override it per call with WithImageDir.
+var ImageDir = "bin/images"
+
 const agentVersion = "0.1"
 
 //---------------------------------------------------------------------------------------------
@@ -27,6 +33,8 @@ type callOptions struct {
 	eval bool
 	dir  string
 
+	imageDir string // see WithImageDir
+
 	vectors  vector.Store // see WithVectors
 	embedder Embedder
 
@@ -34,7 +42,7 @@ type callOptions struct {
 }
 
 func newCallOptions(opts []Option) callOptions {
-	o := callOptions{dir: TrajectoryDir}
+	o := callOptions{dir: TrajectoryDir, imageDir: ImageDir}
 	for _, f := range opts {
 		f(&o)
 	}
@@ -51,6 +59,9 @@ func withTrace(tr *trace) Option { return func(o *callOptions) { o.trace = tr } 
 
 // WithTrajectoryDir overrides TrajectoryDir for this call.
 func WithTrajectoryDir(dir string) Option { return func(o *callOptions) { o.dir = dir } }
+
+// WithImageDir overrides ImageDir for this call: the directory RememberImage and LoadImage keep the image files in.
+func WithImageDir(dir string) Option { return func(o *callOptions) { o.imageDir = dir } }
 
 //---------------------------------------------------------------------------------------------
 
@@ -168,6 +179,15 @@ func (t *trace) embedStep(message, name string, args, res map[string]any, usage 
 
 //---------------------------------------------------------------------------------------------
 
+// describeImages is how the images of a message appear in a trajectory: their bytes are not kept.
+func describeImages(images []ai.Image) string {
+	var sb strings.Builder
+	for _, im := range images {
+		fmt.Fprintf(&sb, "[image: %s, %d bytes]\n", im.MediaType, len(im.Data))
+	}
+	return sb.String()
+}
+
 // tracingLLM records each LLM call: the system prompt and input messages, then the model's output with its metrics.
 type tracingLLM struct {
 	LLM
@@ -183,7 +203,7 @@ func (l *tracingLLM) Complete(ctx context.Context, req ai.Request) (*ai.Response
 			l.b.Agent(atif.Step{Message: m.Content})
 			continue
 		}
-		l.b.User(m.Content)
+		l.b.User(describeImages(m.Images) + m.Content)
 	}
 	resp, err := l.LLM.Complete(ctx, req)
 	if err != nil {

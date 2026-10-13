@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -53,5 +54,37 @@ func TestCost(t *testing.T) {
 	}
 	if _, ok := NewPriceTable(nil).Cost("unknown-model", Usage{InputTokens: 1}); ok {
 		t.Fatal("unknown model should have no price")
+	}
+}
+
+func TestCompleteImage(t *testing.T) {
+	var got struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content json.RawMessage
+		} `json:"messages"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Error(err)
+		}
+		w.Write([]byte(`{"model":"m","stop_reason":"end_turn","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":1,"output_tokens":1}}`))
+	}))
+	defer srv.Close()
+
+	c, _ := New("k", WithBaseURL(srv.URL))
+	_, err := c.Complete(context.Background(), Request{Messages: []Message{
+		{Role: RoleUser, Content: "plain"},
+		{Role: RoleUser, Content: "look", Images: []Image{{MediaType: "image/png", Data: []byte("abc")}}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Messages) != 2 || string(got.Messages[0].Content) != `"plain"` {
+		t.Fatalf("plain message: %+v", got.Messages)
+	}
+	want := `[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"YWJj"}},{"type":"text","text":"look"}]`
+	if string(got.Messages[1].Content) != want {
+		t.Fatalf("image message content = %s, want %s", got.Messages[1].Content, want)
 	}
 }

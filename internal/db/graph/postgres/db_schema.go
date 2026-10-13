@@ -65,6 +65,42 @@ CREATE TABLE IF NOT EXISTS gb_entity_artifacts (
 	PRIMARY KEY (entity_id, artifact_id)
 );
 
+-- The image pipeline (see sqlite/db_schema.go for what the columns mean).
+CREATE TABLE IF NOT EXISTS gb_image_artifacts (
+	id         BIGSERIAL PRIMARY KEY,
+	dataset_id BIGINT NOT NULL REFERENCES gb_datasets(id),
+	media_type TEXT NOT NULL,
+	sha256     TEXT NOT NULL,
+	size_bytes BIGINT NOT NULL,
+	path       TEXT NOT NULL,
+	valid_at   TIMESTAMPTZ NOT NULL,
+	created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS gb_image_extractions (
+	id                BIGSERIAL PRIMARY KEY,
+	image_artifact_id BIGINT NOT NULL REFERENCES gb_image_artifacts(id) ON DELETE CASCADE,
+	provider          TEXT NOT NULL,
+	model             TEXT NOT NULL,
+	theme             TEXT NOT NULL,
+	title             TEXT NOT NULL DEFAULT '',
+	text              TEXT NOT NULL DEFAULT '',
+	raw_output        TEXT NOT NULL DEFAULT '',
+	input_tokens      INTEGER NOT NULL DEFAULT 0,
+	output_tokens     INTEGER NOT NULL DEFAULT 0,
+	cost_usd          DOUBLE PRECISION NOT NULL DEFAULT 0,
+	created_at        TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS gb_image_text_blocks (
+	id            BIGSERIAL PRIMARY KEY,
+	extraction_id BIGINT NOT NULL REFERENCES gb_image_extractions(id) ON DELETE CASCADE,
+	position      INTEGER NOT NULL,
+	kind          TEXT NOT NULL,
+	text          TEXT NOT NULL,
+	UNIQUE (extraction_id, position)
+);
+
 CREATE TABLE IF NOT EXISTS gb_onto_classes (
 	id          BIGSERIAL PRIMARY KEY,
 	ontology_id BIGINT NOT NULL REFERENCES gb_ontologies(id) ON DELETE CASCADE,
@@ -90,6 +126,8 @@ CREATE TABLE IF NOT EXISTS gb_onto_edges (
 CREATE INDEX IF NOT EXISTS idx_gb_onto_edges_source ON gb_onto_edges(source_id);
 CREATE INDEX IF NOT EXISTS idx_gb_onto_edges_target ON gb_onto_edges(target_id);
 
+CREATE INDEX IF NOT EXISTS idx_gb_image_artifacts_dataset ON gb_image_artifacts(dataset_id);
+CREATE INDEX IF NOT EXISTS idx_gb_image_extractions_image ON gb_image_extractions(image_artifact_id);
 CREATE INDEX IF NOT EXISTS idx_gb_artifacts_dataset ON gb_artifacts(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_entities_dataset ON gb_entities(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_dataset ON gb_edges(dataset_id);

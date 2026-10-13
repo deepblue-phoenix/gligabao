@@ -4,6 +4,7 @@ package ai
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,6 +37,40 @@ const (
 type Message struct {
 	Role    Role   `json:"role"`
 	Content string `json:"content"`
+	// Images are attached to the message (user turns only). They are sent before Content as image blocks.
+	Images []Image `json:"-"`
+}
+
+// Image is an image attached to a Message.
+type Image struct {
+	// MediaType is image/jpeg, image/png, image/gif or image/webp.
+	MediaType string
+	// Data is the raw (not base64) image.
+	Data []byte
+}
+
+// MarshalJSON encodes the message the way the Messages API expects: a plain string content, or, when there are
+// images, an array of content blocks (the images, then the text).
+func (m Message) MarshalJSON() ([]byte, error) {
+	if len(m.Images) == 0 {
+		return json.Marshal(struct {
+			Role    Role   `json:"role"`
+			Content string `json:"content"`
+		}{m.Role, m.Content})
+	}
+	blocks := make([]contentBlock, 0, len(m.Images)+1)
+	for _, im := range m.Images {
+		blocks = append(blocks, contentBlock{Type: "image", Source: &imageSource{
+			Type: "base64", MediaType: im.MediaType, Data: base64.StdEncoding.EncodeToString(im.Data),
+		}})
+	}
+	if m.Content != "" {
+		blocks = append(blocks, contentBlock{Type: "text", Text: m.Content})
+	}
+	return json.Marshal(struct {
+		Role    Role           `json:"role"`
+		Content []contentBlock `json:"content"`
+	}{m.Role, blocks})
 }
 
 // Request describes a single LLM call. Zero values fall back to client defaults.
@@ -205,6 +240,18 @@ type apiRequest struct {
 	MaxTokens int       `json:"max_tokens"`
 	System    string    `json:"system,omitempty"`
 	Messages  []Message `json:"messages"`
+}
+
+type contentBlock struct {
+	Type   string       `json:"type"`
+	Text   string       `json:"text,omitempty"`
+	Source *imageSource `json:"source,omitempty"`
+}
+
+type imageSource struct {
+	Type      string `json:"type"`
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
 }
 
 type apiResponse struct {

@@ -39,6 +39,8 @@ type Config struct {
 	VectorStore string
 	// VectorDir is the chromem directory (chromem store only). Default: next to SQLitePath.
 	VectorDir string
+	// ImageDir is the directory the image files of the image pipeline are kept in. Default: next to SQLitePath.
+	ImageDir string
 	// EmbeddingDimensions is the embedding size. Default: config.DefaultEmbeddingDimensions.
 	EmbeddingDimensions int
 	// PineconeKey and PineconeIndexHost configure the Pinecone store.
@@ -50,14 +52,15 @@ type Config struct {
 const DefaultSQLitePath = "bin/gligabao.db"
 
 // ConfigFrom builds a Config from the application config plus the settings that are not part of it
-// (sqlitePath and vectorDir may be empty for their defaults).
-func ConfigFrom(c *config.Config, sqlitePath, vectorDir string) Config {
+// (sqlitePath, vectorDir and imageDir may be empty for their defaults).
+func ConfigFrom(c *config.Config, sqlitePath, vectorDir, imageDir string) Config {
 	return Config{
 		Backend:             c.DBBackend,
 		SQLitePath:          sqlitePath,
 		PostgresDSN:         c.PostgresDSN,
 		VectorStore:         c.VectorStore,
 		VectorDir:           vectorDir,
+		ImageDir:            imageDir,
 		EmbeddingDimensions: c.EmbeddingDimensions,
 		PineconeKey:         c.PineconeKey,
 		PineconeIndexHost:   c.PineconeIndexHost,
@@ -89,6 +92,9 @@ type DB struct {
 	SQLitePath string
 	// VectorDir is the chromem directory ("" for pinecone).
 	VectorDir string
+	// ImageDir is the directory of the image files (created when the first image is stored). The relational
+	// database only tracks their paths.
+	ImageDir string
 }
 
 // Open opens the relational, graph and vector databases described by cfg and applies their schemas.
@@ -107,7 +113,12 @@ func Open(cfg Config) (*DB, error) {
 		cfg.SQLitePath = DefaultSQLitePath
 	}
 
+	if cfg.ImageDir == "" {
+		cfg.ImageDir = DefaultImageDir(cfg.SQLitePath)
+	}
+
 	d := &DB{
+		ImageDir:            cfg.ImageDir,
 		Backend:             cfg.Backend,
 		VectorStore:         cfg.VectorStore,
 		EmbeddingDimensions: cfg.EmbeddingDimensions,
@@ -162,6 +173,12 @@ func DefaultVectorDir(sqlitePath string) string {
 	return strings.TrimSuffix(sqlitePath, filepath.Ext(sqlitePath)) + ".vectors"
 }
 
+// DefaultImageDir is the image directory used for the SQLite file sqlitePath when none is configured: the file's
+// path without extension plus ".images".
+func DefaultImageDir(sqlitePath string) string {
+	return strings.TrimSuffix(sqlitePath, filepath.Ext(sqlitePath)) + ".images"
+}
+
 // Close closes every client. It is safe to call on a nil DB.
 func (d *DB) Close() error {
 	if d == nil {
@@ -195,5 +212,5 @@ func (d *DB) String() string {
 	if d.VectorDir != "" {
 		vec += " " + d.VectorDir
 	}
-	return fmt.Sprintf("relational/graph: %s; vector: %s (%d dims)", rel, vec, d.EmbeddingDimensions)
+	return fmt.Sprintf("relational/graph: %s; vector: %s (%d dims); images: %s", rel, vec, d.EmbeddingDimensions, d.ImageDir)
 }

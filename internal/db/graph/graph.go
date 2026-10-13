@@ -26,19 +26,24 @@ const (
 
 // Types shared with the backends (see package model).
 type (
-	Entity         = model.Entity
-	Edge           = model.Edge
-	EvidenceEntity = model.EvidenceEntity
-	EvidenceEdge   = model.EvidenceEdge
-	NewEdge        = model.NewEdge
-	EntityArtifact = model.EntityArtifact
-	EdgeArtifact   = model.EdgeArtifact
-	Artifact       = model.Artifact
-	Counts         = model.Counts
-	Tx             = model.Tx
-	OntologyClass  = model.OntologyClass
-	OntologyEdge   = model.OntologyEdge
-	OntologyCounts = model.OntologyCounts
+	Entity             = model.Entity
+	Edge               = model.Edge
+	EvidenceEntity     = model.EvidenceEntity
+	EvidenceEdge       = model.EvidenceEdge
+	NewEdge            = model.NewEdge
+	EntityArtifact     = model.EntityArtifact
+	EdgeArtifact       = model.EdgeArtifact
+	Artifact           = model.Artifact
+	NewImage           = model.NewImage
+	NewImageExtraction = model.NewImageExtraction
+	ImageTextBlock     = model.ImageTextBlock
+	ImageArtifact      = model.ImageArtifact
+	ImageExtraction    = model.ImageExtraction
+	Counts             = model.Counts
+	Tx                 = model.Tx
+	OntologyClass      = model.OntologyClass
+	OntologyEdge       = model.OntologyEdge
+	OntologyCounts     = model.OntologyCounts
 )
 
 // ErrNotFound is returned (wrapped) when a graph record does not exist.
@@ -100,6 +105,66 @@ func Begin(ctx context.Context, d *sql.DB) (Tx, error) {
 			return nil, err
 		}
 		return tx, nil
+	}
+	return nil, unsupported()
+}
+
+//---------------------------------------------------------------------------------------------
+// Images (the image pipeline; independent of the text graph above)
+
+// InsertImage stores an image artifact and its extraction (with the text blocks) in one transaction and returns
+// their IDs.
+func InsertImage(ctx context.Context, d *sql.DB, img NewImage) (artifactID, extractionID int64, err error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.InsertImage(ctx, d, img)
+	case config.DBBackendPostgres:
+		return postgres.InsertImage(ctx, d, img)
+	}
+	return 0, 0, unsupported()
+}
+
+// ListImageArtifacts returns the image artifacts of the dataset by ID.
+func ListImageArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]ImageArtifact, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListImageArtifacts(ctx, d, dsID)
+	case config.DBBackendPostgres:
+		return postgres.ListImageArtifacts(ctx, d, dsID)
+	}
+	return nil, unsupported()
+}
+
+// FindImageBySHA256 returns the newest image artifact of the dataset whose content has the given hex SHA-256, with
+// its newest extraction. It returns ErrNotFound if the dataset has no such image (or none with an extraction).
+func FindImageBySHA256(ctx context.Context, d *sql.DB, dsID int64, sha string) (*ImageArtifact, *ImageExtraction, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.FindImageBySHA256(ctx, d, dsID, sha)
+	case config.DBBackendPostgres:
+		return postgres.FindImageBySHA256(ctx, d, dsID, sha)
+	}
+	return nil, nil, unsupported()
+}
+
+// GetImageArtifact returns one image artifact of the dataset. It returns ErrNotFound if there is none.
+func GetImageArtifact(ctx context.Context, d *sql.DB, dsID, artifactID int64) (*ImageArtifact, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.GetImageArtifact(ctx, d, dsID, artifactID)
+	case config.DBBackendPostgres:
+		return postgres.GetImageArtifact(ctx, d, dsID, artifactID)
+	}
+	return nil, unsupported()
+}
+
+// ListImageExtractions returns the image extractions of the dataset, with their text blocks, by ID.
+func ListImageExtractions(ctx context.Context, d *sql.DB, dsID int64) ([]ImageExtraction, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListImageExtractions(ctx, d, dsID)
+	case config.DBBackendPostgres:
+		return postgres.ListImageExtractions(ctx, d, dsID)
 	}
 	return nil, unsupported()
 }

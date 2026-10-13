@@ -31,8 +31,9 @@ type LLM interface {
 
 // Call types stored in gb_llm_calls.type.
 const (
-	CallRemember = "remember"
-	CallRecall   = "recall"
+	CallRemember      = "remember"
+	CallRememberImage = "remember_image" // the image pipeline (RememberImage)
+	CallRecall        = "recall"
 )
 
 //---------------------------------------------------------------------------------------------

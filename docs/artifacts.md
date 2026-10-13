@@ -4,6 +4,8 @@ An artifact is a piece of data ingested to be remembered: the raw text that `POS
 
 Code: `internal/memory/remember.go` (`Remember`, `Store`, `ResolveKind`), `internal/db/graph/model/model.go` (types), `internal/db/graph/{sqlite,postgres}/db_schema.go` (tables).
 
+Images are not artifacts in this sense: `remember` with an `image` stores an image artifact (a row in `gb_image_artifacts` tracking a file on disk) through a separate pipeline, and they are not linked to entities or edges yet (see [images.md](images.md)).
+
 ## Kinds
 
 Every artifact has a `kind`, set by the optional `kind` field of the remember request:

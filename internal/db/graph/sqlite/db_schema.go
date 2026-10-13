@@ -88,6 +88,54 @@ CREATE TABLE IF NOT EXISTS gb_entity_artifacts (
 	PRIMARY KEY (entity_id, artifact_id)
 );
 
+-- The image pipeline (see internal/memory/image.go), kept apart from gb_artifacts and the graph.
+--
+-- An image artifact is an image ingested to be remembered. The table only tracks it: its media type, SHA-256 and
+-- size, and path, the file's location relative to the image directory (the bytes live on the file system, never in
+-- the database; see internal/imagestore). valid_at is its event time (when it was captured/observed), created_at
+-- when it was ingested.
+CREATE TABLE IF NOT EXISTS gb_image_artifacts (
+	id         INTEGER PRIMARY KEY AUTOINCREMENT,
+	dataset_id INTEGER NOT NULL REFERENCES gb_datasets(id),
+	media_type TEXT NOT NULL,
+	sha256     TEXT NOT NULL,
+	size_bytes INTEGER NOT NULL,
+	path       TEXT NOT NULL,
+	valid_at   DATETIME NOT NULL,
+	created_at DATETIME NOT NULL
+);
+
+-- What an LLM read from an image artifact (several extractions per image are possible, e.g. from different models).
+--   theme  what the whole image is: graph, plot, chart, diagram, table, document, screenshot, slide, map, photo,
+--          illustration or other
+--   title  the title printed in the image ('' if none);  text: all the text in reading order
+--   raw_output is the model's reply as received; the tokens and cost are those of the call
+CREATE TABLE IF NOT EXISTS gb_image_extractions (
+	id                INTEGER PRIMARY KEY AUTOINCREMENT,
+	image_artifact_id INTEGER NOT NULL REFERENCES gb_image_artifacts(id) ON DELETE CASCADE,
+	provider          TEXT NOT NULL,
+	model             TEXT NOT NULL,
+	theme             TEXT NOT NULL,
+	title             TEXT NOT NULL DEFAULT '',
+	text              TEXT NOT NULL DEFAULT '',
+	raw_output        TEXT NOT NULL DEFAULT '',
+	input_tokens      INTEGER NOT NULL DEFAULT 0,
+	output_tokens     INTEGER NOT NULL DEFAULT 0,
+	cost_usd          REAL NOT NULL DEFAULT 0,
+	created_at        DATETIME NOT NULL
+);
+
+-- The text regions of an extraction, in reading order (position, from 0). kind is the role of the text: title,
+-- subtitle, heading, paragraph, caption, label, legend, axis, annotation, table or other.
+CREATE TABLE IF NOT EXISTS gb_image_text_blocks (
+	id            INTEGER PRIMARY KEY AUTOINCREMENT,
+	extraction_id INTEGER NOT NULL REFERENCES gb_image_extractions(id) ON DELETE CASCADE,
+	position      INTEGER NOT NULL,
+	kind          TEXT NOT NULL,
+	text          TEXT NOT NULL,
+	UNIQUE (extraction_id, position)
+);
+
 -- An ontology (metadata in gb_ontologies, see internal/db/relational) is a small graph of its own, kept apart from
 -- the dataset graph above: classes are nodes, and edges are the relationships between classes.
 --   kind: 'subclass_of' | 'equivalent_class' | 'disjoint_with' | 'property'
@@ -118,6 +166,8 @@ CREATE TABLE IF NOT EXISTS gb_onto_edges (
 CREATE INDEX IF NOT EXISTS idx_gb_onto_edges_source ON gb_onto_edges(source_id);
 CREATE INDEX IF NOT EXISTS idx_gb_onto_edges_target ON gb_onto_edges(target_id);
 
+CREATE INDEX IF NOT EXISTS idx_gb_image_artifacts_dataset ON gb_image_artifacts(dataset_id);
+CREATE INDEX IF NOT EXISTS idx_gb_image_extractions_image ON gb_image_extractions(image_artifact_id);
 CREATE INDEX IF NOT EXISTS idx_gb_artifacts_dataset ON gb_artifacts(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_entities_dataset ON gb_entities(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_dataset ON gb_edges(dataset_id);

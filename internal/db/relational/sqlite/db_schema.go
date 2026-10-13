@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS gb_ontologies (
 	UNIQUE (user_id, name)
 );
 
--- One row per LLM/embedding API call. type is the operation that made the call: 'remember' or 'recall'.
+-- One row per LLM/embedding API call. type is the operation that made the call: 'remember', 'remember_image' (the image pipeline) or 'recall'.
 CREATE TABLE IF NOT EXISTS gb_llm_calls (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
 	type          TEXT NOT NULL,
