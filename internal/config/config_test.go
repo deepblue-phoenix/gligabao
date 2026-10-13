@@ -199,3 +199,25 @@ func TestLoadEval(t *testing.T) {
 		t.Fatalf("eval = true: %v %+v", err, cfg)
 	}
 }
+
+func TestChunkingSettings(t *testing.T) {
+	cfg, err := Load(write(t, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := cfg.Chunking(); c.Size != 1024 || c.OverlapPercent != 20 {
+		t.Errorf("default chunking = %+v", c)
+	}
+	cfg, err = Load(write(t, "chunk_size = 512\nchunk_overlap_percent = 0\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := cfg.Chunking(); c.Size != 512 || c.OverlapPercent != 0 {
+		t.Errorf("chunking = %+v", c)
+	}
+	for _, bad := range []string{"chunk_size = 10", "chunk_size = 9000", "chunk_overlap_percent = 60", "chunk_overlap_percent = -1"} {
+		if _, err := Load(write(t, bad)); err == nil {
+			t.Errorf("%q: expected error", bad)
+		}
+	}
+}

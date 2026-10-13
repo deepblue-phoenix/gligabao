@@ -20,8 +20,16 @@ CREATE TABLE IF NOT EXISTS gb_artifacts (
 	kind       TEXT NOT NULL DEFAULT 'knowledge',
 	text       TEXT NOT NULL,
 	session_id TEXT, -- the session that remembered it; NULL if none (see sqlite/db_schema.go)
+	-- A chunk of a long text is an artifact whose parent is the artifact holding the whole text; the columns are NULL
+	-- for any other artifact (see sqlite/db_schema.go).
+	parent_id    BIGINT REFERENCES gb_artifacts(id) ON DELETE CASCADE,
+	chunk_index  INTEGER,
+	start_offset INTEGER,
+	end_offset   INTEGER,
+	tokens       INTEGER,
 	valid_at   TIMESTAMPTZ NOT NULL,
-	created_at TIMESTAMPTZ NOT NULL
+	created_at TIMESTAMPTZ NOT NULL,
+	UNIQUE (parent_id, chunk_index)
 );
 
 CREATE TABLE IF NOT EXISTS gb_entities (
@@ -147,6 +155,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_onto_edges_target ON gb_onto_edges(target_id);
 CREATE INDEX IF NOT EXISTS idx_gb_image_artifacts_dataset ON gb_image_artifacts(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_image_extractions_image ON gb_image_extractions(image_artifact_id);
 CREATE INDEX IF NOT EXISTS idx_gb_artifacts_dataset ON gb_artifacts(dataset_id);
+CREATE INDEX IF NOT EXISTS idx_gb_artifacts_parent ON gb_artifacts(parent_id);
 CREATE INDEX IF NOT EXISTS idx_gb_entities_dataset ON gb_entities(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_dataset ON gb_edges(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_source ON gb_edges(source_id);

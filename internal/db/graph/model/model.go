@@ -95,6 +95,27 @@ type Artifact struct {
 	SessionID string // the user/agent session that remembered it; "" if none
 	ValidAt   time.Time
 	CreatedAt time.Time
+
+	// ParentID is the artifact this one is a chunk of; 0 for an artifact that is not a chunk. The chunks of a long
+	// text are artifacts of their own, children of the artifact that holds the whole text (see Tx.InsertChunkArtifact).
+	ParentID int64
+	// The rest is only set for a chunk (ParentID != 0): its position among its siblings from 0, the byte range of its
+	// text in the parent's text (overlap included) and its size in tokens.
+	ChunkIndex, StartOffset, EndOffset, Tokens int
+}
+
+// NewChunkArtifact is a chunk to insert: an artifact that is the child of the artifact ParentID, holding the part
+// text[StartOffset:EndOffset] of the parent's text.
+type NewChunkArtifact struct {
+	DatasetID, ParentID int64
+	Kind                string // that of the parent
+	Text                string
+	SessionID           string // that of the parent; "" if none
+	ChunkIndex          int
+	StartOffset         int
+	EndOffset           int
+	Tokens              int
+	ValidAt, CreatedAt  time.Time
 }
 
 // EntityArtifact says that an entity was inferred from (mentioned in) an artifact.
@@ -124,7 +145,8 @@ type EdgeSession struct {
 
 // Counts is the number of rows of each kind a dataset holds.
 type Counts struct {
-	Artifacts, Entities, Edges int
+	// Artifacts are all the artifact rows, chunks included; Chunks is how many of them are chunks of another artifact.
+	Artifacts, Entities, Edges, Chunks int
 }
 
 // OntologyClass is a class of an ontology (a node of the ontology graph).
@@ -170,6 +192,10 @@ type Tx interface {
 	// InsertArtifact stores an artifact of the given kind (ArtifactEpisode or ArtifactKnowledge), attached to the
 	// session sessionID ("" for none).
 	InsertArtifact(ctx context.Context, dsID int64, kind, text, sessionID string, validAt, createdAt time.Time) (int64, error)
+	// InsertChunkArtifact stores a chunk: an artifact that is a child of the artifact c.ParentID (which must be in the
+	// same dataset and already stored), with its position, byte range and token count in the parent. The children of
+	// an artifact are deleted with it.
+	InsertChunkArtifact(ctx context.Context, c NewChunkArtifact) (int64, error)
 	// UpsertEntity inserts the entity, or updates the one with the same (dataset, nameKey, type): a non-empty
 	// description replaces the stored one (and e.ModelID the stored model_id, which follows the description; an empty
 	// stored model_id is always filled). It returns the entity ID.

@@ -23,6 +23,12 @@ embedding_dimensions = 1536
 # pinecone_api_key = ""
 # pinecone_index_host = "my-index-abc123.svc.aped-1234.pinecone.io"
 
+# Long texts: remember splits a text of more than chunk_size tokens into chunks (at paragraph boundaries, with
+# chunk_overlap_percent of each chunk repeated at the start of the next) and extracts, stores and embeds each chunk on
+# its own. See docs/chunking.md.
+chunk_size = 1024
+chunk_overlap_percent = 20
+
 # Register the eval endpoints (POST /v1/gb/eval/remember, /v1/gb/eval/recall), which return ATIF trajectories
 # with their results. Default false; `serve --eval` turns it on.
 eval = false

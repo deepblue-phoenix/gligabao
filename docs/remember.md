@@ -1,6 +1,6 @@
 # POST /v1/gb/remember
 
-Takes a block of text (or, with `image`, an image: see [images.md](images.md)), stores it as an [artifact](artifacts.md), uses an LLM to extract a small knowledge graph (entities and edges) whose edges are bi-temporal facts, stores everything in the database, and embeds the entities and edges into the dataset's [vector datasets](vectors.md#datasets). The temporal model is described in [temporal.md](temporal.md).
+Takes a block of text (or, with `image`, an image: see [images.md](images.md)), stores it as an [artifact](artifacts.md), uses an LLM to extract a small knowledge graph (entities and edges) whose edges are bi-temporal facts, stores everything in the database, and embeds the entities and edges into the dataset's [vector datasets](vectors.md#datasets). A text of more than one chunk (1024 tokens by default) is a document: it is [chunked](chunking.md), and each chunk is extracted, stored and embedded on its own. The temporal model is described in [temporal.md](temporal.md).
 
 ## Request
 
@@ -12,7 +12,7 @@ content-type: application/json
 ```
 
 - `user_id` (required): the user who owns the dataset. `400` if missing.
-- `text` (required unless `image` is given): non-empty string, at most 1 MiB.
+- `text` (required unless `image` is given): non-empty string, at most 1 MiB. If it is larger than the chunk size (`chunk_size`, 1024 tokens by default) it is split into overlapping chunks: see [chunking.md](chunking.md).
 - `image` (optional): a base64-encoded image, instead of `text`. The request then goes through the separate [image pipeline](images.md) (OCR of the title and text blocks, and a theme such as `plot` or `graph`), with a different response; `text` and `kind` must not be given with it.
 - `dataset` (optional): name of the [dataset](datasets.md) to store into; created if it does not exist. Defaults to `main`. Entities and edges are deduplicated and reconciled only within the dataset.
 - `kind` (optional): the artifact kind, `knowledge` or `episode` (case-insensitive). Defaults to `knowledge`: a text that is not strictly episodic (a reference text, a note, ...). Use `episode` for a Graphiti-style episode, a text anchored in time (a message, a news item). Any other value returns `400`. The kind is stored on the artifact (`gb_artifacts.kind`) and echoed in the response; it does not change how the text is extracted or reconciled yet.
@@ -54,6 +54,7 @@ content-type: application/json
 - `entities` are what the LLM extracted from this text (after normalization).
 - `edges` are the facts from this text in their stored state; if a new edge repeated a stored one, the stored edge is returned. Edge fields `invalid_at`, `expired_at` are omitted when null.
 - `invalidated_edges` lists IDs of edges closed because of this artifact (see [temporal.md](temporal.md)). Always an array.
+- `chunks`, `embedded_chunks`: only for a text that was [chunked](chunking.md). `artifact_id` is then the parent artifact (the whole text), `chunks` lists the chunk artifacts (`artifact_id`, `index`, `tokens`, `overlap_tokens`, `start_offset`, `end_offset`, `entities`, `edges`), `entities`, `edges` and `invalidated_edges` are those of all the chunks, and `embedded_chunks` counts the chunk vectors written.
 - `embedded_entities` and `embedded_edges` are the number of vectors written to the dataset's entity and edge indexes (see [Embed](#how-it-works)). Both are omitted when nothing was embedded (no `OPENAI_API_KEY`). `embedded_entities` counts the entities the text mentions, including those that already existed, and `embedded_edges` the facts it states, including repeated ones; they can be more than the number of new rows.
 
 Errors are returned as `{"error": "..."}`:
@@ -65,6 +66,8 @@ Errors are returned as `{"error": "..."}`:
 | 503 | LLM not configured (`ANTHROPIC_API_KEY` is not set) |
 
 ## How it works
+
+This is the pipeline for a text that fits one chunk. A longer text runs the same steps on each of its chunks, one after the other; see [chunking.md](chunking.md).
 
 All steps use the LLM from `internal/ai` (Anthropic Messages API, default model `claude-haiku-5-5`). Code is in `internal/memory`.
 
@@ -83,7 +86,7 @@ All steps use the LLM from `internal/ai` (Anthropic Messages API, default model 
    - edges are inserted into `gb_edges`, anchored to the artifact that created them (`artifact_id`) and linked to it in `gb_edge_artifacts`; a duplicate of a stored edge is not inserted but the new artifact is added to that edge's `gb_edge_artifacts` links; duplicates are merged and contradicted edges are closed (see [temporal.md](temporal.md));
    - with a `session_id`, every entity linked to the artifact is also linked to the session in `gb_entity_sessions`, and every edge linked to it in `gb_edge_sessions` (see [sessions.md](sessions.md)). Both happen for duplicates too, so the sessions an entity or fact was discovered in are all kept.
 
-4. **Embed** (`WithVectors`, 1 embeddings request, only if an OpenAI key is configured): the entities this text mentions and the edges it states are embedded together with `text-embedding-3-small`: an entity as `Name (type): description`, an edge as its description. This happens inside step 3, after the rows are written and before the transaction commits, so a failure stores nothing. Right after the commit the vectors are written, with `Upsert`, to the dataset's two vector datasets: `dataset-<id>-entities` (vector `entity-<entity id>`) and `dataset-<id>-edges` (vector `edge-<edge id>`). Vectors are keyed by ID, so remembering an entity or fact again overwrites its vector. Details, metadata and failure handling: [vectors.md](vectors.md#what-remember-writes).
+4. **Embed** (`WithVectors`, 1 embeddings request, only if an OpenAI key is configured): the entities this text mentions and the edges it states (and, if the text is a chunk of a longer one, the chunk's own text, into a third vector dataset: see [chunking.md](chunking.md#chunks-are-embedded)) are embedded together with `text-embedding-3-small`: an entity as `Name (type): description`, an edge as its description. This happens inside step 3, after the rows are written and before the transaction commits, so a failure stores nothing. Right after the commit the vectors are written, with `Upsert`, to the dataset's two vector datasets: `dataset-<id>-entities` (vector `entity-<entity id>`) and `dataset-<id>-edges` (vector `edge-<edge id>`). Vectors are keyed by ID, so remembering an entity or fact again overwrites its vector. Details, metadata and failure handling: [vectors.md](vectors.md#what-remember-writes).
 
 The request makes 1 LLM call, or 2 when stored edges need to be compared, plus 1 embeddings request, or 2 when the [candidate search](#candidate-facts-load_candidates) also embeds the endpoints of the new facts (only for a dataset that already exists). If any step before the commit fails, nothing is stored. If the vector write after the commit fails, the request returns `502` but the artifact, entities and edges are already saved; the vectors are written again the next time the entities and facts are mentioned.
 
@@ -136,7 +139,7 @@ All tables are prefixed with `gb_` (see `internal/db/relational/{sqlite,postgres
 | Table | Columns |
 | ----- | ------- |
 | `gb_datasets` | `id`, `name`, `description`, `tags` (JSON), `created_at`, `deleted`, `deleted_at`; unique `name` among non-deleted |
-| `gb_artifacts` | `id`, `dataset_id` → `gb_datasets`, `kind` (`knowledge` (default) or `episode`), `text`, `session_id` (NULL if none), `valid_at`, `created_at` |
+| `gb_artifacts` | `id`, `dataset_id` → `gb_datasets`, `kind` (`knowledge` (default) or `episode`), `text`, `session_id` (NULL if none), `parent_id` → `gb_artifacts` (NULL unless the artifact is a [chunk](chunking.md) of another), `chunk_index`, `start_offset`, `end_offset`, `tokens` (only for a chunk), `valid_at`, `created_at`; unique (`parent_id`, `chunk_index`) |
 | `gb_entities` | `id`, `dataset_id` → `gb_datasets`, `name`, `name_key`, `type`, `description`, `created_at`, `updated_at`; unique (`dataset_id`, `name_key`, `type`) |
 | `gb_edges` | `id`, `dataset_id` → `gb_datasets`, `source_id` → `gb_entities`, `target_id` → `gb_entities`, `relation`, `description`, `valid_at`, `invalid_at`, `created_at`, `expired_at`, `artifact_id` → `gb_artifacts` (the creating artifact) |
 | `gb_edge_artifacts` | `edge_id` → `gb_edges`, `artifact_id` → `gb_artifacts`; primary key (`edge_id`, `artifact_id`) |
@@ -160,7 +163,8 @@ Existing database files are not migrated when the schema changes: delete the fil
 ## Configuration
 
 - `ANTHROPIC_API_KEY`: required for this endpoint. If missing, the server still starts and the endpoint returns 503.
-- `OPENAI_API_KEY` (or `openai_api_key` in `gligabao.toml`): used to embed entities and edges. Optional: without it the endpoint works and stores the graph, but no vectors, and the server logs a warning at startup.
+- `chunk_size` (default 1024 tokens) and `chunk_overlap_percent` (default 20): when and how a long text is chunked, see [chunking.md](chunking.md).
+- `OPENAI_API_KEY` (or `openai_api_key` in `gligabao.toml`): used to embed entities, edges and chunks. Optional: without it the endpoint works and stores the graph, but no vectors, and the server logs a warning at startup.
 - `embedding_dimensions` (default 1536) is the size of the embeddings; `vector_store` selects where they go (`chromem`, or `pinecone`). See [vectors.md](vectors.md).
 - `gligabao serve --db <path>` selects the SQLite file (default `bin/gligabao.db`).
 
@@ -181,4 +185,4 @@ curl -s localhost:7878/v1/gb/remember \
 - Images are only read and stored (see [images.md](images.md)); they add nothing to the graph yet, and an image the dataset already holds (same SHA-256) is answered from its stored extraction without an LLM call.
 - The database and the vector store are not updated atomically (see [vectors.md](vectors.md#what-remember-writes)), and there is no re-embedding of entities and edges stored before embedding was configured.
 - The embeddings are not used by `recall` yet, but the entity embeddings do help pick the [candidate facts](#candidate-facts-load_candidates) in `remember` (aliases); edge embeddings do not, and at most 50 candidates are compared.
-- Very long input can exceed the LLM's output limit; the request then fails with 502 and nothing is stored.
+- A very long text is chunked, so it no longer exceeds the LLM's output limit as a whole; a single chunk whose extraction is truncated still fails the request with 502. For a chunked text a failure while storing a chunk leaves the chunks stored before it (see [chunking.md](chunking.md#each-chunk-is-extracted-individually)).

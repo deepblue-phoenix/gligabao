@@ -5,6 +5,24 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.6.0] - 2026-10-14
+
+### Added
+- Chunking of long texts. `POST /v1/gb/remember` with a text of more than one chunk (`chunk_size`, 1024 tokens by default) no longer extracts it in one LLM call: the text is stored as an artifact (the parent), split into overlapping chunks, and every chunk is an artifact too, a child of the parent. See the new `docs/chunking.md`.
+- The chunker (`internal/chunk`) sizes chunks in tokens (a pure-Go estimate of a BPE tokenizer by default; `chunk.Tokenizer` can be replaced from Go), cuts at paragraph boundaries (oversized paragraphs fall back to sentences, then words), and repeats the tail of each chunk at the start of the next one (`chunk_overlap_percent` of the chunk size, 20 by default, at most 50).
+- Each chunk is processed individually: its own entity/edge extraction, candidate comparison against the facts the earlier chunks stored, storage, and embedding. Entities and edges link to the chunk they came from.
+- Chunks are embedded into a dedicated vector dataset, `dataset-<id>-chunks` (vector ID `chunk-<chunk artifact id>`, metadata `kind`, `artifact_id`, `parent_id`, `index`), next to the entity and edge ones, using the same embeddings request as the chunk's entities and edges. It is listed by `VectorStats` (admin UI "View vec db") and removed with the dataset.
+- Config: `chunk_size` (default 1024; 32 to 8000) and `chunk_overlap_percent` (default 20; 0 to 50), validated at startup. Go: `memory_core.WithChunking`, `gligabao.Config.ChunkSize` / `ChunkOverlapPercent`.
+- The remember response gains `chunks` (artifact ID, index, tokens, overlap, byte range, number of entities and edges extracted per chunk) and `embedded_chunks`, only for a chunked text; `artifact_id` is then the parent's. Eval trajectories gain `chunk_text` and `store_parent_artifact` steps.
+- Go: `graph.Tx.InsertChunkArtifact`, `graph.NewChunkArtifact`, `Artifact.ParentID` / `ChunkIndex` / `StartOffset` / `EndOffset` / `Tokens`, `Counts.Chunks`, `memory.ChunkVectorID`, `memory_core.ChunkDataset`, `memory_core.IndexChunks`.
+
+### Changed
+- DB schema: `gb_artifacts` gains `parent_id` (self-reference, `ON DELETE CASCADE`), `chunk_index`, `start_offset`, `end_offset` and `tokens`. There is no migration: existing databases (and vector directories) must be recreated.
+- A text that is not larger than a chunk is processed exactly as before: no chunks and no chunk vector.
+- A chunked text is not one transaction: the chunks go in one after the other (each chunk's candidates must see the previous ones), so a failure while storing chunk *k* leaves the parent and the chunks before it. An extraction failure still stores nothing, because every chunk is extracted before anything is written.
+- `graph.Counts.Artifacts` counts chunk artifacts as well; `Counts.Chunks` says how many of them are chunks.
+- Go: `graph.Tx` gained `InsertChunkArtifact` (implement it in custom backends); `memory_remember.Result` gained `Chunks` and `EmbeddedChunks`.
+
 ## [0.5.0] - 2026-10-14
 
 ### Added

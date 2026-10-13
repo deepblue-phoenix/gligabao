@@ -2,7 +2,7 @@
 
 An artifact is a piece of data ingested to be remembered: the raw text that `POST /v1/gb/remember` receives, stored as it came. It is the provenance of the graph: every entity and edge is anchored to the artifact(s) it was inferred from, so a fact can always be traced back to the original text.
 
-Code: `internal/memory/remember.go` (`Remember`, `Store`, `ResolveKind`), `internal/db/graph/model/model.go` (types), `internal/db/graph/{sqlite,postgres}/db_schema.go` (tables).
+Code: `internal/memory/memory_remember/remember.go` (`Remember`, `Store`, `ResolveKind`), `remember_chunks.go` (chunked texts), `internal/db/graph/model/model.go` (types), `internal/db/graph/{sqlite,postgres}/db_schema.go` (tables).
 
 Images are not artifacts in this sense: `remember` with an `image` stores an image artifact (a row in `gb_image_artifacts` tracking a file on disk) through a separate pipeline, and they are not linked to entities or edges yet (see [images.md](images.md)).
 
@@ -33,7 +33,14 @@ Table `gb_artifacts`:
 | `valid_at` | Event time: when the text was written or observed. This is the request's `reference_time` (default: now). Relative dates in the text are resolved against it, and facts without a date of their own inherit it. |
 | `created_at` | System time: when it was ingested |
 
-Every `remember` call adds one artifact, so sending the same text twice stores two artifacts. They add no duplicate entities or edges, but both are recorded as sources (below).
+| `parent_id` | The artifact this one is a chunk of; NULL for an artifact that is not a chunk. See [Chunks](#chunks) |
+| `chunk_index`, `start_offset`, `end_offset`, `tokens` | Only for a chunk: its position among its siblings (from 0), the byte range of its text in the parent's text, and its size in tokens |
+
+Every `remember` call adds one artifact (plus, for a long text, its chunks), so sending the same text twice stores two artifacts. They add no duplicate entities or edges, but both are recorded as sources (below).
+
+## Chunks
+
+Artifacts can be the children of other artifacts. A text larger than one chunk (1024 tokens by default) is stored as an artifact holding the whole text, the **parent**, and is split into overlapping chunks that are artifacts too, its **children** (`parent_id` set; same `kind`, `session_id` and times; `text` is the chunk). Each chunk is extracted, stored and embedded individually, and the entities and edges link to the chunk they came from. A text that fits one chunk has no children. See [chunking.md](chunking.md).
 
 ## Provenance links
 
@@ -75,5 +82,4 @@ An artifact carries the `session_id` of the `remember` call that created it, whi
 - There is no endpoint to read, list or delete artifacts yet. The raw text can only be read from the database.
 - `recall` does not use artifact text: it answers from the graph only.
 - The `gb_edge_artifacts` and `gb_entity_artifacts` links, and the session links (`gb_entity_sessions`, `gb_edge_sessions`), are stored but not exposed by the API yet.
-- Artifacts are not embedded: `remember` embeds the entities and edges extracted from them (see [vectors.md](vectors.md)), not the artifact text.
-- A text that is too long for one extraction call fails the whole request (`502`); artifacts are not chunked.
+- Artifacts are not embedded, except chunks: `remember` embeds the entities and edges extracted from an artifact, and the text of each chunk of a long text (see [chunking.md](chunking.md) and [vectors.md](vectors.md)); the text of an artifact that is not chunked is not embedded.

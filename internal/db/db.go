@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
@@ -47,6 +48,8 @@ type Config struct {
 	// PineconeKey and PineconeIndexHost configure the Pinecone store.
 	PineconeKey       string
 	PineconeIndexHost string
+	// Chunking is the chunk size and overlap remember uses for a long text. The zero value means chunk.DefaultConfig().
+	Chunking chunk.Config
 
 	// Models are the models gligabao supports, inserted into gb_models on every Open (see relational.SyncModels).
 	// Default (nil): ai.SupportedModels(nil), i.e. the built-in price table; pass the models of the configured price
@@ -70,6 +73,7 @@ func ConfigFrom(c *config.Config, sqlitePath, vectorDir, imageDir string) Config
 		EmbeddingDimensions: c.EmbeddingDimensions,
 		PineconeKey:         c.PineconeKey,
 		PineconeIndexHost:   c.PineconeIndexHost,
+		Chunking:            c.Chunking(),
 	}
 }
 
@@ -101,6 +105,8 @@ type DB struct {
 	// ImageDir is the directory of the image files (created when the first image is stored). The relational
 	// database only tracks their paths.
 	ImageDir string
+	// Chunking is the chunk size and overlap remember uses for a long text.
+	Chunking chunk.Config
 }
 
 // Open opens the relational, graph and vector databases described by cfg and applies their schemas.
@@ -118,6 +124,9 @@ func Open(cfg Config) (*DB, error) {
 	if cfg.SQLitePath == "" {
 		cfg.SQLitePath = DefaultSQLitePath
 	}
+	if cfg.Chunking == (chunk.Config{}) {
+		cfg.Chunking = chunk.DefaultConfig()
+	}
 
 	if cfg.ImageDir == "" {
 		cfg.ImageDir = DefaultImageDir(cfg.SQLitePath)
@@ -128,6 +137,7 @@ func Open(cfg Config) (*DB, error) {
 		Backend:             cfg.Backend,
 		VectorStore:         cfg.VectorStore,
 		EmbeddingDimensions: cfg.EmbeddingDimensions,
+		Chunking:            cfg.Chunking,
 	}
 
 	target := cfg.SQLitePath

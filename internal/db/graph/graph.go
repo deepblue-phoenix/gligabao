@@ -36,6 +36,7 @@ type (
 	EntitySession      = model.EntitySession
 	EdgeSession        = model.EdgeSession
 	Artifact           = model.Artifact
+	NewChunkArtifact   = model.NewChunkArtifact
 	NewImage           = model.NewImage
 	NewImageExtraction = model.NewImageExtraction
 	ImageTextBlock     = model.ImageTextBlock
@@ -259,7 +260,7 @@ func EntitiesByID(ctx context.Context, d *sql.DB, ids []int64) ([]EvidenceEntity
 //---------------------------------------------------------------------------------------------
 // Inspection (read-only summaries of what is stored; used to verify behaviour, e.g. in tests)
 
-// DatasetCounts returns the number of artifacts, entities and edges in the dataset.
+// DatasetCounts returns the number of artifacts (and of those that are chunks), entities and edges in the dataset.
 func DatasetCounts(ctx context.Context, d *sql.DB, dsID int64) (Counts, error) {
 	switch backend() {
 	case config.DBBackendSQLite:

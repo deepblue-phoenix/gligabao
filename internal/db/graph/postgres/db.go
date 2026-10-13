@@ -244,21 +244,23 @@ func scanIDs(rows *sql.Rows) ([]int64, error) {
 //---------------------------------------------------------------------------------------------
 // Inspection (read-only summaries of what is stored; used to verify behaviour, e.g. in tests)
 
-// DatasetCounts returns the number of artifacts, entities and edges in the dataset.
+// DatasetCounts returns the number of artifacts (and of those that are chunks), entities and edges in the dataset.
 func DatasetCounts(ctx context.Context, d *sql.DB, dsID int64) (model.Counts, error) {
 	var c model.Counts
 	err := d.QueryRowContext(ctx, `
 		SELECT
 			(SELECT COUNT(*) FROM gb_artifacts WHERE dataset_id = $1),
 			(SELECT COUNT(*) FROM gb_entities WHERE dataset_id = $1),
-			(SELECT COUNT(*) FROM gb_edges WHERE dataset_id = $1)`, dsID).Scan(&c.Artifacts, &c.Entities, &c.Edges)
+			(SELECT COUNT(*) FROM gb_edges WHERE dataset_id = $1),
+			(SELECT COUNT(*) FROM gb_artifacts WHERE dataset_id = $1 AND parent_id IS NOT NULL)`, dsID).Scan(&c.Artifacts, &c.Entities, &c.Edges, &c.Chunks)
 	return c, err
 }
 
 // ListArtifacts returns the artifacts of the dataset by ID.
 func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.Artifact, error) {
 	rows, err := d.QueryContext(ctx, `
-		SELECT id, dataset_id, kind, text, COALESCE(session_id, ''), valid_at, created_at
+		SELECT id, dataset_id, kind, text, COALESCE(session_id, ''), valid_at, created_at,
+			COALESCE(parent_id, 0), COALESCE(chunk_index, 0), COALESCE(start_offset, 0), COALESCE(end_offset, 0), COALESCE(tokens, 0)
 		FROM gb_artifacts
 		WHERE dataset_id = $1
 		ORDER BY id`, dsID)
@@ -270,7 +272,8 @@ func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.Artifact
 	for rows.Next() {
 		var m model.Artifact
 		var valid, created time.Time
-		if err := rows.Scan(&m.ID, &m.DatasetID, &m.Kind, &m.Text, &m.SessionID, &valid, &created); err != nil {
+		if err := rows.Scan(&m.ID, &m.DatasetID, &m.Kind, &m.Text, &m.SessionID, &valid, &created,
+			&m.ParentID, &m.ChunkIndex, &m.StartOffset, &m.EndOffset, &m.Tokens); err != nil {
 			return nil, err
 		}
 		m.ValidAt, m.CreatedAt = valid.UTC(), created.UTC()
@@ -469,6 +472,20 @@ func (t *Tx) InsertArtifact(ctx context.Context, dsID int64, kind, text, session
 		dsID, kind, text, nullIfEmpty(sessionID), validAt.UTC(), createdAt.UTC()).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insert artifact: %w", err)
+	}
+	return id, nil
+}
+
+func (t *Tx) InsertChunkArtifact(ctx context.Context, c model.NewChunkArtifact) (int64, error) {
+	var id int64
+	err := t.tx.QueryRowContext(ctx, `
+		INSERT INTO gb_artifacts (dataset_id, kind, text, session_id, parent_id, chunk_index, start_offset, end_offset, tokens, valid_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		RETURNING id`,
+		c.DatasetID, c.Kind, c.Text, nullIfEmpty(c.SessionID), c.ParentID, c.ChunkIndex, c.StartOffset, c.EndOffset, c.Tokens,
+		c.ValidAt.UTC(), c.CreatedAt.UTC()).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("insert chunk %d of artifact %d: %w", c.ChunkIndex, c.ParentID, err)
 	}
 	return id, nil
 }

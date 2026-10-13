@@ -8,6 +8,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 
 	log "github.com/sirupsen/logrus"
@@ -43,6 +44,10 @@ type CallOptions struct {
 
 	Trace *Trace // set by Remember for the Store it calls; nil otherwise
 
+	// Chunking says when and how Remember splits a long text into chunks (see package chunk): a text of more than
+	// Chunking.Size tokens is. The default is chunk.DefaultConfig().
+	Chunking chunk.Config
+
 	// SessionID is the user/agent session the call belongs to ("" for none), set by WithSessionID. Remember and
 	// RememberImage attach it to what they store; Recall only records it (it never changes the answer).
 	SessionID string
@@ -50,7 +55,7 @@ type CallOptions struct {
 
 // NewCallOptions applies opts on top of the defaults.
 func NewCallOptions(opts []Option) CallOptions {
-	o := CallOptions{Dir: TrajectoryDir}
+	o := CallOptions{Dir: TrajectoryDir, Chunking: chunk.DefaultConfig()}
 	for _, f := range opts {
 		f(&o)
 	}
@@ -68,6 +73,10 @@ func WithEval() Option { return func(o *CallOptions) { o.Eval = true } }
 // into its result and trajectory, and its answer does not depend on it. The ID is used as given: validate it with
 // ResolveSessionID first. Empty means no session.
 func WithSessionID(id string) Option { return func(o *CallOptions) { o.SessionID = id } }
+
+// WithChunking sets the chunk size (in tokens) and overlap that Remember uses for a text larger than one chunk. See
+// chunk.Config; an invalid one makes Remember fail. The default is chunk.DefaultConfig().
+func WithChunking(c chunk.Config) Option { return func(o *CallOptions) { o.Chunking = c } }
 
 // WithTrace makes Store record its steps (the embedding) into tr, the trace of the enclosing Remember.
 func WithTrace(tr *Trace) Option { return func(o *CallOptions) { o.Trace = tr } }

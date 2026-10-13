@@ -21,14 +21,27 @@ const schema = `
 --   session_id the user/agent session that remembered it (a caller-chosen string); NULL if none was given. It is
 --              what links artifacts from the same session; see gb_entity_sessions and gb_edge_sessions for the
 --              entities and edges.
+--   parent_id  NULL for an artifact the user sent (a note, or a long text/document, which holds the whole text). The
+--              chunks of a long text are artifacts too: children of it, with parent_id set. They have the kind, session
+--              and times of the parent, and their own text, which is text[start_offset:end_offset] of the parent's
+--              (bytes; overlap with the previous chunk included). Chunks are what the entity/edge extraction runs on,
+--              one by one, so the entities and edges of a long text link to its chunks, not to the parent.
+--              Deleting the parent deletes its chunks.
+--   chunk_index position of a chunk among its siblings, from 0; tokens its size in tokens. NULL unless a chunk.
 CREATE TABLE IF NOT EXISTS gb_artifacts (
-	id         INTEGER PRIMARY KEY AUTOINCREMENT,
-	dataset_id INTEGER NOT NULL REFERENCES gb_datasets(id),
-	kind       TEXT NOT NULL DEFAULT 'knowledge',
-	text       TEXT NOT NULL,
-	session_id TEXT,
-	valid_at   DATETIME NOT NULL,
-	created_at DATETIME NOT NULL
+	id           INTEGER PRIMARY KEY AUTOINCREMENT,
+	dataset_id   INTEGER NOT NULL REFERENCES gb_datasets(id),
+	kind         TEXT NOT NULL DEFAULT 'knowledge',
+	text         TEXT NOT NULL,
+	session_id   TEXT,
+	parent_id    INTEGER REFERENCES gb_artifacts(id) ON DELETE CASCADE,
+	chunk_index  INTEGER,
+	start_offset INTEGER,
+	end_offset   INTEGER,
+	tokens       INTEGER,
+	valid_at     DATETIME NOT NULL,
+	created_at   DATETIME NOT NULL,
+	UNIQUE (parent_id, chunk_index)
 );
 
 -- model_id (entities and edges): the model that made the inference, a reference to gb_models (see
@@ -202,6 +215,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_onto_edges_target ON gb_onto_edges(target_id);
 CREATE INDEX IF NOT EXISTS idx_gb_image_artifacts_dataset ON gb_image_artifacts(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_image_extractions_image ON gb_image_extractions(image_artifact_id);
 CREATE INDEX IF NOT EXISTS idx_gb_artifacts_dataset ON gb_artifacts(dataset_id);
+CREATE INDEX IF NOT EXISTS idx_gb_artifacts_parent ON gb_artifacts(parent_id);
 CREATE INDEX IF NOT EXISTS idx_gb_entities_dataset ON gb_entities(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_dataset ON gb_edges(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_source ON gb_edges(source_id);

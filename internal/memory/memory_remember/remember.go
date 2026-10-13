@@ -181,12 +181,34 @@ type Result struct {
 	// entity and edge indexes (0 unless the call was made with WithVectors).
 	EmbeddedEntities int `json:"embedded_entities,omitempty"`
 	EmbeddedEdges    int `json:"embedded_edges,omitempty"`
+	// EmbeddedChunks is the number of chunk embeddings written to the dataset's chunk index (only for a chunked text).
+	EmbeddedChunks int `json:"embedded_chunks,omitempty"`
+
+	// Chunks are the chunks of a text that was larger than one chunk, in order; empty for a text that was not
+	// chunked. Then ArtifactID is the parent artifact (the whole text), the chunks are its children, and Entities,
+	// Edges and InvalidatedEdges are those of all the chunks together.
+	Chunks []ChunkResult `json:"chunks,omitempty"`
 
 	// TRAJECTORY
 	// TrajectoryID and Trajectory are the ATIF trajectory of this call (also stored in TrajectoryDir); only set when
 	// the call was made with WithEval.
 	TrajectoryID string           `json:"trajectory_id,omitempty"`
 	Trajectory   *atif.Trajectory `json:"trajectory,omitempty"`
+}
+
+// ChunkResult is one chunk of a chunked text, an artifact of its own (a child of Result.ArtifactID).
+type ChunkResult struct {
+	ArtifactID int64 `json:"artifact_id"`
+	Index      int   `json:"index"`
+	Tokens     int   `json:"tokens"`
+	// OverlapTokens is how much of the start of the chunk repeats the end of the previous one.
+	OverlapTokens int `json:"overlap_tokens"`
+	// StartOffset and EndOffset are the byte range of the chunk in the text.
+	StartOffset int `json:"start_offset"`
+	EndOffset   int `json:"end_offset"`
+	// Entities and Edges are how many the chunk mentions and states (before merging with the other chunks).
+	Entities int `json:"entities"`
+	Edges    int `json:"edges"`
 }
 
 // Remember extracts entities and temporal edges from text and stores them (with the raw text as an artifact of the
@@ -196,6 +218,10 @@ type Result struct {
 // stored.
 //
 // With WithSessionID the artifact is attached to that session, and so is every entity and edge it yields (see Store).
+//
+// A text of more than the chunk size (WithChunking; 1024 tokens by default) is a document: it is stored as an
+// artifact, split into overlapping chunks that are artifacts too (its children), and each chunk is extracted,
+// reconciled, stored and embedded on its own (see rememberDocument and docs/chunking.md).
 //
 // Only with WithEval is the call recorded as an ATIF trajectory (stored as JSON in TrajectoryDir and returned in
 // Result.Trajectory, with its ID in Result.TrajectoryID).
@@ -228,7 +254,21 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	}()
 	llm = tr.Wrap(llm)
 	tr.User(text)
-	tr.Input(map[string]any{"user_id": userID, "dataset": dataset, "kind": kind, "reference_time": relational.FormatTime(ref), "session_id": co.SessionID})
+	input := map[string]any{"user_id": userID, "dataset": dataset, "kind": kind, "reference_time": relational.FormatTime(ref), "session_id": co.SessionID}
+	cc := co.Chunking.WithDefaults()
+	if err := cc.Validate(); err != nil {
+		return nil, fmt.Errorf("memory: %w", err)
+	}
+	chunked := cc.NeedsChunking(text)
+	if chunked {
+		input["chunk_size"], input["chunk_overlap_percent"] = cc.Size, cc.OverlapPercent
+	}
+	tr.Input(input)
+
+	j := &job{d: d, llm: llm, tr: tr, co: co, opts: opts, userID: userID, dataset: dataset, kind: kind, ref: ref, now: now}
+	if chunked {
+		return j.rememberDocument(ctx, text, cc)
+	}
 
 	//--------------------------------------
 	// EXTRACT
@@ -240,6 +280,30 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	tr.Tool("The LLM extracted these entities and edges (new facts) from the text, before any stored fact is considered.",
 		"extract_graph", map[string]any{"text_chars": len(text)},
 		map[string]any{"entities": ex.Entities, "edges": candidateFacts(ex.Edges, nil)})
+
+	return j.resolveAndStore(ctx, text, ex, nil)
+}
+
+// job is what one Remember call shares between the steps it runs on each text it extracts (the text itself, or each of
+// the chunks of a long one).
+type job struct {
+	d      *sql.DB
+	llm    memory_core.LLM // already recording and tracing
+	tr     *memory_core.Trace
+	co     memory_core.CallOptions
+	opts   []memory_core.Option
+	userID string
+	// dataset, kind: already resolved.
+	dataset, kind string
+	ref, now      time.Time
+}
+
+// resolveAndStore reconciles the new facts of ex (extracted from text) with the stored ones and stores the text as an
+// artifact, with its entities, edges and (with vectors) embeddings. part says the text is a chunk of a longer one; nil
+// for an artifact that is not a chunk.
+func (j *job) resolveAndStore(ctx context.Context, text string, ex *Extraction, part *chunkPart) (*Result, error) {
+	d, tr, co, userID, dataset := j.d, j.tr, j.co, j.userID, j.dataset
+	label := part.label()
 
 	//--------------------------------------
 	// LOAD_CANDIDATES
@@ -258,6 +322,8 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	// They are the only stored facts resolveEdges looks at: exact repeats (same endpoints and relation) are merged in
 	// Go, and the rest are shown to the LLM, which flags semantic duplicates and contradictions; the contradicted
 	// ones are invalidated (not deleted) by Store. Without candidates there is no LLM resolution call.
+	// For the chunks of a long text this runs after the previous chunk was stored, so a chunk is also compared with
+	// the facts of the chunks before it.
 	cs, err := loadCandidates(ctx, d, co, userID, dataset, ex)
 	if err != nil {
 		return nil, err
@@ -266,7 +332,7 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 
 	// Three steps in the trajectory: each lookup with what it found alone, then the merge.
 	tr.Tool("Looked up the live stored facts touching an entity whose normalized name is an endpoint of a new fact "+
-		"(newest first, at most 50): the candidates found by exact name.", "find_candidates_by_name",
+		"(newest first, at most 50): the candidates found by exact name."+label, "find_candidates_by_name",
 		map[string]any{"user_id": userID, "dataset": dataset, "names": cs.Names},
 		map[string]any{"candidates": len(cs.ByName), "facts": candidateFacts(cs.ByName, nil)})
 
@@ -274,21 +340,24 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 
 	traceSearchEntities(tr, cs.SearchTexts, cs.Similar, candidateFacts(cs.BySimilar, nil), cs.SearchUsage, cs.SearchErr)
 	tr.Tool("Merged the two lookups by edge ID (newest first, at most 50); the new facts are checked against these "+
-		"candidates for duplicates and contradictions.", "load_candidates",
+		"candidates for duplicates and contradictions."+label, "load_candidates",
 		map[string]any{"user_id": userID, "dataset": dataset, "new_edges": len(ex.Edges), "by_name": len(cs.ByName), "by_similarity": len(cs.BySimilar)},
 		map[string]any{"candidates": len(cands), "facts": candidateFacts(cands, cs.Via)})
-	plan, err := resolveEdges(ctx, llm, ex.Edges, cands)
+	plan, err := resolveEdges(ctx, j.llm, ex.Edges, cands)
 	if err != nil {
 		return nil, err
 	}
-	res, err = Store(ctx, d, userID, dataset, kind, text, ref, now, ex, plan, append(opts[:len(opts):len(opts)], memory_core.WithTrace(tr))...)
+	res, err := store(ctx, d, userID, dataset, j.kind, text, j.ref, j.now, ex, plan, part, append(j.opts[:len(j.opts):len(j.opts)], memory_core.WithTrace(tr))...)
 	if err != nil {
 		return nil, err
 	}
-	tr.Tool("Stored the artifact, entities and edges.", "store_artifact",
-		map[string]any{"user_id": userID, "dataset": dataset, "kind": kind},
+	args := map[string]any{"user_id": userID, "dataset": dataset, "kind": j.kind}
+	if part != nil {
+		args["parent_id"], args["chunk_index"] = part.ParentID, part.Chunk.Index
+	}
+	tr.Tool("Stored the artifact, entities and edges."+label, "store_artifact", args,
 		map[string]any{"artifact_id": res.ArtifactID, "entities": res.Entities, "edges": res.Edges, "invalidated_edges": res.InvalidatedEdges,
-			"embedded_entities": res.EmbeddedEntities, "embedded_edges": res.EmbeddedEdges})
+			"embedded_entities": res.EmbeddedEntities, "embedded_edges": res.EmbeddedEdges, "embedded_chunks": res.EmbeddedChunks})
 	return res, nil
 }
 
@@ -318,6 +387,12 @@ func candidateFacts(edges []Edge, via map[int64]string) []map[string]any {
 // nothing; the vectors are written right after the commit, so a vector store failure returns an error after the
 // relational data is saved (the vectors are written again the next time the entity or fact is mentioned).
 func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan, opts ...memory_core.Option) (*Result, error) {
+	return store(ctx, d, userID, dataset, kind, text, ref, now, ex, plan, nil, opts...)
+}
+
+// store is Store; part, if not nil, says the text is a chunk of a longer one: it is then stored as a child artifact
+// of part.ParentID, and its text is embedded into the chunk index together with the entities and edges.
+func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan, part *chunkPart, opts ...memory_core.Option) (*Result, error) {
 	co := memory_core.NewCallOptions(opts)
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
@@ -357,7 +432,14 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 	}
 	defer tx.Rollback()
 
-	artID, err := tx.InsertArtifact(ctx, dsID, kind, text, sessionID, ref, now)
+	var artID int64
+	if part == nil {
+		artID, err = tx.InsertArtifact(ctx, dsID, kind, text, sessionID, ref, now)
+	} else {
+		artID, err = tx.InsertChunkArtifact(ctx, graph.NewChunkArtifact{DatasetID: dsID, ParentID: part.ParentID, Kind: kind, Text: text,
+			SessionID: sessionID, ChunkIndex: part.Chunk.Index, StartOffset: part.Chunk.Start, EndOffset: part.Chunk.End,
+			Tokens: part.Chunk.Tokens, ValidAt: ref, CreatedAt: now})
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -449,7 +531,11 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		return nil, err
 	}
 
-	pv, embedUsage, err := prepareVectors(ctx, tx, co, dsID, embedIDs, out.Edges)
+	var chunkVec *chunkVector
+	if part != nil {
+		chunkVec = &chunkVector{artifactID: artID, parentID: part.ParentID, index: part.Chunk.Index, text: text}
+	}
+	pv, embedUsage, err := prepareVectors(ctx, tx, co, dsID, embedIDs, out.Edges, chunkVec)
 	if err != nil {
 		return nil, err
 	}
@@ -460,7 +546,7 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		return nil, err
 	}
 	if pv != nil {
-		out.EmbeddedEntities, out.EmbeddedEdges = pv.entities, pv.edges
+		out.EmbeddedEntities, out.EmbeddedEdges, out.EmbeddedChunks = pv.entities, pv.edges, pv.chunks
 	}
 	return out, nil
 }

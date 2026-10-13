@@ -16,6 +16,7 @@ The vector store isolates vectors by dataset too (a chromem collection, a Pineco
 |---|---|---|
 | entities | `dataset-<id>-entities` | one per entity, ID `entity-<entity id>`, metadata `kind`, `entity_id`, `name`, `type`; text `Name (type): description` |
 | edges | `dataset-<id>-edges` | one per edge, ID `edge-<edge id>`, metadata `kind`, `edge_id`, `source`, `target`, `relation`; text is the edge's description |
+| chunks | `dataset-<id>-chunks` | one per chunk of a [chunked](chunking.md) text, ID `chunk-<chunk artifact id>`, metadata `kind`, `artifact_id`, `parent_id`, `index`; text is the chunk's text |
 
 They are keyed by the id, not the name, so:
 

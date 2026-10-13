@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/deepblue-phoenix/gligabao/internal/chunk"
 )
 
 // FileName is the default config file name.
@@ -69,6 +71,12 @@ type Config struct {
 	// The host is the index's data-plane host from the Pinecone console. Both empty = vector DB disabled.
 	PineconeKey       string `toml:"pinecone_api_key"`
 	PineconeIndexHost string `toml:"pinecone_index_host"`
+	// ChunkSize is the chunk size, in tokens: remember splits a text of more than this many tokens into chunks (see
+	// docs/chunking.md). Default chunk.DefaultSize (1024).
+	ChunkSize int `toml:"chunk_size"`
+	// ChunkOverlapPercent is how much of a chunk repeats the end of the previous one, as a percentage of ChunkSize
+	// (0 = no overlap, at most chunk.MaxOverlapPercent). Default chunk.DefaultOverlapPercent (20).
+	ChunkOverlapPercent int `toml:"chunk_overlap_percent"`
 	// Eval registers the eval endpoints (/v1/gb/eval/remember, /v1/gb/eval/recall) that return ATIF trajectories
 	// with their results. Default false; `serve --eval` turns it on.
 	Eval bool `toml:"eval"`
@@ -115,6 +123,8 @@ func Default() *Config {
 		DBBackend:           DBBackendSQLite,
 		VectorStore:         VectorStoreChromem,
 		EmbeddingDimensions: DefaultEmbeddingDimensions,
+		ChunkSize:           chunk.DefaultSize,
+		ChunkOverlapPercent: chunk.DefaultOverlapPercent,
 		PostgresDSN:         os.Getenv(EnvPostgresDSN),
 		AnthropicKey:        os.Getenv(EnvAnthropicKey),
 		OpenAIKey:           os.Getenv(EnvOpenAIKey),
@@ -122,6 +132,11 @@ func Default() *Config {
 		PineconeKey:       os.Getenv(EnvPineconeKey),
 		PineconeIndexHost: os.Getenv(EnvPineconeHost),
 	}
+}
+
+// Chunking returns the chunking settings (chunk_size, chunk_overlap_percent).
+func (c *Config) Chunking() chunk.Config {
+	return chunk.Config{Size: c.ChunkSize, OverlapPercent: c.ChunkOverlapPercent}
 }
 
 // Addr returns the HTTP listen address derived from the port (e.g. ":7878").
@@ -150,6 +165,9 @@ func (c *Config) Validate() error {
 	}
 	if c.EmbeddingDimensions < 1 {
 		return fmt.Errorf("config: embedding_dimensions %d must be positive", c.EmbeddingDimensions)
+	}
+	if err := c.Chunking().Validate(); err != nil {
+		return fmt.Errorf("config: chunk_size / chunk_overlap_percent: %w", err)
 	}
 	for model, p := range c.Prices {
 		if strings.TrimSpace(model) == "" {

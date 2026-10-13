@@ -11,7 +11,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
-// WithVectors makes Remember embed the entities and edges it stores and write the embeddings to store, into the
+// WithVectors makes Remember embed the entities, edges and chunks it stores and write the embeddings to store, into the
 // dataset's vector datasets (one per index, see VectorDataset). Without it (or if either argument is nil)
 // Remember does not touch vectors.
 func WithVectors(store vector.Store, emb memory_core.Embedder) memory_core.Option {
@@ -22,6 +22,7 @@ func WithVectors(store vector.Store, emb memory_core.Embedder) memory_core.Optio
 const (
 	VectorKindEntity = "entity"
 	VectorKindEdge   = "edge"
+	VectorKindChunk  = "chunk"
 )
 
 // EntityVectorID is the vector ID of an entity in the entity index of its dataset.
@@ -32,6 +33,11 @@ func EntityVectorID(entityID int64) string {
 // EdgeVectorID is the vector ID of an edge in the edge index of its dataset.
 func EdgeVectorID(edgeID int64) string { return VectorKindEdge + "-" + strconv.FormatInt(edgeID, 10) }
 
+// ChunkVectorID is the vector ID of a chunk in the chunk index of its dataset: the ID of the chunk's artifact.
+func ChunkVectorID(artifactID int64) string {
+	return VectorKindChunk + "-" + strconv.FormatInt(artifactID, 10)
+}
+
 //---------------------------------------------------------------------------------------------
 
 // IndexStats is the state of one vector index of a dataset.
@@ -39,7 +45,7 @@ type IndexStats struct {
 	Index memory_core.VectorIndex `json:"index"`
 	// VectorDataset is the dataset's name in the vector store.
 	VectorDataset string `json:"vector_dataset"`
-	// Expected is the number of rows (entities, edges) that should have a vector in this index.
+	// Expected is the number of rows (entities, edges, chunk artifacts) that should have a vector in this index.
 	Expected int `json:"expected"`
 	vector.Stats
 }
@@ -82,9 +88,14 @@ func VectorStats(ctx context.Context, d *sql.DB, vectors vector.Store, userID, n
 		if err != nil {
 			return nil, fmt.Errorf("memory: stats of vector dataset %s: %w", ds, err)
 		}
-		expected := counts.Entities
-		if idx == memory_core.IndexEdges {
+		var expected int
+		switch idx {
+		case memory_core.IndexEntities:
+			expected = counts.Entities
+		case memory_core.IndexEdges:
 			expected = counts.Edges
+		case memory_core.IndexChunks:
+			expected = counts.Chunks
 		}
 		out.Backend = st.Backend
 		out.Indexes = append(out.Indexes, IndexStats{Index: idx, VectorDataset: ds, Expected: expected, Stats: st})
