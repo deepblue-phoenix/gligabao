@@ -12,7 +12,7 @@ type NewImage struct {
 	MediaType string // image/jpeg, image/png, image/gif or image/webp
 	SHA256    string // hex SHA-256 of the file
 	SizeBytes int64
-	Path      string    // where the file is, relative to the image directory (see package imagestore)
+	Path      string    // where the file is, relative to the image directory (see memory_image/image_store.go)
 	ValidAt   time.Time // event time: when the image was captured or observed
 	CreatedAt time.Time // ingestion time
 
@@ -45,7 +45,7 @@ type ImageArtifact struct {
 	MediaType string
 	SHA256    string
 	SizeBytes int64
-	Path      string // relative to the image directory (see package imagestore)
+	Path      string // relative to the image directory (see memory_image/image_store.go)
 	ValidAt   time.Time
 	CreatedAt time.Time
 }

@@ -3,7 +3,7 @@ package memory_image
 // The image pipeline (package memory_image): Remember for images (RememberImage). It is independent of the text pipeline (remember.go):
 // an image is sent to a vision LLM, which reads the text in it (OCR: title and text blocks) and classifies the whole
 // image by a theme ("graph", "plot", ...). The image file is kept in the image directory (ImageDir, see package
-// imagestore), tracked by an image artifact row (gb_image_artifacts: metadata and the file's path, never the bytes),
+// image_store.go), tracked by an image artifact row (gb_image_artifacts: metadata and the file's path, never the bytes),
 // and what the model read is stored as an image extraction with its text blocks (gb_image_extractions,
 // gb_image_text_blocks). Nothing is
 // added to the graph (entities, edges, vectors) yet: grounding the extraction in the graph comes later.
@@ -24,7 +24,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
-	"github.com/deepblue-phoenix/gligabao/internal/imagestore"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 
 	log "github.com/sirupsen/logrus"
@@ -32,7 +31,7 @@ import (
 
 //---------------------------------------------------------------------------------------------
 
-// ImageDir is where RememberImage stores the image files (see package imagestore); the database only tracks them.
+// ImageDir is where RememberImage stores the image files (see image_store.go); the database only tracks them.
 // It is read on every call; set it once at startup, or override it per call with WithImageDir.
 var ImageDir = "bin/images"
 
@@ -256,7 +255,7 @@ func RememberImage(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, 
 		switch {
 		case err == nil:
 			// Same content, so the same file name: this only writes the file if it is gone.
-			if _, _, err := imagestore.Save(imageDir(co), dsID, art.MediaType, hash, data); err != nil {
+			if _, _, err := saveFile(imageDir(co), dsID, art.MediaType, hash, data); err != nil {
 				return nil, err
 			}
 			res := newImageResult(userID, dataset, art, ext)
@@ -285,7 +284,7 @@ func RememberImage(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, 
 	}
 	// The file first, then the row that tracks it: a failed insert removes the file again (unless it was there already,
 	// from the same image in this dataset), so only a crash in between can leave an untracked file.
-	path, created, err := imagestore.Save(imageDir(co), dsID, mediaType, hash, data)
+	path, created, err := saveFile(imageDir(co), dsID, mediaType, hash, data)
 	if err != nil {
 		return nil, err
 	}
@@ -305,13 +304,13 @@ func RememberImage(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, 
 	})
 	if err != nil {
 		if created {
-			if rerr := imagestore.Remove(imageDir(co), path); rerr != nil {
+			if rerr := removeFile(imageDir(co), path); rerr != nil {
 				log.WithError(rerr).WithField("path", path).Error("remove image file after failed insert")
 			}
 		}
 		return nil, err
 	}
-	tr.Tool("Stored the image file and tracked it with an image artifact and its extraction.", "store_image",
+	tr.Tool("Stored the image file and tracked it with an image artifact and its extraction.", "image_store",
 		map[string]any{"user_id": userID, "dataset": dataset},
 		map[string]any{"image_artifact_id": artID, "extraction_id": extID, "path": path, "text_blocks": len(x.TextBlocks)})
 	return &ImageResult{
@@ -376,5 +375,5 @@ func LoadImage(ctx context.Context, d *sql.DB, userID, dataset string, artifactI
 	if err != nil {
 		return nil, err
 	}
-	return imagestore.Read(imageDir(memory_core.NewCallOptions(opts)), a.Path)
+	return readFile(imageDir(memory_core.NewCallOptions(opts)), a.Path)
 }

@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS gb_entity_artifacts (
 --
 -- An image artifact is an image ingested to be remembered. The table only tracks it: its media type, SHA-256 and
 -- size, and path, the file's location relative to the image directory (the bytes live on the file system, never in
--- the database; see internal/imagestore). valid_at is its event time (when it was captured/observed), created_at
+-- the database; see internal/memory/memory_image/image_store.go). valid_at is its event time (when it was captured/observed), created_at
 -- when it was ingested.
 CREATE TABLE IF NOT EXISTS gb_image_artifacts (
 	id         INTEGER PRIMARY KEY AUTOINCREMENT,
