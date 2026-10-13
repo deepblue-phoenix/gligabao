@@ -15,7 +15,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
-	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
 func must0(t *testing.T, err error) {
@@ -175,15 +175,15 @@ func testDatasets(t *testing.T, d *sql.DB) {
 
 	// Each dataset has its own vector dataset, keyed by dataset ID.
 	for _, name := range []string{"ds1", "ds2"} {
-		must(vectors.Upsert(ctx, memory.EntityDataset(dataset("u1", name).ID), []vector.Vector{{ID: "v", Values: []float32{1, 0}}}))
+		must(vectors.Upsert(ctx, memory_core.EntityDataset(dataset("u1", name).ID), []vector.Vector{{ID: "v", Values: []float32{1, 0}}}))
 	}
 	vectorCount := func(dsID int64) int {
 		t.Helper()
-		got, err := vectors.Query(ctx, memory.EntityDataset(dsID), []float32{1, 0}, vector.QueryOptions{})
+		got, err := vectors.Query(ctx, memory_core.EntityDataset(dsID), []float32{1, 0}, vector.QueryOptions{})
 		must(err)
 		return len(got)
 	}
-	if vectorCount(ds.ID) != 1 || vectorCount(dataset("u1", "ds2").ID) != 1 || memory.EntityDataset(ds.ID) == memory.EntityDataset(dataset("u1", "ds2").ID) {
+	if vectorCount(ds.ID) != 1 || vectorCount(dataset("u1", "ds2").ID) != 1 || memory_core.EntityDataset(ds.ID) == memory_core.EntityDataset(dataset("u1", "ds2").ID) {
 		t.Fatal("datasets do not have separate vector datasets")
 	}
 

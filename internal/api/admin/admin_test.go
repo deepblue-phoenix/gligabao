@@ -18,7 +18,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
-	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_image"
 )
 
@@ -28,11 +28,11 @@ func TestOverview(t *testing.T) { dbtest.Run(t, testOverview) }
 func testOverview(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	for _, c := range []struct{ user, name string }{{"alice", "a"}, {"bob", "b"}} {
-		if _, err := memory.CreateDataset(ctx, d, c.user, c.name, "", nil); err != nil {
+		if _, err := memory_core.CreateDataset(ctx, d, c.user, c.name, "", nil); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := memory.DeleteDataset(ctx, d, nil, "bob", "b"); err != nil {
+	if err := memory_core.DeleteDataset(ctx, d, nil, "bob", "b"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -73,7 +73,7 @@ func testOverview(t *testing.T, d *sql.DB) {
 func TestGraph(t *testing.T) { dbtest.Run(t, testGraph) }
 
 func testGraph(t *testing.T, d *sql.DB) {
-	if _, err := memory.CreateDataset(context.Background(), d, "alice", "a", "", nil); err != nil {
+	if _, err := memory_core.CreateDataset(context.Background(), d, "alice", "a", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	get := func(url string) *httptest.ResponseRecorder {
@@ -101,7 +101,7 @@ func TestDeleteDataset(t *testing.T) { dbtest.Run(t, testDeleteDataset) }
 
 func testDeleteDataset(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	if _, err := memory.CreateDataset(ctx, d, "alice", "a", "", nil); err != nil {
+	if _, err := memory_core.CreateDataset(ctx, d, "alice", "a", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	del := func(url string) int {
@@ -118,11 +118,11 @@ func testDeleteDataset(t *testing.T, d *sql.DB) {
 	if c := del("/admin/api/datasets?db=nope&user_id=alice&dataset=a"); c != http.StatusNotFound {
 		t.Fatalf("unknown db: %d", c)
 	}
-	live, err := memory.ListDatasets(ctx, d, "alice", false)
+	live, err := memory_core.ListDatasets(ctx, d, "alice", false)
 	if err != nil || len(live) != 0 {
 		t.Fatalf("live: %v %v", live, err)
 	}
-	all, err := memory.ListDatasets(ctx, d, "alice", true)
+	all, err := memory_core.ListDatasets(ctx, d, "alice", true)
 	if err != nil || len(all) != 1 || !all[0].Deleted {
 		t.Fatalf("all: %v %v", all, err)
 	}
@@ -133,7 +133,7 @@ func TestVectors(t *testing.T) { dbtest.Run(t, testVectors) }
 
 func testVectors(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	ds, err := memory.CreateDataset(ctx, d, "alice", "a", "", nil)
+	ds, err := memory_core.CreateDataset(ctx, d, "alice", "a", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func testVectors(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Upsert(ctx, memory.EntityDataset(ds.ID), []vector.Vector{{ID: "entity-1", Values: []float32{1, 0}}}); err != nil {
+	if err := store.Upsert(ctx, memory_core.EntityDataset(ds.ID), []vector.Vector{{ID: "entity-1", Values: []float32{1, 0}}}); err != nil {
 		t.Fatal(err)
 	}
 	h := admin.VectorsOf([]admin.Named{{Name: "standard", DB: d, Vectors: store}})
@@ -165,7 +165,7 @@ func testVectors(t *testing.T, d *sql.DB) {
 	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
-	if out.Backend != "chromem" || len(out.Indexes) != len(memory.VectorIndexes) || out.Indexes[0].Index != "entities" || out.Indexes[0].Count != 1 || out.Indexes[1].Count != 0 || out.Indexes[0].Dims != 2 {
+	if out.Backend != "chromem" || len(out.Indexes) != len(memory_core.VectorIndexes) || out.Indexes[0].Index != "entities" || out.Indexes[0].Count != 1 || out.Indexes[1].Count != 0 || out.Indexes[0].Dims != 2 {
 		t.Fatalf("%s", w.Body)
 	}
 	if w := get("/admin/api/vectors?user_id=alice&dataset=nope"); w.Code != http.StatusNotFound {
@@ -182,7 +182,7 @@ func TestVectorsOpenOnDemand(t *testing.T) { dbtest.Run(t, testVectorsOpenOnDema
 
 func testVectorsOpenOnDemand(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	ds, err := memory.CreateDataset(ctx, d, "alice", "a", "", nil)
+	ds, err := memory_core.CreateDataset(ctx, d, "alice", "a", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func testVectorsOpenOnDemand(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := other.Upsert(ctx, memory.EntityDataset(ds.ID), []vector.Vector{{ID: "entity-1", Values: []float32{1, 0}}}); err != nil {
+	if err := other.Upsert(ctx, memory_core.EntityDataset(ds.ID), []vector.Vector{{ID: "entity-1", Values: []float32{1, 0}}}); err != nil {
 		t.Fatal(err)
 	}
 	if n := count(); n != 1 {

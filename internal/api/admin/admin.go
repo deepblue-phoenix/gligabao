@@ -164,7 +164,7 @@ func Graph(d *sql.DB) http.HandlerFunc {
 		switch {
 		case errors.Is(err, memory_core.ErrInvalidUser):
 			httputil.Error(w, http.StatusBadRequest, err.Error())
-		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory.ErrDatasetNotFound):
+		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory_core.ErrDatasetNotFound):
 			httputil.Error(w, http.StatusNotFound, "dataset not found")
 		case err != nil:
 			log.WithError(err).WithFields(log.Fields{"user_id": q.Get("user_id"), "dataset": q.Get("dataset")}).Error("admin: export graph failed")
@@ -176,7 +176,7 @@ func Graph(d *sql.DB) http.HandlerFunc {
 }
 
 // DeleteDatasetOf serves DELETE /admin/api/datasets?db=<name>&user_id=...&dataset=... for one of dbs (the first
-// without db): a soft delete of the dataset (see memory.DeleteDataset).
+// without db): a soft delete of the dataset (see memory_core.DeleteDataset).
 func DeleteDatasetOf(dbs []Named) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -195,11 +195,11 @@ func DeleteDatasetOf(dbs []Named) http.HandlerFunc {
 				return
 			}
 			defer release()
-			err = memory.DeleteDataset(r.Context(), n.DB, vectors, q.Get("user_id"), q.Get("dataset"))
+			err = memory_core.DeleteDataset(r.Context(), n.DB, vectors, q.Get("user_id"), q.Get("dataset"))
 			switch {
 			case errors.Is(err, memory_core.ErrInvalidUser):
 				httputil.Error(w, http.StatusBadRequest, err.Error())
-			case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory.ErrDatasetNotFound):
+			case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory_core.ErrDatasetNotFound):
 				httputil.Error(w, http.StatusNotFound, "dataset not found")
 			case err != nil:
 				log.WithError(err).WithFields(log.Fields{"user_id": q.Get("user_id"), "dataset": q.Get("dataset")}).Error("admin: delete dataset failed")
@@ -237,7 +237,7 @@ func VectorsOf(dbs []Named) http.HandlerFunc {
 			switch {
 			case errors.Is(err, memory_core.ErrInvalidUser):
 				httputil.Error(w, http.StatusBadRequest, err.Error())
-			case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory.ErrDatasetNotFound):
+			case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory_core.ErrDatasetNotFound):
 				httputil.Error(w, http.StatusNotFound, "dataset not found")
 			case err != nil:
 				log.WithError(err).WithFields(log.Fields{"user_id": q.Get("user_id"), "dataset": q.Get("dataset")}).Error("admin: vector stats failed")

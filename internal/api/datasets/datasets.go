@@ -33,11 +33,11 @@ func Create(d *sql.DB) http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 			return
 		}
-		ds, err := memory.CreateDataset(r.Context(), d, req.UserID, req.Name, req.Description, req.Tags)
+		ds, err := memory_core.CreateDataset(r.Context(), d, req.UserID, req.Name, req.Description, req.Tags)
 		switch {
 		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory_core.ErrInvalidUser):
 			httputil.Error(w, http.StatusBadRequest, err.Error())
-		case errors.Is(err, memory.ErrDatasetExists):
+		case errors.Is(err, memory_core.ErrDatasetExists):
 			httputil.Error(w, http.StatusConflict, "dataset already exists")
 		case err != nil:
 			log.WithError(err).WithField("user_id", req.UserID).WithField("dataset", req.Name).Error("create dataset failed")
@@ -52,7 +52,7 @@ func Create(d *sql.DB) http.HandlerFunc {
 func List(d *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
-		list, err := memory.ListDatasets(r.Context(), d, q.Get("user_id"), q.Get("include_deleted") == "true")
+		list, err := memory_core.ListDatasets(r.Context(), d, q.Get("user_id"), q.Get("include_deleted") == "true")
 		if errors.Is(err, memory_core.ErrInvalidUser) {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
@@ -67,14 +67,14 @@ func List(d *sql.DB) http.HandlerFunc {
 }
 
 // Delete serves DELETE /v1/gb/datasets/{name}?user_id=...: a soft delete (the row is kept with deleted = true).
-// The dataset's vectors (one vector store dataset per index, memory.VectorDataset) are removed from vectors, which may be nil.
+// The dataset's vectors (one vector store dataset per index, memory_core.VectorDataset) are removed from vectors, which may be nil.
 func Delete(d *sql.DB, vectors vector.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		err := memory.DeleteDataset(r.Context(), d, vectors, r.URL.Query().Get("user_id"), r.PathValue("name"))
+		err := memory_core.DeleteDataset(r.Context(), d, vectors, r.URL.Query().Get("user_id"), r.PathValue("name"))
 		switch {
 		case errors.Is(err, memory_core.ErrInvalidUser):
 			httputil.Error(w, http.StatusBadRequest, err.Error())
-		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory.ErrDatasetNotFound):
+		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory_core.ErrDatasetNotFound):
 			httputil.Error(w, http.StatusNotFound, "dataset not found")
 		case err != nil:
 			log.WithError(err).WithFields(log.Fields{
@@ -96,7 +96,7 @@ func Graph(d *sql.DB) http.HandlerFunc {
 		switch {
 		case errors.Is(err, memory_core.ErrInvalidUser):
 			httputil.Error(w, http.StatusBadRequest, err.Error())
-		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory.ErrDatasetNotFound):
+		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory_core.ErrDatasetNotFound):
 			httputil.Error(w, http.StatusNotFound, "dataset not found")
 		case err != nil:
 			log.WithError(err).WithFields(log.Fields{

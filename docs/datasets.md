@@ -10,7 +10,7 @@ A dataset is a hard logical container. Every artifact, entity and edge belongs t
 
 ## Vectors
 
-The vector store isolates vectors by dataset too (a chromem collection, a Pinecone namespace; see [vectors.md](vectors.md#datasets)): a gligabao dataset keeps its vectors in one vector dataset per purpose, an index, named `dataset-<id>-<index>` after the dataset's numeric `id` (`memory.VectorDataset`):
+The vector store isolates vectors by dataset too (a chromem collection, a Pinecone namespace; see [vectors.md](vectors.md#datasets)): a gligabao dataset keeps its vectors in one vector dataset per purpose, an index, named `dataset-<id>-<index>` after the dataset's numeric `id` (`memory_core.VectorDataset`):
 
 | Index | Vector dataset | Vectors |
 |---|---|---|

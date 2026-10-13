@@ -1,4 +1,4 @@
-package memory
+package memory_core
 
 // Datasets are hard logical containers: every memory, entity and edge belongs to exactly
 // one dataset, and the same entity in two datasets is two separate rows. Nothing is ever linked or queried
@@ -15,15 +15,11 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
-	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 
 	log "github.com/sirupsen/logrus"
 )
 
-var (
-	ErrDatasetNotFound = memory_core.ErrDatasetNotFound
-	ErrDatasetExists   = errors.New("dataset already exists")
-)
+var ErrDatasetExists = errors.New("dataset already exists")
 
 // Dataset describes a dataset.
 type Dataset = relational.Dataset
@@ -45,14 +41,14 @@ func normTags(tags []string) []string {
 // CreateDataset creates a dataset owned by userID. The name is required (no default is applied). It returns
 // ErrDatasetExists if a live dataset with that name exists for the user.
 func CreateDataset(ctx context.Context, d *sql.DB, userID, name, description string, tags []string) (*Dataset, error) {
-	userID, err := memory_core.ResolveUserID(userID)
+	userID, err := ResolveUserID(userID)
 	if err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(name) == "" {
-		return nil, fmt.Errorf("%w: name is required", memory_core.ErrInvalidDataset)
+		return nil, fmt.Errorf("%w: name is required", ErrInvalidDataset)
 	}
-	name, err = memory_core.ResolveDatasetName(name)
+	name, err = ResolveDatasetName(name)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +61,7 @@ func CreateDataset(ctx context.Context, d *sql.DB, userID, name, description str
 
 // ListDatasets returns userID's datasets oldest first; deleted ones only if includeDeleted.
 func ListDatasets(ctx context.Context, d *sql.DB, userID string, includeDeleted bool) ([]Dataset, error) {
-	userID, err := memory_core.ResolveUserID(userID)
+	userID, err := ResolveUserID(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -110,15 +106,15 @@ func EdgeDataset(datasetID int64) string { return VectorDataset(datasetID, Index
 // A failure to remove the vectors does not fail the call (the dataset is deleted either way and the vector datasets are
 // unreachable); it is logged.
 func DeleteDataset(ctx context.Context, d *sql.DB, vectors vector.Store, userID, name string) error {
-	userID, err := memory_core.ResolveUserID(userID)
+	userID, err := ResolveUserID(userID)
 	if err != nil {
 		return err
 	}
-	name, err = memory_core.ResolveDatasetName(name)
+	name, err = ResolveDatasetName(name)
 	if err != nil {
 		return err
 	}
-	id, err := datasetID(ctx, d, userID, name)
+	id, err := DatasetID(ctx, d, userID, name)
 	if err != nil {
 		return err
 	}
@@ -135,11 +131,4 @@ func DeleteDataset(ctx context.Context, d *sql.DB, vectors vector.Store, userID,
 		}
 	}
 	return nil
-}
-
-//---------------------------------------------------------------------------------------------
-
-// datasetID returns the ID of userID's live dataset called name (both already resolved), or ErrDatasetNotFound.
-func datasetID(ctx context.Context, d *sql.DB, userID, name string) (int64, error) {
-	return memory_core.DatasetID(ctx, d, userID, name)
 }

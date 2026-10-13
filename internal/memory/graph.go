@@ -29,7 +29,7 @@ func ExportGraph(ctx context.Context, d *sql.DB, userID, name string) (*GraphExp
 	if err != nil {
 		return nil, err
 	}
-	dsID, err := datasetID(ctx, d, userID, name)
+	dsID, err := memory_core.DatasetID(ctx, d, userID, name)
 	if err != nil {
 		return nil, err
 	}

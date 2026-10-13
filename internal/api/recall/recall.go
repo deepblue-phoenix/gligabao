@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
-	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_recall"
 	"github.com/deepblue-phoenix/gligabao/monitoring"
@@ -70,7 +69,7 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool) http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if errors.Is(err, memory.ErrDatasetNotFound) {
+		if errors.Is(err, memory_core.ErrDatasetNotFound) {
 			httputil.Error(w, http.StatusNotFound, "dataset not found")
 			return
 		}

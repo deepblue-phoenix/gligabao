@@ -12,7 +12,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
-	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_recall"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
@@ -92,7 +92,7 @@ func testRecall(t *testing.T, d *sql.DB) {
 func TestRecallEmptyGraph(t *testing.T) { dbtest.Run(t, testRecallEmptyGraph) }
 
 func testRecallEmptyGraph(t *testing.T, d *sql.DB) {
-	if _, err := memory.CreateDataset(context.Background(), d, "u1", "main", "", nil); err != nil {
+	if _, err := memory_core.CreateDataset(context.Background(), d, "u1", "main", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()

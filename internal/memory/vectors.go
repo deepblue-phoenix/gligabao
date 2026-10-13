@@ -36,7 +36,7 @@ func EdgeVectorID(edgeID int64) string { return VectorKindEdge + "-" + strconv.F
 
 // IndexStats is the state of one vector index of a dataset.
 type IndexStats struct {
-	Index VectorIndex `json:"index"`
+	Index memory_core.VectorIndex `json:"index"`
 	// VectorDataset is the dataset's name in the vector store.
 	VectorDataset string `json:"vector_dataset"`
 	// Expected is the number of rows (entities, edges) that should have a vector in this index.
@@ -63,7 +63,7 @@ func VectorStats(ctx context.Context, d *sql.DB, vectors vector.Store, userID, n
 	if err != nil {
 		return nil, err
 	}
-	id, err := datasetID(ctx, d, userID, name)
+	id, err := memory_core.DatasetID(ctx, d, userID, name)
 	if err != nil {
 		return nil, err
 	}
@@ -76,14 +76,14 @@ func VectorStats(ctx context.Context, d *sql.DB, vectors vector.Store, userID, n
 	if err != nil {
 		return nil, err
 	}
-	for _, idx := range VectorIndexes {
-		ds := VectorDataset(id, idx)
+	for _, idx := range memory_core.VectorIndexes {
+		ds := memory_core.VectorDataset(id, idx)
 		st, err := statter.Stats(ctx, ds)
 		if err != nil {
 			return nil, fmt.Errorf("memory: stats of vector dataset %s: %w", ds, err)
 		}
 		expected := counts.Entities
-		if idx == IndexEdges {
+		if idx == memory_core.IndexEdges {
 			expected = counts.Edges
 		}
 		out.Backend = st.Backend

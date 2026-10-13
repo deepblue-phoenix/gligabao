@@ -60,7 +60,7 @@ func testRememberEmbedsEntities(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := vs.Query(ctx, memory.EntityDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 10})
+	got, err := vs.Query(ctx, memory_core.EntityDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 10})
 	if err != nil || len(got) != 3 {
 		t.Fatalf("matches = %v, %v", got, err)
 	}
@@ -70,11 +70,11 @@ func testRememberEmbedsEntities(t *testing.T, d *sql.DB) {
 		}
 	}
 	// The edges are in an index of their own, not mixed with the entities.
-	if memory.EntityDataset(dsID) == memory.EdgeDataset(dsID) || !strings.HasSuffix(memory.EntityDataset(dsID), "-entities") ||
-		!strings.HasSuffix(memory.EdgeDataset(dsID), "-edges") {
-		t.Errorf("vector datasets: %q, %q", memory.EntityDataset(dsID), memory.EdgeDataset(dsID))
+	if memory_core.EntityDataset(dsID) == memory_core.EdgeDataset(dsID) || !strings.HasSuffix(memory_core.EntityDataset(dsID), "-entities") ||
+		!strings.HasSuffix(memory_core.EdgeDataset(dsID), "-edges") {
+		t.Errorf("vector datasets: %q, %q", memory_core.EntityDataset(dsID), memory_core.EdgeDataset(dsID))
 	}
-	edgeMatches, err := vs.Query(ctx, memory.EdgeDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 10})
+	edgeMatches, err := vs.Query(ctx, memory_core.EdgeDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 10})
 	if err != nil || len(edgeMatches) != 2 {
 		t.Fatalf("edge matches = %v, %v", edgeMatches, err)
 	}
@@ -88,17 +88,17 @@ func testRememberEmbedsEntities(t *testing.T, d *sql.DB) {
 	if _, err := memory_remember.Remember(ctx, d, extractLLM{}, "u1", "work", "", "again", relational.Now(), opt); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := vs.Query(ctx, memory.EntityDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 10}); len(got) != 3 {
+	if got, _ := vs.Query(ctx, memory_core.EntityDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 10}); len(got) != 3 {
 		t.Errorf("after second remember: %d vectors, want 3", len(got))
 	}
-	if got, _ := vs.Query(ctx, memory.EdgeDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 10}); len(got) != 2 {
+	if got, _ := vs.Query(ctx, memory_core.EdgeDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 10}); len(got) != 2 {
 		t.Errorf("after second remember: %d edge vectors, want 2 (the repeated facts are the same edges)", len(got))
 	}
 	if _, err := memory_remember.Remember(ctx, d, extractLLM{}, "u1", "other", "", "x", relational.Now(), opt); err != nil {
 		t.Fatal(err)
 	}
 	otherID, _ := relational.DatasetID(ctx, d, "u1", "other")
-	if got, _ := vs.Query(ctx, memory.EntityDataset(otherID), []float32{1, 1}, vector.QueryOptions{TopK: 10}); len(got) != 3 {
+	if got, _ := vs.Query(ctx, memory_core.EntityDataset(otherID), []float32{1, 1}, vector.QueryOptions{TopK: 10}); len(got) != 3 {
 		t.Errorf("other dataset: %d vectors, want 3", len(got))
 	}
 
