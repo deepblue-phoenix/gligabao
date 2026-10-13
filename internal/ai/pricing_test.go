@@ -33,3 +33,27 @@ func TestHaiku55Tiers(t *testing.T) {
 }
 
 func near(a, b float64) bool { return a-b < 1e-9 && b-a < 1e-9 }
+
+func TestSupportedModels(t *testing.T) {
+	byName := func(ms []ModelInfo) map[string]ModelInfo {
+		out := map[string]ModelInfo{}
+		for _, m := range ms {
+			out[m.Name] = m
+		}
+		return out
+	}
+	got := byName(SupportedModels(nil))
+	for name, want := range map[string]ModelInfo{
+		"claude-haiku-5-5":       {Name: "claude-haiku-5-5", Provider: ProviderAnthropic, Kind: KindLLM},
+		"text-embedding-3-small": {Name: "text-embedding-3-small", Provider: ProviderOpenAI, Kind: KindEmbedding},
+	} {
+		if got[name] != want {
+			t.Errorf("%s = %+v, want %+v", name, got[name], want)
+		}
+	}
+	// Config overrides of the price table are supported models too.
+	over := byName(SupportedModels(NewPriceTable(map[string]Price{"My-Model": {Input: 1}})))
+	if _, ok := over["my-model"]; !ok || len(over) <= len(got) {
+		t.Errorf("override not listed: %v", over)
+	}
+}

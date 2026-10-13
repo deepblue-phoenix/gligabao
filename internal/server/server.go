@@ -186,6 +186,7 @@ func Run(ctx context.Context, opts Options) error {
 		fields["app"], fields["app_version"], fields["app_commit"] = app.Name, app.Version, app.Commit
 	}
 	log.WithFields(fields).Info("starting gligabao")
+	opts.DB.Models = ai.SupportedModels(ai.NewPriceTable(opts.Prices)) // the models gligabao supports are stored on startup
 	database, err := db.Open(opts.DB)
 	if err != nil {
 		return err

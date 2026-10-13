@@ -27,6 +27,10 @@ CREATE TABLE IF NOT EXISTS gb_artifacts (
 	created_at DATETIME NOT NULL
 );
 
+-- model_id (entities and edges): the model that made the inference, a reference to gb_models (see
+-- internal/db/relational); NULL if unknown. It is the model the LLM API reported for the extraction call. Entities are
+-- shared between artifacts, so an entity's model_id is that of the model that wrote its stored state: the one that
+-- created it, then whichever last replaced its description (a re-mention without a description leaves it alone).
 CREATE TABLE IF NOT EXISTS gb_entities (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
 	dataset_id  INTEGER NOT NULL REFERENCES gb_datasets(id),
@@ -34,6 +38,7 @@ CREATE TABLE IF NOT EXISTS gb_entities (
 	name_key    TEXT NOT NULL, -- normalized name used for dedup
 	type        TEXT NOT NULL,
 	description TEXT NOT NULL DEFAULT '',
+	model_id    TEXT REFERENCES gb_models(id), -- the model that inferred the entity (see the comment above)
 	created_at  DATETIME NOT NULL DEFAULT (` + rsqlite.SQLNow + `),
 	updated_at  DATETIME NOT NULL DEFAULT (` + rsqlite.SQLNow + `),
 	UNIQUE (dataset_id, name_key, type)
@@ -55,7 +60,8 @@ CREATE TABLE IF NOT EXISTS gb_edges (
 	invalid_at  DATETIME,
 	created_at  DATETIME NOT NULL,
 	expired_at  DATETIME,
-	artifact_id INTEGER REFERENCES gb_artifacts(id) ON DELETE SET NULL
+	artifact_id INTEGER REFERENCES gb_artifacts(id) ON DELETE SET NULL,
+	model_id    TEXT REFERENCES gb_models(id) -- the model that inferred the fact
 );
 
 -- Which artifacts an edge was inferred from (many-to-many).

@@ -4,7 +4,10 @@
 package model
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -180,4 +183,32 @@ type ExperimentArtifact struct {
 	Text      string    `json:"text"`
 	ValidAt   time.Time `json:"valid_at"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+//---------------------------------------------------------------------------------------------
+
+// Model is an AI model (gb_models). Entities and edges of the graph reference the model that inferred them by ID.
+type Model struct {
+	// ID is derived from Name alone (see ModelID), so the same model has the same ID in every database.
+	ID string `json:"id"`
+	// Name is the model name as the provider's API reports it (or, for a supported family priced by prefix, the
+	// price-table key, e.g. "claude-haiku-4-5").
+	Name     string `json:"name"`
+	Provider string `json:"provider,omitempty"` // "anthropic", "openai", ... ("" if unknown)
+	Kind     string `json:"kind"`               // "llm" or "embedding"
+	// Supported is true for the models gligabao supports at its last start (they are re-inserted on every startup),
+	// false for a model that was only seen in an API response (e.g. a dated snapshot of a supported family).
+	Supported bool      `json:"supported"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ModelID returns the ID of the model called name: the first 8 bytes of the SHA-256 of the name (trimmed and
+// lowercased), in hex. It is deterministic, so every database gives a model the same ID, and "" for an empty name.
+func ModelID(name string) string {
+	n := strings.ToLower(strings.TrimSpace(name))
+	if n == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(n))
+	return hex.EncodeToString(sum[:8])
 }

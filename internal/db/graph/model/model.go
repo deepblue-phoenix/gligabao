@@ -19,6 +19,9 @@ type Entity struct {
 	Name        string `json:"name"`
 	Type        string `json:"type"`
 	Description string `json:"description,omitempty"`
+	// ModelID is the ID of the model (gb_models) that inferred the entity; "" if unknown. The pipeline sets it, never
+	// the LLM output. See sqlite/db_schema.go for what it means for an entity shared between artifacts.
+	ModelID string `json:"model_id,omitempty"`
 }
 
 // Edge is a fact relating two entities (referenced by name), with its bi-temporal validity.
@@ -33,6 +36,7 @@ type Edge struct {
 	InvalidAt   *time.Time `json:"invalid_at,omitempty"` // when it stopped being true; nil while it is still true
 	CreatedAt   *time.Time `json:"created_at,omitempty"` // when we learned about it
 	ExpiredAt   *time.Time `json:"expired_at,omitempty"` // when we learned it was superseded
+	ModelID     string     `json:"model_id,omitempty"`   // ID of the model (gb_models) that inferred the fact
 }
 
 // EvidenceEntity is a graph entity cited by an answer.
@@ -41,6 +45,7 @@ type EvidenceEntity struct {
 	Name        string `json:"name"`
 	Type        string `json:"type"`
 	Description string `json:"description,omitempty"`
+	ModelID     string `json:"model_id,omitempty"` // ID of the model (gb_models) that inferred the entity
 }
 
 // EvidenceEdge is a graph edge cited by an answer.
@@ -53,6 +58,7 @@ type EvidenceEdge struct {
 	Relation    string `json:"relation"`
 	Description string `json:"description,omitempty"`
 	ArtifactID  *int64 `json:"artifact_id,omitempty"`
+	ModelID     string `json:"model_id,omitempty"` // ID of the model (gb_models) that inferred the fact
 	// Bi-temporal validity of the fact.
 	ValidAt   *time.Time `json:"valid_at,omitempty"`
 	InvalidAt *time.Time `json:"invalid_at,omitempty"`
@@ -68,6 +74,7 @@ type NewEdge struct {
 	InvalidAt                     *time.Time
 	CreatedAt                     time.Time
 	ArtifactID                    int64
+	ModelID                       string // ID of the model (gb_models) that inferred the fact; "" if unknown; the model must be stored
 }
 
 // Artifact kinds.
@@ -148,7 +155,8 @@ type Tx interface {
 	// InsertArtifact stores an artifact of the given kind (ArtifactEpisode or ArtifactKnowledge).
 	InsertArtifact(ctx context.Context, dsID int64, kind, text string, validAt, createdAt time.Time) (int64, error)
 	// UpsertEntity inserts the entity, or updates the one with the same (dataset, nameKey, type): a non-empty
-	// description replaces the stored one. It returns the entity ID.
+	// description replaces the stored one (and e.ModelID the stored model_id, which follows the description; an empty
+	// stored model_id is always filled). It returns the entity ID.
 	UpsertEntity(ctx context.Context, dsID int64, e Entity, nameKey string) (int64, error)
 	// LinkEntity records that the entity was inferred from the artifact. It is idempotent: linking the same pair
 	// again is a no-op. Call it for every entity an artifact mentions, whether the entity was just created or

@@ -2,13 +2,21 @@
 
 declare const d3: typeof import("d3");
 
-interface Entity { id: number; name: string; type: string; description?: string }
+// model_id is the ID of the model (see GraphData.models) that inferred the entity / fact (absent if unknown).
+interface Entity { id: number; name: string; type: string; description?: string; model_id?: string }
 interface Edge {
-  id: number; source_id: number; target_id: number; relation: string; description?: string;
+  id: number; source_id: number; target_id: number; relation: string; description?: string; model_id?: string;
   // Bi-temporal validity of the fact: event time (valid_at/invalid_at) and system time (created_at/expired_at).
   valid_at?: string; invalid_at?: string; created_at?: string; expired_at?: string;
 }
-export interface GraphData { dataset: string; entities: Entity[]; edges: Edge[] }
+export interface Model { id: string; name: string; provider?: string }
+export interface GraphData { dataset: string; entities: Entity[]; edges: Edge[]; models?: Model[] }
+
+// Name of the model with the given ID (the ID itself if the graph does not list it).
+let modelNames = new Map<string, string>();
+function modelName(id: string | undefined): string {
+  return id ? (modelNames.get(id) ?? id) : "";
+}
 
 interface Node extends d3.SimulationNodeDatum, Entity { degree: number }
 interface Link extends d3.SimulationLinkDatum<Node> { edge: Edge; slot: number }
@@ -62,7 +70,10 @@ export async function showGraphFrom(title: string, load: () => Promise<GraphData
       status.textContent = "The graph is empty.";
       return;
     }
-    status.textContent = `${data.entities.length} entities, ${data.edges.length} edges`;
+    modelNames = new Map((data.models ?? []).map((m) => [m.id, m.name]));
+    const models = [...new Set([...data.entities, ...data.edges].map((x) => modelName(x.model_id)).filter((m) => m))].sort();
+    status.textContent = `${data.entities.length} entities, ${data.edges.length} edges` +
+      (models.length ? ` · inferred by ${models.join(", ")}` : "");
     draw(el("graph-canvas"), data);
   } catch (err) {
     status.className = "error";
@@ -102,7 +113,7 @@ function draw(container: HTMLElement, data: GraphData): void {
 
   const link = root.append("g").attr("class", "graph-links").selectAll("line").data(links).join("line")
     .attr("class", (l) => (l.edge.expired_at ? "graph-link expired" : "graph-link"));
-  link.append("title").text((l) => `${l.edge.relation}${l.edge.description ? `: ${l.edge.description}` : ""}`);
+  link.append("title").text((l) => `${l.edge.relation}${l.edge.description ? `: ${l.edge.description}` : ""}${l.edge.model_id ? `\nmodel: ${modelName(l.edge.model_id)}` : ""}`);
 
   const linkLabel = root.append("g").selectAll("text").data(links).join("text")
     .attr("class", "graph-label graph-edge-label").attr("text-anchor", "middle").text((l) => l.edge.relation);
@@ -110,7 +121,7 @@ function draw(container: HTMLElement, data: GraphData): void {
   const node = root.append("g").selectAll<SVGGElement, Node>("g").data(nodes).join("g").attr("class", "graph-node");
   node.append("circle").attr("r", radius).attr("fill", (n) => color(n.type));
   node.append("text").text((n) => n.name).attr("class", "graph-label").attr("dy", (n) => radius(n) + 7).attr("text-anchor", "middle");
-  node.append("title").text((n) => `${n.name} (${n.type})${n.description ? `\n${n.description}` : ""}`);
+  node.append("title").text((n) => `${n.name} (${n.type})${n.description ? `\n${n.description}` : ""}${n.model_id ? `\nmodel: ${modelName(n.model_id)}` : ""}`);
 
   // Details overlay of the clicked node; it follows the node while the layout moves or the view is zoomed.
   const overlay = document.createElement("div");
@@ -223,7 +234,7 @@ function describe(n: Node, edges: Edge[], byID: Map<number, Node>): HTMLElement[
   h.textContent = n.name;
 
   const params = document.createElement("dl");
-  for (const [k, v] of [["id", String(n.id)], ["type", n.type], ["description", n.description ?? ""], ["connections", String(n.degree)]]) {
+  for (const [k, v] of [["id", String(n.id)], ["type", n.type], ["description", n.description ?? ""], ["model", modelName(n.model_id)], ["connections", String(n.degree)]]) {
     if (!v) continue;
     params.appendChild(document.createElement("dt")).textContent = k;
     params.appendChild(document.createElement("dd")).textContent = v;
@@ -252,6 +263,10 @@ function describe(n: Node, edges: Edge[], byID: Map<number, Node>): HTMLElement[
     for (const [k, v] of [["valid at", e.valid_at], ["invalid at", e.invalid_at], ["created at", e.created_at], ["expired at", e.expired_at]]) {
       dl.appendChild(document.createElement("dt")).textContent = k as string;
       dl.appendChild(document.createElement("dd")).textContent = fmtTime(v);
+    }
+    if (e.model_id) {
+      dl.appendChild(document.createElement("dt")).textContent = "model";
+      dl.appendChild(document.createElement("dd")).textContent = modelName(e.model_id);
     }
   }
   return [h, params, facts];

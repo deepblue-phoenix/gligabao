@@ -111,3 +111,59 @@ func (t *PriceTable) lookup(model string) (Price, bool) {
 	}
 	return Price{}, false
 }
+
+//---------------------------------------------------------------------------------------------
+
+// Model kinds.
+const (
+	KindLLM       = "llm"
+	KindEmbedding = "embedding"
+)
+
+// ModelInfo describes a model gligabao actively supports.
+type ModelInfo struct {
+	// Name is the model name as the provider's API knows it, or, for a family priced by prefix, the price-table key
+	// (e.g. "claude-haiku-4-5", which also prices "claude-haiku-4-5-20251001").
+	Name     string
+	Provider string // ProviderAnthropic, ProviderOpenAI, or "" if unknown
+	Kind     string // KindLLM or KindEmbedding
+}
+
+// ProviderOf returns the provider that serves the model called name ("" if unknown), judging by its name.
+func ProviderOf(name string) string {
+	n := strings.ToLower(strings.TrimSpace(name))
+	switch {
+	case strings.HasPrefix(n, "claude"):
+		return ProviderAnthropic
+	case strings.HasPrefix(n, "text-embedding"), strings.HasPrefix(n, "gpt"), strings.HasPrefix(n, "o1"), strings.HasPrefix(n, "o3"):
+		return ProviderOpenAI
+	}
+	return ""
+}
+
+// KindOf returns KindEmbedding for an embedding model and KindLLM for anything else, judging by the name.
+func KindOf(name string) string {
+	if strings.Contains(strings.ToLower(name), "embedding") {
+		return KindEmbedding
+	}
+	return KindLLM
+}
+
+// SupportedModels returns the models gligabao actively supports: the default chat and embedding models and every
+// model of the price table t (the built-in prices plus the overrides of the config; nil means the built-in ones),
+// sorted by name.
+func SupportedModels(t *PriceTable) []ModelInfo {
+	if t == nil {
+		t = NewPriceTable(nil)
+	}
+	names := map[string]bool{defaultModel: true, EmbeddingModel: true}
+	for _, k := range t.keys {
+		names[k] = true
+	}
+	out := make([]ModelInfo, 0, len(names))
+	for n := range names {
+		out = append(out, ModelInfo{Name: n, Provider: ProviderOf(n), Kind: KindOf(n)})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}

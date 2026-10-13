@@ -37,6 +37,14 @@ func (a *args) add(v any) string {
 
 type scanner interface{ Scan(dest ...any) error }
 
+// nullIfEmpty is how an unknown model is stored: NULL, since model_id references gb_models.
+func nullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
 func utc(n sql.NullTime) *time.Time {
 	if !n.Valid {
 		return nil
@@ -50,7 +58,7 @@ func utc(n sql.NullTime) *time.Time {
 
 const edgeColumns = `
 	e.id, s.name, t.name, e.relation, e.description,
-	e.valid_at, e.invalid_at, e.created_at, e.expired_at`
+	e.valid_at, e.invalid_at, e.created_at, e.expired_at, COALESCE(e.model_id, '')`
 const edgeFrom = `
 	FROM gb_edges e
 	JOIN gb_entities s ON s.id = e.source_id
@@ -59,7 +67,7 @@ const edgeFrom = `
 func scanEdge(r scanner) (model.Edge, error) {
 	var e model.Edge
 	var valid, invalid, created, expired sql.NullTime
-	if err := r.Scan(&e.ID, &e.Source, &e.Target, &e.Relation, &e.Description, &valid, &invalid, &created, &expired); err != nil {
+	if err := r.Scan(&e.ID, &e.Source, &e.Target, &e.Relation, &e.Description, &valid, &invalid, &created, &expired, &e.ModelID); err != nil {
 		return e, err
 	}
 	e.ValidAt, e.InvalidAt, e.CreatedAt, e.ExpiredAt = utc(valid), utc(invalid), utc(created), utc(expired)
@@ -169,7 +177,7 @@ func EdgesAround(ctx context.Context, d *sql.DB, dsID int64, entityIDs []int64, 
 	rows, err := d.QueryContext(ctx, `
 		SELECT
 			e.id, e.source_id, e.target_id, s.name, t.name, e.relation, e.description, e.artifact_id,
-			e.valid_at, e.invalid_at, e.created_at, e.expired_at
+			e.valid_at, e.invalid_at, e.created_at, e.expired_at, COALESCE(e.model_id, '')
 		FROM gb_edges e
 		JOIN gb_entities s ON s.id = e.source_id
 		JOIN gb_entities t ON t.id = e.target_id
@@ -187,7 +195,7 @@ func EdgesAround(ctx context.Context, d *sql.DB, dsID int64, entityIDs []int64, 
 		var mem sql.NullInt64
 		var valid, invalid, created, expired sql.NullTime
 		if err := rows.Scan(&e.ID, &e.SourceID, &e.TargetID, &e.Source, &e.Target, &e.Relation, &e.Description, &mem,
-			&valid, &invalid, &created, &expired); err != nil {
+			&valid, &invalid, &created, &expired, &e.ModelID); err != nil {
 			return nil, err
 		}
 		e.ValidAt, e.InvalidAt, e.CreatedAt, e.ExpiredAt = utc(valid), utc(invalid), utc(created), utc(expired)
@@ -202,7 +210,7 @@ func EdgesAround(ctx context.Context, d *sql.DB, dsID int64, entityIDs []int64, 
 // EntitiesByID returns the entities with the given IDs.
 func EntitiesByID(ctx context.Context, d *sql.DB, ids []int64) ([]model.EvidenceEntity, error) {
 	rows, err := d.QueryContext(ctx, `
-		SELECT id, name, type, description
+		SELECT id, name, type, description, COALESCE(model_id, '')
 		FROM gb_entities
 		WHERE id = ANY($1)`, ids)
 	if err != nil {
@@ -212,7 +220,7 @@ func EntitiesByID(ctx context.Context, d *sql.DB, ids []int64) ([]model.Evidence
 	var out []model.EvidenceEntity
 	for rows.Next() {
 		var e model.EvidenceEntity
-		if err := rows.Scan(&e.ID, &e.Name, &e.Type, &e.Description); err != nil {
+		if err := rows.Scan(&e.ID, &e.Name, &e.Type, &e.Description, &e.ModelID); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -320,7 +328,7 @@ func ListEntityArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.En
 // ListEntities returns the entities of the dataset by ID.
 func ListEntities(ctx context.Context, d *sql.DB, dsID int64) ([]model.EvidenceEntity, error) {
 	rows, err := d.QueryContext(ctx, `
-		SELECT id, name, type, description
+		SELECT id, name, type, description, COALESCE(model_id, '')
 		FROM gb_entities
 		WHERE dataset_id = $1
 		ORDER BY id`, dsID)
@@ -331,7 +339,7 @@ func ListEntities(ctx context.Context, d *sql.DB, dsID int64) ([]model.EvidenceE
 	var out []model.EvidenceEntity
 	for rows.Next() {
 		var e model.EvidenceEntity
-		if err := rows.Scan(&e.ID, &e.Name, &e.Type, &e.Description); err != nil {
+		if err := rows.Scan(&e.ID, &e.Name, &e.Type, &e.Description, &e.ModelID); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -344,7 +352,7 @@ func ListGraphEdges(ctx context.Context, d *sql.DB, dsID int64) ([]model.Evidenc
 	rows, err := d.QueryContext(ctx, `
 		SELECT
 			e.id, e.source_id, e.target_id, s.name, t.name, e.relation, e.description, e.artifact_id,
-			e.valid_at, e.invalid_at, e.created_at, e.expired_at
+			e.valid_at, e.invalid_at, e.created_at, e.expired_at, COALESCE(e.model_id, '')
 		FROM gb_edges e
 		JOIN gb_entities s ON s.id = e.source_id
 		JOIN gb_entities t ON t.id = e.target_id
@@ -360,7 +368,7 @@ func ListGraphEdges(ctx context.Context, d *sql.DB, dsID int64) ([]model.Evidenc
 		var mem sql.NullInt64
 		var valid, invalid, created, expired sql.NullTime
 		if err := rows.Scan(&e.ID, &e.SourceID, &e.TargetID, &e.Source, &e.Target, &e.Relation, &e.Description, &mem,
-			&valid, &invalid, &created, &expired); err != nil {
+			&valid, &invalid, &created, &expired, &e.ModelID); err != nil {
 			return nil, err
 		}
 		e.ValidAt, e.InvalidAt, e.CreatedAt, e.ExpiredAt = utc(valid), utc(invalid), utc(created), utc(expired)
@@ -442,16 +450,21 @@ func (t *Tx) LinkEntity(ctx context.Context, entityID, artifactID int64) error {
 func (t *Tx) UpsertEntity(ctx context.Context, dsID int64, e model.Entity, nameKey string) (int64, error) {
 	var id int64
 	err := t.tx.QueryRowContext(ctx, `
-		INSERT INTO gb_entities (dataset_id, name, name_key, type, description)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO gb_entities (dataset_id, name, name_key, type, description, model_id)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (dataset_id, name_key, type) DO UPDATE SET
+			-- model_id follows the description: it is the model that wrote the stored state.
+			model_id    = CASE
+				WHEN EXCLUDED.description <> '' OR gb_entities.model_id IS NULL THEN EXCLUDED.model_id
+				ELSE gb_entities.model_id
+			END,
 			description = CASE
 				WHEN EXCLUDED.description <> '' THEN EXCLUDED.description
 				ELSE gb_entities.description
 			END,
 			updated_at  = `+rpostgres.SQLNow+`
 		RETURNING id`,
-		dsID, e.Name, nameKey, e.Type, e.Description).Scan(&id)
+		dsID, e.Name, nameKey, e.Type, e.Description, nullIfEmpty(e.ModelID)).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("upsert entity %q: %w", e.Name, err)
 	}
@@ -475,9 +488,9 @@ func (t *Tx) FindEntityID(ctx context.Context, dsID int64, nameKey string) (int6
 func (t *Tx) GetEntity(ctx context.Context, dsID, id int64) (*model.EvidenceEntity, error) {
 	e := &model.EvidenceEntity{}
 	err := t.tx.QueryRowContext(ctx, `
-		SELECT id, name, type, description
+		SELECT id, name, type, description, COALESCE(model_id, '')
 		FROM gb_entities
-		WHERE dataset_id = $1 AND id = $2`, dsID, id).Scan(&e.ID, &e.Name, &e.Type, &e.Description)
+		WHERE dataset_id = $1 AND id = $2`, dsID, id).Scan(&e.ID, &e.Name, &e.Type, &e.Description, &e.ModelID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
@@ -494,10 +507,10 @@ func (t *Tx) InsertEdge(ctx context.Context, e model.NewEdge) (int64, error) {
 	}
 	var id int64
 	err := t.tx.QueryRowContext(ctx, `
-		INSERT INTO gb_edges (dataset_id, source_id, target_id, relation, description, valid_at, invalid_at, created_at, artifact_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO gb_edges (dataset_id, source_id, target_id, relation, description, valid_at, invalid_at, created_at, artifact_id, model_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id`,
-		e.DatasetID, e.SourceID, e.TargetID, e.Relation, e.Description, e.ValidAt.UTC(), invalid, e.CreatedAt.UTC(), e.ArtifactID).Scan(&id)
+		e.DatasetID, e.SourceID, e.TargetID, e.Relation, e.Description, e.ValidAt.UTC(), invalid, e.CreatedAt.UTC(), e.ArtifactID, nullIfEmpty(e.ModelID)).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insert edge: %w", err)
 	}

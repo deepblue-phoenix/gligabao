@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
@@ -46,6 +47,11 @@ type Config struct {
 	// PineconeKey and PineconeIndexHost configure the Pinecone store.
 	PineconeKey       string
 	PineconeIndexHost string
+
+	// Models are the models gligabao supports, inserted into gb_models on every Open (see relational.SyncModels).
+	// Default (nil): ai.SupportedModels(nil), i.e. the built-in price table; pass the models of the configured price
+	// table (ai.SupportedModels(ai.NewPriceTable(prices))) to include the models of its overrides.
+	Models []ai.ModelInfo
 }
 
 // DefaultSQLitePath is used when Config.SQLitePath is empty.
@@ -140,6 +146,19 @@ func Open(cfg Config) (*DB, error) {
 		return nil, err
 	}
 	d.Graph = rel
+
+	models := cfg.Models
+	if models == nil {
+		models = ai.SupportedModels(nil)
+	}
+	rows := make([]relational.Model, 0, len(models))
+	for _, m := range models {
+		rows = append(rows, relational.Model{Name: m.Name, Provider: m.Provider, Kind: m.Kind})
+	}
+	if err := relational.SyncModels(context.Background(), rel, rows); err != nil {
+		rel.Close()
+		return nil, err
+	}
 
 	switch cfg.VectorStore {
 	case config.VectorStoreChromem:

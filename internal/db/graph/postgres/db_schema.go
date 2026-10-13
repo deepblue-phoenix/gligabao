@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS gb_entities (
 	name_key    TEXT NOT NULL, -- normalized name used for dedup
 	type        TEXT NOT NULL,
 	description TEXT NOT NULL DEFAULT '',
+	model_id    TEXT REFERENCES gb_models(id), -- the model that inferred the entity (see sqlite/db_schema.go)
 	created_at  TIMESTAMPTZ NOT NULL DEFAULT ` + rpostgres.SQLNow + `,
 	updated_at  TIMESTAMPTZ NOT NULL DEFAULT ` + rpostgres.SQLNow + `,
 	UNIQUE (dataset_id, name_key, type)
@@ -46,7 +47,8 @@ CREATE TABLE IF NOT EXISTS gb_edges (
 	invalid_at  TIMESTAMPTZ,
 	created_at  TIMESTAMPTZ NOT NULL,
 	expired_at  TIMESTAMPTZ,
-	artifact_id BIGINT REFERENCES gb_artifacts(id) ON DELETE SET NULL
+	artifact_id BIGINT REFERENCES gb_artifacts(id) ON DELETE SET NULL,
+	model_id    TEXT REFERENCES gb_models(id) -- the model that inferred the fact
 );
 
 -- Edge <-> artifact provenance, many-to-many: gb_edges.artifact_id is only the artifact that created the edge; this

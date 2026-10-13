@@ -19,14 +19,14 @@ import (
 type fakeLLM struct{ out string }
 
 func (f fakeLLM) Complete(context.Context, ai.Request) (*ai.Response, error) {
-	return &ai.Response{Text: f.out, StopReason: "end_turn"}, nil
+	return &ai.Response{Text: f.out, StopReason: "end_turn", Model: "fake-model"}, nil
 }
 
 func TestRemember(t *testing.T) { dbtest.Run(t, testRemember) }
 
 func testRemember(t *testing.T, d *sql.DB) {
 
-	llm := fakeLLM{"```json\n" + `{"entities":[{"name":"Alice","type":"Person","description":"engineer"},{"name":"Acme","type":"organization"}],
+	llm := fakeLLM{"```json\n" + `{"entities":[{"name":"Alice","type":"Person","description":"engineer","model_id":"liar"},{"name":"Acme","type":"organization"}],
 	"edges":[{"source":"Alice","target":"Acme","relation":"Works At"},{"source":"Alice","target":"Paris","relation":"lives in"}]}` + "\n```"}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm))
@@ -78,6 +78,27 @@ func testRemember(t *testing.T, d *sql.DB) {
 			t.Errorf("edge %d artifact_id = %v, want creator %d", e.ID, e.ArtifactID, arts[0].ID)
 		}
 	}
+	// Every entity and edge records the model that inferred it (what the LLM output claims is ignored). The model
+	// is not a supported one, so it was registered when first seen.
+	modelID := relational.ModelID("fake-model")
+	for _, e := range gedges {
+		if e.ModelID != modelID {
+			t.Errorf("edge %d model_id = %q, want %q", e.ID, e.ModelID, modelID)
+		}
+	}
+	models, err := relational.ListModels(context.Background(), d)
+	if err != nil || len(models) != 1 || models[0].ID != modelID || models[0].Name != "fake-model" || models[0].Supported {
+		t.Fatalf("models: %+v, %v", models, err)
+	}
+	ents, err := graph.ListEntities(context.Background(), d, dsID)
+	if err != nil || len(ents) != 3 {
+		t.Fatalf("entities: %v, %v", ents, err)
+	}
+	for _, e := range ents {
+		if e.ModelID != modelID {
+			t.Errorf("entity %q model_id = %q, want %q", e.Name, e.ModelID, modelID)
+		}
+	}
 	links, err := graph.ListEdgeArtifacts(context.Background(), d, dsID)
 	if err != nil || len(links) != 4 {
 		t.Fatalf("ListEdgeArtifacts: %+v, %v", links, err)
@@ -119,11 +140,12 @@ func testRememberKind(t *testing.T, d *sql.DB) {
 		return rec
 	}
 
-	for body, want := range map[string]string{
-		`{"user_id":"u1","text":"a"}`:                      "knowledge", // default
-		`{"user_id":"u1","text":"b","kind":"episode"}`:     "episode",
-		`{"user_id":"u1","text":"c","kind":" Knowledge "}`: "knowledge", // trimmed, case-insensitive
+	for _, c := range []struct{ body, want string }{ // in this order: the stored artifacts are checked by ID below
+		{`{"user_id":"u1","text":"a"}`, "knowledge"}, // default
+		{`{"user_id":"u1","text":"b","kind":"episode"}`, "episode"},
+		{`{"user_id":"u1","text":"c","kind":" Knowledge "}`, "knowledge"}, // trimmed, case-insensitive
 	} {
+		body, want := c.body, c.want
 		rec := post(body)
 		if rec.Code != 200 {
 			t.Fatalf("%s: status %d: %s", body, rec.Code, rec.Body)

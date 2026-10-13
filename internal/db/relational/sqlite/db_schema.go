@@ -55,6 +55,22 @@ CREATE TABLE IF NOT EXISTS gb_ontologies (
 	UNIQUE (user_id, name)
 );
 
+-- The AI models gligabao knows (see ai.SupportedModels). The graph tables reference them: gb_entities.model_id and
+-- gb_edges.model_id say which model inferred the row.
+--   id         derived from the name alone (model.ModelID: first 8 bytes of the SHA-256 of the lowercased name, hex), so a
+--              model has the same ID in every database
+--   name       the model name as the provider's API reports it (or the price-table key of a supported family)
+--   supported  1 for the models gligabao supports; they are (re)inserted on every startup, which clears the flag of the
+--              others. 0 for a model only seen in an API response, which is inserted when something it inferred is stored
+CREATE TABLE IF NOT EXISTS gb_models (
+	id         TEXT PRIMARY KEY,
+	name       TEXT NOT NULL UNIQUE,
+	provider   TEXT NOT NULL DEFAULT '',
+	kind       TEXT NOT NULL DEFAULT 'llm' CHECK (kind IN ('llm', 'embedding')),
+	supported  INTEGER NOT NULL DEFAULT 0 CHECK (supported IN (0, 1)),
+	created_at DATETIME NOT NULL DEFAULT (` + SQLNow + `)
+);
+
 -- One row per LLM/embedding API call. type is the operation that made the call: 'remember', 'remember_image' (the image pipeline) or 'recall'.
 CREATE TABLE IF NOT EXISTS gb_llm_calls (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,

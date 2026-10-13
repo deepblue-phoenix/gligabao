@@ -303,7 +303,7 @@ func storeEdges(ctx context.Context, tx graph.Tx, dsID, artID int64, ref, now ti
 			validAt = e.ValidAt.UTC()
 		}
 		id, err := tx.InsertEdge(ctx, graph.NewEdge{DatasetID: dsID, SourceID: src, TargetID: dst, Relation: e.Relation,
-			Description: e.Description, ValidAt: validAt, InvalidAt: e.InvalidAt, CreatedAt: now, ArtifactID: artID})
+			Description: e.Description, ValidAt: validAt, InvalidAt: e.InvalidAt, CreatedAt: now, ArtifactID: artID, ModelID: e.ModelID})
 		if err != nil {
 			return nil, nil, err
 		}

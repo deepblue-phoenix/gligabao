@@ -28,6 +28,12 @@ type Edge = graph.Edge
 type Extraction struct {
 	Entities []Entity `json:"entities"`
 	Edges    []Edge   `json:"edges"`
+	// Model and Provider name the model that made the extraction (as the LLM response reports them), and ModelID is its
+	// ID in gb_models (relational.ModelID(Model)); every entity and edge carries ModelID. Store registers the model
+	// if it is not stored yet.
+	Model    string `json:"model,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	ModelID  string `json:"model_id,omitempty"`
 }
 
 // Extract asks the LLM to pull entities and temporal edges out of text. ref is the artifact's time; it anchors
@@ -51,7 +57,25 @@ func Extract(ctx context.Context, llm LLM, text string, ref time.Time) (*Extract
 	if resp.StopReason == "max_tokens" {
 		return nil, errors.New("memory: LLM output truncated; text too large")
 	}
-	return parseExtraction(resp.Text, ref)
+	ex, err := parseExtraction(resp.Text, ref)
+	if err != nil {
+		return nil, err
+	}
+	ex.stampModel(resp.Provider, resp.Model)
+	return ex, nil
+}
+
+// stampModel records the model that made the extraction on ex and on each of its entities and edges. The LLM's own
+// output never decides it.
+func (ex *Extraction) stampModel(provider, name string) {
+	modelID := relational.ModelID(name)
+	ex.Provider, ex.Model, ex.ModelID = provider, name, modelID
+	for i := range ex.Entities {
+		ex.Entities[i].ModelID = modelID
+	}
+	for i := range ex.Edges {
+		ex.Edges[i].ModelID = modelID
+	}
 }
 
 // parseExtraction decodes the LLM's JSON, tolerating surrounding prose or code fences, and normalizes the edges.
@@ -274,6 +298,18 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 	if err != nil {
 		return nil, err
 	}
+	// The entities and edges reference the model that inferred them, so it must be stored first (and not inside the
+	// graph transaction, which would hold the database's write lock). A model that gligabao supports is already
+	// there; a dated snapshot of one, for instance, is added here.
+	if ex.Model != "" {
+		id, err := relational.EnsureModel(ctx, d, relational.Model{Name: ex.Model, Provider: ex.Provider, Kind: ai.KindOf(ex.Model)})
+		if err != nil {
+			return nil, err
+		}
+		if id != ex.ModelID {
+			return nil, fmt.Errorf("memory: extraction model_id %q does not match model %q", ex.ModelID, ex.Model)
+		}
+	}
 	// Registered before the transaction's Rollback, so it runs after the transaction is finished (see prepareVectors).
 	var embedUsage *ai.EmbedUsage
 	defer func() { recordEmbedUsage(ctx, d, embedUsage) }()
@@ -320,6 +356,7 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 
 	for _, e := range ex.Entities {
 		e.Name = strings.TrimSpace(e.Name)
+		e.ModelID = ex.ModelID
 		e.Type = normType(e.Type)
 		e.Description = strings.TrimSpace(e.Description)
 		if e.Name == "" {
@@ -345,8 +382,8 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		}
 		id, err := tx.FindEntityID(ctx, dsID, key(name))
 		if errors.Is(err, graph.ErrNotFound) {
-			if id, err = upsertEntity(Entity{Name: name, Type: "other"}); err == nil {
-				out.Entities = append(out.Entities, Entity{Name: name, Type: "other"})
+			if id, err = upsertEntity(Entity{Name: name, Type: "other", ModelID: ex.ModelID}); err == nil {
+				out.Entities = append(out.Entities, Entity{Name: name, Type: "other", ModelID: ex.ModelID})
 			}
 		} else if err == nil {
 			// An edge names an already stored entity that this extraction did not list: it is still mentioned here.

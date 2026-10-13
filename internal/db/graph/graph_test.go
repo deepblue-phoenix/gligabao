@@ -153,3 +153,88 @@ func scenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("CountCrossDatasetEdges: %d, %v", n, err)
 	}
 }
+
+// TestModelID checks that entities and edges keep the model that inferred them.
+func TestModelID(t *testing.T) { dbtest.Run(t, modelIDScenario) }
+
+func modelIDScenario(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	dsID, err := relational.EnsureDataset(ctx, d, fmt.Sprintf("u-%d", time.Now().UnixNano()), "models")
+	check(err)
+	// The models are referenced by ID, so they must be stored first; an unknown one is refused.
+	ma, err := relational.EnsureModel(ctx, d, relational.Model{Name: "model-a"})
+	check(err)
+	mb, err := relational.EnsureModel(ctx, d, relational.Model{Name: "model-b"})
+	check(err)
+	if ma != relational.ModelID("model-a") || mb != relational.ModelID("model-b") || ma == mb {
+		t.Fatalf("model IDs: %q, %q", ma, mb)
+	}
+	tx, err := graph.Begin(ctx, d)
+	check(err)
+	defer tx.Rollback()
+	if _, err := tx.UpsertEntity(ctx, dsID, graph.Entity{Name: "Ghost", Type: "person", ModelID: "no-such-model"}, "ghost"); err == nil {
+		t.Fatal("an entity referencing an unknown model was stored")
+	}
+	check(tx.Rollback())
+	tx, err = graph.Begin(ctx, d)
+	check(err)
+	defer tx.Rollback()
+	now := relational.Now()
+	artID, err := tx.InsertArtifact(ctx, dsID, graph.ArtifactKnowledge, "Alice works at Acme", now, now)
+	check(err)
+
+	alice, err := tx.UpsertEntity(ctx, dsID, graph.Entity{Name: "Alice", Type: "person", Description: "an engineer", ModelID: ma}, "alice")
+	check(err)
+	// A re-mention without a description leaves the stored state, and so its model, alone.
+	_, err = tx.UpsertEntity(ctx, dsID, graph.Entity{Name: "Alice", Type: "person", ModelID: mb}, "alice")
+	check(err)
+	if e, err := tx.GetEntity(ctx, dsID, alice); err != nil || e.ModelID != ma || e.Description != "an engineer" {
+		t.Fatalf("after bare re-mention: %+v, %v", e, err)
+	}
+	// A new description replaces the old one and the model that wrote it.
+	_, err = tx.UpsertEntity(ctx, dsID, graph.Entity{Name: "Alice", Type: "person", Description: "a staff engineer", ModelID: mb}, "alice")
+	check(err)
+	if e, err := tx.GetEntity(ctx, dsID, alice); err != nil || e.ModelID != mb || e.Description != "a staff engineer" {
+		t.Fatalf("after new description: %+v, %v", e, err)
+	}
+	acme, err := tx.UpsertEntity(ctx, dsID, graph.Entity{Name: "Acme", Type: "org", ModelID: ma}, "acme")
+	check(err)
+	eid, err := tx.InsertEdge(ctx, graph.NewEdge{DatasetID: dsID, SourceID: alice, TargetID: acme, Relation: "works_at",
+		Description: "Alice works at Acme.", ValidAt: now, CreatedAt: now, ArtifactID: artID, ModelID: ma})
+	check(err)
+	if e, err := tx.GetEdge(ctx, dsID, eid); err != nil || e.ModelID != ma {
+		t.Fatalf("edge: %+v, %v", e, err)
+	}
+	check(tx.Commit())
+
+	ents, err := graph.ListEntities(ctx, d, dsID)
+	check(err)
+	got := map[string]string{}
+	for _, e := range ents {
+		got[e.Name] = e.ModelID
+	}
+	if got["Alice"] != mb || got["Acme"] != ma {
+		t.Fatalf("listed entity models: %v", got)
+	}
+	edges, err := graph.ListGraphEdges(ctx, d, dsID)
+	check(err)
+	if len(edges) != 1 || edges[0].ModelID != ma {
+		t.Fatalf("listed edges: %+v", edges)
+	}
+	around, err := graph.EdgesAround(ctx, d, dsID, []int64{alice}, 10)
+	check(err)
+	if len(around) != 1 || around[0].ModelID != ma {
+		t.Fatalf("edges around: %+v", around)
+	}
+	byID, err := graph.EntitiesByID(ctx, d, []int64{alice})
+	check(err)
+	if len(byID) != 1 || byID[0].ModelID != mb {
+		t.Fatalf("entities by id: %+v", byID)
+	}
+}

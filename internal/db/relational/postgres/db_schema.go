@@ -49,6 +49,16 @@ CREATE TABLE IF NOT EXISTS gb_ontologies (
 	UNIQUE (user_id, name)
 );
 
+-- The AI models gligabao knows (see sqlite/db_schema.go).
+CREATE TABLE IF NOT EXISTS gb_models (
+	id         TEXT PRIMARY KEY,
+	name       TEXT NOT NULL UNIQUE,
+	provider   TEXT NOT NULL DEFAULT '',
+	kind       TEXT NOT NULL DEFAULT 'llm' CHECK (kind IN ('llm', 'embedding')),
+	supported  BOOLEAN NOT NULL DEFAULT FALSE,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `
+);
+
 CREATE TABLE IF NOT EXISTS gb_llm_calls (
 	id            BIGSERIAL PRIMARY KEY,
 	type          TEXT NOT NULL,

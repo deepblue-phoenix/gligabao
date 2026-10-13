@@ -19,6 +19,7 @@ import (
 // Types shared with the backends (see package model).
 type (
 	Dataset              = model.Dataset
+	Model                = model.Model
 	LLMCallStat          = model.LLMCallStat
 	Ontology             = model.Ontology
 	Experiment           = model.Experiment

@@ -23,8 +23,8 @@ Only the owner's live dataset can be exported. Datasets of other users, and soft
 {
   "dataset": "main",
   "entities": [
-    {"id": 1, "name": "Alice", "type": "person", "description": "Software engineer"},
-    {"id": 2, "name": "Acme", "type": "organization"}
+    {"id": 1, "name": "Alice", "type": "person", "description": "Software engineer", "model_id": "5496d6743cdde4fe"},
+    {"id": 2, "name": "Acme", "type": "organization", "model_id": "5496d6743cdde4fe"}
   ],
   "edges": [
     {
@@ -36,9 +36,13 @@ Only the owner's live dataset can be exported. Datasets of other users, and soft
       "relation": "works_at",
       "description": "Alice works at Acme.",
       "artifact_id": 1,
+      "model_id": "5496d6743cdde4fe",
       "valid_at": "2024-01-01T00:00:00Z",
       "created_at": "2025-06-01T10:00:00Z"
     }
+  ],
+  "models": [
+    {"id": "5496d6743cdde4fe", "name": "claude-haiku-5-5", "provider": "anthropic", "kind": "llm", "supported": true, "created_at": "2025-05-01T09:00:00Z"}
   ]
 }
 ```
@@ -51,6 +55,18 @@ Only the owner's live dataset can be exported. Datasets of other users, and soft
 | `name` | Entity name. |
 | `type` | Lowercase type (`person`, `organization`, `other`, ...). |
 | `description` | Optional; omitted if empty. |
+| `model_id` | Optional; the ID of the model that inferred the entity (see `models`). For a shared entity it is the model that wrote its stored state: its creator, then whoever last replaced its description. Omitted if unknown. |
+
+### Models
+
+The models that the entities and edges refer to by `model_id`.
+
+| Field | Description |
+| ----- | ----------- |
+| `id` | Model ID: derived from the name alone (first 8 bytes of the SHA-256 of the lowercased name, hex), so it is the same in every database. |
+| `name` | The model name as the provider's API reports it, e.g. `claude-haiku-5-5`. |
+| `provider`, `kind` | `anthropic` / `openai`; `llm` / `embedding`. |
+| `supported` | True for a model gligabao supports (stored on every startup), false for one only seen in an API response. |
 
 ### Edges
 
@@ -62,6 +78,7 @@ Only the owner's live dataset can be exported. Datasets of other users, and soft
 | `relation` | Lowercase relation with `_` for spaces, e.g. `works_at`. |
 | `description` | Optional; the fact as a sentence. |
 | `artifact_id` | Optional; the artifact (the ingested text) the edge came from. |
+| `model_id` | Optional; the ID of the model that inferred the fact (see `models`). Omitted if unknown. |
 | `valid_at`, `invalid_at` | When the fact became true and when it stopped being true (omitted while unknown or still true). |
 | `created_at`, `expired_at` | When the fact was learned and when it was found superseded (omitted if not). |
 
