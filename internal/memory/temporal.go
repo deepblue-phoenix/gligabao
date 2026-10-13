@@ -56,7 +56,7 @@ func resolveEdges(ctx context.Context, llm LLM, edges, cands []Edge) (*EdgePlan,
 	for i, e := range edges {
 		dup := false
 		for _, c := range cands {
-			if c.InvalidAt == nil && sameTriple(e, c) {
+			if c.InvalidAt == nil && FactFromEdge(e).SameAs(FactFromEdge(c)) {
 				plan.Duplicates[i] = c.ID
 				dup = true
 				break
@@ -73,13 +73,15 @@ func resolveEdges(ctx context.Context, llm LLM, edges, cands []Edge) (*EdgePlan,
 	var b strings.Builder
 	b.WriteString("<new_facts>\n")
 	for _, i := range rest {
-		fmt.Fprintf(&b, "[%d] %s %s\n", i, edges[i].Description, span(edges[i].ValidAt, edges[i].InvalidAt))
+		f := FactFromEdge(edges[i])
+		fmt.Fprintf(&b, "[%d] %s %s\n", i, f.Statement, f.Span())
 	}
 	b.WriteString("</new_facts>\n\n<existing_facts>\n")
 	known := map[int64]bool{}
 	for _, c := range cands {
 		known[c.ID] = true
-		fmt.Fprintf(&b, "[%d] %s %s\n", c.ID, c.Description, span(c.ValidAt, c.InvalidAt))
+		f := FactFromEdge(c)
+		fmt.Fprintf(&b, "[%d] %s %s\n", c.ID, f.Statement, f.Span())
 	}
 	b.WriteString("</existing_facts>")
 
@@ -130,11 +132,6 @@ func resolveEdges(ctx context.Context, llm LLM, edges, cands []Edge) (*EdgePlan,
 		}
 	}
 	return plan, nil
-}
-
-// sameTriple reports whether two edges have the same endpoints and relation.
-func sameTriple(a, b Edge) bool {
-	return key(a.Source) == key(b.Source) && key(a.Target) == key(b.Target) && a.Relation == b.Relation
 }
 
 func span(valid, invalid *time.Time) string {

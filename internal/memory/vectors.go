@@ -52,12 +52,7 @@ func entityLabel(name, typ, description string) string {
 }
 
 // edgeText is the text that is embedded for an edge: the fact as a sentence.
-func edgeText(e *Edge) string {
-	if e.Description != "" {
-		return e.Description
-	}
-	return e.Source + " " + e.Relation + " " + e.Target + "."
-}
+func edgeText(e *Edge) string { return FactFromEdge(*e).Text() }
 
 //---------------------------------------------------------------------------------------------
 

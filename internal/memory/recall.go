@@ -187,19 +187,7 @@ func (g *graphContext) render() string {
 		sb.WriteByte('\n')
 	}
 	for _, id := range sortedKeys(g.edges) {
-		e := g.edges[id]
-		fmt.Fprintf(&sb, "[edge %d] %s(%d) --%s--> %s(%d)", e.ID, e.Source, e.SourceID, e.Relation, e.Target, e.TargetID)
-		if e.Description != "" {
-			sb.WriteString(": " + e.Description)
-		}
-		sb.WriteString(" [valid_at=" + relational.FormatTime(*e.ValidAt))
-		if e.InvalidAt != nil {
-			sb.WriteString(", invalid_at=" + relational.FormatTime(*e.InvalidAt))
-		}
-		if e.ExpiredAt != nil {
-			sb.WriteString(", superseded")
-		}
-		sb.WriteString("]\n")
+		sb.WriteString(FactFromEvidence(g.edges[id]).ContextLine() + "\n")
 	}
 	return sb.String()
 }

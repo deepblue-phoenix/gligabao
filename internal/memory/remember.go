@@ -92,7 +92,7 @@ func parseExtraction(s string, ref time.Time) (*Extraction, error) {
 			continue
 		}
 		if e.Description == "" {
-			e.Description = e.Source + " " + strings.ReplaceAll(e.Relation, "_", " ") + " " + e.Target + "."
+			e.Description = synthStatement(e.Source, e.Relation, e.Target)
 		}
 		if e.ValidAt == nil { // a fact inherits the time of the artifact that states it
 			v := ref.UTC()
@@ -242,16 +242,8 @@ func Remember(ctx context.Context, d *sql.DB, llm LLM, userID, dataset, kind, te
 // candidateFacts summarizes edges for the trajectory; via, if not nil, says how each (by ID) was found.
 func candidateFacts(edges []Edge, via map[int64]string) []map[string]any {
 	out := make([]map[string]any, 0, len(edges))
-	for _, c := range edges {
-		f := map[string]any{"source": c.Source, "relation": c.Relation, "target": c.Target, "fact": c.Description,
-			"valid": span(c.ValidAt, c.InvalidAt)}
-		if c.ID != 0 {
-			f["id"] = c.ID
-		}
-		if v := via[c.ID]; v != "" {
-			f["found_by"] = v
-		}
-		out = append(out, f)
+	for _, e := range edges {
+		out = append(out, FactFromEdge(e).Summary(via[e.ID]))
 	}
 	return out
 }
