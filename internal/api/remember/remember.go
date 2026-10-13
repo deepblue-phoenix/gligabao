@@ -44,9 +44,13 @@ type rememberRequest struct {
 	// ReferenceTime (RFC 3339, optional) is when the text was written; relative dates in it ("yesterday") are
 	// resolved against it. Defaults to now.
 	ReferenceTime string `json:"reference_time"`
-	// Models (optional) picks the LLM model of each stage of the pipeline ("extract_graph", "resolve_edges", "extract_image"); a stage left
+	// Models (optional) picks the LLM model of each stage of the pipeline ("extract_graph", "resolve_edges", "web_search", "extract_image"); a stage left
 	// out uses the default model. See memory_core.Models.
 	Models map[string]string `json:"models"`
+	// WebSearch (optional, default false) searches the web for the latest world events about the key entities of the
+	// text and remembers what it finds, as artifacts of kind "web_search" (see docs/web-search.md). Only available when
+	// the server has an Anthropic API key (else 503); not for an image (400).
+	WebSearch bool `json:"web_search"`
 }
 
 //---------------------------------------------------------------------------------------------
@@ -121,9 +125,13 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option)
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		if req.WebSearch && memory_core.NewCallOptions(opts).WebSearcher == nil {
+			httputil.Error(w, http.StatusServiceUnavailable, memory_core.ErrWebSearchUnavailable.Error())
+			return
+		}
 		start := time.Now()
 		res, err := memory_remember.Remember(r.Context(), d, llm, req.UserID, req.Dataset, req.Kind, req.Text, ref,
-			append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models))...)
+			append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models), memory_core.WithWebSearch(req.WebSearch))...)
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
 				"user_id":    req.UserID,
@@ -142,15 +150,16 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option)
 			return
 		}
 		log.WithFields(log.Fields{
-			"user_id":     res.UserID,
-			"dataset":     res.Dataset,
-			"artifact_id": res.ArtifactID,
-			"session_id":  res.SessionID,
-			"kind":        res.Kind,
-			"chunks":      len(res.Chunks),
-			"entities":    len(res.Entities),
-			"edges":       len(res.Edges),
-			"duration_ms": time.Since(start).Milliseconds(),
+			"user_id":      res.UserID,
+			"dataset":      res.Dataset,
+			"artifact_id":  res.ArtifactID,
+			"session_id":   res.SessionID,
+			"kind":         res.Kind,
+			"chunks":       len(res.Chunks),
+			"entities":     len(res.Entities),
+			"edges":        len(res.Edges),
+			"web_searches": len(res.WebSearches),
+			"duration_ms":  time.Since(start).Milliseconds(),
 		}).Debug("remember completed")
 		monitoring.EmitSystemEvent(r.Context(), "remember.completed", monitoring.Event{
 			"user_id":           res.UserID,
@@ -163,6 +172,7 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option)
 			"entities":          len(res.Entities),
 			"edges":             len(res.Edges),
 			"invalidated_edges": len(res.InvalidatedEdges),
+			"web_searches":      len(res.WebSearches),
 			"duration_ms":       time.Since(start).Milliseconds(),
 		})
 		httputil.WriteJSON(w, http.StatusOK, res)
@@ -173,6 +183,10 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option)
 func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory_core.LLM, req rememberRequest, opts []memory_core.Option) {
 	if req.Text != "" || req.Kind != "" {
 		httputil.Error(w, http.StatusBadRequest, "image excludes text and kind")
+		return
+	}
+	if req.WebSearch {
+		httputil.Error(w, http.StatusBadRequest, "web_search does not apply to an image")
 		return
 	}
 	data, err := base64.StdEncoding.DecodeString(strings.TrimSpace(req.Image))

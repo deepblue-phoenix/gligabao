@@ -3,6 +3,7 @@ package memory_core
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -53,6 +54,11 @@ type CallOptions struct {
 	// Jev is the system 1 model, set by WithJev; nil (the default) disables every step that needs it.
 	Jev Classifier
 
+	// WebSearcher is what runs web searches, set by WithWebSearcher; nil (the default) means web search is not
+	// available (no Anthropic API key). WebSearch is the per-call request for it, set by WithWebSearch.
+	WebSearcher WebSearcher
+	WebSearch   bool
+
 	Trace *Trace // set by Remember for the Store it calls; nil otherwise
 
 	// Chunking says when and how Remember splits a long text into chunks (see package chunk): a text of more than
@@ -96,6 +102,18 @@ func WithChunking(c chunk.Config) Option { return func(o *CallOptions) { o.Chunk
 // WithJev enables the steps of Remember that run on Jev (the complexity classification of the incoming text). A nil c
 // (Jev not configured) disables them. Jev is not a per-stage model: it is not part of Models.
 func WithJev(c Classifier) Option { return func(o *CallOptions) { o.Jev = c } }
+
+// WithWebSearcher makes web search available to Remember: ws runs the searches of the calls that ask for them (see
+// WithWebSearch). It does not turn web search on by itself. A nil ws (no Anthropic API key) leaves it unavailable.
+func WithWebSearcher(ws WebSearcher) Option { return func(o *CallOptions) { o.WebSearcher = ws } }
+
+// WithWebSearch sets whether this Remember call searches the web for its key entities (default false). Remember
+// returns ErrWebSearchUnavailable if it is true and there is no searcher (WithWebSearcher).
+func WithWebSearch(on bool) Option { return func(o *CallOptions) { o.WebSearch = on } }
+
+// ErrWebSearchUnavailable means a call asked for a web search but none is configured: web search needs the Anthropic API
+// key.
+var ErrWebSearchUnavailable = errors.New("web search is not available: it needs an Anthropic API key (ANTHROPIC_API_KEY)")
 
 // WithTrace makes Store record its steps (the embedding) into tr, the trace of the enclosing Remember.
 func WithTrace(tr *Trace) Option { return func(o *CallOptions) { o.Trace = tr } }
@@ -207,6 +225,7 @@ type ToolTiming struct {
 	Latency          time.Duration
 	PromptTokens     int
 	CompletionTokens int
+	CostUSD          float64
 }
 
 // TimedTool is Tool for a step that took measurable time (a call to a model other than the LLM client's): the step's
@@ -229,8 +248,8 @@ func (t *Trace) TimedTool(message, name string, args map[string]any, result any,
 		step.Timestamp = tm.Started.UTC().Format(time.RFC3339Nano)
 		step.Extra["started_at"] = step.Timestamp
 	}
-	if tm.PromptTokens > 0 || tm.CompletionTokens > 0 {
-		step.Metrics = &atif.Metrics{PromptTokens: tm.PromptTokens, CompletionTokens: tm.CompletionTokens}
+	if tm.PromptTokens > 0 || tm.CompletionTokens > 0 || tm.CostUSD > 0 {
+		step.Metrics = &atif.Metrics{PromptTokens: tm.PromptTokens, CompletionTokens: tm.CompletionTokens, CostUSD: tm.CostUSD}
 	}
 	t.b.ToolStep(step, name, args, res)
 }

@@ -37,6 +37,18 @@ def test_remember_models():
     assert seen["body"] == {"user_id": "u1", "text": "hi", "models": {"extract_graph": "m1"}}
 
 
+def test_remember_web_search():
+    seen = {}
+    srv = _serve(200, {"artifact_id": 1}, seen)
+    try:
+        Client(f"http://127.0.0.1:{srv.server_port}").remember("u1", "hi", web_search=True)
+    finally:
+        srv.shutdown()
+    assert seen["body"] == {"user_id": "u1", "text": "hi", "web_search": True}
+    with pytest.raises(ValueError):
+        Client().remember("u1", image=b"x", web_search=True)
+
+
 def test_remember():
     seen = {}
     srv = _serve(200, {"artifact_id": 1}, seen)

@@ -21,6 +21,8 @@ content-type: application/json
 
 - `models` (optional): an object that picks the LLM model of each LLM-invoking stage of the pipeline; see [Choosing the model of each stage](#choosing-the-model-of-each-stage). `400` for an unknown stage or a malformed model name.
 
+- `web_search` (optional, default `false`): after the text is stored, search the web (with Anthropic's cloud-based web search tool) for the latest world events about its key entities, and remember what is found: each result becomes an artifact of its own, of kind `web_search`, which saves the query that was issued and hangs off the artifact the entity came from, and the entities and facts in it join the graph like any other. Only available with an Anthropic API key (`503` otherwise); `400` with `image`. See [web-search.md](web-search.md).
+
 ## Response
 
 `200 OK`:
@@ -56,6 +58,7 @@ content-type: application/json
 - `entities` are what the LLM extracted from this text (after normalization).
 - `edges` are the facts from this text in their stored state; if a new edge repeated a stored one, the stored edge is returned. Edge fields `invalid_at`, `expired_at` are omitted when null.
 - `invalidated_edges` lists IDs of edges closed because of this artifact (see [temporal.md](temporal.md)). Always an array.
+- `web_searches`: only with `web_search`: one item per key entity that was searched for (`entity`, `query`, `parent_artifact_id`, the `web_search` `artifact_id`, the `sources`, and the `entities` and `edges` the result yielded; `entities` and `edges` above stay those of the text). See [web-search.md](web-search.md#response).
 - `chunks`, `embedded_chunks`: only for a text that was [chunked](chunking.md). `artifact_id` is then the parent artifact (the whole text), `chunks` lists the chunk artifacts (`artifact_id`, `index`, `tokens`, `overlap_tokens`, `start_offset`, `end_offset`, `entities`, `edges`), `entities`, `edges` and `invalidated_edges` are those of all the chunks, and `embedded_chunks` counts the chunk vectors written.
 - `embedded_entities` and `embedded_edges` are the number of vectors written to the dataset's entity and edge indexes (see [Embed](#how-it-works)). Both are omitted when nothing was embedded (no `OPENAI_API_KEY`). `embedded_entities` counts the entities the text mentions, including those that already existed, and `embedded_edges` the facts it states, including repeated ones; they can be more than the number of new rows.
 
@@ -63,9 +66,9 @@ Errors are returned as `{"error": "..."}`:
 
 | Status | Meaning |
 | ------ | ------- |
-| 400 | Invalid JSON body, `text` is empty, `kind` is not `knowledge` or `episode`, `reference_time` is not RFC 3339, `session_id` is too long or has control characters, or `models` names an unknown stage or has a malformed model name |
+| 400 | Invalid JSON body, `text` is empty, `kind` is not `knowledge` or `episode`, `reference_time` is not RFC 3339, `session_id` is too long or has control characters, `models` names an unknown stage or has a malformed model name, or `web_search` is given with an `image` |
 | 502 | An LLM call failed (this includes a `models` entry the provider does not know), or its output could not be parsed or was truncated; or embedding failed (nothing stored); or the vectors could not be written to the vector store (after the database was saved, see [Embed](#how-it-works)) |
-| 503 | LLM not configured (`ANTHROPIC_API_KEY` is not set) |
+| 503 | LLM not configured (`ANTHROPIC_API_KEY` is not set), or `web_search` was asked for and web search is not available (it needs that key too) |
 
 ## How it works
 
@@ -91,6 +94,8 @@ All steps use the LLM from `internal/ai` (Anthropic Messages API, default model 
 
 4. **Embed** (`WithVectors`, 1 embeddings request, only if an OpenAI key is configured): the entities this text mentions and the edges it states (and, if the text is a chunk of a longer one, the chunk's own text, into a third vector dataset: see [chunking.md](chunking.md#chunks-are-embedded)) are embedded together with `text-embedding-3-small`: an entity as `Name (type): description`, an edge as its description. This happens inside step 3, after the rows are written and before the transaction commits, so a failure stores nothing. Right after the commit the vectors are written, with `Upsert`, to the dataset's two vector datasets: `dataset-<id>-entities` (vector `entity-<entity id>`) and `dataset-<id>-edges` (vector `edge-<edge id>`). Vectors are keyed by ID, so remembering an entity or fact again overwrites its vector. Details, metadata and failure handling: [vectors.md](vectors.md#what-remember-writes).
 
+5. **Web search** (only with `web_search`, and only with an Anthropic API key): the key entities of the text are searched for on the web and the results are remembered as `web_search` artifacts, each with its query and its parent (the artifact the entity came from), and their own entities and edges. It runs after the text was stored, so a failure in it never fails the request. See [web-search.md](web-search.md).
+
 Steps 1 and 2 each run on their [own model](#choosing-the-model-of-each-stage). The request makes 1 LLM call, or 2 when stored edges need to be compared, plus 1 embeddings request, or 2 when the [candidate search](#candidate-facts-load_candidates) also embeds the endpoints of the new facts (only for a dataset that already exists). If any step before the commit fails, nothing is stored. If the vector write after the commit fails, the request returns `502` but the artifact, entities and edges are already saved; the vectors are written again the next time the entities and facts are mentioned.
 
 ### Choosing the model of each stage
@@ -105,6 +110,7 @@ The LLM-invoking stages of the pipeline can each run on a different model, for i
 | ----- | ---- | -------- |
 | `extract_graph` | 1, `Extract` (once per chunk of a long text) | the entities and edges the text yields |
 | `resolve_edges` | 2, `resolveEdges` (only when there are candidates to compare) | the duplicate / contradiction check |
+| `web_search` | 5, [web search](web-search.md) (only with `web_search`) | the model that runs the web search tool (it must support it); the briefings are extracted on `extract_graph` |
 | `extract_image` | the [image pipeline](images.md) | reading the image (applies only to a request with `image`) |
 
 The rules:
@@ -112,7 +118,7 @@ The rules:
 - `models` is optional, and so is every stage in it. **A stage with no model (missing, or an empty string) uses the default model** of the server's LLM client (`claude-haiku-5-5`). So `{"models": {"extract_graph": "m"}}` changes only the extraction; `resolve_edges` stays on the default. A request without `models` runs everything on the default.
 - The choice is per request: nothing is stored server-side, and the next call starts from the defaults again.
 - A model name is any string of at most 128 bytes without whitespace or control characters; an unknown stage is a `400`. gligabao does not check that the provider knows the model: one it does not know fails the LLM call (`502`, nothing stored). The price of a model that is not in the price table (see `[prices]` in `gligabao.toml`) is recorded as 0.
-- A stage in `models` that the request does not run is ignored (`resolve_edges` when there is nothing to compare with, `extract_image` for a text, `extract_graph` and `resolve_edges` for an image).
+- A stage in `models` that the request does not run is ignored (`resolve_edges` when there is nothing to compare with, `web_search` without the `web_search` flag, `extract_image` for a text, `extract_graph` and `resolve_edges` for an image).
 - Every call is recorded in `gb_llm_calls` with the model that answered, so the cost of each stage is known; an [eval trajectory](evals.md) shows the model of each LLM step (`model_name`) and the requested `models` in `extra.input`.
 
 **The model of the knowledge.** The model that runs the `extract_graph` stage is the model of what it extracts: every entity and edge of the extraction carries it as `model_id` (see [graph.md](graph.md#models)), and it is registered in `gb_models` if it is new. It is the model name as the provider's API reports it (a dated snapshot, say, when the request named an alias), never anything the LLM wrote in its output. The `resolve_edges` model only decides which new facts are duplicates or contradictions, so it does not appear on the knowledge: an edge's `model_id` is the model that extracted it, even if another model decided that an older edge was contradicted. For a chunked text each chunk is extracted with the same `extract_graph` model, so all its entities and edges carry it. A fact that is merged into a stored edge keeps that edge's `model_id`, and a stored entity keeps its own (see [graph.md](graph.md#entities)), so one dataset can hold knowledge from several models when the calls used different ones.
@@ -168,7 +174,7 @@ All tables are prefixed with `gb_` (see `internal/db/relational/{sqlite,postgres
 | Table | Columns |
 | ----- | ------- |
 | `gb_datasets` | `id`, `name`, `description`, `tags` (JSON), `created_at`, `deleted`, `deleted_at`; unique `name` among non-deleted |
-| `gb_artifacts` | `id`, `dataset_id` → `gb_datasets`, `kind` (`knowledge` (default) or `episode`), `text`, `session_id` (NULL if none), `parent_id` → `gb_artifacts` (NULL unless the artifact is a [chunk](chunking.md) of another), `chunk_index`, `start_offset`, `end_offset`, `tokens` (only for a chunk), `valid_at`, `created_at`; unique (`parent_id`, `chunk_index`) |
+| `gb_artifacts` | `id`, `dataset_id` → `gb_datasets`, `kind` (`knowledge` (default) or `episode`; `web_search` for a [web search](web-search.md) result, which only the pipeline creates), `text`, `session_id` (NULL if none), `parent_id` → `gb_artifacts` (NULL unless the artifact is a [chunk](chunking.md) of another, or a web search: then the artifact the searched entity came from), `chunk_index`, `start_offset`, `end_offset`, `tokens` (only for a chunk), `query` (only for a web search: the query that was issued), `valid_at`, `created_at`; unique (`parent_id`, `chunk_index`) |
 | `gb_entities` | `id`, `dataset_id` → `gb_datasets`, `name`, `name_key`, `type`, `description`, `created_at`, `updated_at`; unique (`dataset_id`, `name_key`, `type`) |
 | `gb_edges` | `id`, `dataset_id` → `gb_datasets`, `source_id` → `gb_entities`, `target_id` → `gb_entities`, `relation`, `description`, `valid_at`, `invalid_at`, `created_at`, `expired_at`, `artifact_id` → `gb_artifacts` (the creating artifact) |
 | `gb_edge_artifacts` | `edge_id` → `gb_edges`, `artifact_id` → `gb_artifacts`; primary key (`edge_id`, `artifact_id`) |
@@ -193,6 +199,7 @@ Existing database files are not migrated when the schema changes: delete the fil
 
 - `ANTHROPIC_API_KEY`: required for this endpoint. If missing, the server still starts and the endpoint returns 503.
 - `chunk_size` (default 1024 tokens) and `chunk_overlap_percent` (default 20): when and how a long text is chunked, see [chunking.md](chunking.md).
+- Web search (`web_search`) is available exactly when `ANTHROPIC_API_KEY` is set; there is no other setting. See [web-search.md](web-search.md).
 - `OPENAI_API_KEY` (or `openai_api_key` in `gligabao.toml`): used to embed entities, edges and chunks. Optional: without it the endpoint works and stores the graph, but no vectors, and the server logs a warning at startup.
 - `embedding_dimensions` (default 1536) is the size of the embeddings; `vector_store` selects where they go (`chromem`, or `pinecone`). See [vectors.md](vectors.md).
 - `gligabao serve --db <path>` selects the SQLite file (default `bin/gligabao.db`).
@@ -211,6 +218,7 @@ curl -s localhost:7878/v1/gb/remember \
 ## Limitations
 
 - No authentication.
+- Web search is opt-in per call, searches at most 3 key entities, and is a heuristic and not free (a fee per search); see [web-search.md](web-search.md#limitations).
 - Images are only read and stored (see [images.md](images.md)); they add nothing to the graph yet, and an image the dataset already holds (same SHA-256) is answered from its stored extraction without an LLM call.
 - The database and the vector store are not updated atomically (see [vectors.md](vectors.md#what-remember-writes)), and there is no re-embedding of entities and edges stored before embedding was configured.
 - The embeddings are not used by `recall` yet, but the entity embeddings do help pick the [candidate facts](#candidate-facts-load_candidates) in `remember` (aliases); edge embeddings do not, and at most 50 candidates are compared.

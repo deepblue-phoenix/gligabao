@@ -22,7 +22,7 @@ func testLLMCallsRecorded(t *testing.T, d *sql.DB) {
 		`{"answer":"Alice.","entities":[1],"edges":[]}`,
 	}}
 	mux := http.NewServeMux()
-	Register(mux, &db.DB{Relational: d, Graph: d}, llm, nil, nil)
+	Register(mux, &db.DB{Relational: d, Graph: d}, llm, nil, nil, nil)
 	for _, c := range [][2]string{{"/v1/gb/remember", `{"user_id":"u1","text":"Alice"}`}, {"/v1/gb/recall", `{"user_id":"u1","query":"Alice?"}`}} { // order matters: recall needs the graph
 		path, body := c[0], c[1]
 		rec := httptest.NewRecorder()

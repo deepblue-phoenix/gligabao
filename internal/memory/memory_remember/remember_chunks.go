@@ -101,6 +101,10 @@ func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Confi
 		}
 		m.add(res, c, len(exs[i].Entities), len(exs[i].Edges))
 	}
+
+	//--------------------------------------
+	// WEB_SEARCH (only with WithWebSearch): for the key entities of the whole text, once the chunks are stored
+	doc.WebSearches = j.webSearch(ctx)
 	return doc, nil
 }
 

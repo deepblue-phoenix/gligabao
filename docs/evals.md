@@ -81,6 +81,8 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 | remember | `load_candidates` | the two lookups merged by edge ID: the stored facts that could duplicate or contradict the new ones, each with how it was found (`found_by`: `name`, `similar`, `name+similar`) |
 | remember | `embed` | the embedding request (only with a vector store): the texts of the entities and edges, with `model_name` and `metrics` (tokens, cost), so the embedding cost counts in `final_metrics` |
 | remember | `store_artifact` | `artifact_id`, entities, edges and `invalidated_edges` that were stored |
+| remember | `select_web_search_entities` | (only with [`web_search`](web-search.md)) the key entities that were picked to search the web for |
+| remember | `web_search` | (only with `web_search`, one per entity) the web search: the entity, the query issued, the briefing, the queries the model sent to the search engine, the sources and `search_errors`; `model_name`, `metrics` (tokens and cost, search fee included) and `latency_ms` in the extra. An error here is recorded but not fatal |
 | recall | `retrieve_graph` | the subgraph handed to the LLM, as rendered in its prompt |
 
 ### Remember
@@ -91,6 +93,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 4. LLM call: duplicate/contradiction resolution (only when there are stored facts to compare against; see [temporal.md](temporal.md)).
 5. tool `embed` (only when vectors are enabled).
 6. tool `store_artifact`.
+7. only with [`web_search`](web-search.md): tool `select_web_search_entities`, then for each entity tool `web_search`, followed by the steps 2 to 6 for its briefing (`extract_graph` ... `store_artifact`, each labelled ` (web search for "<entity>")`; the artifact is of kind `web_search` with the `query` and `parent_id`).
 
 ### Recall
 
@@ -131,7 +134,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 
 ### Models
 
-An eval can vary the model of each LLM stage of `remember` (`extract_graph`, `resolve_edges`, `extract_image`; see [remember.md](remember.md#choosing-the-model-of-each-stage)), to compare models stage by stage. The runner passes them as `models` in every `remember` request of a case, from two places that are combined stage by stage:
+An eval can vary the model of each LLM stage of `remember` (`extract_graph`, `resolve_edges`, `web_search`, `extract_image`; see [remember.md](remember.md#choosing-the-model-of-each-stage)), to compare models stage by stage. The runner passes them as `models` in every `remember` request of a case, from two places that are combined stage by stage:
 
 1. `-models extract_graph=<model>,resolve_edges=<model>` on the command line: the defaults of the whole run (and recorded in the experiment run's `params.models`);
 2. `"models": {"extract_graph": "<model>"}` in a case of a suite: that case only; a stage named here wins over `-models`.
@@ -155,6 +158,7 @@ What the cases check is what measures precision, so pick the case for the stage:
 
 - `extract_graph` is checked by `expect_edges` (is each expected fact stored between the right entities, with the right `valid_at` / `invalid_at`) and, through the graph it builds, by the recall's `expect_contains`. A model that misses a fact, attaches the wrong dates or names an entity differently fails these. For a long text, `chunking_register` checks that facts from the start, middle and end all came out.
 - `resolve_edges` only runs when the new facts have stored candidates to be compared with, so use a case that remembers more than one text about the same entities, like `job_change` (the Acme fact must be closed by the Globex one, and only that one). A model that misses a contradiction leaves the old fact live (`ended` fails); one that flags a contradiction that is not one closes a fact that should stay true; one that misses a duplicate stores it twice.
+- `web_search` is only used by a remember entry with `"web_search": true` (see [web-search.md](web-search.md)).
 - `extract_image` is only used by an image remember, which the runner does not issue yet.
 
 Each case is pass or fail, and an LLM is not deterministic, so one run says little: repeat each setting a few times (each run is a run of the experiment, with its own datasets) and compare how often the cases pass. Add cases with `expect_edges` for the facts you care about; the more checks, the finer the comparison, and the checks of each run are kept (`passed_checks`, `problems`) so you can see *which* fact a model got wrong. Since the recall always uses the default model, a change in the answer comes from what the `remember` stages stored, not from a different answerer.

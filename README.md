@@ -15,7 +15,7 @@ gligabao is a small, self-hosted HTTP service that gives an AI application long-
 
 | Endpoint | Purpose | Docs |
 | -------- | ------- | ---- |
-| `POST /v1/gb/remember` | Extract a temporal knowledge graph from text and store it; or, with `image`, read an image (OCR and theme) and store the extraction | [docs/remember.md](docs/remember.md), [docs/artifacts.md](docs/artifacts.md), [docs/temporal.md](docs/temporal.md), [docs/images.md](docs/images.md), [docs/chunking.md](docs/chunking.md) |
+| `POST /v1/gb/remember` | Extract a temporal knowledge graph from text and store it; or, with `image`, read an image (OCR and theme) and store the extraction | [docs/remember.md](docs/remember.md), [docs/artifacts.md](docs/artifacts.md), [docs/temporal.md](docs/temporal.md), [docs/images.md](docs/images.md), [docs/chunking.md](docs/chunking.md), [docs/web-search.md](docs/web-search.md) |
 | `POST /v1/gb/recall` | Answer a question from the graph, with evidence | [docs/recall.md](docs/recall.md) |
 | `POST /v1/gb/datasets`, `GET /v1/gb/datasets?user_id=`, `DELETE /v1/gb/datasets/{name}?user_id=` | Create, list and (soft) delete datasets | [docs/datasets.md](docs/datasets.md) |
 | `GET /v1/gb/datasets/{name}/graph?user_id=` | Export a dataset's whole graph as JSON | [docs/graph.md](docs/graph.md) |
@@ -52,9 +52,13 @@ A text of more than one chunk (1024 tokens by default) is a document: it is stor
 
 The response returns the `artifact_id` and `kind`, the entities, the `edges` (with their temporal fields) and `invalidated_edges`. If any LLM call fails or its output is unusable, the request returns 502 and nothing is stored. Details: [docs/remember.md](docs/remember.md), [docs/artifacts.md](docs/artifacts.md).
 
+### Web search
+
+`POST /v1/gb/remember` with `"web_search": true` also searches the web for the latest world events about the key entities of the text (the ones in the most facts, at most 3), with Anthropic's cloud-based web search tool, so it is only available when an Anthropic API key is supplied (else `503`). Each result is stored as an artifact of its own, of kind `web_search`, that saves the query that was issued and whose parent is the artifact the entity came from; the entities and facts found in it are extracted and stored in the graph like any other. It is opt-in per call, runs after the text is stored and never fails the request, and every search costs a fee on top of the tokens. Details: [docs/web-search.md](docs/web-search.md).
+
 ### Models per stage
 
-Each LLM-invoking stage of `remember` can run on its own model. `POST /v1/gb/remember` takes an optional `models` object with the stages `extract_graph` (the entities and edges), `resolve_edges` (the duplicate/contradiction check) and `extract_image` (the image pipeline): `{"user_id": "u1", "text": "...", "models": {"extract_graph": "claude-sonnet-4-5", "resolve_edges": "claude-haiku-5-5"}}`. It can be given with every call. A stage you leave out uses the default model, so you can change one stage and keep the others. The model that runs `extract_graph` is what is recorded as the `model_id` of the entities and edges it yields (the extracted knowledge). The evals take the same choice: `models` in a case of a suite, or `go run ./evals -models extract_graph=...,resolve_edges=...`. Details: [docs/remember.md](docs/remember.md#choosing-the-model-of-each-stage), [docs/evals.md](docs/evals.md#models).
+Each LLM-invoking stage of `remember` can run on its own model. `POST /v1/gb/remember` takes an optional `models` object with the stages `extract_graph` (the entities and edges), `resolve_edges` (the duplicate/contradiction check), `web_search` (the [web search](docs/web-search.md)) and `extract_image` (the image pipeline): `{"user_id": "u1", "text": "...", "models": {"extract_graph": "claude-sonnet-4-5", "resolve_edges": "claude-haiku-5-5"}}`. It can be given with every call. A stage you leave out uses the default model, so you can change one stage and keep the others. The model that runs `extract_graph` is what is recorded as the `model_id` of the entities and edges it yields (the extracted knowledge). The evals take the same choice: `models` in a case of a suite, or `go run ./evals -models extract_graph=...,resolve_edges=...`. Details: [docs/remember.md](docs/remember.md#choosing-the-model-of-each-stage), [docs/evals.md](docs/evals.md#models).
 
 ## Sessions
 

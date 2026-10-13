@@ -83,6 +83,10 @@ const (
 	ArtifactEpisode = "episode"
 	// ArtifactKnowledge is knowledge that is not strictly episodic (a reference text, a note, ...).
 	ArtifactKnowledge = "knowledge"
+	// ArtifactWebSearch is the result of a web search that Remember made for an entity of another artifact (see
+	// package memory_remember, remember_websearch.go). Callers cannot create one: it is not a valid kind of the
+	// remember request.
+	ArtifactWebSearch = "web_search"
 )
 
 // Artifact is a piece of data ingested to be remembered: the raw text, plus when it happened and when it was
@@ -90,18 +94,41 @@ const (
 type Artifact struct {
 	ID        int64
 	DatasetID int64
-	Kind      string // ArtifactEpisode or ArtifactKnowledge
+	Kind      string // ArtifactEpisode, ArtifactKnowledge or ArtifactWebSearch
 	Text      string
 	SessionID string // the user/agent session that remembered it; "" if none
 	ValidAt   time.Time
 	CreatedAt time.Time
 
-	// ParentID is the artifact this one is a chunk of; 0 for an artifact that is not a chunk. The chunks of a long
-	// text are artifacts of their own, children of the artifact that holds the whole text (see Tx.InsertChunkArtifact).
+	// ParentID is the artifact this one hangs off; 0 for an artifact that is nobody's child. There are two kinds of
+	// child, told apart by Kind:
+	//   - a chunk (Kind is that of its parent): the chunks of a long text are artifacts of their own, children of the
+	//     artifact that holds the whole text (see Tx.InsertChunkArtifact);
+	//   - a web search (Kind is ArtifactWebSearch): the child of the artifact the searched entity came from (see
+	//     Tx.InsertWebSearchArtifact).
 	ParentID int64
-	// The rest is only set for a chunk (ParentID != 0): its position among its siblings from 0, the byte range of its
-	// text in the parent's text (overlap included) and its size in tokens.
+	// Only set for a chunk: its position among its siblings from 0, the byte range of its text in the parent's text
+	// (overlap included) and its size in tokens.
 	ChunkIndex, StartOffset, EndOffset, Tokens int
+	// Query is the web search query that was issued for the artifact; only set for a web search (ArtifactWebSearch).
+	Query string
+}
+
+// IsChunk says whether the artifact is a chunk of its parent (and not, say, a web search that hangs off it).
+func (a Artifact) IsChunk() bool { return a.ParentID != 0 && a.Kind != ArtifactWebSearch }
+
+// NewWebSearchArtifact is the result of a web search to insert: an artifact of kind ArtifactWebSearch that is a child
+// of ParentID, the artifact the searched entity came from.
+type NewWebSearchArtifact struct {
+	DatasetID int64
+	// ParentID is the artifact from which the entity that was searched for came. It must be in the same dataset and
+	// already stored.
+	ParentID int64
+	// Query is the web search query that was issued; it is what the artifact is the result of.
+	Query              string
+	Text               string
+	SessionID          string // that of the Remember call; "" if none
+	ValidAt, CreatedAt time.Time
 }
 
 // NewChunkArtifact is a chunk to insert: an artifact that is the child of the artifact ParentID, holding the part
@@ -189,13 +216,17 @@ type Tx interface {
 	// Rollback is safe to call after Commit.
 	Rollback() error
 
-	// InsertArtifact stores an artifact of the given kind (ArtifactEpisode or ArtifactKnowledge), attached to the
+	// InsertArtifact stores an artifact of the given kind (ArtifactEpisode, ArtifactKnowledge), attached to the
 	// session sessionID ("" for none).
 	InsertArtifact(ctx context.Context, dsID int64, kind, text, sessionID string, validAt, createdAt time.Time) (int64, error)
 	// InsertChunkArtifact stores a chunk: an artifact that is a child of the artifact c.ParentID (which must be in the
 	// same dataset and already stored), with its position, byte range and token count in the parent. The children of
 	// an artifact are deleted with it.
 	InsertChunkArtifact(ctx context.Context, c NewChunkArtifact) (int64, error)
+	// InsertWebSearchArtifact stores the result of a web search: an artifact of kind ArtifactWebSearch that records
+	// the query and is a child of the artifact w.ParentID (the one the searched entity came from; which must be in the
+	// same dataset and already stored). It is not a chunk. The children of an artifact are deleted with it.
+	InsertWebSearchArtifact(ctx context.Context, w NewWebSearchArtifact) (int64, error)
 	// UpsertEntity inserts the entity, or updates the one with the same (dataset, nameKey, type): a non-empty
 	// description replaces the stored one (and e.ModelID the stored model_id, which follows the description; an empty
 	// stored model_id is always filled). It returns the entity ID.

@@ -19,10 +19,14 @@ const (
 	StageResolveEdges = "resolve_edges"
 	// StageExtractImage is the reading of an image (the image pipeline).
 	StageExtractImage = "extract_image"
+	// StageWebSearch is the web search made for the key entities of a text (only with the web_search flag of remember,
+	// see docs/web-search.md). The model must support Anthropic's web search tool. The entities and edges found in the
+	// results are extracted on the extract_graph model, like any other text.
+	StageWebSearch = "web_search"
 )
 
 // Stages lists the stages that take a model, in pipeline order.
-var Stages = []string{StageExtractGraph, StageResolveEdges, StageExtractImage}
+var Stages = []string{StageExtractGraph, StageResolveEdges, StageWebSearch, StageExtractImage}
 
 // MaxModelLen is the maximum length of a model name in bytes.
 const MaxModelLen = 128
@@ -116,7 +120,7 @@ func ParseModels(s string) (Models, error) {
 	return ResolveModels(m)
 }
 
-// WithModels sets the model of each LLM stage of Remember and RememberImage (see the Stage constants). A stage that is
+// WithModels sets the model of each LLM stage of Remember and RememberImage (see the Stage constants; web_search is the model of the web search). A stage that is
 // not in m, or whose model is empty, uses the default model. Validate m with ResolveModels first.
 func WithModels(m Models) Option { return func(o *CallOptions) { o.Models = m } }
 

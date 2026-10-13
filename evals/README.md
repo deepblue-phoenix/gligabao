@@ -15,11 +15,13 @@ Each run of an experiment creates its own datasets, which isolates the runs from
 
 - `chunking_register` (suite `chunking.json`): a ~3,700-word membership register of 60 people (`suites/corpus/harbor_cooperative.txt`), remembered with `chunk_size` 512 so it is split into ~20 chunks, each extracted, stored and embedded on its own (see [docs/chunking.md](../docs/chunking.md)). Besides the usual edge and answer checks (facts from the first, middle and last chunks must all be in the graph, and the question mixes the start and the end of the text), `expect_min_chunks` turns on the chunking checks: enough chunks, none over the chunk size, the chunk artifacts stored as children of the text and matching the response, the chunks consecutive/overlapping/covering the whole text, and the facts linked to the chunks (not the parent) and to at least half of them. It makes ~20 extraction calls (and some resolution ones), so it takes a few minutes.
 
+- `web_search_companies` (suite `web_search.json`): a text about three real big companies (Apple, Microsoft and Nvidia) remembered with `"web_search": true`, so the key entities are also searched for on the web (see [docs/web-search.md](../docs/web-search.md)). Besides the usual edge and answer checks, `expect_web_searches` turns on the web search checks: at least that many `web_search` artifacts were stored, each with the query that was issued, its text, a parent artifact in the dataset (the artifact the searched entity came from) and entities of its own. It calls the real web search tool (needs web search enabled for the Anthropic organization of `ANTHROPIC_API_KEY`) and costs a few cents.
+
 ## Suite format
 
-Each file in `evals/suites/` is a suite: a JSON list of cases (embedded into the binary). Case names must be unique across all suites. `basic.json` holds the first two cases above, `chunking.json` the third.
+Each file in `evals/suites/` is a suite: a JSON list of cases (embedded into the binary). Case names must be unique across all suites. `basic.json` holds the first two cases above, `chunking.json` the third, `web_search.json` the fourth.
 
-A `remember` entry has either `text` or `text_file`, a path relative to the suites directory (e.g. `corpus/harbor_cooperative.txt`; the `.txt` files under `suites/corpus/` are embedded as well) whose content is the text, for corpora too large for JSON. A case may also set `chunk_size` (tokens; 32 to 8000, default 1024) to run with a smaller chunk size, and `expect_min_chunks` (see above).
+A `remember` entry has either `text` or `text_file`, a path relative to the suites directory (e.g. `corpus/harbor_cooperative.txt`; the `.txt` files under `suites/corpus/` are embedded as well) whose content is the text, for corpora too large for JSON. A `remember` entry may set `"web_search": true` to make that call search the web for its key entities, and a case `expect_web_searches` (see above). A case may also set `chunk_size` (tokens; 32 to 8000, default 1024) to run with a smaller chunk size, and `expect_min_chunks` (see above).
 
 ```json
 [
@@ -46,7 +48,7 @@ A `remember` entry has either `text` or `text_file`, a path relative to the suit
 
 ## Models
 
-The model of each LLM stage of `remember` can be varied, to compare models stage by stage. The stages are `extract_graph` (entities and edges), `resolve_edges` (duplicates and contradictions) and `extract_image`; a stage with no model uses the default model, so you only name the ones you want to change. Two places, combined stage by stage:
+The model of each LLM stage of `remember` can be varied, to compare models stage by stage. The stages are `extract_graph` (entities and edges), `resolve_edges` (duplicates and contradictions), `web_search` (the model that runs the web search of an entry with `web_search`) and `extract_image`; a stage with no model uses the default model, so you only name the ones you want to change. Two places, combined stage by stage:
 
 - `-models extract_graph=claude-sonnet-4-5,resolve_edges=claude-haiku-5-5` on the command line sets the models for every case of the run (recorded in the experiment run's `params`);
 - `"models": {"extract_graph": "claude-sonnet-4-5"}` in a case sets them for that case, and wins over `-models` for the stages it names.

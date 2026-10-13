@@ -169,30 +169,9 @@ func (c *Client) Complete(ctx context.Context, req Request) (*Response, error) {
 		return nil, fmt.Errorf("ai: marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/messages", bytes.NewReader(body))
+	data, err := c.post(ctx, body)
 	if err != nil {
-		return nil, fmt.Errorf("ai: build request: %w", err)
-	}
-	httpReq.Header.Set("content-type", "application/json")
-	httpReq.Header.Set("x-api-key", c.apiKey)
-	httpReq.Header.Set("anthropic-version", apiVersion)
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("ai: send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("ai: read response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		var e apiError
-		if json.Unmarshal(data, &e) == nil && e.Error.Message != "" {
-			return nil, fmt.Errorf("ai: anthropic %d %s: %s", resp.StatusCode, e.Error.Type, e.Error.Message)
-		}
-		return nil, fmt.Errorf("ai: anthropic status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+		return nil, err
 	}
 
 	var ar apiResponse
@@ -221,6 +200,37 @@ func (c *Client) Complete(ctx context.Context, req Request) (*Response, error) {
 		OutputTokens: u.OutputTokens,
 		CostUSD:      cost,
 	}, nil
+}
+
+// post sends a Messages API request body and returns the body of the 200 response; any other status is an error that
+// carries Anthropic's message.
+func (c *Client) post(ctx context.Context, body []byte) ([]byte, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/messages", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("ai: build request: %w", err)
+	}
+	httpReq.Header.Set("content-type", "application/json")
+	httpReq.Header.Set("x-api-key", c.apiKey)
+	httpReq.Header.Set("anthropic-version", apiVersion)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("ai: send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("ai: read response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		var e apiError
+		if json.Unmarshal(data, &e) == nil && e.Error.Message != "" {
+			return nil, fmt.Errorf("ai: anthropic %d %s: %s", resp.StatusCode, e.Error.Type, e.Error.Message)
+		}
+		return nil, fmt.Errorf("ai: anthropic status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+	}
+	return data, nil
 }
 
 // Ask is a convenience for a single-prompt call.

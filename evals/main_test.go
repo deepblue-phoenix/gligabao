@@ -59,7 +59,7 @@ func TestRunCasesTracksExperiment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failed := runCases(cases, &scriptedLLM{answer: "Alice."}, nil, false, nil, trackDB, tracker); failed != 1 {
+	if failed := runCases(cases, &scriptedLLM{answer: "Alice."}, nil, nil, false, nil, trackDB, tracker); failed != 1 {
 		t.Fatalf("failed = %d, want 1", failed)
 	}
 	run, err := tracker.Finish(ctx)
@@ -143,7 +143,7 @@ func TestRunsAreIsolatedAndKept(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if failed := runCases(cases, &scriptedLLM{answer: "Alice."}, nil, false, nil, database, tr); failed != 0 {
+		if failed := runCases(cases, &scriptedLLM{answer: "Alice."}, nil, nil, false, nil, database, tr); failed != 0 {
 			t.Fatalf("run %d failed", i)
 		}
 		if _, err := tr.Finish(ctx); err != nil {
@@ -233,7 +233,7 @@ func TestChunkingCase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failed := runCases([]Case{c}, llm, nil, false, nil, database, tr); failed != 0 {
+	if failed := runCases([]Case{c}, llm, nil, nil, false, nil, database, tr); failed != 0 {
 		t.Fatalf("failed = %d", failed)
 	}
 	if _, err := tr.Finish(ctx); err != nil {
@@ -249,7 +249,7 @@ func TestChunkingCase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failed := runCases([]Case{c}, llm, nil, false, nil, database, tr); failed != 1 {
+	if failed := runCases([]Case{c}, llm, nil, nil, false, nil, database, tr); failed != 1 {
 		t.Fatalf("with 1000 chunks expected: failed = %d, want 1", failed)
 	}
 }
@@ -299,7 +299,7 @@ func TestCaseModels(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if failed := runCases([]Case{c}, llm, nil, false, defaults, database, tr); failed != 0 {
+		if failed := runCases([]Case{c}, llm, nil, nil, false, defaults, database, tr); failed != 0 {
 			t.Fatalf("failed = %d", failed)
 		}
 		if _, err := tr.Finish(ctx); err != nil {
@@ -324,7 +324,7 @@ func TestCaseModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failed := runCases([]Case{bad}, &scriptedLLM{}, nil, false, nil, database, tr); failed != 1 {
+	if failed := runCases([]Case{bad}, &scriptedLLM{}, nil, nil, false, nil, database, tr); failed != 1 {
 		t.Errorf("a case with an unknown stage: failed = %d, want 1", failed)
 	}
 }

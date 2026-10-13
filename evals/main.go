@@ -97,6 +97,10 @@ type Case struct {
 	// Models picks the LLM model of each stage of remember for this case ("extract_graph", "resolve_edges", "extract_image"), on top of the
 	// runner's -models: a stage named here wins, a stage named by neither uses the default model.
 	Models map[string]string `json:"models,omitempty"`
+	// ExpectWebSearches, when > 0, turns on the web search checks: the remember entries that set "web_search" must have
+	// stored at least this many web_search artifacts, each with its query, a parent in the dataset (the artifact the
+	// searched entity came from) and entities of its own (see checkWebSearches).
+	ExpectWebSearches int `json:"expect_web_searches"`
 }
 
 // Artifact is one text to remember; ReferenceTime (RFC 3339) is when it was written. Kind is the artifact kind
@@ -107,6 +111,9 @@ type Artifact struct {
 	Text          string `json:"text"`
 	TextFile      string `json:"text_file,omitempty"`
 	ReferenceTime string `json:"reference_time"`
+	// WebSearch makes the remember call search the web for the latest world events about its key entities (see
+	// docs/web-search.md). It needs the Anthropic API key the runner already requires.
+	WebSearch bool `json:"web_search,omitempty"`
 }
 
 // ExpectEdge is a temporal fact that must be stored between two entities (any relation, names case-insensitive).
@@ -264,7 +271,7 @@ func (o *Outcome) Cost() (usd float64, steps int) {
 // run executes one case of the experiment run runID in the eval database through the eval endpoints, in a dataset
 // of its own (see datasetName). The outcome is returned even when err is set, holding whatever was collected
 // before the failure.
-func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_core.Embedder, verbose bool, defaults memory_core.Models) (out *Outcome, err error) {
+func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_core.Embedder, ws memory_core.WebSearcher, verbose bool, defaults memory_core.Models) (out *Outcome, err error) {
 	out = &Outcome{TrajectoryDir: atifDir}
 
 	caseModels, err := memory_core.ResolveModels(c.Models)
@@ -282,7 +289,7 @@ func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_c
 		}
 		database = &cp
 	}
-	srv := httptest.NewServer(server.NewHandler(database, llm, emb, nil, true, false))
+	srv := httptest.NewServer(server.NewHandler(database, llm, emb, nil, ws, true, false))
 	defer srv.Close()
 
 	dataset := datasetName(c, runID)
@@ -314,6 +321,9 @@ func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_c
 		}
 		if len(models) > 0 {
 			body["models"] = models
+		}
+		if m.WebSearch {
+			body["web_search"] = true
 		}
 		var rem struct {
 			ArtifactID int64             `json:"artifact_id"`
@@ -386,6 +396,12 @@ func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_c
 		}
 	}
 
+	if c.ExpectWebSearches > 0 {
+		if err := checkWebSearches(context.Background(), database, dataset, c.ExpectWebSearches, check); err != nil {
+			return out, fmt.Errorf("check web searches: %w", err)
+		}
+	}
+
 	var rec struct {
 		Answer   string `json:"answer"`
 		Evidence struct {
@@ -449,7 +465,7 @@ func checkChunks(ctx context.Context, database *db.DB, dataset string, c Case, p
 	children := map[int64][]graph.Artifact{} // parent ID -> its chunks
 	for _, a := range arts {
 		byID[a.ID] = a
-		if a.ParentID != 0 {
+		if a.IsChunk() { // not the web searches that hang off an artifact
 			children[a.ParentID] = append(children[a.ParentID], a)
 		}
 	}
@@ -511,7 +527,7 @@ func checkChunks(ctx context.Context, database *db.DB, dataset string, c Case, p
 	for _, l := range links {
 		if isParent[l.ArtifactID] {
 			toParent++
-		} else if byID[l.ArtifactID].ParentID != 0 {
+		} else if byID[l.ArtifactID].IsChunk() {
 			linkedChunks[l.ArtifactID] = true
 		}
 	}
@@ -519,6 +535,59 @@ func checkChunks(ctx context.Context, database *db.DB, dataset string, c Case, p
 	want := (c.ExpectMinChunks + 1) / 2
 	check(len(linkedChunks) >= want, fmt.Sprintf("chunking: edges come from %d chunks (at least %d)", len(linkedChunks), want),
 		fmt.Sprintf("chunking: edges come from only %d chunks, want at least %d", len(linkedChunks), want))
+	return nil
+}
+
+// checkWebSearches verifies what the web search of remember stored in the dataset. None of it depends on what the web
+// says, only on how it was stored:
+//   - at least min web_search artifacts;
+//   - each saves the query that was issued, has text, and has as its parent an artifact of the dataset that is not itself a
+//     web search: the artifact from which the searched entity came (a web search is never a chunk, and has no chunk index);
+//   - each has entities of its own linked to it (the entities discovered on the web are stored like any other).
+func checkWebSearches(ctx context.Context, database *db.DB, dataset string, min int, check func(ok bool, pass, fail string)) error {
+	dsID, err := relational.DatasetID(ctx, database.Relational, evalUser, dataset)
+	if err != nil {
+		return err
+	}
+	arts, err := graph.ListArtifacts(ctx, database.Graph, dsID)
+	if err != nil {
+		return err
+	}
+	links, err := graph.ListEntityArtifacts(ctx, database.Graph, dsID)
+	if err != nil {
+		return err
+	}
+	linked := map[int64]int{} // artifact ID -> entities linked to it
+	for _, l := range links {
+		linked[l.ArtifactID]++
+	}
+	byID := map[int64]graph.Artifact{}
+	for _, a := range arts {
+		byID[a.ID] = a
+	}
+	var webs []graph.Artifact
+	for _, a := range arts {
+		if a.Kind == graph.ArtifactWebSearch {
+			webs = append(webs, a)
+		}
+	}
+	check(len(webs) >= min, fmt.Sprintf("web search: %d web_search artifacts (at least %d)", len(webs), min),
+		fmt.Sprintf("web search: %d web_search artifacts, want at least %d", len(webs), min))
+	ok, problem := true, ""
+	for _, w := range webs {
+		parent, hasParent := byID[w.ParentID]
+		switch {
+		case strings.TrimSpace(w.Query) == "":
+			ok, problem = false, fmt.Sprintf("artifact %d: no query saved", w.ID)
+		case strings.TrimSpace(w.Text) == "":
+			ok, problem = false, fmt.Sprintf("artifact %d: no text", w.ID)
+		case !hasParent || parent.Kind == graph.ArtifactWebSearch:
+			ok, problem = false, fmt.Sprintf("artifact %d: its parent %d is not an artifact the entity came from", w.ID, w.ParentID)
+		case linked[w.ID] == 0:
+			ok, problem = false, fmt.Sprintf("artifact %d (%q): no entity is linked to it", w.ID, w.Query)
+		}
+	}
+	check(ok, "web search: every web_search artifact has its query, text, a parent artifact and entities", "web search: "+problem)
 	return nil
 }
 
@@ -569,10 +638,10 @@ func post(url string, body, out any) error {
 
 //---------------------------------------------------------------------------------------------
 
-// runCases runs every case through llm (and embeds the entities and edges with emb, if not nil) in the eval database, prints PASS/FAIL per case and returns how many failed.
+// runCases runs every case through llm (and embeds the entities and edges with emb, if not nil; ws, if not nil, runs the web searches of the remember entries that ask for them) in the eval database, prints PASS/FAIL per case and returns how many failed.
 // The result of each case is recorded in the tracker's experiment run (kept in the same database).
 // models are the runner's default model per remember stage (-models); a case's own models win over them.
-func runCases(cases []Case, llm memory_core.LLM, emb memory_core.Embedder, verbose bool, models memory_core.Models, database *db.DB, tracker *experiments.Tracker) (failed int) {
+func runCases(cases []Case, llm memory_core.LLM, emb memory_core.Embedder, ws memory_core.WebSearcher, verbose bool, models memory_core.Models, database *db.DB, tracker *experiments.Tracker) (failed int) {
 	for _, c := range cases {
 		l := llm
 		if verbose {
@@ -580,7 +649,7 @@ func runCases(cases []Case, llm memory_core.LLM, emb memory_core.Embedder, verbo
 			l = &verboseLLM{inner: llm}
 		}
 		started := time.Now()
-		out, err := run(c, tracker.Run.ID, database, l, emb, verbose, models)
+		out, err := run(c, tracker.Run.ID, database, l, emb, ws, verbose, models)
 		answer, problems := out.Answer, out.Problems
 		cost, steps := out.Cost()
 		if verbose && out.Chunks > 0 {
@@ -710,7 +779,7 @@ func mainErr() error {
 		return fmt.Errorf("start experiment: %w", err)
 	}
 
-	failed := runCases(cases, llm, emb, *verbose, models, database, tracker)
+	failed := runCases(cases, llm, emb, llm, *verbose, models, database, tracker)
 
 	fmt.Printf("---\npassed: %d, failed: %d\n", len(cases)-failed, failed)
 	if run, err := tracker.Finish(context.Background()); err != nil {

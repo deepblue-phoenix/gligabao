@@ -29,6 +29,7 @@ class Client:
         kind: str | None = None,
         image: bytes | str | os.PathLike[str] | None = None,
         models: dict[str, str] | None = None,
+        web_search: bool = False,
     ) -> dict[str, Any]:
         """Store `text`, or an `image`, in memory (POST /v1/gb/remember).
 
@@ -52,7 +53,11 @@ class Client:
         {"extract_graph": "claude-sonnet-4-5", "resolve_edges": "claude-haiku-5-5"}. The stages are
         "extract_graph" (text), "resolve_edges" (text) and "extract_image" (image); a stage left out uses the
         server's default model. The model of "extract_graph" is the one recorded on the entities
-        and edges the text yields.
+        and edges the text yields. "web_search" is a further stage: the model that runs the web search.
+
+        `web_search=True` (text only) also searches the web for the latest world events about the key
+        entities of the text, and remembers what it finds as artifacts of kind "web_search" (the response
+        lists them under "web_searches"). The server needs an Anthropic API key for it, else it answers 503.
         """
         if (text is None) == (image is None):
             raise ValueError("remember takes exactly one of text and image")
@@ -60,6 +65,8 @@ class Client:
         if image is not None:
             if kind is not None:
                 raise ValueError("kind does not apply to images")
+            if web_search:
+                raise ValueError("web_search does not apply to images")
             if not isinstance(image, (bytes, bytearray, memoryview)):
                 with open(image, "rb") as f:
                     image = f.read()
@@ -72,6 +79,8 @@ class Client:
             body["kind"] = kind
         if models:
             body["models"] = models
+        if web_search:
+            body["web_search"] = True
         if reference_time is not None:
             body["reference_time"] = (
                 reference_time.isoformat() if isinstance(reference_time, datetime) else reference_time

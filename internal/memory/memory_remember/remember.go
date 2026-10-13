@@ -189,6 +189,11 @@ type Result struct {
 	// Edges and InvalidatedEdges are those of all the chunks together.
 	Chunks []ChunkResult `json:"chunks,omitempty"`
 
+	// WebSearches are the web searches made for the key entities of the text (only with WithWebSearch): one per
+	// entity searched for, in the order of the search, each with the web_search artifact it stored. Their entities and
+	// edges are not in Entities and Edges above, which are those of the text itself. See docs/web-search.md.
+	WebSearches []WebSearchResult `json:"web_searches,omitempty"`
+
 	// TRAJECTORY
 	// TrajectoryID and Trajectory are the ATIF trajectory of this call (also stored in TrajectoryDir); only set when
 	// the call was made with WithEval.
@@ -223,7 +228,11 @@ type ChunkResult struct {
 // artifact, split into overlapping chunks that are artifacts too (its children), and each chunk is extracted,
 // reconciled, stored and embedded on its own (see rememberDocument and docs/chunking.md).
 //
-// With WithModels each LLM stage (extract_graph, resolve_edges) runs on the model the caller chose; a stage with none uses the
+// With WithWebSearch(true) (and a searcher, WithWebSearcher; ErrWebSearchUnavailable without one) the key entities of the
+// text are then searched for on the web, and the results are stored as artifacts of their own (kind web_search) and
+// extracted like any text, after the text itself has been stored. See remember_websearch.go and docs/web-search.md.
+//
+// With WithModels each LLM stage (extract_graph, resolve_edges, web_search) runs on the model the caller chose; a stage with none uses the
 // default model. The extract_graph stage's model is the one recorded on the entities and edges.
 //
 // Only with WithEval is the call recorded as an ATIF trajectory (stored as JSON in TrajectoryDir and returned in
@@ -249,6 +258,9 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	llm = memory_core.WithRecording(llm, d, CallRemember)
 
 	co := memory_core.NewCallOptions(opts)
+	if co.WebSearch && co.WebSearcher == nil {
+		return nil, memory_core.ErrWebSearchUnavailable
+	}
 	tr := memory_core.StartTrace(CallRemember, co)
 	defer func() {
 		if traj := tr.Finish(err); res != nil && traj != nil {
@@ -268,6 +280,9 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	}
 	if len(co.Models) > 0 {
 		input["models"] = co.Models
+	}
+	if co.WebSearch {
+		input["web_search"] = true
 	}
 	tr.Input(input)
 
@@ -292,7 +307,15 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 		"extract_graph", map[string]any{"text_chars": len(text)},
 		map[string]any{"entities": ex.Entities, "edges": candidateFacts(ex.Edges, nil)})
 
-	return j.resolveAndStore(ctx, text, ex, nil)
+	res, err = j.resolveAndStore(ctx, text, ex, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	//--------------------------------------
+	// WEB_SEARCH (only with WithWebSearch): after the text is stored, so that it never fails the call
+	res.WebSearches = j.webSearch(ctx)
+	return res, nil
 }
 
 // job is what one Remember call shares between the steps it runs on each text it extracts (the text itself, or each of
@@ -307,6 +330,13 @@ type job struct {
 	// dataset, kind: already resolved.
 	dataset, kind string
 	ref, now      time.Time
+
+	// web is set on the job that stores the result of a web search (see storeWebSearch); nil for a text the caller sent.
+	web *webPart
+	// keyEntities are the entities of the texts stored so far that the web search may pick from (see noteKeyEntities),
+	// by normalized name, and keyOrder their names in the order they were extracted.
+	keyEntities map[string]*keyEntity
+	keyOrder    []string
 }
 
 // resolveAndStore reconciles the new facts of ex (extracted from text) with the stored ones and stores the text as an
@@ -314,7 +344,7 @@ type job struct {
 // for an artifact that is not a chunk.
 func (j *job) resolveAndStore(ctx context.Context, text string, ex *Extraction, part *chunkPart) (*Result, error) {
 	d, tr, co, userID, dataset := j.d, j.tr, j.co, j.userID, j.dataset
-	label := part.label()
+	label := part.label() + j.web.label()
 
 	//--------------------------------------
 	// LOAD_CANDIDATES
@@ -358,13 +388,17 @@ func (j *job) resolveAndStore(ctx context.Context, text string, ex *Extraction, 
 	if err != nil {
 		return nil, err
 	}
-	res, err := store(ctx, d, userID, dataset, j.kind, text, j.ref, j.now, ex, plan, part, append(j.opts[:len(j.opts):len(j.opts)], memory_core.WithTrace(tr))...)
+	res, err := store(ctx, d, userID, dataset, j.kind, text, j.ref, j.now, ex, plan, part, j.web, append(j.opts[:len(j.opts):len(j.opts)], memory_core.WithTrace(tr))...)
 	if err != nil {
 		return nil, err
 	}
+	j.noteKeyEntities(ex, res.ArtifactID)
 	args := map[string]any{"user_id": userID, "dataset": dataset, "kind": j.kind}
 	if part != nil {
 		args["parent_id"], args["chunk_index"] = part.ParentID, part.Chunk.Index
+	}
+	if j.web != nil {
+		args["parent_id"], args["query"] = j.web.ParentID, j.web.Query
 	}
 	tr.Tool("Stored the artifact, entities and edges."+label, "store_artifact", args,
 		map[string]any{"artifact_id": res.ArtifactID, "entities": res.Entities, "edges": res.Edges, "invalidated_edges": res.InvalidatedEdges,
@@ -398,12 +432,14 @@ func candidateFacts(edges []Edge, via map[int64]string) []map[string]any {
 // nothing; the vectors are written right after the commit, so a vector store failure returns an error after the
 // relational data is saved (the vectors are written again the next time the entity or fact is mentioned).
 func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan, opts ...memory_core.Option) (*Result, error) {
-	return store(ctx, d, userID, dataset, kind, text, ref, now, ex, plan, nil, opts...)
+	return store(ctx, d, userID, dataset, kind, text, ref, now, ex, plan, nil, nil, opts...)
 }
 
 // store is Store; part, if not nil, says the text is a chunk of a longer one: it is then stored as a child artifact
-// of part.ParentID, and its text is embedded into the chunk index together with the entities and edges.
-func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan, part *chunkPart, opts ...memory_core.Option) (*Result, error) {
+// of part.ParentID, and its text is embedded into the chunk index together with the entities and edges. web, if not
+// nil, says the text is the result of a web search: it is then stored as an artifact of kind web_search that saves the
+// query and is a child of web.ParentID (kind is ignored). part and web are never both set.
+func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan, part *chunkPart, web *webPart, opts ...memory_core.Option) (*Result, error) {
 	co := memory_core.NewCallOptions(opts)
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
@@ -444,9 +480,14 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 	defer tx.Rollback()
 
 	var artID int64
-	if part == nil {
+	switch {
+	case web != nil:
+		artID, err = tx.InsertWebSearchArtifact(ctx, graph.NewWebSearchArtifact{DatasetID: dsID, ParentID: web.ParentID, Query: web.Query,
+			Text: text, SessionID: sessionID, ValidAt: ref, CreatedAt: now})
+		kind = graph.ArtifactWebSearch
+	case part == nil:
 		artID, err = tx.InsertArtifact(ctx, dsID, kind, text, sessionID, ref, now)
-	} else {
+	default:
 		artID, err = tx.InsertChunkArtifact(ctx, graph.NewChunkArtifact{DatasetID: dsID, ParentID: part.ParentID, Kind: kind, Text: text,
 			SessionID: sessionID, ChunkIndex: part.Chunk.Index, StartOffset: part.Chunk.Start, EndOffset: part.Chunk.End,
 			Tokens: part.Chunk.Tokens, ValidAt: ref, CreatedAt: now})

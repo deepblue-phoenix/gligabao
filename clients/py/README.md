@@ -17,6 +17,14 @@ images, `extract_image`); a stage you leave out uses the server's default model:
 res = gb.remember("u1", "Alice works at Acme.", models={"extract_graph": "claude-sonnet-4-5"})  # resolve_edges: default
 ```
 
+With `web_search=True` the server also searches the web for the latest world events about the key entities of the text and
+remembers what it finds (needs an Anthropic API key on the server; see `docs/web-search.md` of gligabao):
+
+```python
+res = gb.remember("u1", "Apple and Microsoft are large companies.", web_search=True)
+print([(w["entity"], w["query"], w["artifact_id"]) for w in res.get("web_searches", [])])
+```
+
 An image is remembered by the image pipeline: the server's LLM reads the text in it (title and text blocks) and
 classifies the whole image by a theme (`plot`, `graph`, `chart`, `table`, `document`, ...). Pass the raw bytes, or the path of a JPEG,
 PNG, GIF or WebP file (up to 5 MiB); `text` and `kind` do not apply:

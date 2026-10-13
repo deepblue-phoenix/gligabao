@@ -15,7 +15,9 @@ import (
 const schema = `
 -- An artifact is a piece of data ingested to be remembered: the raw input text plus when it happened. It is the
 -- provenance of everything in the graph: entities and edges are anchored to the artifact(s) they were inferred from.
---   kind       'knowledge' (default: not strictly episodic) or 'episode' (a Graphiti-style episode, anchored in time)
+--   kind       'knowledge' (default: not strictly episodic) or 'episode' (a Graphiti-style episode, anchored in time),
+--              or 'web_search': the result of a web search that remember made for an entity of another artifact (see
+--              parent_id and query). Only remember creates those; a caller cannot ask for that kind.
 --   valid_at   (event time): when the text was written/observed; relative dates in it resolve against it
 --   created_at (system time): when it was ingested
 --   session_id the user/agent session that remembered it (a caller-chosen string); NULL if none was given. It is
@@ -27,6 +29,14 @@ const schema = `
 --              (bytes; overlap with the previous chunk included). Chunks are what the entity/edge extraction runs on,
 --              one by one, so the entities and edges of a long text link to its chunks, not to the parent.
 --              Deleting the parent deletes its chunks.
+--              A 'web_search' artifact has a parent_id too: the artifact FROM WHICH THE SEARCHED ENTITY CAME (the text, or
+--              for a long text the chunk, that the entity was extracted from). So an artifact's children are its chunks
+--              and the web searches made for its entities, told apart by kind ('web_search' or not) and by chunk_index,
+--              which is NULL for a web search. It has the session of the remember call, its own times (valid_at is
+--              when the search was made, not the time of the parent), and the entities and edges extracted from the
+--              search result link to it, like to any artifact.
+--   query      only for a 'web_search' artifact: the web search query that was issued (what the artifact is the result
+--              of); NULL for any other artifact.
 --   chunk_index position of a chunk among its siblings, from 0; tokens its size in tokens. NULL unless a chunk.
 CREATE TABLE IF NOT EXISTS gb_artifacts (
 	id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,6 +49,7 @@ CREATE TABLE IF NOT EXISTS gb_artifacts (
 	start_offset INTEGER,
 	end_offset   INTEGER,
 	tokens       INTEGER,
+	query        TEXT,
 	valid_at     DATETIME NOT NULL,
 	created_at   DATETIME NOT NULL,
 	UNIQUE (parent_id, chunk_index)

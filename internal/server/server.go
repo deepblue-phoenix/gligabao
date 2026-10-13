@@ -96,9 +96,10 @@ const EvalDBName = "eval"
 
 // NewHandler builds the HTTP handler for the given databases and LLM.
 // llm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities.
-// jv may be nil, in which case remember skips the steps that run on Jev. The eval endpoints are registered only if eval is true,
+// jv may be nil, in which case remember skips the steps that run on Jev. ws may be nil, in which case web search is not available
+// (a remember request with web_search returns 503); it is the Anthropic web search tool, so it is only set with an Anthropic API key. The eval endpoints are registered only if eval is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary.
-func NewHandler(d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
+func NewHandler(d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "gligabao is running")
@@ -111,9 +112,9 @@ func NewHandler(d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memo
 		fmt.Fprintln(w, "ok")
 	})
 	mux.HandleFunc("GET /version", versionHandler)
-	api.Register(mux, d, llm, emb, jv)
+	api.Register(mux, d, llm, emb, jv, ws)
 	if eval {
-		api.RegisterEval(mux, d, llm, emb, jv)
+		api.RegisterEval(mux, d, llm, emb, jv, ws)
 	}
 	if adminUI {
 		registerAdminUI(mux, d, extraAdminDBs)
@@ -229,10 +230,14 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	var llm memory_core.LLM
+	// Web search is Anthropic's cloud-based web search tool, so it needs the Anthropic API key and only exists with it.
+	var ws memory_core.WebSearcher
 	if c, err := ai.New(opts.AnthropicKey, ai.WithPrices(ai.NewPriceTable(opts.Prices))); err != nil {
 		log.WithError(err).Warn("LLM client unavailable; /v1/gb/remember and /v1/gb/recall will return 503")
+		log.Info("web search is not available (no Anthropic API key); remember requests with web_search return 503")
 	} else {
-		llm = c
+		llm, ws = c, c
+		log.Info("web search is available: remember searches the web for the key entities of a text when asked (web_search)")
 	}
 
 	var emb memory_core.Embedder
@@ -276,7 +281,7 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 
-	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(database, llm, emb, jv, opts.Eval, opts.AdminUI, extra...)}
+	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(database, llm, emb, jv, ws, opts.Eval, opts.AdminUI, extra...)}
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

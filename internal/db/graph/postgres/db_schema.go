@@ -27,6 +27,9 @@ CREATE TABLE IF NOT EXISTS gb_artifacts (
 	start_offset INTEGER,
 	end_offset   INTEGER,
 	tokens       INTEGER,
+	-- Only for a 'web_search' artifact: the query that was issued; its parent_id is the artifact the searched entity
+	-- came from (see sqlite/db_schema.go).
+	query        TEXT,
 	valid_at   TIMESTAMPTZ NOT NULL,
 	created_at TIMESTAMPTZ NOT NULL,
 	UNIQUE (parent_id, chunk_index)

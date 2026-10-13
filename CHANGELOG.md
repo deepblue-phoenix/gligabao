@@ -5,6 +5,22 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.9.0] - 2026-10-14
+
+### Added
+- Web search for `remember`. `POST /v1/gb/remember` (and `/v1/gb/eval/remember`) takes an optional `web_search` flag (default `false`). When set, after the text is stored the key entities of the text (the extracted entities in the most facts, concepts excluded, at most 3) are searched for on the web, to get the latest world events about each. The search is Anthropic's cloud-based web search tool (`web_search_20250305`), so it is only available when an Anthropic API key is supplied: a request with `web_search` and no key returns `503` (and `400` together with an `image`). The server logs at startup whether web search is available. See [docs/web-search.md](docs/web-search.md).
+- Each web search result is an artifact of its own, of the new kind `web_search` (a caller cannot ask for that kind). It saves the query that was issued (new column `gb_artifacts.query`) and its parent (`gb_artifacts.parent_id`) is the artifact from which the searched entity came (for a long text, the chunk). The graph is extracted from the result like from any text (reference time: now), reconciled with the stored facts, and stored: the entities discovered on the web are ordinary nodes, linked to the `web_search` artifact (and to the call's session), embedded when vectors are configured. The searched entities are not searched for in turn.
+- The `remember` response gets `web_searches`: per entity searched, its query, the parent artifact, the `web_search` artifact, the sources and what the result yielded (`entities`, `edges`, `invalidated_edges`).
+- New model stage `web_search` for `models` (the model that runs the web search tool; the results are extracted on `extract_graph`). The Python client's `remember` takes `web_search`.
+- The web search is an enrichment that runs after the text is stored: a failure in it is logged, recorded in the trajectory and reported in the result, and never fails the request. It is billed by Anthropic ($0.01 per search, `ai.WebSearchRequestUSD`) on top of the tokens; that is included in the recorded cost (`gb_llm_calls`, trajectory totals). Trajectories get the steps `select_web_search_entities` and `web_search`.
+- Eval: the suite `web_search.json` with one case, `web_search_companies`, that remembers a text about Apple, Microsoft and Nvidia with `web_search`; remember entries of a suite can set `"web_search": true`, and a case `expect_web_searches` (checks on the stored `web_search` artifacts).
+- Go: `ai.Client.WebSearch`, `memory_core.WebSearcher`, `WithWebSearcher` (makes it available), `WithWebSearch` (asks for it per call), `ErrWebSearchUnavailable`, `StageWebSearch`, `graph.ArtifactWebSearch`, `Tx.InsertWebSearchArtifact`, `Artifact.Query` and `Artifact.IsChunk`, `Result.WebSearches`.
+
+### Changed
+- Database schema: `gb_artifacts` has a new column `query`. Existing database files are not migrated: delete the file (and the eval database) and the server recreates it.
+- A child artifact is no longer always a chunk: `Counts.Chunks` counts the artifacts with a `chunk_index`, not those with a `parent_id`.
+- Go: `server.NewHandler`, `api.Register` and `api.RegisterEval` take one more argument, the web searcher (nil for none; the server passes the Anthropic client).
+
 ## [0.8.0] - 2026-10-14
 
 ### Added

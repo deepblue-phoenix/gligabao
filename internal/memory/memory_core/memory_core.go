@@ -22,6 +22,12 @@ type LLM interface {
 	Complete(ctx context.Context, req ai.Request) (*ai.Response, error)
 }
 
+// WebSearcher runs web searches (see ai.Client.WebSearch and docs/web-search.md). It is the Anthropic web search tool, so
+// it exists only when an Anthropic API key is supplied; *ai.Client implements it.
+type WebSearcher interface {
+	WebSearch(ctx context.Context, req ai.WebSearchRequest) (*ai.WebSearchResponse, error)
+}
+
 //---------------------------------------------------------------------------------------------
 
 // recordingLLM wraps an LLM and stores a gb_llm_calls row (tokens, cost, call type) for every successful call.

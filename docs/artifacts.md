@@ -2,7 +2,7 @@
 
 An artifact is a piece of data ingested to be remembered: the raw text that `POST /v1/gb/remember` receives, stored as it came. It is the provenance of the graph: every entity and edge is anchored to the artifact(s) it was inferred from, so a fact can always be traced back to the original text.
 
-Code: `internal/memory/memory_remember/remember.go` (`Remember`, `Store`, `ResolveKind`), `remember_chunks.go` (chunked texts), `internal/db/graph/model/model.go` (types), `internal/db/graph/{sqlite,postgres}/db_schema.go` (tables).
+Code: `internal/memory/memory_remember/remember.go` (`Remember`, `Store`, `ResolveKind`), `remember_chunks.go` (chunked texts), `remember_websearch.go` (web searches), `internal/db/graph/model/model.go` (types), `internal/db/graph/{sqlite,postgres}/db_schema.go` (tables).
 
 Images are not artifacts in this sense: `remember` with an `image` stores an image artifact (a row in `gb_image_artifacts` tracking a file on disk) through a separate pipeline, and they are not linked to entities or edges yet (see [images.md](images.md)).
 
@@ -16,6 +16,8 @@ Every artifact has a `kind`, set by the optional `kind` field of the remember re
 | `episode` | A Graphiti-style episode: something written or observed at a point in time, such as a message or a news item. |
 
 `kind` is trimmed and case-insensitive; an empty one means `knowledge`; any other value returns `400` and stores nothing.
+
+A third kind, `web_search`, exists but cannot be asked for: it is the result of a [web search](web-search.md) that `remember` made (with `web_search`) for an entity of another artifact. It has a `query` and a parent (below).
 
 The kind is stored and returned, but it does not change how the text is extracted or reconciled yet. Both kinds get the same bi-temporal treatment (see [temporal.md](temporal.md)). It exists so that behaviour can differ per kind later (for example, a `knowledge` artifact need not supersede older facts).
 
@@ -33,14 +35,19 @@ Table `gb_artifacts`:
 | `valid_at` | Event time: when the text was written or observed. This is the request's `reference_time` (default: now). Relative dates in the text are resolved against it, and facts without a date of their own inherit it. |
 | `created_at` | System time: when it was ingested |
 
-| `parent_id` | The artifact this one is a chunk of; NULL for an artifact that is not a chunk. See [Chunks](#chunks) |
+| `parent_id` | The artifact this one hangs off; NULL for an artifact that is nobody's child. Either the artifact it is a chunk of (see [Chunks](#chunks)), or, for a `web_search` artifact, the artifact the searched entity came from (see [Web searches](#web-searches)) |
 | `chunk_index`, `start_offset`, `end_offset`, `tokens` | Only for a chunk: its position among its siblings (from 0), the byte range of its text in the parent's text, and its size in tokens |
+| `query` | Only for a `web_search` artifact: the web search query that was issued for it |
 
 Every `remember` call adds one artifact (plus, for a long text, its chunks), so sending the same text twice stores two artifacts. They add no duplicate entities or edges, but both are recorded as sources (below).
 
 ## Chunks
 
 Artifacts can be the children of other artifacts. A text larger than one chunk (1024 tokens by default) is stored as an artifact holding the whole text, the **parent**, and is split into overlapping chunks that are artifacts too, its **children** (`parent_id` set; same `kind`, `session_id` and times; `text` is the chunk). Each chunk is extracted, stored and embedded individually, and the entities and edges link to the chunk they came from. A text that fits one chunk has no children. See [chunking.md](chunking.md).
+
+## Web searches
+
+With `web_search`, `remember` also searches the web for the latest world events about the key entities of the text, and stores each result as an artifact of its own, of kind `web_search`. It saves the **query** that was issued (`query`) and its **parent** (`parent_id`) is the artifact **from which the entity came**: the artifact the entity was extracted from, which for a long text is the chunk. A web search is therefore the second kind of child artifact; it is told apart from a chunk by its kind and by having no `chunk_index`. The entities and edges extracted from the result are linked to it like to any artifact (see below), so a fact learned on the web traces back to the query that found it and to the text whose entity was searched for. Everything is in [web-search.md](web-search.md).
 
 ## Provenance links
 
