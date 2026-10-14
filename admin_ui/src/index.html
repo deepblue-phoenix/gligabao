@@ -15,41 +15,60 @@
     </header>
 
     <main>
-      <form id="datasets-form" class="row">
-        <label class="check"><input type="checkbox" id="include-deleted" /> include deleted datasets</label>
-        <button type="submit">Refresh</button>
-      </form>
-      <div id="databases"></div>
+      <div class="views">
+        <nav id="views-nav" class="views-nav" aria-label="Admin views">
+          <button type="button" class="view-btn active" data-view="main" aria-pressed="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>main</button>
+          <button type="button" class="view-btn" data-view="evals" aria-pressed="false"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6l-5.5 9.5A1.5 1.5 0 0 0 5.8 21h12.4a1.5 1.5 0 0 0 1.3-2.5L14 9V3"/><path d="M7.5 15h9"/></svg>evals</button>
+          <button type="button" class="view-btn" data-view="timeseries" aria-pressed="false"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>timeseries</button>
+        </nav>
 
-      <section id="images" class="card">
-        <div class="row between">
-          <h2>Image store</h2>
-          <button type="button" id="images-refresh">Refresh</button>
-        </div>
-        <dl id="images-stats" class="stats"></dl>
-        <p id="images-status" class="muted"></p>
-        <div id="images-detail" class="row image-stats-groups"></div>
-      </section>
+        <div id="view-main" class="view" data-view="main">
+          <form id="datasets-form" class="row">
+            <label class="check"><input type="checkbox" id="include-deleted" /> include deleted datasets</label>
+            <button type="submit">Refresh</button>
+          </form>
+          <div id="databases"></div>
 
-      <section id="websearch" class="card">
-        <div class="row between">
-          <h2>Web search</h2>
-          <button type="button" id="websearch-refresh">Refresh</button>
-        </div>
-        <p id="websearch-card-status" class="muted"></p>
-        <div id="websearch-card-content"></div>
-      </section>
+          <section id="images" class="card">
+            <div class="row between">
+              <h2>Image store</h2>
+              <button type="button" id="images-refresh">Refresh</button>
+            </div>
+            <dl id="images-stats" class="stats"></dl>
+            <p id="images-status" class="muted"></p>
+            <div id="images-detail" class="row image-stats-groups"></div>
+          </section>
 
-      <section id="evals" class="card">
-        <div class="row between">
-          <h2>Evals</h2>
-          <button type="button" id="evals-refresh">Refresh</button>
+          <section id="websearch" class="card">
+            <div class="row between">
+              <h2>Web search</h2>
+              <button type="button" id="websearch-refresh">Refresh</button>
+            </div>
+            <p id="websearch-card-status" class="muted"></p>
+            <div id="websearch-card-content"></div>
+          </section>
         </div>
-        <dl id="evals-stats" class="stats"></dl>
-        <p id="evals-status" class="muted"></p>
-        <div id="evals-experiments"></div>
-        <div id="evals-runs"></div>
-      </section>
+
+        <div id="view-evals" class="view" data-view="evals" hidden>
+          <section id="evals" class="card">
+            <div class="row between">
+              <h2>Evals</h2>
+              <button type="button" id="evals-refresh">Refresh</button>
+            </div>
+            <dl id="evals-stats" class="stats"></dl>
+            <p id="evals-status" class="muted"></p>
+            <div id="evals-experiments"></div>
+            <div id="evals-runs"></div>
+          </section>
+        </div>
+
+        <div id="view-timeseries" class="view" data-view="timeseries" hidden>
+          <section id="timeseries" class="card">
+            <h2>Timeseries</h2>
+            <p class="muted">Nothing here yet.</p>
+          </section>
+        </div>
+      </div>
     </main>
 
     <footer id="version" class="version-footer" hidden></footer>

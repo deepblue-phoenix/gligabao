@@ -1,4 +1,4 @@
-// gligabao admin UI: a health indicator, system totals, the datasets of all users and the evals block (evals.ts). Talks to the server's own HTTP API.
+// gligabao admin UI: a health indicator, system totals, the datasets of all users and and, in their own views, the evals (evals.ts) and timeseries. Talks to the server's own HTTP API.
 
 import { initEvals } from "./evals.js";
 import { initGraphModal, showGraph } from "./graph.js";
@@ -291,6 +291,30 @@ $<HTMLFormElement>("datasets-form").addEventListener("submit", (e) => {
 });
 $("include-deleted").addEventListener("change", () => void loadAll(includeDeleted()));
 
+// Switches between the admin views (main, evals, timeseries); the choice is kept in the URL hash.
+function initViews(): void {
+  const buttons = [...document.querySelectorAll<HTMLButtonElement>(".view-btn")];
+  const views = [...document.querySelectorAll<HTMLElement>(".view")];
+  const show = (name: string): void => {
+    if (!views.some((v) => v.dataset.view === name)) name = "main";
+    for (const v of views) v.hidden = v.dataset.view !== name;
+    for (const b of buttons) {
+      const on = b.dataset.view === name;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-pressed", String(on));
+    }
+  };
+  for (const b of buttons) {
+    b.addEventListener("click", () => {
+      const name = b.dataset.view ?? "main";
+      show(name);
+      history.replaceState(null, "", name === "main" ? location.pathname + location.search : `#${name}`);
+    });
+  }
+  show(location.hash.slice(1));
+}
+
+initViews();
 initGraphModal();
 initVectorsModal();
 initTraceModal();

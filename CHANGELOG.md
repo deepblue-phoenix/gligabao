@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.14.0] - 2026-10-16
+
+### Added
+- Admin UI views. Buttons stacked on the left of the page (always vertically centered on the screen, whatever the height of the view, and fixed while scrolling; their right edge on the left edge of the view) switch between the `main` view (the existing dashboard without evals), a new `evals` view (the evals block moved there from `main`) and a new `timeseries` view (an empty placeholder for now). The chosen view is kept in the URL hash. On narrow screens the buttons move into a row above the view.
+
 ## [0.13.0] - 2026-10-16
 
 ### Added

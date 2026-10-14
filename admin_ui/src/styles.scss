@@ -60,6 +60,47 @@ body {
 
 main { max-width: 64rem; margin: 1.5rem auto; padding: 0 1rem; }
 
+// View switcher: buttons stacked left of the view, vertically centered in the viewport (sticky), right edge on the view's left edge.
+$view-btn-h: 2.25rem;
+$view-btn-w: $view-btn-h * 3;
+
+// Fixed, so they are centered on the screen whatever the height of the view. main is 64rem wide with 1rem padding and centered:
+// its content (the view) starts 31rem left of the screen's center, and the buttons' right edge is put 10px left of it.
+.views-nav {
+  position: fixed;
+  top: 50%;
+  right: calc(50% + 31rem + 10px);
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 1;
+}
+
+.view-btn {
+  width: $view-btn-w;
+  height: $view-btn-h;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  background: $surface;
+  color: $muted;
+
+  svg { flex: none; }
+  border: 1px solid $border;
+
+  &.active { background: $accent; color: #0b1220; border-color: $accent; }
+}
+
+.view[hidden] { display: none; }
+
+// Not enough room left of the view: put the buttons in a row above it.
+@media (max-width: 76rem) {
+  .views-nav { position: static; transform: none; flex-direction: row; margin-bottom: 1rem; }
+}
+
 .card {
   background: $surface;
   border: 1px solid $border;
@@ -212,7 +253,7 @@ button.danger { background: $err; color: #fff; vertical-align: middle; svg { dis
 
 // --- Evals block, run modal and trace modal ---
 
-#evals { margin-top: 1rem; }
+#evals { margin-top: 0; }
 .row.between { justify-content: space-between; h2 { margin: 0; } }
 #evals-stats { margin-top: 0.75rem; flex-wrap: wrap; dd { font-size: 1.3rem; } }
 #evals-runs h3 { margin: 1.25rem 0 0.25rem; font-size: 0.95rem; }
