@@ -1,0 +1,36 @@
+[
+  {
+    "name": "timeseries_ingest_aapl",
+    "remember": [
+      {
+        "kind": "episode",
+        "text": "Apple shares fell sharply on Friday after the company missed its earnings expectations for the latest quarter.",
+        "reference_time": "2025-01-31T21:00:00Z",
+        "timeseries": {
+          "series": [
+            {
+              "key": "AAPL.close", "field": "close", "name": "Apple close", "unit": "USD", "frequency": "1d",
+              "points": [
+                ["2025-01-20T00:00:00Z", 221.40], ["2025-01-21T00:00:00Z", 224.15], ["2025-01-22T00:00:00Z", 226.80],
+                ["2025-01-23T00:00:00Z", 229.05], ["2025-01-24T00:00:00Z", 231.60], ["2025-01-27T00:00:00Z", 227.30],
+                ["2025-01-28T00:00:00Z", 230.10], ["2025-01-29T00:00:00Z", 235.10], ["2025-01-30T00:00:00Z", 237.60],
+                ["2025-01-31T00:00:00Z", 222.00]
+              ],
+              "anchors": [{"entity": {"name": "Apple", "type": "organization"}, "role": "price"}]
+            },
+            {
+              "key": "AAPL.volume", "field": "volume", "name": "Apple volume", "unit": "shares", "frequency": "1d",
+              "points": [
+                ["2025-01-29T00:00:00Z", 41000000], ["2025-01-30T00:00:00Z", 45500000], ["2025-01-31T00:00:00Z", 93000000]
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "expect_series": [
+      {"key": "AAPL.close", "field": "close", "points": 10, "first": 221.40, "last": 222.00, "anchor_entity": "Apple"},
+      {"key": "AAPL.volume", "field": "volume", "points": 3, "first": 41000000, "last": 93000000, "anchor_artifact": true}
+    ]
+  }
+]

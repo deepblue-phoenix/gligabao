@@ -328,3 +328,33 @@ func TestCaseModels(t *testing.T) {
 		t.Errorf("a case with an unknown stage: failed = %d, want 1", failed)
 	}
 }
+
+// TestTimeseriesIngestCase runs the timeseries_ingest_aapl case with a scripted LLM: the checks are on what is
+// stored, so no real model is needed, and the case has no query (no recall).
+func TestTimeseriesIngestCase(t *testing.T) {
+	dir := t.TempDir()
+	atifDir = filepath.Join(dir, "atif")
+	memory_core.TrajectoryDir = atifDir
+	t.Cleanup(func() { atifDir = "" })
+
+	cases, err := loadCases([]string{"timeseries_ingest_aapl"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	trackDB, err := db.Open(db.Config{SQLitePath: filepath.Join(dir, "eval.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer trackDB.Close()
+	tracker, err := experiments.Start(context.Background(), trackDB.Relational, experiments.Options{Name: "ts"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := run(cases[0], tracker.Run.ID, trackDB, &scriptedLLM{}, nil, nil, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Problems) > 0 || len(out.PassedChecks) < 8 || out.Answer != "" || len(out.Trajectories) != 1 {
+		t.Fatalf("problems=%v passed=%v answer=%q trajectories=%d", out.Problems, out.PassedChecks, out.Answer, len(out.Trajectories))
+	}
+}

@@ -101,6 +101,23 @@ type Case struct {
 	// stored at least this many web_search artifacts, each with its query, a parent in the dataset (the artifact the
 	// searched entity came from) and entities of its own (see checkWebSearches).
 	ExpectWebSearches int `json:"expect_web_searches"`
+	// ExpectSeries are timeseries that the remember entries' "timeseries" must have stored (see checkSeries). A case
+	// with no Query skips the recall (recall does not use timeseries yet).
+	ExpectSeries []ExpectSeries `json:"expect_series"`
+}
+
+// ExpectSeries is a stored series to check, identified by Key and Field ("value" if empty). Points is the number of
+// points it must have; First and Last, when given, are the values of its first and last point. AnchorEntity, when
+// set, is the name (case-insensitive) of an entity it must be anchored to; AnchorArtifact says it must be anchored to
+// an artifact.
+type ExpectSeries struct {
+	Key            string   `json:"key"`
+	Field          string   `json:"field"`
+	Points         int      `json:"points"`
+	First          *float64 `json:"first,omitempty"`
+	Last           *float64 `json:"last,omitempty"`
+	AnchorEntity   string   `json:"anchor_entity,omitempty"`
+	AnchorArtifact bool     `json:"anchor_artifact,omitempty"`
 }
 
 // Artifact is one text to remember; ReferenceTime (RFC 3339) is when it was written. Kind is the artifact kind
@@ -114,6 +131,8 @@ type Artifact struct {
 	// WebSearch makes the remember call search the web for the latest world events about its key entities (see
 	// docs/web-search.md). It needs the Anthropic API key the runner already requires.
 	WebSearch bool `json:"web_search,omitempty"`
+	// Timeseries is the "timeseries" of the remember request, passed as is (see docs/timeseries.md).
+	Timeseries json.RawMessage `json:"timeseries,omitempty"`
 }
 
 // ExpectEdge is a temporal fact that must be stored between two entities (any relation, names case-insensitive).
@@ -325,6 +344,9 @@ func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_c
 		if m.WebSearch {
 			body["web_search"] = true
 		}
+		if len(m.Timeseries) > 0 {
+			body["timeseries"] = m.Timeseries
+		}
 		var rem struct {
 			ArtifactID int64             `json:"artifact_id"`
 			Chunks     []rememberedChunk `json:"chunks"`
@@ -400,6 +422,16 @@ func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_c
 		if err := checkWebSearches(context.Background(), database, dataset, c.ExpectWebSearches, check); err != nil {
 			return out, fmt.Errorf("check web searches: %w", err)
 		}
+	}
+
+	if len(c.ExpectSeries) > 0 {
+		if err := checkSeries(context.Background(), database, dataset, c.ExpectSeries, verbose, check); err != nil {
+			return out, fmt.Errorf("check series: %w", err)
+		}
+	}
+
+	if strings.TrimSpace(c.Query) == "" {
+		return out, nil // ingestion only
 	}
 
 	var rec struct {
@@ -588,6 +620,94 @@ func checkWebSearches(ctx context.Context, database *db.DB, dataset string, min 
 		}
 	}
 	check(ok, "web search: every web_search artifact has its query, text, a parent artifact and entities", "web search: "+problem)
+	return nil
+}
+
+// checkSeries verifies the timeseries stored in the dataset against the expected ones: each must exist, have the
+// expected number of points and first/last values, and the expected anchors.
+func checkSeries(ctx context.Context, database *db.DB, dataset string, want []ExpectSeries, verbose bool, check func(ok bool, pass, fail string)) error {
+	dsID, err := relational.DatasetID(ctx, database.Relational, evalUser, dataset)
+	if err != nil {
+		return err
+	}
+	stored, err := graph.ListSeries(ctx, database.Graph, dsID)
+	if err != nil {
+		return err
+	}
+	entities, err := graph.ListEntities(ctx, database.Graph, dsID)
+	if err != nil {
+		return err
+	}
+	entityName := map[int64]string{}
+	for _, e := range entities {
+		entityName[e.ID] = e.Name
+	}
+	if verbose {
+		fmt.Println("  stored series:")
+		for _, s := range stored {
+			fmt.Printf("    [%d] %s/%s points=%d first=%v last=%v\n", s.ID, s.Key, s.Field, s.PointCount, s.FirstTS, s.LastTS)
+		}
+	}
+	for _, w := range want {
+		field := w.Field
+		if field == "" {
+			field = memory_core.DefaultSeriesField
+		}
+		desc := "series " + w.Key + "/" + field
+		var found *graph.Series
+		for i, s := range stored {
+			if s.Key == w.Key && s.Field == field {
+				found = &stored[i]
+				break
+			}
+		}
+		if found == nil {
+			check(false, "", desc+": not stored")
+			continue
+		}
+		check(true, desc+": stored", "")
+		check(found.PointCount == w.Points, fmt.Sprintf("%s: %d points", desc, w.Points),
+			fmt.Sprintf("%s: %d points, want %d", desc, found.PointCount, w.Points))
+		pts, err := graph.SeriesPoints(ctx, database.Graph, found.ID, nil, nil, 0)
+		if err != nil {
+			return err
+		}
+		check(len(pts) == found.PointCount, desc+": point rows match point_count",
+			fmt.Sprintf("%s: %d point rows, point_count %d", desc, len(pts), found.PointCount))
+		if len(pts) > 0 {
+			if w.First != nil {
+				check(pts[0].Value == *w.First, fmt.Sprintf("%s: first value = %v", desc, *w.First),
+					fmt.Sprintf("%s: first value = %v, want %v", desc, pts[0].Value, *w.First))
+			}
+			if w.Last != nil {
+				check(pts[len(pts)-1].Value == *w.Last, fmt.Sprintf("%s: last value = %v", desc, *w.Last),
+					fmt.Sprintf("%s: last value = %v, want %v", desc, pts[len(pts)-1].Value, *w.Last))
+			}
+		}
+		if w.AnchorEntity == "" && !w.AnchorArtifact {
+			continue
+		}
+		anchors, err := graph.ListSeriesAnchors(ctx, database.Graph, found.ID)
+		if err != nil {
+			return err
+		}
+		var onEntity, onArtifact bool
+		for _, a := range anchors {
+			switch a.Type {
+			case graph.AnchorEntity:
+				onEntity = onEntity || strings.EqualFold(entityName[a.TargetID], w.AnchorEntity)
+			case graph.AnchorArtifact:
+				onArtifact = true
+			}
+		}
+		if w.AnchorEntity != "" {
+			check(onEntity, fmt.Sprintf("%s: anchored to entity %s", desc, w.AnchorEntity),
+				fmt.Sprintf("%s: not anchored to entity %s", desc, w.AnchorEntity))
+		}
+		if w.AnchorArtifact {
+			check(onArtifact, desc+": anchored to an artifact", desc+": not anchored to an artifact")
+		}
+	}
 	return nil
 }
 

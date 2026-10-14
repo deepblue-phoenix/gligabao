@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.15.1] - 2026-10-15
+
+### Added
+- Eval `timeseries_ingest_aapl` (suite `timeseries.json`): remembers a text with made-up Apple price and volume series and checks that they were stored (points, first/last values, anchors). The eval runner supports `timeseries` in a `remember` entry, `expect_series` in a case, and skips the recall for a case with no `query`.
+
 ## [0.15.0] - 2026-10-17
 
 ### Added
