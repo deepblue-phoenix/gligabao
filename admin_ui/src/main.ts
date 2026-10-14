@@ -1,10 +1,11 @@
-// gligabao admin UI: a health indicator, system totals, the datasets of all users and and, in their own views, the evals (evals.ts) and timeseries. Talks to the server's own HTTP API.
+// gligabao admin UI: a health indicator, system totals, the datasets of all users and and, in their own views, the evals (evals.ts) and timeseries (timeseries.ts). Talks to the server's own HTTP API.
 
 import { initEvals } from "./evals.js";
 import { initGraphModal, showGraph } from "./graph.js";
 import { initHistoryModal } from "./history.js";
 import { initImageOverlay } from "./image.js";
 import { initImageStats } from "./imagestats.js";
+import { initTimeseries } from "./timeseries.js";
 import { initTraceModal } from "./trace.js";
 import { initVectorsModal, showVectors } from "./vectors.js";
 import { initWebSearch } from "./websearch.js";
@@ -320,6 +321,7 @@ initVectorsModal();
 initTraceModal();
 initHistoryModal();
 initEvals();
+initTimeseries();
 initImageOverlay();
 initImageStats();
 initWebSearch();

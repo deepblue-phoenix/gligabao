@@ -589,3 +589,20 @@ tr.removing {
 
   &-web { border-color: $ok; }
 }
+
+// Timeseries view
+#timeseries { margin-top: 0; }
+.ts-db { margin-top: 1rem; h3 { margin: 0 0 0.25rem; font-size: 0.95rem; } }
+.ts-list { display: flex; flex-direction: column; gap: 0.6rem; }
+.ts-item {
+  padding: 0.6rem 0.8rem;
+  border: 1px solid $border;
+  border-radius: 6px;
+  background: $bg;
+
+  details { margin-top: 0.4rem; font-size: 0.85rem; }
+  summary { cursor: pointer; color: $muted; }
+}
+.ts-head { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.ts-anchors { list-style: none; margin: 0.3rem 0 0; padding: 0; li { padding: 0.15rem 0; } }
+.ts-def { margin: 0.3rem 0 0; padding: 0.5rem; background: $surface; border-radius: 4px; overflow: auto; max-height: 14rem; font-size: 0.8rem; }

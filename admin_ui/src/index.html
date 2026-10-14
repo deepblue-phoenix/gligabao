@@ -64,8 +64,11 @@
 
         <div id="view-timeseries" class="view" data-view="timeseries" hidden>
           <section id="timeseries" class="card">
-            <h2>Timeseries</h2>
-            <p class="muted">Nothing here yet.</p>
+            <div class="row between">
+              <h2>Timeseries</h2>
+              <button type="button" id="timeseries-refresh">Refresh</button>
+            </div>
+            <div id="timeseries-content"></div>
           </section>
         </div>
       </div>

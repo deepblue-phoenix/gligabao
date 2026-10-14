@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.15.0] - 2026-10-17
+
+### Added
+- Admin UI `timeseries` view, filled in: it lists the timeseries stored in each database (standard and eval), across the datasets of all users, newest update first. Per series it shows the period it covers (first to last point, UTC) and its length in minutes, hours or days (the largest unit that fits; hover for all three), the entities it belongs to (anchored directly, endpoints of an anchored fact, or mentioned by an anchored text), its name, key, field, unit, frequency, source and provider, point count, dataset and owner, last update, the change and min/max/mean of its values, and, folded, its anchors (with role and window) and the fetch definition.
+- `GET /v1/gb/admin/api/timeseries?db=<name>[&include_deleted=true]` (admin UI only): the series of all datasets with their stats and labelled anchors, without points.
+
 ## [0.14.0] - 2026-10-16
 
 ### Added

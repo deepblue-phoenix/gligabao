@@ -20,6 +20,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_image"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_timeseries"
 )
 
 // TestOverview checks that the admin overview lists the datasets of every user and counts the whole system.
@@ -305,6 +306,75 @@ func testImages(t *testing.T, d *sql.DB) {
 	}
 	w := httptest.NewRecorder()
 	admin.ImagesOf([]admin.Named{{Name: "standard", DB: d}})(w, httptest.NewRequest(http.MethodGet, "/admin/api/images?db=x", nil))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("unknown db: %d", w.Code)
+	}
+}
+
+// TestTimeseries checks that the admin timeseries list shows the series of every user's datasets, with the entities
+// they are anchored to.
+func TestTimeseries(t *testing.T) { dbtest.Run(t, testTimeseries) }
+
+func testTimeseries(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	for _, u := range []string{"alice", "bob"} {
+		ds, err := memory_core.CreateDataset(ctx, d, u, "main", "", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dsID, err := memory_core.DatasetID(ctx, d, u, ds.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pt := func(h int, v float64) memory_core.SeriesPoint {
+			return memory_core.SeriesPoint{TS: time.Date(2025, 1, 1, h, 0, 0, 0, time.UTC), Value: v}
+		}
+		specs, err := memory_core.ResolveSeries([]memory_core.SeriesSpec{{
+			Key: "AAPL.close", Unit: "USD", Frequency: "1h", Points: []memory_core.SeriesPoint{pt(9, 1), pt(12, 2)},
+			Anchors: []memory_core.SeriesAnchor{{Entity: &memory_core.SeriesEntity{Name: "Apple", Type: "organization"}, Role: "price"}},
+		}}, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := memory_timeseries.Attach(ctx, d, dsID, specs); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	w := httptest.NewRecorder()
+	admin.TimeseriesOf([]admin.Named{{Name: "standard", DB: d}})(w, httptest.NewRequest(http.MethodGet, "/admin/api/timeseries", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	var out struct {
+		Series []struct {
+			User, Dataset, Key, Unit string
+			PointCount               int `json:"point_count"`
+			FirstTS, LastTS          string
+			Entities                 []struct{ Name, Type, Via string }
+			Anchors                  []struct{ Type, Label, Role string }
+		}
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Series) != 2 {
+		t.Fatalf("series: %s", w.Body)
+	}
+	for _, s := range out.Series {
+		if s.Key != "AAPL.close" || s.Unit != "USD" || s.PointCount != 2 || s.Dataset != "main" {
+			t.Errorf("series: %+v", s)
+		}
+		if len(s.Entities) != 1 || s.Entities[0].Name != "Apple" || s.Entities[0].Type != "organization" || s.Entities[0].Via != "anchor" {
+			t.Errorf("entities: %+v", s.Entities)
+		}
+		if len(s.Anchors) != 1 || s.Anchors[0].Type != "entity" || s.Anchors[0].Role != "price" || s.Anchors[0].Label != "Apple (organization)" {
+			t.Errorf("anchors: %+v", s.Anchors)
+		}
+	}
+
+	w = httptest.NewRecorder()
+	admin.TimeseriesOf(nil)(w, httptest.NewRequest(http.MethodGet, "/admin/api/timeseries?db=nope", nil))
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("unknown db: %d", w.Code)
 	}

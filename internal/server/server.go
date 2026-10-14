@@ -149,6 +149,7 @@ func registerAdminUI(mux *http.ServeMux, d *db.DB, extra []admin.Named) {
 	mux.HandleFunc("GET /v1/gb/admin/api/graph", admin.GraphOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/vectors", admin.VectorsOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/images", admin.ImagesOf(dbs))
+	mux.HandleFunc("GET /v1/gb/admin/api/timeseries", admin.TimeseriesOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/web-searches", admin.WebSearchStatsOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/web-searches/dataset", admin.WebSearchDatasetOf(dbs))
 	mux.HandleFunc("DELETE /v1/gb/admin/api/datasets", admin.DeleteDatasetOf(dbs))
