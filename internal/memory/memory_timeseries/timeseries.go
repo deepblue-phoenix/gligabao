@@ -28,6 +28,8 @@ type Result struct {
 	Name      string `json:"name"`
 	Unit      string `json:"unit,omitempty"`
 	Frequency string `json:"frequency,omitempty"`
+	// Provider is the provider that fetched the series; omitted for a supplied one.
+	Provider string `json:"provider,omitempty"`
 	// Created says the series is new; otherwise points were added to (or replaced in) a stored series.
 	Created bool `json:"created"`
 	// Points is how many points the request carried; PointCount is how many the series has now.
@@ -74,8 +76,12 @@ func Store(ctx context.Context, tx graph.Tx, dsID, artifactID int64, now time.Ti
 }
 
 func storeOne(ctx context.Context, tx graph.Tx, dsID, artifactID int64, now time.Time, s memory_core.SeriesSpec) (*Result, error) {
+	source := graph.SeriesSupplied
+	if s.Provider != "" {
+		source = graph.SeriesFetched
+	}
 	id, created, err := tx.UpsertSeries(ctx, graph.NewSeries{DatasetID: dsID, Key: s.Key, Field: s.Field, Name: s.Name, Unit: s.Unit,
-		Frequency: s.Frequency, Source: graph.SeriesSupplied, CreatedAt: now})
+		Frequency: s.Frequency, Source: source, Provider: s.Provider, Definition: s.Definition, CreatedAt: now})
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +106,7 @@ func storeOne(ctx context.Context, tx graph.Tx, dsID, artifactID int64, now time
 	if err := tx.UpdateSeriesSummary(ctx, id, &stats.FirstTS, &stats.LastTS, stats.Count, string(js), now); err != nil {
 		return nil, err
 	}
-	r := &Result{ID: id, Key: s.Key, Field: s.Field, Name: s.Name, Unit: s.Unit, Frequency: s.Frequency, Created: created,
+	r := &Result{ID: id, Key: s.Key, Field: s.Field, Name: s.Name, Unit: s.Unit, Frequency: s.Frequency, Provider: s.Provider, Created: created,
 		Points: len(pts), PointCount: stats.Count, FirstTS: stats.FirstTS, LastTS: stats.LastTS, Stats: stats, Anchors: []AnchorResult{}}
 
 	anchors := s.Anchors

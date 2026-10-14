@@ -31,6 +31,8 @@ class Client:
         models: dict[str, str] | None = None,
         web_search: bool = False,
         timeseries: list[dict[str, Any]] | None = None,
+        fetch_timeseries: dict[str, Any] | bool | None = None,
+        observe_timeseries: bool = False,
     ) -> dict[str, Any]:
         """Store `text`, or an `image`, in memory (POST /v1/gb/remember).
 
@@ -66,6 +68,18 @@ class Client:
         RFC 3339 string. A series without "anchors" is anchored to the artifact. Entity and edge anchors are
         matched after the text is extracted, so they may name entities the text will yield. The response lists
         the stored series under "series". See docs/timeseries.md.
+
+        `fetch_timeseries` (text only) makes the server fetch series itself from the timeseries providers it was
+        started with: an LLM decides, from the providers' descriptions, which provider is for which entity of
+        the text. Give True for the defaults, or a dict like {"providers": ["prices"], "before": "30d", "after":
+        "0"} (providers default to all; the window is around `reference_time`, 30 days before and nothing
+        after by default). The response lists what was fetched under "series_fetches". The server answers 503
+        if it has no provider.
+
+        `observe_timeseries=True` (text only; needs `timeseries` or `fetch_timeseries`) also derives an artifact of
+        kind "series_observation" from each series stored (at most 10): a text generated from the series' stats
+        and extracted into the graph like any text. The response lists them under "series_observations". It costs
+        an extraction call each.
         """
         if (text is None) == (image is None):
             raise ValueError("remember takes exactly one of text and image")
@@ -75,7 +89,7 @@ class Client:
                 raise ValueError("kind does not apply to images")
             if web_search:
                 raise ValueError("web_search does not apply to images")
-            if timeseries:
+            if timeseries or fetch_timeseries or observe_timeseries:
                 raise ValueError("timeseries does not apply to images")
             if not isinstance(image, (bytes, bytearray, memoryview)):
                 with open(image, "rb") as f:
@@ -91,8 +105,17 @@ class Client:
             body["models"] = models
         if web_search:
             body["web_search"] = True
-        if timeseries:
-            body["timeseries"] = {"series": _series(timeseries)}
+        if timeseries or fetch_timeseries:
+            ts: dict[str, Any] = {}
+            if timeseries:
+                ts["series"] = _series(timeseries)
+            if fetch_timeseries:
+                ts["fetch"] = {} if fetch_timeseries is True else dict(fetch_timeseries)
+            if observe_timeseries:
+                ts["observations"] = True
+            body["timeseries"] = ts
+        elif observe_timeseries:
+            raise ValueError("observe_timeseries needs timeseries or fetch_timeseries")
         if reference_time is not None:
             body["reference_time"] = (
                 reference_time.isoformat() if isinstance(reference_time, datetime) else reference_time

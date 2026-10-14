@@ -87,6 +87,10 @@ const (
 	// package memory_remember, remember_websearch.go). Callers cannot create one: it is not a valid kind of the
 	// remember request.
 	ArtifactWebSearch = "web_search"
+	// ArtifactSeriesObservation is a derived artifact that Remember creates for a timeseries: a text generated
+	// deterministically from the series' stats over a window (see package memory_remember, remember_observations.go).
+	// Callers cannot create one: it is not a valid kind of the remember request.
+	ArtifactSeriesObservation = "series_observation"
 )
 
 // Artifact is a piece of data ingested to be remembered: the raw text, plus when it happened and when it was
@@ -94,7 +98,7 @@ const (
 type Artifact struct {
 	ID        int64
 	DatasetID int64
-	Kind      string // ArtifactEpisode, ArtifactKnowledge or ArtifactWebSearch
+	Kind      string // ArtifactEpisode, ArtifactKnowledge, ArtifactWebSearch or ArtifactSeriesObservation
 	Text      string
 	SessionID string // the user/agent session that remembered it; "" if none
 	ValidAt   time.Time
@@ -105,17 +109,43 @@ type Artifact struct {
 	//   - a chunk (Kind is that of its parent): the chunks of a long text are artifacts of their own, children of the
 	//     artifact that holds the whole text (see Tx.InsertChunkArtifact);
 	//   - a web search (Kind is ArtifactWebSearch): the child of the artifact the searched entity came from (see
-	//     Tx.InsertWebSearchArtifact).
+	//     Tx.InsertWebSearchArtifact);
+	//   - a series observation (Kind is ArtifactSeriesObservation): the child of the artifact that anchors the series
+	//     (see Tx.InsertSeriesObservationArtifact).
 	ParentID int64
 	// Only set for a chunk: its position among its siblings from 0, the byte range of its text in the parent's text
 	// (overlap included) and its size in tokens.
 	ChunkIndex, StartOffset, EndOffset, Tokens int
 	// Query is the web search query that was issued for the artifact; only set for a web search (ArtifactWebSearch).
 	Query string
+	// SeriesID is the series an observation is about (gb_series.id); only set for a series observation
+	// (ArtifactSeriesObservation), and 0 again if the series was deleted.
+	SeriesID int64
+}
+
+// IsDerived says whether Remember derived the artifact from something else (a web search, a series observation), as
+// opposed to a text the caller sent (or a chunk of it).
+func (a Artifact) IsDerived() bool {
+	return a.Kind == ArtifactWebSearch || a.Kind == ArtifactSeriesObservation
 }
 
 // IsChunk says whether the artifact is a chunk of its parent (and not, say, a web search that hangs off it).
-func (a Artifact) IsChunk() bool { return a.ParentID != 0 && a.Kind != ArtifactWebSearch }
+func (a Artifact) IsChunk() bool { return a.ParentID != 0 && !a.IsDerived() }
+
+// NewSeriesObservationArtifact is a series observation to insert: an artifact of kind ArtifactSeriesObservation that is
+// a child of ParentID, the artifact that anchors the series, and records the series it describes.
+type NewSeriesObservationArtifact struct {
+	DatasetID int64
+	// ParentID is the artifact that anchors the series. It must be in the same dataset and already stored.
+	ParentID int64
+	// SeriesID is the series the observation describes. It must be in the same dataset.
+	SeriesID int64
+	// Query says what the observation is of: the series and the window it covers.
+	Query              string
+	Text               string
+	SessionID          string // that of the Remember call; "" if none
+	ValidAt, CreatedAt time.Time
+}
 
 // NewWebSearchArtifact is the result of a web search to insert: an artifact of kind ArtifactWebSearch that is a child
 // of ParentID, the artifact the searched entity came from.
@@ -227,6 +257,11 @@ type Tx interface {
 	// the query and is a child of the artifact w.ParentID (the one the searched entity came from; which must be in the
 	// same dataset and already stored). It is not a chunk. The children of an artifact are deleted with it.
 	InsertWebSearchArtifact(ctx context.Context, w NewWebSearchArtifact) (int64, error)
+	// InsertSeriesObservationArtifact stores an observation of a series: an artifact of kind ArtifactSeriesObservation
+	// that records the series (o.SeriesID) and the query, and is a child of the artifact o.ParentID (the one that anchors
+	// the series; which must be in the same dataset and already stored). It is not a chunk. The children of an artifact
+	// are deleted with it.
+	InsertSeriesObservationArtifact(ctx context.Context, o NewSeriesObservationArtifact) (int64, error)
 	// UpsertEntity inserts the entity, or updates the one with the same (dataset, nameKey, type): a non-empty
 	// description replaces the stored one (and e.ModelID the stored model_id, which follows the description; an empty
 	// stored model_id is always filled). It returns the entity ID.

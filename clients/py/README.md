@@ -41,6 +41,17 @@ print([(s["key"], s["stats"]["trend"], s["anchors"]) for s in res["series"]])
 gb.attach_timeseries("u1", [{"key": "AAPL.close", "points": closes, "anchors": [{"entity_id": 12}]}])
 ```
 
+If the server was started with timeseries providers (a Go program embedding gligabao registers them), it can fetch series itself:
+an LLM reads the providers' descriptions and decides which provider is for which entity of the text.
+
+```python
+res = gb.remember("u1", "Apple fell after the earnings miss.", kind="episode", fetch_timeseries={"providers": ["prices"], "before": "30d"})
+print([(f["entity"], f["provider"], f["query"], [s["key"] for s in f.get("series", [])]) for f in res["series_fetches"]])
+```
+
+Add `observe_timeseries=True` to also derive a `series_observation` artifact from each stored series (a text generated from
+its stats, extracted into the graph like any text); they are listed under `series_observations`.
+
 An image is remembered by the image pipeline: the server's LLM reads the text in it (title and text blocks) and
 classifies the whole image by a theme (`plot`, `graph`, `chart`, `table`, `document`, ...). Pass the raw bytes, or the path of a JPEG,
 PNG, GIF or WebP file (up to 5 MiB); `text` and `kind` do not apply:

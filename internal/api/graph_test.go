@@ -16,7 +16,7 @@ func TestGraphExport(t *testing.T) { dbtest.Run(t, testGraphExport) }
 
 func testGraphExport(t *testing.T, d *sql.DB) {
 	mux := http.NewServeMux()
-	Register(mux, &db.DB{Relational: d, Graph: d}, echoLLM{}, nil, nil, nil)
+	Register(mux, &db.DB{Relational: d, Graph: d}, echoLLM{}, nil, nil, nil, nil)
 	do := func(method, path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest(method, path, strings.NewReader(body)))

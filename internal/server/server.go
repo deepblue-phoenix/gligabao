@@ -84,6 +84,9 @@ type Options struct {
 	// ATIF files, from an "atif" directory next to it) from it. Opened for the admin UI only; ignored (with a warning)
 	// unless the main database is SQLite. Empty = not shown, and the Evals routes are not registered.
 	EvalDBPath string
+	// TimeseriesProviders are the sources of timeseries that remember can fetch from (see docs/timeseries.md). Each has a
+	// natural-language description of when it applies, and a callback that does the fetching. Validated at startup.
+	TimeseriesProviders []memory_core.SeriesProvider
 	// AdminUI registers the admin UI handlers (served at /v1/gb/admin/ from the assets embedded in the binary).
 	AdminUI bool
 }
@@ -97,9 +100,10 @@ const EvalDBName = "eval"
 // NewHandler builds the HTTP handler for the given databases and LLM.
 // llm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities.
 // jv may be nil, in which case remember skips the steps that run on Jev. ws may be nil, in which case web search is not available
-// (a remember request with web_search returns 503); it is the Anthropic web search tool, so it is only set with an Anthropic API key. The eval endpoints are registered only if eval is true,
+// (a remember request with web_search returns 503); it is the Anthropic web search tool, so it is only set with an Anthropic API key.
+// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). The eval endpoints are registered only if eval is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary.
-func NewHandler(d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
+func NewHandler(d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "gligabao is running")
@@ -112,9 +116,9 @@ func NewHandler(d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memo
 		fmt.Fprintln(w, "ok")
 	})
 	mux.HandleFunc("GET /version", versionHandler)
-	api.Register(mux, d, llm, emb, jv, ws)
+	api.Register(mux, d, llm, emb, jv, ws, providers)
 	if eval {
-		api.RegisterEval(mux, d, llm, emb, jv, ws)
+		api.RegisterEval(mux, d, llm, emb, jv, ws, providers)
 	}
 	if adminUI {
 		registerAdminUI(mux, d, extraAdminDBs)
@@ -232,6 +236,14 @@ func Run(ctx context.Context, opts Options) error {
 		log.Info("admin UI is not active (enable with admin_ui = true or --admin-ui)")
 	}
 
+	providers, err := memory_core.ResolveSeriesProviders(opts.TimeseriesProviders)
+	if err != nil {
+		return err
+	}
+	for _, p := range providers {
+		log.WithField("provider", p.Name).Info("timeseries provider registered: remember can fetch series from it when asked (timeseries.fetch)")
+	}
+
 	var llm memory_core.LLM
 	// Web search is Anthropic's cloud-based web search tool, so it needs the Anthropic API key and only exists with it.
 	var ws memory_core.WebSearcher
@@ -284,7 +296,7 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 
-	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(database, llm, emb, jv, ws, opts.Eval, opts.AdminUI, extra...)}
+	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(database, llm, emb, jv, ws, providers, opts.Eval, opts.AdminUI, extra...)}
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

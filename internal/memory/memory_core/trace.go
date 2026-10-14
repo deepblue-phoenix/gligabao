@@ -75,6 +75,14 @@ type CallOptions struct {
 
 	// Series are the timeseries to anchor to what Remember stores, set by WithSeries (see docs/timeseries.md).
 	Series []SeriesSpec
+
+	// SeriesProviders are the registered timeseries providers, set by WithSeriesProviders; SeriesFetch is the per-call
+	// request to fetch series from them, set by WithSeriesFetch (nil: nothing is fetched).
+	SeriesProviders []SeriesProvider
+	SeriesFetch     *SeriesFetch
+	// SeriesObservations says Remember derives a series_observation artifact from each series it stores, set by
+	// WithSeriesObservations.
+	SeriesObservations bool
 }
 
 // NewCallOptions applies opts on top of the defaults.

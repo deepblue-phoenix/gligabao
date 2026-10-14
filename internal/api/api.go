@@ -20,8 +20,8 @@ import (
 // in which case remember does not embed the entities it stores. jv may be nil (Jev not configured), in which case
 // remember skips the steps that run on Jev. ws may be nil (no Anthropic API key), in which case a remember request that asks for
 // web_search returns 503. Images are stored as files in d.ImageDir.
-func Register(mux *http.ServeMux, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher) {
-	mux.HandleFunc("POST /v1/gb/remember", remember.Handler(d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_image.WithImageDir(d.ImageDir)))
+func Register(mux *http.ServeMux, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider) {
+	mux.HandleFunc("POST /v1/gb/remember", remember.Handler(d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_image.WithImageDir(d.ImageDir)))
 	mux.HandleFunc("POST /v1/gb/recall", recall.Handler(d.Relational, llm))
 	mux.HandleFunc("POST /v1/gb/datasets", datasets.Create(d.Relational))
 	mux.HandleFunc("GET /v1/gb/datasets", datasets.List(d.Relational))
@@ -36,7 +36,7 @@ func Register(mux *http.ServeMux, d *db.DB, llm memory_core.LLM, emb memory_core
 
 // RegisterEval mounts the eval-only routes: remember and recall that also return their ATIF trajectories.
 // They are not part of Register; the server mounts them only in eval mode.
-func RegisterEval(mux *http.ServeMux, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher) {
-	mux.HandleFunc("POST /v1/gb/eval/remember", remember.EvalHandler(d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_image.WithImageDir(d.ImageDir)))
+func RegisterEval(mux *http.ServeMux, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider) {
+	mux.HandleFunc("POST /v1/gb/eval/remember", remember.EvalHandler(d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_image.WithImageDir(d.ImageDir)))
 	mux.HandleFunc("POST /v1/gb/eval/recall", recall.EvalHandler(d.Relational, llm))
 }

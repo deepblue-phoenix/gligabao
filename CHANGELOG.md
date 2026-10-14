@@ -5,6 +5,34 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.13.0] - 2026-10-16
+
+### Added
+- `series_observation` artifacts. `POST /v1/gb/remember` takes `timeseries.observations: true` (with `series`, `fetch` or both; off by default). After the text, the web search and the fetch, `remember` derives a new kind of artifact from each series it stored (supplied or fetched, at most 10 per request): a text generated in Go, not by an LLM, from the series' stats (change, trend, high, low, average, largest move) over the period the request wrote, naming the entity the series is about. That text is extracted, reconciled and stored like any other, so what a series says reaches the graph as bi-temporal facts, deduplicated and embedded like all others. A failure never fails `remember`: it is reported per observation. The response gets `series_observations`. See [docs/timeseries.md](docs/timeseries.md#observations).
+- An observation artifact has `kind` `series_observation`, the series it describes (`series_id`), a `query` saying which series and window, and as its parent the artifact that anchors the series (the call's artifact, or for a fetched series the artifact the entity came from). Its `valid_at` is the last point of the window. The provenance chain reads: fact, observation artifact, series, anchoring artifact. Like a web search it is not a chunk.
+- Trajectories get the `timeseries_observations` input and an `observe_series` step per series.
+- The Python client's `remember` takes `observe_timeseries` (client version 0.5.0).
+- Go: `memory_core.WithSeriesObservations`, `Result.SeriesObservations`, `graph.ArtifactSeriesObservation`, `graph.Artifact.SeriesID` and `IsDerived`, `Tx.InsertSeriesObservationArtifact`, `memory_timeseries.ObservationText`.
+
+### Changed
+- Database schema: `gb_artifacts` gets a `series_id` column (→ `gb_series`, `ON DELETE SET NULL`). Existing SQLite database files are not migrated: delete the file (and the eval database) and the server recreates it. PostgreSQL adds the column by itself.
+- `recall` is not changed: it does not follow observations to their series (on hold, see [docs/timeseries-design.md](docs/timeseries-design.md)).
+
+## [0.12.0] - 2026-10-15
+
+### Added
+- Timeseries providers. A program embedding gligabao registers a list of providers when it starts the server (`gligabao.ServeOptions.TimeseriesProviders`). A provider (`gligabao.TimeseriesProvider`) has a `Name`, a natural-language `Description` of what it offers and **in which cases it should be used**, an optional `QueryFormat` (what identifies an entity to it, e.g. a ticker symbol) and a `Fetch` callback with the logic of fetching. The providers are validated at startup.
+- `POST /v1/gb/remember` takes `timeseries.fetch` (`providers`, `before`, `after`; all optional; alone or with `series`). After the text is stored, an LLM (new stage `resolve_series`, choosable in `models`) reads the providers' descriptions and decides which provider fetches series for which entity of the text (for example a stock price provider for an entity that is a public company), and what to ask it. The callbacks then run in parallel for the period around the text's reference time (by default 30 days before it and nothing after it, so a memory never holds the future of its event), and the series are stored and anchored to the entity and to the artifact it came from, with the period as the window. Fetching again adds points to the same series. A failure in a provider, the LLM or the storage never fails `remember`: it is reported per fetch. The response gets `series_fetches`. `400` for an unknown provider or a malformed window, `503` if the server has no provider.
+- Fetched series have `source` `fetched`, their `provider` and a `definition` (entity and query).
+- Trajectories get the `timeseries_fetch` input and the steps `select_series_entities`, `resolve_series_providers` and `fetch_timeseries`.
+- The Python client's `remember` takes `fetch_timeseries` (client version 0.4.0).
+- Go: `memory_core.SeriesProvider`, `ResolveSeriesProviders`, `WithSeriesProviders`, `WithSeriesFetch`, `ResolveSeriesFetch`, `ParseFetchWindow`; `Result.SeriesFetches`.
+
+### Changed
+- `timeseries.fetch` is no longer a `400`; `timeseries` needs `series`, `fetch` or both.
+- The stages that take a model (`models`) now include `resolve_series`.
+- Go: `api.Register`, `api.RegisterEval` and `server.NewHandler` take the registered providers (nil for none).
+
 ## [0.11.0] - 2026-10-14
 
 ### Added

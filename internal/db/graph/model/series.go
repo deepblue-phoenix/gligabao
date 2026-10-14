@@ -16,7 +16,7 @@ const (
 // Series sources: where the points of a series came from.
 const (
 	SeriesSupplied = "supplied" // sent by the caller
-	SeriesFetched  = "fetched"  // fetched from a provider (not implemented yet)
+	SeriesFetched  = "fetched"  // fetched from a timeseries provider
 )
 
 // NewSeries is a series to insert, or whose metadata to update: a series is identified inside its dataset by

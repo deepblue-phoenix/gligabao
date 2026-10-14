@@ -126,5 +126,6 @@ The JSON behind it (under `/v1/gb/admin/api`): `GET /web-searches?db=<name>[&inc
 - The web is not trusted more than the text: a briefing is extracted and reconciled like any text, and a wrong page can close a right fact. The artifact keeps its query and sources so it can be traced.
 - A briefing is never chunked (it is limited to about 300 words).
 - The same entity is searched again on every call that asks for it; there is no cache and no check for a recent search.
+- The entities a web search discovers are not offered to the [timeseries providers](timeseries.md#providers): `timeseries.fetch` only considers the entities of the text itself.
 - The search results are not embedded as text (as a chunk is); only the entities and edges extracted from them are.
 - Existing database files are not migrated: the schema gained `gb_artifacts.query`, so delete the file and the server recreates it.

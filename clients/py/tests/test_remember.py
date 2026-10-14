@@ -77,6 +77,23 @@ def test_remember_timeseries():
         Client().remember("u1", image=b"x", timeseries=[{"key": "k", "points": []}])
 
 
+def test_remember_observe_timeseries():
+    seen = {}
+    srv = _serve(200, {"artifact_id": 1}, seen)
+    try:
+        c = Client(f"http://127.0.0.1:{srv.server_port}")
+        c.remember("u1", "hi", timeseries=[{"key": "k", "points": [("2025-02-01T00:00:00Z", 2)]}], observe_timeseries=True)
+        assert seen["body"]["timeseries"]["observations"] is True
+        c.remember("u1", "hi", fetch_timeseries=True, observe_timeseries=True)
+        assert seen["body"]["timeseries"] == {"fetch": {}, "observations": True}
+    finally:
+        srv.shutdown()
+    with pytest.raises(ValueError):
+        Client().remember("u1", "hi", observe_timeseries=True)
+    with pytest.raises(ValueError):
+        Client().remember("u1", image=b"x", observe_timeseries=True)
+
+
 def test_remember():
     seen = {}
     srv = _serve(200, {"artifact_id": 1}, seen)

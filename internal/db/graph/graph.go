@@ -24,39 +24,42 @@ const (
 	ArtifactEpisode   = model.ArtifactEpisode
 	ArtifactKnowledge = model.ArtifactKnowledge
 	ArtifactWebSearch = model.ArtifactWebSearch
+
+	ArtifactSeriesObservation = model.ArtifactSeriesObservation
 )
 
 // Types shared with the backends (see package model).
 type (
-	Entity               = model.Entity
-	Edge                 = model.Edge
-	EvidenceEntity       = model.EvidenceEntity
-	EvidenceEdge         = model.EvidenceEdge
-	NewEdge              = model.NewEdge
-	EntityArtifact       = model.EntityArtifact
-	EdgeArtifact         = model.EdgeArtifact
-	EntitySession        = model.EntitySession
-	EdgeSession          = model.EdgeSession
-	Artifact             = model.Artifact
-	NewChunkArtifact     = model.NewChunkArtifact
-	NewWebSearchArtifact = model.NewWebSearchArtifact
-	NewImage             = model.NewImage
-	NewImageExtraction   = model.NewImageExtraction
-	ImageTextBlock       = model.ImageTextBlock
-	ImageArtifact        = model.ImageArtifact
-	ImageExtraction      = model.ImageExtraction
-	ImageStats           = model.ImageStats
-	ImageGroup           = model.ImageGroup
-	Counts               = model.Counts
-	Tx                   = model.Tx
-	OntologyClass        = model.OntologyClass
-	OntologyEdge         = model.OntologyEdge
-	OntologyCounts       = model.OntologyCounts
-	NewSeries            = model.NewSeries
-	NewSeriesAnchor      = model.NewSeriesAnchor
-	Series               = model.Series
-	SeriesPoint          = model.SeriesPoint
-	SeriesAnchor         = model.SeriesAnchor
+	Entity                       = model.Entity
+	Edge                         = model.Edge
+	EvidenceEntity               = model.EvidenceEntity
+	EvidenceEdge                 = model.EvidenceEdge
+	NewEdge                      = model.NewEdge
+	EntityArtifact               = model.EntityArtifact
+	EdgeArtifact                 = model.EdgeArtifact
+	EntitySession                = model.EntitySession
+	EdgeSession                  = model.EdgeSession
+	Artifact                     = model.Artifact
+	NewChunkArtifact             = model.NewChunkArtifact
+	NewWebSearchArtifact         = model.NewWebSearchArtifact
+	NewSeriesObservationArtifact = model.NewSeriesObservationArtifact
+	NewImage                     = model.NewImage
+	NewImageExtraction           = model.NewImageExtraction
+	ImageTextBlock               = model.ImageTextBlock
+	ImageArtifact                = model.ImageArtifact
+	ImageExtraction              = model.ImageExtraction
+	ImageStats                   = model.ImageStats
+	ImageGroup                   = model.ImageGroup
+	Counts                       = model.Counts
+	Tx                           = model.Tx
+	OntologyClass                = model.OntologyClass
+	OntologyEdge                 = model.OntologyEdge
+	OntologyCounts               = model.OntologyCounts
+	NewSeries                    = model.NewSeries
+	NewSeriesAnchor              = model.NewSeriesAnchor
+	Series                       = model.Series
+	SeriesPoint                  = model.SeriesPoint
+	SeriesAnchor                 = model.SeriesAnchor
 )
 
 // Series anchor types and sources (see model.NewSeriesAnchor, model.NewSeries).

@@ -94,9 +94,9 @@ type keyEntity struct {
 
 // noteKeyEntities records the entities of ex, the extraction of the artifact artifactID, as candidates for the web
 // search. It is called for every text the call stores (the text itself, or each chunk) and does nothing unless the call
-// searches the web. The entities of a web search result are never recorded: the search does not recurse.
+// searches the web or fetches series (see remember_seriesfetch.go). The entities of a web search result are never recorded: the search does not recurse.
 func (j *job) noteKeyEntities(ex *Extraction, artifactID int64) {
-	if !j.co.WebSearch || j.web != nil {
+	if !(j.co.WebSearch || j.co.SeriesFetch != nil) || j.web != nil || j.obs != nil {
 		return
 	}
 	degree := map[string]int{}

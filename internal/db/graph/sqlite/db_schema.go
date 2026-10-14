@@ -17,7 +17,8 @@ const schema = `
 -- provenance of everything in the graph: entities and edges are anchored to the artifact(s) they were inferred from.
 --   kind       'knowledge' (default: not strictly episodic) or 'episode' (a Graphiti-style episode, anchored in time),
 --              or 'web_search': the result of a web search that remember made for an entity of another artifact (see
---              parent_id and query). Only remember creates those; a caller cannot ask for that kind.
+--              parent_id and query), or 'series_observation': a text generated from the stats of a timeseries (see
+--              series_id). Only remember creates those two; a caller cannot ask for them.
 --   valid_at   (event time): when the text was written/observed; relative dates in it resolve against it
 --   created_at (system time): when it was ingested
 --   session_id the user/agent session that remembered it (a caller-chosen string); NULL if none was given. It is
@@ -37,6 +38,9 @@ const schema = `
 --              search result link to it, like to any artifact.
 --   query      only for a 'web_search' artifact: the web search query that was issued (what the artifact is the result
 --              of); NULL for any other artifact.
+--   series_id  only for a 'series_observation' artifact: the series it describes (gb_series, which is defined below). Its
+--              parent_id is the artifact that anchors the series, and query says which series and window it covers. NULL
+--              for any other artifact, and set to NULL if the series is deleted (the observation stays: it is a memory).
 --   chunk_index position of a chunk among its siblings, from 0; tokens its size in tokens. NULL unless a chunk.
 CREATE TABLE IF NOT EXISTS gb_artifacts (
 	id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,6 +54,7 @@ CREATE TABLE IF NOT EXISTS gb_artifacts (
 	end_offset   INTEGER,
 	tokens       INTEGER,
 	query        TEXT,
+	series_id    INTEGER REFERENCES gb_series(id) ON DELETE SET NULL,
 	valid_at     DATETIME NOT NULL,
 	created_at   DATETIME NOT NULL,
 	UNIQUE (parent_id, chunk_index)

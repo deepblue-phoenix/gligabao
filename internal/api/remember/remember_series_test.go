@@ -146,19 +146,19 @@ func testRememberSeriesRejected(t *testing.T, d *sql.DB) {
 		body string
 		code int
 	}{
-		"no series":        {pre + `{}}`, 400},
-		"fetch":            {pre + `{"fetch":{"providers":["prices"]},"series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]]}]}}`, 400},
-		"no key":           {pre + `{"series":[{"points":[["2025-01-31T00:00:00Z",1]]}]}}`, 400},
-		"no points":        {pre + `{"series":[{"key":"k","points":[]}]}}`, 400},
-		"bad time":         {pre + `{"series":[{"key":"k","points":[["yesterday",1]]}]}}`, 400},
-		"bad point":        {pre + `{"series":[{"key":"k","points":[["2025-01-31T00:00:00Z"]]}]}}`, 400},
-		"duplicate key":    {pre + `{"series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]]},{"key":"k","points":[["2025-01-31T00:00:00Z",1]]}]}}`, 400},
-		"two selectors":    {pre + `{"series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]],"anchors":[{"entity":{"name":"a"},"entity_id":1}]}]}}`, 400},
-		"no selector":      {pre + `{"series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]],"anchors":[{"role":"x"}]}]}}`, 400},
-		"create for edge":  {pre + `{"series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]],"anchors":[{"edge":{"source":"a","relation":"b","target":"c"},"on_unmatched":"create"}]}]}}`, 400},
-		"bad window":       {pre + `{"series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]],"anchors":[{"entity":{"name":"a"},"window":["2025-02-01T00:00:00Z","2025-01-01T00:00:00Z"]}]}]}}`, 400},
-		"unmatched error":  {pre + `{"series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]],"anchors":[{"entity":{"name":"Nobody"},"on_unmatched":"error"}]}]}}`, 422},
-		"entity id absent": {pre + `{"series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]],"anchors":[{"entity_id":999}]}]}}`, 422},
+		"no series":         {pre + `{}}`, 400},
+		"fetch no provider": {pre + `{"fetch":{"providers":["prices"]},"series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]]}]}}`, 503},
+		"no key":            {pre + `{"series":[{"points":[["2025-01-31T00:00:00Z",1]]}]}}`, 400},
+		"no points":         {pre + `{"series":[{"key":"k","points":[]}]}}`, 400},
+		"bad time":          {pre + `{"series":[{"key":"k","points":[["yesterday",1]]}]}}`, 400},
+		"bad point":         {pre + `{"series":[{"key":"k","points":[["2025-01-31T00:00:00Z"]]}]}}`, 400},
+		"duplicate key":     {pre + `{"series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]]},{"key":"k","points":[["2025-01-31T00:00:00Z",1]]}]}}`, 400},
+		"two selectors":     {pre + `{"series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]],"anchors":[{"entity":{"name":"a"},"entity_id":1}]}]}}`, 400},
+		"no selector":       {pre + `{"series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]],"anchors":[{"role":"x"}]}]}}`, 400},
+		"create for edge":   {pre + `{"series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]],"anchors":[{"edge":{"source":"a","relation":"b","target":"c"},"on_unmatched":"create"}]}]}}`, 400},
+		"bad window":        {pre + `{"series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]],"anchors":[{"entity":{"name":"a"},"window":["2025-02-01T00:00:00Z","2025-01-01T00:00:00Z"]}]}]}}`, 400},
+		"unmatched error":   {pre + `{"series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]],"anchors":[{"entity":{"name":"Nobody"},"on_unmatched":"error"}]}]}}`, 422},
+		"entity id absent":  {pre + `{"series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]],"anchors":[{"entity_id":999}]}]}}`, 422},
 	} {
 		rec := seriesPost(t, mux, c.body)
 		if rec.Code != c.code {

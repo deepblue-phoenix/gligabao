@@ -23,7 +23,7 @@ func TestOntologies(t *testing.T) { dbtest.Run(t, testOntologies) }
 func testOntologies(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	mux := http.NewServeMux()
-	Register(mux, &db.DB{Relational: d, Graph: d}, nil, nil, nil, nil) // loading an ontology needs no LLM
+	Register(mux, &db.DB{Relational: d, Graph: d}, nil, nil, nil, nil, nil) // loading an ontology needs no LLM
 
 	doc, err := os.ReadFile("../../ontology/market.owl")
 	if err != nil {
@@ -134,7 +134,7 @@ const smallOntology = `<?xml version="1.0"?>
 func testOntologyUpdate(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	mux := http.NewServeMux()
-	Register(mux, &db.DB{Relational: d, Graph: d}, nil, nil, nil, nil)
+	Register(mux, &db.DB{Relational: d, Graph: d}, nil, nil, nil, nil, nil)
 
 	doc, err := os.ReadFile("../../ontology/market.owl")
 	if err != nil {
@@ -246,7 +246,7 @@ func TestOntologyMerge(t *testing.T) { dbtest.Run(t, testOntologyMerge) }
 func testOntologyMerge(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	mux := http.NewServeMux()
-	Register(mux, &db.DB{Relational: d, Graph: d}, nil, nil, nil, nil)
+	Register(mux, &db.DB{Relational: d, Graph: d}, nil, nil, nil, nil, nil)
 
 	doc, err := os.ReadFile("../../ontology/market.owl")
 	if err != nil {

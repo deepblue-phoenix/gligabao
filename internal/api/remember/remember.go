@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -63,8 +64,25 @@ type timeseriesRequest struct {
 	// Series are the series to store. A series without anchors is anchored to the artifact; its entity and edge
 	// anchors are resolved after the text is extracted and stored.
 	Series []memory_core.SeriesSpec `json:"series"`
-	// Fetch is reserved for the pipeline fetching series itself from a provider; not implemented (400 if given).
-	Fetch json.RawMessage `json:"fetch"`
+	// Fetch (optional) makes the pipeline fetch series itself from the timeseries providers the server was started with:
+	// an LLM decides, from the providers' descriptions, which one to use for which entity of the text. 503 if the
+	// server has no provider.
+	Fetch *fetchRequest `json:"fetch"`
+	// Observations (optional, default false) derives an artifact of kind "series_observation" from each series the call
+	// stores (supplied or fetched), at most 10: a text generated from the series' stats, extracted into the graph like
+	// any text. It costs an extraction call each. Needs series, fetch or both.
+	Observations bool `json:"observations"`
+}
+
+// fetchRequest is timeseries.fetch of a remember request.
+type fetchRequest struct {
+	// Providers (optional) are the names of the providers that may be used; default: all registered.
+	Providers []string `json:"providers"`
+	// Before and After (optional) are how far before and after the reference time of the text the series reach, e.g.
+	// "30d", "2w", "6mo", "1y". Defaults: "30d" before and nothing after (so a memory never holds the future of its
+	// event).
+	Before string `json:"before"`
+	After  string `json:"after"`
 }
 
 //---------------------------------------------------------------------------------------------
@@ -143,14 +161,18 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option)
 			httputil.Error(w, http.StatusServiceUnavailable, memory_core.ErrWebSearchUnavailable.Error())
 			return
 		}
-		series, err := resolveTimeseries(req.Timeseries)
+		series, fetch, observe, err := resolveTimeseries(req.Timeseries, memory_core.NewCallOptions(opts).SeriesProviders)
+		if errors.Is(err, memory_core.ErrSeriesProvidersUnavailable) {
+			httputil.Error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		if err != nil {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		start := time.Now()
 		res, err := memory_remember.Remember(r.Context(), d, llm, req.UserID, req.Dataset, req.Kind, req.Text, ref,
-			append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models), memory_core.WithWebSearch(req.WebSearch), memory_core.WithSeries(series))...)
+			append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models), memory_core.WithWebSearch(req.WebSearch), memory_core.WithSeries(series), memory_core.WithSeriesFetch(fetch), memory_core.WithSeriesObservations(observe))...)
 		if errors.Is(err, memory_timeseries.ErrAnchor) { // nothing was stored
 			httputil.Error(w, http.StatusUnprocessableEntity, err.Error())
 			return
@@ -173,49 +195,66 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option)
 			return
 		}
 		log.WithFields(log.Fields{
-			"user_id":      res.UserID,
-			"dataset":      res.Dataset,
-			"artifact_id":  res.ArtifactID,
-			"session_id":   res.SessionID,
-			"kind":         res.Kind,
-			"chunks":       len(res.Chunks),
-			"entities":     len(res.Entities),
-			"edges":        len(res.Edges),
-			"web_searches": len(res.WebSearches),
-			"series":       len(res.Series),
-			"duration_ms":  time.Since(start).Milliseconds(),
+			"user_id":             res.UserID,
+			"dataset":             res.Dataset,
+			"artifact_id":         res.ArtifactID,
+			"session_id":          res.SessionID,
+			"kind":                res.Kind,
+			"chunks":              len(res.Chunks),
+			"entities":            len(res.Entities),
+			"edges":               len(res.Edges),
+			"web_searches":        len(res.WebSearches),
+			"series":              len(res.Series),
+			"series_fetches":      len(res.SeriesFetches),
+			"series_observations": len(res.SeriesObservations),
+			"duration_ms":         time.Since(start).Milliseconds(),
 		}).Debug("remember completed")
 		monitoring.EmitSystemEvent(r.Context(), "remember.completed", monitoring.Event{
-			"user_id":           res.UserID,
-			"dataset":           res.Dataset,
-			"artifact_id":       res.ArtifactID,
-			"session_id":        res.SessionID,
-			"kind":              res.Kind,
-			"text_bytes":        len(req.Text),
-			"chunks":            len(res.Chunks),
-			"entities":          len(res.Entities),
-			"edges":             len(res.Edges),
-			"invalidated_edges": len(res.InvalidatedEdges),
-			"web_searches":      len(res.WebSearches),
-			"series":            len(res.Series),
-			"duration_ms":       time.Since(start).Milliseconds(),
+			"user_id":             res.UserID,
+			"dataset":             res.Dataset,
+			"artifact_id":         res.ArtifactID,
+			"session_id":          res.SessionID,
+			"kind":                res.Kind,
+			"text_bytes":          len(req.Text),
+			"chunks":              len(res.Chunks),
+			"entities":            len(res.Entities),
+			"edges":               len(res.Edges),
+			"invalidated_edges":   len(res.InvalidatedEdges),
+			"web_searches":        len(res.WebSearches),
+			"series":              len(res.Series),
+			"series_fetches":      len(res.SeriesFetches),
+			"series_observations": len(res.SeriesObservations),
+			"duration_ms":         time.Since(start).Milliseconds(),
 		})
 		httputil.WriteJSON(w, http.StatusOK, res)
 	}
 }
 
-// resolveTimeseries validates the timeseries of a request (nil for none).
-func resolveTimeseries(t *timeseriesRequest) ([]memory_core.SeriesSpec, error) {
+// resolveTimeseries validates the timeseries of a request (nil for none) against the registered providers: the series
+// that were supplied, what to fetch (nil if nothing), and whether to derive an observation artifact from each series.
+func resolveTimeseries(t *timeseriesRequest, providers []memory_core.SeriesProvider) ([]memory_core.SeriesSpec, *memory_core.SeriesFetch, bool, error) {
 	if t == nil {
-		return nil, nil
+		return nil, nil, false, nil
 	}
-	if len(t.Fetch) > 0 && string(t.Fetch) != "null" {
-		return nil, errors.New("timeseries.fetch is not implemented yet: supply the points in timeseries.series")
+	if len(t.Series) == 0 && t.Fetch == nil {
+		return nil, nil, false, errors.New("timeseries needs series, fetch or both")
 	}
-	if len(t.Series) == 0 {
-		return nil, errors.New("timeseries.series is required")
+	series, err := memory_core.ResolveSeries(t.Series, true)
+	if err != nil {
+		return nil, nil, false, err
 	}
-	return memory_core.ResolveSeries(t.Series, true)
+	if t.Fetch == nil {
+		return series, nil, t.Observations, nil
+	}
+	f := &memory_core.SeriesFetch{Providers: t.Fetch.Providers}
+	if f.Before, err = memory_core.ParseFetchWindow(t.Fetch.Before); err != nil {
+		return nil, nil, false, fmt.Errorf("timeseries.fetch.before: %w", err)
+	}
+	if f.After, err = memory_core.ParseFetchWindow(t.Fetch.After); err != nil {
+		return nil, nil, false, fmt.Errorf("timeseries.fetch.after: %w", err)
+	}
+	f, err = memory_core.ResolveSeriesFetch(f, providers)
+	return series, f, t.Observations, err
 }
 
 // rememberImage serves a remember request that carries an image: the image pipeline.

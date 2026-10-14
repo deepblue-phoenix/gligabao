@@ -265,7 +265,7 @@ func DatasetCounts(ctx context.Context, d *sql.DB, dsID int64) (model.Counts, er
 func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.Artifact, error) {
 	rows, err := d.QueryContext(ctx, `
 		SELECT id, dataset_id, kind, text, COALESCE(session_id, ''), valid_at, created_at,
-			COALESCE(parent_id, 0), COALESCE(chunk_index, 0), COALESCE(start_offset, 0), COALESCE(end_offset, 0), COALESCE(tokens, 0), COALESCE(query, '')
+			COALESCE(parent_id, 0), COALESCE(chunk_index, 0), COALESCE(start_offset, 0), COALESCE(end_offset, 0), COALESCE(tokens, 0), COALESCE(query, ''), COALESCE(series_id, 0)
 		FROM gb_artifacts
 		WHERE dataset_id = ?
 		ORDER BY id`, dsID)
@@ -278,7 +278,7 @@ func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.Artifact
 		var m model.Artifact
 		var valid, created string
 		if err := rows.Scan(&m.ID, &m.DatasetID, &m.Kind, &m.Text, &m.SessionID, &valid, &created,
-			&m.ParentID, &m.ChunkIndex, &m.StartOffset, &m.EndOffset, &m.Tokens, &m.Query); err != nil {
+			&m.ParentID, &m.ChunkIndex, &m.StartOffset, &m.EndOffset, &m.Tokens, &m.Query, &m.SeriesID); err != nil {
 			return nil, err
 		}
 		if t := rsqlite.ParseTime(valid); t != nil {
@@ -504,6 +504,18 @@ func (t *Tx) InsertWebSearchArtifact(ctx context.Context, w model.NewWebSearchAr
 		rsqlite.FormatTime(w.ValidAt), rsqlite.FormatTime(w.CreatedAt))
 	if err != nil {
 		return 0, fmt.Errorf("insert web search of artifact %d: %w", w.ParentID, err)
+	}
+	return res.LastInsertId()
+}
+
+func (t *Tx) InsertSeriesObservationArtifact(ctx context.Context, o model.NewSeriesObservationArtifact) (int64, error) {
+	res, err := t.tx.ExecContext(ctx, `
+		INSERT INTO gb_artifacts (dataset_id, kind, text, session_id, parent_id, query, series_id, valid_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		o.DatasetID, model.ArtifactSeriesObservation, o.Text, nullIfEmpty(o.SessionID), o.ParentID, o.Query, o.SeriesID,
+		rsqlite.FormatTime(o.ValidAt), rsqlite.FormatTime(o.CreatedAt))
+	if err != nil {
+		return 0, fmt.Errorf("insert observation of series %d: %w", o.SeriesID, err)
 	}
 	return res.LastInsertId()
 }

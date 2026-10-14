@@ -199,6 +199,14 @@ type Result struct {
 	// For a chunked text they are anchored to the parent artifact. See docs/timeseries.md.
 	Series []memory_timeseries.Result `json:"series,omitempty"`
 
+	// SeriesFetches are the series fetched from the timeseries providers (only with WithSeriesFetch): one per
+	// (entity, provider) the LLM chose, in order, each with the series it stored. See remember_seriesfetch.go.
+	SeriesFetches []SeriesFetchResult `json:"series_fetches,omitempty"`
+
+	// SeriesObservations are the series_observation artifacts derived from the series the call stored (only with
+	// WithSeriesObservations): one per series, in order, each with the artifact it stored. See remember_observations.go.
+	SeriesObservations []SeriesObservationResult `json:"series_observations,omitempty"`
+
 	// TRAJECTORY
 	// TrajectoryID and Trajectory are the ATIF trajectory of this call (also stored in TrajectoryDir); only set when
 	// the call was made with WithEval.
@@ -244,6 +252,10 @@ type ChunkResult struct {
 // With WithModels each LLM stage (extract_graph, resolve_edges, web_search) runs on the model the caller chose; a stage with none uses the
 // default model. The extract_graph stage's model is the one recorded on the entities and edges.
 //
+// With WithSeriesObservations a text is then generated from the stats of each series the call stored (supplied or
+// fetched) and stored as an artifact of its own (kind series_observation), extracted like any text. See
+// remember_observations.go and docs/timeseries.md.
+//
 // Only with WithEval is the call recorded as an ATIF trajectory (stored as JSON in TrajectoryDir and returned in
 // Result.Trajectory, with its ID in Result.TrajectoryID).
 func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset, kind, text string, ref time.Time, opts ...memory_core.Option) (res *Result, err error) {
@@ -270,7 +282,12 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	if co.WebSearch && co.WebSearcher == nil {
 		return nil, memory_core.ErrWebSearchUnavailable
 	}
-	// Validated before any LLM call, so a malformed series costs nothing.
+	// Validated before any LLM call, so a malformed request costs nothing.
+	if co.SeriesFetch != nil {
+		if co.SeriesFetch, err = memory_core.ResolveSeriesFetch(co.SeriesFetch, co.SeriesProviders); err != nil {
+			return nil, err
+		}
+	}
 	series, err := memory_core.ResolveSeries(co.Series, true)
 	if err != nil {
 		return nil, err
@@ -303,6 +320,12 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	if len(series) > 0 {
 		input["timeseries"] = memory_core.SeriesSummary(series)
 	}
+	if co.SeriesObservations {
+		input["timeseries_observations"] = true
+	}
+	if f := co.SeriesFetch; f != nil {
+		input["timeseries_fetch"] = map[string]any{"providers": f.Providers, "before": f.Before.String(), "after": f.After.String()}
+	}
 	tr.Input(input)
 
 	j := &job{d: d, llm: llm, tr: tr, co: co, opts: opts, userID: userID, dataset: dataset, kind: kind, ref: ref, now: now}
@@ -334,6 +357,14 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	//--------------------------------------
 	// WEB_SEARCH (only with WithWebSearch): after the text is stored, so that it never fails the call
 	res.WebSearches = j.webSearch(ctx)
+
+	//--------------------------------------
+	// FETCH_SERIES (only with WithSeriesFetch): after the text is stored, so that it never fails the call
+	res.SeriesFetches = j.fetchSeries(ctx)
+
+	//--------------------------------------
+	// OBSERVE_SERIES (only with WithSeriesObservations): an artifact for each series stored above
+	res.SeriesObservations = j.observeSeries(ctx)
 	return res, nil
 }
 
@@ -352,6 +383,10 @@ type job struct {
 
 	// web is set on the job that stores the result of a web search (see storeWebSearch); nil for a text the caller sent.
 	web *webPart
+	// obs is set on the job that stores the observation of a series (see observe); nil for a text the caller sent.
+	obs *observationPart
+	// observables are the series the call stored that an observation may be made of (see noteObservable).
+	observables []observable
 	// keyEntities are the entities of the texts stored so far that the web search may pick from (see noteKeyEntities),
 	// by normalized name, and keyOrder their names in the order they were extracted.
 	keyEntities map[string]*keyEntity
@@ -363,7 +398,7 @@ type job struct {
 // for an artifact that is not a chunk.
 func (j *job) resolveAndStore(ctx context.Context, text string, ex *Extraction, part *chunkPart) (*Result, error) {
 	d, tr, co, userID, dataset := j.d, j.tr, j.co, j.userID, j.dataset
-	label := part.label() + j.web.label()
+	label := part.label() + j.web.label() + j.obs.label()
 
 	//--------------------------------------
 	// LOAD_CANDIDATES
@@ -407,7 +442,7 @@ func (j *job) resolveAndStore(ctx context.Context, text string, ex *Extraction, 
 	if err != nil {
 		return nil, err
 	}
-	res, err := store(ctx, d, userID, dataset, j.kind, text, j.ref, j.now, ex, plan, part, j.web, append(j.opts[:len(j.opts):len(j.opts)], memory_core.WithTrace(tr))...)
+	res, err := store(ctx, d, userID, dataset, j.kind, text, j.ref, j.now, ex, plan, part, j.web, j.obs, append(j.opts[:len(j.opts):len(j.opts)], memory_core.WithTrace(tr))...)
 	if err != nil {
 		return nil, err
 	}
@@ -418,6 +453,9 @@ func (j *job) resolveAndStore(ctx context.Context, text string, ex *Extraction, 
 	}
 	if j.web != nil {
 		args["parent_id"], args["query"] = j.web.ParentID, j.web.Query
+	}
+	if j.obs != nil {
+		args["parent_id"], args["query"], args["series_id"] = j.obs.ParentID, j.obs.Query, j.obs.SeriesID
 	}
 	tr.Tool("Stored the artifact, entities and edges."+label, "store_artifact", args,
 		map[string]any{"artifact_id": res.ArtifactID, "entities": res.Entities, "edges": res.Edges, "invalidated_edges": res.InvalidatedEdges,
@@ -452,14 +490,16 @@ func candidateFacts(edges []Edge, via map[int64]string) []map[string]any {
 // nothing; the vectors are written right after the commit, so a vector store failure returns an error after the
 // relational data is saved (the vectors are written again the next time the entity or fact is mentioned).
 func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan, opts ...memory_core.Option) (*Result, error) {
-	return store(ctx, d, userID, dataset, kind, text, ref, now, ex, plan, nil, nil, opts...)
+	return store(ctx, d, userID, dataset, kind, text, ref, now, ex, plan, nil, nil, nil, opts...)
 }
 
 // store is Store; part, if not nil, says the text is a chunk of a longer one: it is then stored as a child artifact
 // of part.ParentID, and its text is embedded into the chunk index together with the entities and edges. web, if not
 // nil, says the text is the result of a web search: it is then stored as an artifact of kind web_search that saves the
-// query and is a child of web.ParentID (kind is ignored). part and web are never both set.
-func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan, part *chunkPart, web *webPart, opts ...memory_core.Option) (*Result, error) {
+// query and is a child of web.ParentID (kind is ignored). obs, if not nil, says the text is the observation of a series:
+// it is then stored as an artifact of kind series_observation that records the series and is a child of obs.ParentID
+// (kind is ignored). part, web and obs are never more than one set.
+func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan, part *chunkPart, web *webPart, obs *observationPart, opts ...memory_core.Option) (*Result, error) {
 	co := memory_core.NewCallOptions(opts)
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
@@ -505,6 +545,10 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		artID, err = tx.InsertWebSearchArtifact(ctx, graph.NewWebSearchArtifact{DatasetID: dsID, ParentID: web.ParentID, Query: web.Query,
 			Text: text, SessionID: sessionID, ValidAt: ref, CreatedAt: now})
 		kind = graph.ArtifactWebSearch
+	case obs != nil:
+		artID, err = tx.InsertSeriesObservationArtifact(ctx, graph.NewSeriesObservationArtifact{DatasetID: dsID, ParentID: obs.ParentID,
+			SeriesID: obs.SeriesID, Query: obs.Query, Text: text, SessionID: sessionID, ValidAt: ref, CreatedAt: now})
+		kind = graph.ArtifactSeriesObservation
 	case part == nil:
 		artID, err = tx.InsertArtifact(ctx, dsID, kind, text, sessionID, ref, now)
 	default:
@@ -606,7 +650,7 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 	// The timeseries the caller supplied are stored in this transaction, so a series that cannot be anchored stores
 	// nothing. Only for the artifact the caller sent: not for a chunk (the series go to the parent, see
 	// rememberDocument) and not for the result of a web search.
-	if part == nil && web == nil && len(co.Series) > 0 {
+	if part == nil && web == nil && obs == nil && len(co.Series) > 0 {
 		out.Series, err = memory_timeseries.Store(ctx, tx, dsID, artID, now, co.Series)
 		if err != nil {
 			return nil, err

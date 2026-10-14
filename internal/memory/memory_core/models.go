@@ -23,10 +23,13 @@ const (
 	// see docs/web-search.md). The model must support Anthropic's web search tool. The entities and edges found in the
 	// results are extracted on the extract_graph model, like any other text.
 	StageWebSearch = "web_search"
+	// StageResolveSeries is the decision of which timeseries provider to fetch for which entity of a text (only with
+	// timeseries.fetch, see docs/timeseries.md): the LLM reads the providers' descriptions.
+	StageResolveSeries = "resolve_series"
 )
 
 // Stages lists the stages that take a model, in pipeline order.
-var Stages = []string{StageExtractGraph, StageResolveEdges, StageWebSearch, StageExtractImage}
+var Stages = []string{StageExtractGraph, StageResolveEdges, StageWebSearch, StageResolveSeries, StageExtractImage}
 
 // MaxModelLen is the maximum length of a model name in bytes.
 const MaxModelLen = 128

@@ -138,6 +138,11 @@ type SeriesSpec struct {
 	// Anchors (optional) say what the series is anchored to. Without any, a series sent with remember is anchored to the
 	// artifact it creates.
 	Anchors []SeriesAnchor `json:"anchors,omitempty"`
+
+	// Provider and Definition are set only for a series a provider fetched (never read from a request): the provider's
+	// name, and JSON that says how it was fetched. A series is identified by (Provider, Key, Field).
+	Provider   string `json:"-"`
+	Definition string `json:"-"`
 }
 
 // ResolveSeries validates the series a caller supplied and returns a normalized copy: strings trimmed, defaults
@@ -159,7 +164,7 @@ func ResolveSeries(in []SeriesSpec, artifact bool) ([]SeriesSpec, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%w: series[%d]: %v", ErrInvalidSeries, i, err)
 		}
-		if id := r.Key + "\x00" + r.Field; seen[id] {
+		if id := r.Provider + "\x00" + r.Key + "\x00" + r.Field; seen[id] {
 			return nil, fmt.Errorf("%w: series[%d]: key %q with field %q is given twice", ErrInvalidSeries, i, r.Key, r.Field)
 		} else {
 			seen[id] = true
@@ -171,7 +176,7 @@ func ResolveSeries(in []SeriesSpec, artifact bool) ([]SeriesSpec, error) {
 
 func resolveSeries(s SeriesSpec, artifact bool) (SeriesSpec, error) {
 	var err error
-	r := SeriesSpec{}
+	r := SeriesSpec{Provider: s.Provider, Definition: s.Definition}
 	if r.Key, err = label(s.Key, "key", MaxSeriesKeyLen, true); err != nil {
 		return r, err
 	}

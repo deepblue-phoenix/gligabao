@@ -15,6 +15,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/buildinfo"
 	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/server"
 	"github.com/deepblue-phoenix/gligabao/monitoring"
 )
@@ -34,6 +35,24 @@ type Hooks = monitoring.Hooks
 // SystemEvent is the key/value data attached to a system event.
 type SystemEvent = monitoring.Event
 
+// TimeseriesProvider is a source of timeseries that remember can fetch from (see ServeOptions.TimeseriesProviders and
+// docs/timeseries.md). Description says in natural language when the provider applies, so an LLM can decide which
+// entities it is for; Fetch is the callback, with the logic of fetching.
+type TimeseriesProvider = memory_core.SeriesProvider
+
+// TimeseriesFetchRequest is what a TimeseriesProvider's Fetch callback is asked for: the entity, the query the LLM chose
+// for it (following the provider's QueryFormat) and the period.
+type TimeseriesFetchRequest = memory_core.SeriesFetchRequest
+
+// TimeseriesEntity is the entity a series is fetched for.
+type TimeseriesEntity = memory_core.FetchEntity
+
+// TimeseriesData is a series returned by a Fetch callback.
+type TimeseriesData = memory_core.SeriesData
+
+// TimeseriesPoint is one value of a series at a time.
+type TimeseriesPoint = memory_core.SeriesPoint
+
 // ServeOptions holds the settings that are not part of the Config file.
 type ServeOptions struct {
 	// DBPath is the SQLite database file (sqlite backend). Default: DefaultDBPath.
@@ -51,6 +70,11 @@ type ServeOptions struct {
 	// App identifies the embedding program; if set, the server reports its version next to gligabao's
 	// (GET /version) and logs it at startup.
 	App *App
+	// TimeseriesProviders are the timeseries sources remember can fetch from when a request asks for it
+	// (timeseries.fetch). Each has a Name, a natural-language Description of when it should be used (an LLM reads it to
+	// decide which provider is for which entity of a text), an optional QueryFormat and the Fetch callback. They are
+	// validated at startup: Serve returns the error if one is malformed.
+	TimeseriesProviders []TimeseriesProvider
 	// Hooks are installed for the lifetime of Serve; every one is called for each event.
 	Hooks []Hooks
 }
@@ -93,6 +117,8 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 		JevBaseURL:   cfg.JevBaseURL,
 		JevModel:     cfg.JevModel,
 		Prices:       aiPrices(cfg),
+
+		TimeseriesProviders: opts.TimeseriesProviders,
 
 		TrajectoryDir: opts.TrajectoryDir,
 		EvalDBPath:    opts.EvalDBPath,

@@ -197,6 +197,10 @@ CREATE TABLE IF NOT EXISTS gb_series_anchors (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_series_anchors_artifact ON gb_series_anchors(series_id, artifact_id) WHERE artifact_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_series_anchors_entity ON gb_series_anchors(series_id, entity_id) WHERE entity_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_series_anchors_edge ON gb_series_anchors(series_id, edge_id) WHERE edge_id IS NOT NULL;
+
+-- The series a 'series_observation' artifact describes (see sqlite/db_schema.go). It is added here, after gb_series
+-- exists; SQLite declares it in gb_artifacts itself.
+ALTER TABLE gb_artifacts ADD COLUMN IF NOT EXISTS series_id BIGINT REFERENCES gb_series(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_gb_series_dataset ON gb_series(dataset_id);
 
 CREATE INDEX IF NOT EXISTS idx_gb_image_artifacts_dataset ON gb_image_artifacts(dataset_id);

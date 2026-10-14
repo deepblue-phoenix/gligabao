@@ -114,6 +114,14 @@ func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Confi
 	//--------------------------------------
 	// WEB_SEARCH (only with WithWebSearch): for the key entities of the whole text, once the chunks are stored
 	doc.WebSearches = j.webSearch(ctx)
+
+	//--------------------------------------
+	// FETCH_SERIES (only with WithSeriesFetch): for the key entities of the whole text, once the chunks are stored
+	doc.SeriesFetches = j.fetchSeries(ctx)
+
+	//--------------------------------------
+	// OBSERVE_SERIES (only with WithSeriesObservations): an artifact for each series stored above
+	doc.SeriesObservations = j.observeSeries(ctx)
 	return doc, nil
 }
 
