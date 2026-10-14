@@ -41,6 +41,7 @@ interface Series {
   updated_at: string;
   entities: Entity[];
   anchors: Anchor[];
+  preview?: [number, number][]; // [unix ms, value], downsampled
 }
 
 function el<T extends HTMLElement>(id: string): T {
@@ -127,6 +128,49 @@ function statsLine(s: Stats, unit: string): string {
   return `${arrow} ${num(s.first)}${u} → ${num(s.last)}${u}${pct}`;
 }
 
+const SVG = "http://www.w3.org/2000/svg";
+
+// A small line plot of the (downsampled) points, colored by the trend; hovering shows the range.
+function sparkline(s: Series): SVGSVGElement | null {
+  const pts = s.preview ?? [];
+  if (pts.length === 0) return null;
+  const w = 160;
+  const h = 44;
+  const pad = 3;
+  const t0 = pts[0][0];
+  const t1 = pts[pts.length - 1][0];
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const [, v] of pts) {
+    lo = Math.min(lo, v);
+    hi = Math.max(hi, v);
+  }
+  const x = (t: number): number => (t1 === t0 ? w / 2 : pad + ((t - t0) / (t1 - t0)) * (w - 2 * pad));
+  const y = (v: number): number => (hi === lo ? h / 2 : h - pad - ((v - lo) / (hi - lo)) * (h - 2 * pad));
+  const svg = document.createElementNS(SVG, "svg");
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.setAttribute("width", String(w));
+  svg.setAttribute("height", String(h));
+  svg.setAttribute("class", `ts-spark ts-spark-${s.stats?.trend ?? "flat"}`);
+  svg.setAttribute("role", "img");
+  const title = document.createElementNS(SVG, "title");
+  const u = s.unit ? ` ${s.unit}` : "";
+  title.textContent = `${s.name || s.key}: ${plural(s.point_count, "point")}, ${num(lo)}${u} – ${num(hi)}${u}`;
+  svg.appendChild(title);
+  if (pts.length === 1) {
+    const c = document.createElementNS(SVG, "circle");
+    c.setAttribute("cx", String(x(pts[0][0])));
+    c.setAttribute("cy", String(y(pts[0][1])));
+    c.setAttribute("r", "2");
+    svg.appendChild(c);
+    return svg;
+  }
+  const path = document.createElementNS(SVG, "path");
+  path.setAttribute("d", pts.map(([t, v], i) => `${i === 0 ? "M" : "L"}${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(""));
+  svg.appendChild(path);
+  return svg;
+}
+
 function seriesItem(s: Series): HTMLElement {
   const item = node("div", "ts-item");
 
@@ -137,7 +181,8 @@ function seriesItem(s: Series): HTMLElement {
   head.appendChild(chip(src, "where the points came from", s.source === "fetched" ? "chip-web" : ""));
   if (s.frequency) head.appendChild(chip(s.frequency, "frequency label"));
 
-  const dl = item.appendChild(node("dl", "props"));
+  const body = item.appendChild(node("div", "ts-body"));
+  const dl = body.appendChild(node("dl", "props"));
   const per = period(s.first_ts, s.last_ts);
   prop(dl, "Period", per ?? "no points");
   const entities = node("div", "ws-chips");
@@ -153,6 +198,8 @@ function seriesItem(s: Series): HTMLElement {
   }
   prop(dl, "Updated", formatTS(s.updated_at) + " UTC", `created ${s.created_at}`);
   prop(dl, "ID", String(s.id));
+  const spark = sparkline(s);
+  if (spark) body.appendChild(spark); // on the right of the properties
 
   if (s.anchors.length > 0) {
     const d = item.appendChild(node("details"));

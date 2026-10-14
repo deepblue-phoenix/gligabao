@@ -62,6 +62,50 @@ type tsSeries struct {
 	UpdatedAt  time.Time       `json:"updated_at"`
 	Entities   []tsEntity      `json:"entities"`
 	Anchors    []tsAnchor      `json:"anchors"`
+	// Preview is the series downsampled to at most previewMax points, [unix milliseconds, value] each, for a small plot.
+	Preview [][2]float64 `json:"preview"`
+}
+
+// previewMax is the most points of a series sent for its preview plot.
+const previewMax = 120
+
+// preview downsamples points (oldest first) to at most previewMax, by keeping the min and the max of each bucket in
+// time order, so spikes survive. The first and the last point are always kept.
+func preview(points []graph.SeriesPoint) [][2]float64 {
+	pt := func(p graph.SeriesPoint) [2]float64 { return [2]float64{float64(p.TS.UnixMilli()), p.Value} }
+	out := make([][2]float64, 0, previewMax)
+	if len(points) <= previewMax {
+		for _, p := range points {
+			out = append(out, pt(p))
+		}
+		return out
+	}
+	buckets := previewMax/2 - 1
+	out = append(out, pt(points[0]))
+	body := points[1 : len(points)-1]
+	for b := 0; b < buckets; b++ {
+		chunk := body[b*len(body)/buckets : (b+1)*len(body)/buckets]
+		if len(chunk) == 0 {
+			continue
+		}
+		lo, hi := 0, 0
+		for i, p := range chunk {
+			if p.Value < chunk[lo].Value {
+				lo = i
+			}
+			if p.Value > chunk[hi].Value {
+				hi = i
+			}
+		}
+		if lo > hi {
+			lo, hi = hi, lo
+		}
+		out = append(out, pt(chunk[lo]))
+		if hi != lo {
+			out = append(out, pt(chunk[hi]))
+		}
+	}
+	return append(out, pt(points[len(points)-1]))
 }
 
 // TimeseriesOf serves GET /admin/api/timeseries?db=<name>[&include_deleted=true] for one of dbs (the first without
@@ -128,6 +172,11 @@ func allSeries(ctx context.Context, d *sql.DB, includeDeleted bool) ([]tsSeries,
 				v.Definition = json.RawMessage(s.Definition)
 			}
 			v.Anchors, v.Entities = lk.describe(anchors[i])
+			points, err := graph.SeriesPoints(ctx, d, s.ID, nil, nil, 0)
+			if err != nil {
+				return nil, err
+			}
+			v.Preview = preview(points)
 			out = append(out, v)
 		}
 	}

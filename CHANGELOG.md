@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.17.0] - 2026-10-18
+
+### Added
+- Admin UI, timeseries view: each series shows a small line plot (green/red/grey by trend) as a preview. `GET /admin/api/timeseries` returns a `preview` per series: at most 120 points as `[unix ms, value]`, downsampled keeping each bucket's min and max.
+
 ## [0.16.0] - 2026-10-15
 
 ### Added

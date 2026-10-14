@@ -606,3 +606,15 @@ tr.removing {
 .ts-head { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
 .ts-anchors { list-style: none; margin: 0.3rem 0 0; padding: 0; li { padding: 0.15rem 0; } }
 .ts-def { margin: 0.3rem 0 0; padding: 0.5rem; background: $surface; border-radius: 4px; overflow: auto; max-height: 14rem; font-size: 0.8rem; }
+.ts-body { display: flex; gap: 1rem; align-items: flex-start; margin-top: 0.3rem; flex-wrap: wrap; dl.props { flex: 1 1 24rem; margin: 0; } .ts-spark { margin-left: auto; } }
+.ts-spark {
+  flex: none;
+  background: $surface;
+  border: 1px solid $border;
+  border-radius: 4px;
+  fill: $muted;
+  stroke: $muted;
+  &-up { stroke: $ok; fill: $ok; }
+  &-down { stroke: $err; fill: $err; }
+  path { fill: none; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+}
