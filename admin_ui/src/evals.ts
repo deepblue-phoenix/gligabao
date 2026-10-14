@@ -4,6 +4,7 @@
 import { showGraphAt } from "./graph.js";
 import { showEvalHistory } from "./history.js";
 import { showTrace } from "./trace.js";
+import { showWebSearches, totalsLine, type WebSearch, type WebSearchTotals } from "./websearch.js";
 
 interface Run {
   id: number; experiment_id: number; status: string; params?: Record<string, unknown>;
@@ -19,6 +20,8 @@ interface RunEval {
   id: number; suite: string; name: string; status: string; answer?: string; problems?: string[]; passed_checks?: string[]; dataset_id?: number; error?: string;
   steps: number; cost_usd: number; started_at: string; finished_at: string; trajectories?: Trajectory[];
 }
+// The web searches the remember calls of one eval made (see websearch.ts), read from its trajectories.
+interface EvalWebSearches { run_eval_id: number; totals: WebSearchTotals; searches: WebSearch[] }
 interface ExperimentRow {
   id: number; name: string; description?: string; created_at: string;
   runs: number; evals: number; runs_passed: number; runs_failed: number; cost_usd: number; last_run?: Run;
@@ -211,7 +214,12 @@ async function showRun(runID: number, experiment: string): Promise<void> {
   content.replaceChildren();
   if (!modal.open) modal.showModal();
   try {
-    const run = await getJSON<Run>(`api/evals/runs/${runID}`);
+    const [run, webSearches] = await Promise.all([
+      getJSON<Run>(`api/evals/runs/${runID}`),
+      // Informational: the run is shown without them if they cannot be read.
+      getJSON<{ evals: EvalWebSearches[] }>(`api/evals/runs/${runID}/web-searches`).then((r) => r.evals ?? [], () => [] as EvalWebSearches[]),
+    ]);
+    const webByEval = new Map(webSearches.map((w) => [w.run_eval_id, w]));
     const evals = run.evals ?? [];
     status.replaceChildren(statusBadge(run.status), ` ${run.passed_evals}/${run.total_evals} passed · ${fmtCost(run.cost_usd)} · ${fmtDuration(run.started_at, run.finished_at)}`);
     content.append(props([
@@ -223,7 +231,7 @@ async function showRun(runID: number, experiment: string): Promise<void> {
       return;
     }
     const { table: tbl, body } = table([
-      ["Suite", false], ["Eval", false], ["Status", false], ["Steps", true], ["Cost", true], ["Duration", true], ["Trajectories", true],
+      ["Suite", false], ["Eval", false], ["Status", false], ["Steps", true], ["Cost", true], ["Duration", true], ["Trajectories", true], ["Web searches", true],
     ]);
     tbl.className = "clickable";
     for (const e of evals) {
@@ -235,12 +243,13 @@ async function showRun(runID: number, experiment: string): Promise<void> {
       numCell(tr, fmtCost(e.cost_usd));
       numCell(tr, fmtDuration(e.started_at, e.finished_at));
       numCell(tr, String(e.trajectories?.length ?? 0));
+      numCell(tr, webByEval.has(e.id) ? String(webByEval.get(e.id)!.searches.length) : "–");
       const detail = body.insertRow();
       detail.hidden = true;
       detail.className = "detail";
       const cell = detail.insertCell();
-      cell.colSpan = 7;
-      cell.append(...evalRecord(run, e, experiment));
+      cell.colSpan = 8;
+      cell.append(...evalRecord(run, e, experiment, webByEval.get(e.id)));
       tr.addEventListener("click", () => {
         detail.hidden = !detail.hidden;
         tr.classList.toggle("selected", !detail.hidden);
@@ -256,7 +265,7 @@ async function showRun(runID: number, experiment: string): Promise<void> {
 }
 
 // The detail of one eval: its result and the list of its ATIF trajectories, each opening the flow graph.
-function evalRecord(run: Run, e: RunEval, experiment: string): HTMLElement[] {
+function evalRecord(run: Run, e: RunEval, experiment: string, web?: EvalWebSearches): HTMLElement[] {
   const out: HTMLElement[] = [
     props([
       ["started", `${fmtTime(e.started_at)} UTC`], ["answer", e.answer], ["error", e.error],
@@ -289,6 +298,16 @@ function evalRecord(run: Run, e: RunEval, experiment: string): HTMLElement[] {
     out.push(gbtn);
   } else {
     out.push(h("p", "muted", "No dataset recorded."));
+  }
+  if (web) {
+    out.push(h("h4", undefined, "Web searches"), h("p", "muted", totalsLine(web.totals)));
+    const wbtn = h("button", "small", "View web searches");
+    wbtn.type = "button";
+    wbtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      showWebSearches(`${e.suite}/${e.name} (run #${run.id})`, web.searches, totalsLine(web.totals));
+    });
+    out.push(wbtn);
   }
   out.push(h("h4", undefined, "ATIF traces"));
   const trajs = e.trajectories ?? [];

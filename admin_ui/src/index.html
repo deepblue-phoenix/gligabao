@@ -31,6 +31,15 @@
         <div id="images-detail" class="row image-stats-groups"></div>
       </section>
 
+      <section id="websearch" class="card">
+        <div class="row between">
+          <h2>Web search</h2>
+          <button type="button" id="websearch-refresh">Refresh</button>
+        </div>
+        <p id="websearch-card-status" class="muted"></p>
+        <div id="websearch-card-content"></div>
+      </section>
+
       <section id="evals" class="card">
         <div class="row between">
           <h2>Evals</h2>
@@ -105,6 +114,15 @@
         <button type="button" id="vectors-close">Close</button>
       </div>
       <div id="vectors-content" class="modal-body"></div>
+    </dialog>
+
+    <dialog id="websearch-modal" class="modal">
+      <div class="modal-head">
+        <h2 id="websearch-title">Web searches</h2>
+        <span id="websearch-status" class="muted"></span>
+        <button type="button" id="websearch-close">Close</button>
+      </div>
+      <div id="websearch-content" class="modal-body"></div>
     </dialog>
 
     <dialog id="graph-modal" class="modal">

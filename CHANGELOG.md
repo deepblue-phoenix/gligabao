@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.10.0] - 2026-10-14
+
+### Added
+- Admin UI: web search. A new **Web search** card shows, per database, the totals of the web searches `remember` made: `web_search` artifacts, the datasets that hold them, sources, entities linked to a result (and those only known from the web), facts created or supported, and, for the eval database, the totals recorded in the eval trajectories (entity searches found / empty / failed, searches made by the search tool, entities and facts extracted, latency, cost). Each dataset with web searches has a **View** button.
+- Admin UI: the runs of an experiment show how many web searches each eval made, and an eval that made some gets a **View web searches** button. The list shows, per search, its result, sources, the queries sent to the search engine, the entities and facts extracted from the result, its latency, model, tokens and cost (searches read from a dataset, not from a trajectory, lack the latency, cost and search-engine queries).
+- Admin API: `GET /v1/gb/admin/api/web-searches`, `GET /v1/gb/admin/api/web-searches/dataset` and `GET /v1/gb/admin/api/evals/runs/{id}/web-searches`. See [docs/web-search.md](docs/web-search.md#admin-ui).
+
 ## [0.9.0] - 2026-10-14
 
 ### Added

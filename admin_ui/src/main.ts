@@ -7,6 +7,7 @@ import { initImageOverlay } from "./image.js";
 import { initImageStats } from "./imagestats.js";
 import { initTraceModal } from "./trace.js";
 import { initVectorsModal, showVectors } from "./vectors.js";
+import { initWebSearch } from "./websearch.js";
 
 interface Dataset {
   user_id: string;
@@ -297,6 +298,7 @@ initHistoryModal();
 initEvals();
 initImageOverlay();
 initImageStats();
+initWebSearch();
 void loadAll(false);
 void checkHealth();
 void showVersion();

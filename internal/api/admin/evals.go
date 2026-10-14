@@ -237,28 +237,36 @@ func EvalTrajectory(d *sql.DB, dir string) http.HandlerFunc {
 			evalFail(w, err, "trajectory")
 			return
 		}
-		var candidates []string
-		if dir != "" {
-			candidates = append(candidates, filepath.Join(dir, filepath.Base(ref.TrajectoryID)+".json"))
-		}
-		if ref.Path != "" {
-			candidates = append(candidates, ref.Path)
-		}
-		for _, p := range candidates {
-			data, err := os.ReadFile(p)
-			if err != nil {
-				continue
-			}
-			if !json.Valid(data) {
-				log.WithField("path", p).Error("admin: stored trajectory is not valid JSON")
-				httputil.Error(w, http.StatusInternalServerError, "stored trajectory is corrupt")
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write(data)
+		data, err := readTrajectoryFile(ref, dir)
+		if err != nil {
+			httputil.Error(w, http.StatusNotFound, "trajectory file not found")
 			return
 		}
-		httputil.Error(w, http.StatusNotFound, "trajectory file not found")
+		if !json.Valid(data) {
+			log.WithField("trajectory_id", ref.TrajectoryID).Error("admin: stored trajectory is not valid JSON")
+			httputil.Error(w, http.StatusInternalServerError, "stored trajectory is corrupt")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(data)
 	}
+}
+
+// readTrajectoryFile reads the JSON file of a recorded trajectory: from the trajectory directory dir first (when not
+// empty), then from the path stored with the reference. It fails if neither can be read.
+func readTrajectoryFile(ref *experiments.Trajectory, dir string) ([]byte, error) {
+	var candidates []string
+	if dir != "" {
+		candidates = append(candidates, filepath.Join(dir, filepath.Base(ref.TrajectoryID)+".json"))
+	}
+	if ref.Path != "" {
+		candidates = append(candidates, ref.Path)
+	}
+	for _, p := range candidates {
+		if data, err := os.ReadFile(p); err == nil {
+			return data, nil
+		}
+	}
+	return nil, os.ErrNotExist
 }

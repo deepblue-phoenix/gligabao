@@ -501,3 +501,50 @@ tr.removing {
   h3 { margin: 0.5rem 0 0; font-size: 0.95rem; }
   table.compact { width: auto; margin-top: 0.3rem; th, td { padding: 0.15rem 0.8rem 0.15rem 0; } }
 }
+
+// --- Web search card and modal (websearch.ts) ---
+#websearch { margin-top: 1rem; }
+.ws-db {
+  margin-top: 0.75rem;
+  h3 { margin: 0 0 0.25rem; font-size: 0.95rem; }
+}
+.ws-stats { flex-wrap: wrap; gap: 0.6rem 2rem; dd { font-size: 1.3rem; } }
+#websearch-modal[open] { height: 90vh; }
+.ws-item {
+  margin: 0.5rem 0;
+  border: 1px solid $border;
+  border-radius: 6px;
+  background: $bg;
+
+  > summary { padding: 0.45rem 0.75rem; cursor: pointer; }
+  > summary:hover { background: rgba($accent, 0.08); }
+}
+.ws-body {
+  padding: 0 0.9rem 0.8rem;
+  border-top: 1px solid $border;
+
+  pre {
+    margin: 0.2rem 0 0;
+    padding: 0.5rem;
+    max-height: 18rem;
+    overflow: auto;
+    background: $surface;
+    border: 1px solid $border;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 0.8rem;
+  }
+  ul { margin: 0; padding-left: 1.2rem; font-size: 0.85rem; }
+  a { color: $accent; }
+}
+.ws-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.chip {
+  padding: 0.05rem 0.6rem;
+  border: 1px solid $border;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  background: $surface;
+
+  &-web { border-color: $ok; }
+}

@@ -145,6 +145,8 @@ func registerAdminUI(mux *http.ServeMux, d *db.DB, extra []admin.Named) {
 	mux.HandleFunc("GET /v1/gb/admin/api/graph", admin.GraphOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/vectors", admin.VectorsOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/images", admin.ImagesOf(dbs))
+	mux.HandleFunc("GET /v1/gb/admin/api/web-searches", admin.WebSearchStatsOf(dbs))
+	mux.HandleFunc("GET /v1/gb/admin/api/web-searches/dataset", admin.WebSearchDatasetOf(dbs))
 	mux.HandleFunc("DELETE /v1/gb/admin/api/datasets", admin.DeleteDatasetOf(dbs))
 	// The experiments live in the eval database; without one there are none to show.
 	for _, e := range extra {
@@ -155,6 +157,7 @@ func registerAdminUI(mux *http.ServeMux, d *db.DB, extra []admin.Named) {
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/experiments/{id}", admin.EvalExperiment(e.DB))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/experiments/{id}/history", admin.EvalHistory(e.DB))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}", admin.EvalRun(e.DB))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}/web-searches", admin.EvalRunWebSearches(e.DB, e.TrajectoryDir))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/run-evals/{id}/graph", admin.EvalRunEvalGraph(e.DB))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/trajectories/{id}", admin.EvalTrajectory(e.DB, e.TrajectoryDir))
 		break
