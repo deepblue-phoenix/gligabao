@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph/model"
@@ -51,6 +52,20 @@ type (
 	OntologyClass        = model.OntologyClass
 	OntologyEdge         = model.OntologyEdge
 	OntologyCounts       = model.OntologyCounts
+	NewSeries            = model.NewSeries
+	NewSeriesAnchor      = model.NewSeriesAnchor
+	Series               = model.Series
+	SeriesPoint          = model.SeriesPoint
+	SeriesAnchor         = model.SeriesAnchor
+)
+
+// Series anchor types and sources (see model.NewSeriesAnchor, model.NewSeries).
+const (
+	AnchorArtifact = model.AnchorArtifact
+	AnchorEntity   = model.AnchorEntity
+	AnchorEdge     = model.AnchorEdge
+	SeriesSupplied = model.SeriesSupplied
+	SeriesFetched  = model.SeriesFetched
 )
 
 // ErrNotFound is returned (wrapped) when a graph record does not exist.
@@ -184,6 +199,54 @@ func ImageStatistics(ctx context.Context, d *sql.DB) (*ImageStats, error) {
 		return sqlite.ImageStats(ctx, d)
 	case config.DBBackendPostgres:
 		return postgres.ImageStats(ctx, d)
+	}
+	return nil, unsupported()
+}
+
+//---------------------------------------------------------------------------------------------
+// Timeseries (writes go through Tx; see docs/timeseries.md)
+
+// ListSeries returns the series of the dataset by ID.
+func ListSeries(ctx context.Context, d *sql.DB, dsID int64) ([]Series, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListSeries(ctx, d, dsID)
+	case config.DBBackendPostgres:
+		return postgres.ListSeries(ctx, d, dsID)
+	}
+	return nil, unsupported()
+}
+
+// GetSeries returns one series of the dataset. It returns ErrNotFound if there is none.
+func GetSeries(ctx context.Context, d *sql.DB, dsID, id int64) (*Series, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.GetSeries(ctx, d, dsID, id)
+	case config.DBBackendPostgres:
+		return postgres.GetSeries(ctx, d, dsID, id)
+	}
+	return nil, unsupported()
+}
+
+// SeriesPoints returns the points of the series between from and to (both inclusive, nil for no bound), oldest first,
+// at most limit (0 for all).
+func SeriesPoints(ctx context.Context, d *sql.DB, seriesID int64, from, to *time.Time, limit int) ([]SeriesPoint, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.SeriesPoints(ctx, d, seriesID, from, to, limit)
+	case config.DBBackendPostgres:
+		return postgres.SeriesPoints(ctx, d, seriesID, from, to, limit)
+	}
+	return nil, unsupported()
+}
+
+// ListSeriesAnchors returns what the series is anchored to, by anchor ID.
+func ListSeriesAnchors(ctx context.Context, d *sql.DB, seriesID int64) ([]SeriesAnchor, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListSeriesAnchors(ctx, d, seriesID)
+	case config.DBBackendPostgres:
+		return postgres.ListSeriesAnchors(ctx, d, seriesID)
 	}
 	return nil, unsupported()
 }

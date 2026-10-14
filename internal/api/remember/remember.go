@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_image"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_timeseries"
 	"github.com/deepblue-phoenix/gligabao/monitoring"
 	log "github.com/sirupsen/logrus"
 )
@@ -51,6 +53,18 @@ type rememberRequest struct {
 	// text and remembers what it finds, as artifacts of kind "web_search" (see docs/web-search.md). Only available when
 	// the server has an Anthropic API key (else 503); not for an image (400).
 	WebSearch bool `json:"web_search"`
+	// Timeseries (optional) supplies timeseries to store and anchor to what the text yields (see docs/timeseries.md).
+	// Not for an image (400).
+	Timeseries *timeseriesRequest `json:"timeseries"`
+}
+
+// timeseriesRequest is the timeseries of a remember request.
+type timeseriesRequest struct {
+	// Series are the series to store. A series without anchors is anchored to the artifact; its entity and edge
+	// anchors are resolved after the text is extracted and stored.
+	Series []memory_core.SeriesSpec `json:"series"`
+	// Fetch is reserved for the pipeline fetching series itself from a provider; not implemented (400 if given).
+	Fetch json.RawMessage `json:"fetch"`
 }
 
 //---------------------------------------------------------------------------------------------
@@ -129,9 +143,18 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option)
 			httputil.Error(w, http.StatusServiceUnavailable, memory_core.ErrWebSearchUnavailable.Error())
 			return
 		}
+		series, err := resolveTimeseries(req.Timeseries)
+		if err != nil {
+			httputil.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		start := time.Now()
 		res, err := memory_remember.Remember(r.Context(), d, llm, req.UserID, req.Dataset, req.Kind, req.Text, ref,
-			append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models), memory_core.WithWebSearch(req.WebSearch))...)
+			append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models), memory_core.WithWebSearch(req.WebSearch), memory_core.WithSeries(series))...)
+		if errors.Is(err, memory_timeseries.ErrAnchor) { // nothing was stored
+			httputil.Error(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
 				"user_id":    req.UserID,
@@ -159,6 +182,7 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option)
 			"entities":     len(res.Entities),
 			"edges":        len(res.Edges),
 			"web_searches": len(res.WebSearches),
+			"series":       len(res.Series),
 			"duration_ms":  time.Since(start).Milliseconds(),
 		}).Debug("remember completed")
 		monitoring.EmitSystemEvent(r.Context(), "remember.completed", monitoring.Event{
@@ -173,10 +197,25 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option)
 			"edges":             len(res.Edges),
 			"invalidated_edges": len(res.InvalidatedEdges),
 			"web_searches":      len(res.WebSearches),
+			"series":            len(res.Series),
 			"duration_ms":       time.Since(start).Milliseconds(),
 		})
 		httputil.WriteJSON(w, http.StatusOK, res)
 	}
+}
+
+// resolveTimeseries validates the timeseries of a request (nil for none).
+func resolveTimeseries(t *timeseriesRequest) ([]memory_core.SeriesSpec, error) {
+	if t == nil {
+		return nil, nil
+	}
+	if len(t.Fetch) > 0 && string(t.Fetch) != "null" {
+		return nil, errors.New("timeseries.fetch is not implemented yet: supply the points in timeseries.series")
+	}
+	if len(t.Series) == 0 {
+		return nil, errors.New("timeseries.series is required")
+	}
+	return memory_core.ResolveSeries(t.Series, true)
 }
 
 // rememberImage serves a remember request that carries an image: the image pipeline.
@@ -187,6 +226,10 @@ func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory
 	}
 	if req.WebSearch {
 		httputil.Error(w, http.StatusBadRequest, "web_search does not apply to an image")
+		return
+	}
+	if req.Timeseries != nil {
+		httputil.Error(w, http.StatusBadRequest, "timeseries does not apply to an image")
 		return
 	}
 	data, err := base64.StdEncoding.DecodeString(strings.TrimSpace(req.Image))

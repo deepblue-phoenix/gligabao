@@ -25,6 +25,22 @@ res = gb.remember("u1", "Apple and Microsoft are large companies.", web_search=T
 print([(w["entity"], w["query"], w["artifact_id"]) for w in res.get("web_searches", [])])
 ```
 
+Timeseries can be stored with a text and anchored to what it yields (see `docs/timeseries.md` of gligabao). A series
+without `anchors` is anchored to the artifact; an entity or edge anchor is matched after the text is extracted, so it may name
+an entity the text will yield. `attach_timeseries` does the same for what is already stored:
+
+```python
+from datetime import datetime, timezone
+
+closes = [(datetime(2025, 1, 30, tzinfo=timezone.utc), 237.6), (datetime(2025, 1, 31, tzinfo=timezone.utc), 222.0)]
+res = gb.remember("u1", "Apple fell after the earnings miss.", kind="episode", timeseries=[
+    {"key": "AAPL.close", "unit": "USD", "points": closes,
+     "anchors": [{"entity": {"name": "Apple", "type": "organization"}}]},
+])
+print([(s["key"], s["stats"]["trend"], s["anchors"]) for s in res["series"]])
+gb.attach_timeseries("u1", [{"key": "AAPL.close", "points": closes, "anchors": [{"entity_id": 12}]}])
+```
+
 An image is remembered by the image pipeline: the server's LLM reads the text in it (title and text blocks) and
 classifies the whole image by a theme (`plot`, `graph`, `chart`, `table`, `document`, ...). Pass the raw bytes, or the path of a JPEG,
 PNG, GIF or WebP file (up to 5 MiB); `text` and `kind` do not apply:

@@ -260,4 +260,27 @@ type Tx interface {
 	GetEdge(ctx context.Context, dsID, id int64) (*Edge, error)
 	// InvalidateEdge sets the end of a fact (event time) and when we learned it (system time).
 	InvalidateEdge(ctx context.Context, id int64, invalidAt, expiredAt time.Time) error
+
+	// FindEntity returns the oldest entity of the dataset with the given nameKey and type.
+	FindEntity(ctx context.Context, dsID int64, nameKey, typ string) (int64, error)
+	// FindEdgeID returns the newest edge of the dataset between the entities with the normalized names sourceKey and
+	// targetKey, with the given relation; a live (not expired) one is preferred to an expired one.
+	FindEdgeID(ctx context.Context, dsID int64, sourceKey, relation, targetKey string) (int64, error)
+	// CheckArtifact returns ErrNotFound unless the dataset has an artifact with the ID.
+	CheckArtifact(ctx context.Context, dsID, id int64) error
+
+	// UpsertSeries inserts the series, or updates the name, unit, frequency and definition of the one with the same
+	// (dataset, provider, key, field). created says which. It returns the series ID.
+	UpsertSeries(ctx context.Context, s NewSeries) (id int64, created bool, err error)
+	// UpsertSeriesPoints writes the points: a point at a time the series already has replaces its value. The times
+	// of the points must be distinct.
+	UpsertSeriesPoints(ctx context.Context, seriesID int64, pts []SeriesPoint) error
+	// ListSeriesPoints returns every point of the series, oldest first.
+	ListSeriesPoints(ctx context.Context, seriesID int64) ([]SeriesPoint, error)
+	// UpdateSeriesSummary stores what describes all the points of the series: the first and last time, the number of
+	// points and the stats JSON.
+	UpdateSeriesSummary(ctx context.Context, seriesID int64, first, last *time.Time, count int, stats string, now time.Time) error
+	// AnchorSeries links the series to an artifact, entity or edge of its dataset (idempotent: it replaces the role
+	// and window of an existing anchor).
+	AnchorSeries(ctx context.Context, a NewSeriesAnchor) error
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_timeseries"
 )
 
 // CallRemember is the type of the LLM calls of Remember, stored in gb_llm_calls.type.
@@ -194,6 +195,10 @@ type Result struct {
 	// edges are not in Entities and Edges above, which are those of the text itself. See docs/web-search.md.
 	WebSearches []WebSearchResult `json:"web_searches,omitempty"`
 
+	// Series are the timeseries the caller supplied (WithSeries), as stored and anchored; omitted when there were none.
+	// For a chunked text they are anchored to the parent artifact. See docs/timeseries.md.
+	Series []memory_timeseries.Result `json:"series,omitempty"`
+
 	// TRAJECTORY
 	// TrajectoryID and Trajectory are the ATIF trajectory of this call (also stored in TrajectoryDir); only set when
 	// the call was made with WithEval.
@@ -232,6 +237,10 @@ type ChunkResult struct {
 // text are then searched for on the web, and the results are stored as artifacts of their own (kind web_search) and
 // extracted like any text, after the text itself has been stored. See remember_websearch.go and docs/web-search.md.
 //
+// With WithSeries the timeseries are stored in the same transaction as the text and anchored to its artifact, and to the
+// entities and edges their anchors select (resolved once the text is stored). For a chunked text they are stored
+// after the chunks, in a transaction of their own. See remember_series.go and docs/timeseries.md.
+//
 // With WithModels each LLM stage (extract_graph, resolve_edges, web_search) runs on the model the caller chose; a stage with none uses the
 // default model. The extract_graph stage's model is the one recorded on the entities and edges.
 //
@@ -261,6 +270,13 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	if co.WebSearch && co.WebSearcher == nil {
 		return nil, memory_core.ErrWebSearchUnavailable
 	}
+	// Validated before any LLM call, so a malformed series costs nothing.
+	series, err := memory_core.ResolveSeries(co.Series, true)
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts[:len(opts):len(opts)], memory_core.WithSeries(series))
+	co.Series = series
 	tr := memory_core.StartTrace(CallRemember, co)
 	defer func() {
 		if traj := tr.Finish(err); res != nil && traj != nil {
@@ -283,6 +299,9 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	}
 	if co.WebSearch {
 		input["web_search"] = true
+	}
+	if len(series) > 0 {
+		input["timeseries"] = memory_core.SeriesSummary(series)
 	}
 	tr.Input(input)
 
@@ -403,6 +422,7 @@ func (j *job) resolveAndStore(ctx context.Context, text string, ex *Extraction, 
 	tr.Tool("Stored the artifact, entities and edges."+label, "store_artifact", args,
 		map[string]any{"artifact_id": res.ArtifactID, "entities": res.Entities, "edges": res.Edges, "invalidated_edges": res.InvalidatedEdges,
 			"embedded_entities": res.EmbeddedEntities, "embedded_edges": res.EmbeddedEdges, "embedded_chunks": res.EmbeddedChunks})
+	j.traceSeries(res.ArtifactID, res.Series)
 	return res, nil
 }
 
@@ -581,6 +601,16 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 	out.Edges, out.InvalidatedEdges, err = storeEdges(ctx, tx, dsID, artID, sessionID, ref, now, ex.Edges, plan, entityID)
 	if err != nil {
 		return nil, err
+	}
+
+	// The timeseries the caller supplied are stored in this transaction, so a series that cannot be anchored stores
+	// nothing. Only for the artifact the caller sent: not for a chunk (the series go to the parent, see
+	// rememberDocument) and not for the result of a web search.
+	if part == nil && web == nil && len(co.Series) > 0 {
+		out.Series, err = memory_timeseries.Store(ctx, tx, dsID, artID, now, co.Series)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var chunkVec *chunkVector

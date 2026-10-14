@@ -19,6 +19,8 @@ content-type: application/json
 - `reference_time` (optional): RFC 3339 timestamp of when the text was written or observed. Relative dates in the text ("yesterday", "last March") are resolved against it. Defaults to the current time.
 - `session_id` (optional): the user/agent session the call belongs to, a string you choose (at most 128 bytes, no control characters; `400` otherwise). It is stored on the artifact (`gb_artifacts.session_id`) and recorded against every entity and edge the artifact yields, in `gb_entity_sessions` and `gb_edge_sessions`, **including entities and facts that already existed** and so were not written again. See [sessions.md](sessions.md). Also accepted with `image`.
 
+- `timeseries` (optional): timeseries to store and anchor to what the text yields, `{"series": [{"key": "AAPL.close", "points": [["2025-01-31T00:00:00Z", 222.0]], "anchors": [{"entity": {"name": "Apple"}}]}]}`. A series without anchors is anchored to the artifact; entity and edge anchors are looked up after the text is extracted, so they may name entities that the text will yield. `400` if malformed (before any LLM call) or together with `image`, `422` if an anchor that must match finds nothing (nothing is stored). See [timeseries.md](timeseries.md).
+
 - `models` (optional): an object that picks the LLM model of each LLM-invoking stage of the pipeline; see [Choosing the model of each stage](#choosing-the-model-of-each-stage). `400` for an unknown stage or a malformed model name.
 
 - `web_search` (optional, default `false`): after the text is stored, search the web (with Anthropic's cloud-based web search tool) for the latest world events about its key entities, and remember what is found: each result becomes an artifact of its own, of kind `web_search`, which saves the query that was issued and hangs off the artifact the entity came from, and the entities and facts in it join the graph like any other. Only available with an Anthropic API key (`503` otherwise); `400` with `image`. See [web-search.md](web-search.md).
@@ -58,6 +60,7 @@ content-type: application/json
 - `entities` are what the LLM extracted from this text (after normalization).
 - `edges` are the facts from this text in their stored state; if a new edge repeated a stored one, the stored edge is returned. Edge fields `invalid_at`, `expired_at` are omitted when null.
 - `invalidated_edges` lists IDs of edges closed because of this artifact (see [temporal.md](temporal.md)). Always an array.
+- `series`: only with `timeseries`: one item per series (`id`, `key`, `created`, `points`, `point_count`, `stats`, `anchors`, ...). See [timeseries.md](timeseries.md#with-remember).
 - `web_searches`: only with `web_search`: one item per key entity that was searched for (`entity`, `query`, `parent_artifact_id`, the `web_search` `artifact_id`, the `sources`, and the `entities` and `edges` the result yielded; `entities` and `edges` above stay those of the text). See [web-search.md](web-search.md#response).
 - `chunks`, `embedded_chunks`: only for a text that was [chunked](chunking.md). `artifact_id` is then the parent artifact (the whole text), `chunks` lists the chunk artifacts (`artifact_id`, `index`, `tokens`, `overlap_tokens`, `start_offset`, `end_offset`, `entities`, `edges`), `entities`, `edges` and `invalidated_edges` are those of all the chunks, and `embedded_chunks` counts the chunk vectors written.
 - `embedded_entities` and `embedded_edges` are the number of vectors written to the dataset's entity and edge indexes (see [Embed](#how-it-works)). Both are omitted when nothing was embedded (no `OPENAI_API_KEY`). `embedded_entities` counts the entities the text mentions, including those that already existed, and `embedded_edges` the facts it states, including repeated ones; they can be more than the number of new rows.
@@ -66,7 +69,8 @@ Errors are returned as `{"error": "..."}`:
 
 | Status | Meaning |
 | ------ | ------- |
-| 400 | Invalid JSON body, `text` is empty, `kind` is not `knowledge` or `episode`, `reference_time` is not RFC 3339, `session_id` is too long or has control characters, `models` names an unknown stage or has a malformed model name, or `web_search` is given with an `image` |
+| 400 | Invalid JSON body, `text` is empty, `timeseries` is malformed or given with an `image`, `kind` is not `knowledge` or `episode`, `reference_time` is not RFC 3339, `session_id` is too long or has control characters, `models` names an unknown stage or has a malformed model name, or `web_search` is given with an `image` |
+| 422 | A series anchor with `on_unmatched: "error"`, or an ID, matched nothing; nothing is stored (for a chunked text, only the series; see [timeseries.md](timeseries.md#with-remember)) |
 | 502 | An LLM call failed (this includes a `models` entry the provider does not know), or its output could not be parsed or was truncated; or embedding failed (nothing stored); or the vectors could not be written to the vector store (after the database was saved, see [Embed](#how-it-works)) |
 | 503 | LLM not configured (`ANTHROPIC_API_KEY` is not set), or `web_search` was asked for and web search is not available (it needs that key too) |
 
@@ -93,6 +97,8 @@ All steps use the LLM from `internal/ai` (Anthropic Messages API, default model 
    - with a `session_id`, every entity linked to the artifact is also linked to the session in `gb_entity_sessions`, and every edge linked to it in `gb_edge_sessions` (see [sessions.md](sessions.md)). Both happen for duplicates too, so the sessions an entity or fact was discovered in are all kept.
 
 4. **Embed** (`WithVectors`, 1 embeddings request, only if an OpenAI key is configured): the entities this text mentions and the edges it states (and, if the text is a chunk of a longer one, the chunk's own text, into a third vector dataset: see [chunking.md](chunking.md#chunks-are-embedded)) are embedded together with `text-embedding-3-small`: an entity as `Name (type): description`, an edge as its description. This happens inside step 3, after the rows are written and before the transaction commits, so a failure stores nothing. Right after the commit the vectors are written, with `Upsert`, to the dataset's two vector datasets: `dataset-<id>-entities` (vector `entity-<entity id>`) and `dataset-<id>-edges` (vector `edge-<edge id>`). Vectors are keyed by ID, so remembering an entity or fact again overwrites its vector. Details, metadata and failure handling: [vectors.md](vectors.md#what-remember-writes).
+
+4b. **Timeseries** (only with `timeseries`): the supplied series are written inside step 3's transaction, after the entities and edges, and anchored: to the artifact, and to the entities and edges that their selectors find. A series that cannot be anchored stores nothing. For a chunked text they are stored after the last chunk, anchored to the parent. See [timeseries.md](timeseries.md).
 
 5. **Web search** (only with `web_search`, and only with an Anthropic API key): the key entities of the text are searched for on the web and the results are remembered as `web_search` artifacts, each with its query and its parent (the artifact the entity came from), and their own entities and edges. It runs after the text was stored, so a failure in it never fails the request. See [web-search.md](web-search.md).
 
@@ -181,6 +187,7 @@ All tables are prefixed with `gb_` (see `internal/db/relational/{sqlite,postgres
 | `gb_entity_artifacts` | `entity_id` → `gb_entities`, `artifact_id` → `gb_artifacts`; primary key (`entity_id`, `artifact_id`) |
 | `gb_entity_sessions` | `entity_id` → `gb_entities`, `session_id`; primary key (`entity_id`, `session_id`) |
 | `gb_edge_sessions` | `edge_id` → `gb_edges`, `session_id`; primary key (`edge_id`, `session_id`) |
+| `gb_series`, `gb_series_points`, `gb_series_anchors` | The [timeseries](timeseries.md) and what they are anchored to |
 | `gb_items` | `id`, `name`, `created_at` (placeholder) |
 
 Foreign keys are enabled on every connection. Deleting an entity cascades to its edges and its `gb_entity_artifacts` links, and deleting an edge removes its `gb_edge_artifacts` links; deleting an artifact sets `artifact_id` to NULL on its edges and removes its `gb_edge_artifacts` and `gb_entity_artifacts` links. Deleting an entity or an edge also removes its `gb_entity_sessions` or `gb_edge_sessions` links; deleting an artifact leaves them (they record that the session discovered the entity or fact, not which artifact did).

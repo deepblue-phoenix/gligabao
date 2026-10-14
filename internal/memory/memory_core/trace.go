@@ -72,6 +72,9 @@ type CallOptions struct {
 	// Models is the model of each LLM stage of Remember and RememberImage, set by WithModels; a stage not in it uses the
 	// default model. See ModelLLM.
 	Models Models
+
+	// Series are the timeseries to anchor to what Remember stores, set by WithSeries (see docs/timeseries.md).
+	Series []SeriesSpec
 }
 
 // NewCallOptions applies opts on top of the defaults.
@@ -94,6 +97,11 @@ func WithEval() Option { return func(o *CallOptions) { o.Eval = true } }
 // into its result and trajectory, and its answer does not depend on it. The ID is used as given: validate it with
 // ResolveSessionID first. Empty means no session.
 func WithSessionID(id string) Option { return func(o *CallOptions) { o.SessionID = id } }
+
+// WithSeries makes Remember (and Store) store the timeseries and anchor them: to the artifact the call creates, and to
+// the entities and edges the anchors select once the text was stored. They are validated with ResolveSeries (which
+// Remember also does, before any LLM call).
+func WithSeries(s []SeriesSpec) Option { return func(o *CallOptions) { o.Series = s } }
 
 // WithChunking sets the chunk size (in tokens) and overlap that Remember uses for a text larger than one chunk. See
 // chunk.Config; an invalid one makes Remember fail. The default is chunk.DefaultConfig().

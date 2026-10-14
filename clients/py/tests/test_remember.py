@@ -49,6 +49,34 @@ def test_remember_web_search():
         Client().remember("u1", image=b"x", web_search=True)
 
 
+def test_remember_timeseries():
+    from datetime import datetime, timezone
+
+    seen = {}
+    srv = _serve(200, {"artifact_id": 1}, seen)
+    t = datetime(2025, 1, 31, tzinfo=timezone.utc)
+    try:
+        c = Client(f"http://127.0.0.1:{srv.server_port}")
+        c.remember("u1", "hi", timeseries=[{"key": "k", "points": [(t, 1.5), ("2025-02-01T00:00:00Z", 2)]}])
+        assert seen["body"]["timeseries"] == {
+            "series": [{"key": "k", "points": [["2025-01-31T00:00:00+00:00", 1.5], ["2025-02-01T00:00:00Z", 2]]}]
+        }
+        c.attach_timeseries(
+            "u1",
+            [{"key": "k", "points": [(t, 1)], "anchors": [{"artifact_id": 3, "window": [t, "2025-02-01T00:00:00Z"]}]}],
+            dataset="d",
+        )
+    finally:
+        srv.shutdown()
+    assert seen["path"] == "/v1/gb/timeseries"
+    assert seen["body"]["dataset"] == "d"
+    assert seen["body"]["series"][0]["anchors"] == [
+        {"artifact_id": 3, "window": ["2025-01-31T00:00:00+00:00", "2025-02-01T00:00:00Z"]}
+    ]
+    with pytest.raises(ValueError):
+        Client().remember("u1", image=b"x", timeseries=[{"key": "k", "points": []}])
+
+
 def test_remember():
     seen = {}
     srv = _serve(200, {"artifact_id": 1}, seen)

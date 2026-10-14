@@ -155,6 +155,50 @@ CREATE TABLE IF NOT EXISTS gb_onto_edges (
 CREATE INDEX IF NOT EXISTS idx_gb_onto_edges_source ON gb_onto_edges(source_id);
 CREATE INDEX IF NOT EXISTS idx_gb_onto_edges_target ON gb_onto_edges(target_id);
 
+-- Timeseries (see sqlite/db_schema.go for what the columns mean): a series, its points, and its anchors to an
+-- artifact, entity or edge.
+CREATE TABLE IF NOT EXISTS gb_series (
+	id          BIGSERIAL PRIMARY KEY,
+	dataset_id  BIGINT NOT NULL REFERENCES gb_datasets(id),
+	key         TEXT NOT NULL,
+	field       TEXT NOT NULL DEFAULT 'value',
+	name        TEXT NOT NULL DEFAULT '',
+	unit        TEXT NOT NULL DEFAULT '',
+	frequency   TEXT NOT NULL DEFAULT '',
+	source      TEXT NOT NULL DEFAULT 'supplied',
+	provider    TEXT NOT NULL DEFAULT '',
+	definition  TEXT NOT NULL DEFAULT '',
+	first_ts    TIMESTAMPTZ,
+	last_ts     TIMESTAMPTZ,
+	point_count BIGINT NOT NULL DEFAULT 0,
+	stats       TEXT NOT NULL DEFAULT '',
+	created_at  TIMESTAMPTZ NOT NULL,
+	updated_at  TIMESTAMPTZ NOT NULL,
+	UNIQUE (dataset_id, provider, key, field)
+);
+CREATE TABLE IF NOT EXISTS gb_series_points (
+	series_id BIGINT NOT NULL REFERENCES gb_series(id) ON DELETE CASCADE,
+	ts        TIMESTAMPTZ NOT NULL,
+	value     DOUBLE PRECISION NOT NULL,
+	PRIMARY KEY (series_id, ts)
+);
+CREATE TABLE IF NOT EXISTS gb_series_anchors (
+	id           BIGSERIAL PRIMARY KEY,
+	series_id    BIGINT NOT NULL REFERENCES gb_series(id) ON DELETE CASCADE,
+	artifact_id  BIGINT REFERENCES gb_artifacts(id) ON DELETE CASCADE,
+	entity_id    BIGINT REFERENCES gb_entities(id) ON DELETE CASCADE,
+	edge_id      BIGINT REFERENCES gb_edges(id) ON DELETE CASCADE,
+	role         TEXT NOT NULL DEFAULT '',
+	window_start TIMESTAMPTZ,
+	window_end   TIMESTAMPTZ,
+	created_at   TIMESTAMPTZ NOT NULL,
+	CHECK (num_nonnulls(artifact_id, entity_id, edge_id) = 1)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_series_anchors_artifact ON gb_series_anchors(series_id, artifact_id) WHERE artifact_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_series_anchors_entity ON gb_series_anchors(series_id, entity_id) WHERE entity_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_series_anchors_edge ON gb_series_anchors(series_id, edge_id) WHERE edge_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_gb_series_dataset ON gb_series(dataset_id);
+
 CREATE INDEX IF NOT EXISTS idx_gb_image_artifacts_dataset ON gb_image_artifacts(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_image_extractions_image ON gb_image_extractions(image_artifact_id);
 CREATE INDEX IF NOT EXISTS idx_gb_artifacts_dataset ON gb_artifacts(dataset_id);

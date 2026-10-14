@@ -30,6 +30,7 @@ class Client:
         image: bytes | str | os.PathLike[str] | None = None,
         models: dict[str, str] | None = None,
         web_search: bool = False,
+        timeseries: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Store `text`, or an `image`, in memory (POST /v1/gb/remember).
 
@@ -58,6 +59,13 @@ class Client:
         `web_search=True` (text only) also searches the web for the latest world events about the key
         entities of the text, and remembers what it finds as artifacts of kind "web_search" (the response
         lists them under "web_searches"). The server needs an Anthropic API key for it, else it answers 503.
+
+        `timeseries` (text only) is a list of series to store and anchor to what the text yields, each a dict
+        like {"key": "AAPL.close", "unit": "USD", "points": [(datetime, 235.1), ...], "anchors": [{"entity":
+        {"name": "Apple", "type": "organization"}}]}. A point is a (time, value) pair, the time a datetime or an
+        RFC 3339 string. A series without "anchors" is anchored to the artifact. Entity and edge anchors are
+        matched after the text is extracted, so they may name entities the text will yield. The response lists
+        the stored series under "series". See docs/timeseries.md.
         """
         if (text is None) == (image is None):
             raise ValueError("remember takes exactly one of text and image")
@@ -67,6 +75,8 @@ class Client:
                 raise ValueError("kind does not apply to images")
             if web_search:
                 raise ValueError("web_search does not apply to images")
+            if timeseries:
+                raise ValueError("timeseries does not apply to images")
             if not isinstance(image, (bytes, bytearray, memoryview)):
                 with open(image, "rb") as f:
                     image = f.read()
@@ -81,11 +91,30 @@ class Client:
             body["models"] = models
         if web_search:
             body["web_search"] = True
+        if timeseries:
+            body["timeseries"] = {"series": _series(timeseries)}
         if reference_time is not None:
             body["reference_time"] = (
                 reference_time.isoformat() if isinstance(reference_time, datetime) else reference_time
             )
         return self._request("POST", "/v1/gb/remember", body)
+
+    def attach_timeseries(
+        self,
+        user_id: str,
+        series: list[dict[str, Any]],
+        dataset: str | None = None,
+    ) -> dict[str, Any]:
+        """Store timeseries in an existing dataset and anchor them (POST /v1/gb/timeseries).
+
+        `series` is as for `remember(timeseries=...)`, but there is no artifact to anchor to, so anchors name
+        what exists: {"entity_id": 12}, {"artifact_id": 1, "window": [start, end]}, or an entity or edge
+        selector. A series with the key of a stored one adds its points to it. The dataset must exist (404).
+        """
+        body: dict[str, Any] = {"user_id": user_id, "series": _series(series)}
+        if dataset is not None:
+            body["dataset"] = dataset
+        return self._request("POST", "/v1/gb/timeseries", body)
 
     def _request(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
         data = json.dumps(body).encode() if body is not None else None
@@ -107,3 +136,25 @@ class Client:
             raise GligabaoError(msg, status=e.code) from None
         except urllib.error.URLError as e:
             raise GligabaoError(f"cannot reach {self.base_url}: {e.reason}") from e
+
+
+def _time(t: datetime | str) -> str:
+    return t.isoformat() if isinstance(t, datetime) else t
+
+
+def _series(series: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The series as the API takes them: points as [time, value] pairs with RFC 3339 times."""
+    out = []
+    for s in series:
+        s = dict(s)
+        s["points"] = [[_time(t), v] for t, v in s.get("points", [])]
+        anchors = []
+        for a in s.get("anchors", []):
+            a = dict(a)
+            if "window" in a:
+                a["window"] = [_time(t) for t in a["window"]]
+            anchors.append(a)
+        if anchors:
+            s["anchors"] = anchors
+        out.append(s)
+    return out

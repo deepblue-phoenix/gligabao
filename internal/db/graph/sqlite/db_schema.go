@@ -193,6 +193,66 @@ CREATE TABLE IF NOT EXISTS gb_image_text_blocks (
 	UNIQUE (extraction_id, position)
 );
 
+-- Timeseries (see docs/timeseries.md), kept apart from gb_artifacts and the graph like the images.
+--
+-- A series is identified inside its dataset by (provider, key, field): key is the caller's identifier ("AAPL.close"),
+-- field says which value of it the points are ("value" by default; an OHLCV series is several series with the same
+-- key and different fields), and provider is '' for a series the caller supplied.
+--   source      'supplied' (sent by the caller) or 'fetched' (from a provider; not implemented yet)
+--   frequency   a label such as '1d', not a constraint: points may be irregular
+--   definition  JSON that says how to fetch the series again; '' for a supplied one
+--   first_ts, last_ts, point_count, stats: a summary of ALL the points, refreshed whenever points are written. stats is
+--               JSON (see internal/memory/memory_timeseries/stats.go), computed in Go, never by an LLM.
+CREATE TABLE IF NOT EXISTS gb_series (
+	id          INTEGER PRIMARY KEY AUTOINCREMENT,
+	dataset_id  INTEGER NOT NULL REFERENCES gb_datasets(id),
+	key         TEXT NOT NULL,
+	field       TEXT NOT NULL DEFAULT 'value',
+	name        TEXT NOT NULL DEFAULT '',
+	unit        TEXT NOT NULL DEFAULT '',
+	frequency   TEXT NOT NULL DEFAULT '',
+	source      TEXT NOT NULL DEFAULT 'supplied',
+	provider    TEXT NOT NULL DEFAULT '',
+	definition  TEXT NOT NULL DEFAULT '',
+	first_ts    DATETIME,
+	last_ts     DATETIME,
+	point_count INTEGER NOT NULL DEFAULT 0,
+	stats       TEXT NOT NULL DEFAULT '',
+	created_at  DATETIME NOT NULL,
+	updated_at  DATETIME NOT NULL,
+	UNIQUE (dataset_id, provider, key, field)
+);
+
+-- The points of a series: ts is event time (when the value was true in the world). Writing a point at an existing ts
+-- replaces its value. Deleting the series deletes its points.
+CREATE TABLE IF NOT EXISTS gb_series_points (
+	series_id INTEGER NOT NULL REFERENCES gb_series(id) ON DELETE CASCADE,
+	ts        DATETIME NOT NULL,
+	value     REAL NOT NULL,
+	PRIMARY KEY (series_id, ts)
+) WITHOUT ROWID;
+
+-- What a series is anchored to (many-to-many): exactly one of artifact_id, entity_id and edge_id is set, each a real
+-- foreign key, so deleting the artifact, entity or edge deletes only the anchor, never the series (a series other
+-- anchors still use stays). The window is the slice of the series that matters to the anchor (NULL: all of it): the
+-- same price series can be anchored to a company and, with a window around the news, to each news artifact.
+CREATE TABLE IF NOT EXISTS gb_series_anchors (
+	id           INTEGER PRIMARY KEY AUTOINCREMENT,
+	series_id    INTEGER NOT NULL REFERENCES gb_series(id) ON DELETE CASCADE,
+	artifact_id  INTEGER REFERENCES gb_artifacts(id) ON DELETE CASCADE,
+	entity_id    INTEGER REFERENCES gb_entities(id) ON DELETE CASCADE,
+	edge_id      INTEGER REFERENCES gb_edges(id) ON DELETE CASCADE,
+	role         TEXT NOT NULL DEFAULT '',
+	window_start DATETIME,
+	window_end   DATETIME,
+	created_at   DATETIME NOT NULL,
+	CHECK ((artifact_id IS NOT NULL) + (entity_id IS NOT NULL) + (edge_id IS NOT NULL) = 1)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_series_anchors_artifact ON gb_series_anchors(series_id, artifact_id) WHERE artifact_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_series_anchors_entity ON gb_series_anchors(series_id, entity_id) WHERE entity_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_series_anchors_edge ON gb_series_anchors(series_id, edge_id) WHERE edge_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_gb_series_dataset ON gb_series(dataset_id);
+
 -- An ontology (metadata in gb_ontologies, see internal/db/relational) is a small graph of its own, kept apart from
 -- the dataset graph above: classes are nodes, and edges are the relationships between classes.
 --   kind: 'subclass_of' | 'equivalent_class' | 'disjoint_with' | 'property'

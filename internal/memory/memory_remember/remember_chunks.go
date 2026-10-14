@@ -103,6 +103,15 @@ func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Confi
 	}
 
 	//--------------------------------------
+	// TIMESERIES (only with WithSeries): anchored to the parent, once the chunks (and so their entities) are stored
+	if len(j.co.Series) > 0 {
+		if doc.Series, err = j.storeSeries(ctx, parentID); err != nil {
+			return nil, fmt.Errorf("memory: timeseries (the text, its %d chunks and their facts are stored): %w", len(chunks), err)
+		}
+		j.traceSeries(parentID, doc.Series)
+	}
+
+	//--------------------------------------
 	// WEB_SEARCH (only with WithWebSearch): for the key entities of the whole text, once the chunks are stored
 	doc.WebSearches = j.webSearch(ctx)
 	return doc, nil

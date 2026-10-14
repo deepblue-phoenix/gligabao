@@ -5,6 +5,22 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.11.0] - 2026-10-14
+
+### Added
+- Timeseries. `POST /v1/gb/remember` (and `/v1/gb/eval/remember`) takes an optional `timeseries` with `series`: a series has a `key` (and optional `field`, `name`, `unit`, `frequency`), `points` as `[time, value]` pairs and optional `anchors`. The series are stored next to the text, in the same transaction, and anchored to the artifact the request creates (the default) and to the entities and facts that their anchors select. The entities do not exist when the request is made, so an anchor is a selector (`entity: {name, type}`, `edge: {source, relation, target}`) that is looked up after the text has been extracted and stored; IDs of things already stored (`artifact_id`, `entity_id`, `edge_id`) work too. An anchor can have a `role`, a `window` and an `on_unmatched` (`create`, `ignore`, `error`). A series that cannot be anchored stores nothing (`422`). For a chunked text the series are stored after the chunks, anchored to the parent artifact. The response gets `series`. Not allowed with `image` (`400`); `timeseries.fetch` is reserved and is a `400`. See [docs/timeseries.md](docs/timeseries.md).
+- `POST /v1/gb/timeseries` stores series in an existing dataset and anchors them to what it holds, for series that are known only after `remember` returned, that change later, or that are too big for a `remember` request (body up to 16 MiB). Sending a key again adds points to the stored series. `GET /v1/gb/timeseries` lists a dataset's series (stats and anchors, no points) and `GET /v1/gb/timeseries/{id}` reads one with its points between `from` and `to` (and the stats of that window).
+- Every series has stats computed in Go whenever points are written: count, first, last, min, max, mean, change, percent change, trend and the largest move between two points.
+- New tables `gb_series`, `gb_series_points` and `gb_series_anchors` (SQLite and PostgreSQL). Anchors are real foreign keys, so deleting an artifact, entity or edge removes only its anchors.
+- Trajectories get the `timeseries` input and a `store_timeseries` step.
+- The Python client's `remember` takes `timeseries`, and has `attach_timeseries` (client version 0.3.0).
+- Go: `memory_core.WithSeries`, `ResolveSeries`, `SeriesSpec`; package `memory_timeseries` (`Store`, `Attach`, `Summarize`); `graph.ListSeries`, `GetSeries`, `SeriesPoints`, `ListSeriesAnchors`; new `Tx` methods (`UpsertSeries`, `UpsertSeriesPoints`, `ListSeriesPoints`, `UpdateSeriesSummary`, `AnchorSeries`, `FindEntity`, `FindEdgeID`, `CheckArtifact`); `Result.Series`.
+- [docs/timeseries-design.md](docs/timeseries-design.md): the design, the changes made while building the first version, and what is left (fetching series from a data provider, derived observation artifacts, embedding, `recall`).
+
+### Changed
+- Database schema: three new tables (see above). Existing database files are not migrated: delete the file (and the eval database) and the server recreates it.
+- `remember` returns `422` when a timeseries anchor that must match finds nothing.
+
 ## [0.10.0] - 2026-10-14
 
 ### Added
