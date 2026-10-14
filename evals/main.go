@@ -9,8 +9,9 @@
 // every call along with its result.
 // Besides the answer, the stored temporal facts (edges with valid_at / invalid_at) are checked in the database.
 //
-// Usage: go run ./evals [-v] [-suites dir] [case-name ...]   (requires ANTHROPIC_API_KEY)
+// Usage: go run ./evals [-v] [-suites dir] [-suite name] [case-name ...]   (requires ANTHROPIC_API_KEY)
 // With -suites, suites are read from that directory instead of the embedded evals/suites (used by gligabao_int).
+// With -suite, only the cases of that suite run; -list-suites prints the available suites and exits.
 // With -v, every LLM call's input and output is printed.
 // With -atif dir, the trajectories are stored there as JSON (default: an "atif" directory next to the -db file,
 // since the experiments reference them).
@@ -145,7 +146,9 @@ type ExpectEdge struct {
 	Ended     bool   `json:"ended"`
 }
 
-func loadCases(only []string, suitesDir string) ([]Case, error) {
+// loadCases loads the cases of the suites in suitesDir (the embedded ones if empty). A non-empty suite restricts them
+// to the cases of that suite, and a non-empty only to the cases with those names.
+func loadCases(only []string, suitesDir, suite string) ([]Case, error) {
 	var fsys fs.FS = suitesFS
 	dir := "suites"
 	if suitesDir != "" {
@@ -155,8 +158,10 @@ func loadCases(only []string, suitesDir string) ([]Case, error) {
 	if err != nil {
 		return nil, err
 	}
+	wantSuite := suite
 	var cases []Case
 	seen := map[string]bool{}
+	suiteFound := wantSuite == ""
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
@@ -165,12 +170,13 @@ func loadCases(only []string, suitesDir string) ([]Case, error) {
 		if err != nil {
 			return nil, err
 		}
-		var suite []Case
-		if err := json.Unmarshal(data, &suite); err != nil {
+		var suiteCases []Case
+		if err := json.Unmarshal(data, &suiteCases); err != nil {
 			return nil, fmt.Errorf("%s: %w", e.Name(), err)
 		}
 		suiteName := strings.TrimSuffix(e.Name(), ".json")
-		for i, c := range suite {
+		suiteFound = suiteFound || suiteName == wantSuite
+		for i, c := range suiteCases {
 			c.Suite = suiteName
 			if c.Name == "" {
 				return nil, fmt.Errorf("%s: case %d has no name", e.Name(), i)
@@ -193,10 +199,13 @@ func loadCases(only []string, suitesDir string) ([]Case, error) {
 				c.Remember[j].Text = string(b)
 			}
 			seen[c.Name] = true
-			if len(only) == 0 || contains(only, c.Name) {
+			if (wantSuite == "" || suiteName == wantSuite) && (len(only) == 0 || contains(only, c.Name)) {
 				cases = append(cases, c)
 			}
 		}
+	}
+	if !suiteFound {
+		return nil, fmt.Errorf("unknown suite %q (available: %s)", wantSuite, strings.Join(suiteNames(fsys, dir), ", "))
 	}
 	for _, name := range only {
 		found := false
@@ -208,6 +217,53 @@ func loadCases(only []string, suitesDir string) ([]Case, error) {
 		}
 	}
 	return cases, nil
+}
+
+func suiteNames(fsys fs.FS, dir string) []string {
+	entries, _ := fs.ReadDir(fsys, dir)
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
+			names = append(names, strings.TrimSuffix(e.Name(), ".json"))
+		}
+	}
+	return names
+}
+
+// printSuites prints the suites of suitesDir (the embedded ones if empty) with their cases, as a table.
+func printSuites(w *os.File, suitesDir string) error {
+	cases, err := loadCases(nil, suitesDir, "")
+	if err != nil {
+		return err
+	}
+	var fsys fs.FS = suitesFS
+	dir := "suites"
+	if suitesDir != "" {
+		fsys, dir = os.DirFS(suitesDir), "."
+	}
+	names := suiteNames(fsys, dir)
+	bold, dim, reset := "", "", ""
+	if st, err := w.Stat(); err == nil && st.Mode()&os.ModeCharDevice != 0 && os.Getenv("NO_COLOR") == "" {
+		bold, dim, reset = "\033[1m", "\033[2m", "\033[0m"
+	}
+	width := 0
+	for _, n := range names {
+		width = max(width, len(n))
+	}
+	for _, n := range names {
+		var in []string
+		for _, c := range cases {
+			if c.Suite == n {
+				in = append(in, c.Name)
+			}
+		}
+		noun := "cases"
+		if len(in) == 1 {
+			noun = "case "
+		}
+		fmt.Fprintf(w, "  %s%-*s%s  %s%2d %s%s  %s\n", bold, width, n, reset, dim, len(in), noun, reset, strings.Join(in, ", "))
+	}
+	return nil
 }
 
 func contains(list []string, s string) bool {
@@ -840,12 +896,17 @@ func main() {
 func mainErr() error {
 	verbose := flag.Bool("v", false, "print the input and output of every LLM call")
 	suitesDir := flag.String("suites", "", "read suites from this directory instead of the embedded ones")
+	suite := flag.String("suite", "", "run only the cases of this suite (file name without .json; see -list-suites)")
+	listSuites := flag.Bool("list-suites", false, "print the available suites and their cases, then exit")
 	flag.StringVar(&atifDir, "atif", "", `store every ATIF trajectory as JSON in this directory (default: "atif" next to the -db file)`)
 	experiment := flag.String("experiment", "default", "name of the experiment this run belongs to (created if new)")
 	experimentDesc := flag.String("experiment-desc", "", "description of the experiment, used when it is created")
 	evalDBPath := flag.String("db", "bin/gligabao-eval.db", "SQLite file of the eval database: the datasets of the cases, the experiments and their runs (never reset; show it with ./run_server_local.sh)")
 	modelsFlag := flag.String("models", "", `LLM model per remember stage, e.g. "extract_graph=claude-sonnet-4-5,resolve_edges=claude-haiku-5-5" (stages: `+strings.Join(memory_core.Stages, ", ")+`); a stage left out uses the default model; a case's "models" win`)
 	flag.Parse()
+	if *listSuites {
+		return printSuites(os.Stdout, *suitesDir)
+	}
 	models, err := memory_core.ParseModels(*modelsFlag)
 	if err != nil {
 		return fmt.Errorf("-models: %w", err)
@@ -876,7 +937,7 @@ func mainErr() error {
 		emb = e
 	}
 
-	cases, err := loadCases(flag.Args(), *suitesDir)
+	cases, err := loadCases(flag.Args(), *suitesDir, *suite)
 	if err != nil {
 		return err
 	}
@@ -886,7 +947,7 @@ func mainErr() error {
 		return err
 	}
 	defer database.Close()
-	params := map[string]any{"suites_dir": *suitesDir, "cases": flag.Args(), "atif_dir": atifDir}
+	params := map[string]any{"suites_dir": *suitesDir, "suite": *suite, "cases": flag.Args(), "atif_dir": atifDir}
 	if len(models) > 0 {
 		params["models"] = models
 	}

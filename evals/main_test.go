@@ -111,7 +111,7 @@ func TestRunCasesTracksExperiment(t *testing.T) {
 }
 
 func TestLoadCasesSetsSuite(t *testing.T) {
-	cases, err := loadCases(nil, "")
+	cases, err := loadCases(nil, "", "")
 	if err != nil || len(cases) == 0 {
 		t.Fatalf("%v, %v", cases, err)
 	}
@@ -212,7 +212,7 @@ func TestChunkingCase(t *testing.T) {
 	memory_core.TrajectoryDir = atifDir
 	t.Cleanup(func() { atifDir = "" })
 
-	cases, err := loadCases([]string{"chunking_register"}, "")
+	cases, err := loadCases([]string{"chunking_register"}, "", "")
 	if err != nil || len(cases) != 1 {
 		t.Fatalf("%v, %v", cases, err)
 	}
@@ -262,11 +262,11 @@ func TestTextFileErrors(t *testing.T) {
 		}
 	}
 	write(`[{"name":"a","remember":[{"text_file":"missing.txt"}]}]`)
-	if _, err := loadCases(nil, dir); err == nil {
+	if _, err := loadCases(nil, dir, ""); err == nil {
 		t.Fatal("missing text_file accepted")
 	}
 	write(`[{"name":"a","remember":[{"text":"x","text_file":"s.json"}]}]`)
-	if _, err := loadCases(nil, dir); err == nil {
+	if _, err := loadCases(nil, dir, ""); err == nil {
 		t.Fatal("text and text_file accepted")
 	}
 }
@@ -337,7 +337,7 @@ func TestTimeseriesIngestCase(t *testing.T) {
 	memory_core.TrajectoryDir = atifDir
 	t.Cleanup(func() { atifDir = "" })
 
-	cases, err := loadCases([]string{"timeseries_ingest_aapl"}, "")
+	cases, err := loadCases([]string{"timeseries_ingest_aapl"}, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

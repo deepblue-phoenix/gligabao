@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.16.0] - 2026-10-15
+
+### Added
+- Eval runner: `-suite <name>` runs only the cases of that suite (unknown suite is an error listing the available ones) and `-list-suites` prints the suites with their cases. `run_evals.sh` takes `-s|--suite NAME` and `-h|--help`, which shows a formatted list of the eval suites.
+
 ## [0.15.1] - 2026-10-15
 
 ### Added
