@@ -73,6 +73,9 @@ type CallOptions struct {
 	// default model. See ModelLLM.
 	Models Models
 
+	// Reasoning is the reasoning level of the stages that take one, set by WithReasoning (see ReasoningStages).
+	Reasoning Reasoning
+
 	// Series are the timeseries to anchor to what Remember stores, set by WithSeries (see docs/timeseries.md).
 	Series []SeriesSpec
 

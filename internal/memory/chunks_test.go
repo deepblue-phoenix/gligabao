@@ -35,7 +35,7 @@ func (l *personLLM) Complete(_ context.Context, req ai.Request) (*ai.Response, e
 		return nil, errors.New("llm down")
 	}
 	if !strings.Contains(req.System, "extract a temporal knowledge graph") { // resolveEdges: nothing to flag
-		return &ai.Response{StopReason: "end_turn", Text: `{"duplicates":[],"contradictions":[]}`}, nil
+		return &ai.Response{StopReason: "end_turn", Model: "person-model", Text: `{"duplicates":[],"contradictions":[]}`}, nil
 	}
 	var ents, edges []string
 	seen := map[string]bool{}
@@ -49,7 +49,7 @@ func (l *personLLM) Complete(_ context.Context, req ai.Request) (*ai.Response, e
 		edges = append(edges, fmt.Sprintf(`{"source":%q,"target":"Acme","relation":"works at"}`, p))
 	}
 	ents = append(ents, `{"name":"Acme","type":"organization"}`)
-	return &ai.Response{StopReason: "end_turn", Text: `{"entities":[` + strings.Join(ents, ",") + `],"edges":[` + strings.Join(edges, ",") + `]}`}, nil
+	return &ai.Response{StopReason: "end_turn", Model: "person-model", Text: `{"entities":[` + strings.Join(ents, ",") + `],"edges":[` + strings.Join(edges, ",") + `]}`}, nil
 }
 
 // document is n paragraphs, one fact each.
@@ -74,6 +74,7 @@ func testRememberChunksLongText(t *testing.T, d *sql.DB) {
 	llm := &personLLM{}
 	res, err := memory_remember.Remember(ctx, d, llm, "u1", "docs", "", text, relational.Now(),
 		memory.WithVectors(vs, &fakeEmbedder{}), memory_core.WithChunking(cfg), memory_core.WithSessionID("s1"),
+		memory_core.WithReasoning(memory_core.Reasoning{memory_core.StageSummarizeChunk: "high"}),
 		memory_core.WithEval(), memory_core.WithTrajectoryDir(t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
@@ -86,14 +87,31 @@ func testRememberChunksLongText(t *testing.T, d *sql.DB) {
 	// The document is the parent artifact; the chunks are artifacts that are its children and slice its text.
 	dsID, _ := relational.DatasetID(ctx, d, "u1", "docs")
 	arts, err := graph.ListArtifacts(ctx, d, dsID)
-	if err != nil || len(arts) != n+1 {
-		t.Fatalf("artifacts = %d, %v; want %d", len(arts), err, n+1)
+	if err != nil || len(arts) != 2*n+1 {
+		t.Fatalf("artifacts = %d, %v; want %d", len(arts), err, 2*n+1)
 	}
 	if p := arts[0]; p.ID != res.ArtifactID || p.ParentID != 0 || p.Text != text || p.SessionID != "s1" {
 		t.Errorf("parent = %+v", p)
 	}
 	isChunk := map[int64]bool{}
-	for i, c := range arts[1:] {
+	isSummary := map[int64]bool{}
+	byID := map[int64]graph.Artifact{}
+	var chunks []graph.Artifact // the chunks only (each is followed by its summary)
+	for _, a := range arts {
+		byID[a.ID] = a
+		if a.IsChunk() {
+			chunks = append(chunks, a)
+		}
+	}
+	models, err := relational.ListModels(ctx, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registered := map[string]bool{}
+	for _, m := range models {
+		registered[m.ID] = true
+	}
+	for i, c := range chunks {
 		isChunk[c.ID] = true
 		r := res.Chunks[i]
 		if c.ParentID != res.ArtifactID || c.ChunkIndex != i || c.ID != r.ArtifactID || c.SessionID != "s1" || c.Kind != arts[0].Kind {
@@ -102,11 +120,26 @@ func testRememberChunksLongText(t *testing.T, d *sql.DB) {
 		if c.Text != text[c.StartOffset:c.EndOffset] || c.Tokens > cfg.Size || c.Tokens != r.Tokens {
 			t.Errorf("chunk %d: text/offsets/tokens do not match: %+v", i, c)
 		}
-		if i > 0 && c.StartOffset >= arts[i].EndOffset {
+		if i > 0 && c.StartOffset >= chunks[i-1].EndOffset {
 			t.Errorf("chunk %d does not overlap the previous one", i)
 		}
+
+		// The summary: a child artifact of the chunk with the model and the reasoning level that wrote it.
+		sum := r.Summary
+		if sum == nil {
+			t.Fatalf("chunk %d has no summary", i)
+		}
+		s := byID[sum.ArtifactID]
+		if s.Kind != graph.ArtifactChunkSummary || s.ParentID != c.ID || s.SessionID != "s1" || s.Text != sum.Text || s.Text == "" ||
+			s.ModelID != relational.ModelID(sum.Model) || s.Reasoning != "high" || sum.Reasoning != "high" {
+			t.Errorf("chunk %d: summary %+v, artifact %+v", i, sum, s)
+		}
+		if s.ModelID == "" || !registered[s.ModelID] {
+			t.Errorf("chunk %d: summary model %q is not registered", i, s.ModelID)
+		}
+		isSummary[s.ID] = true
 	}
-	if c, err := graph.DatasetCounts(ctx, d, dsID); err != nil || c.Chunks != n || c.Artifacts != n+1 {
+	if c, err := graph.DatasetCounts(ctx, d, dsID); err != nil || c.Chunks != n || c.Summaries != n || c.Artifacts != 2*n+1 {
 		t.Errorf("counts = %+v, %v", c, err)
 	}
 
@@ -156,13 +189,28 @@ func testRememberChunksLongText(t *testing.T, d *sql.DB) {
 			t.Errorf("chunk vector %s: %v", m.ID, m.Metadata)
 		}
 	}
+	// Every summary is embedded too, into the summary index.
+	if res.EmbeddedSummaries != n {
+		t.Errorf("embedded %d summaries, want %d", res.EmbeddedSummaries, n)
+	}
+	gotS, err := vs.Query(ctx, memory_core.SummaryDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 100})
+	if err != nil || len(gotS) != n {
+		t.Fatalf("summary vectors = %d, %v; want %d", len(gotS), err, n)
+	}
+	for _, m := range gotS {
+		id := int64(m.Metadata["artifact_id"].(float64))
+		if !isSummary[id] || m.ID != memory.SummaryVectorID(id) || m.Metadata["kind"] != memory.VectorKindSummary ||
+			!isChunk[int64(m.Metadata["chunk_id"].(float64))] || int64(m.Metadata["parent_id"].(float64)) != res.ArtifactID {
+			t.Errorf("summary vector %s: %v", m.ID, m.Metadata)
+		}
+	}
 	st, err := memory.VectorStats(ctx, d, vs, "u1", "docs")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, ix := range st.Indexes {
-		if ix.Index == memory_core.IndexChunks && (ix.Expected != n || ix.Count != n) {
-			t.Errorf("chunk index stats = %+v", ix)
+		if (ix.Index == memory_core.IndexChunks || ix.Index == memory_core.IndexSummaries) && (ix.Expected != n || ix.Count != n) {
+			t.Errorf("%s index stats = %+v", ix.Index, ix)
 		}
 	}
 
@@ -173,7 +221,7 @@ func testRememberChunksLongText(t *testing.T, d *sql.DB) {
 			count[c.FunctionName]++
 		}
 	}
-	if count["chunk_text"] != 1 || count["extract_graph"] != n || count["store_artifact"] != n || count["store_parent_artifact"] != 1 || count["embed"] != n {
+	if count["chunk_text"] != 1 || count["extract_graph"] != n || count["summarize_chunk"] != n || count["store_artifact"] != n || count["store_parent_artifact"] != 1 || count["embed"] != n {
 		t.Errorf("tool steps = %v", count)
 	}
 }
@@ -191,7 +239,7 @@ func testRememberShortTextIsNotChunked(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 	dsID, _ := relational.DatasetID(ctx, d, "u1", "docs")
-	if c, _ := graph.DatasetCounts(ctx, d, dsID); res.Chunks != nil || res.EmbeddedChunks != 0 || c.Artifacts != 1 || c.Chunks != 0 {
+	if c, _ := graph.DatasetCounts(ctx, d, dsID); res.Chunks != nil || res.EmbeddedChunks != 0 || c.Artifacts != 1 || c.Chunks != 0 || c.Summaries != 0 {
 		t.Errorf("chunks = %v, counts = %+v", res.Chunks, c)
 	}
 	if got, _ := vs.Query(ctx, memory_core.ChunkDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 10}); len(got) != 0 {
@@ -205,7 +253,7 @@ func TestRememberChunkExtractionFailureStoresNothing(t *testing.T) {
 
 func testRememberChunkExtractionFailureStoresNothing(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	llm := &personLLM{failOn: 2}
+	llm := &personLLM{failOn: 3}
 	_, err := memory_remember.Remember(ctx, d, llm, "u1", "docs", "", document(12), relational.Now(),
 		memory_core.WithChunking(chunk.Config{Size: 64, OverlapPercent: 20}))
 	if err == nil || !strings.Contains(err.Error(), "chunk 2 of") {

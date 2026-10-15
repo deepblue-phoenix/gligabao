@@ -26,6 +26,7 @@ const (
 	ArtifactWebSearch = model.ArtifactWebSearch
 
 	ArtifactSeriesObservation = model.ArtifactSeriesObservation
+	ArtifactChunkSummary      = model.ArtifactChunkSummary
 )
 
 // Types shared with the backends (see package model).
@@ -41,6 +42,7 @@ type (
 	EdgeSession                  = model.EdgeSession
 	Artifact                     = model.Artifact
 	NewChunkArtifact             = model.NewChunkArtifact
+	NewChunkSummaryArtifact      = model.NewChunkSummaryArtifact
 	NewWebSearchArtifact         = model.NewWebSearchArtifact
 	NewSeriesObservationArtifact = model.NewSeriesObservationArtifact
 	NewImage                     = model.NewImage

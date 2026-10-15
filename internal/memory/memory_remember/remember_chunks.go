@@ -21,6 +21,8 @@ type chunkPart struct {
 	ParentID int64       // the artifact that holds the whole text
 	Chunk    chunk.Chunk // the chunk, with its position in the text
 	Count    int         // the number of chunks of the text
+	// Summary is the summary of the chunk, stored as its child in the same transaction; nil if it has none.
+	Summary *chunkSummary
 }
 
 // label is appended to the messages of the trajectory steps of a chunk; "" for a text that is not a chunk (or nil).
@@ -34,11 +36,11 @@ func (p *chunkPart) label() string {
 // rememberDocument is Remember for a text of more than one chunk.
 //
 //  1. The text is split into chunks (chunk.Split).
-//  2. The graph is extracted from every chunk, one LLM call each. Nothing is written yet, so a failure here stores
-//     nothing.
+//  2. The graph is extracted from every chunk, one LLM call each, and every chunk is summarized, one more call each.
+//     Nothing is written yet, so a failure here stores nothing.
 //  3. The text is stored as the parent artifact (kind, session and reference time as given).
 //  4. Each chunk, in order, is then reconciled with the stored facts, stored as a child artifact with its entities
-//     and edges, and embedded (Store, with the chunk index): one transaction per chunk, so a chunk is also compared
+//     and edges, its summary stored as a child artifact of the chunk, and all embedded (Store, with the chunk index): one transaction per chunk, so a chunk is also compared
 //     with the facts the chunks before it stored.
 //
 // Entities and edges are linked to the chunk they came from, not to the parent. The Result is that of the document:
@@ -62,6 +64,7 @@ func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Confi
 	//--------------------------------------
 	// EXTRACT every chunk
 	exs := make([]*Extraction, len(chunks))
+	sums := make([]*chunkSummary, len(chunks))
 	for i, c := range chunks {
 		part := &chunkPart{Chunk: c, Count: len(chunks)}
 		ex, err := Extract(ctx, j.co.ModelLLM(j.llm, memory_core.StageExtractGraph), c.Text, j.ref)
@@ -72,6 +75,16 @@ func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Confi
 		j.tr.Tool("The LLM extracted these entities and edges (new facts) from the chunk, before any stored fact is considered."+part.label(),
 			"extract_graph", map[string]any{"chunk_index": i, "chunk_tokens": c.Tokens, "text_chars": len(c.Text)},
 			map[string]any{"entities": ex.Entities, "edges": candidateFacts(ex.Edges, nil)})
+
+		// SUMMARIZE the chunk
+		sum, err := summarizeChunk(ctx, j.co.ModelLLM(j.llm, memory_core.StageSummarizeChunk), c.Text, j.co.Reasoning.Level(memory_core.StageSummarizeChunk))
+		if err != nil {
+			return nil, fmt.Errorf("memory: summarize chunk %d of %d: %w", i+1, len(chunks), err)
+		}
+		sums[i] = sum
+		j.tr.Tool("The LLM summarized the chunk; the summary is stored as an artifact of its own, a child of the chunk, and embedded."+part.label(),
+			"summarize_chunk", map[string]any{"chunk_index": i, "chunk_tokens": c.Tokens, "text_chars": len(c.Text), "reasoning": sum.Reasoning},
+			map[string]any{"summary": sum.Text, "model": sum.Model, "reasoning": sum.Reasoning})
 	}
 
 	//--------------------------------------
@@ -94,7 +107,7 @@ func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Confi
 	}
 	m := newMerger(doc)
 	for i, c := range chunks {
-		part := &chunkPart{ParentID: parentID, Chunk: c, Count: len(chunks)}
+		part := &chunkPart{ParentID: parentID, Chunk: c, Count: len(chunks), Summary: sums[i]}
 		res, err := j.resolveAndStore(ctx, c.Text, exs[i], part)
 		if err != nil {
 			return nil, fmt.Errorf("memory: chunk %d of %d (parent artifact %d; the %d chunks before it are stored): %w", i+1, len(chunks), parentID, i, err)
@@ -184,8 +197,9 @@ func (m *merger) add(r *Result, c chunk.Chunk, extractedEntities, extractedEdges
 	d.EmbeddedEntities += r.EmbeddedEntities
 	d.EmbeddedEdges += r.EmbeddedEdges
 	d.EmbeddedChunks += r.EmbeddedChunks
+	d.EmbeddedSummaries += r.EmbeddedSummaries
 	d.Chunks = append(d.Chunks, ChunkResult{
 		ArtifactID: r.ArtifactID, Index: c.Index, Tokens: c.Tokens, OverlapTokens: c.OverlapTokens,
-		StartOffset: c.Start, EndOffset: c.End, Entities: extractedEntities, Edges: extractedEdges,
+		StartOffset: c.Start, EndOffset: c.End, Entities: extractedEntities, Edges: extractedEdges, Summary: r.summary,
 	})
 }

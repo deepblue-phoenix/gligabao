@@ -20,9 +20,10 @@ func WithVectors(store vector.Store, emb memory_core.Embedder) memory_core.Optio
 
 // Values of the metadata key "kind" of the vectors written here (one per index).
 const (
-	VectorKindEntity = "entity"
-	VectorKindEdge   = "edge"
-	VectorKindChunk  = "chunk"
+	VectorKindEntity  = "entity"
+	VectorKindEdge    = "edge"
+	VectorKindChunk   = "chunk"
+	VectorKindSummary = "summary"
 )
 
 // EntityVectorID is the vector ID of an entity in the entity index of its dataset.
@@ -36,6 +37,12 @@ func EdgeVectorID(edgeID int64) string { return VectorKindEdge + "-" + strconv.F
 // ChunkVectorID is the vector ID of a chunk in the chunk index of its dataset: the ID of the chunk's artifact.
 func ChunkVectorID(artifactID int64) string {
 	return VectorKindChunk + "-" + strconv.FormatInt(artifactID, 10)
+}
+
+// SummaryVectorID is the vector ID of a chunk summary in the summary index of its dataset: the ID of the summary's
+// artifact.
+func SummaryVectorID(artifactID int64) string {
+	return VectorKindSummary + "-" + strconv.FormatInt(artifactID, 10)
 }
 
 //---------------------------------------------------------------------------------------------
@@ -96,6 +103,8 @@ func VectorStats(ctx context.Context, d *sql.DB, vectors vector.Store, userID, n
 			expected = counts.Edges
 		case memory_core.IndexChunks:
 			expected = counts.Chunks
+		case memory_core.IndexSummaries:
+			expected = counts.Summaries
 		}
 		out.Backend = st.Backend
 		out.Indexes = append(out.Indexes, IndexStats{Index: idx, VectorDataset: ds, Expected: expected, Stats: st})

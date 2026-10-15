@@ -146,3 +146,38 @@ func TestWebSearch(t *testing.T) {
 		t.Error("an empty prompt must fail")
 	}
 }
+
+func TestCompleteReasoning(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = nil
+		json.NewDecoder(r.Body).Decode(&got)
+		w.Write([]byte(`{"model":"m","stop_reason":"end_turn","content":[{"type":"thinking","thinking":"hmm"},{"type":"text","text":"hi"}],"usage":{"input_tokens":1,"output_tokens":2}}`))
+	}))
+	defer srv.Close()
+	c, _ := New("k", WithBaseURL(srv.URL))
+	req := Request{Messages: []Message{{Role: RoleUser, Content: "yo"}}, MaxTokens: 500, Reasoning: ReasoningMedium}
+	r, err := c.Complete(context.Background(), req)
+	if err != nil || r.Text != "hi" {
+		t.Fatalf("got %+v, %v", r, err)
+	}
+	th, _ := got["thinking"].(map[string]any)
+	if th["type"] != "enabled" || th["budget_tokens"] != float64(4096) || got["max_tokens"] != float64(500+4096) {
+		t.Errorf("request = %v", got)
+	}
+	for _, level := range []string{"", ReasoningNone} {
+		req.Reasoning = level
+		if _, err := c.Complete(context.Background(), req); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := got["thinking"]; ok || got["max_tokens"] != float64(500) {
+			t.Errorf("level %q: request = %v", level, got)
+		}
+	}
+	if l, ok := NormalizeReasoning(" High "); !ok || l != ReasoningHigh {
+		t.Errorf("normalize = %q, %v", l, ok)
+	}
+	if _, ok := NormalizeReasoning("max"); ok {
+		t.Error("an unknown level was accepted")
+	}
+}

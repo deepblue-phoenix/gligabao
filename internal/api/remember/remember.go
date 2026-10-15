@@ -50,6 +50,10 @@ type rememberRequest struct {
 	// Models (optional) picks the LLM model of each stage of the pipeline ("extract_graph", "resolve_edges", "web_search", "extract_image"); a stage left
 	// out uses the default model. See memory_core.Models.
 	Models map[string]string `json:"models"`
+	// Reasoning (optional) picks the reasoning level ("none", "low", "medium" or "high") of the stages that take one: only
+	// "summarize_chunk" (the summary of each chunk of a long text). A stage left out does not reason. See
+	// memory_core.Reasoning.
+	Reasoning map[string]string `json:"reasoning"`
 	// WebSearch (optional, default false) searches the web for the latest world events about the key entities of the
 	// text and remembers what it finds, as artifacts of kind "web_search" (see docs/web-search.md). Only available when
 	// the server has an Anthropic API key (else 503); not for an image (400).
@@ -157,6 +161,11 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option)
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		reasoning, err := memory_core.ResolveReasoning(req.Reasoning)
+		if err != nil {
+			httputil.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		if req.WebSearch && memory_core.NewCallOptions(opts).WebSearcher == nil {
 			httputil.Error(w, http.StatusServiceUnavailable, memory_core.ErrWebSearchUnavailable.Error())
 			return
@@ -172,7 +181,7 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option)
 		}
 		start := time.Now()
 		res, err := memory_remember.Remember(r.Context(), d, llm, req.UserID, req.Dataset, req.Kind, req.Text, ref,
-			append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models), memory_core.WithWebSearch(req.WebSearch), memory_core.WithSeries(series), memory_core.WithSeriesFetch(fetch), memory_core.WithSeriesObservations(observe))...)
+			append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models), memory_core.WithReasoning(reasoning), memory_core.WithWebSearch(req.WebSearch), memory_core.WithSeries(series), memory_core.WithSeriesFetch(fetch), memory_core.WithSeriesObservations(observe))...)
 		if errors.Is(err, memory_timeseries.ErrAnchor) { // nothing was stored
 			httputil.Error(w, http.StatusUnprocessableEntity, err.Error())
 			return
@@ -269,6 +278,10 @@ func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory
 	}
 	if req.Timeseries != nil {
 		httputil.Error(w, http.StatusBadRequest, "timeseries does not apply to an image")
+		return
+	}
+	if len(req.Reasoning) > 0 {
+		httputil.Error(w, http.StatusBadRequest, "reasoning does not apply to an image")
 		return
 	}
 	data, err := base64.StdEncoding.DecodeString(strings.TrimSpace(req.Image))

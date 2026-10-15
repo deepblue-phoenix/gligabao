@@ -29,6 +29,7 @@ class Client:
         kind: str | None = None,
         image: bytes | str | os.PathLike[str] | None = None,
         models: dict[str, str] | None = None,
+        reasoning: dict[str, str] | None = None,
         web_search: bool = False,
         timeseries: list[dict[str, Any]] | None = None,
         fetch_timeseries: dict[str, Any] | bool | None = None,
@@ -54,9 +55,14 @@ class Client:
 
         `models` picks the LLM model of each stage of the pipeline, e.g.
         {"extract_graph": "claude-sonnet-4-5", "resolve_edges": "claude-haiku-5-5"}. The stages are
-        "extract_graph" (text), "resolve_edges" (text) and "extract_image" (image); a stage left out uses the
+        "extract_graph" (text), "summarize_chunk" (the chunks of a long text), "resolve_edges" (text) and "extract_image" (image); a stage left out uses the
         server's default model. The model of "extract_graph" is the one recorded on the entities
         and edges the text yields. "web_search" is a further stage: the model that runs the web search.
+
+        `reasoning` picks the reasoning level ("none", "low", "medium" or "high") of the stages that take one:
+        only "summarize_chunk", the summary of each chunk of a long text, e.g. {"summarize_chunk": "low"}. A
+        stage left out does not reason. The model and the level that wrote each summary are in the response
+        (chunks[].summary) and stored on the summary artifact. Not for images.
 
         `web_search=True` (text only) also searches the web for the latest world events about the key
         entities of the text, and remembers what it finds as artifacts of kind "web_search" (the response
@@ -91,6 +97,8 @@ class Client:
                 raise ValueError("web_search does not apply to images")
             if timeseries or fetch_timeseries or observe_timeseries:
                 raise ValueError("timeseries does not apply to images")
+            if reasoning:
+                raise ValueError("reasoning does not apply to images")
             if not isinstance(image, (bytes, bytearray, memoryview)):
                 with open(image, "rb") as f:
                     image = f.read()
@@ -103,6 +111,8 @@ class Client:
             body["kind"] = kind
         if models:
             body["models"] = models
+        if reasoning:
+            body["reasoning"] = reasoning
         if web_search:
             body["web_search"] = True
         if timeseries or fetch_timeseries:

@@ -1,6 +1,6 @@
 # Chunking
 
-A text that is larger than one chunk is a document: `POST /v1/gb/remember` does not extract it in one piece, it cuts it into overlapping chunks and processes each chunk on its own. This page describes how the text is cut, what is stored, and how it is embedded. The request and response are in [remember.md](remember.md).
+A text that is larger than one chunk is a document: `POST /v1/gb/remember` does not extract it in one piece, it cuts it into overlapping chunks and processes each chunk on its own. This page describes how the text is cut, what is stored, and how it is embedded. The request and response are in [remember.md](remember.md). Each chunk is also [summarized](#chunk-summaries), and the summary is stored and embedded as an artifact of its own.
 
 Code: `internal/chunk` (the chunker), `internal/memory/memory_remember/remember_chunks.go` (the pipeline).
 
@@ -38,18 +38,38 @@ A chunk is an [artifact](artifacts.md) of its own, and **artifacts can be the ch
 - Each chunk is a **child** of it: a row of `gb_artifacts` with `parent_id` set to the parent, the same `kind`, `session_id`, `valid_at` and `created_at`, `text` = the chunk's text, and `chunk_index` (from 0), `start_offset` / `end_offset` (the byte range in the parent's text, overlap included) and `tokens`.
 - Deleting the parent deletes its chunks (`ON DELETE CASCADE`).
 
+A chunk has one child of its own: its [summary](#chunk-summaries), an artifact of kind `chunk_summary`.
+
 Provenance goes through the chunks: the entities and edges of a document are linked (`gb_entity_artifacts`, `gb_edge_artifacts`, `gb_edges.artifact_id`, and the session tables) to the **chunk** they were extracted from, not to the parent. A fact stated in two overlapping chunks is one edge linked to both. The parent is reached through `parent_id`.
 
 ## Each chunk is extracted individually
 
 1. **Split** the text into chunks.
 2. **Extract** the graph (entities and edges) from each chunk with its own LLM call, the same [extraction](remember.md#how-it-works) as for a short text, with the document's `reference_time`. Nothing is written yet, so a failure here (an LLM error, truncated output) stores nothing.
-3. **Store the parent** artifact.
-4. **Per chunk, in order:** load the [candidate facts](remember.md#candidate-facts-load_candidates), resolve duplicates and contradictions, then store the chunk artifact with its entities and edges and embed everything, in one transaction per chunk. Because the chunks go in one after the other, a chunk is compared against the facts that the chunks before it stored, so the same fact stated in several chunks (or by the overlap) is one edge, and a later chunk can close an earlier fact (see [temporal.md](temporal.md)).
+3. **Summarize** each chunk with its own LLM call (see [Chunk summaries](#chunk-summaries)). Nothing is written yet either.
+4. **Store the parent** artifact.
+5. **Per chunk, in order:** load the [candidate facts](remember.md#candidate-facts-load_candidates), resolve duplicates and contradictions, then store the chunk artifact with its entities and edges and its summary artifact, and embed everything, in one transaction per chunk. Because the chunks go in one after the other, a chunk is compared against the facts that the chunks before it stored, so the same fact stated in several chunks (or by the overlap) is one edge, and a later chunk can close an earlier fact (see [temporal.md](temporal.md)).
 
-The cost of a document is therefore at least one LLM call per chunk (plus a resolution call where the candidates need comparing) and one embeddings request per chunk.
+The cost of a document is therefore at least two LLM calls per chunk (the extraction and the summary, plus a resolution call where the candidates need comparing) and one embeddings request per chunk.
 
-Failure after step 3: the transaction of a chunk cannot span the whole document (a chunk's candidates are read from the database, which must contain the previous chunks), so if chunk *k* fails the request returns `502` and the parent plus the *k − 1* chunks stored so far remain, each of them complete (artifact, entities, edges, links, vectors). The error says which chunk failed. Sending the text again stores a new parent and re-extracts every chunk; the entities and edges are deduplicated as always.
+Failure after step 4: the transaction of a chunk cannot span the whole document (a chunk's candidates are read from the database, which must contain the previous chunks), so if chunk *k* fails the request returns `502` and the parent plus the *k − 1* chunks stored so far remain, each of them complete (artifact, summary, entities, edges, links, vectors). The error says which chunk failed. Sending the text again stores a new parent and re-extracts every chunk; the entities and edges are deduplicated as always.
+
+## Chunk summaries
+
+Every chunk is summarized by an LLM call of its own (the `summarize_chunk` stage, `summarizeChunk` in `internal/memory/memory_remember/remember_summaries.go`). The model is asked for a faithful two-to-four sentence summary of the chunk, in plain prose, that names the people, organizations, places and dates that matter, keeps figures exact and adds nothing from outside the chunk (at most 512 output tokens). It sees the chunk only, not the rest of the document. The calls are made with the extractions, before anything is written, so a failure (an LLM error, an empty or truncated summary) stores nothing; and they are recorded in `gb_llm_calls` like the other calls.
+
+**A summary is an artifact of its own.** It is a row of `gb_artifacts`, stored in the same transaction as the chunk:
+
+- `kind` = `chunk_summary` (only the pipeline creates it; a caller cannot ask for it);
+- `parent_id` = the **chunk** artifact it summarizes (not the document: the chain is document, chunk, summary); `text` = the summary; the `session_id`, `valid_at` and `created_at` of the chunk;
+- `model_id` = the model that wrote it, as the API reports it (a reference to `gb_models`; a new model is registered), and `reasoning` = the reasoning level it ran with: `none`, `low`, `medium` or `high` (see [remember.md](remember.md#reasoning)). Both are `NULL` for any other artifact;
+- no `chunk_index`, `query` or `series_id`. It is derived, not a chunk (`Artifact.IsDerived()`, not `IsChunk()`), and, like a web search, it is not counted by `Counts.Chunks` (`Counts.Summaries` counts it);
+- no entity or edge links to it: the graph is extracted from the chunk, not from its summary;
+- deleting the chunk (or the document) deletes the summary.
+
+**Model and reasoning.** The stage has its own model (`models.summarize_chunk`, default model if not given) and an optional reasoning level (`reasoning.summarize_chunk`, off by default); both are per request, see [remember.md](remember.md#choosing-the-model-of-each-stage). What was used is what is recorded: the model the API answered with and the level the request asked for, so every summary says how it was written, even in a dataset whose chunks were summarized by different settings.
+
+**It is embedded.** The summary's text goes to a vector index of its own (below), so a summary can be searched apart from the chunk it condenses.
 
 ## Chunks are embedded
 
@@ -59,7 +79,13 @@ Every chunk's text is embedded as a whole and written to a **dedicated vector co
 | ----- | -------------- | --------- | -------- | ------------- |
 | chunks | `dataset-<id>-chunks` (`memory_core.ChunkDataset`) | `chunk-<chunk artifact id>` | `kind` = `chunk`, `artifact_id`, `parent_id`, `index` | the chunk's text |
 
-The chunk's embedding goes in the same embeddings request as the entities and edges that the chunk yields, so a chunk costs one request. It uses the same model and dimensions as the other indexes, so all vectors share one space. Like the others it needs an OpenAI key (without one chunks are still made, extracted and stored, but not embedded), is computed before the chunk's transaction commits and written right after it, and is removed with the dataset. `VectorStats` (the admin UI's **View vec db**) lists the chunk index with the number of chunk artifacts it should hold. The vectors do not affect `recall` yet.
+The chunk's **summary** is embedded into a further index, in the same request:
+
+| Index | Vector dataset | Vector ID | Metadata | Embedded text |
+| ----- | -------------- | --------- | -------- | ------------- |
+| summaries | `dataset-<id>-summaries` (`memory_core.SummaryDataset`) | `summary-<summary artifact id>` | `kind` = `summary`, `artifact_id` (the summary's), `chunk_id` (the chunk's), `parent_id` (the document's), `index` (the chunk's) | the summary's text |
+
+The chunk's embedding and its summary's go in the same embeddings request as the entities and edges that the chunk yields, so a chunk still costs one request. It uses the same model and dimensions as the other indexes, so all vectors share one space. Like the others it needs an OpenAI key (without one chunks are still made, extracted and stored, but not embedded), is computed before the chunk's transaction commits and written right after it, and is removed with the dataset. `VectorStats` (the admin UI's **View vec db**) lists the chunk and summary indexes with the number of chunk and summary artifacts each should hold. The vectors do not affect `recall` yet.
 
 ## Response
 
@@ -67,9 +93,10 @@ For a chunked text the response is that of the document (see [remember.md](remem
 
 - `artifact_id` is the parent's; `entities`, `edges` and `invalidated_edges` are those of all the chunks together (an entity once per name and type, an edge once);
 - `chunks` lists the chunks: `artifact_id`, `index`, `tokens`, `overlap_tokens`, `start_offset`, `end_offset`, and how many `entities` and `edges` its extraction listed (before merging with the other chunks);
-- `embedded_entities`, `embedded_edges` and `embedded_chunks` are the sums over the chunks.
+- each chunk also has its `summary`: `artifact_id` (the summary artifact), `text`, `model` and `reasoning`;
+- `embedded_entities`, `embedded_edges`, `embedded_chunks` and `embedded_summaries` are the sums over the chunks.
 
-`chunks` is absent for a text that was not chunked. With the eval endpoints the trajectory has a `chunk_text` step, then an `extract_graph` step per chunk, a `store_parent_artifact` step, and for each chunk its candidate steps, an `embed` and a `store_artifact` step (their messages end with `(chunk i of n)`).
+`chunks` is absent for a text that was not chunked. With the eval endpoints the trajectory has a `chunk_text` step, then an `extract_graph` step and a `summarize_chunk` step (with the summary, its model and reasoning level) per chunk, a `store_parent_artifact` step, and for each chunk its candidate steps, an `embed` and a `store_artifact` step (their messages end with `(chunk i of n)`).
 
 ## Limitations
 
@@ -77,4 +104,5 @@ For a chunked text the response is that of the document (see [remember.md](remem
 - The chunks are extracted one after another (an LLM call each), so a very long text takes long: the request time grows with the number of chunks, and the HTTP server has no streaming or job queue for it. `remember` accepts at most 1 MiB of text.
 - The extractor sees one chunk at a time: a fact that needs two distant paragraphs, or a pronoun whose antecedent is in an earlier chunk beyond the overlap, is not resolved.
 - The token count is an estimate (above); a custom `Tokenizer` is only available from Go.
-- `recall` does not read chunks or their vectors yet.
+- A summary sees one chunk, so it cannot use context from elsewhere in the document; a failed summary fails the request. Chunk summaries are not extracted into the graph.
+- `recall` does not read chunks, summaries or their vectors yet.

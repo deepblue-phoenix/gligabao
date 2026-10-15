@@ -24,6 +24,11 @@ Rules:
 - "invalid_at" is the datetime at which the fact stopped being true, only if the text says it ended ("Alice left Acme in June 2024" -> edge Alice works_at Acme with invalid_at 2024-06-01T00:00:00Z). Otherwise null.
 - Only include facts stated or clearly implied by the text. If there is nothing to extract, return {"entities": [], "edges": []}.`
 
+// Summary of a chunk of a long text (Summarize).
+const summarySystemPrompt = `You summarize a passage taken from a longer document.
+
+Write a faithful summary of the passage inside <text>, in two to four sentences of plain prose (no lists, no markdown, no preamble such as "This passage"). Name the people, organizations, places and dates that matter, say what happens or is claimed, and keep every figure exact. Use only what the passage says: add nothing from outside it, and do not comment on it. The passage may begin and end mid-sentence, because it was cut out of the document: summarize what is there. Reply with the summary only.`
+
 // Duplicate / contradiction detection between new and existing facts (resolveEdges).
 const resolveSystemPrompt = `You compare NEW facts with EXISTING facts in a temporal knowledge base.
 

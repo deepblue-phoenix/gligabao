@@ -50,7 +50,7 @@ A `remember` entry has either `text` or `text_file`, a path relative to the suit
 
 ## Models
 
-The model of each LLM stage of `remember` can be varied, to compare models stage by stage. The stages are `extract_graph` (entities and edges), `resolve_edges` (duplicates and contradictions), `web_search` (the model that runs the web search of an entry with `web_search`) and `extract_image`; a stage with no model uses the default model, so you only name the ones you want to change. Two places, combined stage by stage:
+The model of each LLM stage of `remember` can be varied, to compare models stage by stage. The stages are `extract_graph` (entities and edges), `summarize_chunk` (the summary of each chunk of a long text), `resolve_edges` (duplicates and contradictions), `web_search` (the model that runs the web search of an entry with `web_search`) and `extract_image`; a stage with no model uses the default model, so you only name the ones you want to change. Two places, combined stage by stage:
 
 - `-models extract_graph=claude-sonnet-4-5,resolve_edges=claude-haiku-5-5` on the command line sets the models for every case of the run (recorded in the experiment run's `params`);
 - `"models": {"extract_graph": "claude-sonnet-4-5"}` in a case sets them for that case, and wins over `-models` for the stages it names.

@@ -124,6 +124,7 @@ type pendingVectors struct {
 	entities  int
 	edges     int
 	chunks    int
+	summaries int
 }
 
 // chunkVector is the chunk whose text prepareVectors embeds next to the entities and edges of a Store call.
@@ -133,15 +134,23 @@ type chunkVector struct {
 	text                 string
 }
 
+// summaryVector is the summary of a chunk whose text prepareVectors embeds next to the chunk's.
+type summaryVector struct {
+	artifactID, chunkID, parentID int64
+	index                         int
+	text                          string
+}
+
 // prepareVectors embeds the entities (IDs, in order, without duplicates; read as stored through tx), the edges and,
-// if the stored artifact is a chunk, the chunk's text (chunk, else nil) of dataset dsID in one request. It returns nil
+// if the stored artifact is a chunk, the chunk's text (chunk, else nil) and its summary (summary, else nil) of dataset dsID in
+// one request. It returns nil
 // if opts ask for no vectors or there is nothing to embed.
 //
 // The usage of the embedding request is returned (non-nil whenever the request was made, even if the call fails
 // afterwards) for the caller to record with recordEmbedUsage once tx is finished: recording it here, through d,
 // would block on the write lock tx holds (SQLITE_BUSY).
-func prepareVectors(ctx context.Context, tx graph.Tx, o memory_core.CallOptions, dsID int64, entityIDs []int64, edges []Edge, chunk *chunkVector) (*pendingVectors, *ai.EmbedUsage, error) {
-	if o.Vectors == nil || o.Embedder == nil || (len(entityIDs)+len(edges) == 0 && chunk == nil) {
+func prepareVectors(ctx context.Context, tx graph.Tx, o memory_core.CallOptions, dsID int64, entityIDs []int64, edges []Edge, chunk *chunkVector, summary *summaryVector) (*pendingVectors, *ai.EmbedUsage, error) {
+	if o.Vectors == nil || o.Embedder == nil || (len(entityIDs)+len(edges) == 0 && chunk == nil && summary == nil) {
 		return nil, nil, nil
 	}
 	ents := make([]*graph.EvidenceEntity, 0, len(entityIDs))
@@ -160,12 +169,15 @@ func prepareVectors(ctx context.Context, tx graph.Tx, o memory_core.CallOptions,
 	if chunk != nil {
 		texts = append(texts, chunk.text)
 	}
+	if summary != nil {
+		texts = append(texts, summary.text)
+	}
 
 	embs, usage, err := o.Embedder.EmbedBatchUsage(ctx, texts)
 	if err != nil {
 		return nil, nil, fmt.Errorf("memory: embed entities and edges: %w", err)
 	}
-	traceEmbed(o.Trace, texts, len(entityIDs), len(edges), chunk != nil, usage)
+	traceEmbed(o.Trace, texts, len(entityIDs), len(edges), chunk != nil, summary != nil, usage)
 	if len(embs) != len(texts) {
 		return nil, usage, fmt.Errorf("memory: embedder returned %d embeddings for %d texts", len(embs), len(texts))
 	}
@@ -210,6 +222,25 @@ func prepareVectors(ctx context.Context, tx graph.Tx, o memory_core.CallOptions,
 				"artifact_id": chunk.artifactID,
 				"parent_id":   chunk.parentID,
 				"index":       chunk.index,
+			},
+		})
+	}
+	if summary != nil {
+		i := len(ents) + len(edges)
+		if chunk != nil {
+			i++
+		}
+		ns := memory_core.SummaryDataset(dsID)
+		p.summaries = 1
+		p.byDataset[ns] = append(p.byDataset[ns], vector.Vector{
+			ID:     memory.SummaryVectorID(summary.artifactID),
+			Values: embs[i],
+			Metadata: map[string]any{
+				"kind":        memory.VectorKindSummary,
+				"artifact_id": summary.artifactID,
+				"chunk_id":    summary.chunkID,
+				"parent_id":   summary.parentID,
+				"index":       summary.index,
 			},
 		})
 	}

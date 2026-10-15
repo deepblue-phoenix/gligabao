@@ -17,7 +17,7 @@ Every artifact has a `kind`, set by the optional `kind` field of the remember re
 
 `kind` is trimmed and case-insensitive; an empty one means `knowledge`; any other value returns `400` and stores nothing.
 
-Two more kinds exist but cannot be asked for: `web_search`, the result of a [web search](web-search.md) that `remember` made (with `web_search`) for an entity of another artifact, and `series_observation`, a text derived from a [timeseries](timeseries.md#observations) (with `timeseries.observations`). Both have a `query` and a parent (below).
+Three more kinds exist but cannot be asked for: `web_search`, the result of a [web search](web-search.md) that `remember` made (with `web_search`) for an entity of another artifact, `series_observation`, a text derived from a [timeseries](timeseries.md#observations) (with `timeseries.observations`), and `chunk_summary`, the LLM-written [summary of a chunk](chunking.md#chunk-summaries). The first two have a `query` and a parent (below); a summary has a parent and records its model and reasoning level.
 
 The kind is stored and returned, but it does not change how the text is extracted or reconciled yet. Both kinds get the same bi-temporal treatment (see [temporal.md](temporal.md)). It exists so that behaviour can differ per kind later (for example, a `knowledge` artifact need not supersede older facts).
 
@@ -29,22 +29,27 @@ Table `gb_artifacts`:
 | ------ | ------- |
 | `id` | The `artifact_id` returned by `remember` |
 | `dataset_id` | The [dataset](datasets.md) it belongs to. Artifacts are never shared between datasets. |
-| `kind` | `knowledge` or `episode` (`web_search` and `series_observation` are created only by the pipeline) |
+| `kind` | `knowledge` or `episode` (`web_search`, `series_observation` and `chunk_summary` are created only by the pipeline) |
 | `text` | The raw input, unchanged |
 | `session_id` | The [session](sessions.md) that remembered it: the request's `session_id`, NULL if it had none |
 | `valid_at` | Event time: when the text was written or observed. This is the request's `reference_time` (default: now). Relative dates in the text are resolved against it, and facts without a date of their own inherit it. |
 | `created_at` | System time: when it was ingested |
 
-| `parent_id` | The artifact this one hangs off; NULL for an artifact that is nobody's child. Either the artifact it is a chunk of (see [Chunks](#chunks)), or, for a `web_search` artifact, the artifact the searched entity came from (see [Web searches](#web-searches)), or, for a `series_observation`, the artifact that anchors the series (see [Series observations](#series-observations)) |
+| `parent_id` | The artifact this one hangs off; NULL for an artifact that is nobody's child. Either the artifact it is a chunk of (see [Chunks](#chunks)), or, for a `web_search` artifact, the artifact the searched entity came from (see [Web searches](#web-searches)), or, for a `series_observation`, the artifact that anchors the series (see [Series observations](#series-observations)), or, for a `chunk_summary`, the chunk it summarizes (see [Chunk summaries](#chunk-summaries)) |
 | `chunk_index`, `start_offset`, `end_offset`, `tokens` | Only for a chunk: its position among its siblings (from 0), the byte range of its text in the parent's text, and its size in tokens |
 | `query` | Only for a `web_search` artifact: the web search query that was issued for it; for a `series_observation`, the series and window it is of |
 | `series_id` | Only for a `series_observation` artifact: the series it describes (`gb_series.id`; NULL if the series was deleted) |
+| `model_id`, `reasoning` | Only for a `chunk_summary` artifact: the model that wrote the summary (`gb_models.id`) and the reasoning level it ran with (`none`, `low`, `medium` or `high`) |
 
 Every `remember` call adds one artifact (plus, for a long text, its chunks), so sending the same text twice stores two artifacts. They add no duplicate entities or edges, but both are recorded as sources (below).
 
 ## Chunks
 
 Artifacts can be the children of other artifacts. A text larger than one chunk (1024 tokens by default) is stored as an artifact holding the whole text, the **parent**, and is split into overlapping chunks that are artifacts too, its **children** (`parent_id` set; same `kind`, `session_id` and times; `text` is the chunk). Each chunk is extracted, stored and embedded individually, and the entities and edges link to the chunk they came from. A text that fits one chunk has no children. See [chunking.md](chunking.md).
+
+## Chunk summaries
+
+Each chunk of a chunked text is also summarized by an LLM, and the summary is stored as an artifact of its own, of kind `chunk_summary`: its **parent** (`parent_id`) is the chunk, so the chain is document, chunk, summary. It records the **model** (`model_id`) and the **reasoning level** (`reasoning`) that wrote it, is embedded into the dataset's summary vector index, and, like a web search, is derived and not a chunk (no `chunk_index`). No entity or edge links to it. Everything is in [chunking.md](chunking.md#chunk-summaries).
 
 ## Web searches
 

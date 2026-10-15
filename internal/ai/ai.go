@@ -79,6 +79,47 @@ type Request struct {
 	Messages  []Message
 	Model     string
 	MaxTokens int
+	// Reasoning is the reasoning (extended thinking) level: ReasoningNone (or ""), ReasoningLow, ReasoningMedium or
+	// ReasoningHigh. See ReasoningBudget. MaxTokens is the size of the answer: the thinking budget is added to it.
+	Reasoning string
+}
+
+// The reasoning levels of a Request.
+const (
+	ReasoningNone   = "none"
+	ReasoningLow    = "low"
+	ReasoningMedium = "medium"
+	ReasoningHigh   = "high"
+)
+
+// ReasoningLevels lists the valid reasoning levels, from none to the most.
+var ReasoningLevels = []string{ReasoningNone, ReasoningLow, ReasoningMedium, ReasoningHigh}
+
+// NormalizeReasoning trims and lowercases a reasoning level; "" means ReasoningNone. ok is false for an unknown one.
+func NormalizeReasoning(level string) (string, bool) {
+	level = strings.ToLower(strings.TrimSpace(level))
+	if level == "" {
+		return ReasoningNone, true
+	}
+	for _, l := range ReasoningLevels {
+		if l == level {
+			return level, true
+		}
+	}
+	return "", false
+}
+
+// ReasoningBudget is the extended thinking budget (in tokens) of a reasoning level: 0 for none or an unknown level.
+func ReasoningBudget(level string) int {
+	switch level {
+	case ReasoningLow:
+		return 1024
+	case ReasoningMedium:
+		return 4096
+	case ReasoningHigh:
+		return 16384
+	}
+	return 0
 }
 
 // Response is the result of an LLM call.
@@ -159,12 +200,18 @@ func (c *Client) Complete(ctx context.Context, req Request) (*Response, error) {
 		maxTokens = c.maxTokens
 	}
 
-	body, err := json.Marshal(apiRequest{
+	ar0 := apiRequest{
 		Model:     model,
 		MaxTokens: maxTokens,
 		System:    req.System,
 		Messages:  req.Messages,
-	})
+	}
+	if b := ReasoningBudget(req.Reasoning); b > 0 {
+		// The budget is spent out of max_tokens, which must stay above it: it is added so the answer keeps its size.
+		ar0.MaxTokens = maxTokens + b
+		ar0.Thinking = &thinking{Type: "enabled", BudgetTokens: b}
+	}
+	body, err := json.Marshal(ar0)
 	if err != nil {
 		return nil, fmt.Errorf("ai: marshal request: %w", err)
 	}
@@ -250,6 +297,12 @@ type apiRequest struct {
 	MaxTokens int       `json:"max_tokens"`
 	System    string    `json:"system,omitempty"`
 	Messages  []Message `json:"messages"`
+	Thinking  *thinking `json:"thinking,omitempty"`
+}
+
+type thinking struct {
+	Type         string `json:"type"`
+	BudgetTokens int    `json:"budget_tokens"`
 }
 
 type contentBlock struct {

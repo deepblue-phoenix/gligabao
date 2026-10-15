@@ -15,6 +15,9 @@ const (
 	// StageExtractGraph is the extraction of the entities and edges from a text (or from each chunk of a long one). Its model
 	// is the one recorded on the entities and edges it yields (their model_id).
 	StageExtractGraph = "extract_graph"
+	// StageSummarizeChunk is the summary of each chunk of a long text (see docs/chunking.md). It is the only stage that
+	// also takes a reasoning level (WithReasoning); the model and the level are recorded on the summary artifact.
+	StageSummarizeChunk = "summarize_chunk"
 	// StageResolveEdges is the comparison of the new edges with the stored ones (duplicates, contradictions).
 	StageResolveEdges = "resolve_edges"
 	// StageExtractImage is the reading of an image (the image pipeline).
@@ -29,7 +32,7 @@ const (
 )
 
 // Stages lists the stages that take a model, in pipeline order.
-var Stages = []string{StageExtractGraph, StageResolveEdges, StageWebSearch, StageResolveSeries, StageExtractImage}
+var Stages = []string{StageExtractGraph, StageSummarizeChunk, StageResolveEdges, StageWebSearch, StageResolveSeries, StageExtractImage}
 
 // MaxModelLen is the maximum length of a model name in bytes.
 const MaxModelLen = 128
@@ -127,24 +130,79 @@ func ParseModels(s string) (Models, error) {
 // not in m, or whose model is empty, uses the default model. Validate m with ResolveModels first.
 func WithModels(m Models) Option { return func(o *CallOptions) { o.Models = m } }
 
-// ModelLLM returns llm with the model of the given stage set on every request that names none. With no model for the
-// stage it returns llm itself, so the client's default model is used.
+// ModelLLM returns llm with the model (and, for the stages that take one, the reasoning level) of the given stage set on
+// every request that names none. With neither it returns llm itself, so the client's default model is used.
 func (o CallOptions) ModelLLM(llm LLM, stage string) LLM {
-	model := o.Models[stage]
-	if model == "" {
+	model, reasoning := o.Models[stage], o.Reasoning[stage]
+	if model == "" && reasoning == "" {
 		return llm
 	}
-	return &modelLLM{LLM: llm, model: model}
+	return &modelLLM{LLM: llm, model: model, reasoning: reasoning}
 }
 
 type modelLLM struct {
 	LLM
-	model string
+	model, reasoning string
 }
 
 func (m *modelLLM) Complete(ctx context.Context, req ai.Request) (*ai.Response, error) {
 	if req.Model == "" {
 		req.Model = m.model
 	}
+	if req.Reasoning == "" {
+		req.Reasoning = m.reasoning
+	}
 	return m.LLM.Complete(ctx, req)
+}
+
+//---------------------------------------------------------------------------------------------
+
+// ReasoningStages lists the stages that take a reasoning level.
+var ReasoningStages = []string{StageSummarizeChunk}
+
+// ErrInvalidReasoning means a stage that takes no reasoning level is named, or a level is unknown.
+var ErrInvalidReasoning = errors.New("invalid reasoning")
+
+// Reasoning maps a stage (see ReasoningStages) to its reasoning level (ai.ReasoningLow, ...). A stage that is missing
+// runs without reasoning.
+type Reasoning map[string]string
+
+// ResolveReasoning validates m and returns a normalized copy: levels are trimmed and lowercased, and a stage with an
+// empty level or "none" is dropped (no reasoning). It returns ErrInvalidReasoning for a stage that takes no reasoning
+// level or an unknown level. A nil or empty m gives nil.
+func ResolveReasoning(m map[string]string) (Reasoning, error) {
+	var out Reasoning
+	for stage, level := range m {
+		ok := false
+		for _, s := range ReasoningStages {
+			ok = ok || s == stage
+		}
+		if !ok {
+			return nil, fmt.Errorf("%w: unknown stage %q (stages with a reasoning level: %s)", ErrInvalidReasoning, stage, strings.Join(ReasoningStages, ", "))
+		}
+		l, valid := ai.NormalizeReasoning(level)
+		if !valid {
+			return nil, fmt.Errorf("%w: %s: unknown level %q (levels: %s)", ErrInvalidReasoning, stage, level, strings.Join(ai.ReasoningLevels, ", "))
+		}
+		if l == ai.ReasoningNone {
+			continue
+		}
+		if out == nil {
+			out = Reasoning{}
+		}
+		out[stage] = l
+	}
+	return out, nil
+}
+
+// WithReasoning sets the reasoning level of the stages that take one (see ReasoningStages). A stage that is not in r
+// runs without reasoning. Validate r with ResolveReasoning first.
+func WithReasoning(r Reasoning) Option { return func(o *CallOptions) { o.Reasoning = r } }
+
+// Level is the reasoning level of a stage as it is recorded: "none" if the stage has none.
+func (r Reasoning) Level(stage string) string {
+	if l := r[stage]; l != "" {
+		return l
+	}
+	return ai.ReasoningNone
 }

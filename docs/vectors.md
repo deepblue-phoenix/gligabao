@@ -27,8 +27,9 @@ A gligabao dataset keeps its vectors in one vector dataset per purpose (an index
 | entities | `dataset-<id>-entities` (`memory_core.EntityDataset`) | `entity-<entity id>` | `kind` = `entity`, `entity_id`, `name`, `type` | `Name (type): description` (the description is left out if the entity has none) |
 | edges | `dataset-<id>-edges` (`memory_core.EdgeDataset`) | `edge-<edge id>` | `kind` = `edge`, `edge_id`, `source`, `target`, `relation` | the edge's description, e.g. `Alice works at Acme.` (or `source relation target.` if it has none) |
 | chunks | `dataset-<id>-chunks` (`memory_core.ChunkDataset`) | `chunk-<chunk artifact id>` | `kind` = `chunk`, `artifact_id`, `parent_id`, `index` | the chunk's text (only for a text that was [chunked](chunking.md)) |
+| summaries | `dataset-<id>-summaries` (`memory_core.SummaryDataset`) | `summary-<summary artifact id>` | `kind` = `summary`, `artifact_id`, `chunk_id`, `parent_id`, `index` | the summary of a chunk (only for a text that was [chunked](chunking.md#chunk-summaries)) |
 
-The IDs are the row IDs of `gb_entities` and `gb_edges` (and, for chunks, of the chunk's `gb_artifacts` row) in that dataset, so a match is resolved to its row with the ID in the metadata. The metadata holds only what never changes; the validity of a fact (`valid_at`, `invalid_at`, ...) changes when it is superseded, so it is read from the database, not from the vector.
+The IDs are the row IDs of `gb_entities` and `gb_edges` (and, for chunks and summaries, of the chunk's or summary's `gb_artifacts` row) in that dataset, so a match is resolved to its row with the ID in the metadata. The metadata holds only what never changes; the validity of a fact (`valid_at`, `invalid_at`, ...) changes when it is superseded, so it is read from the database, not from the vector.
 
 The vector dataset is keyed by the gligabao dataset's numeric ID, not its name or owner, so:
 
@@ -42,7 +43,7 @@ Further indexes are added the same way: another `memory.VectorIndex` and so anot
 
 ## Admin UI: View vec db
 
-Each live dataset in the admin UI has a **View vec db** button. It opens a modal with one row per index (entities, edges, chunks) (`GET /v1/gb/admin/api/vectors?db=&user_id=&dataset=`, `memory.VectorStats`): the vector dataset name, the number of vectors in it, the number of rows that should have one (entities / edges / chunk artifacts), how many are missing, the dimension and the raw embedding size. The numbers come from the optional `vector.Statter` interface, which chromem (collection count) and Pinecone (`describe_index_stats`) implement.
+Each live dataset in the admin UI has a **View vec db** button. It opens a modal with one row per index (entities, edges, chunks, summaries) (`GET /v1/gb/admin/api/vectors?db=&user_id=&dataset=`, `memory.VectorStats`): the vector dataset name, the number of vectors in it, the number of rows that should have one (entities / edges / chunk artifacts / summary artifacts), how many are missing, the dimension and the raw embedding size. The numbers come from the optional `vector.Statter` interface, which chromem (collection count) and Pinecone (`describe_index_stats`) implement.
 
 ## What `remember` writes
 
@@ -51,6 +52,8 @@ Each live dataset in the admin UI has a **View vec db** button. It opens a modal
 - every entity the text mentions (listed by the extraction, or created from an edge that names it) goes to the entity index;
 - every edge the text states goes to the edge index: a new edge, or the stored edge a repeated fact was merged into;
 - for a text that was [chunked](chunking.md), each chunk's own text goes to the chunk index, in the same request as the entities and edges of that chunk.
+
+- for a chunked text, each chunk's [summary](chunking.md#chunk-summaries) goes to the summary index, in the same request.
 
 All the texts of one call (for a chunked text: of one chunk) are embedded in a single request to the OpenAI embeddings API (`text-embedding-3-small`, with `embedding_dimensions` as the output size), then written with one `Upsert` per vector dataset. Vectors are keyed by entity / edge ID, so an entity or fact that a later text mentions again is overwritten, not duplicated; an entity is re-embedded from its current stored name, type and description.
 

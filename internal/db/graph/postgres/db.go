@@ -252,7 +252,8 @@ func DatasetCounts(ctx context.Context, d *sql.DB, dsID int64) (model.Counts, er
 			(SELECT COUNT(*) FROM gb_artifacts WHERE dataset_id = $1),
 			(SELECT COUNT(*) FROM gb_entities WHERE dataset_id = $1),
 			(SELECT COUNT(*) FROM gb_edges WHERE dataset_id = $1),
-			(SELECT COUNT(*) FROM gb_artifacts WHERE dataset_id = $1 AND chunk_index IS NOT NULL)`, dsID).Scan(&c.Artifacts, &c.Entities, &c.Edges, &c.Chunks)
+			(SELECT COUNT(*) FROM gb_artifacts WHERE dataset_id = $1 AND chunk_index IS NOT NULL),
+			(SELECT COUNT(*) FROM gb_artifacts WHERE dataset_id = $1 AND kind = 'chunk_summary')`, dsID).Scan(&c.Artifacts, &c.Entities, &c.Edges, &c.Chunks, &c.Summaries)
 	return c, err
 }
 
@@ -260,7 +261,8 @@ func DatasetCounts(ctx context.Context, d *sql.DB, dsID int64) (model.Counts, er
 func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.Artifact, error) {
 	rows, err := d.QueryContext(ctx, `
 		SELECT id, dataset_id, kind, text, COALESCE(session_id, ''), valid_at, created_at,
-			COALESCE(parent_id, 0), COALESCE(chunk_index, 0), COALESCE(start_offset, 0), COALESCE(end_offset, 0), COALESCE(tokens, 0), COALESCE(query, ''), COALESCE(series_id, 0)
+			COALESCE(parent_id, 0), COALESCE(chunk_index, 0), COALESCE(start_offset, 0), COALESCE(end_offset, 0), COALESCE(tokens, 0), COALESCE(query, ''), COALESCE(series_id, 0),
+			COALESCE(model_id, ''), COALESCE(reasoning, '')
 		FROM gb_artifacts
 		WHERE dataset_id = $1
 		ORDER BY id`, dsID)
@@ -273,7 +275,7 @@ func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.Artifact
 		var m model.Artifact
 		var valid, created time.Time
 		if err := rows.Scan(&m.ID, &m.DatasetID, &m.Kind, &m.Text, &m.SessionID, &valid, &created,
-			&m.ParentID, &m.ChunkIndex, &m.StartOffset, &m.EndOffset, &m.Tokens, &m.Query, &m.SeriesID); err != nil {
+			&m.ParentID, &m.ChunkIndex, &m.StartOffset, &m.EndOffset, &m.Tokens, &m.Query, &m.SeriesID, &m.ModelID, &m.Reasoning); err != nil {
 			return nil, err
 		}
 		m.ValidAt, m.CreatedAt = valid.UTC(), created.UTC()
@@ -500,6 +502,20 @@ func (t *Tx) InsertWebSearchArtifact(ctx context.Context, w model.NewWebSearchAr
 		w.ValidAt.UTC(), w.CreatedAt.UTC()).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insert web search of artifact %d: %w", w.ParentID, err)
+	}
+	return id, nil
+}
+
+func (t *Tx) InsertChunkSummaryArtifact(ctx context.Context, s model.NewChunkSummaryArtifact) (int64, error) {
+	var id int64
+	err := t.tx.QueryRowContext(ctx, `
+		INSERT INTO gb_artifacts (dataset_id, kind, text, session_id, parent_id, model_id, reasoning, valid_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		RETURNING id`,
+		s.DatasetID, model.ArtifactChunkSummary, s.Text, nullIfEmpty(s.SessionID), s.ParentID,
+		nullIfEmpty(s.ModelID), nullIfEmpty(s.Reasoning), s.ValidAt.UTC(), s.CreatedAt.UTC()).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("insert summary of chunk %d: %w", s.ParentID, err)
 	}
 	return id, nil
 }

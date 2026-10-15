@@ -8,12 +8,16 @@ import (
 // Trace steps of the text pipeline that need its types (see memory_core.Trace for the generic ones).
 
 // traceEmbed records an embedding request as a tool step with its tokens and cost, so they count in the trajectory's totals.
-func traceEmbed(t *memory_core.Trace, texts []string, entities, edges int, chunk bool, usage *ai.EmbedUsage) {
+func traceEmbed(t *memory_core.Trace, texts []string, entities, edges int, chunk, summary bool, usage *ai.EmbedUsage) {
 	msg := "Embedded the entities and edges stored by this artifact."
 	args := map[string]any{"entities": entities, "edges": edges, "texts": texts}
 	if chunk {
 		msg = "Embedded the entities and edges stored by this artifact, and the chunk's text."
 		args["chunk"] = true
+	}
+	if summary {
+		args["summary"] = true
+		msg += " Also embedded the chunk's summary."
 	}
 	t.EmbedStep(msg, "embed", args, map[string]any{"vectors": len(texts)}, usage)
 }

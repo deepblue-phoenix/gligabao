@@ -39,6 +39,12 @@ func testRememberLongText(t *testing.T, d *sql.DB) {
 			ArtifactID int64 `json:"artifact_id"`
 			Index      int   `json:"index"`
 			Tokens     int   `json:"tokens"`
+			Summary    struct {
+				ArtifactID int64  `json:"artifact_id"`
+				Text       string `json:"text"`
+				Model      string `json:"model"`
+				Reasoning  string `json:"reasoning"`
+			} `json:"summary"`
 		} `json:"chunks"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
@@ -49,12 +55,26 @@ func testRememberLongText(t *testing.T, d *sql.DB) {
 	}
 	dsID, _ := relational.DatasetID(context.Background(), d, "u1", relational.DefaultDataset)
 	arts, _ := graph.ListArtifacts(context.Background(), d, dsID)
-	if len(arts) != len(res.Chunks)+1 || arts[0].ID != res.ArtifactID {
+	if len(arts) != 2*len(res.Chunks)+1 || arts[0].ID != res.ArtifactID {
 		t.Errorf("artifacts = %d, parent %d", len(arts), res.ArtifactID)
 	}
+	byID := map[int64]graph.Artifact{}
+	var chunks []graph.Artifact
+	for _, a := range arts {
+		byID[a.ID] = a
+		if a.IsChunk() {
+			chunks = append(chunks, a)
+		}
+	}
 	for i, c := range res.Chunks {
-		if c.Index != i || c.Tokens > 40 || arts[i+1].ID != c.ArtifactID || arts[i+1].ParentID != res.ArtifactID {
-			t.Errorf("chunk %d = %+v, artifact %+v", i, c, arts[i+1])
+		if c.Index != i || c.Tokens > 40 || chunks[i].ID != c.ArtifactID || chunks[i].ParentID != res.ArtifactID {
+			t.Errorf("chunk %d = %+v, artifact %+v", i, c, chunks[i])
+		}
+		// Its summary is an artifact of its own, a child of the chunk, that records the model and reasoning level.
+		s := byID[c.Summary.ArtifactID]
+		if s.Kind != graph.ArtifactChunkSummary || s.ParentID != c.ArtifactID || s.Text != c.Summary.Text || s.Text == "" || s.IsChunk() || !s.IsDerived() ||
+			s.ModelID == "" || s.ModelID != relational.ModelID(c.Summary.Model) || s.Reasoning != "none" || c.Summary.Reasoning != "none" {
+			t.Errorf("chunk %d: summary %+v, artifact %+v", i, c.Summary, s)
 		}
 	}
 }

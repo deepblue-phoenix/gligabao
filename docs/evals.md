@@ -76,10 +76,11 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 | call | tool | what it records |
 |---|---|---|
 | remember | `extract_graph` | the entities and edges (new facts) the LLM extracted from the text, before any stored fact is considered |
+| remember | `summarize_chunk` | (only for a chunk of a [chunked](chunking.md#chunk-summaries) text) the summary the LLM wrote for the chunk, the model that wrote it and the reasoning level it ran with (the LLM call itself is the usual `system`, `user`, `agent` steps) |
 | remember | `find_candidates_by_name` | the live stored facts touching an entity named like an endpoint of a new fact (exact normalized name), found by this lookup alone |
 | remember | `search_similar_entities` | (only with vectors, on an existing dataset) the endpoints of the new facts that were embedded, the stored entities they matched by similarity (aliases) with their scores, and their live facts (the candidates found by similarity alone); `model_name` and `metrics` for the embedding. An error here is recorded but not fatal |
 | remember | `load_candidates` | the two lookups merged by edge ID: the stored facts that could duplicate or contradict the new ones, each with how it was found (`found_by`: `name`, `similar`, `name+similar`) |
-| remember | `embed` | the embedding request (only with a vector store): the texts of the entities and edges, with `model_name` and `metrics` (tokens, cost), so the embedding cost counts in `final_metrics` |
+| remember | `embed` | the embedding request (only with a vector store): the texts of the entities and edges (and, for a chunk, the chunk and its summary), with `model_name` and `metrics` (tokens, cost), so the embedding cost counts in `final_metrics` |
 | remember | `store_artifact` | `artifact_id`, entities, edges and `invalidated_edges` that were stored |
 | remember | `select_web_search_entities` | (only with [`web_search`](web-search.md)) the key entities that were picked to search the web for |
 | remember | `web_search` | (only with `web_search`, one per entity) the web search: the entity, the query issued, the briefing, the queries the model sent to the search engine, the sources and `search_errors`; `model_name`, `metrics` (tokens and cost, search fee included) and `latency_ms` in the extra. An error here is recorded but not fatal |
@@ -90,6 +91,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 1. `user`: the text.
 2. LLM call: entity/edge extraction (`system`, `user`, `agent`).
 3. tool `extract_graph`, then the candidates: tool `find_candidates_by_name`, tool `search_similar_entities` (only when vectors are enabled and the dataset exists), tool `load_candidates` (the merge).
+   (For each chunk of a [chunked](chunking.md) text, an LLM call and a `summarize_chunk` tool step follow the extraction.)
 4. LLM call: duplicate/contradiction resolution (only when there are stored facts to compare against; see [temporal.md](temporal.md)).
 5. tool `embed` (only when vectors are enabled).
 6. tool `store_artifact`.
@@ -134,7 +136,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 
 ### Models
 
-An eval can vary the model of each LLM stage of `remember` (`extract_graph`, `resolve_edges`, `web_search`, `extract_image`; see [remember.md](remember.md#choosing-the-model-of-each-stage)), to compare models stage by stage. The runner passes them as `models` in every `remember` request of a case, from two places that are combined stage by stage:
+An eval can vary the model of each LLM stage of `remember` (`extract_graph`, `summarize_chunk`, `resolve_edges`, `web_search`, `extract_image`; see [remember.md](remember.md#choosing-the-model-of-each-stage)), to compare models stage by stage. The runner passes them as `models` in every `remember` request of a case, from two places that are combined stage by stage:
 
 1. `-models extract_graph=<model>,resolve_edges=<model>` on the command line: the defaults of the whole run (and recorded in the experiment run's `params.models`);
 2. `"models": {"extract_graph": "<model>"}` in a case of a suite: that case only; a stage named here wins over `-models`.

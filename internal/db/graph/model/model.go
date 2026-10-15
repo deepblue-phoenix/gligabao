@@ -91,6 +91,10 @@ const (
 	// deterministically from the series' stats over a window (see package memory_remember, remember_observations.go).
 	// Callers cannot create one: it is not a valid kind of the remember request.
 	ArtifactSeriesObservation = "series_observation"
+	// ArtifactChunkSummary is the summary of a chunk of a long text: an artifact that Remember derives with an LLM, a
+	// child of the chunk (see package memory_remember, remember_summaries.go). Callers cannot create one: it is not a
+	// valid kind of the remember request.
+	ArtifactChunkSummary = "chunk_summary"
 )
 
 // Artifact is a piece of data ingested to be remembered: the raw text, plus when it happened and when it was
@@ -98,7 +102,7 @@ const (
 type Artifact struct {
 	ID        int64
 	DatasetID int64
-	Kind      string // ArtifactEpisode, ArtifactKnowledge, ArtifactWebSearch or ArtifactSeriesObservation
+	Kind      string // ArtifactEpisode, ArtifactKnowledge, ArtifactWebSearch, ArtifactSeriesObservation or ArtifactChunkSummary
 	Text      string
 	SessionID string // the user/agent session that remembered it; "" if none
 	ValidAt   time.Time
@@ -111,7 +115,9 @@ type Artifact struct {
 	//   - a web search (Kind is ArtifactWebSearch): the child of the artifact the searched entity came from (see
 	//     Tx.InsertWebSearchArtifact);
 	//   - a series observation (Kind is ArtifactSeriesObservation): the child of the artifact that anchors the series
-	//     (see Tx.InsertSeriesObservationArtifact).
+	//     (see Tx.InsertSeriesObservationArtifact);
+	//   - a chunk summary (Kind is ArtifactChunkSummary): the child of the chunk it summarizes (see
+	//     Tx.InsertChunkSummaryArtifact).
 	ParentID int64
 	// Only set for a chunk: its position among its siblings from 0, the byte range of its text in the parent's text
 	// (overlap included) and its size in tokens.
@@ -121,12 +127,15 @@ type Artifact struct {
 	// SeriesID is the series an observation is about (gb_series.id); only set for a series observation
 	// (ArtifactSeriesObservation), and 0 again if the series was deleted.
 	SeriesID int64
+	// ModelID and Reasoning are only set for a chunk summary (ArtifactChunkSummary): the ID (gb_models) of the model that
+	// wrote it, as the LLM API reported it, and the reasoning level it ran with ("none", "low", "medium" or "high").
+	ModelID, Reasoning string
 }
 
-// IsDerived says whether Remember derived the artifact from something else (a web search, a series observation), as
+// IsDerived says whether Remember derived the artifact from something else (a web search, a series observation, a chunk summary), as
 // opposed to a text the caller sent (or a chunk of it).
 func (a Artifact) IsDerived() bool {
-	return a.Kind == ArtifactWebSearch || a.Kind == ArtifactSeriesObservation
+	return a.Kind == ArtifactWebSearch || a.Kind == ArtifactSeriesObservation || a.Kind == ArtifactChunkSummary
 }
 
 // IsChunk says whether the artifact is a chunk of its parent (and not, say, a web search that hangs off it).
@@ -144,6 +153,19 @@ type NewSeriesObservationArtifact struct {
 	Query              string
 	Text               string
 	SessionID          string // that of the Remember call; "" if none
+	ValidAt, CreatedAt time.Time
+}
+
+// NewChunkSummaryArtifact is the summary of a chunk to insert: an artifact of kind ArtifactChunkSummary that is a child
+// of ParentID, the chunk it summarizes.
+type NewChunkSummaryArtifact struct {
+	DatasetID int64
+	// ParentID is the chunk artifact that was summarized. It must be in the same dataset and already stored.
+	ParentID           int64
+	Text               string // the summary
+	ModelID            string // ID of the model (gb_models) that wrote it; "" if unknown; the model must be stored
+	Reasoning          string // the reasoning level it was written with: "none", "low", "medium" or "high"
+	SessionID          string // that of the chunk; "" if none
 	ValidAt, CreatedAt time.Time
 }
 
@@ -202,8 +224,9 @@ type EdgeSession struct {
 
 // Counts is the number of rows of each kind a dataset holds.
 type Counts struct {
-	// Artifacts are all the artifact rows, chunks included; Chunks is how many of them are chunks of another artifact.
-	Artifacts, Entities, Edges, Chunks int
+	// Artifacts are all the artifact rows, chunks and chunk summaries included; Chunks is how many of them are chunks of
+	// another artifact, and Summaries how many are chunk summaries.
+	Artifacts, Entities, Edges, Chunks, Summaries int
 }
 
 // OntologyClass is a class of an ontology (a node of the ontology graph).
@@ -262,6 +285,10 @@ type Tx interface {
 	// the series; which must be in the same dataset and already stored). It is not a chunk. The children of an artifact
 	// are deleted with it.
 	InsertSeriesObservationArtifact(ctx context.Context, o NewSeriesObservationArtifact) (int64, error)
+	// InsertChunkSummaryArtifact stores the summary of a chunk: an artifact of kind ArtifactChunkSummary that is a child
+	// of the chunk artifact s.ParentID (which must be in the same dataset and already stored). It is not a chunk. The
+	// children of an artifact are deleted with it.
+	InsertChunkSummaryArtifact(ctx context.Context, s NewChunkSummaryArtifact) (int64, error)
 	// UpsertEntity inserts the entity, or updates the one with the same (dataset, nameKey, type): a non-empty
 	// description replaces the stored one (and e.ModelID the stored model_id, which follows the description; an empty
 	// stored model_id is always filled). It returns the entity ID.

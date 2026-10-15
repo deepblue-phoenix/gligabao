@@ -51,7 +51,7 @@ Example. "Apple designs the iPhone" is remembered with `web_search` as artifact 
 | 1 | `knowledge` | | |
 | 2 | `web_search` | 1 | `latest world events and news about Apple (organization)` |
 
-The datasets' counts (`DatasetCounts`) count a web search as an artifact but not as a chunk.
+The datasets' counts (`DatasetCounts`) count a web search as an artifact but not as a chunk (nor as a chunk summary).
 
 ## Response
 

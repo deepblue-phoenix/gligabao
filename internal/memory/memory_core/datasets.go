@@ -80,10 +80,12 @@ const (
 	IndexEdges VectorIndex = "edges"
 	// IndexChunks holds one vector per chunk of a long text, embedding the chunk's text (vector ID ChunkVectorID).
 	IndexChunks VectorIndex = "chunks"
+	// IndexSummaries holds one vector per chunk summary, embedding the summary's text (vector ID SummaryVectorID).
+	IndexSummaries VectorIndex = "summaries"
 )
 
 // VectorIndexes lists every vector index a dataset can have.
-var VectorIndexes = []VectorIndex{IndexEntities, IndexEdges, IndexChunks}
+var VectorIndexes = []VectorIndex{IndexEntities, IndexEdges, IndexChunks, IndexSummaries}
 
 // VectorDataset is the name, in the vector store (package vector), of the dataset that holds one index of a
 // gligabao dataset: "dataset-<id>-<index>", e.g. "dataset-7-entities". The vector store isolates vectors by
@@ -102,6 +104,9 @@ func EdgeDataset(datasetID int64) string { return VectorDataset(datasetID, Index
 
 // ChunkDataset is the vector store dataset of the chunk index of a dataset (VectorDataset with IndexChunks).
 func ChunkDataset(datasetID int64) string { return VectorDataset(datasetID, IndexChunks) }
+
+// SummaryDataset is the vector store dataset of the chunk summary index of a dataset (VectorDataset with IndexSummaries).
+func SummaryDataset(datasetID int64) string { return VectorDataset(datasetID, IndexSummaries) }
 
 // DeleteDataset soft-deletes userID's live dataset called name (sets deleted = 1) and removes the dataset's vectors
 // from vectors, which may be nil. The relational rows are kept; the vectors are not, because a deleted dataset can

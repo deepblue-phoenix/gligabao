@@ -304,7 +304,7 @@ func testRememberWebSearchChunks(t *testing.T, d *sql.DB) {
 		}
 	}
 	dsID, _ := relational.DatasetID(ctx, d, "u1", relational.DefaultDataset)
-	if c, err := graph.DatasetCounts(ctx, d, dsID); err != nil || c.Chunks != len(res.Chunks) || c.Artifacts != 1+len(res.Chunks)+2 {
+	if c, err := graph.DatasetCounts(ctx, d, dsID); err != nil || c.Chunks != len(res.Chunks) || c.Artifacts != 1+2*len(res.Chunks)+2 {
 		t.Errorf("counts = %+v, %v", c, err)
 	}
 }

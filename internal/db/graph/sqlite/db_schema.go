@@ -18,7 +18,8 @@ const schema = `
 --   kind       'knowledge' (default: not strictly episodic) or 'episode' (a Graphiti-style episode, anchored in time),
 --              or 'web_search': the result of a web search that remember made for an entity of another artifact (see
 --              parent_id and query), or 'series_observation': a text generated from the stats of a timeseries (see
---              series_id). Only remember creates those two; a caller cannot ask for them.
+--              series_id), or 'chunk_summary': an LLM-written summary of a chunk (its parent_id is that chunk). Only
+--              remember creates those three; a caller cannot ask for them.
 --   valid_at   (event time): when the text was written/observed; relative dates in it resolve against it
 --   created_at (system time): when it was ingested
 --   session_id the user/agent session that remembered it (a caller-chosen string); NULL if none was given. It is
@@ -41,6 +42,12 @@ const schema = `
 --   series_id  only for a 'series_observation' artifact: the series it describes (gb_series, which is defined below). Its
 --              parent_id is the artifact that anchors the series, and query says which series and window it covers. NULL
 --              for any other artifact, and set to NULL if the series is deleted (the observation stays: it is a memory).
+--   A 'chunk_summary' artifact is the child of the chunk it summarizes (parent_id), has that chunk's session and times and
+--              the summary as its text; it has no chunk_index, query or series_id, and no entity or edge links to it (the
+--              graph is extracted from the chunk). Deleting the chunk deletes its summary.
+--   model_id, reasoning  only for a 'chunk_summary' artifact: the model that wrote the summary (a reference to gb_models,
+--              as the LLM API reported it) and the reasoning level it ran with: 'none', 'low', 'medium' or 'high'. NULL for
+--              any other artifact.
 --   chunk_index position of a chunk among its siblings, from 0; tokens its size in tokens. NULL unless a chunk.
 CREATE TABLE IF NOT EXISTS gb_artifacts (
 	id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,6 +62,8 @@ CREATE TABLE IF NOT EXISTS gb_artifacts (
 	tokens       INTEGER,
 	query        TEXT,
 	series_id    INTEGER REFERENCES gb_series(id) ON DELETE SET NULL,
+	model_id     TEXT REFERENCES gb_models(id),
+	reasoning    TEXT,
 	valid_at     DATETIME NOT NULL,
 	created_at   DATETIME NOT NULL,
 	UNIQUE (parent_id, chunk_index)

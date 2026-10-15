@@ -5,6 +5,21 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.18.0] - 2026-10-19
+
+### Added
+- Chunk summaries. `POST /v1/gb/remember` now also summarizes every chunk of a [chunked](docs/chunking.md#chunk-summaries) text with an LLM call of its own (new stage `summarize_chunk`, choosable in `models`; at most 512 output tokens; made with the extractions, before anything is stored, so a failed summary stores nothing). Each summary is stored as an artifact of its own, of kind `chunk_summary` (only the pipeline creates it), whose parent is the **chunk** (document, chunk, summary), with the session and times of the chunk. No entity or edge is extracted from it. A text that is not chunked has no chunk and so no summary.
+- Each summary is embedded into a new vector index of its own, `dataset-<id>-summaries` (vector ID `summary-<artifact id>`, metadata `kind`, `artifact_id`, `chunk_id`, `parent_id`, `index`), in the same embeddings request as the chunk's. `VectorStats` (admin UI **View vec db**) lists it, and `DELETE /v1/gb/datasets/{name}` removes it.
+- The model and the reasoning level that wrote each summary are tracked on its artifact: new columns `gb_artifacts.model_id` (→ `gb_models`, the model as the API reports it, registered if new) and `gb_artifacts.reasoning` (`none`, `low`, `medium` or `high`), both NULL for any other artifact.
+- Reasoning levels. `POST /v1/gb/remember` takes `reasoning` (`{"summarize_chunk": "low"}`; levels `none`, `low`, `medium`, `high`; `400` for another stage, an unknown level, or with `image`). A level turns on extended thinking for the stage with a budget of 1024, 4096 or 16384 tokens on top of the answer's `max_tokens`. `summarize_chunk` is the only stage that takes one for now.
+- The response of a chunked text gets `embedded_summaries` and, per entry of `chunks`, its `summary` (`artifact_id`, `text`, `model`, `reasoning`). Trajectories get a `summarize_chunk` step per chunk, and the `embed` step also embeds the summary.
+- Go: `graph.ArtifactChunkSummary`, `graph.NewChunkSummaryArtifact`, `Tx.InsertChunkSummaryArtifact`, `Artifact.ModelID` / `Reasoning`, `Counts.Summaries`, `memory.VectorKindSummary`, `memory.SummaryVectorID`, `memory_core.IndexSummaries`, `memory_core.SummaryDataset`, `memory_core.StageSummarizeChunk`, `memory_core.Reasoning`, `WithReasoning`, `ResolveReasoning`, `ai.Request.Reasoning` and `ai.Reasoning*`, `Result.EmbeddedSummaries`, `ChunkResult.Summary`.
+- The Python client's `remember` takes `reasoning` (client version 0.6.0).
+
+### Changed
+- `Artifact.IsDerived()` is also true for a chunk summary (so it is not a chunk), and a chunked text now stores two artifacts per chunk, so `Counts.Artifacts` is larger by the number of chunks. A chunked `remember` makes at least one more LLM call per chunk.
+- **Schema change** (`gb_artifacts.model_id`, `gb_artifacts.reasoning`): existing database files are not migrated; delete the file and let the server recreate it. Chunks stored before this have no summary.
+
 ## [0.17.0] - 2026-10-18
 
 ### Added

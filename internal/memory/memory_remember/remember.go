@@ -184,6 +184,9 @@ type Result struct {
 	EmbeddedEdges    int `json:"embedded_edges,omitempty"`
 	// EmbeddedChunks is the number of chunk embeddings written to the dataset's chunk index (only for a chunked text).
 	EmbeddedChunks int `json:"embedded_chunks,omitempty"`
+	// EmbeddedSummaries is the number of chunk summary embeddings written to the dataset's summary index (only for a
+	// chunked text).
+	EmbeddedSummaries int `json:"embedded_summaries,omitempty"`
 
 	// Chunks are the chunks of a text that was larger than one chunk, in order; empty for a text that was not
 	// chunked. Then ArtifactID is the parent artifact (the whole text), the chunks are its children, and Entities,
@@ -207,6 +210,9 @@ type Result struct {
 	// WithSeriesObservations): one per series, in order, each with the artifact it stored. See remember_observations.go.
 	SeriesObservations []SeriesObservationResult `json:"series_observations,omitempty"`
 
+	// summary is the summary stored with a chunk (see ChunkResult.Summary); nil for anything else.
+	summary *SummaryResult
+
 	// TRAJECTORY
 	// TrajectoryID and Trajectory are the ATIF trajectory of this call (also stored in TrajectoryDir); only set when
 	// the call was made with WithEval.
@@ -227,6 +233,9 @@ type ChunkResult struct {
 	// Entities and Edges are how many the chunk mentions and states (before merging with the other chunks).
 	Entities int `json:"entities"`
 	Edges    int `json:"edges"`
+	// Summary is the summary of the chunk: an artifact of its own, a child of the chunk, with the model and reasoning
+	// level that wrote it. Always set for a chunk of a text remembered by Remember.
+	Summary *SummaryResult `json:"summary,omitempty"`
 }
 
 // Remember extracts entities and temporal edges from text and stores them (with the raw text as an artifact of the
@@ -239,7 +248,8 @@ type ChunkResult struct {
 //
 // A text of more than the chunk size (WithChunking; 1024 tokens by default) is a document: it is stored as an
 // artifact, split into overlapping chunks that are artifacts too (its children), and each chunk is extracted,
-// reconciled, stored and embedded on its own (see rememberDocument and docs/chunking.md).
+// reconciled, stored and embedded on its own, and summarized: the summary is a chunk_summary artifact, a child of the
+// chunk, with its own embedding (see rememberDocument and docs/chunking.md).
 //
 // With WithWebSearch(true) (and a searcher, WithWebSearcher; ErrWebSearchUnavailable without one) the key entities of the
 // text are then searched for on the web, and the results are stored as artifacts of their own (kind web_search) and
@@ -249,7 +259,10 @@ type ChunkResult struct {
 // entities and edges their anchors select (resolved once the text is stored). For a chunked text they are stored
 // after the chunks, in a transaction of their own. See remember_series.go and docs/timeseries.md.
 //
-// With WithModels each LLM stage (extract_graph, resolve_edges, web_search) runs on the model the caller chose; a stage with none uses the
+// With WithReasoning the summarize_chunk stage runs with that reasoning level; the model and the level are stored on each
+// chunk summary artifact.
+//
+// With WithModels each LLM stage (extract_graph, summarize_chunk, resolve_edges, web_search) runs on the model the caller chose; a stage with none uses the
 // default model. The extract_graph stage's model is the one recorded on the entities and edges.
 //
 // With WithSeriesObservations a text is then generated from the stats of each series the call stored (supplied or
@@ -313,6 +326,9 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	}
 	if len(co.Models) > 0 {
 		input["models"] = co.Models
+	}
+	if len(co.Reasoning) > 0 {
+		input["reasoning"] = co.Reasoning
 	}
 	if co.WebSearch {
 		input["web_search"] = true
@@ -459,7 +475,7 @@ func (j *job) resolveAndStore(ctx context.Context, text string, ex *Extraction, 
 	}
 	tr.Tool("Stored the artifact, entities and edges."+label, "store_artifact", args,
 		map[string]any{"artifact_id": res.ArtifactID, "entities": res.Entities, "edges": res.Edges, "invalidated_edges": res.InvalidatedEdges,
-			"embedded_entities": res.EmbeddedEntities, "embedded_edges": res.EmbeddedEdges, "embedded_chunks": res.EmbeddedChunks})
+			"embedded_entities": res.EmbeddedEntities, "embedded_edges": res.EmbeddedEdges, "embedded_chunks": res.EmbeddedChunks, "embedded_summaries": res.EmbeddedSummaries})
 	j.traceSeries(res.ArtifactID, res.Series)
 	return res, nil
 }
@@ -528,6 +544,15 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		}
 		if id != ex.ModelID {
 			return nil, fmt.Errorf("memory: extraction model_id %q does not match model %q", ex.ModelID, ex.Model)
+		}
+	}
+	if part != nil && part.Summary != nil && part.Summary.Model != "" {
+		id, err := relational.EnsureModel(ctx, d, relational.Model{Name: part.Summary.Model, Provider: part.Summary.Provider, Kind: ai.KindOf(part.Summary.Model)})
+		if err != nil {
+			return nil, err
+		}
+		if id != part.Summary.ModelID {
+			return nil, fmt.Errorf("memory: summary model_id %q does not match model %q", part.Summary.ModelID, part.Summary.Model)
 		}
 	}
 	// Registered before the transaction's Rollback, so it runs after the transaction is finished (see prepareVectors).
@@ -658,10 +683,20 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 	}
 
 	var chunkVec *chunkVector
+	var sumVec *summaryVector
 	if part != nil {
 		chunkVec = &chunkVector{artifactID: artID, parentID: part.ParentID, index: part.Chunk.Index, text: text}
+		if s := part.Summary; s != nil {
+			sumID, err := tx.InsertChunkSummaryArtifact(ctx, graph.NewChunkSummaryArtifact{DatasetID: dsID, ParentID: artID, Text: s.Text,
+				ModelID: s.ModelID, Reasoning: s.Reasoning, SessionID: sessionID, ValidAt: ref, CreatedAt: now})
+			if err != nil {
+				return nil, err
+			}
+			out.summary = &SummaryResult{ArtifactID: sumID, Text: s.Text, Model: s.Model, Reasoning: s.Reasoning}
+			sumVec = &summaryVector{artifactID: sumID, chunkID: artID, parentID: part.ParentID, index: part.Chunk.Index, text: s.Text}
+		}
 	}
-	pv, embedUsage, err := prepareVectors(ctx, tx, co, dsID, embedIDs, out.Edges, chunkVec)
+	pv, embedUsage, err := prepareVectors(ctx, tx, co, dsID, embedIDs, out.Edges, chunkVec, sumVec)
 	if err != nil {
 		return nil, err
 	}
@@ -672,7 +707,7 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		return nil, err
 	}
 	if pv != nil {
-		out.EmbeddedEntities, out.EmbeddedEdges, out.EmbeddedChunks = pv.entities, pv.edges, pv.chunks
+		out.EmbeddedEntities, out.EmbeddedEdges, out.EmbeddedChunks, out.EmbeddedSummaries = pv.entities, pv.edges, pv.chunks, pv.summaries
 	}
 	return out, nil
 }

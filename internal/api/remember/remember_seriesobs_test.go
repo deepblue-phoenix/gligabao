@@ -192,7 +192,7 @@ func testRememberSeriesObservationsLongText(t *testing.T, d *sql.DB) {
 	}
 	// An observation is no chunk of the parent: the dataset still has as many chunks as the text made.
 	dsID, _ := relational.DatasetID(ctx, d, "u1", relational.DefaultDataset)
-	if c, _ := graph.DatasetCounts(ctx, d, dsID); c.Chunks != len(res.Chunks) || c.Artifacts != 1+len(res.Chunks)+1 {
+	if c, _ := graph.DatasetCounts(ctx, d, dsID); c.Chunks != len(res.Chunks) || c.Artifacts != 1+2*len(res.Chunks)+1 {
 		t.Errorf("counts: %+v, chunks %d", c, len(res.Chunks))
 	}
 }
