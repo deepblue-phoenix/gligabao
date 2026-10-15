@@ -44,7 +44,7 @@ func testRememberJev(t *testing.T, d *sql.DB) {
 			opts = append(opts, memory_core.WithJev(jv))
 		}
 		rec := httptest.NewRecorder()
-		EvalHandler(d, llm, opts...).ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/eval/remember", strings.NewReader(body)))
+		testEvalHandler(t, d, llm, opts...).ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/eval/remember", strings.NewReader(body)))
 		if rec.Code != 200 {
 			t.Fatalf("status %d: %s", rec.Code, rec.Body)
 		}

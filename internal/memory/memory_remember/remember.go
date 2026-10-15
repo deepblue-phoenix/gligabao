@@ -364,7 +364,7 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	}
 	tr.Input(input)
 
-	run := startRunLog(ctx, d, userID, dataset, kind, input)
+	run := startRunLog(ctx, d, co.RememberRunID, userID, dataset, kind, input)
 	defer func() {
 		run.Finish(err)
 		if res != nil {

@@ -87,6 +87,11 @@ type CallOptions struct {
 	// SeriesObservations says Remember derives a series_observation artifact from each series it stores, set by
 	// WithSeriesObservations.
 	SeriesObservations bool
+
+	// RememberRunID is the run log row (gb_remember_runs) Remember adopts instead of creating one, set by
+	// WithRememberRunID; 0 means Remember creates its own. The remember manager sets it: it creates the row when a
+	// request is queued, so that the caller has the ID right away.
+	RememberRunID int64
 }
 
 // NewCallOptions applies opts on top of the defaults.
@@ -109,6 +114,10 @@ func WithEval() Option { return func(o *CallOptions) { o.Eval = true } }
 // into its result and trajectory, and its answer does not depend on it. The ID is used as given: validate it with
 // ResolveSessionID first. Empty means no session.
 func WithSessionID(id string) Option { return func(o *CallOptions) { o.SessionID = id } }
+
+// WithRememberRunID makes Remember log the call in the existing run log row with that ID (created when the request was
+// queued, see memory_remember.Manager) instead of creating one. Without it (or with 0) Remember creates the row itself.
+func WithRememberRunID(id int64) Option { return func(o *CallOptions) { o.RememberRunID = id } }
 
 // WithSeries makes Remember (and Store) store the timeseries and anchor them: to the artifact the call creates, and to
 // the entities and edges the anchors select once the text was stored. They are validated with ResolveSeries (which

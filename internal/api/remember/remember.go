@@ -93,18 +93,21 @@ type fetchRequest struct {
 //---------------------------------------------------------------------------------------------
 
 // Handler serves POST /v1/gb/remember.
+// A text is not remembered by the handler: it is sent to the remember manager mgr, which runs the pipeline (one run at a time)
+// and returns the ID of the run at once; the handler then waits for the run to complete. An image is remembered by the handler
+// itself, with d.
 // mo are extra options for every memory_remember.Remember call (e.g. memory.WithVectors).
-func Handler(d *sql.DB, llm memory_core.LLM, mo ...memory_core.Option) http.HandlerFunc {
-	return handler(d, llm, false, mo)
+func Handler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, mo ...memory_core.Option) http.HandlerFunc {
+	return handler(mgr, d, llm, false, mo)
 }
 
 // EvalHandler serves POST /v1/gb/eval/remember: like Handler, but the response also carries the call's ATIF
 // trajectory. It is only registered when the server runs in eval mode.
-func EvalHandler(d *sql.DB, llm memory_core.LLM, mo ...memory_core.Option) http.HandlerFunc {
-	return handler(d, llm, true, mo)
+func EvalHandler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, mo ...memory_core.Option) http.HandlerFunc {
+	return handler(mgr, d, llm, true, mo)
 }
 
-func handler(d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option) http.HandlerFunc {
+func handler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option) http.HandlerFunc {
 	opts := append([]memory_core.Option(nil), mo...)
 	if eval {
 		opts = append(opts, memory_core.WithEval())
@@ -181,25 +184,40 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option)
 			return
 		}
 		start := time.Now()
-		res, err := memory_remember.Remember(r.Context(), d, llm, req.UserID, req.Dataset, req.Kind, req.Text, ref,
-			append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models), memory_core.WithReasoning(reasoning), memory_core.WithWebSearch(req.WebSearch), memory_core.WithSeries(series), memory_core.WithSeriesFetch(fetch), memory_core.WithSeriesObservations(observe))...)
+		// Send the request to the remember manager, which answers at once with the ID of the run; then block on the outcome
+		// channel, which the manager sends the result to when the run is over.
+		outcome := make(chan memory_remember.Outcome, 1)
+		runID, err := mgr.Submit(memory_remember.Request{
+			UserID: req.UserID, Dataset: req.Dataset, Kind: req.Kind, Text: req.Text, Ref: ref,
+			Opts: append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models), memory_core.WithReasoning(reasoning), memory_core.WithWebSearch(req.WebSearch), memory_core.WithSeries(series), memory_core.WithSeriesFetch(fetch), memory_core.WithSeriesObservations(observe)),
+			Ctx:  r.Context(), Outcome: outcome,
+		})
+		if err != nil {
+			log.WithError(err).WithFields(log.Fields{"user_id": req.UserID, "dataset": req.Dataset}).Error("remember not queued")
+			httputil.Error(w, http.StatusServiceUnavailable, "remember is not available")
+			return
+		}
+		out := <-outcome
+		res, err := out.Result, out.Err
 		if errors.Is(err, memory_timeseries.ErrAnchor) { // nothing was stored
 			httputil.Error(w, http.StatusUnprocessableEntity, err.Error())
 			return
 		}
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
-				"user_id":    req.UserID,
-				"dataset":    req.Dataset,
-				"session_id": sessionID,
+				"user_id":         req.UserID,
+				"dataset":         req.Dataset,
+				"session_id":      sessionID,
+				"remember_run_id": runID,
 			}).Error("remember failed")
 			monitoring.EmitSystemEvent(r.Context(), "remember.failed", monitoring.Event{
-				"user_id":     req.UserID,
-				"dataset":     req.Dataset,
-				"session_id":  sessionID,
-				"text_bytes":  len(req.Text),
-				"duration_ms": time.Since(start).Milliseconds(),
-				"error":       err.Error(),
+				"user_id":         req.UserID,
+				"dataset":         req.Dataset,
+				"session_id":      sessionID,
+				"remember_run_id": runID,
+				"text_bytes":      len(req.Text),
+				"duration_ms":     time.Since(start).Milliseconds(),
+				"error":           err.Error(),
 			})
 			httputil.Error(w, http.StatusBadGateway, "failed to process text")
 			return

@@ -84,7 +84,7 @@ func TestRememberWebSearch(t *testing.T) { dbtest.Run(t, testRememberWebSearch) 
 func testRememberWebSearch(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	fs := &fakeSearcher{}
-	h := Handler(d, webLLM{webMain}, memory_core.WithWebSearcher(fs))
+	h := testHandler(t, d, webLLM{webMain}, memory_core.WithWebSearcher(fs))
 
 	// Without the flag the searcher is not used.
 	if code, body := rememberPost(t, h, `{"user_id":"u1","dataset":"plain","text":"Alice works at Acme."}`); code != 200 || len(fs.reqs) != 0 {
@@ -182,7 +182,7 @@ func testRememberWebSearch(t *testing.T, d *sql.DB) {
 func TestRememberWebSearchTrajectory(t *testing.T) { dbtest.Run(t, testRememberWebSearchTrajectory) }
 
 func testRememberWebSearchTrajectory(t *testing.T, d *sql.DB) {
-	h := EvalHandler(d, webLLM{webMain}, memory_core.WithWebSearcher(&fakeSearcher{}))
+	h := testEvalHandler(t, d, webLLM{webMain}, memory_core.WithWebSearcher(&fakeSearcher{}))
 	code, body := rememberPost(t, h, `{"user_id":"u1","text":"Alice works at Acme.","web_search":true}`)
 	if code != 200 {
 		t.Fatalf("status %d: %s", code, body)
@@ -221,12 +221,12 @@ func TestRememberWebSearchUnavailable(t *testing.T) { dbtest.Run(t, testRemember
 
 func testRememberWebSearchUnavailable(t *testing.T, d *sql.DB) {
 	// No searcher (no Anthropic key): 503, and nothing is stored.
-	if code, body := rememberPost(t, Handler(d, webLLM{webMain}), `{"user_id":"u1","text":"Alice works at Acme.","web_search":true}`); code != 503 {
+	if code, body := rememberPost(t, testHandler(t, d, webLLM{webMain}), `{"user_id":"u1","text":"Alice works at Acme.","web_search":true}`); code != 503 {
 		t.Errorf("status %d: %s", code, body)
 	}
 	// Not for an image.
 	img := `{"user_id":"u1","image":"AAAA","web_search":true}`
-	if code, _ := rememberPost(t, Handler(d, webLLM{webMain}, memory_core.WithWebSearcher(&fakeSearcher{})), img); code != 400 {
+	if code, _ := rememberPost(t, testHandler(t, d, webLLM{webMain}, memory_core.WithWebSearcher(&fakeSearcher{})), img); code != 400 {
 		t.Errorf("image: status %d", code)
 	}
 	// Go callers get the sentinel.
@@ -235,7 +235,7 @@ func testRememberWebSearchUnavailable(t *testing.T, d *sql.DB) {
 		t.Errorf("err = %v", err)
 	}
 	// A caller cannot ask for the web_search kind.
-	if code, _ := rememberPost(t, Handler(d, webLLM{webMain}), `{"user_id":"u1","text":"x","kind":"web_search"}`); code != 400 {
+	if code, _ := rememberPost(t, testHandler(t, d, webLLM{webMain}), `{"user_id":"u1","text":"x","kind":"web_search"}`); code != 400 {
 		t.Errorf("kind web_search: status %d", code)
 	}
 }
@@ -250,7 +250,7 @@ func testRememberWebSearchFailures(t *testing.T, d *sql.DB) {
 		"failed":  {err: errors.New("anthropic down")},
 		"nothing": {text: "NO_RESULTS"},
 	} {
-		h := Handler(d, webLLM{webMain}, memory_core.WithWebSearcher(fs))
+		h := testHandler(t, d, webLLM{webMain}, memory_core.WithWebSearcher(fs))
 		code, body := rememberPost(t, h, `{"user_id":"u1","dataset":"`+name+`","text":"Alice works at Acme.","web_search":true}`)
 		if code != 200 {
 			t.Fatalf("%s: status %d: %s", name, code, body)
@@ -280,7 +280,7 @@ func TestRememberWebSearchChunks(t *testing.T) { dbtest.Run(t, testRememberWebSe
 // one, here), not off the parent, and the web searches are not chunks.
 func testRememberWebSearchChunks(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	h := Handler(d, webLLM{`{"entities":[{"name":"Alice","type":"person"},{"name":"Acme","type":"organization"}],"edges":[{"source":"Alice","target":"Acme","relation":"works_at"}]}`},
+	h := testHandler(t, d, webLLM{`{"entities":[{"name":"Alice","type":"person"},{"name":"Acme","type":"organization"}],"edges":[{"source":"Alice","target":"Acme","relation":"works_at"}]}`},
 		memory_core.WithWebSearcher(&fakeSearcher{}), memory_core.WithChunking(chunk.Config{Size: 40, OverlapPercent: 20}))
 	var paras []string
 	for i := 0; i < 8; i++ {

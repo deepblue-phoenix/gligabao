@@ -35,7 +35,7 @@ func testRememberModels(t *testing.T, d *sql.DB) {
 		return &ai.Response{Text: out, StopReason: "end_turn", Provider: ai.ProviderAnthropic, Model: model}, nil
 	})
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm))
 	post := func(body string) int {
 		t.Helper()
 		rec := httptest.NewRecorder()

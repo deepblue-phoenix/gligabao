@@ -73,7 +73,7 @@ func testRememberSeriesFetch(t *testing.T, d *sql.DB) {
 		return &ai.Response{Text: out, StopReason: "end_turn", Model: "fake-model"}, nil
 	})
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm, memory_core.WithSeriesProviders(providers)))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm, memory_core.WithSeriesProviders(providers)))
 
 	rec := seriesPost(t, mux, `{"user_id":"u1","kind":"episode","reference_time":"2025-01-31T21:00:00Z","text":"Apple fell after the earnings miss.",
 		"timeseries":{"fetch":{"providers":["prices","broken","failing"],"before":"2mo"}}}`)
@@ -145,7 +145,7 @@ func testRememberSeriesFetchRejected(t *testing.T, d *sql.DB) {
 			return nil, nil
 		}}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, fakeLLM{seriesLLM}, memory_core.WithSeriesProviders([]memory_core.SeriesProvider{p})))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, fakeLLM{seriesLLM}, memory_core.WithSeriesProviders([]memory_core.SeriesProvider{p})))
 	for name, c := range map[string]struct {
 		body string
 		code int

@@ -29,7 +29,7 @@ func testRemember(t *testing.T, d *sql.DB) {
 	llm := fakeLLM{"```json\n" + `{"entities":[{"name":"Alice","type":"Person","description":"engineer","model_id":"liar"},{"name":"Acme","type":"organization"}],
 	"edges":[{"source":"Alice","target":"Acme","relation":"Works At"},{"source":"Alice","target":"Paris","relation":"lives in"}]}` + "\n```"}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm))
 
 	for i := 0; i < 2; i++ { // second call must be idempotent for entities/edges
 		rec := httptest.NewRecorder()
@@ -120,7 +120,7 @@ func testRemember(t *testing.T, d *sql.DB) {
 
 func TestRememberNoLLM(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(nil, nil))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, nil, nil))
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"user_id":"u1","text":"x"}`)))
 	if rec.Code != 503 {
@@ -133,7 +133,7 @@ func TestRememberKind(t *testing.T) { dbtest.Run(t, testRememberKind) }
 func testRememberKind(t *testing.T, d *sql.DB) {
 	llm := fakeLLM{`{"entities":[{"name":"Alice","type":"person"}],"edges":[]}`}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm))
 	post := func(body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))

@@ -77,7 +77,7 @@ func testRememberBiTemporal(t *testing.T, d *sql.DB) {
 		ents("GLOBEX", "works_at", "null", `"2025-01-01T00:00:00Z"`),
 	}}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm))
 
 	post := func(body string) memory_remember.Result {
 		t.Helper()
@@ -142,7 +142,7 @@ func testRememberSupersedesOlderFact(t *testing.T, d *sql.DB) {
 		`{"duplicates":[],"contradictions":[{"new":0,"existing":1}]}`,
 	}}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm))
 	for _, body := range []string{
 		`{"user_id":"u1","text":"Alice works at Acme.","reference_time":"2023-01-01T00:00:00Z"}`,
 		`{"user_id":"u1","text":"Alice started working at Globex.","reference_time":"2024-03-01T00:00:00Z"}`,
@@ -237,7 +237,7 @@ func testRememberOlderNewsIsSuperseded(t *testing.T, d *sql.DB) {
 		fact("acme"), // exact repeat of the (still live) Acme fact: no resolve call
 	}}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm))
 	post := func(body string) memory_remember.Result {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
@@ -276,7 +276,7 @@ func testRememberOlderNewsIsSuperseded(t *testing.T, d *sql.DB) {
 
 func TestRememberBadReferenceTime(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(nil, fakeLLM{}))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, nil, fakeLLM{}))
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"user_id":"u1","text":"x","reference_time":"yesterday"}`)))
 	if rec.Code != 400 {

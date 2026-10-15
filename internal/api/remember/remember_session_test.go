@@ -22,7 +22,7 @@ func testRememberSession(t *testing.T, d *sql.DB) {
 	llm := fakeLLM{`{"entities":[{"name":"Alice","type":"person"},{"name":"Acme","type":"organization"}],
 	"edges":[{"source":"Alice","target":"Acme","relation":"works_at"}]}`}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm))
 	post := func(body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))

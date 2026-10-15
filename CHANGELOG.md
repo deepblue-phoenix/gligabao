@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.23.0] - 2026-10-15
+
+### Added
+- Remember manager. One goroutine now runs every run of the remember text pipeline, **one at a time** (runs are serialized for now). `POST /v1/gb/remember` and `POST /v1/gb/eval/remember` no longer run the pipeline themselves: they send the manager a request, get the ID of the run back at once, and wait for it to complete, so the HTTP behaviour is unchanged. Images are a different pipeline and are still remembered in the handler. See [docs/remember-manager.md](docs/remember-manager.md).
+- A run is queued with its row in `gb_remember_runs` already created (status `started`, every stage `not_started`), so its ID is known before it starts and its status can be checked later; the row is overwritten when the run begins. A queued run that is cancelled (the client left) or never runs (shutdown) is marked `failed`.
+- The queue is replaceable: by default a Go channel, or callbacks supplied with `memory_remember.WithQueue(QueueHooks{Enqueue, Dequeue})` so that an external queue system can be used. The queue carries run IDs only.
+- Go: `memory_remember.NewManager`, `Manager.Submit`, `Manager.Status`, `Manager.Wait`, `Request`, `Outcome`, `QueueHooks`, `WithQueue`, `ErrManagerClosed`; `memory_core.WithRememberRunID`.
+
+### Changed
+- Go API: `remember.Handler`, `remember.EvalHandler`, `api.Register` and `api.RegisterEval` take the manager as an argument; `server.NewHandler` takes a context (it bounds the manager) and creates the manager. On shutdown the server stops the manager after the graceful HTTP shutdown.
+- A remember request that fails before the pipeline starts, once queued, now leaves a `failed` row in `gb_remember_runs` (before, it left none).
+
 ## [0.22.0] - 2026-10-23
 
 ### Added

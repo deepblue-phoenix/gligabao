@@ -27,6 +27,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/jev"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -97,13 +98,13 @@ type Options struct {
 // datasets, the experiments and their runs, kept apart from the main database.
 const EvalDBName = "eval"
 
-// NewHandler builds the HTTP handler for the given databases and LLM.
+// NewHandler builds the HTTP handler for the given databases and LLM. ctx bounds the remember manager (see memory_remember.Manager).
 // llm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities.
 // jv may be nil, in which case remember skips the steps that run on Jev. ws may be nil, in which case web search is not available
 // (a remember request with web_search returns 503); it is the Anthropic web search tool, so it is only set with an Anthropic API key.
 // providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). The eval endpoints are registered only if eval is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary.
-func NewHandler(d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
+func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "gligabao is running")
@@ -116,9 +117,11 @@ func NewHandler(d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memo
 		fmt.Fprintln(w, "ok")
 	})
 	mux.HandleFunc("GET /version", versionHandler)
-	api.Register(mux, d, llm, emb, jv, ws, providers)
+	// The remember manager runs every remember pipeline run, one at a time, until ctx is done.
+	mgr := memory_remember.NewManager(ctx, d.Relational, llm)
+	api.Register(mux, mgr, d, llm, emb, jv, ws, providers)
 	if eval {
-		api.RegisterEval(mux, d, llm, emb, jv, ws, providers)
+		api.RegisterEval(mux, mgr, d, llm, emb, jv, ws, providers)
 	}
 	if adminUI {
 		registerAdminUI(mux, d, extraAdminDBs)
@@ -299,7 +302,10 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 
-	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(database, llm, emb, jv, ws, providers, opts.Eval, opts.AdminUI, extra...)}
+	// The remember manager stops only when Run returns, i.e. after the graceful shutdown has given the runs in progress their time.
+	mgrCtx, stopMgr := context.WithCancel(ctx)
+	defer stopMgr()
+	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(mgrCtx, database, llm, emb, jv, ws, providers, opts.Eval, opts.AdminUI, extra...)}
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

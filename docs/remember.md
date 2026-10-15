@@ -198,9 +198,13 @@ Querying the edge index (`dataset-<id>-edges`) with the new facts' descriptions 
 - A new edge with the same source, target and relation as a stored edge that is still true is a duplicate and is not inserted again.
 - Sending the same text twice adds a second `gb_artifacts` row (linking the existing entities and edges to it, and to its session if it has one) but no duplicate entities or edges, and no duplicate vectors: the existing ones are overwritten.
 
+## Remember manager
+
+Text is not remembered by the HTTP handler: one goroutine, the **remember manager**, runs every remember pipeline run, one at a time, and the handler waits for its run. See [remember-manager.md](remember-manager.md).
+
 ## Run log
 
-Every call is recorded in `gb_remember_runs`: **one row per execution of the pipeline, the authoritative record of how it was executed.** The row is written when the call starts and updated at every step, so a call in progress can be watched, and a row that stays `started` belongs to a process that died. (A request that is rejected before the pipeline starts, a `400`, has no row.) It is kept by `internal/memory/memory_remember/runlog.go`; the pipeline only reports `Start` and `Done` for its stages.
+Every call is recorded in `gb_remember_runs`: **one row per execution of the pipeline, the authoritative record of how it was executed.** The row is written when the call starts and updated at every step, so a call in progress can be watched, and a row that stays `started` belongs to a process that died. (A request that is rejected before the pipeline starts, a `400`, has no row; one that the manager queued has its row from then on, and a queued run that never runs is `failed`.) It is kept by `internal/memory/memory_remember/runlog.go`; the pipeline only reports `Start` and `Done` for its stages.
 
 | Column | |
 | ------ | - |

@@ -7,7 +7,7 @@ package memory_remember
 //
 // The pipeline reports to it in single calls, and everything else happens here:
 //
-//	run := startRunLog(ctx, d, userID, dataset, kind, params) // a row, status started
+//	run := startRunLog(ctx, d, 0, userID, dataset, kind, params) // a row, status started
 //	defer func() { run.Finish(err) }()                        // status succeeded or failed (and the stages left open)
 //
 //	j.run.Start(StageExtractGraph)                            // before a stage
@@ -68,8 +68,18 @@ type runState struct {
 
 // startRunLog records the start of a Remember call (status started, all the stages not started) and returns its log.
 // params is how the call was made. If the row cannot be written the log is kept in memory only (and the error logged).
-func startRunLog(ctx context.Context, d *sql.DB, userID, dataset, kind string, params map[string]any) *runLog {
+//
+// With adopt not 0 the row with that ID (made by the remember manager when the request was queued, see manager.go) is
+// used instead of creating one: it is overwritten with the run that starts now.
+func startRunLog(ctx context.Context, d *sql.DB, adopt int64, userID, dataset, kind string, params map[string]any) *runLog {
 	r := &runLog{runState: &runState{d: d, ctx: context.WithoutCancel(ctx), run: relational.NewRememberRun(userID, dataset, kind, params, relational.Now())}}
+	if adopt != 0 {
+		r.run.ID = adopt
+		r.mu.Lock()
+		r.save()
+		r.mu.Unlock()
+		return r
+	}
 	id, err := relational.CreateRememberRun(r.ctx, d, r.run)
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{"user_id": userID, "dataset": dataset}).Error("remember run log: create")

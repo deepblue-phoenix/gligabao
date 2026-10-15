@@ -31,7 +31,7 @@ func TestRememberSeries(t *testing.T) { dbtest.Run(t, testRememberSeries) }
 func testRememberSeries(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, fakeLLM{seriesLLM}))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, fakeLLM{seriesLLM}))
 
 	// One series with no anchors (anchored to the artifact), one anchored to an entity the text yields, one to an
 	// entity it does not mention (created), one to the fact, and one to a fact that does not exist (ignored).
@@ -140,7 +140,7 @@ func TestRememberSeriesRejected(t *testing.T) { dbtest.Run(t, testRememberSeries
 func testRememberSeriesRejected(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, fakeLLM{seriesLLM}))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, fakeLLM{seriesLLM}))
 	pre := `{"user_id":"u1","text":"Apple fell.","timeseries":`
 	for name, c := range map[string]struct {
 		body string
@@ -182,7 +182,7 @@ func TestRememberSeriesLongText(t *testing.T) { dbtest.Run(t, testRememberSeries
 
 func testRememberSeriesLongText(t *testing.T, d *sql.DB) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, fakeLLM{seriesLLM}, memory_core.WithChunking(chunk.Config{Size: 40, OverlapPercent: 20})))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, fakeLLM{seriesLLM}, memory_core.WithChunking(chunk.Config{Size: 40, OverlapPercent: 20})))
 	var paras []string
 	for i := 0; i < 8; i++ {
 		paras = append(paras, "Apple walked along the river and talked about the weather and its plans for the summer holidays.")
@@ -215,7 +215,7 @@ func TestRememberSeriesImage(t *testing.T) { dbtest.Run(t, testRememberSeriesIma
 
 func testRememberSeriesImage(t *testing.T, d *sql.DB) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, fakeLLM{seriesLLM}))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, fakeLLM{seriesLLM}))
 	rec := seriesPost(t, mux, `{"user_id":"u1","image":"aGVsbG8=","timeseries":{"series":[{"key":"k","points":[["2025-01-31T00:00:00Z",1]]}]}}`)
 	if rec.Code != 400 || !strings.Contains(rec.Body.String(), "timeseries") {
 		t.Errorf("status %d: %s", rec.Code, rec.Body)

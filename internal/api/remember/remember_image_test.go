@@ -54,7 +54,7 @@ func testRememberImage(t *testing.T, d *sql.DB) {
 		return &ai.Response{Text: imageJSON, StopReason: "end_turn", Provider: "anthropic", Model: "claude-haiku-5-5", InputTokens: 100, OutputTokens: 20, CostUSD: 0.001}, nil
 	})
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm, memory_image.WithImageDir(imgDir)))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm, memory_image.WithImageDir(imgDir)))
 	post := func(body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
@@ -227,7 +227,7 @@ func testRememberImageLLMFailure(t *testing.T, d *sql.DB) {
 	})
 	mux := http.NewServeMux()
 	imgDir := t.TempDir()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm, memory_image.WithImageDir(imgDir)))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm, memory_image.WithImageDir(imgDir)))
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember",
 		strings.NewReader(`{"user_id":"u1","image":"`+base64.StdEncoding.EncodeToString(pngBytes(t))+`"}`)))
@@ -252,7 +252,7 @@ func TestRememberImageEval(t *testing.T) {
 		return &ai.Response{Text: imageJSON, StopReason: "end_turn", Model: "m"}, nil
 	})
 	rec := httptest.NewRecorder()
-	EvalHandler(d, llm, memory_image.WithImageDir(t.TempDir())).ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/eval/remember",
+	testEvalHandler(t, d, llm, memory_image.WithImageDir(t.TempDir())).ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/eval/remember",
 		strings.NewReader(`{"user_id":"u1","image":"`+base64.StdEncoding.EncodeToString(pngBytes(t))+`"}`)))
 	if rec.Code != 200 {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body)
@@ -279,7 +279,7 @@ func testRememberImageSession(t *testing.T, d *sql.DB) {
 		return &ai.Response{Text: imageJSON, StopReason: "end_turn", Model: "claude-haiku-5-5"}, nil
 	})
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm, memory_image.WithImageDir(imgDir)))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm, memory_image.WithImageDir(imgDir)))
 	post := func(body string) memory_image.ImageResult {
 		t.Helper()
 		rec := httptest.NewRecorder()

@@ -33,7 +33,7 @@ func testRememberSeriesObservations(t *testing.T, d *sql.DB) {
 		return &ai.Response{Text: seriesLLM, StopReason: "end_turn", Model: "fake-model"}, nil
 	})
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm))
 
 	body := `{"user_id":"u1","kind":"episode","reference_time":"2025-01-31T21:00:00Z","text":"Apple fell after the earnings miss.","timeseries":{"observations":true,"series":[
 		{"key":"AAPL.close","name":"Apple close","unit":"USD","points":[["2025-01-29T00:00:00Z",235.1],["2025-01-30T00:00:00Z",237.6],["2025-01-31T00:00:00Z",222]],
@@ -131,7 +131,7 @@ func testRememberSeriesObservationsFetched(t *testing.T, d *sql.DB) {
 		return &ai.Response{Text: out, StopReason: "end_turn", Model: "fake-model"}, nil
 	})
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm, memory_core.WithSeriesProviders(providers)))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm, memory_core.WithSeriesProviders(providers)))
 	rec := seriesPost(t, mux, `{"user_id":"u1","reference_time":"2025-01-31T21:00:00Z","text":"Apple fell after the earnings miss.",
 		"timeseries":{"fetch":{},"observations":true}}`)
 	if rec.Code != 200 {
@@ -172,7 +172,7 @@ func testRememberSeriesObservationsLongText(t *testing.T, d *sql.DB) {
 		return &ai.Response{Text: out, StopReason: "end_turn", Model: "fake-model"}, nil
 	})
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm, memory_core.WithChunking(chunk.Config{Size: 40, OverlapPercent: 20})))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm, memory_core.WithChunking(chunk.Config{Size: 40, OverlapPercent: 20})))
 	var paras []string
 	for i := 0; i < 8; i++ {
 		paras = append(paras, "Apple walked along the river and talked about the weather and its plans for the summer holidays.")
@@ -203,7 +203,7 @@ func TestRememberSeriesObservationsRejected(t *testing.T) {
 
 func testRememberSeriesObservationsRejected(t *testing.T, d *sql.DB) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, fakeLLM{seriesLLM}))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, fakeLLM{seriesLLM}))
 	// observations alone has nothing to observe.
 	if rec := seriesPost(t, mux, `{"user_id":"u1","text":"x","timeseries":{"observations":true}}`); rec.Code != 400 {
 		t.Errorf("observations alone: %d %s", rec.Code, rec.Body)

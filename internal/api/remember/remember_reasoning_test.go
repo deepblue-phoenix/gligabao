@@ -36,7 +36,7 @@ func TestRememberSummaryModelAndReasoning(t *testing.T) {
 func testRememberSummaryModelAndReasoning(t *testing.T, d *sql.DB) {
 	llm := &summaryLLM{}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", Handler(d, llm, memory_core.WithChunking(chunk.Config{Size: 40, OverlapPercent: 20})))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm, memory_core.WithChunking(chunk.Config{Size: 40, OverlapPercent: 20})))
 	post := func(body string) int {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
