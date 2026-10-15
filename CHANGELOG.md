@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.22.0] - 2026-10-23
+
+### Added
+- Admin UI: a **remember runs** view with, per database, the number of runs of the remember pipeline in each status (`started`, `succeeded`, `failed`; click one to filter) and the list of the runs (newest first, paged). Clicking a run shows its parameters and, for each stage, its status, start, duration, model runs and error; a run that succeeded with a failed stage (web search, ...) is flagged in the list. Backed by `GET /v1/gb/admin/api/remember-runs`. See [docs/remember.md](docs/remember.md#admin-ui).
+
 ## [0.21.0] - 2026-10-22
 
 ### Added

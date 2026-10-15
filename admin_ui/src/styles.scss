@@ -626,3 +626,8 @@ tr.removing {
 .mr-breakdown h4 { margin: 0; font-size: 0.85rem; color: $muted; }
 .mr-filter { align-items: center; gap: 0.75rem; margin-top: 1rem; min-height: 1.5rem; }
 .mr-pager { gap: 0.5rem; margin-top: 0.75rem; }
+
+// Remember runs view
+#rememberruns { margin-top: 0; }
+.rr-stats { flex-wrap: wrap; dd { font-size: 1.3rem; } }
+.rr-tile { cursor: pointer; padding: 0.2rem 0.6rem; border-radius: 6px; &:hover { background: rgba($accent, 0.08); } &.selected { background: rgba($accent, 0.16); } }

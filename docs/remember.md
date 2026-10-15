@@ -232,6 +232,12 @@ SELECT id, web_search_error FROM gb_remember_runs WHERE web_search_status = 'fai
 
 From Go: `relational.GetRememberRun`, `ListRememberRuns` (filter by user, dataset and status). Writing is done by the pipeline: `startRunLog` returns a `*runLog` whose methods (`Start`, `Done`, `AddModelRun`, `Artifact`, `Finish`) do nothing on `nil` and never fail the call; a row that cannot be written is logged. The pipeline reports each model run explicitly, with the ID that recording it returned: `j.run.AddModelRun(stage, id)`.
 
+## Admin UI
+
+With the [admin UI](../README.md) enabled, the **remember runs** view shows, for each database, how many runs there are in each status and the list of the runs, newest first (100 per page). Clicking a status filters the list by it (click again, or **Clear filter**, to remove it); the counts are never filtered. Clicking a run opens its parameters and a table of its stages (status, start, duration, model run IDs, error). A run whose call succeeded but that has a failed stage is flagged.
+
+The JSON behind it is `GET /v1/gb/admin/api/remember-runs?db=<name>[&status=][&dataset=][&user_id=][&limit=][&offset=]` (`status` is `started`, `succeeded` or `failed`; `limit` defaults to 100, at most 500): `counts` (`total`, `started`, `succeeded`, `failed`), `stages` (the stage names in pipeline order), and `runs` (as in the [run log](#run-log), with `stages` keyed by name) with `total`, `limit`, `offset` for the filters given.
+
 ## Schema
 
 All tables are prefixed with `gb_` (see `internal/db/relational/{sqlite,postgres}/db_schema.go` for datasets and `internal/db/graph/{sqlite,postgres}/db_schema.go` for the graph tables).
