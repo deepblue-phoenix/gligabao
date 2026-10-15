@@ -87,6 +87,28 @@ type ModelRunStat struct {
 	CostUSD      float64
 }
 
+// ModelRunFilter selects model runs; an empty field matches all. ModelID is gb_models.id.
+type ModelRunFilter struct {
+	Type      string
+	Stage     string
+	ModelID   string
+	Reasoning string
+}
+
+// ModelRunGroup sums the model runs that share a type, a stage, a model and a thinking level. Model is the model's name
+// and ModelID its ID, "" for runs without one.
+type ModelRunGroup struct {
+	Type         string  `json:"type"`
+	Stage        string  `json:"stage,omitempty"`
+	ModelID      string  `json:"model_id,omitempty"`
+	Model        string  `json:"model,omitempty"`
+	Reasoning    string  `json:"reasoning"`
+	Runs         int64   `json:"runs"`
+	InputTokens  int64   `json:"input_tokens"`
+	OutputTokens int64   `json:"output_tokens"`
+	CostUSD      float64 `json:"cost_usd"`
+}
+
 //---------------------------------------------------------------------------------------------
 // Eval experiments
 

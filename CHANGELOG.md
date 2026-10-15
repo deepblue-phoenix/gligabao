@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.20.0] - 2026-10-21
+
+### Added
+- Admin UI: a **model runs** view with, per database, the totals of the recorded model runs (runs, tokens, cost), their breakdown by type, stage, model and thinking level, and the list of the runs (newest first, paged, filterable by clicking a breakdown row). Backed by `GET /v1/gb/admin/api/model-runs`. See [docs/model-runs.md](docs/model-runs.md#admin-ui).
+- Go: `relational.ModelRunGroups`, `ListModelRuns`, `ModelRunGroup`, `ModelRunFilter`.
+
 ## [0.19.0] - 2026-10-20
 
 ### Added

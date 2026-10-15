@@ -1,10 +1,11 @@
-// gligabao admin UI: a health indicator, system totals, the datasets of all users and and, in their own views, the evals (evals.ts) and timeseries (timeseries.ts). Talks to the server's own HTTP API.
+// gligabao admin UI: a health indicator, system totals, the datasets of all users and and, in their own views, the evals (evals.ts), timeseries (timeseries.ts) and model runs (modelruns.ts). Talks to the server's own HTTP API.
 
 import { initEvals } from "./evals.js";
 import { initGraphModal, showGraph } from "./graph.js";
 import { initHistoryModal } from "./history.js";
 import { initImageOverlay } from "./image.js";
 import { initImageStats } from "./imagestats.js";
+import { initModelRuns } from "./modelruns.js";
 import { initTimeseries } from "./timeseries.js";
 import { initTraceModal } from "./trace.js";
 import { initVectorsModal, showVectors } from "./vectors.js";
@@ -292,7 +293,7 @@ $<HTMLFormElement>("datasets-form").addEventListener("submit", (e) => {
 });
 $("include-deleted").addEventListener("change", () => void loadAll(includeDeleted()));
 
-// Switches between the admin views (main, evals, timeseries); the choice is kept in the URL hash.
+// Switches between the admin views (main, evals, timeseries, model runs); the choice is kept in the URL hash.
 function initViews(): void {
   const buttons = [...document.querySelectorAll<HTMLButtonElement>(".view-btn")];
   const views = [...document.querySelectorAll<HTMLElement>(".view")];
@@ -322,6 +323,7 @@ initTraceModal();
 initHistoryModal();
 initEvals();
 initTimeseries();
+initModelRuns();
 initImageOverlay();
 initImageStats();
 initWebSearch();

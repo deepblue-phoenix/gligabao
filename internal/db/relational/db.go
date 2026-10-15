@@ -22,6 +22,8 @@ type (
 	Model                = model.Model
 	ModelRun             = model.ModelRun
 	ModelRunStat         = model.ModelRunStat
+	ModelRunFilter       = model.ModelRunFilter
+	ModelRunGroup        = model.ModelRunGroup
 	Ontology             = model.Ontology
 	Experiment           = model.Experiment
 	EvalRef              = model.EvalRef

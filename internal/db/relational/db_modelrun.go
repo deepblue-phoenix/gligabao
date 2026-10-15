@@ -62,3 +62,26 @@ func ModelRunStats(ctx context.Context, d *sql.DB) (map[string]ModelRunStat, err
 	}
 	return nil, unsupported()
 }
+
+// ModelRunGroups sums all the model runs by type, stage, model and thinking level (largest cost first).
+func ModelRunGroups(ctx context.Context, d *sql.DB) ([]ModelRunGroup, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ModelRunGroups(ctx, d)
+	case config.DBBackendPostgres:
+		return postgres.ModelRunGroups(ctx, d)
+	}
+	return nil, unsupported()
+}
+
+// ListModelRuns returns the model runs that match f, newest first, with their model filled in: at most limit of them,
+// after skipping offset. total is how many match f, whatever limit and offset.
+func ListModelRuns(ctx context.Context, d *sql.DB, f ModelRunFilter, limit, offset int) (runs []ModelRun, total int, err error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListModelRuns(ctx, d, f, limit, offset)
+	case config.DBBackendPostgres:
+		return postgres.ListModelRuns(ctx, d, f, limit, offset)
+	}
+	return nil, 0, unsupported()
+}

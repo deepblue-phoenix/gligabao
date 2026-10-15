@@ -23,6 +23,12 @@ The thinking level is chosen per stage; the support for `low`, `medium` and `hig
 
 A request can pick another one per stage. A [chunk summary](chunking.md#chunk-summaries) artifact stores only a reference to its run (`gb_artifacts.model_run_id`), which holds the model and the level (and the tokens and cost) of the call that wrote it.
 
+## Admin UI
+
+With the [admin UI](../README.md) enabled, the **model runs** view shows, for each database, the totals of all runs (runs, input and output tokens, cost), their breakdown by type, stage, model and thinking level, and the list of the runs, newest first (100 per page). Clicking a row of a breakdown filters the list by it (click again, or **Clear filter**, to remove it); the totals and breakdowns are never filtered.
+
+The JSON behind it is `GET /v1/gb/admin/api/model-runs?db=<name>[&type=][&stage=][&model_id=][&reasoning=][&limit=][&offset=]` (`limit` defaults to 100, at most 500): `totals`, `by_type`, `by_stage`, `by_model`, `by_reasoning` (each `key`, `label`, `runs`, `input_tokens`, `output_tokens`, `cost_usd`), and `runs` (with `total`, `limit`, `offset`) for the filters given. From Go: `relational.ModelRunGroups` and `relational.ListModelRuns`.
+
 ## Example
 
 ```sql

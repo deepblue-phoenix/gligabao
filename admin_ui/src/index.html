@@ -20,6 +20,7 @@
           <button type="button" class="view-btn active" data-view="main" aria-pressed="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>main</button>
           <button type="button" class="view-btn" data-view="evals" aria-pressed="false"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6l-5.5 9.5A1.5 1.5 0 0 0 5.8 21h12.4a1.5 1.5 0 0 0 1.3-2.5L14 9V3"/><path d="M7.5 15h9"/></svg>evals</button>
           <button type="button" class="view-btn" data-view="timeseries" aria-pressed="false"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>timeseries</button>
+          <button type="button" class="view-btn" data-view="modelruns" aria-pressed="false"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg>model runs</button>
         </nav>
 
         <div id="view-main" class="view" data-view="main">
@@ -69,6 +70,16 @@
               <button type="button" id="timeseries-refresh">Refresh</button>
             </div>
             <div id="timeseries-content"></div>
+          </section>
+        </div>
+
+        <div id="view-modelruns" class="view" data-view="modelruns" hidden>
+          <section id="modelruns" class="card">
+            <div class="row between">
+              <h2>Model runs</h2>
+              <button type="button" id="modelruns-refresh">Refresh</button>
+            </div>
+            <div id="modelruns-content"></div>
           </section>
         </div>
       </div>
