@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.23.1] - 2026-10-24
+
+### Added
+- [docs/hooks.md](docs/hooks.md): documents the hooks available to programs embedding gligabao (`ServeOptions.Hooks` system events with every event type and its fields, and the timeseries provider callback), linked from the README.
+
 ## [0.23.0] - 2026-10-15
 
 ### Added
