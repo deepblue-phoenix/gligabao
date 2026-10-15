@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.21.0] - 2026-10-22
+
+### Added
+- Remember run log. New table `gb_remember_runs`: one row per execution of the remember pipeline, the authoritative record of how it was executed. It has the `status` (`started`, `succeeded`, `failed`) and `error` of the call as a whole, so a run can be checked without looking at the stages, and for each stage of the pipeline (`classify_complexity`, `chunk_text`, `extract_graph`, `summarize_chunk`, `load_candidates`, `resolve_edges`, `store`, `store_series`, `web_search`, `fetch_series`, `observe_series`) a `<stage>_status` (`not_started`, `started`, `succeeded`, `failed`), an `<stage>_error` (`NULL` if none), `<stage>_started_at` / `<stage>_finished_at` and, for the stages that run a model, `<stage>_model_run_ids`: the IDs of their `gb_model_runs`. The row is written when the call starts and updated at every step. Also stored: the user, dataset, kind, `params` (how the call was made) and `artifact_id`. See [docs/remember.md](docs/remember.md#run-log).
+- The `remember` response has `remember_run_id`, the ID of the call's row.
+- Go: `relational.CreateRememberRun`, `SaveRememberRun`, `GetRememberRun`, `ListRememberRuns`, `RememberRun`, `RememberStage`, the status constants `RememberNotStarted`, `RememberStarted`, `RememberSucceeded`, `RememberFailed`, and `RememberStages`; In `memory_remember`, the pipeline keeps the log with single calls of `runLog` (`runlog.go`): `j.run.Start(stage)`, `j.run.Done(err, stage)` and `j.run.AddModelRun(stage, id)` for each model run; the calls never fail a call. `Extraction`, `EdgePlan` get a `ModelRunID` for that.
+- **Schema change**: a new table; existing database files get it when the server starts (`CREATE TABLE IF NOT EXISTS`).
+
 ## [0.20.0] - 2026-10-21
 
 ### Added

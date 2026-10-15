@@ -32,7 +32,40 @@ type (
 	ExperimentTrajectory = model.ExperimentTrajectory
 	ExperimentEvalPoint  = model.ExperimentEvalPoint
 	ExperimentArtifact   = model.ExperimentArtifact
+	RememberRun          = model.RememberRun
+	RememberStage        = model.RememberStage
+	RememberStageDef     = model.RememberStageDef
+	RememberRunFilter    = model.RememberRunFilter
 )
+
+// Statuses of a remember run and of its stages, and the stages (see model.RememberStages and gb_remember_runs).
+const (
+	RememberNotStarted = model.RememberNotStarted
+	RememberStarted    = model.RememberStarted
+	RememberSucceeded  = model.RememberSucceeded
+	RememberFailed     = model.RememberFailed
+
+	RememberStageClassifyComplexity = model.RememberStageClassifyComplexity
+	RememberStageChunkText          = model.RememberStageChunkText
+	RememberStageExtractGraph       = model.RememberStageExtractGraph
+	RememberStageSummarizeChunk     = model.RememberStageSummarizeChunk
+	RememberStageLoadCandidates     = model.RememberStageLoadCandidates
+	RememberStageResolveEdges       = model.RememberStageResolveEdges
+	RememberStageStore              = model.RememberStageStore
+	RememberStageStoreSeries        = model.RememberStageStoreSeries
+	RememberStageWebSearch          = model.RememberStageWebSearch
+	RememberStageFetchSeries        = model.RememberStageFetchSeries
+	RememberStageObserveSeries      = model.RememberStageObserveSeries
+)
+
+// RememberStages lists the stages of the remember pipeline, in order.
+var RememberStages = model.RememberStages
+
+// RememberStageDefOf returns the definition of the stage called name.
+var RememberStageDefOf = model.RememberStageDefOf
+
+// NewRememberRun returns a run that has just started, with all its stages not started.
+var NewRememberRun = model.NewRememberRun
 
 // Experiment, run and trajectory constants (see package model).
 const (

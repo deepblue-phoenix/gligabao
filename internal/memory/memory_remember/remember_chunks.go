@@ -48,7 +48,9 @@ func (p *chunkPart) label() string {
 // them. Step 4 cannot be one transaction (a chunk's candidates are read from the database), so if it fails the chunks
 // stored so far (each of them complete) and the parent stay; the call returns an error naming the chunk.
 func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Config) (*Result, error) {
+	j.run.Start(StageChunkText)
 	chunks, err := chunk.Split(text, cfg)
+	j.run.Done(err, StageChunkText)
 	if err != nil {
 		return nil, fmt.Errorf("memory: chunk text: %w", err)
 	}
@@ -67,7 +69,10 @@ func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Confi
 	sums := make([]*chunkSummary, len(chunks))
 	for i, c := range chunks {
 		part := &chunkPart{Chunk: c, Count: len(chunks)}
+		j.run.Start(memory_core.StageExtractGraph)
 		ex, err := Extract(ctx, j.co.ModelLLM(j.llm, memory_core.StageExtractGraph), c.Text, j.ref)
+		j.run.Done(err, memory_core.StageExtractGraph)
+		j.run.AddModelRun(memory_core.StageExtractGraph, ex.RunID())
 		if err != nil {
 			return nil, fmt.Errorf("memory: extract chunk %d of %d: %w", i+1, len(chunks), err)
 		}
@@ -77,7 +82,10 @@ func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Confi
 			map[string]any{"entities": ex.Entities, "edges": candidateFacts(ex.Edges, nil)})
 
 		// SUMMARIZE the chunk
+		j.run.Start(memory_core.StageSummarizeChunk)
 		sum, err := summarizeChunk(ctx, j.co.ModelLLM(j.llm, memory_core.StageSummarizeChunk), c.Text)
+		j.run.Done(err, memory_core.StageSummarizeChunk)
+		j.run.AddModelRun(memory_core.StageSummarizeChunk, sum.RunID())
 		if err != nil {
 			return nil, fmt.Errorf("memory: summarize chunk %d of %d: %w", i+1, len(chunks), err)
 		}
@@ -93,10 +101,13 @@ func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Confi
 	if err != nil {
 		return nil, err
 	}
+	j.run.Start(StageStore)
 	parentID, err := storeParent(ctx, j.d, j.userID, j.dataset, j.kind, text, sessionID, j.ref, j.now)
+	j.run.Done(err, StageStore)
 	if err != nil {
 		return nil, err
 	}
+	j.run.Artifact(parentID)
 	j.tr.Tool("Stored the whole text as the parent artifact of the chunks.", "store_parent_artifact",
 		map[string]any{"user_id": j.userID, "dataset": j.dataset, "kind": j.kind}, map[string]any{"artifact_id": parentID, "chunks": len(chunks)})
 
@@ -118,7 +129,10 @@ func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Confi
 	//--------------------------------------
 	// TIMESERIES (only with WithSeries): anchored to the parent, once the chunks (and so their entities) are stored
 	if len(j.co.Series) > 0 {
-		if doc.Series, err = j.storeSeries(ctx, parentID); err != nil {
+		j.run.Start(StageStoreSeries)
+		doc.Series, err = j.storeSeries(ctx, parentID)
+		j.run.Done(err, StageStoreSeries)
+		if err != nil {
 			return nil, fmt.Errorf("memory: timeseries (the text, its %d chunks and their facts are stored): %w", len(chunks), err)
 		}
 		j.traceSeries(parentID, doc.Series)

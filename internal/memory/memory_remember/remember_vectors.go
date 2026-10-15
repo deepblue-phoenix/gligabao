@@ -53,10 +53,10 @@ type similarEntity struct {
 // dataset's entity index. Stored entities with the same normalized name as the endpoint are not reported (the exact
 // lookup already covers them), and neither are those scoring below similarEntityMinScore.
 //
-// It returns the texts that were embedded (empty if no search was made: no vectors configured, or no endpoints) and
+// run is told of the embedding request. It returns the texts that were embedded (empty if no search was made: no vectors configured, or no endpoints) and
 // the usage of the embedding request, which is already recorded as spent. It is only a hint for choosing candidate
 // facts: the caller treats an error as "no matches".
-func findSimilarEntities(ctx context.Context, d *sql.DB, o memory_core.CallOptions, dsID int64, ex *Extraction) (found []similarEntity, texts []string, usage *ai.EmbedUsage, err error) {
+func findSimilarEntities(ctx context.Context, d *sql.DB, run *runLog, o memory_core.CallOptions, dsID int64, ex *Extraction) (found []similarEntity, texts []string, usage *ai.EmbedUsage, err error) {
 	if o.Vectors == nil || o.Embedder == nil {
 		return nil, nil, nil, nil
 	}
@@ -89,7 +89,7 @@ func findSimilarEntities(ctx context.Context, d *sql.DB, o memory_core.CallOptio
 	}
 
 	embs, usage, err := o.Embedder.EmbedBatchUsage(ctx, texts)
-	recordEmbedUsage(ctx, d, usage) // no transaction is open here
+	run.AddModelRun(StageLoadCandidates, recordEmbedUsage(ctx, d, usage)) // no transaction is open here
 	if err != nil {
 		return nil, texts, usage, fmt.Errorf("memory: embed entities to search: %w", err)
 	}
@@ -252,16 +252,19 @@ func prepareVectors(ctx context.Context, tx graph.Tx, o memory_core.CallOptions,
 const StageEmbed = "embed"
 
 // recordEmbedUsage records the cost of an embedding request as a model run, as it was spent, like the LLM's. Detached from ctx so a
-// cancelled request still records money that was spent. It must not run while a write transaction of d is open.
-func recordEmbedUsage(ctx context.Context, d *sql.DB, usage *ai.EmbedUsage) {
+// cancelled request still records money that was spent. It must not run while a write transaction of d is open. It returns
+// the ID of the model run, 0 if there is none (no request was made, or it could not be recorded).
+func recordEmbedUsage(ctx context.Context, d *sql.DB, usage *ai.EmbedUsage) int64 {
 	if usage == nil {
-		return
+		return 0
 	}
-	if _, err := memory_core.RecordRun(context.WithoutCancel(ctx), d, relational.ModelRun{Type: CallRemember, Stage: StageEmbed,
+	id, err := memory_core.RecordRun(context.WithoutCancel(ctx), d, relational.ModelRun{Type: CallRemember, Stage: StageEmbed,
 		Model: usage.Model, Provider: usage.Provider, Kind: ai.KindEmbedding, Reasoning: ai.ReasoningNone,
-		InputTokens: usage.InputTokens, CostUSD: usage.CostUSD}); err != nil {
+		InputTokens: usage.InputTokens, CostUSD: usage.CostUSD})
+	if err != nil {
 		log.WithError(err).WithField("model", usage.Model).Error("record embedding call")
 	}
+	return id
 }
 
 // write upserts the vectors into their datasets. Vectors are keyed by entity / edge ID, so writing them again

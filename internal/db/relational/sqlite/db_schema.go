@@ -97,6 +97,28 @@ CREATE TABLE IF NOT EXISTS gb_model_runs (
 CREATE INDEX IF NOT EXISTS idx_gb_model_runs_type ON gb_model_runs(type);
 CREATE INDEX IF NOT EXISTS idx_gb_model_runs_model ON gb_model_runs(model_id);
 
+-- Remember runs: ONE ROW PER EXECUTION OF THE REMEMBER PIPELINE, the authoritative record of how it went, stage by stage
+-- (see internal/memory/memory_remember/runlog.go; the table is created by rememberRunsSchema in db_rememberrun.go).
+--   user_id, dataset (the name), kind (the artifact kind)  what was remembered
+--   params       JSON object: how the call was made (reference time, session, models and reasoning per stage, chunk size,
+--                which optional stages were asked for)
+--   artifact_id  the artifact the text was stored as (the parent, for a chunked text); NULL until it is stored
+--   status       of the call as a whole, so that it can be checked without looking at the stages: 'started', then
+--                'succeeded' if the call returned a result or 'failed' if it returned an error ('not_started' exists for
+--                the stages). A row that stays 'started' belongs to a process that died. The stages that never fail the
+--                call (web_search, fetch_series, observe_series, classify_complexity) can be 'failed' in a 'succeeded' run.
+--   error        why the call failed; NULL if it did not
+--   started_at, finished_at  of the call
+-- and, for each stage of the pipeline (model.RememberStages: classify_complexity, chunk_text, extract_graph,
+-- summarize_chunk, load_candidates, resolve_edges, store, store_series, web_search, fetch_series, observe_series):
+--   <stage>_status       'not_started' (not reached, or not used by the call), 'started', 'succeeded' or 'failed'
+--   <stage>_error        why the stage failed; NULL if it did not
+--   <stage>_started_at, <stage>_finished_at   when the stage began and when it last ended (a stage that runs for each chunk
+--                        of a text spans all the chunks)
+--   <stage>_model_run_ids  only for the stages that run a model: JSON array of the IDs (gb_model_runs) of the runs the stage
+--                        made, in order. A list, because a stage makes one run per chunk (and an embedding request is a run).
+-- All the DATETIME columns follow the convention of db_time.go.
+
 -- Eval experiments (evals/ and internal/experiments). An experiment is a named series of eval runs; names are unique.
 --   config: JSON object with the free-form settings under test
 CREATE TABLE IF NOT EXISTS gb_experiments (
@@ -179,7 +201,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_experiment_trajectories_tid ON gb_experiment_t
 
 // initSchema applies the database schema.
 func initSchema(d *sql.DB) error {
-	if _, err := d.Exec(schema); err != nil {
+	if _, err := d.Exec(schema + rememberRunsSchema()); err != nil {
 		return fmt.Errorf("init schema: %w", err)
 	}
 	return nil

@@ -41,3 +41,7 @@ GROUP BY stage, reasoning;
 From Go: `relational.RecordModelRun`, `relational.GetModelRun` and `relational.ModelRunStats` (sums by type); `memory_core.WithRecording` records every call of an LLM, and puts the run's ID in `ai.Response.ModelRunID`.
 
 This table replaces `gb_llm_calls` (tokens and cost per call, without the model's ID, the stage or the thinking level).
+
+## Which stage of a remember call made a run
+
+The [run log](remember.md#run-log) of a `remember` call (`gb_remember_runs`) lists, for each stage of the pipeline, the IDs of the model runs the stage made (`<stage>_model_run_ids`).

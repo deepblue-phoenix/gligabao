@@ -26,6 +26,7 @@ func (j *job) classifyComplexity(ctx context.Context, text string) {
 	if j.co.Jev == nil {
 		return
 	}
+	j.run.Start(StageClassifyComplexity)
 	tokens := chunk.EstimateTokens(text)
 	args := map[string]any{"text_chars": len(text), "text_tokens": tokens}
 	fields := log.Fields{"stage": StageClassifyComplexity, "user_id": j.userID, "dataset": j.dataset, "text_chars": len(text), "text_tokens": tokens}
@@ -37,9 +38,12 @@ func (j *job) classifyComplexity(ctx context.Context, text string) {
 	if err == nil {
 		run.Model, run.InputTokens, run.OutputTokens = cl.Model, cl.InputTokens, cl.OutputTokens
 	}
-	if _, rerr := memory_core.RecordRun(context.WithoutCancel(ctx), j.d, run); rerr != nil {
+	id, rerr := memory_core.RecordRun(context.WithoutCancel(ctx), j.d, run)
+	j.run.AddModelRun(StageClassifyComplexity, id)
+	if rerr != nil {
 		log.WithError(rerr).WithFields(fields).Error("record jev model run")
 	}
+	j.run.Done(err, StageClassifyComplexity)
 	if err != nil {
 		log.WithError(err).WithFields(fields).Warn("jev: classify complexity failed")
 		j.tr.TimedTool("Jev (system 1) was asked to classify the text as simple, medium or complex in the number of entities it will yield; the call failed.",

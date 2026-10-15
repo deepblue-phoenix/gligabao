@@ -184,11 +184,13 @@ func parseSeriesAssignments(text string, cands []*keyEntity, providers []memory_
 // fetchSeries is the stage of Remember that fetches series from the providers (see the top of this file). It returns one
 // result per (entity, provider) the LLM chose; nil if the call does not fetch or there was nothing to decide. It never
 // fails the call.
-func (j *job) fetchSeries(ctx context.Context) []SeriesFetchResult {
+func (j *job) fetchSeries(ctx context.Context) (out []SeriesFetchResult) {
 	f := j.co.SeriesFetch
 	if f == nil {
 		return nil
 	}
+	j.run.Start(StageFetchSeries)
+	defer func() { j.run.Done(resultsError(out), StageFetchSeries) }()
 	var providers []memory_core.SeriesProvider
 	for _, p := range j.co.SeriesProviders {
 		for _, n := range f.Providers {
@@ -226,6 +228,9 @@ func (j *job) fetchSeries(ctx context.Context) []SeriesFetchResult {
 		MaxTokens: 2048,
 	})
 	var picks []seriesAssignment
+	if err == nil {
+		j.run.AddModelRun(StageFetchSeries, resp.ModelRunID)
+	}
 	if err == nil && resp.StopReason == "max_tokens" {
 		err = fmt.Errorf("LLM output truncated")
 	}

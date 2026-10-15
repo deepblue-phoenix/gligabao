@@ -38,6 +38,16 @@ const (
 type EdgePlan struct {
 	Duplicates     map[int]int64 // index of new edge -> id of the existing edge it repeats
 	Contradictions []Contradiction
+	// ModelRunID is the model run (gb_model_runs) of the LLM call that compared the facts; 0 if there was none.
+	ModelRunID int64
+}
+
+// RunID is the model run of the comparison (0 for none, and for a nil plan).
+func (p *EdgePlan) RunID() int64 {
+	if p == nil {
+		return 0
+	}
+	return p.ModelRunID
 }
 
 // Contradiction says that the existing edge can't hold together with the new edge.
@@ -49,7 +59,8 @@ type Contradiction struct {
 //---------------------------------------------------------------------------------------------
 
 // resolveEdges compares new edges with existing candidates. Exact repeats (same endpoints and relation as a
-// fact that is still true) are detected without the LLM; the LLM is only called for what remains.
+// fact that is still true) are detected without the LLM; the LLM is only called for what remains. If the LLM answered but its
+// answer is no use, the error comes with a plan that is empty but for its ModelRunID.
 func resolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []Edge) (*EdgePlan, error) {
 	plan := &EdgePlan{Duplicates: map[int]int64{}}
 
@@ -94,13 +105,15 @@ func resolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []Edge)
 	if err != nil {
 		return nil, err
 	}
+	failed := &EdgePlan{ModelRunID: resp.ModelRunID}
 	if resp.StopReason == "max_tokens" {
-		return nil, errors.New("memory: LLM resolve output truncated")
+		return failed, errors.New("memory: LLM resolve output truncated")
 	}
 	js, err := memory_core.JSONObject(resp.Text)
 	if err != nil {
-		return nil, err
+		return failed, err
 	}
+	plan.ModelRunID = resp.ModelRunID
 	type pair struct {
 		New      int   `json:"new"`
 		Existing int64 `json:"existing"`
@@ -110,7 +123,7 @@ func resolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []Edge)
 		Contradictions []pair `json:"contradictions"`
 	}
 	if err := json.Unmarshal([]byte(js), &out); err != nil {
-		return nil, fmt.Errorf("memory: decode LLM resolve output: %w", err)
+		return failed, fmt.Errorf("memory: decode LLM resolve output: %w", err)
 	}
 
 	pending := map[int]bool{}
@@ -167,7 +180,7 @@ const (
 //     which finds aliases the names do not (see findSimilarEntities).
 //
 // A dataset that does not exist yet has none.
-func loadCandidates(ctx context.Context, d *sql.DB, o memory_core.CallOptions, userID, dataset string, ex *Extraction) (*candidates, error) {
+func loadCandidates(ctx context.Context, d *sql.DB, run *runLog, o memory_core.CallOptions, userID, dataset string, ex *Extraction) (*candidates, error) {
 	out := &candidates{Via: map[int64]string{}}
 	dsID, err := relational.DatasetID(ctx, d, userID, dataset)
 	if errors.Is(err, relational.ErrNotFound) {
@@ -193,7 +206,7 @@ func loadCandidates(ctx context.Context, d *sql.DB, o memory_core.CallOptions, u
 	}
 	out.ByName = byName
 
-	out.Similar, out.SearchTexts, out.SearchUsage, out.SearchErr = findSimilarEntities(ctx, d, o, dsID, ex)
+	out.Similar, out.SearchTexts, out.SearchUsage, out.SearchErr = findSimilarEntities(ctx, d, run, o, dsID, ex)
 	if out.SearchErr != nil {
 		log.WithError(out.SearchErr).Warn("similar entity search failed; candidates are matched by name only")
 	}

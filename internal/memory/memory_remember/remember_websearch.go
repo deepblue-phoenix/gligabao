@@ -187,10 +187,12 @@ type webSearched struct {
 // webSearch is the last stage of Remember: it searches the web for the key entities of the call and stores what it
 // finds (see the top of this file). It returns one result per entity searched for; nil if the call does not search the
 // web or has nothing to search for. It never fails the call.
-func (j *job) webSearch(ctx context.Context) []WebSearchResult {
+func (j *job) webSearch(ctx context.Context) (out []WebSearchResult) {
 	if !j.co.WebSearch {
 		return nil
 	}
+	j.run.Start(memory_core.StageWebSearch)
+	defer func() { j.run.Done(resultsError(out), memory_core.StageWebSearch) }()
 	all := make([]*keyEntity, 0, len(j.keyOrder))
 	for _, k := range j.keyOrder {
 		all = append(all, j.keyEntities[k])
@@ -271,9 +273,11 @@ func (j *job) storeWebSearch(ctx context.Context, p *keyEntity, ws webSearched) 
 	}
 	resp := ws.resp
 	// Detached from ctx so a cancelled request still records money that was spent.
-	if _, err := memory_core.RecordRun(context.WithoutCancel(ctx), j.d, relational.ModelRun{Type: CallRemember, Stage: memory_core.StageWebSearch,
+	runID, err := memory_core.RecordRun(context.WithoutCancel(ctx), j.d, relational.ModelRun{Type: CallRemember, Stage: memory_core.StageWebSearch,
 		Model: resp.Model, Provider: resp.Provider, Kind: ai.KindOf(resp.Model), Reasoning: ai.ReasoningNone,
-		InputTokens: resp.InputTokens, OutputTokens: resp.OutputTokens, CostUSD: resp.CostUSD}); err != nil {
+		InputTokens: resp.InputTokens, OutputTokens: resp.OutputTokens, CostUSD: resp.CostUSD})
+	j.run.AddModelRun(memory_core.StageWebSearch, runID)
+	if err != nil {
 		log.WithError(err).WithFields(fields).Error("record web search call")
 	}
 	out.Searches, out.Sources, out.CostUSD = resp.Queries, resp.Sources, resp.CostUSD
@@ -294,11 +298,13 @@ func (j *job) storeWebSearch(ctx context.Context, p *keyEntity, ws webSearched) 
 	// THE RESULT IS A TEXT LIKE ANY OTHER: a job of its own that stores a "web_search" artifact. Its facts are valid from
 	// now, when they were read, not from the reference time of the text that mentioned the entity.
 	wj := *j
+	wj.run = j.run.Within(memory_core.StageWebSearch) // its model runs are the web_search stage's
 	wj.web = &webPart{ParentID: p.ArtifactID, Query: query, Entity: p.Name}
 	wj.kind, wj.ref = graph.ArtifactWebSearch, j.now
 
 	// The graph is extracted from the briefing alone; the artifact keeps the sources next to it.
 	ex, err := Extract(ctx, wj.co.ModelLLM(wj.llm, memory_core.StageExtractGraph), briefing, wj.ref)
+	wj.run.AddModelRun(memory_core.StageExtractGraph, ex.RunID())
 	if err != nil {
 		return fail("extract", err)
 	}

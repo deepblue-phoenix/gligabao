@@ -133,10 +133,12 @@ func (j *job) noteSuppliedSeries(artifactID int64, results []memory_timeseries.R
 // observeSeries is the last stage of Remember: it makes an observation artifact of each series the call stored (see the
 // top of this file). It returns one result per series observed; nil if the call makes none or stored no series. It never
 // fails the call.
-func (j *job) observeSeries(ctx context.Context) []SeriesObservationResult {
+func (j *job) observeSeries(ctx context.Context) (out []SeriesObservationResult) {
 	if !j.co.SeriesObservations || len(j.observables) == 0 {
 		return nil
 	}
+	j.run.Start(StageObserveSeries)
+	defer func() { j.run.Done(resultsError(out), StageObserveSeries) }()
 	obs := j.observables
 	if len(obs) > maxSeriesObservations {
 		obs = obs[:maxSeriesObservations]
@@ -184,10 +186,12 @@ func (j *job) observe(ctx context.Context, o observable) SeriesObservationResult
 	// the last point of the window, so its facts are valid from then.
 	last := points[len(points)-1].TS
 	oj := *j
+	oj.run = j.run.Within(StageObserveSeries) // its model runs are the observe_series stage's
 	oj.obs = &observationPart{ParentID: o.ParentID, SeriesID: o.SeriesID, Query: query, Label: o.Observed.Key}
 	oj.kind, oj.ref = graph.ArtifactSeriesObservation, last
 
 	ex, err := Extract(ctx, oj.co.ModelLLM(oj.llm, memory_core.StageExtractGraph), text, oj.ref)
+	oj.run.AddModelRun(memory_core.StageExtractGraph, ex.RunID())
 	if err != nil {
 		return fail("extract", err)
 	}

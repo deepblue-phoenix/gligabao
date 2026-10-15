@@ -42,10 +42,23 @@ type Extraction struct {
 	Model    string `json:"model,omitempty"`
 	Provider string `json:"provider,omitempty"`
 	ModelID  string `json:"model_id,omitempty"`
+	// ModelRunID is the model run (gb_model_runs) of the LLM call that made the extraction; 0 if it could not be recorded.
+	ModelRunID int64 `json:"-"`
+}
+
+// RunID is the model run of the extraction (0 for none, and for a nil ex).
+func (ex *Extraction) RunID() int64 {
+	if ex == nil {
+		return 0
+	}
+	return ex.ModelRunID
 }
 
 // Extract asks the LLM to pull entities and temporal edges out of text. ref is the artifact's time; it anchors
 // relative dates and is the ValidAt of every fact whose start the text does not state.
+//
+// If the LLM answered but its answer is no use (too long, malformed), the error comes with an Extraction that is empty but
+// for its ModelRunID, so that the run it cost is not lost; it is nil if the call itself failed.
 func Extract(ctx context.Context, llm memory_core.LLM, text string, ref time.Time) (*Extraction, error) {
 
 	//-----------------------
@@ -63,13 +76,14 @@ func Extract(ctx context.Context, llm memory_core.LLM, text string, ref time.Tim
 		return nil, err
 	}
 	if resp.StopReason == "max_tokens" {
-		return nil, errors.New("memory: LLM output truncated; text too large")
+		return &Extraction{ModelRunID: resp.ModelRunID}, errors.New("memory: LLM output truncated; text too large")
 	}
 	ex, err := parseExtraction(resp.Text, ref)
 	if err != nil {
-		return nil, err
+		return &Extraction{ModelRunID: resp.ModelRunID}, err
 	}
 	ex.stampModel(resp.Provider, resp.Model)
+	ex.ModelRunID = resp.ModelRunID
 	return ex, nil
 }
 
@@ -213,6 +227,10 @@ type Result struct {
 	// summary is the summary stored with a chunk (see ChunkResult.Summary); nil for anything else.
 	summary *SummaryResult
 
+	// RememberRunID is the run log of this call: its row in gb_remember_runs, which holds how each stage of the pipeline went
+	// (see runlog.go).
+	RememberRunID int64 `json:"remember_run_id,omitempty"`
+
 	// TRAJECTORY
 	// TrajectoryID and Trajectory are the ATIF trajectory of this call (also stored in TrajectoryDir); only set when
 	// the call was made with WithEval.
@@ -346,7 +364,15 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	}
 	tr.Input(input)
 
-	j := &job{d: d, llm: llm, tr: tr, co: co, opts: opts, userID: userID, dataset: dataset, kind: kind, ref: ref, now: now}
+	run := startRunLog(ctx, d, userID, dataset, kind, input)
+	defer func() {
+		run.Finish(err)
+		if res != nil {
+			res.RememberRunID = run.ID()
+		}
+	}()
+
+	j := &job{d: d, llm: llm, tr: tr, run: run, co: co, opts: opts, userID: userID, dataset: dataset, kind: kind, ref: ref, now: now}
 
 	//--------------------------------------
 	// CLASSIFY_COMPLEXITY (Jev; only if configured)
@@ -358,7 +384,10 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 
 	//--------------------------------------
 	// EXTRACT
+	j.run.Start(memory_core.StageExtractGraph)
 	ex, err := Extract(ctx, co.ModelLLM(llm, memory_core.StageExtractGraph), text, ref)
+	j.run.Done(err, memory_core.StageExtractGraph)
+	j.run.AddModelRun(memory_core.StageExtractGraph, ex.RunID())
 	if err != nil {
 		return nil, err
 	}
@@ -371,6 +400,7 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	if err != nil {
 		return nil, err
 	}
+	j.run.Artifact(res.ArtifactID)
 
 	//--------------------------------------
 	// WEB_SEARCH (only with WithWebSearch): after the text is stored, so that it never fails the call
@@ -389,9 +419,12 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 // job is what one Remember call shares between the steps it runs on each text it extracts (the text itself, or each of
 // the chunks of a long one).
 type job struct {
-	d      *sql.DB
-	llm    memory_core.LLM // already recording and tracing
-	tr     *memory_core.Trace
+	d   *sql.DB
+	llm memory_core.LLM // already recording and tracing
+	tr  *memory_core.Trace
+	// run is the run log of the call (see runlog.go). It is nil in the jobs that store the texts the enrichment stages make (a
+	// web search result, a series observation): they are part of those stages, not of the stages of the text itself.
+	run    *runLog
 	co     memory_core.CallOptions
 	opts   []memory_core.Option
 	userID string
@@ -437,7 +470,9 @@ func (j *job) resolveAndStore(ctx context.Context, text string, ex *Extraction, 
 	// ones are invalidated (not deleted) by Store. Without candidates there is no LLM resolution call.
 	// For the chunks of a long text this runs after the previous chunk was stored, so a chunk is also compared with
 	// the facts of the chunks before it.
-	cs, err := loadCandidates(ctx, d, co, userID, dataset, ex)
+	j.run.Start(StageLoadCandidates)
+	cs, err := loadCandidates(ctx, d, j.run, co, userID, dataset, ex)
+	j.run.Done(err, StageLoadCandidates)
 	if err != nil {
 		return nil, err
 	}
@@ -456,11 +491,17 @@ func (j *job) resolveAndStore(ctx context.Context, text string, ex *Extraction, 
 		"candidates for duplicates and contradictions."+label, "load_candidates",
 		map[string]any{"user_id": userID, "dataset": dataset, "new_edges": len(ex.Edges), "by_name": len(cs.ByName), "by_similarity": len(cs.BySimilar)},
 		map[string]any{"candidates": len(cands), "facts": candidateFacts(cands, cs.Via)})
+	j.run.Start(memory_core.StageResolveEdges)
 	plan, err := resolveEdges(ctx, co.ModelLLM(j.llm, memory_core.StageResolveEdges), ex.Edges, cands)
+	j.run.Done(err, memory_core.StageResolveEdges)
+	j.run.AddModelRun(memory_core.StageResolveEdges, plan.RunID())
 	if err != nil {
 		return nil, err
 	}
-	res, err := store(ctx, d, userID, dataset, j.kind, text, j.ref, j.now, ex, plan, part, j.web, j.obs, append(j.opts[:len(j.opts):len(j.opts)], memory_core.WithTrace(tr))...)
+	stores := j.storeStages(part)
+	j.run.Start(stores...)
+	res, err := store(ctx, d, j.run, userID, dataset, j.kind, text, j.ref, j.now, ex, plan, part, j.web, j.obs, append(j.opts[:len(j.opts):len(j.opts)], memory_core.WithTrace(tr))...)
+	j.run.Done(err, stores...)
 	if err != nil {
 		return nil, err
 	}
@@ -508,16 +549,16 @@ func candidateFacts(edges []Edge, via map[int64]string) []map[string]any {
 // nothing; the vectors are written right after the commit, so a vector store failure returns an error after the
 // relational data is saved (the vectors are written again the next time the entity or fact is mentioned).
 func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan, opts ...memory_core.Option) (*Result, error) {
-	return store(ctx, d, userID, dataset, kind, text, ref, now, ex, plan, nil, nil, nil, opts...)
+	return store(ctx, d, nil, userID, dataset, kind, text, ref, now, ex, plan, nil, nil, nil, opts...)
 }
 
-// store is Store; part, if not nil, says the text is a chunk of a longer one: it is then stored as a child artifact
+// store is Store; run, if not nil, is told of the embedding request (a model run of the store stage). part, if not nil, says the text is a chunk of a longer one: it is then stored as a child artifact
 // of part.ParentID, and its text is embedded into the chunk index together with the entities and edges. web, if not
 // nil, says the text is the result of a web search: it is then stored as an artifact of kind web_search that saves the
 // query and is a child of web.ParentID (kind is ignored). obs, if not nil, says the text is the observation of a series:
 // it is then stored as an artifact of kind series_observation that records the series and is a child of obs.ParentID
 // (kind is ignored). part, web and obs are never more than one set.
-func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan, part *chunkPart, web *webPart, obs *observationPart, opts ...memory_core.Option) (*Result, error) {
+func store(ctx context.Context, d *sql.DB, run *runLog, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan, part *chunkPart, web *webPart, obs *observationPart, opts ...memory_core.Option) (*Result, error) {
 	co := memory_core.NewCallOptions(opts)
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
@@ -550,7 +591,7 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 	}
 	// Registered before the transaction's Rollback, so it runs after the transaction is finished (see prepareVectors).
 	var embedUsage *ai.EmbedUsage
-	defer func() { recordEmbedUsage(ctx, d, embedUsage) }()
+	defer func() { run.AddModelRun(StageStore, recordEmbedUsage(ctx, d, embedUsage)) }()
 	tx, err := graph.Begin(ctx, d)
 	if err != nil {
 		return nil, err

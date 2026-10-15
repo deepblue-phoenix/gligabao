@@ -53,10 +53,12 @@ content-type: application/json
   ],
   "invalidated_edges": [],
   "embedded_entities": 3,
-  "embedded_edges": 2
+  "embedded_edges": 2,
+  "remember_run_id": 17
 }
 ```
 
+- `remember_run_id`: the [run log](#run-log) of the call (`gb_remember_runs.id`).
 - `artifact_id`, `kind`, `valid_at`, `created_at`: the artifact, its kind, and its event time (the `reference_time`) and ingestion time.
 - `session_id`: the session the artifact was attached to; omitted if the request had none.
 - `entities` are what the LLM extracted from this text (after normalization).
@@ -196,6 +198,40 @@ Querying the edge index (`dataset-<id>-edges`) with the new facts' descriptions 
 - A new edge with the same source, target and relation as a stored edge that is still true is a duplicate and is not inserted again.
 - Sending the same text twice adds a second `gb_artifacts` row (linking the existing entities and edges to it, and to its session if it has one) but no duplicate entities or edges, and no duplicate vectors: the existing ones are overwritten.
 
+## Run log
+
+Every call is recorded in `gb_remember_runs`: **one row per execution of the pipeline, the authoritative record of how it was executed.** The row is written when the call starts and updated at every step, so a call in progress can be watched, and a row that stays `started` belongs to a process that died. (A request that is rejected before the pipeline starts, a `400`, has no row.) It is kept by `internal/memory/memory_remember/runlog.go`; the pipeline only reports `Start` and `Done` for its stages.
+
+| Column | |
+| ------ | - |
+| `id`, `user_id`, `dataset` (the name), `kind` | the call |
+| `params` | JSON: how it was made (reference time, session, models and reasoning per stage, chunk size, the optional stages asked for) |
+| `artifact_id` | the artifact the text was stored as (the parent, for a chunked text); `NULL` until it is stored |
+| `status`, `error` | **the call as a whole**, so it can be checked without looking at the stages: `started`, then `succeeded` if `remember` returned a result or `failed` (with `error`) if it returned an error |
+| `started_at`, `finished_at` | of the call |
+
+and, for **each stage** (`<stage>_` prefix):
+
+| Column | |
+| ------ | - |
+| `<stage>_status` | `not_started` (not reached, or not used by this call), `started`, `succeeded` or `failed` (constants `relational.RememberNotStarted`, `RememberStarted`, `RememberSucceeded`, `RememberFailed`) |
+| `<stage>_error` | why the stage failed; `NULL` if it did not |
+| `<stage>_started_at`, `<stage>_finished_at` | when the stage began and when it last ended; a stage that runs for each chunk spans all the chunks |
+| `<stage>_model_run_ids` | only for the stages that run a model: JSON array of the `gb_model_runs` IDs of what the stage ran, in order. A list, because a stage runs a model once per chunk |
+
+The stages, in order: `classify_complexity` (Jev), `chunk_text`, `extract_graph`, `summarize_chunk`, `load_candidates`, `resolve_edges`, `store`, `store_series`, `web_search`, `fetch_series`, `observe_series` (`relational.RememberStages` lists them; the ones that run a model are marked there). A stage the call does not use stays `not_started`.
+
+- `load_candidates` and `store` hold the embedding requests they made (`embed` runs); `fetch_series` holds the `resolve_series` run; `web_search`, `fetch_series` and `observe_series` hold **all** the model runs of their work, including the extraction, fact comparison and embeddings of the briefings and observations they store (their job gets `j.run.Within(stage)`, a view of the log that files every run in that stage and leaves the stages of the text itself alone). So every `remember` model run is in exactly one stage of one run log.
+- When a stage fails, the call fails with the same error, and the stages after it stay `not_started`. The stages that never fail the call (`classify_complexity`, `web_search`, `fetch_series`, `observe_series`) can be `failed` in a run that is `succeeded`: check the stage for them.
+- A text that is a single chunk stores the series it came with in the same transaction as the text, so `store_series` has the times of `store`.
+
+```sql
+SELECT id, dataset, error FROM gb_remember_runs WHERE status = 'failed';
+SELECT id, web_search_error FROM gb_remember_runs WHERE web_search_status = 'failed';
+```
+
+From Go: `relational.GetRememberRun`, `ListRememberRuns` (filter by user, dataset and status). Writing is done by the pipeline: `startRunLog` returns a `*runLog` whose methods (`Start`, `Done`, `AddModelRun`, `Artifact`, `Finish`) do nothing on `nil` and never fail the call; a row that cannot be written is logged. The pipeline reports each model run explicitly, with the ID that recording it returned: `j.run.AddModelRun(stage, id)`.
+
 ## Schema
 
 All tables are prefixed with `gb_` (see `internal/db/relational/{sqlite,postgres}/db_schema.go` for datasets and `internal/db/graph/{sqlite,postgres}/db_schema.go` for the graph tables).
@@ -211,6 +247,7 @@ All tables are prefixed with `gb_` (see `internal/db/relational/{sqlite,postgres
 | `gb_entity_sessions` | `entity_id` → `gb_entities`, `session_id`; primary key (`entity_id`, `session_id`) |
 | `gb_edge_sessions` | `edge_id` → `gb_edges`, `session_id`; primary key (`edge_id`, `session_id`) |
 | `gb_series`, `gb_series_points`, `gb_series_anchors` | The [timeseries](timeseries.md) and what they are anchored to (`gb_artifacts.series_id` links a [series observation](timeseries.md#observations) to its series) |
+| `gb_remember_runs` | One row per call: its `status`, and for each stage a status, error, start and end time and model runs. See [Run log](#run-log) |
 | `gb_items` | `id`, `name`, `created_at` (placeholder) |
 
 Foreign keys are enabled on every connection. Deleting an entity cascades to its edges and its `gb_entity_artifacts` links, and deleting an edge removes its `gb_edge_artifacts` links; deleting an artifact sets `artifact_id` to NULL on its edges and removes its `gb_edge_artifacts` and `gb_entity_artifacts` links. Deleting an entity or an edge also removes its `gb_entity_sessions` or `gb_edge_sessions` links; deleting an artifact leaves them (they record that the session discovered the entity or fact, not which artifact did).
