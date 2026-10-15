@@ -130,19 +130,17 @@ func ParseModels(s string) (Models, error) {
 // not in m, or whose model is empty, uses the default model. Validate m with ResolveModels first.
 func WithModels(m Models) Option { return func(o *CallOptions) { o.Models = m } }
 
-// ModelLLM returns llm with the model (and, for the stages that take one, the reasoning level) of the given stage set on
-// every request that names none. With neither it returns llm itself, so the client's default model is used.
+// ModelLLM returns llm with the model and the reasoning level of the given stage set on every request that names none, and
+// the stage on the context of each call (see StageOf), so that the model run it records says which stage made it. The
+// level is that of WithReasoning for the stage, or its default (DefaultReasoning). A stage with no model uses the client's
+// default model.
 func (o CallOptions) ModelLLM(llm LLM, stage string) LLM {
-	model, reasoning := o.Models[stage], o.Reasoning[stage]
-	if model == "" && reasoning == "" {
-		return llm
-	}
-	return &modelLLM{LLM: llm, model: model, reasoning: reasoning}
+	return &modelLLM{LLM: llm, stage: stage, model: o.Models[stage], reasoning: o.Reasoning.Level(stage)}
 }
 
 type modelLLM struct {
 	LLM
-	model, reasoning string
+	stage, model, reasoning string
 }
 
 func (m *modelLLM) Complete(ctx context.Context, req ai.Request) (*ai.Response, error) {
@@ -152,24 +150,65 @@ func (m *modelLLM) Complete(ctx context.Context, req ai.Request) (*ai.Response, 
 	if req.Reasoning == "" {
 		req.Reasoning = m.reasoning
 	}
-	return m.LLM.Complete(ctx, req)
+	return m.LLM.Complete(WithStage(ctx, m.stage), req)
+}
+
+type stageKey struct{}
+
+// WithStage returns ctx that carries the pipeline stage a model call is made for. WithRecording stores it in the model
+// run of the call.
+func WithStage(ctx context.Context, stage string) context.Context {
+	return context.WithValue(ctx, stageKey{}, stage)
+}
+
+// StageOf returns the stage of ctx (see WithStage), "" if there is none.
+func StageOf(ctx context.Context) string {
+	s, _ := ctx.Value(stageKey{}).(string)
+	return s
 }
 
 //---------------------------------------------------------------------------------------------
 
-// ReasoningStages lists the stages that take a reasoning level.
-var ReasoningStages = []string{StageSummarizeChunk}
+// StageRecall is the LLM call of Recall that answers the question. It is not a stage of remember (so it is not in Stages,
+// and takes no model), but it has a reasoning level of its own.
+const StageRecall = "recall"
+
+// ReasoningStages lists the stages that take a reasoning level: the LLM stages of remember (see Stages) but the web
+// search, which runs on Anthropic's web search tool without thinking (and Jev, which does not think either).
+var ReasoningStages = []string{StageExtractGraph, StageSummarizeChunk, StageResolveEdges, StageResolveSeries, StageExtractImage}
+
+// The reasoning level a stage runs with unless the call chooses another. It is none (no thinking) for both pipelines, so
+// that no thinking tokens are paid for by default; a call turns it on per stage (WithReasoning).
+const (
+	DefaultRememberReasoning = ai.ReasoningNone
+	DefaultRecallReasoning   = ai.ReasoningNone
+)
+
+// DefaultReasoning is the reasoning level of a stage when the call sets none: DefaultRecallReasoning for StageRecall,
+// DefaultRememberReasoning for a stage of ReasoningStages and none for any other.
+func DefaultReasoning(stage string) string {
+	if stage == StageRecall {
+		return DefaultRecallReasoning
+	}
+	for _, s := range ReasoningStages {
+		if s == stage {
+			return DefaultRememberReasoning
+		}
+	}
+	return ai.ReasoningNone
+}
 
 // ErrInvalidReasoning means a stage that takes no reasoning level is named, or a level is unknown.
 var ErrInvalidReasoning = errors.New("invalid reasoning")
 
-// Reasoning maps a stage (see ReasoningStages) to its reasoning level (ai.ReasoningLow, ...). A stage that is missing
-// runs without reasoning.
+// Reasoning maps a stage (see ReasoningStages, and StageRecall for Recall) to its reasoning level (ai.ReasoningLow, ...).
+// A stage that is missing runs with its default (DefaultReasoning, none: no thinking); "low", "medium" and "high" turn it on.
 type Reasoning map[string]string
 
-// ResolveReasoning validates m and returns a normalized copy: levels are trimmed and lowercased, and a stage with an
-// empty level or "none" is dropped (no reasoning). It returns ErrInvalidReasoning for a stage that takes no reasoning
-// level or an unknown level. A nil or empty m gives nil.
+// ResolveReasoning validates m, the reasoning levels of the stages of remember, and returns a normalized copy: levels are
+// trimmed and lowercased, and a stage with an empty level is dropped (it means the default). "none" is kept, so a
+// request can be explicit about it. It returns ErrInvalidReasoning for a stage that takes no reasoning level or an unknown level. A nil or
+// empty m gives nil.
 func ResolveReasoning(m map[string]string) (Reasoning, error) {
 	var out Reasoning
 	for stage, level := range m {
@@ -180,11 +219,11 @@ func ResolveReasoning(m map[string]string) (Reasoning, error) {
 		if !ok {
 			return nil, fmt.Errorf("%w: unknown stage %q (stages with a reasoning level: %s)", ErrInvalidReasoning, stage, strings.Join(ReasoningStages, ", "))
 		}
-		l, valid := ai.NormalizeReasoning(level)
-		if !valid {
-			return nil, fmt.Errorf("%w: %s: unknown level %q (levels: %s)", ErrInvalidReasoning, stage, level, strings.Join(ai.ReasoningLevels, ", "))
+		l, err := resolveLevel(stage, level)
+		if err != nil {
+			return nil, err
 		}
-		if l == ai.ReasoningNone {
+		if l == "" {
 			continue
 		}
 		if out == nil {
@@ -195,14 +234,37 @@ func ResolveReasoning(m map[string]string) (Reasoning, error) {
 	return out, nil
 }
 
-// WithReasoning sets the reasoning level of the stages that take one (see ReasoningStages). A stage that is not in r
-// runs without reasoning. Validate r with ResolveReasoning first.
+// ResolveRecallReasoning validates the reasoning level of Recall and returns it as a Reasoning for WithReasoning. An
+// empty level means the default (DefaultRecallReasoning) and gives nil.
+func ResolveRecallReasoning(level string) (Reasoning, error) {
+	l, err := resolveLevel(StageRecall, level)
+	if err != nil || l == "" {
+		return nil, err
+	}
+	return Reasoning{StageRecall: l}, nil
+}
+
+// resolveLevel normalizes a level; "" is returned for an empty one (the default).
+func resolveLevel(stage, level string) (string, error) {
+	if strings.TrimSpace(level) == "" {
+		return "", nil
+	}
+	l, valid := ai.NormalizeReasoning(level)
+	if !valid {
+		return "", fmt.Errorf("%w: %s: unknown level %q (levels: %s)", ErrInvalidReasoning, stage, level, strings.Join(ai.ReasoningLevels, ", "))
+	}
+	return l, nil
+}
+
+// WithReasoning sets the reasoning level of stages (see ReasoningStages; StageRecall for Recall). A stage that is not in r
+// runs with its default level (DefaultReasoning). Validate r with ResolveReasoning (or ResolveRecallReasoning) first.
 func WithReasoning(r Reasoning) Option { return func(o *CallOptions) { o.Reasoning = r } }
 
-// Level is the reasoning level of a stage as it is recorded: "none" if the stage has none.
+// Level is the reasoning level a stage runs with, as it is recorded: the one set for it, or its default
+// (DefaultReasoning).
 func (r Reasoning) Level(stage string) string {
 	if l := r[stage]; l != "" {
 		return l
 	}
-	return ai.ReasoningNone
+	return DefaultReasoning(stage)
 }

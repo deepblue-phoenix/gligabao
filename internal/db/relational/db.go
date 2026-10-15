@@ -1,5 +1,5 @@
 // Package relational opens the database selected in the config and routes every database operation to the backend
-// subpackage in use (sqlite or postgres). It covers datasets and the LLM call log; graph operations are in internal/db/graph. All SQL lives in the backends (internal/db/relational/sqlite, internal/db/relational/postgres);
+// subpackage in use (sqlite or postgres). It covers datasets and the model runs (gb_model_runs); graph operations are in internal/db/graph. All SQL lives in the backends (internal/db/relational/sqlite, internal/db/relational/postgres);
 // other packages only call the functions here and never write SQL. Each backend owns its schema, its SQL dialect
 // and its timestamp storage format.
 package relational
@@ -20,7 +20,8 @@ import (
 type (
 	Dataset              = model.Dataset
 	Model                = model.Model
-	LLMCallStat          = model.LLMCallStat
+	ModelRun             = model.ModelRun
+	ModelRunStat         = model.ModelRunStat
 	Ontology             = model.Ontology
 	Experiment           = model.Experiment
 	EvalRef              = model.EvalRef
@@ -220,29 +221,4 @@ func DeleteOntology(ctx context.Context, d *sql.DB, id int64) error {
 		return postgres.DeleteOntology(ctx, d, id)
 	}
 	return unsupported()
-}
-
-//---------------------------------------------------------------------------------------------
-// LLM call log
-
-// RecordLLMCall stores one LLM/embedding API call.
-func RecordLLMCall(ctx context.Context, d *sql.DB, kind, provider, modelName string, inputTokens, outputTokens int, costUSD float64) error {
-	switch backend() {
-	case config.DBBackendSQLite:
-		return sqlite.RecordLLMCall(ctx, d, kind, provider, modelName, inputTokens, outputTokens, costUSD)
-	case config.DBBackendPostgres:
-		return postgres.RecordLLMCall(ctx, d, kind, provider, modelName, inputTokens, outputTokens, costUSD)
-	}
-	return unsupported()
-}
-
-// LLMCallStats sums the logged LLM calls by type.
-func LLMCallStats(ctx context.Context, d *sql.DB) (map[string]LLMCallStat, error) {
-	switch backend() {
-	case config.DBBackendSQLite:
-		return sqlite.LLMCallStats(ctx, d)
-	case config.DBBackendPostgres:
-		return postgres.LLMCallStats(ctx, d)
-	}
-	return nil, unsupported()
 }

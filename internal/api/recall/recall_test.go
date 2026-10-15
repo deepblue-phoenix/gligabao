@@ -166,3 +166,55 @@ func testRecallSession(t *testing.T, d *sql.DB) {
 		t.Errorf("invalid session status = %d, want 400: %s", rec.Code, rec.Body)
 	}
 }
+
+// The LLM call of a recall is a model run, with no thinking (level none) unless the request names another.
+func TestRecallModelRun(t *testing.T) { dbtest.Run(t, testRecallModelRun) }
+
+func testRecallModelRun(t *testing.T, d *sql.DB) {
+	llm := &recordingLLM{outs: []string{
+		`{"entities":[{"name":"Alice","type":"person"}],"edges":[]}`,
+		`{"answer":"Alice.","entities":[1],"edges":[]}`,
+		`{"answer":"Alice.","entities":[1],"edges":[]}`,
+	}}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/gb/recall", Handler(d, llm))
+	if _, err := memory_remember.Remember(context.Background(), d, llm, "u1", "", "", "x", time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	post := func(body string) int {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/recall", strings.NewReader(body)))
+		return rec.Code
+	}
+	if c := post(`{"user_id":"u1","query":"Alice?"}`); c != 200 {
+		t.Fatalf("status %d", c)
+	}
+	if c := post(`{"user_id":"u1","query":"Alice?","reasoning":"High"}`); c != 200 {
+		t.Fatalf("status %d", c)
+	}
+	if c := post(`{"user_id":"u1","query":"Alice?","reasoning":"max"}`); c != 400 {
+		t.Fatalf("status %d, want 400", c)
+	}
+	if got := llm.reqs[len(llm.reqs)-2].Reasoning + "," + llm.reqs[len(llm.reqs)-1].Reasoning; got != "none,high" {
+		t.Errorf("requested levels = %s", got)
+	}
+	rows, err := d.Query(`SELECT reasoning FROM gb_model_runs WHERE type = 'recall' AND stage = 'recall' ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var levels []string
+	for rows.Next() {
+		var l string
+		rows.Scan(&l)
+		levels = append(levels, l)
+	}
+	if strings.Join(levels, ",") != "none,high" {
+		t.Errorf("recorded levels = %v", levels)
+	}
+	// What remember did ran without thinking.
+	var n int
+	if err := d.QueryRow(`SELECT COUNT(*) FROM gb_model_runs WHERE type = 'remember' AND reasoning = 'none'`).Scan(&n); err != nil || n == 0 {
+		t.Errorf("remember runs with no reasoning = %d, %v", n, err)
+	}
+}

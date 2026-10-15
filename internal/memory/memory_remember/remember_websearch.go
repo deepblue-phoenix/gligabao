@@ -32,6 +32,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 
 	log "github.com/sirupsen/logrus"
@@ -270,7 +271,9 @@ func (j *job) storeWebSearch(ctx context.Context, p *keyEntity, ws webSearched) 
 	}
 	resp := ws.resp
 	// Detached from ctx so a cancelled request still records money that was spent.
-	if err := memory_core.RecordCall(context.WithoutCancel(ctx), j.d, CallRemember, resp.Provider, resp.Model, resp.InputTokens, resp.OutputTokens, resp.CostUSD); err != nil {
+	if _, err := memory_core.RecordRun(context.WithoutCancel(ctx), j.d, relational.ModelRun{Type: CallRemember, Stage: memory_core.StageWebSearch,
+		Model: resp.Model, Provider: resp.Provider, Kind: ai.KindOf(resp.Model), Reasoning: ai.ReasoningNone,
+		InputTokens: resp.InputTokens, OutputTokens: resp.OutputTokens, CostUSD: resp.CostUSD}); err != nil {
 		log.WithError(err).WithFields(fields).Error("record web search call")
 	}
 	out.Searches, out.Sources, out.CostUSD = resp.Queries, resp.Sources, resp.CostUSD

@@ -5,6 +5,22 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.19.0] - 2026-10-20
+
+### Added
+- Model runs. New table `gb_model_runs`, the dynamic counterpart of the static `gb_models`: one row per invocation of a model, with `type` (`remember`, `remember_image`, `recall`), `stage` (`extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series`, `extract_image`, `web_search`, `classify_complexity`, `embed`, `recall`), `model_id` (→ `gb_models`), `reasoning` (the thinking level it ran with: `none`, `low`, `medium`, `high`), `input_tokens`, `output_tokens`, `cost_usd` and `created_at`. **Every** model call is a run: each LLM call, each embedding request, each web search and each Jev classification. See [docs/model-runs.md](docs/model-runs.md).
+- Thinking levels for every stage. `POST /v1/gb/remember`'s `reasoning` now takes any LLM stage (`extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series`, `extract_image`), and `none` is kept as given. `POST /v1/gb/recall` takes `reasoning` too. `400` for `web_search` (it does not think) or an unknown level. Thinking is **off by default** (`none`) in both pipelines, so no thinking tokens are paid for unless a request asks for them.
+- Eval runner: reasoning levels. A case takes `"reasoning"` (a level per stage, and `"recall"` for the recall's answer) and the runner `-reasoning extract_graph=low,recall=medium`, combined stage by stage like models (the case wins) and recorded in the experiment run's `params`. Every case of the suites now sets all of them explicitly to `none` (checked by a test), as the baseline for comparing levels.
+- The chunk summary artifact references its run (`gb_artifacts.model_run_id`); `chunks[].summary` of the `remember` response gets `model_run_id`, and the `summarize_chunk` trajectory step too.
+- A model without extended thinking (Claude 3 and 3.5) is called without a thinking budget, and its run records `none` (`ai.SupportsReasoning`, `ai.Response.Reasoning`).
+- The Python client's `remember` accepts `reasoning` for any LLM stage and with an image (client version 0.7.0).
+- Go: `relational.RecordModelRun`, `GetModelRun`, `ModelRunStats`, `ModelRun`, `ModelRunStat`; `memory_core.RecordRun`, `WithStage`, `StageOf`, `StageRecall`, `DefaultReasoning`, `ResolveRecallReasoning`; `ai.Response.ModelRunID`; `graph.Artifact.ModelRunID`, `graph.NewChunkSummaryArtifact.ModelRunID`.
+
+### Changed
+- `gb_llm_calls` is replaced by `gb_model_runs`; `relational.RecordLLMCall`, `LLMCallStats` and `LLMCallStat` are replaced by `RecordModelRun`, `ModelRunStats` and `ModelRunStat`; `memory_core.RecordCall` by `RecordRun`.
+- A chunk summary artifact keeps only a reference to its run: `gb_artifacts.model_id` and `gb_artifacts.reasoning` (added in 0.18.0) are replaced by `gb_artifacts.model_run_id` (`graph.Artifact.ModelID` and `Reasoning` are removed; the run holds the model and the level, see `relational.GetModelRun`). `reasoning` is accepted with an `image` (stage `extract_image`).
+- **Schema change**: existing database files are not migrated; delete the file and let the server recreate it.
+
 ## [0.18.0] - 2026-10-19
 
 ### Added

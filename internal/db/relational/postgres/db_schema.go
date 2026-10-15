@@ -59,17 +59,20 @@ CREATE TABLE IF NOT EXISTS gb_models (
 	created_at TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `
 );
 
-CREATE TABLE IF NOT EXISTS gb_llm_calls (
+-- One row per invocation of a model (see sqlite/db_schema.go).
+CREATE TABLE IF NOT EXISTS gb_model_runs (
 	id            BIGSERIAL PRIMARY KEY,
 	type          TEXT NOT NULL,
-	provider      TEXT NOT NULL,
-	model         TEXT NOT NULL,
+	stage         TEXT NOT NULL DEFAULT '',
+	model_id      TEXT REFERENCES gb_models(id),
+	reasoning     TEXT NOT NULL DEFAULT 'none' CHECK (reasoning IN ('none', 'low', 'medium', 'high')),
 	input_tokens  BIGINT NOT NULL,
 	output_tokens BIGINT NOT NULL,
 	cost_usd      DOUBLE PRECISION NOT NULL, -- total cost of the call in USD (0 if the model's price is unknown)
 	created_at    TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `
 );
-CREATE INDEX IF NOT EXISTS idx_gb_llm_calls_type ON gb_llm_calls(type);
+CREATE INDEX IF NOT EXISTS idx_gb_model_runs_type ON gb_model_runs(type);
+CREATE INDEX IF NOT EXISTS idx_gb_model_runs_model ON gb_model_runs(model_id);
 
 CREATE TABLE IF NOT EXISTS gb_experiments (
 	id          BIGSERIAL PRIMARY KEY,

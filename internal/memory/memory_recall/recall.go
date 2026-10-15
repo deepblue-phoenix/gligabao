@@ -19,7 +19,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
-// CallRecall is the type of the LLM calls of Recall, stored in gb_llm_calls.type.
+// CallRecall is the type of the model runs of Recall, stored in gb_model_runs.type.
 const CallRecall = "recall"
 
 const (
@@ -66,6 +66,9 @@ type RecallResult struct {
 // With WithSessionID the result carries that session ID, and so does the call's trajectory (as its session_id,
 // the same one the trajectories of the session's Remember calls have). The session does not influence retrieval or
 // the answer: Recall is the same function of the graph and the query with or without it.
+//
+// The LLM call is recorded as a model run (gb_model_runs) with the reasoning level medium by default (see
+// memory_core.DefaultRecallReasoning).
 //
 // Only with WithEval is the call recorded as an ATIF trajectory (stored as JSON in TrajectoryDir and returned in
 // RecallResult.Trajectory, with its ID in RecallResult.TrajectoryID).
@@ -114,7 +117,9 @@ func Recall(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset
 		}, nil
 	}
 
-	out, err := recallLLM(ctx, tr.Wrap(memory_core.WithRecording(llm, d, CallRecall)), rc)
+	// The answer is thought through with the reasoning level medium unless the call sets another (WithReasoning with
+	// memory_core.StageRecall); the model run records it.
+	out, err := recallLLM(ctx, co.ModelLLM(tr.Wrap(memory_core.WithRecording(llm, d, CallRecall)), memory_core.StageRecall), rc)
 	if err != nil {
 		return nil, err
 	}

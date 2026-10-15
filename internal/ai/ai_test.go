@@ -181,3 +181,28 @@ func TestCompleteReasoning(t *testing.T) {
 		t.Error("an unknown level was accepted")
 	}
 }
+
+// A model without extended thinking (Claude 3.x) gets no thinking budget, and the response says it did not reason.
+func TestCompleteReasoningReported(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = nil
+		json.NewDecoder(r.Body).Decode(&got)
+		w.Write([]byte(`{"model":"` + got["model"].(string) + `","stop_reason":"end_turn","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":1,"output_tokens":2}}`))
+	}))
+	defer srv.Close()
+	c, _ := New("k", WithBaseURL(srv.URL))
+	for _, tc := range []struct{ model, ask, want string }{
+		{"claude-haiku-4-5", ReasoningLow, ReasoningLow},
+		{"claude-haiku-4-5", "", ReasoningNone},
+		{"claude-3-haiku-20240307", ReasoningMedium, ReasoningNone},
+	} {
+		r, err := c.Complete(context.Background(), Request{Model: tc.model, Messages: []Message{{Role: RoleUser, Content: "yo"}}, Reasoning: tc.ask})
+		if err != nil || r.Reasoning != tc.want {
+			t.Fatalf("%+v: got %+v, %v", tc, r, err)
+		}
+		if _, thinks := got["thinking"]; thinks != (tc.want != ReasoningNone) {
+			t.Errorf("%+v: request = %v", tc, got)
+		}
+	}
+}

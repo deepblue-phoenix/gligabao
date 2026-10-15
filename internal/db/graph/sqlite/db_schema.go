@@ -45,9 +45,9 @@ const schema = `
 --   A 'chunk_summary' artifact is the child of the chunk it summarizes (parent_id), has that chunk's session and times and
 --              the summary as its text; it has no chunk_index, query or series_id, and no entity or edge links to it (the
 --              graph is extracted from the chunk). Deleting the chunk deletes its summary.
---   model_id, reasoning  only for a 'chunk_summary' artifact: the model that wrote the summary (a reference to gb_models,
---              as the LLM API reported it) and the reasoning level it ran with: 'none', 'low', 'medium' or 'high'. NULL for
---              any other artifact.
+--   model_run_id  only for a 'chunk_summary' artifact: the run (gb_model_runs) of the model that wrote the summary. The run
+--              holds the model (as the LLM API reported it), the reasoning level it ran with, and its tokens and cost. NULL
+--              for any other artifact (and for a summary whose run could not be recorded).
 --   chunk_index position of a chunk among its siblings, from 0; tokens its size in tokens. NULL unless a chunk.
 CREATE TABLE IF NOT EXISTS gb_artifacts (
 	id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,8 +62,7 @@ CREATE TABLE IF NOT EXISTS gb_artifacts (
 	tokens       INTEGER,
 	query        TEXT,
 	series_id    INTEGER REFERENCES gb_series(id) ON DELETE SET NULL,
-	model_id     TEXT REFERENCES gb_models(id),
-	reasoning    TEXT,
+	model_run_id INTEGER REFERENCES gb_model_runs(id),
 	valid_at     DATETIME NOT NULL,
 	created_at   DATETIME NOT NULL,
 	UNIQUE (parent_id, chunk_index)

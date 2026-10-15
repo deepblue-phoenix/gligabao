@@ -66,7 +66,7 @@ content-type: application/json
 
 ## Repeated images
 
-The SHA-256 of the decoded image is compared with the image artifacts the dataset already holds. If one has the same hash, the image is not read again: `remember` returns the stored result of the earlier call (its newest extraction) with `"cached": true`, makes no LLM call and stores nothing new (no artifact, extraction, text block or `gb_llm_calls` row). In the response, `image_artifact_id`, `session_id`, `extraction_id`, `path`, `valid_at` and `created_at` are those of the stored artifact (so `session_id` is the session that first stored the image, not necessarily the one of this request; the repeat leaves no trace of its own session) (a `reference_time` in the repeated request is ignored), and `model`, `provider`, `input_tokens`, `output_tokens` and `cost_usd` describe the call that made the extraction, which was spent then, not now. If the image file has gone missing from the image directory, it is written again from the uploaded bytes.
+The SHA-256 of the decoded image is compared with the image artifacts the dataset already holds. If one has the same hash, the image is not read again: `remember` returns the stored result of the earlier call (its newest extraction) with `"cached": true`, makes no LLM call and stores nothing new (no artifact, extraction, text block or `gb_model_runs` row). In the response, `image_artifact_id`, `session_id`, `extraction_id`, `path`, `valid_at` and `created_at` are those of the stored artifact (so `session_id` is the session that first stored the image, not necessarily the one of this request; the repeat leaves no trace of its own session) (a `reference_time` in the repeated request is ignored), and `model`, `provider`, `input_tokens`, `output_tokens` and `cost_usd` describe the call that made the extraction, which was spent then, not now. If the image file has gone missing from the image directory, it is written again from the uploaded bytes.
 
 Only the same dataset of the same user is searched: datasets are isolated, so the same image in another dataset (or another user's) is read and stored again. The comparison is on the bytes: a re-encoded or resized copy is a different image. Two identical requests that arrive at the same moment may both miss and both be read.
 
@@ -87,7 +87,7 @@ Code fences or prose around the JSON are tolerated. Then it is normalized:
 - `text_blocks` are the text regions in reading order, each with a `kind`: `title`, `subtitle`, `heading`, `paragraph`, `caption`, `label` (a drawn element's text), `axis`, `legend`, `annotation`, `table` (a row, cells joined by ` | `) or `other` (the fallback for an unknown kind). Blank blocks are dropped.
 - `text` is not asked of the model: it is the blocks joined by newlines.
 
-The call is recorded in `gb_llm_calls` with type `remember_image` (the text pipeline's calls are `remember`), even if a later step fails.
+The call is recorded in `gb_model_runs` with type `remember_image` (stage `extract_image`, with the reasoning level it ran with: low unless the request sets `reasoning.extract_image`) (the text pipeline's calls are `remember`), even if a later step fails.
 
 ## Where the files are
 

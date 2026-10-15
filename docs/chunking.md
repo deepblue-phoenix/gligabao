@@ -56,18 +56,18 @@ Failure after step 4: the transaction of a chunk cannot span the whole document 
 
 ## Chunk summaries
 
-Every chunk is summarized by an LLM call of its own (the `summarize_chunk` stage, `summarizeChunk` in `internal/memory/memory_remember/remember_summaries.go`). The model is asked for a faithful two-to-four sentence summary of the chunk, in plain prose, that names the people, organizations, places and dates that matter, keeps figures exact and adds nothing from outside the chunk (at most 512 output tokens). It sees the chunk only, not the rest of the document. The calls are made with the extractions, before anything is written, so a failure (an LLM error, an empty or truncated summary) stores nothing; and they are recorded in `gb_llm_calls` like the other calls.
+Every chunk is summarized by an LLM call of its own (the `summarize_chunk` stage, `summarizeChunk` in `internal/memory/memory_remember/remember_summaries.go`). The model is asked for a faithful two-to-four sentence summary of the chunk, in plain prose, that names the people, organizations, places and dates that matter, keeps figures exact and adds nothing from outside the chunk (at most 512 output tokens). It sees the chunk only, not the rest of the document. The calls are made with the extractions, before anything is written, so a failure (an LLM error, an empty or truncated summary) stores nothing; and each is recorded as a model run in `gb_model_runs` like the other calls.
 
 **A summary is an artifact of its own.** It is a row of `gb_artifacts`, stored in the same transaction as the chunk:
 
 - `kind` = `chunk_summary` (only the pipeline creates it; a caller cannot ask for it);
 - `parent_id` = the **chunk** artifact it summarizes (not the document: the chain is document, chunk, summary); `text` = the summary; the `session_id`, `valid_at` and `created_at` of the chunk;
-- `model_id` = the model that wrote it, as the API reports it (a reference to `gb_models`; a new model is registered), and `reasoning` = the reasoning level it ran with: `none`, `low`, `medium` or `high` (see [remember.md](remember.md#reasoning)). Both are `NULL` for any other artifact;
+- `model_run_id` = the [model run](model-runs.md) (`gb_model_runs`) of the call that wrote it. The run holds the model, as the API reports it (a reference to `gb_models`; a new model is registered), and the reasoning level it ran with: `none`, `low`, `medium` or `high` (see [remember.md](remember.md#reasoning)), plus the tokens and cost of the call. It is `NULL` for any other artifact (and for a summary whose run could not be recorded);
 - no `chunk_index`, `query` or `series_id`. It is derived, not a chunk (`Artifact.IsDerived()`, not `IsChunk()`), and, like a web search, it is not counted by `Counts.Chunks` (`Counts.Summaries` counts it);
 - no entity or edge links to it: the graph is extracted from the chunk, not from its summary;
 - deleting the chunk (or the document) deletes the summary.
 
-**Model and reasoning.** The stage has its own model (`models.summarize_chunk`, default model if not given) and an optional reasoning level (`reasoning.summarize_chunk`, off by default); both are per request, see [remember.md](remember.md#choosing-the-model-of-each-stage). What was used is what is recorded: the model the API answered with and the level the request asked for, so every summary says how it was written, even in a dataset whose chunks were summarized by different settings.
+**Model and reasoning.** The stage has its own model (`models.summarize_chunk`, default model if not given) and a reasoning level (`reasoning.summarize_chunk`, `none` if not given); both are per request, see [remember.md](remember.md#choosing-the-model-of-each-stage). What was used is what is recorded, in the summary's model run: the model the API answered with and the level the call ran with, so every summary says how it was written, even in a dataset whose chunks were summarized by different settings.
 
 **It is embedded.** The summary's text goes to a vector index of its own (below), so a summary can be searched apart from the chunk it condenses.
 
@@ -93,7 +93,7 @@ For a chunked text the response is that of the document (see [remember.md](remem
 
 - `artifact_id` is the parent's; `entities`, `edges` and `invalidated_edges` are those of all the chunks together (an entity once per name and type, an edge once);
 - `chunks` lists the chunks: `artifact_id`, `index`, `tokens`, `overlap_tokens`, `start_offset`, `end_offset`, and how many `entities` and `edges` its extraction listed (before merging with the other chunks);
-- each chunk also has its `summary`: `artifact_id` (the summary artifact), `text`, `model` and `reasoning`;
+- each chunk also has its `summary`: `artifact_id` (the summary artifact), `text`, `model`, `reasoning` and `model_run_id`;
 - `embedded_entities`, `embedded_edges`, `embedded_chunks` and `embedded_summaries` are the sums over the chunks.
 
 `chunks` is absent for a text that was not chunked. With the eval endpoints the trajectory has a `chunk_text` step, then an `extract_graph` step and a `summarize_chunk` step (with the summary, its model and reasoning level) per chunk, a `store_parent_artifact` step, and for each chunk its candidate steps, an `embed` and a `store_artifact` step (their messages end with `(chunk i of n)`).

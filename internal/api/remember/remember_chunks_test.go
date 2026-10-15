@@ -44,6 +44,7 @@ func testRememberLongText(t *testing.T, d *sql.DB) {
 				Text       string `json:"text"`
 				Model      string `json:"model"`
 				Reasoning  string `json:"reasoning"`
+				ModelRunID int64  `json:"model_run_id"`
 			} `json:"summary"`
 		} `json:"chunks"`
 	}
@@ -70,10 +71,10 @@ func testRememberLongText(t *testing.T, d *sql.DB) {
 		if c.Index != i || c.Tokens > 40 || chunks[i].ID != c.ArtifactID || chunks[i].ParentID != res.ArtifactID {
 			t.Errorf("chunk %d = %+v, artifact %+v", i, c, chunks[i])
 		}
-		// Its summary is an artifact of its own, a child of the chunk, that records the model and reasoning level.
+		// Its summary is an artifact of its own, a child of the chunk, that references the model run (model and reasoning level) that wrote it.
 		s := byID[c.Summary.ArtifactID]
 		if s.Kind != graph.ArtifactChunkSummary || s.ParentID != c.ArtifactID || s.Text != c.Summary.Text || s.Text == "" || s.IsChunk() || !s.IsDerived() ||
-			s.ModelID == "" || s.ModelID != relational.ModelID(c.Summary.Model) || s.Reasoning != "none" || c.Summary.Reasoning != "none" {
+			s.ModelRunID == 0 || s.ModelRunID != c.Summary.ModelRunID || c.Summary.Reasoning != "none" {
 			t.Errorf("chunk %d: summary %+v, artifact %+v", i, c.Summary, s)
 		}
 	}

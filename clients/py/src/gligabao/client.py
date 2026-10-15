@@ -59,10 +59,11 @@ class Client:
         server's default model. The model of "extract_graph" is the one recorded on the entities
         and edges the text yields. "web_search" is a further stage: the model that runs the web search.
 
-        `reasoning` picks the reasoning level ("none", "low", "medium" or "high") of the stages that take one:
-        only "summarize_chunk", the summary of each chunk of a long text, e.g. {"summarize_chunk": "low"}. A
-        stage left out does not reason. The model and the level that wrote each summary are in the response
-        (chunks[].summary) and stored on the summary artifact. Not for images.
+        `reasoning` picks the reasoning (thinking) level ("none", "low", "medium" or "high") of each LLM
+        stage: "extract_graph", "summarize_chunk", "resolve_edges", "resolve_series" and "extract_image", e.g.
+        {"summarize_chunk": "none", "resolve_edges": "medium"}. A stage left out runs with "none" (no
+        thinking). Every call is recorded server-side as a model run (gb_model_runs) with its level;
+        the summary of each chunk of a long text is in the response (chunks[].summary, with its model_run_id).
 
         `web_search=True` (text only) also searches the web for the latest world events about the key
         entities of the text, and remembers what it finds as artifacts of kind "web_search" (the response
@@ -97,8 +98,6 @@ class Client:
                 raise ValueError("web_search does not apply to images")
             if timeseries or fetch_timeseries or observe_timeseries:
                 raise ValueError("timeseries does not apply to images")
-            if reasoning:
-                raise ValueError("reasoning does not apply to images")
             if not isinstance(image, (bytes, bytearray, memoryview)):
                 with open(image, "rb") as f:
                     image = f.read()

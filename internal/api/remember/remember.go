@@ -50,9 +50,10 @@ type rememberRequest struct {
 	// Models (optional) picks the LLM model of each stage of the pipeline ("extract_graph", "resolve_edges", "web_search", "extract_image"); a stage left
 	// out uses the default model. See memory_core.Models.
 	Models map[string]string `json:"models"`
-	// Reasoning (optional) picks the reasoning level ("none", "low", "medium" or "high") of the stages that take one: only
-	// "summarize_chunk" (the summary of each chunk of a long text). A stage left out does not reason. See
-	// memory_core.Reasoning.
+	// Reasoning (optional) picks the reasoning (thinking) level ("none", "low", "medium" or "high") of each LLM stage
+	// ("extract_graph", "summarize_chunk", "resolve_edges", "resolve_series", "extract_image"; not "web_search"). A stage
+	// left out runs with "none" (no thinking). Every call is recorded with its level as a model run
+	// (gb_model_runs). See memory_core.Reasoning.
 	Reasoning map[string]string `json:"reasoning"`
 	// WebSearch (optional, default false) searches the web for the latest world events about the key entities of the
 	// text and remembers what it finds, as artifacts of kind "web_search" (see docs/web-search.md). Only available when
@@ -280,10 +281,6 @@ func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory
 		httputil.Error(w, http.StatusBadRequest, "timeseries does not apply to an image")
 		return
 	}
-	if len(req.Reasoning) > 0 {
-		httputil.Error(w, http.StatusBadRequest, "reasoning does not apply to an image")
-		return
-	}
 	data, err := base64.StdEncoding.DecodeString(strings.TrimSpace(req.Image))
 	if err != nil {
 		httputil.Error(w, http.StatusBadRequest, "image must be base64: "+err.Error())
@@ -318,9 +315,14 @@ func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory
 		httputil.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	reasoning, err := memory_core.ResolveReasoning(req.Reasoning)
+	if err != nil {
+		httputil.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	start := time.Now()
 	res, err := memory_image.RememberImage(r.Context(), d, llm, req.UserID, req.Dataset, data, ref,
-		append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models))...)
+		append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models), memory_core.WithReasoning(reasoning))...)
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{
 			"user_id":    req.UserID,

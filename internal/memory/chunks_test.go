@@ -124,18 +124,19 @@ func testRememberChunksLongText(t *testing.T, d *sql.DB) {
 			t.Errorf("chunk %d does not overlap the previous one", i)
 		}
 
-		// The summary: a child artifact of the chunk with the model and the reasoning level that wrote it.
+		// The summary: a child artifact of the chunk that references the model run (model and level) that wrote it.
 		sum := r.Summary
 		if sum == nil {
 			t.Fatalf("chunk %d has no summary", i)
 		}
 		s := byID[sum.ArtifactID]
 		if s.Kind != graph.ArtifactChunkSummary || s.ParentID != c.ID || s.SessionID != "s1" || s.Text != sum.Text || s.Text == "" ||
-			s.ModelID != relational.ModelID(sum.Model) || s.Reasoning != "high" || sum.Reasoning != "high" {
+			s.ModelRunID == 0 || s.ModelRunID != sum.ModelRunID || sum.Reasoning != "high" {
 			t.Errorf("chunk %d: summary %+v, artifact %+v", i, sum, s)
 		}
-		if s.ModelID == "" || !registered[s.ModelID] {
-			t.Errorf("chunk %d: summary model %q is not registered", i, s.ModelID)
+		run, err := relational.GetModelRun(ctx, d, s.ModelRunID)
+		if err != nil || run.Reasoning != "high" || run.Stage != memory_core.StageSummarizeChunk || run.ModelID != relational.ModelID(sum.Model) || !registered[run.ModelID] {
+			t.Errorf("chunk %d: summary model run %+v, %v", i, run, err)
 		}
 		isSummary[s.ID] = true
 	}

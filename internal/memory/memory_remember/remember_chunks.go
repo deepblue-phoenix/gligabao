@@ -77,14 +77,14 @@ func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Confi
 			map[string]any{"entities": ex.Entities, "edges": candidateFacts(ex.Edges, nil)})
 
 		// SUMMARIZE the chunk
-		sum, err := summarizeChunk(ctx, j.co.ModelLLM(j.llm, memory_core.StageSummarizeChunk), c.Text, j.co.Reasoning.Level(memory_core.StageSummarizeChunk))
+		sum, err := summarizeChunk(ctx, j.co.ModelLLM(j.llm, memory_core.StageSummarizeChunk), c.Text)
 		if err != nil {
 			return nil, fmt.Errorf("memory: summarize chunk %d of %d: %w", i+1, len(chunks), err)
 		}
 		sums[i] = sum
 		j.tr.Tool("The LLM summarized the chunk; the summary is stored as an artifact of its own, a child of the chunk, and embedded."+part.label(),
 			"summarize_chunk", map[string]any{"chunk_index": i, "chunk_tokens": c.Tokens, "text_chars": len(c.Text), "reasoning": sum.Reasoning},
-			map[string]any{"summary": sum.Text, "model": sum.Model, "reasoning": sum.Reasoning})
+			map[string]any{"summary": sum.Text, "model": sum.Model, "reasoning": sum.Reasoning, "model_run_id": sum.ModelRunID})
 	}
 
 	//--------------------------------------

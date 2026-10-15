@@ -48,7 +48,7 @@ func imageDir(o memory_core.CallOptions) string {
 	return ImageDir
 }
 
-// CallRememberImage is the type of the LLM calls of RememberImage, stored in gb_llm_calls.type.
+// CallRememberImage is the type of the LLM calls of RememberImage, stored in gb_model_runs.type.
 const CallRememberImage = "remember_image"
 
 // MaxImageBytes is the largest image accepted (the Anthropic API limit for one image).

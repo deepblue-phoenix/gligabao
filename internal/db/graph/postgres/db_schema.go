@@ -30,10 +30,8 @@ CREATE TABLE IF NOT EXISTS gb_artifacts (
 	-- Only for a 'web_search' artifact: the query that was issued; its parent_id is the artifact the searched entity
 	-- came from (see sqlite/db_schema.go).
 	query        TEXT,
-	-- Only for a 'chunk_summary' artifact: the model that wrote it and the reasoning level it ran with (see
-	-- sqlite/db_schema.go).
-	model_id     TEXT REFERENCES gb_models(id),
-	reasoning    TEXT,
+	-- Only for a 'chunk_summary' artifact: the run of the model that wrote it (see sqlite/db_schema.go).
+	model_run_id BIGINT REFERENCES gb_model_runs(id),
 	valid_at   TIMESTAMPTZ NOT NULL,
 	created_at TIMESTAMPTZ NOT NULL,
 	UNIQUE (parent_id, chunk_index)

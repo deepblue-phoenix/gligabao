@@ -27,6 +27,9 @@ type recallRequest struct {
 	// in the call's trajectory and monitoring events, so that a recall can be connected to the artifacts remembered
 	// in the same session. It does not change what is retrieved or answered. At most memory_core.MaxSessionIDLen bytes.
 	SessionID string `json:"session_id"`
+	// Reasoning (optional) is the reasoning (thinking) level of the LLM call that answers: "none", "low", "medium" or
+	// "high". Defaults to "none" (no thinking). The call is recorded with it as a model run (gb_model_runs).
+	Reasoning string `json:"reasoning"`
 }
 
 //---------------------------------------------------------------------------------------------
@@ -63,9 +66,14 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool) http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		reasoning, err := memory_core.ResolveRecallReasoning(req.Reasoning)
+		if err != nil {
+			httputil.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		start := time.Now()
 		res, err := memory_recall.Recall(r.Context(), d, llm, req.UserID, req.Dataset, req.Query,
-			append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID))...)
+			append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithReasoning(reasoning))...)
 		if err != nil {
 			monitoring.EmitSystemEvent(r.Context(), "recall.failed", monitoring.Event{
 				"user_id":     req.UserID,

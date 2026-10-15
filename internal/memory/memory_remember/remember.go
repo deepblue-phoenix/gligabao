@@ -20,7 +20,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_timeseries"
 )
 
-// CallRemember is the type of the LLM calls of Remember, stored in gb_llm_calls.type.
+// CallRemember is the type of the LLM calls of Remember, stored in gb_model_runs.type.
 const CallRemember = "remember"
 
 //---------------------------------------------------------------------------------------------
@@ -233,8 +233,8 @@ type ChunkResult struct {
 	// Entities and Edges are how many the chunk mentions and states (before merging with the other chunks).
 	Entities int `json:"entities"`
 	Edges    int `json:"edges"`
-	// Summary is the summary of the chunk: an artifact of its own, a child of the chunk, with the model and reasoning
-	// level that wrote it. Always set for a chunk of a text remembered by Remember.
+	// Summary is the summary of the chunk: an artifact of its own, a child of the chunk, with the model run (model and
+	// reasoning level) that wrote it. Always set for a chunk of a text remembered by Remember.
 	Summary *SummaryResult `json:"summary,omitempty"`
 }
 
@@ -259,8 +259,10 @@ type ChunkResult struct {
 // entities and edges their anchors select (resolved once the text is stored). For a chunked text they are stored
 // after the chunks, in a transaction of their own. See remember_series.go and docs/timeseries.md.
 //
-// With WithReasoning the summarize_chunk stage runs with that reasoning level; the model and the level are stored on each
-// chunk summary artifact.
+// Every LLM call is recorded as a model run (gb_model_runs: the model, the reasoning level it ran with, its tokens and
+// cost, and the stage that made it). The LLM stages (extract_graph, summarize_chunk, resolve_edges, resolve_series) run with
+// no thinking (reasoning level none) by default; WithReasoning sets a level per stage ("low", "medium" or "high"). Each chunk summary
+// artifact references the run that wrote it.
 //
 // With WithModels each LLM stage (extract_graph, summarize_chunk, resolve_edges, web_search) runs on the model the caller chose; a stage with none uses the
 // default model. The extract_graph stage's model is the one recorded on the entities and edges.
@@ -546,15 +548,6 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 			return nil, fmt.Errorf("memory: extraction model_id %q does not match model %q", ex.ModelID, ex.Model)
 		}
 	}
-	if part != nil && part.Summary != nil && part.Summary.Model != "" {
-		id, err := relational.EnsureModel(ctx, d, relational.Model{Name: part.Summary.Model, Provider: part.Summary.Provider, Kind: ai.KindOf(part.Summary.Model)})
-		if err != nil {
-			return nil, err
-		}
-		if id != part.Summary.ModelID {
-			return nil, fmt.Errorf("memory: summary model_id %q does not match model %q", part.Summary.ModelID, part.Summary.Model)
-		}
-	}
 	// Registered before the transaction's Rollback, so it runs after the transaction is finished (see prepareVectors).
 	var embedUsage *ai.EmbedUsage
 	defer func() { recordEmbedUsage(ctx, d, embedUsage) }()
@@ -688,11 +681,11 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		chunkVec = &chunkVector{artifactID: artID, parentID: part.ParentID, index: part.Chunk.Index, text: text}
 		if s := part.Summary; s != nil {
 			sumID, err := tx.InsertChunkSummaryArtifact(ctx, graph.NewChunkSummaryArtifact{DatasetID: dsID, ParentID: artID, Text: s.Text,
-				ModelID: s.ModelID, Reasoning: s.Reasoning, SessionID: sessionID, ValidAt: ref, CreatedAt: now})
+				ModelRunID: s.ModelRunID, SessionID: sessionID, ValidAt: ref, CreatedAt: now})
 			if err != nil {
 				return nil, err
 			}
-			out.summary = &SummaryResult{ArtifactID: sumID, Text: s.Text, Model: s.Model, Reasoning: s.Reasoning}
+			out.summary = &SummaryResult{ArtifactID: sumID, Text: s.Text, Model: s.Model, Reasoning: s.Reasoning, ModelRunID: s.ModelRunID}
 			sumVec = &summaryVector{artifactID: sumID, chunkID: artID, parentID: part.ParentID, index: part.Chunk.Index, text: s.Text}
 		}
 	}

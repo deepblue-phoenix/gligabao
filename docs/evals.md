@@ -76,7 +76,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 | call | tool | what it records |
 |---|---|---|
 | remember | `extract_graph` | the entities and edges (new facts) the LLM extracted from the text, before any stored fact is considered |
-| remember | `summarize_chunk` | (only for a chunk of a [chunked](chunking.md#chunk-summaries) text) the summary the LLM wrote for the chunk, the model that wrote it and the reasoning level it ran with (the LLM call itself is the usual `system`, `user`, `agent` steps) |
+| remember | `summarize_chunk` | (only for a chunk of a [chunked](chunking.md#chunk-summaries) text) the summary the LLM wrote for the chunk, the model that wrote it and the reasoning level it ran with, and its `model_run_id` (the LLM call itself is the usual `system`, `user`, `agent` steps) |
 | remember | `find_candidates_by_name` | the live stored facts touching an entity named like an endpoint of a new fact (exact normalized name), found by this lookup alone |
 | remember | `search_similar_entities` | (only with vectors, on an existing dataset) the endpoints of the new facts that were embedded, the stored entities they matched by similarity (aliases) with their scores, and their live facts (the candidates found by similarity alone); `model_name` and `metrics` for the embedding. An error here is recorded but not fatal |
 | remember | `load_candidates` | the two lookups merged by edge ID: the stored facts that could duplicate or contradict the new ones, each with how it was found (`found_by`: `name`, `similar`, `name+similar`) |
@@ -142,6 +142,17 @@ An eval can vary the model of each LLM stage of `remember` (`extract_graph`, `su
 2. `"models": {"extract_graph": "<model>"}` in a case of a suite: that case only; a stage named here wins over `-models`.
 
 A stage named by neither uses the default model. The recall's LLM call is not affected. The model of each LLM step is in the trajectory (`model_name`), the requested `models` are in `extra.input.models`, and the entities and edges a case stores carry the `extract_graph` model as their `model_id`, so the graph of a run shows which model produced it. A runner invocation is a run of an experiment, so comparing models means running the suite once per setting under the same experiment (for instance `-experiment extract-models -models extract_graph=claude-sonnet-4-5`).
+
+### Reasoning levels
+
+An eval can also vary the reasoning (thinking) level of each LLM stage, to see how it affects the results (see [remember.md](remember.md#reasoning)). The stages are `extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series` and `extract_image` for `remember`, and `recall` for the LLM call that answers the question. The levels come from two places that are combined stage by stage:
+
+1. `-reasoning extract_graph=low,recall=medium` on the command line: the defaults of the whole run (recorded in the experiment run's `params.reasoning`);
+2. `"reasoning": {"extract_graph": "low", "recall": "medium"}` in a case of a suite: that case only; a stage named here wins over `-reasoning`, as for models (an eval controls its own parameters).
+
+The runner sends the `remember` stages as `reasoning` in every `remember` request of the case and `recall` as `reasoning` of its recall request. A stage named by neither runs with the server's default, which is `none` (no thinking). **Every case of the suites sets all of them explicitly to `none`**, so a run never depends on that default and is the baseline to compare against (a test checks it). So with the shipped suites `-reasoning` changes nothing until the stage is removed from the cases (or the cases are edited, e.g. a copy of the suites passed with `-suites`): the level a comparison varies is the one the case sets.
+
+Each LLM call is a [model run](model-runs.md) with the level it ran with, its tokens (thinking tokens count as output) and its cost, so a comparison can look at both the pass rate and what the thinking cost, per stage.
 
 #### Using it: precision per stage, and how models behave
 

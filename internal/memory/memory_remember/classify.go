@@ -3,7 +3,9 @@ package memory_remember
 import (
 	"context"
 
+	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/chunk"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/jev"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 
@@ -30,6 +32,14 @@ func (j *job) classifyComplexity(ctx context.Context, text string) {
 
 	cl, call, err := j.co.Jev.Classify(ctx, text)
 	fields["latency_ms"] = call.Latency.Milliseconds()
+	// The call is a model run whether or not it worked out; a failed one has no usage and no model reported.
+	run := relational.ModelRun{Type: CallRemember, Stage: StageClassifyComplexity, Provider: jev.Provider, Reasoning: ai.ReasoningNone}
+	if err == nil {
+		run.Model, run.InputTokens, run.OutputTokens = cl.Model, cl.InputTokens, cl.OutputTokens
+	}
+	if _, rerr := memory_core.RecordRun(context.WithoutCancel(ctx), j.d, run); rerr != nil {
+		log.WithError(rerr).WithFields(fields).Error("record jev model run")
+	}
 	if err != nil {
 		log.WithError(err).WithFields(fields).Warn("jev: classify complexity failed")
 		j.tr.TimedTool("Jev (system 1) was asked to classify the text as simple, medium or complex in the number of entities it will yield; the call failed.",

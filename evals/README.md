@@ -2,7 +2,7 @@
 
 End-to-end checks that run against a real gligabao server (and the real LLM), so `ANTHROPIC_API_KEY` is required. `OPENAI_API_KEY` is also needed for `remember` to vector-index the entities and edges (into `bin/gligabao-eval.vectors`, shown by "View vec db" in the admin UI); without it the runner warns and no vectors are stored.
 
-Run from the repo root: `./run_evals.sh [-s|--suite name] [-v] [-models stage=model,...] [case-name ...]`, e.g. `./run_evals.sh -v remember_recall` or `./run_evals.sh --suite chunking`. `./run_evals.sh --help` lists the suites (the runner's `-list-suites`). `-v` prints the input and output of every LLM call. `-models` picks the LLM model of each `remember` stage for the whole run (see [Models](#models)).
+Run from the repo root: `./run_evals.sh [-s|--suite name] [-v] [-models stage=model,...] [case-name ...]`, e.g. `./run_evals.sh -v remember_recall` or `./run_evals.sh --suite chunking`. `./run_evals.sh --help` lists the suites (the runner's `-list-suites`). `-v` prints the input and output of every LLM call. `-models` picks the LLM model of each `remember` stage for the whole run (see [Models](#models)), `-reasoning` the thinking level of each stage and of the recall (see [Reasoning levels](#reasoning-levels)).
 
 The runner is pure Go (`evals/main.go`; `run_evals.sh` just invokes `go run ./evals`). Everything it writes goes to the **eval database**, the SQLite DB `bin/gligabao-eval.db` (`-db <file>` to change it), which keeps the evaluation data apart from the main DB: the datasets of the cases, the experiments and their runs. It is **never reset**. The cases run behind an in-process HTTP server using the real handlers, in eval mode. `./run_server_local.sh` shows this DB in the admin UI next to the standard one (`EVAL_DB=...` overrides the path; each case of each run is listed as its own dataset with a "View graph" button, and the Evals block reads the experiments from it). The runner calls the eval endpoints, which return the ATIF trajectory of every call along with its result; see [docs/evals.md](../docs/evals.md). `-atif <dir>` changes where the trajectories are stored as JSON files (default: `atif/` next to the eval database, since the experiments reference them).
 
@@ -47,6 +47,10 @@ A `remember` entry has either `text` or `text_file`, a path relative to the suit
 2. The stored edges (`gb_edges`) are checked against `expect_edges`: an edge between `source` and `target` (any relation) must exist; `valid_at` / `invalid_at` are compared exactly when given; `ended` says whether it must have an `invalid_at` (and then also an `expired_at`).
 3. `POST /v1/gb/eval/recall` (the case's dataset) with `query`.
 4. Passes if the temporal checks pass and the answer contains every `expect_contains` string (case-insensitive). `-v` also prints the stored edges and the trajectory count, step count and cost.
+
+## Reasoning levels
+
+The thinking level of each LLM stage can be varied too: `extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series`, `extract_image` and `recall` (the answer of the recall), each `none`, `low`, `medium` or `high`. Two places, combined stage by stage like the models: `-reasoning extract_graph=low,recall=medium` on the command line (recorded in the experiment run's `params.reasoning`), and `"reasoning": {"extract_graph": "low"}` in a case, which wins (an eval controls its own parameters). **Every case of the suites sets every stage explicitly to `none`** (the server's default too, so that no thinking tokens are paid for), which is the baseline: to compare levels, set the stage in the cases (a copy of the suites passed with `-suites` is enough) and run each setting as a run of the same experiment. The model runs of the eval database record the level of each call with its tokens and cost. Details: [docs/evals.md](../docs/evals.md#reasoning-levels).
 
 ## Models
 

@@ -71,18 +71,31 @@ CREATE TABLE IF NOT EXISTS gb_models (
 	created_at DATETIME NOT NULL DEFAULT (` + SQLNow + `)
 );
 
--- One row per LLM/embedding API call. type is the operation that made the call: 'remember', 'remember_image' (the image pipeline) or 'recall'.
-CREATE TABLE IF NOT EXISTS gb_llm_calls (
+-- One row per invocation of a model: the dynamic counterpart of gb_models, which statically lists the models. Every LLM
+-- call, embedding request, web search and Jev classification the system makes is one row, written as the call happens
+-- (so what was spent is kept even if the operation fails later).
+--   type       the operation that made the call: 'remember', 'remember_image' (the image pipeline) or 'recall'
+--   stage      the pipeline stage: 'extract_graph', 'summarize_chunk', 'resolve_edges', 'resolve_series', 'extract_image',
+--              'web_search', 'classify_complexity', 'embed' (remember) or 'recall'; '' if unknown
+--   model_id   the model that was run, as the API reported it (a reference to gb_models); NULL if it did not say
+--   reasoning  the thinking level it ran with: 'none', 'low', 'medium' or 'high'. It is the level that was applied, so
+--              'none' for a model without thinking (embeddings, Jev, web search, models that do not support it). A chunk
+--              summary artifact references its run (gb_artifacts.model_run_id) for the model and the level.
+--   input_tokens, output_tokens  the usage of the call (the thinking tokens are in output_tokens)
+--   cost_usd   total cost of the call in USD (0 if the model's price is unknown)
+CREATE TABLE IF NOT EXISTS gb_model_runs (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
 	type          TEXT NOT NULL,
-	provider      TEXT NOT NULL,
-	model         TEXT NOT NULL,
+	stage         TEXT NOT NULL DEFAULT '',
+	model_id      TEXT REFERENCES gb_models(id),
+	reasoning     TEXT NOT NULL DEFAULT 'none' CHECK (reasoning IN ('none', 'low', 'medium', 'high')),
 	input_tokens  INTEGER NOT NULL,
 	output_tokens INTEGER NOT NULL,
-	cost_usd      REAL NOT NULL, -- total cost of the call in USD (0 if the model's price is unknown)
+	cost_usd      REAL NOT NULL,
 	created_at    DATETIME NOT NULL DEFAULT (` + SQLNow + `)
 );
-CREATE INDEX IF NOT EXISTS idx_gb_llm_calls_type ON gb_llm_calls(type);
+CREATE INDEX IF NOT EXISTS idx_gb_model_runs_type ON gb_model_runs(type);
+CREATE INDEX IF NOT EXISTS idx_gb_model_runs_model ON gb_model_runs(model_id);
 
 -- Eval experiments (evals/ and internal/experiments). An experiment is a named series of eval runs; names are unique.
 --   config: JSON object with the free-form settings under test

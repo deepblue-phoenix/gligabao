@@ -17,12 +17,13 @@ images, `extract_image`); a stage you leave out uses the server's default model:
 res = gb.remember("u1", "Alice works at Acme.", models={"extract_graph": "claude-sonnet-4-5"})  # resolve_edges: default
 ```
 
-The summary the server writes for each chunk of a long text can reason before answering: `reasoning={"summarize_chunk": "low"}`
-(`"none"`, `"low"`, `"medium"` or `"high"`). Each summary artifact records the model and the level that wrote it:
+No LLM stage thinks by default (`"none"`, so no thinking tokens are paid for); `reasoning` turns it on per stage (`"low"`,
+`"medium"` or `"high"`). Each call is recorded by the server as a model run with its model and level, and each
+chunk summary references the run that wrote it:
 
 ```python
 res = gb.remember("u1", long_text, models={"summarize_chunk": "claude-haiku-5-5"}, reasoning={"summarize_chunk": "low"})
-print(res["chunks"][0]["summary"])  # artifact_id, text, model, reasoning
+print(res["chunks"][0]["summary"])  # artifact_id, text, model, reasoning, model_run_id
 ```
 
 With `web_search=True` the server also searches the web for the latest world events about the key entities of the text and

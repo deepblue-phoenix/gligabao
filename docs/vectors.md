@@ -60,7 +60,7 @@ All the texts of one call (for a chunked text: of one chunk) are embedded in a s
 - The embeddings are computed before the database transaction commits: if embedding fails, nothing is stored and the request fails.
 - The vectors are written right after the commit (the database and the vector store cannot share a transaction). If that write fails, the request fails with the relational data already saved; the vectors of those entities and edges are written again the next time they are mentioned.
 - Embedding needs `openai_api_key` (or `OPENAI_API_KEY`). Without it the server still starts, logs a warning, and `remember` stores no vectors.
-- The tokens and cost of each embedding request are stored in `gb_llm_calls` (type `remember`, with the embedding model and `output_tokens` 0), next to the LLM calls.
+- The tokens and cost of each embedding request are stored as a model run in `gb_model_runs` (type `remember`, stage `embed`, with the embedding model, reasoning `none` and `output_tokens` 0), next to the LLM calls.
 - The vectors have no effect yet on what `recall` returns: it does not read them.
 
 If you change `embedding_dimensions`, or the embedding model, the stored vectors are no longer comparable with new ones (the chromem store rejects the new dimension outright); there is no re-embedding yet.

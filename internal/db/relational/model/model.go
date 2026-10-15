@@ -54,9 +54,34 @@ type Ontology struct {
 	UpdatedAt   time.Time `json:"updated_at"` // when the ontology was last loaded or replaced; equals created_at until updated
 }
 
-// LLMCallStat sums the logged LLM calls of one type.
-type LLMCallStat struct {
-	Calls        int64
+// ModelRun is one invocation of a model (gb_model_runs): the dynamic counterpart of Model, which is the static
+// description of a model. Every LLM call, embedding request, web search and Jev classification the system makes is
+// recorded as one, with what that invocation used and cost.
+type ModelRun struct {
+	ID int64 `json:"id"`
+	// Type is the operation that made the call: "remember", "remember_image" or "recall".
+	Type string `json:"type"`
+	// Stage is the pipeline stage that made it (e.g. "extract_graph", "summarize_chunk", "recall", "embed"); "" if unknown.
+	Stage string `json:"stage,omitempty"`
+	// ModelID is the ID (gb_models) of the model that was run, "" if the API did not say. On RecordModelRun it is filled
+	// in from Model.
+	ModelID string `json:"model_id,omitempty"`
+	// Model, Provider and Kind describe the model. RecordModelRun uses them to register it if it is not stored yet (Kind
+	// "" means "llm"); reading a run fills them from gb_models.
+	Model    string `json:"model,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Kind     string `json:"kind,omitempty"`
+	// Reasoning is the thinking level the model ran with: "none", "low", "medium" or "high". "" is stored as "none".
+	Reasoning    string    `json:"reasoning"`
+	InputTokens  int       `json:"input_tokens"`
+	OutputTokens int       `json:"output_tokens"` // includes the thinking tokens
+	CostUSD      float64   `json:"cost_usd"`      // 0 if the model's price is unknown
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// ModelRunStat sums the recorded model runs of one type.
+type ModelRunStat struct {
+	Runs         int64
 	InputTokens  int64
 	OutputTokens int64
 	CostUSD      float64

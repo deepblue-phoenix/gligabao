@@ -109,6 +109,14 @@ func NormalizeReasoning(level string) (string, bool) {
 	return "", false
 }
 
+// SupportsReasoning says whether the model supports extended thinking. The Claude 3 and 3.5 families do not (a request
+// with a thinking budget to them fails), so Complete leaves the budget out for them and reports ReasoningNone in
+// Response.Reasoning. Unknown models are assumed to support it.
+func SupportsReasoning(model string) bool {
+	m := strings.ToLower(strings.TrimSpace(model))
+	return !strings.HasPrefix(m, "claude-3-") && !strings.HasPrefix(m, "claude-2") && !strings.HasPrefix(m, "claude-instant")
+}
+
 // ReasoningBudget is the extended thinking budget (in tokens) of a reasoning level: 0 for none or an unknown level.
 func ReasoningBudget(level string) int {
 	switch level {
@@ -133,6 +141,12 @@ type Response struct {
 	OutputTokens int
 	// CostUSD is computed from token usage and the price table (0 if the model's price is unknown).
 	CostUSD float64
+	// Reasoning is the reasoning level the call actually ran with (ReasoningNone if it did not reason, e.g. because the
+	// model does not support it). Empty from an LLM that does not report it.
+	Reasoning string
+	// ModelRunID is the ID of the gb_model_runs row that records this call. Set by memory_core.WithRecording, 0 if the
+	// call was not recorded.
+	ModelRunID int64
 }
 
 //---------------------------------------------------------------------------------------------
@@ -206,10 +220,13 @@ func (c *Client) Complete(ctx context.Context, req Request) (*Response, error) {
 		System:    req.System,
 		Messages:  req.Messages,
 	}
-	if b := ReasoningBudget(req.Reasoning); b > 0 {
+	level, _ := NormalizeReasoning(req.Reasoning)
+	if b := ReasoningBudget(level); b > 0 && SupportsReasoning(model) {
 		// The budget is spent out of max_tokens, which must stay above it: it is added so the answer keeps its size.
 		ar0.MaxTokens = maxTokens + b
 		ar0.Thinking = &thinking{Type: "enabled", BudgetTokens: b}
+	} else {
+		level = ReasoningNone
 	}
 	body, err := json.Marshal(ar0)
 	if err != nil {
@@ -246,6 +263,7 @@ func (c *Client) Complete(ctx context.Context, req Request) (*Response, error) {
 		InputTokens:  u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens,
 		OutputTokens: u.OutputTokens,
 		CostUSD:      cost,
+		Reasoning:    level,
 	}, nil
 }
 

@@ -1,4 +1,4 @@
-// Package sqlite manages the SQLite database: connection, the relational schema (datasets, LLM call log), the timestamp storage convention and the SQL for them. The graph tables live in internal/db/graph/sqlite.
+// Package sqlite manages the SQLite database: connection, the relational schema (datasets, model runs), the timestamp storage convention and the SQL for them. The graph tables live in internal/db/graph/sqlite.
 package sqlite
 
 import (
@@ -173,40 +173,6 @@ func datasetID(ctx context.Context, q queryer, userID, name string) (int64, erro
 // DatasetID returns the ID of userID's live dataset called name, or model.ErrNotFound.
 func DatasetID(ctx context.Context, d *sql.DB, userID, name string) (int64, error) {
 	return datasetID(ctx, d, userID, name)
-}
-
-//---------------------------------------------------------------------------------------------
-// LLM call log
-
-// RecordLLMCall stores one LLM/embedding API call.
-func RecordLLMCall(ctx context.Context, d *sql.DB, kind, provider, modelName string, inputTokens, outputTokens int, costUSD float64) error {
-	_, err := d.ExecContext(ctx, `
-		INSERT INTO gb_llm_calls (type, provider, model, input_tokens, output_tokens, cost_usd)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		kind, provider, modelName, inputTokens, outputTokens, costUSD)
-	return err
-}
-
-// LLMCallStats sums the logged LLM calls by type.
-func LLMCallStats(ctx context.Context, d *sql.DB) (map[string]model.LLMCallStat, error) {
-	rows, err := d.QueryContext(ctx, `
-		SELECT type, COUNT(*), SUM(input_tokens), SUM(output_tokens), SUM(cost_usd)
-		FROM gb_llm_calls
-		GROUP BY type`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := map[string]model.LLMCallStat{}
-	for rows.Next() {
-		var typ string
-		var s model.LLMCallStat
-		if err := rows.Scan(&typ, &s.Calls, &s.InputTokens, &s.OutputTokens, &s.CostUSD); err != nil {
-			return nil, err
-		}
-		out[typ] = s
-	}
-	return out, rows.Err()
 }
 
 // EnsureDataset returns the ID of userID's live dataset called name, creating it first if needed.

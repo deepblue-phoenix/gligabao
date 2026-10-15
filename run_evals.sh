@@ -14,7 +14,7 @@ Options:
   -s, --suite NAME   run only the cases of the suite NAME (see the list below)
   -v                 show the input and output of every LLM call
   -h, --help         show this help
-  (other options, e.g. -experiment, -models, -db, are passed to the runner: go run ./evals -h)
+  (other options, e.g. -experiment, -models, -reasoning, -db, are passed to the runner: go run ./evals -h)
 
 Case names restrict the run to those cases (combined with --suite, they must belong to that suite).
 

@@ -63,3 +63,69 @@ func TestModelLLM(t *testing.T) {
 		t.Errorf("an explicit request model was overridden: %q", c.model)
 	}
 }
+
+func TestReasoningDefaults(t *testing.T) {
+	var r Reasoning
+	for _, s := range ReasoningStages {
+		if r.Level(s) != ai.ReasoningNone {
+			t.Errorf("%s default = %q, want none", s, r.Level(s))
+		}
+	}
+	if r.Level(StageRecall) != ai.ReasoningNone {
+		t.Errorf("recall default = %q, want none", r.Level(StageRecall))
+	}
+	if r.Level(StageWebSearch) != ai.ReasoningNone {
+		t.Errorf("web_search default = %q, want none", r.Level(StageWebSearch))
+	}
+
+	// "none" is kept (it turns thinking off); an empty level is the default.
+	got, err := ResolveReasoning(map[string]string{"summarize_chunk": " None ", "extract_graph": "", "resolve_edges": "HIGH"})
+	if err != nil || len(got) != 2 || got.Level(StageSummarizeChunk) != "none" || got.Level(StageResolveEdges) != "high" || got.Level(StageExtractGraph) != "none" {
+		t.Fatalf("got %v, %v", got, err)
+	}
+	for _, bad := range []map[string]string{{"web_search": "low"}, {"recall": "low"}, {"extract_graph": "max"}} {
+		if _, err := ResolveReasoning(bad); !errors.Is(err, ErrInvalidReasoning) {
+			t.Errorf("%v: err = %v", bad, err)
+		}
+	}
+	if r, err := ResolveRecallReasoning(" High"); err != nil || r.Level(StageRecall) != "high" {
+		t.Errorf("recall: %v, %v", r, err)
+	}
+	if r, err := ResolveRecallReasoning(""); err != nil || r != nil {
+		t.Errorf("recall default: %v, %v", r, err)
+	}
+	if _, err := ResolveRecallReasoning("max"); !errors.Is(err, ErrInvalidReasoning) {
+		t.Errorf("recall: err = %v", err)
+	}
+}
+
+// ModelLLM applies the reasoning level of the stage (its default, none, if none was set) and tells the stage to the recorder.
+func TestModelLLMReasoningAndStage(t *testing.T) {
+	var gotReq ai.Request
+	var gotStage string
+	llm := llmFunc(func(ctx context.Context, r ai.Request) (*ai.Response, error) {
+		gotReq, gotStage = r, StageOf(ctx)
+		return &ai.Response{}, nil
+	})
+	o := NewCallOptions([]Option{WithReasoning(Reasoning{StageSummarizeChunk: "low", StageRecall: "high"})})
+	for _, tc := range []struct{ stage, want string }{
+		{StageExtractGraph, "none"}, {StageSummarizeChunk, "low"}, {StageRecall, "high"},
+	} {
+		o.ModelLLM(llm, tc.stage).Complete(context.Background(), ai.Request{})
+		if gotReq.Reasoning != tc.want || gotStage != tc.stage {
+			t.Errorf("%s: reasoning %q, stage %q; want %q", tc.stage, gotReq.Reasoning, gotStage, tc.want)
+		}
+	}
+	NewCallOptions(nil).ModelLLM(llm, StageRecall).Complete(context.Background(), ai.Request{})
+	if gotReq.Reasoning != "none" {
+		t.Errorf("recall default = %q", gotReq.Reasoning)
+	}
+	NewCallOptions(nil).ModelLLM(llm, StageExtractGraph).Complete(context.Background(), ai.Request{Reasoning: "high"})
+	if gotReq.Reasoning != "high" {
+		t.Errorf("an explicit request level was overridden: %q", gotReq.Reasoning)
+	}
+}
+
+type llmFunc func(ctx context.Context, r ai.Request) (*ai.Response, error)
+
+func (f llmFunc) Complete(ctx context.Context, r ai.Request) (*ai.Response, error) { return f(ctx, r) }

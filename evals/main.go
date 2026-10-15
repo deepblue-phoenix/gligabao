@@ -98,6 +98,12 @@ type Case struct {
 	// Models picks the LLM model of each stage of remember for this case ("extract_graph", "resolve_edges", "extract_image"), on top of the
 	// runner's -models: a stage named here wins, a stage named by neither uses the default model.
 	Models map[string]string `json:"models,omitempty"`
+	// Reasoning picks the reasoning (thinking) level ("none", "low", "medium" or "high") of each LLM stage of remember
+	// ("extract_graph", "summarize_chunk", "resolve_edges", "resolve_series", "extract_image") and of the recall's
+	// answer ("recall"), on top of the runner's -reasoning: a stage named here wins, like Models. Every case of the suites
+	// sets all of them explicitly (to "none"), so a run does not depend on the server's defaults or the flag; a stage
+	// named by neither uses the server's default.
+	Reasoning map[string]string `json:"reasoning,omitempty"`
 	// ExpectWebSearches, when > 0, turns on the web search checks: the remember entries that set "web_search" must have
 	// stored at least this many web_search artifacts, each with its query, a parent in the dataset (the artifact the
 	// searched entity came from) and entities of its own (see checkWebSearches).
@@ -346,7 +352,7 @@ func (o *Outcome) Cost() (usd float64, steps int) {
 // run executes one case of the experiment run runID in the eval database through the eval endpoints, in a dataset
 // of its own (see datasetName). The outcome is returned even when err is set, holding whatever was collected
 // before the failure.
-func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_core.Embedder, ws memory_core.WebSearcher, verbose bool, defaults memory_core.Models) (out *Outcome, err error) {
+func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_core.Embedder, ws memory_core.WebSearcher, verbose bool, defaults memory_core.Models, flagReasoning map[string]string) (out *Outcome, err error) {
 	out = &Outcome{TrajectoryDir: atifDir}
 
 	caseModels, err := memory_core.ResolveModels(c.Models)
@@ -354,6 +360,10 @@ func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_c
 		return out, fmt.Errorf("models: %w", err)
 	}
 	models := defaults.Merge(caseModels)
+	rememberReasoning, recallReasoning, err := mergeReasoning(flagReasoning, c.Reasoning)
+	if err != nil {
+		return out, fmt.Errorf("reasoning: %w", err)
+	}
 
 	if c.ChunkSize != 0 {
 		// The handlers read the chunking settings from the DB they are given: use a copy with the case's size.
@@ -396,6 +406,9 @@ func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_c
 		}
 		if len(models) > 0 {
 			body["models"] = models
+		}
+		if len(rememberReasoning) > 0 {
+			body["reasoning"] = rememberReasoning
 		}
 		if m.WebSearch {
 			body["web_search"] = true
@@ -500,7 +513,11 @@ func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_c
 		} `json:"evidence"`
 		Trajectory *atif.Trajectory `json:"trajectory"`
 	}
-	if err := post(srv.URL+"/v1/gb/eval/recall", map[string]any{"user_id": evalUser, "query": c.Query, "dataset": dataset}, &rec); err != nil {
+	recallBody := map[string]any{"user_id": evalUser, "query": c.Query, "dataset": dataset}
+	if recallReasoning != "" {
+		recallBody["reasoning"] = recallReasoning
+	}
+	if err := post(srv.URL+"/v1/gb/eval/recall", recallBody, &rec); err != nil {
 		return out, fmt.Errorf("recall: %w", err)
 	}
 	if rec.Trajectory == nil {
@@ -814,10 +831,75 @@ func post(url string, body, out any) error {
 
 //---------------------------------------------------------------------------------------------
 
+// stageRecall is the key of a reasoning map for the LLM call of the recall that answers the question; the other keys
+// are the stages of remember (memory_core.ReasoningStages).
+const stageRecall = memory_core.StageRecall
+
+// reasoningStages lists the keys a reasoning map takes: the stages of remember that think, then the recall.
+func reasoningStages() []string {
+	return append(append([]string{}, memory_core.ReasoningStages...), stageRecall)
+}
+
+// splitReasoning validates m, a reasoning map of the runner or of a case (levels per stage, and "recall" for the recall),
+// and returns the part for the remember requests and the level for the recall request ("" if m names none).
+func splitReasoning(m map[string]string) (remember memory_core.Reasoning, recall string, err error) {
+	rest := map[string]string{}
+	for stage, level := range m {
+		if stage == stageRecall {
+			r, err := memory_core.ResolveRecallReasoning(level)
+			if err != nil {
+				return nil, "", err
+			}
+			recall = r[stageRecall]
+			continue
+		}
+		rest[stage] = level
+	}
+	remember, err = memory_core.ResolveReasoning(rest)
+	return remember, recall, err
+}
+
+// mergeReasoning combines the runner's -reasoning with a case's reasoning levels, stage by stage (the case wins, like its
+// models: an eval controls its own parameters), validates them and splits them into what the remember requests and the
+// recall request carry.
+func mergeReasoning(flag, caseLevels map[string]string) (remember memory_core.Reasoning, recall string, err error) {
+	merged := map[string]string{}
+	for _, m := range []map[string]string{flag, caseLevels} {
+		for stage, level := range m {
+			merged[stage] = level
+		}
+	}
+	return splitReasoning(merged)
+}
+
+// parseReasoning parses the -reasoning flag, "extract_graph=low,recall=medium", and validates it. An empty s gives nil.
+func parseReasoning(s string) (map[string]string, error) {
+	m := map[string]string{}
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		stage, level, ok := strings.Cut(part, "=")
+		if !ok {
+			return nil, fmt.Errorf("%q is not stage=level", part)
+		}
+		m[strings.TrimSpace(stage)] = strings.TrimSpace(level)
+	}
+	if _, _, err := splitReasoning(m); err != nil {
+		return nil, err
+	}
+	if len(m) == 0 {
+		return nil, nil
+	}
+	return m, nil
+}
+
 // runCases runs every case through llm (and embeds the entities and edges with emb, if not nil; ws, if not nil, runs the web searches of the remember entries that ask for them) in the eval database, prints PASS/FAIL per case and returns how many failed.
 // The result of each case is recorded in the tracker's experiment run (kept in the same database).
-// models are the runner's default model per remember stage (-models); a case's own models win over them.
-func runCases(cases []Case, llm memory_core.LLM, emb memory_core.Embedder, ws memory_core.WebSearcher, verbose bool, models memory_core.Models, database *db.DB, tracker *experiments.Tracker) (failed int) {
+// models are the runner's default model per remember stage (-models); a case's own models win over them. reasoning is
+// the same for the reasoning level of each stage, and of the recall with the key "recall" (-reasoning).
+func runCases(cases []Case, llm memory_core.LLM, emb memory_core.Embedder, ws memory_core.WebSearcher, verbose bool, models memory_core.Models, reasoning map[string]string, database *db.DB, tracker *experiments.Tracker) (failed int) {
 	for _, c := range cases {
 		l := llm
 		if verbose {
@@ -825,7 +907,7 @@ func runCases(cases []Case, llm memory_core.LLM, emb memory_core.Embedder, ws me
 			l = &verboseLLM{inner: llm}
 		}
 		started := time.Now()
-		out, err := run(c, tracker.Run.ID, database, l, emb, ws, verbose, models)
+		out, err := run(c, tracker.Run.ID, database, l, emb, ws, verbose, models, reasoning)
 		answer, problems := out.Answer, out.Problems
 		cost, steps := out.Cost()
 		if verbose && out.Chunks > 0 {
@@ -903,6 +985,7 @@ func mainErr() error {
 	experimentDesc := flag.String("experiment-desc", "", "description of the experiment, used when it is created")
 	evalDBPath := flag.String("db", "bin/gligabao-eval.db", "SQLite file of the eval database: the datasets of the cases, the experiments and their runs (never reset; show it with ./run_server_local.sh)")
 	modelsFlag := flag.String("models", "", `LLM model per remember stage, e.g. "extract_graph=claude-sonnet-4-5,resolve_edges=claude-haiku-5-5" (stages: `+strings.Join(memory_core.Stages, ", ")+`); a stage left out uses the default model; a case's "models" win`)
+	reasoningFlag := flag.String("reasoning", "", `reasoning level per stage, e.g. "extract_graph=low,recall=medium" (stages: `+strings.Join(reasoningStages(), ", ")+`; levels: `+strings.Join(ai.ReasoningLevels, ", ")+`); a stage left out uses the server default (none); a case's "reasoning" wins`)
 	flag.Parse()
 	if *listSuites {
 		return printSuites(os.Stdout, *suitesDir)
@@ -910,6 +993,10 @@ func mainErr() error {
 	models, err := memory_core.ParseModels(*modelsFlag)
 	if err != nil {
 		return fmt.Errorf("-models: %w", err)
+	}
+	reasoning, err := parseReasoning(*reasoningFlag)
+	if err != nil {
+		return fmt.Errorf("-reasoning: %w", err)
 	}
 	if *evalDBPath == "" {
 		return errors.New("-db must not be empty")
@@ -951,6 +1038,9 @@ func mainErr() error {
 	if len(models) > 0 {
 		params["models"] = models
 	}
+	if len(reasoning) > 0 {
+		params["reasoning"] = reasoning
+	}
 	tracker, err := experiments.Start(context.Background(), database.Relational, experiments.Options{
 		Name:        *experiment,
 		Description: *experimentDesc,
@@ -960,7 +1050,7 @@ func mainErr() error {
 		return fmt.Errorf("start experiment: %w", err)
 	}
 
-	failed := runCases(cases, llm, emb, llm, *verbose, models, database, tracker)
+	failed := runCases(cases, llm, emb, llm, *verbose, models, reasoning, database, tracker)
 
 	fmt.Printf("---\npassed: %d, failed: %d\n", len(cases)-failed, failed)
 	if run, err := tracker.Finish(context.Background()); err != nil {

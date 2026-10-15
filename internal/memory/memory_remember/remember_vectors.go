@@ -8,6 +8,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
@@ -247,13 +248,18 @@ func prepareVectors(ctx context.Context, tx graph.Tx, o memory_core.CallOptions,
 	return p, usage, nil
 }
 
-// recordEmbedUsage records the cost of an embedding request, as it was spent, like the LLM's. Detached from ctx so a
+// StageEmbed is the stage of the model runs of the embedding requests of remember.
+const StageEmbed = "embed"
+
+// recordEmbedUsage records the cost of an embedding request as a model run, as it was spent, like the LLM's. Detached from ctx so a
 // cancelled request still records money that was spent. It must not run while a write transaction of d is open.
 func recordEmbedUsage(ctx context.Context, d *sql.DB, usage *ai.EmbedUsage) {
 	if usage == nil {
 		return
 	}
-	if err := memory_core.RecordCall(context.WithoutCancel(ctx), d, CallRemember, usage.Provider, usage.Model, usage.InputTokens, 0, usage.CostUSD); err != nil {
+	if _, err := memory_core.RecordRun(context.WithoutCancel(ctx), d, relational.ModelRun{Type: CallRemember, Stage: StageEmbed,
+		Model: usage.Model, Provider: usage.Provider, Kind: ai.KindEmbedding, Reasoning: ai.ReasoningNone,
+		InputTokens: usage.InputTokens, CostUSD: usage.CostUSD}); err != nil {
 		log.WithError(err).WithField("model", usage.Model).Error("record embedding call")
 	}
 }

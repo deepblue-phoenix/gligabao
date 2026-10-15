@@ -1,4 +1,4 @@
-// Package postgres manages the PostgreSQL database: connection, the relational schema (datasets, LLM call log),
+// Package postgres manages the PostgreSQL database: connection, the relational schema (datasets, model runs),
 // the timestamp convention and the SQL for them. The functions here are reached through the routing functions of
 // package relational and mirror those of package sqlite, in the PostgreSQL dialect ($n placeholders, RETURNING,
 // native types). The graph tables live in internal/db/graph/postgres.
@@ -175,40 +175,6 @@ func datasetID(ctx context.Context, q queryer, userID, name string) (int64, erro
 // DatasetID returns the ID of userID's live dataset called name, or model.ErrNotFound.
 func DatasetID(ctx context.Context, d *sql.DB, userID, name string) (int64, error) {
 	return datasetID(ctx, d, userID, name)
-}
-
-//---------------------------------------------------------------------------------------------
-// LLM call log
-
-// RecordLLMCall stores one LLM/embedding API call.
-func RecordLLMCall(ctx context.Context, d *sql.DB, kind, provider, modelName string, inputTokens, outputTokens int, costUSD float64) error {
-	_, err := d.ExecContext(ctx, `
-		INSERT INTO gb_llm_calls (type, provider, model, input_tokens, output_tokens, cost_usd)
-		VALUES ($1, $2, $3, $4, $5, $6)`,
-		kind, provider, modelName, inputTokens, outputTokens, costUSD)
-	return err
-}
-
-// LLMCallStats sums the logged LLM calls by type.
-func LLMCallStats(ctx context.Context, d *sql.DB) (map[string]model.LLMCallStat, error) {
-	rows, err := d.QueryContext(ctx, `
-		SELECT type, COUNT(*), SUM(input_tokens)::bigint, SUM(output_tokens)::bigint, SUM(cost_usd)
-		FROM gb_llm_calls
-		GROUP BY type`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := map[string]model.LLMCallStat{}
-	for rows.Next() {
-		var typ string
-		var s model.LLMCallStat
-		if err := rows.Scan(&typ, &s.Calls, &s.InputTokens, &s.OutputTokens, &s.CostUSD); err != nil {
-			return nil, err
-		}
-		out[typ] = s
-	}
-	return out, rows.Err()
 }
 
 // EnsureDataset returns the ID of userID's live dataset called name, creating it first if needed.

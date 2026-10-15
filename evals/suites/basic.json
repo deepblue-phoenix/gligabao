@@ -1,6 +1,7 @@
 [
   {
     "name": "remember_recall",
+    "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "extract_image": "none", "recall": "none"},
     "remember": [
       {"kind": "episode", "text": "Alice works at Acme and lives in Paris.", "reference_time": "2023-01-01T00:00:00Z"}
     ],
@@ -13,6 +14,7 @@
   },
   {
     "name": "job_change",
+    "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "extract_image": "none", "recall": "none"},
     "remember": [
       {"kind": "episode", "text": "Alice works at Acme and lives in Paris.", "reference_time": "2023-01-01T00:00:00Z"},
       {"kind": "episode", "text": "Alice started working at Globex.", "reference_time": "2024-03-01T00:00:00Z"}

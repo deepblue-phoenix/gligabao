@@ -23,11 +23,13 @@ type scriptedLLM struct {
 	answer string
 	mu     sync.Mutex
 	models []string // the Model of each request, in order
+	levels []string // the Reasoning of each request, in order
 }
 
 func (l *scriptedLLM) Complete(_ context.Context, req ai.Request) (*ai.Response, error) {
 	l.mu.Lock()
 	l.models = append(l.models, req.Model)
+	l.levels = append(l.levels, req.Reasoning)
 	l.mu.Unlock()
 	out := `{"entities":[{"name":"Alice","type":"person"}],"edges":[]}`
 	if len(req.Messages) > 0 && strings.Contains(req.Messages[len(req.Messages)-1].Content, "<graph>") {
@@ -59,7 +61,7 @@ func TestRunCasesTracksExperiment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failed := runCases(cases, &scriptedLLM{answer: "Alice."}, nil, nil, false, nil, trackDB, tracker); failed != 1 {
+	if failed := runCases(cases, &scriptedLLM{answer: "Alice."}, nil, nil, false, nil, nil, trackDB, tracker); failed != 1 {
 		t.Fatalf("failed = %d, want 1", failed)
 	}
 	run, err := tracker.Finish(ctx)
@@ -143,7 +145,7 @@ func TestRunsAreIsolatedAndKept(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if failed := runCases(cases, &scriptedLLM{answer: "Alice."}, nil, nil, false, nil, database, tr); failed != 0 {
+		if failed := runCases(cases, &scriptedLLM{answer: "Alice."}, nil, nil, false, nil, nil, database, tr); failed != 0 {
 			t.Fatalf("run %d failed", i)
 		}
 		if _, err := tr.Finish(ctx); err != nil {
@@ -233,7 +235,7 @@ func TestChunkingCase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failed := runCases([]Case{c}, llm, nil, nil, false, nil, database, tr); failed != 0 {
+	if failed := runCases([]Case{c}, llm, nil, nil, false, nil, nil, database, tr); failed != 0 {
 		t.Fatalf("failed = %d", failed)
 	}
 	if _, err := tr.Finish(ctx); err != nil {
@@ -249,7 +251,7 @@ func TestChunkingCase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failed := runCases([]Case{c}, llm, nil, nil, false, nil, database, tr); failed != 1 {
+	if failed := runCases([]Case{c}, llm, nil, nil, false, nil, nil, database, tr); failed != 1 {
 		t.Fatalf("with 1000 chunks expected: failed = %d, want 1", failed)
 	}
 }
@@ -299,7 +301,7 @@ func TestCaseModels(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if failed := runCases([]Case{c}, llm, nil, nil, false, defaults, database, tr); failed != 0 {
+		if failed := runCases([]Case{c}, llm, nil, nil, false, defaults, nil, database, tr); failed != 0 {
 			t.Fatalf("failed = %d", failed)
 		}
 		if _, err := tr.Finish(ctx); err != nil {
@@ -324,7 +326,7 @@ func TestCaseModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failed := runCases([]Case{bad}, &scriptedLLM{}, nil, nil, false, nil, database, tr); failed != 1 {
+	if failed := runCases([]Case{bad}, &scriptedLLM{}, nil, nil, false, nil, nil, database, tr); failed != 1 {
 		t.Errorf("a case with an unknown stage: failed = %d, want 1", failed)
 	}
 }
@@ -350,11 +352,96 @@ func TestTimeseriesIngestCase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := run(cases[0], tracker.Run.ID, trackDB, &scriptedLLM{}, nil, nil, false, nil)
+	out, err := run(cases[0], tracker.Run.ID, trackDB, &scriptedLLM{}, nil, nil, false, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(out.Problems) > 0 || len(out.PassedChecks) < 8 || out.Answer != "" || len(out.Trajectories) != 1 {
 		t.Fatalf("problems=%v passed=%v answer=%q trajectories=%d", out.Problems, out.PassedChecks, out.Answer, len(out.Trajectories))
+	}
+}
+
+// TestCaseReasoning checks that the runner's -reasoning are the default level of each stage (and of the recall, with the
+// key "recall"), and that a case's own "reasoning" wins over them stage by stage.
+func TestCaseReasoning(t *testing.T) {
+	dir := t.TempDir()
+	atifDir = filepath.Join(dir, "atif")
+	memory_core.TrajectoryDir = atifDir
+	t.Cleanup(func() { atifDir = "" })
+
+	database, err := db.Open(db.Config{SQLitePath: filepath.Join(dir, "eval.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	ctx := context.Background()
+	defaults, err := parseReasoning("extract_graph=low, recall=High")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"bogus=low", "extract_graph=max", "extract_graph", "web_search=low"} {
+		if _, err := parseReasoning(bad); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+	if m, err := parseReasoning(""); m != nil || err != nil {
+		t.Errorf("empty: %v, %v", m, err)
+	}
+
+	run1 := func(c Case, reasoning map[string]string) (levels []string, failed int) {
+		llm := &scriptedLLM{answer: "Alice."}
+		tr, err := experiments.Start(ctx, database.Relational, experiments.Options{Name: "exp"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		failed = runCases([]Case{c}, llm, nil, nil, false, nil, reasoning, database, tr)
+		if _, err := tr.Finish(ctx); err != nil {
+			t.Fatal(err)
+		}
+		return llm.levels, failed
+	}
+	base := Case{Suite: "s", Name: "r1", Remember: []Artifact{{Text: "Alice is here."}}, Query: "Who?", ExpectContains: []string{"alice"}}
+
+	// extract (remember) then answer (recall).
+	if got, failed := run1(base, defaults); failed != 0 || fmt.Sprint(got) != "[low high]" {
+		t.Errorf("run levels: %v, failed %d", got, failed)
+	}
+	over := base
+	over.Name, over.Reasoning = "r2", map[string]string{"extract_graph": "none", "recall": "medium"}
+	if got, failed := run1(over, defaults); failed != 0 || fmt.Sprint(got) != "[none medium]" {
+		t.Errorf("case levels: %v, failed %d", got, failed)
+	}
+	// A stage the case does not name takes the flag's level.
+	part := base
+	part.Name, part.Reasoning = "r2b", map[string]string{"extract_graph": "medium"}
+	if got, failed := run1(part, defaults); failed != 0 || fmt.Sprint(got) != "[medium high]" {
+		t.Errorf("partial case levels: %v, failed %d", got, failed)
+	}
+	// Nothing set: the server's default, which is no thinking.
+	none := base
+	none.Name = "r3"
+	if got, failed := run1(none, nil); failed != 0 || fmt.Sprint(got) != "[none none]" {
+		t.Errorf("default levels: %v, failed %d", got, failed)
+	}
+	bad := base
+	bad.Name, bad.Reasoning = "r4", map[string]string{"nope": "low"}
+	if _, failed := run1(bad, nil); failed != 1 {
+		t.Errorf("a case with an unknown stage: failed = %d, want 1", failed)
+	}
+}
+
+// TestSuitesSetReasoning checks that every case of the embedded suites sets the reasoning of every stage, and of the
+// recall, explicitly to none, so a run does not depend on the server's defaults and is the baseline for comparing levels.
+func TestSuitesSetReasoning(t *testing.T) {
+	cases, err := loadCases(nil, "", "")
+	if err != nil || len(cases) == 0 {
+		t.Fatalf("loadCases: %d cases, %v", len(cases), err)
+	}
+	for _, c := range cases {
+		for _, stage := range reasoningStages() {
+			if c.Reasoning[stage] != "none" {
+				t.Errorf("%s/%s: reasoning[%s] = %q, want none", c.Suite, c.Name, stage, c.Reasoning[stage])
+			}
+		}
 	}
 }
