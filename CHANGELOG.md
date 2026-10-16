@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.24.0] - 2026-10-24
+
+### Added
+- Python sidecar skeleton in `side_car/`: `main_sidecar.py` is a minimal FastAPI server (`GET /health`) listening on `SIDECAR_HOST:SIDECAR_PORT` (default `127.0.0.1:8787`); dependencies in `side_car/requirements.txt`.
+- `Dockerfile.sidecar` packages the sidecar, and `run_build_sidecar.sh [image[:tag]]` builds the image (default `gligabao-sidecar:latest`).
+- Go client for the sidecar in `internal/sidecar` (`sidecar.New`, `Client.Health`).
+- [docs/sidecar.md](docs/sidecar.md): documents the sidecar, its container and the Go client, linked from the README.
+
 ## [0.23.1] - 2026-10-24
 
 ### Added
