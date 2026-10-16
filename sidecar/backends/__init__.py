@@ -7,5 +7,7 @@ __all__ = ["Backend", "BackendError", "BackendResponse", "get_backend"]
 def get_backend(config) -> Backend:
     if config.backend == "modal":
         from backends.modal_backend import ModalBackend
-        return ModalBackend(config.modal_app_name, web_url=config.modal_web_url)
+        secret = lambda v: v.get_secret_value() if v else None
+        return ModalBackend(config.modal_app_name, web_url=config.modal_web_url,
+                            token_id=secret(config.modal_token_id), token_secret=secret(config.modal_token_secret))
     raise ValueError(f"unknown sidecar backend {config.backend!r}")

@@ -88,6 +88,25 @@ func (c *Client) Backends(ctx context.Context) ([]BackendStatus, error) {
 	return out.Backends, nil
 }
 
+// Open sends `method path?rawQuery` to the sidecar and returns the response as it is, whatever its status; the caller closes
+// the body. It is for passing an answer on (including a long-lived SSE stream, so there is no overall timeout: ctx ends it).
+func (c *Client) Open(ctx context.Context, method, path, rawQuery string, body io.Reader) (*http.Response, error) {
+	u := c.baseURL + path
+	if rawQuery != "" {
+		u += "?" + rawQuery
+	}
+	req, err := http.NewRequestWithContext(ctx, method, u, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	resp, err := c.stream.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("sidecar %s %s: %w", method, path, err)
+	}
+	return resp, nil
+}
+
 func (c *Client) get(ctx context.Context, path string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {

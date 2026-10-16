@@ -2,6 +2,8 @@
 // jobs in the database, and for the selected job a feed of its events and a graph of its loss. The events come from the
 // server as SSE (../training/events), which forwards what the sidecar reports; d3 is loaded as a global by index.html.
 
+import { initActionModal, showActionLog, startAction, type ActionState } from "./actions.js";
+
 declare const d3: typeof import("d3");
 
 interface Job {
@@ -138,13 +140,48 @@ async function checkSidecar(): Promise<boolean> {
   return active;
 }
 
-interface BackendStatus { name: string; configured?: boolean; healthy?: boolean; deployed?: boolean | null; app?: string; error?: string }
+interface BackendStatus {
+  name: string; configured?: boolean; healthy?: boolean; deployed?: boolean | null; app?: string; error?: string;
+  actions?: Record<string, ActionState>;
+}
+
+let backendsTimer: number | undefined;
+
+// The buttons of a backend's actions (deploy, ...): start it, or follow the running / last run in the live log dialog.
+function actionButtons(backend: string, actions: Record<string, ActionState>, deployed: boolean | null | undefined): HTMLElement[] {
+  const out: HTMLElement[] = [];
+  for (const [name, a] of Object.entries(actions)) {
+    const title = `${backend}: ${a.label}`;
+    const running = a.state === "running";
+    if (running) out.push(node("span", "badge badge-active", `${name}: ${a.stage ?? "running"}…`));
+    else if (a.state === "failed") out.push(node("span", "badge badge-error", `last ${name} failed`));
+    else if (a.state === "cancelled") out.push(node("span", "badge badge-unknown", `last ${name} cancelled`));
+    const start = node("button", a.danger ? "small danger" : "small", name === "deploy" && deployed ? "Redeploy" : a.label.split(" ")[0]);
+    start.type = "button";
+    start.disabled = running;
+    start.title = a.label + (a.state === "idle" ? "" : " (again)");
+    start.addEventListener("click", () => {
+      if (!confirm(a.confirm || `${a.label}?\n\nIt changes the remote backend and can take several minutes. The live log opens next.`)) return;
+      void startAction(backend, name, title, () => void loadBackends()).catch((err) => alert(`Could not start ${name}: ${errText(err)}`));
+    });
+    out.push(start);
+    if (a.state !== "idle") {
+      const log = node("button", "small", running ? "View log" : "Last log");
+      log.type = "button";
+      log.addEventListener("click", () => showActionLog(backend, name, title, () => void loadBackends()));
+      out.push(log);
+    }
+  }
+  return out;
+}
 
 // Lists the training backends the sidecar reports (name, healthy or not). For Modal, also whether its app is deployed
 // (found in Modal) or still has to be (`modal deploy app.py`).
 async function loadBackends(): Promise<void> {
   const list = el("training-backends-list");
   const items: HTMLElement[] = [];
+  let running = false; // an action is running: keep the list current (e.g. after a page reload)
+  clearTimeout(backendsTimer);
   try {
     const res = await fetch("api/sidecar/backends");
     if (!res.ok) throw new Error(String(res.status));
@@ -159,9 +196,18 @@ async function loadBackends(): Promise<void> {
         const dep = b.deployed;
         const badge = node("span", `badge ${dep ? "badge-ok" : dep === false ? "badge-active" : "badge-unknown"}`,
           dep ? "app deployed" : dep === false ? "app not deployed" : "deployment unknown");
-        badge.title = dep === false ? `App ${b.app ?? ""} not found in Modal: deploy it with "modal deploy app.py"` : (b.app ?? "");
+        badge.title = dep === false ? `App ${b.app ?? ""} not found in Modal: deploy it with the Deploy button` : (b.app ?? "");
         li.append(" ", badge);
       }
+      if (b.actions) li.append(...actionButtons(b.name, b.actions, b.deployed));
+      if (b.name === "modal") { // the volumes the app uses (a read-only look at Modal)
+        const vols = node("button", "small", "Volumes");
+        vols.type = "button";
+        vols.title = "The Modal volumes the app uses";
+        vols.addEventListener("click", () => void toggleVolumes(b.name));
+        li.append(vols);
+      }
+      if (Object.values(b.actions ?? {}).some((a) => a.state === "running")) running = true;
       items.push(li);
     }
     if (items.length === 0) items.push(node("li", "muted", body.error ? `unavailable (${body.error})` : "none"));
@@ -169,6 +215,48 @@ async function loadBackends(): Promise<void> {
     items.push(node("li", "muted", "unavailable"));
   }
   list.replaceChildren(...items);
+  if (running && !el("view-training").hidden) backendsTimer = window.setTimeout(() => void loadBackends(), 5000);
+}
+
+interface VolumeInfo { mount_path: string; name: string; exists: boolean | null; created_at?: string | null; entries?: number; error?: string }
+
+let volumesOpen: string | undefined; // backend whose volumes the panel shows
+
+// Shows (or hides, on a second click) the list of the volumes a backend's app uses: where each is mounted, its name, whether
+// it exists in Modal (a missing one is created by the first deploy), when it was created and how many entries it has.
+async function toggleVolumes(backend: string): Promise<void> {
+  const panel = el("training-volumes");
+  if (volumesOpen === backend) { volumesOpen = undefined; panel.hidden = true; return; }
+  volumesOpen = backend;
+  panel.hidden = false;
+  panel.replaceChildren(node("p", "muted", `Loading the ${backend} volumes…`));
+  try {
+    const res = await fetch(`api/sidecar/backends/${encodeURIComponent(backend)}/volumes`);
+    if (!res.ok) throw await failure(res);
+    const vols = ((await res.json()) as { volumes: VolumeInfo[] }).volumes;
+    if (volumesOpen !== backend) return; // closed (or another one opened) while loading
+    const table = node("table");
+    const head = table.createTHead().insertRow();
+    for (const h of ["Mounted at", "Volume", "In Modal", "Entries", "Created (UTC)"]) head.appendChild(node("th", h === "Entries" ? "num" : "", h));
+    const body = table.createTBody();
+    for (const v of vols) {
+      const tr = body.insertRow();
+      tr.insertCell().textContent = v.mount_path;
+      tr.insertCell().textContent = v.name;
+      const st = tr.insertCell();
+      st.appendChild(v.error ? node("span", "badge badge-error", "error") : node("span", `badge ${v.exists ? "badge-ok" : "badge-active"}`, v.exists ? "found" : "not created yet"));
+      if (v.error) st.title = v.error;
+      else if (!v.exists) st.title = "Modal creates it on the first deploy";
+      const n = tr.insertCell();
+      n.className = "num";
+      n.textContent = v.entries == null ? "" : String(v.entries);
+      tr.insertCell().textContent = v.created_at ? fmtTime(v.created_at) : "";
+    }
+    const errors = vols.filter((v) => v.error).map((v) => `${v.name}: ${v.error}`);
+    panel.replaceChildren(node("h3", "", `${backend} volumes`), table, ...(errors.length ? [node("p", "error", errors[0])] : []));
+  } catch (err) {
+    if (volumesOpen === backend) panel.replaceChildren(node("p", "error", `Could not list the ${backend} volumes: ${errText(err)}`));
+  }
 }
 
 // Fills the dataset picker with the datasets of the server (the only place datasets are managed; a job's dataset travels
@@ -469,6 +557,7 @@ function drawLoss(): void {
 
 export function initTraining(): void {
   const view = el("view-training");
+  initActionModal();
   el("training-run").addEventListener("click", () => void run());
   el("training-upload").addEventListener("click", () => void uploadDataset());
   const datasetModal = el<HTMLDialogElement>("dataset-modal");

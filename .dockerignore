@@ -4,4 +4,5 @@ bin/*
 admin_ui/node_modules
 admin_ui/dist
 sidecar/__pycache__
+sidecar/**/__pycache__
 sidecar/.venv

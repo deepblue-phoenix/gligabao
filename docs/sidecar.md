@@ -24,7 +24,9 @@ The sidecar answers a health check itself and forwards the training/dataset API,
 
 The routes in `sidecar/routes.py` are the only API the Go server knows (`internal/sidecar/`); it never talks to Modal or any other provider. Each route is forwarded unchanged (method, query, body; status and body come back as they are, SSE streamed) to the configured `Backend` (`sidecar/backends/`). A `4xx`/`5xx` from the backend reaches the Go server unchanged; if the backend cannot be reached the sidecar answers `502 {"error": ...}` (for `modal`, also when the deployed app's web URL cannot be found). To add a backend, implement `Backend.forward` in `backends/` and register it in `backends/__init__.py::get_backend`; an HTTP service that serves the same API can subclass `HttpBackend` and only provide its URL.
 
-The only backend today is `modal`: the web API (`serve_api`) of the Modal app in `sidecar/ai_train/app.py`. Deploy it with `cd sidecar/ai_train && modal deploy app.py`; the sidecar finds its URL through the Modal SDK (once, on the first request). With `modal serve` (dev), set `SIDECAR_MODAL_WEB_URL` to the URL it prints.
+The only backend today is `modal`: the web API (`serve_api`) of the Modal app in `sidecar/ai_train/app.py`. Deploy it from the admin UI ([modal.md](modal.md)) or with `cd sidecar/ai_train && modal deploy app.py`; the sidecar finds its URL through the Modal SDK (once, on the first request). With `modal serve` (dev), set `SIDECAR_MODAL_WEB_URL` to the URL it prints.
+
+Backend actions: the sidecar also answers a few routes itself, for what an operator does to a backend (`backends/actions.py`): `GET /backends` (live status), `POST|GET /backends/{name}/actions/{action}`, `.../events` (SSE), `POST .../cancel` and `GET /backends/{name}/volumes`. `modal` uses them to manage the Modal app's lifecycle without the `modal` CLI: `deploy` (`ai_train/deploy_modal.py`, the SDK's `app.deploy()`), `stop` (`ai_train/stop_modal.py`, `modal app stop`; it ends running jobs too) and the volume list (`ai_train/list_volumes.py`, read only). The Go server passes them on as `/v1/gb/admin/api/sidecar/backends[/{name}/actions/{action}[/events|/cancel]]` and `.../{name}/volumes`; the admin UI's training view has Deploy, Stop, Volumes and a live log dialog. Details, API and troubleshooting: [modal.md](modal.md).
 
 Configuration is by environment variable. At startup `main_sidecar.py` reads them once into a `SidecarConfig` (a frozen pydantic model, `sidecar/sidecar_config.py`) and passes it to `create_app(config)`; the app keeps it on `app.state.config` (handlers can use the `get_config` helper). New settings are added as fields of that struct. An invalid value stops the sidecar at startup.
 
@@ -53,7 +55,7 @@ curl http://127.0.0.1:8787/health
 
 ## Remote training bootstrap
 
-`sidecar/ai_train/` fine-tunes Gemma-4 (4B and 12B, LoRA) on a cloud provider and serves the result. It is ported from `gloflow_phoenix/gf_phoenix/ai_train` and restructured so the cloud-specific parts sit behind a provider interface. It is the Modal side of the `modal` backend: it runs on Modal, is not imported by `main_sidecar.py`, and is not copied into `Dockerfile.sidecar`.
+`sidecar/ai_train/` fine-tunes Gemma-4 (4B and 12B, LoRA) on a cloud provider and serves the result. It is ported from `gloflow_phoenix/gf_phoenix/ai_train` and restructured so the cloud-specific parts sit behind a provider interface. It is the Modal side of the `modal` backend: it runs on Modal and is not imported by `main_sidecar.py`; `Dockerfile.sidecar` copies it only so that the sidecar can deploy it (see [modal.md](modal.md)).
 
 ```
 sidecar/ai_train/
@@ -173,7 +175,7 @@ To add a provider (e.g. AWS): implement `Provider` in `providers/aws_provider.py
 
 ## The container
 
-`Dockerfile.sidecar` (in the repo root; the plain `Dockerfile` is the Go server's) packages the sidecar on `python:3.13-slim`: it installs the requirements, copies `main_sidecar.py`, `sidecar_config.py`, `routes.py` and `backends/`, runs as the non-root user `sidecar` and starts `python main_sidecar.py`. The image sets `SIDECAR_HOST=0.0.0.0` (a container must listen on all interfaces for a published port to reach it) and exposes `8787`.
+`Dockerfile.sidecar` (in the repo root; the plain `Dockerfile` is the Go server's) packages the sidecar on `python:3.13-slim`: it installs the requirements, copies `main_sidecar.py`, `sidecar_config.py`, `routes.py`, `backends/` and `ai_train/` (what the deploy action uploads to Modal), runs as the non-root user `sidecar` and starts `python main_sidecar.py`. The image sets `SIDECAR_HOST=0.0.0.0` (a container must listen on all interfaces for a published port to reach it) and exposes `8787`.
 
 ```sh
 ./run_build_sidecar.sh                         # builds gligabao-sidecar:latest

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -127,6 +128,16 @@ func sidecarBackends(ctx context.Context) ([]sidecar.BackendStatus, error) {
 	return c.Backends(ctx)
 }
 
+// sidecarOpen sends a request to the sidecar and returns its raw answer (nil function if there is no client: the proxy
+// then answers 503), for the backends' actions in the admin UI.
+func sidecarOpen(ctx context.Context, method, path, rawQuery string, body io.Reader) (*http.Response, error) {
+	c := sidecarClient.Load()
+	if c == nil {
+		return nil, errors.New("sidecar not configured")
+	}
+	return c.Open(ctx, method, path, rawQuery, body)
+}
+
 // sidecarPingTimeout bounds the sidecar health check on startup.
 const sidecarPingTimeout = 5 * time.Second
 
@@ -232,6 +243,13 @@ func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, sc training.Sidecar)
 	mux.HandleFunc("DELETE /v1/gb/admin/api/datasets", admin.DeleteDatasetOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/sidecar/status", admin.SidecarStatusOf(sc != nil, sidecarPing))
 	mux.HandleFunc("GET /v1/gb/admin/api/sidecar/backends", admin.SidecarBackendsOf(sidecarBackends))
+	// A backend's long-running actions (e.g. deploy the Modal app): start, cancel, state with log, live log (SSE).
+	const actions = "/v1/gb/admin/api/sidecar/backends/{name}/actions/{action}"
+	mux.HandleFunc("POST "+actions, admin.SidecarBackendProxy(sidecarOpen, ""))
+	mux.HandleFunc("GET "+actions, admin.SidecarBackendProxy(sidecarOpen, ""))
+	mux.HandleFunc("GET "+actions+"/events", admin.SidecarBackendProxy(sidecarOpen, "/events"))
+	mux.HandleFunc("POST "+actions+"/cancel", admin.SidecarBackendProxy(sidecarOpen, "/cancel"))
+	mux.HandleFunc("GET /v1/gb/admin/api/sidecar/backends/{name}/volumes", admin.SidecarBackendProxy(sidecarOpen, "/volumes"))
 	// The experiments live in the eval database; without one there are none to show.
 	for _, e := range dbs {
 		if e.Name != EvalDBName {

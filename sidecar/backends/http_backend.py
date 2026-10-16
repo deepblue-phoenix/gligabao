@@ -31,4 +31,5 @@ class HttpBackend(Backend):
                                body=resp.aiter_raw(), close=resp.aclose)
 
     async def aclose(self) -> None:
+        await super().aclose()
         await self._client.aclose()

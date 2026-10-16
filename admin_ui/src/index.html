@@ -110,6 +110,7 @@
               <span class="muted">Backends:</span>
               <ul id="training-backends-list"></ul>
             </div>
+            <div id="training-volumes" class="backend-volumes" hidden></div>
             <div class="row training-form">
               <label>Model
                 <select id="training-size"><option value="4b">Gemma 4 · 4B</option><option value="12b">Gemma 4 · 12B</option></select>
@@ -207,6 +208,21 @@
         <button type="button" id="history-close">Close</button>
       </div>
       <div id="history-canvas"></div>
+    </dialog>
+
+    <dialog id="action-modal" class="modal">
+      <div class="modal-head">
+        <h2 id="action-title">Action</h2>
+        <span id="action-state" class="badge badge-unknown"></span>
+        <span id="action-elapsed" class="muted"></span>
+        <span id="action-conn" class="muted"></span>
+        <label class="muted"><input type="checkbox" id="action-follow" checked /> follow</label>
+        <button type="button" id="action-cancel" class="danger" hidden>Cancel run</button>
+        <button type="button" id="action-close">Close</button>
+      </div>
+      <ol id="action-stages" class="stages"></ol>
+      <p id="action-error" class="error"></p>
+      <div class="modal-body"><pre id="action-log" class="action-log"></pre></div>
     </dialog>
 
     <dialog id="dataset-modal" class="modal">

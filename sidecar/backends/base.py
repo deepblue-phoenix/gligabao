@@ -6,7 +6,9 @@ Adding a backend means adding a class here that implements `forward` and registe
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import AsyncIterator, Awaitable, Callable, Optional
+from typing import AsyncIterator, Awaitable, Callable, Dict, Optional
+
+from backends.actions import ActionRunner
 
 
 @dataclass
@@ -32,10 +34,26 @@ class Backend(ABC):
         """Perform `method path?query` with `body` against the backend. Raises BackendError if it is unreachable;
         an error answer from the backend itself (4xx/5xx) is returned as a normal BackendResponse."""
 
+    def actions(self) -> Dict[str, ActionRunner]:
+        """The long-running actions an operator can start for this backend, by name (e.g. "deploy"); see
+        backends/actions.py. They are exposed under `/backends/<name>/actions/<action>` and listed in `status()`."""
+        return {}
+
+    def actions_status(self, skip: tuple = ()) -> dict:
+        """The state of the actions (without those named in `skip`, e.g. ones that make no sense right now)."""
+        return {k: a.state() for k, a in self.actions().items() if k not in skip}
+
+    async def volumes(self) -> Optional[list]:
+        """The storage volumes the backend uses, one dict each (`GET /backends/<name>/volumes`), or None if the backend
+        has no such concept. Raises BackendError if they cannot be listed."""
+        return None
+
     async def aclose(self) -> None:
-        """Release backend resources at shutdown."""
+        """Release backend resources at shutdown (and stop running actions)."""
+        for a in self.actions().values():
+            await a.aclose()
 
     async def status(self) -> dict:
         """What `GET /backends` reports about this backend: `name`, `configured` and `healthy` (it can be used), plus
         backend-specific fields (`error` explains an unhealthy one). Must not raise and should be quick."""
-        return {"name": self.name, "configured": True, "healthy": True}
+        return {"name": self.name, "configured": True, "healthy": True, "actions": self.actions_status()}

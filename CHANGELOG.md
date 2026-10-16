@@ -5,6 +5,22 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.34.0] - 2026-10-28
+
+### Added
+- The Modal app can be deployed from the sidecar: `POST /backends/modal/actions/deploy` runs `sidecar/ai_train/deploy_modal.py` (the Modal SDK's `app.deploy()`, no `modal` CLI or `~/.modal.toml` needed; credentials come from `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET`). One run at a time (`409` otherwise). `POST /backends/{name}/actions/{action}/cancel` stops a running one (SIGINT so it can clean up, killed after 10 s; `409` if not running). `GET /backends/{name}/actions/{action}` returns the state and log, `.../events` streams them live (SSE). Backends can offer more actions through `Backend.actions()` (`sidecar/backends/actions.py`); `GET /backends` lists them.
+- `POST|GET /v1/gb/admin/api/sidecar/backends/{name}/actions/{action}[/events|/cancel]`: the server passes those routes on to the sidecar, flushing the SSE stream as it arrives.
+- Admin UI, Training view: a **Deploy** / **Redeploy** button next to the Modal backend, and a live log dialog with the stages (starting, building images, creating functions, deployed), the state, the elapsed time and the timestamped build output, with follow-scroll. A **Cancel run** button stops it (`cancelled` state). Closing the dialog leaves the deploy running; **View log** reopens it, also after a page reload.
+
+- Stop the Modal app from the sidecar: a `stop` action next to `deploy` (`POST /backends/modal/actions/stop`, same log, cancel and SSE routes) runs `sidecar/ai_train/stop_modal.py`, which does what `modal app stop` does (running containers, training jobs included, are terminated; the web API goes offline until the next deploy; volumes are kept). `deploy` and `stop` do not run at the same time (`409`). `GET /backends` leaves `stop` out while the app is not deployed.
+- `GET /backends/{name}/volumes` (sidecar) and `GET /v1/gb/admin/api/sidecar/backends/{name}/volumes` (server): the Modal volumes the app uses (mount path, name, whether it exists in Modal, creation time, number of top-level entries), read only, from `sidecar/ai_train/list_volumes.py`.
+- Admin UI, Training view: a red **Stop** button on the Modal backend (with a confirmation that names the consequences; shown while the app is deployed) and a **Volumes** button that lists the volumes in a small table.
+
+- `docs/modal.md`: the Modal app lifecycle (what the admin UI shows, deploy and its stages, the live log, cancel, stop, volumes, the API, the container, troubleshooting); referenced from `docs/sidecar.md` and the README.
+
+### Changed
+- `Dockerfile.sidecar` now copies `sidecar/ai_train/` (the code the deploy uploads) into the image.
+
 ## [0.33.0] - 2026-10-28
 
 ### Added

@@ -8,6 +8,8 @@ COPY sidecar/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY sidecar/main_sidecar.py sidecar/sidecar_config.py sidecar/routes.py ./
 COPY sidecar/backends ./backends
+# The code the "deploy" action uploads to Modal (backends/modal_backend.py runs ai_train/deploy_modal.py from here).
+COPY sidecar/ai_train ./ai_train
 RUN useradd --uid 10002 --no-create-home sidecar
 USER sidecar
 # Inside a container it must listen on all interfaces to be reachable through the published port.
