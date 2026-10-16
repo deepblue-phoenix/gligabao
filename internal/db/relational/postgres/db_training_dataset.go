@@ -10,7 +10,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Training datasets (see sqlite/db_trainingdataset.go for what the functions do)
+// Training datasets (see sqlite/db_training_dataset.go for what the functions do)
 
 // UpsertTrainingDataset records a dataset file under its filename as 'stored' and returns its ID.
 func UpsertTrainingDataset(ctx context.Context, d *sql.DB, ds model.TrainingDataset) (int64, error) {
