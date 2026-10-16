@@ -2,6 +2,7 @@
 import asyncio
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Dict, Optional
@@ -13,6 +14,8 @@ from backends.http_backend import HttpBackend
 DEFAULT_AI_TRAIN_DIR = Path(__file__).resolve().parent.parent / "ai_train"   # the code that gets deployed
 _VOLUMES_TIMEOUT = 60.0   # seconds for list_volumes.py
 _STATUS_TIMEOUT = 10.0   # seconds for the Modal lookup of status()
+_APPS_TIMEOUT = 30.0   # seconds for list_apps.py
+_APP_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")   # what a Modal app name may look like
 
 
 class ModalBackend(HttpBackend):
@@ -34,11 +37,28 @@ class ModalBackend(HttpBackend):
             self._script_env["MODAL_TOKEN_ID"] = token_id
         if token_secret:
             self._script_env["MODAL_TOKEN_SECRET"] = token_secret
-        deploy, stop = self._make_deploy(), self._make_stop()
-        deploy.exclusive_with, stop.exclusive_with = [stop], [deploy]
-        self._actions = {"deploy": deploy, "stop": stop}
+        self._app_actions: Dict[str, Dict[str, ActionRunner]] = {}   # per app name, created on first use
+        self._actions = self.app_actions(app_name)
 
-    def _make_deploy(self) -> ActionRunner:
+    def owns_app(self, app: str) -> bool:
+        """Whether `app` belongs to this system: the configured app (SIDECAR_APP_NAME) or one named `<it>-<suffix>`
+        (e.g. a dev copy). Other apps of the Modal workspace are not ours to deploy or stop."""
+        return bool(_APP_NAME.match(app)) and (app == self._app_name or app.startswith(self._app_name + "-"))
+
+    def app_actions(self, app: str) -> Dict[str, ActionRunner]:
+        """The deploy / stop actions of one app of this system ({} if it is not one)."""
+        if not self.owns_app(app):
+            return {}
+        if app not in self._app_actions:
+            deploy, stop = self._make_deploy(app), self._make_stop(app)
+            deploy.exclusive_with, stop.exclusive_with = [stop], [deploy]
+            self._app_actions[app] = {"deploy": deploy, "stop": stop}
+        return self._app_actions[app]
+
+    def _env_for(self, app: str) -> dict:
+        return {**self._script_env, "SIDECAR_APP_NAME": app}
+
+    def _make_deploy(self, app: str) -> ActionRunner:
         """`deploy`: ai_train/deploy_modal.py (the SDK's `app.deploy()`); its output is kept for the admin UI."""
         # Heuristic stages from Modal's output; the log is the source of truth. Stages only move forward.
         stages = (Stage("starting"),
@@ -46,39 +66,67 @@ class ModalBackend(HttpBackend):
                   Stage("creating functions", r"creating objects|created (objects|function|web function|class)"),
                   Stage("deployed"))
         return ActionRunner("deploy", "Deploy the Modal app", [sys.executable, "-u", "deploy_modal.py"],
-                            cwd=str(self._ai_train_dir), env=self._script_env, stages=stages)
+                            cwd=str(self._ai_train_dir), env=self._env_for(app), stages=stages)
 
-    def _make_stop(self) -> ActionRunner:
+    def _make_stop(self, app: str) -> ActionRunner:
         """`stop`: ai_train/stop_modal.py (`modal app stop`): ends the app's containers (running training jobs too)."""
         return ActionRunner(
             "stop", "Stop the Modal app", [sys.executable, "-u", "stop_modal.py"], cwd=str(self._ai_train_dir),
-            env=self._script_env, danger=True,
-            confirm=f"Stop the Modal app {self._app_name!r}?\n\nRunning training jobs and inference on it are terminated and its "
+            env=self._env_for(app), danger=True,
+            confirm=f"Stop the Modal app {app!r}?\n\nRunning training jobs and inference on it are terminated and its "
                     "web API goes offline until you deploy it again. The volumes (datasets, adapters) are kept.")
 
-    async def volumes(self) -> list:
-        """The volumes of the app with what Modal knows about them (ai_train/list_volumes.py, read only)."""
+    async def apps(self) -> list:
+        """The active Modal apps of this system (ai_train/list_apps.py, read only), each with its actions' state. The
+        configured app is always listed (not active: `active` false, so it can be deployed), and so is any app of ours
+        with an action that ran since the sidecar started."""
+        found = (await self._run_json("list_apps.py", _APPS_TIMEOUT, "listing the Modal apps"))["apps"]
+        by_name = {a["name"]: {**a, "active": True} for a in found if self.owns_app(a["name"])}
+        for name in dict.fromkeys([self._app_name, *self._app_actions]):
+            ran = any(a.state()["state"] != "idle" for a in self._app_actions[name].values())
+            if name not in by_name and (ran or name == self._app_name):
+                by_name[name] = {"name": name, "app_id": None, "state": "not deployed", "n_running_tasks": 0,
+                                 "created_at": None, "active": False}
+        out = []
+        for name in sorted(by_name, key=lambda n: (n != self._app_name, n)):
+            actions = self.app_actions(name)
+            active = by_name[name]["active"]
+            out.append({**by_name[name], "configured": name == self._app_name,
+                        "actions": {k: a.state() for k, a in actions.items() if active or k != "stop"}})
+        return out
+
+    async def _run_json(self, script: str, timeout: float, what: str) -> dict:
+        """Run a read-only helper script that prints JSON; BackendError if it fails or is too slow."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                sys.executable, "list_volumes.py", cwd=str(self._ai_train_dir), env={**os.environ, **self._script_env},
+                sys.executable, script, cwd=str(self._ai_train_dir), env={**os.environ, **self._script_env},
                 stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             try:
-                out, err = await asyncio.wait_for(proc.communicate(), _VOLUMES_TIMEOUT)
+                out, err = await asyncio.wait_for(proc.communicate(), timeout)
             except asyncio.TimeoutError:
                 proc.kill()
                 await proc.wait()
-                raise BackendError(f"listing the Modal volumes timed out after {_VOLUMES_TIMEOUT:.0f}s")
+                raise BackendError(f"{what} timed out after {timeout:.0f}s")
             if proc.returncode != 0:
                 tail = err.decode("utf-8", "replace").strip().splitlines()[-1:] or [f"exit code {proc.returncode}"]
-                raise BackendError(f"listing the Modal volumes failed: {tail[0]}")
-            return json.loads(out)["volumes"]
+                raise BackendError(f"{what} failed: {tail[0]}")
+            return json.loads(out)
         except BackendError:
             raise
         except Exception as e:
-            raise BackendError(f"listing the Modal volumes failed: {e}") from e
+            raise BackendError(f"{what} failed: {e}") from e
+
+    async def volumes(self) -> list:
+        """The volumes of the app with what Modal knows about them (ai_train/list_volumes.py, read only)."""
+        return (await self._run_json("list_volumes.py", _VOLUMES_TIMEOUT, "listing the Modal volumes"))["volumes"]
 
     def actions(self) -> Dict[str, ActionRunner]:
         return self._actions
+
+    async def aclose(self) -> None:
+        for actions in list(self._app_actions.values()):
+            for a in actions.values():
+                await a.aclose()
 
     async def base_url(self) -> str:
         """The override if given, else the web URL of the deployed app (`modal deploy app.py`), looked up once

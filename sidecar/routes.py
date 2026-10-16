@@ -43,28 +43,23 @@ def add_action_routes(app: FastAPI, backend: Backend) -> None:
     GET  /backends/{name}/actions/{action}          state and the kept log (`?from=<i>`: lines from index i)
     GET  /backends/{name}/actions/{action}/events   SSE: `log` and `state` events, ends when the run is over
     GET  /backends/{name}/volumes                   the backend's storage volumes: {"volumes": [...]}; 404 if it has none
+    GET  /backends/{name}/apps                      the active apps of this system: {"apps": [...]}; 404 if it has none
+    .../backends/{name}/apps/{app}/actions/...      the same action routes, for one app of the backend (the plain
+                                                    ones above are those of the backend's own, configured app)
     """
-    def find(name: str, action: str):
-        runner = backend.actions().get(action) if name == backend.name else None
+    def find(request: Request):
+        p = request.path_params
+        if p["name"] != backend.name:
+            return None, JSONResponse({"error": f"no backend {p['name']!r}"}, status_code=404)
+        actions = backend.app_actions(p["app"]) if "app" in p else backend.actions()
+        runner = actions.get(p["action"])
         if runner is None:
-            return None, JSONResponse({"error": f"no action {action!r} on backend {name!r}"}, status_code=404)
+            where = f"app {p['app']!r} of backend" if "app" in p else "backend"
+            return None, JSONResponse({"error": f"no action {p['action']!r} on {where} {p['name']!r}"}, status_code=404)
         return runner, None
 
-    @app.get("/backends/{name}/volumes", include_in_schema=False)
-    async def volumes(name: str) -> Response:
-        if name != backend.name:
-            return JSONResponse({"error": f"no backend {name!r}"}, status_code=404)
-        try:
-            vols = await backend.volumes()
-        except BackendError as e:
-            return JSONResponse({"error": str(e)}, status_code=502)
-        if vols is None:
-            return JSONResponse({"error": f"backend {name!r} has no volumes"}, status_code=404)
-        return JSONResponse({"volumes": vols})
-
-    @app.post("/backends/{name}/actions/{action}", include_in_schema=False)
-    async def start(name: str, action: str) -> Response:
-        runner, err = find(name, action)
+    async def start(request: Request) -> Response:
+        runner, err = find(request)
         if err:
             return err
         try:
@@ -72,9 +67,8 @@ def add_action_routes(app: FastAPI, backend: Backend) -> None:
         except ActionBusy as e:
             return JSONResponse({"error": str(e)}, status_code=409)
 
-    @app.post("/backends/{name}/actions/{action}/cancel", include_in_schema=False)
-    async def cancel(name: str, action: str) -> Response:
-        runner, err = find(name, action)
+    async def cancel(request: Request) -> Response:
+        runner, err = find(request)
         if err:
             return err
         try:
@@ -82,15 +76,35 @@ def add_action_routes(app: FastAPI, backend: Backend) -> None:
         except ActionNotRunning as e:
             return JSONResponse({"error": str(e)}, status_code=409)
 
-    @app.get("/backends/{name}/actions/{action}", include_in_schema=False)
-    async def get(name: str, action: str, from_: int = Query(0, alias="from", ge=0)) -> Response:
-        runner, err = find(name, action)
+    async def get(request: Request, from_: int = Query(0, alias="from", ge=0)) -> Response:
+        runner, err = find(request)
         return err or JSONResponse(runner.snapshot(from_))
 
-    @app.get("/backends/{name}/actions/{action}/events", include_in_schema=False)
-    async def events(name: str, action: str, from_: int = Query(0, alias="from", ge=0)) -> Response:
-        runner, err = find(name, action)
+    async def events(request: Request, from_: int = Query(0, alias="from", ge=0)) -> Response:
+        runner, err = find(request)
         if err:
             return err
         return StreamingResponse(runner.follow(from_), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    for base in ("/backends/{name}", "/backends/{name}/apps/{app}"):
+        app.add_api_route(base + "/actions/{action}", start, methods=["POST"], include_in_schema=False)
+        app.add_api_route(base + "/actions/{action}/cancel", cancel, methods=["POST"], include_in_schema=False)
+        app.add_api_route(base + "/actions/{action}", get, methods=["GET"], include_in_schema=False)
+        app.add_api_route(base + "/actions/{action}/events", events, methods=["GET"], include_in_schema=False)
+
+    def lister(what: str, call):
+        async def handler(name: str) -> Response:
+            if name != backend.name:
+                return JSONResponse({"error": f"no backend {name!r}"}, status_code=404)
+            try:
+                items = await call()
+            except BackendError as e:
+                return JSONResponse({"error": str(e)}, status_code=502)
+            if items is None:
+                return JSONResponse({"error": f"backend {name!r} has no {what}"}, status_code=404)
+            return JSONResponse({what: items})
+        return handler
+
+    app.add_api_route("/backends/{name}/volumes", lister("volumes", backend.volumes), methods=["GET"], include_in_schema=False)
+    app.add_api_route("/backends/{name}/apps", lister("apps", backend.apps), methods=["GET"], include_in_schema=False)

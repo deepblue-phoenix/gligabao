@@ -34,10 +34,12 @@ function node<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""
   return e;
 }
 
-const actionURL = (backend: string, action: string): string => `api/sidecar/backends/${encodeURIComponent(backend)}/actions/${encodeURIComponent(action)}`;
+// The route of an action of the backend's own app, or (app given) of one of its apps.
+const actionURL = (backend: string, action: string, app?: string): string =>
+  `api/sidecar/backends/${encodeURIComponent(backend)}${app ? `/apps/${encodeURIComponent(app)}` : ""}/actions/${encodeURIComponent(action)}`;
 
 // What the open dialog follows.
-let target: { backend: string; action: string } | undefined;
+let target: { backend: string; action: string; app?: string } | undefined;
 let stream: EventSource | undefined;
 let runID = -1;      // run the log on screen belongs to
 let nextLine = 0;    // index of the next log line to show (a reconnect replays the log; lines already shown are skipped)
@@ -108,19 +110,20 @@ function stop(): void {
   if (ticker !== undefined) { clearInterval(ticker); ticker = undefined; }
 }
 
-// Opens the dialog on the log of `action` of `backend` and follows it until it ends. cb is called when the run ended.
-export function showActionLog(backend: string, action: string, title: string, cb?: () => void): void {
+// Opens the dialog on the log of `action` of `backend` (of its app `app`, if given) and follows it until it ends. cb is
+// called when the run ended.
+export function showActionLog(backend: string, action: string, title: string, cb?: () => void, app?: string): void {
   const modal = el<HTMLDialogElement>("action-modal");
   stop();
   reset();
   onChange = cb;
-  target = { backend, action };
+  target = { backend, action, app };
   el("action-cancel").hidden = true;
   el("action-title").textContent = title;
   el<HTMLInputElement>("action-follow").checked = true;
   if (!modal.open) modal.showModal();
 
-  const es = new EventSource(`${actionURL(backend, action)}/events`);
+  const es = new EventSource(`${actionURL(backend, action, app)}/events`);
   stream = es;
   const conn = el("action-conn");
   conn.textContent = "Connecting…";
@@ -144,14 +147,14 @@ export function showActionLog(backend: string, action: string, title: string, cb
 }
 
 // Starts the action (the user already confirmed) and opens its log. If it is already running, only opens the log.
-export async function startAction(backend: string, action: string, title: string, cb?: () => void): Promise<void> {
-  const res = await fetch(actionURL(backend, action), { method: "POST" });
+export async function startAction(backend: string, action: string, title: string, cb?: () => void, app?: string): Promise<void> {
+  const res = await fetch(actionURL(backend, action, app), { method: "POST" });
   if (!res.ok && res.status !== 409) {
     let msg = (await res.text()).trim();
     try { msg = (JSON.parse(msg) as { error?: string }).error ?? msg; } catch { /* not JSON */ }
     throw new Error(`${res.status}: ${msg}`);
   }
-  showActionLog(backend, action, title, cb);
+  showActionLog(backend, action, title, cb, app);
   cb?.();
 }
 
@@ -164,7 +167,7 @@ export function initActionModal(): void {
     if (!target || !confirm("Cancel the running action? Work already done on Modal is not rolled back.")) return;
     const btn = el<HTMLButtonElement>("action-cancel");
     btn.disabled = true;
-    fetch(`${actionURL(target.backend, target.action)}/cancel`, { method: "POST" })
+    fetch(`${actionURL(target.backend, target.action, target.app)}/cancel`, { method: "POST" })
       .then(async (res) => { if (!res.ok && res.status !== 409) throw new Error(`${res.status}: ${(await res.text()).trim()}`); })
       .catch((err) => { btn.disabled = false; alert(`Could not cancel: ${err instanceof Error ? err.message : String(err)}`); });
   });

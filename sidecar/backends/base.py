@@ -43,6 +43,17 @@ class Backend(ABC):
         """The state of the actions (without those named in `skip`, e.g. ones that make no sense right now)."""
         return {k: a.state() for k, a in self.actions().items() if k not in skip}
 
+    def app_actions(self, app: str) -> Dict[str, ActionRunner]:
+        """The actions of one app of the backend, by name (`/backends/<name>/apps/<app>/actions/<action>`); {} if the
+        backend has no such app."""
+        return {}
+
+    async def apps(self) -> Optional[list]:
+        """The active apps of this system on the backend, one dict each (`GET /backends/<name>/apps`; at least `name`
+        and `actions`: the state of `app_actions(name)`), or None if the backend has no such concept. Raises
+        BackendError if they cannot be listed."""
+        return None
+
     async def volumes(self) -> Optional[list]:
         """The storage volumes the backend uses, one dict each (`GET /backends/<name>/volumes`), or None if the backend
         has no such concept. Raises BackendError if they cannot be listed."""

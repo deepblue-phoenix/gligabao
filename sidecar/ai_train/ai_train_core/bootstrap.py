@@ -9,6 +9,7 @@ import platform
 import shutil
 import subprocess
 import time
+import traceback
 from typing import Callable, Optional
 
 from .dataset import resolve_dataset_path
@@ -54,7 +55,9 @@ def run_train(num_train_steps: int, model_size: str, commit_fn: Optional[Callabl
             result = model_train_gemma4_12b.run_finetuning_gemma4_12b(
                 num_train_steps=num_train_steps, commit_fn=commit_fn, dataset_path=dataset_path, job_id=job_id)
     except BaseException as e:
-        write_status(path, "failed", commit_fn, error=f"{type(e).__name__}: {e}"[:2000])
+        # The traceback goes into the event too (the Go server logs it) and, by the re-raise, into the container's log.
+        write_status(path, "failed", commit_fn, error=f"{type(e).__name__}: {e}"[:2000],
+                     traceback="".join(traceback.format_exception(e))[-6000:])
         raise
     write_status(path, "completed", commit_fn, final_loss=result.get("final_loss"))
     return result

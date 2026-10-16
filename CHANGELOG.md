@@ -5,6 +5,21 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.35.0] - 2026-10-29
+
+### Added
+- The Modal backend lists the **active Modal apps of this system**: `GET /backends/modal/apps` (sidecar; read only, from `sidecar/ai_train/list_apps.py`, the equivalent of `modal app list`) returns the deployed / running apps named `SIDECAR_APP_NAME` or `SIDECAR_APP_NAME-<suffix>` (name, app id, state, running tasks, creation time) with the state of their actions. The configured app is always listed (as `not deployed` when it is not up) so that it can be deployed. Other apps of the Modal workspace are not shown and cannot be touched.
+- Per-app action routes: `/backends/{name}/apps/{app}/actions/{action}[/events|/cancel]` (sidecar), and the same under `/v1/gb/admin/api/sidecar/backends/…` (server). Deploy and stop run with `SIDECAR_APP_NAME` set to that app, one run at a time per app and action. The plain `/backends/{name}/actions/…` routes keep acting on the configured app. `Backend.apps()` and `Backend.app_actions()` are the hooks for other backends.
+- Admin UI, Training view: under the Modal backend, one row per app with its state and buttons **Redeploy** (**Deploy** if it is not up), **Last log** (**View log** while running; the log of the last action run on that app), **Stop** and **Volumes**.
+
+### Changed
+- Admin UI: the Deploy / Stop / Volumes buttons moved from the Modal backend line into the app rows.
+
+### Fixed
+- Starting a training job failed with `decode: invalid character '('`: the sidecar relayed Modal's zstd-compressed answer without its `Content-Encoding` header. It now asks the backend for an uncompressed answer and relays decoded bytes.
+- The 4B training job failed with `cannot import name 'ScalingType' from 'torch.nn.functional'`: `torchao` (pulled in by `unsloth_zoo`) resolved to a release that needs torch 2.10+, but the image caps torch below 2.9. `requirements_train.txt` pins `torchao>=0.13.0,<0.14.0` (redeploy the Modal app to rebuild the image).
+- A failed training job now logs an error on the Go server (`training: training job failed`, with the job's Python traceback), and the `failed` event carries the traceback (`traceback` field).
+
 ## [0.34.0] - 2026-10-28
 
 ### Added

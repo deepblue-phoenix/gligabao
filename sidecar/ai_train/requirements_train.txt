@@ -23,4 +23,6 @@ unsloth_zoo==2026.7.2
 
 accelerate>=0.27.0,<1.6.0
 bitsandbytes>=0.46.1                # 4-bit quantization (0.46.1+ needed for transformers 5.5.0+)
+torchao>=0.13.0,<0.14.0             # unsloth_zoo needs it; unpinned it resolves to 0.18, which imports
+                                    # torch.nn.functional.ScalingType (torch 2.10+) and fails on the capped torch
 xformers<0.0.35                     # matches the capped torch

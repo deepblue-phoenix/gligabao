@@ -21,14 +21,18 @@ class HttpBackend(Backend):
     async def forward(self, method: str, path: str, query: str, body: bytes,
                       content_type: Optional[str]) -> BackendResponse:
         url = await self.base_url() + path + (f"?{query}" if query else "")
-        headers = {"content-type": content_type} if content_type else {}
+        # No compression: the body is relayed to the Go server, which gets no content-encoding header. (Modal's gateway
+        # answers zstd when httpx offers it, which the Go client then fails to decode as JSON: "invalid character '('".)
+        headers = {"accept-encoding": "identity"}
+        if content_type:
+            headers["content-type"] = content_type
         try:
             resp = await self._client.send(
                 self._client.build_request(method, url, content=body or None, headers=headers), stream=True)
         except httpx.HTTPError as e:
             raise BackendError(f"{self.name} backend unreachable: {e!r}") from e
         return BackendResponse(status=resp.status_code, content_type=resp.headers.get("content-type"),
-                               body=resp.aiter_raw(), close=resp.aclose)
+                               body=resp.aiter_bytes(), close=resp.aclose)
 
     async def aclose(self) -> None:
         await super().aclose()

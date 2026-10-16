@@ -190,6 +190,48 @@ class ModalBackendTest(unittest.IsolatedAsyncioTestCase):
         await b.aclose()
 
 
+class AppsBackend(FakeBackend):
+    name = "apps"
+
+    def __init__(self):
+        super().__init__()
+        self._app = {"deploy": runner("print('app hi')")}
+
+    def app_actions(self, app):
+        return self._app if app == "a-1" else {}
+
+    async def apps(self):
+        return [{"name": "a-1", "actions": {}}]
+
+
+class ModalAppsTest(unittest.IsolatedAsyncioTestCase):
+    async def test_owned_apps_and_their_actions(self):
+        from backends.modal_backend import ModalBackend
+        b = ModalBackend("app-x")
+        self.assertTrue(b.owns_app("app-x") and b.owns_app("app-x-dev"))
+        self.assertFalse(b.owns_app("app-xy") or b.owns_app("other") or b.owns_app("app-x-../x") or b.owns_app(""))
+        self.assertEqual(b.app_actions("other"), {})
+        dev = b.app_actions("app-x-dev")
+        self.assertIs(dev, b.app_actions("app-x-dev"))
+        self.assertIsNot(dev["deploy"], b.actions()["deploy"])
+        self.assertIn("app-x-dev", dev["stop"].confirm)
+        self.assertEqual(dev["deploy"]._env["SIDECAR_APP_NAME"], "app-x-dev")   # the scripts act on that app
+        self.assertEqual(b.actions()["deploy"]._env["SIDECAR_APP_NAME"], "app-x")
+
+    async def test_apps_listing(self):
+        from backends.modal_backend import ModalBackend
+        b = ModalBackend("app-x")
+        found = {"apps": [{"name": "app-x-dev", "app_id": "ap-1", "state": "deployed", "n_running_tasks": 0, "created_at": None},
+                          {"name": "unrelated", "app_id": "ap-2", "state": "deployed", "n_running_tasks": 0, "created_at": None}]}
+        with mock.patch.object(b, "_run_json", mock.AsyncMock(return_value=found)):
+            apps = await b.apps()
+        self.assertEqual([a["name"] for a in apps], ["app-x", "app-x-dev"])      # ours only, the configured one first
+        self.assertEqual([a["active"] for a in apps], [False, True])             # the configured one is not deployed
+        self.assertEqual(set(apps[0]["actions"]), {"deploy"})                    # nothing to stop
+        self.assertEqual(set(apps[1]["actions"]), {"deploy", "stop"})
+        await b.aclose()
+
+
 class RoutesTest(unittest.IsolatedAsyncioTestCase):
     async def test_routes(self):
         app = FastAPI()
@@ -207,6 +249,23 @@ class RoutesTest(unittest.IsolatedAsyncioTestCase):
             events = parse_sse([ev.content])
             self.assertEqual(events[-1][1]["state"], "succeeded")
             self.assertEqual((await c.get("/backends/fake/actions/deploy?from=0")).json()["log"][0]["line"], "hi")
+        await backend.aclose()
+
+    async def test_app_routes(self):
+        app = FastAPI()
+        backend = AppsBackend()
+        add_action_routes(app, backend)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
+            self.assertEqual((await c.get("/backends/apps/apps")).json(), {"apps": [{"name": "a-1", "actions": {}}]})
+            self.assertEqual((await c.get("/backends/apps/apps/b-2/actions/deploy")).status_code, 404)
+            self.assertEqual((await c.get("/backends/other/apps/a-1/actions/deploy")).status_code, 404)
+            self.assertEqual((await c.get("/backends/apps/apps/a-1/actions/deploy")).json()["state"], "idle")
+            self.assertEqual((await c.post("/backends/apps/apps/a-1/actions/deploy")).status_code, 202)
+            ev = await c.get("/backends/apps/apps/a-1/actions/deploy/events")
+            self.assertEqual(parse_sse([ev.content])[-1][1]["state"], "succeeded")
+            self.assertEqual((await c.get("/backends/apps/apps/a-1/actions/deploy")).json()["log"][0]["line"], "app hi")
+            self.assertEqual((await c.get("/backends/apps/actions/deploy")).json()["state"], "idle")   # the backend's own app
+            self.assertEqual((await c.get("/backends/fake/apps")).status_code, 404)
         await backend.aclose()
 
     async def test_volumes_route(self):

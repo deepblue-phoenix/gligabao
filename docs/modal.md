@@ -32,7 +32,9 @@ In the **training** view, the *Backends* list shows, for the `modal` backend:
 | `deploy: <stage>…` | A deploy is running (the stage is its current step). |
 | `last deploy failed` / `cancelled` | The last run of the action ended that way; **View log** shows why. |
 
-Next to the badges: **Deploy** (**Redeploy** once the app is deployed), **Stop** (red; only while the app is deployed), **Volumes**, and **View log** / **Last log** once an action has run. The list refreshes every 5 seconds while an action runs, and when you press *Refresh*.
+Below it, the **apps list** (since 0.35.0): the active Modal apps of this system, one row each with its state (`deployed`, `ephemeral`, `initializing`, or `not deployed` for the configured app when it is not up), its running tasks, and the buttons **Redeploy** (**Deploy** when not deployed), **Last log** (the log of the last action run on that app; **View log** while it runs), **Stop** and **Volumes**. "Of this system" means the app named `SIDECAR_APP_NAME` and apps named `SIDECAR_APP_NAME-<suffix>` (for example a `-dev` copy); other apps in the Modal workspace are neither shown nor touchable. Deploy and Stop act on that row's app, and the log of one app is kept separately from the others'. The list comes from Modal (`list_apps.py`, the equivalent of `modal app list`) and takes a few seconds, so the previous list is shown meanwhile.
+
+The buttons described below apply to each app row: **Deploy** (**Redeploy** once the app is deployed), **Stop** (red; only while the app is deployed), **Volumes**, and **View log** / **Last log** once an action has run. The list refreshes every 5 seconds while an action runs, and when you press *Refresh*.
 
 ## Deploy
 
@@ -97,6 +99,8 @@ All routes are answered by the sidecar itself (they are not forwarded to the Mod
 | `POST /backends/{name}/actions/{action}/cancel` | Cancel it: `202`, or `409` if it is not running. |
 | `GET /backends/{name}/actions/{action}[?from=<i>]` | The state and the kept log lines with index `>= from`. |
 | `GET /backends/{name}/actions/{action}/events[?from=<i>]` | The SSE stream above. |
+| `GET /backends/{name}/apps` | `{"apps": [{"name", "app_id", "state", "n_running_tasks", "created_at", "active", "configured", "actions"}, ...]}`; `404` if the backend has none, `502` if they cannot be listed. |
+| `…/backends/{name}/apps/{app}/actions/{action}[/events\|/cancel]` | The same routes as the actions above, for one app of this system (`404` for any other name). Without `apps/{app}` they act on the configured app. |
 | `GET /backends/{name}/volumes` | `{"volumes": [{"mount_path", "name", "exists", "created_at"?, "entries"?, "error"?}, ...]}`; `404` if the backend has none, `502` if they cannot be listed. |
 
 The state of an action:

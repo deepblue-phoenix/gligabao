@@ -117,7 +117,7 @@ export ANTHROPIC_API_KEY=...        # required for remember/recall
 ./run_tests.sh                      # runs all tests
 ```
 
-The Python sidecar (`sidecar/`, a FastAPI service) is the only thing the server talks to for training and datasets, and it proxies those calls to its backend, Modal (the server never calls Modal itself; the sidecar needs `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`). It is built into its own image with `./run_build_sidecar.sh`. The sidecar also manages the Modal app's lifecycle (deploy with a live log, cancel, stop, list the volumes), from the admin UI's training view, without the `modal` CLI. Details: [docs/sidecar.md](docs/sidecar.md), [docs/modal.md](docs/modal.md).
+The Python sidecar (`sidecar/`, a FastAPI service) is the only thing the server talks to for training and datasets, and it proxies those calls to its backend, Modal (the server never calls Modal itself; the sidecar needs `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`). It is built into its own image with `./run_build_sidecar.sh`. The sidecar also manages the Modal app's lifecycle (list the active apps of this system; per app deploy with a live log, cancel, stop, list the volumes), from the admin UI's training view, without the `modal` CLI. Details: [docs/sidecar.md](docs/sidecar.md), [docs/modal.md](docs/modal.md).
 
 To run the server and the sidecar together on one Docker network: `export ANTHROPIC_API_KEY=...; docker compose up --build` (see `docker-compose.yml`).
 

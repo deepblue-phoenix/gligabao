@@ -53,16 +53,20 @@ func SidecarBackendsOf(list func(context.Context) ([]sidecar.BackendStatus, erro
 // actionName is what a backend or action name in a URL may look like (they go into the sidecar's path).
 var actionName = regexp.MustCompile(`^[a-z0-9_-]{1,64}$`)
 
+// appName is what an app's name in a URL may look like (Modal app names: letters, digits, "-", "_", "."; not starting with a dot).
+var appName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+
 // SidecarBackendProxy serves the routes of a backend that the sidecar answers itself, by passing them on to the sidecar
 // and its answer back, unchanged and flushed as it arrives so that an SSE stream (the log of an action) is live. The path
-// pattern has the wildcard {name} and, for an action's routes, {action}. The sidecar's path is /backends/{name}, then
-// /actions/{action} if the pattern has {action}, then suffix ("", "/events", "/cancel", "/volumes"). open sends the request
+// pattern has the wildcard {name} and, for an action's routes, {action}, and for those of one app of the backend, {app}.
+// The sidecar's path is /backends/{name}, then /apps/{app} if the pattern has {app}, then /actions/{action} if it has
+// {action}, then suffix ("", "/events", "/cancel", "/volumes", "/apps"). open sends the request
 // (sidecar.Client.Open); the query goes along.
 func SidecarBackendProxy(open func(ctx context.Context, method, path, rawQuery string, body io.Reader) (*http.Response, error), suffix string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		name, action := r.PathValue("name"), r.PathValue("action")
-		if !actionName.MatchString(name) || (action != "" && !actionName.MatchString(action)) {
-			httputil.Error(w, http.StatusBadRequest, "invalid backend or action name")
+		name, action, app := r.PathValue("name"), r.PathValue("action"), r.PathValue("app")
+		if !actionName.MatchString(name) || (action != "" && !actionName.MatchString(action)) || (app != "" && !appName.MatchString(app)) {
+			httputil.Error(w, http.StatusBadRequest, "invalid backend, app or action name")
 			return
 		}
 		if open == nil {
@@ -70,6 +74,9 @@ func SidecarBackendProxy(open func(ctx context.Context, method, path, rawQuery s
 			return
 		}
 		path := "/backends/" + name
+		if app != "" {
+			path += "/apps/" + app
+		}
 		if action != "" {
 			path += "/actions/" + action
 		}

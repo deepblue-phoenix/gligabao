@@ -191,6 +191,10 @@ func (m *Monitor) record(n Database, run relational.TrainingJobRun, ev sidecar.T
 	if !isNew {
 		return nil
 	}
+	if ev.Type == sidecar.EventStatus && ev.Status == relational.TrainingJobFailed {
+		log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID, "error": ev.Error}).
+			Errorf("training: training job failed\n%s", ev.Traceback)
+	}
 	if u := trainingRunUpdate(ev); u != nil {
 		if err := relational.UpdateTrainingJobRun(ctx, n.DB, run.ID, *u); err != nil {
 			return err

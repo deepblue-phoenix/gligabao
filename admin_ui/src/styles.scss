@@ -683,5 +683,6 @@ tr.removing {
 .action-log { margin: 0; font-size: 0.78rem; line-height: 1.35; white-space: pre-wrap; overflow-wrap: anywhere; }
 .action-log .ll-t { color: $muted; margin-right: 0.6rem; user-select: none; }
 .action-log .ll-err { color: $err; }
-.backends li { display: flex; align-items: center; gap: 0.4rem; }
+.backends li { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; }
+.backends ul.backend-apps { flex-basis: 100%; flex-direction: column; gap: 0.35rem; margin: 0.25rem 0 0 1rem; }
 .backend-volumes { margin: 0 0 0.75rem; h3 { margin: 0.25rem 0; font-size: 0.9rem; } table { font-size: 0.85rem; } }

@@ -38,6 +38,8 @@ func TestSidecarBackendProxy(t *testing.T) {
 	mux.HandleFunc("POST "+p, admin.SidecarBackendProxy(c.Open, ""))
 	mux.HandleFunc("POST "+p+"/cancel", admin.SidecarBackendProxy(c.Open, "/cancel"))
 	mux.HandleFunc("GET /backends/{name}/volumes", admin.SidecarBackendProxy(c.Open, "/volumes"))
+	mux.HandleFunc("GET /backends/{name}/apps", admin.SidecarBackendProxy(c.Open, "/apps"))
+	mux.HandleFunc("POST /backends/{name}/apps/{app}/actions/{action}", admin.SidecarBackendProxy(c.Open, ""))
 	mux.HandleFunc("GET "+p+"/events", admin.SidecarBackendProxy(c.Open, "/events"))
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
@@ -69,6 +71,24 @@ func TestSidecarBackendProxy(t *testing.T) {
 		t.Errorf("volumes: sidecar saw %s %s", gotMethod, gotURI)
 	}
 
+	resp, err = http.Get(srv.URL + "/backends/modal/apps")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if gotMethod != "GET" || gotURI != "/backends/modal/apps" {
+		t.Errorf("apps: sidecar saw %s %s", gotMethod, gotURI)
+	}
+
+	resp, err = http.Post(srv.URL+"/backends/modal/apps/gligabao-train-dev.1/actions/deploy", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if gotMethod != "POST" || gotURI != "/backends/modal/apps/gligabao-train-dev.1/actions/deploy" {
+		t.Errorf("app action: sidecar saw %s %s", gotMethod, gotURI)
+	}
+
 	resp, err = http.Get(srv.URL + "/backends/modal/actions/deploy/events?from=3")
 	if err != nil {
 		t.Fatal(err)
@@ -91,5 +111,14 @@ func TestSidecarBackendProxy(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("bad name: status %d, want 400", resp.StatusCode)
+	}
+
+	resp, err = http.Post(srv.URL+"/backends/modal/apps/-x/actions/deploy", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("bad app name: status %d, want 400", resp.StatusCode)
 	}
 }

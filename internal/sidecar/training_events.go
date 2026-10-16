@@ -30,6 +30,8 @@ type TrainingEvent struct {
 	MaxSteps  *int     `json:"max_steps,omitempty"`
 	FinalLoss *float64 `json:"final_loss,omitempty"`
 	Error     string   `json:"error,omitempty"`
+	// Traceback is the Python traceback of a failed job (its last part), for diagnosis.
+	Traceback string `json:"traceback,omitempty"`
 	// Progress events: the Trainer's step, loss (nil when the log has none, or it is not finite), learning rate and epoch,
 	// and the seconds since training began.
 	Step           *int     `json:"step,omitempty"`

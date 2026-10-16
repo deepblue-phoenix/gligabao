@@ -250,6 +250,13 @@ func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, sc training.Sidecar)
 	mux.HandleFunc("GET "+actions+"/events", admin.SidecarBackendProxy(sidecarOpen, "/events"))
 	mux.HandleFunc("POST "+actions+"/cancel", admin.SidecarBackendProxy(sidecarOpen, "/cancel"))
 	mux.HandleFunc("GET /v1/gb/admin/api/sidecar/backends/{name}/volumes", admin.SidecarBackendProxy(sidecarOpen, "/volumes"))
+	// The active apps of this system on a backend (Modal: the deployed ones), and the same action routes for each of them.
+	mux.HandleFunc("GET /v1/gb/admin/api/sidecar/backends/{name}/apps", admin.SidecarBackendProxy(sidecarOpen, "/apps"))
+	const appActions = "/v1/gb/admin/api/sidecar/backends/{name}/apps/{app}/actions/{action}"
+	mux.HandleFunc("POST "+appActions, admin.SidecarBackendProxy(sidecarOpen, ""))
+	mux.HandleFunc("GET "+appActions, admin.SidecarBackendProxy(sidecarOpen, ""))
+	mux.HandleFunc("GET "+appActions+"/events", admin.SidecarBackendProxy(sidecarOpen, "/events"))
+	mux.HandleFunc("POST "+appActions+"/cancel", admin.SidecarBackendProxy(sidecarOpen, "/cancel"))
 	// The experiments live in the eval database; without one there are none to show.
 	for _, e := range dbs {
 		if e.Name != EvalDBName {

@@ -192,22 +192,16 @@ async function loadBackends(): Promise<void> {
       const health = node("span", `badge ${b.healthy ? "badge-ok" : "badge-error"}`, b.healthy ? "healthy" : "unhealthy");
       if (b.error) health.title = b.error;
       li.append(" ", health);
-      if (b.name === "modal" && b.healthy) {
-        const dep = b.deployed;
-        const badge = node("span", `badge ${dep ? "badge-ok" : dep === false ? "badge-active" : "badge-unknown"}`,
-          dep ? "app deployed" : dep === false ? "app not deployed" : "deployment unknown");
-        badge.title = dep === false ? `App ${b.app ?? ""} not found in Modal: deploy it with the Deploy button` : (b.app ?? "");
-        li.append(" ", badge);
-      }
-      if (b.actions) li.append(...actionButtons(b.name, b.actions, b.deployed));
-      if (b.name === "modal") { // the volumes the app uses (a read-only look at Modal)
-        const vols = node("button", "small", "Volumes");
-        vols.type = "button";
-        vols.title = "The Modal volumes the app uses";
-        vols.addEventListener("click", () => void toggleVolumes(b.name));
-        li.append(vols);
-      }
-      if (Object.values(b.actions ?? {}).some((a) => a.state === "running")) running = true;
+      if (b.name === "modal") {
+        // The Modal apps of this system, each with its own actions and volumes (listed from Modal, a few seconds).
+        if (b.healthy) {
+          const box = node("ul", "backend-apps");
+          li.appendChild(box);
+          if (lastApps) renderApps(box, b.name, lastApps); else box.appendChild(node("li", "muted", "Loading the Modal apps…"));
+          void loadApps(b.name, box);
+        }
+      } else if (b.actions) li.append(...actionButtons(b.name, b.actions, b.deployed));
+      if (b.name !== "modal" && Object.values(b.actions ?? {}).some((a) => a.state === "running")) running = true;
       items.push(li);
     }
     if (items.length === 0) items.push(node("li", "muted", body.error ? `unavailable (${body.error})` : "none"));
@@ -218,23 +212,98 @@ async function loadBackends(): Promise<void> {
   if (running && !el("view-training").hidden) backendsTimer = window.setTimeout(() => void loadBackends(), 5000);
 }
 
+interface AppInfo {
+  name: string; app_id: string | null; state: string; n_running_tasks: number; created_at: string | null;
+  active: boolean; configured: boolean; actions: Record<string, ActionState>;
+}
+
+let lastApps: AppInfo[] | undefined; // the last list, shown while the next one loads
+
+// Fetches the backend's apps and shows them in box. While one of their actions runs the list keeps refreshing.
+async function loadApps(backend: string, box: HTMLElement): Promise<void> {
+  try {
+    const res = await fetch(`api/sidecar/backends/${encodeURIComponent(backend)}/apps`);
+    if (!res.ok) throw await failure(res);
+    const apps = ((await res.json()) as { apps: AppInfo[] }).apps;
+    lastApps = apps;
+    if (!box.isConnected) return; // the list was redrawn meanwhile
+    renderApps(box, backend, apps);
+    if (apps.some((a) => Object.values(a.actions).some((x) => x.state === "running")) && !el("view-training").hidden) {
+      clearTimeout(backendsTimer);
+      backendsTimer = window.setTimeout(() => void loadBackends(), 5000);
+    }
+  } catch (err) {
+    if (box.isConnected) box.replaceChildren(node("li", "error", `Could not list the ${backend} apps: ${errText(err)}`));
+  }
+}
+
+function renderApps(box: HTMLElement, backend: string, apps: AppInfo[]): void {
+  box.replaceChildren(...(apps.length ? apps.map((a) => appRow(backend, a)) : [node("li", "muted", "no active apps")]));
+}
+
+// One app: its state, and the buttons Redeploy (Deploy if it is not deployed), Last log, Stop and Volumes.
+function appRow(backend: string, a: AppInfo): HTMLElement {
+  const li = node("li", "backend-app");
+  li.appendChild(node("strong", "", a.name));
+  const state = node("span", `badge ${a.active ? "badge-ok" : "badge-active"}`, a.state);
+  state.title = a.active ? `${a.app_id ?? ""}${a.created_at ? ` · created ${fmtTime(a.created_at)}` : ""}` : "Not found in Modal: deploy it with the Deploy button";
+  li.append(" ", state);
+  if (a.active) li.append(" ", node("span", "muted", `${a.n_running_tasks} running task${a.n_running_tasks === 1 ? "" : "s"}`));
+  const refresh = () => void loadBackends();
+  let latest: { name: string; st: ActionState } | undefined; // the action that ran last, for "Last log"
+  for (const [name, st] of Object.entries(a.actions)) {
+    if (st.state === "running") li.append(" ", node("span", "badge badge-active", `${name}: ${st.stage ?? "running"}…`));
+    else if (st.state === "failed") li.append(" ", node("span", "badge badge-error", `last ${name} failed`));
+    else if (st.state === "cancelled") li.append(" ", node("span", "badge badge-unknown", `last ${name} cancelled`));
+    if (st.state !== "idle" && (!latest || (st.started_at ?? 0) > (latest.st.started_at ?? 0))) latest = { name, st };
+  }
+  const button = (text: string, title: string, cls = "small"): HTMLButtonElement => {
+    const b = node("button", cls, text);
+    b.type = "button";
+    b.title = title;
+    li.append(" ", b);
+    return b;
+  };
+  const start = (name: string, text: string): void => {
+    const st = a.actions[name];
+    if (!st) return;
+    const b = button(text, `${st.label} (${a.name})`, st.danger ? "small danger" : "small");
+    b.disabled = st.state === "running";
+    b.addEventListener("click", () => {
+      if (!confirm(st.confirm || `${st.label}: ${a.name}?\n\nIt changes the app in Modal and can take several minutes. The live log opens next.`)) return;
+      void startAction(backend, name, `${backend}: ${st.label} (${a.name})`, refresh, a.name).catch((err) => alert(`Could not start ${name}: ${errText(err)}`));
+    });
+  };
+  start("deploy", a.active ? "Redeploy" : "Deploy");
+  if (latest) {
+    const l = latest;
+    const running = l.st.state === "running";
+    button(running ? "View log" : "Last log", `The log of the last action (${l.name}) on ${a.name}`)
+      .addEventListener("click", () => showActionLog(backend, l.name, `${backend}: ${l.st.label} (${a.name})`, refresh, a.name));
+  }
+  start("stop", "Stop");
+  button("Volumes", "The Modal volumes the app uses").addEventListener("click", () => void toggleVolumes(backend, a.name));
+  return li;
+}
+
 interface VolumeInfo { mount_path: string; name: string; exists: boolean | null; created_at?: string | null; entries?: number; error?: string }
 
-let volumesOpen: string | undefined; // backend whose volumes the panel shows
+let volumesOpen: string | undefined; // backend (and app) whose volumes the panel shows
 
 // Shows (or hides, on a second click) the list of the volumes a backend's app uses: where each is mounted, its name, whether
 // it exists in Modal (a missing one is created by the first deploy), when it was created and how many entries it has.
-async function toggleVolumes(backend: string): Promise<void> {
+async function toggleVolumes(backend: string, app = ""): Promise<void> {
   const panel = el("training-volumes");
-  if (volumesOpen === backend) { volumesOpen = undefined; panel.hidden = true; return; }
-  volumesOpen = backend;
+  const key = `${backend}/${app}`, what = app || backend;
+  if (volumesOpen === key) { volumesOpen = undefined; panel.hidden = true; return; }
+  volumesOpen = key;
   panel.hidden = false;
-  panel.replaceChildren(node("p", "muted", `Loading the ${backend} volumes…`));
+  panel.replaceChildren(node("p", "muted", `Loading the ${what} volumes…`));
   try {
     const res = await fetch(`api/sidecar/backends/${encodeURIComponent(backend)}/volumes`);
     if (!res.ok) throw await failure(res);
     const vols = ((await res.json()) as { volumes: VolumeInfo[] }).volumes;
-    if (volumesOpen !== backend) return; // closed (or another one opened) while loading
+    if (volumesOpen !== key) return; // closed (or another one opened) while loading
     const table = node("table");
     const head = table.createTHead().insertRow();
     for (const h of ["Mounted at", "Volume", "In Modal", "Entries", "Created (UTC)"]) head.appendChild(node("th", h === "Entries" ? "num" : "", h));
@@ -253,9 +322,9 @@ async function toggleVolumes(backend: string): Promise<void> {
       tr.insertCell().textContent = v.created_at ? fmtTime(v.created_at) : "";
     }
     const errors = vols.filter((v) => v.error).map((v) => `${v.name}: ${v.error}`);
-    panel.replaceChildren(node("h3", "", `${backend} volumes`), table, ...(errors.length ? [node("p", "error", errors[0])] : []));
+    panel.replaceChildren(node("h3", "", `${what} volumes`), table, ...(errors.length ? [node("p", "error", errors[0])] : []));
   } catch (err) {
-    if (volumesOpen === backend) panel.replaceChildren(node("p", "error", `Could not list the ${backend} volumes: ${errText(err)}`));
+    if (volumesOpen === key) panel.replaceChildren(node("p", "error", `Could not list the ${what} volumes: ${errText(err)}`));
   }
 }
 
