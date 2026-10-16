@@ -35,6 +35,11 @@ def create_app(config: SidecarConfig, backend: Optional[Backend] = None) -> Fast
     def health() -> dict:
         return {"status": "ok"}
 
+    @app.get("/backends")
+    async def backends() -> dict:
+        """The backends available for training (today the one configured) with their status; see Backend.status."""
+        return {"backends": [await backend.status()]}
+
     add_backend_routes(app, backend)
     return app
 

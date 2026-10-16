@@ -34,3 +34,8 @@ class Backend(ABC):
 
     async def aclose(self) -> None:
         """Release backend resources at shutdown."""
+
+    async def status(self) -> dict:
+        """What `GET /backends` reports about this backend: `name`, `configured` and `healthy` (it can be used), plus
+        backend-specific fields (`error` explains an unhealthy one). Must not raise and should be quick."""
+        return {"name": self.name, "configured": True, "healthy": True}

@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.33.0] - 2026-10-28
+
+### Added
+- Sidecar: `GET /backends` lists the training backends with their status (`name`, `configured`, `healthy`, plus backend-specific fields). For `modal`: `deployed` (whether the app's web function is found in Modal; `null` if it could not be checked), `app` and, when unhealthy, `error`.
+- `GET /v1/gb/admin/api/sidecar/backends` (and `sidecar.Client.Backends`): the same list for the admin UI; with the sidecar down it answers an empty list and an `error` text.
+- Admin UI, Training view: a small list of the available backends with a healthy/unhealthy badge, and for Modal whether the app is deployed or still needs `modal deploy app.py`.
+
 ## [0.32.1] - 2026-10-27
 
 ### Changed

@@ -118,6 +118,15 @@ func sidecarPing(ctx context.Context) error {
 	return err
 }
 
+// sidecarBackends asks the sidecar for its training backends and their status, for the admin UI.
+func sidecarBackends(ctx context.Context) ([]sidecar.BackendStatus, error) {
+	c := sidecarClient.Load()
+	if c == nil {
+		return nil, errors.New("sidecar not configured")
+	}
+	return c.Backends(ctx)
+}
+
 // sidecarPingTimeout bounds the sidecar health check on startup.
 const sidecarPingTimeout = 5 * time.Second
 
@@ -222,6 +231,7 @@ func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, sc training.Sidecar)
 	mux.HandleFunc("GET /v1/gb/admin/api/web-searches/dataset", admin.WebSearchDatasetOf(dbs))
 	mux.HandleFunc("DELETE /v1/gb/admin/api/datasets", admin.DeleteDatasetOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/sidecar/status", admin.SidecarStatusOf(sc != nil, sidecarPing))
+	mux.HandleFunc("GET /v1/gb/admin/api/sidecar/backends", admin.SidecarBackendsOf(sidecarBackends))
 	// The experiments live in the eval database; without one there are none to show.
 	for _, e := range dbs {
 		if e.Name != EvalDBName {

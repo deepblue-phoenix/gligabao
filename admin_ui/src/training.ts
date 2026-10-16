@@ -138,10 +138,44 @@ async function checkSidecar(): Promise<boolean> {
   return active;
 }
 
+interface BackendStatus { name: string; configured?: boolean; healthy?: boolean; deployed?: boolean | null; app?: string; error?: string }
+
+// Lists the training backends the sidecar reports (name, healthy or not). For Modal, also whether its app is deployed
+// (found in Modal) or still has to be (`modal deploy app.py`).
+async function loadBackends(): Promise<void> {
+  const list = el("training-backends-list");
+  const items: HTMLElement[] = [];
+  try {
+    const res = await fetch("api/sidecar/backends");
+    if (!res.ok) throw new Error(String(res.status));
+    const body = (await res.json()) as { backends?: BackendStatus[]; error?: string };
+    for (const b of (body.backends ?? []).filter((x) => x.configured !== false)) {
+      const li = node("li", "");
+      li.appendChild(node("strong", "", b.name));
+      const health = node("span", `badge ${b.healthy ? "badge-ok" : "badge-error"}`, b.healthy ? "healthy" : "unhealthy");
+      if (b.error) health.title = b.error;
+      li.append(" ", health);
+      if (b.name === "modal" && b.healthy) {
+        const dep = b.deployed;
+        const badge = node("span", `badge ${dep ? "badge-ok" : dep === false ? "badge-active" : "badge-unknown"}`,
+          dep ? "app deployed" : dep === false ? "app not deployed" : "deployment unknown");
+        badge.title = dep === false ? `App ${b.app ?? ""} not found in Modal: deploy it with "modal deploy app.py"` : (b.app ?? "");
+        li.append(" ", badge);
+      }
+      items.push(li);
+    }
+    if (items.length === 0) items.push(node("li", "muted", body.error ? `unavailable (${body.error})` : "none"));
+  } catch {
+    items.push(node("li", "muted", "unavailable"));
+  }
+  list.replaceChildren(...items);
+}
+
 // Fills the dataset picker with the datasets of the server (the only place datasets are managed; a job's dataset travels
 // to the sidecar with the job). It needs no sidecar.
 async function loadDatasets(): Promise<void> {
   await checkSidecar();
+  void loadBackends();
   const sel = el<HTMLSelectElement>("training-dataset");
   const status = el("training-run-status");
   const keep = sel.value;
@@ -440,7 +474,7 @@ export function initTraining(): void {
   const datasetModal = el<HTMLDialogElement>("dataset-modal");
   el("dataset-close").addEventListener("click", () => datasetModal.close());
   datasetModal.addEventListener("click", (e) => { if (e.target === datasetModal) datasetModal.close(); });
-  el("training-refresh").addEventListener("click", () => { void loadDatasets(); void loadJobs(); });
+  el("training-refresh").addEventListener("click", () => { void loadDatasets(); void loadBackends(); void loadJobs(); });
   // The SSE streams are open only while the view is shown (a browser allows few connections to a host).
   const sync = (): void => {
     if (view.hidden) { closeStreams(); return; }

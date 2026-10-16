@@ -73,6 +73,21 @@ func (c *Client) Health(ctx context.Context) (HealthResponse, error) {
 	return out, nil
 }
 
+// BackendStatus is one entry of GET /backends: "name", "configured" and "healthy" (bool) are always there; a backend adds
+// its own fields (the modal one: "deployed" (bool, null if unknown), "app", and "error" when it is unhealthy).
+type BackendStatus map[string]any
+
+// Backends lists the backends the sidecar offers for training, with their live status.
+func (c *Client) Backends(ctx context.Context) ([]BackendStatus, error) {
+	var out struct {
+		Backends []BackendStatus `json:"backends"`
+	}
+	if err := c.get(ctx, "/backends", &out); err != nil {
+		return nil, err
+	}
+	return out.Backends, nil
+}
+
 func (c *Client) get(ctx context.Context, path string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {
