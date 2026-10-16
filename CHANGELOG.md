@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.26.0] - 2026-10-25
+
+### Added
+- Gemma-4 fine-tuning and inference in `side_car/ai_train/`, ported from `gloflow_phoenix/gf_phoenix/ai_train`: 4B (`google/gemma-4-E4B-it`, Unsloth, A10G) and 12B (`google/gemma-4-12B-it`, plain transformers + peft + trl, A100, because its `gemma4_unified` architecture cannot be loaded by Unsloth). Each size has its own image (`requirements_train.txt`, `requirements_gemma4_12b.txt`).
+- `modal run app.py` actions `sync`, `validate`, `train --model-size 4b|12b` (replaces the stub) and `generate --prompt ...`; `modal serve app.py` serves the web API (`/start_training_job`, `/get_training_progress`, `/generate_response`, eval and dataset endpoints, `/healthz`).
+- Live training progress written to the progress volume, adapters saved per size under `/models/finetuned_model_<size>`, the 325-example tool-calling dataset and its generator in `finetune_data/`, Gemma-4 docs in `side_car/ai_train/docs/`, and local unit tests (`python -m unittest test_ai_train_core`).
+- Provider interface gains `asgi_app`, `reload_volumes` and per-path `commit_volumes`; new config `SIDECAR_VOL_EVAL` and `SIDECAR_VOL_HF_CACHE`.
+
+### Changed
+- `SIDECAR_GPU` is now an optional override; by default 4b uses `a10g` and 12b uses `a100`.
+- Fixed in the port: 12B inference now loads through transformers + peft (the original routed it through Unsloth, which cannot load that model).
+
 ## [0.25.0] - 2026-10-25
 
 ### Added

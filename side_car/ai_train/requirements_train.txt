@@ -1,2 +1,26 @@
-# Dependencies for the remote train image (installed by the provider at image build).
-# Empty on purpose: add torch/transformers/trl/... here one at a time as training grows.
+# Dependencies for the Unsloth train image (Gemma-4 4B: train + inference). Installed by the
+# provider at image build. See requirements_gemma4_12b.txt for the 12B image (no Unsloth).
+#
+# Versions are capped/pinned because unsloth==2026.7.2 pins them (and for the Gemma-4 tokenizer
+# pickling regression with newer torch/transformers/unsloth combos):
+#   transformers<=5.5.0, trl<=0.24.0, datasets<4.4.0, peft>=0.18.0
+# extra-index-url gives the CUDA 12.4 torch wheels; it must match the base image
+# (nvidia/cuda:12.4.1-devel-ubuntu22.04, see providers/modal_provider.py).
+
+--extra-index-url https://download.pytorch.org/whl/cu124
+
+modal>=0.63.0                       # provider SDK: volume commit/reload inside the container
+torch>=2.3.0,<2.9.0                 # cap below 2.10 (config-pickling leak)
+torchvision
+
+transformers>=4.51.3,<=5.5.0,!=4.52.0,!=4.52.1,!=4.52.2,!=4.52.3,!=4.53.0,!=4.54.0,!=4.55.0,!=4.55.1,!=4.57.0,!=4.57.4,!=4.57.5,!=5.0.0,!=5.1.0
+trl>=0.18.2,<=0.24.0,!=0.19.0       # SFTTrainer
+datasets>=3.4.1,<4.4.0,!=4.0.*,!=4.1.0
+peft>=0.18.0,!=0.11.0               # LoRA adapters
+
+unsloth==2026.7.2
+unsloth_zoo==2026.7.2
+
+accelerate>=0.27.0,<1.6.0
+bitsandbytes>=0.46.1                # 4-bit quantization (0.46.1+ needed for transformers 5.5.0+)
+xformers<0.0.35                     # matches the capped torch

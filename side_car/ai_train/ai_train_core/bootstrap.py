@@ -1,14 +1,16 @@
 """Code that runs INSIDE the remote container. Provider neutral: no modal/aws imports.
 
-Keep this the place where real training grows; app.py only wires it up.
+app.py only wires these up; the training pipelines live in model_train.py (4B, Unsloth) and
+model_train_gemma4_12b.py (12B, plain transformers). Those are imported lazily because each
+needs a different image.
 """
-import json
 import os
 import platform
 import shutil
 import subprocess
-import time
-from pathlib import Path
+from typing import Callable, Optional
+
+from .model_config import get_model_config
 
 
 def run_ping(volume_paths: list) -> dict:
@@ -26,12 +28,12 @@ def run_ping(volume_paths: list) -> dict:
     }
 
 
-def run_train(num_train_steps: int, progress_dir: str = "/progress") -> dict:
-    """Stub training job: writes a progress file so volumes/commit can be tested. Real training TBD."""
-    out = Path(progress_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    path = out / f"training_progress_{int(time.time())}.jsonl"
-    with open(path, "w") as f:
-        for step in range(1, num_train_steps + 1):
-            f.write(json.dumps({"step": step, "loss": None, "ts": time.time()}) + "\n")
-    return {"status": "stub", "num_steps": num_train_steps, "progress_file": str(path)}
+def run_train(num_train_steps: int, model_size: str, commit_fn: Optional[Callable] = None) -> dict:
+    """Fine-tune `model_size`. Must run in the image matching the model's backend."""
+    backend = get_model_config(model_size)["backend"]
+    if backend == "unsloth":
+        from . import model_train
+        return model_train.run_finetuning(num_train_steps=num_train_steps, model_size=model_size,
+                                          commit_fn=commit_fn)
+    from . import model_train_gemma4_12b
+    return model_train_gemma4_12b.run_finetuning_gemma4_12b(num_train_steps=num_train_steps, commit_fn=commit_fn)

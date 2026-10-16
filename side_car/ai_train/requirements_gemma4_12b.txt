@@ -1,0 +1,66 @@
+# Requirements for training google/gemma-4-12B-it WITHOUT Unsloth.
+#
+# WHY THIS FILE EXISTS (separate from requirements_train.txt):
+# ---------------------------------------------------------------------------
+# As of 2026-06-03, Google re-published `google/gemma-4-12B-it` on top of a
+# new "gemma4_unified" architecture (`Gemma4UnifiedForConditionalGeneration`,
+# an encoder-free any-to-any/multimodal refactor of Gemma-4). Its full commit
+# history was squashed, so there is no older non-unified revision left to
+# pin to.
+#
+# `gemma4_unified` as a `transformers` `model_type` was only registered
+# starting `transformers==5.10.1` (confirmed absent in 5.6.0-5.9.0, present
+# from 5.10.1 onward). But the main `requirements_train.txt` pins
+# `transformers<=5.5.0`, because `unsloth==2026.7.2` (the latest release on
+# PyPI as of writing) hard-pins that ceiling AND its `unsloth`/`unsloth_zoo`
+# loader code (`unsloth/models/loader.py`) has zero dispatch/patch logic for
+# `gemma4_unified` -- only for the older, distinct `gemma4` model_type. See:
+#   - https://github.com/unslothai/unsloth/issues/5985 (same error as ours)
+#   - https://github.com/unslothai/unsloth/issues/6028 (open: FastVisionModel
+#     produces broken outputs for gemma4_unified even when transformers is
+#     force-upgraded past unsloth's pin)
+#
+# Bottom line: Unsloth cannot currently load `google/gemma-4-12B-it` at all
+# (blocked by its own transformers<=5.5.0 pin), and even bypassing that pin
+# is unverified/risky for this architecture. Until Unsloth ships real
+# `gemma4_unified` support, we fine-tune the 12B model with a plain
+# transformers + peft + trl stack instead (see ai_train_core/model_train_gemma4_12b.py),
+# skipping Unsloth's optimized kernels for this one model size only.
+#
+# The 4B model (`google/gemma-4-E4B-it`) is unaffected -- it still ships the
+# older plain `gemma4` model_type, which Unsloth 2026.7.2 does support -- so
+# `train_4b` keeps using the Unsloth path + requirements_train.txt image.
+# ---------------------------------------------------------------------------
+#
+# extra-index-url below is required for the CUDA 12.4 build of torch, and
+# must match the base image (nvidia/cuda:12.4.1-devel-ubuntu22.04, see providers/modal_provider.py).
+
+--extra-index-url https://download.pytorch.org/whl/cu124
+
+
+# Core Training & Inference
+modal>=0.63.0                      # Serverless GPU infrastructure
+torch>=2.3.0                       # No Unsloth in this image, so no need for the <2.9.0
+                                    # cap requirements_train.txt carries for an Unsloth config-pickling leak.
+torchvision
+
+# TRANSFORMERS - HUGGINGFACE
+# `gemma4_unified` (the architecture google/gemma-4-12B-it now ships as) was
+# only registered in transformers's CONFIG_MAPPING/AutoModel mappings starting
+# 5.10.1. No Unsloth pin to respect here, so we just require that floor and
+# otherwise track latest.
+transformers>=5.10.1
+
+# Supervised fine-tuning trainer (SFTTrainer). No Unsloth-imposed ceiling in
+# this image, so track a modern trl release directly.
+trl>=0.24.0
+
+datasets>=3.4.1
+
+# Parameter-Efficient Fine-Tuning (LoRA adapters), applied directly via
+# peft.LoraConfig / get_peft_model since we're not going through Unsloth's
+# FastLanguageModel.get_peft_model() wrapper.
+peft>=0.18.0
+
+accelerate>=0.34.0                  # Distributed training utilities
+bitsandbytes>=0.46.1                # 4-bit/8-bit quantization (0.46.1+ required for transformers 5.5.0+)

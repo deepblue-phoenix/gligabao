@@ -1,6 +1,6 @@
 """Modal implementation of Provider. The ONLY file that imports `modal`."""
 import os
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 import modal
 
@@ -52,7 +52,7 @@ class ModalProvider(Provider):
         return img
 
     # ---- functions ----
-    def function(self, spec: FunctionSpec) -> Callable:
+    def _function_kwargs(self, spec: FunctionSpec) -> dict:
         kwargs = dict(
             image=self._image(spec.image),
             timeout=spec.timeout_s,
@@ -61,7 +61,17 @@ class ModalProvider(Provider):
         )
         if spec.gpu:
             kwargs["gpu"] = spec.gpu
-        return self._app.function(**kwargs)
+        return kwargs
+
+    def function(self, spec: FunctionSpec) -> Callable:
+        return self._app.function(**self._function_kwargs(spec))
+
+    def asgi_app(self, spec: FunctionSpec) -> Callable:
+        register = self._app.function(**self._function_kwargs(spec))
+
+        def decorator(factory: Callable) -> Any:
+            return register(modal.asgi_app()(factory))
+        return decorator
 
     def local_entrypoint(self) -> Callable:
         return self._app.local_entrypoint()
@@ -72,6 +82,13 @@ class ModalProvider(Provider):
     def spawn(self, handle: Any, *args, **kwargs) -> str:
         return handle.spawn(*args, **kwargs).object_id
 
-    def commit_volumes(self) -> None:
-        for v in self._volumes.values():
+    def _select(self, paths: Optional[list]) -> list:
+        return list(self._volumes.values()) if paths is None else [self._volumes[p] for p in paths]
+
+    def commit_volumes(self, paths: Optional[list] = None) -> None:
+        for v in self._select(paths):
             v.commit()
+
+    def reload_volumes(self, paths: Optional[list] = None) -> None:
+        for v in self._select(paths):
+            v.reload()

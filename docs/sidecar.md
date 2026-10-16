@@ -31,29 +31,58 @@ curl http://127.0.0.1:8787/health
 
 ## Remote training bootstrap
 
-`side_car/ai_train/` is the starting point for running fine-tuning jobs on a cloud provider. It is modelled on the startup/bootstrap part of `gloflow_phoenix/gf_phoenix/ai_train` (app, volumes, images, secrets, CLI entrypoint) and deliberately leaves out the training details, the web API and inference. **Today it only verifies the setup**: a `ping` that reports what the remote container looks like, and a stub `train` that writes a progress file. It is separate from the FastAPI service above, is not imported by `main_sidecar.py`, and is not copied into `Dockerfile.sidecar`.
+`side_car/ai_train/` fine-tunes Gemma-4 (4B and 12B, LoRA) on a cloud provider and serves the result. It is ported from `gloflow_phoenix/gf_phoenix/ai_train` and restructured so the cloud-specific parts sit behind a provider interface. It is separate from the FastAPI service above, is not imported by `main_sidecar.py`, and is not copied into `Dockerfile.sidecar`.
 
 ```
 side_car/ai_train/
   app.py                      # declares the remote functions + CLI entrypoint (provider-neutral)
   config.py                   # TrainConfig, overridable by env vars
-  requirements_train.txt      # deps of the remote train image (empty for now)
-  ai_train_core/bootstrap.py  # runs inside the container: run_ping(), run_train() stub
+  training_data.py            # local path of the dataset
+  requirements_train.txt      # 4B image: Unsloth stack
+  requirements_gemma4_12b.txt # 12B image: plain transformers + peft + trl (no Unsloth)
+  requirements_web.txt        # web API image
+  finetune_data/              # generate_dataset.py + the 325-example tool-calling dataset
+  docs/                       # MODEL_SIZES, TRAINING_DATA_FORMAT, tokenizers_and_processors
+  test_ai_train_core.py       # local unit tests (no GPU / Modal needed)
+  ai_train_core/              # runs inside the container; never imports a provider SDK
+    model_config.py           # 4b / 12b settings (pure data)
+    paths.py                  # container mount points + file locations
+    prompt_format.py          # Gemma turn-marker format shared by training and inference
+    dataset.py                # sync / validate the dataset on the data volume
+    training_common.py        # dataset loading, SFTConfig, adapter saving
+    progress.py               # Trainer callback writing live progress jsonl
+    model_load.py, model_train.py            # 4B via Unsloth
+    model_train_gemma4_12b.py                # 12B without Unsloth (training + inference loading)
+    inference.py              # generate with the trained adapter
+    bootstrap.py              # ping + train dispatch by backend
+  ai_web_core/web_api.py      # FastAPI app (training jobs, progress, generate, eval, datasets)
   providers/
     base.py                   # Provider (ABC), FunctionSpec, ImageSpec
     modal_provider.py         # Modal implementation; the only file that imports modal
     __init__.py               # get_provider(name)
 ```
 
+### Why two training paths
+
+`google/gemma-4-E4B-it` (4B) uses the `gemma4` architecture, which Unsloth supports. `google/gemma-4-12B-it` uses the newer `gemma4_unified` architecture, which needs `transformers>=5.10.1`; Unsloth pins `transformers<=5.5.0` and has no loader for it. So 12B trains and serves through plain transformers + peft + trl in a separate image, and 4B stays on Unsloth. Both save LoRA adapters to `/models/finetuned_model_<size>`. Details in the `model_train_gemma4_12b.py` docstring and `docs/MODEL_SIZES.md`.
+
 ### Running it (Modal)
 
-Needs the `modal` CLI, logged in (`pip install modal && modal setup`).
+Needs the `modal` CLI, logged in (`pip install modal && modal setup`), and a provider secret holding `HF_TOKEN` for the Gemma weights (`SIDECAR_HF_SECRET`).
 
 ```sh
 cd side_car/ai_train
 modal run app.py                                   # ping: image, volumes, GPU info, whether HF_TOKEN is set
-modal run app.py --action train --train-steps 5    # stub: writes /progress/training_progress_<ts>.jsonl, commits volumes
+modal run app.py --action sync                     # upload finetune_data/*.jsonl to the data volume (only if newer)
+modal run app.py --action validate                 # check the remote dataset
+modal run app.py --action train --train-steps 100 --model-size 4b     # 4b on A10G, 12b on A100
+modal run app.py --action generate --model-size 4b --prompt "..."     # run the fine-tuned model
+modal serve app.py                                 # web API in dev mode (`modal deploy app.py` to persist)
 ```
+
+`train` syncs the dataset first. Web API endpoints: `POST /start_training_job`, `GET /get_training_progress`, `POST /generate_response`, `POST /add_to_eval_dataset`, `GET /get_eval_dataset_count`, `POST /upload_dataset`, `GET /list_datasets`, `GET /healthz`.
+
+Local tests: `cd side_car/ai_train && python -m unittest test_ai_train_core -v`.
 
 ### Configuration
 
@@ -63,31 +92,33 @@ All settings are in `config.py` and can be overridden by environment variable:
 |---|---|---|
 | `SIDECAR_PROVIDER` | `modal` | Compute provider (only `modal` exists). |
 | `SIDECAR_APP_NAME` | `gligabao-train` | Name of the provider app. |
-| `SIDECAR_GPU` | *(empty)* | GPU for the `train` job, e.g. `a10g`, `a100` (Modal names, passed through). Empty means no GPU and a CPU-only base image, so testing costs almost nothing. |
-| `SIDECAR_TRAIN_TIMEOUT_S` | `7200` | Timeout of the `train` job. |
+| `SIDECAR_GPU` | *(empty)* | GPU override for train/generate of every model size (Modal names, e.g. `a100`). Empty means the per-size default: `a10g` for 4b, `a100` for 12b. |
+| `SIDECAR_TRAIN_TIMEOUT_S` | `7200` | Timeout of the train jobs. |
 | `SIDECAR_HF_SECRET` | *(empty)* | Name of a provider secret with `HF_TOKEN`. Empty means no secret is attached. |
 | `SIDECAR_VOL_DATA` | `gligabao-train-data` | Volume mounted at `/data` (datasets). |
-| `SIDECAR_VOL_MODELS` | `gligabao-train-models` | Volume mounted at `/models` (fine-tuned outputs). |
+| `SIDECAR_VOL_MODELS` | `gligabao-train-models` | Volume mounted at `/models` (fine-tuned adapters). |
 | `SIDECAR_VOL_PROGRESS` | `gligabao-train-progress` | Volume mounted at `/progress` (training progress). |
+| `SIDECAR_VOL_EVAL` | `gligabao-train-eval` | Volume mounted at `/eval` (eval examples from the web API). |
+| `SIDECAR_VOL_HF_CACHE` | `gligabao-train-hf-cache` | Volume mounted at `/root/.cache/huggingface` (base-model cache, avoids re-downloads). |
 
 Volumes are created if missing.
 
 ### How the provider abstraction works
 
-`app.py` only says *what* to run. It builds a `FunctionSpec` (image, GPU, timeout, volumes, secrets) and registers functions with `@provider.function(spec)`. It runs them with `provider.call(fn, ...)` or `provider.spawn(fn, ...)` and persists volume writes with `provider.commit_volumes()`. Images are described by a provider-neutral `ImageSpec` (CUDA base or not, requirements file); the provider decides how to build them, and mounts the `ai_train/` directory into the container at `/pkg`.
+`app.py` only says *what* to run. It builds a `FunctionSpec` (image, GPU, timeout, volumes, secrets) and registers functions with `@provider.function(spec)` (or `@provider.asgi_app(spec)` for the web API). It runs them with `provider.call(fn, ...)` or `provider.spawn(fn, ...)` and persists/refreshes volumes with `provider.commit_volumes(paths)` / `provider.reload_volumes(paths)`. Images are described by a provider-neutral `ImageSpec` (CUDA base or not, requirements file); the provider decides how to build them, and mounts the `ai_train/` directory into the container at `/pkg`. Code in `ai_train_core/` and `ai_web_core/` gets what it needs from the provider as injected callables (e.g. `commit_fn`).
 
 Rules that keep it swappable:
 
-- Nothing outside `providers/` imports a provider SDK, and `ai_train_core/` (the code that runs in the container) never does.
+- Nothing outside `providers/` imports a provider SDK, and `ai_train_core/` / `ai_web_core/` (the code that runs in the container) never do.
 - `app = provider.native_app` is a module-level object because provider CLIs such as `modal run` look for it.
-- Code that runs remotely imports `ai_train_core` inside the function body, since it only exists in the container's `/pkg` mount.
+- Code that runs remotely imports `ai_train_core` inside the function body, since it only exists in the container's `/pkg` mount, and the heavy ML imports are per image (the 12B image has no Unsloth).
 
 To add a provider (e.g. AWS): implement `Provider` in `providers/aws_provider.py` and add one branch to `get_provider` in `providers/__init__.py`. If the new provider cannot express something in `FunctionSpec`, extend `FunctionSpec` rather than leaking provider details into `app.py`.
 
 ### Growing it
 
-1. Add a dependency: put it in `requirements_train.txt` (the image is rebuilt only when that file changes; code changes do not rebuild it).
-2. Add real training code under `ai_train_core/` and call it from `train` in `app.py`.
+1. Add a dependency: put it in the requirements file of the image that needs it (an image is rebuilt only when its file changes; code changes do not rebuild it).
+2. Add a model size: an entry in `ai_train_core/model_config.py`, a train/generate function pair in `app.py`, and a pipeline module if it needs a new backend.
 3. Add another remote function: declare it in `app.py` with a `FunctionSpec` and a matching action in `main`.
 
 ## The container

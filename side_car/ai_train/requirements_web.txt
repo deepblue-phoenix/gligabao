@@ -1,0 +1,3 @@
+# Lightweight image for the web API (no GPU stack).
+fastapi>=0.115.0
+uvicorn

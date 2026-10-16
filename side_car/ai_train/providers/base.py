@@ -6,7 +6,7 @@ a provider SDK.
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 
 @dataclass(frozen=True)
@@ -35,6 +35,10 @@ class Provider(ABC):
         """Decorator: register `fn` as a remote function. Returns a handle for call()/spawn()."""
 
     @abstractmethod
+    def asgi_app(self, spec: FunctionSpec) -> Callable:
+        """Decorator: register a factory returning an ASGI app (e.g. FastAPI) as a served web endpoint."""
+
+    @abstractmethod
     def local_entrypoint(self) -> Callable:
         """Decorator: register a local CLI entrypoint that orchestrates remote calls."""
 
@@ -47,8 +51,15 @@ class Provider(ABC):
         """Start a remote function without waiting. Returns a job id."""
 
     @abstractmethod
-    def commit_volumes(self) -> None:
-        """Persist writes made to volumes inside a running remote function."""
+    def commit_volumes(self, paths: Optional[list] = None) -> None:
+        """Persist writes made to volumes inside a running remote function.
+
+        `paths` = mount paths to commit; None = all volumes.
+        """
+
+    @abstractmethod
+    def reload_volumes(self, paths: Optional[list] = None) -> None:
+        """Refresh volumes to see writes committed by other containers. `paths` as in commit_volumes."""
 
     @property
     @abstractmethod

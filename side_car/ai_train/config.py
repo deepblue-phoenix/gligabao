@@ -6,6 +6,9 @@ without editing code while testing.
 import os
 from dataclasses import dataclass, field
 
+from ai_train_core import paths
+from ai_train_core.model_config import get_model_config
+
 
 def _env(name: str, default: str) -> str:
     return os.environ.get(name, default)
@@ -17,8 +20,9 @@ class TrainConfig:
     provider: str = field(default_factory=lambda: _env("SIDECAR_PROVIDER", "modal"))
     app_name: str = field(default_factory=lambda: _env("SIDECAR_APP_NAME", "gligabao-train"))
 
-    # GPU type for the train job. Empty = no GPU (cheap, good while testing the bootstrap).
-    # Provider-specific names pass straight through for now (e.g. "a10g", "a100" on Modal).
+    # GPU type override for the train/inference jobs of every model size. Empty = per-size defaults
+    # from ai_train_core/model_config.py (4b: a10g, 12b: a100). Provider-specific names pass
+    # straight through (e.g. "a10g", "a100" on Modal).
     gpu: str = field(default_factory=lambda: _env("SIDECAR_GPU", ""))
     train_timeout_s: int = field(default_factory=lambda: int(_env("SIDECAR_TRAIN_TIMEOUT_S", "7200")))
 
@@ -27,10 +31,16 @@ class TrainConfig:
 
     # Persistent storage: logical mount path in the container -> volume name.
     volumes: dict = field(default_factory=lambda: {
-        "/data": _env("SIDECAR_VOL_DATA", "gligabao-train-data"),          # datasets
-        "/models": _env("SIDECAR_VOL_MODELS", "gligabao-train-models"),    # fine-tuned outputs
-        "/progress": _env("SIDECAR_VOL_PROGRESS", "gligabao-train-progress"),
+        paths.DATA_DIR: _env("SIDECAR_VOL_DATA", "gligabao-train-data"),          # datasets
+        paths.MODELS_DIR: _env("SIDECAR_VOL_MODELS", "gligabao-train-models"),    # fine-tuned adapters
+        paths.PROGRESS_DIR: _env("SIDECAR_VOL_PROGRESS", "gligabao-train-progress"),
+        paths.EVAL_DIR: _env("SIDECAR_VOL_EVAL", "gligabao-train-eval"),          # eval examples
+        paths.HF_CACHE_DIR: _env("SIDECAR_VOL_HF_CACHE", "gligabao-train-hf-cache"),  # base-model cache
     })
+
+    def gpu_for(self, model_size: str) -> str:
+        """GPU for a model size: the SIDECAR_GPU override, else the size's default."""
+        return self.gpu or get_model_config(model_size)["default_gpu"]
 
 
 CONFIG = TrainConfig()
