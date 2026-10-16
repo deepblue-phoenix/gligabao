@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.29.3] - 2026-10-26
+
+### Added
+- Admin UI: a **sidecar health indicator** in the top bar next to the server's own (`sidecar: up` / `sidecar: down`, refreshed every 15 s). It is a live check made by the server, so it shows when the sidecar goes down or comes back. If the sidecar is up but was down when the server started, it shows `sidecar: up (restart server)`.
+
+### Changed
+- The admin endpoint `GET /v1/gb/admin/api/training/status` (0.29.2) is now `GET /v1/gb/admin/api/sidecar/status` and answers `{"sidecar_up": bool, "sidecar_active": bool}`: `sidecar_up` is the live check, `sidecar_active` whether the server uses the sidecar (decided on startup). The training view's notice uses `sidecar_active`.
+
 ## [0.29.2] - 2026-10-26
 
 ### Added

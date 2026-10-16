@@ -47,6 +47,8 @@ body {
   }
 }
 
+.health-badges { display: flex; align-items: center; gap: 0.5rem; }
+
 .badge {
   padding: 0.1rem 0.6rem;
   border: 1px solid $border;

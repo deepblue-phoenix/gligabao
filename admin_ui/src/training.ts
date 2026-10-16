@@ -126,7 +126,7 @@ function applyToList(ev: FeedEvent): void {
 async function checkSidecar(): Promise<boolean> {
   let active = true;
   try {
-    const res = await fetch("api/training/status");
+    const res = await fetch("api/sidecar/status");
     if (res.ok) active = ((await res.json()) as { sidecar_active?: boolean }).sidecar_active !== false;
   } catch { /* server unreachable: the other requests report it */ }
   el("training-sidecar-warning").hidden = active;

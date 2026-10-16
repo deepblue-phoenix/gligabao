@@ -103,6 +103,20 @@ type Options struct {
 // sidecar and does not get it injected can check it instead of calling the sidecar and handling the error.
 var SidecarActive atomic.Bool
 
+// sidecarClient is the client of the configured sidecar, kept even if the startup check failed, so that the admin UI can
+// show live whether the sidecar is up (see sidecarPing).
+var sidecarClient atomic.Pointer[sidecar.Client]
+
+// sidecarPing is a live health check of the sidecar, for the admin UI's health indicator.
+func sidecarPing(ctx context.Context) error {
+	c := sidecarClient.Load()
+	if c == nil {
+		return errors.New("sidecar not configured")
+	}
+	_, err := c.Health(ctx)
+	return err
+}
+
 // sidecarPingTimeout bounds the sidecar health check on startup.
 const sidecarPingTimeout = 5 * time.Second
 
@@ -110,6 +124,7 @@ const sidecarPingTimeout = 5 * time.Second
 // correctly; otherwise it logs a warning and returns a nil client (a true nil interface, so callers can check == nil) and false.
 func connectSidecar(ctx context.Context, url string) (admin.TrainingSidecar, bool) {
 	c := sidecar.New(url)
+	sidecarClient.Store(c)
 	pingCtx, cancel := context.WithTimeout(ctx, sidecarPingTimeout)
 	defer cancel()
 	if _, err := c.Health(pingCtx); err != nil {
@@ -188,7 +203,7 @@ func registerAdminUI(ctx context.Context, mux *http.ServeMux, d *db.DB, sc admin
 	mon := admin.NewTrainingMonitor(ctx, dbs, sc)
 	mux.HandleFunc("POST /v1/gb/admin/api/training/jobs", admin.StartTrainingJobOf(dbs, sc, mon))
 	mux.HandleFunc("GET /v1/gb/admin/api/training/jobs", admin.ListTrainingJobsOf(dbs))
-	mux.HandleFunc("GET /v1/gb/admin/api/training/status", admin.TrainingStatusOf(sc))
+	mux.HandleFunc("GET /v1/gb/admin/api/sidecar/status", admin.SidecarStatusOf(sc, sidecarPing))
 	mux.HandleFunc("GET /v1/gb/admin/api/training/datasets", admin.TrainingDatasetsOf(sc))
 	mux.HandleFunc("GET /v1/gb/admin/api/training/events", admin.TrainingEventsOf(dbs, mon))
 	// The experiments live in the eval database; without one there are none to show.

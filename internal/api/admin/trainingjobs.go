@@ -135,11 +135,21 @@ func ListTrainingJobsOf(dbs []Named) http.HandlerFunc {
 	}
 }
 
-// TrainingStatusOf serves GET /admin/api/training/status: {"sidecar_active": bool}, whether the sidecar is usable (a nil sc
-// is one that was not active on startup). The training view shows a notice when it is not.
-func TrainingStatusOf(sc TrainingSidecar) http.HandlerFunc {
+// sidecarPingTimeout bounds the live health check of SidecarStatusOf.
+const sidecarPingTimeout = 3 * time.Second
+
+// SidecarStatusOf serves GET /admin/api/sidecar/status: {"sidecar_up": bool, "sidecar_active": bool}. sidecar_up is a live
+// health check (ping, nil = always down); sidecar_active is whether the server uses the sidecar (a nil sc is one that was
+// not active on startup, which only a restart changes). The admin UI's health indicator and the training view use them.
+func SidecarStatusOf(sc TrainingSidecar, ping func(context.Context) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"sidecar_active": sc != nil})
+		up := false
+		if ping != nil {
+			ctx, cancel := context.WithTimeout(r.Context(), sidecarPingTimeout)
+			defer cancel()
+			up = ping(ctx) == nil
+		}
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"sidecar_up": up, "sidecar_active": sc != nil})
 	}
 }
 

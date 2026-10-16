@@ -61,6 +61,34 @@ async function checkHealth(): Promise<void> {
   }
 }
 
+// Health indicator of the sidecar: a live check by the server (api/sidecar/status). "up" but not active means that the
+// sidecar came up after the server started; the server uses it only after a restart.
+async function checkSidecarHealth(): Promise<void> {
+  const badge = $("sidecar-health");
+  try {
+    const res = await fetch("api/sidecar/status");
+    if (!res.ok) throw new Error(String(res.status));
+    const s = (await res.json()) as { sidecar_up: boolean; sidecar_active: boolean };
+    if (!s.sidecar_up) {
+      badge.textContent = "sidecar: down";
+      badge.className = "badge badge-error";
+      badge.title = s.sidecar_active ? "The sidecar does not answer its health check." : "The sidecar is not active: it did not pass its health check on startup, and does not answer now.";
+    } else if (!s.sidecar_active) {
+      badge.textContent = "sidecar: up (restart server)";
+      badge.className = "badge badge-active";
+      badge.title = "The sidecar is up now, but it was down when the server started; restart the server to use it.";
+    } else {
+      badge.textContent = "sidecar: up";
+      badge.className = "badge badge-ok";
+      badge.title = "";
+    }
+  } catch {
+    badge.textContent = "sidecar: unknown";
+    badge.className = "badge badge-unknown";
+    badge.title = "Could not ask the server.";
+  }
+}
+
 // Shows the running version and a link to its GitHub commit in the lower right corner.
 async function showVersion(): Promise<void> {
   try {
@@ -333,5 +361,7 @@ initImageStats();
 initWebSearch();
 void loadAll(false);
 void checkHealth();
+void checkSidecarHealth();
 void showVersion();
 setInterval(() => void checkHealth(), 15000);
+setInterval(() => void checkSidecarHealth(), 15000);
