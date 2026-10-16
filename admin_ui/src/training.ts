@@ -1,6 +1,6 @@
 // The "training" view: start a fine-tuning job of Gemma 4 on the sidecar (picking its dataset), the list of the training
 // jobs in the database, and for the selected job a feed of its events and a graph of its loss. The events come from the
-// server as SSE (api/training/events), which forwards what the sidecar reports; d3 is loaded as a global by index.html.
+// server as SSE (../training/events), which forwards what the sidecar reports; d3 is loaded as a global by index.html.
 
 declare const d3: typeof import("d3");
 
@@ -10,6 +10,10 @@ interface Job {
   started_at: string; finished_at: string | null;
 }
 interface Dataset { filename: string; size_bytes?: number; modified_at?: string }
+interface DatasetRecord {
+  id: number; filename: string; size_bytes: number; num_records: number; sha256: string; status: "stored" | "synced";
+  updated_at: string; synced_at: string | null;
+}
 interface FeedEvent {
   run_id: number; seq: number; type: "status" | "progress"; status?: string; max_steps?: number; final_loss?: number; error?: string;
   step?: number; loss?: number; learning_rate?: number; epoch?: number; elapsed_seconds?: number; timestamp?: number;
@@ -89,7 +93,7 @@ function renderJobs(): void {
 
 async function loadJobs(): Promise<void> {
   try {
-    const res = await fetch("api/training/jobs");
+    const res = await fetch("../training/jobs");
     if (!res.ok) throw await failure(res);
     jobs = ((await res.json()) as { jobs: Job[] }).jobs ?? [];
     el("training-jobs-status").className = "muted";
@@ -134,27 +138,98 @@ async function checkSidecar(): Promise<boolean> {
   return active;
 }
 
+// Fills the dataset picker with the datasets uploaded to the server (they are sent to the sidecar when a job starts on
+// them) and the ones already on the sidecar. The sidecar being down only leaves out its own list.
 async function loadDatasets(): Promise<void> {
-  if (!(await checkSidecar())) {
-    el("training-run-status").textContent = "";
-    return;
-  }
+  const active = await checkSidecar();
   const sel = el<HTMLSelectElement>("training-dataset");
   const status = el("training-run-status");
   const keep = sel.value;
+  const entries = new Map<string, string>(); // filename -> label
+  let sidecarErr = "";
   try {
-    const res = await fetch("api/training/datasets");
+    const res = await fetch("../training/dataset-records");
     if (!res.ok) throw await failure(res);
-    const list = ((await res.json()) as { datasets: Dataset[] }).datasets ?? [];
-    sel.replaceChildren(new Option("(sidecar default dataset)", ""));
-    for (const d of list.sort((a, b) => a.filename.localeCompare(b.filename))) {
-      const o = new Option(d.size_bytes != null ? `${d.filename} (${fmtBytes(d.size_bytes)})` : d.filename, d.filename);
-      sel.add(o);
-    }
-    sel.value = [...sel.options].some((o) => o.value === keep) ? keep : "";
+    renderDatasetRecords(((await res.json()) as { datasets: DatasetRecord[] }).datasets ?? [], entries);
   } catch (err) {
     status.className = "error";
-    status.textContent = `Could not list the sidecar's datasets: ${errText(err)}`;
+    status.textContent = `Could not list the uploaded datasets: ${errText(err)}`;
+  }
+  if (active) {
+    try {
+      const res = await fetch("../training/datasets");
+      if (!res.ok) throw await failure(res);
+      for (const d of ((await res.json()) as { datasets: Dataset[] }).datasets ?? []) {
+        if (!entries.has(d.filename)) entries.set(d.filename, d.size_bytes != null ? `${d.filename} (${fmtBytes(d.size_bytes)})` : d.filename);
+      }
+    } catch (err) {
+      sidecarErr = errText(err);
+    }
+  }
+  sel.replaceChildren(new Option("(sidecar default dataset)", ""));
+  for (const [name, label] of [...entries].sort((a, b) => a[0].localeCompare(b[0]))) sel.add(new Option(label, name));
+  sel.value = [...sel.options].some((o) => o.value === keep) ? keep : "";
+  if (sidecarErr) {
+    status.className = "error";
+    status.textContent = `Could not list the sidecar's datasets (the uploaded ones are shown): ${sidecarErr}`;
+  }
+}
+
+//---------------------------------------------------------------------------------------------
+// Uploading datasets (the server validates and keeps them, and sends them to the sidecar)
+
+// Shows the uploaded datasets in the table; adds them to the picker's entries if given.
+function renderDatasetRecords(list: DatasetRecord[], entries?: Map<string, string>): void {
+  const table = el<HTMLTableElement>("training-datasets");
+  const body = table.tBodies[0];
+  body.replaceChildren();
+  table.hidden = list.length === 0;
+  for (const d of list) {
+    entries?.set(d.filename, `${d.filename} (${fmtBytes(d.size_bytes)}, ${d.num_records} records)`);
+    const tr = body.insertRow();
+    tr.title = `sha256 ${d.sha256}`;
+    tr.insertCell().textContent = d.filename;
+    const st = tr.insertCell();
+    st.appendChild(node("span", `badge ${d.status === "synced" ? "badge-ok" : "badge-active"}`, d.status === "synced" ? "on sidecar" : "stored"));
+    st.title = d.status === "synced" ? "The sidecar has this version" : "Saved on the server; sent to the sidecar when a job starts on it";
+    const n = tr.insertCell();
+    n.className = "num";
+    n.textContent = String(d.num_records);
+    const size = tr.insertCell();
+    size.className = "num";
+    size.textContent = fmtBytes(d.size_bytes);
+    tr.insertCell().textContent = fmtTime(d.updated_at);
+  }
+}
+
+async function uploadDataset(): Promise<void> {
+  const btn = el<HTMLButtonElement>("training-upload");
+  const input = el<HTMLInputElement>("training-upload-file");
+  const status = el("training-upload-status");
+  const file = input.files?.[0];
+  if (!file) {
+    status.className = "error";
+    status.textContent = "Choose a .jsonl file first.";
+    return;
+  }
+  const form = new FormData();
+  form.append("file", file, file.name);
+  btn.disabled = true;
+  status.className = "muted";
+  status.textContent = `Uploading ${file.name}…`;
+  try {
+    const res = await fetch("../training/datasets", { method: "POST", body: form });
+    if (!res.ok) throw await failure(res);
+    const ds = (await res.json()) as DatasetRecord;
+    status.textContent = `Saved ${ds.filename}: ${ds.num_records} records, ${fmtBytes(ds.size_bytes)}. It is sent to the sidecar when a job starts on it.`;
+    input.value = "";
+    await loadDatasets(); // the table and the picker
+    el<HTMLSelectElement>("training-dataset").value = ds.filename;
+  } catch (err) {
+    status.className = "error";
+    status.textContent = `Upload failed: ${errText(err)}`;
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -172,7 +247,7 @@ async function run(): Promise<void> {
   status.className = "muted";
   status.textContent = "Starting…";
   try {
-    const res = await fetch("api/training/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const res = await fetch("../training/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     if (!res.ok) throw await failure(res);
     const job = (await res.json()) as Job;
     status.textContent = `Started job #${job.id}.`;
@@ -261,7 +336,7 @@ function openPerJob(): void {
   if (selected === null) return;
   const stream = el("training-stream");
   stream.textContent = "Connecting…";
-  const es = new EventSource(`api/training/events?run_id=${selected}`);
+  const es = new EventSource(`../training/events?run_id=${selected}`);
   perJob = es;
   es.onopen = () => { stream.textContent = "Live."; };
   es.onerror = () => { stream.textContent = "Connection lost, reconnecting…"; }; // EventSource retries by itself (with Last-Event-ID)
@@ -270,7 +345,7 @@ function openPerJob(): void {
 
 function openAllJobs(): void {
   allJobs?.close();
-  const es = new EventSource("api/training/events");
+  const es = new EventSource("../training/events");
   allJobs = es;
   es.onopen = () => void loadJobs();
   for (const type of ["status", "progress"]) es.addEventListener(type, (e) => applyToList(JSON.parse((e as MessageEvent<string>).data) as FeedEvent));
@@ -326,6 +401,7 @@ function drawLoss(): void {
 export function initTraining(): void {
   const view = el("view-training");
   el("training-run").addEventListener("click", () => void run());
+  el("training-upload").addEventListener("click", () => void uploadDataset());
   el("training-refresh").addEventListener("click", () => { void loadDatasets(); void loadJobs(); });
   // The SSE streams are open only while the view is shown (a browser allows few connections to a host).
   const sync = (): void => {

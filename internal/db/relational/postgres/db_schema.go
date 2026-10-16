@@ -103,6 +103,19 @@ CREATE TABLE IF NOT EXISTS gb_training_job_events (
 	PRIMARY KEY (run_id, seq)
 );
 
+-- JSONL training datasets uploaded through the Go server (see sqlite/db_schema.go).
+CREATE TABLE IF NOT EXISTS gb_training_datasets (
+	id          BIGSERIAL PRIMARY KEY,
+	filename    TEXT NOT NULL UNIQUE,
+	size_bytes  BIGINT NOT NULL,
+	num_records BIGINT NOT NULL,
+	sha256      TEXT NOT NULL,
+	status      TEXT NOT NULL CHECK (status IN ('stored', 'synced')),
+	created_at  TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `,
+	updated_at  TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `,
+	synced_at   TIMESTAMPTZ
+);
+
 CREATE TABLE IF NOT EXISTS gb_experiments (
 	id          BIGSERIAL PRIMARY KEY,
 	name        TEXT NOT NULL UNIQUE,
@@ -180,6 +193,14 @@ func initSchema(ctx context.Context, d *sql.DB) error {
 		return fmt.Errorf("init schema: lock: %w", err)
 	}
 	defer conn.ExecContext(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1)`, int64(lockID))
+	// A development build kept the dataset content in the table (in a `content` column); it is a file now. Drop that table.
+	if _, err := conn.ExecContext(ctx, `DO $$ BEGIN
+		IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema()
+			AND table_name = 'gb_training_datasets' AND column_name = 'content') THEN
+			DROP TABLE gb_training_datasets;
+		END IF; END $$`); err != nil {
+		return fmt.Errorf("init schema: drop legacy gb_training_datasets: %w", err)
+	}
 	if _, err := conn.ExecContext(ctx, schema+rememberRunsSchema()); err != nil {
 		return fmt.Errorf("init schema: %w", err)
 	}

@@ -1,8 +1,8 @@
-package admin
+package training
 
-// The training monitor: for each training job started from the admin UI (and each unfinished one found at startup) it
+// The training monitor: for each training job started through the training API (and each unfinished one found at startup) it
 // follows the sidecar's SSE stream of the job's progress, stores every event (gb_training_job_events), keeps the job's
-// row (gb_training_job_runs) up to date, and forwards the events to the admin UI's own SSE streams (TrainingEventsOf).
+// row (gb_training_job_runs) up to date, and forwards the events to the SSE streams (EventsOf).
 
 import (
 	"context"
@@ -16,15 +16,16 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// TrainingSidecar is what the admin training endpoints need from the sidecar; *sidecar.Client is one.
-type TrainingSidecar interface {
-	TrainingJobStarter
+// Sidecar is what the training handlers need from the sidecar; *sidecar.Client is one.
+type Sidecar interface {
+	JobStarter
+	DatasetUploader
 	ListTrainingDatasets(ctx context.Context) ([]sidecar.TrainingDataset, error)
 	StreamTrainingJobEvents(ctx context.Context, jobID string, from int, fn func(sidecar.TrainingEvent) error) error
 }
 
-// TrainingFeedEvent is an event as the admin UI receives it: the sidecar's event and which job it is of.
-type TrainingFeedEvent struct {
+// FeedEvent is an event as the admin UI receives it: the sidecar's event and which job it is of.
+type FeedEvent struct {
 	DB    string `json:"db"`
 	RunID int64  `json:"run_id"`
 	JobID string `json:"job_id"`
@@ -32,28 +33,28 @@ type TrainingFeedEvent struct {
 }
 
 const (
-	// DefaultTrainingWatchTimeout is how long after a job started the monitor waits for it to report that it ended
+	// DefaultWatchTimeout is how long after a job started the monitor waits for it to report that it ended
 	// (the sidecar's train timeout is 2 hours, SIDECAR_TRAIN_TIMEOUT_S); then the job is marked failed.
-	DefaultTrainingWatchTimeout = 3 * time.Hour
-	// DefaultTrainingRetryDelay is how long the monitor waits before it reconnects to a sidecar stream that ended or failed
-	// (doubled while nothing arrives, up to maxTrainingRetryDelay).
-	DefaultTrainingRetryDelay = time.Second
-	maxTrainingRetryDelay     = 30 * time.Second
-	// trainingSubBuffer is how many events a subscriber can fall behind before it is dropped (it then reconnects and is
+	DefaultWatchTimeout = 3 * time.Hour
+	// DefaultRetryDelay is how long the monitor waits before it reconnects to a sidecar stream that ended or failed
+	// (doubled while nothing arrives, up to maxRetryDelay).
+	DefaultRetryDelay = time.Second
+	maxRetryDelay     = 30 * time.Second
+	// subBuffer is how many events a subscriber can fall behind before it is dropped (it then reconnects and is
 	// caught up from the database).
-	trainingSubBuffer = 256
+	subBuffer = 256
 )
 
-// TrainingMonitor follows the training jobs; see the file comment. Its methods are safe for concurrent use.
-type TrainingMonitor struct {
+// Monitor follows the training jobs; see the file comment. Its methods are safe for concurrent use.
+type Monitor struct {
 	ctx      context.Context
-	dbs      []Named
-	sc       TrainingSidecar // nil: jobs are not followed
+	dbs      []Database
+	sc       Sidecar // nil: jobs are not followed
 	maxWatch time.Duration
 	retry    time.Duration
 
 	mu       sync.Mutex
-	subs     map[*trainingSub]struct{}
+	subs     map[*sub]struct{}
 	watching map[watchKey]struct{}
 }
 
@@ -62,31 +63,31 @@ type watchKey struct {
 	runID int64
 }
 
-type trainingSub struct {
+type sub struct {
 	db    string
 	runID int64 // 0: every run
-	ch    chan TrainingFeedEvent
+	ch    chan FeedEvent
 }
 
-// TrainingMonitorOption configures a TrainingMonitor.
-type TrainingMonitorOption func(*TrainingMonitor)
+// MonitorOption configures a Monitor.
+type MonitorOption func(*Monitor)
 
-// WithTrainingWatchTimeout sets how long a job is followed without it reporting that it ended (DefaultTrainingWatchTimeout).
-func WithTrainingWatchTimeout(d time.Duration) TrainingMonitorOption {
-	return func(m *TrainingMonitor) { m.maxWatch = d }
+// WithWatchTimeout sets how long a job is followed without it reporting that it ended (DefaultWatchTimeout).
+func WithWatchTimeout(d time.Duration) MonitorOption {
+	return func(m *Monitor) { m.maxWatch = d }
 }
 
-// WithTrainingRetryDelay sets the base delay before reconnecting to the sidecar (DefaultTrainingRetryDelay).
-func WithTrainingRetryDelay(d time.Duration) TrainingMonitorOption {
-	return func(m *TrainingMonitor) { m.retry = d }
+// WithRetryDelay sets the base delay before reconnecting to the sidecar (DefaultRetryDelay).
+func WithRetryDelay(d time.Duration) MonitorOption {
+	return func(m *Monitor) { m.retry = d }
 }
 
-// NewTrainingMonitor returns a monitor of the training jobs of dbs, which runs until ctx is done. It resumes following
+// NewMonitor returns a monitor of the training jobs of dbs, which runs until ctx is done. It resumes following
 // the jobs the databases hold as unfinished. sc may be nil: the monitor then only serves the stored events.
-func NewTrainingMonitor(ctx context.Context, dbs []Named, sc TrainingSidecar, opts ...TrainingMonitorOption) *TrainingMonitor {
-	m := &TrainingMonitor{
-		ctx: ctx, dbs: dbs, sc: sc, maxWatch: DefaultTrainingWatchTimeout, retry: DefaultTrainingRetryDelay,
-		subs: map[*trainingSub]struct{}{}, watching: map[watchKey]struct{}{},
+func NewMonitor(ctx context.Context, dbs []Database, sc Sidecar, opts ...MonitorOption) *Monitor {
+	m := &Monitor{
+		ctx: ctx, dbs: dbs, sc: sc, maxWatch: DefaultWatchTimeout, retry: DefaultRetryDelay,
+		subs: map[*sub]struct{}{}, watching: map[watchKey]struct{}{},
 	}
 	for _, o := range opts {
 		o(m)
@@ -95,7 +96,7 @@ func NewTrainingMonitor(ctx context.Context, dbs []Named, sc TrainingSidecar, op
 		for _, n := range dbs {
 			runs, err := relational.ListTrainingJobRuns(ctx, n.DB, 0, true)
 			if err != nil {
-				log.WithError(err).WithField("db", n.Name).Error("admin: list unfinished training jobs failed")
+				log.WithError(err).WithField("db", n.Name).Error("training: list unfinished training jobs failed")
 				continue
 			}
 			for _, r := range runs {
@@ -107,7 +108,7 @@ func NewTrainingMonitor(ctx context.Context, dbs []Named, sc TrainingSidecar, op
 }
 
 // Watch starts following the training job run in n (a no-op if it is already followed, or the monitor has no sidecar).
-func (m *TrainingMonitor) Watch(n Named, run relational.TrainingJobRun) {
+func (m *Monitor) Watch(n Database, run relational.TrainingJobRun) {
 	if m == nil || m.sc == nil {
 		return
 	}
@@ -130,12 +131,12 @@ func (m *TrainingMonitor) Watch(n Named, run relational.TrainingJobRun) {
 }
 
 // follow streams the events of the job from the sidecar until it ends, the deadline passes or the monitor's context is done.
-func (m *TrainingMonitor) follow(n Named, run relational.TrainingJobRun) {
+func (m *Monitor) follow(n Database, run relational.TrainingJobRun) {
 	l := log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID})
 	deadline := run.StartedAt.Add(m.maxWatch)
 	from, err := relational.NextTrainingJobEventSeq(m.ctx, n.DB, run.ID)
 	if err != nil {
-		l.WithError(err).Error("admin: training job: reading the stored events failed")
+		l.WithError(err).Error("training: training job: reading the stored events failed")
 		return
 	}
 	delay := m.retry
@@ -154,21 +155,21 @@ func (m *TrainingMonitor) follow(n Named, run relational.TrainingJobRun) {
 			return
 		}
 		if err != nil {
-			l.WithError(err).Warn("admin: training job: sidecar event stream ended with an error")
+			l.WithError(err).Warn("training: training job: sidecar event stream ended with an error")
 		}
 		if time.Now().After(deadline) {
-			l.Warn("admin: training job: no end reported in time, marking it failed")
+			l.Warn("training: training job: no end reported in time, marking it failed")
 			ev := sidecar.TrainingEvent{Seq: from, Type: sidecar.EventStatus, Status: relational.TrainingJobFailed,
 				Error: fmt.Sprintf("the sidecar did not report the job's end within %s", m.maxWatch), Timestamp: float64(time.Now().Unix())}
 			if err := m.record(n, run, ev); err != nil {
-				l.WithError(err).Error("admin: training job: recording the timeout failed")
+				l.WithError(err).Error("training: training job: recording the timeout failed")
 			}
 			return
 		}
 		if progressed {
 			delay = m.retry
 		} else {
-			delay = min(delay*2, maxTrainingRetryDelay)
+			delay = min(delay*2, maxRetryDelay)
 		}
 		select {
 		case <-time.After(delay):
@@ -179,7 +180,7 @@ func (m *TrainingMonitor) follow(n Named, run relational.TrainingJobRun) {
 }
 
 // record stores the event, updates the job's row from it and forwards it to the subscribers.
-func (m *TrainingMonitor) record(n Named, run relational.TrainingJobRun, ev sidecar.TrainingEvent) error {
+func (m *Monitor) record(n Database, run relational.TrainingJobRun, ev sidecar.TrainingEvent) error {
 	ctx := context.WithoutCancel(m.ctx) // an event that arrived is stored even while the server shuts down
 	data, err := json.Marshal(ev)
 	if err != nil {
@@ -197,7 +198,7 @@ func (m *TrainingMonitor) record(n Named, run relational.TrainingJobRun, ev side
 			return err
 		}
 	}
-	m.publish(TrainingFeedEvent{DB: n.Name, RunID: run.ID, JobID: run.JobID, TrainingEvent: ev})
+	m.publish(FeedEvent{DB: n.Name, RunID: run.ID, JobID: run.JobID, TrainingEvent: ev})
 	return nil
 }
 
@@ -222,8 +223,8 @@ func trainingRunUpdate(ev sidecar.TrainingEvent) *relational.TrainingJobRunUpdat
 
 // subscribe returns a subscription to the events of one run of database db (runID 0: of every run). cancel ends it. The
 // channel is closed, without cancel, when the subscriber falls too far behind.
-func (m *TrainingMonitor) subscribe(db string, runID int64) (*trainingSub, func()) {
-	s := &trainingSub{db: db, runID: runID, ch: make(chan TrainingFeedEvent, trainingSubBuffer)}
+func (m *Monitor) subscribe(db string, runID int64) (*sub, func()) {
+	s := &sub{db: db, runID: runID, ch: make(chan FeedEvent, subBuffer)}
 	m.mu.Lock()
 	m.subs[s] = struct{}{}
 	m.mu.Unlock()
@@ -237,7 +238,7 @@ func (m *TrainingMonitor) subscribe(db string, runID int64) (*trainingSub, func(
 	}
 }
 
-func (m *TrainingMonitor) publish(ev TrainingFeedEvent) {
+func (m *Monitor) publish(ev FeedEvent) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for s := range m.subs {

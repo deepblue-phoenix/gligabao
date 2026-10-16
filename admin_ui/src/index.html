@@ -120,6 +120,20 @@
             </div>
             <p id="training-run-status" class="muted"></p>
 
+            <h3>Datasets</h3>
+            <p class="muted">Upload a JSONL training dataset: one JSON object per line with <code>instruction</code>, <code>output</code> and optionally <code>input</code>. The server validates and saves it; it is sent to the sidecar only when a job that uses it starts. Uploading a file name again replaces the dataset.</p>
+            <div class="row training-form">
+              <label>JSONL file
+                <input type="file" id="training-upload-file" accept=".jsonl,application/jsonl,application/x-ndjson,text/plain" />
+              </label>
+              <button type="button" id="training-upload">Upload</button>
+            </div>
+            <p id="training-upload-status" class="muted"></p>
+            <table id="training-datasets" hidden>
+              <thead><tr><th>File</th><th>Status</th><th class="num">Records</th><th class="num">Size</th><th>Uploaded (UTC)</th></tr></thead>
+              <tbody></tbody>
+            </table>
+
             <h3>Jobs</h3>
             <p id="training-jobs-status" class="muted"></p>
             <table id="training-jobs" class="clickable" hidden>

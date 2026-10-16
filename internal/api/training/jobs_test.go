@@ -1,4 +1,4 @@
-package admin_test
+package training_test
 
 import (
 	"context"
@@ -10,15 +10,28 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
+	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
 )
 
 type fakeSidecar struct {
-	reqs []sidecar.StartTrainingJobRequest
-	err  error
+	reqs    []sidecar.StartTrainingJobRequest
+	err     error
+	uploads map[string][]byte // filename -> content, by UploadTrainingDataset
+	upErr   error
+}
+
+func (f *fakeSidecar) UploadTrainingDataset(_ context.Context, filename string, content []byte) (sidecar.UploadTrainingDatasetResponse, error) {
+	if f.upErr != nil {
+		return sidecar.UploadTrainingDatasetResponse{}, f.upErr
+	}
+	if f.uploads == nil {
+		f.uploads = map[string][]byte{}
+	}
+	f.uploads[filename] = content
+	return sidecar.UploadTrainingDatasetResponse{Status: "success", SizeBytes: int64(len(content))}, nil
 }
 
 func (f *fakeSidecar) StartTrainingJob(_ context.Context, req sidecar.StartTrainingJobRequest) (sidecar.TrainingJob, error) {
@@ -37,14 +50,14 @@ func (f *fakeSidecar) StartTrainingJob(_ context.Context, req sidecar.StartTrain
 		Dataset: req.Dataset, StartedAt: time.Now().Add(-time.Second)}, nil
 }
 
-// TestStartTrainingJob checks the admin endpoint that starts a training job on the sidecar and records it.
+// TestStartTrainingJob checks the endpoint that starts a training job on the sidecar and records it.
 func TestStartTrainingJob(t *testing.T) { dbtest.Run(t, testStartTrainingJob) }
 
 func testStartTrainingJob(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	dbs := []admin.Named{{Name: "standard", DB: d}}
+	dbs := []training.Database{{Name: "standard", DB: d}}
 	sc := &fakeSidecar{}
-	h := admin.StartTrainingJobOf(dbs, sc, nil)
+	h := training.StartJobOf(dbs, sc, nil)
 	post := func(h http.HandlerFunc, url, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		h(rec, httptest.NewRequest("POST", url, strings.NewReader(body)))
@@ -98,7 +111,7 @@ func testStartTrainingJob(t *testing.T, d *sql.DB) {
 	if _, err := relational.GetTrainingJobRun(ctx, d, 3); !errors.Is(err, relational.ErrNotFound) {
 		t.Fatalf("a failed start was recorded: %v", err)
 	}
-	if rec := post(admin.StartTrainingJobOf(dbs, nil, nil), "/x", ""); rec.Code != http.StatusServiceUnavailable {
+	if rec := post(training.StartJobOf(dbs, nil, nil), "/x", ""); rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("no sidecar: %d", rec.Code)
 	}
 }
@@ -108,7 +121,7 @@ func TestStartTrainingJobSidecarRejects(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	sc := &fakeSidecar{err: &sidecar.StatusError{Method: "POST", Path: "/training/job_start", Code: 400, Body: `{"error":"Dataset 'x.jsonl' not found"}`}}
 	rec := httptest.NewRecorder()
-	admin.StartTrainingJobOf([]admin.Named{{Name: "standard", DB: d}}, sc, nil)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(`{"dataset":"x.jsonl"}`)))
+	training.StartJobOf([]training.Database{{Name: "standard", DB: d}}, sc, nil)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(`{"dataset":"x.jsonl"}`)))
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "Dataset 'x.jsonl' not found") {
 		t.Fatalf("got %d %s", rec.Code, rec.Body)
 	}

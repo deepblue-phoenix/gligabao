@@ -1,7 +1,7 @@
-package admin
+package training
 
-// Training jobs in the admin UI: start a training job on the sidecar and record it (gb_training_job_runs), list the jobs
-// and the sidecar's training datasets, and stream the jobs' progress (see TrainingMonitor).
+// Training jobs: start a training job on the sidecar and record it (gb_training_job_runs), list the jobs
+// and the sidecar's training datasets, and stream the jobs' progress (see Monitor).
 
 import (
 	"context"
@@ -19,21 +19,25 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// TrainingJobStarter starts training jobs on the sidecar; *sidecar.Client is one.
-type TrainingJobStarter interface {
+// JobStarter starts training jobs on the sidecar; *sidecar.Client is one.
+type JobStarter interface {
+	DatasetUploader // a dataset uploaded to the server is sent to the sidecar when a job that uses it starts
 	StartTrainingJob(ctx context.Context, req sidecar.StartTrainingJobRequest) (sidecar.TrainingJob, error)
 }
 
-// maxTrainingJobBody bounds the request body of StartTrainingJobOf.
+// maxTrainingJobBody bounds the request body of StartJobOf.
 const maxTrainingJobBody = 1 << 16
 
-// StartTrainingJobOf serves POST /admin/api/training/jobs[?db=<name>] with an optional JSON body
+// A dataset uploaded through the server (UploadDatasetOf) is sent to the sidecar first, unless the sidecar has its
+// current version already.
+//
+// StartJobOf serves POST /v1/gb/training/jobs[?db=<name>] with an optional JSON body
 // {"num_train_steps": 100, "model_size": "4b", "dataset": "file.jsonl"}: it starts a training job on the sidecar through sc
 // (the sidecar's REST API) and stores the TrainingJob the sidecar reports in the gb_training_job_runs table of one of dbs
 // (the first without db), then has mon (may be nil) follow the job's progress. It answers 201 with the stored record
 // (relational.TrainingJobRun). A nil sc (no sidecar) answers 503, a sidecar error 502, except that a request the sidecar
 // rejects as invalid (e.g. an unknown dataset) answers 400 with its message.
-func StartTrainingJobOf(dbs []Named, sc TrainingJobStarter, mon *TrainingMonitor) http.HandlerFunc {
+func StartJobOf(dbs []Database, sc JobStarter, mon *Monitor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		n, ok := pick(dbs, r.URL.Query().Get("db"))
 		if !ok {
@@ -68,6 +72,16 @@ func StartTrainingJobOf(dbs []Named, sc TrainingJobStarter, mon *TrainingMonitor
 		}
 
 		ctx := r.Context()
+		if req.Dataset != "" {
+			if err := syncTrainingDataset(ctx, n, sc, req.Dataset); err != nil {
+				status := http.StatusInternalServerError
+				if errors.Is(err, errSidecarDataset) {
+					status = http.StatusBadGateway
+				}
+				httputil.Error(w, status, err.Error())
+				return
+			}
+		}
 		job, err := sc.StartTrainingJob(ctx, req)
 		if err != nil {
 			var se *sidecar.StatusError
@@ -75,7 +89,7 @@ func StartTrainingJobOf(dbs []Named, sc TrainingJobStarter, mon *TrainingMonitor
 				httputil.Error(w, http.StatusBadRequest, se.Message())
 				return
 			}
-			log.WithError(err).Error("admin: start training job failed")
+			log.WithError(err).Error("training: start training job failed")
 			httputil.Error(w, http.StatusBadGateway, "sidecar failed to start the training job")
 			return
 		}
@@ -85,13 +99,13 @@ func StartTrainingJobOf(dbs []Named, sc TrainingJobStarter, mon *TrainingMonitor
 			JobID: job.JobID, ProviderJobID: job.ProviderJobID, Status: job.Status, ModelSize: job.ModelSize, Dataset: job.Dataset,
 			NumTrainSteps: job.NumTrainSteps, StartedAt: job.StartedAt})
 		if err != nil {
-			log.WithError(err).WithField("job_id", job.JobID).Error("admin: record training job run failed")
+			log.WithError(err).WithField("job_id", job.JobID).Error("training: record training job run failed")
 			httputil.Error(w, http.StatusInternalServerError, "training job "+job.JobID+" started but could not be recorded")
 			return
 		}
 		run, err := relational.GetTrainingJobRun(ctx, n.DB, id)
 		if err != nil {
-			log.WithError(err).WithField("job_id", job.JobID).Error("admin: read training job run failed")
+			log.WithError(err).WithField("job_id", job.JobID).Error("training: read training job run failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the training job run")
 			return
 		}
@@ -106,9 +120,9 @@ const (
 	trainingKeepalive        = 15 * time.Second
 )
 
-// ListTrainingJobsOf serves GET /admin/api/training/jobs[?db=<name>][&limit=<n>]: {"jobs": [...]}, the training job runs
+// ListJobsOf serves GET /v1/gb/training/jobs[?db=<name>][&limit=<n>]: {"jobs": [...]}, the training job runs
 // of one of dbs (the first without db), newest first, at most limit (default 50, at most 500).
-func ListTrainingJobsOf(dbs []Named) http.HandlerFunc {
+func ListJobsOf(dbs []Database) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		n, ok := pick(dbs, q.Get("db"))
@@ -127,7 +141,7 @@ func ListTrainingJobsOf(dbs []Named) http.HandlerFunc {
 		}
 		runs, err := relational.ListTrainingJobRuns(r.Context(), n.DB, limit, false)
 		if err != nil {
-			log.WithError(err).Error("admin: list training jobs failed")
+			log.WithError(err).Error("training: list training jobs failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to list the training jobs")
 			return
 		}
@@ -135,27 +149,9 @@ func ListTrainingJobsOf(dbs []Named) http.HandlerFunc {
 	}
 }
 
-// sidecarPingTimeout bounds the live health check of SidecarStatusOf.
-const sidecarPingTimeout = 3 * time.Second
-
-// SidecarStatusOf serves GET /admin/api/sidecar/status: {"sidecar_up": bool, "sidecar_active": bool}. sidecar_up is a live
-// health check (ping, nil = always down); sidecar_active is whether the server uses the sidecar (a nil sc is one that was
-// not active on startup, which only a restart changes). The admin UI's health indicator and the training view use them.
-func SidecarStatusOf(sc TrainingSidecar, ping func(context.Context) error) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		up := false
-		if ping != nil {
-			ctx, cancel := context.WithTimeout(r.Context(), sidecarPingTimeout)
-			defer cancel()
-			up = ping(ctx) == nil
-		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"sidecar_up": up, "sidecar_active": sc != nil})
-	}
-}
-
-// TrainingDatasetsOf serves GET /admin/api/training/datasets: {"datasets": [...]}, the training datasets on the sidecar
+// SidecarDatasetsOf serves GET /v1/gb/training/datasets: {"datasets": [...]}, the training datasets on the sidecar
 // (what a training job can be started on). A nil sc answers 503, a sidecar error 502.
-func TrainingDatasetsOf(sc TrainingSidecar) http.HandlerFunc {
+func SidecarDatasetsOf(sc Sidecar) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if sc == nil {
 			httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not active")
@@ -163,7 +159,7 @@ func TrainingDatasetsOf(sc TrainingSidecar) http.HandlerFunc {
 		}
 		ds, err := sc.ListTrainingDatasets(r.Context())
 		if err != nil {
-			log.WithError(err).Error("admin: list training datasets failed")
+			log.WithError(err).Error("training: list training datasets failed")
 			httputil.Error(w, http.StatusBadGateway, "sidecar failed to list the training datasets")
 			return
 		}
@@ -174,15 +170,15 @@ func TrainingDatasetsOf(sc TrainingSidecar) http.HandlerFunc {
 	}
 }
 
-// TrainingEventsOf serves GET /admin/api/training/events[?db=<name>][&run_id=<id>] as Server-Sent Events, the feed of the
+// EventsOf serves GET /v1/gb/training/events[?db=<name>][&run_id=<id>] as Server-Sent Events, the feed of the
 // events the sidecar reports for training jobs (forwarded by mon): `event: status` or `event: progress`, `data:` a
-// TrainingFeedEvent as JSON.
+// FeedEvent as JSON.
 //
 // With run_id the stream is of that run: first the events already stored (from the one after Last-Event-ID, which a
 // reconnecting EventSource sends, or from the `from` parameter), then the live ones; each has `id: <seq>`. The stream
 // stays open after the run's last event; the client closes it. Without run_id it is the live events of all the runs of the
 // database, to follow the list of jobs (no history, no ids).
-func TrainingEventsOf(dbs []Named, mon *TrainingMonitor) http.HandlerFunc {
+func EventsOf(dbs []Database, mon *Monitor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		n, ok := pick(dbs, q.Get("db"))
@@ -225,12 +221,12 @@ func TrainingEventsOf(dbs []Named, mon *TrainingMonitor) http.HandlerFunc {
 				httputil.Error(w, http.StatusNotFound, "unknown training job run")
 				return
 			} else if err != nil {
-				log.WithError(err).Error("admin: read training job run failed")
+				log.WithError(err).Error("training: read training job run failed")
 				httputil.Error(w, http.StatusInternalServerError, "failed to read the training job run")
 				return
 			}
 			if history, err = relational.ListTrainingJobEvents(r.Context(), n.DB, runID, from); err != nil {
-				log.WithError(err).Error("admin: read training job events failed")
+				log.WithError(err).Error("training: read training job events failed")
 				httputil.Error(w, http.StatusInternalServerError, "failed to read the training job events")
 				return
 			}
@@ -242,7 +238,7 @@ func TrainingEventsOf(dbs []Named, mon *TrainingMonitor) http.HandlerFunc {
 		h.Set("Cache-Control", "no-cache")
 		h.Set("X-Accel-Buffering", "no")
 		w.WriteHeader(http.StatusOK)
-		send := func(ev TrainingFeedEvent) bool {
+		send := func(ev FeedEvent) bool {
 			b, err := json.Marshal(ev)
 			if err != nil {
 				return true
@@ -265,7 +261,7 @@ func TrainingEventsOf(dbs []Named, mon *TrainingMonitor) http.HandlerFunc {
 				continue
 			}
 			ev.Seq = e.Seq
-			if !send(TrainingFeedEvent{DB: n.Name, RunID: runID, JobID: run.JobID, TrainingEvent: ev}) {
+			if !send(FeedEvent{DB: n.Name, RunID: runID, JobID: run.JobID, TrainingEvent: ev}) {
 				return
 			}
 			next = e.Seq + 1

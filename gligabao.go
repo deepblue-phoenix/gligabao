@@ -62,6 +62,9 @@ type ServeOptions struct {
 	// ImageDir is the directory the image files of the image pipeline are kept in (the database only tracks their
 	// paths). Default: next to DBPath, as <name>.images.
 	ImageDir string
+	// TrainingDatasetDir is the directory the JSONL training datasets uploaded in the admin UI are saved in. Default: next
+	// to DBPath, as <name>.training_datasets.
+	TrainingDatasetDir string
 	// EvalDBPath is the eval database (the SQLite file ./run_evals.sh writes the datasets, experiments and runs to); with
 	// the admin UI on it is shown next to the main database and feeds its Evals block.
 	EvalDBPath string
@@ -108,9 +111,11 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 	}
 	monitoring.SetHooks(opts.Hooks)
 	defer monitoring.SetHooks(nil)
+	dbConfig := db.ConfigFrom(cfg, opts.DBPath, opts.VectorDir, opts.ImageDir)
+	dbConfig.TrainingDatasetDir = opts.TrainingDatasetDir
 	return server.Run(ctx, server.Options{
 		Addr:         cfg.Addr(),
-		DB:           db.ConfigFrom(cfg, opts.DBPath, opts.VectorDir, opts.ImageDir),
+		DB:           dbConfig,
 		AnthropicKey: cfg.AnthropicKey,
 		OpenAIKey:    cfg.OpenAIKey,
 		JevKey:       cfg.JevKey,

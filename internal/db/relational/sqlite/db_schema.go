@@ -160,6 +160,25 @@ CREATE TABLE IF NOT EXISTS gb_training_job_events (
 	PRIMARY KEY (run_id, seq)
 );
 
+-- JSONL training datasets uploaded through the Go server (internal/api/training/datasets.go): ONE ROW PER FILE NAME.
+-- The file is kept in the training dataset directory (under its name); the sidecar is not involved in the upload, it gets
+-- the file when a training job that uses it is started.
+--   filename     a plain *.jsonl name, unique: uploading it again replaces the row
+--   size_bytes, num_records (non-empty lines), sha256 (hex) of the file
+--   status       'stored' (only here) or 'synced' (the sidecar has this version of the file)
+--   updated_at   when the file was last uploaded; synced_at when the sidecar got it (NULL while it has not)
+CREATE TABLE IF NOT EXISTS gb_training_datasets (
+	id          INTEGER PRIMARY KEY AUTOINCREMENT,
+	filename    TEXT NOT NULL UNIQUE,
+	size_bytes  INTEGER NOT NULL,
+	num_records INTEGER NOT NULL,
+	sha256      TEXT NOT NULL,
+	status      TEXT NOT NULL CHECK (status IN ('stored', 'synced')),
+	created_at  DATETIME NOT NULL DEFAULT (` + SQLNow + `),
+	updated_at  DATETIME NOT NULL DEFAULT (` + SQLNow + `),
+	synced_at   DATETIME
+);
+
 -- Eval experiments (evals/ and internal/experiments). An experiment is a named series of eval runs; names are unique.
 --   config: JSON object with the free-form settings under test
 CREATE TABLE IF NOT EXISTS gb_experiments (
@@ -242,6 +261,13 @@ CREATE INDEX IF NOT EXISTS idx_gb_experiment_trajectories_tid ON gb_experiment_t
 
 // initSchema applies the database schema.
 func initSchema(d *sql.DB) error {
+	// A development build kept the dataset content in the table (in a `content` column); it is a file now. Drop that table.
+	var legacy int
+	if err := d.QueryRow(`SELECT count(*) FROM pragma_table_info('gb_training_datasets') WHERE name = 'content'`).Scan(&legacy); err == nil && legacy > 0 {
+		if _, err := d.Exec(`DROP TABLE gb_training_datasets`); err != nil {
+			return fmt.Errorf("init schema: drop legacy gb_training_datasets: %w", err)
+		}
+	}
 	if _, err := d.Exec(schema + rememberRunsSchema()); err != nil {
 		return fmt.Errorf("init schema: %w", err)
 	}

@@ -20,6 +20,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
+	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/buildinfo"
 	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
@@ -74,8 +75,8 @@ type Options struct {
 	// JevKey, JevBaseURL and JevModel configure Jev, the system 1 model. Without a key remember skips
 	// every step that needs it.
 	JevKey, JevBaseURL, JevModel string
-	// SidecarURL is the base URL of the Python sidecar's REST API, which the admin endpoint that starts training jobs
-	// calls. Default: sidecar.DefaultBaseURL.
+	// SidecarURL is the base URL of the Python sidecar's REST API, which the training endpoint that starts jobs
+	// (POST /v1/gb/training/jobs) calls. Default: sidecar.DefaultBaseURL.
 	SidecarURL string
 	// Prices overrides/extends the built-in model price table used for call costs. May be nil.
 	Prices map[string]ai.Price
@@ -122,13 +123,13 @@ const sidecarPingTimeout = 5 * time.Second
 
 // connectSidecar pings the sidecar at url (default if empty). It returns the client and true if the sidecar is operating
 // correctly; otherwise it logs a warning and returns a nil client (a true nil interface, so callers can check == nil) and false.
-func connectSidecar(ctx context.Context, url string) (admin.TrainingSidecar, bool) {
+func connectSidecar(ctx context.Context, url string) (training.Sidecar, bool) {
 	c := sidecar.New(url)
 	sidecarClient.Store(c)
 	pingCtx, cancel := context.WithTimeout(ctx, sidecarPingTimeout)
 	defer cancel()
 	if _, err := c.Health(pingCtx); err != nil {
-		log.WithError(err).WithField("url", url).Warn("sidecar is not active; training endpoints of the admin UI will return 503")
+		log.WithError(err).WithField("url", url).Warn("sidecar is not active; training endpoints will return 503")
 		return nil, false
 	}
 	log.WithField("url", url).Info("sidecar is active")
@@ -143,9 +144,9 @@ const EvalDBName = "eval"
 // llm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities.
 // jv may be nil, in which case remember skips the steps that run on Jev. ws may be nil, in which case web search is not available
 // (a remember request with web_search returns 503); it is the Anthropic web search tool, so it is only set with an Anthropic API key.
-// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). sc starts the training jobs of the admin UI on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The eval endpoints are registered only if eval is true,
+// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). sc starts the training jobs (/v1/gb/training/) on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The eval endpoints are registered only if eval is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary.
-func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, sc admin.TrainingSidecar, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
+func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, sc training.Sidecar, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "gligabao is running")
@@ -164,8 +165,16 @@ func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_c
 	if eval {
 		api.RegisterEval(mux, mgr, d, llm, emb, jv, ws, providers)
 	}
+	dbs := append([]admin.Named{{Name: "standard", DB: d.Relational, Vectors: d.Vector, ImageDir: d.ImageDir}}, extraAdminDBs...)
+	// The training endpoints work with the same databases; only the main one has a directory for uploaded datasets.
+	tdbs := make([]training.Database, len(dbs))
+	for i, n := range dbs {
+		tdbs[i] = training.Database{Name: n.Name, DB: n.DB}
+	}
+	tdbs[0].DatasetDir = d.TrainingDatasetDir
+	registerTraining(ctx, mux, tdbs, sc)
 	if adminUI {
-		registerAdminUI(ctx, mux, d, sc, extraAdminDBs)
+		registerAdminUI(mux, dbs, sc)
 	}
 	return mux
 }
@@ -180,14 +189,27 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(out)
 }
 
+// registerTraining registers the training endpoints under /v1/gb/training/ (they are part of the API, not of the admin UI,
+// and are served whether or not the admin UI is on): the jobs, the datasets and the feed of the jobs' progress. dbs are the
+// databases they can be used with (?db=, the first by default). The training monitor follows the progress the sidecar
+// reports for the jobs (it resumes the unfinished ones now) and feeds it to the SSE endpoint.
+func registerTraining(ctx context.Context, mux *http.ServeMux, dbs []training.Database, sc training.Sidecar) {
+	mon := training.NewMonitor(ctx, dbs, sc)
+	mux.HandleFunc("POST /v1/gb/training/jobs", training.StartJobOf(dbs, sc, mon))
+	mux.HandleFunc("GET /v1/gb/training/jobs", training.ListJobsOf(dbs))
+	mux.HandleFunc("GET /v1/gb/training/datasets", training.SidecarDatasetsOf(sc))
+	mux.HandleFunc("POST /v1/gb/training/datasets", training.UploadDatasetOf(dbs))
+	mux.HandleFunc("GET /v1/gb/training/dataset-records", training.ListDatasetRecordsOf(dbs))
+	mux.HandleFunc("GET /v1/gb/training/events", training.EventsOf(dbs, mon))
+}
+
 // registerAdminUI serves the embedded admin UI assets under /v1/gb/admin/. It is a no-op (with a warning) if the
 // assets were not built into the binary (see admin_ui/ and run_build.sh).
-func registerAdminUI(ctx context.Context, mux *http.ServeMux, d *db.DB, sc admin.TrainingSidecar, extra []admin.Named) {
+func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, sc training.Sidecar) {
 	if !adminui.Available() {
 		log.Warn("admin_ui is enabled but the web assets are not embedded in this binary; build with ./run_build.sh (admin UI build enabled)")
 		return
 	}
-	dbs := append([]admin.Named{{Name: "standard", DB: d.Relational, Vectors: d.Vector, ImageDir: d.ImageDir}}, extra...)
 	mux.HandleFunc("GET /v1/gb/admin/api/databases", admin.Databases(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/overview", admin.OverviewOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/graph", admin.GraphOf(dbs))
@@ -199,15 +221,9 @@ func registerAdminUI(ctx context.Context, mux *http.ServeMux, d *db.DB, sc admin
 	mux.HandleFunc("GET /v1/gb/admin/api/web-searches", admin.WebSearchStatsOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/web-searches/dataset", admin.WebSearchDatasetOf(dbs))
 	mux.HandleFunc("DELETE /v1/gb/admin/api/datasets", admin.DeleteDatasetOf(dbs))
-	// The training monitor follows the progress the sidecar reports for the jobs and feeds it to the admin UI.
-	mon := admin.NewTrainingMonitor(ctx, dbs, sc)
-	mux.HandleFunc("POST /v1/gb/admin/api/training/jobs", admin.StartTrainingJobOf(dbs, sc, mon))
-	mux.HandleFunc("GET /v1/gb/admin/api/training/jobs", admin.ListTrainingJobsOf(dbs))
-	mux.HandleFunc("GET /v1/gb/admin/api/sidecar/status", admin.SidecarStatusOf(sc, sidecarPing))
-	mux.HandleFunc("GET /v1/gb/admin/api/training/datasets", admin.TrainingDatasetsOf(sc))
-	mux.HandleFunc("GET /v1/gb/admin/api/training/events", admin.TrainingEventsOf(dbs, mon))
+	mux.HandleFunc("GET /v1/gb/admin/api/sidecar/status", admin.SidecarStatusOf(sc != nil, sidecarPing))
 	// The experiments live in the eval database; without one there are none to show.
-	for _, e := range extra {
+	for _, e := range dbs {
 		if e.Name != EvalDBName {
 			continue
 		}

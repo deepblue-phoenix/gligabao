@@ -39,6 +39,13 @@ type (
 	TrainingJobRun       = model.TrainingJobRun
 	TrainingJobRunUpdate = model.TrainingJobRunUpdate
 	TrainingJobEvent     = model.TrainingJobEvent
+	TrainingDataset      = model.TrainingDataset
+)
+
+// Statuses of a TrainingDataset.
+const (
+	TrainingDatasetStored = model.TrainingDatasetStored
+	TrainingDatasetSynced = model.TrainingDatasetSynced
 )
 
 // Statuses that end a training job (see model.TrainingJobRun).

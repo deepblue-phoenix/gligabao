@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.30.0] - 2026-10-26
+
+### Added
+- **Training API under `/v1/gb/training/`**, served whether or not the admin UI is on: `POST` and `GET /v1/gb/training/jobs` (start and list training jobs), `GET /v1/gb/training/datasets` (the datasets on the sidecar), `POST /v1/gb/training/datasets` (upload a dataset), `GET /v1/gb/training/dataset-records[?db=]` (the datasets uploaded through the server) and `GET /v1/gb/training/events` (SSE feed of the jobs' progress). The training monitor, which resumes following unfinished jobs after a restart, runs without the admin UI too.
+- Admin UI, training view: **upload JSONL training datasets**. Pick a `.jsonl` file (one JSON object per line with `instruction`, `output` and optionally `input`) and press `Upload`; the `Datasets` table lists what was uploaded (status, records, size). The dataset picker lists the uploaded datasets together with the ones on the sidecar, and still shows the uploaded ones when the sidecar cannot be reached.
+- Uploading does not involve the sidecar: the Go server validates the file (UTF-8, every line a JSON object with string `instruction`/`output`, plain `*.jsonl` name, at most 64 MB), saves it as a file in a local directory (default `<db path without extension>.training_datasets`, e.g. `bin/gligabao.training_datasets`; `serve --training-dataset-dir`, `ServeOptions.TrainingDatasetDir`) and records it in the new `gb_training_datasets` table (SQLite and PostgreSQL; created automatically). Uploading a file name again replaces the dataset. It works with the sidecar or Modal down.
+- A dataset uploaded through the server is sent to the sidecar when a training job that uses it is started, once per version of the file: the record's status goes from `stored` to `synced`, and uploading the name again makes it `stored` again. If the sidecar fails to take it the job is not started (502); if the file is gone from the directory the job answers 500 and asks for a new upload. A dataset name the server has no record of is passed through to the sidecar as it is.
+
+### Changed
+- The training endpoints moved out of the admin path: `/v1/gb/admin/api/training/{jobs,datasets,events}` are now `/v1/gb/training/{jobs,datasets,events}`; the old paths are gone. `GET /v1/gb/admin/api/sidecar/status` stays where it is (it is the admin UI's health indicator).
+- The training HTTP handlers (jobs, datasets, the progress monitor and its SSE feed) moved from `internal/api/admin` to their own package, `internal/api/training` (`training.StartJobOf`, `training.UploadDatasetOf`, `training.NewMonitor`, `training.Database`, ...). `admin.SidecarStatusOf` takes a `bool` (whether the sidecar is active) instead of the sidecar.
+
 ## [0.29.4] - 2026-10-26
 
 ### Added

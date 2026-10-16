@@ -43,6 +43,8 @@ type Config struct {
 	VectorDir string
 	// ImageDir is the directory the image files of the image pipeline are kept in. Default: next to SQLitePath.
 	ImageDir string
+	// TrainingDatasetDir is the directory the uploaded JSONL training datasets are saved in. Default: next to SQLitePath.
+	TrainingDatasetDir string
 	// EmbeddingDimensions is the embedding size. Default: config.DefaultEmbeddingDimensions.
 	EmbeddingDimensions int
 	// PineconeKey and PineconeIndexHost configure the Pinecone store.
@@ -105,6 +107,8 @@ type DB struct {
 	// ImageDir is the directory of the image files (created when the first image is stored). The relational
 	// database only tracks their paths.
 	ImageDir string
+	// TrainingDatasetDir is the directory of the uploaded JSONL training datasets (created at the first upload).
+	TrainingDatasetDir string
 	// Chunking is the chunk size and overlap remember uses for a long text.
 	Chunking chunk.Config
 }
@@ -132,8 +136,13 @@ func Open(cfg Config) (*DB, error) {
 		cfg.ImageDir = DefaultImageDir(cfg.SQLitePath)
 	}
 
+	if cfg.TrainingDatasetDir == "" {
+		cfg.TrainingDatasetDir = DefaultTrainingDatasetDir(cfg.SQLitePath)
+	}
+
 	d := &DB{
 		ImageDir:            cfg.ImageDir,
+		TrainingDatasetDir:  cfg.TrainingDatasetDir,
 		Backend:             cfg.Backend,
 		VectorStore:         cfg.VectorStore,
 		EmbeddingDimensions: cfg.EmbeddingDimensions,
@@ -206,6 +215,12 @@ func DefaultVectorDir(sqlitePath string) string {
 // path without extension plus ".images".
 func DefaultImageDir(sqlitePath string) string {
 	return strings.TrimSuffix(sqlitePath, filepath.Ext(sqlitePath)) + ".images"
+}
+
+// DefaultTrainingDatasetDir is the training dataset directory used for the SQLite file sqlitePath when none is
+// configured: the file's path without extension plus ".training_datasets".
+func DefaultTrainingDatasetDir(sqlitePath string) string {
+	return strings.TrimSuffix(sqlitePath, filepath.Ext(sqlitePath)) + ".training_datasets"
 }
 
 // Close closes every client. It is safe to call on a nil DB.

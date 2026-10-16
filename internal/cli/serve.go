@@ -7,12 +7,13 @@ import (
 )
 
 var (
-	serveDBPath    string
-	serveVectorDir string
-	serveImageDir  string
-	serveEvalDB    string
-	serveEval      bool
-	serveAdminUI   bool
+	serveDBPath     string
+	serveVectorDir  string
+	serveImageDir   string
+	serveDatasetDir string
+	serveEvalDB     string
+	serveEval       bool
+	serveAdminUI    bool
 )
 
 //---------------------------------------------------------------------------------------------
@@ -28,10 +29,11 @@ var serveCmd = &cobra.Command{
 			cfg.AdminUI = serveAdminUI
 		}
 		return gligabao.Serve(cmd.Context(), cfg, gligabao.ServeOptions{
-			DBPath:     serveDBPath,
-			VectorDir:  serveVectorDir,
-			ImageDir:   serveImageDir,
-			EvalDBPath: serveEvalDB,
+			DBPath:             serveDBPath,
+			VectorDir:          serveVectorDir,
+			ImageDir:           serveImageDir,
+			TrainingDatasetDir: serveDatasetDir,
+			EvalDBPath:         serveEvalDB,
 		})
 	},
 }
@@ -42,6 +44,7 @@ func init() {
 	serveCmd.Flags().StringVar(&serveDBPath, "db", gligabao.DefaultDBPath, "SQLite database file path")
 	serveCmd.Flags().StringVar(&serveVectorDir, "vector-dir", "", "chromem vector store directory (default: next to --db)")
 	serveCmd.Flags().StringVar(&serveImageDir, "image-dir", "", "directory of the image files stored by remember with an image (default: next to --db)")
+	serveCmd.Flags().StringVar(&serveDatasetDir, "training-dataset-dir", "", "directory the JSONL training datasets uploaded in the admin UI are saved in (default: next to --db)")
 	serveCmd.Flags().StringVar(&serveEvalDB, "eval-db", "", "eval database: SQLite file with the eval datasets, experiments and runs (./run_evals.sh); shown next to the main database in the admin UI, which reads the Evals block from it")
 	serveCmd.Flags().BoolVar(&serveEval, "eval", false, "register the eval endpoints that return ATIF trajectories (config: eval)")
 	serveCmd.Flags().BoolVar(&serveAdminUI, "admin-ui", false, "serve the admin UI at /v1/gb/admin/ (config: admin_ui)")

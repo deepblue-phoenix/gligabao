@@ -1,4 +1,4 @@
-package admin_test
+package training_test
 
 import (
 	"bufio"
@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
+	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
@@ -102,7 +102,7 @@ func openSSE(t *testing.T, ctx context.Context, url string, header ...string) *s
 
 type sseEvent struct {
 	ID, Name string
-	Data     admin.TrainingFeedEvent
+	Data     training.FeedEvent
 }
 
 // next returns the next event, skipping comments.
@@ -141,23 +141,23 @@ func waitFor(t *testing.T, what string, ok func() bool) {
 	t.Fatalf("timed out waiting for %s", what)
 }
 
-// TestTrainingMonitor: a job started through the admin endpoint is followed on the sidecar's SSE stream; its events are
-// stored, update its row, and are forwarded to the admin SSE feeds (live, and replayed from the database).
+// TestTrainingMonitor: a job started through the endpoint is followed on the sidecar's SSE stream; its events are
+// stored, update its row, and are forwarded to the SSE feeds (live, and replayed from the database).
 func TestTrainingMonitor(t *testing.T) { dbtest.Run(t, testTrainingMonitor) }
 
 func testTrainingMonitor(t *testing.T, d *sql.DB) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	dbs := []admin.Named{{Name: "standard", DB: d}}
+	dbs := []training.Database{{Name: "standard", DB: d}}
 	sc := newStreamSidecar()
-	mon := admin.NewTrainingMonitor(ctx, dbs, sc, admin.WithTrainingRetryDelay(time.Millisecond))
+	mon := training.NewMonitor(ctx, dbs, sc, training.WithRetryDelay(time.Millisecond))
 
-	events := httptest.NewServer(admin.TrainingEventsOf(dbs, mon))
+	events := httptest.NewServer(training.EventsOf(dbs, mon))
 	defer func() { cancel(); events.Close() }() // the open SSE streams end with ctx; Close waits for them
 	all := openSSE(t, ctx, events.URL)
 
 	rec := httptest.NewRecorder()
-	admin.StartTrainingJobOf(dbs, sc, mon)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(`{"num_train_steps": 10}`)))
+	training.StartJobOf(dbs, sc, mon)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(`{"num_train_steps": 10}`)))
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("start: %d %s", rec.Code, rec.Body)
 	}
@@ -218,7 +218,7 @@ func testTrainingMonitor(t *testing.T, d *sql.DB) {
 
 	// Jobs list, newest first.
 	rec = httptest.NewRecorder()
-	admin.ListTrainingJobsOf(dbs)(rec, httptest.NewRequest("GET", "/x", nil))
+	training.ListJobsOf(dbs)(rec, httptest.NewRequest("GET", "/x", nil))
 	var list struct{ Jobs []relational.TrainingJobRun }
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || len(list.Jobs) != 1 || list.Jobs[0].Status != "completed" {
 		t.Fatalf("list: %v %s", err, rec.Body)
@@ -227,7 +227,7 @@ func testTrainingMonitor(t *testing.T, d *sql.DB) {
 	// Bad requests.
 	for url, want := range map[string]int{"?run_id=99": 404, "?run_id=x": 400, "?run_id=0x": 400, "?db=nope": 404} {
 		rec := httptest.NewRecorder()
-		admin.TrainingEventsOf(dbs, mon)(rec, httptest.NewRequest("GET", "/x"+url, nil))
+		training.EventsOf(dbs, mon)(rec, httptest.NewRequest("GET", "/x"+url, nil))
 		if rec.Code != want {
 			t.Fatalf("%s: %d", url, rec.Code)
 		}
@@ -241,7 +241,7 @@ func TestTrainingMonitorTimeoutAndResume(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	dbs := []admin.Named{{Name: "standard", DB: d}}
+	dbs := []training.Database{{Name: "standard", DB: d}}
 
 	// Resume: run 1 is unfinished with 2 events stored; run 2 is finished and left alone.
 	started := time.Now().Add(-time.Minute)
@@ -253,7 +253,7 @@ func TestTrainingMonitorTimeoutAndResume(t *testing.T) {
 
 	sc := newStreamSidecar()
 	sc.sent = []sidecar.TrainingEvent{status("running"), progress(1, 3)}
-	admin.NewTrainingMonitor(ctx, dbs, sc, admin.WithTrainingRetryDelay(time.Millisecond), admin.WithTrainingWatchTimeout(time.Hour))
+	training.NewMonitor(ctx, dbs, sc, training.WithRetryDelay(time.Millisecond), training.WithWatchTimeout(time.Hour))
 	waitFor(t, "resumed stream", func() bool { sc.mu.Lock(); defer sc.mu.Unlock(); return len(sc.froms) == 1 })
 	sc.mu.Lock()
 	if sc.froms[0] != 2 {
@@ -268,7 +268,7 @@ func TestTrainingMonitorTimeoutAndResume(t *testing.T) {
 
 	// Timeout: the sidecar's stream ends again and again without the job ending.
 	sc2 := newStreamSidecar()
-	mon := admin.NewTrainingMonitor(ctx, dbs, sc2, admin.WithTrainingRetryDelay(time.Millisecond), admin.WithTrainingWatchTimeout(50*time.Millisecond))
+	mon := training.NewMonitor(ctx, dbs, sc2, training.WithRetryDelay(time.Millisecond), training.WithWatchTimeout(50*time.Millisecond))
 	id3, _ := relational.RecordTrainingJobRun(ctx, d, relational.TrainingJobRun{JobID: "j3", Status: "started", ModelSize: "4b", NumTrainSteps: 5, StartedAt: time.Now()})
 	run3, _ := relational.GetTrainingJobRun(ctx, d, id3)
 	close(sc2.feed) // every stream ends at once
@@ -285,9 +285,9 @@ func TestTrainingMonitorTimeoutAndResume(t *testing.T) {
 
 func TestTrainingDatasets(t *testing.T) {
 	sc := newStreamSidecar()
-	get := func(sc admin.TrainingSidecar) *httptest.ResponseRecorder {
+	get := func(sc training.Sidecar) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		admin.TrainingDatasetsOf(sc)(rec, httptest.NewRequest("GET", "/x", nil))
+		training.SidecarDatasetsOf(sc)(rec, httptest.NewRequest("GET", "/x", nil))
 		return rec
 	}
 	if rec := get(sc); rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != `{"datasets":[]}` {
