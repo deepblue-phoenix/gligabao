@@ -4,13 +4,13 @@ Runs inside the web container. Everything provider-specific is injected as calla
 app.py (spawn a job, call a function, commit/reload volumes).
 
 Endpoints:
-    POST /start_training_job   {num_train_steps?, model_size?}  -> spawns a job, returns job_id
-    GET  /get_training_progress                                  -> newest progress file's entries
-    POST /generate_response    {prompt, max_tokens?, temperature?, model_size?}
-    POST /add_to_eval_dataset  {prompt, response, notes?}
-    GET  /get_eval_dataset_count
-    POST /datasets/upload      {filename, content (base64 or plain jsonl)}   (alias: /upload_dataset)
-    GET  /datasets/list                                                      (alias: /list_datasets)
+    POST /training/job_start   {num_train_steps?, model_size?}  -> spawns a job, returns job_id
+    GET  /training/job_progress                                  -> newest progress file's entries
+    POST /infer/query                  {prompt, max_tokens?, temperature?, model_size?}
+    POST /evals/add_to_dataset    {prompt, response, notes?}
+    GET  /evals/get_dataset_count
+    POST /datasets/upload              {filename, content (base64 or plain jsonl)}
+    GET  /datasets/list
     GET  /healthz
 """
 import json
@@ -42,8 +42,8 @@ def create_api(
             return JSONResponse({"error": f"Invalid model_size '{model_size}'. Must be one of {list(MODEL_SIZES)}."},
                                 status_code=400)
 
-    @api.post("/start_training_job")
-    async def start_training_job(request: Request):
+    @api.post("/training/job_start")
+    async def job_start(request: Request):
         data = await request.json()
         num_train_steps = data.get("num_train_steps", 100)
         model_size = data.get("model_size", "4b")
@@ -53,8 +53,8 @@ def create_api(
         return JSONResponse({"status": "started", "job_id": job_id,
                              "num_train_steps": num_train_steps, "model_size": model_size})
 
-    @api.get("/get_training_progress")
-    async def get_training_progress():
+    @api.get("/training/job_progress")
+    async def job_progress():
         # This container is long-lived, so its view of the volume can be stale: the training
         # container commits progress as it logs; reload to see it.
         await run_in_threadpool(reload_volumes, [PROGRESS_DIR])
@@ -66,7 +66,7 @@ def create_api(
             progress = [json.loads(line) for line in f if line.strip()]
         return JSONResponse({"progress": progress})
 
-    @api.post("/generate_response")
+    @api.post("/infer/query")
     async def generate_response_endpoint(request: Request):
         data = await request.json()
         model_size = data.get("model_size", "4b")
@@ -77,8 +77,8 @@ def create_api(
             data.get("temperature", 0.7), model_size)
         return JSONResponse(result)
 
-    @api.post("/add_to_eval_dataset")
-    async def add_to_eval_dataset(request: Request):
+    @api.post("/evals/add_to_dataset")
+    async def add_to_dataset(request: Request):
         data = await request.json()
         prompt, response = data.get("prompt", ""), data.get("response", "")
         if not prompt or not response:
@@ -92,8 +92,8 @@ def create_api(
         await run_in_threadpool(commit_volumes, [EVAL_DIR])
         return JSONResponse({"status": "success", "message": "Example added to eval dataset"})
 
-    @api.get("/get_eval_dataset_count")
-    async def get_eval_dataset_count():
+    @api.get("/evals/get_dataset_count")
+    async def get_dataset_count():
         path = Path(EVAL_DATASET_PATH)
         count = 0
         if path.exists():
@@ -102,7 +102,6 @@ def create_api(
         return JSONResponse({"count": count})
 
     @api.post("/datasets/upload")
-    @api.post("/upload_dataset")
     async def upload_dataset(request: Request):
         try:
             ds = TrainingDataset.model_validate(await request.json())
@@ -122,7 +121,6 @@ def create_api(
                              "size_bytes": ds.size_bytes})
 
     @api.get("/datasets/list")
-    @api.get("/list_datasets")
     async def list_datasets():
         data_dir = Path(DATA_DIR)
         if not data_dir.exists():

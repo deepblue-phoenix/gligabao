@@ -42,7 +42,7 @@ modal run app.py --action generate --model-size 12b --prompt "..."
 ### HTTP API (after `modal serve app.py` / `modal deploy app.py`)
 
 ```bash
-curl -X POST $URL/start_training_job -H "Content-Type: application/json" \
+curl -X POST $URL/training/job_start -H "Content-Type: application/json" \
   -d '{"num_train_steps": 500, "model_size": "12b"}'
 ```
 

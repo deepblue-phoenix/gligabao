@@ -1,7 +1,7 @@
 """Training progress reporting for live monitoring. Needs transformers; training images only.
 
 Appends one JSON line per Trainer log to a file on the progress volume. The web API
-(api/api.py) reads the newest file and serves it at /get_training_progress.
+(api/api.py) reads the newest file and serves it at /training/job_progress.
 """
 import json
 import time

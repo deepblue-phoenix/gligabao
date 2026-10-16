@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 class TrainingDataset(BaseModel):
     """A training dataset (a .jsonl file on the data volume).
 
-    Sent by golang to POST /upload_dataset (`filename` + `content`) and returned by GET /list_datasets
+    Sent by golang to POST /datasets/upload (`filename` + `content`) and returned by GET /datasets/list
     (`content` is never serialized).
     """
     filename: str = Field(min_length=1)

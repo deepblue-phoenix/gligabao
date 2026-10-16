@@ -102,17 +102,17 @@ class ApiTest(unittest.TestCase):
     def test_healthz(self):
         self.assertEqual(self.client.get("/healthz").json()["status"], "ok")
 
-    def test_start_training_job(self):
-        r = self.client.post("/start_training_job", json={"num_train_steps": 7, "model_size": "12b"})
+    def test_job_start(self):
+        r = self.client.post("/training/job_start", json={"num_train_steps": 7, "model_size": "12b"})
         self.assertEqual(r.json()["job_id"], "job-1")
         self.assertEqual(self.calls, [(7, "12b")])
 
     def test_invalid_model_size(self):
-        self.assertEqual(self.client.post("/start_training_job", json={"model_size": "99b"}).status_code, 400)
-        self.assertEqual(self.client.post("/generate_response", json={"model_size": "99b"}).status_code, 400)
+        self.assertEqual(self.client.post("/training/job_start", json={"model_size": "99b"}).status_code, 400)
+        self.assertEqual(self.client.post("/infer/query", json={"model_size": "99b"}).status_code, 400)
 
     def test_generate(self):
-        r = self.client.post("/generate_response", json={"prompt": "hi"})
+        r = self.client.post("/infer/query", json={"prompt": "hi"})
         self.assertEqual(r.json()["args"], ["hi", 1024, 0.7, "4b"])
 
 

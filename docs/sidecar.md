@@ -81,7 +81,7 @@ modal run app.py --action generate --model-size 4b --prompt "..."     # run the 
 modal serve app.py                                 # web API in dev mode (`modal deploy app.py` to persist)
 ```
 
-`train` syncs the dataset first. Web API endpoints: `POST /start_training_job`, `GET /get_training_progress`, `POST /generate_response`, `POST /add_to_eval_dataset`, `GET /get_eval_dataset_count`, `POST /upload_dataset`, `GET /list_datasets`, `GET /healthz`.
+`train` syncs the dataset first. Web API endpoints: `POST /training/job_start`, `GET /training/job_progress`, `POST /infer/query`, `POST /evals/add_to_dataset`, `GET /evals/get_dataset_count`, `POST /datasets/upload`, `GET /datasets/list`, `GET /healthz`.
 
 Local tests: `cd side_car/ai_train && python -m unittest test_ai_train_core -v`.
 
