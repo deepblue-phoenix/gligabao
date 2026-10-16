@@ -83,15 +83,15 @@ class DatasetTest(unittest.TestCase):
             self.assertGreater(dataset.validate_dataset(str(bundled))["num_examples"], 0)
 
 
-class WebApiTest(unittest.TestCase):
+class ApiTest(unittest.TestCase):
     def setUp(self):
         try:
             from fastapi.testclient import TestClient
-            from ai_web_core.web_api import create_web_api
+            from api.api import create_api
         except ImportError:
             self.skipTest("fastapi/httpx not installed")
         self.calls = []
-        api = create_web_api(
+        api = create_api(
             spawn_training_job=lambda steps, size: self.calls.append((steps, size)) or "job-1",
             generate_response=lambda *a: {"response": "ok", "args": list(a)},
             commit_volumes=lambda p: None,

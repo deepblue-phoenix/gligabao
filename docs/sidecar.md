@@ -55,7 +55,8 @@ side_car/ai_train/
     model_train_gemma4_12b.py                # 12B without Unsloth (training + inference loading)
     inference.py              # generate with the trained adapter
     bootstrap.py              # ping + train dispatch by backend
-  ai_web_core/web_api.py      # FastAPI app (training jobs, progress, generate, eval, datasets)
+  api/
+    api.py                    # FastAPI app (training jobs, progress, generate, eval, datasets)
   providers/
     base.py                   # Provider (ABC), FunctionSpec, ImageSpec
     modal_provider.py         # Modal implementation; the only file that imports modal
@@ -105,11 +106,11 @@ Volumes are created if missing.
 
 ### How the provider abstraction works
 
-`app.py` only says *what* to run. It builds a `FunctionSpec` (image, GPU, timeout, volumes, secrets) and registers functions with `@provider.function(spec)` (or `@provider.asgi_app(spec)` for the web API). It runs them with `provider.call(fn, ...)` or `provider.spawn(fn, ...)` and persists/refreshes volumes with `provider.commit_volumes(paths)` / `provider.reload_volumes(paths)`. Images are described by a provider-neutral `ImageSpec` (CUDA base or not, requirements file); the provider decides how to build them, and mounts the `ai_train/` directory into the container at `/pkg`. Code in `ai_train_core/` and `ai_web_core/` gets what it needs from the provider as injected callables (e.g. `commit_fn`).
+`app.py` only says *what* to run. It builds a `FunctionSpec` (image, GPU, timeout, volumes, secrets) and registers functions with `@provider.function(spec)` (or `@provider.asgi_app(spec)` for the web API). It runs them with `provider.call(fn, ...)` or `provider.spawn(fn, ...)` and persists/refreshes volumes with `provider.commit_volumes(paths)` / `provider.reload_volumes(paths)`. Images are described by a provider-neutral `ImageSpec` (CUDA base or not, requirements file); the provider decides how to build them, and mounts the `ai_train/` directory into the container at `/pkg`. Code in `ai_train_core/` and `api/` gets what it needs from the provider as injected callables (e.g. `commit_fn`).
 
 Rules that keep it swappable:
 
-- Nothing outside `providers/` imports a provider SDK, and `ai_train_core/` / `ai_web_core/` (the code that runs in the container) never do.
+- Nothing outside `providers/` imports a provider SDK, and `ai_train_core/` / `api/` (the code that runs in the container) never do.
 - `app = provider.native_app` is a module-level object because provider CLIs such as `modal run` look for it.
 - Code that runs remotely imports `ai_train_core` inside the function body, since it only exists in the container's `/pkg` mount, and the heavy ML imports are per image (the 12B image has no Unsloth).
 

@@ -154,8 +154,8 @@ def generate(prompt: str, max_tokens: int = 1024, temperature: float = 0.7, mode
 
 @provider.asgi_app(FunctionSpec(image=WEB_IMAGE, timeout_s=600, volumes=WEB_VOLS))
 def serve_api():
-    from ai_web_core.web_api import create_web_api
-    return create_web_api(
+    from api.api import create_api
+    return create_api(
         spawn_training_job=lambda num_train_steps, model_size: provider.spawn(
             train, num_train_steps=num_train_steps, model_size=model_size),
         generate_response=lambda prompt, max_tokens, temperature, model_size: provider.call(

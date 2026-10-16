@@ -28,7 +28,7 @@ from ai_train_core.paths import (DATA_DIR, EVAL_DATASET_PATH, EVAL_DIR, PROGRESS
                                  REMOTE_DATASET_PATH, REMOTE_METADATA_PATH)
 
 
-def create_web_api(
+def create_api(
     spawn_training_job: Callable[..., str],     # (num_train_steps, model_size) -> job id
     generate_response: Callable[..., dict],     # (prompt, max_tokens, temperature, model_size) -> dict
     commit_volumes: Callable[[list], None],
