@@ -2,7 +2,7 @@
 
 `side_car/`, `side_car/ai_train/`, `Dockerfile.sidecar`, `run_build_sidecar.sh`, `internal/sidecar/sidecar.go`
 
-The sidecar is a small Python service that runs next to the Go server and that the server talks to over HTTP. It exists for work that is easier to do in Python (libraries that have no good Go equivalent). **Today it is only a skeleton**: it starts, listens, and answers a health check. Nothing in the server calls it yet. Alongside it sits a separate, equally small bootstrap for remote (cloud GPU) training jobs; see [Remote training bootstrap](#remote-training-bootstrap).
+The sidecar is a small Python service that runs next to the Go server and that the server talks to over HTTP. It exists for work that is easier to do in Python (libraries that have no good Go equivalent). It answers a health check and forwards the training/dataset API to its backend. Alongside it sits a separate, equally small bootstrap for remote (cloud GPU) training jobs; see [Remote training bootstrap](#remote-training-bootstrap).
 
 ## The service
 
@@ -10,7 +10,14 @@ The sidecar is a small Python service that runs next to the Go server and that t
 
 | Endpoint | Response |
 |---|---|
-| `GET /health` | `200 {"status": "ok"}` |
+| `GET /health` | `200 {"status": "ok"}` (answered by the sidecar itself) |
+| `POST /training/job_start`, `GET /training/job_progress`, `GET /training/job_events` (SSE), `POST /infer/query`, `POST /evals/add_to_dataset`, `GET /evals/get_dataset_count`, `POST /datasets/upload`, `GET /datasets/list` | Answered by the **backend** (below) |
+
+### Backends
+
+The routes in `side_car/routes.py` are the only API the Go server knows (`internal/sidecar/`); it never talks to Modal or any other provider. Each route is forwarded unchanged (method, query, body; status and body come back as they are, SSE streamed) to the configured `Backend` (`side_car/backends/`). If the backend cannot be reached the sidecar answers `502 {"error": ...}`. To add a backend, implement `Backend.forward` in `backends/` and register it in `backends/__init__.py::get_backend`; an HTTP service that serves the same API can subclass `HttpBackend` and only provide its URL.
+
+The only backend today is `modal`: the web API (`serve_api`) of the Modal app in `side_car/ai_train/app.py`. Deploy it with `cd side_car/ai_train && modal deploy app.py`; the sidecar finds its URL through the Modal SDK (once, on the first request). With `modal serve` (dev), set `SIDECAR_MODAL_WEB_URL` to the URL it prints.
 
 Configuration is by environment variable. At startup `main_sidecar.py` reads them once into a `SidecarConfig` (a frozen pydantic model, `side_car/sidecar_config.py`) and passes it to `create_app(config)`; the app keeps it on `app.state.config` (handlers can use the `get_config` helper). New settings are added as fields of that struct. An invalid value stops the sidecar at startup.
 
@@ -18,10 +25,13 @@ Configuration is by environment variable. At startup `main_sidecar.py` reads the
 |---|---|---|
 | `SIDECAR_HOST` | `127.0.0.1` | Interface to listen on. Local only by default, as the sidecar has no authentication. |
 | `SIDECAR_PORT` | `8787` | Port to listen on. |
-| `MODAL_TOKEN_ID` | *(required)* | Modal API token id. |
-| `MODAL_TOKEN_SECRET` | *(required)* | Modal API token secret. |
+| `SIDECAR_BACKEND` | `modal` | Which backend answers the API. |
+| `SIDECAR_APP_NAME` | `gligabao-train` | Modal backend: name of the deployed Modal app. |
+| `SIDECAR_MODAL_WEB_URL` | *(unset)* | Modal backend: use this URL instead of looking the app up. |
+| `MODAL_TOKEN_ID` | *(required for `modal`)* | Modal API token id. |
+| `MODAL_TOKEN_SECRET` | *(required for `modal`)* | Modal API token secret. |
 
-The Modal credentials are checked when the config is loaded: the sidecar refuses to start if either is missing or empty (they are held as `SecretStr`, so they do not show up in logs). Create a token with `modal token new`; a `~/.modal.toml` is not read by this check.
+With the `modal` backend the Modal credentials are checked when the config is loaded: the sidecar refuses to start if either is missing or empty (they are held as `SecretStr`, so they do not show up in logs). Create a token with `modal token new`; a `~/.modal.toml` is not read by this check.
 
 Run it without a container:
 
@@ -36,7 +46,7 @@ curl http://127.0.0.1:8787/health
 
 ## Remote training bootstrap
 
-`side_car/ai_train/` fine-tunes Gemma-4 (4B and 12B, LoRA) on a cloud provider and serves the result. It is ported from `gloflow_phoenix/gf_phoenix/ai_train` and restructured so the cloud-specific parts sit behind a provider interface. It is separate from the FastAPI service above, is not imported by `main_sidecar.py`, and is not copied into `Dockerfile.sidecar`.
+`side_car/ai_train/` fine-tunes Gemma-4 (4B and 12B, LoRA) on a cloud provider and serves the result. It is ported from `gloflow_phoenix/gf_phoenix/ai_train` and restructured so the cloud-specific parts sit behind a provider interface. It is the Modal side of the `modal` backend: it runs on Modal, is not imported by `main_sidecar.py`, and is not copied into `Dockerfile.sidecar`.
 
 ```
 side_car/ai_train/

@@ -5,6 +5,16 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.29.1] - 2026-10-26
+
+### Added
+- The sidecar now serves the training and dataset API itself (`POST /training/job_start`, `GET /training/job_progress`, `GET /training/job_events` (SSE), `POST /infer/query`, `POST /evals/add_to_dataset`, `GET /evals/get_dataset_count`, `POST /datasets/upload`, `GET /datasets/list`; `side_car/routes.py`) and forwards each request to a pluggable **backend** (`side_car/backends/`). The Go server only knows the sidecar API, not what runs behind it. Previously the local sidecar had only `/health`, so the admin UI's dataset list and training calls failed with 404. A backend that cannot be reached gives `502 {"error": ...}`.
+- `modal` backend: forwards to the web API of the deployed Modal app (`modal deploy app.py` in `side_car/ai_train`), whose URL it looks up through the Modal SDK on the first request. New settings: `SIDECAR_BACKEND` (default `modal`), `SIDECAR_APP_NAME` (default `gligabao-train`) and `SIDECAR_MODAL_WEB_URL` (skip the lookup, e.g. for `modal serve`).
+
+### Changed
+- The Modal credentials (`MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`) are required only when the backend is `modal`.
+- The sidecar's `requirements.txt` adds `httpx` and `modal`; `Dockerfile.sidecar` copies `routes.py` and `backends/`.
+
 ## [0.29.0] - 2026-10-26
 
 ### Changed
