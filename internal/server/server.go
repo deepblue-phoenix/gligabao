@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -98,6 +99,27 @@ type Options struct {
 
 //---------------------------------------------------------------------------------------------
 
+// SidecarActive is the flag set on startup (see Run): true if the sidecar answered its health check. Code that needs the
+// sidecar and does not get it injected can check it instead of calling the sidecar and handling the error.
+var SidecarActive atomic.Bool
+
+// sidecarPingTimeout bounds the sidecar health check on startup.
+const sidecarPingTimeout = 5 * time.Second
+
+// connectSidecar pings the sidecar at url (default if empty). It returns the client and true if the sidecar is operating
+// correctly; otherwise it logs a warning and returns a nil client (a true nil interface, so callers can check == nil) and false.
+func connectSidecar(ctx context.Context, url string) (admin.TrainingSidecar, bool) {
+	c := sidecar.New(url)
+	pingCtx, cancel := context.WithTimeout(ctx, sidecarPingTimeout)
+	defer cancel()
+	if _, err := c.Health(pingCtx); err != nil {
+		log.WithError(err).WithField("url", url).Warn("sidecar is not active; training endpoints of the admin UI will return 503")
+		return nil, false
+	}
+	log.WithField("url", url).Info("sidecar is active")
+	return c, true
+}
+
 // EvalDBName is the name of the eval database in the admin UI (see Options.EvalDBPath). It holds the evaluation
 // datasets, the experiments and their runs, kept apart from the main database.
 const EvalDBName = "eval"
@@ -166,6 +188,7 @@ func registerAdminUI(ctx context.Context, mux *http.ServeMux, d *db.DB, sc admin
 	mon := admin.NewTrainingMonitor(ctx, dbs, sc)
 	mux.HandleFunc("POST /v1/gb/admin/api/training/jobs", admin.StartTrainingJobOf(dbs, sc, mon))
 	mux.HandleFunc("GET /v1/gb/admin/api/training/jobs", admin.ListTrainingJobsOf(dbs))
+	mux.HandleFunc("GET /v1/gb/admin/api/training/status", admin.TrainingStatusOf(sc))
 	mux.HandleFunc("GET /v1/gb/admin/api/training/datasets", admin.TrainingDatasetsOf(sc))
 	mux.HandleFunc("GET /v1/gb/admin/api/training/events", admin.TrainingEventsOf(dbs, mon))
 	// The experiments live in the eval database; without one there are none to show.
@@ -312,10 +335,15 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 
+	// The sidecar is pinged once on startup. If it is not operating correctly, the flag is off and sc stays nil, which
+	// makes everything that needs the sidecar answer 503 (or do nothing) instead of failing.
+	sc, sidecarActive := connectSidecar(ctx, opts.SidecarURL)
+	SidecarActive.Store(sidecarActive)
+
 	// The remember manager stops only when Run returns, i.e. after the graceful shutdown has given the runs in progress their time.
 	mgrCtx, stopMgr := context.WithCancel(ctx)
 	defer stopMgr()
-	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(mgrCtx, database, llm, emb, jv, ws, providers, sidecar.New(opts.SidecarURL), opts.Eval, opts.AdminUI, extra...)}
+	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(mgrCtx, database, llm, emb, jv, ws, providers, sc, opts.Eval, opts.AdminUI, extra...)}
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

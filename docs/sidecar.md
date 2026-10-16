@@ -114,7 +114,8 @@ The **training** view of the [admin UI](../README.md) has a `Run` button (model 
 
 | Endpoint | |
 |---|---|
-| `POST /v1/gb/admin/api/training/jobs[?db=]` | body `{"num_train_steps"?, "model_size"?, "dataset"?}`; starts a job, answers 201 with the stored row. 400 for a bad body or a dataset the sidecar rejects, 502 if the sidecar fails, 503 if no sidecar. |
+| `GET /v1/gb/admin/api/training/status` | `{"sidecar_active": bool}`; false if the sidecar failed its health check on startup (the view then shows a "Sidecar not active" notice and disables `Run`). |
+| `POST /v1/gb/admin/api/training/jobs[?db=]` | body `{"num_train_steps"?, "model_size"?, "dataset"?}`; starts a job, answers 201 with the stored row. 400 for a bad body or a dataset the sidecar rejects, 502 if the sidecar fails, 503 if the sidecar is not active (it failed its health check on startup). |
 | `GET /v1/gb/admin/api/training/jobs[?db=][&limit=]` | `{"jobs": [...]}`, newest first (default 50, at most 500). |
 | `GET /v1/gb/admin/api/training/datasets` | `{"datasets": [...]}`: the sidecar's training datasets, for the dataset picker. |
 | `GET /v1/gb/admin/api/training/events[?db=][&run_id=]` | the SSE feed above. |

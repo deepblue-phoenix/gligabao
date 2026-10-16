@@ -41,7 +41,7 @@ func StartTrainingJobOf(dbs []Named, sc TrainingJobStarter, mon *TrainingMonitor
 			return
 		}
 		if sc == nil {
-			httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not configured")
+			httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not active")
 			return
 		}
 		var req sidecar.StartTrainingJobRequest
@@ -135,12 +135,20 @@ func ListTrainingJobsOf(dbs []Named) http.HandlerFunc {
 	}
 }
 
+// TrainingStatusOf serves GET /admin/api/training/status: {"sidecar_active": bool}, whether the sidecar is usable (a nil sc
+// is one that was not active on startup). The training view shows a notice when it is not.
+func TrainingStatusOf(sc TrainingSidecar) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"sidecar_active": sc != nil})
+	}
+}
+
 // TrainingDatasetsOf serves GET /admin/api/training/datasets: {"datasets": [...]}, the training datasets on the sidecar
 // (what a training job can be started on). A nil sc answers 503, a sidecar error 502.
 func TrainingDatasetsOf(sc TrainingSidecar) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if sc == nil {
-			httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not configured")
+			httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not active")
 			return
 		}
 		ds, err := sc.ListTrainingDatasets(r.Context())

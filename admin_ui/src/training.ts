@@ -122,7 +122,23 @@ function applyToList(ev: FeedEvent): void {
 //---------------------------------------------------------------------------------------------
 // Starting a job
 
+// Shows a notice and disables Run if the server's sidecar is not active. Returns whether it is.
+async function checkSidecar(): Promise<boolean> {
+  let active = true;
+  try {
+    const res = await fetch("api/training/status");
+    if (res.ok) active = ((await res.json()) as { sidecar_active?: boolean }).sidecar_active !== false;
+  } catch { /* server unreachable: the other requests report it */ }
+  el("training-sidecar-warning").hidden = active;
+  el<HTMLButtonElement>("training-run").disabled = !active;
+  return active;
+}
+
 async function loadDatasets(): Promise<void> {
+  if (!(await checkSidecar())) {
+    el("training-run-status").textContent = "";
+    return;
+  }
   const sel = el<HTMLSelectElement>("training-dataset");
   const status = el("training-run-status");
   const keep = sel.value;
@@ -166,7 +182,7 @@ async function run(): Promise<void> {
     status.className = "error";
     status.textContent = `Failed to start the job: ${errText(err)}`;
   } finally {
-    btn.disabled = false;
+    btn.disabled = !el("training-sidecar-warning").hidden;
   }
 }
 

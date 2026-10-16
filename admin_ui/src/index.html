@@ -102,6 +102,7 @@
               <button type="button" id="training-refresh">Refresh</button>
             </div>
             <p class="muted">Fine-tune Gemma 4 on the sidecar (LoRA).</p>
+            <p id="training-sidecar-warning" class="error sidecar-warning" role="alert" hidden><strong>Sidecar not active.</strong> It did not pass its health check when the server started, so training jobs cannot be started or listed. Start the sidecar and restart the server.</p>
             <div class="row training-form">
               <label>Model
                 <select id="training-size"><option value="4b">Gemma 4 · 4B</option><option value="12b">Gemma 4 · 12B</option></select>

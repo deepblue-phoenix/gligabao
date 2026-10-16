@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.29.2] - 2026-10-26
+
+### Added
+- On startup the Go server pings the sidecar's `/health` (5 s timeout). If the sidecar is not operating correctly, the server still starts: it logs a warning, sets the `server.SidecarActive` flag to false and runs without a sidecar client, so everything that needs the sidecar answers 503 ("sidecar is not active") or does nothing instead of failing. The check runs once; restart the server after starting the sidecar.
+- Admin endpoint `GET /v1/gb/admin/api/training/status` (`{"sidecar_active": bool}`). The admin UI's training view shows a "Sidecar not active" notice and disables `Run` when it is false.
+
+### Changed
+- The 503 the training endpoints answer without a sidecar now says "sidecar is not active" (was "not configured").
+
 ## [0.29.1] - 2026-10-26
 
 ### Added

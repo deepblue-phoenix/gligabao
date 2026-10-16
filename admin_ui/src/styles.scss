@@ -652,3 +652,4 @@ tr.removing {
 }
 .tr-line.tr-status { color: $accent; }
 .tr-line.error { color: $err; }
+.sidecar-warning { padding: 0.5rem 0.75rem; border: 1px solid $err; border-radius: 4px; }
