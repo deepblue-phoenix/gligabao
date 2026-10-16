@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.26.1] - 2026-10-25
+
+### Added
+- Sidecar training datasets: a `TrainingDataset` pydantic model (`side_car/ai_train/api/models.py`) used by the dataset endpoints, which are now also served at `POST /datasets/upload` and `GET /datasets/list` (the old `/upload_dataset` and `/list_datasets` still work).
+- The Go sidecar client (`internal/sidecar`) gains `UploadTrainingDataset` and `ListTrainingDatasets` and a `TrainingDataset` type, kept separate from the memory `Dataset`.
+
+### Changed
+- Dataset timestamps returned by the sidecar (`uploaded_at`, `modified_at`) are now timezone-aware UTC, so the Go client can parse them.
+
 ## [0.26.0] - 2026-10-25
 
 ### Added
