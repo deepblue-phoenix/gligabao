@@ -62,8 +62,7 @@ sidecar/ai_train/
   app.py                      # declares the remote functions + CLI entrypoint (provider-neutral)
   config.py                   # TrainConfig, overridable by env vars
   training_data.py            # local path of the dataset
-  requirements_train.txt      # 4B image: Unsloth stack
-  requirements_gemma4_12b.txt # 12B image: plain transformers + peft + trl (no Unsloth)
+  requirements_train.txt      # the Unsloth image (4B and 12B)
   requirements_web.txt        # web API image
   finetune_data/              # generate_dataset.py + the 325-example tool-calling dataset
   (training docs moved to top-level docs/training/)
@@ -76,10 +75,9 @@ sidecar/ai_train/
     training_common.py        # dataset loading, SFTConfig, adapter saving
     progress.py               # Trainer callback writing live progress events
     progress_events.py        # the progress file format: write/read events (no heavy imports)
-    model_load.py, model_train.py            # 4B via Unsloth
-    model_train_gemma4_12b.py                # 12B without Unsloth (training + inference loading)
+    model_load.py, model_train.py            # 4B and 12B via Unsloth
     inference.py              # generate with the trained adapter
-    bootstrap.py              # ping + train dispatch by backend
+    bootstrap.py              # ping + train
   api/
     api.py                    # FastAPI app (training jobs, progress, generate, eval, datasets)
   providers/
@@ -88,9 +86,9 @@ sidecar/ai_train/
     __init__.py               # get_provider(name)
 ```
 
-### Why two training paths
+### One training path for both sizes
 
-`google/gemma-4-E4B-it` (4B) uses the `gemma4` architecture, which Unsloth supports. `google/gemma-4-12B-it` uses the newer `gemma4_unified` architecture, which needs `transformers>=5.10.1`; Unsloth pins `transformers<=5.5.0` and has no loader for it. So 12B trains and serves through plain transformers + peft + trl in a separate image, and 4B stays on Unsloth. Both save LoRA adapters to `/models/finetuned_model_<size>`. Details in the `model_train_gemma4_12b.py` docstring and `docs/training/MODEL_SIZES.md`.
+`google/gemma-4-E4B-it` (4B) uses the `gemma4` architecture and `google/gemma-4-12B-it` (12B) the newer `gemma4_unified` one. Both train and serve through Unsloth (2026.10.x, which supports `transformers<=5.17` and `gemma4_unified`) in one shared image built from `requirements_train.txt` (CUDA 12.8, torch 2.10+). The sizes differ only in their settings (`model_config.py`), GPU and Modal function (`train_4b` / `train_12b`, `generate_4b` / `generate_12b`). Both save LoRA adapters to `/models/finetuned_model_<size>`, so they never overwrite each other. See [training/MODEL_SIZES.md](training/MODEL_SIZES.md).
 
 ### Running it (Modal)
 
@@ -163,7 +161,7 @@ Rules that keep it swappable:
 
 - Nothing outside `providers/` imports a provider SDK, and `ai_train_core/` / `api/` (the code that runs in the container) never do.
 - `app = provider.native_app` is a module-level object because provider CLIs such as `modal run` look for it.
-- Code that runs remotely imports `ai_train_core` inside the function body, since it only exists in the container's `/pkg` mount, and the heavy ML imports are per image (the 12B image has no Unsloth).
+- Code that runs remotely imports `ai_train_core` inside the function body, since it only exists in the container's `/pkg` mount, and the heavy ML imports (Unsloth, torch) exist only in the GPU image.
 
 To add a provider (e.g. AWS): implement `Provider` in `providers/aws_provider.py` and add one branch to `get_provider` in `providers/__init__.py`. If the new provider cannot express something in `FunctionSpec`, extend `FunctionSpec` rather than leaking provider details into `app.py`.
 

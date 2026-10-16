@@ -1,20 +1,14 @@
 """Gemma-4 model sizes and their training settings. Pure data: no heavy imports.
 
-Two training backends exist because of how Google ships the checkpoints:
-
-- "unsloth":      google/gemma-4-E4B-it ships the plain `gemma4` model_type, which Unsloth
-                  supports (fast kernels, low memory). See model_load.py / model_train.py.
-- "transformers": google/gemma-4-12B-it ships the newer `gemma4_unified` architecture, which
-                  Unsloth cannot load (its transformers<=5.5.0 pin predates it). Trained with
-                  plain transformers + peft + trl in a separate image. See
-                  model_train_gemma4_12b.py and requirements_gemma4_12b.txt.
+Both sizes train and serve through Unsloth (see model_load.py / model_train.py) in one image
+(requirements_train.txt). google/gemma-4-12B-it ships the newer `gemma4_unified` architecture,
+which Unsloth supports from 2026.10.x.
 """
 
 MODEL_CONFIGS = {
     "4b": {
         "model_name": "google/gemma-4-E4B-it",
         "display_name": "Gemma-4 4B",
-        "backend": "unsloth",
         "total_params": "4B",
         "trainable_params_r16": "~60M",
         "trainable_percent_r16": "1.5%",
@@ -27,7 +21,6 @@ MODEL_CONFIGS = {
     "12b": {
         "model_name": "google/gemma-4-12B-it",
         "display_name": "Gemma-4 12B",
-        "backend": "transformers",
         "total_params": "12B",
         "trainable_params_r16": "~180M",
         "trainable_percent_r16": "1.5%",

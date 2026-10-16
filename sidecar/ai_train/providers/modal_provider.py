@@ -39,7 +39,7 @@ class ModalProvider(Provider):
             return self._images[spec]
         if spec.gpu:
             img = modal.Image.from_registry(
-                "nvidia/cuda:12.4.1-devel-ubuntu22.04", add_python=spec.python)
+                "nvidia/cuda:12.8.1-devel-ubuntu22.04", add_python=spec.python)
         else:
             img = modal.Image.debian_slim(python_version=spec.python)
         if _has_requirements(spec.requirements_path):

@@ -1,8 +1,7 @@
-"""Unsloth model loading for Gemma-4 4B (training and inference).
+"""Unsloth model loading for Gemma-4 4B and 12B (training and inference).
 
 Imports `unsloth` at module scope: only import this in the Unsloth image
-(requirements_train.txt). The 12B model cannot be loaded through Unsloth; see
-model_train_gemma4_12b.py.
+(requirements_train.txt).
 """
 from pathlib import Path
 
@@ -20,9 +19,6 @@ def load_gemma4_model(model_size: str = "4b", max_seq_length: int = 2048, load_i
     Needs HF_TOKEN (a secret, see SIDECAR_HF_SECRET) for gated models.
     """
     config = get_model_config(model_size)
-    if config["backend"] != "unsloth":
-        raise ValueError(f"{config['display_name']} cannot be loaded with Unsloth; "
-                         f"use ai_train_core.model_train_gemma4_12b")
 
     print(f"\n[2/5] Loading {config['display_name']} ({config['model_name']}), recommended GPU {config['recommended_gpu']}")
     model, tokenizer = FastLanguageModel.from_pretrained(

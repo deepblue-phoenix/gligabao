@@ -1,22 +1,17 @@
 """Generation with a fine-tuned adapter. Runs inside the GPU container for the given model size.
 
-Backend (and therefore image) depends on the model size, see model_config.py: 4B goes through
-Unsloth, 12B through plain transformers+peft.
+Loads through Unsloth, so it needs the Unsloth GPU image.
 """
 from typing import Callable, Optional
 
-from .model_config import get_model_config
 from .prompt_format import extract_model_response, format_inference_prompt
 
 
 def _load(model_size: str, max_seq_length: int, load_in_4bit: bool):
-    """-> (model, tokenizer_or_processor, config, adapter_dir). Imports lazily per backend."""
-    if get_model_config(model_size)["backend"] == "unsloth":
-        from .model_load import load_finetuned_model_for_inference
-        return load_finetuned_model_for_inference(
-            model_size=model_size, max_seq_length=max_seq_length, load_in_4bit=load_in_4bit)
-    from .model_train_gemma4_12b import load_finetuned_gemma4_12b_for_inference
-    return load_finetuned_gemma4_12b_for_inference(load_in_4bit=load_in_4bit, max_seq_length=max_seq_length)
+    """-> (model, tokenizer_or_processor, config, adapter_dir). Imported lazily: only the GPU image has unsloth."""
+    from .model_load import load_finetuned_model_for_inference
+    return load_finetuned_model_for_inference(
+        model_size=model_size, max_seq_length=max_seq_length, load_in_4bit=load_in_4bit)
 
 
 def generate_response(prompt: str, max_tokens: int, temperature: float, model_size: str,

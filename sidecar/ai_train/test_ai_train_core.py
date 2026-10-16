@@ -19,7 +19,7 @@ from ai_train_core import dataset, paths, progress_events
 from ai_train_core.model_config import MODEL_CONFIGS, get_model_config
 from ai_train_core.prompt_format import extract_model_response, format_inference_prompt, format_instruction
 
-REQUIRED_KEYS = ["model_name", "display_name", "backend", "total_params", "trainable_params_r16",
+REQUIRED_KEYS = ["model_name", "display_name", "total_params", "trainable_params_r16",
                  "trainable_percent_r16", "recommended_gpu", "default_gpu", "min_gpu_memory",
                  "recommended_batch_size", "recommended_grad_accumulation"]
 
@@ -30,10 +30,6 @@ class ModelConfigTest(unittest.TestCase):
             for key in REQUIRED_KEYS:
                 self.assertIn(key, cfg, f"{size} missing {key}")
             self.assertEqual(cfg["recommended_batch_size"] * cfg["recommended_grad_accumulation"], 8)
-
-    def test_backends(self):
-        self.assertEqual(get_model_config("4b")["backend"], "unsloth")
-        self.assertEqual(get_model_config("12B")["backend"], "transformers")
 
     def test_invalid_size(self):
         with self.assertRaises(ValueError):
@@ -147,8 +143,7 @@ class RunTrainTest(unittest.TestCase):
     def test_completed(self):
         fake = mock.Mock()
         fake.run_finetuning.return_value = {"status": "success", "final_loss": 0.25}
-        with mock.patch.dict(sys.modules, {"ai_train_core.model_train": fake}), \
-                mock.patch("ai_train_core.bootstrap.get_model_config", return_value={"backend": "unsloth"}):
+        with mock.patch.dict(sys.modules, {"ai_train_core.model_train": fake}):
             self.bootstrap.run_train(3, "4b", dataset="mine.jsonl", job_id="jc")
         self.assertEqual(fake.run_finetuning.call_args.kwargs["dataset_path"], f"{paths.DATA_DIR}/mine.jsonl")
         self.assertEqual(fake.run_finetuning.call_args.kwargs["job_id"], "jc")
@@ -159,8 +154,7 @@ class RunTrainTest(unittest.TestCase):
     def test_failed(self):
         fake = mock.Mock()
         fake.run_finetuning.side_effect = RuntimeError("out of memory")
-        with mock.patch.dict(sys.modules, {"ai_train_core.model_train": fake}), \
-                mock.patch("ai_train_core.bootstrap.get_model_config", return_value={"backend": "unsloth"}):
+        with mock.patch.dict(sys.modules, {"ai_train_core.model_train": fake}):
             with self.assertRaises(RuntimeError):
                 self.bootstrap.run_train(3, "4b", job_id="jf")
         st = self.statuses("jf")

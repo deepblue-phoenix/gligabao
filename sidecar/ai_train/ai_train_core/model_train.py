@@ -1,6 +1,4 @@
-"""Fine-tuning pipeline for Gemma-4 via Unsloth (4B). Unsloth image only.
-
-For the 12B model see model_train_gemma4_12b.py (no Unsloth).
+"""Fine-tuning pipeline for Gemma-4 via Unsloth (4B and 12B). Unsloth image only.
 """
 import unsloth  # noqa: F401  must be imported before torch/trl/transformers/peft
 from typing import Callable, Optional

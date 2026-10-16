@@ -76,14 +76,11 @@ curl -X POST $URL/training/job_start -H "Content-Type: application/json" \
 Defaults come from `ai_train_core/model_config.py` (`default_gpu`): `4b` -> `a10g`, `12b` -> `a100`.
 `SIDECAR_GPU` overrides both.
 
-### Training backends
+### Training stack
 
-| Size | Backend | Image requirements | Code |
-|---|---|---|---|
-| 4b | Unsloth | `requirements_train.txt` | `model_load.py`, `model_train.py` |
-| 12b | plain transformers + peft + trl | `requirements_gemma4_12b.txt` | `model_train_gemma4_12b.py` |
+Both sizes train and serve through Unsloth, in one shared image (`requirements_train.txt`: unsloth 2026.10.x, torch 2.10+, CUDA 12.8). Code: `model_load.py`, `model_train.py`, `inference.py`.
 
-`google/gemma-4-12B-it` ships the `gemma4_unified` architecture (needs `transformers>=5.10.1`), which Unsloth cannot load. See the `model_train_gemma4_12b.py` docstring.
+`google/gemma-4-12B-it` ships the newer `gemma4_unified` architecture, which Unsloth supports from 2026.10.x (earlier releases pinned `transformers<=5.5.0` and could not load it). If its output looks broken, see Unsloth issue [#6028](https://github.com/unslothai/unsloth/issues/6028).
 
 ### LoRA Configuration
 

@@ -13,7 +13,7 @@ Run (Modal):
 Cloud-specific code lives in providers/. This file only declares *what* to run.
 
 Two training images exist because of Gemma-4's architectures (see ai_train_core/model_config.py):
-4B uses Unsloth (requirements_train.txt); 12B uses plain transformers+peft (requirements_gemma4_12b.txt).
+Both sizes use Unsloth (requirements_train.txt, one shared image).
 """
 import os
 import sys
@@ -57,8 +57,7 @@ WEB_VOLS = _volumes(paths.DATA_DIR, paths.EVAL_DIR, paths.PROGRESS_DIR)
 # Images. Code is mounted last, so code edits don't rebuild the pip layers.
 CPU_IMAGE = ImageSpec(gpu=False)
 WEB_IMAGE = ImageSpec(gpu=False, requirements_path=f"{modd_str}/requirements_web.txt")
-UNSLOTH_IMAGE = ImageSpec(gpu=True, requirements_path=f"{modd_str}/requirements_train.txt")             # 4B
-TRANSFORMERS_IMAGE = ImageSpec(gpu=True, requirements_path=f"{modd_str}/requirements_gemma4_12b.txt")  # 12B (no Unsloth)
+UNSLOTH_IMAGE = ImageSpec(gpu=True, requirements_path=f"{modd_str}/requirements_train.txt")             # 4B and 12B
 
 
 #-----------------------------------------------------------------------------------------
@@ -95,7 +94,7 @@ def train_4b(num_train_steps: int = 100, dataset: str = "", job_id: str = "") ->
     return bootstrap.run_train(num_train_steps, "4b", commit_fn=provider.commit_volumes, dataset=dataset, job_id=job_id)
 
 
-@provider.function(FunctionSpec(image=TRANSFORMERS_IMAGE, gpu=CONFIG.gpu_for("12b"),
+@provider.function(FunctionSpec(image=UNSLOTH_IMAGE, gpu=CONFIG.gpu_for("12b"),
                                 timeout_s=CONFIG.train_timeout_s, volumes=TRAIN_VOLS, secrets=secrets))
 def train_12b(num_train_steps: int = 100, dataset: str = "", job_id: str = "") -> dict:
     from ai_train_core import bootstrap
@@ -133,7 +132,7 @@ def generate_4b(prompt: str, max_tokens: int = 1024, temperature: float = 0.7) -
     return _generate(prompt, max_tokens, temperature, "4b")
 
 
-@provider.function(FunctionSpec(image=TRANSFORMERS_IMAGE, gpu=CONFIG.gpu_for("12b"), timeout_s=600,
+@provider.function(FunctionSpec(image=UNSLOTH_IMAGE, gpu=CONFIG.gpu_for("12b"), timeout_s=600,
                                 volumes=INFER_VOLS, secrets=secrets))
 def generate_12b(prompt: str, max_tokens: int = 1024, temperature: float = 0.7) -> dict:
     return _generate(prompt, max_tokens, temperature, "12b")

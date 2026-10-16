@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.36.0] - 2026-10-29
+
+### Changed
+- Training image modernised (`sidecar/ai_train/requirements_train.txt`): `unsloth`/`unsloth_zoo` 2026.10.6, `torch>=2.10`, `torchao>=0.16`, `transformers` up to 5.17, `trl` up to 1.15. The old caps are gone. Base image and wheels are now CUDA 12.8 (`nvidia/cuda:12.8.1`, `cu128`), also for the 12B fallback requirements. Redeploy the Modal app to rebuild.
+- The 12B model (`google/gemma-4-12B-it`, `gemma4_unified`) now trains and serves through Unsloth, in the same image as 4B; `train_12b` and `generate_12b` use the shared image.
+
+### Removed
+- The plain transformers + peft + trl path for 12B (`model_train_gemma4_12b.py`, `requirements_gemma4_12b.txt`) and the per-size `backend` key in `model_config.py`: training and inference always go through Unsloth.
+
+### Fixed
+- The training job failed in `get_peft_model` with `Found an incompatible version of torchao. Found version 0.13.0, but only versions above 0.16.0 are supported`: the previous `torchao<0.14` pin conflicted with the current `peft`.
+
 ## [0.35.0] - 2026-10-29
 
 ### Added
