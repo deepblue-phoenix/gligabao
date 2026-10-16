@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// Model sizes the sidecar can train (side_car/ai_train/ai_train_core/model_config.py: MODEL_SIZES).
+// Model sizes the sidecar can train (sidecar/ai_train/ai_train_core/model_config.py: MODEL_SIZES).
 const (
 	ModelSize4B  = "4b"
 	ModelSize12B = "12b"
@@ -24,7 +24,7 @@ const (
 	DefaultModelSize     = ModelSize4B
 )
 
-// TrainingJob is a training job started on the sidecar (side_car/ai_train/api/models.py: TrainingJob). The sidecar
+// TrainingJob is a training job started on the sidecar (sidecar/ai_train/api/models.py: TrainingJob). The sidecar
 // reports it back when a job is started.
 type TrainingJob struct {
 	// JobID is the sidecar's ID of the job: it names the job's progress file there (see StreamTrainingJobEvents).

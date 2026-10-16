@@ -1,4 +1,4 @@
-"""Modal backend: the web API of the `gligabao-train` Modal app (side_car/ai_train/app.py, `serve_api`)."""
+"""Modal backend: the web API of the `gligabao-train` Modal app (sidecar/ai_train/app.py, `serve_api`)."""
 import asyncio
 from typing import Optional
 

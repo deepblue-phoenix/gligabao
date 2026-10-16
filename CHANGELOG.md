@@ -12,7 +12,7 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
 - `GET /v1/gb/training/dataset-records`: use `GET /v1/gb/training/datasets`.
 
 ### Kept
-- The Python `TrainingDataset` pydantic model (`side_car/ai_train/api/models.py`) stays, as the sidecar's internal way to load and pass a dataset around (`payload()` decodes its base64 `content`; new `TrainingDataset.from_path`). It is no longer an endpoint body or answer.
+- The Python `TrainingDataset` pydantic model (`sidecar/ai_train/api/models.py`) stays, as the sidecar's internal way to load and pass a dataset around (`payload()` decodes its base64 `content`; new `TrainingDataset.from_path`). It is no longer an endpoint body or answer.
 
 ### Changed
 - `GET /v1/gb/training/datasets` now lists the datasets from the Go server's database (the records `dataset-records` returned) instead of asking the sidecar, so it works with the sidecar or Modal down. The admin UI's dataset picker uses it.
@@ -59,8 +59,8 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
 ## [0.29.1] - 2026-10-26
 
 ### Added
-- The sidecar now serves the training and dataset API itself (`POST /training/job_start`, `GET /training/job_progress`, `GET /training/job_events` (SSE), `POST /infer/query`, `POST /evals/add_to_dataset`, `GET /evals/get_dataset_count`, `POST /datasets/upload`, `GET /datasets/list`; `side_car/routes.py`) and forwards each request to a pluggable **backend** (`side_car/backends/`). The Go server only knows the sidecar API, not what runs behind it. Previously the local sidecar had only `/health`, so the admin UI's dataset list and training calls failed with 404. A backend that cannot be reached gives `502 {"error": ...}`.
-- `modal` backend: forwards to the web API of the deployed Modal app (`modal deploy app.py` in `side_car/ai_train`), whose URL it looks up through the Modal SDK on the first request. New settings: `SIDECAR_BACKEND` (default `modal`), `SIDECAR_APP_NAME` (default `gligabao-train`) and `SIDECAR_MODAL_WEB_URL` (skip the lookup, e.g. for `modal serve`).
+- The sidecar now serves the training and dataset API itself (`POST /training/job_start`, `GET /training/job_progress`, `GET /training/job_events` (SSE), `POST /infer/query`, `POST /evals/add_to_dataset`, `GET /evals/get_dataset_count`, `POST /datasets/upload`, `GET /datasets/list`; `sidecar/routes.py`) and forwards each request to a pluggable **backend** (`sidecar/backends/`). The Go server only knows the sidecar API, not what runs behind it. Previously the local sidecar had only `/health`, so the admin UI's dataset list and training calls failed with 404. A backend that cannot be reached gives `502 {"error": ...}`.
+- `modal` backend: forwards to the web API of the deployed Modal app (`modal deploy app.py` in `sidecar/ai_train`), whose URL it looks up through the Modal SDK on the first request. New settings: `SIDECAR_BACKEND` (default `modal`), `SIDECAR_APP_NAME` (default `gligabao-train`) and `SIDECAR_MODAL_WEB_URL` (skip the lookup, e.g. for `modal serve`).
 
 ### Changed
 - The Modal credentials (`MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`) are required only when the backend is `modal`.
@@ -69,7 +69,7 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
 ## [0.29.0] - 2026-10-26
 
 ### Changed
-- The sidecar's settings (`SIDECAR_HOST`, `SIDECAR_PORT`) are now held in one immutable pydantic struct, `SidecarConfig` (`side_car/sidecar_config.py`), loaded once at startup with `SidecarConfig.from_env()` and passed to `create_app(config)` (kept on `app.state.config`). An invalid value (e.g. a non-numeric or out-of-range port) stops the sidecar at startup with a validation error. `Dockerfile.sidecar` copies the new file.
+- The sidecar's settings (`SIDECAR_HOST`, `SIDECAR_PORT`) are now held in one immutable pydantic struct, `SidecarConfig` (`sidecar/sidecar_config.py`), loaded once at startup with `SidecarConfig.from_env()` and passed to `create_app(config)` (kept on `app.state.config`). An invalid value (e.g. a non-numeric or out-of-range port) stops the sidecar at startup with a validation error. `Dockerfile.sidecar` copies the new file.
 - The sidecar now requires Modal API credentials: `SidecarConfig` has `modal_token_id` and `modal_token_secret` (env `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`), and the sidecar refuses to start if either is missing or empty, instead of failing at the first training call. They are `SecretStr`s, so they do not appear in logs. Pass them to the container with `docker run -e MODAL_TOKEN_ID -e MODAL_TOKEN_SECRET ...`.
 
 ## [0.28.0] - 2026-10-26
@@ -92,7 +92,7 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
 ## [0.27.0] - 2026-10-26
 
 ### Added
-- `TrainingJob` struct on both sides: the sidecar's `POST /training/job_start` now returns it (`job_id`, `status`, `model_size`, `num_train_steps`, `started_at`, a timezone-aware UTC timestamp; `side_car/ai_train/api/models.py`), and the Go sidecar client (`internal/sidecar`) decodes it with the new `Client.StartTrainingJob`. The earlier response fields are unchanged. The sidecar now also rejects a `num_train_steps` that is not a positive integer (400).
+- `TrainingJob` struct on both sides: the sidecar's `POST /training/job_start` now returns it (`job_id`, `status`, `model_size`, `num_train_steps`, `started_at`, a timezone-aware UTC timestamp; `sidecar/ai_train/api/models.py`), and the Go sidecar client (`internal/sidecar`) decodes it with the new `Client.StartTrainingJob`. The earlier response fields are unchanged. The sidecar now also rejects a `num_train_steps` that is not a positive integer (400).
 - `gb_training_job_runs` table (sqlite and postgres): one row for each training job the sidecar reported as started (job ID, status, model size, steps, when it started, when the row was made). Go: `relational.RecordTrainingJobRun` and `GetTrainingJobRun`.
 - Admin endpoint `POST /v1/gb/admin/api/training/jobs[?db=<name>]`, body `{"num_train_steps"?, "model_size"?}` (`"4b"` or `"12b"`; omitted fields take the sidecar's defaults). It calls the sidecar's REST API through the Go client, records the job and answers 201 with the stored row. 400 for a bad body, 502 if the sidecar fails (nothing is recorded), 503 if no sidecar is set. Served with the admin UI.
 - Config `sidecar_url` (env `SIDECAR_URL`, default `http://127.0.0.1:8787`): where the sidecar listens.
@@ -111,7 +111,7 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
 ## [0.26.1] - 2026-10-25
 
 ### Added
-- Sidecar training datasets: a `TrainingDataset` pydantic model (`side_car/ai_train/api/models.py`) used by the dataset endpoints, served at `POST /datasets/upload` and `GET /datasets/list`.
+- Sidecar training datasets: a `TrainingDataset` pydantic model (`sidecar/ai_train/api/models.py`) used by the dataset endpoints, served at `POST /datasets/upload` and `GET /datasets/list`.
 - The Go sidecar client (`internal/sidecar`) gains `UploadTrainingDataset` and `ListTrainingDatasets` and a `TrainingDataset` type, kept separate from the memory `Dataset`.
 
 ### Changed
@@ -120,7 +120,7 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
 ## [0.26.0] - 2026-10-25
 
 ### Added
-- Gemma-4 fine-tuning and inference in `side_car/ai_train/`, ported from `gloflow_phoenix/gf_phoenix/ai_train`: 4B (`google/gemma-4-E4B-it`, Unsloth, A10G) and 12B (`google/gemma-4-12B-it`, plain transformers + peft + trl, A100, because its `gemma4_unified` architecture cannot be loaded by Unsloth). Each size has its own image (`requirements_train.txt`, `requirements_gemma4_12b.txt`).
+- Gemma-4 fine-tuning and inference in `sidecar/ai_train/`, ported from `gloflow_phoenix/gf_phoenix/ai_train`: 4B (`google/gemma-4-E4B-it`, Unsloth, A10G) and 12B (`google/gemma-4-12B-it`, plain transformers + peft + trl, A100, because its `gemma4_unified` architecture cannot be loaded by Unsloth). Each size has its own image (`requirements_train.txt`, `requirements_gemma4_12b.txt`).
 - `modal run app.py` actions `sync`, `validate`, `train --model-size 4b|12b` (replaces the stub) and `generate --prompt ...`; `modal serve app.py` serves the web API (`/training/job_start`, `/training/job_progress`, `/infer/query`, `/evals/*` and `/datasets/*` endpoints, `/healthz`).
 - Live training progress written to the progress volume, adapters saved per size under `/models/finetuned_model_<size>`, the 325-example tool-calling dataset and its generator in `finetune_data/`, Gemma-4 docs in `docs/training/`, and local unit tests (`python -m unittest test_ai_train_core`).
 - Provider interface gains `asgi_app`, `reload_volumes` and per-path `commit_volumes`; new config `SIDECAR_VOL_EVAL` and `SIDECAR_VOL_HF_CACHE`.
@@ -132,7 +132,7 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
 ## [0.25.0] - 2026-10-25
 
 ### Added
-- Training bootstrap skeleton in `side_car/ai_train/`, modelled on `gloflow_phoenix/gf_phoenix/ai_train`: `app.py` declares the remote functions (`ping`, a stub `train`) and a CLI entrypoint (`modal run app.py [--action ping|train]`); `config.py` holds provider-neutral settings (env overridable: `SIDECAR_PROVIDER`, `SIDECAR_GPU`, `SIDECAR_HF_SECRET`, volume names); `ai_train_core/bootstrap.py` is the code that runs inside the container.
+- Training bootstrap skeleton in `sidecar/ai_train/`, modelled on `gloflow_phoenix/gf_phoenix/ai_train`: `app.py` declares the remote functions (`ping`, a stub `train`) and a CLI entrypoint (`modal run app.py [--action ping|train]`); `config.py` holds provider-neutral settings (env overridable: `SIDECAR_PROVIDER`, `SIDECAR_GPU`, `SIDECAR_HF_SECRET`, volume names); `ai_train_core/bootstrap.py` is the code that runs inside the container.
 - Compute providers sit behind `providers/base.py` (`Provider`, `FunctionSpec`, `ImageSpec`); Modal is the only implementation (`providers/modal_provider.py`, the only file importing `modal`), so others such as AWS can be added later.
 - [docs/sidecar.md](docs/sidecar.md) gains a "Remote training bootstrap" section: layout, how to run it, the `SIDECAR_*` settings, the provider abstraction and how to add a provider.
 
@@ -144,7 +144,7 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
 ## [0.24.0] - 2026-10-24
 
 ### Added
-- Python sidecar skeleton in `side_car/`: `main_sidecar.py` is a minimal FastAPI server (`GET /health`) listening on `SIDECAR_HOST:SIDECAR_PORT` (default `127.0.0.1:8787`); dependencies in `side_car/requirements.txt`.
+- Python sidecar skeleton in `sidecar/`: `main_sidecar.py` is a minimal FastAPI server (`GET /health`) listening on `SIDECAR_HOST:SIDECAR_PORT` (default `127.0.0.1:8787`); dependencies in `sidecar/requirements.txt`.
 - `Dockerfile.sidecar` packages the sidecar, and `run_build_sidecar.sh [image[:tag]]` builds the image (default `gligabao-sidecar:latest`).
 - Go client for the sidecar in `internal/sidecar` (`sidecar.New`, `Client.Health`).
 - [docs/sidecar.md](docs/sidecar.md): documents the sidecar, its container and the Go client, linked from the README.

@@ -1,4 +1,4 @@
-// Package sidecar is the client the Go server uses to talk to the Python sidecar (side_car/main_sidecar.py) over HTTP.
+// Package sidecar is the client the Go server uses to talk to the Python sidecar (sidecar/main_sidecar.py) over HTTP.
 package sidecar
 
 import (
@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// DefaultBaseURL is where the sidecar listens by default (SIDECAR_PORT in side_car/main_sidecar.py).
+// DefaultBaseURL is where the sidecar listens by default (SIDECAR_PORT in sidecar/main_sidecar.py).
 const DefaultBaseURL = "http://127.0.0.1:8787"
 
 // Client calls the sidecar's HTTP API.

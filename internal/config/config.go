@@ -92,7 +92,7 @@ type Config struct {
 	// AdminUI registers the admin UI handlers (served at /v1/gb/admin/). Default false; `serve --admin-ui` turns it on.
 	// Needs a binary built with the web assets embedded (./run_build.sh, on by default).
 	AdminUI bool `toml:"admin_ui"`
-	// SidecarURL is the base URL of the Python sidecar's REST API (side_car/), which runs the training jobs the admin
+	// SidecarURL is the base URL of the Python sidecar's REST API (sidecar/), which runs the training jobs the admin
 	// endpoint POST /v1/gb/v1/gb/training/jobs starts. Default: SIDECAR_URL, else http://127.0.0.1:8787.
 	SidecarURL string `toml:"sidecar_url"`
 	// Prices overrides/extends the built-in per-model price table used to compute LLM call costs.

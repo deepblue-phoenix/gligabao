@@ -575,5 +575,5 @@ print(response)
 **Last Updated**: 2026-07-11  
 **Author**: Gloflow AI Training Team  
 **Related Files**: 
-- `side_car/ai_train/ai_train_core/model_train.py`
-- `side_car/ai_train/ai_train_core/model_load.py`
+- `sidecar/ai_train/ai_train_core/model_train.py`
+- `sidecar/ai_train/ai_train_core/model_load.py`

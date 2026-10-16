@@ -1,6 +1,6 @@
 """Local unit tests for the provider-neutral training code. No GPU, Modal or ML libs needed.
 
-    cd side_car/ai_train && python -m unittest test_ai_train_core -v
+    cd sidecar/ai_train && python -m unittest test_ai_train_core -v
 """
 import base64
 import json

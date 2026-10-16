@@ -1,7 +1,7 @@
 """Training bootstrap, provider-neutral wiring.
 
 Run (Modal):
-    cd side_car/ai_train
+    cd sidecar/ai_train
     modal run app.py                                          # ping: checks image/volumes
     modal run app.py --action sync                            # upload the local dataset to the data volume
     modal run app.py --action validate                        # validate the remote dataset

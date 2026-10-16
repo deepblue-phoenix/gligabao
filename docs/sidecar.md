@@ -1,11 +1,11 @@
 # Python sidecar
 
-`internal/api/training/`, `side_car/`, `side_car/routes.py`, `side_car/backends/`, `side_car/ai_train/`, `Dockerfile.sidecar`, `docker-compose.yml`, `run_build_sidecar.sh`, `internal/sidecar/`
+`internal/api/training/`, `sidecar/`, `sidecar/routes.py`, `sidecar/backends/`, `sidecar/ai_train/`, `Dockerfile.sidecar`, `docker-compose.yml`, `run_build_sidecar.sh`, `internal/sidecar/`
 
 The sidecar is a small Python service that runs next to the Go server and that the server talks to over HTTP. It exists for work that is easier to do in Python (libraries that have no good Go equivalent). **The Go server only ever talks to the sidecar, and the sidecar proxies to the compute backend (Modal today).** The Go code never calls Modal or any other provider, never holds provider credentials and never learns what runs behind the sidecar's REST API.
 
 ```
-Go server ── HTTP ──► sidecar (side_car/, FastAPI) ── HTTP ──► backend: web API of the Modal app (side_car/ai_train)
+Go server ── HTTP ──► sidecar (sidecar/, FastAPI) ── HTTP ──► backend: web API of the Modal app (sidecar/ai_train)
 internal/sidecar        routes.py → Backend.forward              runs the jobs on a cloud GPU
 ```
 
@@ -13,7 +13,7 @@ The sidecar answers a health check itself and forwards the training/dataset API,
 
 ## The service
 
-`side_car/main_sidecar.py` is a [FastAPI](https://fastapi.tiangolo.com/) app run by [uvicorn](https://www.uvicorn.org/). Dependencies are in `side_car/requirements.txt`.
+`sidecar/main_sidecar.py` is a [FastAPI](https://fastapi.tiangolo.com/) app run by [uvicorn](https://www.uvicorn.org/). Dependencies are in `sidecar/requirements.txt`.
 
 | Endpoint | Response |
 |---|---|
@@ -22,11 +22,11 @@ The sidecar answers a health check itself and forwards the training/dataset API,
 
 ### Backends
 
-The routes in `side_car/routes.py` are the only API the Go server knows (`internal/sidecar/`); it never talks to Modal or any other provider. Each route is forwarded unchanged (method, query, body; status and body come back as they are, SSE streamed) to the configured `Backend` (`side_car/backends/`). A `4xx`/`5xx` from the backend reaches the Go server unchanged; if the backend cannot be reached the sidecar answers `502 {"error": ...}` (for `modal`, also when the deployed app's web URL cannot be found). To add a backend, implement `Backend.forward` in `backends/` and register it in `backends/__init__.py::get_backend`; an HTTP service that serves the same API can subclass `HttpBackend` and only provide its URL.
+The routes in `sidecar/routes.py` are the only API the Go server knows (`internal/sidecar/`); it never talks to Modal or any other provider. Each route is forwarded unchanged (method, query, body; status and body come back as they are, SSE streamed) to the configured `Backend` (`sidecar/backends/`). A `4xx`/`5xx` from the backend reaches the Go server unchanged; if the backend cannot be reached the sidecar answers `502 {"error": ...}` (for `modal`, also when the deployed app's web URL cannot be found). To add a backend, implement `Backend.forward` in `backends/` and register it in `backends/__init__.py::get_backend`; an HTTP service that serves the same API can subclass `HttpBackend` and only provide its URL.
 
-The only backend today is `modal`: the web API (`serve_api`) of the Modal app in `side_car/ai_train/app.py`. Deploy it with `cd side_car/ai_train && modal deploy app.py`; the sidecar finds its URL through the Modal SDK (once, on the first request). With `modal serve` (dev), set `SIDECAR_MODAL_WEB_URL` to the URL it prints.
+The only backend today is `modal`: the web API (`serve_api`) of the Modal app in `sidecar/ai_train/app.py`. Deploy it with `cd sidecar/ai_train && modal deploy app.py`; the sidecar finds its URL through the Modal SDK (once, on the first request). With `modal serve` (dev), set `SIDECAR_MODAL_WEB_URL` to the URL it prints.
 
-Configuration is by environment variable. At startup `main_sidecar.py` reads them once into a `SidecarConfig` (a frozen pydantic model, `side_car/sidecar_config.py`) and passes it to `create_app(config)`; the app keeps it on `app.state.config` (handlers can use the `get_config` helper). New settings are added as fields of that struct. An invalid value stops the sidecar at startup.
+Configuration is by environment variable. At startup `main_sidecar.py` reads them once into a `SidecarConfig` (a frozen pydantic model, `sidecar/sidecar_config.py`) and passes it to `create_app(config)`; the app keeps it on `app.state.config` (handlers can use the `get_config` helper). New settings are added as fields of that struct. An invalid value stops the sidecar at startup.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -43,7 +43,7 @@ With the `modal` backend the Modal credentials are checked when the config is lo
 Run it without a container:
 
 ```sh
-cd side_car
+cd sidecar
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
 export MODAL_TOKEN_ID=ak-... MODAL_TOKEN_SECRET=as-...
@@ -53,10 +53,10 @@ curl http://127.0.0.1:8787/health
 
 ## Remote training bootstrap
 
-`side_car/ai_train/` fine-tunes Gemma-4 (4B and 12B, LoRA) on a cloud provider and serves the result. It is ported from `gloflow_phoenix/gf_phoenix/ai_train` and restructured so the cloud-specific parts sit behind a provider interface. It is the Modal side of the `modal` backend: it runs on Modal, is not imported by `main_sidecar.py`, and is not copied into `Dockerfile.sidecar`.
+`sidecar/ai_train/` fine-tunes Gemma-4 (4B and 12B, LoRA) on a cloud provider and serves the result. It is ported from `gloflow_phoenix/gf_phoenix/ai_train` and restructured so the cloud-specific parts sit behind a provider interface. It is the Modal side of the `modal` backend: it runs on Modal, is not imported by `main_sidecar.py`, and is not copied into `Dockerfile.sidecar`.
 
 ```
-side_car/ai_train/
+sidecar/ai_train/
   app.py                      # declares the remote functions + CLI entrypoint (provider-neutral)
   config.py                   # TrainConfig, overridable by env vars
   training_data.py            # local path of the dataset
@@ -95,7 +95,7 @@ side_car/ai_train/
 Needs the `modal` CLI, logged in (`pip install modal && modal setup`), and a provider secret holding `HF_TOKEN` for the Gemma weights (`SIDECAR_HF_SECRET`).
 
 ```sh
-cd side_car/ai_train
+cd sidecar/ai_train
 modal run app.py                                   # ping: image, volumes, GPU info, whether HF_TOKEN is set
 modal run app.py --action sync                     # upload finetune_data/*.jsonl to the data volume (only if newer)
 modal run app.py --action validate                 # check the remote dataset
@@ -132,7 +132,7 @@ A dataset lives on the Go server only (file + `gb_training_datasets` record). Wh
 
 The sidecar's address is `sidecar_url` / `SIDECAR_URL` (default `http://127.0.0.1:8787`).
 
-Local tests: `cd side_car/ai_train && python -m unittest test_ai_train_core -v`.
+Local tests: `cd sidecar/ai_train && python -m unittest test_ai_train_core -v`.
 
 ### Configuration
 
@@ -218,9 +218,9 @@ The tests (`internal/sidecar/*_test.go`) run the client against an `httptest` se
 
 ## Adding an endpoint
 
-1. Add the path to `ROUTES` in `side_car/routes.py`. It is then forwarded to the backend as it is.
-2. Implement it in the backend: for `modal`, a route of the web API in `side_car/ai_train/api/`. Another backend must serve the same path.
+1. Add the path to `ROUTES` in `sidecar/routes.py`. It is then forwarded to the backend as it is.
+2. Implement it in the backend: for `modal`, a route of the web API in `sidecar/ai_train/api/`. Another backend must serve the same path.
 3. Add a method to `Client` in `internal/sidecar` (a new file per topic, like `training_jobs.go`), with typed request and response structs. Keep all calls to the sidecar in that package, and never call a backend from Go.
 4. If the Go server should start it, add an admin handler in `internal/api/admin` that takes the client through a small interface.
-5. A route answered by the sidecar itself, like `/health`, goes in `side_car/main_sidecar.py` instead (and any new package in `side_car/requirements.txt`). If the Dockerfile must copy new files, update `Dockerfile.sidecar`.
+5. A route answered by the sidecar itself, like `/health`, goes in `sidecar/main_sidecar.py` instead (and any new package in `sidecar/requirements.txt`). If the Dockerfile must copy new files, update `Dockerfile.sidecar`.
 6. Document the endpoint in the tables above.

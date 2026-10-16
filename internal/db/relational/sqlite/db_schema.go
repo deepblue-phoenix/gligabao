@@ -119,7 +119,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_model_runs_model ON gb_model_runs(model_id);
 --                        made, in order. A list, because a stage makes one run per chunk (and an embedding request is a run).
 -- All the DATETIME columns follow the convention of db_time.go.
 
--- Training jobs started on the sidecar (internal/sidecar, side_car/ai_train): ONE ROW PER JOB the sidecar reported as started,
+-- Training jobs started on the sidecar (internal/sidecar, sidecar/ai_train): ONE ROW PER JOB the sidecar reported as started,
 -- made from the TrainingJob it returned from POST /training/job_start.
 --   job_id           the sidecar's ID of the job (names its progress file there); provider_job_id is the compute provider's
 --   status           'started' when the sidecar reports the job started, then the job's status events ('running', 'training'),

@@ -18,7 +18,7 @@ const (
 	EventProgress = "progress"
 )
 
-// TrainingEvent is one event of a training job's progress (side_car/ai_train/ai_train_core/progress_events.py): a status
+// TrainingEvent is one event of a training job's progress (sidecar/ai_train/ai_train_core/progress_events.py): a status
 // change or a progress report. Fields that an event does not have are nil / empty.
 type TrainingEvent struct {
 	// Seq is the event's index in the job's progress file (the SSE id); StreamTrainingJobEvents sets it.

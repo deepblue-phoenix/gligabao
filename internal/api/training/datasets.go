@@ -29,7 +29,7 @@ import (
 // MaxDatasetBytes is the largest dataset file the upload accepts.
 const MaxDatasetBytes = 64 << 20
 
-// datasetFilenameRe is what the sidecar accepts as a dataset's file name (side_car/ai_train/ai_train_core/dataset.py).
+// datasetFilenameRe is what the sidecar accepts as a dataset's file name (sidecar/ai_train/ai_train_core/dataset.py).
 var datasetFilenameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.jsonl$`)
 
 // ValidateDataset checks that content is a JSONL training dataset, the format the training reads (see

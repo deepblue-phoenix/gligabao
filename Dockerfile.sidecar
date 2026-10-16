@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1
 
-# The Python sidecar (side_car/): a FastAPI server the Go server talks to over HTTP.
+# The Python sidecar (sidecar/): a FastAPI server the Go server talks to over HTTP.
 FROM python:3.13-slim
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
-COPY side_car/requirements.txt ./
+COPY sidecar/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-COPY side_car/main_sidecar.py side_car/sidecar_config.py side_car/routes.py ./
-COPY side_car/backends ./backends
+COPY sidecar/main_sidecar.py sidecar/sidecar_config.py sidecar/routes.py ./
+COPY sidecar/backends ./backends
 RUN useradd --uid 10002 --no-create-home sidecar
 USER sidecar
 # Inside a container it must listen on all interfaces to be reachable through the published port.

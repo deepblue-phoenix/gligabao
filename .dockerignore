@@ -3,5 +3,5 @@ bin/*
 !bin/gligabao.toml
 admin_ui/node_modules
 admin_ui/dist
-side_car/__pycache__
-side_car/.venv
+sidecar/__pycache__
+sidecar/.venv
