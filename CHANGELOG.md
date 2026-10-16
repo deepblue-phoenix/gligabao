@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.29.4] - 2026-10-26
+
+### Added
+- `run_server_sidecar_local.sh` runs the Python sidecar locally (dev only), and `run_server_local.sh` now starts it first if nothing answers on its health endpoint, and stops it when the server ends. The sidecar needs `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`; without them the server still starts, with a warning.
+
+### Changed
+- Docs: `docs/sidecar.md` and the README now say that the Go server only ever talks to the sidecar and the sidecar proxies to Modal (with a diagram), no longer call the sidecar a skeleton, and document the startup health check and `GET /v1/gb/admin/api/sidecar/status`, the Go client's training methods and `StatusError`, that the container copies `routes.py` and `backends/`, that the sidecar needs the Modal tokens (and that `docker-compose.yml` does not pass them yet), and the new steps for adding an endpoint.
+
 ## [0.29.3] - 2026-10-26
 
 ### Added
