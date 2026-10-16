@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.32.0] - 2026-10-27
+
+### Added
+- `GET /v1/gb/training/datasets/preview?filename=<name>[&lines=<n>][&db=]`: the first lines (default 100, at most 1000) of a dataset's file, with the record count and whether the file has more. Only the start of the file is read.
+- Admin UI, Training view: clicking a dataset in the list opens a modal with the first 100 lines of its file, so it can be inspected.
+
 ## [0.31.0] - 2026-10-26
 
 ### Removed

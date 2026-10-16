@@ -13,11 +13,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -228,5 +230,87 @@ func ListDatasetsOf(dbs []Database) http.HandlerFunc {
 			ds = []relational.TrainingDataset{}
 		}
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{"datasets": ds})
+	}
+}
+
+// Limits of the dataset preview: the lines returned, and the bytes read from the file to find them.
+const (
+	previewDefaultLines = 100
+	previewMaxLines     = 1000
+	previewReadBytes    = 4 << 20
+)
+
+// PreviewDatasetOf serves GET /v1/gb/training/datasets/preview?filename=<name>[&lines=<n>][&db=<name>]: the first lines
+// (default 100, at most 1000) of a dataset's file, so it can be inspected: {"filename", "lines": [...], "num_records",
+// "truncated"}. truncated is true if the file has more lines than returned. Only the beginning of the file is read. An
+// unknown dataset answers 404.
+func PreviewDatasetOf(dbs []Database) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		n, ok := pick(dbs, q.Get("db"))
+		if !ok {
+			httputil.Error(w, http.StatusNotFound, "unknown database")
+			return
+		}
+		name := q.Get("filename")
+		if !datasetFilenameRe.MatchString(name) {
+			httputil.Error(w, http.StatusBadRequest, "invalid dataset file name")
+			return
+		}
+		limit := previewDefaultLines
+		if v := q.Get("lines"); v != "" {
+			l, err := strconv.Atoi(v)
+			if err != nil || l < 1 || l > previewMaxLines {
+				httputil.Error(w, http.StatusBadRequest, fmt.Sprintf("lines must be between 1 and %d", previewMaxLines))
+				return
+			}
+			limit = l
+		}
+		ds, err := relational.GetTrainingDatasetByFilename(r.Context(), n.DB, name)
+		if errors.Is(err, relational.ErrNotFound) {
+			httputil.Error(w, http.StatusNotFound, "unknown dataset")
+			return
+		} else if err != nil {
+			log.WithError(err).Error("training: read training dataset failed")
+			httputil.Error(w, http.StatusInternalServerError, "failed to read the dataset's record")
+			return
+		}
+		f, err := os.Open(filepath.Join(n.DatasetDir, ds.Filename))
+		if err != nil {
+			log.WithError(err).WithField("filename", name).Error("training: open training dataset file failed")
+			httputil.Error(w, http.StatusNotFound, fmt.Sprintf("the file of dataset %s is missing; upload it again", name))
+			return
+		}
+		defer f.Close()
+		buf, err := io.ReadAll(io.LimitReader(f, previewReadBytes+1))
+		if err != nil {
+			log.WithError(err).WithField("filename", name).Error("training: read training dataset file failed")
+			httputil.Error(w, http.StatusInternalServerError, "failed to read the dataset file")
+			return
+		}
+		cut := len(buf) > previewReadBytes // the file goes on past what was read
+		if cut {
+			buf = buf[:previewReadBytes]
+			if i := bytes.LastIndexByte(buf, '\n'); i >= 0 {
+				buf = buf[:i+1] // drop the partial last line
+			}
+		}
+		lines := []string{}
+		truncated := cut
+		for len(buf) > 0 {
+			if len(lines) == limit {
+				truncated = true
+				break
+			}
+			var line []byte
+			if i := bytes.IndexByte(buf, '\n'); i >= 0 {
+				line, buf = buf[:i], buf[i+1:]
+			} else {
+				line, buf = buf, nil
+			}
+			lines = append(lines, strings.ToValidUTF8(strings.TrimSuffix(string(line), "\r"), "\uFFFD"))
+		}
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
+			"filename": ds.Filename, "lines": lines, "num_records": ds.NumRecords, "truncated": truncated})
 	}
 }

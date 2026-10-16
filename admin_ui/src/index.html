@@ -129,7 +129,7 @@
               <button type="button" id="training-upload">Upload</button>
             </div>
             <p id="training-upload-status" class="muted"></p>
-            <table id="training-datasets" hidden>
+            <table id="training-datasets" class="clickable" hidden>
               <thead><tr><th>File</th><th>Status</th><th class="num">Records</th><th class="num">Size</th><th>Uploaded (UTC)</th></tr></thead>
               <tbody></tbody>
             </table>
@@ -203,6 +203,15 @@
         <button type="button" id="history-close">Close</button>
       </div>
       <div id="history-canvas"></div>
+    </dialog>
+
+    <dialog id="dataset-modal" class="modal">
+      <div class="modal-head">
+        <h2 id="dataset-title">Dataset</h2>
+        <span id="dataset-status" class="muted"></span>
+        <button type="button" id="dataset-close">Close</button>
+      </div>
+      <div class="modal-body"><pre id="dataset-content" class="dataset-lines"></pre></div>
     </dialog>
 
     <dialog id="vectors-modal" class="modal">

@@ -445,6 +445,11 @@ tr.removing {
   pointer-events: none;
 }
 
+#dataset-modal[open] { width: min(96vw, 60rem); height: fit-content; min-height: 12rem; max-height: 80vh; }
+.dataset-lines { margin: 0; font-size: 0.8rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.dataset-lines .ln { display: block; padding: 0.15rem 0; border-bottom: 1px solid $border; }
+.dataset-lines .ln-no { color: $muted; margin-right: 0.6rem; user-select: none; }
+
 #vectors-modal[open] { height: fit-content; min-height: 12rem; max-height: 88vh; }
 
 // --- Remember image overlay (image.ts): tinted backdrop above the whole UI, image left, metadata right ---

@@ -20,6 +20,7 @@ interface FeedEvent {
 interface Point { step: number; loss: number }
 
 const MAX_FEED_LINES = 500;
+const PREVIEW_LINES = 100;
 const FINISHED = ["completed", "failed"];
 
 function el<T extends HTMLElement>(id: string): T {
@@ -170,7 +171,8 @@ function renderDatasetRecords(list: DatasetRecord[], entries?: Map<string, strin
   for (const d of list) {
     entries?.set(d.filename, `${d.filename} (${fmtBytes(d.size_bytes)}, ${d.num_records} records)`);
     const tr = body.insertRow();
-    tr.title = `sha256 ${d.sha256}`;
+    tr.title = `sha256 ${d.sha256}\nClick to inspect the first ${PREVIEW_LINES} lines`;
+    tr.addEventListener("click", () => void showDataset(d.filename));
     tr.insertCell().textContent = d.filename;
     const st = tr.insertCell();
     st.appendChild(node("span", `badge ${d.status === "synced" ? "badge-ok" : "badge-active"}`, d.status === "synced" ? "on sidecar" : "stored"));
@@ -182,6 +184,35 @@ function renderDatasetRecords(list: DatasetRecord[], entries?: Map<string, strin
     size.className = "num";
     size.textContent = fmtBytes(d.size_bytes);
     tr.insertCell().textContent = fmtTime(d.updated_at);
+  }
+}
+
+// Opens the modal with the first lines of a dataset's file, to inspect it.
+async function showDataset(filename: string): Promise<void> {
+  const modal = el<HTMLDialogElement>("dataset-modal");
+  const status = el("dataset-status");
+  const content = el("dataset-content");
+  el("dataset-title").textContent = filename;
+  status.className = "muted";
+  status.textContent = "Loading…";
+  content.replaceChildren();
+  if (!modal.open) modal.showModal();
+  try {
+    const res = await fetch(`../training/datasets/preview?${new URLSearchParams({ filename, lines: String(PREVIEW_LINES) })}`);
+    if (!res.ok) throw await failure(res);
+    const data = (await res.json()) as { filename: string; lines: string[]; num_records: number; truncated: boolean };
+    if (!modal.open || el("dataset-title").textContent !== filename) return; // closed (or another one opened) while loading
+    data.lines.forEach((line, i) => {
+      const row = node("span", "ln");
+      row.append(node("span", "ln-no", String(i + 1)), line);
+      content.append(row);
+    });
+    status.textContent = data.truncated
+      ? `First ${data.lines.length} lines of ${data.num_records} records`
+      : `All ${data.lines.length} lines`;
+  } catch (err) {
+    status.className = "error";
+    status.textContent = `Could not read the dataset: ${errText(err)}`;
   }
 }
 
@@ -385,6 +416,9 @@ export function initTraining(): void {
   const view = el("view-training");
   el("training-run").addEventListener("click", () => void run());
   el("training-upload").addEventListener("click", () => void uploadDataset());
+  const datasetModal = el<HTMLDialogElement>("dataset-modal");
+  el("dataset-close").addEventListener("click", () => datasetModal.close());
+  datasetModal.addEventListener("click", (e) => { if (e.target === datasetModal) datasetModal.close(); });
   el("training-refresh").addEventListener("click", () => { void loadDatasets(); void loadJobs(); });
   // The SSE streams are open only while the view is shown (a browser allows few connections to a host).
   const sync = (): void => {

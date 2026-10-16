@@ -39,6 +39,13 @@ func TestTrainingEndpointsAreNotAdmin(t *testing.T) {
 		if rec := do(httptest.NewRequest("GET", "/v1/gb/training/datasets", nil)); rec.Code != 200 || !strings.Contains(rec.Body.String(), "a.jsonl") { // no sidecar needed
 			t.Fatalf("datasets: %d %s", rec.Code, rec.Body)
 		}
+		if rec := do(httptest.NewRequest("GET", "/v1/gb/training/datasets/preview?filename=a.jsonl&lines=5", nil)); rec.Code != 200 ||
+			!strings.Contains(rec.Body.String(), `"truncated":false`) || !strings.Contains(rec.Body.String(), `"lines":["{\"instruction`) {
+			t.Fatalf("preview: %d %s", rec.Code, rec.Body)
+		}
+		if rec := do(httptest.NewRequest("GET", "/v1/gb/training/datasets/preview?filename=nope.jsonl", nil)); rec.Code != http.StatusNotFound {
+			t.Fatalf("preview unknown: %d", rec.Code)
+		}
 		if rec := do(httptest.NewRequest("GET", "/v1/gb/training/jobs", nil)); rec.Code != 200 {
 			t.Fatalf("jobs: %d %s", rec.Code, rec.Body)
 		}
