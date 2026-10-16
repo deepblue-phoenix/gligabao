@@ -187,6 +187,26 @@ function renderDatasetRecords(list: DatasetRecord[], entries?: Map<string, strin
   }
 }
 
+// Appends a JSON line to parent with its tokens in spans (json-key, json-str, json-num, json-lit, json-punct). It is a
+// plain tokenizer, not a parser, so a line that is not valid JSON is still shown whole. Text goes in as textContent only.
+const JSON_TOKEN = /("(?:\\.|[^"\\])*")(\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[{}[\],:]/g;
+function appendJSON(parent: HTMLElement, line: string): void {
+  let last = 0;
+  for (const m of line.matchAll(JSON_TOKEN)) {
+    if (m.index > last) parent.append(line.slice(last, m.index));
+    if (m[1] !== undefined) {
+      parent.append(node("span", m[2] !== undefined ? "json-key" : "json-str", m[1]));
+      if (m[2] !== undefined) parent.append(node("span", "json-punct", m[2]));
+    } else {
+      const t = m[0];
+      const cls = /^[{}[\],:]$/.test(t) ? "json-punct" : /^(true|false|null)$/.test(t) ? "json-lit" : "json-num";
+      parent.append(node("span", cls, t));
+    }
+    last = m.index + m[0].length;
+  }
+  if (last < line.length) parent.append(line.slice(last));
+}
+
 // Opens the modal with the first lines of a dataset's file, to inspect it.
 async function showDataset(filename: string): Promise<void> {
   const modal = el<HTMLDialogElement>("dataset-modal");
@@ -204,7 +224,8 @@ async function showDataset(filename: string): Promise<void> {
     if (!modal.open || el("dataset-title").textContent !== filename) return; // closed (or another one opened) while loading
     data.lines.forEach((line, i) => {
       const row = node("span", "ln");
-      row.append(node("span", "ln-no", String(i + 1)), line);
+      row.append(node("span", "ln-no", String(i + 1)));
+      appendJSON(row, line);
       content.append(row);
     });
     status.textContent = data.truncated

@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.32.1] - 2026-10-27
+
+### Changed
+- Admin UI: the dataset preview modal colors each JSON line (keys, strings, numbers, true/false/null, punctuation).
+
 ## [0.32.0] - 2026-10-27
 
 ### Added
