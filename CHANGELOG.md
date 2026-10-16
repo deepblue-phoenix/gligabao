@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.24.1] - 2026-10-24
+
+### Added
+- `docker-compose.yml` runs the server and the Python sidecar together on one private network (`gligabao`). The server waits for the sidecar's health check, reaches it at `http://sidecar:8787`, keeps its data in the `gligabao-data` volume, and both ports are published on `127.0.0.1` only. `docker compose up --build` starts both (set `ANTHROPIC_API_KEY`, optionally `OPENAI_API_KEY`).
+
 ## [0.24.0] - 2026-10-24
 
 ### Added

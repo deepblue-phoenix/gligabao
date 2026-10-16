@@ -41,6 +41,17 @@ docker run --rm -p 127.0.0.1:8787:8787 gligabao-sidecar:latest
 
 Publish the port on `127.0.0.1` (as above) unless the sidecar must be reachable from other machines: it has no authentication.
 
+### With docker compose
+
+`docker-compose.yml` starts the server and the sidecar on the same network (`gligabao`):
+
+```sh
+export ANTHROPIC_API_KEY=...
+docker compose up --build
+```
+
+On that network the server reaches the sidecar at `http://sidecar:8787` (the service name; `127.0.0.1` would be the server's own container). The server starts only once the sidecar's `/health` check passes. Both ports are published on `127.0.0.1` only; the server's data lives in the `gligabao-data` volume.
+
 ## The Go client
 
 `internal/sidecar/sidecar.go` is the only place in the Go code that knows the sidecar's HTTP API.

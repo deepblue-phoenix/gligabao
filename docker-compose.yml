@@ -1,0 +1,59 @@
+# Runs the gligabao server and its Python sidecar on one private network.
+#
+#   export ANTHROPIC_API_KEY=...     # required for remember/recall
+#   export OPENAI_API_KEY=...        # optional: embeddings (without it no vectors are stored)
+#   docker compose up --build
+#
+# Server:  http://127.0.0.1:7878   (GET /health)
+# Sidecar: http://127.0.0.1:8787   (GET /health)
+#
+# Inside the network the containers reach each other by service name: the server finds the sidecar at
+# http://sidecar:8787 (not 127.0.0.1, which inside a container is the container itself).
+
+services:
+  gligabao:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gligabao:latest
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "127.0.0.1:7878:7878"
+    volumes:
+      # SQLite db, vector store and images (/data in the image).
+      - gligabao-data:/data
+    depends_on:
+      sidecar:
+        condition: service_healthy
+    networks:
+      - gligabao
+    restart: unless-stopped
+
+  sidecar:
+    build:
+      context: .
+      dockerfile: Dockerfile.sidecar
+    image: gligabao-sidecar:latest
+    # The image already sets SIDECAR_HOST=0.0.0.0 and SIDECAR_PORT=8787.
+    # The sidecar has no authentication: it is published on localhost only, and other containers on the
+    # "gligabao" network reach it directly as sidecar:8787 (the published port is only for your own debugging).
+    ports:
+      - "127.0.0.1:8787:8787"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - gligabao
+    restart: unless-stopped
+
+networks:
+  gligabao:
+    driver: bridge
+
+volumes:
+  gligabao-data:
