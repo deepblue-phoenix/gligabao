@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.25.0] - 2026-10-25
+
+### Added
+- Training bootstrap skeleton in `side_car/ai_train/`, modelled on `gloflow_phoenix/gf_phoenix/ai_train`: `app.py` declares the remote functions (`ping`, a stub `train`) and a CLI entrypoint (`modal run app.py [--action ping|train]`); `config.py` holds provider-neutral settings (env overridable: `SIDECAR_PROVIDER`, `SIDECAR_GPU`, `SIDECAR_HF_SECRET`, volume names); `ai_train_core/bootstrap.py` is the code that runs inside the container.
+- Compute providers sit behind `providers/base.py` (`Provider`, `FunctionSpec`, `ImageSpec`); Modal is the only implementation (`providers/modal_provider.py`, the only file importing `modal`), so others such as AWS can be added later.
+- [docs/sidecar.md](docs/sidecar.md) gains a "Remote training bootstrap" section: layout, how to run it, the `SIDECAR_*` settings, the provider abstraction and how to add a provider.
+
 ## [0.24.1] - 2026-10-24
 
 ### Added

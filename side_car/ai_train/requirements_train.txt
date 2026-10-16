@@ -1,0 +1,2 @@
+# Dependencies for the remote train image (installed by the provider at image build).
+# Empty on purpose: add torch/transformers/trl/... here one at a time as training grows.
