@@ -12,12 +12,16 @@ The sidecar is a small Python service that runs next to the Go server and that t
 |---|---|
 | `GET /health` | `200 {"status": "ok"}` |
 
-Configuration is by environment variable:
+Configuration is by environment variable. At startup `main_sidecar.py` reads them once into a `SidecarConfig` (a frozen pydantic model, `side_car/sidecar_config.py`) and passes it to `create_app(config)`; the app keeps it on `app.state.config` (handlers can use the `get_config` helper). New settings are added as fields of that struct. An invalid value stops the sidecar at startup.
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `SIDECAR_HOST` | `127.0.0.1` | Interface to listen on. Local only by default, as the sidecar has no authentication. |
 | `SIDECAR_PORT` | `8787` | Port to listen on. |
+| `MODAL_TOKEN_ID` | *(required)* | Modal API token id. |
+| `MODAL_TOKEN_SECRET` | *(required)* | Modal API token secret. |
+
+The Modal credentials are checked when the config is loaded: the sidecar refuses to start if either is missing or empty (they are held as `SecretStr`, so they do not show up in logs). Create a token with `modal token new`; a `~/.modal.toml` is not read by this check.
 
 Run it without a container:
 
@@ -25,6 +29,7 @@ Run it without a container:
 cd side_car
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
+export MODAL_TOKEN_ID=ak-... MODAL_TOKEN_SECRET=as-...
 python main_sidecar.py              # listens on 127.0.0.1:8787
 curl http://127.0.0.1:8787/health
 ```
@@ -147,12 +152,12 @@ To add a provider (e.g. AWS): implement `Provider` in `providers/aws_provider.py
 
 ## The container
 
-`Dockerfile.sidecar` (in the repo root; the plain `Dockerfile` is the Go server's) packages the sidecar on `python:3.13-slim`: it installs the requirements, copies `main_sidecar.py`, runs as the non-root user `sidecar` and starts `python main_sidecar.py`. The image sets `SIDECAR_HOST=0.0.0.0` (a container must listen on all interfaces for a published port to reach it) and exposes `8787`.
+`Dockerfile.sidecar` (in the repo root; the plain `Dockerfile` is the Go server's) packages the sidecar on `python:3.13-slim`: it installs the requirements, copies `main_sidecar.py` and `sidecar_config.py`, runs as the non-root user `sidecar` and starts `python main_sidecar.py`. The image sets `SIDECAR_HOST=0.0.0.0` (a container must listen on all interfaces for a published port to reach it) and exposes `8787`.
 
 ```sh
 ./run_build_sidecar.sh                         # builds gligabao-sidecar:latest
 ./run_build_sidecar.sh myrepo/sidecar:dev      # or a name of your choice
-docker run --rm -p 127.0.0.1:8787:8787 gligabao-sidecar:latest
+docker run --rm -p 127.0.0.1:8787:8787 -e MODAL_TOKEN_ID -e MODAL_TOKEN_SECRET gligabao-sidecar:latest
 ```
 
 Publish the port on `127.0.0.1` (as above) unless the sidecar must be reachable from other machines: it has no authentication.

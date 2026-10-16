@@ -1,20 +1,37 @@
 """Minimal gligabao sidecar: a FastAPI server listening on a local port."""
-import os
+import sys
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from pydantic import ValidationError
 
-app = FastAPI(title="gligabao sidecar")
+from sidecar_config import SidecarConfig
 
 
-@app.get("/health")
-def health() -> dict:
-    return {"status": "ok"}
+def get_config(request: Request) -> SidecarConfig:
+    """The config the app was created with, for use in request handlers."""
+    return request.app.state.config
+
+
+def create_app(config: SidecarConfig) -> FastAPI:
+    """Build the app. `config` is kept on `app.state.config`; pass it on to anything that needs config values."""
+    app = FastAPI(title="gligabao sidecar")
+    app.state.config = config
+
+    @app.get("/health")
+    def health() -> dict:
+        return {"status": "ok"}
+
+    return app
+
+
+def main(config: SidecarConfig) -> None:
+    uvicorn.run(create_app(config), host=config.host, port=config.port)
 
 
 if __name__ == "__main__":
-    uvicorn.run(
-        app,
-        host=os.environ.get("SIDECAR_HOST", "127.0.0.1"),
-        port=int(os.environ.get("SIDECAR_PORT", "8787")),
-    )
+    try:
+        cfg = SidecarConfig.from_env()
+    except ValidationError as e:
+        sys.exit(f"invalid sidecar config (Modal credentials are MODAL_TOKEN_ID and MODAL_TOKEN_SECRET):\n{e}")
+    main(cfg)

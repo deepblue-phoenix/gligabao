@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.29.0] - 2026-10-26
+
+### Changed
+- The sidecar's settings (`SIDECAR_HOST`, `SIDECAR_PORT`) are now held in one immutable pydantic struct, `SidecarConfig` (`side_car/sidecar_config.py`), loaded once at startup with `SidecarConfig.from_env()` and passed to `create_app(config)` (kept on `app.state.config`). An invalid value (e.g. a non-numeric or out-of-range port) stops the sidecar at startup with a validation error. `Dockerfile.sidecar` copies the new file.
+- The sidecar now requires Modal API credentials: `SidecarConfig` has `modal_token_id` and `modal_token_secret` (env `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`), and the sidecar refuses to start if either is missing or empty, instead of failing at the first training call. They are `SecretStr`s, so they do not appear in logs. Pass them to the container with `docker run -e MODAL_TOKEN_ID -e MODAL_TOKEN_SECRET ...`.
+
 ## [0.28.0] - 2026-10-26
 
 ### Added
