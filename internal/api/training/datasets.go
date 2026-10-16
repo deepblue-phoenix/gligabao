@@ -1,8 +1,9 @@
 package training
 
 // Training datasets: a JSONL file uploaded through the Go server is validated, saved as a file in the
-// training dataset directory and recorded in the gb_training_datasets table. The sidecar plays no part in the upload: the
-// file is sent to it when a training job that uses the dataset is started (see syncTrainingDataset).
+// training dataset directory and recorded in the gb_training_datasets table. Datasets are managed by the Go server alone:
+// the sidecar has no dataset endpoints. The file travels to the sidecar inside the request that starts a training job on
+// it (see loadTrainingDataset); the sidecar stores it internally.
 
 import (
 	"bytes"
@@ -22,14 +23,8 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
-	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
 	log "github.com/sirupsen/logrus"
 )
-
-// DatasetUploader sends a training dataset to the sidecar; *sidecar.Client is one.
-type DatasetUploader interface {
-	UploadTrainingDataset(ctx context.Context, filename string, content []byte) (sidecar.UploadTrainingDatasetResponse, error)
-}
 
 // MaxDatasetBytes is the largest dataset file the upload accepts.
 const MaxDatasetBytes = 64 << 20
@@ -190,45 +185,33 @@ func UploadDatasetOf(dbs []Database) http.HandlerFunc {
 	}
 }
 
-// syncTrainingDataset makes sure the sidecar has the dataset named filename before a job trains on it. A dataset that
-// has no record here was not uploaded through the server (it is on the sidecar already, or the sidecar rejects the job):
-// nothing to do. A recorded dataset the sidecar already has in its current version (status synced) is not sent again.
-// Otherwise its file is read from dir, checked against the record's digest, sent to the sidecar and marked synced. The
-// returned error is safe to show to the user.
-func syncTrainingDataset(ctx context.Context, n Database, up DatasetUploader, filename string) error {
+var errUnknownDataset = errors.New("unknown dataset")
+
+// loadTrainingDataset returns the record and the file of the dataset named filename, to be sent to the sidecar with a
+// job. The file is read from the dataset directory and checked against the record's digest. An unknown name gives
+// errUnknownDataset. The other errors are safe to show to the user.
+func loadTrainingDataset(ctx context.Context, n Database, filename string) (*relational.TrainingDataset, []byte, error) {
 	ds, err := relational.GetTrainingDatasetByFilename(ctx, n.DB, filename)
 	if errors.Is(err, relational.ErrNotFound) {
-		return nil
+		return nil, nil, errUnknownDataset
 	} else if err != nil {
 		log.WithError(err).Error("training: read training dataset failed")
-		return errors.New("failed to read the dataset's record")
-	}
-	if ds.Status == relational.TrainingDatasetSynced {
-		return nil
+		return nil, nil, errors.New("failed to read the dataset's record")
 	}
 	content, err := os.ReadFile(filepath.Join(n.DatasetDir, ds.Filename))
 	if err != nil {
 		log.WithError(err).WithField("filename", filename).Error("training: read training dataset file failed")
-		return fmt.Errorf("the file of dataset %s is missing; upload it again", filename)
+		return nil, nil, fmt.Errorf("the file of dataset %s is missing; upload it again", filename)
 	}
 	if sum := sha256.Sum256(content); hex.EncodeToString(sum[:]) != ds.SHA256 {
-		return fmt.Errorf("the file of dataset %s does not match its record; upload it again", filename)
+		return nil, nil, fmt.Errorf("the file of dataset %s does not match its record; upload it again", filename)
 	}
-	if _, err := up.UploadTrainingDataset(ctx, ds.Filename, content); err != nil {
-		log.WithError(err).WithField("filename", filename).Error("training: send training dataset to the sidecar failed")
-		return errSidecarDataset
-	}
-	if _, err := relational.MarkTrainingDatasetSynced(ctx, n.DB, ds.ID, ds.SHA256); err != nil {
-		log.WithError(err).WithField("filename", filename).Error("training: mark training dataset synced failed")
-	}
-	return nil
+	return ds, content, nil
 }
 
-var errSidecarDataset = errors.New("sidecar failed to take the dataset")
-
-// ListDatasetRecordsOf serves GET /v1/gb/training/dataset-records[?db=<name>]: {"datasets": [...]}, the
-// datasets uploaded through the server (relational.TrainingDataset), the latest upload first.
-func ListDatasetRecordsOf(dbs []Database) http.HandlerFunc {
+// ListDatasetsOf serves GET /v1/gb/training/datasets[?db=<name>]: {"datasets": [...]}, the training datasets
+// (relational.TrainingDataset) of the database, the latest upload first. It never asks the sidecar.
+func ListDatasetsOf(dbs []Database) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		n, ok := pick(dbs, r.URL.Query().Get("db"))
 		if !ok {
@@ -240,6 +223,9 @@ func ListDatasetRecordsOf(dbs []Database) http.HandlerFunc {
 			log.WithError(err).Error("training: list training dataset records failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to list the datasets")
 			return
+		}
+		if ds == nil {
+			ds = []relational.TrainingDataset{}
 		}
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{"datasets": ds})
 	}

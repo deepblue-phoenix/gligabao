@@ -19,8 +19,6 @@ import (
 // Sidecar is what the training handlers need from the sidecar; *sidecar.Client is one.
 type Sidecar interface {
 	JobStarter
-	DatasetUploader
-	ListTrainingDatasets(ctx context.Context) ([]sidecar.TrainingDataset, error)
 	StreamTrainingJobEvents(ctx context.Context, jobID string, from int, fn func(sidecar.TrainingEvent) error) error
 }
 

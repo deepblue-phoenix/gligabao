@@ -9,7 +9,6 @@ interface Job {
   num_train_steps: number; last_step: number; last_loss: number | null; final_loss: number | null; error?: string;
   started_at: string; finished_at: string | null;
 }
-interface Dataset { filename: string; size_bytes?: number; modified_at?: string }
 interface DatasetRecord {
   id: number; filename: string; size_bytes: number; num_records: number; sha256: string; status: "stored" | "synced";
   updated_at: string; synced_at: string | null;
@@ -138,41 +137,25 @@ async function checkSidecar(): Promise<boolean> {
   return active;
 }
 
-// Fills the dataset picker with the datasets uploaded to the server (they are sent to the sidecar when a job starts on
-// them) and the ones already on the sidecar. The sidecar being down only leaves out its own list.
+// Fills the dataset picker with the datasets of the server (the only place datasets are managed; a job's dataset travels
+// to the sidecar with the job). It needs no sidecar.
 async function loadDatasets(): Promise<void> {
-  const active = await checkSidecar();
+  await checkSidecar();
   const sel = el<HTMLSelectElement>("training-dataset");
   const status = el("training-run-status");
   const keep = sel.value;
   const entries = new Map<string, string>(); // filename -> label
-  let sidecarErr = "";
   try {
-    const res = await fetch("../training/dataset-records");
+    const res = await fetch("../training/datasets");
     if (!res.ok) throw await failure(res);
     renderDatasetRecords(((await res.json()) as { datasets: DatasetRecord[] }).datasets ?? [], entries);
   } catch (err) {
     status.className = "error";
-    status.textContent = `Could not list the uploaded datasets: ${errText(err)}`;
-  }
-  if (active) {
-    try {
-      const res = await fetch("../training/datasets");
-      if (!res.ok) throw await failure(res);
-      for (const d of ((await res.json()) as { datasets: Dataset[] }).datasets ?? []) {
-        if (!entries.has(d.filename)) entries.set(d.filename, d.size_bytes != null ? `${d.filename} (${fmtBytes(d.size_bytes)})` : d.filename);
-      }
-    } catch (err) {
-      sidecarErr = errText(err);
-    }
+    status.textContent = `Could not list the datasets: ${errText(err)}`;
   }
   sel.replaceChildren(new Option("(sidecar default dataset)", ""));
   for (const [name, label] of [...entries].sort((a, b) => a[0].localeCompare(b[0]))) sel.add(new Option(label, name));
   sel.value = [...sel.options].some((o) => o.value === keep) ? keep : "";
-  if (sidecarErr) {
-    status.className = "error";
-    status.textContent = `Could not list the sidecar's datasets (the uploaded ones are shown): ${sidecarErr}`;
-  }
 }
 
 //---------------------------------------------------------------------------------------------

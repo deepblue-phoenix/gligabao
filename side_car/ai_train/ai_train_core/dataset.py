@@ -24,6 +24,18 @@ def resolve_dataset_path(name: str = "") -> str:
     return f"{DATA_DIR}/{name}"
 
 
+def store_dataset(name: str, content: bytes, commit_fn: Optional[Callable] = None, data_dir: str = DATA_DIR) -> None:
+    """Save a dataset on the data volume under its own name (replacing any earlier one) and commit the volume.
+    Internal: datasets have no public endpoint. Raises ValueError for a bad name."""
+    if not valid_dataset_filename(name):
+        raise ValueError(f"Invalid dataset name {name!r}: must be a plain *.jsonl file name")
+    path = Path(data_dir) / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    if commit_fn:
+        commit_fn([data_dir])
+
+
 def sync_dataset(content: bytes, local_mtime: float, commit_fn: Optional[Callable] = None,
                  dataset_path: str = REMOTE_DATASET_PATH, metadata_path: str = REMOTE_METADATA_PATH) -> dict:
     """Write the dataset to the data volume if the local copy is newer than the remote one."""

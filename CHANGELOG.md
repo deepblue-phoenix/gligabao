@@ -5,6 +5,20 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.31.0] - 2026-10-26
+
+### Removed
+- The sidecar (FastAPI and the Modal web app) no longer has dataset endpoints: `POST /datasets/upload` and `GET /datasets/list` are gone (a request now gets 404). Training datasets are managed by the Go server and its database alone. The Go client lost `UploadTrainingDataset`, `ListTrainingDatasets` and the `sidecar.TrainingDataset` type.
+- `GET /v1/gb/training/dataset-records`: use `GET /v1/gb/training/datasets`.
+
+### Kept
+- The Python `TrainingDataset` pydantic model (`side_car/ai_train/api/models.py`) stays, as the sidecar's internal way to load and pass a dataset around (`payload()` decodes its base64 `content`; new `TrainingDataset.from_path`). It is no longer an endpoint body or answer.
+
+### Changed
+- `GET /v1/gb/training/datasets` now lists the datasets from the Go server's database (the records `dataset-records` returned) instead of asking the sidecar, so it works with the sidecar or Modal down. The admin UI's dataset picker uses it.
+- A dataset reaches the sidecar inside the request that starts a job on it: `POST /training/job_start` takes an optional `dataset_content` (the jsonl file, base64) next to `dataset`, and the sidecar stores it on the data volume internally before it spawns the job (a plain `*.jsonl` name, else 400). The file is now sent with every job that uses the dataset; the record still becomes `synced` once a job has taken it.
+- Starting a job on a dataset name the server has no record of now answers 400 (it used to be passed through to the sidecar). A job without a dataset still uses the sidecar's default dataset. A client cannot send `dataset_content` itself; the server adds it from its own copy.
+
 ## [0.30.0] - 2026-10-26
 
 ### Added

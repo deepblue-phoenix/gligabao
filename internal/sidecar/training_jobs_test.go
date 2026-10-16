@@ -17,7 +17,7 @@ func TestStartTrainingJob(t *testing.T) {
 		}
 		var in StartTrainingJobRequest
 		json.NewDecoder(r.Body).Decode(&in)
-		if in.ModelSize != "12b" || in.NumTrainSteps != 7 || in.Dataset != "mine.jsonl" {
+		if in.ModelSize != "12b" || in.NumTrainSteps != 7 || in.Dataset != "mine.jsonl" || in.DatasetContent != "e30K" {
 			http.Error(w, "bad body", http.StatusBadRequest)
 			return
 		}
@@ -25,7 +25,7 @@ func TestStartTrainingJob(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	job, err := New(srv.URL).StartTrainingJob(context.Background(), StartTrainingJobRequest{NumTrainSteps: 7, ModelSize: ModelSize12B, Dataset: "mine.jsonl"})
+	job, err := New(srv.URL).StartTrainingJob(context.Background(), StartTrainingJobRequest{NumTrainSteps: 7, ModelSize: ModelSize12B, Dataset: "mine.jsonl", DatasetContent: "e30K"})
 	if err != nil {
 		t.Fatal(err)
 	}

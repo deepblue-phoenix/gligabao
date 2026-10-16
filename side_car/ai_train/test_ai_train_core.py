@@ -186,17 +186,16 @@ class ApiTest(unittest.TestCase):
         self.data.mkdir()
         self.progress.mkdir()
         for target, value in (("api.api.DATA_DIR", str(self.data)), ("api.api.PROGRESS_DIR", str(self.progress)),
-                              ("api.api.REMOTE_METADATA_PATH", str(self.data / ".metadata.json")),
                               ("ai_train_core.progress_events.PROGRESS_FILE_TEMPLATE",
                                str(self.progress) + "/training_progress_{timestamp}.jsonl")):
             p = mock.patch(target, value)
             p.start()
             self.addCleanup(p.stop)
-        self.calls = []
+        self.calls, self.commits = [], []
         api = create_api(
             spawn_training_job=lambda steps, size, ds, job_id: self.calls.append((steps, size, ds, job_id)) or "fc-1",
             generate_response=lambda *a: {"response": "ok", "args": list(a)},
-            commit_volumes=lambda p: None,
+            commit_volumes=self.commits.append,
             reload_volumes=lambda p: None,
             poll_interval_s=0.01,
             max_stream_s=0.3,
@@ -238,15 +237,36 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(self.client.post("/training/job_start", json={"dataset": bad}).status_code, 400, bad)
         self.assertEqual(len(self.calls), n)  # nothing was spawned
 
-    def test_upload_and_list_datasets(self):
-        r = self.client.post("/datasets/upload", json={"filename": "a.jsonl", "content": base64.b64encode(b"x\n").decode()})
-        self.assertEqual(r.status_code, 200)
-        self.assertEqual((self.data / "a.jsonl").read_bytes(), b"x\n")  # stored under its own name
-        r = self.client.post("/datasets/upload", json={"filename": "b.jsonl", "content": "y\n"})
-        self.assertEqual(r.status_code, 200)
-        names = sorted(d["filename"] for d in self.client.get("/datasets/list").json()["datasets"])
-        self.assertEqual(names, ["a.jsonl", "b.jsonl"])
-        self.assertEqual(self.client.post("/datasets/upload", json={"filename": "../x.jsonl", "content": "y"}).status_code, 400)
+    def test_job_start_stores_inline_dataset(self):
+        content = base64.b64encode(b'{"instruction":"a","output":"b"}\n').decode()
+        job = self.client.post("/training/job_start", json={"dataset": "new.jsonl", "dataset_content": content}).json()
+        self.assertEqual(job["dataset"], "new.jsonl")
+        self.assertEqual((self.data / "new.jsonl").read_bytes(), b'{"instruction":"a","output":"b"}\n')
+        self.assertEqual(self.commits, [[str(self.data)]])
+        n = len(self.calls)
+        for body in ({"dataset": "x.jsonl", "dataset_content": "not base64!"},
+                     {"dataset": "../x.jsonl", "dataset_content": content},
+                     {"dataset_content": content}):
+            self.assertEqual(self.client.post("/training/job_start", json=body).status_code, 400, body)
+        self.assertEqual(len(self.calls), n)
+        self.assertFalse((self.data / "x.jsonl").exists())
+
+    def test_training_dataset_model(self):
+        from api.models import TrainingDataset
+        path = self.data / "m.jsonl"
+        path.write_bytes(b"x\n")
+        ds = TrainingDataset.from_path(str(path), with_content=True)
+        self.assertEqual((ds.filename, ds.size_bytes, ds.payload()), ("m.jsonl", 2, b"x\n"))
+        self.assertNotIn("content", ds.model_dump())  # never serialized
+        self.assertIsNotNone(ds.modified_at.tzinfo)
+        self.assertIsNone(TrainingDataset.from_path(str(path)).content)
+        for bad in (None, "", "not base64!"):
+            with self.assertRaises(ValueError):
+                TrainingDataset(filename="m.jsonl", content=bad).payload()
+
+    def test_no_dataset_endpoints(self):
+        self.assertEqual(self.client.post("/datasets/upload", json={"filename": "a.jsonl", "content": "x"}).status_code, 404)
+        self.assertEqual(self.client.get("/datasets/list").status_code, 404)
 
     def test_job_events_stream(self):
         path = progress_events.progress_path("j1")

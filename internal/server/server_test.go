@@ -36,14 +36,11 @@ func TestTrainingEndpointsAreNotAdmin(t *testing.T) {
 		if rec := do(req); rec.Code != http.StatusCreated {
 			t.Fatalf("upload: %d %s", rec.Code, rec.Body)
 		}
-		if rec := do(httptest.NewRequest("GET", "/v1/gb/training/dataset-records", nil)); rec.Code != 200 || !strings.Contains(rec.Body.String(), "a.jsonl") {
-			t.Fatalf("records: %d %s", rec.Code, rec.Body)
+		if rec := do(httptest.NewRequest("GET", "/v1/gb/training/datasets", nil)); rec.Code != 200 || !strings.Contains(rec.Body.String(), "a.jsonl") { // no sidecar needed
+			t.Fatalf("datasets: %d %s", rec.Code, rec.Body)
 		}
 		if rec := do(httptest.NewRequest("GET", "/v1/gb/training/jobs", nil)); rec.Code != 200 {
 			t.Fatalf("jobs: %d %s", rec.Code, rec.Body)
-		}
-		if rec := do(httptest.NewRequest("GET", "/v1/gb/training/datasets", nil)); rec.Code != http.StatusServiceUnavailable { // no sidecar
-			t.Fatalf("datasets: %d", rec.Code)
 		}
 		if rec := do(httptest.NewRequest("POST", "/v1/gb/training/jobs", strings.NewReader("{}"))); rec.Code != http.StatusServiceUnavailable {
 			t.Fatalf("start: %d", rec.Code)

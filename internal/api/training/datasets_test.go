@@ -3,6 +3,7 @@ package training_test
 import (
 	"bytes"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"mime/multipart"
 	"net/http"
@@ -130,73 +131,79 @@ func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 
 	// The list endpoint shows the records.
 	lrec := httptest.NewRecorder()
-	training.ListDatasetRecordsOf(dbs)(lrec, httptest.NewRequest("GET", "/x", nil))
+	training.ListDatasetsOf(dbs)(lrec, httptest.NewRequest("GET", "/x", nil))
 	if lrec.Code != 200 || !strings.Contains(lrec.Body.String(), `"filename":"x.jsonl"`) || !strings.Contains(lrec.Body.String(), `"datasets":[`) {
 		t.Fatalf("list: %d %s", lrec.Code, lrec.Body)
 	}
 }
 
-// TestUploadDoesNotNeedSidecar: the upload handler takes no sidecar at all, and the dataset reaches the sidecar only when a
-// job that uses it is started (once, until the dataset is uploaded again).
-func TestStartJobSyncsDataset(t *testing.T) { dbtest.Run(t, testStartJobSyncsDataset) }
+// TestStartJobSendsDataset: the upload handler takes no sidecar at all, and the dataset reaches the sidecar only inside the
+// request that starts a job that uses it.
+func TestStartJobSendsDataset(t *testing.T) { dbtest.Run(t, testStartJobSendsDataset) }
 
-func testStartJobSyncsDataset(t *testing.T, d *sql.DB) {
+func testStartJobSendsDataset(t *testing.T, d *sql.DB) {
 	ctx := t.Context()
 	dir := t.TempDir()
 	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: dir}}
 	sc := &fakeSidecar{}
 	up := training.UploadDatasetOf(dbs)
-	start := func(dataset string) *httptest.ResponseRecorder {
+	start := func(body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		training.StartJobOf(dbs, sc, nil)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(`{"dataset":"`+dataset+`"}`)))
+		training.StartJobOf(dbs, sc, nil)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(body)))
 		return rec
+	}
+	startDS := func(dataset string) *httptest.ResponseRecorder { return start(`{"dataset":"` + dataset + `"}`) }
+	sent := func(i int) string {
+		raw, _ := base64.StdEncoding.DecodeString(sc.reqs[i].DatasetContent)
+		return string(raw)
 	}
 
 	if rec := upload(up, "/x", "file", "mine.jsonl", goodDataset, nil); rec.Code != 201 {
 		t.Fatalf("upload: %d %s", rec.Code, rec.Body)
 	}
-	if len(sc.uploads) != 0 {
-		t.Fatalf("the upload reached the sidecar: %v", sc.uploads)
+	if len(sc.reqs) != 0 {
+		t.Fatalf("the upload reached the sidecar: %v", sc.reqs)
 	}
 
-	if rec := start("mine.jsonl"); rec.Code != 201 {
+	if rec := startDS("mine.jsonl"); rec.Code != 201 {
 		t.Fatalf("start: %d %s", rec.Code, rec.Body)
 	}
-	if string(sc.uploads["mine.jsonl"]) != goodDataset || len(sc.reqs) != 1 {
-		t.Fatalf("sidecar: uploads %v, jobs %v", sc.uploads, sc.reqs)
+	if len(sc.reqs) != 1 || sc.reqs[0].Dataset != "mine.jsonl" || sent(0) != goodDataset {
+		t.Fatalf("sidecar request: %+v", sc.reqs)
 	}
 	if ds, _ := relational.GetTrainingDatasetByFilename(ctx, d, "mine.jsonl"); ds.Status != "synced" || ds.SyncedAt == nil {
 		t.Fatalf("after start: %+v", ds)
 	}
 
-	// Synced: not sent again.
-	delete(sc.uploads, "mine.jsonl")
-	if rec := start("mine.jsonl"); rec.Code != 201 || len(sc.uploads) != 0 {
-		t.Fatalf("second start: %d %s, uploads %v", rec.Code, rec.Body, sc.uploads)
-	}
-
-	// Uploaded again: sent again. A sidecar that fails stops the job (502) and keeps the dataset unsynced.
+	// Uploaded again: the new version is sent, and the dataset is "stored" until a job takes it.
 	upload(up, "/x", "file", "mine.jsonl", goodDataset+goodDataset, nil)
-	sc.upErr = errors.New("down")
-	jobs := len(sc.reqs)
-	if rec := start("mine.jsonl"); rec.Code != http.StatusBadGateway || len(sc.reqs) != jobs {
-		t.Fatalf("sidecar down: %d %s, jobs %d", rec.Code, rec.Body, len(sc.reqs))
+	if ds, _ := relational.GetTrainingDatasetByFilename(ctx, d, "mine.jsonl"); ds.Status != "stored" {
+		t.Fatalf("after re-upload: %+v", ds)
+	}
+	sc.err = errors.New("down")
+	if rec := startDS("mine.jsonl"); rec.Code != http.StatusBadGateway {
+		t.Fatalf("sidecar down: %d %s", rec.Code, rec.Body)
 	}
 	if ds, _ := relational.GetTrainingDatasetByFilename(ctx, d, "mine.jsonl"); ds.Status != "stored" {
-		t.Fatalf("after failed sync: %+v", ds)
+		t.Fatalf("after failed start: %+v", ds)
 	}
-	sc.upErr = nil
-	if rec := start("mine.jsonl"); rec.Code != 201 || string(sc.uploads["mine.jsonl"]) != goodDataset+goodDataset {
+	sc.err = nil
+	if rec := startDS("mine.jsonl"); rec.Code != 201 || sent(len(sc.reqs)-1) != goodDataset+goodDataset {
 		t.Fatalf("retry: %d %s", rec.Code, rec.Body)
 	}
 
-	// A dataset the server has no record of is left to the sidecar; a record whose file is gone is an error.
-	if rec := start("elsewhere.jsonl"); rec.Code != 201 || sc.uploads["elsewhere.jsonl"] != nil {
+	// No dataset: nothing is sent. A client cannot inject content. A name the server has no record of is refused.
+	n := len(sc.reqs)
+	if rec := start(`{"dataset_content":"eAo="}`); rec.Code != 201 || sc.reqs[n].DatasetContent != "" {
+		t.Fatalf("no dataset: %d %s, %+v", rec.Code, rec.Body, sc.reqs[n])
+	}
+	if rec := startDS("elsewhere.jsonl"); rec.Code != http.StatusBadRequest || len(sc.reqs) != n+1 {
 		t.Fatalf("unknown dataset: %d %s", rec.Code, rec.Body)
 	}
+	// A record whose file is gone is an error.
 	upload(up, "/x", "file", "lost.jsonl", goodDataset, nil)
 	os.Remove(filepath.Join(dir, "lost.jsonl"))
-	if rec := start("lost.jsonl"); rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), "upload it again") {
+	if rec := startDS("lost.jsonl"); rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), "upload it again") {
 		t.Fatalf("lost file: %d %s", rec.Code, rec.Body)
 	}
 }

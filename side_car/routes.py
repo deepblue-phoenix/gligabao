@@ -6,6 +6,8 @@ from starlette.background import BackgroundTask
 
 from backends import Backend, BackendError
 
+# There are deliberately no dataset routes: training datasets belong to the Go server (database and files), which hands a
+# dataset to the sidecar inside POST /training/job_start. The backend stores it internally.
 ROUTES = (
     ("POST", "/training/job_start"),
     ("GET", "/training/job_progress"),
@@ -13,8 +15,6 @@ ROUTES = (
     ("POST", "/infer/query"),
     ("POST", "/evals/add_to_dataset"),
     ("GET", "/evals/get_dataset_count"),
-    ("POST", "/datasets/upload"),
-    ("GET", "/datasets/list"),
 )
 
 

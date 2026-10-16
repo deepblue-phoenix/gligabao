@@ -1,8 +1,13 @@
 package sidecar
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -40,8 +45,12 @@ type TrainingJob struct {
 type StartTrainingJobRequest struct {
 	NumTrainSteps int    `json:"num_train_steps,omitempty"`
 	ModelSize     string `json:"model_size,omitempty"`
-	// Dataset is the file name of one of the sidecar's training datasets (see ListTrainingDatasets).
+	// Dataset is the file name of a training dataset ("" = the sidecar's default dataset).
 	Dataset string `json:"dataset,omitempty"`
+	// DatasetContent is the dataset's jsonl file, base64 encoded. The sidecar has no dataset endpoints (the Go server owns
+	// the datasets); it stores the file internally under the name Dataset before it starts the job. Without it Dataset
+	// must be on the sidecar's data volume already.
+	DatasetContent string `json:"dataset_content,omitempty"`
 }
 
 // StartTrainingJob starts a training job on the sidecar via POST /training/job_start and returns the job it reports.
@@ -57,4 +66,29 @@ func (c *Client) StartTrainingJob(ctx context.Context, req StartTrainingJobReque
 		return out, errors.New("sidecar: job_start returned no job_id")
 	}
 	return out, nil
+}
+
+func (c *Client) post(ctx context.Context, path string, in, out any) error {
+	body, err := json.Marshal(in)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("sidecar POST %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return &StatusError{Method: http.MethodPost, Path: path, Code: resp.StatusCode, Body: strings.TrimSpace(string(msg))}
+	}
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("sidecar POST %s: decode: %w", path, err)
+	}
+	return nil
 }

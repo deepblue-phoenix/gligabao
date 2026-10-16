@@ -18,7 +18,7 @@ The sidecar answers a health check itself and forwards the training/dataset API,
 | Endpoint | Response |
 |---|---|
 | `GET /health` | `200 {"status": "ok"}` (answered by the sidecar itself: it says the sidecar is up, not that the backend is reachable) |
-| `POST /training/job_start`, `GET /training/job_progress`, `GET /training/job_events` (SSE), `POST /infer/query`, `POST /evals/add_to_dataset`, `GET /evals/get_dataset_count`, `POST /datasets/upload`, `GET /datasets/list` | Answered by the **backend** (below) |
+| `POST /training/job_start`, `GET /training/job_progress`, `GET /training/job_events` (SSE), `POST /infer/query`, `POST /evals/add_to_dataset`, `GET /evals/get_dataset_count` | Answered by the **backend** (below) |
 
 ### Backends
 
@@ -104,9 +104,9 @@ modal run app.py --action generate --model-size 4b --prompt "..."     # run the 
 modal serve app.py                                 # web API in dev mode (`modal deploy app.py` to persist)
 ```
 
-`train` syncs the dataset first; `--dataset <file>` trains on another file of the data volume instead of the default one. Web API endpoints: `POST /training/job_start`, `GET /training/job_progress`, `GET /training/job_events` (SSE), `POST /infer/query`, `POST /evals/add_to_dataset`, `GET /evals/get_dataset_count`, `POST /datasets/upload`, `GET /datasets/list`, `GET /healthz`.
+`train` syncs the dataset first; `--dataset <file>` trains on another file of the data volume instead of the default one. Web API endpoints: `POST /training/job_start`, `GET /training/job_progress`, `GET /training/job_events` (SSE), `POST /infer/query`, `POST /evals/add_to_dataset`, `GET /evals/get_dataset_count`, `GET /healthz`.
 
-`POST /training/job_start` (body `{num_train_steps?, model_size?, dataset?}`) answers with a `TrainingJob` (`job_id`, `provider_job_id`, `status`, `model_size`, `num_train_steps`, `dataset`, `started_at`). `job_id` is assigned by the sidecar and names the job's progress file; `provider_job_id` is the compute provider's id of the spawned call. `dataset` is the file name of a `*.jsonl` on the data volume (`GET /datasets/list`); it must exist (else 400), and omitted means the default dataset. `POST /datasets/upload` (called by the Go server, not by the admin UI's upload: see below) stores the dataset under its own `filename` (a plain `*.jsonl` name, else 400), so several datasets can live side by side.
+`POST /training/job_start` (body `{num_train_steps?, model_size?, dataset?, dataset_content?}`) answers with a `TrainingJob` (`job_id`, `provider_job_id`, `status`, `model_size`, `num_train_steps`, `dataset`, `started_at`). `job_id` is assigned by the sidecar and names the job's progress file; `provider_job_id` is the compute provider's id of the spawned call. `dataset` is the file name of a `*.jsonl` on the data volume (a plain name, else 400); omitted means the default dataset. The sidecar has **no dataset endpoints**: datasets are owned by the Go server. When the Go server starts a job on one of its datasets it sends the file inline as `dataset_content` (base64); the sidecar stores it on the data volume as `dataset` (replacing an earlier file of that name) before it spawns the job. Without `dataset_content`, `dataset` must already be on the volume (else 400). `dataset_content` without `dataset`, or not valid base64, is a 400. Inside the sidecar a dataset is passed around as the pydantic `TrainingDataset` (`api/models.py`: `filename`, `content` (base64, never serialized), `size_bytes`, `uploaded_at`, `modified_at`; `payload()`, `from_path()`).
 
 ### Training progress, end to end
 
@@ -124,12 +124,11 @@ The **training** view of the [admin UI](../README.md) has a dataset upload (a fi
 | `GET /v1/gb/admin/api/sidecar/status` | `{"sidecar_up": bool, "sidecar_active": bool}`. `sidecar_up` is a live health check of the sidecar (the admin UI's `sidecar:` badge in the top bar, refreshed every 15 s); `sidecar_active` is false if it failed its health check on startup (the training view then shows a "Sidecar not active" notice and disables `Run`; only a server restart changes it). |
 | `POST /v1/gb/training/jobs[?db=]` | body `{"num_train_steps"?, "model_size"?, "dataset"?}`; starts a job, answers 201 with the stored row. 400 for a bad body or a dataset the sidecar rejects, 502 if the sidecar fails, 503 if the sidecar is not active (it failed its health check on startup). |
 | `GET /v1/gb/training/jobs[?db=][&limit=]` | `{"jobs": [...]}`, newest first (default 50, at most 500). |
-| `GET /v1/gb/training/datasets` | `{"datasets": [...]}`: the sidecar's training datasets, for the dataset picker. |
 | `POST /v1/gb/training/datasets[?db=]` | uploads a JSONL training dataset: multipart form, the file in the field `file` (optionally `filename`). **The sidecar is not involved.** The server validates it (UTF-8, each non-blank line a JSON object with string `instruction` and `output`, optional string `input`; plain `*.jsonl` name; at most 64 MB), saves it in the training dataset directory (`serve --training-dataset-dir`, default `<db path without extension>.training_datasets`) and records it in `gb_training_datasets` (re-uploading a name replaces it). Answers 201 with the record; 400 for an invalid file, 413 if too large. |
-| `GET /v1/gb/training/dataset-records[?db=]` | `{"datasets": [...]}`: the records of the datasets uploaded through the server (`filename`, `size_bytes`, `num_records`, `sha256`, `status` `stored`/`synced`, `updated_at`, `synced_at`), latest first. |
+| `GET /v1/gb/training/datasets[?db=]` | `{"datasets": [...]}`: the training datasets (read from the database only; the sidecar is not asked) (`filename`, `size_bytes`, `num_records`, `sha256`, `status` `stored`/`synced`, `updated_at`, `synced_at`), latest first. |
 | `GET /v1/gb/training/events[?db=][&run_id=]` | the SSE feed above. |
 
-A dataset uploaded through the admin UI lives on the Go server (file + `gb_training_datasets` record). When a job is started on it, the server first sends the file to the sidecar (`POST /datasets/upload`) unless the sidecar already has this version (`status` `synced`); if that fails the job is not started (502). A dataset name the server has no record of is passed through to the sidecar as it is.
+A dataset lives on the Go server only (file + `gb_training_datasets` record). When a job is started on it, the server sends the file to the sidecar inside the `POST /training/job_start` request (`dataset_content`) and marks the record `synced` once the sidecar has taken it; if the sidecar fails the job is not started (502). A dataset name the server has no record of is refused with 400; a job without a dataset uses the sidecar's default dataset.
 
 The sidecar's address is `sidecar_url` / `SIDECAR_URL` (default `http://127.0.0.1:8787`).
 
@@ -206,7 +205,7 @@ resp, err := c.Health(ctx)                 // resp.Status == "ok"
 
 - `sidecar.New(baseURL)` returns a `*Client` with a 30 second timeout per request. A trailing `/` on the URL is ignored. The address is the `sidecar_url` / `SIDECAR_URL` setting.
 - `Client.Health(ctx)` calls `GET /health`. It returns an error if the sidecar cannot be reached, answers with a status other than 200, sends a body that is not the expected JSON, or reports a `status` other than `"ok"`.
-- `Client.StartTrainingJob`, `Client.StreamTrainingJobEvents` (SSE), `Client.UploadTrainingDataset` and `Client.ListTrainingDatasets` call `POST /training/job_start`, `GET /training/job_events`, `POST /datasets/upload` and `GET /datasets/list`.
+- `Client.StartTrainingJob`, `Client.StreamTrainingJobEvents` (SSE), call `POST /training/job_start` (`StartTrainingJobRequest.DatasetContent` carries the dataset file) and `GET /training/job_events`. There are no dataset methods: the sidecar has no dataset endpoints.
 - Errors name the method and path (`sidecar GET /health: ...`) and, for a bad status, include the start of the response body. A bad status is a `*sidecar.StatusError` (`Code`, `Body`, `Message()`), so callers can tell a request the backend rejected (400) from a sidecar that is down.
 
 ### Startup check and status

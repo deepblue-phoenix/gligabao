@@ -1,10 +1,11 @@
 package training
 
-// Training jobs: start a training job on the sidecar and record it (gb_training_job_runs), list the jobs
-// and the sidecar's training datasets, and stream the jobs' progress (see Monitor).
+// Training jobs: start a training job on the sidecar and record it (gb_training_job_runs), list the jobs,
+// and stream the jobs' progress (see Monitor).
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -21,22 +22,21 @@ import (
 
 // JobStarter starts training jobs on the sidecar; *sidecar.Client is one.
 type JobStarter interface {
-	DatasetUploader // a dataset uploaded to the server is sent to the sidecar when a job that uses it starts
 	StartTrainingJob(ctx context.Context, req sidecar.StartTrainingJobRequest) (sidecar.TrainingJob, error)
 }
 
 // maxTrainingJobBody bounds the request body of StartJobOf.
 const maxTrainingJobBody = 1 << 16
 
-// A dataset uploaded through the server (UploadDatasetOf) is sent to the sidecar first, unless the sidecar has its
-// current version already.
+// The dataset a job names is one uploaded through the server (UploadDatasetOf); its file is sent to the sidecar in the
+// request that starts the job (the sidecar has no dataset endpoints). A name the server has no record of answers 400.
 //
 // StartJobOf serves POST /v1/gb/training/jobs[?db=<name>] with an optional JSON body
 // {"num_train_steps": 100, "model_size": "4b", "dataset": "file.jsonl"}: it starts a training job on the sidecar through sc
 // (the sidecar's REST API) and stores the TrainingJob the sidecar reports in the gb_training_job_runs table of one of dbs
 // (the first without db), then has mon (may be nil) follow the job's progress. It answers 201 with the stored record
 // (relational.TrainingJobRun). A nil sc (no sidecar) answers 503, a sidecar error 502, except that a request the sidecar
-// rejects as invalid (e.g. an unknown dataset) answers 400 with its message.
+// rejects as invalid answers 400 with its message.
 func StartJobOf(dbs []Database, sc JobStarter, mon *Monitor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		n, ok := pick(dbs, r.URL.Query().Get("db"))
@@ -48,14 +48,19 @@ func StartJobOf(dbs []Database, sc JobStarter, mon *Monitor) http.HandlerFunc {
 			httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not active")
 			return
 		}
-		var req sidecar.StartTrainingJobRequest
+		// Only these fields come from the client; the dataset's content is added from the server's own copy.
+		var in struct {
+			NumTrainSteps int    `json:"num_train_steps"`
+			ModelSize     string `json:"model_size"`
+			Dataset       string `json:"dataset"`
+		}
 		body := http.MaxBytesReader(w, r.Body, maxTrainingJobBody)
-		if err := json.NewDecoder(body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		if err := json.NewDecoder(body).Decode(&in); err != nil && !errors.Is(err, io.EOF) {
 			httputil.Error(w, http.StatusBadRequest, "invalid JSON body")
 			return
 		}
-		req.ModelSize = strings.ToLower(strings.TrimSpace(req.ModelSize))
-		req.Dataset = strings.TrimSpace(req.Dataset)
+		req := sidecar.StartTrainingJobRequest{NumTrainSteps: in.NumTrainSteps,
+			ModelSize: strings.ToLower(strings.TrimSpace(in.ModelSize)), Dataset: strings.TrimSpace(in.Dataset)}
 		if strings.ContainsAny(req.Dataset, `/\`) || (req.Dataset != "" && !strings.HasSuffix(req.Dataset, ".jsonl")) {
 			httputil.Error(w, http.StatusBadRequest, "dataset must be the file name of a training dataset (*.jsonl)")
 			return
@@ -72,15 +77,17 @@ func StartJobOf(dbs []Database, sc JobStarter, mon *Monitor) http.HandlerFunc {
 		}
 
 		ctx := r.Context()
+		var dataset *relational.TrainingDataset
 		if req.Dataset != "" {
-			if err := syncTrainingDataset(ctx, n, sc, req.Dataset); err != nil {
-				status := http.StatusInternalServerError
-				if errors.Is(err, errSidecarDataset) {
-					status = http.StatusBadGateway
-				}
-				httputil.Error(w, status, err.Error())
+			ds, content, err := loadTrainingDataset(ctx, n, req.Dataset)
+			if errors.Is(err, errUnknownDataset) {
+				httputil.Error(w, http.StatusBadRequest, "unknown dataset "+req.Dataset+": upload it first")
+				return
+			} else if err != nil {
+				httputil.Error(w, http.StatusInternalServerError, err.Error())
 				return
 			}
+			dataset, req.DatasetContent = ds, base64.StdEncoding.EncodeToString(content)
 		}
 		job, err := sc.StartTrainingJob(ctx, req)
 		if err != nil {
@@ -95,6 +102,11 @@ func StartJobOf(dbs []Database, sc JobStarter, mon *Monitor) http.HandlerFunc {
 		}
 		// The job is running now: record it even if the client went away meanwhile.
 		ctx = context.WithoutCancel(ctx)
+		if dataset != nil { // the sidecar has taken this version of the file
+			if _, err := relational.MarkTrainingDatasetSynced(ctx, n.DB, dataset.ID, dataset.SHA256); err != nil {
+				log.WithError(err).WithField("filename", dataset.Filename).Error("training: mark training dataset synced failed")
+			}
+		}
 		id, err := relational.RecordTrainingJobRun(ctx, n.DB, relational.TrainingJobRun{
 			JobID: job.JobID, ProviderJobID: job.ProviderJobID, Status: job.Status, ModelSize: job.ModelSize, Dataset: job.Dataset,
 			NumTrainSteps: job.NumTrainSteps, StartedAt: job.StartedAt})
@@ -146,27 +158,6 @@ func ListJobsOf(dbs []Database) http.HandlerFunc {
 			return
 		}
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{"jobs": runs})
-	}
-}
-
-// SidecarDatasetsOf serves GET /v1/gb/training/datasets: {"datasets": [...]}, the training datasets on the sidecar
-// (what a training job can be started on). A nil sc answers 503, a sidecar error 502.
-func SidecarDatasetsOf(sc Sidecar) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if sc == nil {
-			httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not active")
-			return
-		}
-		ds, err := sc.ListTrainingDatasets(r.Context())
-		if err != nil {
-			log.WithError(err).Error("training: list training datasets failed")
-			httputil.Error(w, http.StatusBadGateway, "sidecar failed to list the training datasets")
-			return
-		}
-		if ds == nil {
-			ds = []sidecar.TrainingDataset{}
-		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"datasets": ds})
 	}
 }
 

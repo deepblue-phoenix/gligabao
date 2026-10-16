@@ -17,21 +17,8 @@ import (
 )
 
 type fakeSidecar struct {
-	reqs    []sidecar.StartTrainingJobRequest
-	err     error
-	uploads map[string][]byte // filename -> content, by UploadTrainingDataset
-	upErr   error
-}
-
-func (f *fakeSidecar) UploadTrainingDataset(_ context.Context, filename string, content []byte) (sidecar.UploadTrainingDatasetResponse, error) {
-	if f.upErr != nil {
-		return sidecar.UploadTrainingDatasetResponse{}, f.upErr
-	}
-	if f.uploads == nil {
-		f.uploads = map[string][]byte{}
-	}
-	f.uploads[filename] = content
-	return sidecar.UploadTrainingDatasetResponse{Status: "success", SizeBytes: int64(len(content))}, nil
+	reqs []sidecar.StartTrainingJobRequest
+	err  error
 }
 
 func (f *fakeSidecar) StartTrainingJob(_ context.Context, req sidecar.StartTrainingJobRequest) (sidecar.TrainingJob, error) {
@@ -55,9 +42,12 @@ func TestStartTrainingJob(t *testing.T) { dbtest.Run(t, testStartTrainingJob) }
 
 func testStartTrainingJob(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	dbs := []training.Database{{Name: "standard", DB: d}}
+	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: t.TempDir()}}
 	sc := &fakeSidecar{}
 	h := training.StartJobOf(dbs, sc, nil)
+	if rec := upload(training.UploadDatasetOf(dbs), "/x", "file", "mine.jsonl", goodDataset, nil); rec.Code != http.StatusCreated {
+		t.Fatalf("upload: %d %s", rec.Code, rec.Body)
+	}
 	post := func(h http.HandlerFunc, url, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		h(rec, httptest.NewRequest("POST", url, strings.NewReader(body)))
@@ -119,10 +109,10 @@ func testStartTrainingJob(t *testing.T, d *sql.DB) {
 // A request the sidecar rejects as invalid is the caller's error (400, with the sidecar's message), not a bad gateway.
 func TestStartTrainingJobSidecarRejects(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
-	sc := &fakeSidecar{err: &sidecar.StatusError{Method: "POST", Path: "/training/job_start", Code: 400, Body: `{"error":"Dataset 'x.jsonl' not found"}`}}
+	sc := &fakeSidecar{err: &sidecar.StatusError{Method: "POST", Path: "/training/job_start", Code: 400, Body: `{"error":"num_train_steps must be a positive integer"}`}}
 	rec := httptest.NewRecorder()
-	training.StartJobOf([]training.Database{{Name: "standard", DB: d}}, sc, nil)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(`{"dataset":"x.jsonl"}`)))
-	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "Dataset 'x.jsonl' not found") {
+	training.StartJobOf([]training.Database{{Name: "standard", DB: d}}, sc, nil)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(`{"num_train_steps":5}`)))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "num_train_steps must be a positive integer") {
 		t.Fatalf("got %d %s", rec.Code, rec.Body)
 	}
 }

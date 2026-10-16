@@ -4,15 +4,17 @@ Runs inside the web container. Everything provider-specific is injected as calla
 app.py (spawn a job, call a function, commit/reload volumes).
 
 Endpoints:
-    POST /training/job_start   {num_train_steps?, model_size?, dataset?}  -> spawns a job, returns a TrainingJob (api/models.py)
+    POST /training/job_start   {num_train_steps?, model_size?, dataset?, dataset_content?}  -> spawns a job, returns a TrainingJob (api/models.py)
     GET  /training/job_progress[?job_id=]                        -> the job's (default: newest) progress entries
     GET  /training/job_events?job_id=[&from=N]                   -> SSE stream of the job's progress events (see below)
     POST /infer/query                  {prompt, max_tokens?, temperature?, model_size?}
     POST /evals/add_to_dataset    {prompt, response, notes?}
     GET  /evals/get_dataset_count
-    POST /datasets/upload              {filename, content (base64 or plain jsonl)}  -> stored as DATA_DIR/<filename>
-    GET  /datasets/list
     GET  /healthz
+
+There are no dataset endpoints: training datasets are managed by the Go server (its database and files). The sidecar only
+stores a dataset internally: a job_start that carries `dataset_content` (base64 of the jsonl file) saves it on the data
+volume as `dataset` before spawning the job; without `dataset_content`, `dataset` must already be on the volume.
 
 GET /training/job_events is Server-Sent Events: the events of the job's progress file (ai_train_core/progress_events.py)
 as they are written, each as `id: <index>`, `event: <status|progress>`, `data: <the event as JSON>`. The stream ends
@@ -30,13 +32,11 @@ from typing import Callable
 from fastapi import FastAPI, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import ValidationError
 
 from api.models import TrainingDataset, TrainingJob
-from ai_train_core.dataset import valid_dataset_filename
+from ai_train_core.dataset import store_dataset, valid_dataset_filename
 from ai_train_core.model_config import MODEL_SIZES
-from ai_train_core.paths import (DATA_DIR, EVAL_DATASET_PATH, EVAL_DIR, PROGRESS_DIR,
-                                 REMOTE_METADATA_PATH)
+from ai_train_core.paths import DATA_DIR, EVAL_DATASET_PATH, EVAL_DIR, PROGRESS_DIR
 from ai_train_core.progress_events import is_terminal, progress_path, read_events, valid_job_id
 
 
@@ -61,6 +61,7 @@ def create_api(
         num_train_steps = data.get("num_train_steps", 100)
         model_size = str(data.get("model_size", "4b")).lower()
         dataset = data.get("dataset") or ""
+        dataset_content = data.get("dataset_content") or ""
         if (err := bad_model_size(model_size)):
             return err
         if isinstance(num_train_steps, bool) or not isinstance(num_train_steps, int) or num_train_steps < 1:
@@ -69,9 +70,18 @@ def create_api(
             if not valid_dataset_filename(dataset):
                 return JSONResponse({"error": f"Invalid dataset '{dataset}': must be a plain *.jsonl file name"},
                                     status_code=400)
-            await run_in_threadpool(reload_volumes, [DATA_DIR])
-            if not (Path(DATA_DIR) / dataset).is_file():
-                return JSONResponse({"error": f"Dataset '{dataset}' not found"}, status_code=400)
+            if dataset_content:
+                try:
+                    payload = TrainingDataset(filename=dataset, content=dataset_content).payload()
+                except ValueError as e:
+                    return JSONResponse({"error": str(e)}, status_code=400)
+                await run_in_threadpool(store_dataset, dataset, payload, commit_volumes, DATA_DIR)
+            else:
+                await run_in_threadpool(reload_volumes, [DATA_DIR])
+                if not (Path(DATA_DIR) / dataset).is_file():
+                    return JSONResponse({"error": f"Dataset '{dataset}' not found"}, status_code=400)
+        elif dataset_content:
+            return JSONResponse({"error": "dataset_content needs a dataset name"}, status_code=400)
         job_id = uuid.uuid4().hex[:16]  # names the progress file; the provider's own id is only for its dashboard
         provider_job_id = await run_in_threadpool(spawn_training_job, num_train_steps, model_size, dataset, job_id)
         job = TrainingJob(job_id=job_id, provider_job_id=str(provider_job_id), model_size=model_size,
@@ -156,44 +166,6 @@ def create_api(
             with open(path) as f:
                 count = sum(1 for _ in f)
         return JSONResponse({"count": count})
-
-    @api.post("/datasets/upload")
-    async def upload_dataset(request: Request):
-        try:
-            ds = TrainingDataset.model_validate(await request.json())
-        except ValidationError:
-            return JSONResponse({"error": "filename and content are required"}, status_code=400)
-        if not ds.content:
-            return JSONResponse({"error": "filename and content are required"}, status_code=400)
-
-        if not valid_dataset_filename(ds.filename):
-            return JSONResponse({"error": "filename must be a plain *.jsonl file name"}, status_code=400)
-
-        payload = ds.payload()
-        remote = Path(DATA_DIR) / ds.filename
-        remote.parent.mkdir(parents=True, exist_ok=True)
-        remote.write_bytes(payload)
-        ds.size_bytes, ds.uploaded_at = len(payload), datetime.now()
-        Path(REMOTE_METADATA_PATH).write_text(ds.model_dump_json(indent=2))
-        await run_in_threadpool(commit_volumes, [DATA_DIR])
-        return JSONResponse({"status": "success", "message": f"Training dataset {ds.filename} uploaded successfully",
-                             "size_bytes": ds.size_bytes})
-
-    @api.get("/datasets/list")
-    async def list_datasets():
-        data_dir = Path(DATA_DIR)
-        if not data_dir.exists():
-            return JSONResponse({"datasets": []})
-        datasets = [TrainingDataset(filename=f.name, size_bytes=f.stat().st_size,
-                                    modified_at=datetime.fromtimestamp(f.stat().st_mtime))
-                    for f in data_dir.glob("*.jsonl")]
-        meta_path = Path(REMOTE_METADATA_PATH)
-        if meta_path.exists():
-            meta = TrainingDataset.model_validate_json(meta_path.read_text())
-            for d in datasets:
-                if d.filename == meta.filename:
-                    d.uploaded_at = meta.uploaded_at
-        return JSONResponse({"datasets": [d.model_dump(mode="json") for d in datasets]})
 
     @api.get("/healthz")
     async def healthz():

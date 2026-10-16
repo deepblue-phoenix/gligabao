@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -24,11 +23,10 @@ import (
 // `from` on, then delivers what is fed next, until the feed is closed (a stream the sidecar ended).
 type streamSidecar struct {
 	fakeSidecar
-	mu       sync.Mutex
-	sent     []sidecar.TrainingEvent
-	feed     chan sidecar.TrainingEvent
-	froms    []int
-	datasets []sidecar.TrainingDataset
+	mu    sync.Mutex
+	sent  []sidecar.TrainingEvent
+	feed  chan sidecar.TrainingEvent
+	froms []int
 }
 
 func newStreamSidecar() *streamSidecar {
@@ -62,10 +60,6 @@ func (f *streamSidecar) StreamTrainingJobEvents(ctx context.Context, _ string, f
 			return ctx.Err()
 		}
 	}
-}
-
-func (f *streamSidecar) ListTrainingDatasets(context.Context) ([]sidecar.TrainingDataset, error) {
-	return f.datasets, f.err
 }
 
 func status(s string) sidecar.TrainingEvent {
@@ -280,29 +274,5 @@ func TestTrainingMonitorTimeoutAndResume(t *testing.T) {
 	}
 	if evs, _ := relational.ListTrainingJobEvents(ctx, d, id3, 0); len(evs) != 1 || evs[0].Type != "status" {
 		t.Fatalf("timeout event: %+v", evs)
-	}
-}
-
-func TestTrainingDatasets(t *testing.T) {
-	sc := newStreamSidecar()
-	get := func(sc training.Sidecar) *httptest.ResponseRecorder {
-		rec := httptest.NewRecorder()
-		training.SidecarDatasetsOf(sc)(rec, httptest.NewRequest("GET", "/x", nil))
-		return rec
-	}
-	if rec := get(sc); rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != `{"datasets":[]}` {
-		t.Fatalf("empty: %d %s", rec.Code, rec.Body)
-	}
-	size := int64(12)
-	sc.datasets = []sidecar.TrainingDataset{{Filename: "a.jsonl", SizeBytes: &size}}
-	if rec := get(sc); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"filename":"a.jsonl"`) {
-		t.Fatalf("list: %d %s", rec.Code, rec.Body)
-	}
-	sc.err = errors.New("down")
-	if rec := get(sc); rec.Code != http.StatusBadGateway {
-		t.Fatalf("sidecar error: %d", rec.Code)
-	}
-	if rec := get(nil); rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("no sidecar: %d", rec.Code)
 	}
 }
