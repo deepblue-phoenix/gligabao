@@ -216,6 +216,7 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 func registerTraining(ctx context.Context, mux *http.ServeMux, dbs []training.Database, sc training.Sidecar) {
 	mon := training.NewMonitor(ctx, dbs, sc)
 	mux.HandleFunc("POST /v1/gb/training/jobs", training.StartJobOf(dbs, sc, mon))
+	mux.HandleFunc("POST /v1/gb/training/jobs/{id}/stop", training.StopJobOf(dbs, sc))
 	mux.HandleFunc("GET /v1/gb/training/jobs", training.ListJobsOf(dbs))
 	mux.HandleFunc("GET /v1/gb/training/datasets", training.ListDatasetsOf(dbs))
 	mux.HandleFunc("POST /v1/gb/training/datasets", training.UploadDatasetOf(dbs))

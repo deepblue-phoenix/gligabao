@@ -16,6 +16,7 @@ import (
 const (
 	EventStatus   = "status"
 	EventProgress = "progress"
+	EventLog      = "log"
 )
 
 // TrainingEvent is one event of a training job's progress (sidecar/ai_train/ai_train_core/progress_events.py): a status
@@ -23,13 +24,15 @@ const (
 type TrainingEvent struct {
 	// Seq is the event's index in the job's progress file (the SSE id); StreamTrainingJobEvents sets it.
 	Seq  int    `json:"seq"`
-	Type string `json:"type"` // EventStatus or EventProgress
-	// Status ("running", "training", "completed", "failed") is set on status events. A completed event has the FinalLoss,
-	// a failed one the Error; a "training" one the MaxSteps.
+	Type string `json:"type"` // EventStatus, EventProgress or EventLog
+	// Status ("running", "training", "completed", "failed", "cancelled") is set on status events. A completed event has the
+	// FinalLoss, a failed or cancelled one the Error; a "training" one the MaxSteps.
 	Status    string   `json:"status,omitempty"`
 	MaxSteps  *int     `json:"max_steps,omitempty"`
 	FinalLoss *float64 `json:"final_loss,omitempty"`
 	Error     string   `json:"error,omitempty"`
+	// Message is the text of a log event: what the job is doing (loading the model, ...).
+	Message string `json:"message,omitempty"`
 	// Traceback is the Python traceback of a failed job (its last part), for diagnosis.
 	Traceback string `json:"traceback,omitempty"`
 	// Progress events: the Trainer's step, loss (nil when the log has none, or it is not finite), learning rate and epoch,
@@ -45,7 +48,7 @@ type TrainingEvent struct {
 
 // Finished reports whether the event ends the job.
 func (e TrainingEvent) Finished() bool {
-	return e.Type == EventStatus && (e.Status == "completed" || e.Status == "failed")
+	return e.Type == EventStatus && (e.Status == "completed" || e.Status == "failed" || e.Status == "cancelled")
 }
 
 // StreamTrainingJobEvents follows the progress of a training job: it calls GET /training/job_events (Server-Sent Events)

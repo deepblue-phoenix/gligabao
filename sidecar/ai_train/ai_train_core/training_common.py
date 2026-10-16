@@ -75,7 +75,7 @@ def setup_training_arguments(num_train_steps: int, per_device_batch_size: int, g
         learning_rate=learning_rate,
         fp16=not bf16,
         bf16=bf16,
-        logging_steps=5,
+        logging_steps=1,  # every step: a progress event (and a point of the loss curve) per step
         optim="adamw_8bit",
         weight_decay=0.01,
         lr_scheduler_type="linear",

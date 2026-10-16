@@ -91,14 +91,16 @@ def validate_dataset() -> dict:
                                 timeout_s=CONFIG.train_timeout_s, volumes=TRAIN_VOLS, secrets=secrets))
 def train_4b(num_train_steps: int = 100, dataset: str = "", job_id: str = "") -> dict:
     from ai_train_core import bootstrap
-    return bootstrap.run_train(num_train_steps, "4b", commit_fn=provider.commit_volumes, dataset=dataset, job_id=job_id)
+    return bootstrap.run_train(num_train_steps, "4b", commit_fn=provider.commit_volumes, dataset=dataset, job_id=job_id,
+                               reload_fn=provider.reload_volumes)
 
 
 @provider.function(FunctionSpec(image=UNSLOTH_IMAGE, gpu=CONFIG.gpu_for("12b"),
                                 timeout_s=CONFIG.train_timeout_s, volumes=TRAIN_VOLS, secrets=secrets))
 def train_12b(num_train_steps: int = 100, dataset: str = "", job_id: str = "") -> dict:
     from ai_train_core import bootstrap
-    return bootstrap.run_train(num_train_steps, "12b", commit_fn=provider.commit_volumes, dataset=dataset, job_id=job_id)
+    return bootstrap.run_train(num_train_steps, "12b", commit_fn=provider.commit_volumes, dataset=dataset, job_id=job_id,
+                               reload_fn=provider.reload_volumes)
 
 
 TRAIN_FUNCTIONS = {"4b": train_4b, "12b": train_12b}

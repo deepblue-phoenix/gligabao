@@ -19,6 +19,7 @@ import (
 // Sidecar is what the training handlers need from the sidecar; *sidecar.Client is one.
 type Sidecar interface {
 	JobStarter
+	JobCanceller
 	StreamTrainingJobEvents(ctx context.Context, jobID string, from int, fn func(sidecar.TrainingEvent) error) error
 }
 
@@ -190,6 +191,15 @@ func (m *Monitor) record(n Database, run relational.TrainingJobRun, ev sidecar.T
 	}
 	if !isNew {
 		return nil
+	}
+	if ev.Type == sidecar.EventLog {
+		log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID}).Infof("training: %s", ev.Message)
+	}
+	if ev.Type == sidecar.EventProgress && ev.Step != nil {
+		log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID, "step": *ev.Step, "loss": ev.Loss}).Debug("training: progress")
+	}
+	if ev.Type == sidecar.EventStatus && ev.Status != relational.TrainingJobFailed {
+		log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID}).Infof("training: status %s", ev.Status)
 	}
 	if ev.Type == sidecar.EventStatus && ev.Status == relational.TrainingJobFailed {
 		log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID, "error": ev.Error}).

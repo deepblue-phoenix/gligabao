@@ -3,6 +3,7 @@ package sidecar
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -53,5 +54,36 @@ func TestStartTrainingJobErrors(t *testing.T) {
 	defer noID.Close()
 	if _, err := New(noID.URL).StartTrainingJob(context.Background(), StartTrainingJobRequest{}); err == nil {
 		t.Fatal("expected error for a response without job_id")
+	}
+}
+
+func TestCancelTrainingJob(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			JobID string `json:"job_id"`
+		}
+		json.NewDecoder(r.Body).Decode(&in)
+		switch {
+		case r.Method != http.MethodPost || r.URL.Path != "/training/job_cancel":
+			http.NotFound(w, r)
+		case in.JobID == "over":
+			http.Error(w, `{"error":"already over"}`, http.StatusConflict)
+		case in.JobID == "j1":
+			w.Write([]byte(`{"job_id":"j1","status":"stopping"}`))
+		default:
+			http.Error(w, "bad body", http.StatusBadRequest)
+		}
+	}))
+	defer srv.Close()
+	c := New(srv.URL)
+	if err := c.CancelTrainingJob(context.Background(), "j1"); err != nil {
+		t.Fatal(err)
+	}
+	var se *StatusError
+	if err := c.CancelTrainingJob(context.Background(), "over"); !errors.As(err, &se) || se.Code != http.StatusConflict {
+		t.Fatalf("want a 409 StatusError, got %v", err)
+	}
+	if err := c.CancelTrainingJob(context.Background(), " "); err == nil {
+		t.Fatal("an empty job id was accepted")
 	}
 }

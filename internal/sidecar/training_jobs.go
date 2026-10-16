@@ -68,6 +68,19 @@ func (c *Client) StartTrainingJob(ctx context.Context, req StartTrainingJobReque
 	return out, nil
 }
 
+// CancelTrainingJob asks the sidecar to stop a training job (POST /training/job_cancel). The job ends with a "cancelled"
+// event at its next step, not at once. The sidecar answers 404 for a job it does not know and 409 for one that is over
+// (a *StatusError).
+func (c *Client) CancelTrainingJob(ctx context.Context, jobID string) error {
+	if strings.TrimSpace(jobID) == "" {
+		return errors.New("sidecar: job_id is required")
+	}
+	var out struct {
+		Status string `json:"status"`
+	}
+	return c.post(ctx, "/training/job_cancel", map[string]string{"job_id": jobID}, &out)
+}
+
 func (c *Client) post(ctx context.Context, path string, in, out any) error {
 	body, err := json.Marshal(in)
 	if err != nil {

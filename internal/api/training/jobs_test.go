@@ -17,8 +17,15 @@ import (
 )
 
 type fakeSidecar struct {
-	reqs []sidecar.StartTrainingJobRequest
-	err  error
+	reqs      []sidecar.StartTrainingJobRequest
+	err       error
+	cancelled []string
+	cancelErr error
+}
+
+func (f *fakeSidecar) CancelTrainingJob(_ context.Context, jobID string) error {
+	f.cancelled = append(f.cancelled, jobID)
+	return f.cancelErr
 }
 
 func (f *fakeSidecar) StartTrainingJob(_ context.Context, req sidecar.StartTrainingJobRequest) (sidecar.TrainingJob, error) {
@@ -114,5 +121,59 @@ func TestStartTrainingJobSidecarRejects(t *testing.T) {
 	training.StartJobOf([]training.Database{{Name: "standard", DB: d}}, sc, nil)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(`{"num_train_steps":5}`)))
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "num_train_steps must be a positive integer") {
 		t.Fatalf("got %d %s", rec.Code, rec.Body)
+	}
+}
+
+// TestStopTrainingJob checks the endpoint that asks the sidecar to stop a job.
+func TestStopTrainingJob(t *testing.T) { dbtest.Run(t, testStopTrainingJob) }
+
+func testStopTrainingJob(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: t.TempDir()}}
+	sc := &fakeSidecar{}
+	for _, jobID := range []string{"j1", "j2"} {
+		if _, err := relational.RecordTrainingJobRun(ctx, d, relational.TrainingJobRun{JobID: jobID, Status: "training", ModelSize: "4b", NumTrainSteps: 10, StartedAt: time.Now()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	end := time.Now()
+	if err := relational.UpdateTrainingJobRun(ctx, d, 2, relational.TrainingJobRunUpdate{Status: relational.TrainingJobCancelled, FinishedAt: &end}); err != nil {
+		t.Fatal(err)
+	}
+	stop := func(h http.HandlerFunc, id string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "/x", nil)
+		req.SetPathValue("id", id)
+		rec := httptest.NewRecorder()
+		h(rec, req)
+		return rec
+	}
+	h := training.StopJobOf(dbs, sc)
+
+	if rec := stop(h, "1"); rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), `"stopping"`) {
+		t.Fatalf("stop: %d %s", rec.Code, rec.Body)
+	}
+	if len(sc.cancelled) != 1 || sc.cancelled[0] != "j1" {
+		t.Fatalf("sidecar asked to stop: %v", sc.cancelled)
+	}
+	// A job that is over, an unknown one and a bad id never reach the sidecar.
+	for id, want := range map[string]int{"2": http.StatusConflict, "99": http.StatusNotFound, "x": http.StatusBadRequest} {
+		if rec := stop(h, id); rec.Code != want {
+			t.Fatalf("id %s: %d, want %d", id, rec.Code, want)
+		}
+	}
+	if len(sc.cancelled) != 1 {
+		t.Fatalf("sidecar called: %v", sc.cancelled)
+	}
+	// The sidecar's own answers: over already (409), or a failure (502).
+	sc.cancelErr = &sidecar.StatusError{Method: "POST", Path: "/training/job_cancel", Code: 409, Body: `{"error":"already over"}`}
+	if rec := stop(h, "1"); rec.Code != http.StatusConflict {
+		t.Fatalf("sidecar 409: %d", rec.Code)
+	}
+	sc.cancelErr = errors.New("boom")
+	if rec := stop(h, "1"); rec.Code != http.StatusBadGateway {
+		t.Fatalf("sidecar error: %d", rec.Code)
+	}
+	if rec := stop(training.StopJobOf(dbs, nil), "1"); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("no sidecar: %d", rec.Code)
 	}
 }

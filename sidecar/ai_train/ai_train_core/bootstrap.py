@@ -12,7 +12,7 @@ import traceback
 from typing import Callable, Optional
 
 from .dataset import resolve_dataset_path
-from .progress_events import progress_path, write_status
+from .progress_events import JobCancelled, progress_path, write_log, write_status
 
 
 def run_ping(volume_paths: list) -> dict:
@@ -31,21 +31,27 @@ def run_ping(volume_paths: list) -> dict:
 
 
 def run_train(num_train_steps: int, model_size: str, commit_fn: Optional[Callable] = None,
-              dataset: str = "", job_id: str = "") -> dict:
+              dataset: str = "", job_id: str = "", reload_fn: Optional[Callable] = None) -> dict:
     """Fine-tune `model_size` on `dataset` (a file name on the data volume; the default dataset if empty).
     Must run in the Unsloth GPU image.
 
     Reports to the job's progress file (progress_events.py): "running" at the start, the Trainer's progress while
-    training, then "completed" (with the final loss) or "failed" (with the error, which is re-raised).
+    training, then "completed" (with the final loss), "cancelled" (a stop was requested: see progress_events.py; no
+    error) or "failed" (with the error, which is re-raised). `reload_fn(paths)` refreshes volumes, to see a stop request.
     """
     job_id = job_id or str(int(time.time()))
     path = progress_path(job_id)
     write_status(path, "running", commit_fn, model_size=model_size, num_train_steps=num_train_steps)
     try:
         dataset_path = resolve_dataset_path(dataset)
+        write_log(path, f"importing the training libraries; dataset {dataset or '(default)'}", commit_fn)
         from . import model_train
         result = model_train.run_finetuning(num_train_steps=num_train_steps, model_size=model_size,
-                                            commit_fn=commit_fn, dataset_path=dataset_path, job_id=job_id)
+                                            commit_fn=commit_fn, dataset_path=dataset_path, job_id=job_id,
+                                            reload_fn=reload_fn)
+    except JobCancelled as e:
+        write_status(path, "cancelled", commit_fn, error=str(e))
+        return {"status": "cancelled", "error": str(e)}
     except BaseException as e:
         # The traceback goes into the event too (the Go server logs it) and, by the re-raise, into the container's log.
         write_status(path, "failed", commit_fn, error=f"{type(e).__name__}: {e}"[:2000],

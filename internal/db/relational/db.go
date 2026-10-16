@@ -52,6 +52,7 @@ const (
 const (
 	TrainingJobCompleted = model.TrainingJobCompleted
 	TrainingJobFailed    = model.TrainingJobFailed
+	TrainingJobCancelled = model.TrainingJobCancelled
 )
 
 // TrainingJobFinished reports whether a training job status ends the job.

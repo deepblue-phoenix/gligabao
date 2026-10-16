@@ -13,6 +13,7 @@ ROUTES = (
     ("POST", "/training/job_start"),
     ("GET", "/training/job_progress"),
     ("GET", "/training/job_events"),       # SSE
+    ("POST", "/training/job_cancel"),
     ("POST", "/infer/query"),
     ("POST", "/evals/add_to_dataset"),
     ("GET", "/evals/get_dataset_count"),

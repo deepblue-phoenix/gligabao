@@ -554,7 +554,7 @@ tr.removing {
   display: inline-block;
   width: 0.6rem;
   height: 0.6rem;
-  margin-right: 0.15rem;
+  margin-left: 0.15rem;
   vertical-align: middle;
   background: $accent;
   border-radius: 2px;
@@ -678,6 +678,7 @@ tr.removing {
   font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .tr-line.tr-status { color: $accent; }
+.tr-line.tr-log { color: $muted; font-style: italic; }
 .tr-line.error { color: $err; }
 .sidecar-warning { padding: 0.5rem 0.75rem; border: 1px solid $err; border-radius: 4px; }
 

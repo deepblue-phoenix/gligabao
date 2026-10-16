@@ -64,11 +64,11 @@ func GetTrainingJobRun(ctx context.Context, d *sql.DB, id int64) (*model.Trainin
 }
 
 // ListTrainingJobRuns returns the newest training job runs first, at most limit of them; with unfinished only the runs
-// that have not completed or failed (all of them, oldest first, for limit <= 0).
+// that have not completed, failed or been cancelled (all of them, oldest first, for limit <= 0).
 func ListTrainingJobRuns(ctx context.Context, d *sql.DB, limit int, unfinished bool) ([]model.TrainingJobRun, error) {
 	q := `SELECT ` + trainingJobRunColumns + ` FROM gb_training_job_runs`
 	if unfinished {
-		q += ` WHERE status NOT IN ('` + model.TrainingJobCompleted + `', '` + model.TrainingJobFailed + `')`
+		q += ` WHERE status NOT IN ('` + model.TrainingJobCompleted + `', '` + model.TrainingJobFailed + `', '` + model.TrainingJobCancelled + `')`
 	}
 	var args []any
 	if limit > 0 {

@@ -25,6 +25,11 @@ type JobStarter interface {
 	StartTrainingJob(ctx context.Context, req sidecar.StartTrainingJobRequest) (sidecar.TrainingJob, error)
 }
 
+// JobCanceller asks the sidecar to stop training jobs; *sidecar.Client is one.
+type JobCanceller interface {
+	CancelTrainingJob(ctx context.Context, jobID string) error
+}
+
 // maxTrainingJobBody bounds the request body of StartJobOf.
 const maxTrainingJobBody = 1 << 16
 
@@ -123,6 +128,54 @@ func StartJobOf(dbs []Database, sc JobStarter, mon *Monitor) http.HandlerFunc {
 		}
 		mon.Watch(n, *run)
 		httputil.WriteJSON(w, http.StatusCreated, run)
+	}
+}
+
+// StopJobOf serves POST /v1/gb/training/jobs/{id}/stop[?db=<name>]: it asks the sidecar to stop the job run {id}. The
+// job ends at its next step (or at the next stage of its setup) with a "cancelled" event, which the monitor records like
+// any other: the answer is 202 with {"id": <run>, "status": "stopping"}, and the job's row changes when the event arrives.
+// 404 is for an unknown run, 409 for one that is over already, 503 for a nil sc, 502 for a sidecar error.
+func StopJobOf(dbs []Database, sc JobCanceller) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		n, ok := pick(dbs, r.URL.Query().Get("db"))
+		if !ok {
+			httputil.Error(w, http.StatusNotFound, "unknown database")
+			return
+		}
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || id < 1 {
+			httputil.Error(w, http.StatusBadRequest, "id must be a positive integer")
+			return
+		}
+		if sc == nil {
+			httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not active")
+			return
+		}
+		run, err := relational.GetTrainingJobRun(r.Context(), n.DB, id)
+		if errors.Is(err, relational.ErrNotFound) {
+			httputil.Error(w, http.StatusNotFound, "unknown training job run")
+			return
+		} else if err != nil {
+			log.WithError(err).Error("training: read training job run failed")
+			httputil.Error(w, http.StatusInternalServerError, "failed to read the training job run")
+			return
+		}
+		if relational.TrainingJobFinished(run.Status) {
+			httputil.Error(w, http.StatusConflict, "the training job is over already ("+run.Status+")")
+			return
+		}
+		if err := sc.CancelTrainingJob(r.Context(), run.JobID); err != nil {
+			var se *sidecar.StatusError
+			if errors.As(err, &se) && se.Code == http.StatusConflict {
+				httputil.Error(w, http.StatusConflict, se.Message())
+				return
+			}
+			log.WithError(err).WithField("job_id", run.JobID).Error("training: stop training job failed")
+			httputil.Error(w, http.StatusBadGateway, "sidecar failed to stop the training job")
+			return
+		}
+		log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID}).Info("training: stop requested")
+		httputil.WriteJSON(w, http.StatusAccepted, map[string]any{"id": run.ID, "status": "stopping"})
 	}
 }
 

@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.37.0] - 2026-10-30
+
+### Added
+- **Stop job** button in the admin UI's training view, and `POST /v1/gb/training/jobs/{id}/stop` (sidecar: `POST /training/job_cancel`, Go client: `CancelTrainingJob`). The job ends at its next step (or when the model load is done) with the new final status `cancelled`; the adapters of a stopped job are not saved. The stop request travels as a `.stop` file on the progress volume, which the training container checks between steps, so the training container stays the only writer of the progress file.
+- `log` events (`{"type":"log","message"}`) say what a job is doing: importing the libraries, dataset loaded, model loaded, LoRA added, trainer set up, adapters saved. They show in the job's feed in the admin UI and in the server log.
+- The training container prints every step to its own log (loss, learning rate, seconds per step and an estimate of the time left); the sidecar logs the events it sends, why a job's stream is quiet, and a failed volume reload.
+
+### Changed
+- The trainer logs every step (`logging_steps=1`, was 5), so the dashboard gets a progress event and a loss point per step.
+- The sidecar's job event stream no longer ends when reloading the progress volume fails: it logs the error and tries again at the next poll.
+- `cancelled` ends a job like `completed` and `failed` (the monitor stops following it, and it is not resumed at startup). Redeploy the Modal app (`Redeploy` in the training view) for the training and web containers to get the changes.
+
 ## [0.36.0] - 2026-10-29
 
 ### Changed

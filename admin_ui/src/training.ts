@@ -16,14 +16,14 @@ interface DatasetRecord {
   updated_at: string; synced_at: string | null;
 }
 interface FeedEvent {
-  run_id: number; seq: number; type: "status" | "progress"; status?: string; max_steps?: number; final_loss?: number; error?: string;
+  run_id: number; seq: number; type: "status" | "progress" | "log"; message?: string; status?: string; max_steps?: number; final_loss?: number; error?: string;
   step?: number; loss?: number; learning_rate?: number; epoch?: number; elapsed_seconds?: number; timestamp?: number;
 }
 interface Point { step: number; loss: number }
 
 const MAX_FEED_LINES = 500;
 const PREVIEW_LINES = 100;
-const FINISHED = ["completed", "failed"];
+const FINISHED = ["completed", "failed", "cancelled"];
 
 function el<T extends HTMLElement>(id: string): T {
   const e = document.getElementById(id);
@@ -47,7 +47,7 @@ const fmtLoss = (v: number | null | undefined): string => (v == null ? "–" : v
 const fmtBytes = (n?: number): string => (n == null ? "" : n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`);
 
 function statusBadge(status: string): HTMLElement {
-  const cls = status === "completed" ? "badge-ok" : status === "failed" ? "badge-error" : "badge-active";
+  const cls = status === "completed" ? "badge-ok" : status === "failed" ? "badge-error" : status === "cancelled" ? "badge-unknown" : "badge-active";
   return node("span", `badge ${cls}`, status);
 }
 
@@ -64,6 +64,8 @@ let lastSeq = -1;
 let perJob: EventSource | undefined; // the selected job's events (history, then live)
 let allJobs: EventSource | undefined; // live events of every job, to keep the list current
 let drawQueued = false;
+const stopping = new Set<number>(); // runs a stop was requested of, until they end
+let stopError = ""; // why the last stop request failed
 
 //---------------------------------------------------------------------------------------------
 // Jobs list
@@ -78,12 +80,12 @@ function renderJobs(): void {
     tr.title = j.error ? j.error : "Show this job's feed and loss";
     tr.insertCell().textContent = String(j.id);
     const statusCell = tr.insertCell();
+    statusCell.appendChild(statusBadge(j.status));
     if (!FINISHED.includes(j.status)) {
       const cube = node("span", "running-cube");
       cube.title = "Running";
-      statusCell.append(cube, " ");
+      statusCell.append(" ", cube);
     }
-    statusCell.appendChild(statusBadge(j.status));
     tr.insertCell().textContent = j.model_size;
     tr.insertCell().textContent = j.dataset || "(default)";
     const steps = tr.insertCell();
@@ -121,12 +123,13 @@ async function loadJobs(): Promise<void> {
 function applyToList(ev: FeedEvent): void {
   const j = jobs.find((x) => x.id === ev.run_id);
   if (!j) { void loadJobs(); return; } // a job started elsewhere
+  if (ev.type === "log") return; // nothing in the list changes
   if (ev.type === "status" && ev.status) j.status = ev.status;
   if (ev.type === "progress" && ev.step != null) {
     j.last_step = ev.step;
     if (ev.loss != null) j.last_loss = ev.loss;
   }
-  if (ev.type === "status" && ev.status && FINISHED.includes(ev.status)) { void loadJobs(); return; } // final loss, finish time
+  if (ev.type === "status" && ev.status && FINISHED.includes(ev.status)) { stopping.delete(ev.run_id); void loadJobs(); return; } // final loss, finish time
   renderJobs();
   renderDetailHead();
 }
@@ -503,11 +506,38 @@ function renderDetailHead(): void {
   if (!j) return;
   head.append(node("strong", "", `Job #${j.id}`), " ", statusBadge(j.status), " ",
     node("span", "muted", `${j.model_size} · ${j.dataset || "default dataset"} · ${j.job_id}`));
-  if (j.error) head.append(node("div", "error", j.error));
+  if (j.error) head.append(node("div", j.status === "cancelled" ? "muted" : "error", j.error));
+  if (!FINISHED.includes(j.status)) {
+    const asked = stopping.has(j.id);
+    const stop = node("button", "small danger", asked ? "Stopping…" : "Stop job");
+    stop.type = "button";
+    stop.disabled = asked;
+    stop.title = "Ask the job to stop: it ends at its next step (during the model load: when that is done)";
+    stop.addEventListener("click", () => void stopJob(j.id));
+    head.append(" ", stop);
+    if (asked) head.append(" ", node("span", "muted", "stop requested; it takes effect at the next step"));
+    if (stopError) head.append(node("div", "error", stopError));
+  }
+}
+
+async function stopJob(id: number): Promise<void> {
+  if (!confirm(`Stop job #${id}?\n\nIt ends at its next step; the adapters of a stopped job are not saved.`)) return;
+  stopError = "";
+  stopping.add(id);
+  renderDetailHead();
+  try {
+    const res = await fetch(`../training/jobs/${id}/stop`, { method: "POST" });
+    if (!res.ok) throw await failure(res);
+  } catch (err) {
+    stopping.delete(id);
+    stopError = `Failed to stop the job: ${errText(err)}`;
+    renderDetailHead();
+  }
 }
 
 function select(id: number): void {
   selected = id;
+  stopError = "";
   points = [];
   lastSeq = -1;
   el("training-feed").replaceChildren();
@@ -520,6 +550,7 @@ function select(id: number): void {
 }
 
 function feedLine(ev: FeedEvent): string {
+  if (ev.type === "log") return ev.message ?? "";
   if (ev.type === "progress") {
     const parts = [`step ${ev.step ?? "?"}`, `loss ${fmtLoss(ev.loss)}`];
     if (ev.learning_rate != null) parts.push(`lr ${ev.learning_rate.toExponential(2)}`);
@@ -557,6 +588,7 @@ function onJobEvent(ev: FeedEvent): void {
     if (j && ev.status) j.status = ev.status;
     renderDetailHead();
     if (ev.status && FINISHED.includes(ev.status)) {
+      stopping.delete(ev.run_id);
       perJob?.close(); // the job is over; EventSource would reconnect otherwise
       el("training-stream").textContent = "Job finished.";
     }
@@ -572,7 +604,7 @@ function openPerJob(): void {
   perJob = es;
   es.onopen = () => { stream.textContent = "Live."; };
   es.onerror = () => { stream.textContent = "Connection lost, reconnecting…"; }; // EventSource retries by itself (with Last-Event-ID)
-  for (const type of ["status", "progress"]) es.addEventListener(type, (e) => onJobEvent(JSON.parse((e as MessageEvent<string>).data) as FeedEvent));
+  for (const type of ["status", "progress", "log"]) es.addEventListener(type, (e) => onJobEvent(JSON.parse((e as MessageEvent<string>).data) as FeedEvent));
 }
 
 function openAllJobs(): void {
@@ -580,7 +612,7 @@ function openAllJobs(): void {
   const es = new EventSource("../training/events");
   allJobs = es;
   es.onopen = () => void loadJobs();
-  for (const type of ["status", "progress"]) es.addEventListener(type, (e) => applyToList(JSON.parse((e as MessageEvent<string>).data) as FeedEvent));
+  for (const type of ["status", "progress", "log"]) es.addEventListener(type, (e) => applyToList(JSON.parse((e as MessageEvent<string>).data) as FeedEvent));
 }
 
 function closeStreams(): void {

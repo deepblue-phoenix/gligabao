@@ -11,7 +11,7 @@ type TrainingJobRun struct {
 	JobID         string `json:"job_id"`
 	ProviderJobID string `json:"provider_job_id,omitempty"`
 	// Status is "started" when the sidecar reports the job started, then follows the job's status events
-	// ("running", "training") until it is "completed" or "failed" (see TrainingJobFinished).
+	// ("running", "training") until it is "completed", "failed" or "cancelled" (see TrainingJobFinished).
 	Status    string `json:"status"`
 	ModelSize string `json:"model_size"` // "4b" or "12b"
 	// Dataset is the file the job trains on, on the sidecar's data volume ("" = the sidecar's default dataset).
@@ -21,11 +21,11 @@ type TrainingJobRun struct {
 	// LastStep and LastLoss are from the newest progress event that has a loss (LastLoss is nil before that).
 	LastStep int      `json:"last_step"`
 	LastLoss *float64 `json:"last_loss"`
-	// FinalLoss is the mean training loss, reported when the job completes. Error is why it failed.
+	// FinalLoss is the mean training loss, reported when the job completes. Error is why it failed (or what it was stopped at).
 	FinalLoss *float64 `json:"final_loss"`
 	Error     string   `json:"error,omitempty"`
 	// StartedAt is when the sidecar says the job started; CreatedAt is when this record was made; FinishedAt is when the
-	// job completed or failed (nil while it runs).
+	// job completed, failed or was cancelled (nil while it runs).
 	StartedAt  time.Time  `json:"started_at"`
 	CreatedAt  time.Time  `json:"created_at"`
 	FinishedAt *time.Time `json:"finished_at"`
@@ -35,11 +35,12 @@ type TrainingJobRun struct {
 const (
 	TrainingJobCompleted = "completed"
 	TrainingJobFailed    = "failed"
+	TrainingJobCancelled = "cancelled" // stopped on request
 )
 
 // TrainingJobFinished reports whether status ends a job.
 func TrainingJobFinished(status string) bool {
-	return status == TrainingJobCompleted || status == TrainingJobFailed
+	return status == TrainingJobCompleted || status == TrainingJobFailed || status == TrainingJobCancelled
 }
 
 // TrainingJobRunUpdate is a change to a TrainingJobRun: only the fields that are set (non-zero) are written.
@@ -58,7 +59,7 @@ type TrainingJobRunUpdate struct {
 type TrainingJobEvent struct {
 	RunID     int64     `json:"run_id"`
 	Seq       int       `json:"seq"`
-	Type      string    `json:"type"` // "status" or "progress"
+	Type      string    `json:"type"` // "status", "progress" or "log"
 	Data      string    `json:"data"`
 	CreatedAt time.Time `json:"created_at"`
 }
