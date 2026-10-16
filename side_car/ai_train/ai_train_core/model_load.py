@@ -16,7 +16,7 @@ def load_gemma4_model(model_size: str = "4b", max_seq_length: int = 2048, load_i
     """Load the base model from Hugging Face (cached on the HF cache volume), 4-bit by default.
 
     Returns (model, tokenizer_or_processor, config). Gemma-4 returns a multimodal
-    Gemma4Processor rather than a plain tokenizer; see docs/tokenizers_and_processors.md.
+    Gemma4Processor rather than a plain tokenizer; see docs/training/tokenizers_and_processors.md.
     Needs HF_TOKEN (a secret, see SIDECAR_HF_SECRET) for gated models.
     """
     config = get_model_config(model_size)

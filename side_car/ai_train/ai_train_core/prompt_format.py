@@ -8,7 +8,7 @@
     {output}<end_of_turn>
 
 Training and inference must use the same format so the model sees prompts in the
-distribution it was fine-tuned on. See docs/TRAINING_DATA_FORMAT.md.
+distribution it was fine-tuned on. See docs/training/TRAINING_DATA_FORMAT.md.
 """
 
 MODEL_TURN_MARKER = "<start_of_turn>model"

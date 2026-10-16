@@ -42,7 +42,7 @@ side_car/ai_train/
   requirements_gemma4_12b.txt # 12B image: plain transformers + peft + trl (no Unsloth)
   requirements_web.txt        # web API image
   finetune_data/              # generate_dataset.py + the 325-example tool-calling dataset
-  docs/                       # MODEL_SIZES, TRAINING_DATA_FORMAT, tokenizers_and_processors
+  (training docs moved to top-level docs/training/)
   test_ai_train_core.py       # local unit tests (no GPU / Modal needed)
   ai_train_core/              # runs inside the container; never imports a provider SDK
     model_config.py           # 4b / 12b settings (pure data)
@@ -64,7 +64,7 @@ side_car/ai_train/
 
 ### Why two training paths
 
-`google/gemma-4-E4B-it` (4B) uses the `gemma4` architecture, which Unsloth supports. `google/gemma-4-12B-it` uses the newer `gemma4_unified` architecture, which needs `transformers>=5.10.1`; Unsloth pins `transformers<=5.5.0` and has no loader for it. So 12B trains and serves through plain transformers + peft + trl in a separate image, and 4B stays on Unsloth. Both save LoRA adapters to `/models/finetuned_model_<size>`. Details in the `model_train_gemma4_12b.py` docstring and `docs/MODEL_SIZES.md`.
+`google/gemma-4-E4B-it` (4B) uses the `gemma4` architecture, which Unsloth supports. `google/gemma-4-12B-it` uses the newer `gemma4_unified` architecture, which needs `transformers>=5.10.1`; Unsloth pins `transformers<=5.5.0` and has no loader for it. So 12B trains and serves through plain transformers + peft + trl in a separate image, and 4B stays on Unsloth. Both save LoRA adapters to `/models/finetuned_model_<size>`. Details in the `model_train_gemma4_12b.py` docstring and `docs/training/MODEL_SIZES.md`.
 
 ### Running it (Modal)
 
