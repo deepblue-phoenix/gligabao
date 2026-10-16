@@ -37,7 +37,18 @@ type (
 	RememberStageDef     = model.RememberStageDef
 	RememberRunFilter    = model.RememberRunFilter
 	TrainingJobRun       = model.TrainingJobRun
+	TrainingJobRunUpdate = model.TrainingJobRunUpdate
+	TrainingJobEvent     = model.TrainingJobEvent
 )
+
+// Statuses that end a training job (see model.TrainingJobRun).
+const (
+	TrainingJobCompleted = model.TrainingJobCompleted
+	TrainingJobFailed    = model.TrainingJobFailed
+)
+
+// TrainingJobFinished reports whether a training job status ends the job.
+func TrainingJobFinished(status string) bool { return model.TrainingJobFinished(status) }
 
 // Statuses of a remember run and of its stages, and the stages (see model.RememberStages and gb_remember_runs).
 const (

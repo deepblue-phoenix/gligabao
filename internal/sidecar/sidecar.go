@@ -18,6 +18,30 @@ const DefaultBaseURL = "http://127.0.0.1:8787"
 type Client struct {
 	baseURL string
 	http    *http.Client
+	// stream is for the responses that stay open (SSE): it has no overall timeout; the caller's context ends them.
+	stream *http.Client
+}
+
+// StatusError is the error for a sidecar response with a status other than 200. Body is the start of the response body.
+type StatusError struct {
+	Method, Path string
+	Code         int
+	Body         string
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("sidecar %s %s: status %d: %s", e.Method, e.Path, e.Code, e.Body)
+}
+
+// Message is the sidecar's error message: the "error" field of its JSON body, or the body itself.
+func (e *StatusError) Message() string {
+	var b struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal([]byte(e.Body), &b) == nil && b.Error != "" {
+		return b.Error
+	}
+	return e.Body
 }
 
 // New returns a Client for the sidecar at baseURL (DefaultBaseURL when empty).
@@ -28,6 +52,7 @@ func New(baseURL string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		http:    &http.Client{Timeout: 30 * time.Second},
+		stream:  &http.Client{},
 	}
 }
 
@@ -60,7 +85,7 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("sidecar GET %s: status %d: %s", path, resp.StatusCode, strings.TrimSpace(string(body)))
+		return &StatusError{Method: http.MethodGet, Path: path, Code: resp.StatusCode, Body: strings.TrimSpace(string(body))}
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		return fmt.Errorf("sidecar GET %s: decode: %w", path, err)

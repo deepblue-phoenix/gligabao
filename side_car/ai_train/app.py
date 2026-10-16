@@ -6,6 +6,7 @@ Run (Modal):
     modal run app.py --action sync                            # upload the local dataset to the data volume
     modal run app.py --action validate                        # validate the remote dataset
     modal run app.py --action train --train-steps 100 --model-size 4b      # 4b (A10G) or 12b (A100)
+                                                              # [--dataset my.jsonl: a file on the data volume]
     modal run app.py --action generate --model-size 4b --prompt "..."      # fine-tuned model inference
     modal serve app.py                                        # web API (dev); `modal deploy app.py` to persist
 
@@ -89,16 +90,16 @@ def validate_dataset() -> dict:
 
 @provider.function(FunctionSpec(image=UNSLOTH_IMAGE, gpu=CONFIG.gpu_for("4b"),
                                 timeout_s=CONFIG.train_timeout_s, volumes=TRAIN_VOLS, secrets=secrets))
-def train_4b(num_train_steps: int = 100) -> dict:
+def train_4b(num_train_steps: int = 100, dataset: str = "", job_id: str = "") -> dict:
     from ai_train_core import bootstrap
-    return bootstrap.run_train(num_train_steps, "4b", commit_fn=provider.commit_volumes)
+    return bootstrap.run_train(num_train_steps, "4b", commit_fn=provider.commit_volumes, dataset=dataset, job_id=job_id)
 
 
 @provider.function(FunctionSpec(image=TRANSFORMERS_IMAGE, gpu=CONFIG.gpu_for("12b"),
                                 timeout_s=CONFIG.train_timeout_s, volumes=TRAIN_VOLS, secrets=secrets))
-def train_12b(num_train_steps: int = 100) -> dict:
+def train_12b(num_train_steps: int = 100, dataset: str = "", job_id: str = "") -> dict:
     from ai_train_core import bootstrap
-    return bootstrap.run_train(num_train_steps, "12b", commit_fn=provider.commit_volumes)
+    return bootstrap.run_train(num_train_steps, "12b", commit_fn=provider.commit_volumes, dataset=dataset, job_id=job_id)
 
 
 TRAIN_FUNCTIONS = {"4b": train_4b, "12b": train_12b}
@@ -107,12 +108,13 @@ TRAIN_FUNCTIONS = {"4b": train_4b, "12b": train_12b}
 # The router only waits on the GPU job, so its timeout must match the job's: a shorter one gets
 # the wrapper cancelled mid-training (and the blocked wrapper is then force-killed, aborting the run).
 @provider.function(FunctionSpec(image=CPU_IMAGE, timeout_s=CONFIG.train_timeout_s))
-def train(num_train_steps: int = 100, model_size: str = "4b") -> dict:
-    """Route to the per-size training function."""
+def train(num_train_steps: int = 100, model_size: str = "4b", dataset: str = "", job_id: str = "") -> dict:
+    """Route to the per-size training function. `dataset` is a file name on the data volume ("" = the default
+    dataset); `job_id` names the progress file the job reports to."""
     size = model_size.lower()
     if size not in TRAIN_FUNCTIONS:
         raise ValueError(f"Invalid model_size '{model_size}'. Must be one of {list(MODEL_SIZES)}.")
-    return provider.call(TRAIN_FUNCTIONS[size], num_train_steps=num_train_steps)
+    return provider.call(TRAIN_FUNCTIONS[size], num_train_steps=num_train_steps, dataset=dataset, job_id=job_id)
 
 
 #-----------------------------------------------------------------------------------------
@@ -156,8 +158,8 @@ def generate(prompt: str, max_tokens: int = 1024, temperature: float = 0.7, mode
 def serve_api():
     from api.api import create_api
     return create_api(
-        spawn_training_job=lambda num_train_steps, model_size: provider.spawn(
-            train, num_train_steps=num_train_steps, model_size=model_size),
+        spawn_training_job=lambda num_train_steps, model_size, dataset, job_id: provider.spawn(
+            train, num_train_steps=num_train_steps, model_size=model_size, dataset=dataset, job_id=job_id),
         generate_response=lambda prompt, max_tokens, temperature, model_size: provider.call(
             generate, prompt, max_tokens, temperature, model_size),
         commit_volumes=provider.commit_volumes,
@@ -181,7 +183,7 @@ def _sync_local_dataset() -> dict:
 
 
 @provider.local_entrypoint()
-def main(action: str = "ping", train_steps: int = 5, model_size: str = "4b",
+def main(action: str = "ping", train_steps: int = 5, model_size: str = "4b", dataset: str = "",
          prompt: str = "Check recent news about NVIDIA and buy 10 shares if it's positive"):
     print(f"provider={provider.name} app={CONFIG.app_name} action={action} model_size={model_size}")
     if action == "ping":
@@ -199,7 +201,7 @@ def main(action: str = "ping", train_steps: int = 5, model_size: str = "4b",
         else:
             print("[1/2] Local dataset not found, using the existing remote dataset")
         print(f"[2/2] Fine-tuning {model_size} for {train_steps} steps...")
-        print(provider.call(train, num_train_steps=train_steps, model_size=model_size))
+        print(provider.call(train, num_train_steps=train_steps, model_size=model_size, dataset=dataset))
     elif action == "generate":
         print(provider.call(generate, prompt, 1024, 0.7, model_size))
     else:

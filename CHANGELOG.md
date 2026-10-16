@@ -5,6 +5,23 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.28.0] - 2026-10-26
+
+### Added
+- Admin UI **training** view: a `Run` button that starts a Gemma 4 fine-tuning job (model size 4B/12B, number of steps, and the training dataset, picked from the sidecar's datasets), the list of the training jobs in the database, and, for the selected job, a live feed of its events and a graph of its loss. Finished jobs show their stored history.
+- Progress goes sidecar → Go → admin UI as Server-Sent Events. The sidecar writes status and progress events for each job (`running`, `training`, `completed` with the final loss, `failed` with the error, and a progress event per Trainer log) and streams them at `GET /training/job_events?job_id=[&from=]`. The Go server follows that stream for every job it starts (and resumes unfinished jobs after a restart), stores the events, keeps the job's row current, and forwards the events at `GET /v1/gb/admin/api/training/events[?db=][&run_id=]`, which replays a job's stored events before going live (`Last-Event-ID` is honoured). A job that never reports its end is marked `failed` 3 hours after it started.
+- Admin endpoints `GET /v1/gb/admin/api/training/jobs[?db=][&limit=]` (the jobs, newest first) and `GET /v1/gb/admin/api/training/datasets` (the sidecar's training datasets).
+- Training on a chosen dataset: `POST /training/job_start` (and `POST /v1/gb/admin/api/training/jobs`) take a `dataset` (file name on the sidecar's data volume; the sidecar answers 400 for an unknown one, which the admin endpoint passes on as 400). `modal run app.py --action train` takes `--dataset`.
+- `gb_training_job_runs` gains `provider_job_id`, `dataset`, `last_step`, `last_loss`, `final_loss`, `error` and `finished_at`; new table `gb_training_job_events` (one row per event of a job). Go: `relational.ListTrainingJobRuns`, `UpdateTrainingJobRun`, `RecordTrainingJobEvent`, `ListTrainingJobEvents`, `NextTrainingJobEventSeq`; `sidecar.Client.StreamTrainingJobEvents`, `sidecar.TrainingEvent` and `sidecar.StatusError`.
+- `GET /training/job_progress` takes an optional `job_id`.
+
+### Changed
+- `job_id` of a training job is now assigned by the sidecar (it names the job's progress file); the compute provider's id is the new `provider_job_id`. The job's `status` in `gb_training_job_runs` now follows the job (`started`, `running`, `training`, `completed`, `failed`) instead of staying `started`.
+- The sidecar's `POST /datasets/upload` now stores the dataset under its own `filename` (a plain `*.jsonl` name; anything else is a 400) instead of always overwriting the default dataset, so several datasets can be kept and picked per job. The default dataset is still used when a job names none.
+- The newest progress file (`GET /training/job_progress` without `job_id`) is the most recently modified one.
+- `server.NewHandler` takes an `admin.TrainingSidecar` (adds dataset listing and event streaming to `admin.TrainingJobStarter`; `*sidecar.Client` is one) and `admin.StartTrainingJobOf` takes the `*admin.TrainingMonitor`.
+- **Schema change**: existing SQLite database files are not migrated; delete the file and let the server recreate it (PostgreSQL: drop `gb_training_job_runs` first; it was added in 0.27.0).
+
 ## [0.27.0] - 2026-10-26
 
 ### Added

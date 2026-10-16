@@ -106,9 +106,9 @@ const EvalDBName = "eval"
 // llm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities.
 // jv may be nil, in which case remember skips the steps that run on Jev. ws may be nil, in which case web search is not available
 // (a remember request with web_search returns 503); it is the Anthropic web search tool, so it is only set with an Anthropic API key.
-// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). sc starts the training jobs of the admin UI on the sidecar (may be nil: the endpoint then returns 503). The eval endpoints are registered only if eval is true,
+// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). sc starts the training jobs of the admin UI on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The eval endpoints are registered only if eval is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary.
-func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, sc admin.TrainingJobStarter, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
+func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, sc admin.TrainingSidecar, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "gligabao is running")
@@ -128,7 +128,7 @@ func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_c
 		api.RegisterEval(mux, mgr, d, llm, emb, jv, ws, providers)
 	}
 	if adminUI {
-		registerAdminUI(mux, d, sc, extraAdminDBs)
+		registerAdminUI(ctx, mux, d, sc, extraAdminDBs)
 	}
 	return mux
 }
@@ -145,7 +145,7 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 
 // registerAdminUI serves the embedded admin UI assets under /v1/gb/admin/. It is a no-op (with a warning) if the
 // assets were not built into the binary (see admin_ui/ and run_build.sh).
-func registerAdminUI(mux *http.ServeMux, d *db.DB, sc admin.TrainingJobStarter, extra []admin.Named) {
+func registerAdminUI(ctx context.Context, mux *http.ServeMux, d *db.DB, sc admin.TrainingSidecar, extra []admin.Named) {
 	if !adminui.Available() {
 		log.Warn("admin_ui is enabled but the web assets are not embedded in this binary; build with ./run_build.sh (admin UI build enabled)")
 		return
@@ -162,7 +162,12 @@ func registerAdminUI(mux *http.ServeMux, d *db.DB, sc admin.TrainingJobStarter, 
 	mux.HandleFunc("GET /v1/gb/admin/api/web-searches", admin.WebSearchStatsOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/web-searches/dataset", admin.WebSearchDatasetOf(dbs))
 	mux.HandleFunc("DELETE /v1/gb/admin/api/datasets", admin.DeleteDatasetOf(dbs))
-	mux.HandleFunc("POST /v1/gb/admin/api/training/jobs", admin.StartTrainingJobOf(dbs, sc))
+	// The training monitor follows the progress the sidecar reports for the jobs and feeds it to the admin UI.
+	mon := admin.NewTrainingMonitor(ctx, dbs, sc)
+	mux.HandleFunc("POST /v1/gb/admin/api/training/jobs", admin.StartTrainingJobOf(dbs, sc, mon))
+	mux.HandleFunc("GET /v1/gb/admin/api/training/jobs", admin.ListTrainingJobsOf(dbs))
+	mux.HandleFunc("GET /v1/gb/admin/api/training/datasets", admin.TrainingDatasetsOf(sc))
+	mux.HandleFunc("GET /v1/gb/admin/api/training/events", admin.TrainingEventsOf(dbs, mon))
 	// The experiments live in the eval database; without one there are none to show.
 	for _, e := range extra {
 		if e.Name != EvalDBName {

@@ -121,21 +121,44 @@ CREATE INDEX IF NOT EXISTS idx_gb_model_runs_model ON gb_model_runs(model_id);
 
 -- Training jobs started on the sidecar (internal/sidecar, side_car/ai_train): ONE ROW PER JOB the sidecar reported as started,
 -- made from the TrainingJob it returned from POST /training/job_start.
---   job_id           the compute provider's ID of the job
---   status           what the sidecar reported when the job started ('started')
+--   job_id           the sidecar's ID of the job (names its progress file there); provider_job_id is the compute provider's
+--   status           'started' when the sidecar reports the job started, then the job's status events ('running', 'training'),
+--                    finally 'completed' or 'failed'
 --   model_size       '4b' or '12b'
+--   dataset          the file on the sidecar's data volume the job trains on ('' = the sidecar's default dataset)
 --   num_train_steps  how many steps the job was asked to train
---   started_at       when the sidecar says the job started; created_at is when the row was made
+--   last_step, last_loss  from the newest progress event that has a loss; final_loss: the mean loss, when the job completed
+--   error            why the job failed
+--   started_at       when the sidecar says the job started; created_at is when the row was made; finished_at when it ended
 CREATE TABLE IF NOT EXISTS gb_training_job_runs (
 	id              INTEGER PRIMARY KEY AUTOINCREMENT,
 	job_id          TEXT NOT NULL,
+	provider_job_id TEXT NOT NULL DEFAULT '',
 	status          TEXT NOT NULL,
 	model_size      TEXT NOT NULL,
+	dataset         TEXT NOT NULL DEFAULT '',
 	num_train_steps INTEGER NOT NULL,
+	last_step       INTEGER NOT NULL DEFAULT 0,
+	last_loss       REAL,
+	final_loss      REAL,
+	error           TEXT NOT NULL DEFAULT '',
 	started_at      DATETIME NOT NULL,
-	created_at      DATETIME NOT NULL DEFAULT (` + SQLNow + `)
+	created_at      DATETIME NOT NULL DEFAULT (` + SQLNow + `),
+	finished_at     DATETIME
 );
 CREATE INDEX IF NOT EXISTS idx_gb_training_job_runs_job ON gb_training_job_runs(job_id);
+
+-- The events the sidecar reported for a training job (status changes and progress with the loss), in the order of the
+-- sidecar's progress file: seq is the event's index there, so a reconnect can resume after the last seq stored.
+--   data: the event as JSON (internal/sidecar: TrainingEvent)
+CREATE TABLE IF NOT EXISTS gb_training_job_events (
+	run_id     INTEGER NOT NULL REFERENCES gb_training_job_runs(id) ON DELETE CASCADE,
+	seq        INTEGER NOT NULL,
+	type       TEXT NOT NULL,
+	data       TEXT NOT NULL,
+	created_at DATETIME NOT NULL DEFAULT (` + SQLNow + `),
+	PRIMARY KEY (run_id, seq)
+);
 
 -- Eval experiments (evals/ and internal/experiments). An experiment is a named series of eval runs; names are unique.
 --   config: JSON object with the free-form settings under test

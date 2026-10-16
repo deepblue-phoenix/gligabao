@@ -1,10 +1,27 @@
 """Dataset sync/validation on the data volume. Provider neutral; runs inside the container."""
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
 from .paths import DATA_DIR, REMOTE_DATASET_PATH, REMOTE_METADATA_PATH
+
+# Datasets are .jsonl files directly in DATA_DIR. A name never has a path or a leading dot (".metadata.json" lives there).
+_DATASET_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.jsonl")
+
+
+def valid_dataset_filename(name: str) -> bool:
+    return isinstance(name, str) and ".." not in name and _DATASET_NAME_RE.fullmatch(name) is not None
+
+
+def resolve_dataset_path(name: str = "") -> str:
+    """Path on the data volume of the dataset `name` (the default dataset if empty). Raises ValueError for a bad name."""
+    if not name:
+        return REMOTE_DATASET_PATH
+    if not valid_dataset_filename(name):
+        raise ValueError(f"Invalid dataset name {name!r}: must be a plain *.jsonl file name")
+    return f"{DATA_DIR}/{name}"
 
 
 def sync_dataset(content: bytes, local_mtime: float, commit_fn: Optional[Callable] = None,

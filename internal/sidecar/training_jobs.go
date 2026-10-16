@@ -22,20 +22,26 @@ const (
 // TrainingJob is a training job started on the sidecar (side_car/ai_train/api/models.py: TrainingJob). The sidecar
 // reports it back when a job is started.
 type TrainingJob struct {
-	// JobID is the compute provider's ID of the spawned job.
-	JobID  string `json:"job_id"`
-	Status string `json:"status"` // "started"
+	// JobID is the sidecar's ID of the job: it names the job's progress file there (see StreamTrainingJobEvents).
+	// ProviderJobID is the compute provider's ID of the spawned call.
+	JobID         string `json:"job_id"`
+	ProviderJobID string `json:"provider_job_id,omitempty"`
+	Status        string `json:"status"` // "started"
 	// ModelSize is "4b" or "12b".
-	ModelSize     string    `json:"model_size"`
-	NumTrainSteps int       `json:"num_train_steps"`
-	StartedAt     time.Time `json:"started_at"`
+	ModelSize     string `json:"model_size"`
+	NumTrainSteps int    `json:"num_train_steps"`
+	// Dataset is the file on the sidecar's data volume the job trains on ("" = the sidecar's default dataset).
+	Dataset   string    `json:"dataset,omitempty"`
+	StartedAt time.Time `json:"started_at"`
 }
 
 // StartTrainingJobRequest is the body of POST /training/job_start. Zero fields take the sidecar's defaults
-// (DefaultNumTrainSteps, DefaultModelSize).
+// (DefaultNumTrainSteps, DefaultModelSize, its default dataset).
 type StartTrainingJobRequest struct {
 	NumTrainSteps int    `json:"num_train_steps,omitempty"`
 	ModelSize     string `json:"model_size,omitempty"`
+	// Dataset is the file name of one of the sidecar's training datasets (see ListTrainingDatasets).
+	Dataset string `json:"dataset,omitempty"`
 }
 
 // StartTrainingJob starts a training job on the sidecar via POST /training/job_start and returns the job it reports.

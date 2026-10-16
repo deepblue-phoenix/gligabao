@@ -17,7 +17,8 @@ from .training_common import (load_training_dataset, print_dependency_versions, 
 
 
 def run_finetuning(num_train_steps: int = 100, model_size: str = "4b",
-                   commit_fn: Optional[Callable] = None) -> dict:
+                   commit_fn: Optional[Callable] = None, dataset_path: str = REMOTE_DATASET_PATH,
+                   job_id: str = "") -> dict:
     """load dataset -> load model (4-bit) -> add LoRA -> train -> save adapters.
 
     `commit_fn(paths)` persists volumes (progress during training, models at the end).
@@ -27,7 +28,7 @@ def run_finetuning(num_train_steps: int = 100, model_size: str = "4b",
     config = get_model_config(model_size)
     print("=" * 60 + f"\nGEMMA-4 FINE-TUNING (UNSLOTH) - {config['display_name']}\n" + "=" * 60)
 
-    examples, train_dataset = load_training_dataset(REMOTE_DATASET_PATH)
+    examples, train_dataset = load_training_dataset(dataset_path)
 
     model, tokenizer_or_processor, model_config = load_gemma4_model(
         model_size=model_size, max_seq_length=2048, load_in_4bit=True)
@@ -55,7 +56,7 @@ def run_finetuning(num_train_steps: int = 100, model_size: str = "4b",
         train_dataset=train_dataset,
         formatting_func=dataset_formatting_func,
         args=training_args,
-        callbacks=[ProgressCallback(commit_fn)],
+        callbacks=[ProgressCallback(commit_fn, job_id)],
     )
     train_result = trainer.train()
 

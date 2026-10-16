@@ -113,11 +113,12 @@ def add_lora_adapters_no_unsloth(model, lora_rank: int = 16, lora_alpha: int = 1
     return model
 
 
-def run_finetuning_gemma4_12b(num_train_steps: int = 100, commit_fn: Optional[Callable] = None) -> dict:
+def run_finetuning_gemma4_12b(num_train_steps: int = 100, commit_fn: Optional[Callable] = None,
+                              dataset_path: str = REMOTE_DATASET_PATH, job_id: str = "") -> dict:
     """load dataset -> load model (4-bit) -> add LoRA -> train -> save adapters (no Unsloth)."""
     print("=" * 60 + f"\nGEMMA-4 FINE-TUNING (NO UNSLOTH) - {GEMMA4_12B_CONFIG['display_name']}\n" + "=" * 60)
 
-    examples, train_dataset = load_training_dataset(REMOTE_DATASET_PATH)
+    examples, train_dataset = load_training_dataset(dataset_path)
     model, tokenizer, model_config = load_gemma4_12b_model(max_seq_length=2048, load_in_4bit=True)
     model = add_lora_adapters_no_unsloth(model, lora_rank=16, lora_alpha=16, lora_dropout=0,
                                          use_gradient_checkpointing=True)
@@ -138,7 +139,7 @@ def run_finetuning_gemma4_12b(num_train_steps: int = 100, commit_fn: Optional[Ca
         train_dataset=train_dataset,
         formatting_func=dataset_formatting_func,
         args=training_args,
-        callbacks=[ProgressCallback(commit_fn)],
+        callbacks=[ProgressCallback(commit_fn, job_id)],
     )
     train_result = trainer.train()
 

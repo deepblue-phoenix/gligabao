@@ -74,7 +74,7 @@ func (c *Client) post(ctx context.Context, path string, in, out any) error {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("sidecar POST %s: status %d: %s", path, resp.StatusCode, strings.TrimSpace(string(msg)))
+		return &StatusError{Method: http.MethodPost, Path: path, Code: resp.StatusCode, Body: strings.TrimSpace(string(msg))}
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		return fmt.Errorf("sidecar POST %s: decode: %w", path, err)

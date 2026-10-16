@@ -78,13 +78,30 @@ CREATE INDEX IF NOT EXISTS idx_gb_model_runs_model ON gb_model_runs(model_id);
 CREATE TABLE IF NOT EXISTS gb_training_job_runs (
 	id              BIGSERIAL PRIMARY KEY,
 	job_id          TEXT NOT NULL,
+	provider_job_id TEXT NOT NULL DEFAULT '',
 	status          TEXT NOT NULL,
 	model_size      TEXT NOT NULL,
+	dataset         TEXT NOT NULL DEFAULT '',
 	num_train_steps BIGINT NOT NULL,
+	last_step       BIGINT NOT NULL DEFAULT 0,
+	last_loss       DOUBLE PRECISION,
+	final_loss      DOUBLE PRECISION,
+	error           TEXT NOT NULL DEFAULT '',
 	started_at      TIMESTAMPTZ NOT NULL,
-	created_at      TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `
+	created_at      TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `,
+	finished_at     TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_gb_training_job_runs_job ON gb_training_job_runs(job_id);
+
+-- The events the sidecar reported for a training job (see sqlite/db_schema.go).
+CREATE TABLE IF NOT EXISTS gb_training_job_events (
+	run_id     BIGINT NOT NULL REFERENCES gb_training_job_runs(id) ON DELETE CASCADE,
+	seq        BIGINT NOT NULL,
+	type       TEXT NOT NULL,
+	data       TEXT NOT NULL,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `,
+	PRIMARY KEY (run_id, seq)
+);
 
 CREATE TABLE IF NOT EXISTS gb_experiments (
 	id          BIGSERIAL PRIMARY KEY,

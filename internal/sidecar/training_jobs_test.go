@@ -17,19 +17,19 @@ func TestStartTrainingJob(t *testing.T) {
 		}
 		var in StartTrainingJobRequest
 		json.NewDecoder(r.Body).Decode(&in)
-		if in.ModelSize != "12b" || in.NumTrainSteps != 7 {
+		if in.ModelSize != "12b" || in.NumTrainSteps != 7 || in.Dataset != "mine.jsonl" {
 			http.Error(w, "bad body", http.StatusBadRequest)
 			return
 		}
-		w.Write([]byte(`{"job_id":"fc-1","status":"started","model_size":"12b","num_train_steps":7,"started_at":"2025-01-02T03:04:05.123456Z"}`))
+		w.Write([]byte(`{"job_id":"fc-1","status":"started","provider_job_id":"fc-p","dataset":"mine.jsonl","model_size":"12b","num_train_steps":7,"started_at":"2025-01-02T03:04:05.123456Z"}`))
 	}))
 	defer srv.Close()
 
-	job, err := New(srv.URL).StartTrainingJob(context.Background(), StartTrainingJobRequest{NumTrainSteps: 7, ModelSize: ModelSize12B})
+	job, err := New(srv.URL).StartTrainingJob(context.Background(), StartTrainingJobRequest{NumTrainSteps: 7, ModelSize: ModelSize12B, Dataset: "mine.jsonl"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.JobID != "fc-1" || job.Status != "started" || job.ModelSize != "12b" || job.NumTrainSteps != 7 ||
+	if job.JobID != "fc-1" || job.Status != "started" || job.ModelSize != "12b" || job.NumTrainSteps != 7 || job.ProviderJobID != "fc-p" || job.Dataset != "mine.jsonl" ||
 		!job.StartedAt.Equal(time.Date(2025, 1, 2, 3, 4, 5, 123456000, time.UTC)) {
 		t.Fatalf("got %+v", job)
 	}

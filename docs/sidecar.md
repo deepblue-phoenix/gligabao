@@ -50,7 +50,8 @@ side_car/ai_train/
     prompt_format.py          # Gemma turn-marker format shared by training and inference
     dataset.py                # sync / validate the dataset on the data volume
     training_common.py        # dataset loading, SFTConfig, adapter saving
-    progress.py               # Trainer callback writing live progress jsonl
+    progress.py               # Trainer callback writing live progress events
+    progress_events.py        # the progress file format: write/read events (no heavy imports)
     model_load.py, model_train.py            # 4B via Unsloth
     model_train_gemma4_12b.py                # 12B without Unsloth (training + inference loading)
     inference.py              # generate with the trained adapter
@@ -81,9 +82,29 @@ modal run app.py --action generate --model-size 4b --prompt "..."     # run the 
 modal serve app.py                                 # web API in dev mode (`modal deploy app.py` to persist)
 ```
 
-`train` syncs the dataset first. Web API endpoints: `POST /training/job_start`, `GET /training/job_progress`, `POST /infer/query`, `POST /evals/add_to_dataset`, `GET /evals/get_dataset_count`, `POST /datasets/upload`, `GET /datasets/list`, `GET /healthz`.
+`train` syncs the dataset first; `--dataset <file>` trains on another file of the data volume instead of the default one. Web API endpoints: `POST /training/job_start`, `GET /training/job_progress`, `GET /training/job_events` (SSE), `POST /infer/query`, `POST /evals/add_to_dataset`, `GET /evals/get_dataset_count`, `POST /datasets/upload`, `GET /datasets/list`, `GET /healthz`.
 
-`POST /training/job_start` answers with a `TrainingJob` (`job_id`, `status`, `model_size`, `num_train_steps`, `started_at`). The Go server decodes it (`internal/sidecar`: `Client.StartTrainingJob`) and records it as a row of `gb_training_job_runs`. Jobs are started from the admin endpoint `POST /v1/gb/admin/api/training/jobs[?db=<name>]` (body `{"num_train_steps"?, "model_size"?}`, answers 201 with the stored row); the sidecar's address is `sidecar_url` / `SIDECAR_URL` (default `http://127.0.0.1:8787`).
+`POST /training/job_start` (body `{num_train_steps?, model_size?, dataset?}`) answers with a `TrainingJob` (`job_id`, `provider_job_id`, `status`, `model_size`, `num_train_steps`, `dataset`, `started_at`). `job_id` is assigned by the sidecar and names the job's progress file; `provider_job_id` is the compute provider's id of the spawned call. `dataset` is the file name of a `*.jsonl` on the data volume (`GET /datasets/list`); it must exist (else 400), and omitted means the default dataset. `POST /datasets/upload` stores the dataset under its own `filename` (a plain `*.jsonl` name, else 400), so several datasets can live side by side.
+
+### Training progress, end to end
+
+1. The training container writes **events** to `/progress/training_progress_<job_id>.jsonl` (`ai_train_core/progress_events.py`): `{"type":"status","status":"running"|"training"|"completed"|"failed", ...}` (`completed` carries `final_loss`, `failed` the `error`; non-finite numbers are sent as `null`) and `{"type":"progress","step","loss","learning_rate","epoch","elapsed_seconds"}` for each Trainer log.
+2. `GET /training/job_events?job_id=<id>[&from=<n>]` streams that file as **SSE**: `id: <event index>`, `event: status|progress`, `data: <event JSON>`, with `: keepalive` comments while idle. It ends after `completed`/`failed`, or after a few minutes (the reader reconnects with `from=<last id + 1>`).
+3. The Go server follows that stream for every job started from the admin UI (`internal/api/admin/trainingmonitor.go`): it stores each event in `gb_training_job_events`, keeps the job's `gb_training_job_runs` row current (`status`, `last_step`, `last_loss`, `final_loss`, `error`, `finished_at`), and forwards the events to the admin UI. After a restart it resumes the jobs that are still unfinished from the last stored event. If the sidecar never reports an end within 3 hours of the job's start, the job is marked `failed`.
+4. `GET /v1/gb/admin/api/training/events[?db=<name>][&run_id=<id>]` is the admin UI's SSE feed (`event: status|progress`, `data: {db, run_id, job_id, seq, type, ...}`). With `run_id` it first replays the job's stored events (resuming after `Last-Event-ID`), then goes live; without it, it is the live events of all jobs.
+
+### Admin UI: the training view
+
+The **training** view of the [admin UI](../README.md) has a `Run` button (model size 4B/12B, dataset, steps), the list of the jobs in `gb_training_job_runs`, and for the selected job the event feed and a graph of its loss. Admin endpoints (served with the admin UI):
+
+| Endpoint | |
+|---|---|
+| `POST /v1/gb/admin/api/training/jobs[?db=]` | body `{"num_train_steps"?, "model_size"?, "dataset"?}`; starts a job, answers 201 with the stored row. 400 for a bad body or a dataset the sidecar rejects, 502 if the sidecar fails, 503 if no sidecar. |
+| `GET /v1/gb/admin/api/training/jobs[?db=][&limit=]` | `{"jobs": [...]}`, newest first (default 50, at most 500). |
+| `GET /v1/gb/admin/api/training/datasets` | `{"datasets": [...]}`: the sidecar's training datasets, for the dataset picker. |
+| `GET /v1/gb/admin/api/training/events[?db=][&run_id=]` | the SSE feed above. |
+
+The sidecar's address is `sidecar_url` / `SIDECAR_URL` (default `http://127.0.0.1:8787`).
 
 Local tests: `cd side_car/ai_train && python -m unittest test_ai_train_core -v`.
 
