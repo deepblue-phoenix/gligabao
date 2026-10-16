@@ -36,6 +36,7 @@ type (
 	RememberStage        = model.RememberStage
 	RememberStageDef     = model.RememberStageDef
 	RememberRunFilter    = model.RememberRunFilter
+	TrainingJobRun       = model.TrainingJobRun
 )
 
 // Statuses of a remember run and of its stages, and the stages (see model.RememberStages and gb_remember_runs).

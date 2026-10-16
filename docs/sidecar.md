@@ -83,6 +83,8 @@ modal serve app.py                                 # web API in dev mode (`modal
 
 `train` syncs the dataset first. Web API endpoints: `POST /training/job_start`, `GET /training/job_progress`, `POST /infer/query`, `POST /evals/add_to_dataset`, `GET /evals/get_dataset_count`, `POST /datasets/upload`, `GET /datasets/list`, `GET /healthz`.
 
+`POST /training/job_start` answers with a `TrainingJob` (`job_id`, `status`, `model_size`, `num_train_steps`, `started_at`). The Go server decodes it (`internal/sidecar`: `Client.StartTrainingJob`) and records it as a row of `gb_training_job_runs`. Jobs are started from the admin endpoint `POST /v1/gb/admin/api/training/jobs[?db=<name>]` (body `{"num_train_steps"?, "model_size"?}`, answers 201 with the stored row); the sidecar's address is `sidecar_url` / `SIDECAR_URL` (default `http://127.0.0.1:8787`).
+
 Local tests: `cd side_car/ai_train && python -m unittest test_ai_train_core -v`.
 
 ### Configuration

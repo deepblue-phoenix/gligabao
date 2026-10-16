@@ -5,6 +5,17 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.27.0] - 2026-10-26
+
+### Added
+- `TrainingJob` struct on both sides: the sidecar's `POST /training/job_start` now returns it (`job_id`, `status`, `model_size`, `num_train_steps`, `started_at`, a timezone-aware UTC timestamp; `side_car/ai_train/api/models.py`), and the Go sidecar client (`internal/sidecar`) decodes it with the new `Client.StartTrainingJob`. The earlier response fields are unchanged. The sidecar now also rejects a `num_train_steps` that is not a positive integer (400).
+- `gb_training_job_runs` table (sqlite and postgres): one row for each training job the sidecar reported as started (job ID, status, model size, steps, when it started, when the row was made). Go: `relational.RecordTrainingJobRun` and `GetTrainingJobRun`.
+- Admin endpoint `POST /v1/gb/admin/api/training/jobs[?db=<name>]`, body `{"num_train_steps"?, "model_size"?}` (`"4b"` or `"12b"`; omitted fields take the sidecar's defaults). It calls the sidecar's REST API through the Go client, records the job and answers 201 with the stored row. 400 for a bad body, 502 if the sidecar fails (nothing is recorded), 503 if no sidecar is set. Served with the admin UI.
+- Config `sidecar_url` (env `SIDECAR_URL`, default `http://127.0.0.1:8787`): where the sidecar listens.
+
+### Changed
+- `server.NewHandler` takes the sidecar client (`admin.TrainingJobStarter`, may be nil) after `providers`.
+
 ## [0.26.2] - 2026-10-16
 
 ### Changed

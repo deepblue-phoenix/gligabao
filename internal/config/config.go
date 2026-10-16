@@ -27,6 +27,7 @@ const (
 	EnvPineconeKey  = "PINECONE_API_KEY"
 	EnvPineconeHost = "PINECONE_INDEX_HOST"
 	EnvPostgresDSN  = "POSTGRES_DSN"
+	EnvSidecarURL   = "SIDECAR_URL"
 )
 
 // Database backends selectable with the db_backend setting.
@@ -91,6 +92,9 @@ type Config struct {
 	// AdminUI registers the admin UI handlers (served at /v1/gb/admin/). Default false; `serve --admin-ui` turns it on.
 	// Needs a binary built with the web assets embedded (./run_build.sh, on by default).
 	AdminUI bool `toml:"admin_ui"`
+	// SidecarURL is the base URL of the Python sidecar's REST API (side_car/), which runs the training jobs the admin
+	// endpoint POST /v1/gb/admin/api/training/jobs starts. Default: SIDECAR_URL, else http://127.0.0.1:8787.
+	SidecarURL string `toml:"sidecar_url"`
 	// Prices overrides/extends the built-in per-model price table used to compute LLM call costs.
 	// Keys are model-name prefixes (the longest matching prefix wins).
 	Prices map[string]Price `toml:"prices"`
@@ -138,6 +142,7 @@ func Default() *Config {
 		OpenAIKey:           os.Getenv(EnvOpenAIKey),
 		JevKey:              os.Getenv(EnvJevKey),
 		JevBaseURL:          os.Getenv(EnvJevBaseURL),
+		SidecarURL:          os.Getenv(EnvSidecarURL),
 
 		PineconeKey:       os.Getenv(EnvPineconeKey),
 		PineconeIndexHost: os.Getenv(EnvPineconeHost),

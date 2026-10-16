@@ -116,6 +116,7 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 		JevKey:       cfg.JevKey,
 		JevBaseURL:   cfg.JevBaseURL,
 		JevModel:     cfg.JevModel,
+		SidecarURL:   cfg.SidecarURL,
 		Prices:       aiPrices(cfg),
 
 		TimeseriesProviders: opts.TimeseriesProviders,

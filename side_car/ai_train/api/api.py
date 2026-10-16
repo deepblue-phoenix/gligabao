@@ -4,7 +4,7 @@ Runs inside the web container. Everything provider-specific is injected as calla
 app.py (spawn a job, call a function, commit/reload volumes).
 
 Endpoints:
-    POST /training/job_start   {num_train_steps?, model_size?}  -> spawns a job, returns job_id
+    POST /training/job_start   {num_train_steps?, model_size?}  -> spawns a job, returns a TrainingJob (api/models.py)
     GET  /training/job_progress                                  -> newest progress file's entries
     POST /infer/query                  {prompt, max_tokens?, temperature?, model_size?}
     POST /evals/add_to_dataset    {prompt, response, notes?}
@@ -23,7 +23,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from api.models import TrainingDataset
+from api.models import TrainingDataset, TrainingJob
 from ai_train_core.model_config import MODEL_SIZES
 from ai_train_core.paths import (DATA_DIR, EVAL_DATASET_PATH, EVAL_DIR, PROGRESS_DIR,
                                  REMOTE_DATASET_PATH, REMOTE_METADATA_PATH)
@@ -46,12 +46,14 @@ def create_api(
     async def job_start(request: Request):
         data = await request.json()
         num_train_steps = data.get("num_train_steps", 100)
-        model_size = data.get("model_size", "4b")
+        model_size = str(data.get("model_size", "4b")).lower()
         if (err := bad_model_size(model_size)):
             return err
+        if isinstance(num_train_steps, bool) or not isinstance(num_train_steps, int) or num_train_steps < 1:
+            return JSONResponse({"error": "num_train_steps must be a positive integer"}, status_code=400)
         job_id = await run_in_threadpool(spawn_training_job, num_train_steps, model_size)
-        return JSONResponse({"status": "started", "job_id": job_id,
-                             "num_train_steps": num_train_steps, "model_size": model_size})
+        job = TrainingJob(job_id=job_id, model_size=model_size, num_train_steps=num_train_steps)
+        return JSONResponse(job.model_dump(mode="json"))
 
     @api.get("/training/job_progress")
     async def job_progress():

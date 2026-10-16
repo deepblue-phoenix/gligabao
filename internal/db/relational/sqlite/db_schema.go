@@ -119,6 +119,24 @@ CREATE INDEX IF NOT EXISTS idx_gb_model_runs_model ON gb_model_runs(model_id);
 --                        made, in order. A list, because a stage makes one run per chunk (and an embedding request is a run).
 -- All the DATETIME columns follow the convention of db_time.go.
 
+-- Training jobs started on the sidecar (internal/sidecar, side_car/ai_train): ONE ROW PER JOB the sidecar reported as started,
+-- made from the TrainingJob it returned from POST /training/job_start.
+--   job_id           the compute provider's ID of the job
+--   status           what the sidecar reported when the job started ('started')
+--   model_size       '4b' or '12b'
+--   num_train_steps  how many steps the job was asked to train
+--   started_at       when the sidecar says the job started; created_at is when the row was made
+CREATE TABLE IF NOT EXISTS gb_training_job_runs (
+	id              INTEGER PRIMARY KEY AUTOINCREMENT,
+	job_id          TEXT NOT NULL,
+	status          TEXT NOT NULL,
+	model_size      TEXT NOT NULL,
+	num_train_steps INTEGER NOT NULL,
+	started_at      DATETIME NOT NULL,
+	created_at      DATETIME NOT NULL DEFAULT (` + SQLNow + `)
+);
+CREATE INDEX IF NOT EXISTS idx_gb_training_job_runs_job ON gb_training_job_runs(job_id);
+
 -- Eval experiments (evals/ and internal/experiments). An experiment is a named series of eval runs; names are unique.
 --   config: JSON object with the free-form settings under test
 CREATE TABLE IF NOT EXISTS gb_experiments (

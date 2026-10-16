@@ -74,6 +74,18 @@ CREATE TABLE IF NOT EXISTS gb_model_runs (
 CREATE INDEX IF NOT EXISTS idx_gb_model_runs_type ON gb_model_runs(type);
 CREATE INDEX IF NOT EXISTS idx_gb_model_runs_model ON gb_model_runs(model_id);
 
+-- One row per training job the sidecar started (see sqlite/db_schema.go).
+CREATE TABLE IF NOT EXISTS gb_training_job_runs (
+	id              BIGSERIAL PRIMARY KEY,
+	job_id          TEXT NOT NULL,
+	status          TEXT NOT NULL,
+	model_size      TEXT NOT NULL,
+	num_train_steps BIGINT NOT NULL,
+	started_at      TIMESTAMPTZ NOT NULL,
+	created_at      TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `
+);
+CREATE INDEX IF NOT EXISTS idx_gb_training_job_runs_job ON gb_training_job_runs(job_id);
+
 CREATE TABLE IF NOT EXISTS gb_experiments (
 	id          BIGSERIAL PRIMARY KEY,
 	name        TEXT NOT NULL UNIQUE,

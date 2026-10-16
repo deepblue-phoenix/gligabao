@@ -8,6 +8,7 @@ import os
 import sys
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -104,8 +105,18 @@ class ApiTest(unittest.TestCase):
 
     def test_job_start(self):
         r = self.client.post("/training/job_start", json={"num_train_steps": 7, "model_size": "12b"})
-        self.assertEqual(r.json()["job_id"], "job-1")
+        job = r.json()
+        self.assertEqual((job["job_id"], job["status"], job["model_size"], job["num_train_steps"]),
+                         ("job-1", "started", "12b", 7))
+        started = datetime.fromisoformat(job["started_at"].replace("Z", "+00:00"))
+        self.assertIsNotNone(started.tzinfo)  # golang needs a timezone to parse it
         self.assertEqual(self.calls, [(7, "12b")])
+
+    def test_job_start_defaults_and_invalid_steps(self):
+        job = self.client.post("/training/job_start", json={}).json()
+        self.assertEqual((job["model_size"], job["num_train_steps"]), ("4b", 100))
+        for bad in (0, -1, "5", True):
+            self.assertEqual(self.client.post("/training/job_start", json={"num_train_steps": bad}).status_code, 400)
 
     def test_invalid_model_size(self):
         self.assertEqual(self.client.post("/training/job_start", json={"model_size": "99b"}).status_code, 400)

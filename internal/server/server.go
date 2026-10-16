@@ -28,6 +28,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/jev"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
+	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -72,6 +73,9 @@ type Options struct {
 	// JevKey, JevBaseURL and JevModel configure Jev, the system 1 model. Without a key remember skips
 	// every step that needs it.
 	JevKey, JevBaseURL, JevModel string
+	// SidecarURL is the base URL of the Python sidecar's REST API, which the admin endpoint that starts training jobs
+	// calls. Default: sidecar.DefaultBaseURL.
+	SidecarURL string
 	// Prices overrides/extends the built-in model price table used for call costs. May be nil.
 	Prices map[string]ai.Price
 	// TrajectoryDir is where the ATIF trajectories of the eval endpoints are stored as JSON.
@@ -102,9 +106,9 @@ const EvalDBName = "eval"
 // llm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities.
 // jv may be nil, in which case remember skips the steps that run on Jev. ws may be nil, in which case web search is not available
 // (a remember request with web_search returns 503); it is the Anthropic web search tool, so it is only set with an Anthropic API key.
-// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). The eval endpoints are registered only if eval is true,
+// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). sc starts the training jobs of the admin UI on the sidecar (may be nil: the endpoint then returns 503). The eval endpoints are registered only if eval is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary.
-func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
+func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, sc admin.TrainingJobStarter, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "gligabao is running")
@@ -124,7 +128,7 @@ func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_c
 		api.RegisterEval(mux, mgr, d, llm, emb, jv, ws, providers)
 	}
 	if adminUI {
-		registerAdminUI(mux, d, extraAdminDBs)
+		registerAdminUI(mux, d, sc, extraAdminDBs)
 	}
 	return mux
 }
@@ -141,7 +145,7 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 
 // registerAdminUI serves the embedded admin UI assets under /v1/gb/admin/. It is a no-op (with a warning) if the
 // assets were not built into the binary (see admin_ui/ and run_build.sh).
-func registerAdminUI(mux *http.ServeMux, d *db.DB, extra []admin.Named) {
+func registerAdminUI(mux *http.ServeMux, d *db.DB, sc admin.TrainingJobStarter, extra []admin.Named) {
 	if !adminui.Available() {
 		log.Warn("admin_ui is enabled but the web assets are not embedded in this binary; build with ./run_build.sh (admin UI build enabled)")
 		return
@@ -158,6 +162,7 @@ func registerAdminUI(mux *http.ServeMux, d *db.DB, extra []admin.Named) {
 	mux.HandleFunc("GET /v1/gb/admin/api/web-searches", admin.WebSearchStatsOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/web-searches/dataset", admin.WebSearchDatasetOf(dbs))
 	mux.HandleFunc("DELETE /v1/gb/admin/api/datasets", admin.DeleteDatasetOf(dbs))
+	mux.HandleFunc("POST /v1/gb/admin/api/training/jobs", admin.StartTrainingJobOf(dbs, sc))
 	// The experiments live in the eval database; without one there are none to show.
 	for _, e := range extra {
 		if e.Name != EvalDBName {
@@ -305,7 +310,7 @@ func Run(ctx context.Context, opts Options) error {
 	// The remember manager stops only when Run returns, i.e. after the graceful shutdown has given the runs in progress their time.
 	mgrCtx, stopMgr := context.WithCancel(ctx)
 	defer stopMgr()
-	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(mgrCtx, database, llm, emb, jv, ws, providers, opts.Eval, opts.AdminUI, extra...)}
+	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(mgrCtx, database, llm, emb, jv, ws, providers, sidecar.New(opts.SidecarURL), opts.Eval, opts.AdminUI, extra...)}
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

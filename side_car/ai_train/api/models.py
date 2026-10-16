@@ -31,3 +31,22 @@ class TrainingDataset(BaseModel):
             return base64.b64decode(content, validate=True)
         except Exception:  # not base64: treat as a plain utf-8 jsonl string
             return content.encode("utf-8")
+
+
+class TrainingJob(BaseModel):
+    """A training job started on the sidecar.
+
+    Returned by POST /training/job_start; golang decodes it (internal/sidecar: TrainingJob) and records it in its
+    `gb_training_job_runs` table.
+    """
+    job_id: str = Field(min_length=1)       # the provider's id of the spawned job
+    status: str = "started"
+    model_size: str
+    num_train_steps: int = Field(gt=0)
+    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @field_validator("started_at")
+    @classmethod
+    def _utc(cls, v: datetime) -> datetime:
+        """Naive timestamps are local time; emit tz-aware so golang can parse them."""
+        return v.astimezone(timezone.utc)
