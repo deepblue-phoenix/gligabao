@@ -77,7 +77,13 @@ function renderJobs(): void {
     tr.classList.toggle("selected", j.id === selected);
     tr.title = j.error ? j.error : "Show this job's feed and loss";
     tr.insertCell().textContent = String(j.id);
-    tr.insertCell().appendChild(statusBadge(j.status));
+    const statusCell = tr.insertCell();
+    if (!FINISHED.includes(j.status)) {
+      const cube = node("span", "running-cube");
+      cube.title = "Running";
+      statusCell.append(cube, " ");
+    }
+    statusCell.appendChild(statusBadge(j.status));
     tr.insertCell().textContent = j.model_size;
     tr.insertCell().textContent = j.dataset || "(default)";
     const steps = tr.insertCell();

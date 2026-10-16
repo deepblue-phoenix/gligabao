@@ -549,6 +549,19 @@ tr.removing {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+// Small blinking cube in the training jobs list: the job is running.
+.running-cube {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-right: 0.15rem;
+  vertical-align: middle;
+  background: $accent;
+  border-radius: 2px;
+  animation: blink 1s ease-in-out infinite;
+}
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.15; } }
+
 // --- Image store card (imagestats.ts) ---
 #images { margin-top: 1rem; }
 #images-stats { margin-top: 0.75rem; flex-wrap: wrap; dd { font-size: 1.3rem; } dd.warn { color: #d29922; } }
