@@ -116,8 +116,8 @@ func testRememberImage(t *testing.T, d *sql.DB) {
 		t.Errorf("counts: %+v, %v", c, err)
 	}
 	// Its LLM call is recorded under its own type.
-	if stats, err := relational.ModelRunStats(ctx, d); err != nil || stats[memory_image.CallRememberImage].Runs != 1 || stats[memory_remember.CallRemember].Runs != 0 {
-		t.Errorf("model run stats: %+v, %v", stats, err)
+	if stats, err := relational.InferenceStats(ctx, d); err != nil || stats[memory_image.CallRememberImage].Inferences != 1 || stats[memory_remember.CallRemember].Inferences != 0 {
+		t.Errorf("inference stats: %+v, %v", stats, err)
 	}
 
 	// Rejected before any LLM call, with nothing stored.
@@ -167,8 +167,8 @@ func testRememberImage(t *testing.T, d *sql.DB) {
 	if xs, _ := graph.ListImageExtractions(ctx, d, dsID); len(xs) != 1 {
 		t.Errorf("a repeated image stored another extraction: %d", len(xs))
 	}
-	if stats, _ := relational.ModelRunStats(ctx, d); stats[memory_image.CallRememberImage].Runs != 1 {
-		t.Errorf("model run stats: %+v", stats)
+	if stats, _ := relational.InferenceStats(ctx, d); stats[memory_image.CallRememberImage].Inferences != 1 {
+		t.Errorf("inference stats: %+v", stats)
 	}
 
 	// A file that went missing is restored from the repeated upload.

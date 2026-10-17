@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS gb_models (
 );
 
 -- One row per invocation of a model (see sqlite/db_schema.go).
-CREATE TABLE IF NOT EXISTS gb_model_runs (
+CREATE TABLE IF NOT EXISTS gb_inferences (
 	id            BIGSERIAL PRIMARY KEY,
 	type          TEXT NOT NULL,
 	stage         TEXT NOT NULL DEFAULT '',
@@ -71,8 +71,8 @@ CREATE TABLE IF NOT EXISTS gb_model_runs (
 	cost_usd      DOUBLE PRECISION NOT NULL, -- total cost of the call in USD (0 if the model's price is unknown)
 	created_at    TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `
 );
-CREATE INDEX IF NOT EXISTS idx_gb_model_runs_type ON gb_model_runs(type);
-CREATE INDEX IF NOT EXISTS idx_gb_model_runs_model ON gb_model_runs(model_id);
+CREATE INDEX IF NOT EXISTS idx_gb_inferences_type ON gb_inferences(type);
+CREATE INDEX IF NOT EXISTS idx_gb_inferences_model ON gb_inferences(model_id);
 
 -- One row per training job the sidecar started (see sqlite/db_schema.go).
 CREATE TABLE IF NOT EXISTS gb_training_job_runs (
@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS gb_trained_models (
 CREATE INDEX IF NOT EXISTS idx_gb_trained_models_run ON gb_trained_models(run_id);
 
 -- One row per inference request to a trained model (see sqlite/db_schema.go).
-CREATE TABLE IF NOT EXISTS gb_inference_requests (
+CREATE TABLE IF NOT EXISTS gb_trained_model_inferences (
 	id               BIGSERIAL PRIMARY KEY,
 	trained_model_id BIGINT NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
 	prompt           TEXT NOT NULL,
@@ -136,11 +136,13 @@ CREATE TABLE IF NOT EXISTS gb_inference_requests (
 	model_path       TEXT NOT NULL DEFAULT '',
 	max_tokens       BIGINT NOT NULL DEFAULT 0,
 	temperature      DOUBLE PRECISION,
+	input_tokens     BIGINT NOT NULL DEFAULT 0,
+	output_tokens    BIGINT NOT NULL DEFAULT 0,
 	duration_ms      BIGINT NOT NULL DEFAULT 0,
 	created_at       TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `,
 	completed_at     TIMESTAMPTZ
 );
-CREATE INDEX IF NOT EXISTS idx_gb_inference_requests_model ON gb_inference_requests(trained_model_id, id);
+CREATE INDEX IF NOT EXISTS idx_gb_trained_model_inferences_model ON gb_trained_model_inferences(trained_model_id, id);
 
 -- JSONL training datasets uploaded through the Go server (see sqlite/db_schema.go).
 CREATE TABLE IF NOT EXISTS gb_training_datasets (

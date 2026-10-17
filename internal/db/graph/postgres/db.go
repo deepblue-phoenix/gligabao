@@ -37,7 +37,7 @@ func (a *args) add(v any) string {
 
 type scanner interface{ Scan(dest ...any) error }
 
-// nullIfZero is NULL for a zero ID (no such row): how an unrecorded model run is stored.
+// nullIfZero is NULL for a zero ID (no such row): how an unrecorded inference is stored.
 func nullIfZero(id int64) any {
 	if id == 0 {
 		return nil
@@ -270,7 +270,7 @@ func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.Artifact
 	rows, err := d.QueryContext(ctx, `
 		SELECT a.id, a.dataset_id, a.kind, a.text, COALESCE(a.session_id, ''), a.valid_at, a.created_at,
 			COALESCE(a.parent_id, 0), COALESCE(a.chunk_index, 0), COALESCE(a.start_offset, 0), COALESCE(a.end_offset, 0), COALESCE(a.tokens, 0), COALESCE(a.query, ''), COALESCE(a.series_id, 0),
-			COALESCE(a.model_run_id, 0)
+			COALESCE(a.inference_id, 0)
 		FROM gb_artifacts a
 		WHERE a.dataset_id = $1
 		ORDER BY a.id`, dsID)
@@ -283,7 +283,7 @@ func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.Artifact
 		var m model.Artifact
 		var valid, created time.Time
 		if err := rows.Scan(&m.ID, &m.DatasetID, &m.Kind, &m.Text, &m.SessionID, &valid, &created,
-			&m.ParentID, &m.ChunkIndex, &m.StartOffset, &m.EndOffset, &m.Tokens, &m.Query, &m.SeriesID, &m.ModelRunID); err != nil {
+			&m.ParentID, &m.ChunkIndex, &m.StartOffset, &m.EndOffset, &m.Tokens, &m.Query, &m.SeriesID, &m.InferenceID); err != nil {
 			return nil, err
 		}
 		m.ValidAt, m.CreatedAt = valid.UTC(), created.UTC()
@@ -517,11 +517,11 @@ func (t *Tx) InsertWebSearchArtifact(ctx context.Context, w model.NewWebSearchAr
 func (t *Tx) InsertChunkSummaryArtifact(ctx context.Context, s model.NewChunkSummaryArtifact) (int64, error) {
 	var id int64
 	err := t.tx.QueryRowContext(ctx, `
-		INSERT INTO gb_artifacts (dataset_id, kind, text, session_id, parent_id, model_run_id, valid_at, created_at)
+		INSERT INTO gb_artifacts (dataset_id, kind, text, session_id, parent_id, inference_id, valid_at, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id`,
 		s.DatasetID, model.ArtifactChunkSummary, s.Text, nullIfEmpty(s.SessionID), s.ParentID,
-		nullIfZero(s.ModelRunID), s.ValidAt.UTC(), s.CreatedAt.UTC()).Scan(&id)
+		nullIfZero(s.InferenceID), s.ValidAt.UTC(), s.CreatedAt.UTC()).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insert summary of chunk %d: %w", s.ParentID, err)
 	}

@@ -89,7 +89,7 @@ func findSimilarEntities(ctx context.Context, d *sql.DB, run *runLog, o memory_c
 	}
 
 	embs, usage, err := o.Embedder.EmbedBatchUsage(ctx, texts)
-	run.AddModelRun(StageLoadCandidates, recordEmbedUsage(ctx, d, usage)) // no transaction is open here
+	run.AddInference(StageLoadCandidates, recordEmbedUsage(ctx, d, usage)) // no transaction is open here
 	if err != nil {
 		return nil, texts, usage, fmt.Errorf("memory: embed entities to search: %w", err)
 	}
@@ -248,17 +248,17 @@ func prepareVectors(ctx context.Context, tx graph.Tx, o memory_core.CallOptions,
 	return p, usage, nil
 }
 
-// StageEmbed is the stage of the model runs of the embedding requests of remember.
+// StageEmbed is the stage of the inferences of the embedding requests of remember.
 const StageEmbed = "embed"
 
-// recordEmbedUsage records the cost of an embedding request as a model run, as it was spent, like the LLM's. Detached from ctx so a
+// recordEmbedUsage records the cost of an embedding request as an inference, as it was spent, like the LLM's. Detached from ctx so a
 // cancelled request still records money that was spent. It must not run while a write transaction of d is open. It returns
-// the ID of the model run, 0 if there is none (no request was made, or it could not be recorded).
+// the ID of the inference, 0 if there is none (no request was made, or it could not be recorded).
 func recordEmbedUsage(ctx context.Context, d *sql.DB, usage *ai.EmbedUsage) int64 {
 	if usage == nil {
 		return 0
 	}
-	id, err := memory_core.RecordRun(context.WithoutCancel(ctx), d, relational.ModelRun{Type: CallRemember, Stage: StageEmbed,
+	id, err := memory_core.RecordRun(context.WithoutCancel(ctx), d, relational.Inference{Type: CallRemember, Stage: StageEmbed,
 		Model: usage.Model, Provider: usage.Provider, Kind: ai.KindEmbedding, Reasoning: ai.ReasoningNone,
 		InputTokens: usage.InputTokens, CostUSD: usage.CostUSD})
 	if err != nil {

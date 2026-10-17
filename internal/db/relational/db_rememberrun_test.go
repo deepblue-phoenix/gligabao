@@ -37,7 +37,7 @@ func rememberRunsScenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("stages: %+v", got.Stages)
 	}
 	for name, st := range got.Stages {
-		if st.Status != relational.RememberNotStarted || st.Error != nil || st.StartedAt != nil || st.FinishedAt != nil || st.ModelRunIDs == nil || len(st.ModelRunIDs) != 0 {
+		if st.Status != relational.RememberNotStarted || st.Error != nil || st.StartedAt != nil || st.FinishedAt != nil || st.InferenceIDs == nil || len(st.InferenceIDs) != 0 {
 			t.Fatalf("stage %s of a new run: %+v", name, st)
 		}
 	}
@@ -46,10 +46,10 @@ func rememberRunsScenario(t *testing.T, d *sql.DB) {
 	msg, artifact := "boom", int64(7)
 	got.ArtifactID = &artifact
 	got.Stages[relational.RememberStageExtractGraph] = relational.RememberStage{Status: relational.RememberSucceeded,
-		StartedAt: &now, FinishedAt: &now, ModelRunIDs: []int64{3, 4}}
+		StartedAt: &now, FinishedAt: &now, InferenceIDs: []int64{3, 4}}
 	got.Stages[relational.RememberStageResolveEdges] = relational.RememberStage{Status: relational.RememberFailed, Error: &msg, StartedAt: &now,
-		FinishedAt: &now, ModelRunIDs: []int64{}}
-	got.Stages[relational.RememberStageChunkText] = relational.RememberStage{Status: relational.RememberStarted, StartedAt: &now, ModelRunIDs: []int64{}}
+		FinishedAt: &now, InferenceIDs: []int64{}}
+	got.Stages[relational.RememberStageChunkText] = relational.RememberStage{Status: relational.RememberStarted, StartedAt: &now, InferenceIDs: []int64{}}
 	got.Status, got.Error, got.FinishedAt = relational.RememberFailed, &msg, &now
 	if err := relational.SaveRememberRun(ctx, d, *got); err != nil {
 		t.Fatal(err)
@@ -63,7 +63,7 @@ func rememberRunsScenario(t *testing.T, d *sql.DB) {
 	if back.Status != relational.RememberFailed || back.Error == nil || *back.Error != "boom" || back.FinishedAt == nil || back.ArtifactID == nil || *back.ArtifactID != 7 {
 		t.Fatalf("saved run: %+v", back)
 	}
-	if eg.Status != relational.RememberSucceeded || eg.Error != nil || eg.StartedAt == nil || !eg.StartedAt.Equal(now) || len(eg.ModelRunIDs) != 2 || eg.ModelRunIDs[1] != 4 {
+	if eg.Status != relational.RememberSucceeded || eg.Error != nil || eg.StartedAt == nil || !eg.StartedAt.Equal(now) || len(eg.InferenceIDs) != 2 || eg.InferenceIDs[1] != 4 {
 		t.Fatalf("extract_graph: %+v", eg)
 	}
 	if re.Status != relational.RememberFailed || re.Error == nil || *re.Error != "boom" {

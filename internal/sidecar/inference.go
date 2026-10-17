@@ -25,7 +25,11 @@ type InferResponse struct {
 	Response  string `json:"response"`
 	ModelSize string `json:"model_size"`
 	ModelPath string `json:"model_path"`
-	Error     string `json:"error,omitempty"`
+	// InputTokens is the size of the prompt as the model saw it (chat template and special tokens included), OutputTokens
+	// the number of tokens it generated. 0 when the sidecar (an older deployment) does not report them.
+	InputTokens  int    `json:"input_tokens"`
+	OutputTokens int    `json:"output_tokens"`
+	Error        string `json:"error,omitempty"`
 }
 
 //---------------------------------------------------------------------------

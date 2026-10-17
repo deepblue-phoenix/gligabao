@@ -131,7 +131,7 @@ func ParseModels(s string) (Models, error) {
 func WithModels(m Models) Option { return func(o *CallOptions) { o.Models = m } }
 
 // ModelLLM returns llm with the model and the reasoning level of the given stage set on every request that names none, and
-// the stage on the context of each call (see StageOf), so that the model run it records says which stage made it. The
+// the stage on the context of each call (see StageOf), so that the inference it records says which stage made it. The
 // level is that of WithReasoning for the stage, or its default (DefaultReasoning). A stage with no model uses the client's
 // default model.
 func (o CallOptions) ModelLLM(llm LLM, stage string) LLM {

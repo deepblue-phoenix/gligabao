@@ -144,9 +144,9 @@ type Response struct {
 	// Reasoning is the reasoning level the call actually ran with (ReasoningNone if it did not reason, e.g. because the
 	// model does not support it). Empty from an LLM that does not report it.
 	Reasoning string
-	// ModelRunID is the ID of the gb_model_runs row that records this call. Set by memory_core.WithRecording, 0 if the
+	// InferenceID is the ID of the gb_inferences row that records this call. Set by memory_core.WithRecording, 0 if the
 	// call was not recorded.
-	ModelRunID int64
+	InferenceID int64
 }
 
 //---------------------------------------------------------------------------------------------

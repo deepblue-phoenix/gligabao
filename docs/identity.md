@@ -52,4 +52,4 @@ gb_datasets (id, user_id, name, ...)   UNIQUE (user_id, name) WHERE deleted = 0
 
 The schema has no migration. A database created before `user_id` was added must be recreated.
 
-`gb_model_runs` (token and cost accounting) is not tied to a user.
+`gb_inferences` (token and cost accounting) is not tied to a user.

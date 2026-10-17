@@ -33,15 +33,15 @@ func (j *job) classifyComplexity(ctx context.Context, text string) {
 
 	cl, call, err := j.co.Jev.Classify(ctx, text)
 	fields["latency_ms"] = call.Latency.Milliseconds()
-	// The call is a model run whether or not it worked out; a failed one has no usage and no model reported.
-	run := relational.ModelRun{Type: CallRemember, Stage: StageClassifyComplexity, Provider: jev.Provider, Reasoning: ai.ReasoningNone}
+	// The call is an inference whether or not it worked out; a failed one has no usage and no model reported.
+	run := relational.Inference{Type: CallRemember, Stage: StageClassifyComplexity, Provider: jev.Provider, Reasoning: ai.ReasoningNone}
 	if err == nil {
 		run.Model, run.InputTokens, run.OutputTokens = cl.Model, cl.InputTokens, cl.OutputTokens
 	}
 	id, rerr := memory_core.RecordRun(context.WithoutCancel(ctx), j.d, run)
-	j.run.AddModelRun(StageClassifyComplexity, id)
+	j.run.AddInference(StageClassifyComplexity, id)
 	if rerr != nil {
-		log.WithError(rerr).WithFields(fields).Error("record jev model run")
+		log.WithError(rerr).WithFields(fields).Error("record jev inference")
 	}
 	j.run.Done(err, StageClassifyComplexity)
 	if err != nil {

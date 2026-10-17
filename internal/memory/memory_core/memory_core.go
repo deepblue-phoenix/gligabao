@@ -30,7 +30,7 @@ type WebSearcher interface {
 
 //---------------------------------------------------------------------------------------------
 
-// recordingLLM wraps an LLM and stores a gb_model_runs row (model, thinking level, tokens, cost) for every successful call.
+// recordingLLM wraps an LLM and stores a gb_inferences row (model, thinking level, tokens, cost) for every successful call.
 // Runs are recorded as the calls happen, so cost is kept even if a later step of the operation fails.
 type recordingLLM struct {
 	LLM
@@ -38,10 +38,10 @@ type recordingLLM struct {
 	kind string
 }
 
-// WithRecording returns llm with every successful call stored in gb_model_runs as a run of an operation of the given
+// WithRecording returns llm with every successful call stored in gb_inferences as a run of an operation of the given
 // kind (the type of the run). The stage comes from the context (see WithStage) and the thinking level is the one the call
 // ran with (ai.Response.Reasoning, or the request's if the LLM does not report it). The ID of the run is returned in
-// ai.Response.ModelRunID.
+// ai.Response.InferenceID.
 func WithRecording(llm LLM, d *sql.DB, kind string) LLM {
 	return &recordingLLM{LLM: llm, db: d, kind: kind}
 }
@@ -58,7 +58,7 @@ func (r *recordingLLM) Complete(ctx context.Context, req ai.Request) (*ai.Respon
 	if level == "" {
 		level = ai.ReasoningNone
 	}
-	run := relational.ModelRun{
+	run := relational.Inference{
 		Type: r.kind, Stage: StageOf(ctx), Model: resp.Model, Provider: resp.Provider, Kind: ai.KindOf(resp.Model), Reasoning: level,
 		InputTokens: resp.InputTokens, OutputTokens: resp.OutputTokens, CostUSD: resp.CostUSD,
 	}
@@ -75,20 +75,20 @@ func (r *recordingLLM) Complete(ctx context.Context, req ai.Request) (*ai.Respon
 		"cost_usd":      resp.CostUSD,
 	}
 	if err != nil {
-		log.WithError(err).WithFields(fields).Error("record model run")
+		log.WithError(err).WithFields(fields).Error("record inference")
 		return resp, nil
 	}
-	fields["model_run_id"] = id
-	log.WithFields(fields).Debug("model run recorded")
+	fields["inference_id"] = id
+	log.WithFields(fields).Debug("inference recorded")
 	out := *resp
-	out.Reasoning, out.ModelRunID = level, id
+	out.Reasoning, out.InferenceID = level, id
 	return &out, nil
 }
 
-// RecordRun stores one invocation of a model (see relational.RecordModelRun) and returns the ID of its run. It is what
+// RecordRun stores one invocation of a model (see relational.RecordInference) and returns the ID of its run. It is what
 // the calls that do not go through WithRecording (embeddings, web searches, Jev) use.
-func RecordRun(ctx context.Context, d *sql.DB, run relational.ModelRun) (int64, error) {
-	return relational.RecordModelRun(ctx, d, run)
+func RecordRun(ctx context.Context, d *sql.DB, run relational.Inference) (int64, error) {
+	return relational.RecordInference(ctx, d, run)
 }
 
 //---------------------------------------------------------------------------------------------

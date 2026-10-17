@@ -86,7 +86,7 @@ The text has been stored before the first search starts, and the web search is a
 
 ## Cost
 
-Each search is billed by Anthropic: **$10 per 1,000 searches** (`ai.WebSearchRequestUSD`, $0.01 each) on top of the tokens of the model (which include the pages the tool read). A call is recorded in `gb_model_runs` as any other (type `remember`, stage `web_search`, reasoning `none`: the web search does not use extended thinking) with its tokens and the cost including the search fee, and a trajectory's totals include it. With the key entity cap of 3 and up to 3 searches each, a `remember` call can make up to 9 searches, about $0.09 plus tokens, plus the usual extraction (and, when there are stored facts to compare, resolution) call for each briefing. That is why the feature is opt-in per call.
+Each search is billed by Anthropic: **$10 per 1,000 searches** (`ai.WebSearchRequestUSD`, $0.01 each) on top of the tokens of the model (which include the pages the tool read). A call is recorded in `gb_inferences` as any other (type `remember`, stage `web_search`, reasoning `none`: the web search does not use extended thinking) with its tokens and the cost including the search fee, and a trajectory's totals include it. With the key entity cap of 3 and up to 3 searches each, a `remember` call can make up to 9 searches, about $0.09 plus tokens, plus the usual extraction (and, when there are stored facts to compare, resolution) call for each briefing. That is why the feature is opt-in per call.
 
 ## In the trajectory
 

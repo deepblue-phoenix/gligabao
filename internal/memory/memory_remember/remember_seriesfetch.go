@@ -229,7 +229,7 @@ func (j *job) fetchSeries(ctx context.Context) (out []SeriesFetchResult) {
 	})
 	var picks []seriesAssignment
 	if err == nil {
-		j.run.AddModelRun(StageFetchSeries, resp.ModelRunID)
+		j.run.AddInference(StageFetchSeries, resp.InferenceID)
 	}
 	if err == nil && resp.StopReason == "max_tokens" {
 		err = fmt.Errorf("LLM output truncated")

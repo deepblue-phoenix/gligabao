@@ -20,7 +20,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_timeseries"
 )
 
-// CallRemember is the type of the LLM calls of Remember, stored in gb_model_runs.type.
+// CallRemember is the type of the LLM calls of Remember, stored in gb_inferences.type.
 const CallRemember = "remember"
 
 //---------------------------------------------------------------------------------------------
@@ -42,23 +42,23 @@ type Extraction struct {
 	Model    string `json:"model,omitempty"`
 	Provider string `json:"provider,omitempty"`
 	ModelID  string `json:"model_id,omitempty"`
-	// ModelRunID is the model run (gb_model_runs) of the LLM call that made the extraction; 0 if it could not be recorded.
-	ModelRunID int64 `json:"-"`
+	// InferenceID is the inference (gb_inferences) of the LLM call that made the extraction; 0 if it could not be recorded.
+	InferenceID int64 `json:"-"`
 }
 
-// RunID is the model run of the extraction (0 for none, and for a nil ex).
+// RunID is the inference of the extraction (0 for none, and for a nil ex).
 func (ex *Extraction) RunID() int64 {
 	if ex == nil {
 		return 0
 	}
-	return ex.ModelRunID
+	return ex.InferenceID
 }
 
 // Extract asks the LLM to pull entities and temporal edges out of text. ref is the artifact's time; it anchors
 // relative dates and is the ValidAt of every fact whose start the text does not state.
 //
 // If the LLM answered but its answer is no use (too long, malformed), the error comes with an Extraction that is empty but
-// for its ModelRunID, so that the run it cost is not lost; it is nil if the call itself failed.
+// for its InferenceID, so that the run it cost is not lost; it is nil if the call itself failed.
 func Extract(ctx context.Context, llm memory_core.LLM, text string, ref time.Time) (*Extraction, error) {
 
 	//-----------------------
@@ -76,14 +76,14 @@ func Extract(ctx context.Context, llm memory_core.LLM, text string, ref time.Tim
 		return nil, err
 	}
 	if resp.StopReason == "max_tokens" {
-		return &Extraction{ModelRunID: resp.ModelRunID}, errors.New("memory: LLM output truncated; text too large")
+		return &Extraction{InferenceID: resp.InferenceID}, errors.New("memory: LLM output truncated; text too large")
 	}
 	ex, err := parseExtraction(resp.Text, ref)
 	if err != nil {
-		return &Extraction{ModelRunID: resp.ModelRunID}, err
+		return &Extraction{InferenceID: resp.InferenceID}, err
 	}
 	ex.stampModel(resp.Provider, resp.Model)
-	ex.ModelRunID = resp.ModelRunID
+	ex.InferenceID = resp.InferenceID
 	return ex, nil
 }
 
@@ -251,7 +251,7 @@ type ChunkResult struct {
 	// Entities and Edges are how many the chunk mentions and states (before merging with the other chunks).
 	Entities int `json:"entities"`
 	Edges    int `json:"edges"`
-	// Summary is the summary of the chunk: an artifact of its own, a child of the chunk, with the model run (model and
+	// Summary is the summary of the chunk: an artifact of its own, a child of the chunk, with the inference (model and
 	// reasoning level) that wrote it. Always set for a chunk of a text remembered by Remember.
 	Summary *SummaryResult `json:"summary,omitempty"`
 }
@@ -277,7 +277,7 @@ type ChunkResult struct {
 // entities and edges their anchors select (resolved once the text is stored). For a chunked text they are stored
 // after the chunks, in a transaction of their own. See remember_series.go and docs/timeseries.md.
 //
-// Every LLM call is recorded as a model run (gb_model_runs: the model, the reasoning level it ran with, its tokens and
+// Every LLM call is recorded as an inference (gb_inferences: the model, the reasoning level it ran with, its tokens and
 // cost, and the stage that made it). The LLM stages (extract_graph, summarize_chunk, resolve_edges, resolve_series) run with
 // no thinking (reasoning level none) by default; WithReasoning sets a level per stage ("low", "medium" or "high"). Each chunk summary
 // artifact references the run that wrote it.
@@ -387,7 +387,7 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	j.run.Start(memory_core.StageExtractGraph)
 	ex, err := Extract(ctx, co.ModelLLM(llm, memory_core.StageExtractGraph), text, ref)
 	j.run.Done(err, memory_core.StageExtractGraph)
-	j.run.AddModelRun(memory_core.StageExtractGraph, ex.RunID())
+	j.run.AddInference(memory_core.StageExtractGraph, ex.RunID())
 	if err != nil {
 		return nil, err
 	}
@@ -494,7 +494,7 @@ func (j *job) resolveAndStore(ctx context.Context, text string, ex *Extraction, 
 	j.run.Start(memory_core.StageResolveEdges)
 	plan, err := resolveEdges(ctx, co.ModelLLM(j.llm, memory_core.StageResolveEdges), ex.Edges, cands)
 	j.run.Done(err, memory_core.StageResolveEdges)
-	j.run.AddModelRun(memory_core.StageResolveEdges, plan.RunID())
+	j.run.AddInference(memory_core.StageResolveEdges, plan.RunID())
 	if err != nil {
 		return nil, err
 	}
@@ -552,7 +552,7 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 	return store(ctx, d, nil, userID, dataset, kind, text, ref, now, ex, plan, nil, nil, nil, opts...)
 }
 
-// store is Store; run, if not nil, is told of the embedding request (a model run of the store stage). part, if not nil, says the text is a chunk of a longer one: it is then stored as a child artifact
+// store is Store; run, if not nil, is told of the embedding request (an inference of the store stage). part, if not nil, says the text is a chunk of a longer one: it is then stored as a child artifact
 // of part.ParentID, and its text is embedded into the chunk index together with the entities and edges. web, if not
 // nil, says the text is the result of a web search: it is then stored as an artifact of kind web_search that saves the
 // query and is a child of web.ParentID (kind is ignored). obs, if not nil, says the text is the observation of a series:
@@ -591,7 +591,7 @@ func store(ctx context.Context, d *sql.DB, run *runLog, userID, dataset, kind, t
 	}
 	// Registered before the transaction's Rollback, so it runs after the transaction is finished (see prepareVectors).
 	var embedUsage *ai.EmbedUsage
-	defer func() { run.AddModelRun(StageStore, recordEmbedUsage(ctx, d, embedUsage)) }()
+	defer func() { run.AddInference(StageStore, recordEmbedUsage(ctx, d, embedUsage)) }()
 	tx, err := graph.Begin(ctx, d)
 	if err != nil {
 		return nil, err
@@ -722,11 +722,11 @@ func store(ctx context.Context, d *sql.DB, run *runLog, userID, dataset, kind, t
 		chunkVec = &chunkVector{artifactID: artID, parentID: part.ParentID, index: part.Chunk.Index, text: text}
 		if s := part.Summary; s != nil {
 			sumID, err := tx.InsertChunkSummaryArtifact(ctx, graph.NewChunkSummaryArtifact{DatasetID: dsID, ParentID: artID, Text: s.Text,
-				ModelRunID: s.ModelRunID, SessionID: sessionID, ValidAt: ref, CreatedAt: now})
+				InferenceID: s.InferenceID, SessionID: sessionID, ValidAt: ref, CreatedAt: now})
 			if err != nil {
 				return nil, err
 			}
-			out.summary = &SummaryResult{ArtifactID: sumID, Text: s.Text, Model: s.Model, Reasoning: s.Reasoning, ModelRunID: s.ModelRunID}
+			out.summary = &SummaryResult{ArtifactID: sumID, Text: s.Text, Model: s.Model, Reasoning: s.Reasoning, InferenceID: s.InferenceID}
 			sumVec = &summaryVector{artifactID: sumID, chunkID: artID, parentID: part.ParentID, index: part.Chunk.Index, text: s.Text}
 		}
 	}

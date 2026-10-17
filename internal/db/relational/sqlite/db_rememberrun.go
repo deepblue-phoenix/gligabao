@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS gb_remember_runs (
 	%[1]s_finished_at DATETIME`, s.Name, statuses)
 		if s.Model {
 			fmt.Fprintf(&b, `,
-	%s_model_run_ids  TEXT NOT NULL DEFAULT '[]'`, s.Name)
+	%s_inference_ids  TEXT NOT NULL DEFAULT '[]'`, s.Name)
 		}
 	}
 	b.WriteString(`
@@ -55,7 +55,7 @@ func rememberRunColumns() []string {
 	for _, s := range model.RememberStages {
 		cols = append(cols, s.Name+"_status", s.Name+"_error", s.Name+"_started_at", s.Name+"_finished_at")
 		if s.Model {
-			cols = append(cols, s.Name+"_model_run_ids")
+			cols = append(cols, s.Name+"_inference_ids")
 		}
 	}
 	return cols
@@ -79,7 +79,7 @@ func rememberRunValues(r model.RememberRun) []any {
 		}
 		vals = append(vals, st.Status, nullableString(st.Error), FormatTimePtr(st.StartedAt), FormatTimePtr(st.FinishedAt))
 		if s.Model {
-			vals = append(vals, jsonIDs(st.ModelRunIDs))
+			vals = append(vals, jsonIDs(st.InferenceIDs))
 		}
 	}
 	return vals
@@ -120,7 +120,7 @@ func scanRememberRun(sc scanner) (*model.RememberRun, error) {
 	r.Stages = make(map[string]model.RememberStage, len(stages))
 	for i, s := range model.RememberStages {
 		st := model.RememberStage{Status: stages[i].status, StartedAt: ParseTime(stages[i].started.String),
-			FinishedAt: ParseTime(stages[i].finished.String), ModelRunIDs: parseIDs(stages[i].runIDs)}
+			FinishedAt: ParseTime(stages[i].finished.String), InferenceIDs: parseIDs(stages[i].runIDs)}
 		if stages[i].err.Valid {
 			st.Error = &stages[i].err.String
 		}

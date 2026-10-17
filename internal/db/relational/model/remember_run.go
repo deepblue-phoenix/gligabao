@@ -24,7 +24,7 @@ const (
 var RememberStatuses = []string{RememberNotStarted, RememberStarted, RememberSucceeded, RememberFailed}
 
 // The stages of the remember pipeline, in pipeline order (RememberStages). Each is a column group of gb_remember_runs.
-// The names of the stages that run a model are those of gb_model_runs.stage (see memory_core.Stages).
+// The names of the stages that run a model are those of gb_inferences.stage (see memory_core.Stages).
 const (
 	// RememberStageClassifyComplexity is the judgement of Jev (system 1) of how complex the text is.
 	RememberStageClassifyComplexity = "classify_complexity"
@@ -55,7 +55,7 @@ const (
 // RememberStageDef describes a stage of the pipeline.
 type RememberStageDef struct {
 	Name string
-	// Model says that the stage runs models (LLM calls, embedding requests, web searches): it records their model runs.
+	// Model says that the stage runs models (LLM calls, embedding requests, web searches): it records their inferences.
 	Model bool
 }
 
@@ -86,11 +86,11 @@ func RememberStageDefOf(name string) (RememberStageDef, bool) {
 
 // Columns of a stage in gb_remember_runs are <stage>_<suffix>.
 const (
-	RememberColStatus      = "status"
-	RememberColError       = "error"
-	RememberColStartedAt   = "started_at"
-	RememberColFinishedAt  = "finished_at"
-	RememberColModelRunIDs = "model_run_ids"
+	RememberColStatus       = "status"
+	RememberColError        = "error"
+	RememberColStartedAt    = "started_at"
+	RememberColFinishedAt   = "finished_at"
+	RememberColInferenceIDs = "inference_ids"
 )
 
 // RememberStage is how one stage of a remember run went.
@@ -103,9 +103,9 @@ type RememberStage struct {
 	// for each chunk of a text spans all of them: from the start of the first to the end of the last.
 	StartedAt  *time.Time `json:"started_at"`
 	FinishedAt *time.Time `json:"finished_at"`
-	// ModelRunIDs are the model runs (gb_model_runs) the stage made, in order: one for each LLM call, embedding request or
+	// InferenceIDs are the inferences (gb_inferences) the stage made, in order: one for each LLM call, embedding request or
 	// web search. Always empty for a stage that runs no model. They are a list because a stage makes one for each chunk.
-	ModelRunIDs []int64 `json:"model_run_ids"`
+	InferenceIDs []int64 `json:"inference_ids"`
 }
 
 // RememberRun is one execution of the remember pipeline (gb_remember_runs): the authoritative record of how it went, stage
@@ -137,7 +137,7 @@ func NewRememberRun(userID, dataset, kind string, params map[string]any, started
 	r := RememberRun{UserID: userID, Dataset: dataset, Kind: kind, Params: params, Status: RememberStarted, StartedAt: startedAt,
 		Stages: make(map[string]RememberStage, len(RememberStages))}
 	for _, s := range RememberStages {
-		r.Stages[s.Name] = RememberStage{Status: RememberNotStarted, ModelRunIDs: []int64{}}
+		r.Stages[s.Name] = RememberStage{Status: RememberNotStarted, InferenceIDs: []int64{}}
 	}
 	return r
 }

@@ -72,7 +72,7 @@ func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Confi
 		j.run.Start(memory_core.StageExtractGraph)
 		ex, err := Extract(ctx, j.co.ModelLLM(j.llm, memory_core.StageExtractGraph), c.Text, j.ref)
 		j.run.Done(err, memory_core.StageExtractGraph)
-		j.run.AddModelRun(memory_core.StageExtractGraph, ex.RunID())
+		j.run.AddInference(memory_core.StageExtractGraph, ex.RunID())
 		if err != nil {
 			return nil, fmt.Errorf("memory: extract chunk %d of %d: %w", i+1, len(chunks), err)
 		}
@@ -85,14 +85,14 @@ func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Confi
 		j.run.Start(memory_core.StageSummarizeChunk)
 		sum, err := summarizeChunk(ctx, j.co.ModelLLM(j.llm, memory_core.StageSummarizeChunk), c.Text)
 		j.run.Done(err, memory_core.StageSummarizeChunk)
-		j.run.AddModelRun(memory_core.StageSummarizeChunk, sum.RunID())
+		j.run.AddInference(memory_core.StageSummarizeChunk, sum.RunID())
 		if err != nil {
 			return nil, fmt.Errorf("memory: summarize chunk %d of %d: %w", i+1, len(chunks), err)
 		}
 		sums[i] = sum
 		j.tr.Tool("The LLM summarized the chunk; the summary is stored as an artifact of its own, a child of the chunk, and embedded."+part.label(),
 			"summarize_chunk", map[string]any{"chunk_index": i, "chunk_tokens": c.Tokens, "text_chars": len(c.Text), "reasoning": sum.Reasoning},
-			map[string]any{"summary": sum.Text, "model": sum.Model, "reasoning": sum.Reasoning, "model_run_id": sum.ModelRunID})
+			map[string]any{"summary": sum.Text, "model": sum.Model, "reasoning": sum.Reasoning, "inference_id": sum.InferenceID})
 	}
 
 	//--------------------------------------

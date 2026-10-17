@@ -29,42 +29,42 @@ func onlyRun(t *testing.T, d *sql.DB) *relational.RememberRun {
 	return &runs[0]
 }
 
-// checkModelRuns checks the run logs against gb_model_runs: every model run of type remember is in exactly one stage of
+// checkInferences checks the run logs against gb_inferences: every inference of type remember is in exactly one stage of
 // one of the logs, and no stage that runs no model has any.
-func checkModelRuns(t *testing.T, d *sql.DB, runLogs ...*relational.RememberRun) {
+func checkInferences(t *testing.T, d *sql.DB, runLogs ...*relational.RememberRun) {
 	t.Helper()
-	all, _, err := relational.ListModelRuns(context.Background(), d, relational.ModelRunFilter{Type: memory_remember.CallRemember}, 1000, 0)
+	all, _, err := relational.ListInferences(context.Background(), d, relational.InferenceFilter{Type: memory_remember.CallRemember}, 1000, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	held := map[int64]int{}
 	for _, run := range runLogs {
 		for _, s := range relational.RememberStages {
-			if ids := run.Stages[s.Name].ModelRunIDs; !s.Model && len(ids) > 0 {
-				t.Errorf("stage %s runs no model but has model runs %v", s.Name, ids)
+			if ids := run.Stages[s.Name].InferenceIDs; !s.Model && len(ids) > 0 {
+				t.Errorf("stage %s runs no model but has inferences %v", s.Name, ids)
 			}
-			for _, id := range run.Stages[s.Name].ModelRunIDs {
+			for _, id := range run.Stages[s.Name].InferenceIDs {
 				held[id]++
 			}
 		}
 	}
 	for _, r := range all {
 		if held[r.ID] != 1 {
-			t.Errorf("model run %d (stage %s) is in %d stages of the run logs", r.ID, r.Stage, held[r.ID])
+			t.Errorf("inference %d (stage %s) is in %d stages of the run logs", r.ID, r.Stage, held[r.ID])
 		}
 	}
 	if len(held) != len(all) {
-		t.Errorf("the run logs hold %d model runs, gb_model_runs has %d", len(held), len(all))
+		t.Errorf("the run logs hold %d inferences, gb_inferences has %d", len(held), len(all))
 	}
 }
 
-// stageRuns returns the model runs of each stage of the run log.
-func stageRuns(t *testing.T, d *sql.DB, run *relational.RememberRun) map[string][]relational.ModelRun {
+// stageRuns returns the inferences of each stage of the run log.
+func stageRuns(t *testing.T, d *sql.DB, run *relational.RememberRun) map[string][]relational.Inference {
 	t.Helper()
-	out := map[string][]relational.ModelRun{}
+	out := map[string][]relational.Inference{}
 	for name, st := range run.Stages {
-		for _, id := range st.ModelRunIDs {
-			r, err := relational.GetModelRun(context.Background(), d, id)
+		for _, id := range st.InferenceIDs {
+			r, err := relational.GetInference(context.Background(), d, id)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -87,7 +87,7 @@ func stageNames(run *relational.RememberRun, status string) []string {
 
 func TestRememberRunLogText(t *testing.T) { dbtest.Run(t, testRememberRunLogText) }
 
-// A text that is one chunk, with vectors: the stages it goes through succeeded with their times and model runs, and the others
+// A text that is one chunk, with vectors: the stages it goes through succeeded with their times and inferences, and the others
 // are not started.
 func testRememberRunLogText(t *testing.T, d *sql.DB) {
 	vs, err := vector.NewChromem(":memory:", 2)
@@ -129,7 +129,7 @@ func testRememberRunLogText(t *testing.T, d *sql.DB) {
 	if got := stageNames(run, relational.RememberNotStarted); len(got) != len(relational.RememberStages)-len(want) {
 		t.Errorf("not started stages = %v", got)
 	}
-	checkModelRuns(t, d, &runs[1], run)
+	checkInferences(t, d, &runs[1], run)
 	runs1, runs2 := stageRuns(t, d, &runs[1]), stageRuns(t, d, run)
 	// The first call has no candidates: no search for similar entities and no comparison of facts.
 	if len(runs1["extract_graph"]) != 1 || len(runs1["load_candidates"]) != 0 || len(runs1["resolve_edges"]) != 0 || len(runs1["store"]) != 1 {
@@ -148,7 +148,7 @@ func testRememberRunLogText(t *testing.T, d *sql.DB) {
 
 func TestRememberRunLogChunks(t *testing.T) { dbtest.Run(t, testRememberRunLogChunks) }
 
-// A chunked text: a stage that runs for each chunk spans them and lists the model run of each.
+// A chunked text: a stage that runs for each chunk spans them and lists the inference of each.
 func testRememberRunLogChunks(t *testing.T, d *sql.DB) {
 	res, err := memory_remember.Remember(context.Background(), d, &personLLM{}, "u1", "docs", "", document(8), relational.Now(),
 		memory_core.WithChunking(chunk.Config{Size: 64, OverlapPercent: 40}))
@@ -164,14 +164,14 @@ func testRememberRunLogChunks(t *testing.T, d *sql.DB) {
 	if got := stageNames(run, relational.RememberSucceeded); strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("succeeded stages = %v, want %v", got, want)
 	}
-	checkModelRuns(t, d, run)
+	checkInferences(t, d, run)
 	runs := stageRuns(t, d, run)
 	if len(runs["extract_graph"]) != n || len(runs["summarize_chunk"]) != n {
 		t.Errorf("%d chunks, %d extract_graph and %d summarize_chunk runs", n, len(runs["extract_graph"]), len(runs["summarize_chunk"]))
 	}
 	for i, c := range res.Chunks {
-		if c.Summary.ModelRunID != run.Stages["summarize_chunk"].ModelRunIDs[i] {
-			t.Errorf("chunk %d: summary run %d, run log %v", i, c.Summary.ModelRunID, run.Stages["summarize_chunk"].ModelRunIDs)
+		if c.Summary.InferenceID != run.Stages["summarize_chunk"].InferenceIDs[i] {
+			t.Errorf("chunk %d: summary run %d, run log %v", i, c.Summary.InferenceID, run.Stages["summarize_chunk"].InferenceIDs)
 		}
 	}
 }
@@ -189,7 +189,7 @@ func testRememberRunLogFailure(t *testing.T, d *sql.DB) {
 		t.Fatalf("run = %+v", run)
 	}
 	eg := run.Stages["extract_graph"]
-	if eg.Status != relational.RememberFailed || eg.Error == nil || *eg.Error != "llm down" || eg.StartedAt == nil || eg.FinishedAt == nil || len(eg.ModelRunIDs) != 0 {
+	if eg.Status != relational.RememberFailed || eg.Error == nil || *eg.Error != "llm down" || eg.StartedAt == nil || eg.FinishedAt == nil || len(eg.InferenceIDs) != 0 {
 		t.Errorf("extract_graph = %+v", eg)
 	}
 	if got := stageNames(run, relational.RememberFailed); len(got) != 1 {
@@ -241,15 +241,15 @@ func testRememberRunLogSeries(t *testing.T, d *sql.DB) {
 				t.Errorf("text %d: stage %s = %+v", i, name, st)
 			}
 		}
-		if n := len(run.Stages["observe_series"].ModelRunIDs); n == 0 {
-			t.Errorf("text %d: the observation has no model runs", i)
+		if n := len(run.Stages["observe_series"].InferenceIDs); n == 0 {
+			t.Errorf("text %d: the observation has no inferences", i)
 		}
 	}
 	all, _, err := relational.ListRememberRuns(ctx, d, relational.RememberRunFilter{}, 10, 0)
 	if err != nil || len(all) != 2 {
 		t.Fatal(all, err)
 	}
-	checkModelRuns(t, d, &all[0], &all[1])
+	checkInferences(t, d, &all[0], &all[1])
 }
 
 // searcher answers every web search with a briefing that the test LLM extracts a fact from.
@@ -264,7 +264,7 @@ func (s searcher) WebSearch(context.Context, ai.WebSearchRequest) (*ai.WebSearch
 
 func TestRememberRunLogWebSearch(t *testing.T) { dbtest.Run(t, testRememberRunLogWebSearch) }
 
-// The web search is a stage of its own: it holds the model runs of the searches and of the extraction of their results, and a
+// The web search is a stage of its own: it holds the inferences of the searches and of the extraction of their results, and a
 // failed search is the stage's, while the call itself succeeds.
 func testRememberRunLogWebSearch(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
@@ -277,9 +277,9 @@ func testRememberRunLogWebSearch(t *testing.T, d *sql.DB) {
 	if len(res.WebSearches) == 0 || run.Stages["web_search"].Status != relational.RememberSucceeded {
 		t.Fatalf("%d web searches, web_search stage %+v", len(res.WebSearches), run.Stages["web_search"])
 	}
-	checkModelRuns(t, d, run)
+	checkInferences(t, d, run)
 	runs := stageRuns(t, d, run)
-	// A search, and the extraction of its briefing, per entity (their model runs are the stage's, not extract_graph's).
+	// A search, and the extraction of its briefing, per entity (their inferences are the stage's, not extract_graph's).
 	if len(runs["web_search"]) < len(res.WebSearches)*2 || len(runs["extract_graph"]) != 1 {
 		t.Errorf("web_search runs %d, extract_graph runs %d, %d searches", len(runs["web_search"]), len(runs["extract_graph"]), len(res.WebSearches))
 	}
@@ -305,7 +305,7 @@ func testRememberRunLogWebSearch(t *testing.T, d *sql.DB) {
 }
 
 func TestRememberRunLogStages(t *testing.T) {
-	// Every stage of the table that runs a model is a stage of gb_model_runs, or one that holds the runs of another.
+	// Every stage of the table that runs a model is a stage of gb_inferences, or one that holds the runs of another.
 	known := map[string]bool{}
 	for _, s := range memory_core.Stages {
 		known[s] = true

@@ -127,10 +127,10 @@ type Artifact struct {
 	// SeriesID is the series an observation is about (gb_series.id); only set for a series observation
 	// (ArtifactSeriesObservation), and 0 again if the series was deleted.
 	SeriesID int64
-	// ModelRunID is only set for a chunk summary (ArtifactChunkSummary): the run (gb_model_runs) of the model that wrote
-	// it. The run holds the model, the reasoning level, the tokens and the cost (see relational.GetModelRun); the
+	// InferenceID is only set for a chunk summary (ArtifactChunkSummary): the run (gb_inferences) of the model that wrote
+	// it. The run holds the model, the reasoning level, the tokens and the cost (see relational.GetInference); the
 	// artifact keeps nothing of it itself.
-	ModelRunID int64
+	InferenceID int64
 }
 
 // IsDerived says whether Remember derived the artifact from something else (a web search, a series observation, a chunk summary), as
@@ -164,7 +164,7 @@ type NewChunkSummaryArtifact struct {
 	// ParentID is the chunk artifact that was summarized. It must be in the same dataset and already stored.
 	ParentID           int64
 	Text               string // the summary
-	ModelRunID         int64  // the run (gb_model_runs) of the model that wrote it, which holds the model and the reasoning level; 0 if unknown
+	InferenceID        int64  // the run (gb_inferences) of the model that wrote it, which holds the model and the reasoning level; 0 if unknown
 	SessionID          string // that of the chunk; "" if none
 	ValidAt, CreatedAt time.Time
 }

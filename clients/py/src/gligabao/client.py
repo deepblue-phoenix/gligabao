@@ -62,8 +62,8 @@ class Client:
         `reasoning` picks the reasoning (thinking) level ("none", "low", "medium" or "high") of each LLM
         stage: "extract_graph", "summarize_chunk", "resolve_edges", "resolve_series" and "extract_image", e.g.
         {"summarize_chunk": "none", "resolve_edges": "medium"}. A stage left out runs with "none" (no
-        thinking). Every call is recorded server-side as a model run (gb_model_runs) with its level;
-        the summary of each chunk of a long text is in the response (chunks[].summary, with its model_run_id).
+        thinking). Every call is recorded server-side as an inference (gb_inferences) with its level;
+        the summary of each chunk of a long text is in the response (chunks[].summary, with its inference_id).
 
         `web_search=True` (text only) also searches the web for the latest world events about the key
         entities of the text, and remembers what it finds as artifacts of kind "web_search" (the response

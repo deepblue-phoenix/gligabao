@@ -74,7 +74,7 @@ func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc := &fakeSidecar{inferResp: sidecar.InferResponse{Response: "hello"}}
+	sc := &fakeSidecar{inferResp: sidecar.InferResponse{Response: "hello", InputTokens: 7, OutputTokens: 3}}
 	post := func(sc training.Inferer, modelID, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest("POST", "/x", strings.NewReader(body))
@@ -91,8 +91,10 @@ func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
 		ID       int    `json:"id"`
 		ModelID  int64  `json:"model_id"`
 		Response string `json:"response"`
+		InTok    int    `json:"input_tokens"`
+		OutTok   int    `json:"output_tokens"`
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || out.ModelID != 1 || out.Response != "hello" {
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || out.ModelID != 1 || out.Response != "hello" || out.InTok != 7 || out.OutTok != 3 {
 		t.Fatalf("response: %s", rec.Body)
 	}
 	// The weights and size to load come from the model's record, not from the client.
@@ -129,18 +131,18 @@ func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
 	}
 
 	// Every request that reached the sidecar is stored, with its outcome.
-	list, err := relational.ListInferenceRequests(ctx, d, 1, 0)
+	list, err := relational.ListTrainedModelInferences(ctx, d, 1, 0)
 	if err != nil || len(list) != 3 {
 		t.Fatalf("stored requests: %+v %v", list, err)
 	}
-	if r := list[2]; r.Status != relational.InferenceCompleted || r.Response != "hello" || r.Prompt != "hi" || r.ModelPath != "trained/j2" ||
+	if r := list[2]; r.Status != relational.TrainedModelInferenceCompleted || r.Response != "hello" || r.Prompt != "hi" || r.ModelPath != "trained/j2" ||
 		r.ModelSize != "12b" || r.MaxTokens != 50 || r.Temperature == nil || *r.Temperature != 0.2 || r.ID != int64(out.ID) {
 		t.Fatalf("completed request: %+v", r)
 	}
-	if r := list[1]; r.Status != relational.InferenceFailed || !strings.Contains(r.Error, "No trained model") || r.Response != "" {
+	if r := list[1]; r.Status != relational.TrainedModelInferenceFailed || !strings.Contains(r.Error, "No trained model") || r.Response != "" {
 		t.Fatalf("failed request: %+v", r)
 	}
-	if r := list[0]; r.Status != relational.InferenceFailed || !strings.Contains(r.Error, "refused") {
+	if r := list[0]; r.Status != relational.TrainedModelInferenceFailed || !strings.Contains(r.Error, "refused") {
 		t.Fatalf("sidecar down request: %+v", r)
 	}
 	rec = httptest.NewRecorder()
@@ -148,7 +150,7 @@ func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
 	req.SetPathValue("id", "1")
 	training.ListInferencesOf(dbs)(rec, req)
 	var listed struct {
-		Inferences []relational.InferenceRequest `json:"inferences"`
+		Inferences []relational.TrainedModelInference `json:"inferences"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil || rec.Code != 200 || len(listed.Inferences) != 2 || listed.Inferences[0].ID != list[0].ID {
 		t.Fatalf("list inferences: %d %s", rec.Code, rec.Body)

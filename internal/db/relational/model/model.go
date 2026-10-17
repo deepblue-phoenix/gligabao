@@ -54,19 +54,19 @@ type Ontology struct {
 	UpdatedAt   time.Time `json:"updated_at"` // when the ontology was last loaded or replaced; equals created_at until updated
 }
 
-// ModelRun is one invocation of a model (gb_model_runs): the dynamic counterpart of Model, which is the static
+// Inference is one invocation of a model (gb_inferences): the dynamic counterpart of Model, which is the static
 // description of a model. Every LLM call, embedding request, web search and Jev classification the system makes is
 // recorded as one, with what that invocation used and cost.
-type ModelRun struct {
+type Inference struct {
 	ID int64 `json:"id"`
 	// Type is the operation that made the call: "remember", "remember_image" or "recall".
 	Type string `json:"type"`
 	// Stage is the pipeline stage that made it (e.g. "extract_graph", "summarize_chunk", "recall", "embed"); "" if unknown.
 	Stage string `json:"stage,omitempty"`
-	// ModelID is the ID (gb_models) of the model that was run, "" if the API did not say. On RecordModelRun it is filled
+	// ModelID is the ID (gb_models) of the model that was run, "" if the API did not say. On RecordInference it is filled
 	// in from Model.
 	ModelID string `json:"model_id,omitempty"`
-	// Model, Provider and Kind describe the model. RecordModelRun uses them to register it if it is not stored yet (Kind
+	// Model, Provider and Kind describe the model. RecordInference uses them to register it if it is not stored yet (Kind
 	// "" means "llm"); reading a run fills them from gb_models.
 	Model    string `json:"model,omitempty"`
 	Provider string `json:"provider,omitempty"`
@@ -79,31 +79,31 @@ type ModelRun struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-// ModelRunStat sums the recorded model runs of one type.
-type ModelRunStat struct {
-	Runs         int64
+// InferenceStat sums the recorded inferences of one type.
+type InferenceStat struct {
+	Inferences   int64
 	InputTokens  int64
 	OutputTokens int64
 	CostUSD      float64
 }
 
-// ModelRunFilter selects model runs; an empty field matches all. ModelID is gb_models.id.
-type ModelRunFilter struct {
+// InferenceFilter selects inferences; an empty field matches all. ModelID is gb_models.id.
+type InferenceFilter struct {
 	Type      string
 	Stage     string
 	ModelID   string
 	Reasoning string
 }
 
-// ModelRunGroup sums the model runs that share a type, a stage, a model and a thinking level. Model is the model's name
+// InferenceGroup sums the inferences that share a type, a stage, a model and a thinking level. Model is the model's name
 // and ModelID its ID, "" for runs without one.
-type ModelRunGroup struct {
+type InferenceGroup struct {
 	Type         string  `json:"type"`
 	Stage        string  `json:"stage,omitempty"`
 	ModelID      string  `json:"model_id,omitempty"`
 	Model        string  `json:"model,omitempty"`
 	Reasoning    string  `json:"reasoning"`
-	Runs         int64   `json:"runs"`
+	Inferences   int64   `json:"inferences"`
 	InputTokens  int64   `json:"input_tokens"`
 	OutputTokens int64   `json:"output_tokens"`
 	CostUSD      float64 `json:"cost_usd"`

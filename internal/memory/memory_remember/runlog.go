@@ -2,7 +2,7 @@ package memory_remember
 
 // The remember run log: the row of gb_remember_runs (see internal/db/relational/sqlite/db_schema.go) that records how one
 // call of Remember was executed, the authoritative record of it: the status of the call and of each stage of the
-// pipeline, the error of a stage that failed, when each stage began and ended, and the model runs (gb_model_runs) each
+// pipeline, the error of a stage that failed, when each stage began and ended, and the inferences (gb_inferences) each
 // stage made.
 //
 // The pipeline reports to it in single calls, and everything else happens here:
@@ -13,7 +13,7 @@ package memory_remember
 //	j.run.Start(StageExtractGraph)                            // before a stage
 //	ex, err := Extract(...)
 //	j.run.Done(err, StageExtractGraph)                        // after it, with its error (nil if it had none)
-//	j.run.AddModelRun(StageExtractGraph, ex.RunID())          // the model run (gb_model_runs) the stage made
+//	j.run.AddInference(StageExtractGraph, ex.RunID())          // the inference (gb_inferences) the stage made
 //
 // Every method is safe to call on a nil *runLog (it does nothing). Nothing here ever fails Remember: a row that cannot
 // be written is logged, and the call goes on. Every change is written as it happens, so a run that is in progress can be
@@ -21,7 +21,7 @@ package memory_remember
 //
 // The web_search, fetch_series and observe_series stages extract and store texts of their own (the briefings, the
 // observations) with the same code as the main text. The job that does it gets a view of the log made by Within, which
-// takes no part in the stages of the text itself (Start and Done do nothing) and files every model run it is told of in
+// takes no part in the stages of the text itself (Start and Done do nothing) and files every inference it is told of in
 // the enrichment stage, so that they are not mixed up with those of extract_graph, resolve_edges and store.
 
 import (
@@ -51,7 +51,7 @@ const (
 // runLog is the log of one Remember call. See the top of this file.
 type runLog struct {
 	*runState
-	// into, if set, makes this a view (see Within): it does not track stages, and files model runs in this stage.
+	// into, if set, makes this a view (see Within): it does not track stages, and files inferences in this stage.
 	into string
 }
 
@@ -208,10 +208,10 @@ func (r *runLog) Finish(err error) {
 	r.save()
 }
 
-// AddModelRun adds the model run with that ID (gb_model_runs) to the stage that made it. Call it wherever a model is run
+// AddInference adds the inference with that ID (gb_inferences) to the stage that made it. Call it wherever a model is run
 // (an LLM call, an embedding request, a web search), with the ID that recording it returned; 0 (a run that could not be
 // recorded) is ignored. The stage must be one that runs a model (relational.RememberStages).
-func (r *runLog) AddModelRun(stage string, id int64) {
+func (r *runLog) AddInference(stage string, id int64) {
 	if r == nil || id == 0 {
 		return
 	}
@@ -228,13 +228,13 @@ func (r *runLog) AddModelRun(stage string, id int64) {
 		log.WithField("stage", stage).Error("remember run log: the stage runs no model")
 		return
 	}
-	st.ModelRunIDs = append(st.ModelRunIDs, id)
+	st.InferenceIDs = append(st.InferenceIDs, id)
 	r.run.Stages[stage] = *st
 	r.save()
 }
 
 // Within returns a view of the log for the job that stores the texts of an enrichment stage (see the top of this file): its
-// Start, Done and Artifact do nothing, and the model runs it is told of are added to stage, whatever stage they name.
+// Start, Done and Artifact do nothing, and the inferences it is told of are added to stage, whatever stage they name.
 func (r *runLog) Within(stage string) *runLog {
 	if r == nil {
 		return nil

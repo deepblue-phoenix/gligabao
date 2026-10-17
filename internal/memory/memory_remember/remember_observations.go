@@ -186,12 +186,12 @@ func (j *job) observe(ctx context.Context, o observable) SeriesObservationResult
 	// the last point of the window, so its facts are valid from then.
 	last := points[len(points)-1].TS
 	oj := *j
-	oj.run = j.run.Within(StageObserveSeries) // its model runs are the observe_series stage's
+	oj.run = j.run.Within(StageObserveSeries) // its inferences are the observe_series stage's
 	oj.obs = &observationPart{ParentID: o.ParentID, SeriesID: o.SeriesID, Query: query, Label: o.Observed.Key}
 	oj.kind, oj.ref = graph.ArtifactSeriesObservation, last
 
 	ex, err := Extract(ctx, oj.co.ModelLLM(oj.llm, memory_core.StageExtractGraph), text, oj.ref)
-	oj.run.AddModelRun(memory_core.StageExtractGraph, ex.RunID())
+	oj.run.AddInference(memory_core.StageExtractGraph, ex.RunID())
 	if err != nil {
 		return fail("extract", err)
 	}

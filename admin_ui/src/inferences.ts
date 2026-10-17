@@ -1,16 +1,16 @@
-// The "model runs" view (see docs/model-runs.md): per database, the totals of the recorded model invocations (tokens,
-// cost), broken down by operation, stage, model and thinking level, and the list of the runs, newest first. Clicking a
+// The "inferences" view (see docs/inferences.md): per database, the totals of the recorded model invocations (tokens,
+// cost), broken down by operation, stage, model and thinking level, and the list of the inferences, newest first. Clicking a
 // row of a breakdown filters the list by it.
 
-interface Sums { runs: number; input_tokens: number; output_tokens: number; cost_usd: number }
+interface Sums { inferences: number; input_tokens: number; output_tokens: number; cost_usd: number }
 interface Breakdown extends Sums { key: string; label?: string }
-interface Run {
+interface Inference {
   id: number; type: string; stage?: string; model_id?: string; model?: string; provider?: string;
   reasoning: string; input_tokens: number; output_tokens: number; cost_usd: number; created_at: string;
 }
 interface Response {
   totals: Sums; by_type: Breakdown[]; by_stage: Breakdown[]; by_model: Breakdown[]; by_reasoning: Breakdown[];
-  runs: Run[]; total: number; limit: number; offset: number;
+  inferences: Inference[]; total: number; limit: number; offset: number;
 }
 type Dim = "type" | "stage" | "model_id" | "reasoning";
 type Filter = Partial<Record<Dim, string>>;
@@ -93,19 +93,19 @@ function breakdownTable(title: string, dim: Dim, rows: Breakdown[], p: Panel, na
   const wrap = node("div", "mr-breakdown");
   wrap.appendChild(node("h4", "", title));
   const table = wrap.appendChild(node("table", "clickable compact"));
-  headRow(table, [[title, false], ["Runs", true], ["Input", true], ["Output", true], ["Cost", true]]);
+  headRow(table, [[title, false], ["Inferences", true], ["Input", true], ["Output", true], ["Cost", true]]);
   const body = table.createTBody();
   for (const b of rows) {
     const tr = body.insertRow();
     const label = b.label || b.key || "(none)";
     tr.insertCell().textContent = label;
-    numCell(tr, fmtInt(b.runs));
+    numCell(tr, fmtInt(b.inferences));
     numCell(tr, fmtInt(b.input_tokens));
     numCell(tr, fmtInt(b.output_tokens));
     numCell(tr, fmtCost(b.cost_usd));
-    if (!b.key) continue; // runs without a value cannot be filtered for
+    if (!b.key) continue; // inferences without a value cannot be filtered for
     if (p.filter[dim] === b.key) tr.classList.add("selected");
-    tr.title = `Show only runs with this ${title.toLowerCase()}`;
+    tr.title = `Show only inferences with this ${title.toLowerCase()}`;
     tr.addEventListener("click", () => {
       if (p.filter[dim] === b.key) delete p.filter[dim];
       else p.filter[dim] = b.key;
@@ -119,7 +119,7 @@ function breakdownTable(title: string, dim: Dim, rows: Breakdown[], p: Panel, na
 function render(name: string, p: Panel, data: Response): void {
   const t = data.totals;
   p.stats.replaceChildren(
-    tile("Runs", fmtInt(t.runs)), tile("Input tokens", fmtInt(t.input_tokens)),
+    tile("Inferences", fmtInt(t.inferences)), tile("Input tokens", fmtInt(t.input_tokens)),
     tile("Output tokens", fmtInt(t.output_tokens), "Thinking tokens included"), tile("Cost", fmtCost(t.cost_usd)),
   );
   p.breakdowns.replaceChildren(
@@ -144,7 +144,7 @@ function render(name: string, p: Panel, data: Response): void {
   }
 
   p.body.replaceChildren();
-  for (const r of data.runs) {
+  for (const r of data.inferences) {
     const tr = p.body.insertRow();
     numCell(tr, String(r.id));
     tr.insertCell().textContent = fmtTime(r.created_at);
@@ -158,10 +158,10 @@ function render(name: string, p: Panel, data: Response): void {
     numCell(tr, fmtInt(r.output_tokens));
     numCell(tr, fmtCost(r.cost_usd));
   }
-  p.table.hidden = data.runs.length === 0;
+  p.table.hidden = data.inferences.length === 0;
   p.status.className = "muted";
-  p.status.textContent = data.total === 0 ? "No model runs." :
-    `Showing ${data.offset + 1}–${data.offset + data.runs.length} of ${fmtInt(data.total)} runs.`;
+  p.status.textContent = data.total === 0 ? "No inferences." :
+    `Showing ${data.offset + 1}–${data.offset + data.inferences.length} of ${fmtInt(data.total)} inferences.`;
 
   p.pager.replaceChildren();
   const page = (label: string, offset: number, enabled: boolean): void => {
@@ -187,17 +187,17 @@ async function loadDatabase(name: string): Promise<void> {
   const params = new URLSearchParams({ db: name, limit: String(PAGE), offset: String(p.offset) });
   for (const [k, v] of Object.entries(p.filter)) if (v) params.set(k, v);
   try {
-    const res = await fetch(`api/model-runs?${params}`);
+    const res = await fetch(`api/inferences?${params}`);
     if (!res.ok) throw new Error(`${res.status}: ${(await res.text()).trim()}`);
     render(name, p, (await res.json()) as Response);
   } catch (err) {
     p.status.className = "error";
-    p.status.textContent = `Failed to load model runs: ${errText(err)}`;
+    p.status.textContent = `Failed to load inferences: ${errText(err)}`;
   }
 }
 
 async function load(): Promise<void> {
-  const root = el("modelruns-content");
+  const root = el("inferences-content");
   if (panels.size === 0) {
     try {
       const res = await fetch("api/databases");
@@ -216,7 +216,7 @@ async function load(): Promise<void> {
   await Promise.all([...panels.keys()].map((n) => loadDatabase(n)));
 }
 
-export function initModelRuns(): void {
-  el("modelruns-refresh").addEventListener("click", () => void load());
+export function initInferences(): void {
+  el("inferences-refresh").addEventListener("click", () => void load());
   void load();
 }

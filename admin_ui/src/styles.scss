@@ -651,8 +651,8 @@ tr.removing {
   path { fill: none; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 }
 
-// Model runs view
-#modelruns { margin-top: 0; }
+// Inferences view
+#inferences { margin-top: 0; }
 .mr-db { margin-top: 1rem; h3 { margin: 0 0 0.5rem; font-size: 1rem; } }
 .mr-breakdowns { align-items: flex-start; flex-wrap: wrap; gap: 1.5rem; margin-top: 0.75rem; }
 .mr-breakdown h4 { margin: 0; font-size: 0.85rem; color: $muted; }

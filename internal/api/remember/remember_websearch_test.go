@@ -174,7 +174,7 @@ func testRememberWebSearch(t *testing.T, d *sql.DB) {
 	}
 	// The search was billed: its call is recorded.
 	var n int
-	if err := d.QueryRowContext(ctx, `SELECT COUNT(*) FROM gb_model_runs WHERE model_id = '`+relational.ModelID("fake-search-model")+`' AND stage = 'web_search' AND reasoning = 'none'`).Scan(&n); err != nil || n != 3 {
+	if err := d.QueryRowContext(ctx, `SELECT COUNT(*) FROM gb_inferences WHERE model_id = '`+relational.ModelID("fake-search-model")+`' AND stage = 'web_search' AND reasoning = 'none'`).Scan(&n); err != nil || n != 3 {
 		t.Errorf("recorded searches = %d, %v", n, err)
 	}
 }

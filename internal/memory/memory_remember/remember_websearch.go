@@ -273,10 +273,10 @@ func (j *job) storeWebSearch(ctx context.Context, p *keyEntity, ws webSearched) 
 	}
 	resp := ws.resp
 	// Detached from ctx so a cancelled request still records money that was spent.
-	runID, err := memory_core.RecordRun(context.WithoutCancel(ctx), j.d, relational.ModelRun{Type: CallRemember, Stage: memory_core.StageWebSearch,
+	runID, err := memory_core.RecordRun(context.WithoutCancel(ctx), j.d, relational.Inference{Type: CallRemember, Stage: memory_core.StageWebSearch,
 		Model: resp.Model, Provider: resp.Provider, Kind: ai.KindOf(resp.Model), Reasoning: ai.ReasoningNone,
 		InputTokens: resp.InputTokens, OutputTokens: resp.OutputTokens, CostUSD: resp.CostUSD})
-	j.run.AddModelRun(memory_core.StageWebSearch, runID)
+	j.run.AddInference(memory_core.StageWebSearch, runID)
 	if err != nil {
 		log.WithError(err).WithFields(fields).Error("record web search call")
 	}
@@ -298,13 +298,13 @@ func (j *job) storeWebSearch(ctx context.Context, p *keyEntity, ws webSearched) 
 	// THE RESULT IS A TEXT LIKE ANY OTHER: a job of its own that stores a "web_search" artifact. Its facts are valid from
 	// now, when they were read, not from the reference time of the text that mentioned the entity.
 	wj := *j
-	wj.run = j.run.Within(memory_core.StageWebSearch) // its model runs are the web_search stage's
+	wj.run = j.run.Within(memory_core.StageWebSearch) // its inferences are the web_search stage's
 	wj.web = &webPart{ParentID: p.ArtifactID, Query: query, Entity: p.Name}
 	wj.kind, wj.ref = graph.ArtifactWebSearch, j.now
 
 	// The graph is extracted from the briefing alone; the artifact keeps the sources next to it.
 	ex, err := Extract(ctx, wj.co.ModelLLM(wj.llm, memory_core.StageExtractGraph), briefing, wj.ref)
-	wj.run.AddModelRun(memory_core.StageExtractGraph, ex.RunID())
+	wj.run.AddInference(memory_core.StageExtractGraph, ex.RunID())
 	if err != nil {
 		return fail("extract", err)
 	}

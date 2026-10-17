@@ -104,6 +104,7 @@ def _infer_locked(prompt: str, max_tokens: int, temperature: float, model_size: 
     print(f"Generating with fine-tuned {config['display_name']} (adapter: {adapter_dir}) for: {prompt[:50]}...")
     import torch
     inputs = tokenizer(format_inference_prompt(prompt), return_tensors="pt").to(model.device)
+    input_tokens = int(inputs["input_ids"].shape[-1])   # the formatted prompt, special tokens included
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
@@ -112,8 +113,9 @@ def _infer_locked(prompt: str, max_tokens: int, temperature: float, model_size: 
             do_sample=True,
             pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
         )
+    output_tokens = int(outputs.shape[-1]) - input_tokens   # the newly generated tokens (EOS included)
     response = extract_model_response(tokenizer.decode(outputs[0], skip_special_tokens=True))
-    print(f"Generated {len(response)} characters")
+    print(f"Generated {len(response)} characters ({input_tokens} input tokens, {output_tokens} output tokens)")
     _cache["requests"] = _cache.get("requests", 0) + 1
     if on_ready:
         try:
@@ -122,4 +124,5 @@ def _infer_locked(prompt: str, max_tokens: int, temperature: float, model_size: 
         except Exception as e:   # the record is only informational
             print(f"on_ready failed: {e!r}")
     return {"response": response, "model_size": model_size, "model_path": model_path, "adapter": adapter_dir,
-            "cold_start": cold, "load_seconds": round(load_s, 2)}
+            "cold_start": cold, "load_seconds": round(load_s, 2),
+            "input_tokens": input_tokens, "output_tokens": output_tokens}

@@ -141,15 +141,15 @@ func InferOf(dbs []Database, sc Inferer) http.HandlerFunc {
 		// The request is stored before it goes to the sidecar and updated when it ends, so it can be reviewed later whatever
 		// happens to it (a failure, the client giving up, a restart of the server). The writes must outlive the HTTP request.
 		dbCtx := context.WithoutCancel(r.Context())
-		reqID, err := relational.RecordInferenceRequest(dbCtx, n.DB, relational.InferenceRequest{
+		reqID, err := relational.RecordTrainedModelInference(dbCtx, n.DB, relational.TrainedModelInference{
 			TrainedModelID: m.ID, Prompt: in.Prompt, ModelSize: m.ModelSize, ModelPath: m.Path, MaxTokens: in.MaxTokens, Temperature: in.Temperature})
 		if err != nil {
 			log.WithError(err).WithField("model_id", m.ID).Error("training: recording the inference request failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to record the inference request")
 			return
 		}
-		finish := func(status, response, errText string, started time.Time) {
-			if err := relational.FinishInferenceRequest(dbCtx, n.DB, reqID, status, response, errText, time.Since(started).Milliseconds()); err != nil {
+		finish := func(status, response, errText string, inTok, outTok int, started time.Time) {
+			if err := relational.FinishTrainedModelInference(dbCtx, n.DB, reqID, status, response, errText, inTok, outTok, time.Since(started).Milliseconds()); err != nil {
 				log.WithError(err).WithField("request_id", reqID).Error("training: updating the inference request failed")
 			}
 		}
@@ -163,26 +163,26 @@ func InferOf(dbs []Database, sc Inferer) http.HandlerFunc {
 			var se *sidecar.StatusError
 			switch {
 			case errors.As(err, &ie):
-				finish(relational.InferenceFailed, "", ie.Message, started)
+				finish(relational.TrainedModelInferenceFailed, "", ie.Message, 0, 0, started)
 				httputil.Error(w, http.StatusBadGateway, ie.Message)
 			case errors.As(err, &se) && se.Code == http.StatusBadRequest:
-				finish(relational.InferenceFailed, "", se.Message(), started)
+				finish(relational.TrainedModelInferenceFailed, "", se.Message(), 0, 0, started)
 				httputil.Error(w, http.StatusBadRequest, se.Message())
 			default:
 				log.WithError(err).WithField("model_id", m.ID).Error("training: inference failed")
-				finish(relational.InferenceFailed, "", err.Error(), started)
+				finish(relational.TrainedModelInferenceFailed, "", err.Error(), 0, 0, started)
 				httputil.Error(w, http.StatusBadGateway, "sidecar failed to run the inference")
 			}
 			return
 		}
-		finish(relational.InferenceCompleted, out.Response, "", started)
+		finish(relational.TrainedModelInferenceCompleted, out.Response, "", out.InputTokens, out.OutputTokens, started)
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{"id": reqID, "model_id": m.ID, "response": out.Response,
-			"status": relational.InferenceCompleted, "duration_ms": time.Since(started).Milliseconds()})
+			"status": relational.TrainedModelInferenceCompleted, "input_tokens": out.InputTokens, "output_tokens": out.OutputTokens, "duration_ms": time.Since(started).Milliseconds()})
 	}
 }
 
 // ListInferencesOf serves GET /v1/gb/training/models/{id}/inferences[?db=<name>][&limit=<n>]: {"inferences": [...]}, the
-// inference requests made to trained model {id} (relational.InferenceRequest: prompt, response, status, error, ...),
+// inference requests made to trained model {id} (relational.TrainedModelInference: prompt, response, status, error, ...),
 // newest first, at most limit (default 100, at most 500). 404 for an unknown model.
 func ListInferencesOf(dbs []Database) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -214,7 +214,7 @@ func ListInferencesOf(dbs []Database) http.HandlerFunc {
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the trained model")
 			return
 		}
-		list, err := relational.ListInferenceRequests(r.Context(), n.DB, id, limit)
+		list, err := relational.ListTrainedModelInferences(r.Context(), n.DB, id, limit)
 		if err != nil {
 			log.WithError(err).Error("training: list inference requests failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to list the inference requests")

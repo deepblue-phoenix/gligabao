@@ -16,7 +16,7 @@ content-type: application/json
 - `dataset` (optional): name of the [dataset](datasets.md) to search. Defaults to `main`. Only that user's dataset graph is used. `404` if it does not exist.
 - `session_id` (optional): the user/agent session the call belongs to, a string you choose (at most 128 bytes, no control characters; `400` otherwise). Use the same one as in the `remember` calls of that session, to connect the recall to the artifacts (and their entities and facts) of the same session, see [sessions.md](sessions.md). It is echoed in the response and recorded in the call's trajectory and monitoring event. It does **not** change retrieval or the answer.
 
-- `reasoning` (optional): the reasoning (thinking) level of the LLM call that writes the answer: `none`, `low`, `medium` or `high` (case-insensitive). Defaults to **`none`** (no thinking, so no thinking tokens are paid for). `400` for an unknown level. The call is recorded as a [model run](model-runs.md) (`gb_model_runs`, type `recall`, stage `recall`) with the level it ran with, its tokens and its cost.
+- `reasoning` (optional): the reasoning (thinking) level of the LLM call that writes the answer: `none`, `low`, `medium` or `high` (case-insensitive). Defaults to **`none`** (no thinking, so no thinking tokens are paid for). `400` for an unknown level. The call is recorded as a [inference](inferences.md) (`gb_inferences`, type `recall`, stage `recall`) with the level it ran with, its tokens and its cost.
 
 ## Response
 

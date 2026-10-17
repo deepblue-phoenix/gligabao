@@ -80,10 +80,10 @@ CREATE TABLE IF NOT EXISTS gb_models (
 --   model_id   the model that was run, as the API reported it (a reference to gb_models); NULL if it did not say
 --   reasoning  the thinking level it ran with: 'none', 'low', 'medium' or 'high'. It is the level that was applied, so
 --              'none' for a model without thinking (embeddings, Jev, web search, models that do not support it). A chunk
---              summary artifact references its run (gb_artifacts.model_run_id) for the model and the level.
+--              summary artifact references its run (gb_artifacts.inference_id) for the model and the level.
 --   input_tokens, output_tokens  the usage of the call (the thinking tokens are in output_tokens)
 --   cost_usd   total cost of the call in USD (0 if the model's price is unknown)
-CREATE TABLE IF NOT EXISTS gb_model_runs (
+CREATE TABLE IF NOT EXISTS gb_inferences (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
 	type          TEXT NOT NULL,
 	stage         TEXT NOT NULL DEFAULT '',
@@ -94,8 +94,8 @@ CREATE TABLE IF NOT EXISTS gb_model_runs (
 	cost_usd      REAL NOT NULL,
 	created_at    DATETIME NOT NULL DEFAULT (` + SQLNow + `)
 );
-CREATE INDEX IF NOT EXISTS idx_gb_model_runs_type ON gb_model_runs(type);
-CREATE INDEX IF NOT EXISTS idx_gb_model_runs_model ON gb_model_runs(model_id);
+CREATE INDEX IF NOT EXISTS idx_gb_inferences_type ON gb_inferences(type);
+CREATE INDEX IF NOT EXISTS idx_gb_inferences_model ON gb_inferences(model_id);
 
 -- Remember runs: ONE ROW PER EXECUTION OF THE REMEMBER PIPELINE, the authoritative record of how it went, stage by stage
 -- (see internal/memory/memory_remember/runlog.go; the table is created by rememberRunsSchema in db_rememberrun.go).
@@ -115,7 +115,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_model_runs_model ON gb_model_runs(model_id);
 --   <stage>_error        why the stage failed; NULL if it did not
 --   <stage>_started_at, <stage>_finished_at   when the stage began and when it last ended (a stage that runs for each chunk
 --                        of a text spans all the chunks)
---   <stage>_model_run_ids  only for the stages that run a model: JSON array of the IDs (gb_model_runs) of the runs the stage
+--   <stage>_inference_ids  only for the stages that run a model: JSON array of the IDs (gb_inferences) of the runs the stage
 --                        made, in order. A list, because a stage makes one run per chunk (and an embedding request is a run).
 -- All the DATETIME columns follow the convention of db_time.go.
 
@@ -199,8 +199,9 @@ CREATE INDEX IF NOT EXISTS idx_gb_trained_models_run ON gb_trained_models(run_id
 --   status            'running', 'completed' or 'failed'; error is the reason of a failure
 --   model_size, model_path  what the sidecar was asked to load (copied from the trained model)
 --   max_tokens        0 = the sidecar's default; temperature NULL = the sidecar's default
+--   input_tokens, output_tokens  token counts reported by the model (the prompt as tokenized, and what it generated); 0 if unknown
 --   duration_ms       how long the request took; completed_at when it ended (NULL while running)
-CREATE TABLE IF NOT EXISTS gb_inference_requests (
+CREATE TABLE IF NOT EXISTS gb_trained_model_inferences (
 	id               INTEGER PRIMARY KEY AUTOINCREMENT,
 	trained_model_id INTEGER NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
 	prompt           TEXT NOT NULL,
@@ -211,11 +212,13 @@ CREATE TABLE IF NOT EXISTS gb_inference_requests (
 	model_path       TEXT NOT NULL DEFAULT '',
 	max_tokens       INTEGER NOT NULL DEFAULT 0,
 	temperature      REAL,
+	input_tokens     INTEGER NOT NULL DEFAULT 0,
+	output_tokens    INTEGER NOT NULL DEFAULT 0,
 	duration_ms      INTEGER NOT NULL DEFAULT 0,
 	created_at       DATETIME NOT NULL DEFAULT (` + SQLNow + `),
 	completed_at     DATETIME
 );
-CREATE INDEX IF NOT EXISTS idx_gb_inference_requests_model ON gb_inference_requests(trained_model_id, id);
+CREATE INDEX IF NOT EXISTS idx_gb_trained_model_inferences_model ON gb_trained_model_inferences(trained_model_id, id);
 
 -- JSONL training datasets uploaded through the Go server (internal/api/training/datasets.go): ONE ROW PER FILE NAME.
 -- The file is kept in the training dataset directory (under its name); the sidecar is not involved in the upload, it gets

@@ -61,7 +61,7 @@ func testRememberSummaryModelAndReasoning(t *testing.T, d *sql.DB) {
 	for _, a := range arts {
 		if a.Kind == graph.ArtifactChunkSummary {
 			n++
-			if a.ModelRunID == 0 || a.Text != "A summary." {
+			if a.InferenceID == 0 || a.Text != "A summary." {
 				t.Errorf("summary artifact %+v", a)
 			}
 		}
@@ -75,10 +75,10 @@ func testRememberSummaryModelAndReasoning(t *testing.T, d *sql.DB) {
 		if a.Kind != graph.ArtifactChunkSummary {
 			continue
 		}
-		run, err := relational.GetModelRun(context.Background(), d, a.ModelRunID)
+		run, err := relational.GetInference(context.Background(), d, a.InferenceID)
 		if err != nil || run.Stage != memory_core.StageSummarizeChunk || run.Type != memory_remember.CallRemember || run.Reasoning != "low" ||
 			run.Model != "sum-model" || run.ModelID != relational.ModelID("sum-model") || run.InputTokens != 7 || run.OutputTokens != 3 || run.CostUSD != 0.5 {
-			t.Errorf("summary %d: model run %+v, %v", a.ID, run, err)
+			t.Errorf("summary %d: inference %+v, %v", a.ID, run, err)
 		}
 	}
 
@@ -93,8 +93,8 @@ func testRememberSummaryModelAndReasoning(t *testing.T, d *sql.DB) {
 		if a.Kind != graph.ArtifactChunkSummary {
 			continue
 		}
-		if run, err := relational.GetModelRun(context.Background(), d, a.ModelRunID); err != nil || run.Reasoning != "none" {
-			t.Errorf("summary %d: model run %+v, %v", a.ID, run, err)
+		if run, err := relational.GetInference(context.Background(), d, a.InferenceID); err != nil || run.Reasoning != "none" {
+			t.Errorf("summary %d: inference %+v, %v", a.ID, run, err)
 		}
 	}
 	if len(llm.levels) == 0 || len(llm.all) == 0 {
@@ -135,8 +135,8 @@ func testRememberSummaryModelAndReasoning(t *testing.T, d *sql.DB) {
 		}
 	}
 
-	// Every stage of the run table: the model run of each LLM call has its stage and level.
-	rows, err := d.Query(`SELECT stage, reasoning FROM gb_model_runs WHERE type = 'remember'`)
+	// Every stage of the run table: the inference of each LLM call has its stage and level.
+	rows, err := d.Query(`SELECT stage, reasoning FROM gb_inferences WHERE type = 'remember'`)
 	if err != nil {
 		t.Fatal(err)
 	}

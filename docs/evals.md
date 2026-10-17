@@ -76,7 +76,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 | call | tool | what it records |
 |---|---|---|
 | remember | `extract_graph` | the entities and edges (new facts) the LLM extracted from the text, before any stored fact is considered |
-| remember | `summarize_chunk` | (only for a chunk of a [chunked](chunking.md#chunk-summaries) text) the summary the LLM wrote for the chunk, the model that wrote it and the reasoning level it ran with, and its `model_run_id` (the LLM call itself is the usual `system`, `user`, `agent` steps) |
+| remember | `summarize_chunk` | (only for a chunk of a [chunked](chunking.md#chunk-summaries) text) the summary the LLM wrote for the chunk, the model that wrote it and the reasoning level it ran with, and its `inference_id` (the LLM call itself is the usual `system`, `user`, `agent` steps) |
 | remember | `find_candidates_by_name` | the live stored facts touching an entity named like an endpoint of a new fact (exact normalized name), found by this lookup alone |
 | remember | `search_similar_entities` | (only with vectors, on an existing dataset) the endpoints of the new facts that were embedded, the stored entities they matched by similarity (aliases) with their scores, and their live facts (the candidates found by similarity alone); `model_name` and `metrics` for the embedding. An error here is recorded but not fatal |
 | remember | `load_candidates` | the two lookups merged by edge ID: the stored facts that could duplicate or contradict the new ones, each with how it was found (`found_by`: `name`, `similar`, `name+similar`) |
@@ -152,7 +152,7 @@ An eval can also vary the reasoning (thinking) level of each LLM stage, to see h
 
 The runner sends the `remember` stages as `reasoning` in every `remember` request of the case and `recall` as `reasoning` of its recall request. A stage named by neither runs with the server's default, which is `none` (no thinking). **Every case of the suites sets all of them explicitly to `none`**, so a run never depends on that default and is the baseline to compare against (a test checks it). So with the shipped suites `-reasoning` changes nothing until the stage is removed from the cases (or the cases are edited, e.g. a copy of the suites passed with `-suites`): the level a comparison varies is the one the case sets.
 
-Each LLM call is a [model run](model-runs.md) with the level it ran with, its tokens (thinking tokens count as output) and its cost, so a comparison can look at both the pass rate and what the thinking cost, per stage.
+Each LLM call is a [inference](inferences.md) with the level it ran with, its tokens (thinking tokens count as output) and its cost, so a comparison can look at both the pass rate and what the thinking cost, per stage.
 
 #### Using it: precision per stage, and how models behave
 

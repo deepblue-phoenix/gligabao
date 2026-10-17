@@ -167,10 +167,10 @@ func testRecallSession(t *testing.T, d *sql.DB) {
 	}
 }
 
-// The LLM call of a recall is a model run, with no thinking (level none) unless the request names another.
-func TestRecallModelRun(t *testing.T) { dbtest.Run(t, testRecallModelRun) }
+// The LLM call of a recall is an inference, with no thinking (level none) unless the request names another.
+func TestRecallInference(t *testing.T) { dbtest.Run(t, testRecallInference) }
 
-func testRecallModelRun(t *testing.T, d *sql.DB) {
+func testRecallInference(t *testing.T, d *sql.DB) {
 	llm := &recordingLLM{outs: []string{
 		`{"entities":[{"name":"Alice","type":"person"}],"edges":[]}`,
 		`{"answer":"Alice.","entities":[1],"edges":[]}`,
@@ -198,7 +198,7 @@ func testRecallModelRun(t *testing.T, d *sql.DB) {
 	if got := llm.reqs[len(llm.reqs)-2].Reasoning + "," + llm.reqs[len(llm.reqs)-1].Reasoning; got != "none,high" {
 		t.Errorf("requested levels = %s", got)
 	}
-	rows, err := d.Query(`SELECT reasoning FROM gb_model_runs WHERE type = 'recall' AND stage = 'recall' ORDER BY id`)
+	rows, err := d.Query(`SELECT reasoning FROM gb_inferences WHERE type = 'recall' AND stage = 'recall' ORDER BY id`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +214,7 @@ func testRecallModelRun(t *testing.T, d *sql.DB) {
 	}
 	// What remember did ran without thinking.
 	var n int
-	if err := d.QueryRow(`SELECT COUNT(*) FROM gb_model_runs WHERE type = 'remember' AND reasoning = 'none'`).Scan(&n); err != nil || n == 0 {
+	if err := d.QueryRow(`SELECT COUNT(*) FROM gb_inferences WHERE type = 'remember' AND reasoning = 'none'`).Scan(&n); err != nil || n == 0 {
 		t.Errorf("remember runs with no reasoning = %d, %v", n, err)
 	}
 }

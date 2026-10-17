@@ -5,6 +5,19 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.42.0] - 2026-11-05
+
+### Added
+- **Token counts of trained-model inferences.** The sidecar's `POST /infer/query` answer now has `input_tokens` (the prompt as the model saw it, chat template and special tokens included) and `output_tokens` (the generated tokens, end-of-sequence included), counted by the model's tokenizer. They are stored with each inference of a trained model (0 for failed ones) and returned by `POST /v1/gb/training/models/{id}/infer` and by the list of inferences of a model. Redeploy the Modal app to get the counts from the sidecar.
+
+### Changed
+- **"Model run" is now "inference"**, the standard name. Databases created by an older version must be recreated (no migration):
+  - the table `gb_model_runs` (every LLM call, embedding request, web search and Jev classification) is **`gb_inferences`**; its `id` is referenced as `inference_id` instead of `model_run_id` (`gb_artifacts.inference_id`, the `<stage>_inference_ids` of `gb_remember_runs`);
+  - the table `gb_inference_requests` (a prompt run through a trained model), which an earlier development build had as `gb_model_trained_runs`, is **`gb_trained_model_inferences`**, with the two new columns `input_tokens` and `output_tokens`;
+  - the admin endpoint `GET /v1/gb/admin/api/model-runs` is `GET /v1/gb/admin/api/inferences` (its `runs` lists are `inferences`), and the admin UI view and the docs page are *Inferences*;
+  - in Go, `ModelRun` is `Inference` (`RecordInference`, `GetInference`, `ListInferences`, `InferenceStats`, `ai.Response.InferenceID`, ...) and the trained-model request is `TrainedModelInference` (`RecordTrainedModelInference`, `FinishTrainedModelInference`, which also takes the two counts, ...).
+- The HTTP endpoints of the trained models (`/infer`, `/inferences`) are unchanged.
+
 ## [0.41.1] - 2026-11-04
 
 ### Changed

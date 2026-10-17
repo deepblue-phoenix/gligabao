@@ -51,28 +51,28 @@ func scenario(t *testing.T, d *sql.DB) {
 	}
 
 	// LLM call log and dataset listing / soft delete.
-	runID, err := relational.RecordModelRun(ctx, d, relational.ModelRun{Type: "remember", Stage: "extract_graph", Model: "claude", Provider: "anthropic",
+	runID, err := relational.RecordInference(ctx, d, relational.Inference{Type: "remember", Stage: "extract_graph", Model: "claude", Provider: "anthropic",
 		Reasoning: "Low", InputTokens: 10, OutputTokens: 5, CostUSD: 0.01})
 	check(err)
-	if run, err := relational.GetModelRun(ctx, d, runID); err != nil || run.Type != "remember" || run.Stage != "extract_graph" || run.ModelID != relational.ModelID("claude") ||
+	if run, err := relational.GetInference(ctx, d, runID); err != nil || run.Type != "remember" || run.Stage != "extract_graph" || run.ModelID != relational.ModelID("claude") ||
 		run.Model != "claude" || run.Provider != "anthropic" || run.Kind != "llm" || run.Reasoning != "low" || run.InputTokens != 10 || run.OutputTokens != 5 ||
 		run.CostUSD != 0.01 || run.CreatedAt.IsZero() {
-		t.Fatalf("GetModelRun: %+v, %v", run, err)
+		t.Fatalf("GetInference: %+v, %v", run, err)
 	}
 	// No model reported and no level: a run without a model, with reasoning none.
-	noModel, err := relational.RecordModelRun(ctx, d, relational.ModelRun{Type: "recall", InputTokens: 1})
+	noModel, err := relational.RecordInference(ctx, d, relational.Inference{Type: "recall", InputTokens: 1})
 	check(err)
-	if run, err := relational.GetModelRun(ctx, d, noModel); err != nil || run.ModelID != "" || run.Reasoning != "none" {
-		t.Fatalf("GetModelRun without model: %+v, %v", run, err)
+	if run, err := relational.GetInference(ctx, d, noModel); err != nil || run.ModelID != "" || run.Reasoning != "none" {
+		t.Fatalf("GetInference without model: %+v, %v", run, err)
 	}
-	if _, err := relational.RecordModelRun(ctx, d, relational.ModelRun{Type: "remember", Model: "claude", Reasoning: "max"}); err == nil {
+	if _, err := relational.RecordInference(ctx, d, relational.Inference{Type: "remember", Model: "claude", Reasoning: "max"}); err == nil {
 		t.Fatal("an unknown reasoning level was recorded")
 	}
-	if _, err := relational.GetModelRun(ctx, d, 12345); !errors.Is(err, relational.ErrNotFound) {
+	if _, err := relational.GetInference(ctx, d, 12345); !errors.Is(err, relational.ErrNotFound) {
 		t.Fatalf("missing run: %v", err)
 	}
-	if st, err := relational.ModelRunStats(ctx, d); err != nil || st["remember"] != (relational.ModelRunStat{Runs: 1, InputTokens: 10, OutputTokens: 5, CostUSD: 0.01}) || st["recall"].Runs != 1 {
-		t.Fatalf("ModelRunStats: %+v, %v", st, err)
+	if st, err := relational.InferenceStats(ctx, d); err != nil || st["remember"] != (relational.InferenceStat{Inferences: 1, InputTokens: 10, OutputTokens: 5, CostUSD: 0.01}) || st["recall"].Inferences != 1 {
+		t.Fatalf("InferenceStats: %+v, %v", st, err)
 	}
 	list, err := relational.ListDatasets(ctx, d, user, false)
 	check(err)

@@ -1,9 +1,9 @@
 // The "remember runs" view (see docs/remember.md#run-log): per database, how many runs of the remember pipeline are in
 // each status and the list of the runs, newest first. Clicking a status tile filters the list by it; clicking a run shows
-// its parameters and how each stage went (status, error, time, model runs).
+// its parameters and how each stage went (status, error, time, inferences).
 
 interface Stage {
-  status: string; error: string | null; started_at: string | null; finished_at: string | null; model_run_ids: number[];
+  status: string; error: string | null; started_at: string | null; finished_at: string | null; inference_ids: number[];
 }
 interface Run {
   id: number; user_id: string; dataset: string; kind: string; params: Record<string, unknown>; artifact_id: number | null;
@@ -85,7 +85,7 @@ function makePanel(name: string): { box: HTMLElement; panel: Panel } {
 
 function stagesTable(run: Run, order: string[]): HTMLTableElement {
   const table = node("table", "compact");
-  headRow(table, [["Stage", false], ["Status", false], ["Started", false], ["Duration", true], ["Model runs", false], ["Error", false]]);
+  headRow(table, [["Stage", false], ["Status", false], ["Started", false], ["Duration", true], ["Inferences", false], ["Error", false]]);
   const body = table.createTBody();
   // The stages the server knows, in pipeline order; then any it did not list.
   const names = [...order, ...Object.keys(run.stages).filter((s) => !order.includes(s))].filter((s) => run.stages[s]);
@@ -98,7 +98,7 @@ function stagesTable(run: Run, order: string[]): HTMLTableElement {
     const dur = tr.insertCell();
     dur.className = "num";
     dur.textContent = fmtDuration(s.started_at, s.finished_at);
-    tr.insertCell().textContent = (s.model_run_ids ?? []).join(", ");
+    tr.insertCell().textContent = (s.inference_ids ?? []).join(", ");
     const err = tr.insertCell();
     err.className = s.error ? "error" : "";
     err.textContent = s.error ?? "";

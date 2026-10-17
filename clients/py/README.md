@@ -18,12 +18,12 @@ res = gb.remember("u1", "Alice works at Acme.", models={"extract_graph": "claude
 ```
 
 No LLM stage thinks by default (`"none"`, so no thinking tokens are paid for); `reasoning` turns it on per stage (`"low"`,
-`"medium"` or `"high"`). Each call is recorded by the server as a model run with its model and level, and each
+`"medium"` or `"high"`). Each call is recorded by the server as an inference with its model and level, and each
 chunk summary references the run that wrote it:
 
 ```python
 res = gb.remember("u1", long_text, models={"summarize_chunk": "claude-haiku-5-5"}, reasoning={"summarize_chunk": "low"})
-print(res["chunks"][0]["summary"])  # artifact_id, text, model, reasoning, model_run_id
+print(res["chunks"][0]["summary"])  # artifact_id, text, model, reasoning, inference_id
 ```
 
 With `web_search=True` the server also searches the web for the latest world events about the key entities of the text and

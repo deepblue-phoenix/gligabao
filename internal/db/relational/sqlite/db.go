@@ -1,4 +1,4 @@
-// Package sqlite manages the SQLite database: connection, the relational schema (datasets, model runs), the timestamp storage convention and the SQL for them. The graph tables live in internal/db/graph/sqlite.
+// Package sqlite manages the SQLite database: connection, the relational schema (datasets, inferences), the timestamp storage convention and the SQL for them. The graph tables live in internal/db/graph/sqlite.
 package sqlite
 
 import (

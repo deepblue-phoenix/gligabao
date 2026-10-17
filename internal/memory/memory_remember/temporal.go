@@ -38,16 +38,16 @@ const (
 type EdgePlan struct {
 	Duplicates     map[int]int64 // index of new edge -> id of the existing edge it repeats
 	Contradictions []Contradiction
-	// ModelRunID is the model run (gb_model_runs) of the LLM call that compared the facts; 0 if there was none.
-	ModelRunID int64
+	// InferenceID is the inference (gb_inferences) of the LLM call that compared the facts; 0 if there was none.
+	InferenceID int64
 }
 
-// RunID is the model run of the comparison (0 for none, and for a nil plan).
+// RunID is the inference of the comparison (0 for none, and for a nil plan).
 func (p *EdgePlan) RunID() int64 {
 	if p == nil {
 		return 0
 	}
-	return p.ModelRunID
+	return p.InferenceID
 }
 
 // Contradiction says that the existing edge can't hold together with the new edge.
@@ -60,7 +60,7 @@ type Contradiction struct {
 
 // resolveEdges compares new edges with existing candidates. Exact repeats (same endpoints and relation as a
 // fact that is still true) are detected without the LLM; the LLM is only called for what remains. If the LLM answered but its
-// answer is no use, the error comes with a plan that is empty but for its ModelRunID.
+// answer is no use, the error comes with a plan that is empty but for its InferenceID.
 func resolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []Edge) (*EdgePlan, error) {
 	plan := &EdgePlan{Duplicates: map[int]int64{}}
 
@@ -105,7 +105,7 @@ func resolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []Edge)
 	if err != nil {
 		return nil, err
 	}
-	failed := &EdgePlan{ModelRunID: resp.ModelRunID}
+	failed := &EdgePlan{InferenceID: resp.InferenceID}
 	if resp.StopReason == "max_tokens" {
 		return failed, errors.New("memory: LLM resolve output truncated")
 	}
@@ -113,7 +113,7 @@ func resolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []Edge)
 	if err != nil {
 		return failed, err
 	}
-	plan.ModelRunID = resp.ModelRunID
+	plan.InferenceID = resp.InferenceID
 	type pair struct {
 		New      int   `json:"new"`
 		Existing int64 `json:"existing"`

@@ -52,8 +52,8 @@ type rememberRequest struct {
 	Models map[string]string `json:"models"`
 	// Reasoning (optional) picks the reasoning (thinking) level ("none", "low", "medium" or "high") of each LLM stage
 	// ("extract_graph", "summarize_chunk", "resolve_edges", "resolve_series", "extract_image"; not "web_search"). A stage
-	// left out runs with "none" (no thinking). Every call is recorded with its level as a model run
-	// (gb_model_runs). See memory_core.Reasoning.
+	// left out runs with "none" (no thinking). Every call is recorded with its level as an inference
+	// (gb_inferences). See memory_core.Reasoning.
 	Reasoning map[string]string `json:"reasoning"`
 	// WebSearch (optional, default false) searches the web for the latest world events about the key entities of the
 	// text and remembers what it finds, as artifacts of kind "web_search" (see docs/web-search.md). Only available when

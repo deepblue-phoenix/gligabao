@@ -37,7 +37,7 @@ eval = false
 # Default false; `serve --admin-ui` turns it on.
 admin_ui = false
 
-# Model prices in USD per 1M tokens, used to compute the cost of each LLM call (stored with each model run in gb_model_runs).
+# Model prices in USD per 1M tokens, used to compute the cost of each LLM call (stored with each inference in gb_inferences).
 # Keys are model-name prefixes: the longest matching prefix wins, so "claude-haiku-4-5" also matches
 # "claude-haiku-4-5-20251001". Entries here override the built-in prices or add new models.
 # cache_write / cache_read are optional and default to `input`.

@@ -1,4 +1,4 @@
-// Package postgres manages the PostgreSQL database: connection, the relational schema (datasets, model runs),
+// Package postgres manages the PostgreSQL database: connection, the relational schema (datasets, inferences),
 // the timestamp convention and the SQL for them. The functions here are reached through the routing functions of
 // package relational and mirror those of package sqlite, in the PostgreSQL dialect ($n placeholders, RETURNING,
 // native types). The graph tables live in internal/db/graph/postgres.
