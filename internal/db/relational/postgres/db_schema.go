@@ -138,10 +138,14 @@ CREATE TABLE IF NOT EXISTS gb_trained_model_inferences (
 	temperature      DOUBLE PRECISION,
 	input_tokens     BIGINT NOT NULL DEFAULT 0,
 	output_tokens    BIGINT NOT NULL DEFAULT 0,
+	cold_start       BOOLEAN,
+	load_seconds     DOUBLE PRECISION NOT NULL DEFAULT 0,
 	duration_ms      BIGINT NOT NULL DEFAULT 0,
 	created_at       TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `,
 	completed_at     TIMESTAMPTZ
 );
+ALTER TABLE gb_trained_model_inferences ADD COLUMN IF NOT EXISTS cold_start BOOLEAN;
+ALTER TABLE gb_trained_model_inferences ADD COLUMN IF NOT EXISTS load_seconds DOUBLE PRECISION NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_gb_trained_model_inferences_model ON gb_trained_model_inferences(trained_model_id, id);
 
 -- JSONL training datasets uploaded through the Go server (see sqlite/db_schema.go).

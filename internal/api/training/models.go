@@ -148,8 +148,8 @@ func InferOf(dbs []Database, sc Inferer) http.HandlerFunc {
 			httputil.Error(w, http.StatusInternalServerError, "failed to record the inference request")
 			return
 		}
-		finish := func(status, response, errText string, inTok, outTok int, started time.Time) {
-			if err := relational.FinishTrainedModelInference(dbCtx, n.DB, reqID, status, response, errText, inTok, outTok, time.Since(started).Milliseconds()); err != nil {
+		finish := func(status, response, errText string, inTok, outTok int, cold *bool, loadS float64, started time.Time) {
+			if err := relational.FinishTrainedModelInference(dbCtx, n.DB, reqID, status, response, errText, inTok, outTok, cold, loadS, time.Since(started).Milliseconds()); err != nil {
 				log.WithError(err).WithField("request_id", reqID).Error("training: updating the inference request failed")
 			}
 		}
@@ -163,19 +163,19 @@ func InferOf(dbs []Database, sc Inferer) http.HandlerFunc {
 			var se *sidecar.StatusError
 			switch {
 			case errors.As(err, &ie):
-				finish(relational.TrainedModelInferenceFailed, "", ie.Message, 0, 0, started)
+				finish(relational.TrainedModelInferenceFailed, "", ie.Message, 0, 0, nil, 0, started)
 				httputil.Error(w, http.StatusBadGateway, ie.Message)
 			case errors.As(err, &se) && se.Code == http.StatusBadRequest:
-				finish(relational.TrainedModelInferenceFailed, "", se.Message(), 0, 0, started)
+				finish(relational.TrainedModelInferenceFailed, "", se.Message(), 0, 0, nil, 0, started)
 				httputil.Error(w, http.StatusBadRequest, se.Message())
 			default:
 				log.WithError(err).WithField("model_id", m.ID).Error("training: inference failed")
-				finish(relational.TrainedModelInferenceFailed, "", err.Error(), 0, 0, started)
+				finish(relational.TrainedModelInferenceFailed, "", err.Error(), 0, 0, nil, 0, started)
 				httputil.Error(w, http.StatusBadGateway, "sidecar failed to run the inference")
 			}
 			return
 		}
-		finish(relational.TrainedModelInferenceCompleted, out.Response, "", out.InputTokens, out.OutputTokens, started)
+		finish(relational.TrainedModelInferenceCompleted, out.Response, "", out.InputTokens, out.OutputTokens, out.ColdStart, out.LoadSeconds, started)
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{"id": reqID, "model_id": m.ID, "response": out.Response,
 			"status": relational.TrainedModelInferenceCompleted, "input_tokens": out.InputTokens, "output_tokens": out.OutputTokens, "duration_ms": time.Since(started).Milliseconds(),
 			"cold_start": out.ColdStart, "load_seconds": out.LoadSeconds})

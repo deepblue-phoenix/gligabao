@@ -84,6 +84,34 @@ An inference request (`POST /infer/query`) runs in a GPU container of the `infer
 - The admin UI's app row shows a badge `N inference container(s) warm` (hover: function, model, requests, last use) and a **Stop inference** button that ends them at once (a request being answered fails; the app, the web API and training jobs are not touched). It runs `sidecar/ai_train/providers/modal/inference_containers.py`; the action is `stop_inference`, next to `deploy` and `stop`, and the `apps` listing has an `inference` list for every app.
 - How it knows them: Modal does not say which function a container runs, so each inference container records itself (task id, model, requests, last use) in a Modal Dict named `<app name>-inference`, and the listing only trusts a record while Modal still lists that task. A container that is gone leaves a record that is removed at the next listing.
 
+### Cold and warm starts
+
+A request is **cold** when no container of the function holds the requested model: the first request after a deploy, the first one after the container was idle for `SIDECAR_INFER_IDLE_TIMEOUT_S`, one for another trained model or size than the one loaded, and one that Modal sends to an extra container because the others are busy. It is **warm** when a container that is already up holds that model: it only generates. This is the GPU *inference* container (`infer_4b` / `infer_12b`). The training container is another function: it loads the model with Unsloth for each job and is not kept warm.
+
+What happens in the GPU container on a cold request, in order (`app.py`, `inference.py`, `model_load_infer.py`):
+
+1. **Containers start.** The request reaches the web API and the CPU router `infer` (each of them can be cold too), which call the GPU function. Modal starts a container on the GPU of that size (A10G for 4b, A100 for 12b) from the inference image, mounts the models and Hugging Face cache volumes and imports the app. This is Modal's time: it is **not** in `load_seconds`.
+2. **The models volume is reloaded**, so an adapter trained a moment ago is visible (a failure here is only logged).
+3. **The cache is checked.** The container holds at most one model, identified by its adapter directory and the file time of `adapter_config.json`. It is empty (or holds another model), so the loaded one is dropped and its GPU memory freed. From here until the model is ready is what `load_seconds` measures.
+4. **The adapter is looked up.** `resolve_model_dir` turns `trained/<job_id>` into a directory of the models volume; without an `adapter_config.json` the request fails with "No trained model at …" (there is no silent fallback to the un-tuned base model).
+5. **The libraries are imported** (`torch`, `peft`, `transformers`), once per container.
+6. **The base model is loaded 4-bit.** `from_pretrained` reads the base model (`google/gemma-4-E4B-it` or `google/gemma-4-12B-it`) from the HF cache volume and quantizes it to nf4 (bfloat16 compute, double quantization) while placing it on GPU 0, the quantization the adapter was trained with. If the cache volume does not have the model yet (the first use ever, or a size that was never trained or served), it is **downloaded from Hugging Face first** (needs `HF_TOKEN`, see `SIDECAR_HF_SECRET`), which makes that one request much slower; the volume keeps it for every later container. This step is most of `load_seconds`.
+7. **The adapter is attached** with `peft` (not trainable, `eval()` mode) and the tokenizer is read from the adapter directory (the base model's if it is not there).
+8. **The model is cached** in the container's memory, for the requests that follow.
+9. **The prompt is generated:** tokenized, sampled up to `max_tokens`, decoded. When the answer is ready the container records itself in the `<app name>-inference` Dict, so the admin UI can list it (see above).
+
+A warm request does steps 2 and 9 only, so its time is the generation. For a short reply that is seconds. A reply that does not end early (the model stops at its end-of-sequence token or at `max_tokens`) can take much longer, because 4-bit generation with `transformers` is not fast: read `output_tokens` next to the time.
+
+Every request reports this, and the admin UI shows it:
+
+- The answer of `POST /infer/query` has `cold_start` (`true` when the request loaded the model), `load_seconds` (steps 3 to 8; 0 when warm), `input_tokens` and `output_tokens`. `POST /v1/gb/training/models/{id}/infer` passes them on.
+- The Go server stores `cold_start` and `load_seconds` with the other facts of the request (`gb_trained_model_inferences`; NULL for a failed request, a request made before gligabao 0.46.0, or a sidecar that does not report them).
+- In the trained-model dialog of the admin UI, each request of the history has a line such as `cold start (model load 27.5s) · 3.2s without the model load · 12 tokens in / 34 out`, or `warm (model already loaded) · …`. The time *without the model load* is the total minus `load_seconds`, so it includes the container start of step 1 and the generation. The status line under the form shows the same after a request, and a dot above the prompt field shows whether a warm container holds this model.
+
+How to read it: a long `load_seconds` is the model load (steps 3 to 8); a cold request with a short `load_seconds` but a long total spent its time starting containers; a slow warm request has a large `output_tokens` (a long reply that did not end) or waited behind another request of the same container.
+
+Ways to get fewer cold requests (gligabao does none of them): a longer `SIDECAR_INFER_IDLE_TIMEOUT_S` (up to 1200 seconds) at the price of GPU time while idle; a request every few minutes to keep a container up; or, in `app.py`, a minimum number of warm containers for `infer_4b`, which Modal bills all the time.
+
 ## Volumes
 
 **Volumes** opens a table of the Modal volumes the app uses, read from the app's configuration (`config.py`, so the `SIDECAR_VOL_*` settings are respected):
@@ -148,6 +176,7 @@ curl           http://127.0.0.1:8787/backends/modal/volumes
 | `unhealthy`, tooltip `Token not found` / `Token ID is malformed` | The sidecar's `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` are wrong or revoked: create new ones with `modal token new` and restart the sidecar. |
 | Deploy ends `failed` with `AuthError` in the log | The same: the tokens are not accepted. |
 | Deploy ends `failed` about a missing secret | `SIDECAR_HF_SECRET` names a Modal secret that does not exist: create it (`modal secret create`) or unset the variable. |
+| A warm inference request is still slow | Read `output_tokens` in the request's history line (trained-model dialog): a reply that does not end until `max_tokens` takes long with 4-bit generation; otherwise it waited behind another request of the same container. A *cold* one is expected to be slow, see [Cold and warm starts](#cold-and-warm-starts). |
 | Deploy stays at *starting* for long | Modal is slow to answer or the upload is large; read the log. If it is really stuck, **Cancel run** and try again. |
 | **Stop** is missing | The app is not deployed (nothing to stop). |
 | `409` on Deploy or Stop | A run of it, or of the action it excludes, is going: open **View log**, or cancel it. |

@@ -2,6 +2,8 @@
 
 This training system supports both **Gemma-4 4B** and **Gemma-4 12B** models for fine-tuning.
 
+How the models work (prompt format, when generation stops, where a request's time goes): [MODEL_INTERNALS.md](MODEL_INTERNALS.md).
+
 ## Model Comparison
 
 | Feature | Gemma-4 4B | Gemma-4 12B |

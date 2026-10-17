@@ -200,6 +200,8 @@ CREATE INDEX IF NOT EXISTS idx_gb_trained_models_run ON gb_trained_models(run_id
 --   model_size, model_path  what the sidecar was asked to load (copied from the trained model)
 --   max_tokens        0 = the sidecar's default; temperature NULL = the sidecar's default
 --   input_tokens, output_tokens  token counts reported by the model (the prompt as tokenized, and what it generated); 0 if unknown
+--   cold_start        1 if the request had to load the model into a GPU container, 0 if it found it loaded, NULL if unknown
+--   load_seconds      how long that load took (0 when not a cold start or unknown)
 --   duration_ms       how long the request took; completed_at when it ended (NULL while running)
 CREATE TABLE IF NOT EXISTS gb_trained_model_inferences (
 	id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -214,6 +216,8 @@ CREATE TABLE IF NOT EXISTS gb_trained_model_inferences (
 	temperature      REAL,
 	input_tokens     INTEGER NOT NULL DEFAULT 0,
 	output_tokens    INTEGER NOT NULL DEFAULT 0,
+	cold_start       INTEGER,
+	load_seconds     REAL NOT NULL DEFAULT 0,
 	duration_ms      INTEGER NOT NULL DEFAULT 0,
 	created_at       DATETIME NOT NULL DEFAULT (` + SQLNow + `),
 	completed_at     DATETIME
@@ -326,6 +330,16 @@ func initSchema(d *sql.DB) error {
 	if err := d.QueryRow(`SELECT count(*) FROM pragma_table_info('gb_training_datasets') WHERE name = 'content'`).Scan(&legacy); err == nil && legacy > 0 {
 		if _, err := d.Exec(`DROP TABLE gb_training_datasets`); err != nil {
 			return fmt.Errorf("init schema: drop legacy gb_training_datasets: %w", err)
+		}
+	}
+	// Tables from before 0.46.0 lack the cold-start columns of gb_trained_model_inferences: add them.
+	var tbl, hasCold int
+	if err := d.QueryRow(`SELECT count(*) FROM pragma_table_info('gb_trained_model_inferences')`).Scan(&tbl); err == nil && tbl > 0 {
+		if err := d.QueryRow(`SELECT count(*) FROM pragma_table_info('gb_trained_model_inferences') WHERE name = 'cold_start'`).Scan(&hasCold); err == nil && hasCold == 0 {
+			if _, err := d.Exec(`ALTER TABLE gb_trained_model_inferences ADD COLUMN cold_start INTEGER;
+				ALTER TABLE gb_trained_model_inferences ADD COLUMN load_seconds REAL NOT NULL DEFAULT 0`); err != nil {
+				return fmt.Errorf("init schema: add cold_start columns: %w", err)
+			}
 		}
 	}
 	if _, err := d.Exec(schema + rememberRunsSchema()); err != nil {

@@ -20,7 +20,8 @@ interface TrainedModel {
 }
 interface Inference {
   id: number; trained_model_id: number; prompt: string; response: string; status: "running" | "completed" | "failed"; error: string;
-  max_tokens: number; temperature: number | null; duration_ms: number; created_at: string; completed_at: string | null;
+  max_tokens: number; temperature: number | null; input_tokens: number; output_tokens: number; cold_start: boolean | null;
+  load_seconds: number; duration_ms: number; created_at: string; completed_at: string | null;
 }
 interface DatasetRecord {
   id: number; filename: string; size_bytes: number; num_records: number; sha256: string; status: "stored" | "synced";
@@ -379,6 +380,21 @@ function inferenceBadge(status: string): HTMLElement {
   return node("span", `badge ${cls}`, status);
 }
 
+// What a completed request cost in time: cold or warm, the model load, the generation, the token counts and the speed.
+// "" while it runs or when it failed.
+function inferenceStats(r: Inference): string {
+  if (r.status !== "completed") return "";
+  const parts: string[] = [];
+  if (r.cold_start === true) parts.push(`cold start (model load ${r.load_seconds.toFixed(1)}s)`);
+  else if (r.cold_start === false) parts.push("warm (model already loaded)");
+  if (r.duration_ms) {
+    const gen = r.duration_ms / 1000 - (r.cold_start ? r.load_seconds : 0);
+    if (r.cold_start != null) parts.push(`${Math.max(gen, 0).toFixed(1)}s without the model load`);
+  }
+  if (r.input_tokens || r.output_tokens) parts.push(`${r.input_tokens} tokens in / ${r.output_tokens} out`);
+  return parts.join(" · ");
+}
+
 function renderInferences(list: Inference[]): void {
   const box = el("model-inferences");
   box.replaceChildren();
@@ -389,6 +405,8 @@ function renderInferences(list: Inference[]): void {
     const meta = [r.duration_ms ? `${(r.duration_ms / 1000).toFixed(1)}s` : "", r.max_tokens ? `max ${r.max_tokens} tokens` : "",
       r.temperature != null ? `temp ${r.temperature}` : ""].filter(Boolean).join(" · ");
     head.append(inferenceBadge(r.status), when, node("span", "muted", meta));
+    const stats = inferenceStats(r);
+    if (stats) item.append(node("div", "muted infer-stats", stats));
     item.append(head, node("div", "infer-label", "Prompt"), node("pre", "infer-prompt", r.prompt));
     if (r.status === "failed") {
       item.append(node("div", "infer-label", "Error"), node("pre", "infer-error", r.error || "(no message)"));
@@ -425,9 +443,10 @@ async function infer(m: TrainedModel, prompt: string, maxTokens: number, tempera
       body: JSON.stringify({ prompt, max_tokens: maxTokens, temperature }),
     });
     if (!res.ok) throw await failure(res);
-    const out = (await res.json()) as { cold_start?: boolean; load_seconds?: number };
+    const out = (await res.json()) as { cold_start?: boolean; load_seconds?: number; input_tokens?: number; output_tokens?: number };
     const load = out.cold_start ? ` (loaded the model: ${Math.round(out.load_seconds ?? 0)}s)` : out.cold_start === false ? " (model was already loaded)" : "";
-    outcome = { text: `Done in ${Math.round((Date.now() - started) / 1000)}s${load}.`, cls: "muted" };
+    const tokens = out.input_tokens !== undefined ? `, ${out.input_tokens} tokens in / ${out.output_tokens ?? 0} out` : "";
+    outcome = { text: `Done in ${Math.round((Date.now() - started) / 1000)}s${load}${tokens}.`, cls: "muted" };
   } catch (err) {
     outcome = { text: `Inference failed: ${errText(err)}`, cls: "error" };
   } finally {

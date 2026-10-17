@@ -29,12 +29,12 @@ func RecordTrainedModelInference(ctx context.Context, d *sql.DB, r TrainedModelI
 
 // FinishTrainedModelInference ends request id: status is TrainedModelInferenceCompleted (with the response) or TrainedModelInferenceFailed (with the
 // error text), inputTokens and outputTokens the counts the model reported (0 if none), durationMS how long it took. ErrNotFound if there is no such request.
-func FinishTrainedModelInference(ctx context.Context, d *sql.DB, id int64, status, response, errText string, inputTokens, outputTokens int, durationMS int64) error {
+func FinishTrainedModelInference(ctx context.Context, d *sql.DB, id int64, status, response, errText string, inputTokens, outputTokens int, coldStart *bool, loadSeconds float64, durationMS int64) error {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.FinishTrainedModelInference(ctx, d, id, status, response, errText, inputTokens, outputTokens, durationMS)
+		return sqlite.FinishTrainedModelInference(ctx, d, id, status, response, errText, inputTokens, outputTokens, coldStart, loadSeconds, durationMS)
 	case config.DBBackendPostgres:
-		return postgres.FinishTrainedModelInference(ctx, d, id, status, response, errText, inputTokens, outputTokens, durationMS)
+		return postgres.FinishTrainedModelInference(ctx, d, id, status, response, errText, inputTokens, outputTokens, coldStart, loadSeconds, durationMS)
 	}
 	return unsupported()
 }

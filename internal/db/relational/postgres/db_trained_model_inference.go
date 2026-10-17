@@ -27,10 +27,10 @@ func InsertTrainedModelInference(ctx context.Context, d *sql.DB, r model.Trained
 }
 
 // FinishTrainedModelInference ends a request.
-func FinishTrainedModelInference(ctx context.Context, d *sql.DB, id int64, status, response, errText string, inputTokens, outputTokens int, durationMS int64) error {
+func FinishTrainedModelInference(ctx context.Context, d *sql.DB, id int64, status, response, errText string, inputTokens, outputTokens int, coldStart *bool, loadSeconds float64, durationMS int64) error {
 	res, err := d.ExecContext(ctx, `
-		UPDATE gb_trained_model_inferences SET status = $1, response = $2, error = $3, input_tokens = $4, output_tokens = $5, duration_ms = $6, completed_at = $7 WHERE id = $8`,
-		status, response, errText, inputTokens, outputTokens, durationMS, Now(), id)
+		UPDATE gb_trained_model_inferences SET status = $1, response = $2, error = $3, input_tokens = $4, output_tokens = $5, cold_start = $6, load_seconds = $7, duration_ms = $8, completed_at = $9 WHERE id = $10`,
+		status, response, errText, inputTokens, outputTokens, coldStart, loadSeconds, durationMS, Now(), id)
 	if err != nil {
 		return fmt.Errorf("finish inference request: %w", err)
 	}
@@ -41,18 +41,22 @@ func FinishTrainedModelInference(ctx context.Context, d *sql.DB, id int64, statu
 }
 
 const trainedModelInferenceColumns = `id, trained_model_id, prompt, response, status, error, model_size, model_path, max_tokens,
-	temperature, input_tokens, output_tokens, duration_ms, created_at, completed_at`
+	temperature, input_tokens, output_tokens, cold_start, load_seconds, duration_ms, created_at, completed_at`
 
 func scanTrainedModelInference(s rowScanner) (*model.TrainedModelInference, error) {
 	var r model.TrainedModelInference
 	var temp sql.NullFloat64
+	var cold sql.NullBool
 	var completed sql.NullTime
 	if err := s.Scan(&r.ID, &r.TrainedModelID, &r.Prompt, &r.Response, &r.Status, &r.Error, &r.ModelSize, &r.ModelPath,
-		&r.MaxTokens, &temp, &r.InputTokens, &r.OutputTokens, &r.DurationMS, &r.CreatedAt, &completed); err != nil {
+		&r.MaxTokens, &temp, &r.InputTokens, &r.OutputTokens, &cold, &r.LoadSeconds, &r.DurationMS, &r.CreatedAt, &completed); err != nil {
 		return nil, err
 	}
 	if temp.Valid {
 		r.Temperature = &temp.Float64
+	}
+	if cold.Valid {
+		r.ColdStart = &cold.Bool
 	}
 	r.CreatedAt = r.CreatedAt.UTC()
 	if completed.Valid {

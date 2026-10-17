@@ -5,6 +5,16 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.46.0] - 2026-10-22
+
+### Added
+- **Timing of each trained-model inference in the admin UI.** Every request in the history of the trained-model dialog now shows whether it was a cold start (and how long the model load took) or found the model already loaded, the time without the load, and the input / output token counts. The "Done in …" line after a request also shows the token counts.
+- `cold_start` and `load_seconds` are stored with each request in `gb_trained_model_inferences` (new columns, added to existing SQLite and PostgreSQL databases on start-up; `cold_start` is NULL for requests made before, failed ones, or answered by a sidecar that does not report it) and returned by `GET /v1/gb/training/models/{id}/inferences`. In Go, `FinishTrainedModelInference` takes the two values.
+
+### Changed
+- Docs (`docs/modal.md`, `docs/sidecar.md`): a **Cold and warm starts** section (`modal.md#cold-and-warm-starts`) with what a cold request does in the GPU inference container, step by step (container start, volume reload, cache check, adapter lookup, 4-bit load of the base model from the HF cache or Hugging Face, adapter attach, generation), what `load_seconds` does and does not include, how to read the numbers, and how to get fewer cold requests. `docs/sidecar.md` no longer says that every request loads the model (true before 0.39.0) and lists the new fields of the answer.
+- Docs: new page `docs/training/MODEL_INTERNALS.md` on how the Gemma-4 models work in gligabao: the prompt format, how generation stops (and why a reply that does not stop runs to `max_tokens`), sampling and the returned text, where the time of a request goes (prefill, decode, tokens per second) with a table for diagnosing slow warm requests, and a short training summary. What is not verified about Gemma 4 itself is marked.
+
 ## [0.45.0] - 2026-10-21
 
 ### Added

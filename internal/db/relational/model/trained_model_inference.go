@@ -30,6 +30,10 @@ type TrainedModelInference struct {
 	// InputTokens and OutputTokens are the token counts the model reported (0 until the request completes, or if it failed).
 	InputTokens  int `json:"input_tokens"`
 	OutputTokens int `json:"output_tokens"`
+	// ColdStart is whether the request had to load the model into a GPU container (false: it found it loaded; nil: unknown,
+	// the request failed or the sidecar is an older deployment); LoadSeconds how long the load took (0 when not a cold start).
+	ColdStart   *bool   `json:"cold_start"`
+	LoadSeconds float64 `json:"load_seconds"`
 	// DurationMS is how long the request took (0 while it runs); CompletedAt when it ended (nil while it runs).
 	DurationMS  int64      `json:"duration_ms"`
 	CreatedAt   time.Time  `json:"created_at"`
