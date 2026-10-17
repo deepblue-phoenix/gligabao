@@ -3,7 +3,7 @@
 ## Versioning and changelog (required for every change)
 
 This repo is versioned on its own (separately from `../gligabao_int`). The version lives in two files at the repo root
-(`VERSION` is embedded into the binary at build time, see `version.go`):
+(`VERSION` is embedded into the binary at build time, see `gligabao.go`):
 
 - `VERSION`: the current semantic version, one line, no `v` prefix (e.g. `0.2.0`).
 - `CHANGELOG.md`: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format, newest entry first.

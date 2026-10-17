@@ -10,6 +10,7 @@ package gligabao
 
 import (
 	"context"
+	_ "embed"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/buildinfo"
@@ -19,6 +20,36 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/server"
 	"github.com/deepblue-phoenix/gligabao/monitoring"
 )
+
+// VERSION is embedded at build time. It is edited with every change together with CHANGELOG.md, see AGENTS.md.
+// (go:embed cannot reach outside the package directory, which is why VERSION lives at the repo root.)
+
+//go:embed VERSION
+var versionFile string
+
+// App describes the program that embeds gligabao, so that the server can report its version next to gligabao's.
+type App struct {
+	Name    string
+	Version string
+	Commit  string // optional; see Commit()
+}
+
+func init() {
+	buildinfo.Set(buildinfo.Component{
+		Name:    "gligabao",
+		Version: buildinfo.Parse(versionFile),
+		Commit:  buildinfo.Commit(),
+
+		CommitURL: buildinfo.CommitURL(),
+	})
+}
+
+// Version returns the version of gligabao (the contents of the VERSION file embedded at build time).
+func Version() string { return buildinfo.Library().Version }
+
+// Commit returns the git revision this binary was built from ("+dirty" if the tree had uncommitted changes), or ""
+// if the Go toolchain did not stamp one (e.g. a build outside a git checkout).
+func Commit() string { return buildinfo.Commit() }
 
 // Config is the gligabao configuration (the contents of gligabao.toml).
 type Config = config.Config

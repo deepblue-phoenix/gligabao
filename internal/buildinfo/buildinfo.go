@@ -1,6 +1,6 @@
 // Package buildinfo holds the version that is embedded into the binary at build time.
 //
-// The root package (version.go) embeds the VERSION file and registers it here with Set, so that packages under
+// The root package (gligabao.go) embeds the VERSION file and registers it here with Set, so that packages under
 // internal/ (the server, the CLI) can report it. A program embedding gligabao may also
 // register itself with SetApp; the server then reports both.
 package buildinfo

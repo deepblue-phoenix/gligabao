@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.42.1] - 2026-10-17
+
+### Changed
+- Internal: the version code moved from `version.go` into `gligabao.go`, and the version/changelog test moved to `internal/buildinfo`, so the repo root has fewer files. No change in behaviour or in the public Go API.
+
 ## [0.42.0] - 2026-11-05
 
 ### Added

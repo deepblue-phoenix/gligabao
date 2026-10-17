@@ -1,24 +1,27 @@
-package gligabao
+package buildinfo
 
 import (
 	"os"
 	"testing"
-
-	"github.com/deepblue-phoenix/gligabao/internal/buildinfo"
 )
 
 // The version rules (AGENTS.md) are enforced here: VERSION is semver, and CHANGELOG.md's newest entry is VERSION.
+// Both files live at the repo root (VERSION is embedded by the root package), two levels up from here.
 func TestVersionMatchesChangelog(t *testing.T) {
-	v := Version()
-	b, err := os.ReadFile("CHANGELOG.md")
+	vb, err := os.ReadFile("../../VERSION")
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := Parse(string(vb))
+	b, err := os.ReadFile("../../CHANGELOG.md")
 	if err != nil {
 		t.Fatal(err)
 	}
 	changelogFile := string(b)
-	if !buildinfo.SemVer.MatchString(v) {
+	if !SemVer.MatchString(v) {
 		t.Fatalf("VERSION %q is not a semantic version (x.y.z)", v)
 	}
-	versions := buildinfo.ChangelogVersions(changelogFile)
+	versions := ChangelogVersions(changelogFile)
 	if len(versions) == 0 {
 		t.Fatal("CHANGELOG.md has no '## [x.y.z] - date' entries")
 	}
@@ -27,7 +30,7 @@ func TestVersionMatchesChangelog(t *testing.T) {
 	}
 	seen := map[string]bool{}
 	for _, c := range versions {
-		if !buildinfo.SemVer.MatchString(c) {
+		if !SemVer.MatchString(c) {
 			t.Errorf("CHANGELOG.md entry %q is not a semantic version", c)
 		}
 		if seen[c] {
