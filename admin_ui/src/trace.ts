@@ -418,7 +418,10 @@ function draw(container: HTMLElement, traj: Trajectory): void {
     h.textContent = n.view.title;
     const close = head.appendChild(document.createElement("button"));
     close.type = "button";
-    close.textContent = "Close";
+    close.className = "close-x";
+    close.title = "Close";
+    close.setAttribute("aria-label", "Close");
+    close.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
     close.addEventListener("click", closeView);
     const body = document.createElement("div");
     body.className = "trace-view-body";

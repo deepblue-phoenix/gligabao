@@ -170,6 +170,12 @@ button.small { padding: 0.15rem 0.6rem; font-size: 0.8rem; }
 button.small + button.small { margin-left: 0.4rem; }
 button[hidden] { display: none; }
 button.icon { vertical-align: middle; svg { display: block; } }
+button.close-x {
+  display: inline-flex; align-items: center; justify-content: center; flex: none; margin-left: auto;
+  padding: 0.3rem; background: transparent; color: $muted;
+  &:hover { filter: none; background: rgba(255, 255, 255, 0.1); color: $text; }
+  svg { display: block; }
+}
 button.danger { background: $err; color: #fff; vertical-align: middle; svg { display: block; } }
 
 .modal {
@@ -185,7 +191,7 @@ button.danger { background: $err; color: #fff; vertical-align: middle; svg { dis
   &::backdrop { background: rgba(0, 0, 0, 0.6); }
 }
 
-.modal.modal-small { width: min(92vw, 30rem); height: auto; max-height: 80vh; }
+.modal.modal-small { width: min(92vw, 30rem); height: fit-content; max-height: 80vh; }
 .confirm-message { margin: 0.5rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 0.6rem; padding: 0.6rem 1rem; border-top: 1px solid $border; }
 
@@ -669,7 +675,14 @@ tr.removing {
 .rr-tile { cursor: pointer; padding: 0.2rem 0.6rem; border-radius: 6px; &:hover { background: rgba($accent, 0.08); } &.selected { background: rgba($accent, 0.16); } }
 
 // Training view
-#training { margin-top: 0; h3 { margin: 1.25rem 0 0.4rem; font-size: 0.95rem; } }
+#training { margin-top: 0; h3 { margin: 0 0 0.4rem; font-size: 0.95rem; } }
+// Each training section gets its own background shade so its bounds are easy to see.
+.tr-section { border-radius: 6px; padding: 0.75rem 1rem; margin-top: 0.75rem; &:first-child { margin-top: 0; } }
+.tr-providers { background: rgba(#6ea8fe, 0.06); }
+.tr-models { background: rgba(#3fb950, 0.07); }
+.tr-datasets { background: rgba(#d29922, 0.07); }
+.tr-jobs { background: rgba(#a371f7, 0.07); }
+.tr-selected { background: rgba(#f0636b, 0.07); }
 .training-form { align-items: flex-end; label { display: flex; flex-direction: column; gap: 0.2rem; color: $muted; font-size: 0.8rem; } input[type="number"] { width: 6rem; } select { min-width: 12rem; } }
 #training-detail-head { margin-bottom: 0.4rem; }
 #training-loss { background: $bg; border: 1px solid $border; border-radius: 6px; padding: 0.25rem; svg { display: block; } > p { margin: 0.75rem; } }

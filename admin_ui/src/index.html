@@ -106,60 +106,72 @@
             </div>
             <p class="muted">Fine-tune Gemma 4 on the sidecar (LoRA).</p>
             <p id="training-sidecar-warning" class="error sidecar-warning" role="alert" hidden><strong>Sidecar not active.</strong> It did not pass its health check when the server started, so training jobs cannot be started or listed. Start the sidecar and restart the server.</p>
-            <div id="training-backends" class="backends">
-              <span class="muted">Backends:</span>
-              <ul id="training-backends-list"></ul>
-            </div>
-            <div id="training-volumes" class="backend-volumes" hidden></div>
-            <div class="row training-form">
-              <label>Model
-                <select id="training-size"><option value="4b">Gemma 4 · 4B</option><option value="12b">Gemma 4 · 12B</option></select>
-              </label>
-              <label>Dataset
-                <select id="training-dataset"><option value="">(sidecar default dataset)</option></select>
-              </label>
-              <label>Steps
-                <input type="number" id="training-steps" value="100" min="1" step="1" />
-              </label>
-              <button type="button" id="training-run">Run</button>
-            </div>
-            <p id="training-run-status" class="muted"></p>
 
-            <h3>Datasets</h3>
-            <p class="muted">Upload a JSONL training dataset: one JSON object per line with <code>instruction</code>, <code>output</code> and optionally <code>input</code>. The server validates and saves it; it is sent to the sidecar only when a job that uses it starts. Uploading a file name again replaces the dataset.</p>
-            <div class="row training-form">
-              <label>JSONL file
-                <input type="file" id="training-upload-file" accept=".jsonl,application/jsonl,application/x-ndjson,text/plain" />
-              </label>
-              <button type="button" id="training-upload">Upload</button>
-            </div>
-            <p id="training-upload-status" class="muted"></p>
-            <table id="training-datasets" class="clickable" hidden>
-              <thead><tr><th>File</th><th>Status</th><th class="num">Records</th><th class="num">Size</th><th>Uploaded (UTC)</th></tr></thead>
-              <tbody></tbody>
-            </table>
-
-            <h3>Jobs</h3>
-            <p id="training-jobs-status" class="muted"></p>
-            <table id="training-jobs" class="clickable" hidden>
-              <thead><tr><th>ID</th><th>Status</th><th>Model</th><th>Dataset</th><th class="num">Steps</th><th class="num">Loss</th><th>Started (UTC)</th></tr></thead>
-              <tbody></tbody>
-            </table>
-
-            <h3>Trained models</h3>
-            <p class="muted">Every completed job saves its weights as a new trained model, so training again (other data, steps or size) never replaces an earlier one. Click a model to open it: its files, a form to run inference on it, and the past replies of the model.</p>
-            <p id="training-models-status" class="muted"></p>
-            <div class="table-scroll">
-            <table id="training-models" class="clickable" hidden>
-              <thead><tr><th>ID</th><th>Name</th><th>Model</th><th>Dataset</th><th class="num">Steps</th><th class="num">Loss</th><th class="num">Weights</th><th>Trained</th></tr></thead>
-              <tbody></tbody>
-            </table>
+            <div class="tr-section tr-models">
+              <h3>Trained models</h3>
+              <p class="muted">Every completed job saves its weights as a new trained model, so training again (other data, steps or size) never replaces an earlier one. Click a model to open it: its files, a form to run inference on it, and the past replies of the model.</p>
+              <p id="training-models-status" class="muted"></p>
+              <div class="table-scroll">
+              <table id="training-models" class="clickable" hidden>
+                <thead><tr><th>ID</th><th>Name</th><th>Model</th><th>Dataset</th><th class="num">Steps</th><th class="num">Loss</th><th class="num">Weights</th><th>Trained</th></tr></thead>
+                <tbody></tbody>
+              </table>
+              </div>
             </div>
 
-            <h3>Selected job <span id="training-stream" class="muted"></span></h3>
-            <div id="training-detail-head"></div>
-            <div id="training-loss"></div>
-            <div id="training-feed" class="tr-feed" role="log" aria-live="polite"></div>
+            <div class="tr-section tr-providers">
+              <h3>Providers</h3>
+              <div id="training-backends" class="backends">
+                <span class="muted">Backends:</span>
+                <ul id="training-backends-list"></ul>
+              </div>
+              <div id="training-volumes" class="backend-volumes" hidden></div>
+            </div>
+
+            <div class="tr-section tr-datasets">
+              <h3>Datasets</h3>
+              <p class="muted">Upload a JSONL training dataset: one JSON object per line with <code>instruction</code>, <code>output</code> and optionally <code>input</code>. The server validates and saves it; it is sent to the sidecar only when a job that uses it starts. Uploading a file name again replaces the dataset.</p>
+              <div class="row training-form">
+                <label>JSONL file
+                  <input type="file" id="training-upload-file" accept=".jsonl,application/jsonl,application/x-ndjson,text/plain" />
+                </label>
+                <button type="button" id="training-upload">Upload</button>
+              </div>
+              <p id="training-upload-status" class="muted"></p>
+              <table id="training-datasets" class="clickable" hidden>
+                <thead><tr><th>File</th><th>Status</th><th class="num">Records</th><th class="num">Size</th><th>Uploaded (UTC)</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+
+            <div class="tr-section tr-jobs">
+              <h3>Jobs</h3>
+              <div class="row training-form">
+                <label>Model
+                  <select id="training-size"><option value="4b">Gemma 4 · 4B</option><option value="12b">Gemma 4 · 12B</option></select>
+                </label>
+                <label>Dataset
+                  <select id="training-dataset"><option value="">(sidecar default dataset)</option></select>
+                </label>
+                <label>Steps
+                  <input type="number" id="training-steps" value="100" min="1" step="1" />
+                </label>
+                <button type="button" id="training-run">Run</button>
+              </div>
+              <p id="training-run-status" class="muted"></p>
+              <p id="training-jobs-status" class="muted"></p>
+              <table id="training-jobs" class="clickable" hidden>
+                <thead><tr><th>ID</th><th>Status</th><th>Model</th><th>Dataset</th><th class="num">Steps</th><th class="num">Loss</th><th>Started (UTC)</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+
+            <div class="tr-section tr-selected">
+              <h3>Selected job <span id="training-stream" class="muted"></span></h3>
+              <div id="training-detail-head"></div>
+              <div id="training-loss"></div>
+              <div id="training-feed" class="tr-feed" role="log" aria-live="polite"></div>
+            </div>
           </section>
         </div>
       </div>
@@ -177,7 +189,7 @@
           <div class="modal-head">
             <h2>Remember image</h2>
             <span id="image-info" class="muted"></span>
-            <button type="button" id="image-close">Close</button>
+            <button type="button" id="image-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
           </div>
           <form id="image-form" class="row">
             <input type="text" id="image-user" placeholder="user_id" required />
@@ -205,7 +217,7 @@
       <div class="modal-head">
         <h2 id="run-title">Run</h2>
         <span id="run-status" class="muted"></span>
-        <button type="button" id="run-close">Close</button>
+        <button type="button" id="run-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <div id="run-content" class="modal-body"></div>
     </dialog>
@@ -214,7 +226,7 @@
       <div class="modal-head">
         <h2 id="trace-title">Trace</h2>
         <span id="trace-status" class="muted"></span>
-        <button type="button" id="trace-close">Close</button>
+        <button type="button" id="trace-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <div class="trace-body">
         <div id="trace-canvas"></div>
@@ -226,7 +238,7 @@
       <div class="modal-head">
         <h2 id="history-title">Eval history</h2>
         <span id="history-status" class="muted"></span>
-        <button type="button" id="history-close">Close</button>
+        <button type="button" id="history-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <div id="history-canvas"></div>
     </dialog>
@@ -239,7 +251,7 @@
         <span id="action-conn" class="muted"></span>
         <label class="muted"><input type="checkbox" id="action-follow" checked /> follow</label>
         <button type="button" id="action-cancel" class="danger" hidden>Cancel run</button>
-        <button type="button" id="action-close">Close</button>
+        <button type="button" id="action-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <ol id="action-stages" class="stages"></ol>
       <p id="action-error" class="error"></p>
@@ -250,7 +262,7 @@
       <div class="modal-head">
         <h2 id="model-title">Trained model</h2>
         <span class="muted"></span>
-        <button type="button" id="model-close">Close</button>
+        <button type="button" id="model-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <div class="modal-body">
         <div id="model-detail" class="model-detail"></div>
@@ -264,7 +276,7 @@
       <div class="modal-head">
         <h2 id="dataset-title">Dataset</h2>
         <span id="dataset-status" class="muted"></span>
-        <button type="button" id="dataset-close">Close</button>
+        <button type="button" id="dataset-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <div class="modal-body"><pre id="dataset-content" class="dataset-lines"></pre></div>
     </dialog>
@@ -273,7 +285,7 @@
       <div class="modal-head">
         <h2 id="vectors-title">Vector DB</h2>
         <span id="vectors-status" class="muted"></span>
-        <button type="button" id="vectors-close">Close</button>
+        <button type="button" id="vectors-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <div id="vectors-content" class="modal-body"></div>
     </dialog>
@@ -282,7 +294,7 @@
       <div class="modal-head">
         <h2 id="websearch-title">Web searches</h2>
         <span id="websearch-status" class="muted"></span>
-        <button type="button" id="websearch-close">Close</button>
+        <button type="button" id="websearch-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <div id="websearch-content" class="modal-body"></div>
     </dialog>
@@ -291,7 +303,7 @@
       <div class="modal-head">
         <h2 id="graph-title">Graph</h2>
         <span id="graph-status" class="muted"></span>
-        <button type="button" id="graph-close">Close</button>
+        <button type="button" id="graph-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <div id="graph-canvas"></div>
     </dialog>
