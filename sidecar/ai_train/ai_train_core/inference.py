@@ -1,6 +1,7 @@
 """Generation with a fine-tuned adapter. Runs inside the GPU container for the given model size.
 
-Loads through Unsloth, so it needs the Unsloth GPU image.
+Loads with transformers + peft (model_load_infer.py), so it runs in the light inference image (requirements_infer.txt),
+not the Unsloth training one.
 """
 import gc
 import os
@@ -19,8 +20,8 @@ _cache: dict = {}   # "key": (model_size, adapter_dir, adapter mtime), "model", 
 
 
 def _load(model_size: str, max_seq_length: int, load_in_4bit: bool, adapter_dir: Optional[str] = None):
-    """-> (model, tokenizer_or_processor, config, adapter_dir). Imported lazily: only the GPU image has unsloth."""
-    from .model_load import load_finetuned_model_for_inference
+    """-> (model, tokenizer, config, adapter_dir). Imported lazily: only the GPU images have torch/transformers."""
+    from .model_load_infer import load_finetuned_model_for_inference
     return load_finetuned_model_for_inference(
         model_size=model_size, max_seq_length=max_seq_length, load_in_4bit=load_in_4bit, adapter_dir=adapter_dir)
 
@@ -98,8 +99,7 @@ def _generate_locked(prompt: str, max_tokens: int, temperature: float, model_siz
         return {"error": str(e)}
     load_s = time.time() - t0
 
-    # Gemma-4 (Unsloth path) returns a multimodal processor; generation needs the tokenizer.
-    tokenizer = getattr(tokenizer_or_processor, "tokenizer", tokenizer_or_processor)
+    tokenizer = getattr(tokenizer_or_processor, "tokenizer", tokenizer_or_processor)   # in case a processor is returned
 
     print(f"Generating with fine-tuned {config['display_name']} (adapter: {adapter_dir}) for: {prompt[:50]}...")
     import torch

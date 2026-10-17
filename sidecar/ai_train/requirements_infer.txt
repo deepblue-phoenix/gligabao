@@ -1,0 +1,17 @@
+# Dependencies for the inference-only image (Gemma-4 4B and 12B: generate with a trained LoRA adapter). Installed by the
+# provider at image build; shared by generate_4b and generate_12b.
+#
+# As light as possible: no unsloth/unsloth_zoo (and so none of what they pull in: xformers/triton extras, trl, datasets,
+# torchao, torchvision), no trainer. The base model is loaded 4-bit with bitsandbytes and the adapter attached with peft,
+# see ai_train_core/model_load_infer.py. The image has no CUDA toolkit either (Debian slim, see ImageSpec.cuda_toolkit):
+# the torch wheels bring the CUDA runtime libraries they need and Modal provides the driver.
+# Keep transformers/torch in step with requirements_train.txt: the adapter was trained with those versions.
+
+--extra-index-url https://download.pytorch.org/whl/cu128
+
+modal>=0.63.0                       # provider SDK: volume reload inside the container
+torch>=2.10.0,<2.15.0
+transformers>=5.5.0,<=5.17.0        # gemma4 / gemma4_unified architectures; upper bound = the train image's
+peft>=0.18.0                        # attaches the LoRA adapter
+accelerate>=1.0.0                   # device_map placement
+bitsandbytes>=0.48.0                # 4-bit quantization of the base model

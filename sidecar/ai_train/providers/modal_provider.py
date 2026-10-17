@@ -45,7 +45,7 @@ class ModalProvider(Provider):
     def _image(self, spec: ImageSpec) -> "modal.Image":
         if spec in self._images:
             return self._images[spec]
-        if spec.gpu:
+        if spec.gpu and spec.cuda_toolkit:
             img = modal.Image.from_registry(
                 "nvidia/cuda:12.8.1-devel-ubuntu22.04", add_python=spec.python)
         else:

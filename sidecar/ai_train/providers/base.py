@@ -12,7 +12,10 @@ from typing import Any, Callable, Optional
 @dataclass(frozen=True)
 class ImageSpec:
     """Container image description, provider neutral."""
-    gpu: bool = False                 # needs a CUDA base image
+    gpu: bool = False                 # runs on a GPU: needs a CUDA base image (or, see cuda_toolkit, CUDA wheels)
+    cuda_toolkit: bool = True         # with gpu: the full CUDA toolkit image (nvcc, for kernels compiled at runtime, as
+                                      # Unsloth does). False = a slim base with only the CUDA libraries the pip wheels
+                                      # bring: much smaller, enough to run torch/transformers/bitsandbytes.
     requirements_path: str = ""       # pip requirements file ("" or no entries = nothing to install)
     python: str = "3.11"
 

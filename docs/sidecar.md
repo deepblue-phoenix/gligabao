@@ -62,7 +62,8 @@ sidecar/ai_train/
   app.py                      # declares the remote functions + CLI entrypoint (provider-neutral)
   config.py                   # TrainConfig, overridable by env vars
   training_data.py            # local path of the dataset
-  requirements_train.txt      # the Unsloth image (4B and 12B)
+  requirements_train.txt      # the training image (Unsloth; 4B and 12B)
+  requirements_infer.txt      # the inference-only image (transformers + peft + bitsandbytes; no Unsloth)
   requirements_web.txt        # web API image
   finetune_data/              # generate_dataset.py + the 325-example tool-calling dataset
   (training docs moved to top-level docs/training/)
@@ -75,7 +76,8 @@ sidecar/ai_train/
     training_common.py        # dataset loading, SFTConfig, adapter saving
     progress.py               # Trainer callback writing live progress events
     progress_events.py        # the progress file format: write/read events (no heavy imports)
-    model_load.py, model_train.py            # 4B and 12B via Unsloth
+    model_load.py, model_train.py            # training: 4B and 12B via Unsloth
+    model_load_infer.py       # inference loading: base model 4-bit + peft adapter, no Unsloth
     inference.py              # generate with a trained adapter (model_path picks it)
     trained_model.py          # where a job's weights are saved, how they are described, model_path validation
     bootstrap.py              # ping + train
@@ -89,7 +91,20 @@ sidecar/ai_train/
 
 ### One training path for both sizes
 
-`google/gemma-4-E4B-it` (4B) uses the `gemma4` architecture and `google/gemma-4-12B-it` (12B) the newer `gemma4_unified` one. Both train and serve through Unsloth (2026.10.x, which supports `transformers<=5.17` and `gemma4_unified`) in one shared image built from `requirements_train.txt` (CUDA 12.8, torch 2.10+). The sizes differ only in their settings (`model_config.py`), GPU and Modal function (`train_4b` / `train_12b`, `generate_4b` / `generate_12b`). Every job saves its LoRA adapter in a directory of its own, `/models/trained/<job_id>`, so no job (of either size) overwrites an earlier model; see [Trained models](#trained-models). See [training/MODEL_SIZES.md](training/MODEL_SIZES.md).
+`google/gemma-4-E4B-it` (4B) uses the `gemma4` architecture and `google/gemma-4-12B-it` (12B) the newer `gemma4_unified` one. Both train through Unsloth (2026.10.x, which supports `transformers<=5.17` and `gemma4_unified`) in one image built from `requirements_train.txt` (CUDA 12.8 toolkit, torch 2.10+), and serve through plain `transformers` + `peft` + `bitsandbytes` in a separate, lighter image built from `requirements_infer.txt` (see [Images](#images)). The sizes differ only in their settings (`model_config.py`), GPU and Modal function (`train_4b` / `train_12b`, `generate_4b` / `generate_12b`). Every job saves its LoRA adapter in a directory of its own, `/models/trained/<job_id>`, so no job (of either size) overwrites an earlier model; see [Trained models](#trained-models). See [training/MODEL_SIZES.md](training/MODEL_SIZES.md).
+
+### Images
+
+`app.py` declares four images (`ImageSpec`); every function names the one it runs in. Code is mounted last, so a code change never rebuilds the dependency layers.
+
+| Image | Base | Requirements | Used by |
+| --- | --- | --- | --- |
+| `CPU_IMAGE` | Debian slim | none | `ping`, dataset checks, the `train` and `generate` routers |
+| `WEB_IMAGE` | Debian slim | `requirements_web.txt` | the web API (`serve_api`) |
+| `UNSLOTH_IMAGE` (training) | `nvidia/cuda:12.8.1-devel` | `requirements_train.txt` | `train_4b`, `train_12b` |
+| `INFER_IMAGE` (inference only) | Debian slim (no CUDA toolkit) | `requirements_infer.txt` | `generate_4b`, `generate_12b` |
+
+The inference image is kept as light as possible: it has only `torch`, `transformers`, `peft`, `accelerate`, `bitsandbytes` and `modal`. No Unsloth (and none of what it pulls in), no `trl`, `datasets`, `torchao` or `torchvision`, and no CUDA toolkit: the torch wheels bring the CUDA libraries they need and Modal provides the driver (`ImageSpec(gpu=True, cuda_toolkit=False)`). That makes the build and the cold start of an inference container smaller than with the training image. The adapter a training job saves is a standard peft LoRA adapter, so inference loads the base model 4-bit (nf4) with `bitsandbytes` and attaches the adapter with `peft` (`model_load_infer.py`). Keep the `torch` and `transformers` ranges of `requirements_train.txt` and `requirements_infer.txt` in step. Redeploy the Modal app to build the new image.
 
 ### Running it (Modal)
 
@@ -165,8 +180,8 @@ client / admin UI ── POST /v1/gb/training/models/{id}/infer ──► Go ser
                           generate (CPU router, app.py) ─► generate_4b / generate_12b (GPU function of that size)
                                                    │  inference.generate_response
                                                    ▼
-                          reload the models volume ─► resolve_model_dir("trained/<job_id>") ─► Unsloth loads the
-                          adapter directory (and the base model it names) ─► generate ─► {"response", …}
+                          reload the models volume ─► resolve_model_dir("trained/<job_id>") ─► transformers loads the
+                          base model (4-bit) and peft attaches the adapter ─► generate ─► {"response", …}
 ```
 
 - **`model_path`** is `trained/<job_id>` and nothing else: the web API refuses anything with another shape (`400`), and `resolve_model_dir` checks again inside the container, so a path cannot leave the `trained/` directory. A directory without `adapter_config.json` is a "No trained model at …" error. Without `model_path` the legacy `finetuned_model_<size>` adapter is used.
@@ -191,7 +206,7 @@ There are three layers, and a new endpoint touches one or more of them. Redeploy
    - add the Go client method (step 1) and a test in `ApiTest` (`test_ai_train_core.py`) with a fake in place of the function.
 3. **A new generation function** (another GPU function, e.g. another decoding mode or model type):
    - put the logic in `ai_train_core/inference.py` (heavy imports inside the function; `ai_train_core` never imports a provider SDK) and resolve any path with `resolve_model_dir`;
-   - register it in `app.py` with `@provider.function(FunctionSpec(image=UNSLOTH_IMAGE, gpu=CONFIG.gpu_for(size), timeout_s=600, volumes=INFER_VOLS, secrets=secrets))`: the volumes must include the models and HF cache volumes, and the function must reload the models volume before it reads;
+   - register it in `app.py` with `@provider.function(FunctionSpec(image=INFER_IMAGE, gpu=CONFIG.gpu_for(size), timeout_s=600, volumes=INFER_VOLS, secrets=secrets))`: the volumes must include the models and HF cache volumes, and the function must reload the models volume before it reads;
    - route to it from a CPU function like `generate`, which picks the function by `model_size`.
 
 A different kind of weights (another model size, or a trainer that saves something other than a LoRA adapter) also needs its own `describe` result and loader; the row's `path` and `files` already hold any set of files under `trained/<job_id>`.
@@ -259,7 +274,7 @@ Rules that keep it swappable:
 
 - Nothing outside `providers/` imports a provider SDK, and `ai_train_core/` / `api/` (the code that runs in the container) never do.
 - `app = provider.native_app` is a module-level object because provider CLIs such as `modal run` look for it.
-- Code that runs remotely imports `ai_train_core` inside the function body, since it only exists in the container's `/pkg` mount, and the heavy ML imports (Unsloth, torch) exist only in the GPU image.
+- Code that runs remotely imports `ai_train_core` inside the function body, since it only exists in the container's `/pkg` mount, and the heavy ML imports exist only in the GPU images (Unsloth only in the training one; torch, transformers and peft in both).
 
 To add a provider (e.g. AWS): implement `Provider` in `providers/aws_provider.py` and add one branch to `get_provider` in `providers/__init__.py`. If the new provider cannot express something in `FunctionSpec`, extend `FunctionSpec` rather than leaking provider details into `app.py`.
 

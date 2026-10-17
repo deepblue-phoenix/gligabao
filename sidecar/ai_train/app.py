@@ -13,8 +13,8 @@ Run (Modal):
 
 Cloud-specific code lives in providers/. This file only declares *what* to run.
 
-Two training images exist because of Gemma-4's architectures (see ai_train_core/model_config.py):
-Both sizes use Unsloth (requirements_train.txt, one shared image).
+Images (see below): training uses Unsloth on a CUDA toolkit image (requirements_train.txt); inference uses a separate,
+lighter one without Unsloth (requirements_infer.txt); the CPU functions and the web API have none of the ML stack.
 """
 import os
 import sys
@@ -58,7 +58,9 @@ WEB_VOLS = _volumes(paths.DATA_DIR, paths.EVAL_DIR, paths.PROGRESS_DIR)
 # Images. Code is mounted last, so code edits don't rebuild the pip layers.
 CPU_IMAGE = ImageSpec(gpu=False)
 WEB_IMAGE = ImageSpec(gpu=False, requirements_path=f"{modd_str}/requirements_web.txt")
-UNSLOTH_IMAGE = ImageSpec(gpu=True, requirements_path=f"{modd_str}/requirements_train.txt")             # 4B and 12B
+UNSLOTH_IMAGE = ImageSpec(gpu=True, requirements_path=f"{modd_str}/requirements_train.txt")             # training, 4B and 12B
+# Inference only: transformers + peft + bitsandbytes on a slim base (no Unsloth, no trainer, no CUDA toolkit). 4B and 12B.
+INFER_IMAGE = ImageSpec(gpu=True, cuda_toolkit=False, requirements_path=f"{modd_str}/requirements_infer.txt")
 
 
 #-----------------------------------------------------------------------------------------
@@ -144,13 +146,13 @@ def _generate(function: str, prompt: str, max_tokens: int, temperature: float, m
         reload_fn=lambda: provider.reload_volumes([paths.MODELS_DIR]), model_path=model_path, on_ready=on_ready)
 
 
-@provider.function(FunctionSpec(image=UNSLOTH_IMAGE, gpu=CONFIG.gpu_for("4b"), timeout_s=600,
+@provider.function(FunctionSpec(image=INFER_IMAGE, gpu=CONFIG.gpu_for("4b"), timeout_s=600,
                                 idle_timeout_s=CONFIG.infer_idle_timeout_s, volumes=INFER_VOLS, secrets=secrets))
 def generate_4b(prompt: str, max_tokens: int = 1024, temperature: float = 0.7, model_path: str = "") -> dict:
     return _generate("generate_4b", prompt, max_tokens, temperature, "4b", model_path)
 
 
-@provider.function(FunctionSpec(image=UNSLOTH_IMAGE, gpu=CONFIG.gpu_for("12b"), timeout_s=600,
+@provider.function(FunctionSpec(image=INFER_IMAGE, gpu=CONFIG.gpu_for("12b"), timeout_s=600,
                                 idle_timeout_s=CONFIG.infer_idle_timeout_s, volumes=INFER_VOLS, secrets=secrets))
 def generate_12b(prompt: str, max_tokens: int = 1024, temperature: float = 0.7, model_path: str = "") -> dict:
     return _generate("generate_12b", prompt, max_tokens, temperature, "12b", model_path)

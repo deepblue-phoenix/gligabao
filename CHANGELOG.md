@@ -5,6 +5,16 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.40.0] - 2026-11-02
+
+### Added
+- **Inference-only image** for the Modal app (`sidecar/ai_train/requirements_infer.txt`, `INFER_IMAGE` in `app.py`): `generate_4b` and `generate_12b` no longer run in the Unsloth training image. It has only `torch`, `transformers`, `peft`, `accelerate`, `bitsandbytes` and `modal` (no Unsloth, `trl`, `datasets`, `torchao` or `torchvision`) and a Debian slim base without the CUDA toolkit, so it builds and cold-starts smaller than the training image.
+- `ImageSpec.cuda_toolkit` (default `True`): with `gpu=True`, `False` selects a slim base with only the CUDA libraries the pip wheels bring instead of `nvidia/cuda:*-devel`.
+- `ai_train_core/model_load_infer.py`: loads the base model 4-bit (nf4, `bitsandbytes`) and attaches the trained LoRA adapter with `peft`.
+
+### Changed
+- Inference loads through `transformers` + `peft` instead of Unsloth (`inference.py`); the Unsloth loader keeps only the training functions. Training is unchanged. Redeploy the Modal app to build the new image. Generated text can differ slightly from before (plain 4-bit nf4 of the base model instead of Unsloth's quantization and kernels); check an inference after redeploying.
+
 ## [0.39.0] - 2026-11-01
 
 ### Added

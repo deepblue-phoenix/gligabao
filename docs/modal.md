@@ -45,7 +45,7 @@ The buttons described below apply to each app row: **Deploy** (**Redeploy** once
 3. Modal uploads the `ai_train/` directory (mounted into the containers at `/pkg`), builds the images that are not cached, creates the app's functions and the web endpoint, and creates any of the volumes that do not exist yet.
 4. The script exits with `0` on success; the run is then `succeeded` and the badge turns to `app deployed`. Any error ends the script with a traceback and a final `Deploy failed: <error>` line in the log, and the run is `failed`.
 
-The first deploy builds the CUDA and ML image (one Unsloth image for both model sizes), which takes several minutes; later deploys reuse Modal's image cache, and because the code is mounted last, a code change does not rebuild the dependency layers. Redeploying updates the app in place under the same name and web URL.
+The first deploy builds the images (the Unsloth training image for both model sizes, and the lighter inference image without Unsloth), which takes several minutes; later deploys reuse Modal's image cache, and because the code is mounted last, a code change does not rebuild the dependency layers. Redeploying updates the app in place under the same name and web URL.
 
 ### Stages
 

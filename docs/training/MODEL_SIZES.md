@@ -78,7 +78,9 @@ Defaults come from `ai_train_core/model_config.py` (`default_gpu`): `4b` -> `a10
 
 ### Training stack
 
-Both sizes train and serve through Unsloth, in one shared image (`requirements_train.txt`: unsloth 2026.10.x, torch 2.10+, CUDA 12.8). Code: `model_load.py`, `model_train.py`, `inference.py`.
+Both sizes train through Unsloth, in one shared image (`requirements_train.txt`: unsloth 2026.10.x, torch 2.10+, CUDA 12.8 toolkit). Code: `model_load.py`, `model_train.py`.
+
+Both sizes serve through plain `transformers` + `peft` + `bitsandbytes`, in a separate inference-only image (`requirements_infer.txt`: torch, transformers, peft, accelerate, bitsandbytes; no Unsloth, trl, datasets or torchao, and a slim base image without the CUDA toolkit). The base model is loaded 4-bit (nf4) and the trained adapter attached on top. Code: `model_load_infer.py`, `inference.py`. Keep the `torch` and `transformers` ranges of the two requirements files in step.
 
 A job saves only its LoRA adapter, in `/models/trained/<job_id>` of the models volume, as a new trained model (the base model stays in the Hugging Face cache volume and is shared). Inference picks the adapter with `model_path` and needs `model_size` to match the size it was trained for. See [Trained models](../sidecar.md#trained-models).
 

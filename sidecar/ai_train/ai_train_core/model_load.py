@@ -1,14 +1,11 @@
-"""Unsloth model loading for Gemma-4 4B and 12B (training and inference).
+"""Unsloth model loading for Gemma-4 4B and 12B (training only; inference loads without Unsloth: model_load_infer.py).
 
 Imports `unsloth` at module scope: only import this in the Unsloth image
 (requirements_train.txt).
 """
-from pathlib import Path
-
 from unsloth import FastLanguageModel
 
 from .model_config import MODEL_CONFIGS, get_model_config  # noqa: F401 (re-exported)
-from .paths import FINETUNED_ADAPTER_DIR_TEMPLATE
 
 
 def load_gemma4_model(model_size: str = "4b", max_seq_length: int = 2048, load_in_4bit: bool = True):
@@ -54,29 +51,3 @@ def add_lora_adapters(model, model_config: dict = None, lora_rank: int = 16, lor
         print(f"  - Trainable parameters: {model_config['trainable_params_r16']} "
               f"({model_config['trainable_percent_r16']} of {model_config['total_params']})")
     return model
-
-
-def load_finetuned_model_for_inference(model_size: str = "4b", max_seq_length: int = 2048,
-                                       load_in_4bit: bool = True, adapter_dir: str = None):
-    """Load base model + a trained LoRA adapter for generation: the one in `adapter_dir` (a trained model's directory,
-    see trained_model.resolve_model_dir), or the legacy per-size one (finetuned_model_<size>) without it.
-
-    Unsloth reads `base_model_name_or_path` from the adapter's adapter_config.json, loads
-    that base model and attaches the trained weights. Raises FileNotFoundError if no adapter
-    exists (deliberately no silent fallback to the un-tuned base model).
-
-    Returns (model, tokenizer_or_processor, config, adapter_dir), model in inference mode.
-    """
-    config = get_model_config(model_size)
-    adapter_dir = adapter_dir or FINETUNED_ADAPTER_DIR_TEMPLATE.format(model_size=model_size)
-    if not (Path(adapter_dir) / "adapter_config.json").exists():
-        raise FileNotFoundError(
-            f"No fine-tuned LoRA adapter found at '{adapter_dir}'. "
-            f"Run fine-tuning for model_size='{model_size}' first.")
-
-    print(f"\nLoading fine-tuned {config['display_name']} from {adapter_dir}...")
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=adapter_dir, max_seq_length=max_seq_length, dtype=None, load_in_4bit=load_in_4bit)
-    FastLanguageModel.for_inference(model)  # optimized generation, no dropout
-    print("Fine-tuned model loaded")
-    return model, tokenizer, config, adapter_dir

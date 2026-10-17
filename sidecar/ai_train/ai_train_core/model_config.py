@@ -1,8 +1,9 @@
 """Gemma-4 model sizes and their training settings. Pure data: no heavy imports.
 
-Both sizes train and serve through Unsloth (see model_load.py / model_train.py) in one image
-(requirements_train.txt). google/gemma-4-12B-it ships the newer `gemma4_unified` architecture,
-which Unsloth supports from 2026.10.x.
+Both sizes train through Unsloth (model_load.py / model_train.py, requirements_train.txt) and serve through plain
+transformers + peft (model_load_infer.py) in a separate, lighter image
+(requirements_infer.txt). google/gemma-4-12B-it ships the newer `gemma4_unified` architecture, which Unsloth supports
+from 2026.10.x.
 """
 
 MODEL_CONFIGS = {
