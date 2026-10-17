@@ -17,6 +17,10 @@ interface TrainedModel {
   dataset_sha256: string; num_examples: number; num_train_steps: number; final_loss: number | null; params: Record<string, unknown>;
   path: string; files: TrainedModelFile[]; size_bytes: number; created_at: string;
 }
+interface Inference {
+  id: number; trained_model_id: number; prompt: string; response: string; status: "running" | "completed" | "failed"; error: string;
+  max_tokens: number; temperature: number | null; duration_ms: number; created_at: string; completed_at: string | null;
+}
 interface DatasetRecord {
   id: number; filename: string; size_bytes: number; num_records: number; sha256: string; status: "stored" | "synced";
   updated_at: string; synced_at: string | null;
@@ -169,7 +173,7 @@ function renderModels(): void {
   for (const m of models) {
     const tr = body.insertRow();
     tr.classList.toggle("selected", m.id === selectedModel);
-    tr.title = "Show this model's files and run inference on it";
+    tr.title = "Open this model: its files, inference and the past replies";
     tr.insertCell().textContent = String(m.id);
     const name = tr.insertCell();
     name.textContent = shortName(m.name);
@@ -207,26 +211,32 @@ async function loadModels(): Promise<void> {
     status.className = "muted";
     if (selectedModel !== null && !models.some((m) => m.id === selectedModel)) selectedModel = null;
     renderModels();
-    if (selectedModel === null) el("training-model-detail").hidden = true;
   } catch (err) {
     status.className = "error";
     status.textContent = `Failed to load trained models: ${errText(err)}`;
   }
 }
 
+// Opens the model's dialog: how it was trained, its files, a form to run a prompt through it and the past requests.
 function selectModel(id: number): void {
-  if (selectedModel === id) { selectedModel = null; el("training-model-detail").hidden = true; renderModels(); return; } // a second click hides it
   selectedModel = id;
   renderModels();
   renderModelDetail();
+  const modal = el<HTMLDialogElement>("model-modal");
+  if (!modal.open) modal.showModal();
+  void loadInferences(id);
 }
 
-// The details of the selected model: how it was trained, its files, and a form to run a prompt through it.
+function closeModelModal(): void {
+  selectedModel = null;
+  renderModels();
+}
+
+// The facts and files of the selected model, and the inference form, in the dialog. The history under it is drawn by renderInferences.
 function renderModelDetail(): void {
-  const box = el("training-model-detail");
   const m = models.find((x) => x.id === selectedModel);
-  box.hidden = !m;
   if (!m) return;
+  el("model-title").textContent = `${m.name} (#${m.id})`;
   const facts: [string, string][] = [
     ["Base model", m.base_model || m.model_size],
     ["Dataset", `${m.dataset || "(default)"}${m.num_examples ? ` · ${m.num_examples} examples` : ""}`],
@@ -253,6 +263,8 @@ function renderModelDetail(): void {
     sha.textContent = f.sha256 ? f.sha256.slice(0, 12) : "";
     sha.title = f.sha256 ?? "";
   }
+  const info = node("details", "model-info");
+  info.append(node("summary", "", "Training details and files"), dl, files);
 
   const prompt = node("textarea");
   prompt.placeholder = "Prompt to run through this model, e.g. Check recent news about NVIDIA and buy 10 shares if it's positive";
@@ -265,46 +277,97 @@ function renderModelDetail(): void {
   run.type = "button";
   run.disabled = inferring;
   const status = node("span", "muted");
-  const out = node("pre");
-  out.hidden = true;
+  inferStatus = status;
+  inferButton = run;
   run.addEventListener("click", () => {
     const p = prompt.value.trim();
     const n = Number.parseInt(tokens.value, 10), t = Number.parseFloat(temp.value);
     if (!p) { status.className = "error"; status.textContent = "Enter a prompt."; return; }
     if (!Number.isInteger(n) || n < 1 || !(t > 0)) { status.className = "error"; status.textContent = "Max tokens must be a positive integer and temperature above 0."; return; }
-    void infer(m, p, n, t, run, status, out);
+    void infer(m, p, n, t);
   });
   const form = node("div", "row training-form");
   form.append(labelled("Max tokens", tokens), labelled("Temperature", temp), run, status);
 
-  box.replaceChildren(node("h4", "", `${m.name} (#${m.id})`), dl, files, prompt, form, out);
+  el("model-detail").replaceChildren(info, prompt, form);
+  el("model-inferences").replaceChildren();
+  el("model-inferences-status").textContent = "Loading the past requests…";
+}
+
+// Status and Run button of the open dialog's form (undefined when it was closed or redrawn): an inference outlives the dialog.
+let inferStatus: HTMLElement | undefined;
+let inferButton: HTMLButtonElement | undefined;
+
+// The past inference requests of the model, newest first (the server stores every one: prompt, response, status, error).
+async function loadInferences(modelID: number): Promise<void> {
+  const status = el("model-inferences-status");
+  try {
+    const res = await fetch(`../training/models/${modelID}/inferences`);
+    if (!res.ok) throw await failure(res);
+    const list = ((await res.json()) as { inferences: Inference[] }).inferences ?? [];
+    if (selectedModel !== modelID) return; // another model, or closed, while loading
+    status.className = "muted";
+    status.textContent = list.length === 0 ? "No inference requests to this model yet." : `${list.length} past request${list.length === 1 ? "" : "s"}, newest first:`;
+    renderInferences(list);
+  } catch (err) {
+    if (selectedModel !== modelID) return;
+    status.className = "error";
+    status.textContent = `Failed to load the past requests: ${errText(err)}`;
+  }
+}
+
+function inferenceBadge(status: string): HTMLElement {
+  const cls = status === "completed" ? "badge-ok" : status === "failed" ? "badge-error" : "badge-active";
+  return node("span", `badge ${cls}`, status);
+}
+
+function renderInferences(list: Inference[]): void {
+  const box = el("model-inferences");
+  box.replaceChildren();
+  for (const r of list) {
+    const item = node("article", "infer-item");
+    const head = node("div", "infer-head");
+    const when = node("span", "muted", `#${r.id} · ${fmtTime(r.created_at)} UTC`);
+    const meta = [r.duration_ms ? `${(r.duration_ms / 1000).toFixed(1)}s` : "", r.max_tokens ? `max ${r.max_tokens} tokens` : "",
+      r.temperature != null ? `temp ${r.temperature}` : ""].filter(Boolean).join(" · ");
+    head.append(inferenceBadge(r.status), when, node("span", "muted", meta));
+    item.append(head, node("div", "infer-label", "Prompt"), node("pre", "infer-prompt", r.prompt));
+    if (r.status === "failed") {
+      item.append(node("div", "infer-label", "Error"), node("pre", "infer-error", r.error || "(no message)"));
+    } else if (r.status === "running") {
+      item.append(node("div", "infer-label", "Response"), node("pre", "infer-response muted", "Waiting for the model… (or interrupted, if the server restarted)"));
+    } else {
+      item.append(node("div", "infer-label", "Response"), node("pre", "infer-response", r.response === "" ? "(the model returned an empty response)" : r.response));
+    }
+    box.append(item);
+  }
 }
 
 // Runs a prompt through a trained model on the sidecar. The first call after a while is slow: a GPU container starts and loads the model.
-async function infer(m: TrainedModel, prompt: string, maxTokens: number, temperature: number,
-  run: HTMLButtonElement, status: HTMLElement, out: HTMLElement): Promise<void> {
+// The server stores the request, so the history is reloaded afterwards, showing the response (or the error) at its top.
+async function infer(m: TrainedModel, prompt: string, maxTokens: number, temperature: number): Promise<void> {
   inferring = true;
-  run.disabled = true;
-  status.className = "muted";
-  status.textContent = "Running… (the first request loads the model on a GPU: this can take minutes)";
-  out.hidden = true;
+  const status = inferStatus, run = inferButton;
+  if (run) run.disabled = true;
+  if (status) { status.className = "muted"; status.textContent = "Running… (the first request loads the model on a GPU: this can take minutes)"; }
   const started = Date.now();
+  let outcome: { text: string; cls: string };
   try {
     const res = await fetch(`../training/models/${m.id}/infer`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt, max_tokens: maxTokens, temperature }),
     });
     if (!res.ok) throw await failure(res);
-    out.textContent = ((await res.json()) as { response: string }).response;
-    out.hidden = false;
-    status.textContent = `Done in ${Math.round((Date.now() - started) / 1000)}s.`;
+    outcome = { text: `Done in ${Math.round((Date.now() - started) / 1000)}s.`, cls: "muted" };
   } catch (err) {
-    status.className = "error";
-    status.textContent = `Inference failed: ${errText(err)}`;
+    outcome = { text: `Inference failed: ${errText(err)}`, cls: "error" };
   } finally {
     inferring = false;
-    run.disabled = false;
+    if (run) run.disabled = false;
+    if (inferButton) inferButton.disabled = false; // the form of a dialog opened again meanwhile
   }
+  if (status?.isConnected) { status.className = outcome.cls; status.textContent = outcome.text; }
+  if (selectedModel === m.id) await loadInferences(m.id);
 }
 
 //---------------------------------------------------------------------------------------------
@@ -851,6 +914,10 @@ export function initTraining(): void {
   el("training-run").addEventListener("click", () => void run());
   el("training-upload").addEventListener("click", () => void uploadDataset());
   const datasetModal = el<HTMLDialogElement>("dataset-modal");
+  const modelModal = el<HTMLDialogElement>("model-modal");
+  el("model-close").addEventListener("click", () => modelModal.close());
+  modelModal.addEventListener("close", closeModelModal);
+  modelModal.addEventListener("click", (e) => { if (e.target === modelModal) modelModal.close(); });
   el("dataset-close").addEventListener("click", () => datasetModal.close());
   datasetModal.addEventListener("click", (e) => { if (e.target === datasetModal) datasetModal.close(); });
   el("training-refresh").addEventListener("click", () => { void loadDatasets(); void loadBackends(); void loadJobs(); void loadModels(); });

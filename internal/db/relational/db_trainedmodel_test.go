@@ -77,3 +77,62 @@ func trainedModelsScenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("missing model: %v", err)
 	}
 }
+
+func TestInferenceRequests(t *testing.T) { dbtest.Run(t, inferenceRequestsScenario) }
+
+func inferenceRequestsScenario(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	var modelIDs []int64
+	for _, job := range []string{"jobAAAAAAAA", "jobBBBBBBBB"} {
+		id, _, err := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{JobID: job, ModelSize: "4b", NumTrainSteps: 1, Path: "trained/" + job})
+		if err != nil {
+			t.Fatal(err)
+		}
+		modelIDs = append(modelIDs, id)
+	}
+	temp := 0.3
+	id1, err := relational.RecordInferenceRequest(ctx, d, relational.InferenceRequest{TrainedModelID: modelIDs[0], Prompt: "p1",
+		ModelSize: "4b", ModelPath: "trained/jobAAAAAAAA", MaxTokens: 64, Temperature: &temp})
+	if err != nil || id1 == 0 {
+		t.Fatalf("RecordInferenceRequest: %d %v", id1, err)
+	}
+	got, err := relational.GetInferenceRequest(ctx, d, id1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != relational.InferenceRunning || got.Prompt != "p1" || got.TrainedModelID != modelIDs[0] || got.MaxTokens != 64 ||
+		got.Temperature == nil || *got.Temperature != 0.3 || got.CompletedAt != nil || got.CreatedAt.IsZero() || got.ModelPath != "trained/jobAAAAAAAA" {
+		t.Fatalf("running request: %+v", got)
+	}
+	if err := relational.FinishInferenceRequest(ctx, d, id1, relational.InferenceCompleted, "reply", "", 1234); err != nil {
+		t.Fatal(err)
+	}
+	id2, err := relational.RecordInferenceRequest(ctx, d, relational.InferenceRequest{TrainedModelID: modelIDs[0], Prompt: "p2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := relational.FinishInferenceRequest(ctx, d, id2, relational.InferenceFailed, "", "boom", 5); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := relational.RecordInferenceRequest(ctx, d, relational.InferenceRequest{TrainedModelID: modelIDs[1], Prompt: "other"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := relational.FinishInferenceRequest(ctx, d, 999, relational.InferenceFailed, "", "", 0); !errors.Is(err, relational.ErrNotFound) {
+		t.Fatalf("finish unknown: %v", err)
+	}
+
+	got, err = relational.GetInferenceRequest(ctx, d, id1)
+	if err != nil || got.Status != relational.InferenceCompleted || got.Response != "reply" || got.DurationMS != 1234 || got.CompletedAt == nil {
+		t.Fatalf("completed request: %+v %v", got, err)
+	}
+	list, err := relational.ListInferenceRequests(ctx, d, modelIDs[0], 0)
+	if err != nil || len(list) != 2 || list[0].ID != id2 || list[0].Status != relational.InferenceFailed || list[0].Error != "boom" || list[1].ID != id1 {
+		t.Fatalf("list of model 1: %+v %v", list, err)
+	}
+	if list, err = relational.ListInferenceRequests(ctx, d, 0, 2); err != nil || len(list) != 2 {
+		t.Fatalf("list of all, limit 2: %+v %v", list, err)
+	}
+	if _, err := relational.GetInferenceRequest(ctx, d, 999); !errors.Is(err, relational.ErrNotFound) {
+		t.Fatalf("get unknown: %v", err)
+	}
+}

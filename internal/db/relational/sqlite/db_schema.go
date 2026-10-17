@@ -191,6 +191,32 @@ CREATE TABLE IF NOT EXISTS gb_trained_models (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_trained_models_run ON gb_trained_models(run_id);
 
+-- Inference requests to trained models: ONE ROW PER REQUEST to run a prompt through a trained model (internal/api/training/models.go).
+-- The row is made when the request starts (status 'running') and updated when the sidecar answers or fails, so every request can be
+-- reviewed afterwards, failed ones too. A row still 'running' long after its start was interrupted (e.g. the server restarted).
+--   trained_model_id  the model (gb_trained_models) the prompt was run through
+--   prompt, response  what was sent and the model's reply ('' until completed)
+--   status            'running', 'completed' or 'failed'; error is the reason of a failure
+--   model_size, model_path  what the sidecar was asked to load (copied from the trained model)
+--   max_tokens        0 = the sidecar's default; temperature NULL = the sidecar's default
+--   duration_ms       how long the request took; completed_at when it ended (NULL while running)
+CREATE TABLE IF NOT EXISTS gb_inference_requests (
+	id               INTEGER PRIMARY KEY AUTOINCREMENT,
+	trained_model_id INTEGER NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
+	prompt           TEXT NOT NULL,
+	response         TEXT NOT NULL DEFAULT '',
+	status           TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed')),
+	error            TEXT NOT NULL DEFAULT '',
+	model_size       TEXT NOT NULL DEFAULT '',
+	model_path       TEXT NOT NULL DEFAULT '',
+	max_tokens       INTEGER NOT NULL DEFAULT 0,
+	temperature      REAL,
+	duration_ms      INTEGER NOT NULL DEFAULT 0,
+	created_at       DATETIME NOT NULL DEFAULT (` + SQLNow + `),
+	completed_at     DATETIME
+);
+CREATE INDEX IF NOT EXISTS idx_gb_inference_requests_model ON gb_inference_requests(trained_model_id, id);
+
 -- JSONL training datasets uploaded through the Go server (internal/api/training/datasets.go): ONE ROW PER FILE NAME.
 -- The file is kept in the training dataset directory (under its name); the sidecar is not involved in the upload, it gets
 -- the file when a training job that uses it is started.

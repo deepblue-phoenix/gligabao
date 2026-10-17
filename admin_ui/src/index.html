@@ -147,7 +147,7 @@
             </table>
 
             <h3>Trained models</h3>
-            <p class="muted">Every completed job saves its weights as a new trained model, so training again (other data, steps or size) never replaces an earlier one. Click a model to see its files and to run inference on it.</p>
+            <p class="muted">Every completed job saves its weights as a new trained model, so training again (other data, steps or size) never replaces an earlier one. Click a model to open it: its files, a form to run inference on it, and the past replies of the model.</p>
             <p id="training-models-status" class="muted"></p>
             <div class="table-scroll">
             <table id="training-models" class="clickable" hidden>
@@ -155,7 +155,6 @@
               <tbody></tbody>
             </table>
             </div>
-            <div id="training-model-detail" class="model-detail" hidden></div>
 
             <h3>Selected job <span id="training-stream" class="muted"></span></h3>
             <div id="training-detail-head"></div>
@@ -234,6 +233,20 @@
       <ol id="action-stages" class="stages"></ol>
       <p id="action-error" class="error"></p>
       <div class="modal-body"><pre id="action-log" class="action-log"></pre></div>
+    </dialog>
+
+    <dialog id="model-modal" class="modal">
+      <div class="modal-head">
+        <h2 id="model-title">Trained model</h2>
+        <span class="muted"></span>
+        <button type="button" id="model-close">Close</button>
+      </div>
+      <div class="modal-body">
+        <div id="model-detail" class="model-detail"></div>
+        <h3>Past requests</h3>
+        <p id="model-inferences-status" class="muted"></p>
+        <div id="model-inferences"></div>
+      </div>
     </dialog>
 
     <dialog id="dataset-modal" class="modal">

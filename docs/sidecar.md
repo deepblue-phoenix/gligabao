@@ -224,7 +224,8 @@ A different kind of weights (another model size, or a trainer that saves somethi
 |---|---|
 | `GET /v1/gb/training/models[?db=][&limit=]` | `{"models": [...]}`, newest first (default 100, at most 500). |
 | `GET /v1/gb/training/models/{id}[?db=]` | one trained model; 404 if unknown. |
-| `POST /v1/gb/training/models/{id}/infer[?db=]` | body `{"prompt", "max_tokens"?, "temperature"?}`; runs the prompt through that model's weights on the sidecar (size and path come from the record) and answers `{"model_id", "response"}`. It takes minutes when a GPU container has to start and load the model. 400 bad body, 404 unknown model, 502 sidecar failure (with its message if the generation failed, e.g. the weights are gone from the volume), 503 no sidecar. |
+| `POST /v1/gb/training/models/{id}/infer[?db=]` | body `{"prompt", "max_tokens"?, "temperature"?}`; runs the prompt through that model's weights on the sidecar (size and path come from the record) and answers `{"id", "model_id", "response", "status", "duration_ms"}`. Every request is stored in `gb_inference_requests` (prompt, response, status, error, ...), failed ones too; `id` is its row. It takes minutes when a GPU container has to start and load the model. 400 bad body, 404 unknown model, 502 sidecar failure (with its message if the generation failed, e.g. the weights are gone from the volume), 503 no sidecar. |
+| `GET /v1/gb/training/models/{id}/inferences[?db=][&limit=]` | `{"inferences": [...]}`: the stored inference requests of that model (`id`, `trained_model_id`, `prompt`, `response`, `status` running/completed/failed, `error`, `max_tokens`, `temperature`, `duration_ms`, `created_at`, `completed_at`), newest first (default 100, at most 500); 404 unknown model. |
 
 ### Admin UI: the training view
 

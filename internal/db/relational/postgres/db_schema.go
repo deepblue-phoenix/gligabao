@@ -124,6 +124,24 @@ CREATE TABLE IF NOT EXISTS gb_trained_models (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_trained_models_run ON gb_trained_models(run_id);
 
+-- One row per inference request to a trained model (see sqlite/db_schema.go).
+CREATE TABLE IF NOT EXISTS gb_inference_requests (
+	id               BIGSERIAL PRIMARY KEY,
+	trained_model_id BIGINT NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
+	prompt           TEXT NOT NULL,
+	response         TEXT NOT NULL DEFAULT '',
+	status           TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed')),
+	error            TEXT NOT NULL DEFAULT '',
+	model_size       TEXT NOT NULL DEFAULT '',
+	model_path       TEXT NOT NULL DEFAULT '',
+	max_tokens       BIGINT NOT NULL DEFAULT 0,
+	temperature      DOUBLE PRECISION,
+	duration_ms      BIGINT NOT NULL DEFAULT 0,
+	created_at       TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `,
+	completed_at     TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_gb_inference_requests_model ON gb_inference_requests(trained_model_id, id);
+
 -- JSONL training datasets uploaded through the Go server (see sqlite/db_schema.go).
 CREATE TABLE IF NOT EXISTS gb_training_datasets (
 	id          BIGSERIAL PRIMARY KEY,

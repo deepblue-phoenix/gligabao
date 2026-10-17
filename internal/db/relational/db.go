@@ -42,6 +42,14 @@ type (
 	TrainingDataset      = model.TrainingDataset
 	TrainedModel         = model.TrainedModel
 	TrainedModelFile     = model.TrainedModelFile
+	InferenceRequest     = model.InferenceRequest
+)
+
+// Statuses of an InferenceRequest.
+const (
+	InferenceRunning   = model.InferenceRunning
+	InferenceCompleted = model.InferenceCompleted
+	InferenceFailed    = model.InferenceFailed
 )
 
 // Statuses of a TrainingDataset.

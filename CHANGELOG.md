@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.41.0] - 2026-10-17
+
+### Added
+- **Inference requests are tracked in the database.** Every `POST /v1/gb/training/models/{id}/infer` is stored in the new table `gb_inference_requests` (SQLite and PostgreSQL; created on start-up): the trained model ID, prompt, response, status (`running`, `completed`, `failed`), error text, the model size and path sent to the sidecar, max tokens, temperature, duration and timestamps. Failed requests (and ones whose client gave up) are stored too; a row left `running` was interrupted by a restart. If the request cannot be stored, the inference is not started (500).
+- `GET /v1/gb/training/models/{id}/inferences[?limit=]` lists the stored requests of a model, newest first. The infer answer now also carries `id`, `status` and `duration_ms`.
+
+### Changed
+- Admin UI: clicking a trained model opens it in a **modal** (training details and files, the inference form, and the **past requests** of the model with prompt, response, status and errors) instead of expanding under the table.
+
+### Fixed
+- Admin UI: the reply of an inference is shown to the user: after a run the history in the modal is reloaded from the server and the new request (response, or the error) is at its top; an empty reply is shown as such.
+
 ## [0.40.3] - 2026-11-03
 
 ### Fixed

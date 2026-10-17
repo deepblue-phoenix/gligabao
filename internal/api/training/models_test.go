@@ -88,6 +88,7 @@ func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
 		t.Fatalf("infer: %d %s", rec.Code, rec.Body)
 	}
 	var out struct {
+		ID       int    `json:"id"`
 		ModelID  int64  `json:"model_id"`
 		Response string `json:"response"`
 	}
@@ -125,5 +126,38 @@ func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
 	sc.inferErr = errors.New("connection refused")
 	if rec := post(sc, "1", `{"prompt":"hi"}`); rec.Code != http.StatusBadGateway || strings.Contains(rec.Body.String(), "refused") {
 		t.Fatalf("sidecar down: %d %s", rec.Code, rec.Body)
+	}
+
+	// Every request that reached the sidecar is stored, with its outcome.
+	list, err := relational.ListInferenceRequests(ctx, d, 1, 0)
+	if err != nil || len(list) != 3 {
+		t.Fatalf("stored requests: %+v %v", list, err)
+	}
+	if r := list[2]; r.Status != relational.InferenceCompleted || r.Response != "hello" || r.Prompt != "hi" || r.ModelPath != "trained/j2" ||
+		r.ModelSize != "12b" || r.MaxTokens != 50 || r.Temperature == nil || *r.Temperature != 0.2 || r.ID != int64(out.ID) {
+		t.Fatalf("completed request: %+v", r)
+	}
+	if r := list[1]; r.Status != relational.InferenceFailed || !strings.Contains(r.Error, "No trained model") || r.Response != "" {
+		t.Fatalf("failed request: %+v", r)
+	}
+	if r := list[0]; r.Status != relational.InferenceFailed || !strings.Contains(r.Error, "refused") {
+		t.Fatalf("sidecar down request: %+v", r)
+	}
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/x?limit=2", nil)
+	req.SetPathValue("id", "1")
+	training.ListInferencesOf(dbs)(rec, req)
+	var listed struct {
+		Inferences []relational.InferenceRequest `json:"inferences"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil || rec.Code != 200 || len(listed.Inferences) != 2 || listed.Inferences[0].ID != list[0].ID {
+		t.Fatalf("list inferences: %d %s", rec.Code, rec.Body)
+	}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest("GET", "/x", nil)
+	req.SetPathValue("id", "9")
+	training.ListInferencesOf(dbs)(rec, req)
+	if rec.Code != 404 {
+		t.Fatalf("list inferences of unknown model: %d", rec.Code)
 	}
 }

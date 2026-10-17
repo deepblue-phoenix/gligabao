@@ -221,6 +221,7 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, dbs []training.Da
 	mux.HandleFunc("GET /v1/gb/training/models", training.ListModelsOf(dbs))
 	mux.HandleFunc("GET /v1/gb/training/models/{id}", training.GetModelOf(dbs))
 	mux.HandleFunc("POST /v1/gb/training/models/{id}/infer", training.InferOf(dbs, sc))
+	mux.HandleFunc("GET /v1/gb/training/models/{id}/inferences", training.ListInferencesOf(dbs))
 	mux.HandleFunc("GET /v1/gb/training/datasets", training.ListDatasetsOf(dbs))
 	mux.HandleFunc("POST /v1/gb/training/datasets", training.UploadDatasetOf(dbs))
 	mux.HandleFunc("GET /v1/gb/training/datasets/preview", training.PreviewDatasetOf(dbs))
