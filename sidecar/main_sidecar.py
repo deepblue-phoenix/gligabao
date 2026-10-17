@@ -1,4 +1,6 @@
 """Minimal gligabao sidecar: a FastAPI server listening on a local port."""
+import logging
+import re
 import sys
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -10,6 +12,22 @@ from pydantic import ValidationError
 from backends import Backend, get_backend
 from routes import add_action_routes, add_backend_routes
 from sidecar_config import SidecarConfig
+
+
+# Polled constantly by the admin UI; successful hits tell the user nothing, so they are kept out of the access log.
+_QUIET_PATHS = re.compile(r"^/(health|backends|backends/[^/]+/apps)/?$")
+
+
+class QuietPollFilter(logging.Filter):
+    """Drops uvicorn access lines for successful GETs of the polled status endpoints (errors still log)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            _client, method, path, _http, status = record.args  # type: ignore[misc]
+            path = str(path).split("?", 1)[0]
+            return not (method == "GET" and int(status) < 400 and _QUIET_PATHS.match(path))
+        except (TypeError, ValueError):
+            return True
 
 
 def get_config(request: Request) -> SidecarConfig:
@@ -46,6 +64,7 @@ def create_app(config: SidecarConfig, backend: Optional[Backend] = None) -> Fast
 
 
 def main(config: SidecarConfig) -> None:
+    logging.getLogger("uvicorn.access").addFilter(QuietPollFilter())
     uvicorn.run(create_app(config), host=config.host, port=config.port)
 
 

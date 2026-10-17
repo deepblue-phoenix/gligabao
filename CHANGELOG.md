@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.43.1] - 2026-10-19
+
+### Changed
+- The sidecar no longer logs successful `GET /health`, `GET /backends` and `GET /backends/{name}/apps` requests (polled constantly by the admin UI). Failed requests and all other requests are still logged.
+
 ## [0.43.0] - 2026-10-18
 
 ### Added
