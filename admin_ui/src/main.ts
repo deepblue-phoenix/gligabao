@@ -1,4 +1,4 @@
-// gligabao admin UI: a health indicator, system totals, the datasets of all users and and, in their own views, the evals (evals.ts), timeseries (timeseries.ts), inferences (inferences.ts) and remember runs (rememberruns.ts) and training (training.ts). Talks to the server's own HTTP API.
+// gligabao admin UI: a health indicator, system totals, the datasets of all users and and, in their own views, the evals (evals.ts), timeseries (timeseries.ts), inferences (inferences.ts) and remember runs (remember_runs.ts) and training (training.ts). Talks to the server's own HTTP API.
 
 import { initEvals } from "./evals.js";
 import { initGraphModal, showGraph } from "./graph.js";
@@ -6,7 +6,7 @@ import { initHistoryModal } from "./history.js";
 import { initImageOverlay } from "./image.js";
 import { initImageStats } from "./imagestats.js";
 import { initInferences } from "./inferences.js";
-import { initRememberRuns } from "./rememberruns.js";
+import { initRememberRuns } from "./remember_runs.js";
 import { initTimeseries } from "./timeseries.js";
 import { initTraining } from "./training.js";
 import { initTraceModal } from "./trace.js";

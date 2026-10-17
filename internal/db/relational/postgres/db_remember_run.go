@@ -13,7 +13,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Remember runs (see sqlite/db_rememberrun.go and sqlite/db_schema.go for what the table and the functions are)
+// Remember runs (see sqlite/db_remember_run.go and sqlite/db_schema.go for what the table and the functions are)
 
 // rememberRunsSchema is the DDL of gb_remember_runs, generated from model.RememberStages (see the sqlite backend).
 func rememberRunsSchema() string {

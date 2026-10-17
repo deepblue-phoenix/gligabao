@@ -235,7 +235,7 @@ async function loadDatabase(name: string): Promise<void> {
 }
 
 async function load(): Promise<void> {
-  const root = el("rememberruns-content");
+  const root = el("remember_runs-content");
   if (panels.size === 0) {
     try {
       const res = await fetch("api/databases");
@@ -255,6 +255,6 @@ async function load(): Promise<void> {
 }
 
 export function initRememberRuns(): void {
-  el("rememberruns-refresh").addEventListener("click", () => void load());
+  el("remember_runs-refresh").addEventListener("click", () => void load());
   void load();
 }

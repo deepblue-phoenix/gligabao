@@ -10,7 +10,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Trained models (see sqlite/db_trainedmodel.go for what the functions do)
+// Trained models (see sqlite/db_trained_model.go for what the functions do)
 
 // InsertTrainedModel stores the model a completed job saved and returns its ID and whether it is new.
 func InsertTrainedModel(ctx context.Context, d *sql.DB, m model.TrainedModel) (int64, bool, error) {

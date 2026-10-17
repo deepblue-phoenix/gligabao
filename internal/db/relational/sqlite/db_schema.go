@@ -98,7 +98,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_inferences_type ON gb_inferences(type);
 CREATE INDEX IF NOT EXISTS idx_gb_inferences_model ON gb_inferences(model_id);
 
 -- Remember runs: ONE ROW PER EXECUTION OF THE REMEMBER PIPELINE, the authoritative record of how it went, stage by stage
--- (see internal/memory/memory_remember/runlog.go; the table is created by rememberRunsSchema in db_rememberrun.go).
+-- (see internal/memory/memory_remember/runlog.go; the table is created by rememberRunsSchema in db_remember_run.go).
 --   user_id, dataset (the name), kind (the artifact kind)  what was remembered
 --   params       JSON object: how the call was made (reference time, session, models and reasoning per stage, chunk size,
 --                which optional stages were asked for)

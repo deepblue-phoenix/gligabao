@@ -11,7 +11,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Training job runs and their events (see sqlite/db_trainingjobrun.go for what the functions do)
+// Training job runs and their events (see sqlite/db_training_job_run.go for what the functions do)
 
 // InsertTrainingJobRun stores one training job run and returns its ID.
 func InsertTrainingJobRun(ctx context.Context, d *sql.DB, r model.TrainingJobRun) (int64, error) {
