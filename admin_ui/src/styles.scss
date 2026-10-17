@@ -185,6 +185,10 @@ button.danger { background: $err; color: #fff; vertical-align: middle; svg { dis
   &::backdrop { background: rgba(0, 0, 0, 0.6); }
 }
 
+.modal.modal-small { width: min(92vw, 30rem); height: auto; max-height: 80vh; }
+.confirm-message { margin: 0.5rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.modal-foot { display: flex; justify-content: flex-end; gap: 0.6rem; padding: 0.6rem 1rem; border-top: 1px solid $border; }
+
 .modal-head {
   display: flex;
   align-items: center;

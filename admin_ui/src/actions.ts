@@ -2,6 +2,8 @@
 // streams their output as SSE (api/sidecar/backends/<backend>/actions/<action>/events, passed on by the server). The
 // dialog #action-modal shows the stages, the state and the log as it grows; closing it leaves the action running.
 
+import { alertDialog, confirmDialog } from "./dialogs.js";
+
 export interface ActionState {
   action: string;
   label: string;
@@ -163,13 +165,14 @@ export function initActionModal(): void {
   modal.addEventListener("close", stop);
   el("action-close").addEventListener("click", () => modal.close());
   // Cancel stops the command (the sidecar interrupts it, then kills it); the stream then reports the run as cancelled.
-  el("action-cancel").addEventListener("click", () => {
-    if (!target || !confirm("Cancel the running action? Work already done on Modal is not rolled back.")) return;
+  el("action-cancel").addEventListener("click", async () => {
+    if (!target || !(await confirmDialog("Cancel the running action? Work already done on Modal is not rolled back.", { title: "Cancel run", okLabel: "Cancel run", danger: true }))) return;
+    if (!target) return;
     const btn = el<HTMLButtonElement>("action-cancel");
     btn.disabled = true;
     fetch(`${actionURL(target.backend, target.action, target.app)}/cancel`, { method: "POST" })
       .then(async (res) => { if (!res.ok && res.status !== 409) throw new Error(`${res.status}: ${(await res.text()).trim()}`); })
-      .catch((err) => { btn.disabled = false; alert(`Could not cancel: ${err instanceof Error ? err.message : String(err)}`); });
+      .catch((err) => { btn.disabled = false; void alertDialog(`Could not cancel: ${err instanceof Error ? err.message : String(err)}`); });
   });
   // Scrolling up in the log stops following; the checkbox turns it on again.
   const body = el("action-log").parentElement as HTMLElement;

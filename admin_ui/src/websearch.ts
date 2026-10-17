@@ -6,6 +6,8 @@
 // them); the ATIF trajectories of the evals also know the searches that found nothing, the queries the model sent to the
 // search engine, the latency and the cost, so those fields are only there for the searches of an eval.
 
+import { alertDialog } from "./dialogs.js";
+
 export interface WebSource { url: string; title?: string; page_age?: string }
 export interface WebEntity { id?: number; name: string; type: string; description?: string; only_web?: boolean }
 export interface WebEdge { id?: number; source: string; target: string; relation: string; description?: string; created?: boolean }
@@ -241,7 +243,7 @@ export async function showDatasetWebSearches(db: string, datasetID: number, titl
         "Those are in the trajectory of an eval.",
     );
   } catch (err) {
-    window.alert(`Failed to load web searches: ${errText(err)}`);
+    void alertDialog(`Failed to load web searches: ${errText(err)}`);
   }
 }
 

@@ -2,6 +2,7 @@
 // jobs in the database, and for the selected job a feed of its events and a graph of its loss. The events come from the
 // server as SSE (../training/events), which forwards what the sidecar reports; d3 is loaded as a global by index.html.
 
+import { alertDialog, confirmDialog } from "./dialogs.js";
 import { initActionModal, showActionLog, startAction, type ActionState } from "./actions.js";
 
 declare const d3: typeof import("d3");
@@ -411,9 +412,9 @@ function actionButtons(backend: string, actions: Record<string, ActionState>, de
     start.type = "button";
     start.disabled = running;
     start.title = a.label + (a.state === "idle" ? "" : " (again)");
-    start.addEventListener("click", () => {
-      if (!confirm(a.confirm || `${a.label}?\n\nIt changes the remote backend and can take several minutes. The live log opens next.`)) return;
-      void startAction(backend, name, title, () => void loadBackends()).catch((err) => alert(`Could not start ${name}: ${errText(err)}`));
+    start.addEventListener("click", async () => {
+      if (!(await confirmDialog(a.confirm || `${a.label}?\n\nIt changes the remote backend and can take several minutes. The live log opens next.`, { title: a.label, okLabel: a.label.split(" ")[0], danger: a.danger }))) return;
+      void startAction(backend, name, title, () => void loadBackends()).catch((err) => alertDialog(`Could not start ${name}: ${errText(err)}`));
     });
     out.push(start);
     if (a.state !== "idle") {
@@ -529,9 +530,9 @@ function appRow(backend: string, a: AppInfo): HTMLElement {
     if (!st) return;
     const b = button(text, `${st.label} (${a.name})`, st.danger ? "small danger" : "small");
     b.disabled = st.state === "running";
-    b.addEventListener("click", () => {
-      if (!confirm(st.confirm || `${st.label}: ${a.name}?\n\nIt changes the app in Modal and can take several minutes. The live log opens next.`)) return;
-      void startAction(backend, name, `${backend}: ${st.label} (${a.name})`, refresh, a.name).catch((err) => alert(`Could not start ${name}: ${errText(err)}`));
+    b.addEventListener("click", async () => {
+      if (!(await confirmDialog(st.confirm || `${st.label}: ${a.name}?\n\nIt changes the app in Modal and can take several minutes. The live log opens next.`, { title: `${st.label}: ${a.name}`, okLabel: st.label.split(" ")[0], danger: st.danger }))) return;
+      void startAction(backend, name, `${backend}: ${st.label} (${a.name})`, refresh, a.name).catch((err) => alertDialog(`Could not start ${name}: ${errText(err)}`));
     });
   };
   start("deploy", a.active ? "Redeploy" : "Deploy");
@@ -773,7 +774,7 @@ function renderDetailHead(): void {
 }
 
 async function stopJob(id: number): Promise<void> {
-  if (!confirm(`Stop job #${id}?\n\nIt ends at its next step; the adapters of a stopped job are not saved.`)) return;
+  if (!(await confirmDialog(`Stop job #${id}?\n\nIt ends at its next step; the adapters of a stopped job are not saved.`, { title: "Stop job", okLabel: "Stop job", danger: true }))) return;
   stopError = "";
   stopping.add(id);
   renderDetailHead();
