@@ -147,6 +147,10 @@ table {
   th { color: $muted; font-weight: 600; }
 }
 
+.table-scroll { overflow-x: auto; max-width: 100%; }
+td.nowrap { white-space: nowrap; }
+td.cell-clip { max-width: 10rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 #databases > .card { margin-top: 1rem; }

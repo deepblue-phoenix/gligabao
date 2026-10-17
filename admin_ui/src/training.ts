@@ -49,6 +49,16 @@ const fmtTime = (iso: string): string => {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toISOString().replace("T", " ").slice(0, 19);
 };
+// "5 minutes ago", "3 hours ago", "2 days ago": whichever unit fits best.
+const fmtAgo = (iso: string): string => {
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return iso;
+  const mins = Math.max(0, Math.floor((Date.now() - t) / 60000));
+  const [n, unit] = mins >= 1440 ? [Math.floor(mins / 1440), "day"] : mins >= 60 ? [Math.floor(mins / 60), "hour"] : [mins, "minute"];
+  return `${n} ${unit}${n === 1 ? "" : "s"} ago`;
+};
+// A long name shortened to its first 10 and last 5 characters.
+const shortName = (s: string): string => (s.length > 18 ? `${s.slice(0, 10)}...${s.slice(-5)}` : s);
 const fmtLoss = (v: number | null | undefined): string => (v == null ? "–" : v.toFixed(4));
 const fmtBytes = (n?: number): string => (n == null ? "" : n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`);
 
@@ -161,9 +171,15 @@ function renderModels(): void {
     tr.classList.toggle("selected", m.id === selectedModel);
     tr.title = "Show this model's files and run inference on it";
     tr.insertCell().textContent = String(m.id);
-    tr.insertCell().textContent = m.name;
+    const name = tr.insertCell();
+    name.textContent = shortName(m.name);
+    name.title = m.name; // the full name on hover
+    name.className = "nowrap";
     tr.insertCell().textContent = m.model_size;
-    tr.insertCell().textContent = m.dataset || "(default)";
+    const dataset = tr.insertCell();
+    dataset.textContent = m.dataset || "(default)";
+    dataset.title = dataset.textContent;
+    dataset.className = "cell-clip";
     const steps = tr.insertCell();
     steps.className = "num";
     steps.textContent = String(m.num_train_steps);
@@ -173,7 +189,10 @@ function renderModels(): void {
     const size = tr.insertCell();
     size.className = "num";
     size.textContent = `${fmtBytes(m.size_bytes)} · ${m.files.length} file${m.files.length === 1 ? "" : "s"}`;
-    tr.insertCell().textContent = fmtTime(m.created_at);
+    const trained = tr.insertCell();
+    trained.textContent = fmtAgo(m.created_at);
+    trained.title = `${fmtTime(m.created_at)} UTC`;
+    trained.className = "nowrap";
     tr.addEventListener("click", () => selectModel(m.id));
   }
   el("training-models-status").textContent = models.length === 0 ? "No trained models yet: one is saved when a job completes." : "";

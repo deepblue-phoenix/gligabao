@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.40.2] - 2026-11-02
+
+### Changed
+- Admin UI, trained models list: a model name is shortened to its first 10 and last 5 characters (`abcdefghij...vwxyz`) with the full name on hover; "Trained" shows how long ago (minutes, hours or days) with the exact UTC time on hover; the table no longer overflows the page (long dataset names are clipped, and the table scrolls horizontally if needed).
+
 ## [0.40.1] - 2026-11-02
 
 ### Fixed
