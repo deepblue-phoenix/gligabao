@@ -1,8 +1,8 @@
-"""The progress file of a training job: one JSON event per line. No heavy imports, safe to load anywhere.
+"""The events of a training job. No heavy imports, safe to load anywhere.
 
-The training container appends events (progress.py, bootstrap.py); the web API tails the file and streams the
-events to the Go server as SSE (api/api.py: /training/job_events). The index of an event in the file (counting
-complete, valid lines only) is its SSE id, so a reader that was cut off can resume with `from`.
+The training container appends them to the job's EventLog (event_log.py: a key-value store of the provider, a Modal
+Dict); the web API streams them to the Go server as SSE (api/api.py: /training/job_events). The index of an event in the
+log is its SSE id, so a reader that was cut off can resume with `from`.
 
 Events:
     {"type": "status", "status": "running" | "training" | "completed" | "failed" | "cancelled", "timestamp": ...,
@@ -10,22 +10,20 @@ Events:
      "model"?: {...}}          # "completed" only: the weights the job saved (trained_model.py: describe)
     {"type": "progress", "step", "loss", "learning_rate", "epoch", "timestamp", "elapsed_seconds"}
     {"type": "log", "message": str, "timestamp": ...}        # what the job is doing (loading the model, ...)
-A line without "type" (written before this field existed) is a progress event. "completed", "failed" and "cancelled"
-end the job.
+"completed", "failed" and "cancelled" end the job.
 
-Stopping a job: the web container writes a stop file next to the progress file (request_stop); the training container
-looks for it (stop_requested) between steps and at the stages of the setup, and then ends the job with a "cancelled"
-status. The training container is the only writer of the progress file (concurrent writers to one file of a volume would
-overwrite each other's commits); the stop file is written by the web container alone.
+Stopping a job: the web API sets a stop flag in the log (request_stop); the training container looks for it
+(stop_requested) between steps and at the stages of the setup, and then ends the job with a "cancelled" status.
+
+Writing is best effort for the events that only inform ("progress", "log": a failing store is logged and training goes
+on) and not for the status events: the store is retried, and if it keeps failing the error is raised.
 """
-import json
 import math
 import re
 import time
-from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
-from .paths import PROGRESS_DIR, PROGRESS_FILE_TEMPLATE
+from .event_log import EventLog
 
 TERMINAL_STATUSES = ("completed", "failed", "cancelled")
 
@@ -33,39 +31,28 @@ _JOB_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 def valid_job_id(job_id: str) -> bool:
-    """Job IDs name files, so only a conservative character set is accepted."""
+    """Job IDs are keys of the store, so only a conservative character set is accepted."""
     return isinstance(job_id, str) and _JOB_ID_RE.match(job_id) is not None
-
-
-def progress_path(job_id: str) -> str:
-    if not valid_job_id(job_id):
-        raise ValueError(f"invalid job id {job_id!r}")
-    return PROGRESS_FILE_TEMPLATE.format(timestamp=job_id)
 
 
 class JobCancelled(Exception):
     """Raised inside the training container when the job was asked to stop."""
 
 
-def stop_path(job_id: str) -> str:
-    return progress_path(job_id).replace(".jsonl", ".stop")
+def request_stop(log: EventLog) -> None:
+    """Ask the job to stop (web API side)."""
+    log.request_stop()
 
 
-def request_stop(job_id: str, commit_fn: Optional[Callable] = None) -> None:
-    """Ask the job to stop (web container side): writes the stop file and persists the volume."""
-    path = Path(stop_path(job_id))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(str(time.time()))
-    if commit_fn:
-        commit_fn([PROGRESS_DIR])
-
-
-def stop_requested(job_id: str, reload_fn: Optional[Callable] = None) -> bool:
-    """Whether the job was asked to stop (training container side). `reload_fn(paths)` refreshes the volume first, as
-    the stop file is written by another container."""
-    if reload_fn:
-        reload_fn([PROGRESS_DIR])
-    return Path(stop_path(job_id)).exists()
+def stop_requested(log: Optional[EventLog]) -> bool:
+    """Whether the job was asked to stop (training container side). A store that cannot be reached counts as no."""
+    if log is None:
+        return False
+    try:
+        return log.stop_requested()
+    except Exception as e:
+        print(f"[job] could not look for a stop request: {e!r}", flush=True)
+        return False
 
 
 def _clean(v):
@@ -75,48 +62,28 @@ def _clean(v):
     return v
 
 
-def write_event(path: str, event: dict, commit_fn: Optional[Callable] = None) -> None:
-    """Append `event` (with a timestamp, if it has none) to the progress file and persist the volume."""
+def write_event(log: Optional[EventLog], event: dict, best_effort: bool = False) -> None:
+    """Append `event` (with a timestamp, if it has none) to the job's log. `best_effort`: a failure is only printed."""
+    if log is None:
+        return
     event = {k: _clean(v) for k, v in event.items()}
     event.setdefault("timestamp", time.time())
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "a") as f:
-        f.write(json.dumps(event, allow_nan=False) + "\n")
-    if commit_fn:
-        commit_fn([PROGRESS_DIR])
+    try:
+        log.append(event)
+    except Exception as e:
+        if not best_effort:
+            raise
+        print(f"[job] could not record an event: {e!r}", flush=True)
 
 
-def write_status(path: str, status: str, commit_fn: Optional[Callable] = None, **fields) -> None:
-    write_event(path, {"type": "status", "status": status, **fields}, commit_fn)
+def write_status(log: Optional[EventLog], status: str, **fields) -> None:
+    write_event(log, {"type": "status", "status": status, **fields})
 
 
-def write_log(path: str, message: str, commit_fn: Optional[Callable] = None) -> None:
+def write_log(log: Optional[EventLog], message: str) -> None:
     """A "log" event: a line about what the job is doing. Also printed, for the container's own log."""
     print(f"[job] {message}", flush=True)
-    write_event(path, {"type": "log", "message": message}, commit_fn)
-
-
-def read_events(path: str) -> list:
-    """All complete events of the file, each with a "type". A line still being written (no newline yet) and
-    lines that are not JSON objects are skipped, deterministically, so event indexes stay stable between reads."""
-    p = Path(path)
-    if not p.exists():
-        return []
-    text = p.read_text()
-    lines = text.split("\n")
-    lines.pop()  # whatever follows the last newline: "" or a partial line
-    events = []
-    for line in lines:
-        if not line.strip():
-            continue
-        try:
-            ev = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(ev, dict):
-            ev.setdefault("type", "progress")
-            events.append(ev)
-    return events
+    write_event(log, {"type": "log", "message": message}, best_effort=True)
 
 
 def is_terminal(event: dict) -> bool:

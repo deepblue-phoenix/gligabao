@@ -90,7 +90,7 @@ An inference request (`POST /infer/query`) runs in a GPU container of the `infer
 
 | Column | Meaning |
 |---|---|
-| Mounted at | Where the container sees it: `/data`, `/models`, `/progress`, `/eval`, `/root/.cache/huggingface`. |
+| Mounted at | Where the container sees it: `/data`, `/models`, `/eval`, `/root/.cache/huggingface`. |
 | Volume | Its name in Modal (`gligabao-train-data`, ...). |
 | In Modal | `found`, or `not created yet` (the first deploy creates it), or `error` with the reason as a tooltip. |
 | Entries | How many files and directories its top level holds. |

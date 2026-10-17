@@ -6,7 +6,6 @@ under them, so this is the single place they are defined.
 
 DATA_DIR = "/data"                                  # datasets
 MODELS_DIR = "/models"                              # fine-tuned LoRA adapters
-PROGRESS_DIR = "/progress"                          # training progress (jsonl)
 EVAL_DIR = "/eval"                                  # eval examples collected via the web API
 HF_CACHE_DIR = "/root/.cache/huggingface"           # base-model cache (avoids re-downloading)
 
@@ -14,7 +13,6 @@ DATASET_FILENAME = "gemma4_tool_calling_news_finance_v1.jsonl"
 REMOTE_DATASET_PATH = f"{DATA_DIR}/{DATASET_FILENAME}"
 REMOTE_METADATA_PATH = f"{DATA_DIR}/.metadata.json"
 EVAL_DATASET_PATH = f"{EVAL_DIR}/eval_dataset.jsonl"
-PROGRESS_FILE_TEMPLATE = PROGRESS_DIR + "/training_progress_{timestamp}.jsonl"
 
 # Every training job saves its weights (a LoRA adapter: a few files) in a directory of its own, named after the job, so
 # training again never overwrites an earlier model. The path relative to MODELS_DIR is what the Go server records

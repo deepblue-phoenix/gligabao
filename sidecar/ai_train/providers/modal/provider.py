@@ -4,7 +4,7 @@ from typing import Any, Callable, Optional
 
 import modal
 
-from providers.base import FunctionSpec, ImageSpec, Provider
+from providers.base import CallStatus, FunctionSpec, ImageSpec, Provider
 
 # Where the sidecar's ai_train dir is mounted inside the container.
 REMOTE_PKG_DIR = "/pkg"
@@ -15,6 +15,11 @@ def registry_name(app_name: str) -> str:
     sidecar's scripts (providers/modal/inference_containers.py) read it to list and stop them: Modal itself does not say which function a
     container runs."""
     return f"{app_name}-inference"
+
+
+def events_name(app_name: str) -> str:
+    """Name of the Modal Dict that holds the event logs of the app's training jobs (ai_train_core/event_log.py)."""
+    return f"{app_name}-events"
 
 
 def _has_requirements(path: str) -> bool:
@@ -36,6 +41,7 @@ class ModalProvider(Provider):
             for path, name in volume_names.items()
         }
         self._images: dict = {}
+        self._events = None
 
     @property
     def native_app(self) -> Any:
@@ -91,6 +97,26 @@ class ModalProvider(Provider):
 
     def spawn(self, handle: Any, *args, **kwargs) -> str:
         return handle.spawn(*args, **kwargs).object_id
+
+    def event_kv(self) -> Any:
+        # A Dict holds its entries in durable storage and drops each one 7 days after it was last used.
+        if self._events is None:
+            self._events = modal.Dict.from_name(events_name(self._app_name), create_if_missing=True)
+        return self._events
+
+    def call_status(self, job_id: str) -> CallStatus:
+        from modal.exception import FunctionTimeoutError, InputCancellation, OutputExpiredError
+        try:
+            modal.FunctionCall.from_id(job_id).get(timeout=0)
+        except (FunctionTimeoutError, OutputExpiredError) as e:     # both are TimeoutErrors: check them first
+            return CallStatus("failed", f"{type(e).__name__}: {e}")
+        except TimeoutError:                                        # no output yet
+            return CallStatus("running")
+        except InputCancellation:
+            return CallStatus("failed", "the call was cancelled")
+        except Exception as e:                                      # the function raised, or lost its container
+            return CallStatus("failed", f"{type(e).__name__}: {e}"[:2000])
+        return CallStatus("succeeded")
 
     def register_container(self, info: dict) -> None:
         task_id = os.environ.get("MODAL_TASK_ID")

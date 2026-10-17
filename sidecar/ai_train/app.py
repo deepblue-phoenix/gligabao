@@ -51,9 +51,9 @@ def _volumes(*mount_paths: str) -> dict:
 
 # Volume sets per kind of function.
 DATA_VOLS = _volumes(paths.DATA_DIR)
-TRAIN_VOLS = _volumes(paths.DATA_DIR, paths.MODELS_DIR, paths.PROGRESS_DIR, paths.HF_CACHE_DIR)
+TRAIN_VOLS = _volumes(paths.DATA_DIR, paths.MODELS_DIR, paths.HF_CACHE_DIR)
 INFER_VOLS = _volumes(paths.MODELS_DIR, paths.HF_CACHE_DIR)
-WEB_VOLS = _volumes(paths.DATA_DIR, paths.EVAL_DIR, paths.PROGRESS_DIR)
+WEB_VOLS = _volumes(paths.DATA_DIR, paths.EVAL_DIR)
 
 # Images. Code is mounted last, so code edits don't rebuild the pip layers.
 CPU_IMAGE = ImageSpec(gpu=False)
@@ -102,7 +102,7 @@ def validate_dataset() -> dict:
 def train_4b(num_train_steps: int = 100, dataset: str = "", job_id: str = "") -> dict:
     from ai_train_core import bootstrap
     return bootstrap.run_train(num_train_steps, "4b", commit_fn=provider.commit_volumes, dataset=dataset, job_id=job_id,
-                               reload_fn=provider.reload_volumes)
+                               event_kv=provider.event_kv())
 
 
 @provider.function(FunctionSpec(
@@ -114,7 +114,7 @@ def train_4b(num_train_steps: int = 100, dataset: str = "", job_id: str = "") ->
 def train_12b(num_train_steps: int = 100, dataset: str = "", job_id: str = "") -> dict:
     from ai_train_core import bootstrap
     return bootstrap.run_train(num_train_steps, "12b", commit_fn=provider.commit_volumes, dataset=dataset, job_id=job_id,
-                               reload_fn=provider.reload_volumes)
+                               event_kv=provider.event_kv())
 
 
 TRAIN_FUNCTIONS = {"4b": train_4b, "12b": train_12b}
@@ -125,7 +125,7 @@ TRAIN_FUNCTIONS = {"4b": train_4b, "12b": train_12b}
 @provider.function(FunctionSpec(image=CPU_IMAGE, timeout_s=CONFIG.train_timeout_s))
 def train(num_train_steps: int = 100, model_size: str = "4b", dataset: str = "", job_id: str = "") -> dict:
     """Route to the per-size training function. `dataset` is a file name on the data volume ("" = the default
-    dataset); `job_id` names the progress file the job reports to."""
+    dataset); `job_id` names the event log the job reports to."""
     size = model_size.lower()
     if size not in TRAIN_FUNCTIONS:
         raise ValueError(f"Invalid model_size '{model_size}'. Must be one of {list(MODEL_SIZES)}.")
@@ -208,6 +208,8 @@ def serve_api():
             infer, prompt, max_tokens, temperature, model_size, model_path),
         commit_volumes=provider.commit_volumes,
         reload_volumes=provider.reload_volumes,
+        event_kv=provider.event_kv(),
+        call_status=provider.call_status,
     )
 
 

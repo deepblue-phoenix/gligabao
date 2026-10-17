@@ -22,7 +22,7 @@ const (
 // TrainingEvent is one event of a training job's progress (sidecar/ai_train/ai_train_core/progress_events.py): a status
 // change or a progress report. Fields that an event does not have are nil / empty.
 type TrainingEvent struct {
-	// Seq is the event's index in the job's progress file (the SSE id); StreamTrainingJobEvents sets it.
+	// Seq is the event's index in the job's event log (the SSE id); StreamTrainingJobEvents sets it.
 	Seq  int    `json:"seq"`
 	Type string `json:"type"` // EventStatus, EventProgress or EventLog
 	// Status ("running", "training", "completed", "failed", "cancelled") is set on status events. A completed event has the

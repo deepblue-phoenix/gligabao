@@ -5,6 +5,19 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.44.0] - 2026-10-20
+
+### Changed
+- **Training progress no longer goes through a Modal volume.** The training container appends each job's events to an *event log* in a Modal Dict named `<SIDECAR_APP_NAME>-events` (one request per event; the log keeps all of them, and entries expire 7 days after last use) instead of a `.jsonl` file on the `/progress` volume with a commit after every write. The web container reads the Dict instead of reloading the volume and re-reading the file, polls every second instead of every two, and `POST /training/job_cancel` sets a flag in the Dict instead of writing a stop file. The sidecar and Go protocol is unchanged: the same SSE events with the same ids, so a Go server or sidecar that was offline while a job trained resumes with `from=<last id + 1>` and gets everything it missed.
+- A job cancelled right after it started (before its container wrote an event) is now cancelled instead of answering 404.
+- `GET /training/job_progress` requires `job_id`.
+
+### Added
+- A watchdog in the sidecar's Modal web API: when a training container dies without reporting (out of memory, timeout), the idle event stream notices that the job's Modal call is over and writes the `failed` event with Modal's error, so the Go server marks the job failed at once instead of after its 3 hour limit.
+
+### Removed
+- The progress volume and `SIDECAR_VOL_PROGRESS`. **Redeploy the Modal app** after upgrading; jobs running during the redeploy are not followed (they report to the old volume), and the `gligabao-train-progress` volume can be deleted with `modal volume delete`.
+
 ## [0.43.1] - 2026-10-19
 
 ### Changed

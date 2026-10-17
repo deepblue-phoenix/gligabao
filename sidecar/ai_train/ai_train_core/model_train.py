@@ -10,7 +10,8 @@ from .model_config import get_model_config
 from .model_load import add_lora_adapters, load_gemma4_model
 from .paths import REMOTE_DATASET_PATH
 from .progress import ProgressCallback
-from .progress_events import JobCancelled, progress_path, stop_requested, write_log
+from .event_log import EventLog
+from .progress_events import JobCancelled, stop_requested, write_log
 from .prompt_format import dataset_formatting_func
 from .trained_model import describe, model_dir
 from .training_common import (load_training_dataset, print_dependency_versions, save_adapters,
@@ -19,27 +20,26 @@ from .training_common import (load_training_dataset, print_dependency_versions, 
 
 def run_finetuning(num_train_steps: int = 100, model_size: str = "4b",
                    commit_fn: Optional[Callable] = None, dataset_path: str = REMOTE_DATASET_PATH,
-                   job_id: str = "", reload_fn: Optional[Callable] = None) -> dict:
+                   job_id: str = "", events: Optional[EventLog] = None) -> dict:
     """load dataset -> load model (4-bit) -> add LoRA -> train -> save adapters.
 
     The adapters are saved in a directory of this job (trained_model.model_dir), and the result has their description
     under "model" (trained_model.describe); bootstrap.run_train reports it with the "completed" event.
 
-    `commit_fn(paths)` persists volumes (progress during training, models at the end).
+    `commit_fn(paths)` persists the models volume at the end.
     Training cost on Modal is roughly $0.15 per 100 steps for 4B on an A10G; 500+ steps
     recommended for the ~325-example dataset.
 
     The stages are reported as "log" events of the job; between them (and between the steps, see ProgressCallback) a
-    stop request (`reload_fn(paths)` refreshes the volume to see it) ends the job with JobCancelled.
+    stop request (progress_events.py) ends the job with JobCancelled. `events` is the job's EventLog (None: nothing is
+    reported).
     """
-    path = progress_path(job_id) if job_id else ""
     t0 = time.time()
 
     def stage(message: str) -> None:
         """Report a stage, and stop here if the job was asked to."""
-        if path:
-            write_log(path, f"{message} ({time.time() - t0:.0f}s since the start)", commit_fn)
-        if job_id and stop_requested(job_id, reload_fn):
+        write_log(events, f"{message} ({time.time() - t0:.0f}s since the start)")
+        if stop_requested(events):
             raise JobCancelled(f"stopped: {message}")
 
     config = get_model_config(model_size)
@@ -78,7 +78,7 @@ def run_finetuning(num_train_steps: int = 100, model_size: str = "4b",
         train_dataset=train_dataset,
         formatting_func=dataset_formatting_func,
         args=training_args,
-        callbacks=[ProgressCallback(commit_fn, job_id, reload_fn)],
+        callbacks=[ProgressCallback(events)],
     )
     stage("trainer ready; training starts (the first step is slow: kernels compile)")
     train_result = trainer.train()

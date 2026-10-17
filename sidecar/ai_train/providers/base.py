@@ -21,6 +21,13 @@ class ImageSpec:
 
 
 @dataclass(frozen=True)
+class CallStatus:
+    """Where a spawned call (the id `spawn` returned) stands."""
+    state: str            # "running", "succeeded" or "failed" (it raised, timed out, was cancelled or lost its container)
+    error: str = ""       # with "failed": why
+
+
+@dataclass(frozen=True)
 class FunctionSpec:
     """How a remote function should run."""
     image: ImageSpec
@@ -64,6 +71,17 @@ class Provider(ABC):
     @abstractmethod
     def reload_volumes(self, paths: Optional[list] = None) -> None:
         """Refresh volumes to see writes committed by other containers. `paths` as in commit_volumes."""
+
+    @abstractmethod
+    def event_kv(self) -> Any:
+        """A durable key-value store shared by all the containers of the app, for the training jobs' event logs
+        (ai_train_core/event_log.py). It needs `get(key, default=None)` and `update(mapping)`, and should drop old
+        entries by itself."""
+
+    @abstractmethod
+    def call_status(self, job_id: str) -> CallStatus:
+        """Whether the call that `spawn` returned `job_id` for is still running, and how it ended. The training
+        container reports its own end as an event; this is what tells that it died without doing so."""
 
     def register_container(self, info: dict) -> None:
         """Called inside a remote container that serves inference and stays warm: records it (with `info`: what it

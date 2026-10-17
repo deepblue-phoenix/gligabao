@@ -15,7 +15,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from unittest import mock
 
-from ai_train_core import dataset, paths, progress_events, trained_model
+from ai_train_core import dataset, event_log, paths, progress_events, trained_model
+from providers.base import CallStatus
 from ai_train_core.model_config import MODEL_CONFIGS, get_model_config
 from ai_train_core.prompt_format import extract_model_response, format_inference_prompt, format_instruction
 
@@ -92,56 +93,130 @@ class DatasetNameTest(unittest.TestCase):
                 dataset.resolve_dataset_path(bad)
 
 
+class FakeKV:
+    """The part of a modal.Dict that EventLog uses; `fail` makes the next n requests raise."""
+
+    def __init__(self):
+        self.d, self.fail, self.requests = {}, 0, 0
+
+    def _req(self):
+        self.requests += 1
+        if self.fail:
+            self.fail -= 1
+            raise ConnectionError("store down")
+
+    def get(self, key, default=None):
+        self._req()
+        return self.d.get(key, default)
+
+    def update(self, other):
+        self._req()
+        self.d.update(other)
+
+
+class EventLogTest(unittest.TestCase):
+    def setUp(self):
+        self.kv = FakeKV()
+        self.log = event_log.EventLog(self.kv, "j", chunk_size=3, sleep=lambda s: None)
+
+    def test_append_and_read_across_chunks(self):
+        self.assertEqual((self.log.head(), self.log.read_from(0), self.log.last_event()), (-1, [], None))
+        for i in range(8):
+            self.assertEqual(self.log.append({"type": "progress", "step": i}), i)
+        self.assertEqual(self.log.head(), 7)
+        self.assertEqual([(i, e["step"]) for i, e in self.log.read_from(0)], [(i, i) for i in range(8)])
+        self.assertEqual([i for i, _ in self.log.read_from(4)], [4, 5, 6, 7])  # resume in the middle of a chunk
+        self.assertEqual(self.log.read_from(8), [])
+        self.assertEqual(self.log.last_event()["step"], 7)
+        self.assertEqual(sorted(k for k in self.kv.d), ["j:c0", "j:c1", "j:c2", "j:head"])
+
+    def test_a_restarted_writer_continues(self):
+        for i in range(4):
+            self.log.append({"step": i})
+        again = event_log.EventLog(self.kv, "j", chunk_size=3, sleep=lambda s: None)
+        self.assertEqual(again.append({"step": 4}), 4)
+        self.assertEqual([e["step"] for _, e in again.read_from(0)], [0, 1, 2, 3, 4])
+        self.assertEqual(event_log.EventLog(self.kv, "other").read_from(0), [])  # per job
+
+    def test_events_without_type_are_progress(self):
+        self.log.append({"step": 1})
+        self.assertEqual(self.log.read_from(0)[0][1]["type"], "progress")
+
+    def test_retries_then_raises(self):
+        self.kv.fail = 3
+        self.assertEqual(self.log.append({"step": 1}), 0)  # tried again
+        self.kv.fail = 100
+        with self.assertRaises(ConnectionError):
+            self.log.append({"step": 2})
+        self.kv.fail = 0
+        self.assertEqual(self.log.append({"step": 3}), 1)  # the failed one is not in the log; no gap
+        self.assertEqual([e["step"] for _, e in self.log.read_from(0)], [1, 3])
+
+    def test_meta_stop_exists(self):
+        self.assertFalse(self.log.exists())
+        self.assertFalse(self.log.stop_requested())
+        self.log.set_meta({"call_id": "fc-1"})
+        self.assertTrue(self.log.exists())
+        self.assertEqual(self.log.meta(), {"call_id": "fc-1"})
+        self.log.request_stop()
+        self.assertTrue(self.log.stop_requested())
+        self.assertFalse(event_log.EventLog(self.kv, "other").stop_requested())
+        only_events = event_log.EventLog(self.kv, "e")
+        only_events.append({"step": 1})
+        self.assertTrue(only_events.exists())
+
+
 class ProgressEventsTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.path = str(Path(self.tmp.name) / "p.jsonl")
+        self.kv = FakeKV()
+        self.log = event_log.EventLog(self.kv, "p", sleep=lambda s: None)
+
+    def read(self):
+        return [e for _, e in self.log.read_from(0)]
 
     def test_write_and_read(self):
-        commits = []
-        progress_events.write_status(self.path, "running", commits.append)
-        progress_events.write_event(self.path, {"step": 5, "loss": float("nan"), "learning_rate": 1e-4}, commits.append)
-        progress_events.write_status(self.path, "completed", commits.append, final_loss=0.5)
-        self.assertEqual(len(commits), 3)
-        evs = progress_events.read_events(self.path)
+        progress_events.write_status(self.log, "running")
+        progress_events.write_event(self.log, {"step": 5, "loss": float("nan"), "learning_rate": 1e-4})
+        progress_events.write_status(self.log, "completed", final_loss=0.5)
+        evs = self.read()
         self.assertEqual([e["type"] for e in evs], ["status", "progress", "status"])
         self.assertIsNone(evs[1]["loss"])  # NaN is not valid JSON: sent as null
         self.assertEqual(evs[1]["step"], 5)
+        self.assertIn("timestamp", evs[0])
         self.assertFalse(progress_events.is_terminal(evs[0]))
         self.assertTrue(progress_events.is_terminal(evs[2]))
 
-    def test_read_skips_partial_and_garbage_lines(self):
-        Path(self.path).write_text('{"step": 1}\nnot json\n\n{"type":"status","status":"failed"}\n{"step": 2')
-        evs = progress_events.read_events(self.path)
-        self.assertEqual([e["type"] for e in evs], ["progress", "status"])  # old lines have no type: progress
-        self.assertEqual(progress_events.read_events(str(Path(self.tmp.name) / "missing")), [])
-
     def test_log_and_cancelled_events(self):
-        progress_events.write_log(self.path, "loading the model")
-        progress_events.write_status(self.path, "cancelled", error="stopped at step 3")
-        evs = progress_events.read_events(self.path)
+        progress_events.write_log(self.log, "loading the model")
+        progress_events.write_status(self.log, "cancelled", error="stopped at step 3")
+        evs = self.read()
         self.assertEqual((evs[0]["type"], evs[0]["message"]), ("log", "loading the model"))
         self.assertFalse(progress_events.is_terminal(evs[0]))
         self.assertTrue(progress_events.is_terminal(evs[1]))
 
+    def test_no_log_reports_nothing(self):
+        progress_events.write_status(None, "running")
+        progress_events.write_log(None, "x")
+        self.assertFalse(progress_events.stop_requested(None))
+
+    def test_best_effort_vs_status(self):
+        self.kv.fail = 1000
+        progress_events.write_event(self.log, {"step": 1}, best_effort=True)  # only printed
+        progress_events.write_log(self.log, "x")
+        with self.assertRaises(ConnectionError):
+            progress_events.write_status(self.log, "completed")  # the status events must get through
+        self.assertFalse(progress_events.stop_requested(self.log))  # an unreachable store is not a stop
+
     def test_stop_request(self):
-        with mock.patch("ai_train_core.progress_events.PROGRESS_FILE_TEMPLATE", self.tmp.name + "/p_{timestamp}.jsonl"):
-            commits, reloads = [], []
-            self.assertFalse(progress_events.stop_requested("s1", reloads.append))
-            progress_events.request_stop("s1", commits.append)
-            self.assertEqual(len(commits), 1)
-            self.assertTrue(progress_events.stop_requested("s1", reloads.append))
-            self.assertEqual(len(reloads), 2)  # the volume is refreshed before each look
-            self.assertFalse(progress_events.stop_requested("s2"))  # per job
-            self.assertNotEqual(progress_events.stop_path("s1"), progress_events.progress_path("s1"))
+        self.assertFalse(progress_events.stop_requested(self.log))
+        progress_events.request_stop(self.log)
+        self.assertTrue(progress_events.stop_requested(self.log))
+        self.assertFalse(progress_events.stop_requested(event_log.EventLog(self.kv, "other")))  # per job
 
     def test_job_id(self):
         self.assertTrue(progress_events.valid_job_id("ab12-_"))
         for bad in ("", "../x", "a/b", "a b", "x" * 65):
             self.assertFalse(progress_events.valid_job_id(bad), bad)
-            with self.assertRaises(ValueError):
-                progress_events.progress_path(bad)
 
 
 class TrainedModelTest(unittest.TestCase):
@@ -189,27 +264,25 @@ class TrainedModelTest(unittest.TestCase):
 
 
 class RunTrainTest(unittest.TestCase):
-    """bootstrap.run_train reports the job's life to its progress file (the trainers themselves are faked)."""
+    """bootstrap.run_train reports the job's life to its event log (the trainers themselves are faked)."""
 
     def setUp(self):
         from ai_train_core import bootstrap
         self.bootstrap = bootstrap
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        p = mock.patch("ai_train_core.progress_events.PROGRESS_FILE_TEMPLATE", self.tmp.name + "/p_{timestamp}.jsonl")
-        p.start()
-        self.addCleanup(p.stop)
+        self.kv = FakeKV()
+
+    def run_train(self, *args, **kw):
+        return self.bootstrap.run_train(*args, event_kv=self.kv, **kw)
 
     def statuses(self, job_id):
-        return [(e["status"], e) for e in progress_events.read_events(f"{self.tmp.name}/p_{job_id}.jsonl")
-                if e["type"] == "status"]
+        return [(e["status"], e) for _, e in event_log.EventLog(self.kv, job_id).read_from(0) if e["type"] == "status"]
 
     def test_completed(self):
         fake = mock.Mock()
         model = {"path": "trained/jc", "files": [], "size_bytes": 0}
         fake.run_finetuning.return_value = {"status": "success", "final_loss": 0.25, "model": model}
         with mock.patch.dict(sys.modules, {"ai_train_core.model_train": fake}):
-            self.bootstrap.run_train(3, "4b", dataset="mine.jsonl", job_id="jc")
+            self.run_train(3, "4b", dataset="mine.jsonl", job_id="jc")
         self.assertEqual(fake.run_finetuning.call_args.kwargs["dataset_path"], f"{paths.DATA_DIR}/mine.jsonl")
         self.assertEqual(fake.run_finetuning.call_args.kwargs["job_id"], "jc")
         st = self.statuses("jc")
@@ -222,7 +295,7 @@ class RunTrainTest(unittest.TestCase):
         fake.run_finetuning.side_effect = RuntimeError("out of memory")
         with mock.patch.dict(sys.modules, {"ai_train_core.model_train": fake}):
             with self.assertRaises(RuntimeError):
-                self.bootstrap.run_train(3, "4b", job_id="jf")
+                self.run_train(3, "4b", job_id="jf")
         st = self.statuses("jf")
         self.assertEqual([s for s, _ in st], ["running", "failed"])
         self.assertIn("out of memory", st[1][1]["error"])
@@ -231,23 +304,40 @@ class RunTrainTest(unittest.TestCase):
         fake = mock.Mock()
         fake.run_finetuning.side_effect = progress_events.JobCancelled("stopped at step 4")
         with mock.patch.dict(sys.modules, {"ai_train_core.model_train": fake}):
-            result = self.bootstrap.run_train(3, "4b", job_id="jx")  # not an error: nothing is raised
+            result = self.run_train(3, "4b", job_id="jx")  # not an error: nothing is raised
         self.assertEqual(result["status"], "cancelled")
         st = self.statuses("jx")
         self.assertEqual([s for s, _ in st], ["running", "cancelled"])
         self.assertIn("step 4", st[-1][1]["error"])
 
-    def test_reload_fn_reaches_the_trainer(self):
+    def test_the_trainer_gets_the_event_log(self):
         fake = mock.Mock()
         fake.run_finetuning.return_value = {"status": "success", "final_loss": 0.1}
-        reload_fn = mock.Mock()
         with mock.patch.dict(sys.modules, {"ai_train_core.model_train": fake}):
-            self.bootstrap.run_train(3, "4b", job_id="jr", reload_fn=reload_fn)
-        self.assertIs(fake.run_finetuning.call_args.kwargs["reload_fn"], reload_fn)
+            self.run_train(3, "4b", job_id="jr")
+        events = fake.run_finetuning.call_args.kwargs["events"]
+        self.assertEqual((events.kv, events.job_id), (self.kv, "jr"))
+
+    def test_a_failing_store_does_not_hide_the_error(self):
+        fake = mock.Mock()
+        fake.run_finetuning.side_effect = RuntimeError("out of memory")
+        with mock.patch.dict(sys.modules, {"ai_train_core.model_train": fake}):
+            self.kv.fail = 0
+            real = self.kv.update
+            calls = []
+
+            def flaky(other):
+                calls.append(1)
+                if len(calls) > 2:  # "running" and the log line get in; the "failed" event does not
+                    raise ConnectionError("store down")
+                real(other)
+            self.kv.update = flaky
+            with mock.patch("ai_train_core.event_log.time.sleep"), self.assertRaises(RuntimeError):
+                self.run_train(3, "4b", job_id="jq")
 
     def test_bad_dataset_fails_the_job(self):
         with self.assertRaises(ValueError):
-            self.bootstrap.run_train(3, "4b", dataset="../x.jsonl", job_id="jb")
+            self.run_train(3, "4b", dataset="../x.jsonl", job_id="jb")
         self.assertEqual([s for s, _ in self.statuses("jb")], ["running", "failed"])
 
 
@@ -260,25 +350,29 @@ class ApiTest(unittest.TestCase):
             self.skipTest("fastapi/httpx not installed")
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.data, self.progress = Path(self.tmp.name, "data"), Path(self.tmp.name, "progress")
+        self.data = Path(self.tmp.name, "data")
         self.data.mkdir()
-        self.progress.mkdir()
-        for target, value in (("api.api.DATA_DIR", str(self.data)), ("api.api.PROGRESS_DIR", str(self.progress)),
-                              ("ai_train_core.progress_events.PROGRESS_FILE_TEMPLATE",
-                               str(self.progress) + "/training_progress_{timestamp}.jsonl")):
-            p = mock.patch(target, value)
-            p.start()
-            self.addCleanup(p.stop)
+        p = mock.patch("api.api.DATA_DIR", str(self.data))
+        p.start()
+        self.addCleanup(p.stop)
+        self.kv = FakeKV()
+        self.call_state = CallStatus("running")
         self.calls, self.commits = [], []
         api = create_api(
             spawn_training_job=lambda steps, size, ds, job_id: self.calls.append((steps, size, ds, job_id)) or "fc-1",
             infer_response=lambda *a: {"response": "ok", "args": list(a)},
             commit_volumes=self.commits.append,
             reload_volumes=lambda p: None,
+            event_kv=self.kv,
+            call_status=lambda call_id: self.call_state,
             poll_interval_s=0.01,
             max_stream_s=0.3,
+            watchdog_s=0.05,
         )
         self.client = TestClient(api)
+
+    def log(self, job_id):
+        return event_log.EventLog(self.kv, job_id, sleep=lambda s: None)
 
     def events(self, job_id, query=""):
         """(sse id, event name, data) of every event the stream sends before it ends."""
@@ -303,7 +397,8 @@ class ApiTest(unittest.TestCase):
         started = datetime.fromisoformat(job["started_at"].replace("Z", "+00:00"))
         self.assertIsNotNone(started.tzinfo)  # golang needs a timezone to parse it
         self.assertTrue(progress_events.valid_job_id(job["job_id"]))
-        self.assertEqual(self.calls, [(7, "12b", "", job["job_id"])])  # the job id names the progress file
+        self.assertEqual(self.calls, [(7, "12b", "", job["job_id"])])  # the job id names the event log
+        self.assertEqual(self.log(job["job_id"]).meta()["call_id"], "fc-1")  # for the watchdog
 
     def test_job_start_dataset(self):
         (self.data / "mine.jsonl").write_text("{}\n")
@@ -347,10 +442,10 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.client.get("/datasets/list").status_code, 404)
 
     def test_job_events_stream(self):
-        path = progress_events.progress_path("j1")
-        progress_events.write_status(path, "running")
-        progress_events.write_event(path, {"type": "progress", "step": 5, "loss": 1.5})
-        progress_events.write_status(path, "completed", final_loss=1.2)
+        log = self.log("j1")
+        progress_events.write_status(log, "running")
+        progress_events.write_event(log, {"type": "progress", "step": 5, "loss": 1.5})
+        progress_events.write_status(log, "completed", final_loss=1.2)
         evs = self.events("j1")
         self.assertEqual([(i, e) for i, e, _ in evs], [(0, "status"), (1, "progress"), (2, "status")])
         self.assertEqual(evs[1][2]["loss"], 1.5)
@@ -360,35 +455,83 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.events("j1", "&from=3"), [])  # past the end of a finished job: ends after max_stream_s
 
     def test_job_events_follows_a_running_job(self):
-        path = progress_events.progress_path("j2")
-        self.assertEqual(self.events("j2"), [])  # no file yet: waits, then gives up when max_stream_s is over
-        progress_events.write_status(path, "running")
+        log = self.log("j2")
+        self.assertEqual(self.events("j2"), [])  # no events yet: waits, then gives up when max_stream_s is over
+        progress_events.write_status(log, "running")
         self.assertEqual([e["status"] for _, _, e in self.events("j2")], ["running"])  # not finished: stream times out
         self.assertEqual(self.client.get("/training/job_events").status_code, 400)
         self.assertEqual(self.client.get("/training/job_events?job_id=../x").status_code, 400)
 
+    def test_job_events_survive_an_unreachable_store(self):
+        progress_events.write_status(self.log("j3"), "completed")
+        self.kv.fail = 4  # the first reads fail, the stream keeps trying
+        with mock.patch("ai_train_core.event_log.time.sleep"):
+            self.assertEqual([e for _, e, _ in self.events("j3")], ["status"])
+
+    def test_a_reader_that_was_away_gets_what_it_missed(self):
+        log = self.log("j4")
+        progress_events.write_status(log, "training")
+        first = self.events("j4")
+        for step in range(1, 120):  # more than two chunks
+            progress_events.write_event(log, {"type": "progress", "step": step})
+        progress_events.write_status(log, "completed")
+        rest = self.events("j4", f"&from={first[-1][0] + 1}")
+        self.assertEqual([i for i, _, _ in rest], list(range(1, 121)))
+        self.assertEqual(rest[-1][2]["status"], "completed")
+
+    def test_watchdog_reports_a_job_that_died(self):
+        log = self.log("w1")
+        self.client.post("/training/job_start", json={})  # (a job of its own: the id below is set by hand)
+        log.set_meta({"call_id": "fc-9"})
+        progress_events.write_status(log, "training", max_steps=10)
+        self.assertEqual([s for _, _, s in self.events("w1")], [e for _, e in log.read_from(0)])  # running: nothing added
+        self.call_state = CallStatus("failed", "OutOfMemoryError: CUDA out of memory")
+        evs = self.events("w1")
+        self.assertEqual([e for _, e, _ in evs], ["status", "status"])
+        self.assertEqual(evs[1][2]["status"], "failed")
+        self.assertIn("CUDA out of memory", evs[1][2]["error"])
+        self.assertEqual(len(log.read_from(0)), 2)
+        self.assertEqual(len(self.events("w1")), 2)  # a second stream does not add another
+
+    def test_watchdog_leaves_a_job_that_reported_its_end(self):
+        log = self.log("w2")
+        log.set_meta({"call_id": "fc-9"})
+        progress_events.write_status(log, "failed", error="boom")
+        self.call_state = CallStatus("failed", "RuntimeError: boom")  # the call fails after the event was written
+        self.assertEqual(len(self.events("w2")), 1)
+        self.assertEqual(len(log.read_from(0)), 1)
+
+    def test_watchdog_needs_the_call_id(self):
+        progress_events.write_status(self.log("w3"), "training")
+        self.call_state = CallStatus("failed", "x")
+        self.assertEqual(len(self.events("w3")), 1)  # a job not started through job_start has no call id: left alone
+
     def test_job_cancel(self):
-        path = progress_events.progress_path("c1")
+        log = self.log("c1")
         post = lambda body: self.client.post("/training/job_cancel", json=body)
         self.assertEqual(post({}).status_code, 400)
         self.assertEqual(post({"job_id": "../x"}).status_code, 400)
-        self.assertEqual(post({"job_id": "c1"}).status_code, 404)  # no progress file: unknown job
-        progress_events.write_status(path, "training", max_steps=10)
+        self.assertEqual(post({"job_id": "c1"}).status_code, 404)  # no such job
+        progress_events.write_status(log, "training", max_steps=10)
         r = post({"job_id": "c1"})
         self.assertEqual((r.status_code, r.json()), (200, {"job_id": "c1", "status": "stopping"}))
-        self.assertTrue(progress_events.stop_requested("c1"))
-        self.assertEqual(self.commits[-1], ["/progress"])  # the stop file is committed for the training container
-        # The web container never writes to the progress file itself.
-        self.assertEqual(len(progress_events.read_events(path)), 1)
-        progress_events.write_status(path, "cancelled")
+        self.assertTrue(progress_events.stop_requested(log))
+        self.assertFalse(progress_events.stop_requested(self.log("c2")))
+        self.assertEqual(len(log.read_from(0)), 1)  # the API itself writes no event
+        progress_events.write_status(log, "cancelled")
         self.assertEqual(post({"job_id": "c1"}).status_code, 409)  # over already
 
+    def test_job_cancel_before_the_container_starts(self):
+        job = self.client.post("/training/job_start", json={}).json()
+        r = self.client.post("/training/job_cancel", json={"job_id": job["job_id"]})
+        self.assertEqual(r.status_code, 200)  # no event yet, but the job exists
+        self.assertTrue(progress_events.stop_requested(self.log(job["job_id"])))
+
     def test_job_progress(self):
-        self.assertEqual(self.client.get("/training/job_progress").json(), {"progress": []})
-        progress_events.write_event(progress_events.progress_path("a"), {"step": 1})
-        progress_events.write_event(progress_events.progress_path("b"), {"step": 2})
-        os.utime(progress_events.progress_path("a"), (1, 1))
-        self.assertEqual(self.client.get("/training/job_progress").json()["progress"][0]["step"], 2)  # newest
+        self.assertEqual(self.client.get("/training/job_progress").status_code, 400)
+        self.assertEqual(self.client.get("/training/job_progress?job_id=a").json(), {"progress": []})
+        progress_events.write_event(self.log("a"), {"step": 1})
+        progress_events.write_event(self.log("b"), {"step": 2})
         self.assertEqual(self.client.get("/training/job_progress?job_id=a").json()["progress"][0]["step"], 1)
 
     def test_job_start_defaults_and_invalid_steps(self):

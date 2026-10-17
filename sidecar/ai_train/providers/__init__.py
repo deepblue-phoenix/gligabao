@@ -1,7 +1,7 @@
 """Provider factory. Add new providers here."""
-from providers.base import FunctionSpec, ImageSpec, Provider
+from providers.base import CallStatus, FunctionSpec, ImageSpec, Provider
 
-__all__ = ["FunctionSpec", "ImageSpec", "Provider", "get_provider"]
+__all__ = ["CallStatus", "FunctionSpec", "ImageSpec", "Provider", "get_provider"]
 
 
 def get_provider(name: str, *, app_name: str, local_pkg_dir: str, volumes: dict) -> Provider:

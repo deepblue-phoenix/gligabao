@@ -37,7 +37,6 @@ class TrainConfig:
     volumes: dict = field(default_factory=lambda: {
         paths.DATA_DIR: _env("SIDECAR_VOL_DATA", "gligabao-train-data"),          # datasets
         paths.MODELS_DIR: _env("SIDECAR_VOL_MODELS", "gligabao-train-models"),    # fine-tuned adapters
-        paths.PROGRESS_DIR: _env("SIDECAR_VOL_PROGRESS", "gligabao-train-progress"),
         paths.EVAL_DIR: _env("SIDECAR_VOL_EVAL", "gligabao-train-eval"),          # eval examples
         paths.HF_CACHE_DIR: _env("SIDECAR_VOL_HF_CACHE", "gligabao-train-hf-cache"),  # base-model cache
     })

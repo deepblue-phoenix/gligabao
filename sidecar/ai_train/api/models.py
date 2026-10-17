@@ -52,7 +52,7 @@ class TrainingJob(BaseModel):
     Returned by POST /training/job_start; golang decodes it (internal/sidecar: TrainingJob) and records it in its
     `gb_training_job_runs` table.
     """
-    job_id: str = Field(min_length=1)       # the sidecar's id of the job: names its progress file (GET /training/job_events)
+    job_id: str = Field(min_length=1)       # the sidecar's id of the job: names its event log (GET /training/job_events)
     provider_job_id: str = ""               # the compute provider's id of the spawned call (for the provider's dashboard)
     status: str = "started"
     model_size: str

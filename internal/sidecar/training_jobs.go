@@ -27,7 +27,7 @@ const (
 // TrainingJob is a training job started on the sidecar (sidecar/ai_train/api/models.py: TrainingJob). The sidecar
 // reports it back when a job is started.
 type TrainingJob struct {
-	// JobID is the sidecar's ID of the job: it names the job's progress file there (see StreamTrainingJobEvents).
+	// JobID is the sidecar's ID of the job: it names the job's event log there (see StreamTrainingJobEvents).
 	// ProviderJobID is the compute provider's ID of the spawned call.
 	JobID         string `json:"job_id"`
 	ProviderJobID string `json:"provider_job_id,omitempty"`

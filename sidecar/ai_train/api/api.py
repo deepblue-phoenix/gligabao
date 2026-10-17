@@ -5,7 +5,7 @@ app.py (spawn a job, call a function, commit/reload volumes).
 
 Endpoints:
     POST /training/job_start   {num_train_steps?, model_size?, dataset?, dataset_content?}  -> spawns a job, returns a TrainingJob (api/models.py)
-    GET  /training/job_progress[?job_id=]                        -> the job's (default: newest) progress entries
+    GET  /training/job_progress?job_id=                          -> all the job's events so far, as {"progress": [...]}
     GET  /training/job_events?job_id=[&from=N]                   -> SSE stream of the job's progress events (see below)
     POST /training/job_cancel  {job_id}                          -> asks the job to stop (200 {job_id, status: "stopping"}); 404 unknown job, 409 already over
     POST /infer/query                  {prompt, max_tokens?, temperature?, model_size?, model_path?}
@@ -19,10 +19,16 @@ There are no dataset endpoints: training datasets are managed by the Go server (
 stores a dataset internally: a job_start that carries `dataset_content` (base64 of the jsonl file) saves it on the data
 volume as `dataset` before spawning the job; without `dataset_content`, `dataset` must already be on the volume.
 
-GET /training/job_events is Server-Sent Events: the events of the job's progress file (ai_train_core/progress_events.py)
-as they are written, each as `id: <index>`, `event: <status|progress>`, `data: <the event as JSON>`. The stream ends
-after the "completed", "failed" or "cancelled" event, or after `max_stream_s` (the reader reconnects with `from=<last id + 1>`).
-Comment lines (": keepalive") are sent while there is nothing new.
+GET /training/job_events is Server-Sent Events: the events of the job's event log (ai_train_core/event_log.py, in a
+key-value store of the provider: a Modal Dict) as they are written, each as `id: <index>`, `event: <status|progress|log>`,
+`data: <the event as JSON>`. The log keeps all the events of the job (for 7 days on Modal), so a reader that was away
+reconnects with `from=<last id + 1>` and gets what it missed. The stream ends after the "completed", "failed" or
+"cancelled" event, or after `max_stream_s`. Comment lines (": keepalive") are sent while there is nothing new.
+
+Watchdog: the training container reports its own end as an event, but it cannot when it is killed (out of memory, a
+timeout, ...). While a stream has nothing new, every `watchdog_s` seconds it asks the provider about the job's call (its id
+is in the log's meta, written by job_start); when the call is over and the log does not end with a terminal event, the
+API writes the "failed" event itself. The training container is gone by then, so it is the only writer.
 """
 import asyncio
 import json
@@ -40,8 +46,9 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from api.models import TrainingDataset, TrainingJob
 from ai_train_core.dataset import store_dataset, valid_dataset_filename
 from ai_train_core.model_config import MODEL_SIZES
-from ai_train_core.paths import DATA_DIR, EVAL_DATASET_PATH, EVAL_DIR, PROGRESS_DIR
-from ai_train_core.progress_events import is_terminal, progress_path, read_events, request_stop, valid_job_id
+from ai_train_core.event_log import EventLog
+from ai_train_core.paths import DATA_DIR, EVAL_DATASET_PATH, EVAL_DIR
+from ai_train_core.progress_events import is_terminal, request_stop, valid_job_id, write_status
 from ai_train_core.trained_model import valid_model_path
 
 log = logging.getLogger("uvicorn.error")  # shows in the container's log next to the access lines
@@ -61,10 +68,35 @@ def create_api(
     infer_response: Callable[..., dict],     # (prompt, max_tokens, temperature, model_size, model_path) -> dict
     commit_volumes: Callable[[list], None],
     reload_volumes: Callable[[list], None],
-    poll_interval_s: float = 2.0,               # how often /training/job_events looks for new events
+    event_kv,                                   # the key-value store of the event logs (Provider.event_kv)
+    call_status: Callable[[str], object],       # (the provider's call id) -> CallStatus (Provider.call_status)
+    poll_interval_s: float = 1.0,               # how often /training/job_events looks for new events
     max_stream_s: float = 300.0,                # how long one /training/job_events response lasts at most
+    watchdog_s: float = 15.0,                   # how often an idle stream checks that the job's call is still alive
 ) -> FastAPI:
     api = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+    def events_of(job_id: str) -> EventLog:
+        return EventLog(event_kv, job_id, retries=2)  # a reader that fails soon polls again; it does not wait
+
+    def dead_job_event(events: EventLog) -> bool:
+        """Watchdog: if the job's call is over and the log has no terminal event, write the "failed" one. Whether it
+        wrote one."""
+        meta = events.meta() or {}
+        call_id = meta.get("call_id")
+        if not call_id:
+            return False
+        status = call_status(call_id)
+        if status.state == "running":
+            return False
+        # Look at the log only after the call is over: the container's last event comes before its end.
+        last = events.last_event()
+        if last is not None and is_terminal(last):
+            return False
+        error = status.error or "the job's function ended without reporting that the job is over"
+        write_status(events, "failed", error=f"the training container ended without reporting it: {error}"[:2000])
+        log.warning("training job %s: its call ended (%s) with no final event: reported as failed", events.job_id, status.state)
+        return True
 
     def bad_model_size(model_size):
         if str(model_size).lower() not in MODEL_SIZES:
@@ -98,31 +130,26 @@ def create_api(
                     return JSONResponse({"error": f"Dataset '{dataset}' not found"}, status_code=400)
         elif dataset_content:
             return JSONResponse({"error": "dataset_content needs a dataset name"}, status_code=400)
-        job_id = uuid.uuid4().hex[:16]  # names the progress file; the provider's own id is only for its dashboard
+        job_id = uuid.uuid4().hex[:16]  # names the event log; the provider's own id is only for its dashboard
+        events = events_of(job_id)
+        meta = {"created": time.time(), "model_size": model_size}
+        await run_in_threadpool(events.set_meta, meta)  # the job exists (cancel, events) before its container does
         provider_job_id = await run_in_threadpool(spawn_training_job, num_train_steps, model_size, dataset, job_id)
+        await run_in_threadpool(events.set_meta, {**meta, "call_id": str(provider_job_id)})  # for the watchdog
         job = TrainingJob(job_id=job_id, provider_job_id=str(provider_job_id), model_size=model_size,
                           num_train_steps=num_train_steps, dataset=dataset)
         return JSONResponse(job.model_dump(mode="json"))
 
     @api.get("/training/job_progress")
     async def job_progress(job_id: str = ""):
-        if job_id and not valid_job_id(job_id):
-            return JSONResponse({"error": "invalid job_id"}, status_code=400)
-        # This container is long-lived, so its view of the volume can be stale: the training
-        # container commits progress as it logs; reload to see it.
-        await run_in_threadpool(reload_volumes, [PROGRESS_DIR])
-        if job_id:
-            latest = Path(progress_path(job_id))
-        else:
-            files = list(Path(PROGRESS_DIR).glob("training_progress_*.jsonl"))
-            if not files:
-                return JSONResponse({"progress": []})
-            latest = max(files, key=lambda f: f.stat().st_mtime)
-        return JSONResponse({"progress": read_events(str(latest))})
+        if not valid_job_id(job_id):
+            return JSONResponse({"error": "job_id is required (letters, digits, - and _)"}, status_code=400)
+        events = await run_in_threadpool(events_of(job_id).read_from, 0)
+        return JSONResponse({"progress": [ev for _, ev in events]})
 
     @api.post("/training/job_cancel")
     async def job_cancel(request: Request):
-        """Ask a job to stop. The training container sees the stop file between steps (and between the stages of its
+        """Ask a job to stop. The training container sees the stop flag between steps (and between the stages of its
         setup) and ends the job with a "cancelled" event, so the stop takes effect at the next step, not instantly."""
         try:
             data = await request.json()
@@ -131,13 +158,13 @@ def create_api(
         job_id = data.get("job_id", "") if isinstance(data, dict) else ""
         if not valid_job_id(job_id):
             return JSONResponse({"error": "job_id is required (letters, digits, - and _)"}, status_code=400)
-        await run_in_threadpool(reload_volumes, [PROGRESS_DIR])
-        events = await run_in_threadpool(read_events, progress_path(job_id))
-        if not events:
+        events = events_of(job_id)
+        if not await run_in_threadpool(events.exists):
             return JSONResponse({"error": f"no such job {job_id!r}"}, status_code=404)
-        if any(is_terminal(e) for e in events):
+        last = await run_in_threadpool(events.last_event)
+        if last is not None and is_terminal(last):
             return JSONResponse({"error": f"job {job_id!r} is already over"}, status_code=409)
-        await run_in_threadpool(request_stop, job_id, lambda paths: commit_volumes(paths))
+        await run_in_threadpool(request_stop, events)
         log.info("training job %s: stop requested", job_id)
         return JSONResponse({"job_id": job_id, "status": "stopping"})
 
@@ -145,11 +172,12 @@ def create_api(
     async def job_events(request: Request, job_id: str = "", start: int = Query(0, alias="from", ge=0)):
         if not valid_job_id(job_id):
             return JSONResponse({"error": "job_id is required (letters, digits, - and _)"}, status_code=400)
-        path = progress_path(job_id)
+        events = events_of(job_id)
 
         async def stream():
             pos = start
-            deadline = time.monotonic() + max_stream_s
+            now = time.monotonic()
+            deadline, next_watch = now + max_stream_s, now + watchdog_s
             log.info("training job %s: event stream opened from %d", job_id, start)
             yield ": connected\n\n"
             polls = 0
@@ -157,23 +185,30 @@ def create_api(
                 if await request.is_disconnected():
                     log.info("training job %s: event stream closed by the reader at %d", job_id, pos)
                     return
-                # The training container commits progress as it logs; see job_progress.
                 try:
-                    await run_in_threadpool(reload_volumes, [PROGRESS_DIR])
-                except Exception as e:  # e.g. the volume is busy: read what is there and try again next time
-                    log.warning("training job %s: reloading the progress volume failed: %r", job_id, e)
-                events = await run_in_threadpool(read_events, path)
+                    new = await run_in_threadpool(events.read_from, pos)
+                except Exception as e:  # e.g. the store is unreachable: try again next time
+                    log.warning("training job %s: reading the event log failed: %r", job_id, e)
+                    new = []
                 polls += 1
-                if pos >= len(events):
-                    yield ": keepalive\n\n"
-                    if polls % 15 == 0:  # about every 30 s
-                        log.info("training job %s: nothing new after event %d (%d in the file)", job_id, pos - 1, len(events))
-                for ev in events[pos:]:
-                    yield f"id: {pos}\nevent: {ev['type']}\ndata: {json.dumps(ev)}\n\n"
-                    log.info("training job %s: event %d sent: %s", job_id, pos, _describe(ev))
-                    pos += 1
+                for seq, ev in new:
+                    yield f"id: {seq}\nevent: {ev['type']}\ndata: {json.dumps(ev)}\n\n"
+                    log.info("training job %s: event %d sent: %s", job_id, seq, _describe(ev))
+                    pos = seq + 1
+                    next_watch = time.monotonic() + watchdog_s
                     if is_terminal(ev):
                         return
+                if not new:
+                    yield ": keepalive\n\n"
+                    if polls % 30 == 0:
+                        log.info("training job %s: nothing new after event %d", job_id, pos - 1)
+                    if time.monotonic() >= next_watch:
+                        next_watch = time.monotonic() + watchdog_s
+                        try:
+                            if await run_in_threadpool(dead_job_event, events):
+                                continue  # read the event it wrote right away
+                        except Exception as e:
+                            log.warning("training job %s: checking the job's call failed: %r", job_id, e)
                 await asyncio.sleep(poll_interval_s)
             log.info("training job %s: event stream ends at its time limit (the reader reconnects from %d)", job_id, pos)
 

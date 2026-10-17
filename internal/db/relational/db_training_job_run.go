@@ -61,7 +61,7 @@ func UpdateTrainingJobRun(ctx context.Context, d *sql.DB, id int64, u TrainingJo
 	return unsupported()
 }
 
-// RecordTrainingJobEvent stores the event with index seq (in the sidecar's progress file for the job) of a run, as typ
+// RecordTrainingJobEvent stores the event with index seq (in the sidecar's event log for the job) of a run, as typ
 // ("status" or "progress") and JSON data. It reports whether the event was new: a seq already stored is left as it is.
 func RecordTrainingJobEvent(ctx context.Context, d *sql.DB, runID int64, seq int, typ, data string) (bool, error) {
 	switch backend() {
