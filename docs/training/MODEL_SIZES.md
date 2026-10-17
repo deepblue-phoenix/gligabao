@@ -36,7 +36,7 @@ This training system supports both **Gemma-4 4B** and **Gemma-4 12B** models for
 cd sidecar/ai_train
 modal run app.py --action train --train-steps 500 --model-size 4b     # A10G
 modal run app.py --action train --train-steps 500 --model-size 12b    # A100
-modal run app.py --action generate --model-size 12b --prompt "..."
+modal run app.py --action infer --model-size 12b --prompt "..."
 ```
 
 ### HTTP API (after `modal serve app.py` / `modal deploy app.py`)

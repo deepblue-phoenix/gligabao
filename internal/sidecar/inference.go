@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+//---------------------------------------------------------------------------
+
 // InferRequest is the body of POST /infer/query.
 type InferRequest struct {
 	Prompt string `json:"prompt"`
@@ -25,6 +27,8 @@ type InferResponse struct {
 	ModelPath string `json:"model_path"`
 	Error     string `json:"error,omitempty"`
 }
+
+//---------------------------------------------------------------------------
 
 // InferError is the error of a generation that failed on the sidecar (it answered 200 with an "error"), e.g. because the
 // weights are not on its volume. Message is the sidecar's text.

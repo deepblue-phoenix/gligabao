@@ -272,7 +272,7 @@ class ApiTest(unittest.TestCase):
         self.calls, self.commits = [], []
         api = create_api(
             spawn_training_job=lambda steps, size, ds, job_id: self.calls.append((steps, size, ds, job_id)) or "fc-1",
-            generate_response=lambda *a: {"response": "ok", "args": list(a)},
+            infer_response=lambda *a: {"response": "ok", "args": list(a)},
             commit_volumes=self.commits.append,
             reload_volumes=lambda p: None,
             poll_interval_s=0.01,
@@ -401,11 +401,11 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.client.post("/training/job_start", json={"model_size": "99b"}).status_code, 400)
         self.assertEqual(self.client.post("/infer/query", json={"model_size": "99b"}).status_code, 400)
 
-    def test_generate(self):
+    def test_infer(self):
         r = self.client.post("/infer/query", json={"prompt": "hi"})
         self.assertEqual(r.json()["args"], ["hi", 1024, 0.7, "4b", ""])
 
-    def test_generate_with_a_trained_model(self):
+    def test_infer_with_a_trained_model(self):
         r = self.client.post("/infer/query", json={"prompt": "hi", "model_size": "12b", "model_path": "trained/abc123"})
         self.assertEqual(r.json()["args"], ["hi", 1024, 0.7, "12b", "trained/abc123"])
         for bad in ("../x", "trained/../x", "/models/trained/a", "finetuned_model_4b", "trained/a/b", "trained/"):

@@ -61,7 +61,7 @@ def _get_model(model_size: str, adapter_dir: Optional[str]):
     return model, tokenizer, config, loaded_dir, True
 
 
-def generate_response(prompt: str, max_tokens: int, temperature: float, model_size: str,
+def infer_response(prompt: str, max_tokens: int, temperature: float, model_size: str,
                       reload_fn: Optional[Callable] = None, model_path: str = "",
                       on_ready: Optional[Callable[[dict], None]] = None) -> dict:
     """Load base + a trained adapter and generate. Returns {"response", ...} or {"error"}.
@@ -86,10 +86,10 @@ def generate_response(prompt: str, max_tokens: int, temperature: float, model_si
             print(f"Reloading the models volume failed: {e!r}")
 
     with _cache_lock:
-        return _generate_locked(prompt, max_tokens, temperature, model_size, model_path, on_ready)
+        return _infer_locked(prompt, max_tokens, temperature, model_size, model_path, on_ready)
 
 
-def _generate_locked(prompt: str, max_tokens: int, temperature: float, model_size: str, model_path: str,
+def _infer_locked(prompt: str, max_tokens: int, temperature: float, model_size: str, model_path: str,
                      on_ready: Optional[Callable[[dict], None]]) -> dict:
     t0 = time.time()
     try:

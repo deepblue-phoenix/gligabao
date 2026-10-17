@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.41.1] - 2026-11-04
+
+### Changed
+- Sidecar (Modal app): the `generate` naming is now `infer`, consistent with the `POST /infer/query` route. The Modal functions `generate`, `generate_4b` and `generate_12b` are `infer`, `infer_4b` and `infer_12b`, `modal run app.py --action generate` is `--action infer`, and `inference.generate_response` / the `create_api` argument `generate_response` are `infer_response`. The HTTP API is unchanged. The deployed app keeps working under the old names until you redeploy the Modal app.
+
 ## [0.41.0] - 2026-10-17
 
 ### Added

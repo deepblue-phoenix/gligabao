@@ -7,7 +7,7 @@ Run (Modal):
     modal run app.py --action validate                        # validate the remote dataset
     modal run app.py --action train --train-steps 100 --model-size 4b      # 4b (A10G) or 12b (A100)
                                                               # [--dataset my.jsonl: a file on the data volume]
-    modal run app.py --action generate --model-size 4b --prompt "..."      # fine-tuned model inference
+    modal run app.py --action infer --model-size 4b --prompt "..."      # fine-tuned model inference
                                                               # [--model-path trained/<job id>: a trained model; default: the legacy adapter]
     modal serve app.py                                        # web API (dev); `modal deploy app.py` to persist
 
@@ -66,8 +66,11 @@ INFER_IMAGE = ImageSpec(gpu=True, cuda_toolkit=False, requirements_path=f"{modd_
 #-----------------------------------------------------------------------------------------
 # CHECKS / DATASET
 
-@provider.function(FunctionSpec(image=CPU_IMAGE, timeout_s=300,
-                                volumes=ALL_VOLUMES, secrets=secrets))
+@provider.function(FunctionSpec(
+    image=CPU_IMAGE,
+    timeout_s=300,
+    volumes=ALL_VOLUMES,
+    secrets=secrets))
 def ping() -> dict:
     from ai_train_core import bootstrap
     return bootstrap.run_ping(list(VOLUME_PATHS))
@@ -90,16 +93,24 @@ def validate_dataset() -> dict:
 #-----------------------------------------------------------------------------------------
 # TRAINING: one function per model size (different GPU and image), plus a router.
 
-@provider.function(FunctionSpec(image=UNSLOTH_IMAGE, gpu=CONFIG.gpu_for("4b"),
-                                timeout_s=CONFIG.train_timeout_s, volumes=TRAIN_VOLS, secrets=secrets))
+@provider.function(FunctionSpec(
+    image=UNSLOTH_IMAGE,
+    gpu=CONFIG.gpu_for("4b"),
+    timeout_s=CONFIG.train_timeout_s,
+    volumes=TRAIN_VOLS,
+    secrets=secrets))
 def train_4b(num_train_steps: int = 100, dataset: str = "", job_id: str = "") -> dict:
     from ai_train_core import bootstrap
     return bootstrap.run_train(num_train_steps, "4b", commit_fn=provider.commit_volumes, dataset=dataset, job_id=job_id,
                                reload_fn=provider.reload_volumes)
 
 
-@provider.function(FunctionSpec(image=UNSLOTH_IMAGE, gpu=CONFIG.gpu_for("12b"),
-                                timeout_s=CONFIG.train_timeout_s, volumes=TRAIN_VOLS, secrets=secrets))
+@provider.function(FunctionSpec(
+    image=UNSLOTH_IMAGE,
+    gpu=CONFIG.gpu_for("12b"),
+    timeout_s=CONFIG.train_timeout_s,
+    volumes=TRAIN_VOLS,
+    secrets=secrets))
 def train_12b(num_train_steps: int = 100, dataset: str = "", job_id: str = "") -> dict:
     from ai_train_core import bootstrap
     return bootstrap.run_train(num_train_steps, "12b", commit_fn=provider.commit_volumes, dataset=dataset, job_id=job_id,
@@ -130,7 +141,7 @@ def train(num_train_steps: int = 100, model_size: str = "4b", dataset: str = "",
 _registered = False
 
 
-def _generate(function: str, prompt: str, max_tokens: int, temperature: float, model_size: str, model_path: str = "") -> dict:
+def _infer(function: str, prompt: str, max_tokens: int, temperature: float, model_size: str, model_path: str = "") -> dict:
     from ai_train_core import inference
 
     def on_ready(info: dict) -> None:
@@ -141,34 +152,47 @@ def _generate(function: str, prompt: str, max_tokens: int, temperature: float, m
             atexit.register(provider.unregister_container)
             _registered = True
 
-    return inference.generate_response(
+    return inference.infer_response(
         prompt, max_tokens, temperature, model_size,
         reload_fn=lambda: provider.reload_volumes([paths.MODELS_DIR]), model_path=model_path, on_ready=on_ready)
 
 
-@provider.function(FunctionSpec(image=INFER_IMAGE, gpu=CONFIG.gpu_for("4b"), timeout_s=600,
-                                idle_timeout_s=CONFIG.infer_idle_timeout_s, volumes=INFER_VOLS, secrets=secrets))
-def generate_4b(prompt: str, max_tokens: int = 1024, temperature: float = 0.7, model_path: str = "") -> dict:
-    return _generate("generate_4b", prompt, max_tokens, temperature, "4b", model_path)
+@provider.function(FunctionSpec(
+    image=INFER_IMAGE,
+    gpu=CONFIG.gpu_for("4b"),
+    timeout_s=600,
+    idle_timeout_s=CONFIG.infer_idle_timeout_s,
+    volumes=INFER_VOLS,
+    secrets=secrets))
+def infer_4b(prompt: str, max_tokens: int = 1024, temperature: float = 0.7, model_path: str = "") -> dict:
+    return _infer("infer_4b", prompt, max_tokens, temperature, "4b", model_path)
 
 
-@provider.function(FunctionSpec(image=INFER_IMAGE, gpu=CONFIG.gpu_for("12b"), timeout_s=600,
-                                idle_timeout_s=CONFIG.infer_idle_timeout_s, volumes=INFER_VOLS, secrets=secrets))
-def generate_12b(prompt: str, max_tokens: int = 1024, temperature: float = 0.7, model_path: str = "") -> dict:
-    return _generate("generate_12b", prompt, max_tokens, temperature, "12b", model_path)
+@provider.function(FunctionSpec(
+    image=INFER_IMAGE,
+    gpu=CONFIG.gpu_for("12b"),
+    timeout_s=600,
+    idle_timeout_s=CONFIG.infer_idle_timeout_s,
+    volumes=INFER_VOLS,
+    secrets=secrets))
+def infer_12b(prompt: str, max_tokens: int = 1024, temperature: float = 0.7, model_path: str = "") -> dict:
+    return _infer("infer_12b", prompt, max_tokens, temperature, "12b", model_path)
 
 
-GENERATE_FUNCTIONS = {"4b": generate_4b, "12b": generate_12b}
+INFER_FUNCTIONS = {"4b": infer_4b, "12b": infer_12b}
 
 
 @provider.function(FunctionSpec(image=CPU_IMAGE, timeout_s=600))
-def generate(prompt: str, max_tokens: int = 1024, temperature: float = 0.7, model_size: str = "4b",
-             model_path: str = "") -> dict:
+def infer(prompt: str,
+    max_tokens: int = 1024,
+    temperature: float = 0.7,
+    model_size: str = "4b",
+    model_path: str = "") -> dict:
     """Route to the per-size inference function. `model_path` (`trained/<job id>`) picks the trained model."""
     size = model_size.lower()
-    if size not in GENERATE_FUNCTIONS:
+    if size not in INFER_FUNCTIONS:
         return {"error": f"Invalid model_size '{model_size}'. Must be one of {list(MODEL_SIZES)}."}
-    return provider.call(GENERATE_FUNCTIONS[size], prompt, max_tokens, temperature, model_path)
+    return provider.call(INFER_FUNCTIONS[size], prompt, max_tokens, temperature, model_path)
 
 
 #-----------------------------------------------------------------------------------------
@@ -180,8 +204,8 @@ def serve_api():
     return create_api(
         spawn_training_job=lambda num_train_steps, model_size, dataset, job_id: provider.spawn(
             train, num_train_steps=num_train_steps, model_size=model_size, dataset=dataset, job_id=job_id),
-        generate_response=lambda prompt, max_tokens, temperature, model_size, model_path="": provider.call(
-            generate, prompt, max_tokens, temperature, model_size, model_path),
+        infer_response=lambda prompt, max_tokens, temperature, model_size, model_path="": provider.call(
+            infer, prompt, max_tokens, temperature, model_size, model_path),
         commit_volumes=provider.commit_volumes,
         reload_volumes=provider.reload_volumes,
     )
@@ -222,7 +246,7 @@ def main(action: str = "ping", train_steps: int = 5, model_size: str = "4b", dat
             print("[1/2] Local dataset not found, using the existing remote dataset")
         print(f"[2/2] Fine-tuning {model_size} for {train_steps} steps...")
         print(provider.call(train, num_train_steps=train_steps, model_size=model_size, dataset=dataset))
-    elif action == "generate":
-        print(provider.call(generate, prompt, 1024, 0.7, model_size, model_path))
+    elif action == "infer":
+        print(provider.call(infer, prompt, 1024, 0.7, model_size, model_path))
     else:
-        print(f"unknown action {action!r}; valid: ping, sync, validate, train, generate")
+        print(f"unknown action {action!r}; valid: ping, sync, validate, train, infer")

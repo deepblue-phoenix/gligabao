@@ -58,7 +58,7 @@ def _describe(ev: dict) -> str:
 
 def create_api(
     spawn_training_job: Callable[..., str],     # (num_train_steps, model_size, dataset, job_id) -> the provider's call id
-    generate_response: Callable[..., dict],     # (prompt, max_tokens, temperature, model_size, model_path) -> dict
+    infer_response: Callable[..., dict],     # (prompt, max_tokens, temperature, model_size, model_path) -> dict
     commit_volumes: Callable[[list], None],
     reload_volumes: Callable[[list], None],
     poll_interval_s: float = 2.0,               # how often /training/job_events looks for new events
@@ -181,7 +181,7 @@ def create_api(
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     @api.post("/infer/query")
-    async def generate_response_endpoint(request: Request):
+    async def infer_endpoint(request: Request):
         data = await request.json()
         model_size = data.get("model_size", "4b")
         if (err := bad_model_size(model_size)):
@@ -190,7 +190,7 @@ def create_api(
         if model_path and not valid_model_path(model_path):
             return JSONResponse({"error": f"Invalid model_path '{model_path}': expected 'trained/<job id>'"}, status_code=400)
         result = await run_in_threadpool(
-            generate_response, data.get("prompt", ""), data.get("max_tokens", 1024),
+            infer_response, data.get("prompt", ""), data.get("max_tokens", 1024),
             data.get("temperature", 0.7), model_size, model_path)
         return JSONResponse(result)
 
