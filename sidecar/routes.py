@@ -1,11 +1,15 @@
 """The sidecar's REST API. This table is the contract with the Go server (internal/sidecar/); each route is answered by
 the configured backend (see backends/), so the Go side never learns what runs behind it."""
+import logging
+
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.background import BackgroundTask
 
 from backends import Backend, BackendError
 from backends.actions import ActionBusy, ActionNotRunning
+
+log = logging.getLogger("uvicorn.error")
 
 # There are deliberately no dataset routes: training datasets belong to the Go server (database and files), which hands a
 # dataset to the sidecar inside POST /training/job_start. The backend stores it internally.
@@ -27,6 +31,7 @@ def add_backend_routes(app: FastAPI, backend: Backend) -> None:
                 resp = await backend.forward(method, path, request.url.query, await request.body(),
                                              request.headers.get("content-type"))
             except BackendError as e:
+                log.error("%s %s: backend error, answering 502: %s", method, path, e)
                 return JSONResponse({"error": str(e)}, status_code=502)
             return StreamingResponse(resp.body, status_code=resp.status, media_type=resp.content_type,
                                      background=BackgroundTask(resp.close))

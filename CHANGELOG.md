@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.40.3] - 2026-11-03
+
+### Fixed
+- **Run inference** no longer fails with `502: sidecar failed to run the inference` (sidecar log: `sidecar POST /infer/query: status 303`) when the request takes more than ~150 s (a cold start). Modal answers such a request with `303 See Other` and a Location to poll for the result; the sidecar did not follow it and passed the bare 303 on. It now follows Modal's redirects (up to 50).
+
+### Added
+- The sidecar logs each forwarded request (method, URL, status, duration), every 303 redirect it follows, backend failures (with the 502 it answers) and the body of error answers (first 2000 bytes).
+
 ## [0.40.2] - 2026-11-02
 
 ### Changed
