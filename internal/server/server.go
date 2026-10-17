@@ -48,16 +48,21 @@ const banner = `
 +------+'      +------+       +------+       +------+      ` + "`+------+" + `
 `
 
-// adminURL returns the URL at which the admin UI is reachable for the listen address addr.
-func adminURL(addr string) string {
+// serverURL returns the base URL at which the server is reachable for the listen address addr.
+func serverURL(addr string) string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		return "http://" + addr + "/v1/gb/admin/"
+		return "http://" + addr
 	}
 	if host == "" || host == "0.0.0.0" || host == "::" {
 		host = "localhost"
 	}
-	return "http://" + net.JoinHostPort(host, port) + "/v1/gb/admin/"
+	return "http://" + net.JoinHostPort(host, port)
+}
+
+// adminURL returns the URL at which the admin UI is reachable for the listen address addr.
+func adminURL(addr string) string {
+	return serverURL(addr) + "/v1/gb/admin/"
 }
 
 //---------------------------------------------------------------------------------------------
@@ -303,6 +308,15 @@ func openAdminDB(path string) (*sql.DB, error) {
 // cancelled or SIGINT/SIGTERM is received, then shuts down gracefully.
 func Run(ctx context.Context, opts Options) error {
 	fmt.Fprint(os.Stderr, banner)
+	yellow, reset := "", ""
+	if st, err := os.Stderr.Stat(); err == nil && st.Mode()&os.ModeCharDevice != 0 && os.Getenv("NO_COLOR") == "" {
+		yellow, reset = "\033[33m", "\033[0m"
+	}
+	fmt.Fprintf(os.Stderr, "\nServer: %s%s%s\n", yellow, serverURL(opts.Addr), reset)
+	if opts.AdminUI && adminui.Available() {
+		fmt.Fprintf(os.Stderr, "Admin UI: %s%s%s\n", yellow, adminURL(opts.Addr), reset)
+	}
+	fmt.Fprintln(os.Stderr)
 	lib := buildinfo.Library()
 	fields := log.Fields{"version": lib.Version, "commit": lib.Commit}
 	if app, ok := buildinfo.App(); ok {

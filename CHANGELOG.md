@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.43.0] - 2026-10-18
+
+### Added
+- `serve` prints the URL the server is reachable on under the startup ASCII art, and, if the admin UI is active, the admin UI URL on the next line. The URLs are yellow when stderr is a terminal and `NO_COLOR` is not set.
+
 ## [0.42.2] - 2026-11-06
 
 ### Changed
