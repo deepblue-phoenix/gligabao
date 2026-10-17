@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.40.1] - 2026-11-02
+
+### Fixed
+- The Modal apps list in the training view no longer hangs on "Loading the Modal apps…" and then fails with `502: listing the Modal apps timed out after 30s`. `list_apps.py` (and the Stop inference script) made their Modal client in a separate event loop from the one the Modal SDK uses for Dicts, so reading the warm-containers Dict never returned. They now run on the SDK's own loop (`run_in_modal_loop` in `inference_containers.py`). No redeploy of the Modal app is needed.
+
 ## [0.40.0] - 2026-11-02
 
 ### Added

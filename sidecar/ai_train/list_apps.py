@@ -3,7 +3,6 @@ name is the configured app (SIDECAR_APP_NAME) or starts with it plus "-": what `
 system. Run by the sidecar (backends/modal_backend.py) with this directory as cwd and the Modal credentials in the
 environment. Read only.
 """
-import asyncio
 import json
 import sys
 
@@ -12,7 +11,7 @@ from modal.config import config
 from modal_proto import api_pb2
 
 from config import CONFIG
-from inference_containers import list_containers
+from inference_containers import list_containers, run_in_modal_loop
 
 # States of an app that is up (the CLI's table: deployed, ephemeral / detached, initializing); stopped ones are history.
 ACTIVE = {
@@ -46,4 +45,4 @@ async def list_apps(prefix: str) -> list:
 
 
 if __name__ == "__main__":
-    json.dump({"apps": asyncio.run(list_apps(CONFIG.app_name))}, sys.stdout)
+    json.dump({"apps": run_in_modal_loop(list_apps, CONFIG.app_name)}, sys.stdout)

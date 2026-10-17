@@ -7,18 +7,24 @@ because Modal does not say which function a container runs. A record is only tru
 As a script (run by the sidecar, backends/modal_backend.py, with this directory as cwd and the credentials in the
 environment): `python inference_containers.py` stops the containers of the app named by SIDECAR_APP_NAME.
 """
-import asyncio
 import sys
 import traceback
 
-import modal
+from modal._utils.async_utils import synchronizer
 from modal.client import _Client
+from modal.dict import _Dict
 from modal.config import config
 from modal.exception import NotFoundError
 from modal_proto import api_pb2
 
 from config import CONFIG
 from providers.modal_provider import registry_name
+
+
+def run_in_modal_loop(fn, *args):
+    """Runs the coroutine function fn(*args) on the event loop of the Modal SDK and returns its result. The SDK's client
+    and Dicts live on that loop: mixing them with a client made in a loop of our own (asyncio.run) hangs the Dict calls."""
+    return synchronizer.create_blocking(fn, name=fn.__name__)(*args)
 
 
 async def _live_tasks(client, app_name: str) -> set:
@@ -36,8 +42,8 @@ async def list_containers(app_name: str, client=None) -> list:
     "last_used", "requests"}, ...], newest first. Records of containers that are gone are removed."""
     client = client or await _Client.from_env()
     try:
-        registry = modal.Dict.from_name(registry_name(app_name))
-        records = [(k, v) async for k, v in registry.items.aio()]
+        registry = _Dict.from_name(registry_name(app_name))
+        records = [(k, v) async for k, v in registry.items()]
     except NotFoundError:    # no container ever recorded itself
         return []
     live = await _live_tasks(client, app_name)
@@ -46,7 +52,7 @@ async def list_containers(app_name: str, client=None) -> list:
         if task_id in live:
             out.append({"task_id": task_id, **(info if isinstance(info, dict) else {})})
         else:
-            await registry.pop.aio(task_id, None)
+            await registry.pop(task_id, None)
     return sorted(out, key=lambda c: c.get("loaded_at") or 0, reverse=True)
 
 
@@ -56,14 +62,14 @@ async def stop(app_name: str) -> int:
     if not containers:
         print(f"No inference container is running in Modal app {app_name!r}: nothing to stop.", flush=True)
         return 0
-    registry = modal.Dict.from_name(registry_name(app_name))
+    registry = _Dict.from_name(registry_name(app_name))
     failed = 0
     for c in containers:
         label = f"{c['task_id']} ({c.get('function', '?')}, {c.get('adapter') or c.get('model_size', '?')})"
         print(f"Stopping inference container {label} ...", flush=True)
         try:
             await client.stub.ContainerStop(api_pb2.ContainerStopRequest(task_id=c["task_id"]))
-            await registry.pop.aio(c["task_id"], None)
+            await registry.pop(c["task_id"], None)
         except Exception as e:
             failed += 1
             print(f"Could not stop {c['task_id']}: {type(e).__name__}: {e}", flush=True)
@@ -73,7 +79,7 @@ async def stop(app_name: str) -> int:
 
 def main() -> int:
     try:
-        return asyncio.run(stop(CONFIG.app_name))
+        return run_in_modal_loop(stop, CONFIG.app_name)
     except Exception as e:
         traceback.print_exc()
         print(f"Stop failed: {type(e).__name__}: {e}", flush=True)
