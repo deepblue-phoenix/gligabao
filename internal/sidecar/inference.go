@@ -27,9 +27,13 @@ type InferResponse struct {
 	ModelPath string `json:"model_path"`
 	// InputTokens is the size of the prompt as the model saw it (chat template and special tokens included), OutputTokens
 	// the number of tokens it generated. 0 when the sidecar (an older deployment) does not report them.
-	InputTokens  int    `json:"input_tokens"`
-	OutputTokens int    `json:"output_tokens"`
-	Error        string `json:"error,omitempty"`
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+	// ColdStart is whether this request loaded the model (its container was not up with it); LoadSeconds how long that took.
+	// Nil / 0 when the sidecar (an older deployment) does not report it.
+	ColdStart   *bool   `json:"cold_start,omitempty"`
+	LoadSeconds float64 `json:"load_seconds,omitempty"`
+	Error       string  `json:"error,omitempty"`
 }
 
 //---------------------------------------------------------------------------

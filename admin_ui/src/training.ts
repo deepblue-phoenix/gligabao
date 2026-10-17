@@ -226,10 +226,14 @@ function selectModel(id: number): void {
   const modal = el<HTMLDialogElement>("model-modal");
   if (!modal.open) modal.showModal();
   void loadInferences(id);
+  warm = "unknown";
+  drawWarm();
+  void pollWarm(id);
 }
 
 function closeModelModal(): void {
   selectedModel = null;
+  clearTimeout(warmTimer);
   renderModels();
 }
 
@@ -267,6 +271,11 @@ function renderModelDetail(): void {
   const info = node("details", "model-info");
   info.append(node("summary", "", "Training details and files"), dl, files);
 
+  const warmRow = node("div", "warm-row");
+  warmDot = node("span", "warm-dot");
+  warmRow.append(warmDot);
+  drawWarm();
+
   const prompt = node("textarea");
   prompt.placeholder = "Prompt to run through this model, e.g. Check recent news about NVIDIA and buy 10 shares if it's positive";
   const tokens = node("input");
@@ -290,9 +299,57 @@ function renderModelDetail(): void {
   const form = node("div", "row training-form");
   form.append(labelled("Max tokens", tokens), labelled("Temperature", temp), run, status);
 
-  el("model-detail").replaceChildren(info, prompt, form);
+  el("model-detail").replaceChildren(info, warmRow, prompt, form);
   el("model-inferences").replaceChildren();
   el("model-inferences-status").textContent = "Loading the past requests…";
+}
+
+// Whether the Modal inference container of the open model is up ("warm": the model is loaded, so a prompt runs right away),
+// polled from the sidecar's app list (the containers record themselves after each request and Modal shuts them down by itself
+// a few minutes after the last one). "other": a container of the size is up but holds another model. "unknown": not known (yet).
+type Warm = "unknown" | "cold" | "other" | "warm";
+let warm: Warm = "unknown";
+let warmInfo = "";
+let warmDot: HTMLElement | undefined;
+let warmTimer: number | undefined;
+const WARM_POLL_MS = 15000;
+
+function drawWarm(): void {
+  const d = warmDot;
+  if (!d) return;
+  d.className = `warm-dot warm-${warm}`;
+  d.title = warm === "warm" ? `Inference container up, model loaded: prompts run right away. ${warmInfo}`
+    : warm === "other" ? "An inference container is up but holds another model: this one is loaded first (shorter than a cold start)."
+    : warm === "cold" ? "No inference container is up: the first prompt starts one and loads the model (can take minutes)."
+    : "Inference container status unknown.";
+}
+
+async function checkWarm(m: TrainedModel): Promise<void> {
+  let next: Warm = "unknown", info = "";
+  try {
+    const res = await fetch("api/sidecar/backends/modal/apps");
+    if (res.ok) {
+      const apps = ((await res.json()) as { apps: AppInfo[] }).apps ?? [];
+      const containers = apps.filter((a) => a.configured).flatMap((a) => a.inference ?? []);
+      const mine = containers.find((c) => c.model_path === m.path || (c.adapter ?? "").endsWith(m.path));
+      if (mine) {
+        next = "warm";
+        info = `${mine.requests ?? 0} request(s)` + (mine.last_used ? `, last used ${fmtTime(new Date(mine.last_used * 1000).toISOString())} UTC` : "") + ".";
+      } else next = containers.some((c) => c.model_size === m.model_size) ? "other" : "cold";
+    }
+  } catch { /* unreachable: stays unknown */ }
+  if (selectedModel !== m.id) return;
+  warm = next; warmInfo = info;
+  drawWarm();
+}
+
+// Checks now, then every WARM_POLL_MS while the model's dialog is open.
+async function pollWarm(id: number): Promise<void> {
+  clearTimeout(warmTimer);
+  const m = models.find((x) => x.id === id);
+  if (!m || selectedModel !== id) return;
+  await checkWarm(m);
+  if (selectedModel === id) warmTimer = window.setTimeout(() => void pollWarm(id), WARM_POLL_MS);
 }
 
 // Status and Run button of the open dialog's form (undefined when it was closed or redrawn): an inference outlives the dialog.
@@ -356,7 +413,10 @@ async function infer(m: TrainedModel, prompt: string, maxTokens: number, tempera
   inferring = true;
   const status = inferStatus, run = inferButton;
   if (run) run.disabled = true;
-  if (status) { status.className = "muted"; status.textContent = "Running… (the first request loads the model on a GPU: this can take minutes)"; }
+  if (status) {
+    status.className = "muted";
+    status.textContent = warm === "warm" ? "Running…" : "Running… (the first request loads the model on a GPU: this can take minutes)";
+  }
   const started = Date.now();
   let outcome: { text: string; cls: string };
   try {
@@ -365,7 +425,9 @@ async function infer(m: TrainedModel, prompt: string, maxTokens: number, tempera
       body: JSON.stringify({ prompt, max_tokens: maxTokens, temperature }),
     });
     if (!res.ok) throw await failure(res);
-    outcome = { text: `Done in ${Math.round((Date.now() - started) / 1000)}s.`, cls: "muted" };
+    const out = (await res.json()) as { cold_start?: boolean; load_seconds?: number };
+    const load = out.cold_start ? ` (loaded the model: ${Math.round(out.load_seconds ?? 0)}s)` : out.cold_start === false ? " (model was already loaded)" : "";
+    outcome = { text: `Done in ${Math.round((Date.now() - started) / 1000)}s${load}.`, cls: "muted" };
   } catch (err) {
     outcome = { text: `Inference failed: ${errText(err)}`, cls: "error" };
   } finally {
@@ -374,7 +436,7 @@ async function infer(m: TrainedModel, prompt: string, maxTokens: number, tempera
     if (inferButton) inferButton.disabled = false; // the form of a dialog opened again meanwhile
   }
   if (status?.isConnected) { status.className = outcome.cls; status.textContent = outcome.text; }
-  if (selectedModel === m.id) await loadInferences(m.id);
+  if (selectedModel === m.id) { void pollWarm(m.id); await loadInferences(m.id); }
 }
 
 //---------------------------------------------------------------------------------------------
@@ -467,7 +529,7 @@ async function loadBackends(): Promise<void> {
 interface AppInfo {
   name: string; app_id: string | null; state: string; n_running_tasks: number; created_at: string | null;
   active: boolean; configured: boolean; actions: Record<string, ActionState>;
-  inference?: { task_id: string; function?: string; model_size?: string; adapter?: string; loaded_at?: number; last_used?: number; requests?: number }[];
+  inference?: { task_id: string; function?: string; model_size?: string; model_path?: string; adapter?: string; loaded_at?: number; last_used?: number; requests?: number }[];
 }
 
 let lastApps: AppInfo[] | undefined; // the last list, shown while the next one loads

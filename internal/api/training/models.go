@@ -177,7 +177,8 @@ func InferOf(dbs []Database, sc Inferer) http.HandlerFunc {
 		}
 		finish(relational.TrainedModelInferenceCompleted, out.Response, "", out.InputTokens, out.OutputTokens, started)
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{"id": reqID, "model_id": m.ID, "response": out.Response,
-			"status": relational.TrainedModelInferenceCompleted, "input_tokens": out.InputTokens, "output_tokens": out.OutputTokens, "duration_ms": time.Since(started).Milliseconds()})
+			"status": relational.TrainedModelInferenceCompleted, "input_tokens": out.InputTokens, "output_tokens": out.OutputTokens, "duration_ms": time.Since(started).Milliseconds(),
+			"cold_start": out.ColdStart, "load_seconds": out.LoadSeconds})
 	}
 }
 

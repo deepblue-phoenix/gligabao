@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.45.0] - 2026-10-21
+
+### Added
+- **Inference container indicator** in the admin UI's trained-model dialog: a small dot above the prompt field (upper right) is green when a warm Modal inference container holds this model (prompts run right away), amber when one is up with another model, grey when none is up. It refreshes every 15 s while the dialog is open and after each request.
+- `POST /v1/gb/training/models/{id}/infer` also answers `cold_start` and `load_seconds` (as reported by the sidecar), and the dialog shows whether a request loaded the model or found it already loaded.
+
+### Changed
+- The "the first request loads the model on a GPU: this can take minutes" notice is shown only when the container is not known to be warm.
+
 ## [0.44.0] - 2026-10-20
 
 ### Changed
