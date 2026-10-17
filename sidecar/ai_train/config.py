@@ -26,6 +26,10 @@ class TrainConfig:
     gpu: str = field(default_factory=lambda: _env("SIDECAR_GPU", ""))
     train_timeout_s: int = field(default_factory=lambda: int(_env("SIDECAR_TRAIN_TIMEOUT_S", "7200")))
 
+    # How long a GPU inference container, with the model loaded in it, stays up after its last request before it shuts
+    # down (the next request then pays the model load again). Modal allows 2 s to 1200 s.
+    infer_idle_timeout_s: int = field(default_factory=lambda: int(_env("SIDECAR_INFER_IDLE_TIMEOUT_S", "300")))
+
     # Optional secret holding HF_TOKEN etc. Empty = no secret attached.
     hf_secret: str = field(default_factory=lambda: _env("SIDECAR_HF_SECRET", ""))
 

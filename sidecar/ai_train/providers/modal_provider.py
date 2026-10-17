@@ -10,6 +10,13 @@ from providers.base import FunctionSpec, ImageSpec, Provider
 REMOTE_PKG_DIR = "/pkg"
 
 
+def registry_name(app_name: str) -> str:
+    """Name of the Modal Dict in which the warm inference containers of an app record themselves (task id -> info). The
+    sidecar's scripts (inference_containers.py) read it to list and stop them: Modal itself does not say which function a
+    container runs."""
+    return f"{app_name}-inference"
+
+
 def _has_requirements(path: str) -> bool:
     if not path or not os.path.exists(path):
         return False
@@ -22,6 +29,7 @@ class ModalProvider(Provider):
 
     def __init__(self, app_name: str, local_pkg_dir: str, volume_names: dict):
         self._app = modal.App(app_name)
+        self._app_name = app_name
         self._local_pkg_dir = local_pkg_dir
         self._volumes = {
             path: modal.Volume.from_name(name, create_if_missing=True)
@@ -61,6 +69,8 @@ class ModalProvider(Provider):
         )
         if spec.gpu:
             kwargs["gpu"] = spec.gpu
+        if spec.idle_timeout_s:
+            kwargs["scaledown_window"] = spec.idle_timeout_s
         return kwargs
 
     def function(self, spec: FunctionSpec) -> Callable:
@@ -81,6 +91,24 @@ class ModalProvider(Provider):
 
     def spawn(self, handle: Any, *args, **kwargs) -> str:
         return handle.spawn(*args, **kwargs).object_id
+
+    def register_container(self, info: dict) -> None:
+        task_id = os.environ.get("MODAL_TASK_ID")
+        if not task_id:
+            return
+        try:
+            modal.Dict.from_name(registry_name(self._app_name), create_if_missing=True).put(task_id, info)
+        except Exception as e:   # the record is only for the admin UI: never fail an inference because of it
+            print(f"could not record the container in the registry: {e!r}")
+
+    def unregister_container(self) -> None:
+        task_id = os.environ.get("MODAL_TASK_ID")
+        if not task_id:
+            return
+        try:
+            modal.Dict.from_name(registry_name(self._app_name), create_if_missing=True).pop(task_id, None)
+        except Exception as e:
+            print(f"could not remove the container from the registry: {e!r}")
 
     def _select(self, paths: Optional[list]) -> list:
         return list(self._volumes.values()) if paths is None else [self._volumes[p] for p in paths]

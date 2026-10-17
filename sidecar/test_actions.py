@@ -178,7 +178,8 @@ class ModalBackendTest(unittest.IsolatedAsyncioTestCase):
     async def test_actions_and_volumes_script(self):
         from backends.modal_backend import ModalBackend
         b = ModalBackend("app-x", token_id="ak-x", token_secret="as-x")
-        self.assertEqual(set(b.actions()), {"deploy", "stop"})
+        self.assertEqual(set(b.actions()), {"deploy", "stop", "stop_inference"})
+        self.assertTrue(b.actions()["stop_inference"].danger and b.actions()["stop_inference"]._env["SIDECAR_APP_NAME"] == "app-x")
         self.assertTrue(b.actions()["stop"].danger and "app-x" in b.actions()["stop"].confirm)
         with self.assertRaises(ActionBusy):          # deploy and stop exclude each other
             await b.actions()["deploy"].start()
@@ -228,7 +229,8 @@ class ModalAppsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([a["name"] for a in apps], ["app-x", "app-x-dev"])      # ours only, the configured one first
         self.assertEqual([a["active"] for a in apps], [False, True])             # the configured one is not deployed
         self.assertEqual(set(apps[0]["actions"]), {"deploy"})                    # nothing to stop
-        self.assertEqual(set(apps[1]["actions"]), {"deploy", "stop"})
+        self.assertEqual(set(apps[1]["actions"]), {"deploy", "stop", "stop_inference"})
+        self.assertEqual(apps[0]["inference"], [])
         await b.aclose()
 
 

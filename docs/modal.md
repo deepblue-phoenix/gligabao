@@ -74,6 +74,16 @@ While a run is going the dialog has a **Cancel run** button. The sidecar sends t
 
 The Stop button is not offered while the app is not deployed, and it never runs at the same time as a deploy (`409`; cancel the deploy first). The SDK has no public `App.stop` yet, so the script makes the same two internal calls as the CLI (look up the app id by name, `AppStop`); a future `modal` 1.x release could change them, which would show as a failed `stop` with the error in the log. Starting the app again is a deploy.
 
+## Warm inference containers
+
+An inference request (`POST /infer/query`) runs in a GPU container of the `generate_4b` / `generate_12b` function. Until 0.39.0 every request loaded the base model and the adapter again (about the whole latency of a request); since 0.39.0 the container keeps the loaded model in memory and **stays up for `SIDECAR_INFER_IDLE_TIMEOUT_S` (default 300 s = 5 minutes) after its last request**, so the requests that follow skip the load. When no request arrives within that time Modal shuts it down by itself; the next request starts a container and loads the model again. The answer of `/infer/query` says which it was: `cold_start` and `load_seconds`.
+
+- One model per container: a request for another trained model (or size) replaces the loaded one. A model retrained in place (the legacy `finetuned_model_<size>`) is noticed by its file time and loaded again.
+- Several concurrent requests are handled one at a time per container, as before; Modal starts more containers when requests queue up (each loads the model, and each is billed while it is up).
+- The timeout is part of the function's definition: **Redeploy** the app after changing `SIDECAR_INFER_IDLE_TIMEOUT_S` (or after upgrading to this version).
+- The admin UI's app row shows a badge `N inference container(s) warm` (hover: function, model, requests, last use) and a **Stop inference** button that ends them at once (a request being answered fails; the app, the web API and training jobs are not touched). It runs `sidecar/ai_train/inference_containers.py`; the action is `stop_inference`, next to `deploy` and `stop`, and the `apps` listing has an `inference` list for every app.
+- How it knows them: Modal does not say which function a container runs, so each inference container records itself (task id, model, requests, last use) in a Modal Dict named `<app name>-inference`, and the listing only trusts a record while Modal still lists that task. A container that is gone leaves a record that is removed at the next listing.
+
 ## Volumes
 
 **Volumes** opens a table of the Modal volumes the app uses, read from the app's configuration (`config.py`, so the `SIDECAR_VOL_*` settings are respected):
@@ -92,7 +102,7 @@ It is read only: nothing is created, changed or deleted, and it works whether or
 
 ## The API
 
-All routes are answered by the sidecar itself (they are not forwarded to the Modal app). `{name}` is the backend (`modal`), `{action}` is `deploy` or `stop`. The Go server passes them on under `/v1/gb/admin/api/sidecar/backends/…` (the same paths after `/backends`), flushing the stream as it arrives; it adds nothing and keeps no state. They are for the admin UI, are only registered when the admin UI is on, and have no authentication of their own.
+All routes are answered by the sidecar itself (they are not forwarded to the Modal app). `{name}` is the backend (`modal`), `{action}` is `deploy`, `stop` or `stop_inference`. The Go server passes them on under `/v1/gb/admin/api/sidecar/backends/…` (the same paths after `/backends`), flushing the stream as it arrives; it adds nothing and keeps no state. They are for the admin UI, are only registered when the admin UI is on, and have no authentication of their own.
 
 | Sidecar route | Meaning |
 |---|---|
@@ -101,7 +111,7 @@ All routes are answered by the sidecar itself (they are not forwarded to the Mod
 | `POST /backends/{name}/actions/{action}/cancel` | Cancel it: `202`, or `409` if it is not running. |
 | `GET /backends/{name}/actions/{action}[?from=<i>]` | The state and the kept log lines with index `>= from`. |
 | `GET /backends/{name}/actions/{action}/events[?from=<i>]` | The SSE stream above. |
-| `GET /backends/{name}/apps` | `{"apps": [{"name", "app_id", "state", "n_running_tasks", "created_at", "active", "configured", "actions"}, ...]}`; `404` if the backend has none, `502` if they cannot be listed. |
+| `GET /backends/{name}/apps` | `{"apps": [{"name", "app_id", "state", "n_running_tasks", "created_at", "inference", "active", "configured", "actions"}, ...]}`; `404` if the backend has none, `502` if they cannot be listed. |
 | `…/backends/{name}/apps/{app}/actions/{action}[/events\|/cancel]` | The same routes as the actions above, for one app of this system (`404` for any other name). Without `apps/{app}` they act on the configured app. |
 | `GET /backends/{name}/volumes` | `{"volumes": [{"mount_path", "name", "exists", "created_at"?, "entries"?, "error"?}, ...]}`; `404` if the backend has none, `502` if they cannot be listed. |
 

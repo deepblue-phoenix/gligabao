@@ -12,6 +12,7 @@ from modal.config import config
 from modal_proto import api_pb2
 
 from config import CONFIG
+from inference_containers import list_containers
 
 # States of an app that is up (the CLI's table: deployed, ephemeral / detached, initializing); stopped ones are history.
 ACTIVE = {
@@ -35,8 +36,12 @@ async def list_apps(prefix: str) -> list:
     for a in resp.apps:
         name = a.name or a.description
         if a.state in ACTIVE and (name == prefix or name.startswith(prefix + "-")):
+            try:   # the warm inference containers (the Dict may not exist yet, or Modal may be slow: then none are shown)
+                inference = await list_containers(name, client) if a.state == api_pb2.APP_STATE_DEPLOYED else []
+            except Exception:
+                inference = []
             out.append({"name": name, "app_id": a.app_id, "state": ACTIVE[a.state],
-                        "n_running_tasks": a.n_running_tasks, "created_at": iso(a.created_at)})
+                        "n_running_tasks": a.n_running_tasks, "created_at": iso(a.created_at), "inference": inference})
     return out
 
 

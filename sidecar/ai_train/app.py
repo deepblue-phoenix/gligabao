@@ -122,23 +122,38 @@ def train(num_train_steps: int = 100, model_size: str = "4b", dataset: str = "",
 #-----------------------------------------------------------------------------------------
 # INFERENCE with the fine-tuned adapter (same per-size split as training)
 
-def _generate(prompt: str, max_tokens: int, temperature: float, model_size: str, model_path: str = "") -> dict:
+# An inference container keeps its model loaded and stays up for CONFIG.infer_idle_timeout_s after its last request, so
+# later requests skip the (slow) model load. It records itself with the provider (provider.register_container) so the
+# admin UI can list it and stop it before the timeout (sidecar/ai_train/inference_containers.py).
+_registered = False
+
+
+def _generate(function: str, prompt: str, max_tokens: int, temperature: float, model_size: str, model_path: str = "") -> dict:
     from ai_train_core import inference
+
+    def on_ready(info: dict) -> None:
+        global _registered
+        provider.register_container({"function": function, **info})
+        if not _registered:
+            import atexit
+            atexit.register(provider.unregister_container)
+            _registered = True
+
     return inference.generate_response(
         prompt, max_tokens, temperature, model_size,
-        reload_fn=lambda: provider.reload_volumes([paths.MODELS_DIR]), model_path=model_path)
+        reload_fn=lambda: provider.reload_volumes([paths.MODELS_DIR]), model_path=model_path, on_ready=on_ready)
 
 
 @provider.function(FunctionSpec(image=UNSLOTH_IMAGE, gpu=CONFIG.gpu_for("4b"), timeout_s=600,
-                                volumes=INFER_VOLS, secrets=secrets))
+                                idle_timeout_s=CONFIG.infer_idle_timeout_s, volumes=INFER_VOLS, secrets=secrets))
 def generate_4b(prompt: str, max_tokens: int = 1024, temperature: float = 0.7, model_path: str = "") -> dict:
-    return _generate(prompt, max_tokens, temperature, "4b", model_path)
+    return _generate("generate_4b", prompt, max_tokens, temperature, "4b", model_path)
 
 
 @provider.function(FunctionSpec(image=UNSLOTH_IMAGE, gpu=CONFIG.gpu_for("12b"), timeout_s=600,
-                                volumes=INFER_VOLS, secrets=secrets))
+                                idle_timeout_s=CONFIG.infer_idle_timeout_s, volumes=INFER_VOLS, secrets=secrets))
 def generate_12b(prompt: str, max_tokens: int = 1024, temperature: float = 0.7, model_path: str = "") -> dict:
-    return _generate(prompt, max_tokens, temperature, "12b", model_path)
+    return _generate("generate_12b", prompt, max_tokens, temperature, "12b", model_path)
 
 
 GENERATE_FUNCTIONS = {"4b": generate_4b, "12b": generate_12b}

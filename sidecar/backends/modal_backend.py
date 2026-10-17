@@ -15,6 +15,7 @@ DEFAULT_AI_TRAIN_DIR = Path(__file__).resolve().parent.parent / "ai_train"   # t
 _VOLUMES_TIMEOUT = 60.0   # seconds for list_volumes.py
 _STATUS_TIMEOUT = 10.0   # seconds for the Modal lookup of status()
 _APPS_TIMEOUT = 30.0   # seconds for list_apps.py
+_ACTIVE_ONLY = ("stop", "stop_inference")   # actions that make no sense while the app is not deployed
 _APP_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")   # what a Modal app name may look like
 
 
@@ -52,7 +53,7 @@ class ModalBackend(HttpBackend):
         if app not in self._app_actions:
             deploy, stop = self._make_deploy(app), self._make_stop(app)
             deploy.exclusive_with, stop.exclusive_with = [stop], [deploy]
-            self._app_actions[app] = {"deploy": deploy, "stop": stop}
+            self._app_actions[app] = {"deploy": deploy, "stop": stop, "stop_inference": self._make_stop_inference(app)}
         return self._app_actions[app]
 
     def _env_for(self, app: str) -> dict:
@@ -76,6 +77,16 @@ class ModalBackend(HttpBackend):
             confirm=f"Stop the Modal app {app!r}?\n\nRunning training jobs and inference on it are terminated and its "
                     "web API goes offline until you deploy it again. The volumes (datasets, adapters) are kept.")
 
+    def _make_stop_inference(self, app: str) -> ActionRunner:
+        """`stop_inference`: ai_train/inference_containers.py: ends the warm inference containers (the model loaded in
+        each is dropped) and nothing else; the next inference request starts one again."""
+        return ActionRunner(
+            "stop_inference", "Stop the inference containers", [sys.executable, "-u", "inference_containers.py"],
+            cwd=str(self._ai_train_dir), env=self._env_for(app), danger=True,
+            confirm=f"Stop the inference containers of {app!r}?\n\nThe models loaded in them are dropped and a request "
+                    "being answered now fails. The app, its web API and training jobs are not touched; the next "
+                    "inference request starts a container again (and loads the model, which takes a while).")
+
     async def apps(self) -> list:
         """The active Modal apps of this system (ai_train/list_apps.py, read only), each with its actions' state. The
         configured app is always listed (not active: `active` false, so it can be deployed), and so is any app of ours
@@ -86,13 +97,13 @@ class ModalBackend(HttpBackend):
             ran = any(a.state()["state"] != "idle" for a in self._app_actions[name].values())
             if name not in by_name and (ran or name == self._app_name):
                 by_name[name] = {"name": name, "app_id": None, "state": "not deployed", "n_running_tasks": 0,
-                                 "created_at": None, "active": False}
+                                 "created_at": None, "inference": [], "active": False}
         out = []
         for name in sorted(by_name, key=lambda n: (n != self._app_name, n)):
             actions = self.app_actions(name)
             active = by_name[name]["active"]
             out.append({**by_name[name], "configured": name == self._app_name,
-                        "actions": {k: a.state() for k, a in actions.items() if active or k != "stop"}})
+                        "actions": {k: a.state() for k, a in actions.items() if active or k not in _ACTIVE_ONLY}})
         return out
 
     async def _run_json(self, script: str, timeout: float, what: str) -> dict:
@@ -153,7 +164,7 @@ class ModalBackend(HttpBackend):
                 st.update(healthy=True, deployed=False)
             else:
                 st["error"] = str(e) or type(e).__name__
-        st["actions"] = self.actions_status(skip=("stop",) if st["deployed"] is False else ())   # nothing to stop
+        st["actions"] = self.actions_status(skip=_ACTIVE_ONLY if st["deployed"] is False else ())   # nothing to stop
         return st
 
     def _lookup_web_url(self) -> str:

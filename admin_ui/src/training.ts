@@ -378,6 +378,7 @@ async function loadBackends(): Promise<void> {
 interface AppInfo {
   name: string; app_id: string | null; state: string; n_running_tasks: number; created_at: string | null;
   active: boolean; configured: boolean; actions: Record<string, ActionState>;
+  inference?: { task_id: string; function?: string; model_size?: string; adapter?: string; loaded_at?: number; last_used?: number; requests?: number }[];
 }
 
 let lastApps: AppInfo[] | undefined; // the last list, shown while the next one loads
@@ -412,6 +413,14 @@ function appRow(backend: string, a: AppInfo): HTMLElement {
   state.title = a.active ? `${a.app_id ?? ""}${a.created_at ? ` · created ${fmtTime(a.created_at)}` : ""}` : "Not found in Modal: deploy it with the Deploy button";
   li.append(" ", state);
   if (a.active) li.append(" ", node("span", "muted", `${a.n_running_tasks} running task${a.n_running_tasks === 1 ? "" : "s"}`));
+  const warm = a.inference ?? [];
+  if (warm.length) {
+    const badge = node("span", "badge badge-ok", `${warm.length} inference container${warm.length === 1 ? "" : "s"} warm`);
+    badge.title = warm.map((c) => `${c.function ?? "?"}: ${c.adapter ?? c.model_size ?? "?"}, ${c.requests ?? 0} request(s)` +
+      (c.last_used ? `, last used ${fmtTime(new Date(c.last_used * 1000).toISOString())}` : "")).join("\n") +
+      "\nIt shuts down by itself a few minutes after its last request.";
+    li.append(" ", badge);
+  }
   const refresh = () => void loadBackends();
   let latest: { name: string; st: ActionState } | undefined; // the action that ran last, for "Last log"
   for (const [name, st] of Object.entries(a.actions)) {
@@ -444,6 +453,7 @@ function appRow(backend: string, a: AppInfo): HTMLElement {
     button(running ? "View log" : "Last log", `The log of the last action (${l.name}) on ${a.name}`)
       .addEventListener("click", () => showActionLog(backend, l.name, `${backend}: ${l.st.label} (${a.name})`, refresh, a.name));
   }
+  start("stop_inference", "Stop inference");
   start("stop", "Stop");
   button("Volumes", "The Modal volumes the app uses").addEventListener("click", () => void toggleVolumes(backend, a.name));
   return li;

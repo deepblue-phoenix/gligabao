@@ -241,6 +241,7 @@ All settings are in `config.py` and can be overridden by environment variable:
 | `SIDECAR_APP_NAME` | `gligabao-train` | Name of the provider app. |
 | `SIDECAR_GPU` | *(empty)* | GPU override for train/generate of every model size (Modal names, e.g. `a100`). Empty means the per-size default: `a10g` for 4b, `a100` for 12b. |
 | `SIDECAR_TRAIN_TIMEOUT_S` | `7200` | Timeout of the train jobs. |
+| `SIDECAR_INFER_IDLE_TIMEOUT_S` | `300` | How long a GPU inference container, with its model loaded, stays up after its last request (Modal: 2 to 1200). Requests within that time skip the model load. See [Warm inference containers](modal.md#warm-inference-containers). |
 | `SIDECAR_HF_SECRET` | *(empty)* | Name of a provider secret with `HF_TOKEN`. Empty means no secret is attached. |
 | `SIDECAR_VOL_DATA` | `gligabao-train-data` | Volume mounted at `/data` (datasets). |
 | `SIDECAR_VOL_MODELS` | `gligabao-train-models` | Volume mounted at `/models` (fine-tuned adapters). |

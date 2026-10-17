@@ -5,6 +5,17 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.39.0] - 2026-11-01
+
+### Added
+- **Stop inference** button in the apps list of the training view (action `stop_inference`, script `sidecar/ai_train/inference_containers.py`): ends the warm GPU inference containers of an app without touching the app, its web API or training jobs. The apps list shows how many are warm (`inference` in `GET /backends/modal/apps`).
+- `SIDECAR_INFER_IDLE_TIMEOUT_S` (default `300`): how long an inference container stays up after its last request.
+- The answer of `POST /infer/query` has `cold_start` and `load_seconds`.
+
+### Changed
+- Inference containers are kept around: the loaded model stays in memory and the container stays up for 5 minutes (`SIDECAR_INFER_IDLE_TIMEOUT_S`) after its last request, so only the first request pays the model load (before, every request loaded the base model and the adapter again). With no further request it shuts down by itself. Redeploy the Modal app for the change to take effect.
+- A failing reload of the models volume before an inference no longer fails the request: the container uses what it sees.
+
 ## [0.38.0] - 2026-10-31
 
 ### Added

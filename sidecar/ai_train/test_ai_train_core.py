@@ -413,5 +413,47 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(r.status_code, 400, bad)
 
 
+class InferenceCacheTest(unittest.TestCase):
+    """The loaded model stays in the container: only a different model (or a retrained adapter) loads again."""
+
+    def setUp(self):
+        from ai_train_core import inference
+        self.inference = inference
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        inference._cache.clear()
+        self.addCleanup(inference._cache.clear)
+
+    def adapter(self, name):
+        d = Path(self.dir.name) / name
+        d.mkdir()
+        (d / "adapter_config.json").write_text("{}")
+        return str(d)
+
+    def test_loads_once_per_model(self):
+        a, b = self.adapter("a"), self.adapter("b")
+        load = mock.Mock(side_effect=lambda size, seq, q4, d: (object(), object(), {}, d))
+        with mock.patch.object(self.inference, "_load", load):
+            first = self.inference._get_model("4b", a)
+            again = self.inference._get_model("4b", a)
+            self.assertTrue(first[4])
+            self.assertFalse(again[4])
+            self.assertIs(first[0], again[0])
+            self.assertEqual(load.call_count, 1)
+            self.assertTrue(self.inference._get_model("4b", b)[4])     # another model replaces it
+            self.assertEqual(load.call_count, 2)
+            self.assertTrue(self.inference._get_model("4b", a)[4])
+            os.utime(Path(a) / "adapter_config.json", ns=(1, 1))        # retrained in place
+            self.assertTrue(self.inference._get_model("4b", a)[4])
+
+    def test_missing_adapter_is_not_cached(self):
+        load = mock.Mock(side_effect=FileNotFoundError("no adapter"))
+        with mock.patch.object(self.inference, "_load", load):
+            for _ in range(2):
+                with self.assertRaises(FileNotFoundError):
+                    self.inference._get_model("4b", str(Path(self.dir.name) / "none"))
+            self.assertEqual(load.call_count, 2)
+
+
 if __name__ == "__main__":
     unittest.main()

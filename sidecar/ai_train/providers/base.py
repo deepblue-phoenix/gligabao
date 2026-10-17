@@ -25,6 +25,7 @@ class FunctionSpec:
     timeout_s: int = 600
     volumes: dict = field(default_factory=dict)         # mount path -> volume name
     secrets: tuple = ()                                 # secret names
+    idle_timeout_s: int = 0                             # keep an idle container this long before it is shut down (0 = provider default)
 
 
 class Provider(ABC):
@@ -60,6 +61,13 @@ class Provider(ABC):
     @abstractmethod
     def reload_volumes(self, paths: Optional[list] = None) -> None:
         """Refresh volumes to see writes committed by other containers. `paths` as in commit_volumes."""
+
+    def register_container(self, info: dict) -> None:
+        """Called inside a remote container that serves inference and stays warm: records it (with `info`: what it
+        holds) so an operator can see and stop it. Default: nothing is recorded."""
+
+    def unregister_container(self) -> None:
+        """Called inside the container: removes its record (best effort; stale records are pruned by the lister)."""
 
     @property
     @abstractmethod
