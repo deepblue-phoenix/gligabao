@@ -337,7 +337,13 @@ function renderInferences(list: Inference[]): void {
     } else if (r.status === "running") {
       item.append(node("div", "infer-label", "Response"), node("pre", "infer-response muted", "Waiting for the model… (or interrupted, if the server restarted)"));
     } else {
-      item.append(node("div", "infer-label", "Response"), node("pre", "infer-response", r.response === "" ? "(the model returned an empty response)" : r.response));
+      const pre = node("pre", "infer-response collapsed", r.response === "" ? "(the model returned an empty response)" : r.response);
+      pre.title = "Click to expand or collapse the whole response";
+      pre.addEventListener("click", () => {
+        if (window.getSelection()?.toString()) return; // selecting text to copy, not toggling
+        pre.classList.toggle("collapsed");
+      });
+      item.append(node("div", "infer-label", "Response"), pre);
     }
     box.append(item);
   }

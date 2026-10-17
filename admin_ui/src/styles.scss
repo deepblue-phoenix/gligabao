@@ -676,7 +676,8 @@ tr.removing {
   .infer-head { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; font-size: 0.8rem; }
   .infer-label { margin-top: 0.4rem; color: $muted; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
   pre { margin: 0.15rem 0 0; padding: 0.4rem 0.6rem; border: 1px solid $border; border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
-  .infer-response { background: $surface; }
+  .infer-response { background: $surface; cursor: pointer;
+    &.collapsed { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; } }
   .infer-error { color: $err; } }
 .model-detail { margin-top: 0.75rem; padding: 0.6rem 0.8rem; background: $bg; border: 1px solid $border; border-radius: 6px;
   h4 { margin: 0 0 0.4rem; font-size: 0.9rem; }
