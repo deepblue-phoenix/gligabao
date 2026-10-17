@@ -36,7 +36,7 @@ def run_train(num_train_steps: int, model_size: str, commit_fn: Optional[Callabl
     Must run in the Unsloth GPU image.
 
     Reports to the job's progress file (progress_events.py): "running" at the start, the Trainer's progress while
-    training, then "completed" (with the final loss), "cancelled" (a stop was requested: see progress_events.py; no
+    training, then "completed" (with the final loss and the description of the saved weights, trained_model.py), "cancelled" (a stop was requested: see progress_events.py; no
     error) or "failed" (with the error, which is re-raised). `reload_fn(paths)` refreshes volumes, to see a stop request.
     """
     job_id = job_id or str(int(time.time()))
@@ -57,5 +57,6 @@ def run_train(num_train_steps: int, model_size: str, commit_fn: Optional[Callabl
         write_status(path, "failed", commit_fn, error=f"{type(e).__name__}: {e}"[:2000],
                      traceback="".join(traceback.format_exception(e))[-6000:])
         raise
-    write_status(path, "completed", commit_fn, final_loss=result.get("final_loss"))
+    # The completed event carries the description of the weights the job saved: the Go server records them as a trained model.
+    write_status(path, "completed", commit_fn, final_loss=result.get("final_loss"), model=result.get("model"))
     return result

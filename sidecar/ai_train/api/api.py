@@ -8,7 +8,9 @@ Endpoints:
     GET  /training/job_progress[?job_id=]                        -> the job's (default: newest) progress entries
     GET  /training/job_events?job_id=[&from=N]                   -> SSE stream of the job's progress events (see below)
     POST /training/job_cancel  {job_id}                          -> asks the job to stop (200 {job_id, status: "stopping"}); 404 unknown job, 409 already over
-    POST /infer/query                  {prompt, max_tokens?, temperature?, model_size?}
+    POST /infer/query                  {prompt, max_tokens?, temperature?, model_size?, model_path?}
+                                       model_path ("trained/<job id>", the path of a trained model that a completed job reported)
+                                       picks the weights; model_size must be the size they were trained for
     POST /evals/add_to_dataset    {prompt, response, notes?}
     GET  /evals/get_dataset_count
     GET  /healthz
@@ -40,6 +42,7 @@ from ai_train_core.dataset import store_dataset, valid_dataset_filename
 from ai_train_core.model_config import MODEL_SIZES
 from ai_train_core.paths import DATA_DIR, EVAL_DATASET_PATH, EVAL_DIR, PROGRESS_DIR
 from ai_train_core.progress_events import is_terminal, progress_path, read_events, request_stop, valid_job_id
+from ai_train_core.trained_model import valid_model_path
 
 log = logging.getLogger("uvicorn.error")  # shows in the container's log next to the access lines
 
@@ -55,7 +58,7 @@ def _describe(ev: dict) -> str:
 
 def create_api(
     spawn_training_job: Callable[..., str],     # (num_train_steps, model_size, dataset, job_id) -> the provider's call id
-    generate_response: Callable[..., dict],     # (prompt, max_tokens, temperature, model_size) -> dict
+    generate_response: Callable[..., dict],     # (prompt, max_tokens, temperature, model_size, model_path) -> dict
     commit_volumes: Callable[[list], None],
     reload_volumes: Callable[[list], None],
     poll_interval_s: float = 2.0,               # how often /training/job_events looks for new events
@@ -183,9 +186,12 @@ def create_api(
         model_size = data.get("model_size", "4b")
         if (err := bad_model_size(model_size)):
             return err
+        model_path = data.get("model_path") or ""
+        if model_path and not valid_model_path(model_path):
+            return JSONResponse({"error": f"Invalid model_path '{model_path}': expected 'trained/<job id>'"}, status_code=400)
         result = await run_in_threadpool(
             generate_response, data.get("prompt", ""), data.get("max_tokens", 1024),
-            data.get("temperature", 0.7), model_size)
+            data.get("temperature", 0.7), model_size, model_path)
         return JSONResponse(result)
 
     @api.post("/evals/add_to_dataset")

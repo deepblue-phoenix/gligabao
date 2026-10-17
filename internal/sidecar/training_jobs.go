@@ -82,6 +82,11 @@ func (c *Client) CancelTrainingJob(ctx context.Context, jobID string) error {
 }
 
 func (c *Client) post(ctx context.Context, path string, in, out any) error {
+	return c.postVia(ctx, c.http, path, in, out)
+}
+
+// postVia is post with another HTTP client: c.stream for a call that takes long (it has no timeout of its own).
+func (c *Client) postVia(ctx context.Context, hc *http.Client, path string, in, out any) error {
 	body, err := json.Marshal(in)
 	if err != nil {
 		return err
@@ -91,7 +96,7 @@ func (c *Client) post(ctx context.Context, path string, in, out any) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(req)
+	resp, err := hc.Do(req)
 	if err != nil {
 		return fmt.Errorf("sidecar POST %s: %w", path, err)
 	}

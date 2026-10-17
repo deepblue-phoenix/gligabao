@@ -16,5 +16,12 @@ REMOTE_METADATA_PATH = f"{DATA_DIR}/.metadata.json"
 EVAL_DATASET_PATH = f"{EVAL_DIR}/eval_dataset.jsonl"
 PROGRESS_FILE_TEMPLATE = PROGRESS_DIR + "/training_progress_{timestamp}.jsonl"
 
-# Where fine-tuned adapters are saved, per model size (so 4b/12b never overwrite each other).
+# Every training job saves its weights (a LoRA adapter: a few files) in a directory of its own, named after the job, so
+# training again never overwrites an earlier model. The path relative to MODELS_DIR is what the Go server records
+# (gb_trained_models.path) and what inference is asked to load (`model_path`).
+TRAINED_MODELS_SUBDIR = "trained"
+TRAINED_MODEL_DIR_TEMPLATE = MODELS_DIR + "/" + TRAINED_MODELS_SUBDIR + "/{job_id}"
+
+# Where the single adapter per model size was saved before jobs had directories of their own. Inference without a
+# `model_path` still loads it (a model trained by an older version).
 FINETUNED_ADAPTER_DIR_TEMPLATE = MODELS_DIR + "/finetuned_model_{model_size}"

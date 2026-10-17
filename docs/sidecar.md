@@ -76,7 +76,8 @@ sidecar/ai_train/
     progress.py               # Trainer callback writing live progress events
     progress_events.py        # the progress file format: write/read events (no heavy imports)
     model_load.py, model_train.py            # 4B and 12B via Unsloth
-    inference.py              # generate with the trained adapter
+    inference.py              # generate with a trained adapter (model_path picks it)
+    trained_model.py          # where a job's weights are saved, how they are described, model_path validation
     bootstrap.py              # ping + train
   api/
     api.py                    # FastAPI app (training jobs, progress, generate, eval, datasets)
@@ -88,7 +89,7 @@ sidecar/ai_train/
 
 ### One training path for both sizes
 
-`google/gemma-4-E4B-it` (4B) uses the `gemma4` architecture and `google/gemma-4-12B-it` (12B) the newer `gemma4_unified` one. Both train and serve through Unsloth (2026.10.x, which supports `transformers<=5.17` and `gemma4_unified`) in one shared image built from `requirements_train.txt` (CUDA 12.8, torch 2.10+). The sizes differ only in their settings (`model_config.py`), GPU and Modal function (`train_4b` / `train_12b`, `generate_4b` / `generate_12b`). Both save LoRA adapters to `/models/finetuned_model_<size>`, so they never overwrite each other. See [training/MODEL_SIZES.md](training/MODEL_SIZES.md).
+`google/gemma-4-E4B-it` (4B) uses the `gemma4` architecture and `google/gemma-4-12B-it` (12B) the newer `gemma4_unified` one. Both train and serve through Unsloth (2026.10.x, which supports `transformers<=5.17` and `gemma4_unified`) in one shared image built from `requirements_train.txt` (CUDA 12.8, torch 2.10+). The sizes differ only in their settings (`model_config.py`), GPU and Modal function (`train_4b` / `train_12b`, `generate_4b` / `generate_12b`). Every job saves its LoRA adapter in a directory of its own, `/models/trained/<job_id>`, so no job (of either size) overwrites an earlier model; see [Trained models](#trained-models). See [training/MODEL_SIZES.md](training/MODEL_SIZES.md).
 
 ### Running it (Modal)
 
@@ -104,20 +105,115 @@ modal run app.py --action generate --model-size 4b --prompt "..."     # run the 
 modal serve app.py                                 # web API in dev mode (`modal deploy app.py` to persist)
 ```
 
-`train` syncs the dataset first; `--dataset <file>` trains on another file of the data volume instead of the default one. Web API endpoints: `POST /training/job_start`, `GET /training/job_progress`, `GET /training/job_events` (SSE), `POST /infer/query`, `POST /evals/add_to_dataset`, `GET /evals/get_dataset_count`, `GET /healthz`.
+`train` syncs the dataset first; `--dataset <file>` trains on another file of the data volume instead of the default one. Web API endpoints: `POST /training/job_start`, `GET /training/job_progress`, `GET /training/job_events` (SSE), `POST /infer/query` (`model_path`: `trained/<job id>` picks the weights), `POST /evals/add_to_dataset`, `GET /evals/get_dataset_count`, `GET /healthz`. `--model-path trained/<job id>` picks the weights of `--action generate`.
 
 `POST /training/job_start` (body `{num_train_steps?, model_size?, dataset?, dataset_content?}`) answers with a `TrainingJob` (`job_id`, `provider_job_id`, `status`, `model_size`, `num_train_steps`, `dataset`, `started_at`). `job_id` is assigned by the sidecar and names the job's progress file; `provider_job_id` is the compute provider's id of the spawned call. `dataset` is the file name of a `*.jsonl` on the data volume (a plain name, else 400); omitted means the default dataset. The sidecar has **no dataset endpoints**: datasets are owned by the Go server. When the Go server starts a job on one of its datasets it sends the file inline as `dataset_content` (base64); the sidecar stores it on the data volume as `dataset` (replacing an earlier file of that name) before it spawns the job. Without `dataset_content`, `dataset` must already be on the volume (else 400). `dataset_content` without `dataset`, or not valid base64, is a 400. Inside the sidecar a dataset is passed around as the pydantic `TrainingDataset` (`api/models.py`: `filename`, `content` (base64, never serialized), `size_bytes`, `uploaded_at`, `modified_at`; `payload()`, `from_path()`).
 
 ### Training progress, end to end
 
-1. The training container writes **events** to `/progress/training_progress_<job_id>.jsonl` (`ai_train_core/progress_events.py`): `{"type":"status","status":"running"|"training"|"completed"|"failed"|"cancelled", ...}` (`completed` carries `final_loss`, `failed` and `cancelled` the `error`; non-finite numbers are sent as `null`), `{"type":"log","message"}` for what the job is doing (loading the model, ...) and `{"type":"progress","step","loss","learning_rate","epoch","elapsed_seconds"}` for each Trainer step (`logging_steps=1`). `POST /training/job_cancel {"job_id"}` makes the web container write `training_progress_<job_id>.stop`; the training container sees it between steps and ends the job with `cancelled` (the stop takes effect at the next step).
+1. The training container writes **events** to `/progress/training_progress_<job_id>.jsonl` (`ai_train_core/progress_events.py`): `{"type":"status","status":"running"|"training"|"completed"|"failed"|"cancelled", ...}` (`completed` carries `final_loss` and `model`, the description of the saved weights, see [Trained models](#trained-models); `failed` and `cancelled` the `error`; non-finite numbers are sent as `null`), `{"type":"log","message"}` for what the job is doing (loading the model, ...) and `{"type":"progress","step","loss","learning_rate","epoch","elapsed_seconds"}` for each Trainer step (`logging_steps=1`). `POST /training/job_cancel {"job_id"}` makes the web container write `training_progress_<job_id>.stop`; the training container sees it between steps and ends the job with `cancelled` (the stop takes effect at the next step).
 2. `GET /training/job_events?job_id=<id>[&from=<n>]` streams that file as **SSE**: `id: <event index>`, `event: status|progress|log`, `data: <event JSON>`, with `: keepalive` comments while idle. It ends after `completed`/`failed`/`cancelled`, or after a few minutes (the reader reconnects with `from=<last id + 1>`).
 3. The Go server follows that stream for every job started through the training API (`internal/api/training/monitor.go`): it stores each event in `gb_training_job_events`, keeps the job's `gb_training_job_runs` row current (`status`, `last_step`, `last_loss`, `final_loss`, `error`, `finished_at`), and forwards the events to its SSE feed (`/v1/gb/training/events`). After a restart it resumes the jobs that are still unfinished from the last stored event. If the sidecar never reports an end within 3 hours of the job's start, the job is marked `failed`.
 4. `GET /v1/gb/training/events[?db=<name>][&run_id=<id>]` is the SSE feed (the admin UI uses it) (`event: status|progress`, `data: {db, run_id, job_id, seq, type, ...}`). With `run_id` it first replays the job's stored events (resuming after `Last-Event-ID`), then goes live; without it, it is the live events of all jobs.
 
+### Trained models
+
+A trained model is a set of weights: for the LoRA fine-tuning the sidecar does, the few files of an adapter (`adapter_config.json`, `adapter_model.safetensors`, the tokenizer files). Each job that **completes** makes a **new** trained model, one row of the `gb_trained_models` table, so a user can train many models of the same type with other data, steps or size, and every one stays available to run inference on. A cancelled or failed job saves nothing.
+
+#### Where the weights are saved
+
+The weights live on the provider's **models volume** (Modal: `SIDECAR_VOL_MODELS`, default `gligabao-train-models`, mounted at `/models` in the containers). Each job gets a directory of its own, named after the job's ID, and nothing ever writes into another job's directory:
+
+```
+/models                              models volume
+  trained/
+    <job_id>/                        one directory per completed job (the sidecar's job ID: 16 hex characters)
+      adapter_config.json            the LoRA settings; it names the base model the adapter was trained on
+      adapter_model.safetensors      the LoRA weights themselves
+      tokenizer files …              whatever the tokenizer's save_pretrained writes (tokenizer.json, chat template, …)
+  finetuned_model_4b/                legacy: the single adapter per size that versions before 0.38.0 saved (overwritten
+  finetuned_model_12b/               by every job of that size); not in the table, still loadable without model_path
+```
+
+- **Only the adapter is saved, not the base model.** The base model (`google/gemma-4-E4B-it` or `google/gemma-4-12B-it`) is downloaded from Hugging Face into the **HF cache volume** (`SIDECAR_VOL_HF_CACHE`, mounted at `/root/.cache/huggingface`) and shared by all jobs. `adapter_config.json` names it, and inference loads it (4-bit) and attaches the adapter. A trained model therefore needs the base model to stay downloadable (`HF_TOKEN`, see `SIDECAR_HF_SECRET`) and its `model_size` to be right. The adapter is small next to the base model (the code's estimate is 64 MB and up; the 12B one is larger); `size_bytes` has the real number.
+- **Who writes it.** Only the training container, as the last stage of a job: it saves the adapter, commits the models volume (`commit_fn([MODELS_DIR])`), then lists the files and hashes them. Only after that does the job report `completed`, so a model row never points at weights that were not committed. A job that fails or is cancelled earlier saves nothing; one that dies *while* saving can leave a partial directory, which has no row.
+- **Who reads it.** The inference containers mount the models and HF cache volumes (`INFER_VOLS` in `app.py`). A container that was already running does not see a volume change committed elsewhere, so `generate_response` reloads the models volume first; that is how an adapter trained a minute ago is found. The web container mounts neither volume (it only needs data, eval and progress).
+- **Never overwritten, never deleted.** A job ID is used once, so a path is never written twice. gligabao has no endpoint that deletes weights or a model row; to free space, remove the directory yourself (`modal volume rm -r gligabao-train-models trained/<job_id>`); the row stays and inference on it then answers `502` with the sidecar's "No trained model at …" message.
+- **Looking at them.** The admin UI's **Volumes** button (training view, on the app's row) shows the volume's entry count; `modal volume ls gligabao-train-models trained/<job_id>` lists a model's files and `modal volume get gligabao-train-models trained/<job_id> ./out` downloads them. The row's `files` (path, size, sha256 of each) lets you verify a copy with `sha256sum`.
+- **Runs outside the server.** `modal run app.py --action train` also saves to `trained/<job_id>` (the job ID is a Unix timestamp there), but it bypasses the sidecar and the monitor, so no row is made; such a model can still be used with `modal run app.py --action generate --model-path trained/<timestamp>`.
+
+#### How a model is recorded
+
+1. The training container saves the adapter in `/models/trained/<job_id>` and lists its files with their sizes and sha256 (`ai_train_core/trained_model.py`).
+2. The job's `completed` event carries that as `model`: `{base_model, model_size, path, files: [{path, size_bytes, sha256}], size_bytes, num_examples, dataset_sha256, params}`. `path` is relative to the models volume; `dataset_sha256` is the digest of the dataset file the container actually read (the file of that name can be uploaded again with other content); `params` are the LoRA rank and alpha, dropout, learning rate, batch size, gradient accumulation, sequence length and 4-bit flag.
+3. The Go monitor records it **before** it stores the event (`internal/api/training/monitor.go`), so a failure to record makes the event stream retry instead of losing the model. The row (`gb_trained_models`): `run_id` (the job's `gb_training_job_runs` row; null if that row is deleted later), unique `job_id`, `name` (made from size, dataset, steps and the start of the job ID, e.g. `4b-mine.jsonl-100steps-1a2b3c4d`; not unique, there is no rename), `base_model`, `model_size`, `dataset`, `dataset_sha256`, `num_examples`, `num_train_steps`, `final_loss`, `params`, `path`, `files`, `size_bytes`, `created_at`. `params` and `files` are JSON text on both SQLite and PostgreSQL. `job_id` is unique and the insert ignores a duplicate, so a replayed `completed` event (a restart) makes no second row.
+4. A `completed` event without `model` (a Modal app that was not redeployed) records nothing and logs a warning. Existing databases get the table the next time the server starts (`CREATE TABLE IF NOT EXISTS`); there is nothing to migrate.
+
+#### How inference runs
+
+```
+client / admin UI ── POST /v1/gb/training/models/{id}/infer ──► Go server (training.InferOf)
+                                      reads the row: model_size, path (the client sends neither)
+                                                   │  sidecar.Client.Infer
+                                                   ▼
+                          sidecar: POST /infer/query {prompt, model_size, model_path, …}   (routes.py, forwarded as is)
+                                                   │  proxied by the modal backend
+                                                   ▼
+                          Modal web API (api/api.py): validates model_size and model_path
+                                                   │  provider.call(generate, …)
+                                                   ▼
+                          generate (CPU router, app.py) ─► generate_4b / generate_12b (GPU function of that size)
+                                                   │  inference.generate_response
+                                                   ▼
+                          reload the models volume ─► resolve_model_dir("trained/<job_id>") ─► Unsloth loads the
+                          adapter directory (and the base model it names) ─► generate ─► {"response", …}
+```
+
+- **`model_path`** is `trained/<job_id>` and nothing else: the web API refuses anything with another shape (`400`), and `resolve_model_dir` checks again inside the container, so a path cannot leave the `trained/` directory. A directory without `adapter_config.json` is a "No trained model at …" error. Without `model_path` the legacy `finetuned_model_<size>` adapter is used.
+- **`model_size` must match the weights.** It chooses the GPU function (4b: A10G, 12b: A100). The Go endpoint passes the size recorded for the model; a direct caller of `/infer/query` has to pass the right one, or the wrong GPU may run out of memory.
+- **Every request loads the model.** There is no keep-warm and no cache: a request starts (or reuses) a GPU container, loads the base model from the HF cache (4-bit) and attaches the adapter, so a cold request takes minutes and a warm container still reloads. The Modal functions have a 600 second timeout (`app.py`); the Go client waits up to 15 minutes (`context` limit, no HTTP timeout).
+- **The answer** is `{"response", "model_size", "model_path", "adapter"}`. Generation samples (`do_sample`) with the given `temperature` (default 0.7) up to `max_tokens` (default 1024; the Go endpoint allows at most 8192). The prompt is wrapped in the same Gemma turn markers as the training data (`prompt_format.py`).
+- **Errors.** The Go endpoint answers `400` for a bad body, `404` for an unknown model, `502` if the sidecar fails (with its message when the generation itself failed, such as missing weights; a generic message otherwise) and `503` without a sidecar. The sidecar reports a failed generation as `200 {"error": "…"}`, which the Go client turns into `*sidecar.InferError`.
+
+#### Adding an inference endpoint
+
+There are three layers, and a new endpoint touches one or more of them. Redeploy the Modal app after a change to the Python side (the training view's `Redeploy`), or the running app keeps the old code.
+
+1. **A new Go endpoint over trained models** (no Python change; for example a batch call, or a different default):
+   - write the handler next to `InferOf` in `internal/api/training/models.go`: pick the database (`pick`), read the model with `relational.GetTrainedModel`, and take `ModelSize` and `Path` **from the record, never from the request**;
+   - if it needs something new from the sidecar, add a method to `internal/sidecar/inference.go` (a long call uses `postVia(ctx, c.stream, …)`, which has no overall timeout) and to the `Inferer` interface in `models.go` (the fake sidecar of the tests implements it);
+   - register it in `registerTraining` (`internal/server/server.go`);
+   - test it with the fake sidecar (`internal/api/training/models_test.go`).
+2. **A new sidecar route** (a new kind of request to the Modal app):
+   - add `("METHOD", "/path")` to `ROUTES` in `sidecar/routes.py`: the sidecar forwards the route to its backend untouched, it does not parse the body;
+   - add the handler to `create_api` in `sidecar/ai_train/api/api.py`: validate the input (`bad_model_size`, `valid_model_path`), call an injected function with `run_in_threadpool`;
+   - give `create_api` that function from `serve_api` in `app.py`, built with `provider.call(...)` (the API module never imports a provider);
+   - add the Go client method (step 1) and a test in `ApiTest` (`test_ai_train_core.py`) with a fake in place of the function.
+3. **A new generation function** (another GPU function, e.g. another decoding mode or model type):
+   - put the logic in `ai_train_core/inference.py` (heavy imports inside the function; `ai_train_core` never imports a provider SDK) and resolve any path with `resolve_model_dir`;
+   - register it in `app.py` with `@provider.function(FunctionSpec(image=UNSLOTH_IMAGE, gpu=CONFIG.gpu_for(size), timeout_s=600, volumes=INFER_VOLS, secrets=secrets))`: the volumes must include the models and HF cache volumes, and the function must reload the models volume before it reads;
+   - route to it from a CPU function like `generate`, which picks the function by `model_size`.
+
+A different kind of weights (another model size, or a trainer that saves something other than a LoRA adapter) also needs its own `describe` result and loader; the row's `path` and `files` already hold any set of files under `trained/<job_id>`.
+
+#### Details and limits
+
+- Listing and reading are plain database calls and need no sidecar; only inference does.
+- The row is the record of what was trained, not proof the weights still exist: gligabao does not check the volume.
+- No endpoint renames, deletes or exports a model, merges adapters, or streams the generated text; one request is one prompt and one answer.
+- Training the same settings twice makes two models (and two directories); compare them by `final_loss`, `dataset_sha256` and `params`.
+
+#### Endpoints
+
+| Endpoint | |
+|---|---|
+| `GET /v1/gb/training/models[?db=][&limit=]` | `{"models": [...]}`, newest first (default 100, at most 500). |
+| `GET /v1/gb/training/models/{id}[?db=]` | one trained model; 404 if unknown. |
+| `POST /v1/gb/training/models/{id}/infer[?db=]` | body `{"prompt", "max_tokens"?, "temperature"?}`; runs the prompt through that model's weights on the sidecar (size and path come from the record) and answers `{"model_id", "response"}`. It takes minutes when a GPU container has to start and load the model. 400 bad body, 404 unknown model, 502 sidecar failure (with its message if the generation failed, e.g. the weights are gone from the volume), 503 no sidecar. |
+
 ### Admin UI: the training view
 
-The **training** view of the [admin UI](../README.md) has a dataset upload (a file input and the table of uploaded datasets), a `Run` button (model size 4B/12B, dataset, steps), the list of the jobs in `gb_training_job_runs`, and for the selected job the event feed and a graph of its loss. The training endpoints are part of the API, under `/v1/gb/training/` (served whether or not the admin UI is on); the sidecar status stays with the admin UI:
+The **training** view of the [admin UI](../README.md) has a dataset upload (a file input and the table of uploaded datasets), a `Run` button (model size 4B/12B, dataset, steps), the list of the jobs in `gb_training_job_runs`, the list of the **trained models** in `gb_trained_models` (click one for its settings and files, and a form that runs a prompt through it), and for the selected job the event feed and a graph of its loss. The training endpoints are part of the API, under `/v1/gb/training/` (served whether or not the admin UI is on); the sidecar status stays with the admin UI:
 
 | Endpoint | |
 |---|---|
@@ -171,6 +267,7 @@ To add a provider (e.g. AWS): implement `Provider` in `providers/aws_provider.py
 1. Add a dependency: put it in the requirements file of the image that needs it (an image is rebuilt only when its file changes; code changes do not rebuild it).
 2. Add a model size: an entry in `ai_train_core/model_config.py`, a train/generate function pair in `app.py`, and a pipeline module if it needs a new backend.
 3. Add another remote function: declare it in `app.py` with a `FunctionSpec` and a matching action in `main`.
+4. Add an inference endpoint: see [Adding an inference endpoint](#adding-an-inference-endpoint).
 
 ## The container
 

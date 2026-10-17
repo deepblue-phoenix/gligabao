@@ -146,6 +146,15 @@
               <tbody></tbody>
             </table>
 
+            <h3>Trained models</h3>
+            <p class="muted">Every completed job saves its weights as a new trained model, so training again (other data, steps or size) never replaces an earlier one. Click a model to see its files and to run inference on it.</p>
+            <p id="training-models-status" class="muted"></p>
+            <table id="training-models" class="clickable" hidden>
+              <thead><tr><th>ID</th><th>Name</th><th>Model</th><th>Dataset</th><th class="num">Steps</th><th class="num">Loss</th><th class="num">Weights</th><th>Trained (UTC)</th></tr></thead>
+              <tbody></tbody>
+            </table>
+            <div id="training-model-detail" class="model-detail" hidden></div>
+
             <h3>Selected job <span id="training-stream" class="muted"></span></h3>
             <div id="training-detail-head"></div>
             <div id="training-loss"></div>

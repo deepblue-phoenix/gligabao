@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from unittest import mock
 
-from ai_train_core import dataset, paths, progress_events
+from ai_train_core import dataset, paths, progress_events, trained_model
 from ai_train_core.model_config import MODEL_CONFIGS, get_model_config
 from ai_train_core.prompt_format import extract_model_response, format_inference_prompt, format_instruction
 
@@ -144,6 +144,50 @@ class ProgressEventsTest(unittest.TestCase):
                 progress_events.progress_path(bad)
 
 
+class TrainedModelTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.models = self.tmp.name
+
+    def save(self, job_id, files):
+        d = Path(self.models, "trained", job_id)
+        for name, content in files.items():
+            (d / name).parent.mkdir(parents=True, exist_ok=True)
+            (d / name).write_bytes(content)
+        return str(d)
+
+    def test_model_dir_is_per_job(self):
+        self.assertEqual(trained_model.model_dir("j1"), f"{paths.MODELS_DIR}/trained/j1")
+        self.assertNotEqual(trained_model.model_dir("j1"), trained_model.model_dir("j2"))
+        with self.assertRaises(ValueError):
+            trained_model.model_dir("../x")
+
+    def test_describe(self):
+        d = self.save("j1", {"adapter_config.json": b"{}", "adapter_model.safetensors": b"12345", "sub/tok.json": b"x"})
+        ds = Path(self.models, "ds.jsonl")
+        ds.write_bytes(b'{"a":1}\n')
+        info = trained_model.describe(d, base_model="google/x", model_size="4b", num_examples=1, dataset_path=str(ds),
+                                      params={"lora_rank": 16}, models_dir=self.models)
+        self.assertEqual(info["path"], "trained/j1")
+        self.assertEqual([f["path"] for f in info["files"]], ["adapter_config.json", "adapter_model.safetensors", "sub/tok.json"])
+        self.assertEqual(info["size_bytes"], 2 + 5 + 1)
+        import hashlib
+        self.assertEqual(info["files"][1]["sha256"], hashlib.sha256(b"12345").hexdigest())
+        self.assertEqual(info["dataset_sha256"], hashlib.sha256(b'{"a":1}\n').hexdigest())
+        self.assertEqual((info["base_model"], info["model_size"], info["params"]), ("google/x", "4b", {"lora_rank": 16}))
+        json.dumps(info, allow_nan=False)  # goes into a progress event
+
+    def test_resolve_model_dir(self):
+        d = self.save("j1", {"adapter_config.json": b"{}"})
+        self.assertEqual(trained_model.resolve_model_dir("trained/j1", self.models), d)
+        with self.assertRaises(FileNotFoundError):
+            trained_model.resolve_model_dir("trained/nope", self.models)
+        for bad in ("", "j1", "../trained/j1", "trained/../j1", "trained/j1/x", "/trained/j1"):
+            with self.assertRaises(ValueError, msg=bad):
+                trained_model.resolve_model_dir(bad, self.models)
+
+
 class RunTrainTest(unittest.TestCase):
     """bootstrap.run_train reports the job's life to its progress file (the trainers themselves are faked)."""
 
@@ -162,7 +206,8 @@ class RunTrainTest(unittest.TestCase):
 
     def test_completed(self):
         fake = mock.Mock()
-        fake.run_finetuning.return_value = {"status": "success", "final_loss": 0.25}
+        model = {"path": "trained/jc", "files": [], "size_bytes": 0}
+        fake.run_finetuning.return_value = {"status": "success", "final_loss": 0.25, "model": model}
         with mock.patch.dict(sys.modules, {"ai_train_core.model_train": fake}):
             self.bootstrap.run_train(3, "4b", dataset="mine.jsonl", job_id="jc")
         self.assertEqual(fake.run_finetuning.call_args.kwargs["dataset_path"], f"{paths.DATA_DIR}/mine.jsonl")
@@ -170,6 +215,7 @@ class RunTrainTest(unittest.TestCase):
         st = self.statuses("jc")
         self.assertEqual([s for s, _ in st], ["running", "completed"])
         self.assertEqual(st[1][1]["final_loss"], 0.25)
+        self.assertEqual(st[1][1]["model"], model)  # the weights the job saved ride on the completed event
 
     def test_failed(self):
         fake = mock.Mock()
@@ -357,7 +403,14 @@ class ApiTest(unittest.TestCase):
 
     def test_generate(self):
         r = self.client.post("/infer/query", json={"prompt": "hi"})
-        self.assertEqual(r.json()["args"], ["hi", 1024, 0.7, "4b"])
+        self.assertEqual(r.json()["args"], ["hi", 1024, 0.7, "4b", ""])
+
+    def test_generate_with_a_trained_model(self):
+        r = self.client.post("/infer/query", json={"prompt": "hi", "model_size": "12b", "model_path": "trained/abc123"})
+        self.assertEqual(r.json()["args"], ["hi", 1024, 0.7, "12b", "trained/abc123"])
+        for bad in ("../x", "trained/../x", "/models/trained/a", "finetuned_model_4b", "trained/a/b", "trained/"):
+            r = self.client.post("/infer/query", json={"prompt": "hi", "model_path": bad})
+            self.assertEqual(r.status_code, 400, bad)
 
 
 if __name__ == "__main__":

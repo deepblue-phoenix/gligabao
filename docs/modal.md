@@ -86,6 +86,8 @@ The Stop button is not offered while the app is not deployed, and it never runs 
 | Entries | How many files and directories its top level holds. |
 | Created (UTC) | When Modal created it. |
 
+The `/models` volume holds the trained models, one directory per completed job (`trained/<job_id>`, see [Trained models](sidecar.md#where-the-weights-are-saved)); its **Entries** count is the number of top-level entries (`trained`, and `finetuned_model_<size>` if an older version saved one), not the number of models. `/root/.cache/huggingface` holds the downloaded base models.
+
 It is read only: nothing is created, changed or deleted, and it works whether or not the app is deployed. It takes a few seconds because it runs `sidecar/ai_train/list_volumes.py` in a subprocess (60 second limit). A volume that cannot be queried gets an `error` of its own and the others are still listed. Deleting or emptying volumes is not offered; use `modal volume` for that.
 
 ## The API

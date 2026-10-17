@@ -160,6 +160,37 @@ CREATE TABLE IF NOT EXISTS gb_training_job_events (
 	PRIMARY KEY (run_id, seq)
 );
 
+-- Trained models: ONE ROW PER COMPLETED TRAINING JOB, the set of weights the job saved on the sidecar's models volume (a LoRA
+-- adapter: a few files). Training again never replaces a model, it makes a new row; any row can be picked to run inference on.
+-- The row is made from the job's "completed" event (internal/api/training/monitor.go).
+--   run_id           the job run (gb_training_job_runs) that made it; NULL if that run was deleted. job_id is unique: a job makes one model
+--   name             for lists; made from the settings when the row is made
+--   base_model       the model that was fine-tuned (e.g. google/gemma-4-E4B-it); model_size '4b' or '12b' (inference needs it)
+--   dataset          the dataset file name ('' = the sidecar's default); dataset_sha256 the digest of the file the job read; num_examples its examples
+--   num_train_steps, final_loss  how long the job trained and its mean training loss
+--   params           JSON object: the other training settings (LoRA rank and alpha, learning rate, batch size, ...)
+--   path             the directory of the weights on the models volume, relative to it ('trained/<job id>'): inference's model_path
+--   files            JSON array of {path, size_bytes, sha256}: the files in that directory; size_bytes their total
+CREATE TABLE IF NOT EXISTS gb_trained_models (
+	id              INTEGER PRIMARY KEY AUTOINCREMENT,
+	name            TEXT NOT NULL,
+	run_id          INTEGER REFERENCES gb_training_job_runs(id) ON DELETE SET NULL,
+	job_id          TEXT NOT NULL UNIQUE,
+	base_model      TEXT NOT NULL DEFAULT '',
+	model_size      TEXT NOT NULL,
+	dataset         TEXT NOT NULL DEFAULT '',
+	dataset_sha256  TEXT NOT NULL DEFAULT '',
+	num_examples    INTEGER NOT NULL DEFAULT 0,
+	num_train_steps INTEGER NOT NULL,
+	final_loss      REAL,
+	params          TEXT NOT NULL DEFAULT '{}',
+	path            TEXT NOT NULL,
+	files           TEXT NOT NULL DEFAULT '[]',
+	size_bytes      INTEGER NOT NULL DEFAULT 0,
+	created_at      DATETIME NOT NULL DEFAULT (` + SQLNow + `)
+);
+CREATE INDEX IF NOT EXISTS idx_gb_trained_models_run ON gb_trained_models(run_id);
+
 -- JSONL training datasets uploaded through the Go server (internal/api/training/datasets.go): ONE ROW PER FILE NAME.
 -- The file is kept in the training dataset directory (under its name); the sidecar is not involved in the upload, it gets
 -- the file when a training job that uses it is started.

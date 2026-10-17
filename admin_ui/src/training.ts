@@ -11,6 +11,12 @@ interface Job {
   num_train_steps: number; last_step: number; last_loss: number | null; final_loss: number | null; error?: string;
   started_at: string; finished_at: string | null;
 }
+interface TrainedModelFile { path: string; size_bytes: number; sha256?: string }
+interface TrainedModel {
+  id: number; name: string; run_id: number | null; job_id: string; base_model: string; model_size: string; dataset: string;
+  dataset_sha256: string; num_examples: number; num_train_steps: number; final_loss: number | null; params: Record<string, unknown>;
+  path: string; files: TrainedModelFile[]; size_bytes: number; created_at: string;
+}
 interface DatasetRecord {
   id: number; filename: string; size_bytes: number; num_records: number; sha256: string; status: "stored" | "synced";
   updated_at: string; synced_at: string | null;
@@ -58,6 +64,9 @@ async function failure(res: Response): Promise<Error> {
 }
 
 let jobs: Job[] = [];
+let models: TrainedModel[] = [];
+let selectedModel: number | null = null;
+let inferring = false; // an inference request is in flight
 let selected: number | null = null;
 let points: Point[] = [];
 let lastSeq = -1;
@@ -129,9 +138,154 @@ function applyToList(ev: FeedEvent): void {
     j.last_step = ev.step;
     if (ev.loss != null) j.last_loss = ev.loss;
   }
-  if (ev.type === "status" && ev.status && FINISHED.includes(ev.status)) { stopping.delete(ev.run_id); void loadJobs(); return; } // final loss, finish time
+  if (ev.type === "status" && ev.status && FINISHED.includes(ev.status)) { // final loss, finish time; a completed job leaves a trained model
+    stopping.delete(ev.run_id);
+    void loadJobs();
+    if (ev.status === "completed") void loadModels();
+    return;
+  }
   renderJobs();
   renderDetailHead();
+}
+
+//---------------------------------------------------------------------------------------------
+// Trained models
+
+function renderModels(): void {
+  const table = el<HTMLTableElement>("training-models");
+  const body = table.tBodies[0];
+  body.replaceChildren();
+  table.hidden = models.length === 0;
+  for (const m of models) {
+    const tr = body.insertRow();
+    tr.classList.toggle("selected", m.id === selectedModel);
+    tr.title = "Show this model's files and run inference on it";
+    tr.insertCell().textContent = String(m.id);
+    tr.insertCell().textContent = m.name;
+    tr.insertCell().textContent = m.model_size;
+    tr.insertCell().textContent = m.dataset || "(default)";
+    const steps = tr.insertCell();
+    steps.className = "num";
+    steps.textContent = String(m.num_train_steps);
+    const loss = tr.insertCell();
+    loss.className = "num";
+    loss.textContent = fmtLoss(m.final_loss);
+    const size = tr.insertCell();
+    size.className = "num";
+    size.textContent = `${fmtBytes(m.size_bytes)} · ${m.files.length} file${m.files.length === 1 ? "" : "s"}`;
+    tr.insertCell().textContent = fmtTime(m.created_at);
+    tr.addEventListener("click", () => selectModel(m.id));
+  }
+  el("training-models-status").textContent = models.length === 0 ? "No trained models yet: one is saved when a job completes." : "";
+}
+
+async function loadModels(): Promise<void> {
+  const status = el("training-models-status");
+  try {
+    const res = await fetch("../training/models");
+    if (!res.ok) throw await failure(res);
+    models = ((await res.json()) as { models: TrainedModel[] }).models ?? [];
+    status.className = "muted";
+    if (selectedModel !== null && !models.some((m) => m.id === selectedModel)) selectedModel = null;
+    renderModels();
+    if (selectedModel === null) el("training-model-detail").hidden = true;
+  } catch (err) {
+    status.className = "error";
+    status.textContent = `Failed to load trained models: ${errText(err)}`;
+  }
+}
+
+function selectModel(id: number): void {
+  if (selectedModel === id) { selectedModel = null; el("training-model-detail").hidden = true; renderModels(); return; } // a second click hides it
+  selectedModel = id;
+  renderModels();
+  renderModelDetail();
+}
+
+// The details of the selected model: how it was trained, its files, and a form to run a prompt through it.
+function renderModelDetail(): void {
+  const box = el("training-model-detail");
+  const m = models.find((x) => x.id === selectedModel);
+  box.hidden = !m;
+  if (!m) return;
+  const facts: [string, string][] = [
+    ["Base model", m.base_model || m.model_size],
+    ["Dataset", `${m.dataset || "(default)"}${m.num_examples ? ` · ${m.num_examples} examples` : ""}`],
+    ["Dataset sha256", m.dataset_sha256 || "–"],
+    ["Training", `${m.num_train_steps} steps · final loss ${fmtLoss(m.final_loss)}`],
+    ["Settings", Object.entries(m.params ?? {}).map(([k, v]) => `${k}=${String(v)}`).join(", ") || "–"],
+    ["Job", m.run_id != null ? `#${m.run_id} (${m.job_id})` : m.job_id],
+    ["Weights", `${m.path} on the sidecar's models volume`],
+  ];
+  const dl = node("dl");
+  for (const [k, v] of facts) dl.append(node("dt", "", k), node("dd", "", v));
+
+  const files = node("table");
+  const head = files.createTHead().insertRow();
+  for (const h of ["File", "Size", "sha256"]) head.appendChild(node("th", h === "Size" ? "num" : "", h));
+  const fbody = files.createTBody();
+  for (const f of m.files) {
+    const tr = fbody.insertRow();
+    tr.insertCell().textContent = f.path;
+    const size = tr.insertCell();
+    size.className = "num";
+    size.textContent = fmtBytes(f.size_bytes);
+    const sha = tr.insertCell();
+    sha.textContent = f.sha256 ? f.sha256.slice(0, 12) : "";
+    sha.title = f.sha256 ?? "";
+  }
+
+  const prompt = node("textarea");
+  prompt.placeholder = "Prompt to run through this model, e.g. Check recent news about NVIDIA and buy 10 shares if it's positive";
+  const tokens = node("input");
+  tokens.type = "number"; tokens.value = "512"; tokens.min = "1"; tokens.max = "8192"; tokens.step = "1";
+  const temp = node("input");
+  temp.type = "number"; temp.value = "0.7"; temp.min = "0.05"; temp.max = "2"; temp.step = "0.05";
+  const labelled = (text: string, input: HTMLElement): HTMLElement => { const l = node("label", "", text); l.append(input); return l; };
+  const run = node("button", "", "Run inference");
+  run.type = "button";
+  run.disabled = inferring;
+  const status = node("span", "muted");
+  const out = node("pre");
+  out.hidden = true;
+  run.addEventListener("click", () => {
+    const p = prompt.value.trim();
+    const n = Number.parseInt(tokens.value, 10), t = Number.parseFloat(temp.value);
+    if (!p) { status.className = "error"; status.textContent = "Enter a prompt."; return; }
+    if (!Number.isInteger(n) || n < 1 || !(t > 0)) { status.className = "error"; status.textContent = "Max tokens must be a positive integer and temperature above 0."; return; }
+    void infer(m, p, n, t, run, status, out);
+  });
+  const form = node("div", "row training-form");
+  form.append(labelled("Max tokens", tokens), labelled("Temperature", temp), run, status);
+
+  box.replaceChildren(node("h4", "", `${m.name} (#${m.id})`), dl, files, prompt, form, out);
+}
+
+// Runs a prompt through a trained model on the sidecar. The first call after a while is slow: a GPU container starts and loads the model.
+async function infer(m: TrainedModel, prompt: string, maxTokens: number, temperature: number,
+  run: HTMLButtonElement, status: HTMLElement, out: HTMLElement): Promise<void> {
+  inferring = true;
+  run.disabled = true;
+  status.className = "muted";
+  status.textContent = "Running… (the first request loads the model on a GPU: this can take minutes)";
+  out.hidden = true;
+  const started = Date.now();
+  try {
+    const res = await fetch(`../training/models/${m.id}/infer`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, max_tokens: maxTokens, temperature }),
+    });
+    if (!res.ok) throw await failure(res);
+    out.textContent = ((await res.json()) as { response: string }).response;
+    out.hidden = false;
+    status.textContent = `Done in ${Math.round((Date.now() - started) / 1000)}s.`;
+  } catch (err) {
+    status.className = "error";
+    status.textContent = `Inference failed: ${errText(err)}`;
+  } finally {
+    inferring = false;
+    run.disabled = false;
+  }
 }
 
 //---------------------------------------------------------------------------------------------
@@ -670,11 +824,12 @@ export function initTraining(): void {
   const datasetModal = el<HTMLDialogElement>("dataset-modal");
   el("dataset-close").addEventListener("click", () => datasetModal.close());
   datasetModal.addEventListener("click", (e) => { if (e.target === datasetModal) datasetModal.close(); });
-  el("training-refresh").addEventListener("click", () => { void loadDatasets(); void loadBackends(); void loadJobs(); });
+  el("training-refresh").addEventListener("click", () => { void loadDatasets(); void loadBackends(); void loadJobs(); void loadModels(); });
   // The SSE streams are open only while the view is shown (a browser allows few connections to a host).
   const sync = (): void => {
     if (view.hidden) { closeStreams(); return; }
     void loadDatasets();
+    void loadModels();
     openAllJobs();
     openPerJob();
     scheduleDraw();
@@ -682,5 +837,6 @@ export function initTraining(): void {
   new MutationObserver(sync).observe(view, { attributes: true, attributeFilter: ["hidden"] });
   window.addEventListener("resize", scheduleDraw);
   void loadJobs();
+  void loadModels();
   if (!view.hidden) sync();
 }

@@ -180,6 +180,9 @@ func testTrainingMonitor(t *testing.T, d *sql.DB) {
 	fl := 0.9
 	done := status("completed")
 	done.FinalLoss = &fl
+	done.Model = &sidecar.TrainedModelInfo{BaseModel: "google/gemma-4-E4B-it", ModelSize: "4b", Path: "trained/fc-4b", SizeBytes: 30,
+		Files:       []sidecar.TrainedModelFile{{Path: "adapter_config.json", SizeBytes: 10, SHA256: "h"}, {Path: "w.safetensors", SizeBytes: 20}},
+		NumExamples: 8, DatasetSHA256: "dsh", Params: json.RawMessage(`{"lora_rank":16}`)}
 	sc.feed <- done
 	if ev := live.next(); ev.Name != "status" || ev.Data.Status != "completed" || ev.ID != "3" {
 		t.Fatalf("completed event: %+v", ev)
@@ -188,6 +191,17 @@ func testTrainingMonitor(t *testing.T, d *sql.DB) {
 	run, _ = relational.GetTrainingJobRun(ctx, d, 1)
 	if run.Status != "completed" || run.FinalLoss == nil || *run.FinalLoss != 0.9 {
 		t.Fatalf("finished run: %+v", run)
+	}
+	// The completed job left a trained model, made from its run and the completed event.
+	models, err := relational.ListTrainedModels(ctx, d, 0)
+	if err != nil || len(models) != 1 {
+		t.Fatalf("trained models: %+v, %v", models, err)
+	}
+	if tm := models[0]; tm.RunID == nil || *tm.RunID != 1 || tm.JobID != "fc-4b" || tm.Path != "trained/fc-4b" || tm.ModelSize != "4b" ||
+		tm.BaseModel != "google/gemma-4-E4B-it" || tm.NumTrainSteps != 10 || tm.FinalLoss == nil || *tm.FinalLoss != 0.9 ||
+		tm.SizeBytes != 30 || len(tm.Files) != 2 || tm.Files[0].SHA256 != "h" || tm.NumExamples != 8 || tm.DatasetSHA256 != "dsh" ||
+		string(tm.Params) != `{"lora_rank":16}` {
+		t.Fatalf("trained model: %+v", tm)
 	}
 	stored, err := relational.ListTrainingJobEvents(ctx, d, 1, 0)
 	if err != nil || len(stored) != 4 || stored[3].Seq != 3 || stored[3].Type != "status" {
@@ -274,5 +288,43 @@ func TestTrainingMonitorTimeoutAndResume(t *testing.T) {
 	}
 	if evs, _ := relational.ListTrainingJobEvents(ctx, d, id3, 0); len(evs) != 1 || evs[0].Type != "status" {
 		t.Fatalf("timeout event: %+v", evs)
+	}
+}
+
+// Only a completed job that reports its weights leaves a trained model: not a failed or a cancelled one, nor a completed one
+// from a sidecar that does not report them.
+func TestTrainingMonitorTrainedModels(t *testing.T) {
+	d := dbtest.OpenSQLite(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	dbs := []training.Database{{Name: "standard", DB: d}}
+	sc := newStreamSidecar()
+	mon := training.NewMonitor(ctx, dbs, sc, training.WithRetryDelay(time.Millisecond))
+	model := &sidecar.TrainedModelInfo{Path: "trained/x", Files: []sidecar.TrainedModelFile{{Path: "a", SizeBytes: 1}}, SizeBytes: 1}
+
+	for i, last := range []sidecar.TrainingEvent{status("failed"), status("cancelled"), status("completed")} {
+		sc := newStreamSidecar()
+		mon := training.NewMonitor(ctx, dbs, sc, training.WithRetryDelay(time.Millisecond))
+		id, _ := relational.RecordTrainingJobRun(ctx, d, relational.TrainingJobRun{JobID: "j" + strconv.Itoa(i), Status: "started", ModelSize: "4b", NumTrainSteps: 5, StartedAt: time.Now()})
+		run, _ := relational.GetTrainingJobRun(ctx, d, id)
+		sc.feed <- last // none of them has a model attached (the completed one is from a sidecar that does not report it)
+		mon.Watch(dbs[0], *run)
+		waitFor(t, "run finished", func() bool { r, _ := relational.GetTrainingJobRun(ctx, d, id); return r.FinishedAt != nil })
+	}
+	if models, _ := relational.ListTrainedModels(ctx, d, 0); len(models) != 0 {
+		t.Fatalf("models without weights: %+v", models)
+	}
+
+	// The same completed event replayed (a restart) does not make a second model.
+	id, _ := relational.RecordTrainingJobRun(ctx, d, relational.TrainingJobRun{JobID: "jm", Status: "started", ModelSize: "4b", NumTrainSteps: 5, StartedAt: time.Now()})
+	run, _ := relational.GetTrainingJobRun(ctx, d, id)
+	done := status("completed")
+	done.Model = model
+	sc.feed <- done
+	mon.Watch(dbs[0], *run)
+	waitFor(t, "model recorded", func() bool { m, _ := relational.ListTrainedModels(ctx, d, 0); return len(m) == 1 })
+	waitFor(t, "run finished", func() bool { r, _ := relational.GetTrainingJobRun(ctx, d, id); return r.FinishedAt != nil })
+	if models, _ := relational.ListTrainedModels(ctx, d, 0); len(models) != 1 || models[0].ModelSize != "4b" || models[0].Name == "" {
+		t.Fatalf("models: %+v", models)
 	}
 }

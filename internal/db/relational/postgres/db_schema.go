@@ -103,6 +103,27 @@ CREATE TABLE IF NOT EXISTS gb_training_job_events (
 	PRIMARY KEY (run_id, seq)
 );
 
+-- One row per trained model: the weights a completed training job saved (see sqlite/db_schema.go).
+CREATE TABLE IF NOT EXISTS gb_trained_models (
+	id              BIGSERIAL PRIMARY KEY,
+	name            TEXT NOT NULL,
+	run_id          BIGINT REFERENCES gb_training_job_runs(id) ON DELETE SET NULL,
+	job_id          TEXT NOT NULL UNIQUE,
+	base_model      TEXT NOT NULL DEFAULT '',
+	model_size      TEXT NOT NULL,
+	dataset         TEXT NOT NULL DEFAULT '',
+	dataset_sha256  TEXT NOT NULL DEFAULT '',
+	num_examples    BIGINT NOT NULL DEFAULT 0,
+	num_train_steps BIGINT NOT NULL,
+	final_loss      DOUBLE PRECISION,
+	params          TEXT NOT NULL DEFAULT '{}',
+	path            TEXT NOT NULL,
+	files           TEXT NOT NULL DEFAULT '[]',
+	size_bytes      BIGINT NOT NULL DEFAULT 0,
+	created_at      TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `
+);
+CREATE INDEX IF NOT EXISTS idx_gb_trained_models_run ON gb_trained_models(run_id);
+
 -- JSONL training datasets uploaded through the Go server (see sqlite/db_schema.go).
 CREATE TABLE IF NOT EXISTS gb_training_datasets (
 	id          BIGSERIAL PRIMARY KEY,

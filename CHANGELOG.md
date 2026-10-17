@@ -5,6 +5,19 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.38.0] - 2026-10-31
+
+### Added
+- **Trained models**: a new table `gb_trained_models` (SQLite and PostgreSQL) with one row per completed training job: the set of weights the job saved on the sidecar's models volume. Each row tracks the job (`run_id`, `job_id`), the base model and size, the dataset (name, sha256 of the file the job read, number of examples), the steps and final loss, the other training settings (`params`: LoRA rank and alpha, learning rate, batch size, ...), where the weights are (`path`) and the list of their files with sizes and sha256. Training again (other data, steps or size) always makes a new row; nothing is replaced.
+- The training job's `completed` event carries the description of the saved weights (`model`); the Go monitor records it as a trained model (once, even if the event is replayed).
+- `GET /v1/gb/training/models`, `GET /v1/gb/training/models/{id}` and `POST /v1/gb/training/models/{id}/infer` (runs a prompt through the chosen model's weights; Go client: `sidecar.Client.Infer`).
+- Sidecar `POST /infer/query` takes `model_path` (`trained/<job id>`) to pick the weights; `modal run app.py --action generate --model-path ...` too.
+- `docs/sidecar.md`, section Trained models: where the weights are saved (volume layout, what is and is not stored, who reads and writes it), how a model is recorded, how an inference request reaches the weights, and how to add an inference endpoint.
+- Admin UI, training view: a **Trained models** table. Clicking a model shows its settings and files and a form to run a prompt through it.
+
+### Changed
+- Every training job now saves its adapter in `/models/trained/<job_id>` of the models volume instead of overwriting `/models/finetuned_model_<size>`. Inference without `model_path` still loads the legacy directory, so models trained by earlier versions remain usable that way (they are not in the table). Redeploy the Modal app (`Redeploy` in the training view) for the training and web containers to get the change; until then completed jobs record no trained model.
+
 ## [0.37.0] - 2026-10-30
 
 ### Added

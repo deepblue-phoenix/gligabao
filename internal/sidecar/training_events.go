@@ -42,8 +42,33 @@ type TrainingEvent struct {
 	LearningRate   *float64 `json:"learning_rate,omitempty"`
 	Epoch          *float64 `json:"epoch,omitempty"`
 	ElapsedSeconds *float64 `json:"elapsed_seconds,omitempty"`
+	// Model is on the "completed" event: the weights the job saved (nil from a sidecar that does not report them).
+	Model *TrainedModelInfo `json:"model,omitempty"`
 	// Timestamp is when the event was written, in seconds since the Unix epoch.
 	Timestamp float64 `json:"timestamp,omitempty"`
+}
+
+// TrainedModelInfo describes the weights a completed training job saved (sidecar/ai_train/ai_train_core/trained_model.py:
+// describe).
+type TrainedModelInfo struct {
+	BaseModel string `json:"base_model"`
+	ModelSize string `json:"model_size"`
+	// Path is the directory of the weights on the sidecar's models volume, relative to it ("trained/<job id>"): the
+	// `model_path` of an inference request.
+	Path      string             `json:"path"`
+	Files     []TrainedModelFile `json:"files"`
+	SizeBytes int64              `json:"size_bytes"`
+	// NumExamples and DatasetSHA256 are of the dataset file the job read; Params are the other training settings.
+	NumExamples   int             `json:"num_examples"`
+	DatasetSHA256 string          `json:"dataset_sha256"`
+	Params        json.RawMessage `json:"params,omitempty"`
+}
+
+// TrainedModelFile is one file of a trained model's weights.
+type TrainedModelFile struct {
+	Path      string `json:"path"`
+	SizeBytes int64  `json:"size_bytes"`
+	SHA256    string `json:"sha256,omitempty"`
 }
 
 // Finished reports whether the event ends the job.

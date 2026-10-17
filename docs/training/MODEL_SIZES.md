@@ -80,6 +80,8 @@ Defaults come from `ai_train_core/model_config.py` (`default_gpu`): `4b` -> `a10
 
 Both sizes train and serve through Unsloth, in one shared image (`requirements_train.txt`: unsloth 2026.10.x, torch 2.10+, CUDA 12.8). Code: `model_load.py`, `model_train.py`, `inference.py`.
 
+A job saves only its LoRA adapter, in `/models/trained/<job_id>` of the models volume, as a new trained model (the base model stays in the Hugging Face cache volume and is shared). Inference picks the adapter with `model_path` and needs `model_size` to match the size it was trained for. See [Trained models](../sidecar.md#trained-models).
+
 `google/gemma-4-12B-it` ships the newer `gemma4_unified` architecture, which Unsloth supports from 2026.10.x (earlier releases pinned `transformers<=5.5.0` and could not load it). If its output looks broken, see Unsloth issue [#6028](https://github.com/unslothai/unsloth/issues/6028).
 
 ### LoRA Configuration

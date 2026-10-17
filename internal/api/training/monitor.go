@@ -20,6 +20,7 @@ import (
 type Sidecar interface {
 	JobStarter
 	JobCanceller
+	Inferer
 	StreamTrainingJobEvents(ctx context.Context, jobID string, from int, fn func(sidecar.TrainingEvent) error) error
 }
 
@@ -185,6 +186,12 @@ func (m *Monitor) record(n Database, run relational.TrainingJobRun, ev sidecar.T
 	if err != nil {
 		return err
 	}
+	if ev.Type == sidecar.EventStatus && ev.Status == relational.TrainingJobCompleted {
+		// Before the event is stored: a failure here makes the stream retry the event, and the model is recorded once.
+		if err := m.recordModel(ctx, n, run, ev); err != nil {
+			return err
+		}
+	}
 	isNew, err := relational.RecordTrainingJobEvent(ctx, n.DB, run.ID, ev.Seq, ev.Type, string(data))
 	if err != nil {
 		return err
@@ -211,6 +218,36 @@ func (m *Monitor) record(n Database, run relational.TrainingJobRun, ev sidecar.T
 		}
 	}
 	m.publish(FeedEvent{DB: n.Name, RunID: run.ID, JobID: run.JobID, TrainingEvent: ev})
+	return nil
+}
+
+// recordModel stores the weights a completed job reports (the "model" of its completed event) as a trained model. A
+// completed event without them (from a sidecar that does not report them yet) records nothing.
+func (m *Monitor) recordModel(ctx context.Context, n Database, run relational.TrainingJobRun, ev sidecar.TrainingEvent) error {
+	l := log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID})
+	info := ev.Model
+	if info == nil || info.Path == "" {
+		l.Warn("training: the job completed without reporting its saved model: no trained model recorded (redeploy the Modal app)")
+		return nil
+	}
+	tm := relational.TrainedModel{
+		RunID: &run.ID, JobID: run.JobID, BaseModel: info.BaseModel, ModelSize: info.ModelSize, Dataset: run.Dataset,
+		DatasetSHA256: info.DatasetSHA256, NumExamples: info.NumExamples, NumTrainSteps: run.NumTrainSteps, FinalLoss: ev.FinalLoss,
+		Params: info.Params, Path: info.Path, SizeBytes: info.SizeBytes,
+	}
+	if tm.ModelSize == "" {
+		tm.ModelSize = run.ModelSize
+	}
+	for _, f := range info.Files {
+		tm.Files = append(tm.Files, relational.TrainedModelFile{Path: f.Path, SizeBytes: f.SizeBytes, SHA256: f.SHA256})
+	}
+	id, isNew, err := relational.RecordTrainedModel(ctx, n.DB, tm)
+	if err != nil {
+		return fmt.Errorf("record trained model: %w", err)
+	}
+	if isNew {
+		l.WithFields(log.Fields{"model_id": id, "path": tm.Path, "files": len(tm.Files), "size_bytes": tm.SizeBytes}).Info("training: trained model recorded")
+	}
 	return nil
 }
 

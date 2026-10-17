@@ -6,7 +6,8 @@ complete, valid lines only) is its SSE id, so a reader that was cut off can resu
 
 Events:
     {"type": "status", "status": "running" | "training" | "completed" | "failed" | "cancelled", "timestamp": ...,
-     "max_steps"?: int, "final_loss"?: float, "error"?: str}
+     "max_steps"?: int, "final_loss"?: float, "error"?: str,
+     "model"?: {...}}          # "completed" only: the weights the job saved (trained_model.py: describe)
     {"type": "progress", "step", "loss", "learning_rate", "epoch", "timestamp", "elapsed_seconds"}
     {"type": "log", "message": str, "timestamp": ...}        # what the job is doing (loading the model, ...)
 A line without "type" (written before this field existed) is a progress event. "completed", "failed" and "cancelled"

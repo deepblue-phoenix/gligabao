@@ -40,6 +40,8 @@ type (
 	TrainingJobRunUpdate = model.TrainingJobRunUpdate
 	TrainingJobEvent     = model.TrainingJobEvent
 	TrainingDataset      = model.TrainingDataset
+	TrainedModel         = model.TrainedModel
+	TrainedModelFile     = model.TrainedModelFile
 )
 
 // Statuses of a TrainingDataset.

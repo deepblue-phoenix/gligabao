@@ -58,7 +58,8 @@ def add_lora_adapters(model, model_config: dict = None, lora_rank: int = 16, lor
 
 def load_finetuned_model_for_inference(model_size: str = "4b", max_seq_length: int = 2048,
                                        load_in_4bit: bool = True, adapter_dir: str = None):
-    """Load base model + the trained LoRA adapter for generation.
+    """Load base model + a trained LoRA adapter for generation: the one in `adapter_dir` (a trained model's directory,
+    see trained_model.resolve_model_dir), or the legacy per-size one (finetuned_model_<size>) without it.
 
     Unsloth reads `base_model_name_or_path` from the adapter's adapter_config.json, loads
     that base model and attaches the trained weights. Raises FileNotFoundError if no adapter

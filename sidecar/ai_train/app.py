@@ -8,6 +8,7 @@ Run (Modal):
     modal run app.py --action train --train-steps 100 --model-size 4b      # 4b (A10G) or 12b (A100)
                                                               # [--dataset my.jsonl: a file on the data volume]
     modal run app.py --action generate --model-size 4b --prompt "..."      # fine-tuned model inference
+                                                              # [--model-path trained/<job id>: a trained model; default: the legacy adapter]
     modal serve app.py                                        # web API (dev); `modal deploy app.py` to persist
 
 Cloud-specific code lives in providers/. This file only declares *what* to run.
@@ -121,35 +122,36 @@ def train(num_train_steps: int = 100, model_size: str = "4b", dataset: str = "",
 #-----------------------------------------------------------------------------------------
 # INFERENCE with the fine-tuned adapter (same per-size split as training)
 
-def _generate(prompt: str, max_tokens: int, temperature: float, model_size: str) -> dict:
+def _generate(prompt: str, max_tokens: int, temperature: float, model_size: str, model_path: str = "") -> dict:
     from ai_train_core import inference
     return inference.generate_response(
         prompt, max_tokens, temperature, model_size,
-        reload_fn=lambda: provider.reload_volumes([paths.MODELS_DIR]))
+        reload_fn=lambda: provider.reload_volumes([paths.MODELS_DIR]), model_path=model_path)
 
 
 @provider.function(FunctionSpec(image=UNSLOTH_IMAGE, gpu=CONFIG.gpu_for("4b"), timeout_s=600,
                                 volumes=INFER_VOLS, secrets=secrets))
-def generate_4b(prompt: str, max_tokens: int = 1024, temperature: float = 0.7) -> dict:
-    return _generate(prompt, max_tokens, temperature, "4b")
+def generate_4b(prompt: str, max_tokens: int = 1024, temperature: float = 0.7, model_path: str = "") -> dict:
+    return _generate(prompt, max_tokens, temperature, "4b", model_path)
 
 
 @provider.function(FunctionSpec(image=UNSLOTH_IMAGE, gpu=CONFIG.gpu_for("12b"), timeout_s=600,
                                 volumes=INFER_VOLS, secrets=secrets))
-def generate_12b(prompt: str, max_tokens: int = 1024, temperature: float = 0.7) -> dict:
-    return _generate(prompt, max_tokens, temperature, "12b")
+def generate_12b(prompt: str, max_tokens: int = 1024, temperature: float = 0.7, model_path: str = "") -> dict:
+    return _generate(prompt, max_tokens, temperature, "12b", model_path)
 
 
 GENERATE_FUNCTIONS = {"4b": generate_4b, "12b": generate_12b}
 
 
 @provider.function(FunctionSpec(image=CPU_IMAGE, timeout_s=600))
-def generate(prompt: str, max_tokens: int = 1024, temperature: float = 0.7, model_size: str = "4b") -> dict:
-    """Route to the per-size inference function."""
+def generate(prompt: str, max_tokens: int = 1024, temperature: float = 0.7, model_size: str = "4b",
+             model_path: str = "") -> dict:
+    """Route to the per-size inference function. `model_path` (`trained/<job id>`) picks the trained model."""
     size = model_size.lower()
     if size not in GENERATE_FUNCTIONS:
         return {"error": f"Invalid model_size '{model_size}'. Must be one of {list(MODEL_SIZES)}."}
-    return provider.call(GENERATE_FUNCTIONS[size], prompt, max_tokens, temperature)
+    return provider.call(GENERATE_FUNCTIONS[size], prompt, max_tokens, temperature, model_path)
 
 
 #-----------------------------------------------------------------------------------------
@@ -161,8 +163,8 @@ def serve_api():
     return create_api(
         spawn_training_job=lambda num_train_steps, model_size, dataset, job_id: provider.spawn(
             train, num_train_steps=num_train_steps, model_size=model_size, dataset=dataset, job_id=job_id),
-        generate_response=lambda prompt, max_tokens, temperature, model_size: provider.call(
-            generate, prompt, max_tokens, temperature, model_size),
+        generate_response=lambda prompt, max_tokens, temperature, model_size, model_path="": provider.call(
+            generate, prompt, max_tokens, temperature, model_size, model_path),
         commit_volumes=provider.commit_volumes,
         reload_volumes=provider.reload_volumes,
     )
@@ -185,7 +187,7 @@ def _sync_local_dataset() -> dict:
 
 @provider.local_entrypoint()
 def main(action: str = "ping", train_steps: int = 5, model_size: str = "4b", dataset: str = "",
-         prompt: str = "Check recent news about NVIDIA and buy 10 shares if it's positive"):
+         model_path: str = "", prompt: str = "Check recent news about NVIDIA and buy 10 shares if it's positive"):
     print(f"provider={provider.name} app={CONFIG.app_name} action={action} model_size={model_size}")
     if action == "ping":
         print(provider.call(ping))
@@ -204,6 +206,6 @@ def main(action: str = "ping", train_steps: int = 5, model_size: str = "4b", dat
         print(f"[2/2] Fine-tuning {model_size} for {train_steps} steps...")
         print(provider.call(train, num_train_steps=train_steps, model_size=model_size, dataset=dataset))
     elif action == "generate":
-        print(provider.call(generate, prompt, 1024, 0.7, model_size))
+        print(provider.call(generate, prompt, 1024, 0.7, model_size, model_path))
     else:
         print(f"unknown action {action!r}; valid: ping, sync, validate, train, generate")

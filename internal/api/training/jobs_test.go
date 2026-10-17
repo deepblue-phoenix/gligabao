@@ -21,6 +21,14 @@ type fakeSidecar struct {
 	err       error
 	cancelled []string
 	cancelErr error
+	infers    []sidecar.InferRequest
+	inferResp sidecar.InferResponse
+	inferErr  error
+}
+
+func (f *fakeSidecar) Infer(_ context.Context, req sidecar.InferRequest) (sidecar.InferResponse, error) {
+	f.infers = append(f.infers, req)
+	return f.inferResp, f.inferErr
 }
 
 func (f *fakeSidecar) CancelTrainingJob(_ context.Context, jobID string) error {
