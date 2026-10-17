@@ -1,7 +1,7 @@
 """Prints, as JSON on stdout, the Modal volumes the app uses (config.CONFIG.volumes: mount path -> volume name) and what
 Modal knows about each: whether it exists, when it was created, how many entries its top level has.
 
-Run by the sidecar (backends/modal_backend.py) with this directory as cwd and the Modal credentials in the environment.
+Run by the sidecar (backends/modal_backend.py) as a module (`python -m ...`) with `sidecar/ai_train/` as cwd and the Modal credentials in the environment.
 A volume that cannot be queried gets an "error" instead of failing the whole listing. Nothing is created or changed.
 """
 import json

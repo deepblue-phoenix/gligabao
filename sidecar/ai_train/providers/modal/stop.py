@@ -1,7 +1,7 @@
 """Stops the deployed Modal app (what `modal app stop <name>` does, without the CLI): its running containers (training
 jobs included) are terminated and its web endpoints go away until it is deployed again. Volumes are not touched.
 
-Run by the sidecar (backends/modal_backend.py) with this directory as cwd and the Modal credentials in the environment.
+Run by the sidecar (backends/modal_backend.py) as a module (`python -m ...`) with `sidecar/ai_train/` as cwd and the Modal credentials in the environment.
 Uses the same two calls as the CLI (the SDK has no public `App.stop` yet): look the app up by name, then AppStop.
 """
 import asyncio

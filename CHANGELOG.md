@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.42.2] - 2026-11-06
+
+### Changed
+- Internal: the Modal-specific code of the sidecar moved into `sidecar/ai_train/providers/modal/`: `modal_provider.py` is `provider.py`, and the admin scripts `deploy_modal.py`, `stop_modal.py`, `list_apps.py`, `list_volumes.py` and `inference_containers.py` are `deploy.py`, `stop.py`, `list_apps.py`, `list_volumes.py` and `inference_containers.py`. The sidecar runs them as modules (`python -m providers.modal.deploy`, with `sidecar/ai_train/` as cwd). No change in behaviour.
+- `sidecar/requirements.txt` is `sidecar/requirements_sidecar.txt`, to tell it from the `requirements_*.txt` of the Modal images in `sidecar/ai_train/`; `Dockerfile.sidecar` and the docs follow.
+
 ## [0.42.1] - 2026-10-17
 
 ### Changed

@@ -4,8 +4,8 @@ job keep running; the next inference request starts a new container and loads th
 Every inference container records itself in a Modal Dict (providers/modal_provider.py, `registry_name`) with its task id,
 because Modal does not say which function a container runs. A record is only trusted while Modal still lists that task.
 
-As a script (run by the sidecar, backends/modal_backend.py, with this directory as cwd and the credentials in the
-environment): `python inference_containers.py` stops the containers of the app named by SIDECAR_APP_NAME.
+As a script (run by the sidecar, backends/modal_backend.py, as a module (`python -m ...`) with `sidecar/ai_train/` as cwd and the credentials in the
+environment): `python -m providers.modal.inference_containers` stops the containers of the app named by SIDECAR_APP_NAME.
 """
 import sys
 import traceback
@@ -18,7 +18,7 @@ from modal.exception import NotFoundError
 from modal_proto import api_pb2
 
 from config import CONFIG
-from providers.modal_provider import registry_name
+from providers.modal.provider import registry_name
 
 
 def run_in_modal_loop(fn, *args):

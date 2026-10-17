@@ -12,9 +12,9 @@ from backends.base import BackendError
 from backends.http_backend import HttpBackend
 
 DEFAULT_AI_TRAIN_DIR = Path(__file__).resolve().parent.parent / "ai_train"   # the code that gets deployed
-_VOLUMES_TIMEOUT = 60.0   # seconds for list_volumes.py
+_VOLUMES_TIMEOUT = 60.0   # seconds for providers/modal/list_volumes.py
 _STATUS_TIMEOUT = 10.0   # seconds for the Modal lookup of status()
-_APPS_TIMEOUT = 30.0   # seconds for list_apps.py
+_APPS_TIMEOUT = 30.0   # seconds for providers/modal/list_apps.py
 _ACTIVE_ONLY = ("stop", "stop_inference")   # actions that make no sense while the app is not deployed
 _APP_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")   # what a Modal app name may look like
 
@@ -60,38 +60,38 @@ class ModalBackend(HttpBackend):
         return {**self._script_env, "SIDECAR_APP_NAME": app}
 
     def _make_deploy(self, app: str) -> ActionRunner:
-        """`deploy`: ai_train/deploy_modal.py (the SDK's `app.deploy()`); its output is kept for the admin UI."""
+        """`deploy`: ai_train/providers/modal/deploy.py (the SDK's `app.deploy()`); its output is kept for the admin UI."""
         # Heuristic stages from Modal's output; the log is the source of truth. Stages only move forward.
         stages = (Stage("starting"),
                   Stage("building images", r"building image|=> step|built image"),
                   Stage("creating functions", r"creating objects|created (objects|function|web function|class)"),
                   Stage("deployed"))
-        return ActionRunner("deploy", "Deploy the Modal app", [sys.executable, "-u", "deploy_modal.py"],
+        return ActionRunner("deploy", "Deploy the Modal app", [sys.executable, "-u", "-m", "providers.modal.deploy"],
                             cwd=str(self._ai_train_dir), env=self._env_for(app), stages=stages)
 
     def _make_stop(self, app: str) -> ActionRunner:
-        """`stop`: ai_train/stop_modal.py (`modal app stop`): ends the app's containers (running training jobs too)."""
+        """`stop`: ai_train/providers/modal/stop.py (`modal app stop`): ends the app's containers (running training jobs too)."""
         return ActionRunner(
-            "stop", "Stop the Modal app", [sys.executable, "-u", "stop_modal.py"], cwd=str(self._ai_train_dir),
+            "stop", "Stop the Modal app", [sys.executable, "-u", "-m", "providers.modal.stop"], cwd=str(self._ai_train_dir),
             env=self._env_for(app), danger=True,
             confirm=f"Stop the Modal app {app!r}?\n\nRunning training jobs and inference on it are terminated and its "
                     "web API goes offline until you deploy it again. The volumes (datasets, adapters) are kept.")
 
     def _make_stop_inference(self, app: str) -> ActionRunner:
-        """`stop_inference`: ai_train/inference_containers.py: ends the warm inference containers (the model loaded in
+        """`stop_inference`: ai_train/providers/modal/inference_containers.py: ends the warm inference containers (the model loaded in
         each is dropped) and nothing else; the next inference request starts one again."""
         return ActionRunner(
-            "stop_inference", "Stop the inference containers", [sys.executable, "-u", "inference_containers.py"],
+            "stop_inference", "Stop the inference containers", [sys.executable, "-u", "-m", "providers.modal.inference_containers"],
             cwd=str(self._ai_train_dir), env=self._env_for(app), danger=True,
             confirm=f"Stop the inference containers of {app!r}?\n\nThe models loaded in them are dropped and a request "
                     "being answered now fails. The app, its web API and training jobs are not touched; the next "
                     "inference request starts a container again (and loads the model, which takes a while).")
 
     async def apps(self) -> list:
-        """The active Modal apps of this system (ai_train/list_apps.py, read only), each with its actions' state. The
+        """The active Modal apps of this system (ai_train/providers/modal/list_apps.py, read only), each with its actions' state. The
         configured app is always listed (not active: `active` false, so it can be deployed), and so is any app of ours
         with an action that ran since the sidecar started."""
-        found = (await self._run_json("list_apps.py", _APPS_TIMEOUT, "listing the Modal apps"))["apps"]
+        found = (await self._run_json("providers.modal.list_apps", _APPS_TIMEOUT, "listing the Modal apps"))["apps"]
         by_name = {a["name"]: {**a, "active": True} for a in found if self.owns_app(a["name"])}
         for name in dict.fromkeys([self._app_name, *self._app_actions]):
             ran = any(a.state()["state"] != "idle" for a in self._app_actions[name].values())
@@ -106,11 +106,11 @@ class ModalBackend(HttpBackend):
                         "actions": {k: a.state() for k, a in actions.items() if active or k not in _ACTIVE_ONLY}})
         return out
 
-    async def _run_json(self, script: str, timeout: float, what: str) -> dict:
-        """Run a read-only helper script that prints JSON; BackendError if it fails or is too slow."""
+    async def _run_json(self, module: str, timeout: float, what: str) -> dict:
+        """Run a read-only helper module (`python -m`) that prints JSON; BackendError if it fails or is too slow."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                sys.executable, script, cwd=str(self._ai_train_dir), env={**os.environ, **self._script_env},
+                sys.executable, "-m", module, cwd=str(self._ai_train_dir), env={**os.environ, **self._script_env},
                 stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             try:
                 out, err = await asyncio.wait_for(proc.communicate(), timeout)
@@ -128,8 +128,8 @@ class ModalBackend(HttpBackend):
             raise BackendError(f"{what} failed: {e}") from e
 
     async def volumes(self) -> list:
-        """The volumes of the app with what Modal knows about them (ai_train/list_volumes.py, read only)."""
-        return (await self._run_json("list_volumes.py", _VOLUMES_TIMEOUT, "listing the Modal volumes"))["volumes"]
+        """The volumes of the app with what Modal knows about them (ai_train/providers/modal/list_volumes.py, read only)."""
+        return (await self._run_json("providers.modal.list_volumes", _VOLUMES_TIMEOUT, "listing the Modal volumes"))["volumes"]
 
     def actions(self) -> Dict[str, ActionRunner]:
         return self._actions

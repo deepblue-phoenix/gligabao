@@ -11,7 +11,7 @@ Run (Modal):
                                                               # [--model-path trained/<job id>: a trained model; default: the legacy adapter]
     modal serve app.py                                        # web API (dev); `modal deploy app.py` to persist
 
-Cloud-specific code lives in providers/. This file only declares *what* to run.
+Cloud-specific code lives in providers/<name>/ (providers/modal/). This file only declares *what* to run.
 
 Images (see below): training uses Unsloth on a CUDA toolkit image (requirements_train.txt); inference uses a separate,
 lighter one without Unsloth (requirements_infer.txt); the CPU functions and the web API have none of the ML stack.
@@ -20,7 +20,7 @@ import os
 import sys
 
 modd_str = os.path.abspath(os.path.dirname(__file__))
-# Local: this dir. In the container: the mounted code dir (see providers/modal_provider.py).
+# Local: this dir. In the container: the mounted code dir (see providers/modal/provider.py).
 for _p in (modd_str, "/pkg"):
     if _p not in sys.path:
         sys.path.insert(0, _p)
@@ -137,7 +137,7 @@ def train(num_train_steps: int = 100, model_size: str = "4b", dataset: str = "",
 
 # An inference container keeps its model loaded and stays up for CONFIG.infer_idle_timeout_s after its last request, so
 # later requests skip the (slow) model load. It records itself with the provider (provider.register_container) so the
-# admin UI can list it and stop it before the timeout (sidecar/ai_train/inference_containers.py).
+# admin UI can list it and stop it before the timeout (sidecar/ai_train/providers/modal/inference_containers.py).
 _registered = False
 
 

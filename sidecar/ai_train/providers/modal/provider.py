@@ -1,4 +1,4 @@
-"""Modal implementation of Provider. The ONLY file that imports `modal`."""
+"""Modal implementation of Provider. With the rest of providers/modal/, the only code that imports `modal`."""
 import os
 from typing import Any, Callable, Optional
 
@@ -12,7 +12,7 @@ REMOTE_PKG_DIR = "/pkg"
 
 def registry_name(app_name: str) -> str:
     """Name of the Modal Dict in which the warm inference containers of an app record themselves (task id -> info). The
-    sidecar's scripts (inference_containers.py) read it to list and stop them: Modal itself does not say which function a
+    sidecar's scripts (providers/modal/inference_containers.py) read it to list and stop them: Modal itself does not say which function a
     container runs."""
     return f"{app_name}-inference"
 

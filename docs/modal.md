@@ -1,6 +1,6 @@
 # Modal app lifecycle
 
-`sidecar/backends/modal_backend.py`, `sidecar/backends/actions.py`, `sidecar/ai_train/deploy_modal.py`, `sidecar/ai_train/stop_modal.py`, `sidecar/ai_train/list_volumes.py`, `internal/api/admin/sidecar.go`, `admin_ui/src/actions.ts`
+`sidecar/backends/modal_backend.py`, `sidecar/backends/actions.py`, `sidecar/ai_train/providers/modal/deploy.py`, `sidecar/ai_train/providers/modal/stop.py`, `sidecar/ai_train/providers/modal/list_volumes.py`, `internal/api/admin/sidecar.go`, `admin_ui/src/actions.ts`
 
 The training code runs on [Modal](https://modal.com) as an app (`gligabao-train` by default). The [sidecar](sidecar.md) is what talks to Modal, and since gligabao 0.34.0 it also manages the app's **lifecycle**: you can see whether the app is deployed, deploy and redeploy it, watch the build live, cancel it, stop the app, and list the volumes it uses, all from the **training** view of the admin UI or over HTTP. None of this needs the `modal` CLI, a login or a `~/.modal.toml`: the sidecar uses the Modal SDK with the tokens in its environment. The CLI commands in [Running on Modal](sidecar.md#remote-training-bootstrap) still work and do the same thing; the sidecar is the way to do it from the admin panel, or on a machine that has no CLI (the sidecar container).
 
@@ -32,7 +32,7 @@ In the **training** view, the *Backends* list shows, for the `modal` backend:
 | `deploy: <stage>…` | A deploy is running (the stage is its current step). |
 | `last deploy failed` / `cancelled` | The last run of the action ended that way; **View log** shows why. |
 
-Below it, the **apps list** (since 0.35.0): the active Modal apps of this system, one row each with its state (`deployed`, `ephemeral`, `initializing`, or `not deployed` for the configured app when it is not up), its running tasks, and the buttons **Redeploy** (**Deploy** when not deployed), **Last log** (the log of the last action run on that app; **View log** while it runs), **Stop** and **Volumes**. "Of this system" means the app named `SIDECAR_APP_NAME` and apps named `SIDECAR_APP_NAME-<suffix>` (for example a `-dev` copy); other apps in the Modal workspace are neither shown nor touchable. Deploy and Stop act on that row's app, and the log of one app is kept separately from the others'. The list comes from Modal (`list_apps.py`, the equivalent of `modal app list`) and takes a few seconds, so the previous list is shown meanwhile.
+Below it, the **apps list** (since 0.35.0): the active Modal apps of this system, one row each with its state (`deployed`, `ephemeral`, `initializing`, or `not deployed` for the configured app when it is not up), its running tasks, and the buttons **Redeploy** (**Deploy** when not deployed), **Last log** (the log of the last action run on that app; **View log** while it runs), **Stop** and **Volumes**. "Of this system" means the app named `SIDECAR_APP_NAME` and apps named `SIDECAR_APP_NAME-<suffix>` (for example a `-dev` copy); other apps in the Modal workspace are neither shown nor touchable. Deploy and Stop act on that row's app, and the log of one app is kept separately from the others'. The list comes from Modal (`providers/modal/list_apps.py`, the equivalent of `modal app list`) and takes a few seconds, so the previous list is shown meanwhile.
 
 The buttons described below apply to each app row: **Deploy** (**Redeploy** once the app is deployed), **Stop** (red; only while the app is deployed), **Volumes**, and **View log** / **Last log** once an action has run. The list refreshes every 5 seconds while an action runs, and when you press *Refresh*.
 
@@ -40,7 +40,7 @@ The buttons described below apply to each app row: **Deploy** (**Redeploy** once
 
 **Deploy** asks for a confirmation, starts the run and opens the live log. What happens:
 
-1. The sidecar starts `sidecar/ai_train/deploy_modal.py` in a subprocess, with `sidecar/ai_train/` as its working directory.
+1. The sidecar starts `sidecar/ai_train/providers/modal/deploy.py` (as `python -m providers.modal.deploy`) in a subprocess, with `sidecar/ai_train/` as its working directory.
 2. It imports `app.py` (the app definition) and calls the Modal SDK's `app.deploy()`, with Modal's build output switched on. This is what `modal deploy app.py` does.
 3. Modal uploads the `ai_train/` directory (mounted into the containers at `/pkg`), builds the images that are not cached, creates the app's functions and the web endpoint, and creates any of the volumes that do not exist yet.
 4. The script exits with `0` on success; the run is then `succeeded` and the badge turns to `app deployed`. Any error ends the script with a traceback and a final `Deploy failed: <error>` line in the log, and the run is `failed`.
@@ -68,7 +68,7 @@ While a run is going the dialog has a **Cancel run** button. The sidecar sends t
 
 ## Stop
 
-**Stop** asks for a confirmation that names the consequences, then runs `sidecar/ai_train/stop_modal.py`, which does what `modal app stop` does: it looks the app up by name and tells Modal to stop it.
+**Stop** asks for a confirmation that names the consequences, then runs `sidecar/ai_train/providers/modal/stop.py`, which does what `modal app stop` does: it looks the app up by name and tells Modal to stop it.
 
 > **Warning:** Stopping the app terminates its running containers, **including training jobs and inference that are running**, and takes the web API offline: training and inference calls through the sidecar fail until you deploy again. The volumes (datasets, adapters, the Hugging Face cache) and the app's history are kept, and a stopped job's row stays in the database, where it is marked `failed` after the usual timeout (see [Not tracked yet](sidecar.md#remote-training-bootstrap)).
 
@@ -81,7 +81,7 @@ An inference request (`POST /infer/query`) runs in a GPU container of the `infer
 - One model per container: a request for another trained model (or size) replaces the loaded one. A model retrained in place (the legacy `finetuned_model_<size>`) is noticed by its file time and loaded again.
 - Several concurrent requests are handled one at a time per container, as before; Modal starts more containers when requests queue up (each loads the model, and each is billed while it is up).
 - The timeout is part of the function's definition: **Redeploy** the app after changing `SIDECAR_INFER_IDLE_TIMEOUT_S` (or after upgrading to this version).
-- The admin UI's app row shows a badge `N inference container(s) warm` (hover: function, model, requests, last use) and a **Stop inference** button that ends them at once (a request being answered fails; the app, the web API and training jobs are not touched). It runs `sidecar/ai_train/inference_containers.py`; the action is `stop_inference`, next to `deploy` and `stop`, and the `apps` listing has an `inference` list for every app.
+- The admin UI's app row shows a badge `N inference container(s) warm` (hover: function, model, requests, last use) and a **Stop inference** button that ends them at once (a request being answered fails; the app, the web API and training jobs are not touched). It runs `sidecar/ai_train/providers/modal/inference_containers.py`; the action is `stop_inference`, next to `deploy` and `stop`, and the `apps` listing has an `inference` list for every app.
 - How it knows them: Modal does not say which function a container runs, so each inference container records itself (task id, model, requests, last use) in a Modal Dict named `<app name>-inference`, and the listing only trusts a record while Modal still lists that task. A container that is gone leaves a record that is removed at the next listing.
 
 ## Volumes
@@ -98,7 +98,7 @@ An inference request (`POST /infer/query`) runs in a GPU container of the `infer
 
 The `/models` volume holds the trained models, one directory per completed job (`trained/<job_id>`, see [Trained models](sidecar.md#where-the-weights-are-saved)); its **Entries** count is the number of top-level entries (`trained`, and `finetuned_model_<size>` if an older version saved one), not the number of models. `/root/.cache/huggingface` holds the downloaded base models.
 
-It is read only: nothing is created, changed or deleted, and it works whether or not the app is deployed. It takes a few seconds because it runs `sidecar/ai_train/list_volumes.py` in a subprocess (60 second limit). A volume that cannot be queried gets an `error` of its own and the others are still listed. Deleting or emptying volumes is not offered; use `modal volume` for that.
+It is read only: nothing is created, changed or deleted, and it works whether or not the app is deployed. It takes a few seconds because it runs `sidecar/ai_train/providers/modal/list_volumes.py` in a subprocess (60 second limit). A volume that cannot be queried gets an `error` of its own and the others are still listed. Deleting or emptying volumes is not offered; use `modal volume` for that.
 
 ## The API
 
@@ -138,7 +138,7 @@ curl           http://127.0.0.1:8787/backends/modal/volumes
 
 ## In the container
 
-`Dockerfile.sidecar` copies `sidecar/ai_train/` to `/app/ai_train`, next to the sidecar, because that is the code a deploy uploads (and where the three scripts live); it is still not imported by the sidecar process. The scripts run as the image's non-root `sidecar` user, which has no home directory and needs none. Only `modal` from `requirements.txt` is needed to deploy: the heavy ML packages are installed in Modal's images, not in the sidecar's.
+`Dockerfile.sidecar` copies `sidecar/ai_train/` to `/app/ai_train`, next to the sidecar, because that is the code a deploy uploads (and where the three scripts live); it is still not imported by the sidecar process. The scripts run as the image's non-root `sidecar` user, which has no home directory and needs none. Only `modal` from `requirements_sidecar.txt` is needed to deploy: the heavy ML packages are installed in Modal's images, not in the sidecar's.
 
 ## Troubleshooting
 

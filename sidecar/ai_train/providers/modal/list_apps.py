@@ -1,6 +1,6 @@
 """Prints, as JSON on stdout, the Modal apps of the workspace that are active (deployed, running or starting) and whose
 name is the configured app (SIDECAR_APP_NAME) or starts with it plus "-": what `modal app list` shows, restricted to this
-system. Run by the sidecar (backends/modal_backend.py) with this directory as cwd and the Modal credentials in the
+system. Run by the sidecar (backends/modal_backend.py) as a module (`python -m ...`) with `sidecar/ai_train/` as cwd and the Modal credentials in the
 environment. Read only.
 """
 import json
@@ -11,7 +11,7 @@ from modal.config import config
 from modal_proto import api_pb2
 
 from config import CONFIG
-from inference_containers import list_containers, run_in_modal_loop
+from providers.modal.inference_containers import list_containers, run_in_modal_loop
 
 # States of an app that is up (the CLI's table: deployed, ephemeral / detached, initializing); stopped ones are history.
 ACTIVE = {

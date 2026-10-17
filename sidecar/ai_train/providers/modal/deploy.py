@@ -1,7 +1,7 @@
 """Deploys the Modal app programmatically (the SDK's `app.deploy()`, same as `modal deploy app.py` but without the CLI).
 
-Run by the sidecar (backends/modal_backend.py) with this directory as cwd and the Modal credentials in the environment
-(MODAL_TOKEN_ID / MODAL_TOKEN_SECRET); also fine by hand: `python deploy_modal.py`. Build output goes to stdout.
+Run by the sidecar (backends/modal_backend.py) as a module (`python -m ...`) with `sidecar/ai_train/` as cwd and the Modal credentials in the environment
+(MODAL_TOKEN_ID / MODAL_TOKEN_SECRET); also fine by hand: `python -m providers.modal.deploy`. Build output goes to stdout.
 """
 import sys
 import traceback

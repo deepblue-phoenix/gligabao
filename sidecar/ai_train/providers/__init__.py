@@ -6,6 +6,6 @@ __all__ = ["FunctionSpec", "ImageSpec", "Provider", "get_provider"]
 
 def get_provider(name: str, *, app_name: str, local_pkg_dir: str, volumes: dict) -> Provider:
     if name == "modal":
-        from providers.modal_provider import ModalProvider  # lazy: SDK only needed if used
+        from providers.modal.provider import ModalProvider  # lazy: SDK only needed if used
         return ModalProvider(app_name, local_pkg_dir, volumes)
     raise ValueError(f"unknown provider {name!r} (available: modal)")

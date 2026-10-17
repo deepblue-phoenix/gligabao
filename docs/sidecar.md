@@ -13,7 +13,7 @@ The sidecar answers a health check itself and forwards the training/dataset API,
 
 ## The service
 
-`sidecar/main_sidecar.py` is a [FastAPI](https://fastapi.tiangolo.com/) app run by [uvicorn](https://www.uvicorn.org/). Dependencies are in `sidecar/requirements.txt`.
+`sidecar/main_sidecar.py` is a [FastAPI](https://fastapi.tiangolo.com/) app run by [uvicorn](https://www.uvicorn.org/). Dependencies are in `sidecar/requirements_sidecar.txt`.
 
 | Endpoint | Response |
 |---|---|
@@ -26,7 +26,7 @@ The routes in `sidecar/routes.py` are the only API the Go server knows (`interna
 
 The only backend today is `modal`: the web API (`serve_api`) of the Modal app in `sidecar/ai_train/app.py`. Deploy it from the admin UI ([modal.md](modal.md)) or with `cd sidecar/ai_train && modal deploy app.py`; the sidecar finds its URL through the Modal SDK (once, on the first request). With `modal serve` (dev), set `SIDECAR_MODAL_WEB_URL` to the URL it prints.
 
-Backend actions: the sidecar also answers a few routes itself, for what an operator does to a backend (`backends/actions.py`): `GET /backends` (live status), `POST|GET /backends/{name}/actions/{action}`, `.../events` (SSE), `POST .../cancel`, `GET /backends/{name}/volumes` and `GET /backends/{name}/apps` (the active apps of this system, each with the same action routes under `/backends/{name}/apps/{app}/actions/...`). `modal` uses them to manage the Modal app's lifecycle without the `modal` CLI: `deploy` (`ai_train/deploy_modal.py`, the SDK's `app.deploy()`), `stop` (`ai_train/stop_modal.py`, `modal app stop`; it ends running jobs too) the volume list (`ai_train/list_volumes.py`, read only) and the list of the active apps (`ai_train/list_apps.py`, read only; the configured app and `<it>-<suffix>` ones). The Go server passes them on as `/v1/gb/admin/api/sidecar/backends[/{name}/actions/{action}[/events|/cancel]]` and `.../{name}/volumes`; the admin UI's training view has a list of the apps, each with Redeploy, Last log, Stop and Volumes, and a live log dialog. Details, API and troubleshooting: [modal.md](modal.md).
+Backend actions: the sidecar also answers a few routes itself, for what an operator does to a backend (`backends/actions.py`): `GET /backends` (live status), `POST|GET /backends/{name}/actions/{action}`, `.../events` (SSE), `POST .../cancel`, `GET /backends/{name}/volumes` and `GET /backends/{name}/apps` (the active apps of this system, each with the same action routes under `/backends/{name}/apps/{app}/actions/...`). `modal` uses them to manage the Modal app's lifecycle without the `modal` CLI: `deploy` (`ai_train/providers/modal/deploy.py`, the SDK's `app.deploy()`), `stop` (`ai_train/providers/modal/stop.py`, `modal app stop`; it ends running jobs too) the volume list (`ai_train/providers/modal/list_volumes.py`, read only) and the list of the active apps (`ai_train/providers/modal/list_apps.py`, read only; the configured app and `<it>-<suffix>` ones). The Go server passes them on as `/v1/gb/admin/api/sidecar/backends[/{name}/actions/{action}[/events|/cancel]]` and `.../{name}/volumes`; the admin UI's training view has a list of the apps, each with Redeploy, Last log, Stop and Volumes, and a live log dialog. Details, API and troubleshooting: [modal.md](modal.md).
 
 Configuration is by environment variable. At startup `main_sidecar.py` reads them once into a `SidecarConfig` (a frozen pydantic model, `sidecar/sidecar_config.py`) and passes it to `create_app(config)`; the app keeps it on `app.state.config` (handlers can use the `get_config` helper). New settings are added as fields of that struct. An invalid value stops the sidecar at startup.
 
@@ -47,7 +47,7 @@ Run it without a container:
 ```sh
 cd sidecar
 python3 -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements_sidecar.txt
 export MODAL_TOKEN_ID=ak-... MODAL_TOKEN_SECRET=as-...
 python main_sidecar.py              # listens on 127.0.0.1:8787
 curl http://127.0.0.1:8787/health
@@ -85,7 +85,9 @@ sidecar/ai_train/
     api.py                    # FastAPI app (training jobs, progress, infer, eval, datasets)
   providers/
     base.py                   # Provider (ABC), FunctionSpec, ImageSpec
-    modal_provider.py         # Modal implementation; the only file that imports modal
+    modal/                    # everything Modal specific; the only package that imports modal
+      provider.py             # the Provider implementation
+      deploy.py stop.py list_apps.py list_volumes.py inference_containers.py   # admin scripts, run by backends/modal_backend.py as `python -m providers.modal.<name>`
     __init__.py               # get_provider(name)
 ```
 
@@ -277,7 +279,7 @@ Rules that keep it swappable:
 - `app = provider.native_app` is a module-level object because provider CLIs such as `modal run` look for it.
 - Code that runs remotely imports `ai_train_core` inside the function body, since it only exists in the container's `/pkg` mount, and the heavy ML imports exist only in the GPU images (Unsloth only in the training one; torch, transformers and peft in both).
 
-To add a provider (e.g. AWS): implement `Provider` in `providers/aws_provider.py` and add one branch to `get_provider` in `providers/__init__.py`. If the new provider cannot express something in `FunctionSpec`, extend `FunctionSpec` rather than leaking provider details into `app.py`.
+To add a provider (e.g. AWS): implement `Provider` in `providers/aws/provider.py` and add one branch to `get_provider` in `providers/__init__.py`. If the new provider cannot express something in `FunctionSpec`, extend `FunctionSpec` rather than leaking provider details into `app.py`.
 
 ### Growing it
 
@@ -337,5 +339,5 @@ The tests (`internal/sidecar/*_test.go`) run the client against an `httptest` se
 2. Implement it in the backend: for `modal`, a route of the web API in `sidecar/ai_train/api/`. Another backend must serve the same path.
 3. Add a method to `Client` in `internal/sidecar` (a new file per topic, like `training_jobs.go`), with typed request and response structs. Keep all calls to the sidecar in that package, and never call a backend from Go.
 4. If the Go server should start it, add an admin handler in `internal/api/admin` that takes the client through a small interface.
-5. A route answered by the sidecar itself, like `/health`, goes in `sidecar/main_sidecar.py` instead (and any new package in `sidecar/requirements.txt`). If the Dockerfile must copy new files, update `Dockerfile.sidecar`.
+5. A route answered by the sidecar itself, like `/health`, goes in `sidecar/main_sidecar.py` instead (and any new package in `sidecar/requirements_sidecar.txt`). If the Dockerfile must copy new files, update `Dockerfile.sidecar`.
 6. Document the endpoint in the tables above.

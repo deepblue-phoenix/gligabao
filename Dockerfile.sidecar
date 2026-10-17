@@ -4,11 +4,11 @@
 FROM python:3.13-slim
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
-COPY sidecar/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY sidecar/requirements_sidecar.txt ./
+RUN pip install --no-cache-dir -r requirements_sidecar.txt
 COPY sidecar/main_sidecar.py sidecar/sidecar_config.py sidecar/routes.py ./
 COPY sidecar/backends ./backends
-# The code the "deploy" action uploads to Modal (backends/modal_backend.py runs ai_train/deploy_modal.py from here).
+# The code the "deploy" action uploads to Modal (backends/modal_backend.py runs `python -m providers.modal.deploy` from here).
 COPY sidecar/ai_train ./ai_train
 RUN useradd --uid 10002 --no-create-home sidecar
 USER sidecar

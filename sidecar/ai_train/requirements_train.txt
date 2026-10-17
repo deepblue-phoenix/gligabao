@@ -7,7 +7,7 @@
 # unsloth/unsloth_zoo are pinned to one release (they must match); everything else is
 # bounded by unsloth's own requirements, so pip's resolver picks a compatible set.
 # extra-index-url gives the CUDA 12.8 torch wheels; it must match the base image
-# (nvidia/cuda:12.8.1-devel-ubuntu22.04, see providers/modal_provider.py).
+# (nvidia/cuda:12.8.1-devel-ubuntu22.04, see providers/modal/provider.py).
 
 --extra-index-url https://download.pytorch.org/whl/cu128
 

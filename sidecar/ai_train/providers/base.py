@@ -1,6 +1,6 @@
 """Provider interface. All cloud-specific code lives behind this.
 
-To add a provider (e.g. AWS): implement `Provider` in `providers/<name>_provider.py`
+To add a provider (e.g. AWS): implement `Provider` in `providers/<name>/provider.py`
 and register it in `providers/__init__.py`. Nothing outside `providers/` may import
 a provider SDK.
 """
