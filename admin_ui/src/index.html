@@ -31,14 +31,14 @@
         <div id="view-main" class="view" data-view="main">
           <form id="datasets-form" class="row">
             <label class="check"><input type="checkbox" id="include-deleted" /> include deleted datasets</label>
-            <button type="submit">Refresh</button>
+            <button type="submit" class="icon refresh" title="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg></button>
           </form>
           <div id="databases"></div>
 
           <section id="images" class="card">
             <div class="row between">
               <h2>Image store</h2>
-              <button type="button" id="images-refresh">Refresh</button>
+              <button type="button" id="images-refresh" class="icon refresh" title="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg></button>
             </div>
             <dl id="images-stats" class="stats"></dl>
             <p id="images-status" class="muted"></p>
@@ -48,7 +48,7 @@
           <section id="websearch" class="card">
             <div class="row between">
               <h2>Web search</h2>
-              <button type="button" id="websearch-refresh">Refresh</button>
+              <button type="button" id="websearch-refresh" class="icon refresh" title="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg></button>
             </div>
             <p id="websearch-card-status" class="muted"></p>
             <div id="websearch-card-content"></div>
@@ -59,12 +59,14 @@
           <section id="evals" class="card">
             <div class="row between">
               <h2>Evals</h2>
-              <button type="button" id="evals-refresh">Refresh</button>
+              <button type="button" id="evals-refresh" class="icon refresh" title="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg></button>
             </div>
-            <dl id="evals-stats" class="stats"></dl>
-            <p id="evals-status" class="muted"></p>
-            <div id="evals-experiments"></div>
-            <div id="evals-runs"></div>
+            <div class="sect sect-a">
+              <dl id="evals-stats" class="stats"></dl>
+              <p id="evals-status" class="muted"></p>
+              <div id="evals-experiments"></div>
+            </div>
+            <div id="evals-runs" class="sect sect-b"></div>
           </section>
         </div>
 
@@ -72,7 +74,7 @@
           <section id="timeseries" class="card">
             <div class="row between">
               <h2>Timeseries</h2>
-              <button type="button" id="timeseries-refresh">Refresh</button>
+              <button type="button" id="timeseries-refresh" class="icon refresh" title="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg></button>
             </div>
             <div id="timeseries-content"></div>
           </section>
@@ -82,7 +84,7 @@
           <section id="inferences" class="card">
             <div class="row between">
               <h2>Inferences</h2>
-              <button type="button" id="inferences-refresh">Refresh</button>
+              <button type="button" id="inferences-refresh" class="icon refresh" title="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg></button>
             </div>
             <div id="inferences-content"></div>
           </section>
@@ -92,7 +94,7 @@
           <section id="remember_runs" class="card">
             <div class="row between">
               <h2>Remember runs</h2>
-              <button type="button" id="remember_runs-refresh">Refresh</button>
+              <button type="button" id="remember_runs-refresh" class="icon refresh" title="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg></button>
             </div>
             <div id="remember_runs-content"></div>
           </section>
@@ -102,7 +104,7 @@
           <section id="training" class="card">
             <div class="row between">
               <h2>Training</h2>
-              <button type="button" id="training-refresh">Refresh</button>
+              <button type="button" id="training-refresh" class="icon refresh" title="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg></button>
             </div>
             <p class="muted">Fine-tune Gemma 4 on the sidecar (LoRA).</p>
             <p id="training-sidecar-warning" class="error sidecar-warning" role="alert" hidden><strong>Sidecar not active.</strong> It did not pass its health check when the server started, so training jobs cannot be started or listed. Start the sidecar and restart the server.</p>

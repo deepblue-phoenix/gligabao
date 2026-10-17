@@ -7,6 +7,22 @@ $accent: #6ea8fe;
 $ok: #3fb950;
 $err: #f85149;
 
+// Section shading: every distinct section of a view gets its own faint tint over the card, so where one starts and ends is easy to see.
+$tint-blue: #6ea8fe;
+$tint-green: #3fb950;
+$tint-amber: #d29922;
+$tint-purple: #a371f7;
+$tint-red: #f0636b;
+@mixin tint($c) { background: rgba($c, 0.07); }                                                        // a block inside a card
+@mixin tint-card($c) { background-image: linear-gradient(rgba($c, 0.07), rgba($c, 0.07)); }              // a card itself (keeps $surface under it)
+@mixin section-block { border-radius: 6px; padding: 0.75rem 1rem; }
+.sect { @include section-block; margin-top: 0.75rem; &:first-child { margin-top: 0; } &:empty { display: none; } }
+.sect-a { @include tint($tint-blue); }
+.sect-b { @include tint($tint-green); }
+.sect-c { @include tint($tint-amber); }
+.sect-d { @include tint($tint-purple); }
+.sect-e { @include tint($tint-red); }
+
 @mixin badge($color) {
   color: $color;
   border-color: $color;
@@ -170,6 +186,7 @@ button.small { padding: 0.15rem 0.6rem; font-size: 0.8rem; }
 button.small + button.small { margin-left: 0.4rem; }
 button[hidden] { display: none; }
 button.icon { vertical-align: middle; svg { display: block; } }
+button.icon.refresh { padding: 0.35rem 0.5rem; }
 button.close-x {
   display: inline-flex; align-items: center; justify-content: center; flex: none; margin-left: auto;
   padding: 0.3rem; background: transparent; color: $muted;
@@ -273,7 +290,7 @@ button.danger { background: $err; color: #fff; vertical-align: middle; svg { dis
 #evals { margin-top: 0; }
 .row.between { justify-content: space-between; h2 { margin: 0; } }
 #evals-stats { margin-top: 0.75rem; flex-wrap: wrap; dd { font-size: 1.3rem; } }
-#evals-runs h3 { margin: 1.25rem 0 0.25rem; font-size: 0.95rem; }
+#evals-runs h3 { margin: 0 0 0.25rem; font-size: 0.95rem; }
 
 table.clickable tbody tr:not(.detail) {
   cursor: pointer;
@@ -634,7 +651,7 @@ tr.removing {
 
 // Timeseries view
 #timeseries { margin-top: 0; }
-.ts-db { margin-top: 1rem; h3 { margin: 0 0 0.25rem; font-size: 0.95rem; } }
+.ts-db { @include section-block; margin-top: 0.75rem; h3 { margin: 0 0 0.25rem; font-size: 0.95rem; } }
 .ts-list { display: flex; flex-direction: column; gap: 0.6rem; }
 .ts-item {
   padding: 0.6rem 0.8rem;
@@ -663,7 +680,7 @@ tr.removing {
 
 // Inferences view
 #inferences { margin-top: 0; }
-.mr-db { margin-top: 1rem; h3 { margin: 0 0 0.5rem; font-size: 1rem; } }
+.mr-db { @include section-block; margin-top: 0.75rem; h3 { margin: 0 0 0.5rem; font-size: 1rem; } }
 .mr-breakdowns { align-items: flex-start; flex-wrap: wrap; gap: 1.5rem; margin-top: 0.75rem; }
 .mr-breakdown h4 { margin: 0; font-size: 0.85rem; color: $muted; }
 .mr-filter { align-items: center; gap: 0.75rem; margin-top: 1rem; min-height: 1.5rem; }
@@ -674,15 +691,21 @@ tr.removing {
 .rr-stats { flex-wrap: wrap; dd { font-size: 1.3rem; } }
 .rr-tile { cursor: pointer; padding: 0.2rem 0.6rem; border-radius: 6px; &:hover { background: rgba($accent, 0.08); } &.selected { background: rgba($accent, 0.16); } }
 
+// Main view: each card has its own tint.
+#databases > .card:nth-child(odd) { @include tint-card($tint-blue); }
+#databases > .card:nth-child(even) { @include tint-card($tint-green); }
+#images { @include tint-card($tint-amber); }
+#websearch { @include tint-card($tint-purple); }
+
 // Training view
 #training { margin-top: 0; h3 { margin: 0 0 0.4rem; font-size: 0.95rem; } }
 // Each training section gets its own background shade so its bounds are easy to see.
-.tr-section { border-radius: 6px; padding: 0.75rem 1rem; margin-top: 0.75rem; &:first-child { margin-top: 0; } }
-.tr-providers { background: rgba(#6ea8fe, 0.06); }
-.tr-models { background: rgba(#3fb950, 0.07); }
-.tr-datasets { background: rgba(#d29922, 0.07); }
-.tr-jobs { background: rgba(#a371f7, 0.07); }
-.tr-selected { background: rgba(#f0636b, 0.07); }
+.tr-section { @include section-block; margin-top: 0.75rem; &:first-child { margin-top: 0; } }
+.tr-providers { @include tint($tint-blue); }
+.tr-models { @include tint($tint-green); }
+.tr-datasets { @include tint($tint-amber); }
+.tr-jobs { @include tint($tint-purple); }
+.tr-selected { @include tint($tint-red); }
 .training-form { align-items: flex-end; label { display: flex; flex-direction: column; gap: 0.2rem; color: $muted; font-size: 0.8rem; } input[type="number"] { width: 6rem; } select { min-width: 12rem; } }
 #training-detail-head { margin-bottom: 0.4rem; }
 #training-loss { background: $bg; border: 1px solid $border; border-radius: 6px; padding: 0.25rem; svg { display: block; } > p { margin: 0.75rem; } }
@@ -738,3 +761,6 @@ tr.removing {
 .backends li { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; }
 .backends ul.backend-apps { flex-basis: 100%; flex-direction: column; gap: 0.35rem; margin: 0.25rem 0 0 1rem; }
 .backend-volumes { margin: 0 0 0.75rem; h3 { margin: 0.25rem 0; font-size: 0.9rem; } table { font-size: 0.85rem; } }
+
+// Per-database blocks of the timeseries, inferences and remember views.
+.ts-db, .mr-db { &:nth-of-type(odd) { @include tint($tint-blue); } &:nth-of-type(even) { @include tint($tint-green); } }
