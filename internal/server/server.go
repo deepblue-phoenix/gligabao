@@ -238,6 +238,8 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, dbs []training.Da
 	mux.HandleFunc("GET /v1/gb/training/evals/{id}", evals.GetOf())
 	mux.HandleFunc("GET /v1/gb/training/evals/{id}/events", evals.EventsOf())
 	mux.HandleFunc("POST /v1/gb/training/evals/{id}/cancel", evals.CancelOf())
+	mux.HandleFunc("GET /v1/gb/training/experiments", evals.ExperimentsOf())
+	mux.HandleFunc("GET /v1/gb/training/experiments/{id}", evals.ExperimentOf())
 	mux.HandleFunc("GET /v1/gb/training/datasets", training.ListDatasetsOf(dbs))
 	mux.HandleFunc("POST /v1/gb/training/datasets", training.UploadDatasetOf(dbs))
 	mux.HandleFunc("GET /v1/gb/training/datasets/preview", training.PreviewDatasetOf(dbs))

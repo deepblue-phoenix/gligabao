@@ -467,3 +467,71 @@ func testEvalLiveFeed(t *testing.T, d *sql.DB) {
 		t.Fatalf("unknown eval: %v %v", resp3, err)
 	}
 }
+
+func TestEvalExperiments(t *testing.T) { dbtest.Run(t, testEvalExperiments) }
+
+func testEvalExperiments(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 4)}}
+	loss := 0.8
+	mid, _, err := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{
+		JobID: "jobexp1", ModelSize: "4b", Dataset: "mine.jsonl", NumTrainSteps: 3, FinalLoss: &loss, Path: "trained/jobexp1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := training.NewEvalManager(ctx, dbs, &evalSidecar{wrong: map[string]bool{"q1": true}}, &evalJudge{})
+
+	// An eval without an experiment is not in any; with a name it is a run of it, and the same name is the same experiment.
+	if c := startEval(m, fmt.Sprint(mid), `{}`); c.code != http.StatusAccepted {
+		t.Fatalf("start: %d %s", c.code, c.body)
+	}
+	m.Wait()
+	body := `{"experiment": " sweep ", "experiment_description": "first try", "experiment_config": {"lr": 0.001}}`
+	first := startEval(m, fmt.Sprint(mid), body)
+	if first.code != http.StatusAccepted {
+		t.Fatalf("start with an experiment: %d %s", first.code, first.body)
+	}
+	m.Wait()
+	if c := startEval(m, fmt.Sprint(mid), `{"limit": 2, "experiment": "sweep", "experiment_description": "ignored"}`); c.code != http.StatusAccepted {
+		t.Fatalf("second: %d %s", c.code, c.body)
+	}
+	m.Wait()
+	if c := startEval(m, fmt.Sprint(mid), `{"experiment": "`+strings.Repeat("x", 121)+`"}`); c.code != http.StatusBadRequest {
+		t.Fatalf("long name: %d", c.code)
+	}
+
+	rec := httptest.NewRecorder()
+	m.ExperimentsOf()(rec, httptest.NewRequest("GET", "/x", nil))
+	var list struct {
+		Experiments []relational.TrainingExperiment
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || rec.Code != 200 || len(list.Experiments) != 1 ||
+		list.Experiments[0].Name != "sweep" || list.Experiments[0].NumRuns != 2 || list.Experiments[0].Description != "first try" {
+		t.Fatalf("experiments: %d %s", rec.Code, rec.Body)
+	}
+
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/x", nil)
+	req.SetPathValue("id", fmt.Sprint(list.Experiments[0].ID))
+	m.ExperimentOf()(rec, req)
+	var got struct {
+		Experiment relational.TrainingExperiment
+		Runs       []relational.TrainingExperimentRun
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || rec.Code != 200 || len(got.Runs) != 2 {
+		t.Fatalf("experiment: %d %s", rec.Code, rec.Body)
+	}
+	r := got.Runs[0]
+	if r.EvalID != first.eval(t).ID || r.Status != relational.TrainedModelEvalCompleted || r.Model.ID != mid || r.Model.FinalLoss == nil ||
+		r.MeanScore == nil || *r.MeanScore != 4 || r.CorrectRate == nil || *r.CorrectRate != 0.75 || got.Runs[1].Eval.NumExamples != 2 {
+		t.Fatalf("run: %+v", r)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest("GET", "/x", nil)
+	req.SetPathValue("id", "99")
+	m.ExperimentOf()(rec, req)
+	if rec.Code != 404 {
+		t.Fatalf("unknown experiment: %d", rec.Code)
+	}
+}

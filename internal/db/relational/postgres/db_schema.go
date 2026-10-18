@@ -270,7 +270,24 @@ CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
 	created_at    TIMESTAMPTZ NOT NULL,
 	UNIQUE (run_eval_id, seq)
 );
-CREATE INDEX IF NOT EXISTS idx_gb_experiment_trajectories_tid ON gb_experiment_trajectories(trajectory_id);`
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_trajectories_tid ON gb_experiment_trajectories(trajectory_id);
+
+-- Training experiments: named series of evals of trained models (see sqlite/db_schema.go).
+CREATE TABLE IF NOT EXISTS gb_training_experiments (
+	id          BIGSERIAL PRIMARY KEY,
+	name        TEXT NOT NULL UNIQUE,
+	description TEXT NOT NULL DEFAULT '',
+	config      JSONB NOT NULL DEFAULT '{}',
+	created_at  TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS gb_training_experiment_runs (
+	id            BIGSERIAL PRIMARY KEY,
+	experiment_id BIGINT NOT NULL REFERENCES gb_training_experiments(id) ON DELETE CASCADE,
+	eval_id       BIGINT NOT NULL UNIQUE REFERENCES gb_trained_model_evals(id) ON DELETE CASCADE,
+	created_at    TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gb_training_experiment_runs_experiment ON gb_training_experiment_runs(experiment_id);`
 
 // initSchema applies the database schema. Concurrent starters are serialized with an advisory lock, because
 // CREATE ... IF NOT EXISTS can still race in PostgreSQL.

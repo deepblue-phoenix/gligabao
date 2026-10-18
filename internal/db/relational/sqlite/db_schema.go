@@ -386,7 +386,30 @@ CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
 	created_at    DATETIME NOT NULL,
 	UNIQUE (run_eval_id, seq)
 );
-CREATE INDEX IF NOT EXISTS idx_gb_experiment_trajectories_tid ON gb_experiment_trajectories(trajectory_id);`
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_trajectories_tid ON gb_experiment_trajectories(trajectory_id);
+
+-- Training experiments (internal/api/training/experiments.go): the experiments of the evals of trained models, apart from the
+-- knowledge-extraction experiments above (gb_experiments...). An experiment is a named series of runs, e.g. "lr-sweep-4b"; names
+-- are unique.
+--   config: JSON object with the free-form settings under test
+CREATE TABLE IF NOT EXISTS gb_training_experiments (
+	id          INTEGER PRIMARY KEY AUTOINCREMENT,
+	name        TEXT NOT NULL UNIQUE,
+	description TEXT NOT NULL DEFAULT '',
+	config      TEXT NOT NULL DEFAULT '{}',
+	created_at  DATETIME NOT NULL
+);
+
+-- One run of a training experiment: ONE EVAL (gb_trained_model_evals) of one trained model, made as part of the experiment. The run
+-- only links; the eval keeps the status, the counters, the score and the judge's cost (and its items), so there is one copy of them and
+-- they follow the eval while it runs. The model is the eval's. An eval belongs to at most one experiment.
+CREATE TABLE IF NOT EXISTS gb_training_experiment_runs (
+	id            INTEGER PRIMARY KEY AUTOINCREMENT,
+	experiment_id INTEGER NOT NULL REFERENCES gb_training_experiments(id) ON DELETE CASCADE,
+	eval_id       INTEGER NOT NULL UNIQUE REFERENCES gb_trained_model_evals(id) ON DELETE CASCADE,
+	created_at    DATETIME NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gb_training_experiment_runs_experiment ON gb_training_experiment_runs(experiment_id);`
 
 // initSchema applies the database schema.
 func initSchema(d *sql.DB) error {

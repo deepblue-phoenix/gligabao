@@ -109,6 +109,8 @@ func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 //   - batch_size: question/answer pairs per judge call (default 10, at most 25)
 //   - judge_model: the LLM model that judges (default: the server's default model)
 //   - max_tokens, temperature: of the model's answers (default 1024 and 0.1)
+//   - experiment: make the eval a run of the training experiment of that name (created if needed, see experiments.go);
+//     experiment_description and experiment_config (an object) are stored when it is created
 //
 // 404 for an unknown model, 400 for a bad body or when the model's dataset cannot be read (none recorded, gone from the
 // training datasets directory, invalid), 409 when an eval of this model is running already, 503 without a sidecar or an LLM.
@@ -137,6 +139,10 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 			JudgeModel  string   `json:"judge_model"`
 			MaxTokens   int      `json:"max_tokens"`
 			Temperature *float64 `json:"temperature"`
+
+			Experiment            string         `json:"experiment"`
+			ExperimentDescription string         `json:"experiment_description"`
+			ExperimentConfig      map[string]any `json:"experiment_config"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxEvalBody)).Decode(&in); err != nil && !errors.Is(err, io.EOF) {
 			httputil.Error(w, http.StatusBadRequest, "invalid JSON body")
@@ -149,6 +155,9 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 			return
 		case in.Limit < 0:
 			httputil.Error(w, http.StatusBadRequest, "limit must be 0 (all) or more")
+			return
+		case len(strings.TrimSpace(in.Experiment)) > maxExperimentName:
+			httputil.Error(w, http.StatusBadRequest, "experiment must be at most "+strconv.Itoa(maxExperimentName)+" characters")
 			return
 		case in.MaxTokens < 0 || in.MaxTokens > maxInferTokens:
 			httputil.Error(w, http.StatusBadRequest, "max_tokens must be between 1 and "+strconv.Itoa(maxInferTokens))
@@ -212,6 +221,15 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 			log.WithError(err).WithField("model_id", tm.ID).Error("training: recording the eval failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to record the eval")
 			return
+		}
+		if name := strings.TrimSpace(in.Experiment); name != "" {
+			if err := joinExperiment(dbCtx, n.DB, name, in.ExperimentDescription, in.ExperimentConfig, evalID); err != nil {
+				release()
+				_ = relational.FinishTrainedModelEval(dbCtx, n.DB, evalID, relational.TrainedModelEvalFailed, "could not start")
+				log.WithError(err).WithField("experiment", name).Error("training: adding the eval to its experiment failed")
+				httputil.Error(w, http.StatusInternalServerError, "failed to add the eval to the experiment")
+				return
+			}
 		}
 		stream := newEvalStream()
 		skey := evalStreamKey{n.Name, evalID}

@@ -45,6 +45,10 @@ type (
 	TrainedModelInference = model.TrainedModelInference
 	TrainedModelEval      = model.TrainedModelEval
 	TrainedModelEvalItem  = model.TrainedModelEvalItem
+
+	TrainingExperiment      = model.TrainingExperiment
+	TrainingExperimentRun   = model.TrainingExperimentRun
+	TrainingExperimentModel = model.TrainingExperimentModel
 )
 
 // Statuses of a TrainedModelEval and of its items.

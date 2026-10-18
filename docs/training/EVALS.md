@@ -45,14 +45,30 @@ All under `/v1/gb/training/`, with `?db=<name>` to pick the database like the ot
 
 | Endpoint | |
 |---|---|
-| `POST /models/{id}/evals` | Starts an eval. Optional JSON body: `limit` (only the first n questions; default all), `batch_size` (pairs per judge call, 1 to 25, default 10), `judge_model`, `max_tokens` (default 1024), `temperature` (default 0.1). `202` with the eval; `400` bad body or dataset not usable, `404` unknown model, `409` one running, `503` no sidecar or no LLM. |
+| `POST /models/{id}/evals` | Starts an eval. Optional JSON body: `limit` (only the first n questions; default all), `batch_size` (pairs per judge call, 1 to 25, default 10), `judge_model`, `max_tokens` (default 1024), `temperature` (default 0.1), and `experiment` (a name of at most 120 characters: the eval becomes a run of that [experiment](#experiments), made if needed; with `experiment_description` and `experiment_config`, an object, stored when it is made). `202` with the eval; `400` bad body or dataset not usable, `404` unknown model, `409` one running, `503` no sidecar or no LLM. |
 | `GET /models/{id}/evals[?limit=n]` | `{"evals": [...]}`, newest first (without items). |
 | `GET /evals/{id}` | `{"eval": {...}, "items": [...]}` with the items stored so far, in dataset order. |
 | `GET /evals/{id}/events` | Live feed (Server-Sent Events) of an eval, used by the admin UI's live view. The first event is a `snapshot` (`{eval, items}`: stored items plus answers the judge has not scored yet, status `answered`); then an `answer` for each question as the model answers it (before it is judged), a `batch` (`eval` with the progress, and the batch's judged `items`) when a batch is judged, and an `end` (the stream then closes). For an eval that is over: the snapshot and the `end`. Items are applied by `idx`, so a reconnect is safe. `404` unknown eval. |
+| `GET /experiments` | `{"experiments": [...]}`, the [training experiments](#experiments), newest first, each with `num_runs`. |
+| `GET /experiments/{id}` | `{"experiment": {...}, "runs": [...]}`, one experiment with its runs, oldest first. `404` unknown experiment. |
 | `POST /evals/{id}/cancel` | Stops a running eval (`202`); `409` if it is not running. |
 
 An eval has `status`, `dataset`, `dataset_sha256`, `params` (batch size, max tokens, temperature, limit), `judge_model`, `num_examples`, the counters `num_answered`, `num_judged`, `num_failed`, `num_correct`, `num_partial`, `num_incorrect`, `score_sum` (mean = `score_sum / num_judged`), `num_batches`, `judge_calls`, `judge_input_tokens`, `judge_output_tokens`, `judge_cost_usd`, `error`, `created_at` and `finished_at`. An item has `idx`, `batch`, `instruction`, `input`, `reference` (the dataset's answer), `response` (the model's), `status` (`judged` or `failed`), `error`, `score`, `reason`, `input_tokens`, `output_tokens` and `duration_ms`.
 
+## Experiments
+
+A **training experiment** is a named series of evals, to compare trained models (training recipes) by their scores: "lr-sweep-4b", "dataset-v2 vs v1". Start an eval with `"experiment": "<name>"` and it becomes a **run** of that experiment; the first eval with a name makes the experiment (with the `experiment_description` and `experiment_config` of that request), the later ones with the same name join it and their description and config are ignored. An eval without a name is in no experiment, and an eval is in at most one.
+
+A run holds no results of its own, only the link to its eval: the status, the counters, the judge's cost and the items stay in the eval, so there is one copy, and a running run shows its progress. `GET /experiments/{id}` returns each run with:
+
+- `eval`: the eval as it is now (`status`, the counters, `judge_model`, `judge_cost_usd`, `params`, `dataset`, ...);
+- `model`: the trained model that was evaluated (`id`, `name`, `base_model`, `model_size`, `num_train_steps`, `final_loss` and `params`, the training settings), so runs can be compared by recipe;
+- `status` (the eval's), `mean_score` (0 to 5) and `correct_rate` (the share of judged answers that is correct), both `null` until an answer is judged.
+
+These are separate from the knowledge-extraction experiments of [`evals/knowledge`](../experiments.md) (tables `gb_experiments`, ...). Deleting a trained model deletes its evals and so their runs; the experiment stays.
+
 ## Tables
 
 `gb_trained_model_evals` (one row per eval) and `gb_trained_model_eval_items` (one per question, cascading), in SQLite and PostgreSQL; the columns are documented in `internal/db/relational/sqlite/db_schema.go`. Go: `relational.RecordTrainedModelEval`, `SaveTrainedModelEvalBatch`, `FinishTrainedModelEval`, `GetTrainedModelEval`, `ListTrainedModelEvals`, `ListTrainedModelEvalItems`.
+
+The experiments are in `gb_training_experiments` (name, description, `config`) and `gb_training_experiment_runs` (`experiment_id`, a unique `eval_id`, cascading from both sides). Go: `relational.EnsureTrainingExperiment`, `GetTrainingExperiment`, `ListTrainingExperiments`, `StartTrainingExperimentRun`, `GetTrainingExperimentRun`, `ListTrainingExperimentRuns`.

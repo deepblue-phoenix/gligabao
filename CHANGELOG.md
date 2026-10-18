@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.51.0] - 2026-10-25
+
+### Added
+- **Training experiments.** Evals of trained models can be tracked as experiments: start an eval with `"experiment": "<name>"` (and optionally `experiment_description`, `experiment_config`) and it becomes a run of that named experiment, made on first use. Each run links to its eval, so it shows the eval's status, progress, mean score, share of correct answers and judge cost, and the trained model that was evaluated (base model, steps, final loss, training settings), to compare training recipes. API: `GET /v1/gb/training/experiments` and `GET /v1/gb/training/experiments/{id}`. They have their own tables, apart from the knowledge-extraction experiments: `gb_training_experiments` and `gb_training_experiment_runs` (SQLite and PostgreSQL, created on start-up). Details: [docs/training/EVALS.md](docs/training/EVALS.md#experiments).
+
 ## [0.50.0] - 2026-10-24
 
 ### Added
