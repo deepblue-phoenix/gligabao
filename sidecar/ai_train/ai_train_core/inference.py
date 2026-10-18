@@ -1,7 +1,8 @@
 """Generation with a fine-tuned adapter. Runs inside the GPU container for the given model size.
 
-Loads with transformers + peft (model_load_infer.py), so it runs in the light inference image (requirements_infer.txt),
-not the Unsloth training one.
+Model-family neutral: the family's own loader and prompt format (model_families.py, e.g. gemma4/model_load_infer.py and
+gemma4/prompt_format.py) are looked up per request. Loading is transformers + peft, so this runs in the light inference
+image (requirements_infer.txt), not the Unsloth training one.
 """
 import gc
 import os
@@ -9,31 +10,32 @@ import threading
 import time
 from typing import Callable, Optional
 
-from .prompt_format import bos_prefix, extract_model_response, format_inference_prompt, stop_token_ids
+from .model_families import DEFAULT_MODEL_FAMILY, family_module
 from .trained_model import resolve_model_dir
 
 # The model stays loaded in the container's memory between requests, so only the first request of a container pays the
 # load (the container itself stays up for the function's idle timeout, see FunctionSpec.idle_timeout_s). One model at
 # a time: a request for another model or size replaces it, so the GPU never holds two.
 _cache_lock = threading.Lock()
-_cache: dict = {}   # "key": (model_size, adapter_dir, adapter mtime), "model", "tokenizer", "config", "adapter_dir", "loaded_at"
+_cache: dict = {}   # "key": (family, model_size, adapter_dir, adapter mtime), "model", "tokenizer", "config", "adapter_dir", "loaded_at"
 
 
-def _load(model_size: str, max_seq_length: int, load_in_4bit: bool, adapter_dir: Optional[str] = None):
+def _load(model_size: str, max_seq_length: int, load_in_4bit: bool, adapter_dir: Optional[str] = None,
+          model_family: str = DEFAULT_MODEL_FAMILY):
     """-> (model, tokenizer, config, adapter_dir). Imported lazily: only the GPU images have torch/transformers."""
-    from .model_load_infer import load_finetuned_model_for_inference
+    load_finetuned_model_for_inference = family_module("model_load_infer", model_family).load_finetuned_model_for_inference
     return load_finetuned_model_for_inference(
         model_size=model_size, max_seq_length=max_seq_length, load_in_4bit=load_in_4bit, adapter_dir=adapter_dir)
 
 
-def _adapter_stamp(model_size: str, adapter_dir: Optional[str]):
+def _adapter_stamp(model_size: str, adapter_dir: Optional[str], model_family: str = DEFAULT_MODEL_FAMILY):
     """What identifies the weights on disk: a retrained adapter in the same directory gets a new stamp."""
     from .paths import FINETUNED_ADAPTER_DIR_TEMPLATE
     d = adapter_dir or FINETUNED_ADAPTER_DIR_TEMPLATE.format(model_size=model_size)
     try:
-        return (model_size, d, os.stat(os.path.join(d, "adapter_config.json")).st_mtime_ns)
+        return (model_family, model_size, d, os.stat(os.path.join(d, "adapter_config.json")).st_mtime_ns)
     except OSError:
-        return (model_size, d, None)
+        return (model_family, model_size, d, None)
 
 
 def _drop_cached() -> None:
@@ -47,27 +49,29 @@ def _drop_cached() -> None:
         pass
 
 
-def _get_model(model_size: str, adapter_dir: Optional[str]):
+def _get_model(model_size: str, adapter_dir: Optional[str], model_family: str = DEFAULT_MODEL_FAMILY):
     """-> (model, tokenizer_or_processor, config, adapter_dir, cold): the cached model if it is the one asked for, else
     load it (replacing the cached one)."""
-    key = _adapter_stamp(model_size, adapter_dir)
-    if _cache.get("key") == key and key[2] is not None:
-        print(f"Model already loaded in this container ({key[1]}): skipping the load")
+    key = _adapter_stamp(model_size, adapter_dir, model_family)
+    if _cache.get("key") == key and key[3] is not None:
+        print(f"Model already loaded in this container ({key[2]}): skipping the load")
         return _cache["model"], _cache["tokenizer"], _cache["config"], _cache["adapter_dir"], False
     _drop_cached()
-    model, tokenizer, config, loaded_dir = _load(model_size, 2048, True, adapter_dir)
-    _cache.update(key=_adapter_stamp(model_size, loaded_dir if adapter_dir else None), model=model, tokenizer=tokenizer,
+    model, tokenizer, config, loaded_dir = _load(model_size, 2048, True, adapter_dir, model_family)
+    _cache.update(key=_adapter_stamp(model_size, loaded_dir if adapter_dir else None, model_family), model=model, tokenizer=tokenizer,
                   config=config, adapter_dir=loaded_dir, loaded_at=time.time())
     return model, tokenizer, config, loaded_dir, True
 
 
 def infer_response(prompt: str, max_tokens: int, temperature: float, model_size: str,
                       reload_fn: Optional[Callable] = None, model_path: str = "",
-                      on_ready: Optional[Callable[[dict], None]] = None) -> dict:
+                      on_ready: Optional[Callable[[dict], None]] = None,
+                      model_family: str = DEFAULT_MODEL_FAMILY) -> dict:
     """Load base + a trained adapter and generate. Returns {"response", ...} or {"error"}.
 
     `model_path` picks the trained model (`trained/<job id>`, relative to the models volume, see trained_model.py);
-    `model_size` must be the size it was trained for. Without it the legacy adapter of `model_size` is used.
+    `model_size` must be the size it was trained for (of `model_family`, see model_families.py). Without it the legacy
+    adapter of `model_size` is used.
 
     `reload_fn()` refreshes volumes so this container sees adapters committed by a training
     container that finished after this container's volumes were last synced.
@@ -79,6 +83,10 @@ def infer_response(prompt: str, max_tokens: int, temperature: float, model_size:
     if not prompt:
         return {"error": "prompt is required"}
     model_size = model_size.lower()
+    try:
+        family_module("model_config", model_family)   # fail early, and cleanly, on an unknown family
+    except ValueError as e:
+        return {"error": str(e)}
     if reload_fn:
         try:
             reload_fn()
@@ -86,15 +94,16 @@ def infer_response(prompt: str, max_tokens: int, temperature: float, model_size:
             print(f"Reloading the models volume failed: {e!r}")
 
     with _cache_lock:
-        return _infer_locked(prompt, max_tokens, temperature, model_size, model_path, on_ready)
+        return _infer_locked(prompt, max_tokens, temperature, model_size, model_path, on_ready, model_family)
 
 
 def _infer_locked(prompt: str, max_tokens: int, temperature: float, model_size: str, model_path: str,
-                     on_ready: Optional[Callable[[dict], None]]) -> dict:
+                     on_ready: Optional[Callable[[dict], None]], model_family: str = DEFAULT_MODEL_FAMILY) -> dict:
     t0 = time.time()
+    prompt_format = family_module("prompt_format", model_family)
     try:
         adapter_dir = resolve_model_dir(model_path) if model_path else None
-        model, tokenizer_or_processor, config, adapter_dir, cold = _get_model(model_size, adapter_dir)
+        model, tokenizer_or_processor, config, adapter_dir, cold = _get_model(model_size, adapter_dir, model_family)
     except (FileNotFoundError, ValueError) as e:
         return {"error": str(e)}
     load_s = time.time() - t0
@@ -103,7 +112,7 @@ def _infer_locked(prompt: str, max_tokens: int, temperature: float, model_size: 
 
     print(f"Generating with fine-tuned {config['display_name']} (adapter: {adapter_dir}) for: {prompt[:50]}...")
     import torch
-    inputs = tokenizer(bos_prefix(tokenizer) + format_inference_prompt(prompt), return_tensors="pt").to(model.device)
+    inputs = tokenizer(prompt_format.bos_prefix(tokenizer) + prompt_format.format_inference_prompt(prompt), return_tensors="pt").to(model.device)
     input_tokens = int(inputs["input_ids"].shape[-1])   # the formatted prompt, special tokens included
     with torch.no_grad():
         outputs = model.generate(
@@ -111,12 +120,12 @@ def _infer_locked(prompt: str, max_tokens: int, temperature: float, model_size: 
             max_new_tokens=max_tokens,
             temperature=temperature,
             do_sample=True,
-            eos_token_id=stop_token_ids(tokenizer) or None,   # <turn|> (end of the model turn) and <eos>
+            eos_token_id=prompt_format.stop_token_ids(tokenizer) or None,   # the family's end-of-turn / EOS ids
             pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
         )
     output_tokens = int(outputs.shape[-1]) - input_tokens   # the newly generated tokens (EOS included)
     # decode only the new tokens: the echoed prompt is not part of the reply (and its markers are special tokens)
-    response = extract_model_response(tokenizer.decode(outputs[0][input_tokens:], skip_special_tokens=True))
+    response = prompt_format.extract_model_response(tokenizer.decode(outputs[0][input_tokens:], skip_special_tokens=True))
     print(f"Generated {len(response)} characters ({input_tokens} input tokens, {output_tokens} output tokens)")
     _cache["requests"] = _cache.get("requests", 0) + 1
     if on_ready:

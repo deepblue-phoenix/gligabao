@@ -26,7 +26,9 @@ for _p in (modd_str, "/pkg"):
         sys.path.insert(0, _p)
 
 from ai_train_core import paths
-from ai_train_core.model_config import MODEL_SIZES
+from ai_train_core.model_families import model_sizes
+
+MODEL_SIZES = model_sizes()   # of the default model family
 from config import CONFIG
 from providers import FunctionSpec, ImageSpec, get_provider
 from training_data import get_local_paths

@@ -20,7 +20,7 @@ The dataset is generated as a JSONL (JSON Lines) file. Each line represents an i
 ```
 
 ## 2. The Transformation Pipeline
-The `format_instruction` function in `ai_train_core/prompt_format.py` transforms the raw JSON structure into a chat-template-compliant string. This template is crucial for the model to understand the conversation structure between the user and the assistant.
+The `format_instruction` function in `ai_train_core/gemma4/prompt_format.py` transforms the raw JSON structure into a chat-template-compliant string. This template is crucial for the model to understand the conversation structure between the user and the assistant.
 
 ### Template Logic
 The formatter uses **Gemma 4's own** turn markers (the ones in the base model's `chat_template.jinja`) to delimit the user input and the model output:

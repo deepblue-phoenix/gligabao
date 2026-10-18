@@ -45,11 +45,13 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from api.models import TrainingDataset, TrainingJob
 from ai_train_core.dataset import store_dataset, valid_dataset_filename
-from ai_train_core.model_config import MODEL_SIZES
+from ai_train_core.model_families import model_sizes
 from ai_train_core.event_log import EventLog
 from ai_train_core.paths import DATA_DIR, EVAL_DATASET_PATH, EVAL_DIR
 from ai_train_core.progress_events import is_terminal, request_stop, valid_job_id, write_status
 from ai_train_core.trained_model import valid_model_path
+
+MODEL_SIZES = model_sizes()   # of the default model family
 
 log = logging.getLogger("uvicorn.error")  # shows in the container's log next to the access lines
 

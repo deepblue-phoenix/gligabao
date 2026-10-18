@@ -69,16 +69,18 @@ sidecar/ai_train/
   (training docs moved to top-level docs/training/)
   test_ai_train_core.py       # local unit tests (no GPU / Modal needed)
   ai_train_core/              # runs inside the container; never imports a provider SDK
-    model_config.py           # 4b / 12b settings (pure data)
+    model_families.py         # registry of model families; family-neutral code looks the family's modules up here
     paths.py                  # container mount points + file locations
-    prompt_format.py          # Gemma turn-marker format shared by training and inference
     dataset.py                # sync / validate the dataset on the data volume
     training_common.py        # dataset loading, SFTConfig, adapter saving
     progress.py               # Trainer callback writing live progress events
     progress_events.py        # the events of a job: write helpers, stop flag (no heavy imports)
     event_log.py              # the job's event log on the provider's key-value store (Modal Dict)
-    model_load.py, model_train.py            # training: 4B and 12B via Unsloth
-    model_load_infer.py       # inference loading: base model 4-bit + peft adapter, no Unsloth
+    gemma4/                   # everything Gemma-4 specific (the contract of a family: gemma4/__init__.py)
+      model_config.py         #   4b / 12b settings (pure data)
+      prompt_format.py        #   Gemma turn-marker format shared by training and inference
+      model_load.py, model_train.py   # training: 4B and 12B via Unsloth
+      model_load_infer.py     #   inference loading: base model 4-bit + peft adapter, no Unsloth
     inference.py              # run inference with a trained adapter (model_path picks it)
     trained_model.py          # where a job's weights are saved, how they are described, model_path validation
     bootstrap.py              # ping + train
@@ -94,7 +96,7 @@ sidecar/ai_train/
 
 ### One training path for both sizes
 
-`google/gemma-4-E4B-it` (4B) uses the `gemma4` architecture and `google/gemma-4-12B-it` (12B) the newer `gemma4_unified` one. Both train through Unsloth (2026.10.x, which supports `transformers<=5.17` and `gemma4_unified`) in one image built from `requirements_train.txt` (CUDA 12.8 toolkit, torch 2.10+), and serve through plain `transformers` + `peft` + `bitsandbytes` in a separate, lighter image built from `requirements_infer.txt` (see [Images](#images)). The sizes differ only in their settings (`model_config.py`), GPU and Modal function (`train_4b` / `train_12b`, `infer_4b` / `infer_12b`). Every job saves its LoRA adapter in a directory of its own, `/models/trained/<job_id>`, so no job (of either size) overwrites an earlier model; see [Trained models](#trained-models). See [training/MODEL_SIZES.md](training/MODEL_SIZES.md).
+`google/gemma-4-E4B-it` (4B) uses the `gemma4` architecture and `google/gemma-4-12B-it` (12B) the newer `gemma4_unified` one. Both train through Unsloth (2026.10.x, which supports `transformers<=5.17` and `gemma4_unified`) in one image built from `requirements_train.txt` (CUDA 12.8 toolkit, torch 2.10+), and serve through plain `transformers` + `peft` + `bitsandbytes` in a separate, lighter image built from `requirements_infer.txt` (see [Images](#images)). The sizes differ only in their settings (`gemma4/model_config.py`), GPU and Modal function (`train_4b` / `train_12b`, `infer_4b` / `infer_12b`). Every job saves its LoRA adapter in a directory of its own, `/models/trained/<job_id>`, so no job (of either size) overwrites an earlier model; see [Trained models](#trained-models). See [training/MODEL_SIZES.md](training/MODEL_SIZES.md).
 
 ### Images
 
@@ -190,7 +192,7 @@ client / admin UI ── POST /v1/gb/training/models/{id}/infer ──► Go ser
 - **`model_path`** is `trained/<job_id>` and nothing else: the web API refuses anything with another shape (`400`), and `resolve_model_dir` checks again inside the container, so a path cannot leave the `trained/` directory. A directory without `adapter_config.json` is a "No trained model at …" error. Without `model_path` the legacy `finetuned_model_<size>` adapter is used.
 - **`model_size` must match the weights.** It chooses the GPU function (4b: A10G, 12b: A100). The Go endpoint passes the size recorded for the model; a direct caller of `/infer/query` has to pass the right one, or the wrong GPU may run out of memory.
 - **Cold and warm requests.** A request that finds no GPU container holding the model is *cold*: Modal starts a container, which loads the base model from the HF cache (4-bit) and attaches the adapter, so it takes up to minutes. The container then keeps the model in memory and stays up for `SIDECAR_INFER_IDLE_TIMEOUT_S` (default 300 seconds) after its last request, so the requests that follow are *warm* and only generate; a request for another model replaces the loaded one (one model per container). Step by step, what a cold request does in the container, and how to read it: [Cold and warm starts](modal.md#cold-and-warm-starts). The Modal functions have a 600 second timeout per request (`app.py`; the model load counts); the Go client waits up to 15 minutes (`context` limit, no HTTP timeout).
-- **The answer** is `{"response", "model_size", "model_path", "adapter", "cold_start", "load_seconds", "input_tokens", "output_tokens"}` (`cold_start`: this request loaded the model; `load_seconds`: how long that took, container start not included; 0 when warm). Generation samples (`do_sample`) with the given `temperature` (default 0.7) up to `max_tokens` (default 1024; the Go endpoint allows at most 8192). The prompt is wrapped in the same Gemma turn markers as the training data (`prompt_format.py`).
+- **The answer** is `{"response", "model_size", "model_path", "adapter", "cold_start", "load_seconds", "input_tokens", "output_tokens"}` (`cold_start`: this request loaded the model; `load_seconds`: how long that took, container start not included; 0 when warm). Generation samples (`do_sample`) with the given `temperature` (default 0.7) up to `max_tokens` (default 1024; the Go endpoint allows at most 8192). The prompt is wrapped in the same Gemma turn markers as the training data (`gemma4/prompt_format.py`).
 - **Errors.** The Go endpoint answers `400` for a bad body, `404` for an unknown model, `502` if the sidecar fails (with its message when the generation itself failed, such as missing weights; a generic message otherwise) and `503` without a sidecar. The sidecar reports a failed generation as `200 {"error": "…"}`, which the Go client turns into `*sidecar.InferError`.
 
 #### Adding an inference endpoint
@@ -284,7 +286,8 @@ To add a provider (e.g. AWS): implement `Provider` in `providers/aws/provider.py
 ### Growing it
 
 1. Add a dependency: put it in the requirements file of the image that needs it (an image is rebuilt only when its file changes; code changes do not rebuild it).
-2. Add a model size: an entry in `ai_train_core/model_config.py`, a train/infer function pair in `app.py`, and a pipeline module if it needs a new backend.
+2. Add a model size: an entry in the family's `model_config.py` (`ai_train_core/gemma4/`), a train/infer function pair in `app.py`, and a pipeline module if it needs a new backend.
+3. Add a model family: a package next to `gemma4/` with the same modules (`model_config`, `prompt_format`, `model_train`, `model_load_infer`; see `gemma4/__init__.py`) and its name in `MODEL_FAMILIES` (`ai_train_core/model_families.py`). Family-neutral code (`bootstrap.py`, `inference.py`, `training_common.py`) takes a `model_family` and never imports a family directly; the wire API does not carry one yet (default family).
 3. Add another remote function: declare it in `app.py` with a `FunctionSpec` and a matching action in `main`.
 4. Add an inference endpoint: see [Adding an inference endpoint](#adding-an-inference-endpoint).
 

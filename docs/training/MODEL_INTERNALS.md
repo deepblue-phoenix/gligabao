@@ -11,8 +11,8 @@ before they are relied on. For sizes, GPUs and costs see [MODEL_SIZES.md](MODEL_
 
 | Piece | What it is | Where |
 |---|---|---|
-| Base model | `google/gemma-4-E4B-it` (4b) or `google/gemma-4-12B-it` (12b): an instruction-tuned decoder-only language model. Downloaded once into the HF cache volume. | `model_config.py` |
-| LoRA adapter | Small extra matrices (rank 16, alpha 16, dropout 0) on the attention projections `q_proj`, `k_proj`, `v_proj`, `o_proj`. The only thing a training job saves. The base weights stay frozen. | `model_load.py`, `model_train.py` |
+| Base model | `google/gemma-4-E4B-it` (4b) or `google/gemma-4-12B-it` (12b): an instruction-tuned decoder-only language model. Downloaded once into the HF cache volume. | `gemma4/model_config.py` |
+| LoRA adapter | Small extra matrices (rank 16, alpha 16, dropout 0) on the attention projections `q_proj`, `k_proj`, `v_proj`, `o_proj`. The only thing a training job saves. The base weights stay frozen. | `gemma4/model_load.py`, `gemma4/model_train.py` |
 | Tokenizer | Turns text into token ids and back. Saved next to the adapter; inference reads it from there (the base model's if absent). | `training_common.py`, `model_load_infer.py` |
 | Quantization | The base model is held in 4 bits (nf4, double quantization, bfloat16 compute) both in training (Unsloth) and in inference (bitsandbytes), so the adapter is used with the same kind of weights it was trained on. | `model_load.py`, `model_load_infer.py` |
 
@@ -22,7 +22,7 @@ are "effective". It matters for download and load time, not for the reasoning be
 
 ## 2. The prompt
 
-gligabao does **not** use the tokenizer's chat template. It builds the text itself (`prompt_format.py`) with Gemma 4's turn markers, the same ones the template uses (checked against `google/gemma-4-E4B-it`'s `chat_template.jinja`, `tokenizer.json` and `generation_config.json`):
+gligabao does **not** use the tokenizer's chat template. It builds the text itself (`gemma4/prompt_format.py`) with Gemma 4's turn markers, the same ones the template uses (checked against `google/gemma-4-E4B-it`'s `chat_template.jinja`, `tokenizer.json` and `generation_config.json`):
 
 ```
 training text   <bos><|turn>user\n{instruction}\n\n{input}<turn|>\n<|turn>model\n{output}<turn|>
@@ -124,7 +124,7 @@ Recording the generation time in the sidecar's answer would make it a column.
 
 ## 6. Training, briefly
 
-Both sizes train through Unsloth (`model_train.py`): 4-bit base, LoRA r=16 / alpha 16 on `q/k/v/o_proj`, learning rate
+Both sizes train through Unsloth (`gemma4/model_train.py`): 4-bit base, LoRA r=16 / alpha 16 on `q/k/v/o_proj`, learning rate
 2e-4, linear schedule with 10 warm-up steps, AdamW 8-bit, weight decay 0.01, bf16 when the GPU supports it, maximum
 sequence length 2048, batch size 2 (4b) or 1 (12b) with gradient accumulation 4 or 8 (effective batch 8), gradient
 checkpointing. The loss is over the whole formatted text. The job saves the adapter and the tokenizer to

@@ -17,9 +17,10 @@ from unittest import mock
 
 from ai_train_core import dataset, event_log, paths, progress_events, trained_model
 from providers.base import CallStatus
-from ai_train_core.model_config import MODEL_CONFIGS, get_model_config
-from ai_train_core import prompt_format, training_common
-from ai_train_core.prompt_format import (bos_prefix, extract_model_response, format_inference_prompt,
+from ai_train_core import model_families, training_common
+from ai_train_core.gemma4 import prompt_format
+from ai_train_core.gemma4.model_config import MODEL_CONFIGS, get_model_config
+from ai_train_core.gemma4.prompt_format import (bos_prefix, extract_model_response, format_inference_prompt,
                                          format_instruction, stop_token_ids)
 
 REQUIRED_KEYS = ["model_name", "display_name", "total_params", "trainable_params_r16",
@@ -37,6 +38,31 @@ class ModelConfigTest(unittest.TestCase):
     def test_invalid_size(self):
         with self.assertRaises(ValueError):
             get_model_config("invalid")
+
+
+class ModelFamiliesTest(unittest.TestCase):
+    """Every registered family provides the modules and names the family-neutral code relies on."""
+
+    def test_default_is_registered(self):
+        self.assertIn(model_families.DEFAULT_MODEL_FAMILY, model_families.MODEL_FAMILIES)
+
+    def test_contract(self):
+        needs = {"model_config": ("MODEL_CONFIGS", "MODEL_SIZES", "get_model_config"),
+                 "prompt_format": ("format_instruction", "dataset_formatting_func", "format_inference_prompt", "bos_prefix",
+                                   "stop_token_ids", "extract_model_response")}
+        for family in model_families.MODEL_FAMILIES:
+            for module, names in needs.items():
+                m = model_families.family_module(module, family)
+                for name in names:
+                    self.assertTrue(hasattr(m, name), f"{family}.{module} lacks {name}")
+
+    def test_lookups(self):
+        self.assertEqual(model_families.model_sizes(), tuple(MODEL_CONFIGS))
+        self.assertEqual(model_families.get_model_config("4b"), MODEL_CONFIGS["4b"])
+
+    def test_unknown_family(self):
+        with self.assertRaises(ValueError):
+            model_families.family_module("model_config", "nope")
 
 
 class FakeTokenizer:
@@ -375,7 +401,7 @@ class RunTrainTest(unittest.TestCase):
         fake = mock.Mock()
         model = {"path": "trained/jc", "files": [], "size_bytes": 0}
         fake.run_finetuning.return_value = {"status": "success", "final_loss": 0.25, "model": model}
-        with mock.patch.dict(sys.modules, {"ai_train_core.model_train": fake}):
+        with mock.patch.dict(sys.modules, {"ai_train_core.gemma4.model_train": fake}):
             self.run_train(3, "4b", dataset="mine.jsonl", job_id="jc")
         self.assertEqual(fake.run_finetuning.call_args.kwargs["dataset_path"], f"{paths.DATA_DIR}/mine.jsonl")
         self.assertEqual(fake.run_finetuning.call_args.kwargs["job_id"], "jc")
@@ -387,7 +413,7 @@ class RunTrainTest(unittest.TestCase):
     def test_failed(self):
         fake = mock.Mock()
         fake.run_finetuning.side_effect = RuntimeError("out of memory")
-        with mock.patch.dict(sys.modules, {"ai_train_core.model_train": fake}):
+        with mock.patch.dict(sys.modules, {"ai_train_core.gemma4.model_train": fake}):
             with self.assertRaises(RuntimeError):
                 self.run_train(3, "4b", job_id="jf")
         st = self.statuses("jf")
@@ -397,7 +423,7 @@ class RunTrainTest(unittest.TestCase):
     def test_cancelled(self):
         fake = mock.Mock()
         fake.run_finetuning.side_effect = progress_events.JobCancelled("stopped at step 4")
-        with mock.patch.dict(sys.modules, {"ai_train_core.model_train": fake}):
+        with mock.patch.dict(sys.modules, {"ai_train_core.gemma4.model_train": fake}):
             result = self.run_train(3, "4b", job_id="jx")  # not an error: nothing is raised
         self.assertEqual(result["status"], "cancelled")
         st = self.statuses("jx")
@@ -407,7 +433,7 @@ class RunTrainTest(unittest.TestCase):
     def test_the_trainer_gets_the_event_log(self):
         fake = mock.Mock()
         fake.run_finetuning.return_value = {"status": "success", "final_loss": 0.1}
-        with mock.patch.dict(sys.modules, {"ai_train_core.model_train": fake}):
+        with mock.patch.dict(sys.modules, {"ai_train_core.gemma4.model_train": fake}):
             self.run_train(3, "4b", job_id="jr")
         events = fake.run_finetuning.call_args.kwargs["events"]
         self.assertEqual((events.kv, events.job_id), (self.kv, "jr"))
@@ -415,7 +441,7 @@ class RunTrainTest(unittest.TestCase):
     def test_a_failing_store_does_not_hide_the_error(self):
         fake = mock.Mock()
         fake.run_finetuning.side_effect = RuntimeError("out of memory")
-        with mock.patch.dict(sys.modules, {"ai_train_core.model_train": fake}):
+        with mock.patch.dict(sys.modules, {"ai_train_core.gemma4.model_train": fake}):
             self.kv.fail = 0
             real = self.kv.update
             calls = []
@@ -669,7 +695,7 @@ class InferenceCacheTest(unittest.TestCase):
 
     def test_loads_once_per_model(self):
         a, b = self.adapter("a"), self.adapter("b")
-        load = mock.Mock(side_effect=lambda size, seq, q4, d: (object(), object(), {}, d))
+        load = mock.Mock(side_effect=lambda size, seq, q4, d, family: (object(), object(), {}, d))
         with mock.patch.object(self.inference, "_load", load):
             first = self.inference._get_model("4b", a)
             again = self.inference._get_model("4b", a)

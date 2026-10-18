@@ -8,13 +8,13 @@ from trl import SFTTrainer
 
 from .model_config import get_model_config
 from .model_load import add_lora_adapters, load_gemma4_model
-from .paths import REMOTE_DATASET_PATH
-from .progress import ProgressCallback
-from .event_log import EventLog
-from .progress_events import JobCancelled, stop_requested, write_log
-from .prompt_format import bos_prefix, dataset_formatting_func
-from .trained_model import describe, model_dir
-from .training_common import (add_text_prefix, load_training_dataset, print_dependency_versions, save_adapters,
+from ..paths import REMOTE_DATASET_PATH
+from ..progress import ProgressCallback
+from ..event_log import EventLog
+from ..progress_events import JobCancelled, stop_requested, write_log
+from .prompt_format import bos_prefix, dataset_formatting_func, format_instruction
+from ..trained_model import describe, model_dir
+from ..training_common import (add_text_prefix, load_training_dataset, print_dependency_versions, save_adapters,
                               setup_training_arguments, training_result)
 
 
@@ -45,7 +45,7 @@ def run_finetuning(num_train_steps: int = 100, model_size: str = "4b",
     config = get_model_config(model_size)
     print("=" * 60 + f"\nGEMMA-4 FINE-TUNING (UNSLOTH) - {config['display_name']}\n" + "=" * 60)
 
-    examples, train_dataset = load_training_dataset(dataset_path)
+    examples, train_dataset = load_training_dataset(format_instruction, dataset_path)
     stage(f"dataset loaded: {len(examples)} examples; loading the {config['display_name']} model (4-bit)")
 
     max_seq_length, lora_rank, lora_alpha, learning_rate = 2048, 16, 16, 2e-4

@@ -364,7 +364,7 @@ AttributeError: 'Gemma4Processor' object has no attribute 'eos_token'
 ### The Solution (Our Implementation)
 
 ```python
-# In ai_train_core/model_train.py (run_finetuning):
+# In ai_train_core/gemma4/model_train.py (run_finetuning):
 
 # Load model (returns processor for Gemma-4)
 model, tokenizer_or_processor, model_config = load_gemma4_model(
@@ -575,5 +575,5 @@ print(response)
 **Last Updated**: 2026-07-11  
 **Author**: Gloflow AI Training Team  
 **Related Files**: 
-- `sidecar/ai_train/ai_train_core/model_train.py`
-- `sidecar/ai_train/ai_train_core/model_load.py`
+- `sidecar/ai_train/ai_train_core/gemma4/model_train.py`
+- `sidecar/ai_train/ai_train_core/gemma4/model_load.py`

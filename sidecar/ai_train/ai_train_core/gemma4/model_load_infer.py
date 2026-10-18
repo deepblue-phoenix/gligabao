@@ -9,7 +9,7 @@ Imports torch/transformers/peft inside the function: this module itself is safe 
 from pathlib import Path
 
 from .model_config import get_model_config
-from .paths import FINETUNED_ADAPTER_DIR_TEMPLATE
+from ..paths import FINETUNED_ADAPTER_DIR_TEMPLATE
 
 
 def load_finetuned_model_for_inference(model_size: str = "4b", max_seq_length: int = 2048,

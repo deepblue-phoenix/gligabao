@@ -1,7 +1,7 @@
 """Code that runs INSIDE the remote container. Provider neutral: no modal/aws imports.
 
-app.py only wires these up; the training pipeline lives in model_train.py (Unsloth), which is
-imported lazily because only the GPU image has it.
+app.py only wires these up; the training pipeline lives in the model family's package
+(model_families.py, e.g. gemma4/model_train.py), imported lazily because only the GPU image has it.
 """
 import os
 import platform
@@ -13,6 +13,7 @@ from typing import Callable, Optional
 
 from .dataset import resolve_dataset_path
 from .event_log import EventLog
+from .model_families import DEFAULT_MODEL_FAMILY, family_module
 from .progress_events import JobCancelled, write_log, write_status
 
 
@@ -32,9 +33,10 @@ def run_ping(volume_paths: list) -> dict:
 
 
 def run_train(num_train_steps: int, model_size: str, commit_fn: Optional[Callable] = None,
-              dataset: str = "", job_id: str = "", event_kv=None) -> dict:
+              dataset: str = "", job_id: str = "", event_kv=None,
+              model_family: str = DEFAULT_MODEL_FAMILY) -> dict:
     """Fine-tune `model_size` on `dataset` (a file name on the data volume; the default dataset if empty).
-    Must run in the Unsloth GPU image.
+    `model_family` picks the pipeline (model_families.py). Must run in the training GPU image.
 
     Reports to the job's event log (event_log.py, in the key-value store `event_kv`; None: nothing is reported):
     "running" at the start, the Trainer's progress while training, then "completed" (with the final loss and the
@@ -47,7 +49,7 @@ def run_train(num_train_steps: int, model_size: str, commit_fn: Optional[Callabl
     try:
         dataset_path = resolve_dataset_path(dataset)
         write_log(log, f"importing the training libraries; dataset {dataset or '(default)'}")
-        from . import model_train
+        model_train = family_module("model_train", model_family)
         result = model_train.run_finetuning(num_train_steps=num_train_steps, model_size=model_size,
                                             commit_fn=commit_fn, dataset_path=dataset_path, job_id=job_id, events=log)
     except JobCancelled as e:

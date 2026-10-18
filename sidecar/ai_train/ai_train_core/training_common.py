@@ -1,4 +1,4 @@
-"""Training helpers shared by the Unsloth (4B) and plain-transformers (12B) pipelines.
+"""Training helpers shared by every model family's pipeline (nothing here is specific to one model).
 
 Heavy libraries are imported lazily inside functions, so this module is safe to import
 before `unsloth` (which must be imported before torch/trl/transformers/peft).
@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from .paths import MODELS_DIR, REMOTE_DATASET_PATH
-from .prompt_format import format_instruction
 
 
 def print_dependency_versions(libs=("torch", "transformers", "trl", "peft", "accelerate", "bitsandbytes", "unsloth")):
@@ -17,15 +16,16 @@ def print_dependency_versions(libs=("torch", "transformers", "trl", "peft", "acc
         try:
             version = __import__(lib).__version__
         except ImportError:
-            continue  # not installed in this image (e.g. unsloth in the 12B image)
+            continue  # not installed in this image (e.g. unsloth in the inference image)
         except Exception as e:
             version = f"Error: {e}"
         print(f"  {lib:<20} {version}")
     print("=" * 60 + "\n")
 
 
-def load_training_dataset(dataset_path: str = REMOTE_DATASET_PATH):
-    """Load the JSONL dataset and format it. Returns (raw_examples, datasets.Dataset with 'text')."""
+def load_training_dataset(format_fn: Callable[[dict], dict], dataset_path: str = REMOTE_DATASET_PATH):
+    """Load the JSONL dataset and format each example with `format_fn` (the model family's prompt_format.format_instruction:
+    raw example -> {"text"}). Returns (raw_examples, datasets.Dataset with 'text')."""
     from datasets import Dataset
 
     print("[1/5] Loading dataset...")
@@ -37,7 +37,7 @@ def load_training_dataset(dataset_path: str = REMOTE_DATASET_PATH):
         examples = [json.loads(line) for line in f if line.strip()]
     print(f"Loaded {len(examples)} training examples")
 
-    dataset = Dataset.from_list([format_instruction(ex) for ex in examples])
+    dataset = Dataset.from_list([format_fn(ex) for ex in examples])
     print(f"Formatted {len(dataset)} examples for training")
     return examples, dataset
 
@@ -56,7 +56,7 @@ def setup_training_arguments(num_train_steps: int, per_device_batch_size: int, g
     - learning_rate 2e-4: LoRA tolerates a higher LR than full fine-tuning (1e-5..5e-5).
     - warmup_steps 10, linear schedule, weight_decay 0.01, adamw_8bit (memory-efficient optimizer).
     - bf16 when the GPU supports it, fp16 otherwise.
-    - dataset_num_proc=1: with the current transformers 5.x / torch / Gemma-4 tokenizer stack,
+    - dataset_num_proc=1: with the current transformers 5.x / torch stack with the Gemma-4 tokenizer,
       datasets' multiprocessing `.map()` fails pickling the tokenizer
       (`TypeError: cannot pickle 'ConfigModuleInstance' object`). Single process is safe and
       costs nothing for a few hundred examples; revisit for large datasets once fixed upstream.

@@ -75,12 +75,12 @@ curl -X POST $URL/training/job_start -H "Content-Type: application/json" \
 
 ### GPU Selection Logic
 
-Defaults come from `ai_train_core/model_config.py` (`default_gpu`): `4b` -> `a10g`, `12b` -> `a100`.
+Defaults come from `ai_train_core/gemma4/model_config.py` (`default_gpu`): `4b` -> `a10g`, `12b` -> `a100`.
 `SIDECAR_GPU` overrides both.
 
 ### Training stack
 
-Both sizes train through Unsloth, in one shared image (`requirements_train.txt`: unsloth 2026.10.x, torch 2.10+, CUDA 12.8 toolkit). Code: `model_load.py`, `model_train.py`.
+Both sizes train through Unsloth, in one shared image (`requirements_train.txt`: unsloth 2026.10.x, torch 2.10+, CUDA 12.8 toolkit). Code: `gemma4/model_load.py`, `gemma4/model_train.py`.
 
 Both sizes serve through plain `transformers` + `peft` + `bitsandbytes`, in a separate inference-only image (`requirements_infer.txt`: torch, transformers, peft, accelerate, bitsandbytes; no Unsloth, trl, datasets or torchao, and a slim base image without the CUDA toolkit). The base model is loaded 4-bit (nf4) and the trained adapter attached on top. Code: `model_load_infer.py`, `inference.py`. Keep the `torch` and `transformers` ranges of the two requirements files in step.
 

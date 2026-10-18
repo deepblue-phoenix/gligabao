@@ -7,7 +7,7 @@ import os
 from dataclasses import dataclass, field
 
 from ai_train_core import paths
-from ai_train_core.model_config import get_model_config
+from ai_train_core.model_families import get_model_config
 
 
 def _env(name: str, default: str) -> str:
@@ -21,7 +21,7 @@ class TrainConfig:
     app_name: str = field(default_factory=lambda: _env("SIDECAR_APP_NAME", "gligabao-train"))
 
     # GPU type override for the train/inference jobs of every model size. Empty = per-size defaults
-    # from ai_train_core/model_config.py (4b: a10g, 12b: a100). Provider-specific names pass
+    # from the model family's model_config.py (ai_train_core/gemma4/; 4b: a10g, 12b: a100). Provider-specific names pass
     # straight through (e.g. "a10g", "a100" on Modal).
     gpu: str = field(default_factory=lambda: _env("SIDECAR_GPU", ""))
     train_timeout_s: int = field(default_factory=lambda: int(_env("SIDECAR_TRAIN_TIMEOUT_S", "7200")))
