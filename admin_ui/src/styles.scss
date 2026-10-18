@@ -296,6 +296,10 @@ table.clickable tbody tr:not(.detail) {
   cursor: pointer;
   &:hover { background: rgba($accent, 0.08); }
   &.selected { background: rgba($accent, 0.16); }
+  // Completed training jobs: a slight green background at half opacity (hover and selection still show).
+  &.job-completed { background: rgba(#1f6f35, 0.5); }
+  &.job-completed:hover { background: rgba(#278a42, 0.5); }
+  &.job-completed.selected { background: rgba(#1f6f35, 0.5); box-shadow: inset 3px 0 0 $accent; }
 }
 tr.detail > td { padding: 0.5rem 0.75rem 1rem; background: $bg; }
 tr[hidden] { display: none; }
@@ -590,6 +594,8 @@ tr.removing {
   background: $accent;
   border-radius: 2px;
   animation: blink 1s ease-in-out infinite;
+  &.idle { animation: none; } // setup is over: the first cube stops blinking
+  &.training { background: #a5c8ff; } // the steps are executing
 }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.15; } }
 

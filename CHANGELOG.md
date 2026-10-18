@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.48.0] - 2026-10-24
+
+### Changed
+- **Training jobs list in the admin UI.** The *Started* column shows how long ago the job started ("5 minutes ago", "3 hours ago", "2 days ago"; the UTC time is in the tooltip), and a new *Duration* column shows start to finish (a running job counts up every second). Completed jobs have a slight green background (opacity 0.5).
+- The blinking cube next to a running job: the first cube blinks while the job sets up (container, model load) and goes still once the steps start; from then a second, brighter blue cube blinks to the right of it while training.
+
 ## [0.47.0] - 2026-10-23
 
 ### Added

@@ -66,6 +66,18 @@ const fmtAgo = (iso: string): string => {
   const [n, unit] = mins >= 1440 ? [Math.floor(mins / 1440), "day"] : mins >= 60 ? [Math.floor(mins / 60), "hour"] : [mins, "minute"];
   return `${n} ${unit}${n === 1 ? "" : "s"} ago`;
 };
+// "45s", "5m 12s", "3h 20m", "2d 4h": a length of time in seconds, with its two largest units.
+const fmtSpan = (secs: number): string => {
+  const s = Math.max(0, Math.floor(secs));
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  return d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
+};
+// The duration of a job: start to finish, or start to now while it still runs.
+const jobDuration = (j: Job): string => {
+  const start = new Date(j.started_at).getTime();
+  const end = j.finished_at ? new Date(j.finished_at).getTime() : Date.now();
+  return Number.isNaN(start) || Number.isNaN(end) ? "" : fmtSpan((end - start) / 1000);
+};
 // A long name shortened to its first 10 and last 5 characters.
 const shortName = (s: string): string => (s.length > 18 ? `${s.slice(0, 10)}...${s.slice(-5)}` : s);
 const fmtLoss = (v: number | null | undefined): string => (v == null ? "–" : v.toFixed(4));
@@ -105,14 +117,23 @@ function renderJobs(): void {
   for (const j of jobs) {
     const tr = body.insertRow();
     tr.classList.toggle("selected", j.id === selected);
+    tr.classList.toggle("job-completed", j.status === "completed");
     tr.title = j.error ? j.error : "Show this job's feed and loss";
     tr.insertCell().textContent = String(j.id);
     const statusCell = tr.insertCell();
     statusCell.appendChild(statusBadge(j.status));
     if (!FINISHED.includes(j.status)) {
-      const cube = node("span", "running-cube");
-      cube.title = "Running";
+      // First cube: the job is alive; it blinks during the setup (container, model load) and goes still once the steps start.
+      // Second, brighter cube: the training steps are executing.
+      const training = j.status === "training" || j.last_step > 0;
+      const cube = node("span", training ? "running-cube idle" : "running-cube");
+      cube.title = training ? "Initialization done" : "Setting up";
       statusCell.append(" ", cube);
+      if (training) {
+        const trainCube = node("span", "running-cube training");
+        trainCube.title = "Training";
+        statusCell.append(trainCube);
+      }
     }
     tr.insertCell().textContent = j.model_size;
     tr.insertCell().textContent = j.dataset || "(default)";
@@ -123,7 +144,13 @@ function renderJobs(): void {
     loss.className = "num";
     loss.textContent = fmtLoss(j.final_loss ?? j.last_loss);
     loss.title = j.final_loss != null ? "final loss" : "latest loss";
-    tr.insertCell().textContent = fmtTime(j.started_at);
+    const started = tr.insertCell();
+    started.textContent = fmtAgo(j.started_at);
+    started.title = `${fmtTime(j.started_at)} UTC`;
+    const dur = tr.insertCell();
+    dur.className = "num";
+    dur.textContent = jobDuration(j);
+    if (!FINISHED.includes(j.status) && !j.finished_at) dur.dataset.jobRunning = String(j.id); // kept current by a timer
     tr.addEventListener("click", () => select(j.id));
   }
   el("training-jobs-status").textContent = jobs.length === 0 ? "No training jobs yet." : "";
@@ -1040,6 +1067,16 @@ export function initTraining(): void {
   };
   new MutationObserver(sync).observe(view, { attributes: true, attributeFilter: ["hidden"] });
   window.addEventListener("resize", scheduleDraw);
+  // The "ago" and the duration of the running jobs advance without a reload of the list.
+  setInterval(() => {
+    if (view.hidden) return;
+    const body = el<HTMLTableElement>("training-jobs").tBodies[0];
+    body.querySelectorAll<HTMLElement>("td[data-job-running]").forEach((c) => {
+      const j = jobs.find((x) => x.id === Number(c.dataset.jobRunning));
+      if (j) c.textContent = jobDuration(j);
+    });
+  }, 1000);
+  setInterval(() => { if (!view.hidden) renderJobs(); }, 30000); // refreshes the "ago" texts
   void loadJobs();
   void loadModels();
   if (!view.hidden) sync();
