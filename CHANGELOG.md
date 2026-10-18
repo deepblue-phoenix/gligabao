@@ -5,6 +5,16 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.49.0] - 2026-10-24
+
+### Added
+- **Evals of trained models, with an LLM as the judge.** Every trained model in the admin UI's training view has an **Eval** button (in the models table, and in the model's dialog, which also takes the number of questions and the judge batch size). An eval asks the model the questions of its **training dataset** (the instruction, plus the input as context, as in training) through the sidecar, and has the external LLM that gligabao uses for knowledge ingestion score each answer from 0 to 5 against the dataset's answer (4 and 5 correct, 2 and 3 partial, 0 and 1 incorrect). The trained model is asked **one question at a time**; the question/answer pairs go to the judge **in batches** (10 per LLM call by default, up to 25), not one call each. It runs in the background: the dialog shows the progress, the mean score, the correct/partial/incorrect split, the judge's tokens and cost, and every question with the dataset's answer, the model's answer, the score and the judge's reason, lowest score first. An eval can be cancelled (the batches done are kept). It stops by itself when the model or the judge keeps failing. Details: [docs/training/EVALS.md](docs/training/EVALS.md).
+- API: `POST /v1/gb/training/models/{id}/evals` (options `limit`, `batch_size`, `judge_model`, `max_tokens`, `temperature`), `GET /v1/gb/training/models/{id}/evals`, `GET /v1/gb/training/evals/{id}` (with the items) and `POST /v1/gb/training/evals/{id}/cancel`. One eval per model runs at a time.
+- New tables `gb_trained_model_evals` and `gb_trained_model_eval_items` (SQLite and PostgreSQL, created on start-up); evals that a restart of the server interrupted are marked failed. The judge's LLM calls are recorded in `gb_inferences` as type `eval_judge`.
+
+### Changed
+- **The two eval systems are separate in `evals/`.** The knowledge-extraction runner (`main.go`, its tests, `suites/` and its README) moved to `evals/knowledge/`; the new trained-model eval is `evals/training/` (a library the server uses, with its own README and tests); `evals/README.md` explains both. `go run ./evals` is now `go run ./evals/knowledge` (`./run_evals.sh` is unchanged; update scripts that call the runner directly, as `../gligabao_int/run_evals.sh` did).
+
 ## [0.48.0] - 2026-10-24
 
 ### Changed

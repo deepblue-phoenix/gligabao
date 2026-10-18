@@ -43,6 +43,18 @@ type (
 	TrainedModel          = model.TrainedModel
 	TrainedModelFile      = model.TrainedModelFile
 	TrainedModelInference = model.TrainedModelInference
+	TrainedModelEval      = model.TrainedModelEval
+	TrainedModelEvalItem  = model.TrainedModelEvalItem
+)
+
+// Statuses of a TrainedModelEval and of its items.
+const (
+	TrainedModelEvalRunning    = model.TrainedModelEvalRunning
+	TrainedModelEvalCompleted  = model.TrainedModelEvalCompleted
+	TrainedModelEvalFailed     = model.TrainedModelEvalFailed
+	TrainedModelEvalCancelled  = model.TrainedModelEvalCancelled
+	TrainedModelEvalItemJudged = model.TrainedModelEvalItemJudged
+	TrainedModelEvalItemFailed = model.TrainedModelEvalItemFailed
 )
 
 // Statuses of a TrainedModelInference.

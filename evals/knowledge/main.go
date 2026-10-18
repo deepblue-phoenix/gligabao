@@ -1,6 +1,6 @@
-// Command evals runs end-to-end evals against the real LLM.
+// Command knowledge runs end-to-end evals against the real LLM.
 //
-// Each suite in evals/suites/*.json is a JSON list of cases. The cases run in the eval database (-db), which isolates
+// Each suite in evals/knowledge/suites/*.json is a JSON list of cases. The cases run in the eval database (-db), which isolates
 // the evaluation data from the main database. It is never reset: every run of an experiment creates its own datasets
 // (one per case, named after the case and the run, see datasetName), so runs do not interfere with each other and
 // the graphs of all runs are kept. The experiments and their runs are recorded in the same eval database. The cases
@@ -9,8 +9,8 @@
 // every call along with its result.
 // Besides the answer, the stored temporal facts (edges with valid_at / invalid_at) are checked in the database.
 //
-// Usage: go run ./evals [-v] [-suites dir] [-suite name] [case-name ...]   (requires ANTHROPIC_API_KEY)
-// With -suites, suites are read from that directory instead of the embedded evals/suites (used by gligabao_int).
+// Usage: go run ./evals/knowledge [-v] [-suites dir] [-suite name] [case-name ...]   (requires ANTHROPIC_API_KEY)
+// With -suites, suites are read from that directory instead of the embedded evals/knowledge/suites (used by gligabao_int).
 // With -suite, only the cases of that suite run; -list-suites prints the available suites and exits.
 // With -v, every LLM call's input and output is printed.
 // With -atif dir, the trajectories are stored there as JSON (default: an "atif" directory next to the -db file,

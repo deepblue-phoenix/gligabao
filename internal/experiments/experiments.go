@@ -6,7 +6,7 @@
 // (gb_experiment_trajectories: the trajectory IDs, so the JSON files can be found again). The evals an experiment has
 // executed over all its runs are listed in Experiment.Evals (gb_experiment_evals).
 //
-// Typical use, as in evals/main.go:
+// Typical use, as in evals/knowledge/main.go:
 //
 //	t, err := experiments.Start(ctx, d, experiments.Options{Name: "baseline"})
 //	for each eval { t.Record(ctx, experiments.EvalResult{...}) }

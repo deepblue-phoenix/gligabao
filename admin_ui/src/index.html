@@ -111,11 +111,11 @@
 
             <div class="tr-section tr-models">
               <h3>Trained models</h3>
-              <p class="muted">Every completed job saves its weights as a new trained model, so training again (other data, steps or size) never replaces an earlier one. Click a model to open it: its files, a form to run inference on it, and the past replies of the model.</p>
+              <p class="muted">Every completed job saves its weights as a new trained model, so training again (other data, steps or size) never replaces an earlier one. Click a model to open it: its files, a form to run inference on it, its evals, and the past replies of the model. <b>Eval</b> asks the model the questions of its training dataset and has the LLM judge, in batches, how close its answers are to the dataset's.</p>
               <p id="training-models-status" class="muted"></p>
               <div class="table-scroll">
               <table id="training-models" class="clickable" hidden>
-                <thead><tr><th>ID</th><th>Name</th><th>Model</th><th>Dataset</th><th class="num">Steps</th><th class="num">Loss</th><th class="num">Weights</th><th>Trained</th></tr></thead>
+                <thead><tr><th>ID</th><th>Name</th><th>Model</th><th>Dataset</th><th class="num">Steps</th><th class="num">Loss</th><th class="num">Weights</th><th>Trained</th><th>Eval</th></tr></thead>
                 <tbody></tbody>
               </table>
               </div>
@@ -269,6 +269,11 @@
       </div>
       <div class="modal-body">
         <div id="model-detail" class="model-detail"></div>
+        <h3>Evals</h3>
+        <p class="muted">The model is asked the questions of its training dataset and an LLM judges its answers against the dataset's, a batch of question/answer pairs per LLM call.</p>
+        <div id="model-evals-form" class="row training-form"></div>
+        <p id="model-evals-status" class="muted"></p>
+        <div id="model-evals"></div>
         <h3>Past requests</h3>
         <p id="model-inferences-status" class="muted"></p>
         <div id="model-inferences"></div>

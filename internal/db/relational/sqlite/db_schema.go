@@ -224,6 +224,70 @@ CREATE TABLE IF NOT EXISTS gb_trained_model_inferences (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_trained_model_inferences_model ON gb_trained_model_inferences(trained_model_id, id);
 
+-- LLM-as-a-judge evals of trained models (evals/training, internal/api/training/evals.go): ONE ROW PER RUN. The trained model is asked
+-- the questions of a dataset (its training dataset for now) and an external LLM scores its answers against the dataset's, a batch of
+-- questions per LLM call. The counters are rewritten after every batch, so the row shows the progress while the eval runs. A row still
+-- 'running' after a restart of the server is set to 'failed' when the server starts.
+--   status           'running', 'completed', 'failed' (error says why) or 'cancelled'
+--   dataset, dataset_sha256  the dataset the questions came from, and the digest of the file that was read
+--   params           JSON object: batch_size, concurrency, max_tokens, temperature, limit
+--   judge_model      the model that judged ('' until its first reply)
+--   num_examples     the questions asked; num_answered the ones the model answered; num_judged the ones scored; num_failed the ones where
+--                    the model or the judge failed; num_correct/num_partial/num_incorrect split num_judged by score (>= 4 / 2-3 / 0-1);
+--                    score_sum the sum of the scores (0 to 5 each) of the judged ones
+--   num_batches      judge batches done; judge_calls the LLM calls made (a batch may need a retry); judge_* its tokens and cost
+CREATE TABLE IF NOT EXISTS gb_trained_model_evals (
+	id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+	trained_model_id   INTEGER NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
+	status             TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed', 'cancelled')),
+	dataset            TEXT NOT NULL DEFAULT '',
+	dataset_sha256     TEXT NOT NULL DEFAULT '',
+	params             TEXT NOT NULL DEFAULT '{}',
+	judge_model        TEXT NOT NULL DEFAULT '',
+	num_examples       INTEGER NOT NULL DEFAULT 0,
+	num_answered       INTEGER NOT NULL DEFAULT 0,
+	num_judged         INTEGER NOT NULL DEFAULT 0,
+	num_failed         INTEGER NOT NULL DEFAULT 0,
+	num_correct        INTEGER NOT NULL DEFAULT 0,
+	num_partial        INTEGER NOT NULL DEFAULT 0,
+	num_incorrect      INTEGER NOT NULL DEFAULT 0,
+	score_sum          INTEGER NOT NULL DEFAULT 0,
+	num_batches        INTEGER NOT NULL DEFAULT 0,
+	judge_calls        INTEGER NOT NULL DEFAULT 0,
+	judge_input_tokens INTEGER NOT NULL DEFAULT 0,
+	judge_output_tokens INTEGER NOT NULL DEFAULT 0,
+	judge_cost_usd     REAL NOT NULL DEFAULT 0,
+	error              TEXT NOT NULL DEFAULT '',
+	created_at         DATETIME NOT NULL DEFAULT (` + SQLNow + `),
+	finished_at        DATETIME
+);
+CREATE INDEX IF NOT EXISTS idx_gb_trained_model_evals_model ON gb_trained_model_evals(trained_model_id, id);
+
+-- The outcome for each question of an eval, written when its judge batch is done.
+--   idx          the example's position in the dataset (0-based); batch the judge batch (1-based)
+--   instruction, input  the question; reference the dataset's answer; response the model's ('' if it failed)
+--   status       'judged' or 'failed' (error says why: the model or the judge)
+--   score        the judge's, 0 to 5 (NULL unless judged); reason its explanation
+--   input_tokens, output_tokens, duration_ms  of the model's answer
+CREATE TABLE IF NOT EXISTS gb_trained_model_eval_items (
+	id            INTEGER PRIMARY KEY AUTOINCREMENT,
+	eval_id       INTEGER NOT NULL REFERENCES gb_trained_model_evals(id) ON DELETE CASCADE,
+	idx           INTEGER NOT NULL,
+	batch         INTEGER NOT NULL,
+	instruction   TEXT NOT NULL,
+	input         TEXT NOT NULL DEFAULT '',
+	reference     TEXT NOT NULL DEFAULT '',
+	response      TEXT NOT NULL DEFAULT '',
+	status        TEXT NOT NULL CHECK (status IN ('judged', 'failed')),
+	error         TEXT NOT NULL DEFAULT '',
+	score         INTEGER,
+	reason        TEXT NOT NULL DEFAULT '',
+	input_tokens  INTEGER NOT NULL DEFAULT 0,
+	output_tokens INTEGER NOT NULL DEFAULT 0,
+	duration_ms   INTEGER NOT NULL DEFAULT 0,
+	UNIQUE (eval_id, idx)
+);
+
 -- JSONL training datasets (internal/api/training): the datasets are subdirectories of the training datasets directory
 -- that have a dataset.toml manifest; this table has ONE ROW PER DATASET, made when the Go server first sees the data file
 -- and replaced when it sees it changed. The sidecar is not involved, it gets the file when a training job that uses it

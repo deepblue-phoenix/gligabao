@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the Go eval runner (evals/main.go).
+# Runs the Go eval runner (evals/knowledge/main.go).
 # Usage: ./run_evals.sh [-s|--suite name] [-v] [case-name ...]  (-v: show LLM input/output; -h: help + suite list)
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -14,13 +14,13 @@ Options:
   -s, --suite NAME   run only the cases of the suite NAME (see the list below)
   -v                 show the input and output of every LLM call
   -h, --help         show this help
-  (other options, e.g. -experiment, -models, -reasoning, -db, are passed to the runner: go run ./evals -h)
+  (other options, e.g. -experiment, -models, -reasoning, -db, are passed to the runner: go run ./evals/knowledge -h)
 
 Case names restrict the run to those cases (combined with --suite, they must belong to that suite).
 
-Eval suites (evals/suites/*.json):
+Eval suites (evals/knowledge/suites/*.json):
 USAGE
-	go run ./evals -list-suites
+	go run ./evals/knowledge -list-suites
 }
 
 args=()
@@ -46,4 +46,4 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-go run ./evals ${args[@]+"${args[@]}"}
+go run ./evals/knowledge ${args[@]+"${args[@]}"}

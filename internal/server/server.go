@@ -92,7 +92,7 @@ type Options struct {
 	// Eval registers the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/recall), which return ATIF
 	// trajectories with their results. Off by default.
 	Eval bool
-	// EvalDBPath is a second SQLite file, the eval database (see evals/main.go): the evaluation datasets, the
+	// EvalDBPath is a second SQLite file, the eval database (see evals/knowledge/main.go): the evaluation datasets, the
 	// experiments and their runs. The admin UI shows it next to the main database and reads the Evals block (and the
 	// ATIF files, from an "atif" directory next to it) from it. Opened for the admin UI only; ignored (with a warning)
 	// unless the main database is SQLite. Empty = not shown, and the Evals routes are not registered.
@@ -197,7 +197,7 @@ func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_c
 		tdbs[i] = training.Database{Name: n.Name, DB: n.DB}
 	}
 	tdbs[0].DatasetDir = d.TrainingDatasetDir
-	registerTraining(ctx, mux, tdbs, sc)
+	registerTraining(ctx, mux, tdbs, sc, llm)
 	if adminUI {
 		registerAdminUI(mux, dbs, sc)
 	}
@@ -217,9 +217,15 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 // registerTraining registers the training endpoints under /v1/gb/training/ (they are part of the API, not of the admin UI,
 // and are served whether or not the admin UI is on): the jobs, the datasets and the feed of the jobs' progress. dbs are the
 // databases they can be used with (?db=, the first by default). The training monitor follows the progress the sidecar
-// reports for the jobs (it resumes the unfinished ones now) and feeds it to the SSE endpoint.
-func registerTraining(ctx context.Context, mux *http.ServeMux, dbs []training.Database, sc training.Sidecar) {
+// reports for the jobs (it resumes the unfinished ones now) and feeds it to the SSE endpoint. llm judges the evals of the trained
+// models (nil: starting one answers 503).
+func registerTraining(ctx context.Context, mux *http.ServeMux, dbs []training.Database, sc training.Sidecar, llm memory_core.LLM) {
 	mon := training.NewMonitor(ctx, dbs, sc)
+	var inf training.Inferer // not sc itself: a nil Sidecar must become a nil Inferer
+	if sc != nil {
+		inf = sc
+	}
+	evals := training.NewEvalManager(ctx, dbs, inf, llm)
 	mux.HandleFunc("POST /v1/gb/training/jobs", training.StartJobOf(dbs, sc, mon))
 	mux.HandleFunc("POST /v1/gb/training/jobs/{id}/stop", training.StopJobOf(dbs, sc))
 	mux.HandleFunc("GET /v1/gb/training/jobs", training.ListJobsOf(dbs))
@@ -227,6 +233,10 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, dbs []training.Da
 	mux.HandleFunc("GET /v1/gb/training/models/{id}", training.GetModelOf(dbs))
 	mux.HandleFunc("POST /v1/gb/training/models/{id}/infer", training.InferOf(dbs, sc))
 	mux.HandleFunc("GET /v1/gb/training/models/{id}/inferences", training.ListInferencesOf(dbs))
+	mux.HandleFunc("POST /v1/gb/training/models/{id}/evals", evals.StartOf())
+	mux.HandleFunc("GET /v1/gb/training/models/{id}/evals", evals.ListOf())
+	mux.HandleFunc("GET /v1/gb/training/evals/{id}", evals.GetOf())
+	mux.HandleFunc("POST /v1/gb/training/evals/{id}/cancel", evals.CancelOf())
 	mux.HandleFunc("GET /v1/gb/training/datasets", training.ListDatasetsOf(dbs))
 	mux.HandleFunc("POST /v1/gb/training/datasets", training.UploadDatasetOf(dbs))
 	mux.HandleFunc("GET /v1/gb/training/datasets/preview", training.PreviewDatasetOf(dbs))
@@ -407,7 +417,7 @@ func Run(ctx context.Context, opts Options) error {
 			defer evalDB.Close()
 			log.WithField("path", opts.EvalDBPath).Info("eval database is shown in the admin UI")
 			// The eval runner (a separate process) keeps the eval database's vectors next to it, always in chromem with the
-			// default dimensions (see evals/main.go), so open that directory afresh whenever it is needed.
+			// default dimensions (see evals/knowledge/main.go), so open that directory afresh whenever it is needed.
 			vecDir := db.DefaultVectorDir(opts.EvalDBPath)
 			extra = append(extra, admin.Named{
 				Name:          EvalDBName,

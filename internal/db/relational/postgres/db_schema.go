@@ -148,6 +148,53 @@ ALTER TABLE gb_trained_model_inferences ADD COLUMN IF NOT EXISTS cold_start BOOL
 ALTER TABLE gb_trained_model_inferences ADD COLUMN IF NOT EXISTS load_seconds DOUBLE PRECISION NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_gb_trained_model_inferences_model ON gb_trained_model_inferences(trained_model_id, id);
 
+-- LLM-as-a-judge evals of trained models and their items (see sqlite/db_schema.go).
+CREATE TABLE IF NOT EXISTS gb_trained_model_evals (
+	id                  BIGSERIAL PRIMARY KEY,
+	trained_model_id    BIGINT NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
+	status              TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed', 'cancelled')),
+	dataset             TEXT NOT NULL DEFAULT '',
+	dataset_sha256      TEXT NOT NULL DEFAULT '',
+	params              TEXT NOT NULL DEFAULT '{}',
+	judge_model         TEXT NOT NULL DEFAULT '',
+	num_examples        BIGINT NOT NULL DEFAULT 0,
+	num_answered        BIGINT NOT NULL DEFAULT 0,
+	num_judged          BIGINT NOT NULL DEFAULT 0,
+	num_failed          BIGINT NOT NULL DEFAULT 0,
+	num_correct         BIGINT NOT NULL DEFAULT 0,
+	num_partial         BIGINT NOT NULL DEFAULT 0,
+	num_incorrect       BIGINT NOT NULL DEFAULT 0,
+	score_sum           BIGINT NOT NULL DEFAULT 0,
+	num_batches         BIGINT NOT NULL DEFAULT 0,
+	judge_calls         BIGINT NOT NULL DEFAULT 0,
+	judge_input_tokens  BIGINT NOT NULL DEFAULT 0,
+	judge_output_tokens BIGINT NOT NULL DEFAULT 0,
+	judge_cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
+	error               TEXT NOT NULL DEFAULT '',
+	created_at          TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `,
+	finished_at         TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_gb_trained_model_evals_model ON gb_trained_model_evals(trained_model_id, id);
+
+CREATE TABLE IF NOT EXISTS gb_trained_model_eval_items (
+	id            BIGSERIAL PRIMARY KEY,
+	eval_id       BIGINT NOT NULL REFERENCES gb_trained_model_evals(id) ON DELETE CASCADE,
+	idx           BIGINT NOT NULL,
+	batch         BIGINT NOT NULL,
+	instruction   TEXT NOT NULL,
+	input         TEXT NOT NULL DEFAULT '',
+	reference     TEXT NOT NULL DEFAULT '',
+	response      TEXT NOT NULL DEFAULT '',
+	status        TEXT NOT NULL CHECK (status IN ('judged', 'failed')),
+	error         TEXT NOT NULL DEFAULT '',
+	score         BIGINT,
+	reason        TEXT NOT NULL DEFAULT '',
+	input_tokens  BIGINT NOT NULL DEFAULT 0,
+	output_tokens BIGINT NOT NULL DEFAULT 0,
+	duration_ms   BIGINT NOT NULL DEFAULT 0,
+	UNIQUE (eval_id, idx)
+);
+
 -- JSONL training datasets found in the training datasets directory by the Go server (see sqlite/db_schema.go).
 CREATE TABLE IF NOT EXISTS gb_training_datasets (
 	id          BIGSERIAL PRIMARY KEY,

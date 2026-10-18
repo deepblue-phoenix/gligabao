@@ -23,6 +23,17 @@ interface Inference {
   max_tokens: number; temperature: number | null; input_tokens: number; output_tokens: number; cold_start: boolean | null;
   load_seconds: number; duration_ms: number; created_at: string; completed_at: string | null;
 }
+interface EvalRun {
+  id: number; trained_model_id: number; status: "running" | "completed" | "failed" | "cancelled"; dataset: string; dataset_sha256: string;
+  params: { batch_size?: number; max_tokens?: number; temperature?: number; limit?: number };
+  judge_model: string; num_examples: number; num_answered: number; num_judged: number; num_failed: number; num_correct: number;
+  num_partial: number; num_incorrect: number; score_sum: number; num_batches: number; judge_calls: number; judge_input_tokens: number;
+  judge_output_tokens: number; judge_cost_usd: number; error: string; created_at: string; finished_at: string | null;
+}
+interface EvalItem {
+  idx: number; batch: number; instruction: string; input: string; reference: string; response: string; status: "judged" | "failed";
+  error: string; score: number | null; reason: string; input_tokens: number; output_tokens: number; duration_ms: number;
+}
 interface DatasetRecord {
   id: number; filename: string; size_bytes: number; num_records: number; sha256: string; status: "stored" | "synced";
   updated_at: string; synced_at: string | null;
@@ -36,6 +47,8 @@ interface FeedEvent {
 }
 interface Point { step: number; loss: number }
 
+const MAX_SCORE = 5; // the judge's scale: 0 to 5
+const EVAL_POLL_MS = 3000;
 const MAX_FEED_LINES = 500;
 const PREVIEW_LINES = 100;
 const FINISHED = ["completed", "failed", "cancelled"];
@@ -229,6 +242,13 @@ function renderModels(): void {
     trained.textContent = fmtAgo(m.created_at);
     trained.title = `${fmtTime(m.created_at)} UTC`;
     trained.className = "nowrap";
+    const evalCell = tr.insertCell();
+    const evalBtn = node("button", "small", "Eval");
+    evalBtn.type = "button";
+    evalBtn.title = m.dataset ? `Ask this model the questions of ${m.dataset} and have the LLM judge its answers` : "This model was trained on the sidecar's default dataset: there are no questions to ask";
+    evalBtn.disabled = !m.dataset;
+    evalBtn.addEventListener("click", (e) => { e.stopPropagation(); void startEval(m, {}); }); // not the row's click: it opens the dialog
+    evalCell.append(evalBtn);
     tr.addEventListener("click", () => selectModel(m.id));
   }
   el("training-models-status").textContent = models.length === 0 ? "No trained models yet: one is saved when a job completes." : "";
@@ -257,6 +277,7 @@ function selectModel(id: number): void {
   const modal = el<HTMLDialogElement>("model-modal");
   if (!modal.open) modal.showModal();
   void loadInferences(id);
+  void loadEvals(id);
   warm = "unknown";
   drawWarm();
   void pollWarm(id);
@@ -265,6 +286,8 @@ function selectModel(id: number): void {
 function closeModelModal(): void {
   selectedModel = null;
   clearTimeout(warmTimer);
+  clearTimeout(evalTimer);
+  evals = [];
   renderModels();
 }
 
@@ -331,6 +354,7 @@ function renderModelDetail(): void {
   form.append(labelled("Max tokens", tokens), labelled("Temperature", temp), run, status);
 
   el("model-detail").replaceChildren(info, warmRow, prompt, form);
+  renderEvalForm(m);
   el("model-inferences").replaceChildren();
   el("model-inferences-status").textContent = "Loading the past requests…";
 }
@@ -486,6 +510,204 @@ async function infer(m: TrainedModel, prompt: string, maxTokens: number, tempera
   }
   if (status?.isConnected) { status.className = outcome.cls; status.textContent = outcome.text; }
   if (selectedModel === m.id) { void pollWarm(m.id); await loadInferences(m.id); }
+}
+
+//---------------------------------------------------------------------------------------------
+// Evals of a trained model: the model is asked the questions of its training dataset and an LLM judges its answers, a batch of
+// pairs per call. The server runs an eval in the background and stores its progress, so the dialog just polls while one runs.
+
+let evals: EvalRun[] = [];
+let evalTimer: number | undefined;
+const openEvals = new Set<number>(); // evals whose answers are expanded
+const evalItems = new Map<number, EvalItem[]>(); // their answers, as last fetched
+let evalStatus: HTMLElement | undefined; // the message line of the dialog's form
+
+const evalRunning = (e: EvalRun): boolean => e.status === "running";
+const evalMean = (e: EvalRun): number | null => (e.num_judged > 0 ? e.score_sum / e.num_judged : null);
+
+// Starts an eval of model m (the options the server understands: limit, batch_size, ...) and opens its dialog to follow it.
+async function startEval(m: TrainedModel, opts: { limit?: number; batch_size?: number }): Promise<void> {
+  const say = (text: string, cls: string): void => {
+    for (const e of [el("training-models-status"), evalStatus]) if (e?.isConnected) { e.className = cls; e.textContent = text; }
+  };
+  say(`Starting an eval of model #${m.id}…`, "muted");
+  try {
+    const res = await fetch(`../training/models/${m.id}/evals`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(opts),
+    });
+    if (!res.ok) throw await failure(res);
+    const started = (await res.json()) as EvalRun;
+    openEvals.add(started.id);
+    if (selectedModel !== m.id) selectModel(m.id);
+    else await loadEvals(m.id);
+    say(`Eval #${started.id} started: ${started.num_examples} questions.`, "muted");
+  } catch (err) {
+    say(`Could not start the eval of model #${m.id}: ${errText(err)}`, "error");
+  }
+}
+
+async function cancelEval(e: EvalRun): Promise<void> {
+  try {
+    const res = await fetch(`../training/evals/${e.id}/cancel`, { method: "POST" });
+    if (!res.ok) throw await failure(res);
+  } catch (err) {
+    el("model-evals-status").className = "error";
+    el("model-evals-status").textContent = `Could not cancel eval #${e.id}: ${errText(err)}`;
+    return;
+  }
+  if (selectedModel !== null) void loadEvals(selectedModel);
+}
+
+// The form above the list: how many questions (blank = all of the dataset), the judge's batch size, and the Eval button.
+function renderEvalForm(m: TrainedModel): void {
+  const limit = node("input");
+  limit.type = "number"; limit.min = "1"; limit.step = "1"; limit.placeholder = m.num_examples ? `all (${m.num_examples})` : "all";
+  const batch = node("input");
+  batch.type = "number"; batch.value = "10"; batch.min = "1"; batch.max = "25"; batch.step = "1";
+  batch.title = "Question/answer pairs sent to the judge LLM in one call";
+  const run = node("button", "", "Eval");
+  run.type = "button";
+  run.disabled = !m.dataset;
+  const status = node("span", "muted");
+  evalStatus = status;
+  if (!m.dataset) status.textContent = "This model was trained on the sidecar's default dataset: there are no questions to ask.";
+  run.addEventListener("click", () => {
+    const opts: { limit?: number; batch_size?: number } = {};
+    if (limit.value.trim() !== "") {
+      const n = Number.parseInt(limit.value, 10);
+      if (!Number.isInteger(n) || n < 1) { status.className = "error"; status.textContent = "Questions must be a positive integer (or blank for all)."; return; }
+      opts.limit = n;
+    }
+    const b = Number.parseInt(batch.value, 10);
+    if (!Number.isInteger(b) || b < 1 || b > 25) { status.className = "error"; status.textContent = "Batch size must be between 1 and 25."; return; }
+    opts.batch_size = b;
+    void startEval(m, opts);
+  });
+  const labelled = (text: string, input: HTMLElement): HTMLElement => { const l = node("label", "", text); l.append(input); return l; };
+  el("model-evals-form").replaceChildren(labelled("Questions", limit), labelled("Judge batch size", batch), run, status);
+}
+
+async function loadEvals(modelID: number): Promise<void> {
+  clearTimeout(evalTimer);
+  const status = el("model-evals-status");
+  try {
+    const res = await fetch(`../training/models/${modelID}/evals`);
+    if (!res.ok) throw await failure(res);
+    const list = ((await res.json()) as { evals: EvalRun[] }).evals ?? [];
+    // The answers of the expanded evals: the ones of a running eval grow, so they are fetched again each time.
+    await Promise.all(list.filter((e) => openEvals.has(e.id) && (evalRunning(e) || !evalItems.has(e.id))).map(async (e) => {
+      const r = await fetch(`../training/evals/${e.id}`);
+      if (r.ok) evalItems.set(e.id, ((await r.json()) as { items: EvalItem[] }).items ?? []);
+    }));
+    if (selectedModel !== modelID) return; // another model, or closed, while loading
+    evals = list;
+    status.className = "muted";
+    status.textContent = list.length === 0 ? "No evals of this model yet." : `${list.length} eval${list.length === 1 ? "" : "s"}, newest first:`;
+    renderEvals();
+    if (list.some(evalRunning)) evalTimer = window.setTimeout(() => void loadEvals(modelID), EVAL_POLL_MS);
+  } catch (err) {
+    if (selectedModel !== modelID) return;
+    status.className = "error";
+    status.textContent = `Failed to load the evals: ${errText(err)}`;
+  }
+}
+
+function evalBadge(status: string): HTMLElement {
+  const cls = status === "completed" ? "badge-ok" : status === "failed" ? "badge-error" : status === "cancelled" ? "badge-unknown" : "badge-active";
+  return node("span", `badge ${cls}`, status);
+}
+
+function scoreClass(score: number | null): string {
+  return score === null ? "score-none" : score >= 4 ? "score-good" : score >= 2 ? "score-mid" : "score-bad";
+}
+
+function renderEvals(): void {
+  const m = models.find((x) => x.id === selectedModel);
+  const box = el("model-evals");
+  box.replaceChildren();
+  for (const e of evals) {
+    const item = node("article", "infer-item eval-item");
+    const head = node("div", "infer-head");
+    head.append(evalBadge(e.status), node("span", "muted", `#${e.id} · ${fmtTime(e.created_at)} UTC`),
+      node("span", "muted", `${e.dataset} · batches of ${e.params.batch_size ?? "?"}${e.params.limit ? ` · first ${e.params.limit} questions` : ""}`));
+    if (m && m.dataset_sha256 && e.dataset_sha256 && m.dataset_sha256 !== e.dataset_sha256) {
+      const warn = node("span", "badge badge-unknown", "dataset changed since training");
+      warn.title = "The dataset file read by this eval is not the one the model was trained on (its sha256 differs)";
+      head.append(warn);
+    }
+    if (evalRunning(e)) {
+      const stop = node("button", "small danger", "Cancel");
+      stop.type = "button";
+      stop.addEventListener("click", () => void cancelEval(e));
+      head.append(stop);
+    }
+    item.append(head);
+
+    const done = e.num_judged + e.num_failed;
+    const bar = node("progress");
+    bar.max = Math.max(e.num_examples, 1);
+    bar.value = done;
+    const mean = evalMean(e);
+    const parts = [`${done} / ${e.num_examples} questions${e.num_failed ? ` (${e.num_failed} failed)` : ""}`];
+    if (mean !== null) {
+      parts.push(`mean score ${mean.toFixed(2)} / ${MAX_SCORE}`, `${Math.round((100 * e.num_correct) / e.num_judged)}% correct`,
+        `${e.num_correct} correct · ${e.num_partial} partial · ${e.num_incorrect} incorrect`);
+    }
+    const summary = node("div", "eval-summary", parts.join(" · "));
+    if (mean !== null) summary.classList.add(scoreClass(mean));
+    item.append(bar, summary);
+    const judge = [e.judge_model ? `judge ${e.judge_model}` : "", `${e.judge_calls} judge call${e.judge_calls === 1 ? "" : "s"}`,
+      e.judge_calls ? `${e.judge_input_tokens} tokens in / ${e.judge_output_tokens} out` : "", e.judge_calls ? `$${e.judge_cost_usd.toFixed(4)}` : "",
+      e.finished_at ? `took ${fmtSpan((new Date(e.finished_at).getTime() - new Date(e.created_at).getTime()) / 1000)}` : ""].filter(Boolean).join(" · ");
+    item.append(node("div", "muted infer-stats", judge));
+    if (e.error) item.append(node("div", "infer-label", "Error"), node("pre", "infer-error", e.error));
+
+    const details = node("details", "eval-answers");
+    details.open = openEvals.has(e.id);
+    details.append(node("summary", "", "Answers, lowest score first"));
+    details.addEventListener("toggle", () => {
+      if (details.open === openEvals.has(e.id)) return;
+      if (details.open) { openEvals.add(e.id); if (selectedModel !== null) void loadEvals(selectedModel); } else openEvals.delete(e.id);
+    });
+    if (details.open) details.append(evalItemsTable(evalItems.get(e.id)));
+    item.append(details);
+    box.append(item);
+  }
+}
+
+// The answers of an eval, the worst first: the question, the dataset's answer, the model's, the score and the judge's reason.
+function evalItemsTable(items: EvalItem[] | undefined): HTMLElement {
+  if (!items) return node("p", "muted", "Loading the answers…");
+  if (items.length === 0) return node("p", "muted", "No answers yet: they appear as each batch is judged.");
+  const rank = (i: EvalItem): number => (i.status === "failed" ? -1 : i.score ?? -1);
+  const sorted = [...items].sort((a, b) => rank(a) - rank(b) || a.idx - b.idx);
+  const table = node("table", "eval-table");
+  const head = table.createTHead().insertRow();
+  for (const h of ["#", "Question", "Dataset answer", "Model answer", "Score", "Judge's reason"]) head.appendChild(node("th", h === "Score" ? "num" : "", h));
+  const body = table.createTBody();
+  const text = (tr: HTMLTableRowElement, s: string, cls = ""): void => { const c = tr.insertCell(); c.className = `eval-text ${cls}`; c.textContent = s; };
+  for (const i of sorted) {
+    const tr = body.insertRow();
+    tr.insertCell().textContent = String(i.idx + 1);
+    text(tr, i.input ? `${i.instruction}\n\n${i.input}` : i.instruction);
+    text(tr, i.reference);
+    if (i.status === "failed") {
+      text(tr, i.response || "(no answer)", "muted");
+      const c = tr.insertCell();
+      c.className = "num";
+      c.append(node("span", "badge badge-error", "failed"));
+      text(tr, i.error, "error");
+    } else {
+      text(tr, i.response === "" ? "(empty)" : i.response);
+      const c = tr.insertCell();
+      c.className = `num score ${scoreClass(i.score)}`;
+      c.textContent = i.score === null ? "–" : `${i.score} / ${MAX_SCORE}`;
+      text(tr, i.reason, "muted");
+    }
+  }
+  const wrap = node("div", "table-scroll");
+  wrap.append(table);
+  return wrap;
 }
 
 //---------------------------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 # Eval experiments
 
-An **experiment** is a named series of eval runs. Every time the eval runner (`go run ./evals`, `./run_evals.sh`) executes, it records one **run** of an experiment in the **eval** database (`bin/gligabao-eval.db`), which keeps the evaluation data apart from the main database and is never reset. Each run works in datasets of its own (`<case>_run<run id>`), so runs do not interfere with each other. A run records which evals of which suites it executed, how each ended, and the IDs of the [ATIF trajectories](evals.md) of their calls. Go code lives in `internal/experiments`; the tables are in `internal/db/relational/{sqlite,postgres}/db_schema.go`, the structs in `internal/db/relational/model`.
+An **experiment** is a named series of eval runs. Every time the eval runner (`go run ./evals/knowledge`, `./run_evals.sh`) executes, it records one **run** of an experiment in the **eval** database (`bin/gligabao-eval.db`), which keeps the evaluation data apart from the main database and is never reset. Each run works in datasets of its own (`<case>_run<run id>`), so runs do not interfere with each other. A run records which evals of which suites it executed, how each ended, and the IDs of the [ATIF trajectories](evals.md) of their calls. Go code lives in `internal/experiments`; the tables are in `internal/db/relational/{sqlite,postgres}/db_schema.go`, the structs in `internal/db/relational/model`.
 
 ## Data model
 
@@ -14,7 +14,7 @@ An **experiment** is a named series of eval runs. Every time the eval runner (`g
 
 The graph and the artifacts of an eval are not copied into the experiment tables: they are read from the dataset the eval ran in, via `dataset_id` and `artifact_ids`. Datasets are only ever soft-deleted, so they stay readable; if a dataset (or an artifact) is purged from the eval database, its eval shows no graph (or no artifact).
 
-A suite is a file in `evals/suites/` and its name is the file name without `.json`; an eval is a case in it, so `suite` + `eval_name` identifies it. Rows cascade: deleting an experiment removes its runs, evals and trajectory references.
+A suite is a file in `evals/knowledge/suites/` and its name is the file name without `.json`; an eval is a case in it, so `suite` + `eval_name` identifies it. Rows cascade: deleting an experiment removes its runs, evals and trajectory references.
 
 Only the trajectory *reference* is stored in the database; the trajectory is the file `<trajectory_id>.json` in the trajectory directory. The runner stores the files in an `atif/` directory next to the eval database (`bin/atif/` by default) so the IDs stay resolvable; `-atif <dir>` changes it. `gb_experiment_trajectories.path` records where each file went.
 
