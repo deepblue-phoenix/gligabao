@@ -42,6 +42,13 @@ def load_training_dataset(dataset_path: str = REMOTE_DATASET_PATH):
     return examples, dataset
 
 
+def add_text_prefix(dataset, prefix: str):
+    """The dataset with `prefix` in front of every 'text' (unchanged when the prefix is empty)."""
+    if not prefix:
+        return dataset
+    return dataset.map(lambda example: {"text": prefix + example["text"]})
+
+
 def setup_training_arguments(num_train_steps: int, per_device_batch_size: int, gradient_accumulation_steps: int,
                              learning_rate: float = 2e-4, model_config: Optional[dict] = None):
     """SFTConfig for LoRA fine-tuning.

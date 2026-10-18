@@ -5,6 +5,19 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.46.1] - 2026-10-23
+
+### Fixed
+- **Trained models did not stop: replies ran to `max_tokens` and invented further turns.** The training text (`sidecar/ai_train/ai_train_core/prompt_format.py`) used Gemma 2/3's turn markers `<start_of_turn>` / `<end_of_turn>`, which are not in Gemma 4's vocabulary (they were tokenized as plain text), so the model learned to write those characters after an answer instead of Gemma 4's end-of-turn token `<turn|>` (id 106, one of the base model's stop ids `[1, 106, 50]`). The text now uses Gemma 4's own markers (`<|turn>user\n…<turn|>\n<|turn>model\n…<turn|>`), for training and inference. **Adapters trained before this version must be retrained.**
+- `<bos>` is handled explicitly: the Gemma 4 tokenizer does not necessarily add it, so `bos_prefix(tokenizer)` prepends it to the training text and the inference prompt only when the tokenizer does not (one `<bos>` in both).
+- Inference passes `eos_token_id` (`<turn|>` and `<eos>`) to `generate`, and decodes only the newly generated tokens, so replies no longer come back starting with the echoed prompt (`user\n…\nmodel\n…`).
+
+### Added
+- Tests: the format with the new markers, no Gemma 3 markers, one `<bos>`, stop ids, and (against the real Gemma 4 tokenizer from the Hugging Face Hub, skipped when unavailable) that `<turn|>` / `<|turn>` are single tokens, the Gemma 3 markers are not, and the encoded training text ends with id 106.
+
+### Changed
+- Docs (`docs/training/TRAINING_DATA_FORMAT.md`, `docs/training/MODEL_INTERNALS.md`): the real Gemma 4 markers, where the end-of-turn token comes from (the dataset file has no EOS; `format_instruction` adds it), BOS handling, the stop chain (now verified, no longer marked *Unverified*) and the base model's sampling defaults.
+
 ## [0.46.0] - 2026-10-22
 
 ### Added

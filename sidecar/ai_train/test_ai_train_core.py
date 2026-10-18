@@ -18,7 +18,9 @@ from unittest import mock
 from ai_train_core import dataset, event_log, paths, progress_events, trained_model
 from providers.base import CallStatus
 from ai_train_core.model_config import MODEL_CONFIGS, get_model_config
-from ai_train_core.prompt_format import extract_model_response, format_inference_prompt, format_instruction
+from ai_train_core import prompt_format, training_common
+from ai_train_core.prompt_format import (bos_prefix, extract_model_response, format_inference_prompt,
+                                         format_instruction, stop_token_ids)
 
 REQUIRED_KEYS = ["model_name", "display_name", "total_params", "trainable_params_r16",
                  "trainable_percent_r16", "recommended_gpu", "default_gpu", "min_gpu_memory",
@@ -37,21 +39,113 @@ class ModelConfigTest(unittest.TestCase):
             get_model_config("invalid")
 
 
+class FakeTokenizer:
+    """Just enough of a HF tokenizer for prompt_format: a vocab of special tokens, optional automatic BOS."""
+    unk_token_id = 3
+
+    def __init__(self, vocab=None, adds_bos=False, bos_token="<bos>"):
+        self.vocab = {"<eos>": 1, "<bos>": 2, "<|turn>": 105, "<turn|>": 106} if vocab is None else vocab
+        self.adds_bos, self.bos_token = adds_bos, bos_token
+        self.bos_token_id = self.vocab.get(bos_token) if bos_token else None
+
+    def convert_tokens_to_ids(self, token):
+        return self.vocab.get(token, self.unk_token_id)
+
+    def __call__(self, text):
+        return {"input_ids": ([self.bos_token_id] if self.adds_bos else []) + [10]}
+
+
 class PromptFormatTest(unittest.TestCase):
     def test_with_and_without_input(self):
         self.assertEqual(
             format_instruction({"instruction": "A", "input": "", "output": "B"})["text"],
-            "<start_of_turn>user\nA<end_of_turn>\n<start_of_turn>model\nB<end_of_turn>")
+            "<|turn>user\nA<turn|>\n<|turn>model\nB<turn|>")
         self.assertEqual(
             format_instruction({"instruction": "A", "input": "C", "output": "B"})["text"],
-            "<start_of_turn>user\nA\n\nC<end_of_turn>\n<start_of_turn>model\nB<end_of_turn>")
+            "<|turn>user\nA\n\nC<turn|>\n<|turn>model\nB<turn|>")
+
+    def test_training_text_ends_with_end_of_turn(self):
+        """The model learns to stop only if the example ends with Gemma 4's real end-of-turn token."""
+        for ex in ({"instruction": "A", "output": "B"}, {"instruction": "A", "input": "C", "output": "B"}):
+            text = format_instruction(ex)["text"]
+            self.assertTrue(text.endswith("B<turn|>"))
+            self.assertEqual(text.count("<|turn>"), 2)
+            self.assertEqual(text.count("<turn|>"), 2)
+
+    def test_no_gemma3_markers(self):
+        """<start_of_turn>/<end_of_turn> are not in Gemma 4's vocabulary: they would be learned as plain text."""
+        text = format_instruction({"instruction": "A", "input": "C", "output": "B"})["text"]
+        for old in ("<start_of_turn>", "<end_of_turn>"):
+            self.assertNotIn(old, text)
+            self.assertNotIn(old, format_inference_prompt("A"))
+            self.assertNotIn(old, prompt_format.MODEL_TURN_MARKER)
 
     def test_inference_prompt_matches_training_prefix(self):
         text = format_instruction({"instruction": "A", "input": "", "output": "B"})["text"]
         self.assertTrue(text.startswith(format_inference_prompt("A")))
+        self.assertTrue(format_inference_prompt("A").endswith("<|turn>model\n"))
 
     def test_extract_response(self):
-        self.assertEqual(extract_model_response("user\nA\n<start_of_turn>model\n hi "), "hi")
+        self.assertEqual(extract_model_response("user\nA\n<|turn>model\n hi "), "hi")
+        self.assertEqual(extract_model_response(" hi "), "hi")
+        self.assertEqual(extract_model_response("hi<turn|>"), "hi")
+        self.assertEqual(extract_model_response("<|turn>model\nhi <turn|><eos>"), "hi")
+
+    def test_bos_prefix(self):
+        self.assertEqual(bos_prefix(FakeTokenizer(adds_bos=False)), "<bos>")   # tokenizer does not add it: we do
+        self.assertEqual(bos_prefix(FakeTokenizer(adds_bos=True)), "")         # it does: never twice
+        self.assertEqual(bos_prefix(FakeTokenizer(bos_token=None)), "")        # no BOS token at all
+
+    def test_stop_token_ids(self):
+        self.assertEqual(stop_token_ids(FakeTokenizer()), [106, 1])
+        # a token missing from the vocabulary (Gemma 3's marker, say) must never become a stop id
+        self.assertEqual(stop_token_ids(FakeTokenizer(vocab={"<eos>": 1})), [1])
+        self.assertEqual(stop_token_ids(FakeTokenizer(vocab={})), [])
+
+    def test_add_text_prefix(self):
+        class FakeDataset:
+            def __init__(self, rows):
+                self.rows = rows
+
+            def map(self, fn):
+                return FakeDataset([{**r, **fn(r)} for r in self.rows])
+
+        ds = FakeDataset([{"text": "a"}, {"text": "b"}])
+        self.assertIs(training_common.add_text_prefix(ds, ""), ds)
+        self.assertEqual([r["text"] for r in training_common.add_text_prefix(ds, "<bos>").rows], ["<bos>a", "<bos>b"])
+
+
+class Gemma4TokenizerTest(unittest.TestCase):
+    """Against the real Gemma 4 tokenizer (Hugging Face Hub). Skipped when it cannot be loaded (offline, `tokenizers`
+    missing); this is the check that the training text really ends with the id generation stops on."""
+    END_OF_TURN_ID, START_OF_TURN_ID, EOS_ID = 106, 105, 1
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            from tokenizers import Tokenizer
+            cls.tok = Tokenizer.from_pretrained("google/gemma-4-E4B-it")
+        except Exception as e:
+            raise unittest.SkipTest(f"Gemma 4 tokenizer not available: {e!r}")
+
+    def test_markers_are_single_special_tokens(self):
+        self.assertEqual(self.tok.encode("<turn|>", add_special_tokens=False).ids, [self.END_OF_TURN_ID])
+        self.assertEqual(self.tok.encode("<|turn>", add_special_tokens=False).ids, [self.START_OF_TURN_ID])
+
+    def test_gemma3_markers_are_not_special_tokens(self):
+        for old in ("<start_of_turn>", "<end_of_turn>"):
+            self.assertGreater(len(self.tok.encode(old, add_special_tokens=False).ids), 1, old)
+
+    def test_training_text_ends_with_the_stop_token_id(self):
+        text = format_instruction({"instruction": "Where is Shell headquartered?", "output": "In London."})["text"]
+        ids = self.tok.encode(text, add_special_tokens=False).ids
+        self.assertEqual(ids[-1], self.END_OF_TURN_ID)
+        self.assertEqual(ids.count(self.START_OF_TURN_ID), 2)
+
+    def test_inference_prompt_ends_with_open_model_turn(self):
+        ids = self.tok.encode(format_inference_prompt("hi"), add_special_tokens=False).ids
+        self.assertEqual(ids[-3], self.START_OF_TURN_ID)   # <|turn> "model" "\n"
+        self.assertEqual(self.tok.decode([ids[-2]]), "model")
 
 
 class DatasetTest(unittest.TestCase):

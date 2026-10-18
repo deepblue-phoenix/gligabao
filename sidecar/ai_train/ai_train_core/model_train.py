@@ -12,9 +12,9 @@ from .paths import REMOTE_DATASET_PATH
 from .progress import ProgressCallback
 from .event_log import EventLog
 from .progress_events import JobCancelled, stop_requested, write_log
-from .prompt_format import dataset_formatting_func
+from .prompt_format import bos_prefix, dataset_formatting_func
 from .trained_model import describe, model_dir
-from .training_common import (load_training_dataset, print_dependency_versions, save_adapters,
+from .training_common import (add_text_prefix, load_training_dataset, print_dependency_versions, save_adapters,
                               setup_training_arguments, training_result)
 
 
@@ -55,6 +55,11 @@ def run_finetuning(num_train_steps: int = 100, model_size: str = "4b",
     # Gemma-4 returns a Gemma4Processor; SFTTrainer needs the plain tokenizer (the processor
     # lacks `eos_token`), so pass it explicitly via processing_class.
     tokenizer = getattr(tokenizer_or_processor, "tokenizer", tokenizer_or_processor)
+
+    # Exactly one <bos> at the start of every example, as inference does (see prompt_format.bos_prefix).
+    prefix = bos_prefix(tokenizer)
+    train_dataset = add_text_prefix(train_dataset, prefix)
+    print(f"BOS prefix added to the training text: {prefix!r}")
 
     stage("model loaded; adding the LoRA adapters")
     model = add_lora_adapters(model, model_config=model_config, lora_rank=lora_rank, lora_alpha=lora_alpha,

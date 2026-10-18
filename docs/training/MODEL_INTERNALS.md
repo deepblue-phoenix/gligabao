@@ -22,27 +22,24 @@ are "effective". It matters for download and load time, not for the reasoning be
 
 ## 2. The prompt
 
-gligabao does **not** use the tokenizer's chat template. It builds the text itself (`prompt_format.py`) with turn markers:
+gligabao does **not** use the tokenizer's chat template. It builds the text itself (`prompt_format.py`) with Gemma 4's turn markers, the same ones the template uses (checked against `google/gemma-4-E4B-it`'s `chat_template.jinja`, `tokenizer.json` and `generation_config.json`):
 
 ```
-training text   <start_of_turn>user\n{instruction}\n\n{input}<end_of_turn>\n<start_of_turn>model\n{output}<end_of_turn>
-inference text  <start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n
+training text   <bos><|turn>user\n{instruction}\n\n{input}<turn|>\n<|turn>model\n{output}<turn|>
+inference text  <bos><|turn>user\n{prompt}<turn|>\n<|turn>model\n
 ```
 
-The inference text is the training text cut right after `<start_of_turn>model\n`: the model is asked to continue as the
-model turn, and was trained to end it with `<end_of_turn>`. Training and inference use the same function, so they
-agree with each other whatever the base model's own template is.
+`<|turn>` (id 105) and `<turn|>` (id 106) are single special tokens. `<bos>` is put in front only if the tokenizer does not add it itself (`bos_prefix`; the raw Gemma 4 `tokenizer.json` does not), identically in training and inference.
 
-*Unverified:* whether `<start_of_turn>` / `<end_of_turn>` are the turn markers of **Gemma 4** (they are Gemma 2/3's), and
-whether they are single special tokens in its vocabulary or ordinary text that is split into several tokens. If the base
-model's own template uses other markers, the fine-tune teaches it a format that differs from its pre-training; it can
-still work (it is a small adapter on a few hundred examples), but the "end of turn" the model learns may not be the token
-generation stops on (see section 3). Check with:
+The inference text is the training text cut right after `<|turn>model\n`: the model is asked to continue as the model turn, and was trained to end it with `<turn|>`. Training and inference use the same functions, so they agree with each other, and with the base model's own template.
+
+**History (fixed in 0.46.1).** Before, the text used Gemma 2/3's `<start_of_turn>` / `<end_of_turn>`. They do not exist in Gemma 4's vocabulary, so they were tokenized as plain text: the model learned to write the characters `<end_of_turn>` after an answer instead of the stop token, and replies ran to `max_tokens` with invented continuations. Adapters trained before 0.46.1 have this problem and must be retrained. A check that needs only the `tokenizers` library (the tests do it, `Gemma4TokenizerTest`):
 
 ```python
-tok = AutoTokenizer.from_pretrained("google/gemma-4-E4B-it")
-print(tok.apply_chat_template([{"role": "user", "content": "hello"}], tokenize=False, add_generation_prompt=True))
-print(tok.tokenize("<end_of_turn>"), tok.convert_tokens_to_ids("<end_of_turn>"), tok.eos_token, tok.eos_token_id)
+from tokenizers import Tokenizer
+tok = Tokenizer.from_pretrained("google/gemma-4-E4B-it")
+print(tok.encode("<turn|>", add_special_tokens=False).ids)          # [106]: one special token
+print(tok.encode("<end_of_turn>", add_special_tokens=False).ids)    # several ids: plain text, not a marker
 ```
 
 The training text is a single string per example, and the trainer (`SFTTrainer` with `formatting_func`) learns on **all**
@@ -52,18 +49,14 @@ of it, the user turn too: the code does not mask the prompt (no "train on respon
 
 The model produces one token at a time. `model.generate(...)` (`inference.py`) stops when **either**
 
-1. the model emits a token in `generation_config.eos_token_id` (the base model's generation settings; gligabao passes no
-   `eos_token_id` and no stop strings of its own), **or**
+1. the model emits a stop token. gligabao passes `eos_token_id` itself (`stop_token_ids`: `<turn|>` 106 and `<eos>` 1, those that exist in the tokenizer's vocabulary); the base model's `generation_config.eos_token_id` is `[1, 106, 50]`, **or**
 2. `max_new_tokens` tokens were produced (`max_tokens` of the request; admin UI: *max tokens*).
 
 There is no other stop. So the length of a reply is whatever the model decides, bounded by `max_tokens`. If the model does
 not emit a token of case 1 after its answer, it goes on (often rambling or repeating) until the limit, which is the most
 expensive possible outcome of a request: with 512 as the limit, every request costs 512 tokens of generation.
 
-What makes case 1 work is a chain: the training text ends with `<end_of_turn>`, the model learns to produce it after an
-answer, and `<end_of_turn>` is one of the ids generation stops on. *Unverified:* each link of that chain for Gemma 4 (the
-tokenization of `<end_of_turn>`, whether the trainer also appends the tokenizer's EOS token, which ids the base
-model's `generation_config` lists). Check in the inference container, or locally with the tokenizer:
+What makes case 1 work is a chain, each link of which is now checked: the training text ends with `<turn|>` (a single token, id 106: `Gemma4TokenizerTest`), the model learns to produce it after an answer, `generate` stops on id 106 (passed explicitly, and in the base `generation_config`). `SFTTrainer` also appends the tokenizer's `eos_token` if the text does not end with it (`<eos>` for the `google/` tokenizer), which also stops generation. Check a model locally:
 
 ```python
 print(model.generation_config)                  # eos_token_id: which ids stop generation
@@ -76,13 +69,13 @@ a short reply has `output_tokens` far below it. The admin UI shows both for ever
 ## 4. Sampling and the returned text
 
 - **Sampling.** `do_sample=True` with the request's `temperature` (default 0.7). gligabao sets no `top_k`, `top_p`,
-  repetition penalty or seed, so generation uses whatever the base model's `generation_config` has for those (*Unverified*:
-  which values), and the same prompt gives different replies.
-- **Decoding.** The generated ids are decoded together with the prompt (`tokenizer.decode(outputs[0], skip_special_tokens=True)`)
-  and then `extract_model_response` cuts at `<start_of_turn>model`. With `skip_special_tokens=True` the markers are removed
-  *if they are special tokens*, so the cut finds nothing and the text starts with the echoed prompt (`user\n…\nmodel\n…`). If
-  replies come back with such a prefix, that is the reason; it is cosmetic, it does not change the time. Counting the
-  new tokens (`output_tokens`) is done on the ids, so it is right either way.
+  repetition penalty or seed, so generation uses whatever the base model's `generation_config` has for those (the base
+  model's: `top_k` 64, `top_p` 0.95), and the same prompt gives different replies.
+- **Decoding.** Only the newly generated ids are decoded (`tokenizer.decode(outputs[0][input_tokens:], skip_special_tokens=True)`),
+  so the reply does not contain the echoed prompt. `extract_model_response` then strips the text, any echoed
+  `<|turn>model` prefix and trailing `<turn|>` / `<eos>` markers (a no-op normally, since they are special tokens and
+  are skipped). Before 0.46.1 the prompt was decoded with the reply and cut at the model marker, which with
+  special tokens skipped found nothing, so replies came back starting with `user\n…\nmodel\n…`.
 - **`input_tokens`** is the prompt as tokenized (special tokens such as BOS included); **`output_tokens`** the new tokens,
   the stop token included.
 
@@ -120,7 +113,7 @@ Cold requests add the container start and the model load on top (see [Cold and w
 
 | You see | Meaning | What to try |
 |---|---|---|
-| `output_tokens` about `max_tokens` | The reply did not stop. | Check the stop chain (section 3); set `eos_token_id` explicitly; lower `max_tokens`. |
+| `output_tokens` about `max_tokens` | The reply did not stop. | Check the stop chain (section 3): is the adapter trained before 0.46.1 (wrong end-of-turn marker, retrain)? Lower `max_tokens`. |
 | `output_tokens` small, request still slow | Not decode time: queueing behind another request of the container, routing, or a cold container (`cold_start` true). | Look at `cold_start`; request again right after; check the container logs. |
 | Time per token is high (seconds ÷ `output_tokens` far above about 0.07 s) | Slow decode. | A bf16 model instead of 4-bit (a 4B model fits an A10G), a static or compiled cache, or a serving engine such as vLLM. bf16 differs slightly from the 4-bit weights the adapter was trained on: compare outputs. |
 | Same prompt with *max tokens 32* is fast | Length is the only cost. | See the first row. |

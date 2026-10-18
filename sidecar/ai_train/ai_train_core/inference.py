@@ -9,7 +9,7 @@ import threading
 import time
 from typing import Callable, Optional
 
-from .prompt_format import extract_model_response, format_inference_prompt
+from .prompt_format import bos_prefix, extract_model_response, format_inference_prompt, stop_token_ids
 from .trained_model import resolve_model_dir
 
 # The model stays loaded in the container's memory between requests, so only the first request of a container pays the
@@ -103,7 +103,7 @@ def _infer_locked(prompt: str, max_tokens: int, temperature: float, model_size: 
 
     print(f"Generating with fine-tuned {config['display_name']} (adapter: {adapter_dir}) for: {prompt[:50]}...")
     import torch
-    inputs = tokenizer(format_inference_prompt(prompt), return_tensors="pt").to(model.device)
+    inputs = tokenizer(bos_prefix(tokenizer) + format_inference_prompt(prompt), return_tensors="pt").to(model.device)
     input_tokens = int(inputs["input_ids"].shape[-1])   # the formatted prompt, special tokens included
     with torch.no_grad():
         outputs = model.generate(
@@ -111,10 +111,12 @@ def _infer_locked(prompt: str, max_tokens: int, temperature: float, model_size: 
             max_new_tokens=max_tokens,
             temperature=temperature,
             do_sample=True,
+            eos_token_id=stop_token_ids(tokenizer) or None,   # <turn|> (end of the model turn) and <eos>
             pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id,
         )
     output_tokens = int(outputs.shape[-1]) - input_tokens   # the newly generated tokens (EOS included)
-    response = extract_model_response(tokenizer.decode(outputs[0], skip_special_tokens=True))
+    # decode only the new tokens: the echoed prompt is not part of the reply (and its markers are special tokens)
+    response = extract_model_response(tokenizer.decode(outputs[0][input_tokens:], skip_special_tokens=True))
     print(f"Generated {len(response)} characters ({input_tokens} input tokens, {output_tokens} output tokens)")
     _cache["requests"] = _cache.get("requests", 0) + 1
     if on_ready:
