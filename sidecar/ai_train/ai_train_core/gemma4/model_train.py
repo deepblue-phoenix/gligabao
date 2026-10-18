@@ -8,7 +8,6 @@ from trl import SFTTrainer
 
 from .model_config import get_model_config
 from .model_load import add_lora_adapters, load_gemma4_model
-from ..paths import REMOTE_DATASET_PATH
 from ..progress import ProgressCallback
 from ..event_log import EventLog
 from ..progress_events import JobCancelled, stop_requested, write_log
@@ -18,8 +17,8 @@ from ..training_common import (add_text_prefix, load_training_dataset, print_dep
                               setup_training_arguments, training_result)
 
 
-def run_finetuning(num_train_steps: int = 100, model_size: str = "4b",
-                   commit_fn: Optional[Callable] = None, dataset_path: str = REMOTE_DATASET_PATH,
+def run_finetuning(dataset_path: str, num_train_steps: int = 100, model_size: str = "4b",
+                   commit_fn: Optional[Callable] = None,
                    job_id: str = "", events: Optional[EventLog] = None) -> dict:
     """load dataset -> load model (4-bit) -> add LoRA -> train -> save adapters.
 
@@ -28,7 +27,7 @@ def run_finetuning(num_train_steps: int = 100, model_size: str = "4b",
 
     `commit_fn(paths)` persists the models volume at the end.
     Training cost on Modal is roughly $0.15 per 100 steps for 4B on an A10G; 500+ steps
-    recommended for the ~325-example dataset.
+    recommended for a few hundred examples.
 
     The stages are reported as "log" events of the job; between them (and between the steps, see ProgressCallback) a
     stop request (progress_events.py) ends the job with JobCancelled. `events` is the job's EventLog (None: nothing is

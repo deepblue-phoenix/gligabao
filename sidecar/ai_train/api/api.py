@@ -4,7 +4,7 @@ Runs inside the web container. Everything provider-specific is injected as calla
 app.py (spawn a job, call a function, commit/reload volumes).
 
 Endpoints:
-    POST /training/job_start   {num_train_steps?, model_size?, dataset?, dataset_content?}  -> spawns a job, returns a TrainingJob (api/models.py)
+    POST /training/job_start   {dataset, num_train_steps?, model_size?, dataset_content?}  -> spawns a job, returns a TrainingJob (api/models.py)
     GET  /training/job_progress?job_id=                          -> all the job's events so far, as {"progress": [...]}
     GET  /training/job_events?job_id=[&from=N]                   -> SSE stream of the job's progress events (see below)
     POST /training/job_cancel  {job_id}                          -> asks the job to stop (200 {job_id, status: "stopping"}); 404 unknown job, 409 already over
@@ -15,9 +15,11 @@ Endpoints:
     GET  /evals/get_dataset_count
     GET  /healthz
 
-There are no dataset endpoints: training datasets are managed by the Go server (its database and files). The sidecar only
-stores a dataset internally: a job_start that carries `dataset_content` (base64 of the jsonl file) saves it on the data
-volume as `dataset` before spawning the job; without `dataset_content`, `dataset` must already be on the volume.
+There are no dataset endpoints: training datasets are managed by the Go server (the dataset directories with a
+dataset.toml manifest, see docs/training/DATASETS.md). The sidecar only stores a dataset internally: a job needs one, and a
+job_start that carries `dataset_content` (base64 of the jsonl file) saves it on the data volume as `dataset` (the dataset's
+name plus ".jsonl") before spawning the job; without `dataset_content`, `dataset` must already be on the volume. There is
+no default dataset.
 
 GET /training/job_events is Server-Sent Events: the events of the job's event log (ai_train_core/event_log.py, in a
 key-value store of the provider: a Modal Dict) as they are written, each as `id: <index>`, `event: <status|progress|log>`,
@@ -116,22 +118,22 @@ def create_api(
             return err
         if isinstance(num_train_steps, bool) or not isinstance(num_train_steps, int) or num_train_steps < 1:
             return JSONResponse({"error": "num_train_steps must be a positive integer"}, status_code=400)
-        if dataset:
-            if not valid_dataset_filename(dataset):
-                return JSONResponse({"error": f"Invalid dataset '{dataset}': must be a plain *.jsonl file name"},
-                                    status_code=400)
-            if dataset_content:
-                try:
-                    payload = TrainingDataset(filename=dataset, content=dataset_content).payload()
-                except ValueError as e:
-                    return JSONResponse({"error": str(e)}, status_code=400)
-                await run_in_threadpool(store_dataset, dataset, payload, commit_volumes, DATA_DIR)
-            else:
-                await run_in_threadpool(reload_volumes, [DATA_DIR])
-                if not (Path(DATA_DIR) / dataset).is_file():
-                    return JSONResponse({"error": f"Dataset '{dataset}' not found"}, status_code=400)
-        elif dataset_content:
-            return JSONResponse({"error": "dataset_content needs a dataset name"}, status_code=400)
+        if not dataset:
+            return JSONResponse({"error": "dataset is required: the file name of a training dataset on the data volume "
+                                          "(<dataset name>.jsonl)"}, status_code=400)
+        if not valid_dataset_filename(dataset):
+            return JSONResponse({"error": f"Invalid dataset '{dataset}': must be a plain *.jsonl file name"},
+                                status_code=400)
+        if dataset_content:
+            try:
+                payload = TrainingDataset(filename=dataset, content=dataset_content).payload()
+            except ValueError as e:
+                return JSONResponse({"error": str(e)}, status_code=400)
+            await run_in_threadpool(store_dataset, dataset, payload, commit_volumes, DATA_DIR)
+        else:
+            await run_in_threadpool(reload_volumes, [DATA_DIR])
+            if not (Path(DATA_DIR) / dataset).is_file():
+                return JSONResponse({"error": f"Dataset '{dataset}' not found"}, status_code=400)
         job_id = uuid.uuid4().hex[:16]  # names the event log; the provider's own id is only for its dashboard
         events = events_of(job_id)
         meta = {"created": time.time(), "model_size": model_size}

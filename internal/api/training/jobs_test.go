@@ -69,7 +69,7 @@ func testStartTrainingJob(t *testing.T, d *sql.DB) {
 		return rec
 	}
 
-	rec := post(h, "/x", `{"num_train_steps": 7, "model_size": "12B", "dataset": " mine.jsonl "}`)
+	rec := post(h, "/x", `{"num_train_steps": 7, "model_size": "12B", "dataset": " mine "}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("start: %d %s", rec.Code, rec.Body)
 	}
@@ -87,21 +87,21 @@ func testStartTrainingJob(t *testing.T, d *sql.DB) {
 		}
 	}
 
-	// An empty body takes the sidecar's defaults; every started job is a new record.
-	if rec := post(h, "/x", ""); rec.Code != http.StatusCreated || !strings.Contains(rec.Body.String(), `"id":2`) ||
+	// Only the dataset is required; the rest takes the sidecar's defaults. Every started job is a new record.
+	if rec := post(h, "/x", `{"dataset":"mine"}`); rec.Code != http.StatusCreated || !strings.Contains(rec.Body.String(), `"id":2`) ||
 		!strings.Contains(rec.Body.String(), `"model_size":"4b"`) {
 		t.Fatalf("defaults: %d %s", rec.Code, rec.Body)
 	}
 
 	// Bad input never reaches the sidecar.
 	n := len(sc.reqs)
-	for _, body := range []string{`{`, `{"model_size":"99b"}`, `{"num_train_steps":-1}`,
-		`{"dataset":"../x.jsonl"}`, `{"dataset":"a/b.jsonl"}`, `{"dataset":"data.txt"}`} {
+	for _, body := range []string{`{`, ``, `{}`, `{"model_size":"99b","dataset":"mine"}`, `{"num_train_steps":-1,"dataset":"mine"}`,
+		`{"dataset":"../x"}`, `{"dataset":"a/b"}`, `{"dataset":"mine.jsonl"}`, `{"dataset":"unknown"}`} {
 		if rec := post(h, "/x", body); rec.Code != http.StatusBadRequest {
 			t.Fatalf("%s: %d", body, rec.Code)
 		}
 	}
-	if rec := post(h, "/x?db=nope", ""); rec.Code != http.StatusNotFound {
+	if rec := post(h, "/x?db=nope", `{"dataset":"mine"}`); rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown db: %d", rec.Code)
 	}
 	if len(sc.reqs) != n {
@@ -110,7 +110,7 @@ func testStartTrainingJob(t *testing.T, d *sql.DB) {
 
 	// A sidecar failure records nothing; without a sidecar the endpoint is unavailable.
 	sc.err = errors.New("boom")
-	if rec := post(h, "/x", ""); rec.Code != http.StatusBadGateway {
+	if rec := post(h, "/x", `{"dataset":"mine"}`); rec.Code != http.StatusBadGateway {
 		t.Fatalf("sidecar error: %d", rec.Code)
 	}
 	if _, err := relational.GetTrainingJobRun(ctx, d, 3); !errors.Is(err, relational.ErrNotFound) {
@@ -124,9 +124,11 @@ func testStartTrainingJob(t *testing.T, d *sql.DB) {
 // A request the sidecar rejects as invalid is the caller's error (400, with the sidecar's message), not a bad gateway.
 func TestStartTrainingJobSidecarRejects(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
+	dir := t.TempDir()
+	addDataset(t, dir, "mine")
 	sc := &fakeSidecar{err: &sidecar.StatusError{Method: "POST", Path: "/training/job_start", Code: 400, Body: `{"error":"num_train_steps must be a positive integer"}`}}
 	rec := httptest.NewRecorder()
-	training.StartJobOf([]training.Database{{Name: "standard", DB: d}}, sc, nil)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(`{"num_train_steps":5}`)))
+	training.StartJobOf([]training.Database{{Name: "standard", DB: d, DatasetDir: dir}}, sc, nil)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(`{"dataset":"mine","num_train_steps":5}`)))
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "num_train_steps must be a positive integer") {
 		t.Fatalf("got %d %s", rec.Code, rec.Body)
 	}

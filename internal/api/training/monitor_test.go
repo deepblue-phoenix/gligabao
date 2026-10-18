@@ -142,7 +142,9 @@ func TestTrainingMonitor(t *testing.T) { dbtest.Run(t, testTrainingMonitor) }
 func testTrainingMonitor(t *testing.T, d *sql.DB) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	dbs := []training.Database{{Name: "standard", DB: d}}
+	dir := t.TempDir()
+	addDataset(t, dir, "mine")
+	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: dir}}
 	sc := newStreamSidecar()
 	mon := training.NewMonitor(ctx, dbs, sc, training.WithRetryDelay(time.Millisecond))
 
@@ -151,7 +153,7 @@ func testTrainingMonitor(t *testing.T, d *sql.DB) {
 	all := openSSE(t, ctx, events.URL)
 
 	rec := httptest.NewRecorder()
-	training.StartJobOf(dbs, sc, mon)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(`{"num_train_steps": 10}`)))
+	training.StartJobOf(dbs, sc, mon)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(`{"dataset": "mine", "num_train_steps": 10}`)))
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("start: %d %s", rec.Code, rec.Body)
 	}

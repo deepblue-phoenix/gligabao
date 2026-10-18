@@ -2,13 +2,14 @@ package model
 
 import "time"
 
-// TrainingDataset is a JSONL training dataset uploaded through the Go server (gb_training_datasets). The file itself is kept
-// by Go in the training dataset directory (under Filename); this is its record. The sidecar is not involved in the upload:
-// the file is sent to it later, when a training job that uses the dataset is started, and SyncedAt records that.
+// TrainingDataset is the record (gb_training_datasets) of a training dataset: a JSONL file in a subdirectory of the
+// training datasets directory, which a dataset.toml manifest there describes (name, where the file is). The record is made
+// when the Go server first sees the file, or sees it changed; it holds what was seen (size, records, digest). The sidecar
+// is not involved: the file is sent to it when a training job that uses the dataset is started, and SyncedAt records that.
 type TrainingDataset struct {
 	ID int64 `json:"id"`
-	// Filename is a plain *.jsonl file name; it names the file in the training dataset directory and the dataset on the
-	// sidecar. It is unique: uploading the same name again replaces the dataset.
+	// Filename is the dataset's name plus ".jsonl": the file name the dataset has on the sidecar. It is unique (dataset
+	// names are), so a dataset's record is replaced when its file changes.
 	Filename   string `json:"filename"`
 	SizeBytes  int64  `json:"size_bytes"`
 	NumRecords int    `json:"num_records"` // non-empty lines (each a JSON object)

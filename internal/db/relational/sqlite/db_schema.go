@@ -125,7 +125,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_inferences_model ON gb_inferences(model_id);
 --   status           'started' when the sidecar reports the job started, then the job's status events ('running', 'training'),
 --                    finally 'completed' or 'failed'
 --   model_size       '4b' or '12b'
---   dataset          the file on the sidecar's data volume the job trains on ('' = the sidecar's default dataset)
+--   dataset          the file on the sidecar's data volume the job trains on ('' only in a job started before a dataset was required)
 --   num_train_steps  how many steps the job was asked to train
 --   last_step, last_loss  from the newest progress event that has a loss; final_loss: the mean loss, when the job completed
 --   error            why the job failed
@@ -224,13 +224,14 @@ CREATE TABLE IF NOT EXISTS gb_trained_model_inferences (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_trained_model_inferences_model ON gb_trained_model_inferences(trained_model_id, id);
 
--- JSONL training datasets uploaded through the Go server (internal/api/training/datasets.go): ONE ROW PER FILE NAME.
--- The file is kept in the training dataset directory (under its name); the sidecar is not involved in the upload, it gets
--- the file when a training job that uses it is started.
---   filename     a plain *.jsonl name, unique: uploading it again replaces the row
+-- JSONL training datasets (internal/api/training): the datasets are subdirectories of the training datasets directory
+-- that have a dataset.toml manifest; this table has ONE ROW PER DATASET, made when the Go server first sees the data file
+-- and replaced when it sees it changed. The sidecar is not involved, it gets the file when a training job that uses it
+-- is started.
+--   filename     the dataset's name plus ".jsonl" (the file name it has on the sidecar), unique
 --   size_bytes, num_records (non-empty lines), sha256 (hex) of the file
 --   status       'stored' (only here) or 'synced' (the sidecar has this version of the file)
---   updated_at   when the file was last uploaded; synced_at when the sidecar got it (NULL while it has not)
+--   updated_at   when the row last described a new version of the file; synced_at when the sidecar got it (NULL while it has not)
 CREATE TABLE IF NOT EXISTS gb_training_datasets (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
 	filename    TEXT NOT NULL UNIQUE,

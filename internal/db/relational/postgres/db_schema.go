@@ -148,7 +148,7 @@ ALTER TABLE gb_trained_model_inferences ADD COLUMN IF NOT EXISTS cold_start BOOL
 ALTER TABLE gb_trained_model_inferences ADD COLUMN IF NOT EXISTS load_seconds DOUBLE PRECISION NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_gb_trained_model_inferences_model ON gb_trained_model_inferences(trained_model_id, id);
 
--- JSONL training datasets uploaded through the Go server (see sqlite/db_schema.go).
+-- JSONL training datasets found in the training datasets directory by the Go server (see sqlite/db_schema.go).
 CREATE TABLE IF NOT EXISTS gb_training_datasets (
 	id          BIGSERIAL PRIMARY KEY,
 	filename    TEXT NOT NULL UNIQUE,

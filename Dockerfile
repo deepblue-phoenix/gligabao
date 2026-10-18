@@ -30,6 +30,7 @@ VOLUME /data
 EXPOSE 7878
 # Pass ANTHROPIC_API_KEY / OPENAI_API_KEY (and PINECONE_API_KEY if vector_store = "pinecone") as environment variables.
 # The SQLite database (/data/gligabao.db), the chromem vector store (/data/gligabao.vectors/) and the image files
-# (/data/gligabao.images/) all live in /data.
+# (/data/gligabao.images/) all live in /data, and so does the training datasets directory (/data/datasets_training/: one
+# subdirectory per dataset, with a dataset.toml manifest).
 ENTRYPOINT ["/app/gligabao"]
 CMD ["serve", "--db", "/data/gligabao.db"]

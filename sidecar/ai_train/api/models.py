@@ -57,7 +57,7 @@ class TrainingJob(BaseModel):
     status: str = "started"
     model_size: str
     num_train_steps: int = Field(gt=0)
-    dataset: str = ""                       # file name on the data volume the job trains on ("" = the default dataset)
+    dataset: str = ""                       # file name on the data volume the job trains on (<dataset name>.jsonl)
     started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @field_validator("started_at")

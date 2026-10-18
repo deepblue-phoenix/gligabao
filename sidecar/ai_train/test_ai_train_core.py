@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from unittest import mock
 
+import training_data
 from ai_train_core import dataset, event_log, paths, progress_events, trained_model
 from providers.base import CallStatus
 from ai_train_core import model_families, training_common
@@ -178,17 +179,17 @@ class DatasetTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.data = str(Path(self.tmp.name) / "d.jsonl")
-        self.meta = str(Path(self.tmp.name) / ".metadata.json")
         self.addCleanup(self.tmp.cleanup)
 
-    def test_sync_only_when_newer(self):
+    def test_sync_only_when_changed(self):
         commits = []
         content = b'{"instruction":"a","input":"","output":"b"}\n'
-        kw = dict(commit_fn=commits.append, dataset_path=self.data, metadata_path=self.meta)
-        self.assertTrue(dataset.sync_dataset(content, 10.0, **kw)["uploaded"])
-        self.assertFalse(dataset.sync_dataset(content, 10.0, **kw)["uploaded"])
-        self.assertTrue(dataset.sync_dataset(content, 11.0, **kw)["uploaded"])
-        self.assertEqual(commits, [[paths.DATA_DIR]] * 2)
+        kw = dict(commit_fn=commits.append, data_dir=self.tmp.name)
+        self.assertTrue(dataset.sync_dataset(content, "d.jsonl", **kw)["uploaded"])
+        self.assertFalse(dataset.sync_dataset(content, "d.jsonl", **kw)["uploaded"])
+        self.assertTrue(dataset.sync_dataset(content + content, "d.jsonl", **kw)["uploaded"])
+        self.assertEqual((Path(self.tmp.name) / "d.jsonl").read_bytes(), content + content)
+        self.assertEqual(commits, [[self.tmp.name]] * 2)
 
     def test_validate(self):
         Path(self.data).write_text('{"instruction":"a","input":"","output":"bb"}\n')
@@ -197,20 +198,70 @@ class DatasetTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             dataset.validate_dataset(self.data)
 
-    def test_bundled_dataset_is_valid(self):
-        bundled = Path(__file__).parent / "finetune_data" / paths.DATASET_FILENAME
-        if bundled.exists():
-            self.assertGreater(dataset.validate_dataset(str(bundled))["num_examples"], 0)
+    def test_bundled_datasets_are_valid(self):
+        """Every dataset of bin/datasets_training whose data file has been generated is valid."""
+        found, _ = training_data.list_local_datasets()
+        for ds in found:
+            self.assertGreater(dataset.validate_dataset(str(ds.path))["num_examples"], 0, ds.name)
 
 
 class DatasetNameTest(unittest.TestCase):
     def test_resolve(self):
-        self.assertEqual(dataset.resolve_dataset_path(""), paths.REMOTE_DATASET_PATH)
         self.assertEqual(dataset.resolve_dataset_path("my-set_1.jsonl"), f"{paths.DATA_DIR}/my-set_1.jsonl")
-        for bad in ("../x.jsonl", "a/b.jsonl", ".metadata.json", ".hidden.jsonl", "x.json", "a..b.jsonl", "x.jsonl\n"):
+        for bad in ("", "../x.jsonl", "a/b.jsonl", ".metadata.json", ".hidden.jsonl", "x.json", "a..b.jsonl", "x.jsonl\n"):
             self.assertFalse(dataset.valid_dataset_filename(bad), bad)
             with self.assertRaises(ValueError):
                 dataset.resolve_dataset_path(bad)
+
+
+class LocalDatasetsTest(unittest.TestCase):
+    """training_data: the datasets of a directory, found by their manifests."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def write(self, rel, content=""):
+        p = self.root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content)
+
+    def test_found_by_manifest(self):
+        self.write("b-set/dataset.toml", 'file = "data/rows.jsonl"\ndescription = "d"\n')
+        self.write("b-set/data/rows.jsonl", "{}\n")
+        self.write("a-dir/dataset.toml", 'name = "alpha"\nfile = "x.jsonl"\n')
+        self.write("a-dir/x.jsonl", "{}\n")
+        self.write("a-dir/other.jsonl", "{}\n")          # the manifest decides which file
+        self.write("no-manifest/rows.jsonl", "{}\n")     # not a dataset
+        found, problems = training_data.list_local_datasets(self.root)
+        self.assertEqual([d.name for d in found], ["alpha", "b-set"])
+        self.assertEqual(problems, [])
+        self.assertEqual(found[1].path, self.root / "b-set" / "data" / "rows.jsonl")
+        self.assertEqual((found[1].description, found[1].filename), ("d", "b-set.jsonl"))
+        self.assertEqual(training_data.find_local_dataset("alpha", self.root).path, self.root / "a-dir" / "x.jsonl")
+
+    def test_problems(self):
+        for d, manifest in {"bad-toml": "file = \n", "no-file": 'name = "nf"\n', "escape": 'file = "../x.jsonl"\n',
+                            "absolute": 'file = "/etc/passwd"\n', "wrong-ext": 'file = "x.json"\n',
+                            "bad-format": 'file = "x.jsonl"\nformat = "csv"\n', "bad name!": 'file = "x.jsonl"\n',
+                            "missing": 'file = "x.jsonl"\ngenerator = "gen.py"\n'}.items():
+            self.write(f"{d}/dataset.toml", manifest)
+        self.write("ok/dataset.toml", 'file = "x.jsonl"\n')
+        self.write("ok/x.jsonl", "{}\n")
+        self.write("zdup/dataset.toml", 'name = "ok"\nfile = "x.jsonl"\n')
+        self.write("zdup/x.jsonl", "{}\n")
+        found, problems = training_data.list_local_datasets(self.root)
+        self.assertEqual([d.name for d in found], ["ok"])
+        self.assertEqual(sorted(p.split(":")[0] for p in problems),
+                         sorted(["bad-toml", "no-file", "escape", "absolute", "wrong-ext", "bad-format", "bad name!", "missing", "zdup"]))
+        self.assertTrue(any("run gen.py" in p for p in problems))
+
+    def test_unknown(self):
+        with self.assertRaises(training_data.DatasetError):
+            training_data.find_local_dataset("nope", self.root)
+        with self.assertRaises(training_data.DatasetError):
+            training_data.find_local_dataset("nope", self.root / "missing-dir")
 
 
 class FakeKV:
@@ -415,7 +466,7 @@ class RunTrainTest(unittest.TestCase):
         fake.run_finetuning.side_effect = RuntimeError("out of memory")
         with mock.patch.dict(sys.modules, {"ai_train_core.gemma4.model_train": fake}):
             with self.assertRaises(RuntimeError):
-                self.run_train(3, "4b", job_id="jf")
+                self.run_train(3, "4b", dataset="mine.jsonl", job_id="jf")
         st = self.statuses("jf")
         self.assertEqual([s for s, _ in st], ["running", "failed"])
         self.assertIn("out of memory", st[1][1]["error"])
@@ -424,7 +475,7 @@ class RunTrainTest(unittest.TestCase):
         fake = mock.Mock()
         fake.run_finetuning.side_effect = progress_events.JobCancelled("stopped at step 4")
         with mock.patch.dict(sys.modules, {"ai_train_core.gemma4.model_train": fake}):
-            result = self.run_train(3, "4b", job_id="jx")  # not an error: nothing is raised
+            result = self.run_train(3, "4b", dataset="mine.jsonl", job_id="jx")  # not an error: nothing is raised
         self.assertEqual(result["status"], "cancelled")
         st = self.statuses("jx")
         self.assertEqual([s for s, _ in st], ["running", "cancelled"])
@@ -434,7 +485,7 @@ class RunTrainTest(unittest.TestCase):
         fake = mock.Mock()
         fake.run_finetuning.return_value = {"status": "success", "final_loss": 0.1}
         with mock.patch.dict(sys.modules, {"ai_train_core.gemma4.model_train": fake}):
-            self.run_train(3, "4b", job_id="jr")
+            self.run_train(3, "4b", dataset="mine.jsonl", job_id="jr")
         events = fake.run_finetuning.call_args.kwargs["events"]
         self.assertEqual((events.kv, events.job_id), (self.kv, "jr"))
 
@@ -453,12 +504,13 @@ class RunTrainTest(unittest.TestCase):
                 real(other)
             self.kv.update = flaky
             with mock.patch("ai_train_core.event_log.time.sleep"), self.assertRaises(RuntimeError):
-                self.run_train(3, "4b", job_id="jq")
+                self.run_train(3, "4b", dataset="mine.jsonl", job_id="jq")
 
     def test_bad_dataset_fails_the_job(self):
-        with self.assertRaises(ValueError):
-            self.run_train(3, "4b", dataset="../x.jsonl", job_id="jb")
-        self.assertEqual([s for s, _ in self.statuses("jb")], ["running", "failed"])
+        for i, bad in enumerate(("../x.jsonl", "")):  # a bad name, and no dataset at all (there is no default)
+            with self.assertRaises(ValueError):
+                self.run_train(3, "4b", dataset=bad, job_id=f"jb{i}")
+            self.assertEqual([s for s, _ in self.statuses(f"jb{i}")], ["running", "failed"])
 
 
 class ApiTest(unittest.TestCase):
@@ -472,6 +524,7 @@ class ApiTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.data = Path(self.tmp.name, "data")
         self.data.mkdir()
+        (self.data / "mine.jsonl").write_text("{}\n")  # a dataset every job can name
         p = mock.patch("api.api.DATA_DIR", str(self.data))
         p.start()
         self.addCleanup(p.stop)
@@ -510,18 +563,17 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.client.get("/healthz").json()["status"], "ok")
 
     def test_job_start(self):
-        r = self.client.post("/training/job_start", json={"num_train_steps": 7, "model_size": "12b"})
+        r = self.client.post("/training/job_start", json={"dataset": "mine.jsonl", "num_train_steps": 7, "model_size": "12b"})
         job = r.json()
         self.assertEqual((job["provider_job_id"], job["status"], job["model_size"], job["num_train_steps"], job["dataset"]),
-                         ("fc-1", "started", "12b", 7, ""))
+                         ("fc-1", "started", "12b", 7, "mine.jsonl"))
         started = datetime.fromisoformat(job["started_at"].replace("Z", "+00:00"))
         self.assertIsNotNone(started.tzinfo)  # golang needs a timezone to parse it
         self.assertTrue(progress_events.valid_job_id(job["job_id"]))
-        self.assertEqual(self.calls, [(7, "12b", "", job["job_id"])])  # the job id names the event log
+        self.assertEqual(self.calls, [(7, "12b", "mine.jsonl", job["job_id"])])  # the job id names the event log
         self.assertEqual(self.log(job["job_id"]).meta()["call_id"], "fc-1")  # for the watchdog
 
     def test_job_start_dataset(self):
-        (self.data / "mine.jsonl").write_text("{}\n")
         job = self.client.post("/training/job_start", json={"dataset": "mine.jsonl"}).json()
         self.assertEqual(job["dataset"], "mine.jsonl")
         self.assertEqual(self.calls[0][2], "mine.jsonl")
@@ -539,7 +591,7 @@ class ApiTest(unittest.TestCase):
         n = len(self.calls)
         for body in ({"dataset": "x.jsonl", "dataset_content": "not base64!"},
                      {"dataset": "../x.jsonl", "dataset_content": content},
-                     {"dataset_content": content}):
+                     {"dataset_content": content}):  # a dataset's content needs its name
             self.assertEqual(self.client.post("/training/job_start", json=body).status_code, 400, body)
         self.assertEqual(len(self.calls), n)
         self.assertFalse((self.data / "x.jsonl").exists())
@@ -601,7 +653,7 @@ class ApiTest(unittest.TestCase):
 
     def test_watchdog_reports_a_job_that_died(self):
         log = self.log("w1")
-        self.client.post("/training/job_start", json={})  # (a job of its own: the id below is set by hand)
+        self.client.post("/training/job_start", json={"dataset": "mine.jsonl"})  # (a job of its own: the id below is set by hand)
         log.set_meta({"call_id": "fc-9"})
         progress_events.write_status(log, "training", max_steps=10)
         self.assertEqual([s for _, _, s in self.events("w1")], [e for _, e in log.read_from(0)])  # running: nothing added
@@ -642,7 +694,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(post({"job_id": "c1"}).status_code, 409)  # over already
 
     def test_job_cancel_before_the_container_starts(self):
-        job = self.client.post("/training/job_start", json={}).json()
+        job = self.client.post("/training/job_start", json={"dataset": "mine.jsonl"}).json()
         r = self.client.post("/training/job_cancel", json={"job_id": job["job_id"]})
         self.assertEqual(r.status_code, 200)  # no event yet, but the job exists
         self.assertTrue(progress_events.stop_requested(self.log(job["job_id"])))
@@ -655,13 +707,22 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.client.get("/training/job_progress?job_id=a").json()["progress"][0]["step"], 1)
 
     def test_job_start_defaults_and_invalid_steps(self):
-        job = self.client.post("/training/job_start", json={}).json()
+        job = self.client.post("/training/job_start", json={"dataset": "mine.jsonl"}).json()
         self.assertEqual((job["model_size"], job["num_train_steps"]), ("4b", 100))
         for bad in (0, -1, "5", True):
-            self.assertEqual(self.client.post("/training/job_start", json={"num_train_steps": bad}).status_code, 400)
+            body = {"dataset": "mine.jsonl", "num_train_steps": bad}
+            self.assertEqual(self.client.post("/training/job_start", json=body).status_code, 400)
+
+    def test_job_start_needs_a_dataset(self):
+        n = len(self.calls)
+        for body in ({}, {"dataset": ""}, {"model_size": "4b"}):
+            r = self.client.post("/training/job_start", json=body)
+            self.assertEqual(r.status_code, 400, body)
+            self.assertIn("dataset is required", r.json()["error"])
+        self.assertEqual(len(self.calls), n)
 
     def test_invalid_model_size(self):
-        self.assertEqual(self.client.post("/training/job_start", json={"model_size": "99b"}).status_code, 400)
+        self.assertEqual(self.client.post("/training/job_start", json={"dataset": "a.jsonl", "model_size": "99b"}).status_code, 400)
         self.assertEqual(self.client.post("/infer/query", json={"model_size": "99b"}).status_code, 400)
 
     def test_infer(self):

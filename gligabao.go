@@ -93,8 +93,8 @@ type ServeOptions struct {
 	// ImageDir is the directory the image files of the image pipeline are kept in (the database only tracks their
 	// paths). Default: next to DBPath, as <name>.images.
 	ImageDir string
-	// TrainingDatasetDir is the directory the JSONL training datasets uploaded in the admin UI are saved in. Default: next
-	// to DBPath, as <name>.training_datasets.
+	// TrainingDatasetDir is the training datasets directory: one subdirectory with a dataset.toml manifest per dataset
+	// (the datasets uploaded in the admin UI are saved there too). Default: a "datasets_training" directory next to DBPath.
 	TrainingDatasetDir string
 	// EvalDBPath is the eval database (the SQLite file ./run_evals.sh writes the datasets, experiments and runs to); with
 	// the admin UI on it is shown next to the main database and feeds its Evals block.

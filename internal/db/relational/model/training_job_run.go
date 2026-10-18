@@ -14,7 +14,7 @@ type TrainingJobRun struct {
 	// ("running", "training") until it is "completed", "failed" or "cancelled" (see TrainingJobFinished).
 	Status    string `json:"status"`
 	ModelSize string `json:"model_size"` // "4b" or "12b"
-	// Dataset is the file the job trains on, on the sidecar's data volume ("" = the sidecar's default dataset).
+	// Dataset is the file the job trains on, on the sidecar's data volume ("" only for a job started before a dataset was required).
 	Dataset string `json:"dataset"`
 	// NumTrainSteps is how many steps the job was asked to train.
 	NumTrainSteps int `json:"num_train_steps"`

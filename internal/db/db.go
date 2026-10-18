@@ -43,7 +43,8 @@ type Config struct {
 	VectorDir string
 	// ImageDir is the directory the image files of the image pipeline are kept in. Default: next to SQLitePath.
 	ImageDir string
-	// TrainingDatasetDir is the directory the uploaded JSONL training datasets are saved in. Default: next to SQLitePath.
+	// TrainingDatasetDir is the training datasets directory: one subdirectory with a dataset.toml manifest per dataset
+	// (uploads are saved there too). Default: a "datasets_training" directory next to SQLitePath.
 	TrainingDatasetDir string
 	// EmbeddingDimensions is the embedding size. Default: config.DefaultEmbeddingDimensions.
 	EmbeddingDimensions int
@@ -107,7 +108,7 @@ type DB struct {
 	// ImageDir is the directory of the image files (created when the first image is stored). The relational
 	// database only tracks their paths.
 	ImageDir string
-	// TrainingDatasetDir is the directory of the uploaded JSONL training datasets (created at the first upload).
+	// TrainingDatasetDir is the training datasets directory (created at the first upload; may not exist).
 	TrainingDatasetDir string
 	// Chunking is the chunk size and overlap remember uses for a long text.
 	Chunking chunk.Config
@@ -217,10 +218,10 @@ func DefaultImageDir(sqlitePath string) string {
 	return strings.TrimSuffix(sqlitePath, filepath.Ext(sqlitePath)) + ".images"
 }
 
-// DefaultTrainingDatasetDir is the training dataset directory used for the SQLite file sqlitePath when none is
-// configured: the file's path without extension plus ".training_datasets".
+// DefaultTrainingDatasetDir is the training datasets directory used for the SQLite file sqlitePath when none is
+// configured: "datasets_training" in the file's directory (bin/datasets_training for bin/gligabao.db).
 func DefaultTrainingDatasetDir(sqlitePath string) string {
-	return strings.TrimSuffix(sqlitePath, filepath.Ext(sqlitePath)) + ".training_datasets"
+	return filepath.Join(filepath.Dir(sqlitePath), "datasets_training")
 }
 
 // Close closes every client. It is safe to call on a nil DB.

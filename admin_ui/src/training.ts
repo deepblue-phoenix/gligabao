@@ -26,7 +26,10 @@ interface Inference {
 interface DatasetRecord {
   id: number; filename: string; size_bytes: number; num_records: number; sha256: string; status: "stored" | "synced";
   updated_at: string; synced_at: string | null;
+  // from the dataset's manifest (<datasets_training dir>/<dir>/dataset.toml)
+  name: string; description?: string; file: string; dir: string; version?: string;
 }
+interface DatasetProblem { dir: string; error: string }
 interface FeedEvent {
   run_id: number; seq: number; type: "status" | "progress" | "log"; message?: string; status?: string; max_steps?: number; final_loss?: number; error?: string;
   step?: number; loss?: number; learning_rate?: number; epoch?: number; elapsed_seconds?: number; timestamp?: number;
@@ -671,26 +674,36 @@ async function toggleVolumes(backend: string, app = ""): Promise<void> {
   }
 }
 
-// Fills the dataset picker with the datasets of the server (the only place datasets are managed; a job's dataset travels
-// to the sidecar with the job). It needs no sidecar.
+// Fills the dataset picker with the datasets of the server (the subdirectories of its training datasets directory that have a
+// manifest; a job's dataset travels to the sidecar with the job). It needs no sidecar.
 async function loadDatasets(): Promise<void> {
   await checkSidecar();
   void loadBackends();
   const sel = el<HTMLSelectElement>("training-dataset");
   const status = el("training-run-status");
   const keep = sel.value;
-  const entries = new Map<string, string>(); // filename -> label
+  const entries = new Map<string, string>(); // dataset name -> label
   try {
     const res = await fetch("../training/datasets");
     if (!res.ok) throw await failure(res);
-    renderDatasetRecords(((await res.json()) as { datasets: DatasetRecord[] }).datasets ?? [], entries);
+    const data = (await res.json()) as { datasets: DatasetRecord[]; problems?: DatasetProblem[] };
+    renderDatasetRecords(data.datasets ?? [], entries);
+    renderDatasetProblems(data.problems ?? []);
   } catch (err) {
     status.className = "error";
     status.textContent = `Could not list the datasets: ${errText(err)}`;
   }
-  sel.replaceChildren(new Option("(sidecar default dataset)", ""));
+  sel.replaceChildren();
   for (const [name, label] of [...entries].sort((a, b) => a[0].localeCompare(b[0]))) sel.add(new Option(label, name));
-  sel.value = [...sel.options].some((o) => o.value === keep) ? keep : "";
+  if (sel.options.length === 0) sel.add(new Option("(no datasets)", ""));
+  sel.value = [...sel.options].some((o) => o.value === keep) ? keep : sel.options[0].value;
+}
+
+// Lists the dataset directories that have a manifest but cannot be used (a bad manifest, a missing data file).
+function renderDatasetProblems(problems: DatasetProblem[]): void {
+  const box = el("training-dataset-problems");
+  box.hidden = problems.length === 0;
+  box.replaceChildren(...problems.map((p) => node("li", "error", `${p.dir}: ${p.error}`)));
 }
 
 //---------------------------------------------------------------------------------------------
@@ -703,11 +716,12 @@ function renderDatasetRecords(list: DatasetRecord[], entries?: Map<string, strin
   body.replaceChildren();
   table.hidden = list.length === 0;
   for (const d of list) {
-    entries?.set(d.filename, `${d.filename} (${fmtBytes(d.size_bytes)}, ${d.num_records} records)`);
+    entries?.set(d.name, `${d.name} (${fmtBytes(d.size_bytes)}, ${d.num_records} records)`);
     const tr = body.insertRow();
-    tr.title = `sha256 ${d.sha256}\nClick to inspect the first ${PREVIEW_LINES} lines`;
-    tr.addEventListener("click", () => void showDataset(d.filename));
-    tr.insertCell().textContent = d.filename;
+    tr.title = `${d.description ? d.description + "\n" : ""}sha256 ${d.sha256}\nClick to inspect the first ${PREVIEW_LINES} lines`;
+    tr.addEventListener("click", () => void showDataset(d.name));
+    tr.insertCell().textContent = d.name;
+    tr.insertCell().textContent = `${d.dir}/${d.file}`;
     const st = tr.insertCell();
     st.appendChild(node("span", `badge ${d.status === "synced" ? "badge-ok" : "badge-active"}`, d.status === "synced" ? "on sidecar" : "stored"));
     st.title = d.status === "synced" ? "The sidecar has this version" : "Saved on the server; sent to the sidecar when a job starts on it";
@@ -742,20 +756,20 @@ function appendJSON(parent: HTMLElement, line: string): void {
 }
 
 // Opens the modal with the first lines of a dataset's file, to inspect it.
-async function showDataset(filename: string): Promise<void> {
+async function showDataset(name: string): Promise<void> {
   const modal = el<HTMLDialogElement>("dataset-modal");
   const status = el("dataset-status");
   const content = el("dataset-content");
-  el("dataset-title").textContent = filename;
+  el("dataset-title").textContent = name;
   status.className = "muted";
   status.textContent = "Loading…";
   content.replaceChildren();
   if (!modal.open) modal.showModal();
   try {
-    const res = await fetch(`../training/datasets/preview?${new URLSearchParams({ filename, lines: String(PREVIEW_LINES) })}`);
+    const res = await fetch(`../training/datasets/preview?${new URLSearchParams({ name, lines: String(PREVIEW_LINES) })}`);
     if (!res.ok) throw await failure(res);
-    const data = (await res.json()) as { filename: string; lines: string[]; num_records: number; truncated: boolean };
-    if (!modal.open || el("dataset-title").textContent !== filename) return; // closed (or another one opened) while loading
+    const data = (await res.json()) as { name: string; lines: string[]; num_records: number; truncated: boolean };
+    if (!modal.open || el("dataset-title").textContent !== name) return; // closed (or another one opened) while loading
     data.lines.forEach((line, i) => {
       const row = node("span", "ln");
       row.append(node("span", "ln-no", String(i + 1)));
@@ -790,10 +804,10 @@ async function uploadDataset(): Promise<void> {
     const res = await fetch("../training/datasets", { method: "POST", body: form });
     if (!res.ok) throw await failure(res);
     const ds = (await res.json()) as DatasetRecord;
-    status.textContent = `Saved ${ds.filename}: ${ds.num_records} records, ${fmtBytes(ds.size_bytes)}. It is sent to the sidecar when a job starts on it.`;
+    status.textContent = `Saved dataset ${ds.name}: ${ds.num_records} records, ${fmtBytes(ds.size_bytes)}. It is sent to the sidecar when a job starts on it.`;
     input.value = "";
     await loadDatasets(); // the table and the picker
-    el<HTMLSelectElement>("training-dataset").value = ds.filename;
+    el<HTMLSelectElement>("training-dataset").value = ds.name;
   } catch (err) {
     status.className = "error";
     status.textContent = `Upload failed: ${errText(err)}`;
@@ -811,7 +825,13 @@ async function run(): Promise<void> {
     status.textContent = "Steps must be a positive integer.";
     return;
   }
-  const body = { num_train_steps: steps, model_size: el<HTMLSelectElement>("training-size").value, dataset: el<HTMLSelectElement>("training-dataset").value };
+  const dataset = el<HTMLSelectElement>("training-dataset").value;
+  if (!dataset) {
+    status.className = "error";
+    status.textContent = "Choose a dataset first (add one to the training datasets directory, or upload it).";
+    return;
+  }
+  const body = { num_train_steps: steps, model_size: el<HTMLSelectElement>("training-size").value, dataset };
   btn.disabled = true;
   status.className = "muted";
   status.textContent = "Starting…";
@@ -839,7 +859,7 @@ function renderDetailHead(): void {
   head.replaceChildren();
   if (!j) return;
   head.append(node("strong", "", `Job #${j.id}`), " ", statusBadge(j.status), " ",
-    node("span", "muted", `${j.model_size} · ${j.dataset || "default dataset"} · ${j.job_id}`));
+    node("span", "muted", `${j.model_size} · ${j.dataset || "(no dataset)"} · ${j.job_id}`));
   if (j.error) head.append(node("div", j.status === "cancelled" ? "muted" : "error", j.error));
   if (!FINISHED.includes(j.status)) {
     const asked = stopping.has(j.id);

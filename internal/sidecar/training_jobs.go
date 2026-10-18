@@ -35,17 +35,17 @@ type TrainingJob struct {
 	// ModelSize is "4b" or "12b".
 	ModelSize     string `json:"model_size"`
 	NumTrainSteps int    `json:"num_train_steps"`
-	// Dataset is the file on the sidecar's data volume the job trains on ("" = the sidecar's default dataset).
+	// Dataset is the file on the sidecar's data volume the job trains on (<dataset name>.jsonl).
 	Dataset   string    `json:"dataset,omitempty"`
 	StartedAt time.Time `json:"started_at"`
 }
 
 // StartTrainingJobRequest is the body of POST /training/job_start. Zero fields take the sidecar's defaults
-// (DefaultNumTrainSteps, DefaultModelSize, its default dataset).
+// (DefaultNumTrainSteps, DefaultModelSize); Dataset is required, there is no default dataset.
 type StartTrainingJobRequest struct {
 	NumTrainSteps int    `json:"num_train_steps,omitempty"`
 	ModelSize     string `json:"model_size,omitempty"`
-	// Dataset is the file name of a training dataset ("" = the sidecar's default dataset).
+	// Dataset is the file name of a training dataset (the dataset's name plus ".jsonl"; required).
 	Dataset string `json:"dataset,omitempty"`
 	// DatasetContent is the dataset's jsonl file, base64 encoded. The sidecar has no dataset endpoints (the Go server owns
 	// the datasets); it stores the file internally under the name Dataset before it starts the job. Without it Dataset

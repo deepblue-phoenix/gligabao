@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Callable, Optional
 
-from .paths import MODELS_DIR, REMOTE_DATASET_PATH
+from .paths import MODELS_DIR
 
 
 def print_dependency_versions(libs=("torch", "transformers", "trl", "peft", "accelerate", "bitsandbytes", "unsloth")):
@@ -23,7 +23,7 @@ def print_dependency_versions(libs=("torch", "transformers", "trl", "peft", "acc
     print("=" * 60 + "\n")
 
 
-def load_training_dataset(format_fn: Callable[[dict], dict], dataset_path: str = REMOTE_DATASET_PATH):
+def load_training_dataset(format_fn: Callable[[dict], dict], dataset_path: str):
     """Load the JSONL dataset and format each example with `format_fn` (the model family's prompt_format.format_instruction:
     raw example -> {"text"}). Returns (raw_examples, datasets.Dataset with 'text')."""
     from datasets import Dataset

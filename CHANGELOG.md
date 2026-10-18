@@ -5,6 +5,25 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.47.0] - 2026-10-23
+
+### Added
+- **Training datasets are found by manifests in a training datasets directory.** A dataset is a subdirectory of `bin/datasets_training/` with a `dataset.toml` manifest (`name`, `description`, `format`, `file`, `version`, `generator`); the server scans the directory for manifests, and reads `file` to learn where the dataset's JSONL file is. It does so every time it lists the datasets or starts a job, so a dataset added by hand (or a regenerated data file) is available at once. Subdirectories whose manifest cannot be used (a TOML error, no `file`, a bad name, a missing data file, a duplicate name) are not datasets and are reported as `problems` in `GET /v1/gb/training/datasets` and under the datasets table of the admin UI. See `docs/training/DATASETS.md`.
+- `bin/datasets_training/world-knowledge-base/`: the world knowledge base dataset (500 examples) with its manifest and `generate_dataset.py`, moved here from `sidecar/ai_train/finetune_data/`. `bin/datasets_training/` is tracked in git (the rest of `bin/` is still ignored); the generated data files are ignored by a `.gitignore` in the dataset's subdirectory.
+- The Modal CLI reads the same manifests (`training_data.py`): `modal run app.py --action datasets` lists them (`GLIGABAO_DATASETS_TRAINING_DIR` overrides the directory).
+
+### Changed
+- **A job needs a dataset, by name.** `POST /v1/gb/training/jobs` takes the dataset's `name` in the now **required** `dataset` field (it used to be a file name, and optional); a missing or unknown name is a `400`. The sidecar's `POST /training/job_start` requires `dataset` too (the file name `<name>.jsonl` on its data volume). There is no default dataset any more: `modal run app.py --action sync|validate|train` need `--dataset <name>`.
+- `GET /v1/gb/training/datasets` answers `{"datasets": [...], "problems": [...]}`; each dataset has the manifest's `name`, `description`, `format`, `file`, `version`, `generator` and `dir` besides its record. `GET /v1/gb/training/datasets/preview` takes `name=` instead of `filename=`.
+- The default training datasets directory is `datasets_training` next to the database (`bin/datasets_training`; `/data/datasets_training` in the Docker image) instead of `<db>.training_datasets`. `serve --training-dataset-dir` and `ServeOptions.TrainingDatasetDir` set it as before. Datasets in an old `<db>.training_datasets` directory are not found: move each file into a subdirectory of the new one with a manifest (or upload it again).
+- An uploaded file becomes a dataset of its own: the subdirectory named like the file (without `.jsonl`) with a manifest the server writes. Uploading a name again replaces its file; a dataset of that name with a manifest of its own (naming another data file) answers `409`.
+- `gb_training_datasets` rows are made from the files the server finds (when it first sees one or sees it changed), keyed by `<name>.jsonl`; the table is unchanged.
+- `modal run app.py --action sync` uploads a dataset only when its content differs from the file on the volume (it compared modification times, with a `.metadata.json`, for the one default dataset).
+- Admin UI, training view: the datasets table shows each dataset's name and file, the picker has no "sidecar default dataset" entry, `Run` needs a dataset, and the unusable ones are listed.
+
+### Removed
+- The sidecar's default dataset (`gemma4_tool_calling_news_finance_v1.jsonl`), `finetune_data/`, `get_local_paths()` and the sidecar's `.metadata.json` bookkeeping.
+
 ## [0.46.1] - 2026-10-23
 
 ### Fixed

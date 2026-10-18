@@ -1,7 +1,7 @@
 // Package training holds the HTTP handlers of the training API (/v1/gb/training/): starting training jobs on the sidecar,
-// listing them, following their progress (the Monitor and its SSE feed), and the training datasets, both the JSONL files
-// uploaded to the server and the ones on the sidecar. They are registered by internal/server; the admin UI is one of
-// their clients.
+// listing them, following their progress (the Monitor and its SSE feed), and the training datasets (the subdirectories of
+// the training datasets directory that have a manifest, see manifest.go). They are registered by internal/server; the admin UI is
+// one of their clients.
 package training
 
 import "database/sql"
@@ -10,7 +10,8 @@ import "database/sql"
 type Database struct {
 	Name string
 	DB   *sql.DB
-	// DatasetDir is the directory the JSONL training datasets uploaded to DB are saved in ("" = uploads are refused).
+	// DatasetDir is the training datasets directory of DB: the datasets are its subdirectories with a manifest, and
+	// uploads are saved there ("" = DB has no datasets and uploads are refused).
 	DatasetDir string
 }
 

@@ -191,7 +191,7 @@ func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_c
 		api.RegisterEval(mux, mgr, d, llm, emb, jv, ws, providers)
 	}
 	dbs := append([]admin.Named{{Name: "standard", DB: d.Relational, Vectors: d.Vector, ImageDir: d.ImageDir}}, extraAdminDBs...)
-	// The training endpoints work with the same databases; only the main one has a directory for uploaded datasets.
+	// The training endpoints work with the same databases; only the main one has a training datasets directory.
 	tdbs := make([]training.Database, len(dbs))
 	for i, n := range dbs {
 		tdbs[i] = training.Database{Name: n.Name, DB: n.DB}

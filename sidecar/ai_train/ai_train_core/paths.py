@@ -9,9 +9,7 @@ MODELS_DIR = "/models"                              # fine-tuned LoRA adapters
 EVAL_DIR = "/eval"                                  # eval examples collected via the web API
 HF_CACHE_DIR = "/root/.cache/huggingface"           # base-model cache (avoids re-downloading)
 
-DATASET_FILENAME = "gemma4_tool_calling_news_finance_v1.jsonl"
-REMOTE_DATASET_PATH = f"{DATA_DIR}/{DATASET_FILENAME}"
-REMOTE_METADATA_PATH = f"{DATA_DIR}/.metadata.json"
+# A training dataset is the file `<DATA_DIR>/<name>.jsonl`; there is no default dataset (a job names the one it trains on).
 EVAL_DATASET_PATH = f"{EVAL_DIR}/eval_dataset.jsonl"
 
 # Every training job saves its weights (a LoRA adapter: a few files) in a directory of its own, named after the job, so

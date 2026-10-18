@@ -10,7 +10,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Training datasets (the gb_training_datasets table, see sqlite/db_schema.go). The files are kept by the caller.
+// Training datasets (the gb_training_datasets table, see sqlite/db_schema.go). The datasets themselves are the files of the training datasets directory (internal/api/training).
 
 // SaveTrainingDataset records a dataset file (Filename, SizeBytes, NumRecords, SHA256 of ds are used) as
 // TrainingDatasetStored, replacing the record with the same filename, and returns its ID.

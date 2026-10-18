@@ -32,10 +32,10 @@ def run_ping(volume_paths: list) -> dict:
     }
 
 
-def run_train(num_train_steps: int, model_size: str, commit_fn: Optional[Callable] = None,
-              dataset: str = "", job_id: str = "", event_kv=None,
+def run_train(num_train_steps: int, model_size: str, commit_fn: Optional[Callable] = None, *,
+              dataset: str, job_id: str = "", event_kv=None,
               model_family: str = DEFAULT_MODEL_FAMILY) -> dict:
-    """Fine-tune `model_size` on `dataset` (a file name on the data volume; the default dataset if empty).
+    """Fine-tune `model_size` on `dataset` (a file name on the data volume, <dataset name>.jsonl).
     `model_family` picks the pipeline (model_families.py). Must run in the training GPU image.
 
     Reports to the job's event log (event_log.py, in the key-value store `event_kv`; None: nothing is reported):
@@ -48,7 +48,7 @@ def run_train(num_train_steps: int, model_size: str, commit_fn: Optional[Callabl
     write_status(log, "running", model_size=model_size, num_train_steps=num_train_steps)
     try:
         dataset_path = resolve_dataset_path(dataset)
-        write_log(log, f"importing the training libraries; dataset {dataset or '(default)'}")
+        write_log(log, f"importing the training libraries; dataset {dataset}")
         model_train = family_module("model_train", model_family)
         result = model_train.run_finetuning(num_train_steps=num_train_steps, model_size=model_size,
                                             commit_fn=commit_fn, dataset_path=dataset_path, job_id=job_id, events=log)

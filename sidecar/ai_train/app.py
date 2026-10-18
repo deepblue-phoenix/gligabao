@@ -3,10 +3,11 @@
 Run (Modal):
     cd sidecar/ai_train
     modal run app.py                                          # ping: checks image/volumes
-    modal run app.py --action sync                            # upload the local dataset to the data volume
-    modal run app.py --action validate                        # validate the remote dataset
-    modal run app.py --action train --train-steps 100 --model-size 4b      # 4b (A10G) or 12b (A100)
-                                                              # [--dataset my.jsonl: a file on the data volume]
+    modal run app.py --action datasets                        # list the local datasets (bin/datasets_training/<name>/dataset.toml)
+    modal run app.py --action sync --dataset <name>           # upload a local dataset to the data volume (if it changed)
+    modal run app.py --action validate --dataset <name>       # validate the dataset on the data volume
+    modal run app.py --action train --dataset <name> --train-steps 100 --model-size 4b   # 4b (A10G) or 12b (A100);
+                                                              # uploads the (local) dataset first
     modal run app.py --action infer --model-size 4b --prompt "..."      # fine-tuned model inference
                                                               # [--model-path trained/<job id>: a trained model; default: the legacy adapter]
     modal serve app.py                                        # web API (dev); `modal deploy app.py` to persist
@@ -31,7 +32,7 @@ from ai_train_core.model_families import model_sizes
 MODEL_SIZES = model_sizes()   # of the default model family
 from config import CONFIG
 from providers import FunctionSpec, ImageSpec, get_provider
-from training_data import get_local_paths
+from training_data import DatasetError, find_local_dataset, list_local_datasets
 
 provider = get_provider(
     CONFIG.provider,
@@ -79,17 +80,17 @@ def ping() -> dict:
 
 
 @provider.function(FunctionSpec(image=CPU_IMAGE, timeout_s=300, volumes=DATA_VOLS))
-def sync_dataset_to_volume(dataset_content: bytes, local_mtime: float) -> dict:
-    """Write the dataset to the data volume if the local copy is newer."""
+def sync_dataset_to_volume(dataset_content: bytes, filename: str) -> dict:
+    """Write the dataset file `filename` (<dataset name>.jsonl) to the data volume unless it is there as it is."""
     from ai_train_core import dataset
-    return dataset.sync_dataset(dataset_content, local_mtime, commit_fn=provider.commit_volumes)
+    return dataset.sync_dataset(dataset_content, filename, commit_fn=provider.commit_volumes)
 
 
 @provider.function(FunctionSpec(image=CPU_IMAGE, timeout_s=300, volumes=DATA_VOLS))
-def validate_dataset() -> dict:
+def validate_dataset(filename: str) -> dict:
     from ai_train_core import dataset
     provider.reload_volumes([paths.DATA_DIR])
-    return dataset.validate_dataset()
+    return dataset.validate_dataset(dataset.resolve_dataset_path(filename))
 
 
 #-----------------------------------------------------------------------------------------
@@ -101,7 +102,7 @@ def validate_dataset() -> dict:
     timeout_s=CONFIG.train_timeout_s,
     volumes=TRAIN_VOLS,
     secrets=secrets))
-def train_4b(num_train_steps: int = 100, dataset: str = "", job_id: str = "") -> dict:
+def train_4b(dataset: str, num_train_steps: int = 100, job_id: str = "") -> dict:
     from ai_train_core import bootstrap
     return bootstrap.run_train(num_train_steps, "4b", commit_fn=provider.commit_volumes, dataset=dataset, job_id=job_id,
                                event_kv=provider.event_kv())
@@ -113,7 +114,7 @@ def train_4b(num_train_steps: int = 100, dataset: str = "", job_id: str = "") ->
     timeout_s=CONFIG.train_timeout_s,
     volumes=TRAIN_VOLS,
     secrets=secrets))
-def train_12b(num_train_steps: int = 100, dataset: str = "", job_id: str = "") -> dict:
+def train_12b(dataset: str, num_train_steps: int = 100, job_id: str = "") -> dict:
     from ai_train_core import bootstrap
     return bootstrap.run_train(num_train_steps, "12b", commit_fn=provider.commit_volumes, dataset=dataset, job_id=job_id,
                                event_kv=provider.event_kv())
@@ -125,9 +126,9 @@ TRAIN_FUNCTIONS = {"4b": train_4b, "12b": train_12b}
 # The router only waits on the GPU job, so its timeout must match the job's: a shorter one gets
 # the wrapper cancelled mid-training (and the blocked wrapper is then force-killed, aborting the run).
 @provider.function(FunctionSpec(image=CPU_IMAGE, timeout_s=CONFIG.train_timeout_s))
-def train(num_train_steps: int = 100, model_size: str = "4b", dataset: str = "", job_id: str = "") -> dict:
-    """Route to the per-size training function. `dataset` is a file name on the data volume ("" = the default
-    dataset); `job_id` names the event log the job reports to."""
+def train(dataset: str, num_train_steps: int = 100, model_size: str = "4b", job_id: str = "") -> dict:
+    """Route to the per-size training function. `dataset` is a file name on the data volume (<dataset name>.jsonl);
+    `job_id` names the event log the job reports to."""
     size = model_size.lower()
     if size not in TRAIN_FUNCTIONS:
         raise ValueError(f"Invalid model_size '{model_size}'. Must be one of {list(MODEL_SIZES)}.")
@@ -218,39 +219,51 @@ def serve_api():
 #-----------------------------------------------------------------------------------------
 # CLI
 
-def _local_dataset_path() -> str:
-    return get_local_paths()["gemma4_tool_calling_exp1"]["path_str"]
-
-
-def _sync_local_dataset() -> dict:
-    path = _local_dataset_path()
-    with open(path, "rb") as f:
-        content = f.read()
-    print(f"Local dataset: {path} ({len(content)} bytes)")
-    return provider.call(sync_dataset_to_volume, content, os.path.getmtime(path))
+def _sync_local_dataset(name: str) -> dict:
+    """Upload the local dataset `name` (its manifest's data file) to the data volume, as <name>.jsonl."""
+    ds = find_local_dataset(name)
+    content = ds.path.read_bytes()
+    print(f"Local dataset {ds.name}: {ds.path} ({len(content)} bytes)")
+    return provider.call(sync_dataset_to_volume, content, ds.filename)
 
 
 @provider.local_entrypoint()
 def main(action: str = "ping", train_steps: int = 5, model_size: str = "4b", dataset: str = "",
          model_path: str = "", prompt: str = "Check recent news about NVIDIA and buy 10 shares if it's positive"):
     print(f"provider={provider.name} app={CONFIG.app_name} action={action} model_size={model_size}")
+    try:
+        _run_action(action, train_steps, model_size, dataset, model_path, prompt)
+    except DatasetError as e:
+        print(f"error: {e}")
+
+
+def _run_action(action, train_steps, model_size, dataset, model_path, prompt) -> None:
     if action == "ping":
         print(provider.call(ping))
+    elif action == "datasets":
+        found, problems = list_local_datasets()
+        for ds in found:
+            print(f"{ds.name:30} {ds.path}  {ds.description[:60]}")
+        for p in problems:
+            print(f"{p}")
+        if not found and not problems:
+            print("no datasets: add <name>/dataset.toml directories to the training datasets directory")
     elif action == "sync":
-        if not os.path.exists(_local_dataset_path()):
-            print(f"Dataset not found at {_local_dataset_path()}. Run: cd finetune_data && python generate_dataset.py")
-            return
-        print(_sync_local_dataset())
+        print(_sync_local_dataset(_need_dataset(dataset)))
     elif action == "validate":
-        print(provider.call(validate_dataset))
+        print(provider.call(validate_dataset, find_local_dataset(_need_dataset(dataset)).filename))
     elif action == "train":
-        if os.path.exists(_local_dataset_path()):
-            print("[1/2] Syncing dataset:", _sync_local_dataset())
-        else:
-            print("[1/2] Local dataset not found, using the existing remote dataset")
+        ds = find_local_dataset(_need_dataset(dataset))
+        print("[1/2] Syncing dataset:", _sync_local_dataset(ds.name))
         print(f"[2/2] Fine-tuning {model_size} for {train_steps} steps...")
-        print(provider.call(train, num_train_steps=train_steps, model_size=model_size, dataset=dataset))
+        print(provider.call(train, dataset=ds.filename, num_train_steps=train_steps, model_size=model_size))
     elif action == "infer":
         print(provider.call(infer, prompt, 1024, 0.7, model_size, model_path))
     else:
-        print(f"unknown action {action!r}; valid: ping, sync, validate, train, infer")
+        print(f"unknown action {action!r}; valid: ping, datasets, sync, validate, train, infer")
+
+
+def _need_dataset(name: str) -> str:
+    if not name:
+        raise DatasetError("--dataset <name> is required (see --action datasets)")
+    return name

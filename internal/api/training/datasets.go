@@ -1,19 +1,21 @@
 package training
 
-// Training datasets: a JSONL file uploaded through the Go server is validated, saved as a file in the
-// training dataset directory and recorded in the gb_training_datasets table. Datasets are managed by the Go server alone:
-// the sidecar has no dataset endpoints. The file travels to the sidecar inside the request that starts a training job on
-// it (see loadTrainingDataset); the sidecar stores it internally.
+// Training datasets: the datasets are what the training datasets directory holds (manifest.go: a subdirectory with a
+// dataset.toml each). The server reads the manifests every time it lists the datasets or starts a job, so a dataset
+// added to the directory by hand is available at once; a JSONL file uploaded through the API (UploadDatasetOf) is saved
+// there as a dataset of its own. Each dataset has a record in the gb_training_datasets table (its size, records, digest
+// and whether the sidecar has this version of the file), made when the server first sees the file or sees it changed.
+// The sidecar has no dataset endpoints: the file travels to it inside the request that starts a training job on it (see
+// loadTrainingDataset); the sidecar stores it internally.
 
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path"
@@ -23,15 +25,16 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/BurntSushi/toml"
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	log "github.com/sirupsen/logrus"
 )
 
-// MaxDatasetBytes is the largest dataset file the upload accepts.
+// MaxDatasetBytes is the largest dataset file there can be (the upload refuses a bigger one, a manifest naming one is a problem).
 const MaxDatasetBytes = 64 << 20
 
-// datasetFilenameRe is what the sidecar accepts as a dataset's file name (sidecar/ai_train/ai_train_core/dataset.py).
+// datasetFilenameRe is what an uploaded file's name must be (the dataset gets its name without .jsonl; see datasetNameRe).
 var datasetFilenameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.jsonl$`)
 
 // ValidateDataset checks that content is a JSONL training dataset, the format the training reads (see
@@ -73,7 +76,7 @@ func ValidateDataset(content []byte) (int, error) {
 }
 
 // stageDatasetFile writes content to dir/name atomically (a temp file in dir, renamed), creating dir. It returns a
-// function that removes the temp file if the caller does not go on, and one that completes the write (the rename).
+// function that completes the write (the rename), and one that removes the temp file if the caller does not go on.
 func stageDatasetFile(dir, name string, content []byte) (commit func() error, discard func(), err error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, nil, err
@@ -95,12 +98,112 @@ func stageDatasetFile(dir, name string, content []byte) (commit func() error, di
 	return func() error { return os.Rename(tmp.Name(), filepath.Join(dir, name)) }, discard, nil
 }
 
+// DatasetInfo is a dataset as the API shows it: its record (relational.TrainingDataset; Filename is the name it has on
+// the sidecar, "<name>.jsonl") and what its manifest says.
+type DatasetInfo struct {
+	relational.TrainingDataset
+	Manifest
+	// Dir is the dataset's subdirectory in the training datasets directory.
+	Dir string `json:"dir"`
+}
+
+// ensureRecord returns the record of ds, whose data file has the stats s: the stored one if it describes this version of
+// the file, otherwise a new one (status stored, not synced), replacing the record that described an earlier version.
+func ensureRecord(ctx context.Context, n Database, ds LocalDataset, s fileStats) (*relational.TrainingDataset, error) {
+	rec, err := relational.GetTrainingDatasetByFilename(ctx, n.DB, ds.Filename())
+	if err == nil && rec.SHA256 == s.sha256 && rec.SizeBytes == s.size && rec.NumRecords == s.records {
+		return rec, nil
+	}
+	if err != nil && !errors.Is(err, relational.ErrNotFound) {
+		return nil, err
+	}
+	if _, err := relational.SaveTrainingDataset(ctx, n.DB, relational.TrainingDataset{
+		Filename: ds.Filename(), SizeBytes: s.size, NumRecords: s.records, SHA256: s.sha256}); err != nil {
+		return nil, err
+	}
+	return relational.GetTrainingDatasetByFilename(ctx, n.DB, ds.Filename())
+}
+
+func infoOf(ds LocalDataset, rec *relational.TrainingDataset) DatasetInfo {
+	return DatasetInfo{TrainingDataset: *rec, Manifest: ds.Manifest, Dir: filepath.Base(ds.Dir)}
+}
+
+// listDatasets scans n's training datasets directory (DiscoverDatasets) and returns its usable datasets, by name, with their
+// records (made or updated here when the file is new or changed), and the problems of the ones that are not usable.
+func listDatasets(ctx context.Context, n Database) ([]DatasetInfo, []DatasetProblem, error) {
+	found, problems := DiscoverDatasets(n.DatasetDir)
+	out := []DatasetInfo{}
+	for _, ds := range found {
+		s, err := datasetFileStats(ds.Path)
+		if err != nil {
+			problems = append(problems, DatasetProblem{Dir: filepath.Base(ds.Dir), Error: err.Error()})
+			continue
+		}
+		rec, err := ensureRecord(ctx, n, ds, s)
+		if err != nil {
+			return nil, nil, err
+		}
+		out = append(out, infoOf(ds, rec))
+	}
+	return out, problems, nil
+}
+
+var errUnknownDataset = errors.New("unknown dataset")
+
+// findDataset returns the dataset called name in n's training datasets directory, or errUnknownDataset. Other errors are
+// safe to show to the user.
+func findDataset(n Database, name string) (*LocalDataset, error) {
+	if !validDatasetName(name) {
+		return nil, errUnknownDataset
+	}
+	found, _ := DiscoverDatasets(n.DatasetDir)
+	for i := range found {
+		if found[i].Name == name {
+			return &found[i], nil
+		}
+	}
+	return nil, errUnknownDataset
+}
+
+// loadTrainingDataset returns the record and the file of the dataset called name, to be sent to the sidecar with a job.
+// The record is brought up to date with the file just read. An unknown name gives errUnknownDataset. The other errors
+// are safe to show to the user.
+func loadTrainingDataset(ctx context.Context, n Database, name string) (*relational.TrainingDataset, []byte, error) {
+	ds, err := findDataset(n, name)
+	if err != nil {
+		return nil, nil, err
+	}
+	content, err := os.ReadFile(ds.Path)
+	if err != nil {
+		log.WithError(err).WithField("dataset", name).Error("training: read training dataset file failed")
+		return nil, nil, fmt.Errorf("the data file of dataset %s cannot be read", name)
+	}
+	if len(content) > MaxDatasetBytes {
+		return nil, nil, fmt.Errorf("the data file of dataset %s is over %d MB", name, MaxDatasetBytes>>20)
+	}
+	s, err := contentStats(content)
+	if err != nil {
+		return nil, nil, fmt.Errorf("dataset %s: invalid data file: %w", name, err)
+	}
+	rec, err := ensureRecord(ctx, n, *ds, s)
+	if err != nil {
+		log.WithError(err).Error("training: record training dataset failed")
+		return nil, nil, errors.New("failed to record the dataset")
+	}
+	return rec, content, nil
+}
+
+// uploadedManifestDescription is the description of the manifest an upload writes.
+const uploadedManifestDescription = "Uploaded through the training datasets API."
+
 // UploadDatasetOf serves POST /v1/gb/training/datasets[?db=<name>], a multipart form with the JSONL file in the
 // field "file" (and optionally "filename", which overrides the uploaded file's name). The file must be a valid dataset
-// (ValidateDataset) with a plain *.jsonl name. Go saves it in the training dataset directory of one of dbs (the
-// first without db; Database.DatasetDir) and records it in gb_training_datasets of that database; uploading a name
-// again replaces the dataset. The sidecar is not involved. It answers 201 with the record (relational.TrainingDataset). A
-// bad file answers 400, a file over MaxDatasetBytes 413.
+// (ValidateDataset) with a plain *.jsonl name. It becomes the dataset named like the file without ".jsonl": Go saves it
+// in the subdirectory of that name of the training datasets directory of one of dbs (the first without db; Database.DatasetDir),
+// next to a manifest it writes if there is none, and records it in gb_training_datasets of that database. Uploading a
+// name again replaces the dataset's file. A dataset of that name that has a manifest of its own, naming another data file,
+// or a dataset of that name in another directory, is not replaced: 409. The sidecar is not involved. It answers 201
+// with the dataset (DatasetInfo). A bad file answers 400, a file over MaxDatasetBytes 413.
 func UploadDatasetOf(dbs []Database) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		n, ok := pick(dbs, r.URL.Query().Get("db"))
@@ -133,12 +236,13 @@ func UploadDatasetOf(dbs []Database) http.HandlerFunc {
 			httputil.Error(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("the dataset is over %d MB", MaxDatasetBytes>>20))
 			return
 		}
-		name := strings.TrimSpace(r.FormValue("filename"))
-		if name == "" {
-			name = hdr.Filename
+		filename := strings.TrimSpace(r.FormValue("filename"))
+		if filename == "" {
+			filename = hdr.Filename
 		}
-		name = path.Base(strings.ReplaceAll(name, `\`, "/")) // some browsers send the full path
-		if !datasetFilenameRe.MatchString(name) || strings.Contains(name, "..") {
+		filename = path.Base(strings.ReplaceAll(filename, `\`, "/")) // some browsers send the full path
+		name := strings.TrimSuffix(filename, ".jsonl")
+		if !datasetFilenameRe.MatchString(filename) || !validDatasetName(name) {
 			httputil.Error(w, http.StatusBadRequest, "the file name must be a plain *.jsonl name (letters, digits, . _ -)")
 			return
 		}
@@ -148,24 +252,44 @@ func UploadDatasetOf(dbs []Database) http.HandlerFunc {
 			return
 		}
 		content := buf.Bytes()
-		records, err := ValidateDataset(content)
+		stats, err := contentStats(content)
 		if err != nil {
 			httputil.Error(w, http.StatusBadRequest, "invalid dataset: "+err.Error())
 			return
 		}
 
+		// The dataset's subdirectory: a manifest that is there already must be about this very file.
+		dsDir := filepath.Join(n.DatasetDir, name)
+		manifestPath := filepath.Join(dsDir, ManifestFilename)
+		_, statErr := os.Stat(manifestPath)
+		writeManifest := errors.Is(statErr, fs.ErrNotExist)
+		if !writeManifest {
+			if cur, err := parseManifest(manifestPath); err != nil || cur.Name != name || cur.Manifest.File != filename {
+				httputil.Error(w, http.StatusConflict, "a dataset named "+name+" exists already with its own manifest and data file; upload under another name")
+				return
+			}
+		}
+		found, _ := DiscoverDatasets(n.DatasetDir)
+		for _, f := range found {
+			if f.Name == name && filepath.Base(f.Dir) != name {
+				httputil.Error(w, http.StatusConflict, "a dataset named "+name+" exists already in "+filepath.Base(f.Dir))
+				return
+			}
+		}
+
 		// The file is staged first, then recorded, then moved into place: a failure leaves neither a record without its
 		// file nor a half-written file.
 		ctx := context.WithoutCancel(r.Context())
-		commit, discard, err := stageDatasetFile(n.DatasetDir, name, content)
+		commit, discard, err := stageDatasetFile(dsDir, filename, content)
 		if err != nil {
 			log.WithError(err).Error("training: save training dataset file failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to save the dataset file")
 			return
 		}
-		sum := sha256.Sum256(content)
+		ds := LocalDataset{Manifest: Manifest{Name: name, Description: uploadedManifestDescription, Format: FormatJSONL, File: filename},
+			Dir: dsDir, Path: filepath.Join(dsDir, filename)}
 		if _, err := relational.SaveTrainingDataset(ctx, n.DB, relational.TrainingDataset{
-			Filename: name, SizeBytes: int64(len(content)), NumRecords: records, SHA256: hex.EncodeToString(sum[:])}); err != nil {
+			Filename: ds.Filename(), SizeBytes: stats.size, NumRecords: stats.records, SHA256: stats.sha256}); err != nil {
 			discard()
 			log.WithError(err).Error("training: record training dataset failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to record the dataset")
@@ -177,42 +301,40 @@ func UploadDatasetOf(dbs []Database) http.HandlerFunc {
 			httputil.Error(w, http.StatusInternalServerError, "failed to save the dataset file")
 			return
 		}
-		ds, err := relational.GetTrainingDatasetByFilename(ctx, n.DB, name)
+		if writeManifest {
+			if err := writeUploadManifest(manifestPath, ds.Manifest); err != nil {
+				log.WithError(err).Error("training: write training dataset manifest failed")
+				httputil.Error(w, http.StatusInternalServerError, "failed to save the dataset's manifest")
+				return
+			}
+		}
+		rec, err := relational.GetTrainingDatasetByFilename(ctx, n.DB, ds.Filename())
 		if err != nil {
 			log.WithError(err).Error("training: read training dataset failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the dataset's record")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusCreated, ds)
+		httputil.WriteJSON(w, http.StatusCreated, infoOf(ds, rec))
 	}
 }
 
-var errUnknownDataset = errors.New("unknown dataset")
-
-// loadTrainingDataset returns the record and the file of the dataset named filename, to be sent to the sidecar with a
-// job. The file is read from the dataset directory and checked against the record's digest. An unknown name gives
-// errUnknownDataset. The other errors are safe to show to the user.
-func loadTrainingDataset(ctx context.Context, n Database, filename string) (*relational.TrainingDataset, []byte, error) {
-	ds, err := relational.GetTrainingDatasetByFilename(ctx, n.DB, filename)
-	if errors.Is(err, relational.ErrNotFound) {
-		return nil, nil, errUnknownDataset
-	} else if err != nil {
-		log.WithError(err).Error("training: read training dataset failed")
-		return nil, nil, errors.New("failed to read the dataset's record")
-	}
-	content, err := os.ReadFile(filepath.Join(n.DatasetDir, ds.Filename))
+// writeUploadManifest creates the manifest file of an uploaded dataset (it must not exist).
+func writeUploadManifest(path string, m Manifest) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		log.WithError(err).WithField("filename", filename).Error("training: read training dataset file failed")
-		return nil, nil, fmt.Errorf("the file of dataset %s is missing; upload it again", filename)
+		return err
 	}
-	if sum := sha256.Sum256(content); hex.EncodeToString(sum[:]) != ds.SHA256 {
-		return nil, nil, fmt.Errorf("the file of dataset %s does not match its record; upload it again", filename)
+	if err := toml.NewEncoder(f).Encode(m); err != nil {
+		f.Close()
+		os.Remove(path)
+		return err
 	}
-	return ds, content, nil
+	return f.Close()
 }
 
-// ListDatasetsOf serves GET /v1/gb/training/datasets[?db=<name>]: {"datasets": [...]}, the training datasets
-// (relational.TrainingDataset) of the database, the latest upload first. It never asks the sidecar.
+// ListDatasetsOf serves GET /v1/gb/training/datasets[?db=<name>]: {"datasets": [...], "problems": [...]}, the training
+// datasets (DatasetInfo) found in the training datasets directory by their manifests, by name, and the subdirectories with a
+// manifest that are not usable (DatasetProblem). It never asks the sidecar.
 func ListDatasetsOf(dbs []Database) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		n, ok := pick(dbs, r.URL.Query().Get("db"))
@@ -220,16 +342,16 @@ func ListDatasetsOf(dbs []Database) http.HandlerFunc {
 			httputil.Error(w, http.StatusNotFound, "unknown database")
 			return
 		}
-		ds, err := relational.ListTrainingDatasets(r.Context(), n.DB)
+		ds, problems, err := listDatasets(r.Context(), n)
 		if err != nil {
-			log.WithError(err).Error("training: list training dataset records failed")
+			log.WithError(err).Error("training: list training datasets failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to list the datasets")
 			return
 		}
-		if ds == nil {
-			ds = []relational.TrainingDataset{}
+		if problems == nil {
+			problems = []DatasetProblem{}
 		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"datasets": ds})
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"datasets": ds, "problems": problems})
 	}
 }
 
@@ -240,8 +362,8 @@ const (
 	previewReadBytes    = 4 << 20
 )
 
-// PreviewDatasetOf serves GET /v1/gb/training/datasets/preview?filename=<name>[&lines=<n>][&db=<name>]: the first lines
-// (default 100, at most 1000) of a dataset's file, so it can be inspected: {"filename", "lines": [...], "num_records",
+// PreviewDatasetOf serves GET /v1/gb/training/datasets/preview?name=<dataset>[&lines=<n>][&db=<name>]: the first lines
+// (default 100, at most 1000) of a dataset's data file, so it can be inspected: {"name", "lines": [...], "num_records",
 // "truncated"}. truncated is true if the file has more lines than returned. Only the beginning of the file is read. An
 // unknown dataset answers 404.
 func PreviewDatasetOf(dbs []Database) http.HandlerFunc {
@@ -252,9 +374,9 @@ func PreviewDatasetOf(dbs []Database) http.HandlerFunc {
 			httputil.Error(w, http.StatusNotFound, "unknown database")
 			return
 		}
-		name := q.Get("filename")
-		if !datasetFilenameRe.MatchString(name) {
-			httputil.Error(w, http.StatusBadRequest, "invalid dataset file name")
+		name := q.Get("name")
+		if !validDatasetName(name) {
+			httputil.Error(w, http.StatusBadRequest, "invalid dataset name")
 			return
 		}
 		limit := previewDefaultLines
@@ -266,25 +388,27 @@ func PreviewDatasetOf(dbs []Database) http.HandlerFunc {
 			}
 			limit = l
 		}
-		ds, err := relational.GetTrainingDatasetByFilename(r.Context(), n.DB, name)
-		if errors.Is(err, relational.ErrNotFound) {
+		ds, err := findDataset(n, name)
+		if errors.Is(err, errUnknownDataset) {
 			httputil.Error(w, http.StatusNotFound, "unknown dataset")
 			return
-		} else if err != nil {
-			log.WithError(err).Error("training: read training dataset failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read the dataset's record")
+		}
+		stats, err := datasetFileStats(ds.Path)
+		if err != nil {
+			log.WithError(err).WithField("dataset", name).Error("training: read training dataset file failed")
+			httputil.Error(w, http.StatusNotFound, fmt.Sprintf("the data file of dataset %s cannot be read", name))
 			return
 		}
-		f, err := os.Open(filepath.Join(n.DatasetDir, ds.Filename))
+		f, err := os.Open(ds.Path)
 		if err != nil {
-			log.WithError(err).WithField("filename", name).Error("training: open training dataset file failed")
-			httputil.Error(w, http.StatusNotFound, fmt.Sprintf("the file of dataset %s is missing; upload it again", name))
+			log.WithError(err).WithField("dataset", name).Error("training: open training dataset file failed")
+			httputil.Error(w, http.StatusNotFound, fmt.Sprintf("the data file of dataset %s cannot be read", name))
 			return
 		}
 		defer f.Close()
 		buf, err := io.ReadAll(io.LimitReader(f, previewReadBytes+1))
 		if err != nil {
-			log.WithError(err).WithField("filename", name).Error("training: read training dataset file failed")
+			log.WithError(err).WithField("dataset", name).Error("training: read training dataset file failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the dataset file")
 			return
 		}
@@ -311,6 +435,6 @@ func PreviewDatasetOf(dbs []Database) http.HandlerFunc {
 			lines = append(lines, strings.ToValidUTF8(strings.TrimSuffix(string(line), "\r"), "\uFFFD"))
 		}
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{
-			"filename": ds.Filename, "lines": lines, "num_records": ds.NumRecords, "truncated": truncated})
+			"name": ds.Name, "lines": lines, "num_records": stats.records, "truncated": truncated})
 	}
 }

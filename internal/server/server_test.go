@@ -18,7 +18,7 @@ import (
 // (and not under the admin path any more).
 func TestTrainingEndpointsAreNotAdmin(t *testing.T) {
 	dbtest.Run(t, func(t *testing.T, d *sql.DB) {
-		dir := filepath.Join(t.TempDir(), "datasets")
+		dir := filepath.Join(t.TempDir(), "datasets_training")
 		h := NewHandler(t.Context(), &db.DB{Relational: d, TrainingDatasetDir: dir}, nil, nil, nil, nil, nil, nil, false, false)
 		do := func(req *http.Request) *httptest.ResponseRecorder {
 			rec := httptest.NewRecorder()
@@ -36,14 +36,14 @@ func TestTrainingEndpointsAreNotAdmin(t *testing.T) {
 		if rec := do(req); rec.Code != http.StatusCreated {
 			t.Fatalf("upload: %d %s", rec.Code, rec.Body)
 		}
-		if rec := do(httptest.NewRequest("GET", "/v1/gb/training/datasets", nil)); rec.Code != 200 || !strings.Contains(rec.Body.String(), "a.jsonl") { // no sidecar needed
+		if rec := do(httptest.NewRequest("GET", "/v1/gb/training/datasets", nil)); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"name":"a"`) { // no sidecar needed
 			t.Fatalf("datasets: %d %s", rec.Code, rec.Body)
 		}
-		if rec := do(httptest.NewRequest("GET", "/v1/gb/training/datasets/preview?filename=a.jsonl&lines=5", nil)); rec.Code != 200 ||
+		if rec := do(httptest.NewRequest("GET", "/v1/gb/training/datasets/preview?name=a&lines=5", nil)); rec.Code != 200 ||
 			!strings.Contains(rec.Body.String(), `"truncated":false`) || !strings.Contains(rec.Body.String(), `"lines":["{\"instruction`) {
 			t.Fatalf("preview: %d %s", rec.Code, rec.Body)
 		}
-		if rec := do(httptest.NewRequest("GET", "/v1/gb/training/datasets/preview?filename=nope.jsonl", nil)); rec.Code != http.StatusNotFound {
+		if rec := do(httptest.NewRequest("GET", "/v1/gb/training/datasets/preview?name=nope", nil)); rec.Code != http.StatusNotFound {
 			t.Fatalf("preview unknown: %d", rec.Code)
 		}
 		if rec := do(httptest.NewRequest("GET", "/v1/gb/training/jobs", nil)); rec.Code != 200 {

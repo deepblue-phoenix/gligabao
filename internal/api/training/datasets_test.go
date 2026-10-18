@@ -62,7 +62,7 @@ func TestUploadTrainingDataset(t *testing.T) { dbtest.Run(t, testUploadTrainingD
 
 func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 	ctx := t.Context()
-	dir := filepath.Join(t.TempDir(), "datasets") // created by the first upload
+	dir := filepath.Join(t.TempDir(), "datasets_training") // created by the first upload
 	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: dir}}
 	h := training.UploadDatasetOf(dbs)
 
@@ -70,13 +70,19 @@ func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("upload: %d %s", rec.Code, rec.Body)
 	}
-	for _, want := range []string{`"filename":"mine.jsonl"`, `"num_records":2`, `"status":"stored"`, `"synced_at":null`} {
+	for _, want := range []string{`"filename":"mine.jsonl"`, `"name":"mine"`, `"file":"mine.jsonl"`, `"dir":"mine"`, `"num_records":2`, `"status":"stored"`, `"synced_at":null`} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("response lacks %s: %s", want, rec.Body)
 		}
 	}
-	if b, err := os.ReadFile(filepath.Join(dir, "mine.jsonl")); err != nil || string(b) != goodDataset {
+	if b, err := os.ReadFile(filepath.Join(dir, "mine", "mine.jsonl")); err != nil || string(b) != goodDataset {
 		t.Fatalf("file: %q, %v", b, err)
+	}
+	// ... in a dataset directory of its own, with a manifest, so that it is found as a dataset.
+	found, problems := training.DiscoverDatasets(dir)
+	if len(found) != 1 || len(problems) != 0 || found[0].Name != "mine" || found[0].Manifest.File != "mine.jsonl" ||
+		found[0].Path != filepath.Join(dir, "mine", "mine.jsonl") || found[0].Description == "" {
+		t.Fatalf("discovered: %+v, %v", found, problems)
 	}
 	ds, err := relational.GetTrainingDatasetByFilename(ctx, d, "mine.jsonl")
 	if err != nil || ds.Status != "stored" || ds.SizeBytes != int64(len(goodDataset)) || len(ds.SHA256) != 64 {
@@ -90,17 +96,36 @@ func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 	if rec := upload(h, "/x", "file", `C:\tmp\x.jsonl`, goodDataset, nil); rec.Code != 201 {
 		t.Fatalf("path: %d %s", rec.Code, rec.Body)
 	}
-	for _, f := range []string{"renamed.jsonl", "x.jsonl"} {
-		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
-			t.Fatal(err)
+	for _, f := range []string{"renamed", "x"} {
+		for _, name := range []string{f + ".jsonl", training.ManifestFilename} {
+			if _, err := os.Stat(filepath.Join(dir, f, name)); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	// Uploading a name again replaces the file and the record.
 	if rec := upload(h, "/x", "file", "mine.jsonl", "{\"instruction\":\"z\",\"output\":\"z\"}\n", nil); rec.Code != 201 || !strings.Contains(rec.Body.String(), `"id":1`) || !strings.Contains(rec.Body.String(), `"num_records":1`) {
 		t.Fatalf("replace: %d %s", rec.Code, rec.Body)
 	}
-	if b, _ := os.ReadFile(filepath.Join(dir, "mine.jsonl")); strings.Contains(string(b), "\"a\"") {
+	if b, _ := os.ReadFile(filepath.Join(dir, "mine", "mine.jsonl")); strings.Contains(string(b), "\"a\"") {
 		t.Fatalf("file not replaced: %q", b)
+	}
+
+	// A dataset directory with a manifest of its own is not taken over by an upload of the same name.
+	own := filepath.Join(dir, "own")
+	os.MkdirAll(own, 0o755)
+	os.WriteFile(filepath.Join(own, training.ManifestFilename), []byte("file = \"data.jsonl\"\n"), 0o644)
+	os.WriteFile(filepath.Join(own, "data.jsonl"), []byte(goodDataset), 0o644)
+	if rec := upload(h, "/x", "file", "own.jsonl", goodDataset, nil); rec.Code != http.StatusConflict {
+		t.Fatalf("own manifest: %d %s", rec.Code, rec.Body)
+	}
+	// ... nor is a name another dataset (in another directory) has.
+	named := filepath.Join(dir, "elsewhere")
+	os.MkdirAll(named, 0o755)
+	os.WriteFile(filepath.Join(named, training.ManifestFilename), []byte("name = \"taken\"\nfile = \"d.jsonl\"\n"), 0o644)
+	os.WriteFile(filepath.Join(named, "d.jsonl"), []byte(goodDataset), 0o644)
+	if rec := upload(h, "/x", "file", "taken.jsonl", goodDataset, nil); rec.Code != http.StatusConflict {
+		t.Fatalf("taken name: %d %s", rec.Code, rec.Body)
 	}
 
 	// Bad input stores nothing.
@@ -120,8 +145,9 @@ func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 	}
 	list, _ := relational.ListTrainingDatasets(ctx, d)
 	entries, _ := os.ReadDir(dir)
-	if len(list) != 3 || len(entries) != 3 { // no temp files left either
-		t.Fatalf("records %d, files %d", len(list), len(entries))
+	files, _ := os.ReadDir(filepath.Join(dir, "mine"))
+	if len(list) != 3 || len(entries) != 5 || len(files) != 2 { // mine, renamed, x, own, elsewhere; no temp files left either
+		t.Fatalf("records %d, directories %d, files %d", len(list), len(entries), len(files))
 	}
 
 	// No directory configured: refused.
@@ -129,16 +155,21 @@ func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 		t.Fatalf("no dir: %d", rec.Code)
 	}
 
-	// The list endpoint shows the records.
+	// The list endpoint shows what the manifests found, with the records (made for a dataset added by hand too).
 	lrec := httptest.NewRecorder()
 	training.ListDatasetsOf(dbs)(lrec, httptest.NewRequest("GET", "/x", nil))
-	if lrec.Code != 200 || !strings.Contains(lrec.Body.String(), `"filename":"x.jsonl"`) || !strings.Contains(lrec.Body.String(), `"datasets":[`) {
-		t.Fatalf("list: %d %s", lrec.Code, lrec.Body)
+	for _, want := range []string{`"datasets":[`, `"name":"x"`, `"filename":"x.jsonl"`, `"name":"own"`, `"filename":"own.jsonl"`, `"file":"data.jsonl"`, `"problems":[]`} {
+		if lrec.Code != 200 || !strings.Contains(lrec.Body.String(), want) {
+			t.Fatalf("list lacks %s: %d %s", want, lrec.Code, lrec.Body)
+		}
+	}
+	if rec, err := relational.GetTrainingDatasetByFilename(ctx, d, "own.jsonl"); err != nil || rec.NumRecords != 2 {
+		t.Fatalf("record of the dataset added by hand: %+v, %v", rec, err)
 	}
 }
 
 // TestStartJobSendsDataset: the upload handler takes no sidecar at all, and the dataset reaches the sidecar only inside the
-// request that starts a job that uses it.
+// request that starts a job that uses it. A job names a dataset by its name.
 func TestStartJobSendsDataset(t *testing.T) { dbtest.Run(t, testStartJobSendsDataset) }
 
 func testStartJobSendsDataset(t *testing.T, d *sql.DB) {
@@ -165,7 +196,7 @@ func testStartJobSendsDataset(t *testing.T, d *sql.DB) {
 		t.Fatalf("the upload reached the sidecar: %v", sc.reqs)
 	}
 
-	if rec := startDS("mine.jsonl"); rec.Code != 201 {
+	if rec := startDS("mine"); rec.Code != 201 {
 		t.Fatalf("start: %d %s", rec.Code, rec.Body)
 	}
 	if len(sc.reqs) != 1 || sc.reqs[0].Dataset != "mine.jsonl" || sent(0) != goodDataset {
@@ -181,30 +212,49 @@ func testStartJobSendsDataset(t *testing.T, d *sql.DB) {
 		t.Fatalf("after re-upload: %+v", ds)
 	}
 	sc.err = errors.New("down")
-	if rec := startDS("mine.jsonl"); rec.Code != http.StatusBadGateway {
+	if rec := startDS("mine"); rec.Code != http.StatusBadGateway {
 		t.Fatalf("sidecar down: %d %s", rec.Code, rec.Body)
 	}
 	if ds, _ := relational.GetTrainingDatasetByFilename(ctx, d, "mine.jsonl"); ds.Status != "stored" {
 		t.Fatalf("after failed start: %+v", ds)
 	}
 	sc.err = nil
-	if rec := startDS("mine.jsonl"); rec.Code != 201 || sent(len(sc.reqs)-1) != goodDataset+goodDataset {
+	if rec := startDS("mine"); rec.Code != 201 || sent(len(sc.reqs)-1) != goodDataset+goodDataset {
 		t.Fatalf("retry: %d %s", rec.Code, rec.Body)
 	}
 
-	// No dataset: nothing is sent. A client cannot inject content. A name the server has no record of is refused.
+	// A dataset added by hand to the directory (a manifest and a data file) works at once, and is recorded.
+	hand := filepath.Join(dir, "by-hand")
+	os.MkdirAll(hand, 0o755)
+	os.WriteFile(filepath.Join(hand, training.ManifestFilename), []byte("file = \"sub/rows.jsonl\"\n"), 0o644)
+	os.MkdirAll(filepath.Join(hand, "sub"), 0o755)
+	os.WriteFile(filepath.Join(hand, "sub", "rows.jsonl"), []byte(goodDataset), 0o644)
 	n := len(sc.reqs)
-	if rec := start(`{"dataset_content":"eAo="}`); rec.Code != 201 || sc.reqs[n].DatasetContent != "" {
-		t.Fatalf("no dataset: %d %s, %+v", rec.Code, rec.Body, sc.reqs[n])
+	if rec := startDS("by-hand"); rec.Code != 201 || len(sc.reqs) != n+1 || sc.reqs[n].Dataset != "by-hand.jsonl" || sent(n) != goodDataset {
+		t.Fatalf("dataset added by hand: %d %s, %+v", rec.Code, rec.Body, sc.reqs)
 	}
-	if rec := startDS("elsewhere.jsonl"); rec.Code != http.StatusBadRequest || len(sc.reqs) != n+1 {
-		t.Fatalf("unknown dataset: %d %s", rec.Code, rec.Body)
+
+	// A job needs a dataset, one of the directory: nothing is sent otherwise, and a client cannot inject content.
+	n = len(sc.reqs)
+	for name, body := range map[string]string{
+		"none":        `{}`,
+		"no dataset":  `{"dataset_content":"eAo="}`,
+		"unknown":     `{"dataset":"elsewhere"}`,
+		"a file name": `{"dataset":"mine.jsonl"}`,
+		"a path":      `{"dataset":"../mine"}`,
+	} {
+		if rec := start(body); rec.Code != http.StatusBadRequest || len(sc.reqs) != n {
+			t.Errorf("%s: %d %s", name, rec.Code, rec.Body)
+		}
 	}
-	// A record whose file is gone is an error.
+	// A dataset whose data file is gone is not usable: unknown to a job, a problem in the listing.
 	upload(up, "/x", "file", "lost.jsonl", goodDataset, nil)
-	os.Remove(filepath.Join(dir, "lost.jsonl"))
-	if rec := startDS("lost.jsonl"); rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), "upload it again") {
+	os.Remove(filepath.Join(dir, "lost", "lost.jsonl"))
+	if rec := startDS("lost"); rec.Code != http.StatusBadRequest {
 		t.Fatalf("lost file: %d %s", rec.Code, rec.Body)
+	}
+	if _, problems := training.DiscoverDatasets(dir); len(problems) != 1 || problems[0].Dir != "lost" || !strings.Contains(problems[0].Error, "missing") {
+		t.Fatalf("problems: %+v", problems)
 	}
 }
 

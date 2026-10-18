@@ -132,7 +132,7 @@
 
             <div class="tr-section tr-datasets">
               <h3>Datasets</h3>
-              <p class="muted">Upload a JSONL training dataset: one JSON object per line with <code>instruction</code>, <code>output</code> and optionally <code>input</code>. The server validates and saves it; it is sent to the sidecar only when a job that uses it starts. Uploading a file name again replaces the dataset.</p>
+              <p class="muted">The datasets are the subdirectories of the server's training datasets directory that have a <code>dataset.toml</code> manifest; it names the dataset and its JSONL data file. You can also upload a JSONL file (one JSON object per line with <code>instruction</code>, <code>output</code> and optionally <code>input</code>): it becomes a dataset named like the file. A dataset is sent to the sidecar only when a job that uses it starts.</p>
               <div class="row training-form">
                 <label>JSONL file
                   <input type="file" id="training-upload-file" accept=".jsonl,application/jsonl,application/x-ndjson,text/plain" />
@@ -141,9 +141,10 @@
               </div>
               <p id="training-upload-status" class="muted"></p>
               <table id="training-datasets" class="clickable" hidden>
-                <thead><tr><th>File</th><th>Status</th><th class="num">Records</th><th class="num">Size</th><th>Uploaded (UTC)</th></tr></thead>
+                <thead><tr><th>Dataset</th><th>File</th><th>Status</th><th class="num">Records</th><th class="num">Size</th><th>Updated (UTC)</th></tr></thead>
                 <tbody></tbody>
               </table>
+              <ul id="training-dataset-problems" class="muted" hidden></ul>
             </div>
 
             <div class="tr-section tr-jobs">
@@ -153,7 +154,7 @@
                   <select id="training-size"><option value="4b">Gemma 4 · 4B</option><option value="12b">Gemma 4 · 12B</option></select>
                 </label>
                 <label>Dataset
-                  <select id="training-dataset"><option value="">(sidecar default dataset)</option></select>
+                  <select id="training-dataset"><option value="">(no datasets)</option></select>
                 </label>
                 <label>Steps
                   <input type="number" id="training-steps" value="100" min="1" step="1" />

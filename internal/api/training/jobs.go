@@ -33,11 +33,12 @@ type JobCanceller interface {
 // maxTrainingJobBody bounds the request body of StartJobOf.
 const maxTrainingJobBody = 1 << 16
 
-// The dataset a job names is one uploaded through the server (UploadDatasetOf); its file is sent to the sidecar in the
-// request that starts the job (the sidecar has no dataset endpoints). A name the server has no record of answers 400.
+// The dataset a job names is one of the training datasets directory (manifest.go; also what UploadDatasetOf adds to it), by its
+// name; its data file is sent to the sidecar in the request that starts the job (the sidecar has no dataset
+// endpoints). A job needs a dataset: no name, or a name not in the directory, answers 400.
 //
-// StartJobOf serves POST /v1/gb/training/jobs[?db=<name>] with an optional JSON body
-// {"num_train_steps": 100, "model_size": "4b", "dataset": "file.jsonl"}: it starts a training job on the sidecar through sc
+// StartJobOf serves POST /v1/gb/training/jobs[?db=<name>] with a JSON body
+// {"dataset": "my-dataset", "num_train_steps": 100, "model_size": "4b"} (only dataset is required): it starts a training job on the sidecar through sc
 // (the sidecar's REST API) and stores the TrainingJob the sidecar reports in the gb_training_job_runs table of one of dbs
 // (the first without db), then has mon (may be nil) follow the job's progress. It answers 201 with the stored record
 // (relational.TrainingJobRun). A nil sc (no sidecar) answers 503, a sidecar error 502, except that a request the sidecar
@@ -53,7 +54,7 @@ func StartJobOf(dbs []Database, sc JobStarter, mon *Monitor) http.HandlerFunc {
 			httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not active")
 			return
 		}
-		// Only these fields come from the client; the dataset's content is added from the server's own copy.
+		// Only these fields come from the client; the dataset's content is added from the dataset's file.
 		var in struct {
 			NumTrainSteps int    `json:"num_train_steps"`
 			ModelSize     string `json:"model_size"`
@@ -65,9 +66,10 @@ func StartJobOf(dbs []Database, sc JobStarter, mon *Monitor) http.HandlerFunc {
 			return
 		}
 		req := sidecar.StartTrainingJobRequest{NumTrainSteps: in.NumTrainSteps,
-			ModelSize: strings.ToLower(strings.TrimSpace(in.ModelSize)), Dataset: strings.TrimSpace(in.Dataset)}
-		if strings.ContainsAny(req.Dataset, `/\`) || (req.Dataset != "" && !strings.HasSuffix(req.Dataset, ".jsonl")) {
-			httputil.Error(w, http.StatusBadRequest, "dataset must be the file name of a training dataset (*.jsonl)")
+			ModelSize: strings.ToLower(strings.TrimSpace(in.ModelSize))}
+		name := strings.TrimSpace(in.Dataset)
+		if name == "" {
+			httputil.Error(w, http.StatusBadRequest, "dataset is required: the name of a training dataset")
 			return
 		}
 		if req.NumTrainSteps < 0 {
@@ -82,18 +84,15 @@ func StartJobOf(dbs []Database, sc JobStarter, mon *Monitor) http.HandlerFunc {
 		}
 
 		ctx := r.Context()
-		var dataset *relational.TrainingDataset
-		if req.Dataset != "" {
-			ds, content, err := loadTrainingDataset(ctx, n, req.Dataset)
-			if errors.Is(err, errUnknownDataset) {
-				httputil.Error(w, http.StatusBadRequest, "unknown dataset "+req.Dataset+": upload it first")
-				return
-			} else if err != nil {
-				httputil.Error(w, http.StatusInternalServerError, err.Error())
-				return
-			}
-			dataset, req.DatasetContent = ds, base64.StdEncoding.EncodeToString(content)
+		dataset, content, err := loadTrainingDataset(ctx, n, name)
+		if errors.Is(err, errUnknownDataset) {
+			httputil.Error(w, http.StatusBadRequest, "unknown dataset "+name+": there is no dataset of that name in the training datasets directory")
+			return
+		} else if err != nil {
+			httputil.Error(w, http.StatusInternalServerError, err.Error())
+			return
 		}
+		req.Dataset, req.DatasetContent = dataset.Filename, base64.StdEncoding.EncodeToString(content)
 		job, err := sc.StartTrainingJob(ctx, req)
 		if err != nil {
 			var se *sidecar.StatusError
@@ -107,10 +106,9 @@ func StartJobOf(dbs []Database, sc JobStarter, mon *Monitor) http.HandlerFunc {
 		}
 		// The job is running now: record it even if the client went away meanwhile.
 		ctx = context.WithoutCancel(ctx)
-		if dataset != nil { // the sidecar has taken this version of the file
-			if _, err := relational.MarkTrainingDatasetSynced(ctx, n.DB, dataset.ID, dataset.SHA256); err != nil {
-				log.WithError(err).WithField("filename", dataset.Filename).Error("training: mark training dataset synced failed")
-			}
+		// the sidecar has taken this version of the file
+		if _, err := relational.MarkTrainingDatasetSynced(ctx, n.DB, dataset.ID, dataset.SHA256); err != nil {
+			log.WithError(err).WithField("filename", dataset.Filename).Error("training: mark training dataset synced failed")
 		}
 		id, err := relational.RecordTrainingJobRun(ctx, n.DB, relational.TrainingJobRun{
 			JobID: job.JobID, ProviderJobID: job.ProviderJobID, Status: job.Status, ModelSize: job.ModelSize, Dataset: job.Dataset,

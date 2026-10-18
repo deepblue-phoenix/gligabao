@@ -1,0 +1,18 @@
+# Dataset manifest: gligabao finds every <datasets dir>/<subdir>/dataset.toml and reads it to learn about the dataset.
+# The generated files (*.jsonl, *.json) are not committed; run `python generate_dataset.py` here to create them.
+
+# The dataset's name, what a training job asks for (`"dataset": "world-knowledge-base"`). Optional: default is the
+# subdirectory's name. Letters, digits, . _ - (starting with a letter or digit).
+name = "world-knowledge-base"
+
+description = "Memorization of a hand-curated knowledge base of real countries, companies, institutions, treaties and sovereign wealth funds (economics, finance, geopolitics): 500 instruction/output examples verbalised from (subject, relation, object) triples."
+
+# The data format. Only "jsonl" is supported for now: one {"instruction", "input"?, "output"} object per line.
+format = "jsonl"
+
+# The data file, relative to this manifest's directory.
+file = "world_knowledge_base_v1.jsonl"
+
+# Informational: the dataset's version, and the script here that (re)creates `file`.
+version = "1"
+generator = "generate_dataset.py"
