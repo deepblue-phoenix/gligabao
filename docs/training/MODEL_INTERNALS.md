@@ -33,6 +33,8 @@ inference text  <bos><|turn>user\n{prompt}<turn|>\n<|turn>model\n
 
 The inference text is the training text cut right after `<|turn>model\n`: the model is asked to continue as the model turn, and was trained to end it with `<turn|>`. Training and inference use the same functions, so they agree with each other, and with the base model's own template.
 
+One user turn holds **one** question: the model never saw a prompt with several questions in it, and at 4B and 12B several in one prompt interfere with each other and with the answer format. That is why the [evals of trained models](EVALS.md#why-one-question-per-prompt) ask one question per prompt, whatever the judge's batch size.
+
 **History (fixed in 0.46.1).** Before, the text used Gemma 2/3's `<start_of_turn>` / `<end_of_turn>`. They do not exist in Gemma 4's vocabulary, so they were tokenized as plain text: the model learned to write the characters `<end_of_turn>` after an answer instead of the stop token, and replies ran to `max_tokens` with invented continuations. Adapters trained before 0.46.1 have this problem and must be retrained. A check that needs only the `tokenizers` library (the tests do it, `Gemma4TokenizerTest`):
 
 ```python

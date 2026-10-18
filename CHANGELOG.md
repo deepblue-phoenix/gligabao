@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.49.1] - 2026-10-24
+
+### Changed
+- Docs: `docs/training/EVALS.md` has a new section, **Why one question per prompt**: the trained model is asked one question per prompt because Gemma 4 4B and 12B were fine-tuned on single turns (several questions in one prompt are a shape they never saw, interfere with each other at that size, share one output budget and make scores depend on the batching), what is *not* the same (batching at the inference engine, parallel calls) and why batching the judge's items is different, with a way to check it. `docs/training/MODEL_INTERNALS.md` links to it.
+
 ## [0.49.0] - 2026-10-24
 
 ### Added

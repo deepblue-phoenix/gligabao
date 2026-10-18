@@ -13,7 +13,25 @@ An **eval** of a trained model asks the model the questions of a dataset and has
 
 Only one eval per trained model runs at a time (`409` otherwise). Inference requests of an eval are not stored in the model's request history (`gb_trained_model_inferences`), they are the eval's items.
 
-The trained model is asked **one question at a time**, in dataset order; only the judge works in batches. (Parallel questions are not offered: a Modal inference function that gets parallel calls starts more GPU containers, each of which loads the model.) A cold model makes the first question slow (the model load, see [../modal.md](../modal.md#cold-and-warm-starts)); the rest run warm. A full eval of a 500-example dataset is 500 inferences, so it takes a while: use `limit` to try it on the first few.
+The trained model is asked **one question per prompt, one question at a time**, in dataset order; only the judge works in batches (see [Why one question per prompt](#why-one-question-per-prompt)). A cold model makes the first question slow (the model load, see [../modal.md](../modal.md#cold-and-warm-starts)); the rest run warm. A full eval of a 500-example dataset is 500 inferences, so it takes a while: use `limit` to try it on the first few.
+
+## Why one question per prompt
+
+The trained model is asked **exactly one question per prompt**, never several questions in one prompt. Only the judge works in batches. This matters for the Gemma 4 models gligabao fine-tunes (E4B, the "4b", and the 12b), and the eval is built around it:
+
+- **The model was trained on single turns.** Every training example is one user turn with one question and one model turn with its answer (`<|turn>user\nQ<turn|>\n<|turn>model\nA<turn|>`, see [TRAINING_DATA_FORMAT.md](TRAINING_DATA_FORMAT.md)). A prompt that holds ten questions is a shape the model never saw. It may answer only the first one, run the answers together, drop the short answer style it learned, or invent a list format. An eval like that would measure how well the model follows a multi-question instruction, not what it learned from the dataset, and it would score a model lower for a reason that has nothing to do with its training.
+- **Small models interfere across items.** At 4B and 12B parameters the questions in one context bleed into each other: a fact asked about in question 2 shows up in the answer to question 5, and the answers get worse as the prompt grows. Which questions are answered well would then depend on what they were batched with, so the same question could score differently from one eval to the next.
+- **The output budget is shared.** One `max_tokens` would cover all the answers, so the last ones are cut off first, and the answers have to be split back out by position, which is one more place to go wrong (a missing or merged answer shifts all the later ones onto the wrong questions).
+- **The check is on the training prompt.** The eval asks whether the model reproduces its training answers for the prompt shape it was trained on, one question and one answer. Only the single-question prompt tests that.
+
+So the model is asked sequentially (one sidecar `POST /infer/query` per question, in dataset order), and the answers are kept per question.
+
+**Two things that are not the same as putting several questions in one prompt:**
+
+- *Batching at the inference engine*: running several independent prompts as separate sequences in one GPU `generate` call (left-padded, with attention masks). Each sequence still sees only its own question, so the answers match the one-at-a-time ones up to small numerical differences, and it would be much faster. gligabao does not do it: the sidecar's `/infer/query` takes one prompt per call. If it is added, compare its answers with the single-prompt ones before trusting its scores.
+- *Parallel calls*: several `/infer/query` calls at once are correct too, but a Modal inference function that gets parallel calls starts more GPU containers, each of which loads the model, so the eval does not offer it.
+
+**The judge is different.** It is a large LLM that grades *independent* items (a JSON array of question, reference and answer, with an id each), not a small model being asked to answer from its own weights, so batching them (10 by default, at most 25) costs one call per batch and does not change what is measured. Batching can still have small effects on the judge's scores: it may drift or anchor on earlier items in the batch. To check it, run the same eval on a sample (`limit`) with `batch_size` 1 and with 10 and compare the mean scores; if they differ noticeably, use a smaller batch.
 
 ## The score
 
