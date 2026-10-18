@@ -1,10 +1,12 @@
 package training_test
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
@@ -347,5 +350,120 @@ func TestEvalsInterruptedByARestartAreFailed(t *testing.T) {
 	ev, err := relational.GetTrainedModelEval(ctx, d, id)
 	if err != nil || ev.Status != relational.TrainedModelEvalFailed || !strings.Contains(ev.Error, "restart") {
 		t.Fatalf("%+v %v", ev, err)
+	}
+}
+
+// sseEvents reads a server-sent events body and sends the data of each event to the channel.
+func sseEvents(body io.Reader) <-chan training.EvalEvent {
+	out := make(chan training.EvalEvent, 100)
+	go func() {
+		defer close(out)
+		sc := bufio.NewScanner(body)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		for sc.Scan() {
+			if data, ok := strings.CutPrefix(sc.Text(), "data: "); ok {
+				var e training.EvalEvent
+				if json.Unmarshal([]byte(data), &e) == nil {
+					out <- e
+				}
+			}
+		}
+	}()
+	return out
+}
+
+func TestEvalLiveFeed(t *testing.T) { dbtest.Run(t, testEvalLiveFeed) }
+
+func testEvalLiveFeed(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 3)}}
+	mid, _, err := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{
+		JobID: "jobeval9", ModelSize: "12b", Dataset: "mine.jsonl", NumTrainSteps: 5, Path: "trained/jobeval9"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The model holds its first answer until the watcher is connected.
+	sc := &evalSidecar{wrong: map[string]bool{"q1": true}, block: make(chan struct{}), started: make(chan struct{}, 10)}
+	m := training.NewEvalManager(ctx, dbs, sc, &evalJudge{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /evals/{id}/events", m.EventsOf())
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	started := startEval(m, fmt.Sprint(mid), `{"batch_size": 2}`).eval(t)
+	<-sc.started
+	resp, err := http.Get(fmt.Sprintf("%s/evals/%d/events", srv.URL, started.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
+		t.Fatalf("content type %q", ct)
+	}
+	events := sseEvents(resp.Body)
+	next := func() training.EvalEvent {
+		t.Helper()
+		select {
+		case e, ok := <-events:
+			if !ok {
+				t.Fatal("stream closed early")
+			}
+			return e
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for an event")
+		}
+		return training.EvalEvent{}
+	}
+	if e := next(); e.Type != "snapshot" || e.Eval == nil || e.Eval.Status != "running" || len(e.Items) != 0 {
+		t.Fatalf("first event: %+v", e)
+	}
+	close(sc.block)
+	var got []string
+	answers := 0
+	var last training.EvalEvent
+	for e := next(); ; e = next() {
+		switch e.Type {
+		case "answer":
+			it := e.Items[0]
+			if it.Status != "answered" || it.Score != nil || it.Idx != answers {
+				t.Fatalf("answer event: %+v", it)
+			}
+			answers++
+			got = append(got, fmt.Sprintf("%d=%s", it.Idx, it.Response))
+		case "batch":
+			if e.Eval == nil || e.Eval.NumExamples != 3 || len(e.Items) == 0 || e.Items[0].Status != "judged" || e.Items[0].Score == nil {
+				t.Fatalf("batch event: %+v", e)
+			}
+			got = append(got, fmt.Sprintf("batch%d", len(e.Items)))
+		}
+		last = e
+		if e.Type == "end" {
+			break
+		}
+	}
+	if fmt.Sprint(got) != "[0=a0 1=wrong batch2 2=a2 batch1]" {
+		t.Fatalf("events: %v", got)
+	}
+	if last.Eval == nil || last.Eval.Status != "completed" || last.Eval.NumJudged != 3 {
+		t.Fatalf("end event: %+v", last)
+	}
+	m.Wait()
+
+	// A watcher that comes after the end gets what was stored, then the end.
+	resp2, err := http.Get(fmt.Sprintf("%s/evals/%d/events", srv.URL, started.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	late := sseEvents(resp2.Body)
+	if e := <-late; e.Type != "snapshot" || len(e.Items) != 3 || e.Items[1].Status != "judged" || e.Eval.Status != "completed" {
+		t.Fatalf("late snapshot: %+v", e)
+	}
+	if e := <-late; e.Type != "end" {
+		t.Fatalf("late end: %+v", e)
+	}
+
+	if resp3, err := http.Get(srv.URL + "/evals/999/events"); err != nil || resp3.StatusCode != 404 {
+		t.Fatalf("unknown eval: %v %v", resp3, err)
 	}
 }

@@ -731,6 +731,26 @@ tr.removing {
   .eval-answers { margin-top: 0.4rem; summary { cursor: pointer; color: $muted; font-size: 0.85rem; margin-bottom: 0.4rem; } }
   .eval-table { width: 100%; td.eval-text { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 16rem; vertical-align: top; font-size: 0.8rem; }
     td.score { white-space: nowrap; vertical-align: top; font-weight: 600; } } }
+// Live view of an eval (eval_live.ts)
+#eval-modal[open] { width: min(96vw, 70rem); height: 85vh; }
+#eval-modal .ev-top { padding: 0.5rem 1rem 0; progress { width: 100%; height: 0.5rem; accent-color: $accent; } .error { margin: 0.25rem 0 0; &:empty { display: none; } } }
+.ev-strip { display: flex; flex-wrap: wrap; gap: 2px; margin: 0.4rem 0 0.2rem; max-height: 4.2rem; overflow-y: auto; }
+.ev-sq { width: 0.55rem; height: 0.55rem; padding: 0; border: 0; border-radius: 2px; cursor: pointer; background: $border;
+  &-pending { background: $accent; } &-good { background: #3fb950; } &-mid { background: #d29922; } &-bad { background: $err; }
+  &-failed { background: $err; outline: 1px solid $text; } }
+.ev-feed { display: flex; flex-direction: column; gap: 0.6rem; }
+.ev-feed.only-problems .ev-card.ev-good { display: none; }
+.ev-card { padding: 0.5rem 0.8rem; background: $bg; border: 1px solid $border; border-left-width: 4px; border-radius: 6px;
+  &.ev-pending { border-left-color: $accent; } &.ev-good { border-left-color: #3fb950; } &.ev-mid { border-left-color: #d29922; }
+  &.ev-bad, &.ev-failed { border-left-color: $err; }
+  .ev-head { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; font-size: 0.8rem; margin-bottom: 0.25rem; }
+  .ev-num { font-weight: 600; }
+  .ev-score { font-weight: 700; font-size: 0.9rem; }
+  .ev-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; @media (max-width: 40rem) { grid-template-columns: 1fr; } }
+  .ev-label { color: $muted; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 0.3rem; }
+  .ev-text { margin: 0.1rem 0 0; padding: 0.3rem 0.5rem; max-height: 10rem; overflow: auto; background: $surface; border: 1px solid $border; border-radius: 6px;
+    white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .ev-reason { margin-top: 0.35rem; font-size: 0.8rem; } }
 .score-good { color: #3fb950; }
 .score-mid { color: #d29922; }
 .score-bad { color: $err; }

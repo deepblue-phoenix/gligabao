@@ -46,6 +46,11 @@ type Config struct {
 	BatchSize int
 	// JudgeModel is the judge's model; empty uses the LLM's default.
 	JudgeModel string
+	// OnAnswer, if set, is called with each item as soon as the model has answered its question (or failed to), before the
+	// batch is judged: the item has no Score yet, and Status is ItemFailed if the model failed, "" otherwise. It lets a
+	// caller show the model's behaviour live, ahead of the verdicts that Sink gets per batch. It runs on the run's
+	// goroutine, so it must not block for long.
+	OnAnswer func(Item)
 }
 
 // Normalize fills in the defaults and checks the limits.
@@ -142,7 +147,7 @@ func Run(ctx context.Context, cfg Config, examples []Example, gen GenerateFunc, 
 			return p, err
 		}
 		end := min(start+cfg.BatchSize, len(examples))
-		items := answerBatch(ctx, examples[start:end], start, batchNo, gen)
+		items := answerBatch(ctx, examples[start:end], start, batchNo, gen, cfg.OnAnswer)
 		if err := ctx.Err(); err != nil {
 			return p, err
 		}
@@ -203,7 +208,7 @@ func Run(ctx context.Context, cfg Config, examples []Example, gen GenerateFunc, 
 
 // answerBatch asks the model the questions of examples (the first one is example number first), one after the other. An
 // item whose question failed has Status ItemFailed. When ctx ends, the questions not asked yet fail with its error.
-func answerBatch(ctx context.Context, examples []Example, first, batchNo int, gen GenerateFunc) []Item {
+func answerBatch(ctx context.Context, examples []Example, first, batchNo int, gen GenerateFunc, onAnswer func(Item)) []Item {
 	items := make([]Item, len(examples))
 	for i, ex := range examples {
 		it := &items[i]
@@ -217,9 +222,12 @@ func answerBatch(ctx context.Context, examples []Example, first, batchNo int, ge
 		it.DurationMS = time.Since(t0).Milliseconds()
 		if err != nil {
 			it.Status, it.Error = ItemFailed, "model: "+err.Error()
-			continue
+		} else {
+			it.Response, it.InputTokens, it.OutputTokens = g.Response, g.InputTokens, g.OutputTokens
 		}
-		it.Response, it.InputTokens, it.OutputTokens = g.Response, g.InputTokens, g.OutputTokens
+		if onAnswer != nil && ctx.Err() == nil {
+			onAnswer(*it)
+		}
 	}
 	return items
 }

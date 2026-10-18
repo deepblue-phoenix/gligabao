@@ -17,6 +17,9 @@ const (
 const (
 	TrainedModelEvalItemJudged = "judged" // the model answered and the judge scored it
 	TrainedModelEvalItemFailed = "failed" // the model or the judge failed: Error says why
+	// TrainedModelEvalItemAnswered is never stored: the live stream of an eval (GET .../evals/{id}/events) uses it for an
+	// item the model answered whose batch the judge has not scored yet.
+	TrainedModelEvalItemAnswered = "answered"
 )
 
 // TrainedModelEval is one run of the LLM-as-a-judge eval of a trained model (gb_trained_model_evals; evals/training): the

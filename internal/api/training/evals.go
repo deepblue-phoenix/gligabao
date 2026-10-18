@@ -60,6 +60,7 @@ type EvalManager struct {
 
 	mu      sync.Mutex
 	running map[evalKey]*runningEval
+	streams map[evalStreamKey]*evalStream // the live feeds (evals_stream.go) of the evals that run
 	wg      sync.WaitGroup
 }
 
@@ -77,7 +78,7 @@ type runningEval struct {
 // answers 503) and llm judges (nil: the same). The evals stop when ctx is done. Evals that a restart interrupted (still
 // "running" in the database) are marked failed.
 func NewEvalManager(ctx context.Context, dbs []Database, sc Inferer, llm memory_core.LLM) *EvalManager {
-	m := &EvalManager{ctx: ctx, dbs: dbs, sc: sc, llm: llm, running: map[evalKey]*runningEval{}}
+	m := &EvalManager{ctx: ctx, dbs: dbs, sc: sc, llm: llm, running: map[evalKey]*runningEval{}, streams: map[evalStreamKey]*evalStream{}}
 	for _, n := range dbs {
 		if k, err := relational.FailRunningTrainedModelEvals(ctx, n.DB, "interrupted: the server restarted while the eval ran"); err != nil {
 			log.WithError(err).WithField("db", n.Name).Warn("training: could not mark interrupted evals as failed")
@@ -212,12 +213,16 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 			httputil.Error(w, http.StatusInternalServerError, "failed to record the eval")
 			return
 		}
+		stream := newEvalStream()
+		skey := evalStreamKey{n.Name, evalID}
 		m.mu.Lock()
 		run.evalID = evalID
+		m.streams[skey] = stream
 		m.mu.Unlock()
 		ev, err := relational.GetTrainedModelEval(dbCtx, n.DB, evalID)
 		if err != nil {
 			release()
+			m.dropStream(skey, stream)
 			_ = relational.FinishTrainedModelEval(dbCtx, n.DB, evalID, relational.TrainedModelEvalFailed, "could not start")
 			log.WithError(err).Error("training: read eval failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the eval")
@@ -227,7 +232,8 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 		go func() {
 			defer m.wg.Done()
 			defer release()
-			m.run(runCtx, n, *tm, evalID, examples, cfg, params)
+			defer m.dropStream(skey, stream)
+			m.run(runCtx, n, *tm, evalID, stream, examples, cfg, params)
 		}()
 		httputil.WriteJSON(w, http.StatusAccepted, ev)
 	}
@@ -260,7 +266,7 @@ func loadEvalDataset(n Database, tm *relational.TrainedModel) (name, sum string,
 }
 
 // run is the eval's goroutine: it runs trainingeval.Run, storing every finished batch, and ends the eval's row.
-func (m *EvalManager) run(ctx context.Context, n Database, tm relational.TrainedModel, evalID int64, examples []trainingeval.Example, cfg trainingeval.Config, params EvalParams) {
+func (m *EvalManager) run(ctx context.Context, n Database, tm relational.TrainedModel, evalID int64, stream *evalStream, examples []trainingeval.Example, cfg trainingeval.Config, params EvalParams) {
 	dbCtx := context.WithoutCancel(ctx) // the writes must outlive a cancelled eval
 	logf := log.WithFields(log.Fields{"db": n.Name, "model_id": tm.ID, "eval_id": evalID})
 	logf.WithField("examples", len(examples)).Info("training: eval started")
@@ -269,6 +275,7 @@ func (m *EvalManager) run(ctx context.Context, n Database, tm relational.Trained
 			logf.WithError(err).Error("training: ending the eval failed")
 		}
 		logf.WithField("status", status).Info("training: eval ended")
+		m.publishEnd(dbCtx, n, stream, evalID)
 	}
 	defer func() {
 		if r := recover(); r != nil {
@@ -295,15 +302,21 @@ func (m *EvalManager) run(ctx context.Context, n Database, tm relational.Trained
 	sink := func(_ context.Context, items []trainingeval.Item, p trainingeval.Progress) error {
 		rows := make([]relational.TrainedModelEvalItem, len(items))
 		for i, it := range items {
-			rows[i] = relational.TrainedModelEvalItem{Idx: it.Idx, Batch: it.Batch, Instruction: it.Instruction, Input: it.Input,
-				Reference: it.Reference, Response: it.Response, Status: it.Status, Error: it.Error, Score: it.Score, Reason: it.Reason,
-				InputTokens: it.InputTokens, OutputTokens: it.OutputTokens, DurationMS: it.DurationMS}
+			rows[i] = evalItemRow(evalID, it)
 		}
 		e := relational.TrainedModelEval{ID: evalID, JudgeModel: p.JudgeModel, NumAnswered: p.Answered, NumJudged: p.Judged, NumFailed: p.Failed,
 			NumCorrect: p.Correct, NumPartial: p.Partial, NumIncorrect: p.Incorrect, ScoreSum: p.ScoreSum, NumBatches: p.Batches,
 			JudgeCalls: p.JudgeCalls, JudgeInputTokens: p.JudgeInputTokens, JudgeOutputTokens: p.JudgeOutputTokens, JudgeCostUSD: p.JudgeCostUSD}
-		return relational.SaveTrainedModelEvalBatch(dbCtx, n.DB, e, rows)
+		if err := relational.SaveTrainedModelEvalBatch(dbCtx, n.DB, e, rows); err != nil {
+			return err
+		}
+		if full, err := relational.GetTrainedModelEval(dbCtx, n.DB, evalID); err == nil { // the whole row, for the live feed
+			e = *full
+		}
+		stream.batch(e, rows)
+		return nil
 	}
+	cfg.OnAnswer = func(it trainingeval.Item) { stream.answer(evalItemRow(evalID, it)) }
 	_, err := trainingeval.Run(memory_core.WithStage(ctx, StageEvalJudge), cfg, examples, gen, judge, sink)
 	switch {
 	case err == nil:
@@ -316,6 +329,15 @@ func (m *EvalManager) run(ctx context.Context, n Database, tm relational.Trained
 		logf.WithError(err).Warn("training: eval failed")
 		finish(relational.TrainedModelEvalFailed, err.Error())
 	}
+}
+
+// dropStream forgets the live feed of an eval that is over.
+func (m *EvalManager) dropStream(key evalStreamKey, s *evalStream) {
+	m.mu.Lock()
+	if m.streams[key] == s {
+		delete(m.streams, key)
+	}
+	m.mu.Unlock()
 }
 
 // ListOf serves GET /v1/gb/training/models/{id}/evals[?db=<name>][&limit=<n>]: {"evals": [...]}, the evals of trained model

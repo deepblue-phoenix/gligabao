@@ -280,6 +280,26 @@
       </div>
     </dialog>
 
+    <dialog id="eval-modal" class="modal">
+      <div class="modal-head">
+        <h2 id="eval-live-title">Eval</h2>
+        <span id="eval-live-state"></span>
+        <span id="eval-live-elapsed" class="muted"></span>
+        <span id="eval-live-conn" class="muted"></span>
+        <label class="muted"><input type="checkbox" id="eval-live-problems" /> only problems</label>
+        <label class="muted"><input type="checkbox" id="eval-live-follow" checked /> follow</label>
+        <button type="button" id="eval-live-cancel" class="danger" hidden>Cancel eval</button>
+        <button type="button" id="eval-live-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="ev-top">
+        <progress id="eval-live-progress" value="0" max="1"></progress>
+        <div id="eval-live-summary" class="eval-summary"></div>
+        <div id="eval-live-strip" class="ev-strip" title="One square per question: grey = not answered yet, blue = answered and awaiting the judge, green / amber / red = judged"></div>
+        <p id="eval-live-error" class="error"></p>
+      </div>
+      <div class="modal-body"><div id="eval-live-feed" class="ev-feed"></div></div>
+    </dialog>
+
     <dialog id="dataset-modal" class="modal">
       <div class="modal-head">
         <h2 id="dataset-title">Dataset</h2>

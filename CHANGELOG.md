@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.50.0] - 2026-10-24
+
+### Added
+- **Live view of an eval in the admin UI.** Starting an eval opens a dialog that streams it as it runs, and every eval in the model's dialog has a **Watch live** button (**Open** once it is over). Each question appears as soon as the model answers it, with the dataset's answer beside the model's, and gets its score and the judge's reason when its batch is judged (the judge still grades a batch per call, so a score arrives per batch while the answers arrive one by one). It also has a progress bar with running totals (answered, judged, failed, mean score, % correct, average answer time), a strip with one square per question coloured by outcome (click one to jump to it), an **only problems** filter, a **follow** toggle and a Cancel button. Closing the dialog leaves the eval running; opening it on a running or finished eval shows everything so far.
+- API: `GET /v1/gb/training/evals/{id}/events`, a Server-Sent Events feed (`snapshot`, `answer`, `batch`, `end`); see [docs/training/EVALS.md](docs/training/EVALS.md#api).
+- `evals/training`: `Config.OnAnswer`, called with each item as soon as the model has answered it, before the batch is judged.
+
 ## [0.49.1] - 2026-10-24
 
 ### Changed

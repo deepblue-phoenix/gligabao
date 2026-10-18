@@ -3,6 +3,7 @@
 // server as SSE (../training/events), which forwards what the sidecar reports; d3 is loaded as a global by index.html.
 
 import { alertDialog, confirmDialog } from "./dialogs.js";
+import { initEvalLive, watchEval, type EvalItem, type EvalRun } from "./eval_live.js";
 import { initActionModal, showActionLog, startAction, type ActionState } from "./actions.js";
 
 declare const d3: typeof import("d3");
@@ -22,17 +23,6 @@ interface Inference {
   id: number; trained_model_id: number; prompt: string; response: string; status: "running" | "completed" | "failed"; error: string;
   max_tokens: number; temperature: number | null; input_tokens: number; output_tokens: number; cold_start: boolean | null;
   load_seconds: number; duration_ms: number; created_at: string; completed_at: string | null;
-}
-interface EvalRun {
-  id: number; trained_model_id: number; status: "running" | "completed" | "failed" | "cancelled"; dataset: string; dataset_sha256: string;
-  params: { batch_size?: number; max_tokens?: number; temperature?: number; limit?: number };
-  judge_model: string; num_examples: number; num_answered: number; num_judged: number; num_failed: number; num_correct: number;
-  num_partial: number; num_incorrect: number; score_sum: number; num_batches: number; judge_calls: number; judge_input_tokens: number;
-  judge_output_tokens: number; judge_cost_usd: number; error: string; created_at: string; finished_at: string | null;
-}
-interface EvalItem {
-  idx: number; batch: number; instruction: string; input: string; reference: string; response: string; status: "judged" | "failed";
-  error: string; score: number | null; reason: string; input_tokens: number; output_tokens: number; duration_ms: number;
 }
 interface DatasetRecord {
   id: number; filename: string; size_bytes: number; num_records: number; sha256: string; status: "stored" | "synced";
@@ -541,21 +531,28 @@ async function startEval(m: TrainedModel, opts: { limit?: number; batch_size?: n
     if (selectedModel !== m.id) selectModel(m.id);
     else await loadEvals(m.id);
     say(`Eval #${started.id} started: ${started.num_examples} questions.`, "muted");
+    openEvalLive(started, m); // watch it run
   } catch (err) {
     say(`Could not start the eval of model #${m.id}: ${errText(err)}`, "error");
   }
 }
 
-async function cancelEval(e: EvalRun): Promise<void> {
+async function cancelEval(evalID: number): Promise<void> {
   try {
-    const res = await fetch(`../training/evals/${e.id}/cancel`, { method: "POST" });
-    if (!res.ok) throw await failure(res);
+    const res = await fetch(`../training/evals/${evalID}/cancel`, { method: "POST" });
+    if (!res.ok && res.status !== 409) throw await failure(res); // 409: it ended meanwhile
   } catch (err) {
-    el("model-evals-status").className = "error";
-    el("model-evals-status").textContent = `Could not cancel eval #${e.id}: ${errText(err)}`;
+    void alertDialog(`Could not cancel eval #${evalID}: ${errText(err)}`);
     return;
   }
   if (selectedModel !== null) void loadEvals(selectedModel);
+}
+
+// Opens the live view of an eval: its questions and the model's answers as they come, then their scores.
+function openEvalLive(e: EvalRun, m?: TrainedModel): void {
+  const model = m ?? models.find((x) => x.id === e.trained_model_id);
+  watchEval(e.id, `Eval #${e.id} · ${model ? `${model.name} (#${model.id})` : `model #${e.trained_model_id}`} · ${e.dataset}`,
+    () => { if (selectedModel !== null) void loadEvals(selectedModel); });
 }
 
 // The form above the list: how many questions (blank = all of the dataset), the judge's batch size, and the Eval button.
@@ -638,9 +635,14 @@ function renderEvals(): void {
     if (evalRunning(e)) {
       const stop = node("button", "small danger", "Cancel");
       stop.type = "button";
-      stop.addEventListener("click", () => void cancelEval(e));
+      stop.addEventListener("click", () => void cancelEval(e.id));
       head.append(stop);
     }
+    const watch = node("button", "small", evalRunning(e) ? "Watch live" : "Open");
+    watch.type = "button";
+    watch.title = evalRunning(e) ? "Follow the questions and answers as the eval runs" : "Every question with the model's answer and its score";
+    watch.addEventListener("click", () => openEvalLive(e, m));
+    head.append(watch);
     item.append(head);
 
     const done = e.num_judged + e.num_failed;
@@ -1272,6 +1274,7 @@ export function initTraining(): void {
   el("training-upload").addEventListener("click", () => void uploadDataset());
   const datasetModal = el<HTMLDialogElement>("dataset-modal");
   const modelModal = el<HTMLDialogElement>("model-modal");
+  initEvalLive(cancelEval);
   el("model-close").addEventListener("click", () => modelModal.close());
   modelModal.addEventListener("close", closeModelModal);
   modelModal.addEventListener("click", (e) => { if (e.target === modelModal) modelModal.close(); });

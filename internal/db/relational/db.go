@@ -49,12 +49,13 @@ type (
 
 // Statuses of a TrainedModelEval and of its items.
 const (
-	TrainedModelEvalRunning    = model.TrainedModelEvalRunning
-	TrainedModelEvalCompleted  = model.TrainedModelEvalCompleted
-	TrainedModelEvalFailed     = model.TrainedModelEvalFailed
-	TrainedModelEvalCancelled  = model.TrainedModelEvalCancelled
-	TrainedModelEvalItemJudged = model.TrainedModelEvalItemJudged
-	TrainedModelEvalItemFailed = model.TrainedModelEvalItemFailed
+	TrainedModelEvalRunning      = model.TrainedModelEvalRunning
+	TrainedModelEvalCompleted    = model.TrainedModelEvalCompleted
+	TrainedModelEvalFailed       = model.TrainedModelEvalFailed
+	TrainedModelEvalCancelled    = model.TrainedModelEvalCancelled
+	TrainedModelEvalItemJudged   = model.TrainedModelEvalItemJudged
+	TrainedModelEvalItemFailed   = model.TrainedModelEvalItemFailed
+	TrainedModelEvalItemAnswered = model.TrainedModelEvalItemAnswered
 )
 
 // Statuses of a TrainedModelInference.

@@ -288,3 +288,31 @@ func TestParseExamples(t *testing.T) {
 		}
 	}
 }
+
+func TestOnAnswerGetsEachAnswerBeforeItsBatchIsJudged(t *testing.T) {
+	var c collected
+	var events []string
+	cfg := Config{BatchSize: 2, OnAnswer: func(it Item) {
+		events = append(events, fmt.Sprintf("answer %d %s", it.Idx, it.Response))
+		if it.Score != nil {
+			t.Errorf("item %d has a score before the judge ran", it.Idx)
+		}
+	}}
+	sink := func(ctx context.Context, items []Item, p Progress) error {
+		events = append(events, fmt.Sprintf("batch of %d", len(items)))
+		return c.sink(ctx, items, p)
+	}
+	gen := func(ctx context.Context, prompt string) (Generation, error) {
+		if prompt == "q1" {
+			return Generation{}, errors.New("boom")
+		}
+		return echoGen()(ctx, prompt)
+	}
+	if _, err := Run(context.Background(), cfg, examples(3), gen, &fakeJudge{}, sink); err != nil {
+		t.Fatal(err)
+	}
+	want := "[answer 0 a0 answer 1  batch of 2 answer 2 a2 batch of 1]"
+	if got := fmt.Sprint(events); got != want {
+		t.Fatalf("events:\n got %s\nwant %s", got, want)
+	}
+}
