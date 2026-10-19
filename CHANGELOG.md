@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.63.0] - 2026-10-19
+
+### Changed
+- `./run_evals.sh -t training` has defaults: without `-model` it evaluates the newest trained Gemma 4 4B model of the database (`evals/training/cmd` takes `-model 0`/no flag as "the newest 4b"), and it starts the sidecar the way `./run_server_local.sh` does (if nothing answers on the health endpoint and the URL is local; it is stopped when the run ends). Listing evals or models does not start it.
+
 ## [0.62.0] - 2026-10-19
 
 ### Changed

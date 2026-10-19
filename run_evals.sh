@@ -67,9 +67,65 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
+# Training evals need the sidecar: start it (./run_server_sidecar_local.sh) if nothing answers on its health endpoint, as
+# ./run_server_local.sh does. The sidecar started here is stopped when this script exits or is killed (INT/TERM/HUP).
+# Not needed (and not started) to list the evals or the models. A -sidecar URL or SIDECAR_URL that is not local is never started.
+SIDECAR_PID=""
+cleanup() {
+	trap - EXIT INT TERM HUP
+	if [ -n "$SIDECAR_PID" ]; then
+		echo "stopping local sidecar (pid $SIDECAR_PID)" >&2
+		kill "$SIDECAR_PID" 2>/dev/null || true
+		wait "$SIDECAR_PID" 2>/dev/null || true
+	fi
+}
+
+start_sidecar() {
+	local url="${SIDECAR_URL:-http://${SIDECAR_HOST:-127.0.0.1}:${SIDECAR_PORT:-8787}}" prev="" a
+	for a in ${args[@]+"${args[@]}"}; do
+		case "$prev" in -sidecar | --sidecar) url="$a" ;; esac
+		case "$a" in -sidecar=* | --sidecar=*) url="${a#*=}" ;; esac
+		case "$a" in -list-evals | -list-models) return 0 ;; esac
+		prev="$a"
+	done
+	if curl -fs -m 2 "$url/health" >/dev/null 2>&1; then
+		echo "sidecar already running at $url" >&2
+		return 0
+	fi
+	case "$url" in
+	http://127.0.0.1[:/]* | http://127.0.0.1 | http://localhost[:/]* | http://localhost) ;;
+	*)
+		echo "warning: sidecar at $url does not answer and is not local; not starting it" >&2
+		return 0
+		;;
+	esac
+	echo "sidecar not running at $url; starting it" >&2
+	trap cleanup EXIT
+	trap 'exit 143' INT TERM HUP
+	SIDECAR_HOST="${SIDECAR_HOST:-127.0.0.1}" ./run_server_sidecar_local.sh &
+	SIDECAR_PID=$!
+	local _
+	for _ in $(seq 1 60); do
+		curl -fs -m 2 "$url/health" >/dev/null 2>&1 && return 0
+		if ! kill -0 "$SIDECAR_PID" 2>/dev/null; then
+			echo "warning: sidecar exited at startup (are MODAL_TOKEN_ID / MODAL_TOKEN_SECRET set?); continuing without it" >&2
+			SIDECAR_PID=""
+			return 0
+		fi
+		sleep 1
+	done
+}
+
 case "$kind" in
 knowledge) go run ./evals/knowledge ${args[@]+"${args[@]}"} ;;
-training) go run ./evals/training/cmd ${args[@]+"${args[@]}"} ;;
+training)
+	start_sidecar
+	# Not exec'd, so the trap can stop the sidecar. SIDECAR_URL tells the runner where the sidecar is, unless -sidecar does.
+	rc=0
+	SIDECAR_URL="${SIDECAR_URL:-http://${SIDECAR_HOST:-127.0.0.1}:${SIDECAR_PORT:-8787}}" \
+		go run ./evals/training/cmd ${args[@]+"${args[@]}"} || rc=$?
+	exit "$rc"
+	;;
 *)
 	echo "error: unknown eval type \"$kind\" (knowledge or training)" >&2
 	exit 2

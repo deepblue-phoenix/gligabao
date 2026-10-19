@@ -19,10 +19,10 @@ The evals are in `bin/evals_training/*.json` (static definitions, kept in `bin/`
 
 ```
 ./run_evals.sh -t training -list-models          # the ids of the trained models in bin/gligabao.db
-./run_evals.sh -t training -model 3 [-v] [-e world-knowledge-base] [-no-store] [case-name ...]
+./run_evals.sh -t training [-model 3] [-v] [-e world-knowledge-base] [-no-store] [case-name ...]
 ```
 
-It needs `ANTHROPIC_API_KEY` (the judge) and a running sidecar (`SIDECAR_URL` or `-sidecar`; the model is loaded there). The runner (`evals/training/cmd`) does what the Eval button does: it picks the eval (`-e`, else the one named like the model's dataset), asks the model each question, has the judge grade the answers with the same engine as below, prints a verdict per case and the totals, and **stores the run** in the database (`-db`; an eval run with its cases and the judge's recorded calls, which the admin UI shows), unless `-no-store`. A case is correct with a score of 4 or 5 (the engine's verdict, not a stored status: stored cases are `judged` or `error`); the exit status is 1 if any case is not correct. Other options: `-batch-size`, `-judge-model`, `-max-tokens`, `-temperature` (`go run ./evals/training/cmd -h`).
+Without `-model`, the model is the newest trained Gemma 4 4B one. It needs `ANTHROPIC_API_KEY` (the judge) and the sidecar (`SIDECAR_URL` or `-sidecar`; the model is loaded there): `run_evals.sh` starts it, as `run_server_local.sh` does, if a local one does not answer (needs `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET`), and stops it at the end. The runner (`evals/training/cmd`) does what the Eval button does: it picks the eval (`-e`, else the one named like the model's dataset), asks the model each question, has the judge grade the answers with the same engine as below, prints a verdict per case and the totals, and **stores the run** in the database (`-db`; an eval run with its cases and the judge's recorded calls, which the admin UI shows), unless `-no-store`. A case is correct with a score of 4 or 5 (the engine's verdict, not a stored status: stored cases are `judged` or `error`); the exit status is 1 if any case is not correct. Other options: `-batch-size`, `-judge-model`, `-max-tokens`, `-temperature` (`go run ./evals/training/cmd -h`).
 
 ## How it works
 

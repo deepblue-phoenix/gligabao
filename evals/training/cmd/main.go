@@ -31,6 +31,9 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
 )
 
+// defaultModelSize is the size of the model evaluated when -model is not given (Gemma 4 4B, google/gemma-4-E4B-it).
+const defaultModelSize = "4b"
+
 func main() {
 	if err := mainErr(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
@@ -45,7 +48,7 @@ func mainErr() error {
 	noStore := flag.Bool("no-store", false, "do not store the run in the database")
 	listEvals := flag.Bool("list-evals", false, "print the available evals and their cases, then exit")
 	listModels := flag.Bool("list-models", false, "print the trained models of the database (the ids -model takes), then exit")
-	modelID := flag.Int64("model", 0, "id of the trained model to evaluate (see -list-models)")
+	modelID := flag.Int64("model", 0, "id of the trained model to evaluate (see -list-models; default: the newest Gemma 4 4B one)")
 	dbPath := flag.String("db", "bin/gligabao.db", "SQLite file of the database that holds the trained models")
 	sidecarURL := flag.String("sidecar", os.Getenv(config.EnvSidecarURL), "URL of the sidecar (default: $SIDECAR_URL, else "+sidecar.DefaultBaseURL+")")
 	batchSize := flag.Int("batch-size", 0, fmt.Sprintf("question/answer pairs per judge call (default %d, at most %d)", trainingeval.DefaultBatchSize, trainingeval.MaxBatchSize))
@@ -86,8 +89,20 @@ func mainErr() error {
 		}
 		return nil
 	}
-	if *modelID < 1 {
+	if *modelID < 0 {
 		return errors.New("-model must be the id of a trained model (see -list-models)")
+	}
+	if *modelID == 0 {
+		// The default model: the newest trained Gemma 4 4B (the newest are listed first).
+		models, err := relational.ListTrainedModels(ctx, database.Relational, 0)
+		if err != nil {
+			return err
+		}
+		i := slices.IndexFunc(models, func(m relational.TrainedModel) bool { return m.ModelSize == defaultModelSize })
+		if i < 0 {
+			return fmt.Errorf("no trained %s model in %s: train one, or pass -model ID (see -list-models)", defaultModelSize, *dbPath)
+		}
+		*modelID = models[i].ID
 	}
 	tm, err := relational.GetTrainedModel(ctx, database.Relational, *modelID)
 	if err != nil {
