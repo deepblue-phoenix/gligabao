@@ -1,6 +1,6 @@
 // Command knowledge runs end-to-end evals against the real LLM.
 //
-// Each eval in bin/evals_knowledge/*.json (-evals) is a JSON list of cases. The cases run in the eval database (-db), which isolates
+// Each eval in bin/evals_knowledge/*.json (-evals) is a JSON object with a "name" and a list of "cases". The cases run in the eval database (-db), which isolates
 // the evaluation data from the main database. It is never reset: every run of an experiment creates its own datasets
 // (one per case, named after the case and the run, see datasetName), so runs do not interfere with each other and
 // the graphs of all runs are kept. The experiments and their runs are recorded in the same eval database. The cases
@@ -82,7 +82,7 @@ const evalUser = "eval"
 
 // Case is one eval case (an input and what is checked, plus metadata): remember some texts in order, then ask a question about them.
 type Case struct {
-	// Eval is the eval (file name without ".json") the case was loaded from; it is not part of the JSON.
+	// Eval is the name of the eval the case was loaded from (the "name" of its JSON file, not the file name); it is not part of the case JSON.
 	Eval           string       `json:"-"`
 	Name           string       `json:"name"`
 	Remember       []Artifact   `json:"remember"`
@@ -987,7 +987,7 @@ func main() {
 func mainErr() error {
 	verbose := flag.Bool("v", false, "print the input and output of every LLM call")
 	evalsDir := flag.String("evals", defaultEvalsDir, "directory the evals (*.json) and their corpus files are read from")
-	eval := flag.String("eval", "", "run only the cases of this eval (file name without .json; see -list-evals)")
+	eval := flag.String("eval", "", "run only the cases of this eval (its name as set in the JSON file; see -list-evals)")
 	listEvals := flag.Bool("list-evals", false, "print the available evals and their cases, then exit")
 	flag.StringVar(&atifDir, "atif", "", `store every ATIF trajectory as JSON in this directory (default: "atif" next to the -db file)`)
 	experiment := flag.String("experiment", "default", "name of the experiment this run belongs to (created if new)")

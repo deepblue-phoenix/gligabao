@@ -98,7 +98,7 @@ func Start(ctx context.Context, d *sql.DB, opts Options) (*Tracker, error) {
 
 // CaseOutcome is what one case produced.
 type CaseOutcome struct {
-	// Eval is the eval the case is in (its file name without ".json") and Name the case name.
+	// Eval is the eval the case is in (the name set in its JSON file) and Name the case name.
 	Eval, Name string
 	Answer     string
 	// Problems are the failed checks. Err is why the case could not be run to the end. Without either the case passed.

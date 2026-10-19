@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.64.1] - 2026-10-19
+
+### Fixed
+- Stale comments and the `-eval` flag help of `evals/knowledge` (and the `Eval` field comment in `internal/experiments`) said the eval is the JSON file name; they now say it is the `name` set in the file. No behaviour change.
+
 ## [0.64.0] - 2026-10-19
 
 ### Changed
