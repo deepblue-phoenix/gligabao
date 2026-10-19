@@ -92,9 +92,9 @@ type Options struct {
 	// TrajectoryDir is where the ATIF trajectories of the eval endpoints are stored as JSON.
 	// Default: an "atif" directory next to the SQLite file (memory_core.TrajectoryDir if there is none).
 	TrajectoryDir string
-	// Eval registers the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/recall), which return ATIF
+	// EvalModeEnable registers the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/recall), which return ATIF
 	// trajectories with their results. Off by default.
-	Eval bool
+	EvalModeEnable bool
 	// EvalDBPath is a second SQLite file, the eval database (see internal/evals/knowledge/main.go): the evaluation datasets, the
 	// experiments and their runs. The admin UI shows it next to the main database and reads the Evals block (and the
 	// ATIF files, from an "atif" directory next to it) from it. Opened for the admin UI only; ignored (with a warning)
@@ -103,8 +103,8 @@ type Options struct {
 	// TimeseriesProviders are the sources of timeseries that remember can fetch from (see docs/timeseries.md). Each has a
 	// natural-language description of when it applies, and a callback that does the fetching. Validated at startup.
 	TimeseriesProviders []memory_core.SeriesProvider
-	// AdminUI registers the admin UI handlers (served at /v1/gb/admin/ from the assets embedded in the binary).
-	AdminUI bool
+	// AdminUIenable registers the admin UI handlers (served at /v1/gb/admin/ from the assets embedded in the binary).
+	AdminUIenable bool
 }
 
 //---------------------------------------------------------------------------------------------
@@ -344,7 +344,7 @@ func Run(ctx context.Context, opts Options) error {
 		yellow, reset = "\033[33m", "\033[0m"
 	}
 	fmt.Fprintf(os.Stderr, "\nServer: %s%s%s\n", yellow, serverURL(opts.Addr), reset)
-	if opts.AdminUI && adminui.Available() {
+	if opts.AdminUIenable && adminui.Available() {
 		fmt.Fprintf(os.Stderr, "Admin UI: %s%s%s\n", yellow, adminURL(opts.Addr), reset)
 	}
 	fmt.Fprintln(os.Stderr)
@@ -376,16 +376,16 @@ func Run(ctx context.Context, opts Options) error {
 	case database.SQLitePath != "":
 		memory_core.TrajectoryDir = filepath.Join(filepath.Dir(database.SQLitePath), "atif")
 	}
-	if opts.Eval {
+	if opts.EvalModeEnable {
 		log.Warn("eval mode: /v1/gb/eval/remember and /v1/gb/eval/recall are enabled")
 	}
-	if opts.Eval {
+	if opts.EvalModeEnable {
 		log.WithField("trajectory_dir", memory_core.TrajectoryDir).Info("ATIF trajectories are stored here")
 	}
 
-	if opts.AdminUI && adminui.Available() {
+	if opts.AdminUIenable && adminui.Available() {
 		log.WithField("url", adminURL(opts.Addr)).Info("admin UI is active")
-	} else if opts.AdminUI {
+	} else if opts.AdminUIenable {
 		log.Warn("admin UI is enabled but not active: web assets are not embedded in this binary")
 	} else {
 		log.Info("admin UI is not active (enable with admin_ui = true or --admin-ui)")
@@ -429,7 +429,7 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	var extra []admin.Named
-	if opts.AdminUI && opts.EvalDBPath != "" {
+	if opts.AdminUIenable && opts.EvalDBPath != "" {
 		if database.Backend != config.DBBackendSQLite {
 			log.Warn("eval database not shown in the admin UI: only supported with the sqlite backend")
 		} else if evalDB, err := openAdminDB(opts.EvalDBPath); err != nil {
@@ -459,7 +459,7 @@ func Run(ctx context.Context, opts Options) error {
 	// The remember manager stops only when Run returns, i.e. after the graceful shutdown has given the runs in progress their time.
 	mgrCtx, stopMgr := context.WithCancel(ctx)
 	defer stopMgr()
-	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(mgrCtx, database, llm, emb, jv, ws, providers, sc, opts.Eval, opts.AdminUI, extra...)}
+	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(mgrCtx, database, llm, emb, jv, ws, providers, sc, opts.EvalModeEnable, opts.AdminUIenable, extra...)}
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
