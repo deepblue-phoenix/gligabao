@@ -114,13 +114,13 @@ type InferenceGroup struct {
 
 // Eval types: the type column of the universal eval tables (gb_experiments, gb_experiment_cases, gb_experiment_runs and
 // gb_experiment_case_results, see sqlite/db_schema.go). What is only one kind's is in its metadata table
-// (gb_knowledge_case_meta, gb_training_eval_run_meta, gb_training_case_results).
+// (gb_knowledge_case_meta, gb_training_case_meta, gb_training_eval_run_meta).
 const (
 	// EvalTypeKnowledge is the type of the knowledge-extraction evals: remember, then recall, checked programmatically
-	// (evals/knowledge, package experiments). Its results are one per case.
+	// (evals/knowledge, package experiments).
 	EvalTypeKnowledge = "knowledge"
 	// EvalTypeTraining is the type of the evals of trained models (evals/training, internal/api/training): an eval run of a
-	// trained model. Its result is that of the whole eval (case_name ''); the cases are in gb_training_case_results.
+	// trained model, whose run has one case result per example of the eval (case_name = the example's index in the dataset).
 	EvalTypeTraining = "training"
 )
 
@@ -135,6 +135,9 @@ const (
 	ExperimentFailed = "failed"
 	// ExperimentErrored is the status of a case that could not be run to the end (server, LLM or API error).
 	ExperimentErrored = "error"
+	// ExperimentCompleted is the status of a training case the model answered and the judge scored (it has a score, not a
+	// verdict); the training cases that failed are ExperimentFailed.
+	ExperimentCompleted = "completed"
 )
 
 // Trajectory kinds: the operation whose ATIF trajectory it is.

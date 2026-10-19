@@ -43,7 +43,7 @@ func trainingExperimentsScenario(t *testing.T, d *sql.DB) {
 	// Two eval runs become runs of it; the run follows its eval run.
 	e1, e2 := newEval(), newEval()
 	run, err := relational.StartTrainingExperimentRun(ctx, d, x.ID, e1)
-	if err != nil || run.ID == 0 || run.ExperimentID != x.ID || run.EvalRunID != e1 || run.Status != relational.TrainedModelEvalRunRunning ||
+	if err != nil || run.ID == 0 || run.ExperimentID != x.ID || run.ID != e1 || run.Status != relational.TrainedModelEvalRunRunning ||
 		run.MeanScore != nil || run.CorrectRate != nil || run.Model.ID != mid || run.Model.NumTrainSteps != 7 || run.Model.BaseModel != "google/gemma" ||
 		run.Model.FinalLoss == nil || *run.Model.FinalLoss != 0.5 || run.EvalRun.NumExamples != 4 {
 		t.Fatalf("StartTrainingExperimentRun: %+v %v", run, err)
@@ -52,14 +52,14 @@ func trainingExperimentsScenario(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 	e := relational.TrainedModelEvalRun{ID: e1, JudgeModel: "j", NumAnswered: 4, NumJudged: 4, NumCorrect: 3, NumIncorrect: 1, ScoreSum: 16, NumBatches: 1, JudgeCostUSD: 0.25}
-	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, e, nil); err != nil {
+	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, e, []relational.TrainedModelCaseResult{{Idx: 0, Batch: 1, Instruction: "q", Status: relational.TrainedModelCaseFailed}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := relational.FinishTrainedModelEvalRun(ctx, d, e1, relational.TrainedModelEvalRunCompleted, ""); err != nil {
 		t.Fatal(err)
 	}
 	runs, err := relational.ListTrainingExperimentRuns(ctx, d, x.ID)
-	if err != nil || len(runs) != 2 || runs[0].EvalRunID != e1 || runs[1].EvalRunID != e2 {
+	if err != nil || len(runs) != 2 || runs[0].ID != e1 || runs[1].ID != e2 {
 		t.Fatalf("ListTrainingExperimentRuns: %+v %v", runs, err)
 	}
 	if r := runs[0]; r.Status != relational.TrainedModelEvalRunCompleted || r.EvalRun.FinishedAt == nil || r.MeanScore == nil || *r.MeanScore != 4 ||
@@ -106,5 +106,9 @@ func trainingExperimentsScenario(t *testing.T, d *sql.DB) {
 	}
 	if got, err := relational.GetTrainingExperiment(ctx, d, x.ID); err != nil || got.NumRuns != 0 {
 		t.Fatalf("after deleting the model: %+v %v", got, err)
+	}
+	var left int
+	if err := d.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM gb_experiment_case_results) + (SELECT COUNT(*) FROM gb_training_case_meta)`).Scan(&left); err != nil || left != 0 {
+		t.Fatalf("case results left after deleting the model: %d %v", left, err)
 	}
 }

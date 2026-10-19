@@ -1,6 +1,7 @@
 package relational_test
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -27,7 +28,7 @@ func trainedModelEvalRunsScenario(t *testing.T, d *sql.DB) {
 	}
 	got, err := relational.GetTrainedModelEvalRun(ctx, d, id)
 	if err != nil || got.Status != relational.TrainedModelEvalRunRunning || got.TrainedModelID != mid || got.Dataset != "mine" ||
-		got.NumExamples != 3 || string(got.Params) != `{"batch_size":2}` || got.CreatedAt.IsZero() || got.FinishedAt != nil {
+		got.NumExamples != 3 || compactJSON(got.Params) != `{"batch_size":2}` || got.CreatedAt.IsZero() || got.FinishedAt != nil {
 		t.Fatalf("GetTrainedModelEvalRun: %+v %v", got, err)
 	}
 
@@ -112,4 +113,13 @@ func trainedModelEvalRunsScenario(t *testing.T, d *sql.DB) {
 	if _, err := relational.GetTrainedModelEvalRun(ctx, d, id+100); !errors.Is(err, relational.ErrNotFound) {
 		t.Fatalf("unknown: %v", err)
 	}
+}
+
+// compactJSON removes the insignificant whitespace (PostgreSQL's jsonb writes `{"a": 1}`).
+func compactJSON(b []byte) string {
+	var out bytes.Buffer
+	if err := json.Compact(&out, b); err != nil {
+		return string(b)
+	}
+	return out.String()
 }

@@ -218,6 +218,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_case_results (
 	FOREIGN KEY (run_id, type) REFERENCES gb_experiment_runs(id, type) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_case_results_run ON gb_experiment_case_results(run_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_experiment_case_results_training_case ON gb_experiment_case_results(run_id, eval, case_name) WHERE type = 'training';
 
 CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
 	id            BIGSERIAL PRIMARY KEY,
@@ -247,7 +248,7 @@ CREATE TABLE IF NOT EXISTS gb_knowledge_case_meta (
 );
 
 CREATE TABLE IF NOT EXISTS gb_training_eval_run_meta (
-	case_result_id         BIGINT PRIMARY KEY,
+	run_id              BIGINT PRIMARY KEY,
 	type                TEXT NOT NULL DEFAULT 'training' CHECK (type = 'training'),
 	trained_model_id    BIGINT NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
 	scheme              TEXT NOT NULL DEFAULT 'finetune_dataset' CHECK (scheme IN ('finetune_dataset')),
@@ -266,15 +267,16 @@ CREATE TABLE IF NOT EXISTS gb_training_eval_run_meta (
 	judge_calls         BIGINT NOT NULL DEFAULT 0,
 	judge_input_tokens  BIGINT NOT NULL DEFAULT 0,
 	judge_output_tokens BIGINT NOT NULL DEFAULT 0,
-	FOREIGN KEY (case_result_id, type) REFERENCES gb_experiment_case_results(id, type) ON DELETE CASCADE
+	judge_cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
+	error               TEXT NOT NULL DEFAULT '',
+	FOREIGN KEY (run_id, type) REFERENCES gb_experiment_runs(id, type) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_gb_training_eval_run_meta_model ON gb_training_eval_run_meta(trained_model_id, case_result_id);
+CREATE INDEX IF NOT EXISTS idx_gb_training_eval_run_meta_model ON gb_training_eval_run_meta(trained_model_id, run_id);
 
 -- Deleting a trained model deletes the metadata of its eval runs; this trigger deletes their runs too (see sqlite/db_schema.go).
 CREATE OR REPLACE FUNCTION gb_training_eval_run_meta_deleted() RETURNS trigger AS $$
 BEGIN
-	DELETE FROM gb_experiment_runs WHERE type = 'training'
-		AND id = (SELECT run_id FROM gb_experiment_case_results WHERE id = OLD.case_result_id);
+	DELETE FROM gb_experiment_runs WHERE type = 'training' AND id = OLD.run_id;
 	RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
@@ -282,23 +284,21 @@ DROP TRIGGER IF EXISTS trg_gb_training_eval_run_meta_deleted ON gb_training_eval
 CREATE TRIGGER trg_gb_training_eval_run_meta_deleted AFTER DELETE ON gb_training_eval_run_meta
 	FOR EACH ROW EXECUTE FUNCTION gb_training_eval_run_meta_deleted();
 
-CREATE TABLE IF NOT EXISTS gb_training_case_results (
-	id            BIGSERIAL PRIMARY KEY,
-	eval_run_id       BIGINT NOT NULL REFERENCES gb_training_eval_run_meta(case_result_id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS gb_training_case_meta (
+	case_result_id BIGINT PRIMARY KEY,
+	type          TEXT NOT NULL DEFAULT 'training' CHECK (type = 'training'),
 	idx           BIGINT NOT NULL,
 	batch         BIGINT NOT NULL,
 	instruction   TEXT NOT NULL,
 	input         TEXT NOT NULL DEFAULT '',
 	reference     TEXT NOT NULL DEFAULT '',
 	response      TEXT NOT NULL DEFAULT '',
-	status        TEXT NOT NULL CHECK (status IN ('judged', 'failed')),
-	error         TEXT NOT NULL DEFAULT '',
 	score         BIGINT,
 	reason        TEXT NOT NULL DEFAULT '',
 	input_tokens  BIGINT NOT NULL DEFAULT 0,
 	output_tokens BIGINT NOT NULL DEFAULT 0,
 	duration_ms   BIGINT NOT NULL DEFAULT 0,
-	UNIQUE (eval_run_id, idx)
+	FOREIGN KEY (case_result_id, type) REFERENCES gb_experiment_case_results(id, type) ON DELETE CASCADE
 );`
 
 // initSchema applies the database schema. Concurrent starters are serialized with an advisory lock, because

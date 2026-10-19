@@ -34,16 +34,16 @@ const (
 )
 
 // TrainedModelEvalRun is one run of an eval against a trained model, judged by an external LLM (a "training" row of
-// gb_experiment_case_results, whose case_name is ” because it is the result of the whole eval, with its
-// gb_training_eval_run_meta; evals/training). The HTTP API and the admin UI call it an eval. The eval is a dataset (see
+// gb_experiment_runs with its gb_training_eval_run_meta; its cases are the case results of the run, see
+// TrainedModelCaseResult; evals/training). The HTTP API and the admin UI call it an eval. The eval is a dataset (see
 // Scheme), its cases are the dataset's examples: the model is asked the question of each case and the LLM scores its answer
 // against the expected output. The counters are updated after every judge batch, so the row shows the progress of a running
 // eval run and the result of a finished one.
 // Every case is judged or failed (NumJudged + NumFailed = the ones done so far, of NumExamples);
 // NumCorrect + NumPartial + NumIncorrect = NumJudged, and ScoreSum is the sum of the scores (0 to 5) of the judged ones.
 //
-// ID is that of the eval run's gb_experiment_case_results row. Status, Error, CreatedAt (the start), FinishedAt and JudgeCostUSD are
-// columns of that row, Params those of its run (gb_experiment_runs), and the rest is in gb_training_eval_run_meta.
+// ID is that of the eval run's gb_experiment_runs row. Status, Params, CreatedAt (the start) and FinishedAt are columns of that
+// row, and the rest (Error, JudgeCostUSD, the counters, ...) is in gb_training_eval_run_meta.
 type TrainedModelEvalRun struct {
 	ID             int64  `json:"id"`
 	TrainedModelID int64  `json:"trained_model_id"`
@@ -92,9 +92,11 @@ func (e *TrainedModelEvalRun) SetStoredParams(s string) {
 	}
 }
 
-// TrainedModelCaseResult is the outcome for one example of an eval run (gb_training_case_results): the question, the
-// dataset's answer (Reference), the model's (Response) and the judge's score.
+// TrainedModelCaseResult is the outcome for one example of an eval run: the question, the dataset's answer (Reference), the
+// model's (Response) and the judge's score. It is a case result of the eval run's run (a gb_experiment_case_results row with
+// status 'completed' or 'failed', whose case_name is Idx) with its gb_training_case_meta row; Status is "judged" or "failed".
 type TrainedModelCaseResult struct {
+	// ID is that of the case result row and EvalRunID that of the eval run (its run).
 	ID        int64 `json:"id"`
 	EvalRunID int64 `json:"eval_run_id"`
 	// Idx is the example's position in the dataset (0-based), Batch the judge batch it was graded in (1-based).

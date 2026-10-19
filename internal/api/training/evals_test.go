@@ -528,7 +528,7 @@ func testEvalExperiments(t *testing.T, d *sql.DB) {
 		t.Fatalf("experiment: %d %s", rec.Code, rec.Body)
 	}
 	r := got.Runs[0]
-	if r.EvalRunID != first.eval(t).ID || r.Status != relational.TrainedModelEvalRunCompleted || r.Model.ID != mid || r.Model.FinalLoss == nil ||
+	if r.ID != first.eval(t).ID || r.Status != relational.TrainedModelEvalRunCompleted || r.Model.ID != mid || r.Model.FinalLoss == nil ||
 		r.MeanScore == nil || *r.MeanScore != 4 || r.CorrectRate == nil || *r.CorrectRate != 0.75 || got.Runs[1].EvalRun.NumExamples != 2 {
 		t.Fatalf("run: %+v", r)
 	}

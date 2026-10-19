@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.57.0] - 2026-10-19
+
+### Changed
+- **A training eval has one case result per example (breaking for the eval database and the training API: the tables must be rebuilt, nothing is migrated; SQLite and PostgreSQL).** "Case result" now means the same for both kinds of eval: one row of `gb_experiment_case_results` per case. Before, a training eval run was ONE such row (`case_name ''`) and its examples were in `gb_training_case_results`.
+  - Schema: a training case is a `gb_experiment_case_results` row (`eval` = the dataset, `case_name` = the example's index, unique per run through a partial unique index; `status` `completed` when judged, `failed` otherwise; `error`) with a `gb_training_case_meta` row (`idx`, `batch`, `instruction`, `input`, `reference`, `response`, `score`, `reason`, tokens, `duration_ms`), the counterpart of `gb_knowledge_case_meta`. `gb_training_case_results` is gone. The eval run is now just the run: `gb_training_eval_run_meta` is keyed by `run_id` (was `case_result_id`) and also holds the `judge_cost_usd` and the `error` that were columns of the whole-eval result row; the status and times are the run's. `gb_experiment_cases` lists an experiment's training cases (one per example) instead of the whole eval with `case_name ''`.
+  - Go: the ID of a `TrainedModelEvalRun` is the ID of its `gb_experiment_runs` row (was that of the whole-eval result row); `TrainedModelCaseResult.ID` is the ID of its case result row and `EvalRunID` that of the run. `TrainingExperimentRun.EvalRunID` is gone (`ID` is the eval run's). New status constant `ExperimentCompleted`.
+  - Training API: the IDs of evals and training experiment runs are the run IDs, and a training experiment run has no `eval_run_id` (its `id` is the eval's).
+
 ## [0.56.0] - 2026-10-19
 
 ### Changed

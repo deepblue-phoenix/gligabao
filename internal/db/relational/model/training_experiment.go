@@ -26,9 +26,8 @@ type TrainingExperiment struct {
 // holds the link; EvalRun is the eval run as it is now (status, counters, score and the judge's cost, so a running run shows its
 // progress) and Model the model that was evaluated.
 type TrainingExperimentRun struct {
-	ID           int64 `json:"id"`
+	ID           int64 `json:"id"` // the same as EvalRun.ID: the eval run is the run
 	ExperimentID int64 `json:"experiment_id"`
-	EvalRunID    int64 `json:"eval_run_id"`
 	// Status is the eval run's status (TrainedModelEvalRunRunning, ...Completed, ...Failed or ...Cancelled).
 	Status    string                  `json:"status"`
 	CreatedAt time.Time               `json:"created_at"`

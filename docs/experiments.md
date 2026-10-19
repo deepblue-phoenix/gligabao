@@ -15,7 +15,7 @@ Universal tables:
 | `gb_experiments` | `Experiment` | `type`, `name`, `description`, `config` (free-form JSON: the settings under test) |
 | `gb_experiment_cases` | `Experiment.Cases` (`CaseRef`) | the cases (`eval` + `case_name`) that any run of the experiment executed; added the first time a case is recorded |
 | `gb_experiment_runs` | `ExperimentRun` | one execution: `type`, `experiment_id` (always set for knowledge), `status` (`running`, then `passed` or `failed`), `params` (how it was invoked), totals (`total_cases`, `passed_cases`, `failed_cases`, `cost_usd`), `started_at`, `finished_at` |
-| `gb_experiment_case_results` | `ExperimentCaseResult` | one case's result in a run: `type`, `eval`, `case_name`, `status` (`passed`, `failed`: a check did not hold, `error`: it could not run to the end), `error`, `cost_usd`, times |
+| `gb_experiment_case_results` | `ExperimentCaseResult` | one case's result in a run: `type`, `eval`, `case_name`, `status` (knowledge: `passed`, `failed`: a check did not hold, `error`: it could not run to the end; training: `completed`: judged, `failed`), `error`, `cost_usd`, times |
 | `gb_experiment_trajectories` | `ExperimentTrajectory` | the ATIF trajectories of a case, in call order (`seq`): `kind` (`remember` / `recall`), `trajectory_id`, `agent_name`, `steps`, `cost_usd`, `path` of the JSON file, `artifact_ids` (the IDs, in the case's dataset, of the call's artifacts: the artifact a remember stored, or the artifacts a recall's evidence edges were sourced from via the edge provenance links; `experiments.GetRun` and the admin API resolve them to `artifacts` by reading the dataset) |
 
 Metadata tables (the struct fields are those of `ExperimentCaseResult`; the result's `Type` is `knowledge`):
@@ -23,9 +23,9 @@ Metadata tables (the struct fields are those of `ExperimentCaseResult`; the resu
 | table | meaning |
 |---|---|
 | `gb_knowledge_case_meta` | `answer`, `problems` (failed checks), `passed_checks`, `dataset_id` (the dataset the case ran in, which holds the knowledge graph it built; null if it was never created), `steps` (ATIF steps over its trajectories) |
-| `gb_training_eval_run_meta`, `gb_training_case_results` | the training eval runs' own columns: trained model, scheme, dataset, judge, counters, per-case outcomes. See [training/EVALS.md](training/EVALS.md#tables) |
+| `gb_training_eval_run_meta` (one row per training run), `gb_training_case_meta` (one row per training case result) | the training eval runs' own columns (trained model, scheme, dataset, judge, counters) and the per-case outcomes (question, the dataset's answer, the model's, the judge's score). See [training/EVALS.md](training/EVALS.md#tables) |
 
-Both kinds have **evals**: a case (`case_name`) belongs to an eval (`eval`). Knowledge evals are the files of `evals/knowledge/evals/`. A training eval is a dataset (`eval` = the dataset's name) whose cases are its examples; a training eval is an *eval run* (one run of the eval against one trained model), so its result row is that of the whole eval (`case_name = ''`) and the cases are in `gb_training_case_results`.
+Both kinds have **evals**: a case (`case_name`) belongs to an eval (`eval`). Knowledge evals are the files of `evals/knowledge/evals/`. A training eval is a dataset (`eval` = the dataset's name) whose cases are its examples; a training eval is an *eval run* (one run of the eval against one trained model), so it is a run with one case result per example (`case_name` is the example's index in the dataset), the same as a knowledge run has one per case.
 
 The graph and the artifacts of a case are not copied into the experiment tables: they are read from the dataset the case ran in, via `dataset_id` and `artifact_ids`. Datasets are only ever soft-deleted, so they stay readable; if a dataset (or an artifact) is purged from the eval database, its case shows no graph (or no artifact).
 

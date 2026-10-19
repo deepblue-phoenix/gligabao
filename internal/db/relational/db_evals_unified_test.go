@@ -91,21 +91,48 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	q := fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_runs r JOIN gb_experiment_case_results e ON e.run_id = r.id
-		WHERE e.id = %d AND r.type = 'training' AND e.type = 'training' AND r.experiment_id IS NULL AND e.eval = 'mine' AND e.case_name = ''`, eid)
-	if n := count(q); n != 1 {
+	// An ad-hoc eval run is a run in no experiment, with its metadata and no case results before its first batch.
+	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_runs WHERE id = %d AND type = 'training' AND experiment_id IS NULL`, eid)); n != 1 {
 		t.Fatalf("ad-hoc training eval run rows: %d", n)
 	}
-	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_training_eval_run_meta WHERE case_result_id = %d AND trained_model_id = %d`, eid, mid)); n != 1 {
+	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_training_eval_run_meta WHERE run_id = %d AND trained_model_id = %d`, eid, mid)); n != 1 {
 		t.Fatalf("training metadata: %d", n)
+	}
+	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_case_results WHERE run_id = %d`, eid)); n != 0 {
+		t.Fatalf("case results before the first batch: %d", n)
+	}
+	// A batch stores one case result (with its training metadata) per example; one that joined the experiment already is listed there.
+	score := 5
+	batch1 := []relational.TrainedModelCaseResult{{Idx: 0, Batch: 1, Instruction: "q0", Response: "a0", Status: relational.TrainedModelCaseJudged, Score: &score, Reason: "ok"}}
+	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, relational.TrainedModelEvalRun{ID: eid, NumAnswered: 1, NumJudged: 1, NumCorrect: 1, ScoreSum: 5, NumBatches: 1}, batch1); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_case_results e JOIN gb_training_case_meta c ON c.case_result_id = e.id
+		WHERE e.run_id = %d AND e.type = 'training' AND e.eval = 'mine' AND e.case_name = '0' AND e.status = 'completed' AND c.score = 5`, eid)); n != 1 {
+		t.Fatalf("training case result rows: %d", n)
 	}
 	if _, err := relational.StartTrainingExperimentRun(ctx, d, tx.ID, eid); err != nil {
 		t.Fatal(err)
 	}
-	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_cases WHERE experiment_id = %d AND type = 'training' AND eval = 'mine' AND case_name = ''`, tx.ID)); n != 1 {
+	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_cases WHERE experiment_id = %d AND type = 'training' AND eval = 'mine' AND case_name = '0'`, tx.ID)); n != 1 {
+		t.Fatalf("training experiment cases after joining: %d", n)
+	}
+	// A case saved after the run joined the experiment is added to its cases, and a failed one is a failed case result.
+	batch2 := []relational.TrainedModelCaseResult{{Idx: 1, Batch: 2, Instruction: "q1", Status: relational.TrainedModelCaseFailed, Error: "boom"}}
+	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, relational.TrainedModelEvalRun{ID: eid, NumAnswered: 2, NumJudged: 1, NumFailed: 1, NumCorrect: 1, ScoreSum: 5, NumBatches: 2}, batch2); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_cases WHERE experiment_id = %d AND type = 'training' AND eval = 'mine'`, tx.ID)); n != 2 {
 		t.Fatalf("training experiment cases: %d", n)
 	}
-	// Judge cost and the end of the eval run reach the universal rows: the run is totalled and takes the eval run's status.
+	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_case_results WHERE run_id = %d AND case_name = '1' AND status = 'failed' AND error = 'boom'`, eid)); n != 1 {
+		t.Fatalf("failed training case result: %d", n)
+	}
+	// The database refuses a second result for the same example.
+	if _, err := d.ExecContext(ctx, fmt.Sprintf(`INSERT INTO gb_experiment_case_results (type, run_id, eval, case_name, status, started_at) VALUES ('training', %d, 'mine', '0', 'completed', '2026-01-01')`, eid)); err == nil {
+		t.Error("accepted a second result for one training case")
+	}
+	// Judge cost and the end of the eval run reach the universal run: it is totalled and takes the eval run's status.
 	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, relational.TrainedModelEvalRun{ID: eid, NumJudged: 2, NumCorrect: 2, ScoreSum: 9, JudgeCostUSD: 0.25}, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +143,7 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 	var total, passed, failed int
 	var cost float64
 	if err := d.QueryRowContext(ctx, fmt.Sprintf(`SELECT r.status, r.total_cases, r.passed_cases, r.failed_cases, r.cost_usd
-		FROM gb_experiment_runs r JOIN gb_experiment_case_results e ON e.run_id = r.id WHERE e.id = %d`, eid)).Scan(&status, &total, &passed, &failed, &cost); err != nil {
+		FROM gb_experiment_runs r WHERE r.id = %d`, eid)).Scan(&status, &total, &passed, &failed, &cost); err != nil {
 		t.Fatal(err)
 	}
 	if status != "completed" || total != 2 || passed != 2 || failed != 0 || cost != 0.25 {
@@ -127,6 +154,11 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("knowledge run: %+v", r)
 	}
 
+	var trainCaseID int64
+	if err := d.QueryRowContext(ctx, fmt.Sprintf(`SELECT MIN(id) FROM gb_experiment_case_results WHERE run_id = %d`, eid)).Scan(&trainCaseID); err != nil {
+		t.Fatal(err)
+	}
+
 	// The database refuses what mixes the types.
 	bad := []string{
 		// a training run in a knowledge experiment
@@ -135,9 +167,10 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 		fmt.Sprintf(`INSERT INTO gb_experiment_case_results (type, run_id, case_name, status, started_at) VALUES ('training', %d, 'x', 'running', '2026-01-01')`, run.ID),
 		// a knowledge run in no experiment
 		`INSERT INTO gb_experiment_runs (type, status, started_at) VALUES ('knowledge', 'running', '2026-01-01')`,
-		// knowledge metadata on a training result, and training metadata on a knowledge result
-		fmt.Sprintf(`INSERT INTO gb_knowledge_case_meta (case_result_id) VALUES (%d)`, eid),
-		fmt.Sprintf(`INSERT INTO gb_training_eval_run_meta (case_result_id, trained_model_id) VALUES (%d, %d)`, rec.ID, mid),
+		// knowledge metadata on a training result, and training metadata on a knowledge result or run
+		fmt.Sprintf(`INSERT INTO gb_knowledge_case_meta (case_result_id) VALUES (%d)`, trainCaseID),
+		fmt.Sprintf(`INSERT INTO gb_training_case_meta (case_result_id, idx, batch, instruction) VALUES (%d, 0, 1, 'q')`, rec.ID),
+		fmt.Sprintf(`INSERT INTO gb_training_eval_run_meta (run_id, trained_model_id) VALUES (%d, %d)`, run.ID, mid),
 		// an unknown type
 		`INSERT INTO gb_experiments (type, name, created_at) VALUES ('other', 'z', '2026-01-01')`,
 	}
