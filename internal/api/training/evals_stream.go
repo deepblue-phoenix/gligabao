@@ -145,10 +145,15 @@ func (s *evalStream) end(e relational.TrainedModelEvalRun) {
 	}
 }
 
-// caseResultRow is the stored form of a case of the run.
+// caseResultRow is the stored form of a case of the run. The scoring subsystem (shared with the audits) calls a scored case
+// "judged"; an eval's case is "passed" (the status of its row in gb_experiment_case_results).
 func caseResultRow(evalID int64, it trainingeval.CaseResult) relational.TrainedModelCaseResult {
+	status := it.Status
+	if status == trainingeval.CaseJudged {
+		status = relational.TrainedModelCasePassed
+	}
 	return relational.TrainedModelCaseResult{EvalRunID: evalID, Idx: it.Idx, Batch: it.Batch, Instruction: it.Instruction, Input: it.Input,
-		Reference: it.Reference, Response: it.Response, Status: it.Status, Error: it.Error, Score: it.Score, Reason: it.Reason,
+		Reference: it.Reference, Response: it.Response, Status: status, Error: it.Error, Score: it.Score, Reason: it.Reason,
 		InputTokens: it.InputTokens, OutputTokens: it.OutputTokens, DurationMS: it.DurationMS}
 }
 

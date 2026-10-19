@@ -14,8 +14,8 @@ Universal tables:
 |---|---|---|
 | `gb_experiments` | `Experiment` | `type`, `name`, `description`, `config` (free-form JSON: the settings under test) |
 | `gb_experiment_cases` | `Experiment.Cases` (`CaseRef`) | the cases (`eval` + `case_name`) that any run of the experiment executed; added the first time a case is recorded |
-| `gb_experiment_runs` | `ExperimentRun` | one execution: `type`, `experiment_id` (always set for knowledge), `status` (`running`, then `passed` or `failed`), `params` (how it was invoked), totals (`total_cases`, `passed_cases`, `failed_cases`, `cost_usd`), `started_at`, `finished_at` |
-| `gb_experiment_case_results` | `ExperimentCaseResult` | one case's result in a run: `type`, `eval`, `case_name`, `status` (knowledge: `passed`, `failed`: a check did not hold, `error`: it could not run to the end; training: `completed`: judged, `failed`), `error`, `cost_usd`, times |
+| `gb_experiment_runs` | `ExperimentRun` | one execution: `type`, `experiment_id` (always set for knowledge), `status` (`running`, then: knowledge `passed` or `failed`; training `passed`, `failed` or `cancelled`), `params` (how it was invoked), totals (`total_cases`, `passed_cases`, `failed_cases`, `cost_usd`), `started_at`, `finished_at` |
+| `gb_experiment_case_results` | `ExperimentCaseResult` | one case's result in a run: `type`, `eval`, `case_name`, `status` (knowledge: `passed`, `failed`: a check did not hold, `error`: it could not run to the end; training: `passed`: judged, whatever the score, `failed`: the model or the judge errored), `error`, `cost_usd`, times |
 | `gb_experiment_trajectories` | `ExperimentTrajectory` | the ATIF trajectories of a case, in call order (`seq`): `kind` (`remember` / `recall`), `trajectory_id`, `agent_name`, `steps`, `cost_usd`, `path` of the JSON file, `artifact_ids` (the IDs, in the case's dataset, of the call's artifacts: the artifact a remember stored, or the artifacts a recall's evidence edges were sourced from via the edge provenance links; `experiments.GetRun` and the admin API resolve them to `artifacts` by reading the dataset) |
 
 Metadata tables (the struct fields are those of `ExperimentCaseResult`; the result's `Type` is `knowledge`):
@@ -34,6 +34,15 @@ An eval is a file in `evals/knowledge/evals/` and its name is the file name with
 Only the trajectory *reference* is stored in the database; the trajectory is the file `<trajectory_id>.json` in the trajectory directory. The runner stores the files in an `atif/` directory next to the eval database (`bin/atif/` by default) so the IDs stay resolvable; `-atif <dir>` changes it. `gb_experiment_trajectories.path` records where each file went.
 
 A run is `passed` when every recorded case passed. A case fails when a stored-edge check does not hold or the answer lacks an expected string (`problems` lists them).
+
+The status sets depend on the type, and `failed` does not mean the same in both (the schema's `CHECK`s enforce the sets):
+
+| | run | case |
+|---|---|---|
+| knowledge | `running`, then `passed` or `failed` | `passed`, `failed` (a check did not hold), `error` (could not be run to the end) |
+| training | `running`, then `passed` (it ran to the end), `failed` (the run itself errored) or `cancelled` | `passed` (judged), `failed` (the model or the judge errored) |
+
+For knowledge, `failed` means a check did not hold; for training it means the model or the judge errored. A training score is not a verdict: a judged case with a score of 0 is `passed`. `passed_cases` counts the cases that `passed` (for training: judged, so a score of 0 counts as passed); `failed_cases` counts all the others.
 
 ## Runner
 

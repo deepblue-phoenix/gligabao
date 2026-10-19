@@ -174,7 +174,7 @@ func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 	m.Wait()
 
 	ev, cases := getEval(t, m, started.ID)
-	if ev.Status != relational.TrainedModelEvalRunCompleted || ev.FinishedAt == nil || ev.Error != "" {
+	if ev.Status != relational.TrainedModelEvalRunPassed || ev.FinishedAt == nil || ev.Error != "" {
 		t.Fatalf("finished: %+v", ev)
 	}
 	if ev.Scheme != relational.TrainingSchemeFineTuneDataset {
@@ -216,7 +216,7 @@ func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 	var list struct {
 		Evals []relational.TrainedModelEvalRun
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || rec.Code != 200 || len(list.Evals) != 2 || list.Evals[0].NumExamples != 3 || list.Evals[0].Status != "completed" {
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || rec.Code != 200 || len(list.Evals) != 2 || list.Evals[0].NumExamples != 3 || list.Evals[0].Status != "passed" {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body)
 	}
 }
@@ -437,7 +437,7 @@ func testEvalLiveFeed(t *testing.T, d *sql.DB) {
 			answers++
 			got = append(got, fmt.Sprintf("%d=%s", it.Idx, it.Response))
 		case "batch":
-			if e.Eval == nil || e.Eval.NumExamples != 3 || len(e.Cases) == 0 || e.Cases[0].Status != "judged" || e.Cases[0].Score == nil {
+			if e.Eval == nil || e.Eval.NumExamples != 3 || len(e.Cases) == 0 || e.Cases[0].Status != "passed" || e.Cases[0].Score == nil {
 				t.Fatalf("batch event: %+v", e)
 			}
 			got = append(got, fmt.Sprintf("batch%d", len(e.Cases)))
@@ -450,7 +450,7 @@ func testEvalLiveFeed(t *testing.T, d *sql.DB) {
 	if fmt.Sprint(got) != "[0=a0 1=wrong batch2 2=a2 batch1]" {
 		t.Fatalf("events: %v", got)
 	}
-	if last.Eval == nil || last.Eval.Status != "completed" || last.Eval.NumJudged != 3 {
+	if last.Eval == nil || last.Eval.Status != "passed" || last.Eval.NumJudged != 3 {
 		t.Fatalf("end event: %+v", last)
 	}
 	m.Wait()
@@ -462,7 +462,7 @@ func testEvalLiveFeed(t *testing.T, d *sql.DB) {
 	}
 	defer resp2.Body.Close()
 	late := sseEvents(resp2.Body)
-	if e := <-late; e.Type != "snapshot" || len(e.Cases) != 3 || e.Cases[1].Status != "judged" || e.Eval.Status != "completed" {
+	if e := <-late; e.Type != "snapshot" || len(e.Cases) != 3 || e.Cases[1].Status != "passed" || e.Eval.Status != "passed" {
 		t.Fatalf("late snapshot: %+v", e)
 	}
 	if e := <-late; e.Type != "end" {
@@ -528,7 +528,7 @@ func testEvalExperiments(t *testing.T, d *sql.DB) {
 		t.Fatalf("experiment: %d %s", rec.Code, rec.Body)
 	}
 	r := got.Runs[0]
-	if r.ID != first.eval(t).ID || r.Status != relational.TrainedModelEvalRunCompleted || r.Model.ID != mid || r.Model.FinalLoss == nil ||
+	if r.ID != first.eval(t).ID || r.Status != relational.TrainedModelEvalRunPassed || r.Model.ID != mid || r.Model.FinalLoss == nil ||
 		r.MeanScore == nil || *r.MeanScore != 4 || r.CorrectRate == nil || *r.CorrectRate != 0.75 || got.Runs[1].EvalRun.NumExamples != 2 {
 		t.Fatalf("run: %+v", r)
 	}

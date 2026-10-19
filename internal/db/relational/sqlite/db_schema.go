@@ -312,17 +312,20 @@ CREATE TABLE IF NOT EXISTS gb_experiment_cases (
 -- One execution of an experiment: a pass over one or more cases (training: one eval run, over the examples of its dataset).
 --   experiment_id  NULL for a run that is in no experiment (a training eval run started without an experiment name);
 --                  knowledge runs always have one
---   status         'running', then when finished: knowledge 'passed' (every case passed) or 'failed'; training 'completed' (the
---                  eval run ran to the end; it has a score, not a verdict), 'failed' or 'cancelled'
+--   status         'running', then when finished, by type: knowledge 'passed' (every case passed) or 'failed'; training
+--                  'passed' (the eval run ran to the end; it has a score, not a verdict), 'failed' (the run itself errored)
+--                  or 'cancelled'. The CHECK enforces the set of each type.
 --   params         JSON object describing how the run was invoked (knowledge: evals dir, selected cases, models, reasoning;
 --                  training: batch_size, max_tokens, temperature, limit, ...)
 --   total_cases, passed_cases, failed_cases, cost_usd: totals over the run's cases, set when the run is finished
---                  (passed_cases: passed or completed; failed_cases: all the others; cost_usd: the LLM cost, the judge's for training)
+--                  (passed_cases: the cases that passed (training: were judged, whatever
+--                  the score: a judged score of 0 counts as passed). failed_cases: all the others; cost_usd: the LLM cost, the
+--                  judge's for training)
 CREATE TABLE IF NOT EXISTS gb_experiment_runs (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
 	type          TEXT NOT NULL CHECK (type IN ('knowledge', 'training')),
 	experiment_id INTEGER,
-	status        TEXT NOT NULL CHECK (status IN ('running', 'passed', 'failed', 'completed', 'cancelled')),
+	status        TEXT NOT NULL,
 	params        TEXT NOT NULL DEFAULT '{}',
 	total_cases   INTEGER NOT NULL DEFAULT 0,
 	passed_cases  INTEGER NOT NULL DEFAULT 0,
@@ -332,6 +335,9 @@ CREATE TABLE IF NOT EXISTS gb_experiment_runs (
 	finished_at   DATETIME,
 	UNIQUE (id, type),
 	CHECK (type <> 'knowledge' OR experiment_id IS NOT NULL),
+	CHECK (status = 'running'
+		OR (type = 'knowledge' AND status IN ('passed', 'failed'))
+		OR (type = 'training' AND status IN ('passed', 'failed', 'cancelled'))),
 	FOREIGN KEY (experiment_id, type) REFERENCES gb_experiments(id, type) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_runs(experiment_id);
@@ -339,9 +345,12 @@ CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_ru
 -- The result of one case within one run (the universal part; the rest is in the metadata table of its type): one row per case,
 -- for knowledge and for training. A training case is one example of the eval's dataset: its case_name is the example's index in
 -- the dataset (0-based) and its row is written when its judge batch is done, so it is never 'running'.
---   status       'passed' or 'failed' (knowledge: whether every check held), 'error' (knowledge: the case could not be run to the
---                end), 'completed' (training: the model answered and the judge scored it; the score is in the metadata, not a
---                verdict) or 'failed' (training: the model or the judge failed). 'running' and 'cancelled' are not used by cases.
+--   status       the set depends on the type, and 'failed' does not mean the same in both (the CHECK enforces the sets):
+--                knowledge: 'passed' or 'failed' (a check did not hold: a missing edge, the answer lacks an expected string), or
+--                'error' (the case could not be run to the end);
+--                training: 'passed' (the model answered and the judge scored it; the score is in the metadata, not a verdict,
+--                so a score of 0 is still 'passed') or 'failed' (the model or the judge errored: no score).
+--                'running' and 'cancelled' are not used by cases.
 --   error        why it failed or could not be run
 --   cost_usd     the LLM cost of the case (knowledge: its remember and recall calls; training: 0, the judge's cost is per batch and
 --                is in gb_training_eval_run_meta.judge_cost_usd and the run's cost_usd)
@@ -352,12 +361,13 @@ CREATE TABLE IF NOT EXISTS gb_experiment_case_results (
 	run_id      INTEGER NOT NULL,
 	eval       TEXT NOT NULL DEFAULT '',
 	case_name   TEXT NOT NULL,
-	status      TEXT NOT NULL CHECK (status IN ('running', 'passed', 'failed', 'error', 'completed', 'cancelled')),
+	status      TEXT NOT NULL,
 	error       TEXT NOT NULL DEFAULT '',
 	cost_usd    REAL NOT NULL DEFAULT 0,
 	started_at  DATETIME NOT NULL,
 	finished_at DATETIME,
 	UNIQUE (id, type),
+	CHECK ((type = 'knowledge' AND status IN ('passed', 'failed', 'error')) OR (type = 'training' AND status IN ('passed', 'failed'))),
 	FOREIGN KEY (run_id, type) REFERENCES gb_experiment_runs(id, type) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_case_results_run ON gb_experiment_case_results(run_id);
@@ -450,7 +460,7 @@ BEGIN
 END;
 
 -- TRAINING metadata of a case result (type 'training'): the outcome for one case (question) of an eval run, written with its
--- universal row when its judge batch is done. The universal row's status is 'completed' (judged) or 'failed', its error says why
+-- universal row when its judge batch is done. The universal row's status is 'passed' (judged) or 'failed', its error says why
 -- the model or the judge failed.
 --   idx          the example's position in the dataset (0-based; the universal row's case_name); batch the judge batch (1-based)
 --   instruction, input  the question; reference the dataset's answer; response the model's ('' if it failed)

@@ -79,8 +79,8 @@ func SaveTrainedModelEvalRunBatch(ctx context.Context, d *sql.DB, e model.Traine
 	}
 	now := FormatTime(Now())
 	for _, it := range cases {
-		status := model.ExperimentCompleted
-		if it.Status != model.TrainedModelCaseJudged {
+		status := model.ExperimentPassed
+		if it.Status != model.TrainedModelCasePassed {
 			status = model.ExperimentFailed
 		}
 		name := strconv.Itoa(it.Idx)
@@ -242,7 +242,7 @@ func ListTrainedModelEvalRuns(ctx context.Context, d *sql.DB, modelID int64, lim
 func ListTrainedModelCaseResults(ctx context.Context, d *sql.DB, evalRunID int64) ([]model.TrainedModelCaseResult, error) {
 	rows, err := d.QueryContext(ctx, `
 		SELECT e.id, e.run_id, cm.idx, cm.batch, cm.instruction, cm.input, cm.reference, cm.response,
-			CASE e.status WHEN 'completed' THEN 'judged' ELSE e.status END, e.error, cm.score, cm.reason, cm.input_tokens,
+			e.status, e.error, cm.score, cm.reason, cm.input_tokens,
 			cm.output_tokens, cm.duration_ms
 		FROM gb_experiment_case_results e JOIN gb_training_case_meta cm ON cm.case_result_id = e.id
 		WHERE e.run_id = ? ORDER BY cm.idx`, evalRunID)

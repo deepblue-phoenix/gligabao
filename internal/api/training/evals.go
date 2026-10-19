@@ -346,7 +346,7 @@ func (m *EvalManager) run(ctx context.Context, n Database, tm relational.Trained
 	_, err := trainingeval.Run(memory_core.WithStage(ctx, StageEvalJudge), cfg, examples, gen, judge, sink)
 	switch {
 	case err == nil:
-		finish(relational.TrainedModelEvalRunCompleted, "")
+		finish(relational.TrainedModelEvalRunPassed, "")
 	case errors.Is(err, context.Canceled) && m.ctx.Err() != nil:
 		finish(relational.TrainedModelEvalRunFailed, "interrupted: the server shut down while the eval ran")
 	case errors.Is(err, context.Canceled):

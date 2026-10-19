@@ -189,7 +189,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_runs (
 	id            BIGSERIAL PRIMARY KEY,
 	type          TEXT NOT NULL CHECK (type IN ('knowledge', 'training')),
 	experiment_id BIGINT,
-	status        TEXT NOT NULL CHECK (status IN ('running', 'passed', 'failed', 'completed', 'cancelled')),
+	status        TEXT NOT NULL,
 	params        JSONB NOT NULL DEFAULT '{}',
 	total_cases   BIGINT NOT NULL DEFAULT 0,
 	passed_cases  BIGINT NOT NULL DEFAULT 0,
@@ -199,6 +199,9 @@ CREATE TABLE IF NOT EXISTS gb_experiment_runs (
 	finished_at   TIMESTAMPTZ,
 	UNIQUE (id, type),
 	CHECK (type <> 'knowledge' OR experiment_id IS NOT NULL),
+	CHECK (status = 'running'
+		OR (type = 'knowledge' AND status IN ('passed', 'failed'))
+		OR (type = 'training' AND status IN ('passed', 'failed', 'cancelled'))),
 	FOREIGN KEY (experiment_id, type) REFERENCES gb_experiments(id, type) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_runs(experiment_id);
@@ -209,12 +212,13 @@ CREATE TABLE IF NOT EXISTS gb_experiment_case_results (
 	run_id      BIGINT NOT NULL,
 	eval       TEXT NOT NULL DEFAULT '',
 	case_name   TEXT NOT NULL,
-	status      TEXT NOT NULL CHECK (status IN ('running', 'passed', 'failed', 'error', 'completed', 'cancelled')),
+	status      TEXT NOT NULL,
 	error       TEXT NOT NULL DEFAULT '',
 	cost_usd    DOUBLE PRECISION NOT NULL DEFAULT 0,
 	started_at  TIMESTAMPTZ NOT NULL,
 	finished_at TIMESTAMPTZ,
 	UNIQUE (id, type),
+	CHECK ((type = 'knowledge' AND status IN ('passed', 'failed', 'error')) OR (type = 'training' AND status IN ('passed', 'failed'))),
 	FOREIGN KEY (run_id, type) REFERENCES gb_experiment_runs(id, type) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_case_results_run ON gb_experiment_case_results(run_id);

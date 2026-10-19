@@ -124,20 +124,25 @@ const (
 	EvalTypeTraining = "training"
 )
 
-// Run and case statuses.
+// Run and case statuses. The set depends on the type (the CHECKs of the schema enforce it), and ExperimentFailed does not mean
+// the same for both:
+//
+//	knowledge run:  running, then passed or failed
+//	knowledge case: passed, failed (a check did not hold) or error (could not be run to the end)
+//	training run:   running, then passed (it ran to the end), failed (the run itself errored) or cancelled (TrainedModelEvalRunCancelled)
+//	training case:  passed (judged; a score of 0 still counts) or failed (the model or the judge errored)
 const (
 	// ExperimentRunning is the status of a run that has not been finished yet.
 	ExperimentRunning = "running"
-	// ExperimentPassed is the status of a finished run whose cases all passed, and of a passed case.
+	// ExperimentPassed is the status of a finished run whose cases all passed, and of a passed case. For training it means the
+	// eval run ran to the end, or the case was judged: it has a score, not a verdict, so a score of 0 is still passed.
 	ExperimentPassed = "passed"
-	// ExperimentFailed is the status of a finished run with at least one case that did not pass, and of a case
-	// whose checks (temporal facts, expected answer) failed.
+	// ExperimentFailed is, for knowledge, the status of a finished run with at least one case that did not pass and of a case
+	// whose checks (temporal facts, expected answer) did not hold; for training, it means the model or the judge errored
+	// (of a case, or of the run itself), not that a check did not hold.
 	ExperimentFailed = "failed"
-	// ExperimentErrored is the status of a case that could not be run to the end (server, LLM or API error).
+	// ExperimentErrored is the status of a knowledge case that could not be run to the end (server, LLM or API error).
 	ExperimentErrored = "error"
-	// ExperimentCompleted is the status of a training case the model answered and the judge scored (it has a score, not a
-	// verdict); the training cases that failed are ExperimentFailed.
-	ExperimentCompleted = "completed"
 )
 
 // Trajectory kinds: the operation whose ATIF trajectory it is.
@@ -170,11 +175,11 @@ type ExperimentRun struct {
 	ID           int64                  `json:"id"`
 	Type         string                 `json:"type"` // EvalTypeKnowledge
 	ExperimentID int64                  `json:"experiment_id"`
-	Status       string                 `json:"status"`       // ExperimentRunning, ExperimentPassed or ExperimentFailed
+	Status       string                 `json:"status"`       // knowledge: ExperimentRunning, ExperimentPassed or ExperimentFailed; training: ExperimentRunning, ExperimentPassed, ExperimentFailed or TrainedModelEvalRunCancelled
 	Params       map[string]any         `json:"params"`       // how the run was invoked (evals dir, selected cases, ...)
 	TotalCases   int                    `json:"total_cases"`  // set when the run is finished
-	PassedCases  int                    `json:"passed_cases"` // set when the run is finished
-	FailedCases  int                    `json:"failed_cases"` // failed + errored; set when the run is finished
+	PassedCases  int                    `json:"passed_cases"` // the cases that passed (training: judged, even with a score of 0); set when the run is finished
+	FailedCases  int                    `json:"failed_cases"` // all the others (failed, errored, not reached); set when the run is finished
 	CostUSD      float64                `json:"cost_usd"`     // LLM cost of all cases; set when the run is finished
 	StartedAt    time.Time              `json:"started_at"`   //
 	FinishedAt   *time.Time             `json:"finished_at,omitempty"`
@@ -189,7 +194,7 @@ type ExperimentCaseResult struct {
 	RunID    int64    `json:"run_id"`
 	Eval     string   `json:"eval"`
 	Name     string   `json:"name"`
-	Status   string   `json:"status"` // ExperimentPassed, ExperimentFailed or ExperimentErrored
+	Status   string   `json:"status"` // knowledge: ExperimentPassed, ExperimentFailed (a check did not hold) or ExperimentErrored; training: ExperimentPassed or ExperimentFailed
 	Answer   string   `json:"answer,omitempty"`
 	Problems []string `json:"problems"` // failed checks
 	// PassedChecks are the checks that held (Problems are the ones that did not).

@@ -55,21 +55,21 @@ func trainingExperimentsScenario(t *testing.T, d *sql.DB) {
 	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, e, []relational.TrainedModelCaseResult{{Idx: 0, Batch: 1, Instruction: "q", Status: relational.TrainedModelCaseFailed}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := relational.FinishTrainedModelEvalRun(ctx, d, e1, relational.TrainedModelEvalRunCompleted, ""); err != nil {
+	if err := relational.FinishTrainedModelEvalRun(ctx, d, e1, relational.TrainedModelEvalRunPassed, ""); err != nil {
 		t.Fatal(err)
 	}
 	runs, err := relational.ListTrainingExperimentRuns(ctx, d, x.ID)
 	if err != nil || len(runs) != 2 || runs[0].ID != e1 || runs[1].ID != e2 {
 		t.Fatalf("ListTrainingExperimentRuns: %+v %v", runs, err)
 	}
-	if r := runs[0]; r.Status != relational.TrainedModelEvalRunCompleted || r.EvalRun.FinishedAt == nil || r.MeanScore == nil || *r.MeanScore != 4 ||
+	if r := runs[0]; r.Status != relational.TrainedModelEvalRunPassed || r.EvalRun.FinishedAt == nil || r.MeanScore == nil || *r.MeanScore != 4 ||
 		r.CorrectRate == nil || *r.CorrectRate != 0.75 || r.EvalRun.JudgeCostUSD != 0.25 || r.EvalRun.JudgeModel != "j" {
 		t.Fatalf("finished run: %+v", r)
 	}
 	if r := runs[1]; r.Status != relational.TrainedModelEvalRunRunning || r.MeanScore != nil {
 		t.Fatalf("running run: %+v", r)
 	}
-	if got, err := relational.GetTrainingExperimentRun(ctx, d, run.ID); err != nil || got.Status != relational.TrainedModelEvalRunCompleted {
+	if got, err := relational.GetTrainingExperimentRun(ctx, d, run.ID); err != nil || got.Status != relational.TrainedModelEvalRunPassed {
 		t.Fatalf("GetTrainingExperimentRun: %+v %v", got, err)
 	}
 

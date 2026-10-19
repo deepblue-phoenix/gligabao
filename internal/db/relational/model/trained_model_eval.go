@@ -8,14 +8,14 @@ import (
 // Statuses of a TrainedModelEvalRun.
 const (
 	TrainedModelEvalRunRunning   = "running"
-	TrainedModelEvalRunCompleted = "completed"
+	TrainedModelEvalRunPassed    = "passed"    // it ran to the end: it has a score, not a verdict about checks
 	TrainedModelEvalRunFailed    = "failed"    // Error says why
 	TrainedModelEvalRunCancelled = "cancelled" // stopped by the user
 )
 
 // Statuses of a TrainedModelCaseResult.
 const (
-	TrainedModelCaseJudged = "judged" // the model answered and the judge scored it
+	TrainedModelCasePassed = "passed" // the model answered and the judge scored it (a score of 0 too)
 	TrainedModelCaseFailed = "failed" // the model or the judge failed: Error says why
 	// TrainedModelCaseAnswered is never stored: the live stream of an eval run (GET .../evals/{id}/events) uses it for a
 	// case the model answered whose batch the judge has not scored yet.
@@ -94,7 +94,7 @@ func (e *TrainedModelEvalRun) SetStoredParams(s string) {
 
 // TrainedModelCaseResult is the outcome for one example of an eval run: the question, the dataset's answer (Reference), the
 // model's (Response) and the judge's score. It is a case result of the eval run's run (a gb_experiment_case_results row with
-// status 'completed' or 'failed', whose case_name is Idx) with its gb_training_case_meta row; Status is "judged" or "failed".
+// status 'passed' or 'failed', whose case_name is Idx) with its gb_training_case_meta row; Status is "passed" or "failed".
 type TrainedModelCaseResult struct {
 	// ID is that of the case result row and EvalRunID that of the eval run (its run).
 	ID        int64 `json:"id"`

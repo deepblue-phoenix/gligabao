@@ -38,7 +38,7 @@ func trainedModelEvalRunsScenario(t *testing.T, d *sql.DB) {
 	e.JudgeModel, e.NumAnswered, e.NumJudged, e.NumFailed, e.NumCorrect, e.ScoreSum = "judge-1", 2, 1, 1, 1, 5
 	e.NumBatches, e.JudgeCalls, e.JudgeInputTokens, e.JudgeOutputTokens, e.JudgeCostUSD = 1, 1, 100, 10, 0.25
 	cases := []relational.TrainedModelCaseResult{
-		{Idx: 0, Batch: 1, Instruction: "q0", Input: "ctx", Reference: "a0", Response: "a0", Status: relational.TrainedModelCaseJudged,
+		{Idx: 0, Batch: 1, Instruction: "q0", Input: "ctx", Reference: "a0", Response: "a0", Status: relational.TrainedModelCasePassed,
 			Score: &score, Reason: "same", InputTokens: 3, OutputTokens: 2, DurationMS: 40},
 		{Idx: 1, Batch: 1, Instruction: "q1", Reference: "a1", Status: relational.TrainedModelCaseFailed, Error: "model: boom"},
 	}
@@ -72,7 +72,7 @@ func trainedModelEvalRunsScenario(t *testing.T, d *sql.DB) {
 	if err := relational.FinishTrainedModelEvalRun(ctx, d, id, relational.TrainedModelEvalRunCancelled, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := relational.FinishTrainedModelEvalRun(ctx, d, id, relational.TrainedModelEvalRunCompleted, ""); err != nil {
+	if err := relational.FinishTrainedModelEvalRun(ctx, d, id, relational.TrainedModelEvalRunPassed, ""); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = relational.GetTrainedModelEvalRun(ctx, d, id)
