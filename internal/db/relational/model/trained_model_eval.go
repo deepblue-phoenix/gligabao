@@ -5,25 +5,6 @@ import (
 	"time"
 )
 
-// Statuses of a TrainedModelEvalRun. They are the same words as those of a TrainedModelAuditRun, and the cases of both kinds of
-// run use the same two (judged, failed): the shared engine (evals/training) and the shared live view of the admin UI know one
-// vocabulary. They are not the Experiment* statuses of the knowledge evals.
-const (
-	TrainedModelEvalRunRunning   = "running"
-	TrainedModelEvalRunCompleted = "completed" // it ran to the end: it has a score, not a verdict about checks
-	TrainedModelEvalRunFailed    = "failed"    // Error says why
-	TrainedModelEvalRunCancelled = "cancelled" // stopped by the user
-)
-
-// Statuses of a TrainedModelCaseResult.
-const (
-	TrainedModelCaseJudged = "judged" // the model answered and the judge scored it (a score of 0 too)
-	TrainedModelCaseFailed = "failed" // the model or the judge failed: Error says why
-	// TrainedModelCaseAnswered is never stored: the live stream of an eval run (GET .../evals/{id}/events) uses it for a
-	// case the model answered whose batch the judge has not scored yet.
-	TrainedModelCaseAnswered = "answered"
-)
-
 // Eval schemes of a trained model: how the cases of the eval are made and what the model's answer is compared with.
 const (
 	// TrainingSchemeFineTuneDataset is the scheme where the eval is the model's own fine-tuning dataset: every example is a

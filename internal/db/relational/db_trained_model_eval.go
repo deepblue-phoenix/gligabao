@@ -18,7 +18,7 @@ import (
 // e.CreatedAt and e.FinishedAt are ignored.
 func RecordTrainedModelEvalRun(ctx context.Context, d *sql.DB, e TrainedModelEvalRun) (int64, error) {
 	if e.Status == "" {
-		e.Status = TrainedModelEvalRunRunning
+		e.Status = TrainedModelRunRunning
 	}
 	switch backend() {
 	case config.DBBackendSQLite:
@@ -41,7 +41,7 @@ func SaveTrainedModelEvalRunBatch(ctx context.Context, d *sql.DB, e TrainedModel
 	return unsupported()
 }
 
-// FinishTrainedModelEvalRun ends a running eval run: status is TrainedModelEvalRunCompleted, Failed (with the error text) or Cancelled.
+// FinishTrainedModelEvalRun ends a running eval run: status is TrainedModelRunCompleted, Failed (with the error text) or Cancelled.
 // An eval run that is not running any more is left as it is. ErrNotFound if there is no such eval run.
 func FinishTrainedModelEvalRun(ctx context.Context, d *sql.DB, id int64, status, errText string) error {
 	switch backend() {

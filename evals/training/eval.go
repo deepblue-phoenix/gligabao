@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational/model"
 )
 
 // Defaults and limits of Config.
@@ -14,10 +16,10 @@ const (
 	MaxBatchSize     = 25
 )
 
-// Statuses of a CaseResult.
+// Statuses of a CaseResult: the words of every trained-model run, defined once in the model package (a case is stored as it is).
 const (
-	CaseJudged = "judged" // the model answered and the judge scored the answer
-	CaseFailed = "failed" // the model or the judge failed: Error says why
+	CaseJudged = model.TrainedModelCaseJudged // the model answered and the judge scored the answer
+	CaseFailed = model.TrainedModelCaseFailed // the model or the judge failed: Error says why
 )
 
 const (

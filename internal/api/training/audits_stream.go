@@ -110,7 +110,7 @@ func (s *auditStream) answer(it relational.TrainedModelAuditCase) {
 		return
 	}
 	if it.Status == "" {
-		it.Status = relational.TrainedModelAuditCaseAnswered
+		it.Status = relational.TrainedModelCaseAnswered
 	}
 	s.pending[it.Idx] = it
 	s.send(AuditEvent{Type: auditEventAnswer, Cases: []relational.TrainedModelAuditCase{it}})

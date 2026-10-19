@@ -28,7 +28,7 @@ type TrainingExperiment struct {
 type TrainingExperimentRun struct {
 	ID           int64 `json:"id"` // the same as EvalRun.ID: the eval run is the run
 	ExperimentID int64 `json:"experiment_id"`
-	// Status is the eval run's status (TrainedModelEvalRunRunning, ...Passed, ...Failed or ...Cancelled).
+	// Status is the eval run's status (TrainedModelRunRunning, ...Completed, ...Failed or ...Cancelled).
 	Status    string                  `json:"status"`
 	CreatedAt time.Time               `json:"created_at"`
 	EvalRun   TrainedModelEvalRun     `json:"eval"`

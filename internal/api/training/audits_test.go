@@ -71,14 +71,14 @@ func testAuditATrainedModel(t *testing.T, d *sql.DB) {
 		t.Fatalf("start: %d %s", call.code, call.body)
 	}
 	started := auditOf(t, call)
-	if started.Status != relational.TrainedModelAuditRunRunning || started.TrainedModelID != mid || started.Dataset != "mine" || started.NumExamples != 5 ||
+	if started.Status != relational.TrainedModelRunRunning || started.TrainedModelID != mid || started.Dataset != "mine" || started.NumExamples != 5 ||
 		len(started.DatasetSHA256) != 64 || !strings.Contains(string(started.Params), `"batch_size":2`) {
 		t.Fatalf("started: %+v", started)
 	}
 	m.Wait()
 
 	au, cases := getAudit(t, m, started.ID)
-	if au.Status != relational.TrainedModelAuditRunCompleted || au.FinishedAt == nil || au.Error != "" {
+	if au.Status != relational.TrainedModelRunCompleted || au.FinishedAt == nil || au.Error != "" {
 		t.Fatalf("finished: %+v", au)
 	}
 	if au.NumAnswered != 5 || au.NumJudged != 5 || au.NumFailed != 0 || au.NumCorrect != 4 || au.NumIncorrect != 1 || au.ScoreSum != 21 || au.NumBatches != 3 {
@@ -91,7 +91,7 @@ func testAuditATrainedModel(t *testing.T, d *sql.DB) {
 		t.Fatalf("judge usage: %+v", au)
 	}
 	if len(cases) != 5 || cases[3].Response != "wrong" || cases[3].Score == nil || *cases[3].Score != 1 || cases[0].Reference != "a0" ||
-		cases[0].Reason != "because" || cases[0].Status != relational.TrainedModelAuditCaseJudged || cases[0].AuditRunID != started.ID {
+		cases[0].Reason != "because" || cases[0].Status != relational.TrainedModelCaseJudged || cases[0].AuditRunID != started.ID {
 		t.Fatalf("cases: %+v", cases)
 	}
 	// The model got the dataset's questions on its own weights, with the settings of the audit.
@@ -215,7 +215,7 @@ func TestAuditCancelAndConflict(t *testing.T) {
 	}
 	m.Wait()
 	au, cases := getAudit(t, m, id)
-	if au.Status != relational.TrainedModelAuditRunCancelled || au.FinishedAt == nil || len(cases) != 0 {
+	if au.Status != relational.TrainedModelRunCancelled || au.FinishedAt == nil || len(cases) != 0 {
 		t.Fatalf("cancelled: %+v, %d cases", au, len(cases))
 	}
 	if code := cancel(); code != http.StatusConflict {
@@ -237,8 +237,8 @@ func TestAuditFailsWhenTheModelDoesNotAnswer(t *testing.T) {
 	c := startAudit(m, fmt.Sprint(mid), `{"batch_size": 2}`)
 	m.Wait()
 	au, cases := getAudit(t, m, auditOf(t, c).ID)
-	if au.Status != relational.TrainedModelAuditRunFailed || !strings.Contains(au.Error, "weights are gone") || au.NumFailed != 4 || au.NumJudged != 0 || len(cases) != 4 ||
-		cases[0].Status != relational.TrainedModelAuditCaseFailed || !strings.Contains(cases[0].Error, "weights are gone") {
+	if au.Status != relational.TrainedModelRunFailed || !strings.Contains(au.Error, "weights are gone") || au.NumFailed != 4 || au.NumJudged != 0 || len(cases) != 4 ||
+		cases[0].Status != relational.TrainedModelCaseFailed || !strings.Contains(cases[0].Error, "weights are gone") {
 		t.Fatalf("%+v cases %+v", au, cases)
 	}
 }
@@ -253,7 +253,7 @@ func TestAuditsInterruptedByARestartAreFailed(t *testing.T) {
 	}
 	training.NewAuditManager(ctx, []training.Database{{Name: "standard", DB: d}}, nil, nil)
 	au, err := relational.GetTrainedModelAuditRun(ctx, d, id)
-	if err != nil || au.Status != relational.TrainedModelAuditRunFailed || !strings.Contains(au.Error, "restart") {
+	if err != nil || au.Status != relational.TrainedModelRunFailed || !strings.Contains(au.Error, "restart") {
 		t.Fatalf("%+v %v", au, err)
 	}
 }

@@ -4,8 +4,15 @@
 // it is in is judged (the judge grades a batch of questions per call). One sees how the model behaves from the first question on.
 // Closing the dialog leaves the run going.
 
+// The statuses of the runs and cases of a trained model, the same for evals and audits. They are the words of
+// internal/db/relational/model/trained_model_status.go (TrainedModelRun*, TrainedModelCase*): change them there and here.
+export const RunStatus = { running: "running", completed: "completed", failed: "failed", cancelled: "cancelled" } as const;
+export type RunStatus = (typeof RunStatus)[keyof typeof RunStatus];
+export const CaseStatus = { judged: "judged", failed: "failed", answered: "answered" } as const; // answered: only in the live feed
+export type CaseStatus = (typeof CaseStatus)[keyof typeof CaseStatus];
+
 export interface EvalRun {
-  id: number; trained_model_id: number; status: "running" | "completed" | "failed" | "cancelled"; dataset: string; dataset_sha256: string;
+  id: number; trained_model_id: number; status: RunStatus; dataset: string; dataset_sha256: string;
   params: { batch_size?: number; max_tokens?: number; temperature?: number; limit?: number };
   judge_model: string; num_examples: number; num_answered: number; num_judged: number; num_failed: number; num_correct: number;
   num_partial: number; num_incorrect: number; score_sum: number; num_batches: number; judge_calls: number; judge_input_tokens: number;
@@ -13,8 +20,8 @@ export interface EvalRun {
 }
 export interface EvalCase {
   idx: number; batch: number; instruction: string; input: string; reference: string; response: string;
-  // "answered": the model answered and the judge has not scored it yet (only in the live feed)
-  status: "answered" | "judged" | "failed";
+  // CaseStatus.answered: the model answered and the judge has not scored it yet (only in the live feed)
+  status: CaseStatus;
   error: string; score: number | null; reason: string; input_tokens: number; output_tokens: number; duration_ms: number;
 }
 // The two kinds of run of a trained model: a training data audit (URL segment "audits") and an eval ("evals"). The runs of both
@@ -40,7 +47,7 @@ function node<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""
 // How an case is doing: pending (answered, awaiting the judge), good (4-5), mid (2-3), bad (0-1) or failed.
 type Verdict = "pending" | "good" | "mid" | "bad" | "failed";
 const verdictOf = (i: EvalCase): Verdict =>
-  i.status === "failed" ? "failed" : i.status === "answered" || i.score === null ? "pending" : i.score >= 4 ? "good" : i.score >= 2 ? "mid" : "bad";
+  i.status === CaseStatus.failed ? "failed" : i.status === CaseStatus.answered || i.score === null ? "pending" : i.score >= 4 ? "good" : i.score >= 2 ? "mid" : "bad";
 
 // What the open dialog follows.
 let stream: EventSource | undefined;
@@ -76,7 +83,7 @@ function reset(): void {
 }
 
 function statusBadge(status: string): HTMLElement {
-  const cls = status === "completed" ? "badge-ok" : status === "failed" ? "badge-error" : status === "cancelled" ? "badge-unknown" : "badge-active";
+  const cls = status === RunStatus.completed ? "badge-ok" : status === RunStatus.failed ? "badge-error" : status === RunStatus.cancelled ? "badge-unknown" : "badge-active";
   return node("span", `badge ${cls}`, status);
 }
 
@@ -97,14 +104,14 @@ function buildCard(i: EvalCase): HTMLElement {
   if (v === "pending") head.append(node("span", ended ? "badge badge-unknown" : "badge badge-active", ended ? "not judged" : "answered · awaiting judge"));
   else if (v === "failed") head.append(node("span", "badge badge-error", "failed"));
   else head.append(node("span", `ev-score score-${v}`, `${i.score} / ${MAX_SCORE}`));
-  const stats = i.status === "failed" && !i.response ? "" : `${fmtSecs(i.duration_ms)} · ${i.input_tokens} in / ${i.output_tokens} out tokens`;
+  const stats = i.status === CaseStatus.failed && !i.response ? "" : `${fmtSecs(i.duration_ms)} · ${i.input_tokens} in / ${i.output_tokens} out tokens`;
   if (stats) head.append(node("span", "muted", stats));
   card.append(head);
   card.append(textBlock("Question", i.input ? `${i.instruction}\n\n${i.input}` : i.instruction, "ev-question"));
   const cols = node("div", "ev-cols");
-  cols.append(textBlock("Dataset answer", i.reference), textBlock("Model answer", i.status === "failed" && !i.response ? "(no answer)" : i.response === "" ? "(empty)" : i.response, "ev-model"));
+  cols.append(textBlock("Dataset answer", i.reference), textBlock("Model answer", i.status === CaseStatus.failed && !i.response ? "(no answer)" : i.response === "" ? "(empty)" : i.response, "ev-model"));
   card.append(cols);
-  if (i.status === "failed") card.append(node("div", "error ev-reason", i.error));
+  if (i.status === CaseStatus.failed) card.append(node("div", "error ev-reason", i.error));
   else if (i.reason) card.append(node("div", "muted ev-reason", `Judge: ${i.reason}`));
   return card;
 }
@@ -115,7 +122,7 @@ function apply(list: EvalCase[]): void {
   const follow = el<HTMLInputElement>("eval-live-follow").checked;
   for (const i of list) {
     const old = cases.get(i.idx);
-    if (old && old.status !== "answered" && i.status === "answered") continue;
+    if (old && old.status !== CaseStatus.answered && i.status === CaseStatus.answered) continue;
     cases.set(i.idx, i);
     const card = buildCard(i);
     const prev = cards.get(i.idx);
@@ -143,9 +150,9 @@ function drawSummary(): void {
   const total = run?.num_examples ?? cases.size;
   let judged = 0, failed = 0, good = 0, mid = 0, bad = 0, scoreSum = 0, ms = 0, answered = 0;
   for (const i of cases.values()) {
-    if (i.status === "failed") failed++;
+    if (i.status === CaseStatus.failed) failed++;
     else { answered++; ms += i.duration_ms; }
-    if (i.status !== "judged" || i.score === null) continue;
+    if (i.status !== CaseStatus.judged || i.score === null) continue;
     judged++;
     scoreSum += i.score;
     if (i.score >= 4) good++; else if (i.score >= 2) mid++; else bad++;
@@ -164,7 +171,7 @@ function drawSummary(): void {
   if (run) {
     const badge = el("eval-live-state");
     badge.replaceChildren(statusBadge(run.status));
-    el<HTMLButtonElement>("eval-live-cancel").hidden = run.status !== "running";
+    el<HTMLButtonElement>("eval-live-cancel").hidden = run.status !== RunStatus.running;
     el("eval-live-error").textContent = run.error ? `Error: ${run.error}` : "";
     const started = new Date(run.created_at).getTime();
     const until = run.finished_at ? new Date(run.finished_at).getTime() : Date.now();
@@ -236,12 +243,12 @@ export function watchEval(kind: RunKind, id: number, title: string, cb?: () => v
     if (e.run && e.run.status) setRun(e.run);
     // answers the judge never scored (a cancelled or failed eval): redraw them as "not judged"
     for (const i of cases.values()) {
-      if (i.status !== "answered") continue;
+      if (i.status !== CaseStatus.answered) continue;
       const card = buildCard(i);
       cards.get(i.idx)?.replaceWith(card);
       cards.set(i.idx, card);
     }
-    conn.textContent = e.run?.status === "completed" ? "Finished." : `Ended (${e.run?.status ?? "unknown"}).`;
+    conn.textContent = e.run?.status === RunStatus.completed ? "Finished." : `Ended (${e.run?.status ?? "unknown"}).`;
     stop();
     queueSummary();
     onChange?.();

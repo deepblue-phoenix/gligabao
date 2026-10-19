@@ -125,7 +125,7 @@ const (
 )
 
 // Run and case statuses of the KNOWLEDGE evals (the Experiment* constants). The statuses of the trained-model evals and audits
-// are their own, TrainedModelEvalRun*, TrainedModelCase* and TrainedModelAuditRun*, because they mean other things (a training
+// are their own (TrainedModelRun* and TrainedModelCase*, see trained_model_status.go), because they mean other things (a training
 // score is not a verdict). The CHECKs of the schema enforce the set of each type, and a word can mean different things in them:
 //
 //	knowledge run:  running, then passed or failed

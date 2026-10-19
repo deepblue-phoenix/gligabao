@@ -27,7 +27,7 @@ func trainedModelEvalRunsScenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("RecordTrainedModelEvalRun: %d %v", id, err)
 	}
 	got, err := relational.GetTrainedModelEvalRun(ctx, d, id)
-	if err != nil || got.Status != relational.TrainedModelEvalRunRunning || got.TrainedModelID != mid || got.Dataset != "mine" ||
+	if err != nil || got.Status != relational.TrainedModelRunRunning || got.TrainedModelID != mid || got.Dataset != "mine" ||
 		got.NumExamples != 3 || compactJSON(got.Params) != `{"batch_size":2}` || got.CreatedAt.IsZero() || got.FinishedAt != nil {
 		t.Fatalf("GetTrainedModelEvalRun: %+v %v", got, err)
 	}
@@ -69,17 +69,17 @@ func trainedModelEvalRunsScenario(t *testing.T, d *sql.DB) {
 	}
 
 	// Finishing: once. A second finish leaves the first outcome.
-	if err := relational.FinishTrainedModelEvalRun(ctx, d, id, relational.TrainedModelEvalRunCancelled, ""); err != nil {
+	if err := relational.FinishTrainedModelEvalRun(ctx, d, id, relational.TrainedModelRunCancelled, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := relational.FinishTrainedModelEvalRun(ctx, d, id, relational.TrainedModelEvalRunCompleted, ""); err != nil {
+	if err := relational.FinishTrainedModelEvalRun(ctx, d, id, relational.TrainedModelRunCompleted, ""); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = relational.GetTrainedModelEvalRun(ctx, d, id)
-	if got.Status != relational.TrainedModelEvalRunCancelled || got.FinishedAt == nil {
+	if got.Status != relational.TrainedModelRunCancelled || got.FinishedAt == nil {
 		t.Fatalf("finished: %+v", got)
 	}
-	if err := relational.FinishTrainedModelEvalRun(ctx, d, id+100, relational.TrainedModelEvalRunFailed, "x"); !errors.Is(err, relational.ErrNotFound) {
+	if err := relational.FinishTrainedModelEvalRun(ctx, d, id+100, relational.TrainedModelRunFailed, "x"); !errors.Is(err, relational.ErrNotFound) {
 		t.Fatalf("finish unknown: %v", err)
 	}
 
@@ -93,10 +93,10 @@ func trainedModelEvalRunsScenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("FailRunningTrainedModelEvalRuns: %d %v", n, err)
 	}
 	got2, _ := relational.GetTrainedModelEvalRun(ctx, d, id2)
-	if got2.Status != relational.TrainedModelEvalRunFailed || got2.Error != "restarted" || got2.FinishedAt == nil {
+	if got2.Status != relational.TrainedModelRunFailed || got2.Error != "restarted" || got2.FinishedAt == nil {
 		t.Fatalf("interrupted: %+v", got2)
 	}
-	if got, _ = relational.GetTrainedModelEvalRun(ctx, d, id); got.Status != relational.TrainedModelEvalRunCancelled {
+	if got, _ = relational.GetTrainedModelEvalRun(ctx, d, id); got.Status != relational.TrainedModelRunCancelled {
 		t.Fatalf("a finished eval run changed: %+v", got)
 	}
 

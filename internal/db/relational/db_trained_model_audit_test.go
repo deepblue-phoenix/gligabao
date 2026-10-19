@@ -26,7 +26,7 @@ func trainedModelAuditRunsScenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("RecordTrainedModelAuditRun: %d %v", id, err)
 	}
 	got, err := relational.GetTrainedModelAuditRun(ctx, d, id)
-	if err != nil || got.Status != relational.TrainedModelAuditRunRunning || got.TrainedModelID != mid || got.Dataset != "mine" ||
+	if err != nil || got.Status != relational.TrainedModelRunRunning || got.TrainedModelID != mid || got.Dataset != "mine" ||
 		got.NumExamples != 3 || compactJSON(got.Params) != `{"batch_size":2}` || got.CreatedAt.IsZero() || got.FinishedAt != nil {
 		t.Fatalf("GetTrainedModelAuditRun: %+v %v", got, err)
 	}
@@ -37,9 +37,9 @@ func trainedModelAuditRunsScenario(t *testing.T, d *sql.DB) {
 	a.JudgeModel, a.NumAnswered, a.NumJudged, a.NumFailed, a.NumCorrect, a.ScoreSum = "judge-1", 2, 1, 1, 1, 5
 	a.NumBatches, a.JudgeCalls, a.JudgeInputTokens, a.JudgeOutputTokens, a.JudgeCostUSD = 1, 1, 100, 10, 0.25
 	cases := []relational.TrainedModelAuditCase{
-		{Idx: 0, Batch: 1, Instruction: "q0", Input: "ctx", Reference: "a0", Response: "a0", Status: relational.TrainedModelAuditCaseJudged,
+		{Idx: 0, Batch: 1, Instruction: "q0", Input: "ctx", Reference: "a0", Response: "a0", Status: relational.TrainedModelCaseJudged,
 			Score: &score, Reason: "same", InputTokens: 3, OutputTokens: 2, DurationMS: 40},
-		{Idx: 1, Batch: 1, Instruction: "q1", Reference: "a1", Status: relational.TrainedModelAuditCaseFailed, Error: "model: boom"},
+		{Idx: 1, Batch: 1, Instruction: "q1", Reference: "a1", Status: relational.TrainedModelCaseFailed, Error: "model: boom"},
 	}
 	if err := relational.SaveTrainedModelAuditRunBatch(ctx, d, a, cases); err != nil {
 		t.Fatal(err)
@@ -54,10 +54,10 @@ func trainedModelAuditRunsScenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("cases: %+v %v", list, err)
 	}
 	if c := list[0]; c.Idx != 0 || c.Score == nil || *c.Score != 5 || c.Reason != "same" || c.Input != "ctx" || c.Response != "a0" ||
-		c.InputTokens != 3 || c.DurationMS != 40 || c.AuditRunID != id || c.Status != relational.TrainedModelAuditCaseJudged {
+		c.InputTokens != 3 || c.DurationMS != 40 || c.AuditRunID != id || c.Status != relational.TrainedModelCaseJudged {
 		t.Fatalf("case 0: %+v", c)
 	}
-	if c := list[1]; c.Score != nil || c.Status != relational.TrainedModelAuditCaseFailed || c.Error != "model: boom" {
+	if c := list[1]; c.Score != nil || c.Status != relational.TrainedModelCaseFailed || c.Error != "model: boom" {
 		t.Fatalf("case 1: %+v", c)
 	}
 	// The same example twice is refused, and nothing of that batch is kept.
@@ -69,17 +69,17 @@ func trainedModelAuditRunsScenario(t *testing.T, d *sql.DB) {
 	}
 
 	// Finishing: once. A second finish leaves the first outcome.
-	if err := relational.FinishTrainedModelAuditRun(ctx, d, id, relational.TrainedModelAuditRunCancelled, ""); err != nil {
+	if err := relational.FinishTrainedModelAuditRun(ctx, d, id, relational.TrainedModelRunCancelled, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := relational.FinishTrainedModelAuditRun(ctx, d, id, relational.TrainedModelAuditRunCompleted, ""); err != nil {
+	if err := relational.FinishTrainedModelAuditRun(ctx, d, id, relational.TrainedModelRunCompleted, ""); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = relational.GetTrainedModelAuditRun(ctx, d, id)
-	if got.Status != relational.TrainedModelAuditRunCancelled || got.FinishedAt == nil {
+	if got.Status != relational.TrainedModelRunCancelled || got.FinishedAt == nil {
 		t.Fatalf("finished: %+v", got)
 	}
-	if err := relational.FinishTrainedModelAuditRun(ctx, d, id+100, relational.TrainedModelAuditRunFailed, "x"); !errors.Is(err, relational.ErrNotFound) {
+	if err := relational.FinishTrainedModelAuditRun(ctx, d, id+100, relational.TrainedModelRunFailed, "x"); !errors.Is(err, relational.ErrNotFound) {
 		t.Fatalf("finish unknown: %v", err)
 	}
 
@@ -93,10 +93,10 @@ func trainedModelAuditRunsScenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("FailRunningTrainedModelAuditRuns: %d %v", n, err)
 	}
 	got2, _ := relational.GetTrainedModelAuditRun(ctx, d, id2)
-	if got2.Status != relational.TrainedModelAuditRunFailed || got2.Error != "restarted" || got2.FinishedAt == nil {
+	if got2.Status != relational.TrainedModelRunFailed || got2.Error != "restarted" || got2.FinishedAt == nil {
 		t.Fatalf("interrupted: %+v", got2)
 	}
-	if got, _ = relational.GetTrainedModelAuditRun(ctx, d, id); got.Status != relational.TrainedModelAuditRunCancelled {
+	if got, _ = relational.GetTrainedModelAuditRun(ctx, d, id); got.Status != relational.TrainedModelRunCancelled {
 		t.Fatalf("a finished audit run changed: %+v", got)
 	}
 

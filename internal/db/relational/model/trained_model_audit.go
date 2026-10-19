@@ -14,23 +14,6 @@ import (
 // It is separate from an EVAL of a trained model (TrainedModelEvalRun), whose cases are meant to be ones the model never saw. An
 // audit has its own tables (gb_training_audit_runs and gb_training_audit_cases, see sqlite/db_schema.go) and is in no experiment.
 
-// Statuses of a TrainedModelAuditRun.
-const (
-	TrainedModelAuditRunRunning   = "running"
-	TrainedModelAuditRunCompleted = "completed"
-	TrainedModelAuditRunFailed    = "failed"    // Error says why
-	TrainedModelAuditRunCancelled = "cancelled" // stopped by the user
-)
-
-// Statuses of a TrainedModelAuditCase.
-const (
-	TrainedModelAuditCaseJudged = "judged" // the model answered and the judge scored it
-	TrainedModelAuditCaseFailed = "failed" // the model or the judge failed: Error says why
-	// TrainedModelAuditCaseAnswered is never stored: the live stream of an audit run (GET .../audits/{id}/events) uses it for a
-	// case the model answered whose batch the judge has not scored yet.
-	TrainedModelAuditCaseAnswered = "answered"
-)
-
 // TrainedModelAuditRun is one audit of a trained model against its own fine-tuning dataset (a gb_training_audit_runs row; its
 // cases are TrainedModelAuditCase rows). Each example of the dataset is a case: the model is asked its question and the LLM
 // scores the answer against the dataset's output. The counters are updated after every judge batch, so the row shows the

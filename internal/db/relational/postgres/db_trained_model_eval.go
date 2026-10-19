@@ -160,7 +160,7 @@ func FailRunningTrainedModelEvalRuns(ctx context.Context, d *sql.DB, reason stri
 		return 0, fmt.Errorf("fail running trained model eval runs: %w", err)
 	}
 	defer tx.Rollback()
-	n, err := finishTrainingRuns(ctx, tx, 0, model.TrainedModelEvalRunFailed, reason, Now())
+	n, err := finishTrainingRuns(ctx, tx, 0, model.TrainedModelRunFailed, reason, Now())
 	if err != nil {
 		return 0, fmt.Errorf("fail running trained model eval runs: %w", err)
 	}

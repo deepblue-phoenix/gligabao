@@ -233,7 +233,7 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 		if name := strings.TrimSpace(in.Experiment); name != "" {
 			if err := joinExperiment(dbCtx, n.DB, name, in.ExperimentDescription, in.ExperimentConfig, evalID); err != nil {
 				release()
-				_ = relational.FinishTrainedModelEvalRun(dbCtx, n.DB, evalID, relational.TrainedModelEvalRunFailed, "could not start")
+				_ = relational.FinishTrainedModelEvalRun(dbCtx, n.DB, evalID, relational.TrainedModelRunFailed, "could not start")
 				log.WithError(err).WithField("experiment", name).Error("training: adding the eval to its experiment failed")
 				httputil.Error(w, http.StatusInternalServerError, "failed to add the eval to the experiment")
 				return
@@ -249,7 +249,7 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 		if err != nil {
 			release()
 			m.dropStream(skey, stream)
-			_ = relational.FinishTrainedModelEvalRun(dbCtx, n.DB, evalID, relational.TrainedModelEvalRunFailed, "could not start")
+			_ = relational.FinishTrainedModelEvalRun(dbCtx, n.DB, evalID, relational.TrainedModelRunFailed, "could not start")
 			log.WithError(err).Error("training: read eval failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the eval")
 			return
@@ -306,7 +306,7 @@ func (m *EvalManager) run(ctx context.Context, n Database, tm relational.Trained
 	defer func() {
 		if r := recover(); r != nil {
 			logf.Errorf("training: eval panicked: %v", r)
-			finish(relational.TrainedModelEvalRunFailed, fmt.Sprintf("internal error: %v", r))
+			finish(relational.TrainedModelRunFailed, fmt.Sprintf("internal error: %v", r))
 		}
 	}()
 
@@ -346,14 +346,14 @@ func (m *EvalManager) run(ctx context.Context, n Database, tm relational.Trained
 	_, err := trainingeval.Run(memory_core.WithStage(ctx, StageEvalJudge), cfg, examples, gen, judge, sink)
 	switch {
 	case err == nil:
-		finish(relational.TrainedModelEvalRunCompleted, "")
+		finish(relational.TrainedModelRunCompleted, "")
 	case errors.Is(err, context.Canceled) && m.ctx.Err() != nil:
-		finish(relational.TrainedModelEvalRunFailed, "interrupted: the server shut down while the eval ran")
+		finish(relational.TrainedModelRunFailed, "interrupted: the server shut down while the eval ran")
 	case errors.Is(err, context.Canceled):
-		finish(relational.TrainedModelEvalRunCancelled, "")
+		finish(relational.TrainedModelRunCancelled, "")
 	default:
 		logf.WithError(err).Warn("training: eval failed")
-		finish(relational.TrainedModelEvalRunFailed, err.Error())
+		finish(relational.TrainedModelRunFailed, err.Error())
 	}
 }
 
@@ -463,7 +463,7 @@ func (m *EvalManager) CancelOf() http.HandlerFunc {
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the eval")
 			return
 		}
-		if ev.Status != relational.TrainedModelEvalRunRunning {
+		if ev.Status != relational.TrainedModelRunRunning {
 			httputil.Error(w, http.StatusConflict, "the eval is not running")
 			return
 		}
@@ -472,7 +472,7 @@ func (m *EvalManager) CancelOf() http.HandlerFunc {
 		m.mu.Unlock()
 		if run == nil || run.evalID != id {
 			// Marked running, but nothing runs it (it cannot happen unless the bookkeeping failed): end it.
-			if err := relational.FinishTrainedModelEvalRun(r.Context(), n.DB, id, relational.TrainedModelEvalRunCancelled, ""); err != nil {
+			if err := relational.FinishTrainedModelEvalRun(r.Context(), n.DB, id, relational.TrainedModelRunCancelled, ""); err != nil {
 				log.WithError(err).Error("training: ending the eval failed")
 			}
 		} else {

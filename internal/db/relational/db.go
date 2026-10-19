@@ -52,26 +52,15 @@ type (
 	TrainingExperimentModel = model.TrainingExperimentModel
 )
 
-// Statuses of a TrainedModelEvalRun and of its cases.
+// Statuses of the runs and cases of a trained model, shared by evals and audits (see model/trained_model_status.go).
 const (
-	TrainedModelEvalRunRunning   = model.TrainedModelEvalRunRunning
-	TrainedModelEvalRunCompleted = model.TrainedModelEvalRunCompleted
-	TrainedModelEvalRunFailed    = model.TrainedModelEvalRunFailed
-	TrainedModelEvalRunCancelled = model.TrainedModelEvalRunCancelled
-	TrainedModelCaseJudged       = model.TrainedModelCaseJudged
-	TrainedModelCaseFailed       = model.TrainedModelCaseFailed
-	TrainedModelCaseAnswered     = model.TrainedModelCaseAnswered
-)
-
-// Statuses of a TrainedModelAuditRun (a training data audit) and of its cases.
-const (
-	TrainedModelAuditRunRunning   = model.TrainedModelAuditRunRunning
-	TrainedModelAuditRunCompleted = model.TrainedModelAuditRunCompleted
-	TrainedModelAuditRunFailed    = model.TrainedModelAuditRunFailed
-	TrainedModelAuditRunCancelled = model.TrainedModelAuditRunCancelled
-	TrainedModelAuditCaseJudged   = model.TrainedModelAuditCaseJudged
-	TrainedModelAuditCaseFailed   = model.TrainedModelAuditCaseFailed
-	TrainedModelAuditCaseAnswered = model.TrainedModelAuditCaseAnswered
+	TrainedModelRunRunning   = model.TrainedModelRunRunning
+	TrainedModelRunCompleted = model.TrainedModelRunCompleted
+	TrainedModelRunFailed    = model.TrainedModelRunFailed
+	TrainedModelRunCancelled = model.TrainedModelRunCancelled
+	TrainedModelCaseJudged   = model.TrainedModelCaseJudged
+	TrainedModelCaseFailed   = model.TrainedModelCaseFailed
+	TrainedModelCaseAnswered = model.TrainedModelCaseAnswered
 )
 
 // Eval schemes of a TrainedModelEvalRun (see model.TrainingSchemeFineTuneDataset).

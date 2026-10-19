@@ -167,14 +167,14 @@ func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 		t.Fatalf("start: %d %s", call.code, call.body)
 	}
 	started := call.eval(t)
-	if started.Status != relational.TrainedModelEvalRunRunning || started.TrainedModelID != mid || started.Dataset != "mine" || started.NumExamples != 5 ||
+	if started.Status != relational.TrainedModelRunRunning || started.TrainedModelID != mid || started.Dataset != "mine" || started.NumExamples != 5 ||
 		len(started.DatasetSHA256) != 64 || !strings.Contains(string(started.Params), `"batch_size":2`) {
 		t.Fatalf("started: %+v", started)
 	}
 	m.Wait()
 
 	ev, cases := getEval(t, m, started.ID)
-	if ev.Status != relational.TrainedModelEvalRunCompleted || ev.FinishedAt == nil || ev.Error != "" {
+	if ev.Status != relational.TrainedModelRunCompleted || ev.FinishedAt == nil || ev.Error != "" {
 		t.Fatalf("finished: %+v", ev)
 	}
 	if ev.Scheme != relational.TrainingSchemeFineTuneDataset {
@@ -305,7 +305,7 @@ func TestEvalCancelAndConflict(t *testing.T) {
 	}
 	m.Wait()
 	ev, cases := getEval(t, m, id)
-	if ev.Status != relational.TrainedModelEvalRunCancelled || ev.FinishedAt == nil || len(cases) != 0 {
+	if ev.Status != relational.TrainedModelRunCancelled || ev.FinishedAt == nil || len(cases) != 0 {
 		t.Fatalf("cancelled: %+v, %d cases", ev, len(cases))
 	}
 	// A finished eval cannot be cancelled again, and the model can be evaluated again.
@@ -332,7 +332,7 @@ func TestEvalFailsWhenTheModelDoesNotAnswer(t *testing.T) {
 	c := startEval(m, fmt.Sprint(mid), `{"batch_size": 2}`)
 	m.Wait()
 	ev, cases := getEval(t, m, c.eval(t).ID)
-	if ev.Status != relational.TrainedModelEvalRunFailed || !strings.Contains(ev.Error, "weights are gone") || ev.NumFailed != 4 || ev.NumJudged != 0 || len(cases) != 4 ||
+	if ev.Status != relational.TrainedModelRunFailed || !strings.Contains(ev.Error, "weights are gone") || ev.NumFailed != 4 || ev.NumJudged != 0 || len(cases) != 4 ||
 		cases[0].Status != relational.TrainedModelCaseFailed || !strings.Contains(cases[0].Error, "weights are gone") {
 		t.Fatalf("%+v cases %+v", ev, cases)
 	}
@@ -354,7 +354,7 @@ func TestEvalsInterruptedByARestartAreFailed(t *testing.T) {
 	}
 	training.NewEvalManager(ctx, []training.Database{{Name: "standard", DB: d}}, nil, nil)
 	ev, err := relational.GetTrainedModelEvalRun(ctx, d, id)
-	if err != nil || ev.Status != relational.TrainedModelEvalRunFailed || !strings.Contains(ev.Error, "restart") {
+	if err != nil || ev.Status != relational.TrainedModelRunFailed || !strings.Contains(ev.Error, "restart") {
 		t.Fatalf("%+v %v", ev, err)
 	}
 }
@@ -528,7 +528,7 @@ func testEvalExperiments(t *testing.T, d *sql.DB) {
 		t.Fatalf("experiment: %d %s", rec.Code, rec.Body)
 	}
 	r := got.Runs[0]
-	if r.ID != first.eval(t).ID || r.Status != relational.TrainedModelEvalRunCompleted || r.Model.ID != mid || r.Model.FinalLoss == nil ||
+	if r.ID != first.eval(t).ID || r.Status != relational.TrainedModelRunCompleted || r.Model.ID != mid || r.Model.FinalLoss == nil ||
 		r.MeanScore == nil || *r.MeanScore != 4 || r.CorrectRate == nil || *r.CorrectRate != 0.75 || got.Runs[1].EvalRun.NumExamples != 2 {
 		t.Fatalf("run: %+v", r)
 	}

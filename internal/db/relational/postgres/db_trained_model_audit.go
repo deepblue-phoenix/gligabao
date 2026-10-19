@@ -91,7 +91,7 @@ func FinishTrainedModelAuditRun(ctx context.Context, d *sql.DB, id int64, status
 
 // FailRunningTrainedModelAuditRuns sets every running audit run to failed with the reason, and returns how many there were.
 func FailRunningTrainedModelAuditRuns(ctx context.Context, d *sql.DB, reason string) (int64, error) {
-	n, err := finishAuditRuns(ctx, d, 0, model.TrainedModelAuditRunFailed, reason, Now())
+	n, err := finishAuditRuns(ctx, d, 0, model.TrainedModelRunFailed, reason, Now())
 	if err != nil {
 		return 0, fmt.Errorf("fail running trained model audit runs: %w", err)
 	}

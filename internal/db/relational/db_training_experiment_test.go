@@ -43,7 +43,7 @@ func trainingExperimentsScenario(t *testing.T, d *sql.DB) {
 	// Two eval runs become runs of it; the run follows its eval run.
 	e1, e2 := newEval(), newEval()
 	run, err := relational.StartTrainingExperimentRun(ctx, d, x.ID, e1)
-	if err != nil || run.ID == 0 || run.ExperimentID != x.ID || run.ID != e1 || run.Status != relational.TrainedModelEvalRunRunning ||
+	if err != nil || run.ID == 0 || run.ExperimentID != x.ID || run.ID != e1 || run.Status != relational.TrainedModelRunRunning ||
 		run.MeanScore != nil || run.CorrectRate != nil || run.Model.ID != mid || run.Model.NumTrainSteps != 7 || run.Model.BaseModel != "google/gemma" ||
 		run.Model.FinalLoss == nil || *run.Model.FinalLoss != 0.5 || run.EvalRun.NumExamples != 4 {
 		t.Fatalf("StartTrainingExperimentRun: %+v %v", run, err)
@@ -55,21 +55,21 @@ func trainingExperimentsScenario(t *testing.T, d *sql.DB) {
 	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, e, []relational.TrainedModelCaseResult{{Idx: 0, Batch: 1, Instruction: "q", Status: relational.TrainedModelCaseFailed}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := relational.FinishTrainedModelEvalRun(ctx, d, e1, relational.TrainedModelEvalRunCompleted, ""); err != nil {
+	if err := relational.FinishTrainedModelEvalRun(ctx, d, e1, relational.TrainedModelRunCompleted, ""); err != nil {
 		t.Fatal(err)
 	}
 	runs, err := relational.ListTrainingExperimentRuns(ctx, d, x.ID)
 	if err != nil || len(runs) != 2 || runs[0].ID != e1 || runs[1].ID != e2 {
 		t.Fatalf("ListTrainingExperimentRuns: %+v %v", runs, err)
 	}
-	if r := runs[0]; r.Status != relational.TrainedModelEvalRunCompleted || r.EvalRun.FinishedAt == nil || r.MeanScore == nil || *r.MeanScore != 4 ||
+	if r := runs[0]; r.Status != relational.TrainedModelRunCompleted || r.EvalRun.FinishedAt == nil || r.MeanScore == nil || *r.MeanScore != 4 ||
 		r.CorrectRate == nil || *r.CorrectRate != 0.75 || r.EvalRun.JudgeCostUSD != 0.25 || r.EvalRun.JudgeModel != "j" {
 		t.Fatalf("finished run: %+v", r)
 	}
-	if r := runs[1]; r.Status != relational.TrainedModelEvalRunRunning || r.MeanScore != nil {
+	if r := runs[1]; r.Status != relational.TrainedModelRunRunning || r.MeanScore != nil {
 		t.Fatalf("running run: %+v", r)
 	}
-	if got, err := relational.GetTrainingExperimentRun(ctx, d, run.ID); err != nil || got.Status != relational.TrainedModelEvalRunCompleted {
+	if got, err := relational.GetTrainingExperimentRun(ctx, d, run.ID); err != nil || got.Status != relational.TrainedModelRunCompleted {
 		t.Fatalf("GetTrainingExperimentRun: %+v %v", got, err)
 	}
 

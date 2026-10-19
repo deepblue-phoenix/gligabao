@@ -18,7 +18,7 @@ import (
 // a.CreatedAt and a.FinishedAt are ignored.
 func RecordTrainedModelAuditRun(ctx context.Context, d *sql.DB, a TrainedModelAuditRun) (int64, error) {
 	if a.Status == "" {
-		a.Status = TrainedModelAuditRunRunning
+		a.Status = TrainedModelRunRunning
 	}
 	switch backend() {
 	case config.DBBackendSQLite:
@@ -41,7 +41,7 @@ func SaveTrainedModelAuditRunBatch(ctx context.Context, d *sql.DB, a TrainedMode
 	return unsupported()
 }
 
-// FinishTrainedModelAuditRun ends a running audit run: status is TrainedModelAuditRunCompleted, Failed (with the error text) or
+// FinishTrainedModelAuditRun ends a running audit run: status is TrainedModelRunCompleted, Failed (with the error text) or
 // Cancelled. An audit run that is not running any more is left as it is. ErrNotFound if there is no such audit run.
 func FinishTrainedModelAuditRun(ctx context.Context, d *sql.DB, id int64, status, errText string) error {
 	switch backend() {

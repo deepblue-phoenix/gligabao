@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.59.1] - 2026-10-19
+
+### Changed
+- The status words of the runs and cases of a trained model are Go constants defined once, in `internal/db/relational/model/trained_model_status.go`, instead of one set for evals and another for audits: `TrainedModelRunRunning`, `TrainedModelRunCompleted`, `TrainedModelRunFailed`, `TrainedModelRunCancelled` (were `TrainedModelEvalRun...` and `TrainedModelAuditRun...`) and `TrainedModelCaseJudged`, `TrainedModelCaseFailed`, `TrainedModelCaseAnswered` (were also `TrainedModelAuditCase...`). The engine's `trainingeval.CaseJudged` and `CaseFailed` are those same constants, so evals, audits and the engine cannot use different words, and a typo does not compile. The words themselves, the API and the schema are unchanged.
+- The admin UI's live view has the same words as TypeScript constants (`RunStatus`, `CaseStatus` in `eval_live.ts`) instead of string literals.
+
 ## [0.59.0] - 2026-10-19
 
 ### Changed

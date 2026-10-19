@@ -3,7 +3,7 @@
 // server as SSE (../training/events), which forwards what the sidecar reports; d3 is loaded as a global by index.html.
 
 import { alertDialog, confirmDialog } from "./dialogs.js";
-import { initEvalLive, watchEval, type EvalCase, type EvalRun } from "./eval_live.js";
+import { CaseStatus, RunStatus, initEvalLive, watchEval, type EvalCase, type EvalRun } from "./eval_live.js";
 import { initActionModal, showActionLog, startAction, type ActionState } from "./actions.js";
 
 declare const d3: typeof import("d3");
@@ -543,7 +543,7 @@ const EVAL = newKind({
 });
 const KINDS: RunKind[] = [AUDIT, EVAL];
 
-const runRunning = (e: EvalRun): boolean => e.status === "running";
+const runRunning = (e: EvalRun): boolean => e.status === RunStatus.running;
 const runMean = (e: EvalRun): number | null => (e.num_judged > 0 ? e.score_sum / e.num_judged : null);
 
 // Starts a run of kind k on model m (the options the server understands: limit, batch_size, ...) and opens its dialog to follow it.
@@ -645,7 +645,7 @@ async function loadRuns(k: RunKind, modelID: number): Promise<void> {
 
 // Evals and audits end "completed" (the same statuses).
 function evalBadge(status: string): HTMLElement {
-  const cls = status === "completed" ? "badge-ok" : status === "failed" ? "badge-error" : status === "cancelled" ? "badge-unknown" : "badge-active";
+  const cls = status === RunStatus.completed ? "badge-ok" : status === RunStatus.failed ? "badge-error" : status === RunStatus.cancelled ? "badge-unknown" : "badge-active";
   return node("span", `badge ${cls}`, status);
 }
 
@@ -716,7 +716,7 @@ function renderRuns(k: RunKind): void {
 function runCasesTable(cases: EvalCase[] | undefined): HTMLElement {
   if (!cases) return node("p", "muted", "Loading the answers…");
   if (cases.length === 0) return node("p", "muted", "No answers yet: they appear as each batch is judged.");
-  const rank = (i: EvalCase): number => (i.status === "failed" ? -1 : i.score ?? -1);
+  const rank = (i: EvalCase): number => (i.status === CaseStatus.failed ? -1 : i.score ?? -1);
   const sorted = [...cases].sort((a, b) => rank(a) - rank(b) || a.idx - b.idx);
   const table = node("table", "eval-table");
   const head = table.createTHead().insertRow();
@@ -728,7 +728,7 @@ function runCasesTable(cases: EvalCase[] | undefined): HTMLElement {
     tr.insertCell().textContent = String(i.idx + 1);
     text(tr, i.input ? `${i.instruction}\n\n${i.input}` : i.instruction);
     text(tr, i.reference);
-    if (i.status === "failed") {
+    if (i.status === CaseStatus.failed) {
       text(tr, i.response || "(no answer)", "muted");
       const c = tr.insertCell();
       c.className = "num";

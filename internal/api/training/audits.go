@@ -214,7 +214,7 @@ func (m *AuditManager) StartOf() http.HandlerFunc {
 		if err != nil {
 			release()
 			m.dropStream(skey, stream)
-			_ = relational.FinishTrainedModelAuditRun(dbCtx, n.DB, auditID, relational.TrainedModelAuditRunFailed, "could not start")
+			_ = relational.FinishTrainedModelAuditRun(dbCtx, n.DB, auditID, relational.TrainedModelRunFailed, "could not start")
 			log.WithError(err).Error("training: read audit failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the audit")
 			return
@@ -245,7 +245,7 @@ func (m *AuditManager) run(ctx context.Context, n Database, tm relational.Traine
 	defer func() {
 		if r := recover(); r != nil {
 			logf.Errorf("training: audit panicked: %v", r)
-			finish(relational.TrainedModelAuditRunFailed, fmt.Sprintf("internal error: %v", r))
+			finish(relational.TrainedModelRunFailed, fmt.Sprintf("internal error: %v", r))
 		}
 	}()
 
@@ -285,14 +285,14 @@ func (m *AuditManager) run(ctx context.Context, n Database, tm relational.Traine
 	_, err := trainingeval.Run(memory_core.WithStage(ctx, StageAuditJudge), cfg, examples, gen, judge, sink)
 	switch {
 	case err == nil:
-		finish(relational.TrainedModelAuditRunCompleted, "")
+		finish(relational.TrainedModelRunCompleted, "")
 	case errors.Is(err, context.Canceled) && m.ctx.Err() != nil:
-		finish(relational.TrainedModelAuditRunFailed, "interrupted: the server shut down while the audit ran")
+		finish(relational.TrainedModelRunFailed, "interrupted: the server shut down while the audit ran")
 	case errors.Is(err, context.Canceled):
-		finish(relational.TrainedModelAuditRunCancelled, "")
+		finish(relational.TrainedModelRunCancelled, "")
 	default:
 		logf.WithError(err).Warn("training: audit failed")
-		finish(relational.TrainedModelAuditRunFailed, err.Error())
+		finish(relational.TrainedModelRunFailed, err.Error())
 	}
 }
 
@@ -401,7 +401,7 @@ func (m *AuditManager) CancelOf() http.HandlerFunc {
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the audit")
 			return
 		}
-		if au.Status != relational.TrainedModelAuditRunRunning {
+		if au.Status != relational.TrainedModelRunRunning {
 			httputil.Error(w, http.StatusConflict, "the audit is not running")
 			return
 		}
@@ -410,7 +410,7 @@ func (m *AuditManager) CancelOf() http.HandlerFunc {
 		m.mu.Unlock()
 		if run == nil || run.auditID != id {
 			// Marked running, but nothing runs it (it cannot happen unless the bookkeeping failed): end it.
-			if err := relational.FinishTrainedModelAuditRun(r.Context(), n.DB, id, relational.TrainedModelAuditRunCancelled, ""); err != nil {
+			if err := relational.FinishTrainedModelAuditRun(r.Context(), n.DB, id, relational.TrainedModelRunCancelled, ""); err != nil {
 				log.WithError(err).Error("training: ending the audit failed")
 			}
 		} else {

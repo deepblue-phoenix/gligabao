@@ -136,7 +136,7 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, relational.TrainedModelEvalRun{ID: eid, NumJudged: 2, NumCorrect: 2, ScoreSum: 9, JudgeCostUSD: 0.25}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := relational.FinishTrainedModelEvalRun(ctx, d, eid, relational.TrainedModelEvalRunCompleted, ""); err != nil {
+	if err := relational.FinishTrainedModelEvalRun(ctx, d, eid, relational.TrainedModelRunCompleted, ""); err != nil {
 		t.Fatal(err)
 	}
 	var status string
