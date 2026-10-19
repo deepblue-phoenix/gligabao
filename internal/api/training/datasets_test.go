@@ -63,8 +63,8 @@ func TestUploadTrainingDataset(t *testing.T) { dbtest.Run(t, testUploadTrainingD
 func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 	ctx := t.Context()
 	dir := filepath.Join(t.TempDir(), "datasets_training") // created by the first upload
-	dbs := []core.Database{{Name: "standard", DB: d, DatasetDir: dir}}
-	h := training.UploadDatasetOf(dbs)
+	dsDir := dir
+	h := training.UploadDatasetOf(d, dsDir)
 
 	rec := upload(h, "/x", "file", "mine.jsonl", goodDataset, nil)
 	if rec.Code != http.StatusCreated {
@@ -140,9 +140,6 @@ func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 			t.Errorf("%s: %d %s", name, rec.Code, rec.Body)
 		}
 	}
-	if rec := upload(h, "/x?db=nope", "file", "a.jsonl", goodDataset, nil); rec.Code != http.StatusNotFound {
-		t.Errorf("unknown db: %d", rec.Code)
-	}
 	list, _ := trainingdb.ListTrainingDatasets(ctx, d)
 	entries, _ := os.ReadDir(dir)
 	files, _ := os.ReadDir(filepath.Join(dir, "mine"))
@@ -151,13 +148,13 @@ func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 	}
 
 	// No directory configured: refused.
-	if rec := upload(training.UploadDatasetOf([]core.Database{{Name: "standard", DB: d}}), "/x", "file", "n.jsonl", goodDataset, nil); rec.Code != http.StatusInternalServerError {
+	if rec := upload(training.UploadDatasetOf(d, ""), "/x", "file", "n.jsonl", goodDataset, nil); rec.Code != http.StatusInternalServerError {
 		t.Fatalf("no dir: %d", rec.Code)
 	}
 
 	// The list endpoint shows what the manifests found, with the records (made for a dataset added by hand too).
 	lrec := httptest.NewRecorder()
-	training.ListDatasetsOf(dbs)(lrec, httptest.NewRequest("GET", "/x", nil))
+	training.ListDatasetsOf(d, dsDir)(lrec, httptest.NewRequest("GET", "/x", nil))
 	for _, want := range []string{`"datasets":[`, `"name":"x"`, `"filename":"x.jsonl"`, `"name":"own"`, `"filename":"own.jsonl"`, `"file":"data.jsonl"`, `"problems":[]`} {
 		if lrec.Code != 200 || !strings.Contains(lrec.Body.String(), want) {
 			t.Fatalf("list lacks %s: %d %s", want, lrec.Code, lrec.Body)
@@ -175,12 +172,12 @@ func TestStartJobSendsDataset(t *testing.T) { dbtest.Run(t, testStartJobSendsDat
 func testStartJobSendsDataset(t *testing.T, d *sql.DB) {
 	ctx := t.Context()
 	dir := t.TempDir()
-	dbs := []core.Database{{Name: "standard", DB: d, DatasetDir: dir}}
+	dsDir := dir
 	sc := &fakeSidecar{}
-	up := training.UploadDatasetOf(dbs)
+	up := training.UploadDatasetOf(d, dsDir)
 	start := func(body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		training.StartJobOf(dbs, sc, nil)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(body)))
+		training.StartJobOf(d, dsDir, sc, nil)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(body)))
 		return rec
 	}
 	startDS := func(dataset string) *httptest.ResponseRecorder { return start(`{"dataset":"` + dataset + `"}`) }
@@ -260,7 +257,7 @@ func testStartJobSendsDataset(t *testing.T, d *sql.DB) {
 
 func TestUploadTrainingDatasetTooLarge(t *testing.T) {
 	dbtest.Run(t, func(t *testing.T, d *sql.DB) {
-		h := training.UploadDatasetOf([]core.Database{{Name: "standard", DB: d, DatasetDir: t.TempDir()}})
+		h := training.UploadDatasetOf(d, t.TempDir())
 		big := strings.Repeat("x", core.MaxDatasetBytes+1)
 		if rec := upload(h, "/x", "file", "a.jsonl", big, nil); rec.Code != http.StatusRequestEntityTooLarge {
 			t.Fatalf("too large: %d %s", rec.Code, rec.Body)

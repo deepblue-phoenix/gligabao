@@ -13,7 +13,7 @@ import (
 
 const runStreamKeepalive = 15 * time.Second
 
-// EventsOf serves GET /v1/gb/training/evals|audits/{id}/events[?db=<name>]: the live feed of a run as Server-Sent Events. Every
+// EventsOf serves GET /v1/gb/training/evals|audits/{id}/events: the live feed of a run as Server-Sent Events. Every
 // event's data is a core.RunEvent JSON. The first is a "snapshot" (the run and all of its cases so far: the judged and errored
 // ones from the database, and the ones the model answered that the judge has not scored yet, with status "answered"); then, while
 // the run goes on, an "answer" for every question the model answers, a "batch" when a batch is judged, and finally an "end" after
@@ -21,15 +21,11 @@ const runStreamKeepalive = 15 * time.Second
 // snapshot, so it applies cases by idx. 404 for an unknown run.
 func (m *runManager) EventsOf() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n, ok := pickDB(w, r, m.DBs)
-		if !ok {
-			return
-		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		watch, err := m.Watch(r.Context(), n, id)
+		watch, err := m.Watch(r.Context(), id)
 		if err != nil {
 			writeErr(w, err)
 			return

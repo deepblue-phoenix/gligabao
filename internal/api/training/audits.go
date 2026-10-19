@@ -10,6 +10,7 @@ package training
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
@@ -24,16 +25,19 @@ import (
 // AuditManager starts the training data audits and runs them in the background, one at a time per trained model. Audits still
 // running when the server last stopped are marked error when the manager is made. ListOf, GetOf, CancelOf, EventsOf and Wait are
 // those of the runManager it is made of.
-type AuditManager struct{ *runManager }
-
-// NewAuditManager makes the manager of the training data audits of the trained models of dbs. sc answers the questions (nil:
-// starting an audit answers 503) and llm judges (nil: the same). The audits stop when ctx is done. Audits that a restart
-// interrupted (still "running" in the database) are marked error.
-func NewAuditManager(ctx context.Context, dbs []core.Database, sc core.Inferer, llm memory_core.LLM) *AuditManager {
-	return &AuditManager{&runManager{core.NewRunManager(ctx, dbs, sc, llm, core.AuditOps)}}
+type AuditManager struct {
+	*runManager
+	dir string // the training datasets directory
 }
 
-// StartOf serves POST /v1/gb/training/models/{id}/audits[?db=<name>] with an optional JSON body {"limit": 0, "batch_size": 10,
+// NewAuditManager makes the manager of the training data audits of the trained models in db, whose datasets are in the training datasets directory datasetDir. sc answers the questions (nil:
+// starting an audit answers 503) and llm judges (nil: the same). The audits stop when ctx is done. Audits that a restart
+// interrupted (still "running" in the database) are marked error.
+func NewAuditManager(ctx context.Context, db *sql.DB, datasetDir string, sc core.Inferer, llm memory_core.LLM) *AuditManager {
+	return &AuditManager{&runManager{core.NewRunManager(ctx, db, sc, llm, core.AuditOps)}, datasetDir}
+}
+
+// StartOf serves POST /v1/gb/training/models/{id}/audits with an optional JSON body {"limit": 0, "batch_size": 10,
 // "judge_model": "", "max_tokens": 1024, "temperature": 0.1}: it starts a training data audit of trained model {id} and answers 202
 // with the audit (evalsdb.TrainedModelRun, status "running"); the work goes on in the background (see GetOf, ListOf, CancelOf).
 //   - limit: ask only the first n cases (default: all of them)
@@ -45,7 +49,7 @@ func NewAuditManager(ctx context.Context, dbs []core.Database, sc core.Inferer, 
 // datasets directory, invalid), 409 when an audit of this model is running already, 503 without a sidecar or an LLM.
 func (m *AuditManager) StartOf() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n, id, ok := m.startPrelude(w, r)
+		id, ok := m.startPrelude(w, r)
 		if !ok {
 			return
 		}
@@ -59,11 +63,11 @@ func (m *AuditManager) StartOf() http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		tm, ok := getModel(w, r, n, id)
+		tm, ok := getModel(w, r, m.DB, id)
 		if !ok {
 			return
 		}
-		dataset, sum, examples, err := core.LoadModelDataset(n, tm)
+		dataset, sum, examples, err := core.LoadModelDataset(m.dir, tm)
 		if err != nil {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
@@ -71,7 +75,7 @@ func (m *AuditManager) StartOf() http.HandlerFunc {
 		if params.Limit > 0 && params.Limit < len(examples) {
 			examples = examples[:params.Limit]
 		}
-		m.start(w, r, core.RunSpec{Database: n, Model: tm, Config: cfg, Params: params, Examples: examples,
+		m.start(w, r, core.RunSpec{Model: tm, Config: cfg, Params: params, Examples: examples,
 			Row: evalsdb.TrainedModelRun{Dataset: dataset, DatasetSHA256: sum}})
 	}
 }

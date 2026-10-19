@@ -9,6 +9,7 @@ package training
 //     the model generalizes.
 
 import (
+	"database/sql"
 	"net/http"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
@@ -26,30 +27,26 @@ type runManager struct {
 	*core.RunManager
 }
 
-// startPrelude is the start of every StartOf: the database, the model's ID, and a sidecar and an LLM to ask and judge with.
-func (m *runManager) startPrelude(w http.ResponseWriter, r *http.Request) (core.Database, int64, bool) {
-	n, ok := pickDB(w, r, m.DBs)
-	if !ok {
-		return n, 0, false
-	}
+// startPrelude is the start of every StartOf: the model's ID, and a sidecar and an LLM to ask and judge with.
+func (m *runManager) startPrelude(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, ok := pathID(w, r)
 	if !ok {
-		return n, 0, false
+		return 0, false
 	}
 	if m.Sc == nil {
 		httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not active")
-		return n, 0, false
+		return 0, false
 	}
 	if m.LLM == nil {
 		httputil.Error(w, http.StatusServiceUnavailable, "no LLM is available to judge the answers (set ANTHROPIC_API_KEY)")
-		return n, 0, false
+		return 0, false
 	}
-	return n, id, true
+	return id, true
 }
 
 // getModel reads trained model id, answering 404 or 500 itself.
-func getModel(w http.ResponseWriter, r *http.Request, n core.Database, id int64) (*trainingdb.TrainedModel, bool) {
-	tm, err := core.GetModel(r.Context(), n, id)
+func getModel(w http.ResponseWriter, r *http.Request, db *sql.DB, id int64) (*trainingdb.TrainedModel, bool) {
+	tm, err := core.GetModel(r.Context(), db, id)
 	if err != nil {
 		writeErr(w, err)
 		return nil, false
@@ -68,15 +65,11 @@ func (m *runManager) start(w http.ResponseWriter, r *http.Request, s core.RunSpe
 	httputil.WriteJSON(w, http.StatusAccepted, rec)
 }
 
-// ListOf serves GET /v1/gb/training/models/{id}/evals|audits[?db=<name>][&limit=<n>]: {"evals": [...]} or {"audits": [...]}, the
+// ListOf serves GET /v1/gb/training/models/{id}/evals|audits[?limit=<n>]: {"evals": [...]} or {"audits": [...]}, the
 // runs of trained model {id} (evalsdb.TrainedModelRun, without their cases), newest first, at most limit (default 50, at most
 // 500). 404 for an unknown model.
 func (m *runManager) ListOf() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n, ok := pickDB(w, r, m.DBs)
-		if !ok {
-			return
-		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -85,7 +78,7 @@ func (m *runManager) ListOf() http.HandlerFunc {
 		if !ok {
 			return
 		}
-		list, err := m.ListRuns(r.Context(), n, id, limit)
+		list, err := m.ListRuns(r.Context(), id, limit)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -94,25 +87,21 @@ func (m *runManager) ListOf() http.HandlerFunc {
 	}
 }
 
-// GetOf serves GET /v1/gb/training/evals|audits/{id}[?db=<name>]: {"run": ..., "cases": [...]}, one run with the cases stored so far
+// GetOf serves GET /v1/gb/training/evals|audits/{id}: {"run": ..., "cases": [...]}, one run with the cases stored so far
 // (evalsdb.TrainedModelCase: question, the expected answer, the model's, score and reason), in the order of the eval or the
 // dataset. 404 for an unknown run.
 func (m *runManager) GetOf() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n, ok := pickDB(w, r, m.DBs)
-		if !ok {
-			return
-		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		run, err := m.GetRun(r.Context(), n, id)
+		run, err := m.GetRun(r.Context(), id)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		cases, err := m.RunCases(r.Context(), n, id)
+		cases, err := m.RunCases(r.Context(), id)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -121,19 +110,15 @@ func (m *runManager) GetOf() http.HandlerFunc {
 	}
 }
 
-// CancelOf serves POST /v1/gb/training/evals|audits/{id}/cancel[?db=<name>]: stops a running run (it ends as "cancelled", keeping
+// CancelOf serves POST /v1/gb/training/evals|audits/{id}/cancel: stops a running run (it ends as "cancelled", keeping
 // the batches done so far) and answers 202 with it. 404 for an unknown run, 409 when it is not running.
 func (m *runManager) CancelOf() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n, ok := pickDB(w, r, m.DBs)
-		if !ok {
-			return
-		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		run, err := m.CancelRun(r.Context(), n, id)
+		run, err := m.CancelRun(r.Context(), id)
 		if err != nil {
 			writeErr(w, err)
 			return

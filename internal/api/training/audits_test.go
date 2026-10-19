@@ -57,14 +57,14 @@ func TestAuditATrainedModel(t *testing.T) { dbtest.Run(t, testAuditATrainedModel
 
 func testAuditATrainedModel(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	dbs := []core.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 5)}}
+	dsDir := evalDatasetDir(t, 5)
 	mid, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{
 		JobID: "jobaudit1", ModelSize: "12b", Dataset: "mine.jsonl", NumTrainSteps: 5, Path: "trained/jobaudit1"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	sc, judge := &evalSidecar{wrong: map[string]bool{"q3": true}}, &evalJudge{}
-	m := training.NewAuditManager(ctx, dbs, sc, judge)
+	m := training.NewAuditManager(ctx, d, dsDir, sc, judge)
 
 	call := startAudit(m, fmt.Sprint(mid), `{"batch_size": 2, "judge_model": "my-judge", "max_tokens": 77, "temperature": 0.2}`)
 	if call.code != http.StatusAccepted {
@@ -135,11 +135,11 @@ func testAuditATrainedModel(t *testing.T, d *sql.DB) {
 func TestAuditRefusals(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx := context.Background()
-	dbs := []core.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 2)}}
+	dsDir := evalDatasetDir(t, 2)
 	ok, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j-ok", ModelSize: "4b", Dataset: "mine.jsonl", NumTrainSteps: 1, Path: "trained/j-ok"})
 	dflt, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j-default", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j-default"})
 	gone, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j-gone", ModelSize: "4b", Dataset: "deleted.jsonl", NumTrainSteps: 1, Path: "trained/j-gone"})
-	m := training.NewAuditManager(ctx, dbs, &evalSidecar{}, &evalJudge{})
+	m := training.NewAuditManager(ctx, d, dsDir, &evalSidecar{}, &evalJudge{})
 
 	for _, tc := range []struct {
 		name, model, body string
@@ -159,21 +159,14 @@ func TestAuditRefusals(t *testing.T) {
 			t.Errorf("%s: %d %s, want %d", tc.name, c.code, c.body, tc.want)
 		}
 	}
-	if c := startAudit(training.NewAuditManager(ctx, dbs, nil, &evalJudge{}), fmt.Sprint(ok), `{}`); c.code != 503 {
+	if c := startAudit(training.NewAuditManager(ctx, d, dsDir, nil, &evalJudge{}), fmt.Sprint(ok), `{}`); c.code != 503 {
 		t.Errorf("no sidecar: %d", c.code)
 	}
-	if c := startAudit(training.NewAuditManager(ctx, dbs, &evalSidecar{}, nil), fmt.Sprint(ok), `{}`); c.code != 503 {
+	if c := startAudit(training.NewAuditManager(ctx, d, dsDir, &evalSidecar{}, nil), fmt.Sprint(ok), `{}`); c.code != 503 {
 		t.Errorf("no LLM: %d", c.code)
 	}
 	if audits, _ := evalsdb.ListTrainedModelAuditRuns(ctx, d, 0, 0); len(audits) != 0 {
 		t.Errorf("refused audits left rows: %+v", audits)
-	}
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("POST", "/x?db=nope", nil)
-	req.SetPathValue("id", "1")
-	m.StartOf()(rec, req)
-	if rec.Code != 404 {
-		t.Errorf("unknown db: %d", rec.Code)
 	}
 	for _, h := range []http.HandlerFunc{m.GetOf(), m.CancelOf()} {
 		rec := httptest.NewRecorder()
@@ -189,10 +182,10 @@ func TestAuditRefusals(t *testing.T) {
 func TestAuditCancelAndConflict(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx := context.Background()
-	dbs := []core.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 6)}}
+	dsDir := evalDatasetDir(t, 6)
 	mid, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j1", ModelSize: "4b", Dataset: "mine.jsonl", NumTrainSteps: 1, Path: "trained/j1"})
 	sc := &evalSidecar{block: make(chan struct{}), started: make(chan struct{}, 1)}
-	m := training.NewAuditManager(ctx, dbs, sc, &evalJudge{})
+	m := training.NewAuditManager(ctx, d, dsDir, sc, &evalJudge{})
 
 	first := startAudit(m, fmt.Sprint(mid), `{"batch_size": 3}`)
 	if first.code != 202 {
@@ -231,9 +224,9 @@ func TestAuditCancelAndConflict(t *testing.T) {
 func TestAuditFailsWhenTheModelDoesNotAnswer(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx := context.Background()
-	dbs := []core.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 20)}}
+	dsDir := evalDatasetDir(t, 20)
 	mid, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j1", ModelSize: "4b", Dataset: "mine.jsonl", NumTrainSteps: 1, Path: "trained/j1"})
-	m := training.NewAuditManager(ctx, dbs, &failingInferer{}, &evalJudge{})
+	m := training.NewAuditManager(ctx, d, dsDir, &failingInferer{}, &evalJudge{})
 	c := startAudit(m, fmt.Sprint(mid), `{"batch_size": 2}`)
 	m.Wait()
 	au, cases := getAudit(t, m, auditOf(t, c).ID)
@@ -251,7 +244,7 @@ func TestAuditsInterruptedByARestartAreFailed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	training.NewAuditManager(ctx, []core.Database{{Name: "standard", DB: d}}, nil, nil)
+	training.NewAuditManager(ctx, d, "", nil, nil)
 	au, err := evalsdb.GetTrainedModelAuditRun(ctx, d, id)
 	if err != nil || au.Status != evalsdb.TrainedModelRunErrored || !strings.Contains(au.Error, "restart") {
 		t.Fatalf("%+v %v", au, err)
@@ -262,14 +255,14 @@ func TestAuditLiveFeed(t *testing.T) { dbtest.Run(t, testAuditLiveFeed) }
 
 func testAuditLiveFeed(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	dbs := []core.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 3)}}
+	dsDir := evalDatasetDir(t, 3)
 	mid, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{
 		JobID: "jobaudit9", ModelSize: "12b", Dataset: "mine.jsonl", NumTrainSteps: 5, Path: "trained/jobaudit9"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	sc := &evalSidecar{wrong: map[string]bool{"q1": true}, block: make(chan struct{}), started: make(chan struct{}, 10)}
-	m := training.NewAuditManager(ctx, dbs, sc, &evalJudge{})
+	m := training.NewAuditManager(ctx, d, dsDir, sc, &evalJudge{})
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /audits/{id}/events", m.EventsOf())
 	srv := httptest.NewServer(mux)

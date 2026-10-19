@@ -12,6 +12,7 @@ package training
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
@@ -35,14 +36,14 @@ type EvalManager struct {
 	dir string // the evals directory
 }
 
-// NewEvalManager makes the manager of the evals of the trained models of dbs, which are the ones in the directory evalDir. sc answers the questions (nil: starting an eval
+// NewEvalManager makes the manager of the evals of the trained models in db, which are the ones in the directory evalDir. sc answers the questions (nil: starting an eval
 // answers 503) and llm judges (nil: the same). The evals stop when ctx is done. Evals that a restart interrupted (still
 // "running" in the database) are marked error.
-func NewEvalManager(ctx context.Context, dbs []core.Database, evalDir string, sc core.Inferer, llm memory_core.LLM) *EvalManager {
-	return &EvalManager{&runManager{core.NewRunManager(ctx, dbs, sc, llm, core.EvalOps)}, evalDir}
+func NewEvalManager(ctx context.Context, db *sql.DB, evalDir string, sc core.Inferer, llm memory_core.LLM) *EvalManager {
+	return &EvalManager{&runManager{core.NewRunManager(ctx, db, sc, llm, core.EvalOps)}, evalDir}
 }
 
-// StartOf serves POST /v1/gb/training/models/{id}/evals[?db=<name>] with an optional JSON body {"eval": "", "cases": [], "limit": 0,
+// StartOf serves POST /v1/gb/training/models/{id}/evals with an optional JSON body {"eval": "", "cases": [], "limit": 0,
 // "batch_size": 10, "judge_model": "", "max_tokens": 1024, "temperature": 0.1}: it starts an eval of trained model {id} and answers
 // 202 with the eval run (evalsdb.TrainedModelRun, status "running"); the work goes on in the background (see GetOf, ListOf, CancelOf).
 //   - eval: the name of the eval to run (see DefinitionsOf); default: the eval named like the model's training dataset
@@ -58,7 +59,7 @@ func NewEvalManager(ctx context.Context, dbs []core.Database, evalDir string, sc
 // eval has its name), 409 when an eval of this model is running already, 503 without a sidecar or an LLM.
 func (m *EvalManager) StartOf() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n, id, ok := m.startPrelude(w, r)
+		id, ok := m.startPrelude(w, r)
 		if !ok {
 			return
 		}
@@ -84,7 +85,7 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, "experiment must be at most "+strconv.Itoa(core.MaxExperimentName)+" characters")
 			return
 		}
-		tm, ok := getModel(w, r, n, id)
+		tm, ok := getModel(w, r, m.DB, id)
 		if !ok {
 			return
 		}
@@ -104,7 +105,7 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 		if params.Limit > 0 && params.Limit < len(cases) {
 			cases = cases[:params.Limit]
 		}
-		spec := core.RunSpec{Database: n, Model: tm, Config: cfg, Params: params, Row: evalsdb.TrainedModelRun{Eval: name},
+		spec := core.RunSpec{Model: tm, Config: cfg, Params: params, Row: evalsdb.TrainedModelRun{Eval: name},
 			Examples: make([]trainingeval.Example, len(cases)), Names: make([]string, len(cases))}
 		for i, c := range cases {
 			spec.Examples[i], spec.Names[i] = c.Example(), c.Name
@@ -114,7 +115,7 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 		}
 		if x := strings.TrimSpace(in.Experiment); x != "" {
 			spec.AfterRecord = func(ctx context.Context, runID int64) error {
-				err := core.JoinExperiment(ctx, n.DB, x, in.ExperimentDescription, in.ExperimentConfig, runID)
+				err := core.JoinExperiment(ctx, m.DB, x, in.ExperimentDescription, in.ExperimentConfig, runID)
 				if err != nil {
 					log.WithError(err).WithField("experiment", x).Error("training: adding the eval to its experiment failed")
 				}

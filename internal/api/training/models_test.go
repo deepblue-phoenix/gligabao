@@ -21,7 +21,6 @@ func TestTrainedModelEndpoints(t *testing.T) { dbtest.Run(t, testTrainedModelEnd
 
 func testTrainedModelEndpoints(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	dbs := []core.Database{{Name: "standard", DB: d}}
 	for _, m := range []trainingdb.TrainedModel{
 		{JobID: "j1", ModelSize: "4b", NumTrainSteps: 10, Path: "trained/j1"},
 		{JobID: "j2", ModelSize: "12b", NumTrainSteps: 20, Path: "trained/j2", Dataset: "mine.jsonl"},
@@ -40,27 +39,27 @@ func testTrainedModelEndpoints(t *testing.T, d *sql.DB) {
 		return rec
 	}
 
-	rec := get(training.ListModelsOf(dbs), "/x", "")
+	rec := get(training.ListModelsOf(d), "/x", "")
 	var list struct{ Models []trainingdb.TrainedModel }
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || rec.Code != 200 || len(list.Models) != 2 ||
 		list.Models[0].JobID != "j2" || list.Models[1].JobID != "j1" || list.Models[0].Files == nil {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body)
 	}
-	if err := json.Unmarshal(get(training.ListModelsOf(dbs), "/x?limit=1", "").Body.Bytes(), &list); err != nil || len(list.Models) != 1 {
+	if err := json.Unmarshal(get(training.ListModelsOf(d), "/x?limit=1", "").Body.Bytes(), &list); err != nil || len(list.Models) != 1 {
 		t.Fatalf("limit: %+v", list)
 	}
-	for url, want := range map[string]int{"/x?limit=0": 400, "/x?limit=a": 400, "/x?db=nope": 404} {
-		if rec := get(training.ListModelsOf(dbs), url, ""); rec.Code != want {
+	for url, want := range map[string]int{"/x?limit=0": 400, "/x?limit=a": 400} {
+		if rec := get(training.ListModelsOf(d), url, ""); rec.Code != want {
 			t.Fatalf("%s: %d", url, rec.Code)
 		}
 	}
-	rec = get(training.GetModelOf(dbs), "/x", "2")
+	rec = get(training.GetModelOf(d), "/x", "2")
 	var m trainingdb.TrainedModel
 	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil || m.JobID != "j2" || m.Dataset != "mine.jsonl" {
 		t.Fatalf("get: %d %s", rec.Code, rec.Body)
 	}
 	for id, want := range map[string]int{"99": 404, "0": 400, "x": 400} {
-		if rec := get(training.GetModelOf(dbs), "/x", id); rec.Code != want {
+		if rec := get(training.GetModelOf(d), "/x", id); rec.Code != want {
 			t.Fatalf("get %s: %d", id, rec.Code)
 		}
 	}
@@ -70,7 +69,6 @@ func TestInferWithATrainedModel(t *testing.T) { dbtest.Run(t, testInferWithATrai
 
 func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	dbs := []core.Database{{Name: "standard", DB: d}}
 	id, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j2", ModelSize: "12b", NumTrainSteps: 20, Path: "trained/j2"})
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +78,7 @@ func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest("POST", "/x", strings.NewReader(body))
 		req.SetPathValue("id", modelID)
-		training.InferOf(dbs, sc)(rec, req)
+		training.InferOf(d, sc)(rec, req)
 		return rec
 	}
 
@@ -149,7 +147,7 @@ func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
 	rec = httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/x?limit=2", nil)
 	req.SetPathValue("id", "1")
-	training.ListInferencesOf(dbs)(rec, req)
+	training.ListInferencesOf(d)(rec, req)
 	var listed struct {
 		Inferences []trainingdb.TrainedModelInference `json:"inferences"`
 	}
@@ -159,7 +157,7 @@ func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest("GET", "/x", nil)
 	req.SetPathValue("id", "9")
-	training.ListInferencesOf(dbs)(rec, req)
+	training.ListInferencesOf(d)(rec, req)
 	if rec.Code != 404 {
 		t.Fatalf("list inferences of unknown model: %d", rec.Code)
 	}

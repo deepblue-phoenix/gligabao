@@ -3,6 +3,7 @@ package training
 // The trained models: listing them, reading one, inferences with one.
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
@@ -20,19 +21,15 @@ const (
 	maxInferBody              = 1 << 16
 )
 
-// ListModelsOf serves GET /v1/gb/training/models[?db=<name>][&limit=<n>]: {"models": [...]}, the trained models of one of dbs
-// (the first without db), newest first, at most limit (default 100, at most 500).
-func ListModelsOf(dbs []core.Database) http.HandlerFunc {
+// ListModelsOf serves GET /v1/gb/training/models[?limit=<n>]: {"models": [...]}, the trained models,
+// newest first, at most limit (default 100, at most 500).
+func ListModelsOf(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n, ok := pickDB(w, r, dbs)
-		if !ok {
-			return
-		}
 		limit, ok := limitParam(w, r, trainedModelsDefaultLimit, trainedModelsMaxLimit)
 		if !ok {
 			return
 		}
-		models, err := trainingdb.ListTrainedModels(r.Context(), n.DB, limit)
+		models, err := trainingdb.ListTrainedModels(r.Context(), db, limit)
 		if err != nil {
 			log.WithError(err).Error("training: list trained models failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to list the trained models")
@@ -42,18 +39,14 @@ func ListModelsOf(dbs []core.Database) http.HandlerFunc {
 	}
 }
 
-// GetModelOf serves GET /v1/gb/training/models/{id}[?db=<name>]: one trained model (trainingdb.TrainedModel), 404 if unknown.
-func GetModelOf(dbs []core.Database) http.HandlerFunc {
+// GetModelOf serves GET /v1/gb/training/models/{id}: one trained model (trainingdb.TrainedModel), 404 if unknown.
+func GetModelOf(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n, ok := pickDB(w, r, dbs)
-		if !ok {
-			return
-		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		m, err := core.GetModel(r.Context(), n, id)
+		m, err := core.GetModel(r.Context(), db, id)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -62,18 +55,14 @@ func GetModelOf(dbs []core.Database) http.HandlerFunc {
 	}
 }
 
-// InferOf serves POST /v1/gb/training/models/{id}/infer[?db=<name>] with a JSON body {"prompt": "...", "max_tokens": 1024,
+// InferOf serves POST /v1/gb/training/models/{id}/infer with a JSON body {"prompt": "...", "max_tokens": 1024,
 // "temperature": 0.7} (only the prompt is required): it runs the prompt through the weights of trained model {id} on the
 // sidecar and answers 200 with {"id", "model_id", "response", "status", "duration_ms"} (id: the stored request, see
 // ListInferencesOf; failed ones are stored too). It can take minutes when the model has to be loaded. 404 is for
 // an unknown model, 400 for a bad body, 503 for a nil sc (no sidecar), 502 when the sidecar fails (with its message when the
 // generation itself failed, e.g. the weights are gone from its volume).
-func InferOf(dbs []core.Database, sc core.Inferer) http.HandlerFunc {
+func InferOf(db *sql.DB, sc core.Inferer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n, ok := pickDB(w, r, dbs)
-		if !ok {
-			return
-		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -96,12 +85,12 @@ func InferOf(dbs []core.Database, sc core.Inferer) http.HandlerFunc {
 			writeErr(w, err)
 			return
 		}
-		m, err := core.GetModel(r.Context(), n, id)
+		m, err := core.GetModel(r.Context(), db, id)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		out, err := core.Infer(r.Context(), n, sc, m, req)
+		out, err := core.Infer(r.Context(), db, sc, m, req)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -112,15 +101,11 @@ func InferOf(dbs []core.Database, sc core.Inferer) http.HandlerFunc {
 	}
 }
 
-// ListInferencesOf serves GET /v1/gb/training/models/{id}/inferences[?db=<name>][&limit=<n>]: {"inferences": [...]}, the
+// ListInferencesOf serves GET /v1/gb/training/models/{id}/inferences[?limit=<n>]: {"inferences": [...]}, the
 // inference requests made to trained model {id} (trainingdb.TrainedModelInference: prompt, response, status, error, ...),
 // newest first, at most limit (default 100, at most 500). 404 for an unknown model.
-func ListInferencesOf(dbs []core.Database) http.HandlerFunc {
+func ListInferencesOf(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n, ok := pickDB(w, r, dbs)
-		if !ok {
-			return
-		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
@@ -129,11 +114,11 @@ func ListInferencesOf(dbs []core.Database) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		if _, err := core.GetModel(r.Context(), n, id); err != nil {
+		if _, err := core.GetModel(r.Context(), db, id); err != nil {
 			writeErr(w, err)
 			return
 		}
-		list, err := trainingdb.ListTrainedModelInferences(r.Context(), n.DB, id, limit)
+		list, err := trainingdb.ListTrainedModelInferences(r.Context(), db, id, limit)
 		if err != nil {
 			log.WithError(err).Error("training: list inference requests failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to list the inference requests")

@@ -37,11 +37,6 @@ type RunEvent struct {
 	Cases []evalsdb.TrainedModelCase `json:"cases,omitempty"`
 }
 
-type streamKey struct {
-	db  string
-	run int64
-}
-
 // RunStream is the feed of one running run: the watchers, and the answers not judged yet (for a watcher that joins midway).
 type RunStream struct {
 	mu      sync.Mutex

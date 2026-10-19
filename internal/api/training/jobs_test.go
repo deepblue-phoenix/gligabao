@@ -14,7 +14,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
-	core "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
@@ -59,10 +58,10 @@ func TestStartTrainingJob(t *testing.T) { dbtest.Run(t, testStartTrainingJob) }
 
 func testStartTrainingJob(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	dbs := []core.Database{{Name: "standard", DB: d, DatasetDir: t.TempDir()}}
+	dsDir := t.TempDir()
 	sc := &fakeSidecar{}
-	h := training.StartJobOf(dbs, sc, nil)
-	if rec := upload(training.UploadDatasetOf(dbs), "/x", "file", "mine.jsonl", goodDataset, nil); rec.Code != http.StatusCreated {
+	h := training.StartJobOf(d, dsDir, sc, nil)
+	if rec := upload(training.UploadDatasetOf(d, dsDir), "/x", "file", "mine.jsonl", goodDataset, nil); rec.Code != http.StatusCreated {
 		t.Fatalf("upload: %d %s", rec.Code, rec.Body)
 	}
 	post := func(h http.HandlerFunc, url, body string) *httptest.ResponseRecorder {
@@ -103,9 +102,6 @@ func testStartTrainingJob(t *testing.T, d *sql.DB) {
 			t.Fatalf("%s: %d", body, rec.Code)
 		}
 	}
-	if rec := post(h, "/x?db=nope", `{"dataset":"mine"}`); rec.Code != http.StatusNotFound {
-		t.Fatalf("unknown db: %d", rec.Code)
-	}
 	if len(sc.reqs) != n {
 		t.Fatalf("sidecar called for bad input: %+v", sc.reqs[n:])
 	}
@@ -118,7 +114,7 @@ func testStartTrainingJob(t *testing.T, d *sql.DB) {
 	if _, err := trainingdb.GetTrainingJobRun(ctx, d, 3); !errors.Is(err, relational.ErrNotFound) {
 		t.Fatalf("a failed start was recorded: %v", err)
 	}
-	if rec := post(training.StartJobOf(dbs, nil, nil), "/x", ""); rec.Code != http.StatusServiceUnavailable {
+	if rec := post(training.StartJobOf(d, dsDir, nil, nil), "/x", ""); rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("no sidecar: %d", rec.Code)
 	}
 }
@@ -130,7 +126,7 @@ func TestStartTrainingJobSidecarRejects(t *testing.T) {
 	addDataset(t, dir, "mine")
 	sc := &fakeSidecar{err: &sidecar.StatusError{Method: "POST", Path: "/training/job_start", Code: 400, Body: `{"error":"num_train_steps must be a positive integer"}`}}
 	rec := httptest.NewRecorder()
-	training.StartJobOf([]core.Database{{Name: "standard", DB: d, DatasetDir: dir}}, sc, nil)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(`{"dataset":"mine","num_train_steps":5}`)))
+	training.StartJobOf(d, dir, sc, nil)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(`{"dataset":"mine","num_train_steps":5}`)))
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "num_train_steps must be a positive integer") {
 		t.Fatalf("got %d %s", rec.Code, rec.Body)
 	}
@@ -141,7 +137,6 @@ func TestStopTrainingJob(t *testing.T) { dbtest.Run(t, testStopTrainingJob) }
 
 func testStopTrainingJob(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	dbs := []core.Database{{Name: "standard", DB: d, DatasetDir: t.TempDir()}}
 	sc := &fakeSidecar{}
 	for _, jobID := range []string{"j1", "j2"} {
 		if _, err := trainingdb.RecordTrainingJobRun(ctx, d, trainingdb.TrainingJobRun{JobID: jobID, Status: "training", ModelSize: "4b", NumTrainSteps: 10, StartedAt: time.Now()}); err != nil {
@@ -159,7 +154,7 @@ func testStopTrainingJob(t *testing.T, d *sql.DB) {
 		h(rec, req)
 		return rec
 	}
-	h := training.StopJobOf(dbs, sc)
+	h := training.StopJobOf(d, sc)
 
 	if rec := stop(h, "1"); rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), `"stopping"`) {
 		t.Fatalf("stop: %d %s", rec.Code, rec.Body)
@@ -185,7 +180,7 @@ func testStopTrainingJob(t *testing.T, d *sql.DB) {
 	if rec := stop(h, "1"); rec.Code != http.StatusBadGateway {
 		t.Fatalf("sidecar error: %d", rec.Code)
 	}
-	if rec := stop(training.StopJobOf(dbs, nil), "1"); rec.Code != http.StatusServiceUnavailable {
+	if rec := stop(training.StopJobOf(d, nil), "1"); rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("no sidecar: %d", rec.Code)
 	}
 }

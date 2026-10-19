@@ -196,14 +196,8 @@ func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_c
 		api.RegisterEval(mux, mgr, d, llm, emb, jv, ws, providers)
 	}
 	dbs := append([]admin.Named{{Name: "standard", DB: d.Relational, Vectors: d.Vector, ImageDir: d.ImageDir}}, extraAdminDBs...)
-	// The training endpoints work with the same databases; only the main one has a training datasets directory.
-	tdbs := make([]coretraining.Database, len(dbs))
-	for i, n := range dbs {
-		tdbs[i] = coretraining.Database{Name: n.Name, DB: n.DB}
-	}
-	tdbs[0].DatasetDir = d.TrainingDatasetDir
 	if trainingMode {
-		registerTraining(ctx, mux, tdbs, d.TrainingEvalDir, sc, llm)
+		registerTraining(ctx, mux, d.Relational, d.TrainingDatasetDir, d.TrainingEvalDir, sc, llm)
 	}
 	if adminUI {
 		registerAdminUI(mux, dbs, sc)
@@ -222,25 +216,24 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // registerTraining registers the training endpoints under /v1/gb/training/ (they are part of the API, not of the admin UI,
-// and are served whether or not the admin UI is on, but only in training mode): the jobs, the datasets and the feed of the jobs' progress. dbs are the
-// databases they can be used with (?db=, the first by default); evalDir is the directory of the evals. The training monitor follows the progress the sidecar
+// and are served whether or not the admin UI is on, but only in training mode): the jobs, the datasets and the feed of the jobs' progress. They work with trainingDB; datasetDir is the training datasets directory and evalDir the directory of the evals. The training monitor follows the progress the sidecar
 // reports for the jobs (it resumes the unfinished ones now) and feeds it to the SSE endpoint. llm judges the evals and the training data audits of the
 // trained models (nil: starting one answers 503).
-func registerTraining(ctx context.Context, mux *http.ServeMux, dbs []coretraining.Database, evalDir string, sc coretraining.Sidecar, llm memory_core.LLM) {
-	mon := coretraining.NewMonitor(ctx, dbs, sc)
+func registerTraining(ctx context.Context, mux *http.ServeMux, trainingDB *sql.DB, datasetDir, evalDir string, sc coretraining.Sidecar, llm memory_core.LLM) {
+	mon := coretraining.NewMonitor(ctx, trainingDB, sc)
 	var inf coretraining.Inferer // not sc itself: a nil Sidecar must become a nil Inferer
 	if sc != nil {
 		inf = sc
 	}
-	evals := training.NewEvalManager(ctx, dbs, evalDir, inf, llm)
-	audits := training.NewAuditManager(ctx, dbs, inf, llm)
-	mux.HandleFunc("POST /v1/gb/training/jobs", training.StartJobOf(dbs, sc, mon))
-	mux.HandleFunc("POST /v1/gb/training/jobs/{id}/stop", training.StopJobOf(dbs, sc))
-	mux.HandleFunc("GET /v1/gb/training/jobs", training.ListJobsOf(dbs))
-	mux.HandleFunc("GET /v1/gb/training/models", training.ListModelsOf(dbs))
-	mux.HandleFunc("GET /v1/gb/training/models/{id}", training.GetModelOf(dbs))
-	mux.HandleFunc("POST /v1/gb/training/models/{id}/infer", training.InferOf(dbs, sc))
-	mux.HandleFunc("GET /v1/gb/training/models/{id}/inferences", training.ListInferencesOf(dbs))
+	evals := training.NewEvalManager(ctx, trainingDB, evalDir, inf, llm)
+	audits := training.NewAuditManager(ctx, trainingDB, datasetDir, inf, llm)
+	mux.HandleFunc("POST /v1/gb/training/jobs", training.StartJobOf(trainingDB, datasetDir, sc, mon))
+	mux.HandleFunc("POST /v1/gb/training/jobs/{id}/stop", training.StopJobOf(trainingDB, sc))
+	mux.HandleFunc("GET /v1/gb/training/jobs", training.ListJobsOf(trainingDB))
+	mux.HandleFunc("GET /v1/gb/training/models", training.ListModelsOf(trainingDB))
+	mux.HandleFunc("GET /v1/gb/training/models/{id}", training.GetModelOf(trainingDB))
+	mux.HandleFunc("POST /v1/gb/training/models/{id}/infer", training.InferOf(trainingDB, sc))
+	mux.HandleFunc("GET /v1/gb/training/models/{id}/inferences", training.ListInferencesOf(trainingDB))
 	mux.HandleFunc("GET /v1/gb/training/eval-definitions", training.DefinitionsOf(evalDir))
 	mux.HandleFunc("POST /v1/gb/training/models/{id}/evals", evals.StartOf())
 	mux.HandleFunc("GET /v1/gb/training/models/{id}/evals", evals.ListOf())
@@ -254,10 +247,10 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, dbs []coretrainin
 	mux.HandleFunc("POST /v1/gb/training/audits/{id}/cancel", audits.CancelOf())
 	mux.HandleFunc("GET /v1/gb/training/experiments", evals.ExperimentsOf())
 	mux.HandleFunc("GET /v1/gb/training/experiments/{id}", evals.ExperimentOf())
-	mux.HandleFunc("GET /v1/gb/training/datasets", training.ListDatasetsOf(dbs))
-	mux.HandleFunc("POST /v1/gb/training/datasets", training.UploadDatasetOf(dbs))
-	mux.HandleFunc("GET /v1/gb/training/datasets/preview", training.PreviewDatasetOf(dbs))
-	mux.HandleFunc("GET /v1/gb/training/events", training.EventsOf(dbs, mon))
+	mux.HandleFunc("GET /v1/gb/training/datasets", training.ListDatasetsOf(trainingDB, datasetDir))
+	mux.HandleFunc("POST /v1/gb/training/datasets", training.UploadDatasetOf(trainingDB, datasetDir))
+	mux.HandleFunc("GET /v1/gb/training/datasets/preview", training.PreviewDatasetOf(datasetDir))
+	mux.HandleFunc("GET /v1/gb/training/events", training.EventsOf(trainingDB, mon))
 }
 
 // registerAdminUI serves the embedded admin UI assets under /v1/gb/admin/. It is a no-op (with a warning) if the

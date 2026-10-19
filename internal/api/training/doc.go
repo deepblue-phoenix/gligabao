@@ -46,15 +46,6 @@ func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return id, true
 }
 
-// pickDB returns the database the ?db= parameter names (the first one if there is none), answering 404 itself if there is not one.
-func pickDB(w http.ResponseWriter, r *http.Request, dbs []core.Database) (core.Database, bool) {
-	n, ok := core.Pick(dbs, r.URL.Query().Get("db"))
-	if !ok {
-		httputil.Error(w, http.StatusNotFound, "unknown database")
-	}
-	return n, ok
-}
-
 // limitParam reads the ?limit= parameter: def if there is none, at most max; answers 400 itself if it is not a positive integer.
 func limitParam(w http.ResponseWriter, r *http.Request, def, max int) (int, bool) {
 	s := r.URL.Query().Get("limit")

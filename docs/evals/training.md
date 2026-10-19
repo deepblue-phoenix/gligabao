@@ -47,7 +47,7 @@ The judge is an LLM: its scores are not exact, and repeating an eval can differ 
 
 ## API
 
-All under `/v1/gb/training/`, with `?db=<name>` to pick the database like the other training endpoints.
+All under `/v1/gb/training/`.
 
 | Endpoint | |
 |---|---|

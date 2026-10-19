@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.67.0] - 2026-10-20
+
+### Changed
+- **The training API works with one database (breaking).** `training.Database` (a named database with its datasets directory) and `training.Pick` are gone: the training code and the handlers take the `*sql.DB` and, where they need it, the training datasets directory (`StartJobOf(db, datasetDir, sc, mon)`, `UploadDatasetOf(db, datasetDir)`, `NewAuditManager(ctx, db, datasetDir, sc, llm)`, `training.NewMonitor(ctx, db, sc)`, ...). The `?db=` parameter of the `/v1/gb/training/` endpoints is removed (it was always the one main database; it is now ignored), and the feed events no longer carry a `db` field. A dedicated training database can be added back when it is needed.
+
 ## [0.66.3] - 2026-10-19
 
 ### Changed

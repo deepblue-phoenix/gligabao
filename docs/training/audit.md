@@ -40,7 +40,7 @@ Both reuse the same engine (`trainingeval.Run`: ask the model one question at a 
 
 ## API
 
-All under `/v1/gb/training/`, with `?db=<name>` to pick the database like the other training endpoints.
+All under `/v1/gb/training/`.
 
 | Endpoint | |
 |---|---|

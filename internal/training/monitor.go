@@ -6,6 +6,7 @@ package training
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -26,7 +27,6 @@ type Sidecar interface {
 
 // FeedEvent is an event as the admin UI receives it: the sidecar's event and which job it is of.
 type FeedEvent struct {
-	DB    string `json:"db"`
 	RunID int64  `json:"run_id"`
 	JobID string `json:"job_id"`
 	sidecar.TrainingEvent
@@ -48,24 +48,18 @@ const (
 // Monitor follows the training jobs; see the file comment. Its methods are safe for concurrent use.
 type Monitor struct {
 	ctx      context.Context
-	dbs      []Database
+	db       *sql.DB
 	sc       Sidecar // nil: jobs are not followed
 	maxWatch time.Duration
 	retry    time.Duration
 
 	mu       sync.Mutex
 	subs     map[*Subscription]struct{}
-	watching map[watchKey]struct{}
-}
-
-type watchKey struct {
-	db    string
-	runID int64
+	watching map[int64]struct{} // by run ID
 }
 
 // Subscription is a subscriber to the monitor's events: they arrive on C.
 type Subscription struct {
-	db    string
 	runID int64 // 0: every run
 	C     chan FeedEvent
 }
@@ -83,37 +77,34 @@ func WithRetryDelay(d time.Duration) MonitorOption {
 	return func(m *Monitor) { m.retry = d }
 }
 
-// NewMonitor returns a monitor of the training jobs of dbs, which runs until ctx is done. It resumes following
-// the jobs the databases hold as unfinished. sc may be nil: the monitor then only serves the stored events.
-func NewMonitor(ctx context.Context, dbs []Database, sc Sidecar, opts ...MonitorOption) *Monitor {
+// NewMonitor returns a monitor of the training jobs in db, which runs until ctx is done. It resumes following
+// the jobs it holds as unfinished. sc may be nil: the monitor then only serves the stored events.
+func NewMonitor(ctx context.Context, db *sql.DB, sc Sidecar, opts ...MonitorOption) *Monitor {
 	m := &Monitor{
-		ctx: ctx, dbs: dbs, sc: sc, maxWatch: DefaultWatchTimeout, retry: DefaultRetryDelay,
-		subs: map[*Subscription]struct{}{}, watching: map[watchKey]struct{}{},
+		ctx: ctx, db: db, sc: sc, maxWatch: DefaultWatchTimeout, retry: DefaultRetryDelay,
+		subs: map[*Subscription]struct{}{}, watching: map[int64]struct{}{},
 	}
 	for _, o := range opts {
 		o(m)
 	}
 	if sc != nil {
-		for _, n := range dbs {
-			runs, err := trainingdb.ListTrainingJobRuns(ctx, n.DB, 0, true)
-			if err != nil {
-				log.WithError(err).WithField("db", n.Name).Error("training: list unfinished training jobs failed")
-				continue
-			}
+		if runs, err := trainingdb.ListTrainingJobRuns(ctx, db, 0, true); err != nil {
+			log.WithError(err).Error("training: list unfinished training jobs failed")
+		} else {
 			for _, r := range runs {
-				m.Watch(n, r)
+				m.Watch(r)
 			}
 		}
 	}
 	return m
 }
 
-// Watch starts following the training job run in n (a no-op if it is already followed, or the monitor has no sidecar).
-func (m *Monitor) Watch(n Database, run trainingdb.TrainingJobRun) {
+// Watch starts following the training job run (a no-op if it is already followed, or the monitor has no sidecar).
+func (m *Monitor) Watch(run trainingdb.TrainingJobRun) {
 	if m == nil || m.sc == nil {
 		return
 	}
-	key := watchKey{n.Name, run.ID}
+	key := run.ID
 	m.mu.Lock()
 	if _, ok := m.watching[key]; ok {
 		m.mu.Unlock()
@@ -127,15 +118,15 @@ func (m *Monitor) Watch(n Database, run trainingdb.TrainingJobRun) {
 			delete(m.watching, key)
 			m.mu.Unlock()
 		}()
-		m.follow(n, run)
+		m.follow(run)
 	}()
 }
 
 // follow streams the events of the job from the sidecar until it ends, the deadline passes or the monitor's context is done.
-func (m *Monitor) follow(n Database, run trainingdb.TrainingJobRun) {
-	l := log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID})
+func (m *Monitor) follow(run trainingdb.TrainingJobRun) {
+	l := log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID})
 	deadline := run.StartedAt.Add(m.maxWatch)
-	from, err := trainingdb.NextTrainingJobEventSeq(m.ctx, n.DB, run.ID)
+	from, err := trainingdb.NextTrainingJobEventSeq(m.ctx, m.db, run.ID)
 	if err != nil {
 		l.WithError(err).Error("training: training job: reading the stored events failed")
 		return
@@ -145,7 +136,7 @@ func (m *Monitor) follow(n Database, run trainingdb.TrainingJobRun) {
 		progressed, finished := false, false
 		err := m.sc.StreamTrainingJobEvents(m.ctx, run.JobID, from, func(ev sidecar.TrainingEvent) error {
 			progressed = true
-			if err := m.record(n, run, ev); err != nil {
+			if err := m.record(run, ev); err != nil {
 				return err
 			}
 			from = ev.Seq + 1
@@ -162,7 +153,7 @@ func (m *Monitor) follow(n Database, run trainingdb.TrainingJobRun) {
 			l.Warn("training: training job: no end reported in time, marking it failed")
 			ev := sidecar.TrainingEvent{Seq: from, Type: sidecar.EventStatus, Status: trainingdb.TrainingJobFailed,
 				Error: fmt.Sprintf("the sidecar did not report the job's end within %s", m.maxWatch), Timestamp: float64(time.Now().Unix())}
-			if err := m.record(n, run, ev); err != nil {
+			if err := m.record(run, ev); err != nil {
 				l.WithError(err).Error("training: training job: recording the timeout failed")
 			}
 			return
@@ -181,7 +172,7 @@ func (m *Monitor) follow(n Database, run trainingdb.TrainingJobRun) {
 }
 
 // record stores the event, updates the job's row from it and forwards it to the subscribers.
-func (m *Monitor) record(n Database, run trainingdb.TrainingJobRun, ev sidecar.TrainingEvent) error {
+func (m *Monitor) record(run trainingdb.TrainingJobRun, ev sidecar.TrainingEvent) error {
 	ctx := context.WithoutCancel(m.ctx) // an event that arrived is stored even while the server shuts down
 	data, err := json.Marshal(ev)
 	if err != nil {
@@ -189,11 +180,11 @@ func (m *Monitor) record(n Database, run trainingdb.TrainingJobRun, ev sidecar.T
 	}
 	if ev.Type == sidecar.EventStatus && ev.Status == trainingdb.TrainingJobCompleted {
 		// Before the event is stored: a failure here makes the stream retry the event, and the model is recorded once.
-		if err := m.recordModel(ctx, n, run, ev); err != nil {
+		if err := m.recordModel(ctx, run, ev); err != nil {
 			return err
 		}
 	}
-	isNew, err := trainingdb.RecordTrainingJobEvent(ctx, n.DB, run.ID, ev.Seq, ev.Type, string(data))
+	isNew, err := trainingdb.RecordTrainingJobEvent(ctx, m.db, run.ID, ev.Seq, ev.Type, string(data))
 	if err != nil {
 		return err
 	}
@@ -201,31 +192,31 @@ func (m *Monitor) record(n Database, run trainingdb.TrainingJobRun, ev sidecar.T
 		return nil
 	}
 	if ev.Type == sidecar.EventLog {
-		log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID}).Infof("training: %s", ev.Message)
+		log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID}).Infof("training: %s", ev.Message)
 	}
 	if ev.Type == sidecar.EventProgress && ev.Step != nil {
-		log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID, "step": *ev.Step, "loss": ev.Loss}).Debug("training: progress")
+		log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID, "step": *ev.Step, "loss": ev.Loss}).Debug("training: progress")
 	}
 	if ev.Type == sidecar.EventStatus && ev.Status != trainingdb.TrainingJobFailed {
-		log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID}).Infof("training: status %s", ev.Status)
+		log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID}).Infof("training: status %s", ev.Status)
 	}
 	if ev.Type == sidecar.EventStatus && ev.Status == trainingdb.TrainingJobFailed {
-		log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID, "error": ev.Error}).
+		log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID, "error": ev.Error}).
 			Errorf("training: training job failed\n%s", ev.Traceback)
 	}
 	if u := trainingRunUpdate(ev); u != nil {
-		if err := trainingdb.UpdateTrainingJobRun(ctx, n.DB, run.ID, *u); err != nil {
+		if err := trainingdb.UpdateTrainingJobRun(ctx, m.db, run.ID, *u); err != nil {
 			return err
 		}
 	}
-	m.publish(FeedEvent{DB: n.Name, RunID: run.ID, JobID: run.JobID, TrainingEvent: ev})
+	m.publish(FeedEvent{RunID: run.ID, JobID: run.JobID, TrainingEvent: ev})
 	return nil
 }
 
 // recordModel stores the weights a completed job reports (the "model" of its completed event) as a trained model. A
 // completed event without them (from a sidecar that does not report them yet) records nothing.
-func (m *Monitor) recordModel(ctx context.Context, n Database, run trainingdb.TrainingJobRun, ev sidecar.TrainingEvent) error {
-	l := log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID})
+func (m *Monitor) recordModel(ctx context.Context, run trainingdb.TrainingJobRun, ev sidecar.TrainingEvent) error {
+	l := log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID})
 	info := ev.Model
 	if info == nil || info.Path == "" {
 		l.Warn("training: the job completed without reporting its saved model: no trained model recorded (redeploy the Modal app)")
@@ -242,7 +233,7 @@ func (m *Monitor) recordModel(ctx context.Context, n Database, run trainingdb.Tr
 	for _, f := range info.Files {
 		tm.Files = append(tm.Files, trainingdb.TrainedModelFile{Path: f.Path, SizeBytes: f.SizeBytes, SHA256: f.SHA256})
 	}
-	id, isNew, err := trainingdb.RecordTrainedModel(ctx, n.DB, tm)
+	id, isNew, err := trainingdb.RecordTrainedModel(ctx, m.db, tm)
 	if err != nil {
 		return fmt.Errorf("record trained model: %w", err)
 	}
@@ -271,10 +262,10 @@ func trainingRunUpdate(ev sidecar.TrainingEvent) *trainingdb.TrainingJobRunUpdat
 	return nil
 }
 
-// Subscribe returns a subscription to the events of one run of database db (runID 0: of every run). cancel ends it. The
+// Subscribe returns a subscription to the events of one run (runID 0: of every run). cancel ends it. The
 // channel is closed, without cancel, when the subscriber falls too far behind.
-func (m *Monitor) Subscribe(db string, runID int64) (*Subscription, func()) {
-	s := &Subscription{db: db, runID: runID, C: make(chan FeedEvent, subBuffer)}
+func (m *Monitor) Subscribe(runID int64) (*Subscription, func()) {
+	s := &Subscription{runID: runID, C: make(chan FeedEvent, subBuffer)}
 	m.mu.Lock()
 	m.subs[s] = struct{}{}
 	m.mu.Unlock()
@@ -295,7 +286,7 @@ func (m *Monitor) publish(ev FeedEvent) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for s := range m.subs {
-		if s.db != ev.DB || (s.runID != 0 && s.runID != ev.RunID) {
+		if s.runID != 0 && s.runID != ev.RunID {
 			continue
 		}
 		select {

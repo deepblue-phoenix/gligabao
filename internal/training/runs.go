@@ -132,21 +132,16 @@ var AuditOps = RunOps{
 // the server last stopped are marked error when the manager is made. The HTTP API's EvalManager and AuditManager are one each.
 type RunManager struct {
 	Ops RunOps
-	// DBs are the databases of the trained models; Sc answers the questions and LLM judges (nil: starting a run is not possible).
-	DBs []Database
+	// DB holds the trained models; Sc answers the questions and LLM judges (nil: starting a run is not possible).
+	DB  *sql.DB
 	Sc  Inferer
 	LLM memory_core.LLM
 	ctx context.Context
 
 	mu      sync.Mutex
-	running map[runKey]*runningRun
-	streams map[streamKey]*RunStream // the live feeds (runs_stream.go) of the runs that run
+	running map[int64]*runningRun
+	streams map[int64]*RunStream // the live feeds (runs_stream.go) of the runs that run
 	wg      sync.WaitGroup
-}
-
-type runKey struct {
-	db      string
-	modelID int64
 }
 
 type runningRun struct {
@@ -154,17 +149,15 @@ type runningRun struct {
 	cancel context.CancelFunc
 }
 
-// NewRunManager makes the manager of the runs of the trained models of dbs. sc answers the questions and llm judges (the
+// NewRunManager makes the manager of the runs of the trained models in db. sc answers the questions and llm judges (the
 // callers check for nil). The runs stop when ctx is done. Runs that a restart interrupted (still "running" in the
 // database) are marked error.
-func NewRunManager(ctx context.Context, dbs []Database, sc Inferer, llm memory_core.LLM, ops RunOps) *RunManager {
-	m := &RunManager{Ops: ops, ctx: ctx, DBs: dbs, Sc: sc, LLM: llm, running: map[runKey]*runningRun{}, streams: map[streamKey]*RunStream{}}
-	for _, n := range dbs {
-		if k, err := ops.FailRunning(ctx, n.DB, "interrupted: the server restarted while the "+ops.Noun()+" ran"); err != nil {
-			log.WithError(err).WithField("db", n.Name).Warnf("training: could not mark interrupted %ss as error", ops.Noun())
-		} else if k > 0 {
-			log.WithField("db", n.Name).Infof("training: %d %s(s) were interrupted by a restart and marked error", k, ops.Noun())
-		}
+func NewRunManager(ctx context.Context, db *sql.DB, sc Inferer, llm memory_core.LLM, ops RunOps) *RunManager {
+	m := &RunManager{Ops: ops, ctx: ctx, DB: db, Sc: sc, LLM: llm, running: map[int64]*runningRun{}, streams: map[int64]*RunStream{}}
+	if k, err := ops.FailRunning(ctx, m.DB, "interrupted: the server restarted while the "+ops.Noun()+" ran"); err != nil {
+		log.WithError(err).Warnf("training: could not mark interrupted %ss as error", ops.Noun())
+	} else if k > 0 {
+		log.Infof("training: %d %s(s) were interrupted by a restart and marked error", k, ops.Noun())
 	}
 	return m
 }
@@ -177,10 +170,9 @@ func (m *RunManager) Done() <-chan struct{} { return m.ctx.Done() }
 
 // RunSpec is a run ready to start: what the caller works out and Start carries out.
 type RunSpec struct {
-	Database Database
-	Model    *trainingdb.TrainedModel
-	Config   trainingeval.Config
-	Params   RunParams
+	Model  *trainingdb.TrainedModel
+	Config trainingeval.Config
+	Params RunParams
 	// Row is the run to record (Eval, or Dataset and DatasetSHA256; the settings and NumExamples are set by Start).
 	Row evalsdb.TrainedModelRun
 	// Examples are the questions to ask and Names the names of the cases that go with them (nil for an audit's).
@@ -193,9 +185,9 @@ type RunSpec struct {
 // Start records the run and starts it in the background, returning the recorded run. Errors are *Error: KindConflict if the
 // model has a run of this kind already, KindInternal if it could not be recorded.
 func (m *RunManager) Start(ctx context.Context, s RunSpec) (*evalsdb.TrainedModelRun, error) {
-	noun, n, tm := m.Ops.Noun(), s.Database, s.Model
+	noun, tm := m.Ops.Noun(), s.Model
 	// One run at a time per model and kind: it would otherwise compete with itself for the model's GPU container.
-	key := runKey{n.Name, tm.ID}
+	key := tm.ID
 	runCtx, cancel := context.WithCancel(m.ctx)
 	run := &runningRun{cancel: cancel}
 	m.mu.Lock()
@@ -217,7 +209,7 @@ func (m *RunManager) Start(ctx context.Context, s RunSpec) (*evalsdb.TrainedMode
 	dbCtx := context.WithoutCancel(ctx)
 	row := s.Row
 	row.TrainedModelID, row.Params, row.JudgeModel, row.NumExamples = tm.ID, pj, s.Config.JudgeModel, len(s.Examples)
-	runID, err := m.Ops.Record(dbCtx, n.DB, row)
+	runID, err := m.Ops.Record(dbCtx, m.DB, row)
 	if err != nil {
 		release()
 		log.WithError(err).WithField("model_id", tm.ID).Errorf("training: recording the %s failed", noun)
@@ -225,7 +217,7 @@ func (m *RunManager) Start(ctx context.Context, s RunSpec) (*evalsdb.TrainedMode
 	}
 	fail := func(msg string, err error) error {
 		release()
-		_ = m.Ops.Finish(dbCtx, n.DB, runID, evalsdb.TrainedModelRunErrored, "could not start")
+		_ = m.Ops.Finish(dbCtx, m.DB, runID, evalsdb.TrainedModelRunErrored, "could not start")
 		log.WithError(err).WithField("run_id", runID).Errorf("training: %s", msg)
 		return internalErr("failed to "+msg, err)
 	}
@@ -235,12 +227,12 @@ func (m *RunManager) Start(ctx context.Context, s RunSpec) (*evalsdb.TrainedMode
 		}
 	}
 	stream := NewRunStream()
-	skey := streamKey{n.Name, runID}
+	skey := runID
 	m.mu.Lock()
 	run.runID = runID
 	m.streams[skey] = stream
 	m.mu.Unlock()
-	rec, err := m.Ops.Get(dbCtx, n.DB, runID)
+	rec, err := m.Ops.Get(dbCtx, m.DB, runID)
 	if err != nil {
 		m.dropStream(skey, stream)
 		return nil, fail("read the "+noun, err)
@@ -296,16 +288,16 @@ func CaseRow(runID int64, names []string, it trainingeval.CaseResult) evalsdb.Tr
 
 // run is the run's goroutine: it runs trainingeval.Run, storing every finished batch, and ends the run's row.
 func (m *RunManager) run(ctx context.Context, s RunSpec, runID int64, stream *RunStream) {
-	noun, n, tm, params := m.Ops.Noun(), s.Database, s.Model, s.Params
+	noun, tm, params := m.Ops.Noun(), s.Model, s.Params
 	dbCtx := context.WithoutCancel(ctx) // the writes must outlive a cancelled run
-	logf := log.WithFields(log.Fields{"db": n.Name, "model_id": tm.ID, "run_id": runID, "kind": noun})
+	logf := log.WithFields(log.Fields{"model_id": tm.ID, "run_id": runID, "kind": noun})
 	logf.WithField("examples", len(s.Examples)).Infof("training: %s started", noun)
 	finish := func(status, errText string) {
-		if err := m.Ops.Finish(dbCtx, n.DB, runID, status, errText); err != nil {
+		if err := m.Ops.Finish(dbCtx, m.DB, runID, status, errText); err != nil {
 			logf.WithError(err).Errorf("training: ending the %s failed", noun)
 		}
 		logf.WithField("status", status).Infof("training: %s ended", noun)
-		m.publishEnd(dbCtx, n, stream, runID)
+		m.publishEnd(dbCtx, stream, runID)
 	}
 	defer func() {
 		if r := recover(); r != nil {
@@ -315,17 +307,17 @@ func (m *RunManager) run(ctx context.Context, s RunSpec, runID int64, stream *Ru
 	}()
 
 	gen := Generator(m.Sc, tm, params)
-	judge := memory_core.WithRecording(m.LLM, n.DB, m.Ops.CallType)
+	judge := memory_core.WithRecording(m.LLM, m.DB, m.Ops.CallType)
 	sink := func(_ context.Context, cases []trainingeval.CaseResult, p trainingeval.Progress) error {
 		rows := make([]evalsdb.TrainedModelCase, len(cases))
 		for i, it := range cases {
 			rows[i] = CaseRow(runID, s.Names, it)
 		}
 		rec := RunProgress(runID, p)
-		if err := m.Ops.Save(dbCtx, n.DB, rec, rows); err != nil {
+		if err := m.Ops.Save(dbCtx, m.DB, rec, rows); err != nil {
 			return err
 		}
-		if full, err := m.Ops.Get(dbCtx, n.DB, runID); err == nil { // the whole row, for the live feed
+		if full, err := m.Ops.Get(dbCtx, m.DB, runID); err == nil { // the whole row, for the live feed
 			rec = *full
 		}
 		stream.Batch(rec, rows)
@@ -348,7 +340,7 @@ func (m *RunManager) run(ctx context.Context, s RunSpec, runID int64, stream *Ru
 }
 
 // dropStream forgets the live feed of a run that is over.
-func (m *RunManager) dropStream(key streamKey, s *RunStream) {
+func (m *RunManager) dropStream(key int64, s *RunStream) {
 	m.mu.Lock()
 	if m.streams[key] == s {
 		delete(m.streams, key)
@@ -356,13 +348,13 @@ func (m *RunManager) dropStream(key streamKey, s *RunStream) {
 	m.mu.Unlock()
 }
 
-// ListRuns returns the runs of trained model modelID of n (without their cases), newest first, at most limit. Errors are *Error:
+// ListRuns returns the runs of trained model modelID of the database (without their cases), newest first, at most limit. Errors are *Error:
 // KindNotFound for an unknown model, KindInternal.
-func (m *RunManager) ListRuns(ctx context.Context, n Database, modelID int64, limit int) ([]evalsdb.TrainedModelRun, error) {
-	if _, err := GetModel(ctx, n, modelID); err != nil {
+func (m *RunManager) ListRuns(ctx context.Context, modelID int64, limit int) ([]evalsdb.TrainedModelRun, error) {
+	if _, err := GetModel(ctx, m.DB, modelID); err != nil {
 		return nil, err
 	}
-	list, err := m.Ops.List(ctx, n.DB, modelID, limit)
+	list, err := m.Ops.List(ctx, m.DB, modelID, limit)
 	if err != nil {
 		log.WithError(err).Errorf("training: list %ss failed", m.Ops.Noun())
 		return nil, internalErr("failed to list the "+m.Ops.Plural(), err)
@@ -370,9 +362,9 @@ func (m *RunManager) ListRuns(ctx context.Context, n Database, modelID int64, li
 	return list, nil
 }
 
-// GetRun reads run id of n. Errors are *Error: KindNotFound, KindInternal.
-func (m *RunManager) GetRun(ctx context.Context, n Database, id int64) (*evalsdb.TrainedModelRun, error) {
-	run, err := m.Ops.Get(ctx, n.DB, id)
+// GetRun reads run id of the database. Errors are *Error: KindNotFound, KindInternal.
+func (m *RunManager) GetRun(ctx context.Context, id int64) (*evalsdb.TrainedModelRun, error) {
+	run, err := m.Ops.Get(ctx, m.DB, id)
 	if errors.Is(err, relational.ErrNotFound) {
 		return nil, notFoundErr("unknown " + m.Ops.Noun())
 	} else if err != nil {
@@ -382,9 +374,9 @@ func (m *RunManager) GetRun(ctx context.Context, n Database, id int64) (*evalsdb
 	return run, nil
 }
 
-// RunCases reads the cases stored so far of run id of n, in the order of the eval or the dataset.
-func (m *RunManager) RunCases(ctx context.Context, n Database, id int64) ([]evalsdb.TrainedModelCase, error) {
-	cases, err := m.Ops.Cases(ctx, n.DB, id)
+// RunCases reads the cases stored so far of run id of the database, in the order of the eval or the dataset.
+func (m *RunManager) RunCases(ctx context.Context, id int64) ([]evalsdb.TrainedModelCase, error) {
+	cases, err := m.Ops.Cases(ctx, m.DB, id)
 	if err != nil {
 		log.WithError(err).Errorf("training: list %s cases failed", m.Ops.Noun())
 		return nil, internalErr("failed to read the "+m.Ops.Noun()+"'s cases", err)
@@ -394,8 +386,8 @@ func (m *RunManager) RunCases(ctx context.Context, n Database, id int64) ([]eval
 
 // CancelRun stops a running run (it ends as "cancelled", keeping the batches done so far) and returns it. Errors are *Error:
 // KindNotFound for an unknown run, KindConflict when it is not running.
-func (m *RunManager) CancelRun(ctx context.Context, n Database, id int64) (*evalsdb.TrainedModelRun, error) {
-	run, err := m.GetRun(ctx, n, id)
+func (m *RunManager) CancelRun(ctx context.Context, id int64) (*evalsdb.TrainedModelRun, error) {
+	run, err := m.GetRun(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -403,11 +395,11 @@ func (m *RunManager) CancelRun(ctx context.Context, n Database, id int64) (*eval
 		return nil, conflictErr("the " + m.Ops.Noun() + " is not running")
 	}
 	m.mu.Lock()
-	cur := m.running[runKey{n.Name, run.TrainedModelID}]
+	cur := m.running[run.TrainedModelID]
 	m.mu.Unlock()
 	if cur == nil || cur.runID != id {
 		// Marked running, but nothing runs it (it cannot happen unless the bookkeeping failed): end it.
-		if err := m.Ops.Finish(ctx, n.DB, id, evalsdb.TrainedModelRunCancelled, ""); err != nil {
+		if err := m.Ops.Finish(ctx, m.DB, id, evalsdb.TrainedModelRunCancelled, ""); err != nil {
 			log.WithError(err).Errorf("training: ending the %s failed", m.Ops.Noun())
 		}
 	} else {
@@ -433,14 +425,14 @@ func (w *RunWatch) Close() {
 	}
 }
 
-// Watch starts watching run id of n: the snapshot (the run and all of its cases so far: the judged and errored ones from the
+// Watch starts watching run id of the database: the snapshot (the run and all of its cases so far: the judged and errored ones from the
 // database, and the ones the model answered that the judge has not scored yet, with status "answered"), and the events that follow while
 // the run goes on. The caller must Close it. Errors are *Error: KindNotFound for an unknown run, KindInternal.
-func (m *RunManager) Watch(ctx context.Context, n Database, id int64) (*RunWatch, error) {
+func (m *RunManager) Watch(ctx context.Context, id int64) (*RunWatch, error) {
 	// Subscribe before reading the database, so no event falls between the two; the overlap is harmless: the cases are
 	// applied by idx, and the judged version wins.
 	m.mu.Lock()
-	stream := m.streams[streamKey{n.Name, id}]
+	stream := m.streams[id]
 	m.mu.Unlock()
 	w := &RunWatch{stream: stream}
 	var pending []evalsdb.TrainedModelCase
@@ -448,11 +440,11 @@ func (m *RunManager) Watch(ctx context.Context, n Database, id int64) (*RunWatch
 		pending, w.Events = stream.Subscribe()
 	}
 	fail := func(err error) (*RunWatch, error) { w.Close(); return nil, err }
-	run, err := m.GetRun(ctx, n, id)
+	run, err := m.GetRun(ctx, id)
 	if err != nil {
 		return fail(err)
 	}
-	cases, err := m.RunCases(ctx, n, id)
+	cases, err := m.RunCases(ctx, id)
 	if err != nil {
 		return fail(err)
 	}
@@ -471,8 +463,8 @@ func (m *RunManager) Watch(ctx context.Context, n Database, id int64) (*RunWatch
 }
 
 // publishEnd announces the end of run runID on its stream, with the run as stored.
-func (m *RunManager) publishEnd(ctx context.Context, n Database, s *RunStream, runID int64) {
-	if run, err := m.Ops.Get(ctx, n.DB, runID); err == nil {
+func (m *RunManager) publishEnd(ctx context.Context, s *RunStream, runID int64) {
+	if run, err := m.Ops.Get(ctx, m.DB, runID); err == nil {
 		s.End(*run)
 	} else {
 		log.WithError(err).WithField("run_id", runID).Warnf("training: read the ended %s for its stream failed", m.Ops.Noun())

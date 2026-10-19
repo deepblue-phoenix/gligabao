@@ -53,10 +53,10 @@ A dataset has a **name** (the manifest's `name`) and a **file name on the sideca
 
 | Endpoint | Behaviour |
 |---|---|
-| `GET /v1/gb/training/datasets[?db=]` | `{"datasets": [...], "problems": [...]}`. `datasets` are the usable datasets by name: the record (below) plus the manifest's `name`, `description`, `format`, `file`, `version`, `generator`, and `dir`, the subdirectory's name. It never asks the sidecar. |
-| `GET /v1/gb/training/datasets/preview?name=<name>[&lines=][&db=]` | The first lines (default 100, at most 1000) of the dataset's data file: `{"name", "lines", "num_records", "truncated"}`. `404` for an unknown dataset. |
-| `POST /v1/gb/training/datasets[?db=]` | Uploads a JSONL file (multipart form, field `file`, optional `filename`). It must be valid (as above) and have a plain `*.jsonl` name; the server saves it as the dataset named like the file without `.jsonl`: in the subdirectory of that name, as `<name>.jsonl`, next to a manifest it writes if there is none. Uploading the name again replaces the file. `201` with the dataset, `400` invalid file, `409` if a dataset of that name exists with a manifest of its own naming another data file (or the name belongs to a dataset in another subdirectory), `413` over 64 MB. |
-| `POST /v1/gb/training/jobs[?db=]` | The job's `dataset` is a dataset's name. It is required: a missing or unknown name is a `400`. |
+| `GET /v1/gb/training/datasets` | `{"datasets": [...], "problems": [...]}`. `datasets` are the usable datasets by name: the record (below) plus the manifest's `name`, `description`, `format`, `file`, `version`, `generator`, and `dir`, the subdirectory's name. It never asks the sidecar. |
+| `GET /v1/gb/training/datasets/preview?name=<name>[&lines=]` | The first lines (default 100, at most 1000) of the dataset's data file: `{"name", "lines", "num_records", "truncated"}`. `404` for an unknown dataset. |
+| `POST /v1/gb/training/datasets` | Uploads a JSONL file (multipart form, field `file`, optional `filename`). It must be valid (as above) and have a plain `*.jsonl` name; the server saves it as the dataset named like the file without `.jsonl`: in the subdirectory of that name, as `<name>.jsonl`, next to a manifest it writes if there is none. Uploading the name again replaces the file. `201` with the dataset, `400` invalid file, `409` if a dataset of that name exists with a manifest of its own naming another data file (or the name belongs to a dataset in another subdirectory), `413` over 64 MB. |
+| `POST /v1/gb/training/jobs` | The job's `dataset` is a dataset's name. It is required: a missing or unknown name is a `400`. |
 
 Only the main database has a training datasets directory; other databases (the eval one) list no datasets.
 

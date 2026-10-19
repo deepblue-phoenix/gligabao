@@ -4,6 +4,7 @@ package training
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -36,10 +37,10 @@ type StartJobRequest struct {
 }
 
 // StartJob starts a training job on the sidecar through sc (the sidecar's REST API) and stores the TrainingJob the sidecar
-// reports in the gb_training_job_runs table of n, then has mon (may be nil) follow the job's progress. It returns the stored
+// reports in the gb_training_job_runs table of the database, then has mon (may be nil) follow the job's progress. It returns the stored
 // record. Errors are *Error: KindInvalid for a bad request (also one the sidecar rejects as invalid, with its message), KindUpstream
 // for a sidecar error, KindInternal.
-func StartJob(ctx context.Context, n Database, sc JobStarter, mon *Monitor, in StartJobRequest) (*trainingdb.TrainingJobRun, error) {
+func StartJob(ctx context.Context, db *sql.DB, dir string, sc JobStarter, mon *Monitor, in StartJobRequest) (*trainingdb.TrainingJobRun, error) {
 	req := sidecar.StartTrainingJobRequest{NumTrainSteps: in.NumTrainSteps, ModelSize: strings.ToLower(strings.TrimSpace(in.ModelSize))}
 	name := strings.TrimSpace(in.Dataset)
 	if name == "" {
@@ -54,7 +55,7 @@ func StartJob(ctx context.Context, n Database, sc JobStarter, mon *Monitor, in S
 		return nil, invalidErr("model_size must be \"4b\" or \"12b\"")
 	}
 
-	dataset, content, err := LoadTrainingDataset(ctx, n, name)
+	dataset, content, err := LoadTrainingDataset(ctx, db, dir, name)
 	if errors.Is(err, ErrUnknownDataset) {
 		return nil, invalidErr("unknown dataset " + name + ": there is no dataset of that name in the training datasets directory")
 	} else if err != nil {
@@ -73,28 +74,28 @@ func StartJob(ctx context.Context, n Database, sc JobStarter, mon *Monitor, in S
 	// The job is running now: record it even if the caller went away meanwhile.
 	ctx = context.WithoutCancel(ctx)
 	// the sidecar has taken this version of the file
-	if _, err := trainingdb.MarkTrainingDatasetSynced(ctx, n.DB, dataset.ID, dataset.SHA256); err != nil {
+	if _, err := trainingdb.MarkTrainingDatasetSynced(ctx, db, dataset.ID, dataset.SHA256); err != nil {
 		log.WithError(err).WithField("filename", dataset.Filename).Error("training: mark training dataset synced failed")
 	}
-	id, err := trainingdb.RecordTrainingJobRun(ctx, n.DB, trainingdb.TrainingJobRun{
+	id, err := trainingdb.RecordTrainingJobRun(ctx, db, trainingdb.TrainingJobRun{
 		JobID: job.JobID, ProviderJobID: job.ProviderJobID, Status: job.Status, ModelSize: job.ModelSize, Dataset: job.Dataset,
 		NumTrainSteps: job.NumTrainSteps, StartedAt: job.StartedAt})
 	if err != nil {
 		log.WithError(err).WithField("job_id", job.JobID).Error("training: record training job run failed")
 		return nil, internalErr("training job "+job.JobID+" started but could not be recorded", err)
 	}
-	run, err := trainingdb.GetTrainingJobRun(ctx, n.DB, id)
+	run, err := trainingdb.GetTrainingJobRun(ctx, db, id)
 	if err != nil {
 		log.WithError(err).WithField("job_id", job.JobID).Error("training: read training job run failed")
 		return nil, internalErr("failed to read the training job run", err)
 	}
-	mon.Watch(n, *run)
+	mon.Watch(*run)
 	return run, nil
 }
 
-// GetJobRun reads training job run id of n: a KindNotFound or KindInternal Error if it cannot.
-func GetJobRun(ctx context.Context, n Database, id int64) (*trainingdb.TrainingJobRun, error) {
-	run, err := trainingdb.GetTrainingJobRun(ctx, n.DB, id)
+// GetJobRun reads training job run id of the database: a KindNotFound or KindInternal Error if it cannot.
+func GetJobRun(ctx context.Context, db *sql.DB, id int64) (*trainingdb.TrainingJobRun, error) {
+	run, err := trainingdb.GetTrainingJobRun(ctx, db, id)
 	if errors.Is(err, relational.ErrNotFound) {
 		return nil, notFoundErr("unknown training job run")
 	} else if err != nil {
@@ -108,8 +109,8 @@ func GetJobRun(ctx context.Context, n Database, id int64) (*trainingdb.TrainingJ
 // "cancelled" event, which the monitor records like any other: the job's row changes when the event arrives. It returns the
 // run. Errors are *Error: KindNotFound for an unknown run, KindConflict for one that is over already, KindUpstream for a
 // sidecar error.
-func StopJob(ctx context.Context, n Database, sc JobCanceller, id int64) (*trainingdb.TrainingJobRun, error) {
-	run, err := GetJobRun(ctx, n, id)
+func StopJob(ctx context.Context, db *sql.DB, sc JobCanceller, id int64) (*trainingdb.TrainingJobRun, error) {
+	run, err := GetJobRun(ctx, db, id)
 	if err != nil {
 		return nil, err
 	}
@@ -124,18 +125,18 @@ func StopJob(ctx context.Context, n Database, sc JobCanceller, id int64) (*train
 		log.WithError(err).WithField("job_id", run.JobID).Error("training: stop training job failed")
 		return nil, &Error{KindUpstream, "sidecar failed to stop the training job", err}
 	}
-	log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID}).Info("training: stop requested")
+	log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID}).Info("training: stop requested")
 	return run, nil
 }
 
-// JobHistory returns the events already stored of job run runID of n, from sequence number from on, as the monitor feeds them.
+// JobHistory returns the events already stored of job run runID of the database, from sequence number from on, as the monitor feeds them.
 // Errors are *Error: KindNotFound for an unknown run, KindInternal.
-func JobHistory(ctx context.Context, n Database, runID int64, from int) ([]FeedEvent, error) {
-	run, err := GetJobRun(ctx, n, runID)
+func JobHistory(ctx context.Context, db *sql.DB, runID int64, from int) ([]FeedEvent, error) {
+	run, err := GetJobRun(ctx, db, runID)
 	if err != nil {
 		return nil, err
 	}
-	history, err := trainingdb.ListTrainingJobEvents(ctx, n.DB, runID, from)
+	history, err := trainingdb.ListTrainingJobEvents(ctx, db, runID, from)
 	if err != nil {
 		log.WithError(err).Error("training: read training job events failed")
 		return nil, internalErr("failed to read the training job events", err)
@@ -147,7 +148,7 @@ func JobHistory(ctx context.Context, n Database, runID int64, from int) ([]FeedE
 			continue
 		}
 		ev.Seq = e.Seq
-		out = append(out, FeedEvent{DB: n.Name, RunID: runID, JobID: run.JobID, TrainingEvent: ev})
+		out = append(out, FeedEvent{RunID: runID, JobID: run.JobID, TrainingEvent: ev})
 	}
 	return out, nil
 }

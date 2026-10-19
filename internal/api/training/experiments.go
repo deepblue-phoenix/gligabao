@@ -15,15 +15,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// ExperimentsOf serves GET /v1/gb/training/experiments[?db=<name>]: {"experiments": [...]}, the training experiments
+// ExperimentsOf serves GET /v1/gb/training/experiments: {"experiments": [...]}, the training experiments
 // (evalsdb.TrainingExperiment, with their number of runs), newest first.
 func (m *EvalManager) ExperimentsOf() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n, ok := pickDB(w, r, m.DBs)
-		if !ok {
-			return
-		}
-		list, err := evalsdb.ListTrainingExperiments(r.Context(), n.DB)
+		list, err := evalsdb.ListTrainingExperiments(r.Context(), m.DB)
 		if err != nil {
 			log.WithError(err).Error("training: list experiments failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to list the experiments")
@@ -33,20 +29,16 @@ func (m *EvalManager) ExperimentsOf() http.HandlerFunc {
 	}
 }
 
-// ExperimentOf serves GET /v1/gb/training/experiments/{id}[?db=<name>]: {"experiment": ..., "runs": [...]}, one experiment with
+// ExperimentOf serves GET /v1/gb/training/experiments/{id}: {"experiment": ..., "runs": [...]}, one experiment with
 // its runs, oldest first. A run (evalsdb.TrainingExperimentRun) carries its eval as it is now (so a running one shows its
 // progress), the trained model that was evaluated, and the mean score and the share of correct answers. 404 for an unknown experiment.
 func (m *EvalManager) ExperimentOf() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n, ok := pickDB(w, r, m.DBs)
-		if !ok {
-			return
-		}
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		x, err := evalsdb.GetTrainingExperiment(r.Context(), n.DB, id)
+		x, err := evalsdb.GetTrainingExperiment(r.Context(), m.DB, id)
 		if errors.Is(err, relational.ErrNotFound) {
 			httputil.Error(w, http.StatusNotFound, "unknown experiment")
 			return
@@ -55,7 +47,7 @@ func (m *EvalManager) ExperimentOf() http.HandlerFunc {
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the experiment")
 			return
 		}
-		runs, err := evalsdb.ListTrainingExperimentRuns(r.Context(), n.DB, id)
+		runs, err := evalsdb.ListTrainingExperimentRuns(r.Context(), m.DB, id)
 		if err != nil {
 			log.WithError(err).Error("training: list experiment runs failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to list the experiment's runs")

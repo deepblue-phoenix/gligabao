@@ -13,14 +13,14 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// LoadModelDataset reads the training dataset of tm from n's training datasets directory: the dataset's name, the digest of
+// LoadModelDataset reads the training dataset of tm from the training datasets directory dir: the dataset's name, the digest of
 // the file and its examples (what an audit asks). The errors are safe to show to the user.
-func LoadModelDataset(n Database, tm *trainingdb.TrainedModel) (name, sum string, examples []trainingeval.Example, err error) {
+func LoadModelDataset(dir string, tm *trainingdb.TrainedModel) (name, sum string, examples []trainingeval.Example, err error) {
 	name = strings.TrimSuffix(tm.Dataset, ".jsonl")
 	if name == "" {
 		return "", "", nil, errors.New("this model was trained on the sidecar's default dataset, which gligabao does not have: there are no questions to ask")
 	}
-	ds, err := FindDataset(n, name)
+	ds, err := FindDataset(dir, name)
 	if err != nil {
 		return "", "", nil, fmt.Errorf("the training dataset %s of this model is not in the training datasets directory", name)
 	}

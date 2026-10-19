@@ -2,6 +2,7 @@ package training
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/http"
 	"strconv"
@@ -25,9 +26,9 @@ const (
 	MaxInferTokens = 8192
 )
 
-// GetModel reads trained model id of n: a KindNotFound or KindInternal Error if it cannot.
-func GetModel(ctx context.Context, n Database, id int64) (*trainingdb.TrainedModel, error) {
-	tm, err := trainingdb.GetTrainedModel(ctx, n.DB, id)
+// GetModel reads trained model id of db: a KindNotFound or KindInternal Error if it cannot.
+func GetModel(ctx context.Context, db *sql.DB, id int64) (*trainingdb.TrainedModel, error) {
+	tm, err := trainingdb.GetTrainedModel(ctx, db, id)
 	if errors.Is(err, relational.ErrNotFound) {
 		return nil, notFoundErr("unknown trained model")
 	} else if err != nil {
@@ -78,19 +79,19 @@ type InferResult struct {
 // Infer runs req through the weights of trained model tm on the sidecar sc. The request is stored before it goes to the
 // sidecar and updated when it ends, so it can be reviewed later whatever happens to it (a failure, the caller giving up, a
 // restart of the server). Errors are *Error: KindInvalid for a bad request, KindUpstream when the sidecar fails, KindInternal.
-func Infer(ctx context.Context, n Database, sc Inferer, tm *trainingdb.TrainedModel, req InferRequest) (*InferResult, error) {
+func Infer(ctx context.Context, db *sql.DB, sc Inferer, tm *trainingdb.TrainedModel, req InferRequest) (*InferResult, error) {
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
 	dbCtx := context.WithoutCancel(ctx) // the writes must outlive the request
-	reqID, err := trainingdb.RecordTrainedModelInference(dbCtx, n.DB, trainingdb.TrainedModelInference{
+	reqID, err := trainingdb.RecordTrainedModelInference(dbCtx, db, trainingdb.TrainedModelInference{
 		TrainedModelID: tm.ID, Prompt: req.Prompt, ModelSize: tm.ModelSize, ModelPath: tm.Path, MaxTokens: req.MaxTokens, Temperature: req.Temperature})
 	if err != nil {
 		log.WithError(err).WithField("model_id", tm.ID).Error("training: recording the inference request failed")
 		return nil, internalErr("failed to record the inference request", err)
 	}
 	finish := func(status, response, errText string, inTok, outTok int, cold *bool, loadS float64, started time.Time) {
-		if err := trainingdb.FinishTrainedModelInference(dbCtx, n.DB, reqID, status, response, errText, inTok, outTok, cold, loadS, time.Since(started).Milliseconds()); err != nil {
+		if err := trainingdb.FinishTrainedModelInference(dbCtx, db, reqID, status, response, errText, inTok, outTok, cold, loadS, time.Since(started).Milliseconds()); err != nil {
 			log.WithError(err).WithField("request_id", reqID).Error("training: updating the inference request failed")
 		}
 	}
