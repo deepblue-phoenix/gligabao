@@ -4,7 +4,7 @@
 This document outlines the structure of the training data used for fine-tuning the Gemma-4 model within the `gloflow_phoenix` codebase. The pipeline relies on a specific transformation process to convert structured task examples into a format compatible with Gemma-4's instruction-tuning requirements.
 
 ## 1. Raw Dataset Structure
-The dataset is a JSONL (JSON Lines) file, found through its `dataset.toml` manifest in the training datasets directory (see [DATASETS.md](DATASETS.md): the layout, the manifest, and where the generator scripts live). Each line represents an independent training example defined as a dictionary with the following keys:
+The dataset is a JSONL (JSON Lines) file, found through its `dataset.toml` manifest in the training datasets directory (see [datasets.md](datasets.md): the layout, the manifest, and where the generator scripts live). Each line represents an independent training example defined as a dictionary with the following keys:
 
 - `instruction` (str): The primary task or user query (e.g., "Find news about NVIDIA and buy 10 shares").
 - `input` (str): Supplemental context or secondary parameters. Often an empty string.

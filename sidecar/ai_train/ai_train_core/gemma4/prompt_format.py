@@ -13,7 +13,7 @@ they are plain text, the model would learn to write them as characters and never
 `generation_config.eos_token_id` = [1, 106, 50]), so replies would run to max_tokens.
 
 Training and inference must use the same format so the model sees prompts in the distribution it was fine-tuned on.
-See docs/training/TRAINING_DATA_FORMAT.md.
+See docs/training/training_data_format.md.
 
 BOS: Gemma 4's chat template starts with `<bos>`, but its tokenizer may not add it by itself. `bos_prefix(tokenizer)`
 says whether the text needs it; train and infer both call it, so they agree.

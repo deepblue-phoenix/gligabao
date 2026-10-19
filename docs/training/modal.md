@@ -10,7 +10,7 @@ The Go server stays out of it: it only passes the admin UI's requests on to the 
 
 - The sidecar running with `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` (create them with `modal token new`; see the [sidecar's configuration](sidecar.md#configuration)). The same variables are what the deploy, stop and volume scripts use: the sidecar hands them to the subprocesses it starts.
 - `SIDECAR_APP_NAME` set the same for the sidecar and the app (the default `gligabao-train` is fine). The sidecar passes its value to the scripts, so a deploy from the admin UI always deploys the app the sidecar looks up.
-- The server running with the [admin UI](../README.md) and a reachable sidecar (`sidecar_url`).
+- The server running with the [admin UI](../../README.md) and a reachable sidecar (`sidecar_url`).
 - For fine-tuning, a Modal secret with `HF_TOKEN` named by `SIDECAR_HF_SECRET`, created in Modal beforehand (see [Running on Modal](sidecar.md#remote-training-bootstrap)). A deploy fails, and says so in its log, if the secret the app names does not exist.
 
 ## Where the state lives

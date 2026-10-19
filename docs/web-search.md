@@ -82,7 +82,7 @@ The response of `remember` gets `web_searches` (omitted without `web_search`, or
 
 ## Failures never fail `remember`
 
-The text has been stored before the first search starts, and the web search is an enrichment. A failure in it (the search call, the extraction of the briefing, its storage) is logged (`remember: web search failed ...`), recorded in the [trajectory](evals.md), and reported in the item's `error`; the response is still `200` and what was stored stays. A search that finds nothing stores nothing and is not an error. The one thing that is checked up front is availability (`503`).
+The text has been stored before the first search starts, and the web search is an enrichment. A failure in it (the search call, the extraction of the briefing, its storage) is logged (`remember: web search failed ...`), recorded in the [trajectory](evals/knowledge.md), and reported in the item's `error`; the response is still `200` and what was stored stays. A search that finds nothing stores nothing and is not an error. The one thing that is checked up front is availability (`503`).
 
 ## Cost
 
@@ -90,7 +90,7 @@ Each search is billed by Anthropic: **$10 per 1,000 searches** (`ai.WebSearchReq
 
 ## In the trajectory
 
-An [eval trajectory](evals.md) of a call with `web_search` has, after the steps of the text itself, a `select_web_search_entities` step, then one `web_search` step per entity (the briefing, the searches the model made, the sources, `latency_ms`, tokens and cost), each followed by the usual steps of a text (`extract_graph`, `find_candidates_by_name`, `load_candidates`, `store_artifact`, ... labelled ` (web search for "<entity>")`).
+An [eval trajectory](evals/knowledge.md) of a call with `web_search` has, after the steps of the text itself, a `select_web_search_entities` step, then one `web_search` step per entity (the briefing, the searches the model made, the sources, `latency_ms`, tokens and cost), each followed by the usual steps of a text (`extract_graph`, `find_candidates_by_name`, `load_candidates`, `store_artifact`, ... labelled ` (web search for "<entity>")`).
 
 ## From Go
 
@@ -109,13 +109,13 @@ The eval `bin/evals_knowledge/web_search.json` has one case, `web_search_compani
 
 ## Admin UI
 
-With the [admin UI](experiments.md#admin-ui) enabled, web searches are shown in three places:
+With the [admin UI](evals/experiments.md#admin-ui) enabled, web searches are shown in three places:
 
 - The **Web search** card of the dashboard: per database, what the web searches left in it (the `web_search` artifacts, the datasets that hold them, the pages they cite, the distinct entities linked to a result and how many of those no text of the user mentions, the facts they created or restated), and, for the eval database, the totals recorded in the trajectories of all runs: entity searches (found, empty, failed), searches made by the search tool, entities and facts extracted, facts closed, latency (average, median, maximum) and cost. A **View** button per dataset lists its web searches.
 - The **run** of an experiment has a *Web searches* column with the number of searches of each case, and a case that made some shows their totals and a **View web searches** button.
 - The list of web searches (a modal): one entry per search with its status, latency, cost and model, the query issued, the queries the model sent to the search engine, the result (the briefing), its sources, the entities and the facts that were extracted from it, the facts it closed, and the artifact the searched entity came from.
 
-The database keeps only the searches that found something, and not their latency, cost or the queries sent to the search engine, so the list of a dataset lacks those; the list of a case is read from its [trajectory](evals.md) and has them. The entities and facts are those of the whole result (the briefing), which cites the sources: they are not attributed to individual pages.
+The database keeps only the searches that found something, and not their latency, cost or the queries sent to the search engine, so the list of a dataset lacks those; the list of a case is read from its [trajectory](evals/knowledge.md) and has them. The entities and facts are those of the whole result (the briefing), which cites the sources: they are not attributed to individual pages.
 
 The JSON behind it (under `/v1/gb/admin/api`): `GET /web-searches?db=<name>[&include_deleted=true]` (the totals above), `GET /web-searches/dataset?db=<name>&dataset_id=<id>` (the searches stored in a dataset) and `GET /evals/runs/{id}/web-searches` (the searches of each eval of a run, from the trajectories).
 

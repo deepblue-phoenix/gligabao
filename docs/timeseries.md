@@ -97,7 +97,7 @@ The response gets `series` (omitted without `timeseries`), one item per series:
 
 `created` says the series is new; `points` is how many the request carried and `point_count` how many the series has now; `anchors` are the stored anchors (`type`, `id`, `role`, `window` as `start/end`, `created` for an entity the anchor created); `skipped_anchors` lists the ignored ones.
 
-In an eval [trajectory](evals.md) the input has `timeseries` (key, field, number of points and anchors per series; never the points) and a `store_timeseries` step records the result.
+In an eval [trajectory](evals/knowledge.md) the input has `timeseries` (key, field, number of points and anchors per series; never the points) and a `store_timeseries` step records the result.
 
 ## Providers
 
@@ -166,7 +166,7 @@ The response gets `series_fetches` (omitted without `fetch`), one item per (enti
 }]}
 ```
 
-In an eval [trajectory](evals.md) the input has `timeseries_fetch`, and the steps are `select_series_entities`, the LLM call, `resolve_series_providers` (the assignments) and one `fetch_timeseries` per fetch (with its latency).
+In an eval [trajectory](evals/knowledge.md) the input has `timeseries_fetch`, and the steps are `select_series_entities`, the LLM call, `resolve_series_providers` (the assignments) and one `fetch_timeseries` per fetch (with its latency).
 
 ## Stats
 
@@ -238,7 +238,7 @@ The response gets `series_observations` (omitted without `observations`), one it
 
 `artifact_id` is 0 (omitted) when nothing was stored, and then `error` says why (the points could not be read, the extraction or the storage failed). A series with no point in its window is skipped without an error.
 
-In an eval [trajectory](evals.md) the input has `timeseries_observations: true`, and each series adds an `observe_series` step (its text and number of points), followed by the usual steps of a text (`extract_graph`, `find_candidates_by_name`, `load_candidates`, `store_artifact`, ...), labelled ` (observation of series "<key>")`.
+In an eval [trajectory](evals/knowledge.md) the input has `timeseries_observations: true`, and each series adds an `observe_series` step (its text and number of points), followed by the usual steps of a text (`extract_graph`, `find_candidates_by_name`, `load_candidates`, `store_artifact`, ...), labelled ` (observation of series "<key>")`.
 
 From Go: `memory_core.WithSeriesObservations(true)`, `Result.SeriesObservations`; the text itself is `memory_timeseries.ObservationText(memory_timeseries.Observed{...}, points)`.
 

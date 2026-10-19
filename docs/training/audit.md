@@ -6,18 +6,18 @@ A **training data audit** (an *audit*, a `TrainedModelRun` of kind `audit` in th
 - **Is the training data clean?** (data auditing) The examples the model keeps failing are often the bad ones: label noise, ambiguous prompts, contradictory completions, broken formatting.
 - **Does it replicate or generalize?** (fidelity check) Near-verbatim answers on every example, with nothing learned in between, is what overfitting looks like.
 
-An audit is **not an eval**. An [eval of a trained model](EVALS.md) is for cases the model never saw, which is the only way to measure generalization. The two have their own tables and their own endpoint to start one, and share the rest (see [Audit or eval](#audit-or-eval)). The code is the eval subsystem [`internal/evals/training`](../../internal/evals/training/README.md) (the logic, shared with the evals), `internal/api/training/audits.go` (the endpoint that starts an audit) and `runs.go` (the manager and the background runner, shared with the evals).
+An audit is **not an eval**. An [eval of a trained model](../evals/training.md) is for cases the model never saw, which is the only way to measure generalization. The two have their own tables and their own endpoint to start one, and share the rest (see [Audit or eval](#audit-or-eval)). The code is the eval subsystem [`internal/evals/training`](../../internal/evals/training/README.md) (the logic, shared with the evals), `internal/api/training/audits.go` (the endpoint that starts an audit) and `runs.go` (the manager and the background runner, shared with the evals).
 
 ## What happens
 
 `POST /v1/gb/training/models/{id}/audits` (the **Audit** button in the admin UI):
 
-1. The server finds the model's dataset by the name recorded when it was trained (`dataset`, without `.jsonl`) in the training datasets directory ([DATASETS.md](DATASETS.md)). It must still be there: a model trained on the sidecar's default dataset or a dataset that was deleted answers `400`. The sha256 of the file read is stored with the audit; if it differs from the model's `dataset_sha256`, the UI shows "dataset changed since training".
+1. The server finds the model's dataset by the name recorded when it was trained (`dataset`, without `.jsonl`) in the training datasets directory ([datasets.md](datasets.md)). It must still be there: a model trained on the sidecar's default dataset or a dataset that was deleted answers `400`. The sha256 of the file read is stored with the audit; if it differs from the model's `dataset_sha256`, the UI shows "dataset changed since training".
 2. A row of `gb_training_audit_runs` is made (status `running`) and the request answers `202` with it. The audit goes on in the background.
 3. The cases (the dataset's examples) are processed in **batches** of `batch_size` (default 10). For each batch the model answers every question (one sidecar `POST /infer/query` per question, with the training prompt: the `instruction`, and the `input` after a blank line; `max_tokens` 1024 and `temperature` 0.1 unless set), then the batch is judged by **one** LLM call. The judge is the LLM the server uses for knowledge ingestion (the Anthropic client; `judge_model` picks another of its models). Its calls are recorded in `gb_inferences` with type `training_audit_judge` (the evals' are `training_eval_judge`), stage `judge`, and totalled on the audit.
 4. After each batch its cases are stored (one `gb_training_audit_cases` row each) and the counters of the audit's row are updated, so the progress can be read at any time. The audit ends `completed`, `cancelled` (by the user; what was done is kept) or `error` (with an `error` text: the model or the judge kept failing). Audits that were running when the server stopped are marked `error` at the next start.
 
-Only one audit per trained model runs at a time (`409` otherwise). The model is asked **one question per prompt, one at a time** (see [Why one question per prompt](EVALS.md#why-one-question-per-prompt)); only the judge works in batches. The score, the judge's rubric and how it fails are the same as for the evals: see [The score](EVALS.md#the-score) and [How the judge works](EVALS.md#how-the-judge-works). Inference requests of an audit are not stored in the model's request history (`gb_trained_model_inferences`), they are the audit's cases.
+Only one audit per trained model runs at a time (`409` otherwise). The model is asked **one question per prompt, one at a time** (see [Why one question per prompt](../evals/training.md#why-one-question-per-prompt)); only the judge works in batches. The score, the judge's rubric and how it fails are the same as for the evals: see [The score](../evals/training.md#the-score) and [How the judge works](../evals/training.md#how-the-judge-works). Inference requests of an audit are not stored in the model's request history (`gb_trained_model_inferences`), they are the audit's cases.
 
 Reading the result: a mean score near 5 means the model reproduces its training data. A low score is the thing to look at: sort the cases by score in the admin UI (lowest first) and see whether the failures are a pattern (a whole kind of example, a format) or a few odd examples (bad data). A high score says nothing about new inputs.
 
@@ -25,7 +25,7 @@ Reading the result: a mean score near 5 means the model reproduces its training 
 
 | | Training data audit | Eval of a trained model |
 |---|---|---|
-| Cases | the model's own fine-tuning dataset: things it was trained on | the cases of an [eval](EVALS.md) (`bin/evals_training/*.json`), meant to be ones the model never saw |
+| Cases | the model's own fine-tuning dataset: things it was trained on | the cases of an [eval](../evals/training.md) (`bin/evals_training/*.json`), meant to be ones the model never saw |
 | Measures | memorization and fit; data quality | generalization |
 | Run (Go) | `evalsdb.TrainedModelRun`, kind `audit`, with `Dataset` and `DatasetSHA256` | the same type, kind `eval`, with `Eval` |
 | Case (Go) | `evalsdb.TrainedModelCase`, no `Name` (a dataset example has none) | the same type, with the case's `Name` |

@@ -30,7 +30,7 @@ const MaxDatasetBytes = 64 << 20
 var datasetFilenameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.jsonl$`)
 
 // ValidateDataset checks that content is a JSONL training dataset, the format the training reads (see
-// docs/training/TRAINING_DATA_FORMAT.md): UTF-8, every non-blank line a JSON object with string "instruction" and "output"
+// docs/training/training_data_format.md): UTF-8, every non-blank line a JSON object with string "instruction" and "output"
 // (and "input", if present, a string). It returns the number of records, or an error naming the first bad line.
 func ValidateDataset(content []byte) (int, error) {
 	if !utf8.Valid(content) {

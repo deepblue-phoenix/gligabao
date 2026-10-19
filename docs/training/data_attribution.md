@@ -2,7 +2,7 @@
 
 Can an answer of a trained model be attributed to the training examples that made it answer that way, or at least with some probability? **Yes, approximately.** The field is called *training data attribution* (TDA). No method gives an exact, single cause: an answer is usually shaped by many examples, and every practical method is an estimate. This page lists the methods, what each costs, and how they apply to gligabao's training setup.
 
-**Status: a design note. gligabao does not implement any of this yet.** For the data format see [TRAINING_DATA_FORMAT.md](TRAINING_DATA_FORMAT.md), for the datasets directory see [DATASETS.md](DATASETS.md), for how the model is trained and run see [MODEL_INTERNALS.md](MODEL_INTERNALS.md).
+**Status: a design note. gligabao does not implement any of this yet.** For the data format see [training_data_format.md](training_data_format.md), for the datasets directory see [datasets.md](datasets.md), for how the model is trained and run see [model_internals.md](model_internals.md).
 
 ## 1. Methods
 

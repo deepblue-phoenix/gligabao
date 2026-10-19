@@ -19,7 +19,7 @@
 
 The thinking level is chosen per stage; the support for `low`, `medium` and `high` is complete, only the default is off:
 
-- `none` (no thinking) for every LLM stage of **`remember`** (and `remember_image`), see [remember.md](remember.md#reasoning), and for **`recall`**, see [recall.md](recall.md): thinking costs output tokens, so it is off unless a request (or an [eval](evals.md#reasoning-levels)) turns it on.
+- `none` (no thinking) for every LLM stage of **`remember`** (and `remember_image`), see [remember.md](remember.md#reasoning), and for **`recall`**, see [recall.md](recall.md): thinking costs output tokens, so it is off unless a request (or an [eval](evals/knowledge.md#reasoning-levels)) turns it on.
 
 A request can pick another one per stage. A [chunk summary](chunking.md#chunk-summaries) artifact stores only a reference to its inference (`gb_artifacts.inference_id`), which holds the model and the level (and the tokens and cost) of the call that wrote it.
 

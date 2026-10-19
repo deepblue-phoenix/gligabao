@@ -49,7 +49,7 @@ Example. Sessions `a` and `b` both remember "Alice works at Acme", then a third 
 `recall` only carries the session:
 
 - it is echoed in the response as `session_id` (omitted when there was none);
-- in an eval call ([evals.md](evals.md)), the ATIF trajectory's `session_id` is set to it, instead of the trajectory's own ID, and `extra.input` has it. The trajectories of `remember` and `recall` calls from the same session then share a `session_id`, which is how ATIF intends to group them;
+- in an eval call ([evals.md](evals/knowledge.md)), the ATIF trajectory's `session_id` is set to it, instead of the trajectory's own ID, and `extra.input` has it. The trajectories of `remember` and `recall` calls from the same session then share a `session_id`, which is how ATIF intends to group them;
 - it is part of the `remember.*` and `recall.*` monitoring events and the log lines of the calls.
 
 It does **not** filter or boost retrieval, and the answer does not depend on it: `recall` stays a function of the graph and the query. Nothing about the recall is written to the database. To connect a recall to the artifacts of its session, use the same `session_id` on both and join on it (the artifacts through `gb_artifacts.session_id`, the entities and facts through the link tables, the recall through the response, monitoring event or trajectory).

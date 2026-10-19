@@ -3,9 +3,9 @@
 What happens to a prompt between the admin UI and the generated text, and why a request takes the time it takes. The page
 describes **what gligabao's code does** (each fact points to the file that does it) and says plainly where something
 about Gemma 4 itself is **not verified** (marked *Unverified*): those need a check against the model card or in a container
-before they are relied on. For sizes, GPUs and costs see [MODEL_SIZES.md](MODEL_SIZES.md); for the data format see
-[TRAINING_DATA_FORMAT.md](TRAINING_DATA_FORMAT.md); for the Modal side (containers, cold and warm starts) see
-[Cold and warm starts](../modal.md#cold-and-warm-starts).
+before they are relied on. For sizes, GPUs and costs see [model_sizes.md](model_sizes.md); for the data format see
+[training_data_format.md](training_data_format.md); for the Modal side (containers, cold and warm starts) see
+[Cold and warm starts](modal.md#cold-and-warm-starts).
 
 ## 1. The pieces
 
@@ -16,7 +16,7 @@ before they are relied on. For sizes, GPUs and costs see [MODEL_SIZES.md](MODEL_
 | Tokenizer | Turns text into token ids and back. Saved next to the adapter; inference reads it from there (the base model's if absent). | `training_common.py`, `model_load_infer.py` |
 | Quantization | The base model is held in 4 bits (nf4, double quantization, bfloat16 compute) both in training (Unsloth) and in inference (bitsandbytes), so the adapter is used with the same kind of weights it was trained on. | `model_load.py`, `model_load_infer.py` |
 
-*Unverified:* what the **"E4B"** in the 4b model's name means for its size. The code and `MODEL_SIZES.md` treat it as a 4
+*Unverified:* what the **"E4B"** in the 4b model's name means for its size. The code and `model_sizes.md` treat it as a 4
 billion parameter model (about 8GB in 16 bits); the model card says how many parameters the file really has and how many
 are "effective". It matters for download and load time, not for the reasoning below.
 
@@ -33,7 +33,7 @@ inference text  <bos><|turn>user\n{prompt}<turn|>\n<|turn>model\n
 
 The inference text is the training text cut right after `<|turn>model\n`: the model is asked to continue as the model turn, and was trained to end it with `<turn|>`. Training and inference use the same functions, so they agree with each other, and with the base model's own template.
 
-One user turn holds **one** question: the model never saw a prompt with several questions in it, and at 4B and 12B several in one prompt interfere with each other and with the answer format. That is why the [evals of trained models](EVALS.md#why-one-question-per-prompt) ask one question per prompt, whatever the judge's batch size.
+One user turn holds **one** question: the model never saw a prompt with several questions in it, and at 4B and 12B several in one prompt interfere with each other and with the answer format. That is why the [evals of trained models](../evals/training.md#why-one-question-per-prompt) ask one question per prompt, whatever the judge's batch size.
 
 **History (fixed in 0.46.1).** Before, the text used Gemma 2/3's `<start_of_turn>` / `<end_of_turn>`. They do not exist in Gemma 4's vocabulary, so they were tokenized as plain text: the model learned to write the characters `<end_of_turn>` after an answer instead of the stop token, and replies ran to `max_tokens` with invented continuations. Adapters trained before 0.46.1 have this problem and must be retrained. A check that needs only the `tokenizers` library (the tests do it, `Gemma4TokenizerTest`):
 
@@ -109,7 +109,7 @@ weights are dequantized on the fly for every pass and `transformers` runs the lo
 That table is why a warm request of 30 to 50 seconds with *max tokens 512* is what a reply that runs to the limit looks
 like. The same request with a short reply is seconds. Compare `output_tokens` with the time to tell which it was.
 
-Cold requests add the container start and the model load on top (see [Cold and warm starts](../modal.md#cold-and-warm-starts)).
+Cold requests add the container start and the model load on top (see [Cold and warm starts](modal.md#cold-and-warm-starts)).
 
 ### Diagnosing a slow warm request
 

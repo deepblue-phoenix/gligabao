@@ -1,6 +1,6 @@
 # Training datasets: the training datasets directory and its manifests
 
-A training dataset is a JSONL file (format: [TRAINING_DATA_FORMAT.md](TRAINING_DATA_FORMAT.md)) that lives in a subdirectory of the **training datasets directory** and is described by a **manifest**, a `dataset.toml` in that subdirectory. gligabao scans the directory for manifests, reads each one to learn the dataset's name and where its data file is, and offers the datasets for training. A training dataset is separate from a memory [dataset](../datasets.md) (a container of artifacts, entities and edges in the database).
+A training dataset is a JSONL file (format: [training_data_format.md](training_data_format.md)) that lives in a subdirectory of the **training datasets directory** and is described by a **manifest**, a `dataset.toml` in that subdirectory. gligabao scans the directory for manifests, reads each one to learn the dataset's name and where its data file is, and offers the datasets for training. A training dataset is separate from a memory [dataset](../datasets.md) (a container of artifacts, entities and edges in the database).
 
 ## Layout
 
@@ -96,4 +96,4 @@ modal run app.py --action train --dataset <name> --train-steps 100 --model-size 
 2. Write `bin/datasets_training/<dir>/dataset.toml` with at least `file`.
 3. It shows up in `GET /v1/gb/training/datasets` and in the admin UI's training view; pick it there or pass its name as `dataset` to `POST /v1/gb/training/jobs`.
 
-A dataset is also what a trained model can be evaluated on: the **Audit** of a model asks it the questions of the dataset it was trained on (a [training data audit](AUDIT.md)), so the dataset must stay in this directory.
+A dataset is also what a trained model can be evaluated on: the **Audit** of a model asks it the questions of the dataset it was trained on (a [training data audit](audit.md)), so the dataset must stay in this directory.

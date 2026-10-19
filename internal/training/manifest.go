@@ -10,7 +10,7 @@ package training
 //	        data.jsonl          the file the manifest's `file` names
 //	        generate.py         anything else (a generator script, raw sources): gligabao ignores it
 //
-// See docs/training/DATASETS.md for the manifest's keys.
+// See docs/training/datasets.md for the manifest's keys.
 
 import (
 	"crypto/sha256"

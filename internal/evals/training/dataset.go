@@ -22,7 +22,7 @@ import (
 	"unicode/utf8"
 )
 
-// Example is one record of a training dataset (docs/training/TRAINING_DATA_FORMAT.md) or the input and expected output of an eval Case: the question (Instruction, plus
+// Example is one record of a training dataset (docs/training/training_data_format.md) or the input and expected output of an eval Case: the question (Instruction, plus
 // Input as context) and the answer the model was trained to give (Output).
 type Example struct {
 	Instruction string `json:"instruction"`

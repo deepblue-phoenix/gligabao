@@ -72,7 +72,7 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
   - **Names.** `case_name` of a training case result is now the case's name (as for a knowledge case), not the example's index in a dataset. The eval embedded as `world_knowledge_base.json` is `world-knowledge-base.json`: an eval is named after the training dataset it is about, so the eval and the dataset have the same name. `gb_training_eval_run_meta` has the run's `eval` instead of `scheme`, `dataset` (which repeated the eval column of the run's case results, with the dataset's name) and `dataset_sha256`; an eval run has no dataset any more (an audit still has `dataset` and `dataset_sha256`).
   - **One type and one set of field names for the two kinds of run.** `relational.TrainedModelEvalRun` and `TrainedModelAuditRun` are one `TrainedModelRun` (with `Kind` `eval` or `audit`, `Eval` for an eval and `Dataset`/`DatasetSHA256` for an audit), and `TrainedModelCaseResult` and `TrainedModelAuditCase` are one `TrainedModelCase` (with the case's `Name` for an eval's). The JSON of a case has `run_id` (was `eval_run_id` or `audit_run_id`), the run has `kind`. The detail endpoints answer `{"run": ..., "cases": [...]}` and the SSE events carry the run in `run`, for evals and for audits alike (was `eval` / `audit`; the lists stay `{"evals": [...]}` and `{"audits": [...]}`). `ListTrainedModelCaseResults` is `ListTrainedModelEvalCases`. In the Go API `training.EvalEvent` and `AuditEvent` are `RunEvent`; `EvalParams` and `AuditParams` are `RunParams`.
   - **One manager.** `EvalManager` and `AuditManager` are thin over one `runManager` (`internal/api/training/runs.go`, `runs_stream.go`) that holds the background runner, the list, detail, cancel and live-feed endpoints, which were two copies; only the endpoint that starts a run (where the cases come from) is specific to each. The judge calls are recorded as `training_eval_judge` (was `eval_judge`) and `training_audit_judge`, and their stage constants are one `StageJudge`; the log fields are `run_id` and `kind` (were `eval_run_id`, `audit_run_id`).
-  - Docs: `docs/training/EVALS.md`, `docs/training/AUDIT.md`, `evals/README.md`, `evals/training/README.md`, `docs/experiments.md` and the schema comments describe the above.
+  - Docs: `docs/evals/training.md`, `docs/training/audit.md`, `evals/README.md`, `evals/training/README.md`, `docs/evals/experiments.md` and the schema comments describe the above.
 
 ## [0.60.0] - 2026-10-19
 
@@ -109,7 +109,7 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
   - API: `POST /v1/gb/training/models/{id}/audits` (body: `limit`, `batch_size`, `judge_model`, `max_tokens`, `temperature`; no `scheme`, no experiments), `GET /v1/gb/training/models/{id}/audits`, `GET /v1/gb/training/audits/{id}`, `GET /v1/gb/training/audits/{id}/events` (SSE, the run is in the `audit` field of the events) and `POST /v1/gb/training/audits/{id}/cancel`.
   - Schema (SQLite and PostgreSQL, created on start-up, nothing existing is touched or migrated): `gb_training_audit_runs` (one row per audit: the model, status, dataset, judge, counters and score) and `gb_training_audit_cases` (one row per example). Deleting a trained model deletes its audits.
   - Go: `relational.TrainedModelAuditRun` and `TrainedModelAuditCase` with `RecordTrainedModelAuditRun`, `SaveTrainedModelAuditRunBatch`, `FinishTrainedModelAuditRun`, `FailRunningTrainedModelAuditRuns`, `GetTrainedModelAuditRun`, `ListTrainedModelAuditRuns` and `ListTrainedModelAuditCases`; `training.AuditManager` in `internal/api/training`. The judge's calls are recorded in `gb_inferences` as type `training_audit_judge` (the evals' stay `eval_judge`). The audit reuses the engine of `evals/training` (one question at a time to the model, judged in batches).
-  - Docs: `docs/training/AUDIT.md` (what an audit is for, how it differs from an eval, the API and the tables).
+  - Docs: `docs/training/audit.md` (what an audit is for, how it differs from an eval, the API and the tables).
 
 ### Changed
 - The model dialog and the models table of the admin UI call the two checks by their names: *Training data audit* and *Evals* (the eval section says that the server's eval still reads the model's training dataset until evals have cases of their own). The shared UI code (`admin_ui/src/training.ts`, `eval_live.ts`) handles both kinds of run.
@@ -174,24 +174,24 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
 ## [0.51.0] - 2026-10-25
 
 ### Added
-- **Training experiments.** Evals of trained models can be tracked as experiments: start an eval with `"experiment": "<name>"` (and optionally `experiment_description`, `experiment_config`) and it becomes a run of that named experiment, made on first use. Each run links to its eval, so it shows the eval's status, progress, mean score, share of correct answers and judge cost, and the trained model that was evaluated (base model, steps, final loss, training settings), to compare training recipes. API: `GET /v1/gb/training/experiments` and `GET /v1/gb/training/experiments/{id}`. They have their own tables, apart from the knowledge-extraction experiments: `gb_training_experiments` and `gb_training_experiment_runs` (SQLite and PostgreSQL, created on start-up). Details: [docs/training/EVALS.md](docs/training/EVALS.md#experiments).
+- **Training experiments.** Evals of trained models can be tracked as experiments: start an eval with `"experiment": "<name>"` (and optionally `experiment_description`, `experiment_config`) and it becomes a run of that named experiment, made on first use. Each run links to its eval, so it shows the eval's status, progress, mean score, share of correct answers and judge cost, and the trained model that was evaluated (base model, steps, final loss, training settings), to compare training recipes. API: `GET /v1/gb/training/experiments` and `GET /v1/gb/training/experiments/{id}`. They have their own tables, apart from the knowledge-extraction experiments: `gb_training_experiments` and `gb_training_experiment_runs` (SQLite and PostgreSQL, created on start-up). Details: [docs/training/EVALS.md](docs/evals/training.md#experiments).
 
 ## [0.50.0] - 2026-10-24
 
 ### Added
 - **Live view of an eval in the admin UI.** Starting an eval opens a dialog that streams it as it runs, and every eval in the model's dialog has a **Watch live** button (**Open** once it is over). Each question appears as soon as the model answers it, with the dataset's answer beside the model's, and gets its score and the judge's reason when its batch is judged (the judge still grades a batch per call, so a score arrives per batch while the answers arrive one by one). It also has a progress bar with running totals (answered, judged, failed, mean score, % correct, average answer time), a strip with one square per question coloured by outcome (click one to jump to it), an **only problems** filter, a **follow** toggle and a Cancel button. Closing the dialog leaves the eval running; opening it on a running or finished eval shows everything so far.
-- API: `GET /v1/gb/training/evals/{id}/events`, a Server-Sent Events feed (`snapshot`, `answer`, `batch`, `end`); see [docs/training/EVALS.md](docs/training/EVALS.md#api).
+- API: `GET /v1/gb/training/evals/{id}/events`, a Server-Sent Events feed (`snapshot`, `answer`, `batch`, `end`); see [docs/training/EVALS.md](docs/evals/training.md#api).
 - `evals/training`: `Config.OnAnswer`, called with each item as soon as the model has answered it, before the batch is judged.
 
 ## [0.49.1] - 2026-10-24
 
 ### Changed
-- Docs: `docs/training/EVALS.md` has a new section, **Why one question per prompt**: the trained model is asked one question per prompt because Gemma 4 4B and 12B were fine-tuned on single turns (several questions in one prompt are a shape they never saw, interfere with each other at that size, share one output budget and make scores depend on the batching), what is *not* the same (batching at the inference engine, parallel calls) and why batching the judge's items is different, with a way to check it. `docs/training/MODEL_INTERNALS.md` links to it.
+- Docs: `docs/evals/training.md` has a new section, **Why one question per prompt**: the trained model is asked one question per prompt because Gemma 4 4B and 12B were fine-tuned on single turns (several questions in one prompt are a shape they never saw, interfere with each other at that size, share one output budget and make scores depend on the batching), what is *not* the same (batching at the inference engine, parallel calls) and why batching the judge's items is different, with a way to check it. `docs/training/model_internals.md` links to it.
 
 ## [0.49.0] - 2026-10-24
 
 ### Added
-- **Evals of trained models, with an LLM as the judge.** Every trained model in the admin UI's training view has an **Eval** button (in the models table, and in the model's dialog, which also takes the number of questions and the judge batch size). An eval asks the model the questions of its **training dataset** (the instruction, plus the input as context, as in training) through the sidecar, and has the external LLM that gligabao uses for knowledge ingestion score each answer from 0 to 5 against the dataset's answer (4 and 5 correct, 2 and 3 partial, 0 and 1 incorrect). The trained model is asked **one question at a time**; the question/answer pairs go to the judge **in batches** (10 per LLM call by default, up to 25), not one call each. It runs in the background: the dialog shows the progress, the mean score, the correct/partial/incorrect split, the judge's tokens and cost, and every question with the dataset's answer, the model's answer, the score and the judge's reason, lowest score first. An eval can be cancelled (the batches done are kept). It stops by itself when the model or the judge keeps failing. Details: [docs/training/EVALS.md](docs/training/EVALS.md).
+- **Evals of trained models, with an LLM as the judge.** Every trained model in the admin UI's training view has an **Eval** button (in the models table, and in the model's dialog, which also takes the number of questions and the judge batch size). An eval asks the model the questions of its **training dataset** (the instruction, plus the input as context, as in training) through the sidecar, and has the external LLM that gligabao uses for knowledge ingestion score each answer from 0 to 5 against the dataset's answer (4 and 5 correct, 2 and 3 partial, 0 and 1 incorrect). The trained model is asked **one question at a time**; the question/answer pairs go to the judge **in batches** (10 per LLM call by default, up to 25), not one call each. It runs in the background: the dialog shows the progress, the mean score, the correct/partial/incorrect split, the judge's tokens and cost, and every question with the dataset's answer, the model's answer, the score and the judge's reason, lowest score first. An eval can be cancelled (the batches done are kept). It stops by itself when the model or the judge keeps failing. Details: [docs/training/EVALS.md](docs/evals/training.md).
 - API: `POST /v1/gb/training/models/{id}/evals` (options `limit`, `batch_size`, `judge_model`, `max_tokens`, `temperature`), `GET /v1/gb/training/models/{id}/evals`, `GET /v1/gb/training/evals/{id}` (with the items) and `POST /v1/gb/training/evals/{id}/cancel`. One eval per model runs at a time.
 - New tables `gb_trained_model_evals` and `gb_trained_model_eval_items` (SQLite and PostgreSQL, created on start-up); evals that a restart of the server interrupted are marked failed. The judge's LLM calls are recorded in `gb_inferences` as type `eval_judge`.
 
@@ -207,7 +207,7 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
 ## [0.47.0] - 2026-10-23
 
 ### Added
-- **Training datasets are found by manifests in a training datasets directory.** A dataset is a subdirectory of `bin/datasets_training/` with a `dataset.toml` manifest (`name`, `description`, `format`, `file`, `version`, `generator`); the server scans the directory for manifests, and reads `file` to learn where the dataset's JSONL file is. It does so every time it lists the datasets or starts a job, so a dataset added by hand (or a regenerated data file) is available at once. Subdirectories whose manifest cannot be used (a TOML error, no `file`, a bad name, a missing data file, a duplicate name) are not datasets and are reported as `problems` in `GET /v1/gb/training/datasets` and under the datasets table of the admin UI. See `docs/training/DATASETS.md`.
+- **Training datasets are found by manifests in a training datasets directory.** A dataset is a subdirectory of `bin/datasets_training/` with a `dataset.toml` manifest (`name`, `description`, `format`, `file`, `version`, `generator`); the server scans the directory for manifests, and reads `file` to learn where the dataset's JSONL file is. It does so every time it lists the datasets or starts a job, so a dataset added by hand (or a regenerated data file) is available at once. Subdirectories whose manifest cannot be used (a TOML error, no `file`, a bad name, a missing data file, a duplicate name) are not datasets and are reported as `problems` in `GET /v1/gb/training/datasets` and under the datasets table of the admin UI. See `docs/training/datasets.md`.
 - `bin/datasets_training/world-knowledge-base/`: the world knowledge base dataset (500 examples) with its manifest and `generate_dataset.py`, moved here from `sidecar/ai_train/finetune_data/`. `bin/datasets_training/` is tracked in git (the rest of `bin/` is still ignored); the generated data files are ignored by a `.gitignore` in the dataset's subdirectory.
 - The Modal CLI reads the same manifests (`training_data.py`): `modal run app.py --action datasets` lists them (`GLIGABAO_DATASETS_TRAINING_DIR` overrides the directory).
 
@@ -234,7 +234,7 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
 - Tests: the format with the new markers, no Gemma 3 markers, one `<bos>`, stop ids, and (against the real Gemma 4 tokenizer from the Hugging Face Hub, skipped when unavailable) that `<turn|>` / `<|turn>` are single tokens, the Gemma 3 markers are not, and the encoded training text ends with id 106.
 
 ### Changed
-- Docs (`docs/training/TRAINING_DATA_FORMAT.md`, `docs/training/MODEL_INTERNALS.md`): the real Gemma 4 markers, where the end-of-turn token comes from (the dataset file has no EOS; `format_instruction` adds it), BOS handling, the stop chain (now verified, no longer marked *Unverified*) and the base model's sampling defaults.
+- Docs (`docs/training/training_data_format.md`, `docs/training/model_internals.md`): the real Gemma 4 markers, where the end-of-turn token comes from (the dataset file has no EOS; `format_instruction` adds it), BOS handling, the stop chain (now verified, no longer marked *Unverified*) and the base model's sampling defaults.
 
 ## [0.46.0] - 2026-10-22
 
@@ -243,8 +243,8 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
 - `cold_start` and `load_seconds` are stored with each request in `gb_trained_model_inferences` (new columns, added to existing SQLite and PostgreSQL databases on start-up; `cold_start` is NULL for requests made before, failed ones, or answered by a sidecar that does not report it) and returned by `GET /v1/gb/training/models/{id}/inferences`. In Go, `FinishTrainedModelInference` takes the two values.
 
 ### Changed
-- Docs (`docs/modal.md`, `docs/sidecar.md`): a **Cold and warm starts** section (`modal.md#cold-and-warm-starts`) with what a cold request does in the GPU inference container, step by step (container start, volume reload, cache check, adapter lookup, 4-bit load of the base model from the HF cache or Hugging Face, adapter attach, generation), what `load_seconds` does and does not include, how to read the numbers, and how to get fewer cold requests. `docs/sidecar.md` no longer says that every request loads the model (true before 0.39.0) and lists the new fields of the answer.
-- Docs: new page `docs/training/MODEL_INTERNALS.md` on how the Gemma-4 models work in gligabao: the prompt format, how generation stops (and why a reply that does not stop runs to `max_tokens`), sampling and the returned text, where the time of a request goes (prefill, decode, tokens per second) with a table for diagnosing slow warm requests, and a short training summary. What is not verified about Gemma 4 itself is marked.
+- Docs (`docs/training/modal.md`, `docs/training/sidecar.md`): a **Cold and warm starts** section (`modal.md#cold-and-warm-starts`) with what a cold request does in the GPU inference container, step by step (container start, volume reload, cache check, adapter lookup, 4-bit load of the base model from the HF cache or Hugging Face, adapter attach, generation), what `load_seconds` does and does not include, how to read the numbers, and how to get fewer cold requests. `docs/training/sidecar.md` no longer says that every request loads the model (true before 0.39.0) and lists the new fields of the answer.
+- Docs: new page `docs/training/model_internals.md` on how the Gemma-4 models work in gligabao: the prompt format, how generation stops (and why a reply that does not stop runs to `max_tokens`), sampling and the returned text, where the time of a request goes (prefill, decode, tokens per second) with a table for diagnosing slow warm requests, and a short training summary. What is not verified about Gemma 4 itself is marked.
 
 ## [0.45.0] - 2026-10-21
 
@@ -365,7 +365,7 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
 - The training job's `completed` event carries the description of the saved weights (`model`); the Go monitor records it as a trained model (once, even if the event is replayed).
 - `GET /v1/gb/training/models`, `GET /v1/gb/training/models/{id}` and `POST /v1/gb/training/models/{id}/infer` (runs a prompt through the chosen model's weights; Go client: `sidecar.Client.Infer`).
 - Sidecar `POST /infer/query` takes `model_path` (`trained/<job id>`) to pick the weights; `modal run app.py --action generate --model-path ...` too.
-- `docs/sidecar.md`, section Trained models: where the weights are saved (volume layout, what is and is not stored, who reads and writes it), how a model is recorded, how an inference request reaches the weights, and how to add an inference endpoint.
+- `docs/training/sidecar.md`, section Trained models: where the weights are saved (volume layout, what is and is not stored, who reads and writes it), how a model is recorded, how an inference request reaches the weights, and how to add an inference endpoint.
 - Admin UI, training view: a **Trained models** table. Clicking a model shows its settings and files and a form to run a prompt through it.
 
 ### Changed
@@ -421,7 +421,7 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
 - `GET /backends/{name}/volumes` (sidecar) and `GET /v1/gb/admin/api/sidecar/backends/{name}/volumes` (server): the Modal volumes the app uses (mount path, name, whether it exists in Modal, creation time, number of top-level entries), read only, from `sidecar/ai_train/list_volumes.py`.
 - Admin UI, Training view: a red **Stop** button on the Modal backend (with a confirmation that names the consequences; shown while the app is deployed) and a **Volumes** button that lists the volumes in a small table.
 
-- `docs/modal.md`: the Modal app lifecycle (what the admin UI shows, deploy and its stages, the live log, cancel, stop, volumes, the API, the container, troubleshooting); referenced from `docs/sidecar.md` and the README.
+- `docs/training/modal.md`: the Modal app lifecycle (what the admin UI shows, deploy and its stages, the live log, cancel, stop, volumes, the API, the container, troubleshooting); referenced from `docs/training/sidecar.md` and the README.
 
 ### Changed
 - `Dockerfile.sidecar` now copies `sidecar/ai_train/` (the code the deploy uploads) into the image.
@@ -476,7 +476,7 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
 - `run_server_sidecar_local.sh` runs the Python sidecar locally (dev only), and `run_server_local.sh` now starts it first if nothing answers on its health endpoint, and stops it when the server ends. The sidecar needs `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`; without them the server still starts, with a warning.
 
 ### Changed
-- Docs: `docs/sidecar.md` and the README now say that the Go server only ever talks to the sidecar and the sidecar proxies to Modal (with a diagram), no longer call the sidecar a skeleton, and document the startup health check and `GET /v1/gb/admin/api/sidecar/status`, the Go client's training methods and `StatusError`, that the container copies `routes.py` and `backends/`, that the sidecar needs the Modal tokens (and that `docker-compose.yml` does not pass them yet), and the new steps for adding an endpoint.
+- Docs: `docs/training/sidecar.md` and the README now say that the Go server only ever talks to the sidecar and the sidecar proxies to Modal (with a diagram), no longer call the sidecar a skeleton, and document the startup health check and `GET /v1/gb/admin/api/sidecar/status`, the Go client's training methods and `StatusError`, that the container copies `routes.py` and `backends/`, that the sidecar needs the Modal tokens (and that `docker-compose.yml` does not pass them yet), and the new steps for adding an endpoint.
 
 ## [0.29.3] - 2026-10-26
 
@@ -573,7 +573,7 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
 ### Added
 - Training bootstrap skeleton in `sidecar/ai_train/`, modelled on `gloflow_phoenix/gf_phoenix/ai_train`: `app.py` declares the remote functions (`ping`, a stub `train`) and a CLI entrypoint (`modal run app.py [--action ping|train]`); `config.py` holds provider-neutral settings (env overridable: `SIDECAR_PROVIDER`, `SIDECAR_GPU`, `SIDECAR_HF_SECRET`, volume names); `ai_train_core/bootstrap.py` is the code that runs inside the container.
 - Compute providers sit behind `providers/base.py` (`Provider`, `FunctionSpec`, `ImageSpec`); Modal is the only implementation (`providers/modal_provider.py`, the only file importing `modal`), so others such as AWS can be added later.
-- [docs/sidecar.md](docs/sidecar.md) gains a "Remote training bootstrap" section: layout, how to run it, the `SIDECAR_*` settings, the provider abstraction and how to add a provider.
+- [docs/training/sidecar.md](docs/training/sidecar.md) gains a "Remote training bootstrap" section: layout, how to run it, the `SIDECAR_*` settings, the provider abstraction and how to add a provider.
 
 ## [0.24.1] - 2026-10-24
 
@@ -586,7 +586,7 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
 - Python sidecar skeleton in `sidecar/`: `main_sidecar.py` is a minimal FastAPI server (`GET /health`) listening on `SIDECAR_HOST:SIDECAR_PORT` (default `127.0.0.1:8787`); dependencies in `sidecar/requirements.txt`.
 - `Dockerfile.sidecar` packages the sidecar, and `run_build_sidecar.sh [image[:tag]]` builds the image (default `gligabao-sidecar:latest`).
 - Go client for the sidecar in `internal/sidecar` (`sidecar.New`, `Client.Health`).
-- [docs/sidecar.md](docs/sidecar.md): documents the sidecar, its container and the Go client, linked from the README.
+- [docs/training/sidecar.md](docs/training/sidecar.md): documents the sidecar, its container and the Go client, linked from the README.
 
 ## [0.23.1] - 2026-10-24
 

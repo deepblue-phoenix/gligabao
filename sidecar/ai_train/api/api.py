@@ -16,7 +16,7 @@ Endpoints:
     GET  /healthz
 
 There are no dataset endpoints: training datasets are managed by the Go server (the dataset directories with a
-dataset.toml manifest, see docs/training/DATASETS.md). The sidecar only stores a dataset internally: a job needs one, and a
+dataset.toml manifest, see docs/training/datasets.md). The sidecar only stores a dataset internally: a job needs one, and a
 job_start that carries `dataset_content` (base64 of the jsonl file) saves it on the data volume as `dataset` (the dataset's
 name plus ".jsonl") before spawning the job; without `dataset_content`, `dataset` must already be on the volume. There is
 no default dataset.
