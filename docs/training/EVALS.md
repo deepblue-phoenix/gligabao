@@ -7,9 +7,9 @@ An **eval** of a trained model asks the model the questions of a dataset and has
 `POST /v1/gb/training/models/{id}/evals` (the **Eval** button in the admin UI):
 
 1. The server finds the model's dataset by the name recorded when it was trained (`dataset`, without `.jsonl`) in the training datasets directory ([DATASETS.md](DATASETS.md)). It must still be there: a model trained on the sidecar's default dataset (jobs from before datasets were required) or a dataset that was deleted answers `400`. The sha256 of the file read is stored with the eval; if it differs from the model's `dataset_sha256`, the UI shows "dataset changed since training".
-2. A row of `gb_trained_model_evals` is made (status `running`) and the request answers `202` with it. The eval goes on in the background.
+2. A run of type `training` is made with one eval in it (a row of `gb_experiment_results` and its `gb_training_eval_meta`, status `running`) and the request answers `202` with it; the eval's ID is that of the `gb_experiment_results` row. The eval goes on in the background.
 3. The examples are processed in **batches** of `batch_size` (default 10). For each batch the model answers every question (one sidecar `POST /infer/query` per question, with the training prompt: the `instruction`, and the `input` after a blank line; `max_tokens` 1024 and `temperature` 0.1 unless set), then the batch is judged by **one** LLM call. The judge LLM is the one the server uses for knowledge ingestion (the Anthropic client; `judge_model` picks another of its models). Its calls are recorded in `gb_inferences` (type `eval_judge`, stage `judge`) like the other LLM calls, and totalled on the eval.
-4. After each batch its items are stored in `gb_trained_model_eval_items` and the counters of the eval row are updated, so the progress can be read at any time. The eval ends `completed`, `cancelled` (by the user; what was done is kept) or `failed` (with an `error`: the model or the judge kept failing, see the [subsystem README](../../evals/training/README.md#how-it-works)). Evals that were running when the server stopped are marked `failed` at the next start.
+4. After each batch its items are stored in `gb_training_eval_items` and the counters of the eval's metadata row are updated, so the progress can be read at any time. The eval ends `completed`, `cancelled` (by the user; what was done is kept) or `failed` (with an `error`: the model or the judge kept failing, see the [subsystem README](../../evals/training/README.md#how-it-works)). Evals that were running when the server stopped are marked `failed` at the next start.
 
 Only one eval per trained model runs at a time (`409` otherwise). Inference requests of an eval are not stored in the model's request history (`gb_trained_model_inferences`), they are the eval's items.
 
@@ -65,10 +65,19 @@ A run holds no results of its own, only the link to its eval: the status, the co
 - `model`: the trained model that was evaluated (`id`, `name`, `base_model`, `model_size`, `num_train_steps`, `final_loss` and `params`, the training settings), so runs can be compared by recipe;
 - `status` (the eval's), `mean_score` (0 to 5) and `correct_rate` (the share of judged answers that is correct), both `null` until an answer is judged.
 
-These are separate from the knowledge-extraction experiments of [`evals/knowledge`](../experiments.md) (tables `gb_experiments`, ...). Deleting a trained model deletes its evals and so their runs; the experiment stays.
+These are separate from the knowledge-extraction experiments of [`evals/knowledge`](../experiments.md) (the same tables, with `type = 'knowledge'`). Deleting a trained model deletes its evals and so their runs; the experiment stays.
 
 ## Tables
 
-`gb_trained_model_evals` (one row per eval) and `gb_trained_model_eval_items` (one per question, cascading), in SQLite and PostgreSQL; the columns are documented in `internal/db/relational/sqlite/db_schema.go`. Go: `relational.RecordTrainedModelEval`, `SaveTrainedModelEvalBatch`, `FinishTrainedModelEval`, `GetTrainedModelEval`, `ListTrainedModelEvals`, `ListTrainedModelEvalItems`.
+Both kinds of eval (knowledge and training) share one set of tables; every universal table has a `type` column (`knowledge` or `training`), and what only one kind has is in its metadata table. The full description is in `internal/db/relational/sqlite/db_schema.go` (and [../experiments.md](../experiments.md#data-model)).
 
-The experiments are in `gb_training_experiments` (name, description, `config`) and `gb_training_experiment_runs` (`experiment_id`, a unique `eval_id`, cascading from both sides). Go: `relational.EnsureTrainingExperiment`, `GetTrainingExperiment`, `ListTrainingExperiments`, `StartTrainingExperimentRun`, `GetTrainingExperimentRun`, `ListTrainingExperimentRuns`.
+| table | what a training eval stores there |
+|---|---|
+| `gb_experiments` | the experiment (`type = 'training'`; the name is unique within a type): `name`, `description`, `config` |
+| `gb_experiment_evals` | the evals the experiment has executed: `suite` (`''` until training suites exist) and `eval_name` (the dataset's name for now) |
+| `gb_experiment_runs` | the run: ONE per eval. `experiment_id` is NULL for an eval started without an experiment name; `params` are the eval's settings (`batch_size`, `max_tokens`, `temperature`, `limit`); `status` is the eval's once it ends; totals (`total_evals` 1, `passed_evals` 1 if it completed, `cost_usd` the judge's) are set then |
+| `gb_experiment_results` | the eval, universal part: `status` (`running`, `completed`, `failed`, `cancelled`), `error`, `cost_usd` (the judge's, updated after every batch), `started_at`, `finished_at` (NULL while it runs) |
+| `gb_training_eval_meta` | the training-only part, one row per eval: `trained_model_id`, `dataset`, `dataset_sha256`, `judge_model`, the counters (`num_examples` ... `score_sum`, `num_batches`) and the judge's `judge_calls` and tokens |
+| `gb_training_eval_items` | one row per question (cascading from the metadata row) |
+
+Go: `relational.RecordTrainedModelEval`, `SaveTrainedModelEvalBatch`, `FinishTrainedModelEval`, `GetTrainedModelEval`, `ListTrainedModelEvals`, `ListTrainedModelEvalItems`; `relational.EnsureTrainingExperiment`, `GetTrainingExperiment`, `ListTrainingExperiments`, `StartTrainingExperimentRun` (puts the eval's run in the experiment), `GetTrainingExperimentRun`, `ListTrainingExperimentRuns`.

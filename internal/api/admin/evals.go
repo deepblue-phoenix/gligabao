@@ -205,15 +205,15 @@ func EvalRun(d *sql.DB) http.HandlerFunc {
 	}
 }
 
-// EvalRunEvalGraph serves GET /admin/api/evals/run-evals/{id}/graph: the knowledge graph the eval built, read from
+// EvalResultGraph serves GET /admin/api/evals/results/{id}/graph: the knowledge graph the eval built, read from
 // the dataset the eval ran in (same JSON as /admin/api/graph).
-func EvalRunEvalGraph(d *sql.DB) http.HandlerFunc {
+func EvalResultGraph(d *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		ds, err := experiments.RunEvalDataset(r.Context(), d, id)
+		ds, err := experiments.ResultDataset(r.Context(), d, id)
 		if err != nil {
 			evalFail(w, err, "graph")
 			return

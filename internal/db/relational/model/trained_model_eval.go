@@ -22,11 +22,14 @@ const (
 	TrainedModelEvalItemAnswered = "answered"
 )
 
-// TrainedModelEval is one run of the LLM-as-a-judge eval of a trained model (gb_trained_model_evals; evals/training): the
+// TrainedModelEval is one run of the LLM-as-a-judge eval of a trained model (a "training" row of gb_experiment_results with its gb_training_eval_meta; evals/training): the
 // model is asked the questions of a dataset and an external LLM scores its answers against the dataset's. The counters are
 // updated after every judge batch, so the row shows the progress of a running eval and the result of a finished one.
 // Every example is judged or failed (NumJudged + NumFailed = the ones done so far, of NumExamples);
 // NumCorrect + NumPartial + NumIncorrect = NumJudged, and ScoreSum is the sum of the scores (0 to 5) of the judged ones.
+//
+// ID is that of the eval's gb_experiment_results row. Status, Error, CreatedAt (the start), FinishedAt and JudgeCostUSD are
+// columns of that row, Params those of its run (gb_experiment_runs), and the rest is in gb_training_eval_meta.
 type TrainedModelEval struct {
 	ID             int64  `json:"id"`
 	TrainedModelID int64  `json:"trained_model_id"`
@@ -73,7 +76,7 @@ func (e *TrainedModelEval) SetStoredParams(s string) {
 	}
 }
 
-// TrainedModelEvalItem is the outcome for one example of an eval (gb_trained_model_eval_items): the question, the
+// TrainedModelEvalItem is the outcome for one example of an eval (gb_training_eval_items): the question, the
 // dataset's answer (Reference), the model's (Response) and the judge's score.
 type TrainedModelEvalItem struct {
 	ID     int64 `json:"id"`

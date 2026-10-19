@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.52.0] - 2026-10-26
+
+### Changed
+- **One set of eval tables for knowledge and training evals** (SQLite and PostgreSQL; **breaking: the tables must be rebuilt, nothing is migrated**). The universal tables `gb_experiments`, `gb_experiment_evals`, `gb_experiment_runs` and `gb_experiment_run_evals` now hold both kinds, each with a `type` column (`knowledge` or `training`). Composite foreign keys keep the type the same from experiment to run to eval, and an experiment name is unique per type. What only one kind has moved to a metadata table with one row per eval: `gb_knowledge_eval_meta` (answer, problems, passed checks, dataset, steps) and `gb_training_eval_meta` (trained model, dataset, judge model, counters, judge tokens), plus `gb_training_eval_items` for the per-question outcomes. `gb_trained_model_evals`, `gb_trained_model_eval_items`, `gb_training_experiments` and `gb_training_experiment_runs` are gone.
+- **Renamed `gb_experiment_run_evals` to `gb_experiment_results`**, because a row is the outcome of one eval in one run, not an eval. Everything follows: the column `run_eval_id` is `result_id` (in `gb_experiment_trajectories`, `gb_knowledge_eval_meta` and `gb_training_eval_meta`); the Go type `ExperimentRunEval` is `ExperimentResult` (`experiments.RunEval` is `experiments.Result`, the input of `Tracker.Record` is `experiments.CaseOutcome` instead of `EvalResult`); `RecordExperimentRunEval`, `GetExperimentRunEvalDataset` and `experiments.RunEvalDataset` are `RecordExperimentResult`, `GetExperimentResultDataset` and `experiments.ResultDataset`; `ExperimentRun.Evals` is `Results`. **Admin API:** a run's `evals` is `results`, `run_eval_id` is `result_id` (trajectories, history points and `/runs/{id}/web-searches`, whose list is also `results`), and `GET /v1/gb/admin/api/evals/run-evals/{id}/graph` is `.../results/{id}/graph`. The admin UI is updated.
+- A training eval is now a run (of type `training`) with one eval in it. Its ID is that of its `gb_experiment_run_evals` row (it was the ID in `gb_trained_model_evals`); its settings are the run's `params`, its status, error, times and judge cost are the eval row's, and a run in no experiment (`experiment_id` NULL) is an eval started without an experiment name. The run is totalled and takes the eval's status when the eval ends. Deleting a trained model still deletes its evals and their runs.
+- Both kinds have **suites** in the schema: `suite` and `eval_name` on `gb_experiment_evals` and `gb_experiment_run_evals`. Training evals have no suites yet and store `suite = ''` with the dataset's name as `eval_name`.
+- The `Experiment`, `ExperimentRun` and `ExperimentRunEval` structs (and so the admin evals API) have a `type` field. The HTTP API of the training evals and experiments is unchanged.
+
 ## [0.51.0] - 2026-10-25
 
 ### Added

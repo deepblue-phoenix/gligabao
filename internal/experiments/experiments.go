@@ -1,15 +1,16 @@
 // Package experiments tracks eval experiments in the relational database.
 //
-// An Experiment is a named series of eval runs (table gb_experiments). Each execution of it is an ExperimentRun
-// (gb_experiment_runs) that holds one ExperimentRunEval per eval it executed (gb_experiment_run_evals; an eval is a
-// case of a suite) and, for each of those, references to the ATIF trajectories of its remember and recall calls
+// An Experiment is a named series of eval runs (table gb_experiments, type "knowledge"). Each execution of it is an ExperimentRun
+// (gb_experiment_runs) that holds one ExperimentResult per eval (case) it executed (gb_experiment_results, with the knowledge-only
+// columns in gb_knowledge_eval_meta; an eval is a case of a suite) and, for each of those, references to the ATIF trajectories
+// of its remember and recall calls
 // (gb_experiment_trajectories: the trajectory IDs, so the JSON files can be found again). The evals an experiment has
 // executed over all its runs are listed in Experiment.Evals (gb_experiment_evals).
 //
 // Typical use, as in evals/knowledge/main.go:
 //
 //	t, err := experiments.Start(ctx, d, experiments.Options{Name: "baseline"})
-//	for each eval { t.Record(ctx, experiments.EvalResult{...}) }
+//	for each eval { t.Record(ctx, experiments.CaseOutcome{...}) }
 //	run, err := t.Finish(ctx)
 package experiments
 
@@ -32,7 +33,7 @@ type (
 	Experiment = relational.Experiment
 	EvalRef    = relational.EvalRef
 	Run        = relational.ExperimentRun
-	RunEval    = relational.ExperimentRunEval
+	Result     = relational.ExperimentResult
 	Trajectory = relational.ExperimentTrajectory
 	Artifact   = relational.ExperimentArtifact
 	EvalPoint  = relational.ExperimentEvalPoint
@@ -96,8 +97,8 @@ func Start(ctx context.Context, d *sql.DB, opts Options) (*Tracker, error) {
 	return &Tracker{d: d, Experiment: exp, Run: run}, nil
 }
 
-// EvalResult is what one eval produced.
-type EvalResult struct {
+// CaseOutcome is what one eval produced.
+type CaseOutcome struct {
 	// Suite is the suite the eval is in (its file name without ".json") and Name the case name.
 	Suite, Name string
 	Answer      string
@@ -121,7 +122,7 @@ type EvalResult struct {
 }
 
 // Status is the status the eval is recorded with.
-func (r EvalResult) Status() string {
+func (r CaseOutcome) Status() string {
 	switch {
 	case r.Err != nil:
 		return StatusErrored
@@ -133,7 +134,7 @@ func (r EvalResult) Status() string {
 
 // Record stores the result of one eval in the run, with references to its trajectories, and adds the eval to the
 // experiment's evals.
-func (t *Tracker) Record(ctx context.Context, r EvalResult) (*RunEval, error) {
+func (t *Tracker) Record(ctx context.Context, r CaseOutcome) (*Result, error) {
 	if r.Suite == "" || r.Name == "" {
 		return nil, errors.New("eval suite and name are required")
 	}
@@ -144,7 +145,7 @@ func (t *Tracker) Record(ctx context.Context, r EvalResult) (*RunEval, error) {
 	if r.StartedAt.IsZero() {
 		r.StartedAt = r.FinishedAt
 	}
-	e := RunEval{
+	e := Result{
 		RunID:        t.Run.ID,
 		Suite:        r.Suite,
 		Name:         r.Name,
@@ -173,7 +174,7 @@ func (t *Tracker) Record(ctx context.Context, r EvalResult) (*RunEval, error) {
 		e.CostUSD += ref.CostUSD
 		e.Trajectories = append(e.Trajectories, ref)
 	}
-	return relational.RecordExperimentRunEval(ctx, t.d, e)
+	return relational.RecordExperimentResult(ctx, t.d, e)
 }
 
 // Finish totals the run's evals and ends the run: passed if every recorded eval passed, otherwise failed.
@@ -237,8 +238,8 @@ func GetRun(ctx context.Context, d *sql.DB, runID int64) (*Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	for i := range run.Evals {
-		e := &run.Evals[i]
+	for i := range run.Results {
+		e := &run.Results[i]
 		var all map[int64]graph.Artifact // the dataset's artifacts, loaded when a trajectory needs them
 		for j := range e.Trajectories {
 			t := &e.Trajectories[j]
@@ -266,14 +267,14 @@ func GetRun(ctx context.Context, d *sql.DB, runID int64) (*Run, error) {
 	return run, nil
 }
 
-// RunEvalDataset returns the dataset an eval ran in (deleted or not), whose graph is the one the eval built, or
+// ResultDataset returns the dataset an eval ran in (deleted or not), whose graph is the one the eval built, or
 // ErrNotFound if the eval does not exist or recorded no dataset.
-func RunEvalDataset(ctx context.Context, d *sql.DB, runEvalID int64) (*relational.Dataset, error) {
-	return relational.GetExperimentRunEvalDataset(ctx, d, runEvalID)
+func ResultDataset(ctx context.Context, d *sql.DB, resultID int64) (*relational.Dataset, error) {
+	return relational.GetExperimentResultDataset(ctx, d, resultID)
 }
 
 // FindTrajectory returns the reference to the trajectory with the given ATIF trajectory_id, or ErrNotFound. Its
-// RunEvalID leads to the eval, and through it (RunEval.RunID) to the run and the experiment.
+// ResultID leads to the eval, and through it (Result.RunID) to the run and the experiment.
 func FindTrajectory(ctx context.Context, d *sql.DB, trajectoryID string) (*Trajectory, error) {
 	return relational.FindExperimentTrajectory(ctx, d, trajectoryID)
 }

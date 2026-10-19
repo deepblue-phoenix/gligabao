@@ -112,6 +112,16 @@ type InferenceGroup struct {
 //---------------------------------------------------------------------------------------------
 // Eval experiments
 
+// Eval types: the type column of the universal eval tables (gb_experiments, gb_experiment_evals, gb_experiment_runs and
+// gb_experiment_results, see sqlite/db_schema.go). What is only one kind's is in its metadata table
+// (gb_knowledge_eval_meta, gb_training_eval_meta).
+const (
+	// EvalTypeKnowledge is the type of the knowledge-extraction evals (evals/knowledge, package experiments).
+	EvalTypeKnowledge = "knowledge"
+	// EvalTypeTraining is the type of the evals of trained models (evals/training, internal/api/training).
+	EvalTypeTraining = "training"
+)
+
 // Run and eval statuses.
 const (
 	// ExperimentRunning is the status of a run that has not been finished yet.
@@ -135,6 +145,7 @@ const (
 // every eval (suite + case name) any of its runs executed. Names are unique.
 type Experiment struct {
 	ID          int64          `json:"id"`
+	Type        string         `json:"type"` // EvalTypeKnowledge
 	Name        string         `json:"name"`
 	Description string         `json:"description,omitempty"`
 	Config      map[string]any `json:"config"` // free-form settings under test (models, prompts, ...)
@@ -151,22 +162,24 @@ type EvalRef struct {
 
 // ExperimentRun is one execution of an experiment: a pass over some of the evals in the suites.
 type ExperimentRun struct {
-	ID           int64               `json:"id"`
-	ExperimentID int64               `json:"experiment_id"`
-	Status       string              `json:"status"`       // ExperimentRunning, ExperimentPassed or ExperimentFailed
-	Params       map[string]any      `json:"params"`       // how the run was invoked (suites dir, selected cases, ...)
-	TotalEvals   int                 `json:"total_evals"`  // set when the run is finished
-	PassedEvals  int                 `json:"passed_evals"` // set when the run is finished
-	FailedEvals  int                 `json:"failed_evals"` // failed + errored; set when the run is finished
-	CostUSD      float64             `json:"cost_usd"`     // LLM cost of all evals; set when the run is finished
-	StartedAt    time.Time           `json:"started_at"`   //
-	FinishedAt   *time.Time          `json:"finished_at,omitempty"`
-	Evals        []ExperimentRunEval `json:"evals,omitempty"` // filled by GetExperimentRun only
+	ID           int64              `json:"id"`
+	Type         string             `json:"type"` // EvalTypeKnowledge
+	ExperimentID int64              `json:"experiment_id"`
+	Status       string             `json:"status"`       // ExperimentRunning, ExperimentPassed or ExperimentFailed
+	Params       map[string]any     `json:"params"`       // how the run was invoked (suites dir, selected cases, ...)
+	TotalEvals   int                `json:"total_evals"`  // set when the run is finished
+	PassedEvals  int                `json:"passed_evals"` // set when the run is finished
+	FailedEvals  int                `json:"failed_evals"` // failed + errored; set when the run is finished
+	CostUSD      float64            `json:"cost_usd"`     // LLM cost of all evals; set when the run is finished
+	StartedAt    time.Time          `json:"started_at"`   //
+	FinishedAt   *time.Time         `json:"finished_at,omitempty"`
+	Results      []ExperimentResult `json:"results,omitempty"` // filled by GetExperimentRun only
 }
 
-// ExperimentRunEval is the result of one eval within a run.
-type ExperimentRunEval struct {
+// ExperimentResult is the result of one eval (a case of a suite) within a run: one case's outcome in one run.
+type ExperimentResult struct {
 	ID       int64    `json:"id"`
+	Type     string   `json:"type"` // EvalTypeKnowledge
 	RunID    int64    `json:"run_id"`
 	Suite    string   `json:"suite"`
 	Name     string   `json:"name"`
@@ -181,7 +194,7 @@ type ExperimentRunEval struct {
 	StartedAt    time.Time `json:"started_at"`
 	FinishedAt   time.Time `json:"finished_at"`
 	// DatasetID is the dataset the eval ran in (nil if it was never created); the knowledge graph the eval built
-	// is the graph of that dataset (see GetExperimentRunEvalDataset).
+	// is the graph of that dataset (see GetExperimentResultDataset).
 	DatasetID *int64 `json:"dataset_id,omitempty"`
 	// Trajectories are the ATIF trajectories of the eval, in call order (remember calls, then the recall).
 	Trajectories []ExperimentTrajectory `json:"trajectories,omitempty"`
@@ -190,7 +203,7 @@ type ExperimentRunEval struct {
 // ExperimentEvalPoint is the result of one eval in one run of an experiment: a point of the eval's history.
 type ExperimentEvalPoint struct {
 	RunID        int64     `json:"run_id"`
-	RunEvalID    int64     `json:"run_eval_id"`
+	ResultID     int64     `json:"result_id"`
 	RunStatus    string    `json:"run_status"`
 	RunStartedAt time.Time `json:"run_started_at"`
 	Status       string    `json:"status"`        // ExperimentPassed, ExperimentFailed or ExperimentErrored
@@ -207,7 +220,7 @@ type ExperimentEvalPoint struct {
 // itself is the JSON file <TrajectoryID>.json (Path, when it was stored) of the trajectory directory.
 type ExperimentTrajectory struct {
 	ID           int64   `json:"id"`
-	RunEvalID    int64   `json:"run_eval_id"`
+	ResultID     int64   `json:"result_id"`
 	Seq          int     `json:"seq"`           // position within the eval, from 1
 	Kind         string  `json:"kind"`          // TrajectoryRemember or TrajectoryRecall
 	TrajectoryID string  `json:"trajectory_id"` // ATIF trajectory_id

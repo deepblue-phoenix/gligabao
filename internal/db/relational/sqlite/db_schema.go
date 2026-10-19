@@ -224,70 +224,6 @@ CREATE TABLE IF NOT EXISTS gb_trained_model_inferences (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_trained_model_inferences_model ON gb_trained_model_inferences(trained_model_id, id);
 
--- LLM-as-a-judge evals of trained models (evals/training, internal/api/training/evals.go): ONE ROW PER RUN. The trained model is asked
--- the questions of a dataset (its training dataset for now) and an external LLM scores its answers against the dataset's, a batch of
--- questions per LLM call. The counters are rewritten after every batch, so the row shows the progress while the eval runs. A row still
--- 'running' after a restart of the server is set to 'failed' when the server starts.
---   status           'running', 'completed', 'failed' (error says why) or 'cancelled'
---   dataset, dataset_sha256  the dataset the questions came from, and the digest of the file that was read
---   params           JSON object: batch_size, concurrency, max_tokens, temperature, limit
---   judge_model      the model that judged ('' until its first reply)
---   num_examples     the questions asked; num_answered the ones the model answered; num_judged the ones scored; num_failed the ones where
---                    the model or the judge failed; num_correct/num_partial/num_incorrect split num_judged by score (>= 4 / 2-3 / 0-1);
---                    score_sum the sum of the scores (0 to 5 each) of the judged ones
---   num_batches      judge batches done; judge_calls the LLM calls made (a batch may need a retry); judge_* its tokens and cost
-CREATE TABLE IF NOT EXISTS gb_trained_model_evals (
-	id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-	trained_model_id   INTEGER NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
-	status             TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed', 'cancelled')),
-	dataset            TEXT NOT NULL DEFAULT '',
-	dataset_sha256     TEXT NOT NULL DEFAULT '',
-	params             TEXT NOT NULL DEFAULT '{}',
-	judge_model        TEXT NOT NULL DEFAULT '',
-	num_examples       INTEGER NOT NULL DEFAULT 0,
-	num_answered       INTEGER NOT NULL DEFAULT 0,
-	num_judged         INTEGER NOT NULL DEFAULT 0,
-	num_failed         INTEGER NOT NULL DEFAULT 0,
-	num_correct        INTEGER NOT NULL DEFAULT 0,
-	num_partial        INTEGER NOT NULL DEFAULT 0,
-	num_incorrect      INTEGER NOT NULL DEFAULT 0,
-	score_sum          INTEGER NOT NULL DEFAULT 0,
-	num_batches        INTEGER NOT NULL DEFAULT 0,
-	judge_calls        INTEGER NOT NULL DEFAULT 0,
-	judge_input_tokens INTEGER NOT NULL DEFAULT 0,
-	judge_output_tokens INTEGER NOT NULL DEFAULT 0,
-	judge_cost_usd     REAL NOT NULL DEFAULT 0,
-	error              TEXT NOT NULL DEFAULT '',
-	created_at         DATETIME NOT NULL DEFAULT (` + SQLNow + `),
-	finished_at        DATETIME
-);
-CREATE INDEX IF NOT EXISTS idx_gb_trained_model_evals_model ON gb_trained_model_evals(trained_model_id, id);
-
--- The outcome for each question of an eval, written when its judge batch is done.
---   idx          the example's position in the dataset (0-based); batch the judge batch (1-based)
---   instruction, input  the question; reference the dataset's answer; response the model's ('' if it failed)
---   status       'judged' or 'failed' (error says why: the model or the judge)
---   score        the judge's, 0 to 5 (NULL unless judged); reason its explanation
---   input_tokens, output_tokens, duration_ms  of the model's answer
-CREATE TABLE IF NOT EXISTS gb_trained_model_eval_items (
-	id            INTEGER PRIMARY KEY AUTOINCREMENT,
-	eval_id       INTEGER NOT NULL REFERENCES gb_trained_model_evals(id) ON DELETE CASCADE,
-	idx           INTEGER NOT NULL,
-	batch         INTEGER NOT NULL,
-	instruction   TEXT NOT NULL,
-	input         TEXT NOT NULL DEFAULT '',
-	reference     TEXT NOT NULL DEFAULT '',
-	response      TEXT NOT NULL DEFAULT '',
-	status        TEXT NOT NULL CHECK (status IN ('judged', 'failed')),
-	error         TEXT NOT NULL DEFAULT '',
-	score         INTEGER,
-	reason        TEXT NOT NULL DEFAULT '',
-	input_tokens  INTEGER NOT NULL DEFAULT 0,
-	output_tokens INTEGER NOT NULL DEFAULT 0,
-	duration_ms   INTEGER NOT NULL DEFAULT 0,
-	UNIQUE (eval_id, idx)
-);
-
 -- JSONL training datasets (internal/api/training): the datasets are subdirectories of the training datasets directory
 -- that have a dataset.toml manifest; this table has ONE ROW PER DATASET, made when the Go server first sees the data file
 -- and replaced when it sees it changed. The sidecar is not involved, it gets the file when a training job that uses it
@@ -308,73 +244,123 @@ CREATE TABLE IF NOT EXISTS gb_training_datasets (
 	synced_at   DATETIME
 );
 
--- Eval experiments (evals/ and internal/experiments). An experiment is a named series of eval runs; names are unique.
---   config: JSON object with the free-form settings under test
+-- ---------------------------------------------------------------------------------------------------------------------
+-- EVALS. One set of tables for both kinds of eval; what is specific to a kind is in that kind's metadata table.
+--
+--   type  'knowledge'  knowledge-extraction evals (evals/knowledge, internal/experiments): remember, then recall, checked by
+--                      programmatic checks. Run by the runner, into the eval database.
+--         'training'   evals of trained models (evals/training, internal/api/training/evals.go): the model is asked the questions
+--                      of a dataset and an external LLM judges the answers. Run by the server, from the admin UI.
+--
+--   UNIVERSAL tables (every eval has these; each has a type column):
+--     gb_experiments            a named series of runs
+--     gb_experiment_evals       the evals (suite + eval_name) an experiment has executed
+--     gb_experiment_runs        one execution: one or more evals
+--     gb_experiment_results     the result of one eval in one run
+--     gb_experiment_trajectories  ATIF trajectories of an eval (the trajectory files; only knowledge evals have them for now)
+--   METADATA tables (one row per row of gb_experiment_results, of the matching type; the columns only that kind has):
+--     gb_knowledge_eval_meta    answer, checks, dataset the eval built its graph in
+--     gb_training_eval_meta     trained model, dataset, judge, counters and score
+--     gb_training_eval_items    the per-question outcomes of a training eval
+--
+-- type is the same on a row and on its parent: the composite foreign keys (<parent id>, type) -> parent (id, type) make the
+-- database refuse a run of one type under an experiment of the other, an eval under a run of the other type, and a metadata
+-- row on an eval of the wrong type.
+--
+-- TERMS. An EVAL is one case (an input and what is expected or checked) of a SUITE (a set of cases); a RUN executes some of them
+-- once; a RESULT is the outcome of one eval in one run, so an eval has many results and a run has many results; an EXPERIMENT is a
+-- named series of runs. gb_experiment_evals lists the evals (the definitions are in the suite files, not in the database);
+-- gb_experiment_results has the outcomes.
+--
+-- SUITES. An eval is a case (eval_name) of a suite (suite). Knowledge evals: a suite is a file in evals/knowledge/suites/ (its
+-- name without ".json") and the case is one of its cases. Training evals do not have suites yet, so they store suite = ''
+-- and, as the eval_name, the name of the dataset they ask the model; when training suites are added they fill both.
+-- ---------------------------------------------------------------------------------------------------------------------
+
+-- An experiment is a named series of runs.
+--   type    see above; the name is unique within a type
+--   config  JSON object with the free-form settings under test
 CREATE TABLE IF NOT EXISTS gb_experiments (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
-	name        TEXT NOT NULL UNIQUE,
+	type        TEXT NOT NULL CHECK (type IN ('knowledge', 'training')),
+	name        TEXT NOT NULL,
 	description TEXT NOT NULL DEFAULT '',
 	config      TEXT NOT NULL DEFAULT '{}',
-	created_at  DATETIME NOT NULL
+	created_at  DATETIME NOT NULL,
+	UNIQUE (type, name),
+	UNIQUE (id, type)
 );
 
--- The evals (a case name within a suite, i.e. a suite file name without ".json") that an experiment has executed.
+-- The evals (a case name within a suite) that an experiment has executed.
 -- A row is added the first time one of the experiment's runs executes the eval.
 CREATE TABLE IF NOT EXISTS gb_experiment_evals (
-	experiment_id INTEGER NOT NULL REFERENCES gb_experiments(id) ON DELETE CASCADE,
-	suite         TEXT NOT NULL,
+	experiment_id INTEGER NOT NULL,
+	type          TEXT NOT NULL,
+	suite         TEXT NOT NULL DEFAULT '',
 	eval_name     TEXT NOT NULL,
 	created_at    DATETIME NOT NULL,
-	PRIMARY KEY (experiment_id, suite, eval_name)
+	PRIMARY KEY (experiment_id, suite, eval_name),
+	FOREIGN KEY (experiment_id, type) REFERENCES gb_experiments(id, type) ON DELETE CASCADE
 );
 
--- One execution of an experiment. status: 'running', then 'passed' or 'failed' once finished.
---   params: JSON object describing how the run was invoked
+-- One execution of an experiment: a pass over one or more evals.
+--   experiment_id  NULL for a run that is in no experiment (a training eval started without an experiment name);
+--                  knowledge runs always have one
+--   status         'running', then when finished: knowledge 'passed' (every eval passed) or 'failed'; training 'completed' (the
+--                  eval ran to the end; it has a score, not a verdict), 'failed' or 'cancelled'
+--   params         JSON object describing how the run was invoked (knowledge: suites dir, selected cases, models, reasoning;
+--                  training: batch_size, max_tokens, temperature, limit, ...)
 --   total_evals, passed_evals, failed_evals, cost_usd: totals over the run's evals, set when the run is finished
+--                  (passed_evals: passed or completed; failed_evals: all the others; cost_usd: the LLM cost, the judge's for training)
 CREATE TABLE IF NOT EXISTS gb_experiment_runs (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
-	experiment_id INTEGER NOT NULL REFERENCES gb_experiments(id) ON DELETE CASCADE,
-	status        TEXT NOT NULL CHECK (status IN ('running', 'passed', 'failed')),
+	type          TEXT NOT NULL CHECK (type IN ('knowledge', 'training')),
+	experiment_id INTEGER,
+	status        TEXT NOT NULL CHECK (status IN ('running', 'passed', 'failed', 'completed', 'cancelled')),
 	params        TEXT NOT NULL DEFAULT '{}',
 	total_evals   INTEGER NOT NULL DEFAULT 0,
 	passed_evals  INTEGER NOT NULL DEFAULT 0,
 	failed_evals  INTEGER NOT NULL DEFAULT 0,
 	cost_usd      REAL NOT NULL DEFAULT 0,
 	started_at    DATETIME NOT NULL,
-	finished_at   DATETIME
+	finished_at   DATETIME,
+	UNIQUE (id, type),
+	CHECK (type <> 'knowledge' OR experiment_id IS NOT NULL),
+	FOREIGN KEY (experiment_id, type) REFERENCES gb_experiments(id, type) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_runs(experiment_id);
 
--- The result of one eval within a run. status: 'passed', 'failed' (a check did not hold) or 'error' (the eval
--- could not be run to the end).
---   problems: JSON array of strings, the failed checks; passed_checks: JSON array of strings, the checks that held
---   dataset_id: the dataset the eval ran in (NULL if it was never created); it holds the graph the eval built
-CREATE TABLE IF NOT EXISTS gb_experiment_run_evals (
+-- The result of one eval within one run (the universal part; the rest is in the metadata table of its type).
+--   status       'running' (training evals are long: it is updated as they go), 'passed', 'failed' (knowledge: a check did not
+--                hold; training: the model or the judge kept failing), 'error' (knowledge: the eval could not be run to the end),
+--                'completed' (training: it ran to the end and has a score) or 'cancelled' (training: stopped by the user)
+--   error        why it failed or could not be run
+--   cost_usd     the LLM cost of the eval (knowledge: its remember and recall calls; training: the judge's)
+--   finished_at  NULL while the eval runs
+CREATE TABLE IF NOT EXISTS gb_experiment_results (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
-	run_id      INTEGER NOT NULL REFERENCES gb_experiment_runs(id) ON DELETE CASCADE,
-	suite       TEXT NOT NULL,
+	type        TEXT NOT NULL CHECK (type IN ('knowledge', 'training')),
+	run_id      INTEGER NOT NULL,
+	suite       TEXT NOT NULL DEFAULT '',
 	eval_name   TEXT NOT NULL,
-	status      TEXT NOT NULL CHECK (status IN ('passed', 'failed', 'error')),
-	answer      TEXT NOT NULL DEFAULT '',
-	problems    TEXT NOT NULL DEFAULT '[]',
-	passed_checks TEXT NOT NULL DEFAULT '[]',
-	dataset_id  INTEGER REFERENCES gb_datasets(id),
+	status      TEXT NOT NULL CHECK (status IN ('running', 'passed', 'failed', 'error', 'completed', 'cancelled')),
 	error       TEXT NOT NULL DEFAULT '',
-	steps       INTEGER NOT NULL DEFAULT 0,
 	cost_usd    REAL NOT NULL DEFAULT 0,
 	started_at  DATETIME NOT NULL,
-	finished_at DATETIME NOT NULL
+	finished_at DATETIME,
+	UNIQUE (id, type),
+	FOREIGN KEY (run_id, type) REFERENCES gb_experiment_runs(id, type) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_gb_experiment_run_evals_run ON gb_experiment_run_evals(run_id);
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_results_run ON gb_experiment_results(run_id);
 
 -- The ATIF trajectories of an eval (internal/ai/atif), in call order. Only the reference is kept here:
 -- trajectory_id is the ATIF trajectory_id, and path is the JSON file the trajectory was stored in ('' if none).
 --   kind: 'remember' or 'recall'
---   artifact_ids: JSON array of the IDs of the artifacts (in the run eval's dataset) the call is about (remember: its
---   input; recall: the evidence's sources)
+--   artifact_ids: JSON array of the IDs of the artifacts (in the dataset of the eval's gb_knowledge_eval_meta) the call is
+--   about (remember: its input; recall: the evidence's sources)
 CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
-	run_eval_id   INTEGER NOT NULL REFERENCES gb_experiment_run_evals(id) ON DELETE CASCADE,
+	result_id   INTEGER NOT NULL REFERENCES gb_experiment_results(id) ON DELETE CASCADE,
 	seq           INTEGER NOT NULL,
 	kind          TEXT NOT NULL CHECK (kind IN ('remember', 'recall')),
 	trajectory_id TEXT NOT NULL,
@@ -384,32 +370,93 @@ CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
 	path          TEXT NOT NULL DEFAULT '',
 	artifact_ids  TEXT NOT NULL DEFAULT '[]',
 	created_at    DATETIME NOT NULL,
-	UNIQUE (run_eval_id, seq)
+	UNIQUE (result_id, seq)
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_trajectories_tid ON gb_experiment_trajectories(trajectory_id);
 
--- Training experiments (internal/api/training/experiments.go): the experiments of the evals of trained models, apart from the
--- knowledge-extraction experiments above (gb_experiments...). An experiment is a named series of runs, e.g. "lr-sweep-4b"; names
--- are unique.
---   config: JSON object with the free-form settings under test
-CREATE TABLE IF NOT EXISTS gb_training_experiments (
-	id          INTEGER PRIMARY KEY AUTOINCREMENT,
-	name        TEXT NOT NULL UNIQUE,
-	description TEXT NOT NULL DEFAULT '',
-	config      TEXT NOT NULL DEFAULT '{}',
-	created_at  DATETIME NOT NULL
+-- KNOWLEDGE metadata of an eval (type 'knowledge'): what only the knowledge-extraction evals have.
+--   answer         the recall's answer
+--   problems       JSON array of strings, the failed checks; passed_checks: JSON array of strings, the checks that held
+--   dataset_id     the dataset the eval ran in (NULL if it was never created); it holds the graph the eval built
+--   steps          total ATIF steps over the eval's trajectories
+CREATE TABLE IF NOT EXISTS gb_knowledge_eval_meta (
+	result_id   INTEGER PRIMARY KEY,
+	type          TEXT NOT NULL DEFAULT 'knowledge' CHECK (type = 'knowledge'),
+	answer        TEXT NOT NULL DEFAULT '',
+	problems      TEXT NOT NULL DEFAULT '[]',
+	passed_checks TEXT NOT NULL DEFAULT '[]',
+	dataset_id    INTEGER REFERENCES gb_datasets(id),
+	steps         INTEGER NOT NULL DEFAULT 0,
+	FOREIGN KEY (result_id, type) REFERENCES gb_experiment_results(id, type) ON DELETE CASCADE
 );
 
--- One run of a training experiment: ONE EVAL (gb_trained_model_evals) of one trained model, made as part of the experiment. The run
--- only links; the eval keeps the status, the counters, the score and the judge's cost (and its items), so there is one copy of them and
--- they follow the eval while it runs. The model is the eval's. An eval belongs to at most one experiment.
-CREATE TABLE IF NOT EXISTS gb_training_experiment_runs (
-	id            INTEGER PRIMARY KEY AUTOINCREMENT,
-	experiment_id INTEGER NOT NULL REFERENCES gb_training_experiments(id) ON DELETE CASCADE,
-	eval_id       INTEGER NOT NULL UNIQUE REFERENCES gb_trained_model_evals(id) ON DELETE CASCADE,
-	created_at    DATETIME NOT NULL
+-- TRAINING metadata of an eval (type 'training'; evals/training, internal/api/training/evals.go): what only the evals of
+-- trained models have. The trained model is asked the questions of a dataset (its training dataset for now) and an external LLM
+-- scores its answers against the dataset's, a batch of questions per LLM call. The counters are rewritten after every batch, so
+-- the row shows the progress while the eval runs. The status, the error, the times and the judge's cost are those of the
+-- universal gb_experiment_results row, and the settings (batch_size, concurrency, max_tokens, temperature, limit) the params of
+-- its gb_experiment_runs row. A row still 'running' after a restart of the server is set to 'failed' when the server starts.
+--   trained_model_id  the model (gb_trained_models) that was asked; deleting the model deletes this row (and its items)
+--   dataset, dataset_sha256  the dataset the questions came from, and the digest of the file that was read
+--   judge_model      the model that judged ('' until its first reply)
+--   num_examples     the questions asked; num_answered the ones the model answered; num_judged the ones scored; num_failed the ones
+--                    where the model or the judge failed; num_correct/num_partial/num_incorrect split num_judged by score
+--                    (>= 4 / 2-3 / 0-1); score_sum the sum of the scores (0 to 5 each) of the judged ones
+--   num_batches      judge batches done; judge_calls the LLM calls made (a batch may need a retry); judge_*_tokens its tokens
+CREATE TABLE IF NOT EXISTS gb_training_eval_meta (
+	result_id         INTEGER PRIMARY KEY,
+	type                TEXT NOT NULL DEFAULT 'training' CHECK (type = 'training'),
+	trained_model_id    INTEGER NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
+	dataset             TEXT NOT NULL DEFAULT '',
+	dataset_sha256      TEXT NOT NULL DEFAULT '',
+	judge_model         TEXT NOT NULL DEFAULT '',
+	num_examples        INTEGER NOT NULL DEFAULT 0,
+	num_answered        INTEGER NOT NULL DEFAULT 0,
+	num_judged          INTEGER NOT NULL DEFAULT 0,
+	num_failed          INTEGER NOT NULL DEFAULT 0,
+	num_correct         INTEGER NOT NULL DEFAULT 0,
+	num_partial         INTEGER NOT NULL DEFAULT 0,
+	num_incorrect       INTEGER NOT NULL DEFAULT 0,
+	score_sum           INTEGER NOT NULL DEFAULT 0,
+	num_batches         INTEGER NOT NULL DEFAULT 0,
+	judge_calls         INTEGER NOT NULL DEFAULT 0,
+	judge_input_tokens  INTEGER NOT NULL DEFAULT 0,
+	judge_output_tokens INTEGER NOT NULL DEFAULT 0,
+	FOREIGN KEY (result_id, type) REFERENCES gb_experiment_results(id, type) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_gb_training_experiment_runs_experiment ON gb_training_experiment_runs(experiment_id);`
+CREATE INDEX IF NOT EXISTS idx_gb_training_eval_meta_model ON gb_training_eval_meta(trained_model_id, result_id);
+-- The foreign keys cascade downwards only, so deleting a trained model deletes the metadata of its evals (and their items) but would
+-- leave their universal rows behind: this trigger deletes the run of each (a training run has one eval; its eval row goes with it).
+CREATE TRIGGER IF NOT EXISTS trg_gb_training_eval_meta_deleted AFTER DELETE ON gb_training_eval_meta
+BEGIN
+	DELETE FROM gb_experiment_runs WHERE type = 'training'
+		AND id = (SELECT run_id FROM gb_experiment_results WHERE id = OLD.result_id);
+END;
+
+-- The outcome for each question of a training eval, written when its judge batch is done.
+--   idx          the example's position in the dataset (0-based); batch the judge batch (1-based)
+--   instruction, input  the question; reference the dataset's answer; response the model's ('' if it failed)
+--   status       'judged' or 'failed' (error says why: the model or the judge)
+--   score        the judge's, 0 to 5 (NULL unless judged); reason its explanation
+--   input_tokens, output_tokens, duration_ms  of the model's answer
+CREATE TABLE IF NOT EXISTS gb_training_eval_items (
+	id            INTEGER PRIMARY KEY AUTOINCREMENT,
+	eval_id       INTEGER NOT NULL REFERENCES gb_training_eval_meta(result_id) ON DELETE CASCADE,
+	idx           INTEGER NOT NULL,
+	batch         INTEGER NOT NULL,
+	instruction   TEXT NOT NULL,
+	input         TEXT NOT NULL DEFAULT '',
+	reference     TEXT NOT NULL DEFAULT '',
+	response      TEXT NOT NULL DEFAULT '',
+	status        TEXT NOT NULL CHECK (status IN ('judged', 'failed')),
+	error         TEXT NOT NULL DEFAULT '',
+	score         INTEGER,
+	reason        TEXT NOT NULL DEFAULT '',
+	input_tokens  INTEGER NOT NULL DEFAULT 0,
+	output_tokens INTEGER NOT NULL DEFAULT 0,
+	duration_ms   INTEGER NOT NULL DEFAULT 0,
+	UNIQUE (eval_id, idx)
+);`
 
 // initSchema applies the database schema.
 func initSchema(d *sql.DB) error {

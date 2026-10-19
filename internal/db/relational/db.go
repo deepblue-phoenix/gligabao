@@ -28,7 +28,7 @@ type (
 	Experiment            = model.Experiment
 	EvalRef               = model.EvalRef
 	ExperimentRun         = model.ExperimentRun
-	ExperimentRunEval     = model.ExperimentRunEval
+	ExperimentResult      = model.ExperimentResult
 	ExperimentTrajectory  = model.ExperimentTrajectory
 	ExperimentEvalPoint   = model.ExperimentEvalPoint
 	ExperimentArtifact    = model.ExperimentArtifact
@@ -116,6 +116,8 @@ var NewRememberRun = model.NewRememberRun
 
 // Experiment, run and trajectory constants (see package model).
 const (
+	EvalTypeKnowledge  = model.EvalTypeKnowledge
+	EvalTypeTraining   = model.EvalTypeTraining
 	ExperimentRunning  = model.ExperimentRunning
 	ExperimentPassed   = model.ExperimentPassed
 	ExperimentFailed   = model.ExperimentFailed

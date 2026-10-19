@@ -10,10 +10,11 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Training experiments (gb_training_experiments and gb_training_experiment_runs, see db_schema.go)
+// Training experiments: the 'training' rows of gb_experiments and gb_experiment_runs (see db_schema.go). A training run is a
+// gb_experiment_runs row with ONE eval (db_trained_model_eval.go); it is made with the eval and joins an experiment later.
 
 const trainingExperimentColumns = `x.id, x.name, x.description, x.config, x.created_at,
-	(SELECT COUNT(*) FROM gb_training_experiment_runs r WHERE r.experiment_id = x.id)`
+	(SELECT COUNT(*) FROM gb_experiment_runs r WHERE r.experiment_id = x.id)`
 
 func scanTrainingExperiment(s rowScanner) (*model.TrainingExperiment, error) {
 	var e model.TrainingExperiment
@@ -30,14 +31,14 @@ func scanTrainingExperiment(s rowScanner) (*model.TrainingExperiment, error) {
 // if needed. An existing experiment is returned unchanged.
 func EnsureTrainingExperiment(ctx context.Context, d *sql.DB, name, description string, config map[string]any) (*model.TrainingExperiment, error) {
 	if _, err := d.ExecContext(ctx, `
-		INSERT INTO gb_training_experiments (name, description, config, created_at)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT (name) DO NOTHING`,
-		name, description, jsonObject(config), FormatTime(Now())); err != nil {
+		INSERT INTO gb_experiments (type, name, description, config, created_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT (type, name) DO NOTHING`,
+		model.EvalTypeTraining, name, description, jsonObject(config), FormatTime(Now())); err != nil {
 		return nil, fmt.Errorf("create training experiment: %w", err)
 	}
 	e, err := scanTrainingExperiment(d.QueryRowContext(ctx, `
-		SELECT `+trainingExperimentColumns+` FROM gb_training_experiments x WHERE x.name = ?`, name))
+		SELECT `+trainingExperimentColumns+` FROM gb_experiments x WHERE x.type = ? AND x.name = ?`, model.EvalTypeTraining, name))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
@@ -47,7 +48,7 @@ func EnsureTrainingExperiment(ctx context.Context, d *sql.DB, name, description 
 // GetTrainingExperiment returns the training experiment with that ID, or model.ErrNotFound.
 func GetTrainingExperiment(ctx context.Context, d *sql.DB, id int64) (*model.TrainingExperiment, error) {
 	e, err := scanTrainingExperiment(d.QueryRowContext(ctx, `
-		SELECT `+trainingExperimentColumns+` FROM gb_training_experiments x WHERE x.id = ?`, id))
+		SELECT `+trainingExperimentColumns+` FROM gb_experiments x WHERE x.type = ? AND x.id = ?`, model.EvalTypeTraining, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
@@ -56,7 +57,8 @@ func GetTrainingExperiment(ctx context.Context, d *sql.DB, id int64) (*model.Tra
 
 // ListTrainingExperiments returns all training experiments, newest first.
 func ListTrainingExperiments(ctx context.Context, d *sql.DB) ([]model.TrainingExperiment, error) {
-	rows, err := d.QueryContext(ctx, `SELECT `+trainingExperimentColumns+` FROM gb_training_experiments x ORDER BY x.id DESC`)
+	rows, err := d.QueryContext(ctx, `
+		SELECT `+trainingExperimentColumns+` FROM gb_experiments x WHERE x.type = ? ORDER BY x.id DESC`, model.EvalTypeTraining)
 	if err != nil {
 		return nil, fmt.Errorf("list training experiments: %w", err)
 	}
@@ -73,14 +75,13 @@ func ListTrainingExperiments(ctx context.Context, d *sql.DB) ([]model.TrainingEx
 }
 
 const trainingExperimentRunSelect = `
-	SELECT r.id, r.experiment_id, r.eval_id, r.created_at,
-		e.id, e.trained_model_id, e.status, e.dataset, e.dataset_sha256, e.params, e.judge_model, e.num_examples,
-		e.num_answered, e.num_judged, e.num_failed, e.num_correct, e.num_partial, e.num_incorrect, e.score_sum, e.num_batches,
-		e.judge_calls, e.judge_input_tokens, e.judge_output_tokens, e.judge_cost_usd, e.error, e.created_at, e.finished_at,
+	SELECT r.id, COALESCE(r.experiment_id, 0), e.id, r.started_at,
+		` + trainedModelEvalColumns + `,
 		m.id, m.name, m.base_model, m.model_size, m.num_train_steps, m.final_loss, m.params
-	FROM gb_training_experiment_runs r
-	JOIN gb_trained_model_evals e ON e.id = r.eval_id
-	JOIN gb_trained_models m ON m.id = e.trained_model_id`
+	FROM gb_experiment_runs r
+	JOIN gb_experiment_results e ON e.run_id = r.id
+	JOIN gb_training_eval_meta tm ON tm.result_id = e.id
+	JOIN gb_trained_models m ON m.id = tm.trained_model_id`
 
 func scanTrainingExperimentRun(s rowScanner) (*model.TrainingExperimentRun, error) {
 	var r model.TrainingExperimentRun
@@ -109,31 +110,55 @@ func scanTrainingExperimentRun(s rowScanner) (*model.TrainingExperimentRun, erro
 	return &r, nil
 }
 
-// StartTrainingExperimentRun makes the eval (gb_trained_model_evals) a run of the experiment and returns the run. It returns
-// model.ErrNotFound if the experiment or the eval does not exist; an eval can be the run of one experiment only.
+// StartTrainingExperimentRun makes the eval (its run) part of the experiment and returns the run: the run's experiment is set
+// and the eval is added to the experiment's evals (gb_experiment_evals). It returns model.ErrNotFound if the experiment or the
+// eval does not exist, and an error if the eval is in an experiment already (an eval can be in one experiment only).
 func StartTrainingExperimentRun(ctx context.Context, d *sql.DB, experimentID, evalID int64) (*model.TrainingExperimentRun, error) {
-	res, err := d.ExecContext(ctx, `
-		INSERT INTO gb_training_experiment_runs (experiment_id, eval_id, created_at)
-		SELECT x.id, e.id, ?
-		FROM gb_training_experiments x, gb_trained_model_evals e
-		WHERE x.id = ? AND e.id = ?`,
-		FormatTime(Now()), experimentID, evalID)
+	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("start training experiment run: %w", err)
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
+	defer tx.Rollback()
+	var one int
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM gb_experiments WHERE id = ? AND type = 'training'`, experimentID).Scan(&one); errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
+	} else if err != nil {
+		return nil, fmt.Errorf("start training experiment run: %w", err)
 	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return nil, err
+	var runID int64
+	var suite, name string
+	var inExperiment sql.NullInt64
+	err = tx.QueryRowContext(ctx, `
+		SELECT r.id, r.experiment_id, e.suite, e.eval_name
+		FROM gb_experiment_results e JOIN gb_experiment_runs r ON r.id = e.run_id
+		WHERE e.id = ? AND e.type = 'training'`, evalID).Scan(&runID, &inExperiment, &suite, &name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, model.ErrNotFound
+	} else if err != nil {
+		return nil, fmt.Errorf("start training experiment run: %w", err)
 	}
-	return GetTrainingExperimentRun(ctx, d, id)
+	if inExperiment.Valid {
+		return nil, fmt.Errorf("start training experiment run: eval %d is in experiment %d already", evalID, inExperiment.Int64)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE gb_experiment_runs SET experiment_id = ? WHERE id = ?`, experimentID, runID); err != nil {
+		return nil, fmt.Errorf("start training experiment run: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO gb_experiment_evals (experiment_id, type, suite, eval_name, created_at)
+		VALUES (?, 'training', ?, ?, ?)
+		ON CONFLICT (experiment_id, suite, eval_name) DO NOTHING`,
+		experimentID, suite, name, FormatTime(Now())); err != nil {
+		return nil, fmt.Errorf("start training experiment run: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("start training experiment run: %w", err)
+	}
+	return GetTrainingExperimentRun(ctx, d, runID)
 }
 
 // GetTrainingExperimentRun returns the run with that ID, or model.ErrNotFound.
 func GetTrainingExperimentRun(ctx context.Context, d *sql.DB, id int64) (*model.TrainingExperimentRun, error) {
-	r, err := scanTrainingExperimentRun(d.QueryRowContext(ctx, trainingExperimentRunSelect+` WHERE r.id = ?`, id))
+	r, err := scanTrainingExperimentRun(d.QueryRowContext(ctx, trainingExperimentRunSelect+` WHERE r.type = 'training' AND r.id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
@@ -142,7 +167,7 @@ func GetTrainingExperimentRun(ctx context.Context, d *sql.DB, id int64) (*model.
 
 // ListTrainingExperimentRuns returns the runs of the experiment, oldest first.
 func ListTrainingExperimentRuns(ctx context.Context, d *sql.DB, experimentID int64) ([]model.TrainingExperimentRun, error) {
-	rows, err := d.QueryContext(ctx, trainingExperimentRunSelect+` WHERE r.experiment_id = ? ORDER BY r.id`, experimentID)
+	rows, err := d.QueryContext(ctx, trainingExperimentRunSelect+` WHERE r.type = 'training' AND r.experiment_id = ? ORDER BY r.id`, experimentID)
 	if err != nil {
 		return nil, fmt.Errorf("list training experiment runs: %w", err)
 	}

@@ -59,15 +59,15 @@ func StartExperimentRun(ctx context.Context, d *sql.DB, experimentID int64, para
 	return nil, unsupported()
 }
 
-// RecordExperimentRunEval stores the result of one eval of a running run (e.RunID) together with the references to
+// RecordExperimentResult stores the result of one eval of a running run (e.RunID) together with the references to
 // its trajectories (numbered in order), and adds the eval to the experiment's evals. It returns the stored copy,
 // ErrNotFound if the run does not exist, and ErrRunNotRunning if it is already finished.
-func RecordExperimentRunEval(ctx context.Context, d *sql.DB, e ExperimentRunEval) (*ExperimentRunEval, error) {
+func RecordExperimentResult(ctx context.Context, d *sql.DB, e ExperimentResult) (*ExperimentResult, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.RecordExperimentRunEval(ctx, d, e)
+		return sqlite.RecordExperimentResult(ctx, d, e)
 	case config.DBBackendPostgres:
-		return postgres.RecordExperimentRunEval(ctx, d, e)
+		return postgres.RecordExperimentResult(ctx, d, e)
 	}
 	return nil, unsupported()
 }
@@ -106,20 +106,20 @@ func GetExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*ExperimentR
 	return nil, unsupported()
 }
 
-// GetExperimentRunEvalDataset returns the dataset (deleted or not) an eval ran in, whose graph is the one the eval
+// GetExperimentResultDataset returns the dataset (deleted or not) an eval ran in, whose graph is the one the eval
 // built, or ErrNotFound if the eval does not exist or has none.
-func GetExperimentRunEvalDataset(ctx context.Context, d *sql.DB, runEvalID int64) (*Dataset, error) {
+func GetExperimentResultDataset(ctx context.Context, d *sql.DB, resultID int64) (*Dataset, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.GetExperimentRunEvalDataset(ctx, d, runEvalID)
+		return sqlite.GetExperimentResultDataset(ctx, d, resultID)
 	case config.DBBackendPostgres:
-		return postgres.GetExperimentRunEvalDataset(ctx, d, runEvalID)
+		return postgres.GetExperimentResultDataset(ctx, d, resultID)
 	}
 	return nil, unsupported()
 }
 
 // FindExperimentTrajectory returns the reference to the trajectory with the given ATIF trajectory_id, or ErrNotFound.
-// Its RunEvalID leads to the eval, and through it to the run and the experiment.
+// Its ResultID leads to the eval, and through it to the run and the experiment.
 func FindExperimentTrajectory(ctx context.Context, d *sql.DB, trajectoryID string) (*ExperimentTrajectory, error) {
 	switch backend() {
 	case config.DBBackendSQLite:

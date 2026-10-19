@@ -57,7 +57,7 @@ func (fakeSearcher) WebSearch(_ context.Context, req ai.WebSearchRequest) (*ai.W
 }
 
 // TestWebSearches checks the web search endpoints of the admin UI: what a remember call with web_search left in the
-// database (stats, per dataset) and what its trajectory recorded (per eval, and the totals).
+// database (stats, per dataset) and what its trajectory recorded (per result, and the totals).
 func TestWebSearches(t *testing.T) { dbtest.Run(t, testWebSearches) }
 
 func testWebSearches(t *testing.T, d *sql.DB) {
@@ -99,24 +99,24 @@ func testWebSearches(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tr.Record(ctx, experiments.EvalResult{Suite: "s", Name: "a", DatasetID: dsID, Trajectories: append([]*atif.Trajectory{res.Trajectory}, plain.Trajectory), TrajectoryDir: dir}); err != nil {
+	if _, err := tr.Record(ctx, experiments.CaseOutcome{Suite: "s", Name: "a", DatasetID: dsID, Trajectories: append([]*atif.Trajectory{res.Trajectory}, plain.Trajectory), TrajectoryDir: dir}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tr.Finish(ctx); err != nil {
 		t.Fatal(err)
 	}
 
-	// Per eval, from the trajectory.
-	var perEval struct {
-		Evals []struct {
+	// Per result (eval), from the trajectory.
+	var perResult struct {
+		Results []struct {
 			Totals   admin.WebSearchTotals `json:"totals"`
 			Searches []admin.WebSearch     `json:"searches"`
-		} `json:"evals"`
+		} `json:"results"`
 	}
-	if c := get(admin.EvalRunWebSearches(d, dir), "/x/"+strconv.FormatInt(tr.Run.ID, 10), &perEval); c != 200 || len(perEval.Evals) != 1 {
-		t.Fatalf("per eval: %d %+v", c, perEval)
+	if c := get(admin.EvalRunWebSearches(d, dir), "/x/"+strconv.FormatInt(tr.Run.ID, 10), &perResult); c != 200 || len(perResult.Results) != 1 {
+		t.Fatalf("per result: %d %+v", c, perResult)
 	}
-	e := perEval.Evals[0]
+	e := perResult.Results[0]
 	if e.Totals.EntitySearches != 3 || e.Totals.Found != 2 || e.Totals.Empty != 1 || e.Totals.EngineSearches != 6 || e.Totals.Latency.Count != 3 || e.Totals.Sources != 3 {
 		t.Errorf("totals = %+v", e.Totals)
 	}

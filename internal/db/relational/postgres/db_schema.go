@@ -148,14 +148,110 @@ ALTER TABLE gb_trained_model_inferences ADD COLUMN IF NOT EXISTS cold_start BOOL
 ALTER TABLE gb_trained_model_inferences ADD COLUMN IF NOT EXISTS load_seconds DOUBLE PRECISION NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_gb_trained_model_inferences_model ON gb_trained_model_inferences(trained_model_id, id);
 
--- LLM-as-a-judge evals of trained models and their items (see sqlite/db_schema.go).
-CREATE TABLE IF NOT EXISTS gb_trained_model_evals (
-	id                  BIGSERIAL PRIMARY KEY,
+-- JSONL training datasets found in the training datasets directory by the Go server (see sqlite/db_schema.go).
+CREATE TABLE IF NOT EXISTS gb_training_datasets (
+	id          BIGSERIAL PRIMARY KEY,
+	filename    TEXT NOT NULL UNIQUE,
+	size_bytes  BIGINT NOT NULL,
+	num_records BIGINT NOT NULL,
+	sha256      TEXT NOT NULL,
+	status      TEXT NOT NULL CHECK (status IN ('stored', 'synced')),
+	created_at  TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `,
+	updated_at  TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `,
+	synced_at   TIMESTAMPTZ
+);
+
+-- EVALS: one set of tables for both kinds of eval ('knowledge' and 'training'), the universal ones with a type column and
+-- a metadata table for each kind (see sqlite/db_schema.go for what the columns mean). The composite foreign keys
+-- (<parent id>, type) -> parent (id, type) keep the type the same down the chain.
+CREATE TABLE IF NOT EXISTS gb_experiments (
+	id          BIGSERIAL PRIMARY KEY,
+	type        TEXT NOT NULL CHECK (type IN ('knowledge', 'training')),
+	name        TEXT NOT NULL,
+	description TEXT NOT NULL DEFAULT '',
+	config      JSONB NOT NULL DEFAULT '{}',
+	created_at  TIMESTAMPTZ NOT NULL,
+	UNIQUE (type, name),
+	UNIQUE (id, type)
+);
+
+CREATE TABLE IF NOT EXISTS gb_experiment_evals (
+	experiment_id BIGINT NOT NULL,
+	type          TEXT NOT NULL,
+	suite         TEXT NOT NULL DEFAULT '',
+	eval_name     TEXT NOT NULL,
+	created_at    TIMESTAMPTZ NOT NULL,
+	PRIMARY KEY (experiment_id, suite, eval_name),
+	FOREIGN KEY (experiment_id, type) REFERENCES gb_experiments(id, type) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS gb_experiment_runs (
+	id            BIGSERIAL PRIMARY KEY,
+	type          TEXT NOT NULL CHECK (type IN ('knowledge', 'training')),
+	experiment_id BIGINT,
+	status        TEXT NOT NULL CHECK (status IN ('running', 'passed', 'failed', 'completed', 'cancelled')),
+	params        JSONB NOT NULL DEFAULT '{}',
+	total_evals   BIGINT NOT NULL DEFAULT 0,
+	passed_evals  BIGINT NOT NULL DEFAULT 0,
+	failed_evals  BIGINT NOT NULL DEFAULT 0,
+	cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
+	started_at    TIMESTAMPTZ NOT NULL,
+	finished_at   TIMESTAMPTZ,
+	UNIQUE (id, type),
+	CHECK (type <> 'knowledge' OR experiment_id IS NOT NULL),
+	FOREIGN KEY (experiment_id, type) REFERENCES gb_experiments(id, type) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_runs(experiment_id);
+
+CREATE TABLE IF NOT EXISTS gb_experiment_results (
+	id          BIGSERIAL PRIMARY KEY,
+	type        TEXT NOT NULL CHECK (type IN ('knowledge', 'training')),
+	run_id      BIGINT NOT NULL,
+	suite       TEXT NOT NULL DEFAULT '',
+	eval_name   TEXT NOT NULL,
+	status      TEXT NOT NULL CHECK (status IN ('running', 'passed', 'failed', 'error', 'completed', 'cancelled')),
+	error       TEXT NOT NULL DEFAULT '',
+	cost_usd    DOUBLE PRECISION NOT NULL DEFAULT 0,
+	started_at  TIMESTAMPTZ NOT NULL,
+	finished_at TIMESTAMPTZ,
+	UNIQUE (id, type),
+	FOREIGN KEY (run_id, type) REFERENCES gb_experiment_runs(id, type) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_results_run ON gb_experiment_results(run_id);
+
+CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
+	id            BIGSERIAL PRIMARY KEY,
+	result_id   BIGINT NOT NULL REFERENCES gb_experiment_results(id) ON DELETE CASCADE,
+	seq           BIGINT NOT NULL,
+	kind          TEXT NOT NULL CHECK (kind IN ('remember', 'recall')),
+	trajectory_id TEXT NOT NULL,
+	agent_name    TEXT NOT NULL DEFAULT '',
+	steps         BIGINT NOT NULL DEFAULT 0,
+	cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
+	path          TEXT NOT NULL DEFAULT '',
+	artifact_ids  JSONB NOT NULL DEFAULT '[]',
+	created_at    TIMESTAMPTZ NOT NULL,
+	UNIQUE (result_id, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_trajectories_tid ON gb_experiment_trajectories(trajectory_id);
+
+CREATE TABLE IF NOT EXISTS gb_knowledge_eval_meta (
+	result_id   BIGINT PRIMARY KEY,
+	type          TEXT NOT NULL DEFAULT 'knowledge' CHECK (type = 'knowledge'),
+	answer        TEXT NOT NULL DEFAULT '',
+	problems      JSONB NOT NULL DEFAULT '[]',
+	passed_checks JSONB NOT NULL DEFAULT '[]',
+	dataset_id    BIGINT REFERENCES gb_datasets(id),
+	steps         BIGINT NOT NULL DEFAULT 0,
+	FOREIGN KEY (result_id, type) REFERENCES gb_experiment_results(id, type) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS gb_training_eval_meta (
+	result_id         BIGINT PRIMARY KEY,
+	type                TEXT NOT NULL DEFAULT 'training' CHECK (type = 'training'),
 	trained_model_id    BIGINT NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
-	status              TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed', 'cancelled')),
 	dataset             TEXT NOT NULL DEFAULT '',
 	dataset_sha256      TEXT NOT NULL DEFAULT '',
-	params              TEXT NOT NULL DEFAULT '{}',
 	judge_model         TEXT NOT NULL DEFAULT '',
 	num_examples        BIGINT NOT NULL DEFAULT 0,
 	num_answered        BIGINT NOT NULL DEFAULT 0,
@@ -169,16 +265,25 @@ CREATE TABLE IF NOT EXISTS gb_trained_model_evals (
 	judge_calls         BIGINT NOT NULL DEFAULT 0,
 	judge_input_tokens  BIGINT NOT NULL DEFAULT 0,
 	judge_output_tokens BIGINT NOT NULL DEFAULT 0,
-	judge_cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
-	error               TEXT NOT NULL DEFAULT '',
-	created_at          TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `,
-	finished_at         TIMESTAMPTZ
+	FOREIGN KEY (result_id, type) REFERENCES gb_experiment_results(id, type) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_gb_trained_model_evals_model ON gb_trained_model_evals(trained_model_id, id);
+CREATE INDEX IF NOT EXISTS idx_gb_training_eval_meta_model ON gb_training_eval_meta(trained_model_id, result_id);
 
-CREATE TABLE IF NOT EXISTS gb_trained_model_eval_items (
+-- Deleting a trained model deletes the metadata of its evals; this trigger deletes their runs too (see sqlite/db_schema.go).
+CREATE OR REPLACE FUNCTION gb_training_eval_meta_deleted() RETURNS trigger AS $$
+BEGIN
+	DELETE FROM gb_experiment_runs WHERE type = 'training'
+		AND id = (SELECT run_id FROM gb_experiment_results WHERE id = OLD.result_id);
+	RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS trg_gb_training_eval_meta_deleted ON gb_training_eval_meta;
+CREATE TRIGGER trg_gb_training_eval_meta_deleted AFTER DELETE ON gb_training_eval_meta
+	FOR EACH ROW EXECUTE FUNCTION gb_training_eval_meta_deleted();
+
+CREATE TABLE IF NOT EXISTS gb_training_eval_items (
 	id            BIGSERIAL PRIMARY KEY,
-	eval_id       BIGINT NOT NULL REFERENCES gb_trained_model_evals(id) ON DELETE CASCADE,
+	eval_id       BIGINT NOT NULL REFERENCES gb_training_eval_meta(result_id) ON DELETE CASCADE,
 	idx           BIGINT NOT NULL,
 	batch         BIGINT NOT NULL,
 	instruction   TEXT NOT NULL,
@@ -193,101 +298,7 @@ CREATE TABLE IF NOT EXISTS gb_trained_model_eval_items (
 	output_tokens BIGINT NOT NULL DEFAULT 0,
 	duration_ms   BIGINT NOT NULL DEFAULT 0,
 	UNIQUE (eval_id, idx)
-);
-
--- JSONL training datasets found in the training datasets directory by the Go server (see sqlite/db_schema.go).
-CREATE TABLE IF NOT EXISTS gb_training_datasets (
-	id          BIGSERIAL PRIMARY KEY,
-	filename    TEXT NOT NULL UNIQUE,
-	size_bytes  BIGINT NOT NULL,
-	num_records BIGINT NOT NULL,
-	sha256      TEXT NOT NULL,
-	status      TEXT NOT NULL CHECK (status IN ('stored', 'synced')),
-	created_at  TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `,
-	updated_at  TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `,
-	synced_at   TIMESTAMPTZ
-);
-
-CREATE TABLE IF NOT EXISTS gb_experiments (
-	id          BIGSERIAL PRIMARY KEY,
-	name        TEXT NOT NULL UNIQUE,
-	description TEXT NOT NULL DEFAULT '',
-	config      JSONB NOT NULL DEFAULT '{}',
-	created_at  TIMESTAMPTZ NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS gb_experiment_evals (
-	experiment_id BIGINT NOT NULL REFERENCES gb_experiments(id) ON DELETE CASCADE,
-	suite         TEXT NOT NULL,
-	eval_name     TEXT NOT NULL,
-	created_at    TIMESTAMPTZ NOT NULL,
-	PRIMARY KEY (experiment_id, suite, eval_name)
-);
-
-CREATE TABLE IF NOT EXISTS gb_experiment_runs (
-	id            BIGSERIAL PRIMARY KEY,
-	experiment_id BIGINT NOT NULL REFERENCES gb_experiments(id) ON DELETE CASCADE,
-	status        TEXT NOT NULL CHECK (status IN ('running', 'passed', 'failed')),
-	params        JSONB NOT NULL DEFAULT '{}',
-	total_evals   BIGINT NOT NULL DEFAULT 0,
-	passed_evals  BIGINT NOT NULL DEFAULT 0,
-	failed_evals  BIGINT NOT NULL DEFAULT 0,
-	cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
-	started_at    TIMESTAMPTZ NOT NULL,
-	finished_at   TIMESTAMPTZ
-);
-CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_runs(experiment_id);
-
-CREATE TABLE IF NOT EXISTS gb_experiment_run_evals (
-	id          BIGSERIAL PRIMARY KEY,
-	run_id      BIGINT NOT NULL REFERENCES gb_experiment_runs(id) ON DELETE CASCADE,
-	suite       TEXT NOT NULL,
-	eval_name   TEXT NOT NULL,
-	status      TEXT NOT NULL CHECK (status IN ('passed', 'failed', 'error')),
-	answer      TEXT NOT NULL DEFAULT '',
-	problems    JSONB NOT NULL DEFAULT '[]',
-	passed_checks JSONB NOT NULL DEFAULT '[]',
-	dataset_id  BIGINT REFERENCES gb_datasets(id),
-	error       TEXT NOT NULL DEFAULT '',
-	steps       BIGINT NOT NULL DEFAULT 0,
-	cost_usd    DOUBLE PRECISION NOT NULL DEFAULT 0,
-	started_at  TIMESTAMPTZ NOT NULL,
-	finished_at TIMESTAMPTZ NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_gb_experiment_run_evals_run ON gb_experiment_run_evals(run_id);
-
-CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
-	id            BIGSERIAL PRIMARY KEY,
-	run_eval_id   BIGINT NOT NULL REFERENCES gb_experiment_run_evals(id) ON DELETE CASCADE,
-	seq           BIGINT NOT NULL,
-	kind          TEXT NOT NULL CHECK (kind IN ('remember', 'recall')),
-	trajectory_id TEXT NOT NULL,
-	agent_name    TEXT NOT NULL DEFAULT '',
-	steps         BIGINT NOT NULL DEFAULT 0,
-	cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
-	path          TEXT NOT NULL DEFAULT '',
-	artifact_ids  JSONB NOT NULL DEFAULT '[]',
-	created_at    TIMESTAMPTZ NOT NULL,
-	UNIQUE (run_eval_id, seq)
-);
-CREATE INDEX IF NOT EXISTS idx_gb_experiment_trajectories_tid ON gb_experiment_trajectories(trajectory_id);
-
--- Training experiments: named series of evals of trained models (see sqlite/db_schema.go).
-CREATE TABLE IF NOT EXISTS gb_training_experiments (
-	id          BIGSERIAL PRIMARY KEY,
-	name        TEXT NOT NULL UNIQUE,
-	description TEXT NOT NULL DEFAULT '',
-	config      JSONB NOT NULL DEFAULT '{}',
-	created_at  TIMESTAMPTZ NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS gb_training_experiment_runs (
-	id            BIGSERIAL PRIMARY KEY,
-	experiment_id BIGINT NOT NULL REFERENCES gb_training_experiments(id) ON DELETE CASCADE,
-	eval_id       BIGINT NOT NULL UNIQUE REFERENCES gb_trained_model_evals(id) ON DELETE CASCADE,
-	created_at    TIMESTAMPTZ NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_gb_training_experiment_runs_experiment ON gb_training_experiment_runs(experiment_id);`
+);`
 
 // initSchema applies the database schema. Concurrent starters are serialized with an advisory lock, because
 // CREATE ... IF NOT EXISTS can still race in PostgreSQL.

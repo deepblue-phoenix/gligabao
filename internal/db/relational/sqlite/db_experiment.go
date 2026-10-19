@@ -82,12 +82,12 @@ func parseStoredTime(s string) (t time.Time) {
 
 //---------------------------------------------------------------------------------------------
 
-const experimentColumns = `id, name, description, config, created_at`
+const experimentColumns = `id, type, name, description, config, created_at`
 
 func scanExperiment(r scanner) (*model.Experiment, error) {
 	var e model.Experiment
 	var config, created string
-	if err := r.Scan(&e.ID, &e.Name, &e.Description, &config, &created); err != nil {
+	if err := r.Scan(&e.ID, &e.Type, &e.Name, &e.Description, &config, &created); err != nil {
 		return nil, err
 	}
 	e.Config = parseObject(config)
@@ -116,25 +116,25 @@ func experimentEvals(ctx context.Context, q rower, experimentID int64) ([]model.
 	return out, rows.Err()
 }
 
-// EnsureExperiment returns the experiment called name, creating it first (with the given description and config)
+// EnsureExperiment returns the knowledge experiment called name, creating it first (with the given description and config)
 // if needed. An existing experiment is returned unchanged.
 func EnsureExperiment(ctx context.Context, d *sql.DB, name, description string, config map[string]any) (*model.Experiment, error) {
 	if _, err := d.ExecContext(ctx, `
-		INSERT INTO gb_experiments (name, description, config, created_at)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT (name) DO NOTHING`,
-		name, description, jsonObject(config), FormatTime(Now())); err != nil {
+		INSERT INTO gb_experiments (type, name, description, config, created_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT (type, name) DO NOTHING`,
+		model.EvalTypeKnowledge, name, description, jsonObject(config), FormatTime(Now())); err != nil {
 		return nil, fmt.Errorf("create experiment: %w", err)
 	}
 	return GetExperiment(ctx, d, name)
 }
 
-// GetExperiment returns the experiment called name, with its Evals, or model.ErrNotFound.
+// GetExperiment returns the knowledge experiment called name, with its Evals, or model.ErrNotFound.
 func GetExperiment(ctx context.Context, d *sql.DB, name string) (*model.Experiment, error) {
 	e, err := scanExperiment(d.QueryRowContext(ctx, `
 		SELECT `+experimentColumns+`
 		FROM gb_experiments
-		WHERE name = ?`, name))
+		WHERE type = ? AND name = ?`, model.EvalTypeKnowledge, name))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
@@ -147,12 +147,13 @@ func GetExperiment(ctx context.Context, d *sql.DB, name string) (*model.Experime
 	return e, nil
 }
 
-// ListExperiments returns all experiments, oldest first, without their Evals.
+// ListExperiments returns all knowledge experiments, oldest first, without their Evals.
 func ListExperiments(ctx context.Context, d *sql.DB) ([]model.Experiment, error) {
 	rows, err := d.QueryContext(ctx, `
 		SELECT `+experimentColumns+`
 		FROM gb_experiments
-		ORDER BY id`)
+		WHERE type = ?
+		ORDER BY id`, model.EvalTypeKnowledge)
 	if err != nil {
 		return nil, fmt.Errorf("list experiments: %w", err)
 	}
@@ -171,13 +172,13 @@ func ListExperiments(ctx context.Context, d *sql.DB) ([]model.Experiment, error)
 //---------------------------------------------------------------------------------------------
 
 const runColumns = `
-	id, experiment_id, status, params, total_evals, passed_evals, failed_evals, cost_usd, started_at, finished_at`
+	id, type, COALESCE(experiment_id, 0), status, params, total_evals, passed_evals, failed_evals, cost_usd, started_at, finished_at`
 
 func scanRun(r scanner) (*model.ExperimentRun, error) {
 	var run model.ExperimentRun
 	var params, started string
 	var finished sql.NullString
-	if err := r.Scan(&run.ID, &run.ExperimentID, &run.Status, &params, &run.TotalEvals, &run.PassedEvals,
+	if err := r.Scan(&run.ID, &run.Type, &run.ExperimentID, &run.Status, &params, &run.TotalEvals, &run.PassedEvals,
 		&run.FailedEvals, &run.CostUSD, &started, &finished); err != nil {
 		return nil, err
 	}
@@ -191,11 +192,11 @@ func scanRun(r scanner) (*model.ExperimentRun, error) {
 // experiment does not exist.
 func StartExperimentRun(ctx context.Context, d *sql.DB, experimentID int64, params map[string]any) (*model.ExperimentRun, error) {
 	res, err := d.ExecContext(ctx, `
-		INSERT INTO gb_experiment_runs (experiment_id, status, params, started_at)
-		SELECT id, 'running', ?, ?
+		INSERT INTO gb_experiment_runs (type, experiment_id, status, params, started_at)
+		SELECT type, id, 'running', ?, ?
 		FROM gb_experiments
-		WHERE id = ?`,
-		jsonObject(params), FormatTime(Now()), experimentID)
+		WHERE id = ? AND type = ?`,
+		jsonObject(params), FormatTime(Now()), experimentID, model.EvalTypeKnowledge)
 	if err != nil {
 		return nil, fmt.Errorf("start experiment run: %w", err)
 	}
@@ -213,18 +214,18 @@ func getRun(ctx context.Context, q rower, id int64) (*model.ExperimentRun, error
 	run, err := scanRun(q.QueryRowContext(ctx, `
 		SELECT `+runColumns+`
 		FROM gb_experiment_runs
-		WHERE id = ?`, id))
+		WHERE id = ? AND type = ?`, id, model.EvalTypeKnowledge))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
 	return run, err
 }
 
-// RecordExperimentRunEval stores the result of one eval of a running run, with its trajectory references, and adds
+// RecordExperimentResult stores the result of one eval of a running run, with its trajectory references, and adds
 // the eval to the experiment's evals. The trajectories are numbered in order; the returned copy has the IDs of the
-// eval and its trajectories set (e.ID, e.RunID and the trajectories' ID, RunEvalID, Seq and CreatedAt are overwritten).
+// eval and its trajectories set (e.ID, e.RunID and the trajectories' ID, ResultID, Seq and CreatedAt are overwritten).
 // It returns model.ErrNotFound if the run does not exist and model.ErrRunNotRunning if it is already finished.
-func RecordExperimentRunEval(ctx context.Context, d *sql.DB, e model.ExperimentRunEval) (*model.ExperimentRunEval, error) {
+func RecordExperimentResult(ctx context.Context, d *sql.DB, e model.ExperimentResult) (*model.ExperimentResult, error) {
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("record experiment eval: %w", err)
@@ -236,7 +237,7 @@ func RecordExperimentRunEval(ctx context.Context, d *sql.DB, e model.ExperimentR
 	err = tx.QueryRowContext(ctx, `
 		SELECT experiment_id, status
 		FROM gb_experiment_runs
-		WHERE id = ?`, e.RunID).Scan(&experimentID, &status)
+		WHERE id = ? AND type = ?`, e.RunID, model.EvalTypeKnowledge).Scan(&experimentID, &status)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
@@ -247,37 +248,41 @@ func RecordExperimentRunEval(ctx context.Context, d *sql.DB, e model.ExperimentR
 		return nil, model.ErrRunNotRunning
 	}
 
+	e.Type = model.EvalTypeKnowledge
 	res, err := tx.ExecContext(ctx, `
-		INSERT INTO gb_experiment_run_evals (
-			run_id, suite, eval_name, status, answer, problems, passed_checks, dataset_id, error, steps, cost_usd, started_at, finished_at
-		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		e.RunID, e.Suite, e.Name, e.Status, e.Answer, jsonList(e.Problems), jsonList(e.PassedChecks), e.DatasetID, e.Error, e.Steps, e.CostUSD,
-		FormatTime(e.StartedAt), FormatTime(e.FinishedAt))
+		INSERT INTO gb_experiment_results (type, run_id, suite, eval_name, status, error, cost_usd, started_at, finished_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.Type, e.RunID, e.Suite, e.Name, e.Status, e.Error, e.CostUSD, FormatTime(e.StartedAt), FormatTime(e.FinishedAt))
 	if err != nil {
 		return nil, fmt.Errorf("record experiment eval: %w", err)
 	}
 	if e.ID, err = res.LastInsertId(); err != nil {
 		return nil, err
 	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO gb_knowledge_eval_meta (result_id, answer, problems, passed_checks, dataset_id, steps)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		e.ID, e.Answer, jsonList(e.Problems), jsonList(e.PassedChecks), e.DatasetID, e.Steps); err != nil {
+		return nil, fmt.Errorf("record experiment eval: %w", err)
+	}
 
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO gb_experiment_evals (experiment_id, suite, eval_name, created_at)
-		VALUES (?, ?, ?, ?)
+		INSERT INTO gb_experiment_evals (experiment_id, type, suite, eval_name, created_at)
+		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (experiment_id, suite, eval_name) DO NOTHING`,
-		experimentID, e.Suite, e.Name, FormatTime(Now())); err != nil {
+		experimentID, model.EvalTypeKnowledge, e.Suite, e.Name, FormatTime(Now())); err != nil {
 		return nil, fmt.Errorf("record experiment eval: %w", err)
 	}
 
 	trajs := make([]model.ExperimentTrajectory, len(e.Trajectories))
 	for i, t := range e.Trajectories {
-		t.RunEvalID, t.Seq, t.CreatedAt = e.ID, i+1, Now()
+		t.ResultID, t.Seq, t.CreatedAt = e.ID, i+1, Now()
 		res, err := tx.ExecContext(ctx, `
 			INSERT INTO gb_experiment_trajectories (
-				run_eval_id, seq, kind, trajectory_id, agent_name, steps, cost_usd, path, artifact_ids, created_at
+				result_id, seq, kind, trajectory_id, agent_name, steps, cost_usd, path, artifact_ids, created_at
 			)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			t.RunEvalID, t.Seq, t.Kind, t.TrajectoryID, t.AgentName, t.Steps, t.CostUSD, t.Path, jsonIDs(t.ArtifactIDs), FormatTime(t.CreatedAt))
+			t.ResultID, t.Seq, t.Kind, t.TrajectoryID, t.AgentName, t.Steps, t.CostUSD, t.Path, jsonIDs(t.ArtifactIDs), FormatTime(t.CreatedAt))
 		if err != nil {
 			return nil, fmt.Errorf("record experiment trajectory: %w", err)
 		}
@@ -299,16 +304,16 @@ func RecordExperimentRunEval(ctx context.Context, d *sql.DB, e model.ExperimentR
 func FinishExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*model.ExperimentRun, error) {
 	if _, err := d.ExecContext(ctx, `
 		UPDATE gb_experiment_runs
-		SET total_evals  = (SELECT COUNT(*) FROM gb_experiment_run_evals WHERE run_id = gb_experiment_runs.id),
-			passed_evals = (SELECT COUNT(*) FROM gb_experiment_run_evals WHERE run_id = gb_experiment_runs.id AND status = 'passed'),
-			failed_evals = (SELECT COUNT(*) FROM gb_experiment_run_evals WHERE run_id = gb_experiment_runs.id AND status <> 'passed'),
-			cost_usd     = (SELECT COALESCE(SUM(cost_usd), 0) FROM gb_experiment_run_evals WHERE run_id = gb_experiment_runs.id),
+		SET total_evals  = (SELECT COUNT(*) FROM gb_experiment_results WHERE run_id = gb_experiment_runs.id),
+			passed_evals = (SELECT COUNT(*) FROM gb_experiment_results WHERE run_id = gb_experiment_runs.id AND status = 'passed'),
+			failed_evals = (SELECT COUNT(*) FROM gb_experiment_results WHERE run_id = gb_experiment_runs.id AND status <> 'passed'),
+			cost_usd     = (SELECT COALESCE(SUM(cost_usd), 0) FROM gb_experiment_results WHERE run_id = gb_experiment_runs.id),
 			status       = CASE
-				WHEN EXISTS (SELECT 1 FROM gb_experiment_run_evals WHERE run_id = gb_experiment_runs.id AND status <> 'passed')
+				WHEN EXISTS (SELECT 1 FROM gb_experiment_results WHERE run_id = gb_experiment_runs.id AND status <> 'passed')
 				THEN 'failed' ELSE 'passed' END,
 			finished_at  = ?
-		WHERE id = ? AND status = 'running'`,
-		FormatTime(Now()), runID); err != nil {
+		WHERE id = ? AND type = ? AND status = 'running'`,
+		FormatTime(Now()), runID, model.EvalTypeKnowledge); err != nil {
 		return nil, fmt.Errorf("finish experiment run: %w", err)
 	}
 	return getRun(ctx, d, runID)
@@ -319,8 +324,8 @@ func ListExperimentRuns(ctx context.Context, d *sql.DB, experimentID int64) ([]m
 	rows, err := d.QueryContext(ctx, `
 		SELECT `+runColumns+`
 		FROM gb_experiment_runs
-		WHERE experiment_id = ?
-		ORDER BY id`, experimentID)
+		WHERE experiment_id = ? AND type = ?
+		ORDER BY id`, experimentID, model.EvalTypeKnowledge)
 	if err != nil {
 		return nil, fmt.Errorf("list experiment runs: %w", err)
 	}
@@ -336,12 +341,12 @@ func ListExperimentRuns(ctx context.Context, d *sql.DB, experimentID int64) ([]m
 	return out, rows.Err()
 }
 
-const trajectoryColumns = `id, run_eval_id, seq, kind, trajectory_id, agent_name, steps, cost_usd, path, artifact_ids, created_at`
+const trajectoryColumns = `id, result_id, seq, kind, trajectory_id, agent_name, steps, cost_usd, path, artifact_ids, created_at`
 
 func scanTrajectory(r scanner) (*model.ExperimentTrajectory, error) {
 	var t model.ExperimentTrajectory
 	var created, artifactIDs string
-	if err := r.Scan(&t.ID, &t.RunEvalID, &t.Seq, &t.Kind, &t.TrajectoryID, &t.AgentName, &t.Steps, &t.CostUSD, &t.Path, &artifactIDs, &created); err != nil {
+	if err := r.Scan(&t.ID, &t.ResultID, &t.Seq, &t.Kind, &t.TrajectoryID, &t.AgentName, &t.Steps, &t.CostUSD, &t.Path, &artifactIDs, &created); err != nil {
 		return nil, err
 	}
 	t.ArtifactIDs = parseIDs(artifactIDs)
@@ -356,21 +361,24 @@ func GetExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*model.Exper
 		return nil, err
 	}
 	rows, err := d.QueryContext(ctx, `
-		SELECT id, run_id, suite, eval_name, status, answer, problems, passed_checks, dataset_id, error, steps, cost_usd, started_at, finished_at
-		FROM gb_experiment_run_evals
-		WHERE run_id = ?
-		ORDER BY id`, runID)
+		SELECT e.id, e.type, e.run_id, e.suite, e.eval_name, e.status, k.answer, k.problems, k.passed_checks, k.dataset_id, e.error,
+			k.steps, e.cost_usd, e.started_at, e.finished_at
+		FROM gb_experiment_results e
+		JOIN gb_knowledge_eval_meta k ON k.result_id = e.id
+		WHERE e.run_id = ?
+		ORDER BY e.id`, runID)
 	if err != nil {
-		return nil, fmt.Errorf("list experiment run evals: %w", err)
+		return nil, fmt.Errorf("list experiment results: %w", err)
 	}
 	defer rows.Close()
-	run.Evals = []model.ExperimentRunEval{}
+	run.Results = []model.ExperimentResult{}
 	byID := map[int64]int{}
 	for rows.Next() {
-		var e model.ExperimentRunEval
-		var problems, passed, started, finished string
+		var e model.ExperimentResult
+		var problems, passed, started string
+		var finished sql.NullString
 		var datasetID sql.NullInt64
-		if err := rows.Scan(&e.ID, &e.RunID, &e.Suite, &e.Name, &e.Status, &e.Answer, &problems, &passed, &datasetID, &e.Error, &e.Steps,
+		if err := rows.Scan(&e.ID, &e.Type, &e.RunID, &e.Suite, &e.Name, &e.Status, &e.Answer, &problems, &passed, &datasetID, &e.Error, &e.Steps,
 			&e.CostUSD, &started, &finished); err != nil {
 			return nil, err
 		}
@@ -379,10 +387,10 @@ func GetExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*model.Exper
 		}
 		e.Problems = parseList(problems)
 		e.PassedChecks = parseList(passed)
-		e.StartedAt, e.FinishedAt = parseStoredTime(started), parseStoredTime(finished)
+		e.StartedAt, e.FinishedAt = parseStoredTime(started), parseStoredTime(finished.String)
 		e.Trajectories = []model.ExperimentTrajectory{}
-		byID[e.ID] = len(run.Evals)
-		run.Evals = append(run.Evals, e)
+		byID[e.ID] = len(run.Results)
+		run.Results = append(run.Results, e)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -392,8 +400,8 @@ func GetExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*model.Exper
 	trows, err := d.QueryContext(ctx, `
 		SELECT `+trajectoryColumns+`
 		FROM gb_experiment_trajectories
-		WHERE run_eval_id IN (SELECT id FROM gb_experiment_run_evals WHERE run_id = ?)
-		ORDER BY run_eval_id, seq`, runID)
+		WHERE result_id IN (SELECT id FROM gb_experiment_results WHERE run_id = ?)
+		ORDER BY result_id, seq`, runID)
 	if err != nil {
 		return nil, fmt.Errorf("list experiment trajectories: %w", err)
 	}
@@ -403,17 +411,17 @@ func GetExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*model.Exper
 		if err != nil {
 			return nil, err
 		}
-		i := byID[t.RunEvalID]
-		run.Evals[i].Trajectories = append(run.Evals[i].Trajectories, *t)
+		i := byID[t.ResultID]
+		run.Results[i].Trajectories = append(run.Results[i].Trajectories, *t)
 	}
 	return run, trows.Err()
 }
 
-// GetExperimentRunEvalDataset returns the dataset (deleted or not) the eval ran in, or model.ErrNotFound if the eval
+// GetExperimentResultDataset returns the dataset (deleted or not) the eval ran in, or model.ErrNotFound if the eval
 // does not exist or has none.
-func GetExperimentRunEvalDataset(ctx context.Context, d *sql.DB, runEvalID int64) (*model.Dataset, error) {
+func GetExperimentResultDataset(ctx context.Context, d *sql.DB, resultID int64) (*model.Dataset, error) {
 	ds, err := scanDataset(d.QueryRowContext(ctx, datasetSelect+`
-		WHERE id = (SELECT dataset_id FROM gb_experiment_run_evals WHERE id = ?)`, runEvalID))
+		WHERE id = (SELECT dataset_id FROM gb_knowledge_eval_meta WHERE result_id = ?)`, resultID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
@@ -421,7 +429,7 @@ func GetExperimentRunEvalDataset(ctx context.Context, d *sql.DB, runEvalID int64
 }
 
 // FindExperimentTrajectory returns the reference to the trajectory with the given ATIF trajectory_id, or
-// model.ErrNotFound. Its RunEvalID leads to the eval, and through it to the run and experiment.
+// model.ErrNotFound. Its ResultID leads to the eval, and through it to the run and experiment.
 func FindExperimentTrajectory(ctx context.Context, d *sql.DB, trajectoryID string) (*model.ExperimentTrajectory, error) {
 	t, err := scanTrajectory(d.QueryRowContext(ctx, `
 		SELECT `+trajectoryColumns+`
@@ -438,11 +446,12 @@ func FindExperimentTrajectory(ctx context.Context, d *sql.DB, trajectoryID strin
 // ListExperimentEvalHistory returns the results of one eval over the runs of the experiment, oldest run first.
 func ListExperimentEvalHistory(ctx context.Context, d *sql.DB, experimentID int64, suite, name string) ([]model.ExperimentEvalPoint, error) {
 	rows, err := d.QueryContext(ctx, `
-		SELECT r.id, e.id, r.status, r.started_at, e.status, e.problems, e.passed_checks, e.error, e.steps, e.cost_usd, e.started_at, e.finished_at
-		FROM gb_experiment_run_evals e
+		SELECT r.id, e.id, r.status, r.started_at, e.status, k.problems, k.passed_checks, e.error, k.steps, e.cost_usd, e.started_at, e.finished_at
+		FROM gb_experiment_results e
+		JOIN gb_knowledge_eval_meta k ON k.result_id = e.id
 		JOIN gb_experiment_runs r ON r.id = e.run_id
-		WHERE r.experiment_id = ? AND e.suite = ? AND e.eval_name = ?
-		ORDER BY r.id, e.id`, experimentID, suite, name)
+		WHERE r.experiment_id = ? AND r.type = ? AND e.suite = ? AND e.eval_name = ?
+		ORDER BY r.id, e.id`, experimentID, model.EvalTypeKnowledge, suite, name)
 	if err != nil {
 		return nil, fmt.Errorf("list experiment eval history: %w", err)
 	}
@@ -450,13 +459,14 @@ func ListExperimentEvalHistory(ctx context.Context, d *sql.DB, experimentID int6
 	out := []model.ExperimentEvalPoint{}
 	for rows.Next() {
 		var p model.ExperimentEvalPoint
-		var problems, passed, runStarted, started, finished string
-		if err := rows.Scan(&p.RunID, &p.RunEvalID, &p.RunStatus, &runStarted, &p.Status, &problems, &passed, &p.Error, &p.Steps,
+		var problems, passed, runStarted, started string
+		var finished sql.NullString
+		if err := rows.Scan(&p.RunID, &p.ResultID, &p.RunStatus, &runStarted, &p.Status, &problems, &passed, &p.Error, &p.Steps,
 			&p.CostUSD, &started, &finished); err != nil {
 			return nil, err
 		}
 		p.Problems, p.PassedChecks = parseList(problems), parseList(passed)
-		p.RunStartedAt, p.StartedAt, p.FinishedAt = parseStoredTime(runStarted), parseStoredTime(started), parseStoredTime(finished)
+		p.RunStartedAt, p.StartedAt, p.FinishedAt = parseStoredTime(runStarted), parseStoredTime(started), parseStoredTime(finished.String)
 		out = append(out, p)
 	}
 	return out, rows.Err()

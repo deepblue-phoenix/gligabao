@@ -932,7 +932,7 @@ func runCases(cases []Case, llm memory_core.LLM, emb memory_core.Embedder, ws me
 			}
 		}
 		{
-			res := experiments.EvalResult{
+			res := experiments.CaseOutcome{
 				Suite: c.Suite, Name: c.Name, Answer: answer, Err: err,
 				Problems: problems, PassedChecks: passed,
 				ArtifactIDs: out.ArtifactIDs, DatasetID: out.DatasetID,

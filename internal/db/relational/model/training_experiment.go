@@ -6,9 +6,9 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Training experiments: the experiments of the evals of trained models (gb_training_experiments and
-// gb_training_experiment_runs, see sqlite/db_schema.go). They are separate from the knowledge-extraction eval
-// experiments (Experiment, ExperimentRun).
+// Training experiments: the experiments of the evals of trained models, the rows of type "training" of gb_experiments and
+// gb_experiment_runs (see sqlite/db_schema.go). The knowledge-extraction eval experiments (Experiment, ExperimentRun) are the
+// rows of type "knowledge" of the same tables.
 
 // TrainingExperiment is a named series of runs, each of which is an eval of a trained model (see TrainingExperimentRun).
 // Names are unique.
@@ -22,7 +22,7 @@ type TrainingExperiment struct {
 	NumRuns int `json:"num_runs"`
 }
 
-// TrainingExperimentRun is one run of a training experiment: an eval (gb_trained_model_evals) of one trained model. The run
+// TrainingExperimentRun is one run of a training experiment: an eval (TrainedModelEval) of one trained model. The run
 // holds the link; Eval is the eval as it is now (status, counters, score and the judge's cost, so a running run shows its
 // progress) and Model the model that was evaluated.
 type TrainingExperimentRun struct {

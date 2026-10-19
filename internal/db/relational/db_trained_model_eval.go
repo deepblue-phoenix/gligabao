@@ -10,7 +10,9 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// LLM-as-a-judge evals of trained models (gb_trained_model_evals and gb_trained_model_eval_items, see sqlite/db_schema.go)
+// LLM-as-a-judge evals of trained models: the "training" rows of the universal eval tables (gb_experiment_runs and
+// gb_experiment_results) with their metadata (gb_training_eval_meta) and items (gb_training_eval_items), see sqlite/db_schema.go.
+// An eval is one run with one eval in it; its ID is the ID of the gb_experiment_results row.
 
 // RecordTrainedModelEval stores a new eval (status "running" unless e.Status says otherwise) and returns its ID. e.ID,
 // e.CreatedAt and e.FinishedAt are ignored.

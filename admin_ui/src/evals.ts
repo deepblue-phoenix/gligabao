@@ -1,4 +1,4 @@
-// Evals block of the admin UI: experiments (counts + listing), their runs, a run's evals with their records, and
+// Evals block of the admin UI: experiments (counts + listing), their runs, a run's results with their records, and
 // the ATIF trajectories of each eval (opened as a flow graph by trace.ts). Talks to /admin/api/evals/*.
 
 import { showGraphAt } from "./graph.js";
@@ -9,19 +9,20 @@ import { showWebSearches, totalsLine, type WebSearch, type WebSearchTotals } fro
 interface Run {
   id: number; experiment_id: number; status: string; params?: Record<string, unknown>;
   total_evals: number; passed_evals: number; failed_evals: number; cost_usd: number;
-  started_at: string; finished_at?: string; evals?: RunEval[];
+  started_at: string; finished_at?: string; results?: Result[];
 }
 interface Trajectory {
   seq: number; kind: string; trajectory_id: string; agent_name: string; steps: number; cost_usd: number;
   artifacts?: Artifact[];
 }
 interface Artifact { id: number; kind: string; text: string; valid_at: string; created_at: string }
-interface RunEval {
+// The outcome of one eval (a case of a suite) in one run.
+interface Result {
   id: number; suite: string; name: string; status: string; answer?: string; problems?: string[]; passed_checks?: string[]; dataset_id?: number; error?: string;
   steps: number; cost_usd: number; started_at: string; finished_at: string; trajectories?: Trajectory[];
 }
-// The web searches the remember calls of one eval made (see websearch.ts), read from its trajectories.
-interface EvalWebSearches { run_eval_id: number; totals: WebSearchTotals; searches: WebSearch[] }
+// The web searches the remember calls of one result (eval) made (see websearch.ts), read from its trajectories.
+interface EvalWebSearches { result_id: number; totals: WebSearchTotals; searches: WebSearch[] }
 interface ExperimentRow {
   id: number; name: string; description?: string; created_at: string;
   runs: number; evals: number; runs_passed: number; runs_failed: number; cost_usd: number; last_run?: Run;
@@ -203,7 +204,7 @@ async function loadExperiment(id: number): Promise<void> {
 
 //---------------------------------------------------------------------------------------------
 
-// Opens the run modal: the run's evals; clicking an eval shows its record (answer, problems, trajectories).
+// Opens the run modal: the run's results; clicking one shows its record (answer, problems, trajectories).
 async function showRun(runID: number, experiment: string): Promise<void> {
   const modal = $<HTMLDialogElement>("run-modal");
   const status = $("run-status");
@@ -217,10 +218,10 @@ async function showRun(runID: number, experiment: string): Promise<void> {
     const [run, webSearches] = await Promise.all([
       getJSON<Run>(`api/evals/runs/${runID}`),
       // Informational: the run is shown without them if they cannot be read.
-      getJSON<{ evals: EvalWebSearches[] }>(`api/evals/runs/${runID}/web-searches`).then((r) => r.evals ?? [], () => [] as EvalWebSearches[]),
+      getJSON<{ results: EvalWebSearches[] }>(`api/evals/runs/${runID}/web-searches`).then((r) => r.results ?? [], () => [] as EvalWebSearches[]),
     ]);
-    const webByEval = new Map(webSearches.map((w) => [w.run_eval_id, w]));
-    const evals = run.evals ?? [];
+    const webByEval = new Map(webSearches.map((w) => [w.result_id, w]));
+    const evals = run.results ?? [];
     status.replaceChildren(statusBadge(run.status), ` ${run.passed_evals}/${run.total_evals} passed · ${fmtCost(run.cost_usd)} · ${fmtDuration(run.started_at, run.finished_at)}`);
     content.append(props([
       ["started", `${fmtTime(run.started_at)} UTC`], ["finished", run.finished_at ? `${fmtTime(run.finished_at)} UTC` : undefined],
@@ -265,7 +266,7 @@ async function showRun(runID: number, experiment: string): Promise<void> {
 }
 
 // The detail of one eval: its result and the list of its ATIF trajectories, each opening the flow graph.
-function evalRecord(run: Run, e: RunEval, experiment: string, web?: EvalWebSearches): HTMLElement[] {
+function evalRecord(run: Run, e: Result, experiment: string, web?: EvalWebSearches): HTMLElement[] {
   const out: HTMLElement[] = [
     props([
       ["started", `${fmtTime(e.started_at)} UTC`], ["answer", e.answer], ["error", e.error],
@@ -293,7 +294,7 @@ function evalRecord(run: Run, e: RunEval, experiment: string, web?: EvalWebSearc
     gbtn.type = "button";
     gbtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      void showGraphAt(`${e.suite}/${e.name} (run #${run.id})`, `api/evals/run-evals/${e.id}/graph`);
+      void showGraphAt(`${e.suite}/${e.name} (run #${run.id})`, `api/evals/results/${e.id}/graph`);
     });
     out.push(gbtn);
   } else {

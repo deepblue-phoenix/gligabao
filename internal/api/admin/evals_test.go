@@ -34,7 +34,7 @@ func testEvals(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tr.Record(ctx, experiments.EvalResult{Suite: "s", Name: "a", Trajectories: []*atif.Trajectory{traj}, TrajectoryDir: dir}); err != nil {
+	if _, err := tr.Record(ctx, experiments.CaseOutcome{Suite: "s", Name: "a", Trajectories: []*atif.Trajectory{traj}, TrajectoryDir: dir}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tr.Finish(ctx); err != nil {
@@ -101,14 +101,14 @@ func testEvals(t *testing.T, d *sql.DB) {
 	}
 
 	var run struct {
-		Evals []struct {
+		Results []struct {
 			Trajectories []struct {
 				TrajectoryID string `json:"trajectory_id"`
 			}
 		}
 	}
 	if c := get(admin.EvalRun(d), "/x/{id}", strconv.FormatInt(tr.Run.ID, 10), &run); c != 200 ||
-		len(run.Evals) != 1 || len(run.Evals[0].Trajectories) != 1 {
+		len(run.Results) != 1 || len(run.Results[0].Trajectories) != 1 {
 		t.Fatalf("run: %d %+v", c, run)
 	}
 
