@@ -10,7 +10,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
-	"github.com/deepblue-phoenix/gligabao/internal/experiments"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/experiments"
 )
 
 func TestBackends(t *testing.T) { dbtest.Run(t, scenario) }

@@ -1,12 +1,12 @@
 package training
 
-// Evals of trained models: the "Eval" button of the admin UI and the runner evals/training/cmd. An eval run is one run
+// Evals of trained models: the "Eval" button of the admin UI and the runner internal/evals/training/cmd. An eval run is one run
 // (relational.TrainedModelRun, kind "eval") of an eval against a trained model. An eval is a named set of cases
 // (*.json files of the evals directory, bin/evals_training by default), each a question and the answer expected; the cases are meant to be ones
 // the model never saw in training, so the score says how well it generalizes. The eval is named after the training dataset its
 // cases ask about, so a model trained on a dataset has the eval of that name unless another is asked for.
 //
-// The logic is the eval subsystem evals/training; the manager and the endpoints that follow a run are shared with the training
+// The logic is the eval subsystem internal/evals/training; the manager and the endpoints that follow a run are shared with the training
 // data audits (runs.go); this file is what is specific to an eval: its cases, which come from the eval, and its experiments
 // (experiments.go).
 
@@ -19,9 +19,9 @@ import (
 	"strconv"
 	"strings"
 
-	trainingeval "github.com/deepblue-phoenix/gligabao/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	log "github.com/sirupsen/logrus"
 )

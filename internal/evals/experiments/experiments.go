@@ -7,7 +7,7 @@
 // JSON files can be found again). The cases an experiment has executed over all its runs are listed in Experiment.Cases
 // (gb_experiment_cases).
 //
-// Typical use, as in evals/knowledge/main.go:
+// Typical use, as in internal/evals/knowledge/main.go:
 //
 //	t, err := experiments.Start(ctx, d, experiments.Options{Name: "baseline"})
 //	for each case { t.Record(ctx, experiments.CaseOutcome{...}) }

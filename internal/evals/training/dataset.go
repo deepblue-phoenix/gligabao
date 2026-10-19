@@ -3,11 +3,11 @@
 // expected ones. Two things use it, kept apart in the database but sharing the types and the API shapes (internal/api/training):
 //   - the EVAL (relational.TrainedModelKindEval): the cases are those of an eval (Evals, LoadEvals: bin/evals_training/*.json), cases the model
 //     never saw, so the score says how well it generalizes. Run by the server, by the Eval button of the admin UI, or by the
-//     command-line runner evals/training/cmd;
+//     command-line runner internal/evals/training/cmd;
 //   - the training data AUDIT (relational.TrainedModelKindAudit): the cases are the examples of the model's own fine-tuning
 //     dataset (ParseExamples), so the score says whether the training took, not how well the model generalizes.
 //
-// It is separate from evals/knowledge, which checks the knowledge extraction (remember / recall) end to end.
+// It is separate from internal/evals/knowledge, which checks the knowledge extraction (remember / recall) end to end.
 //
 // The package knows nothing about HTTP, the sidecar or the database: Run takes the model as a function (GenerateFunc),
 // the judge as an LLM and reports through a Sink. internal/api/training wires those up and stores the results.

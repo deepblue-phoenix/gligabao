@@ -1,6 +1,6 @@
 # Eval experiments
 
-An **experiment** is a named series of eval runs. Every time the eval runner (`go run ./evals/knowledge`, `./run_evals.sh`) executes, it records one **run** of an experiment in the **eval** database (`bin/gligabao-eval.db`), which keeps the evaluation data apart from the main database and is never reset. Each run works in datasets of its own (`<case>_run<run id>`), so runs do not interfere with each other. A run records which cases of which evals it executed, how each ended, and the IDs of the [ATIF trajectories](evals.md) of their calls. Go code lives in `internal/experiments`; the tables are in `internal/db/relational/{sqlite,postgres}/db_schema.go`, the structs in `internal/db/relational/model`.
+An **experiment** is a named series of eval runs. Every time the eval runner (`go run ./internal/evals/knowledge`, `./run_evals.sh`) executes, it records one **run** of an experiment in the **eval** database (`bin/gligabao-eval.db`), which keeps the evaluation data apart from the main database and is never reset. Each run works in datasets of its own (`<case>_run<run id>`), so runs do not interfere with each other. A run records which cases of which evals it executed, how each ended, and the IDs of the [ATIF trajectories](evals.md) of their calls. Go code lives in `internal/evals/experiments`; the tables are in `internal/db/relational/{sqlite,postgres}/db_schema.go`, the structs in `internal/db/relational/model`.
 
 ## Data model
 

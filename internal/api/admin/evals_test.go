@@ -12,7 +12,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
-	"github.com/deepblue-phoenix/gligabao/internal/experiments"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/experiments"
 )
 
 // TestEvals checks the admin eval endpoints: experiment counts, run details and trajectory files.

@@ -10,7 +10,7 @@ package training
 //   - an AUDIT (audits.go) asks the examples of the model's OWN fine-tuning dataset: it checks that the training took, not how well
 //     the model generalizes.
 //
-// The logic is the subsystem evals/training; this file wires it to the sidecar (the model), the LLM (the judge) and the database
+// The logic is the subsystem internal/evals/training; this file wires it to the sidecar (the model), the LLM (the judge) and the database
 // (relational.TrainedModelRun, which holds the progress and the result), and runs it in the background: starting a run answers at
 // once and the run is followed by reading its row (or its live feed).
 
@@ -24,9 +24,9 @@ import (
 	"strconv"
 	"sync"
 
-	trainingeval "github.com/deepblue-phoenix/gligabao/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
 	log "github.com/sirupsen/logrus"
@@ -310,7 +310,7 @@ func RunProgress(runID int64, p trainingeval.Progress) relational.TrainedModelRu
 }
 
 // Generator makes the engine's GenerateFunc of trained model tm: one sidecar inference per question, with the settings of params
-// (the server's runs and the command-line runner evals/training/cmd ask the model the same way).
+// (the server's runs and the command-line runner internal/evals/training/cmd ask the model the same way).
 func Generator(sc Inferer, tm *relational.TrainedModel, params RunParams) trainingeval.GenerateFunc {
 	return func(ctx context.Context, prompt string) (trainingeval.Generation, error) {
 		ctx, cancel := context.WithTimeout(ctx, inferTimeout)

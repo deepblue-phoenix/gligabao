@@ -4,7 +4,7 @@
 // server: the same eval, the same questions to the model, the same judge, and the run is stored in the database the same way
 // (an eval run with its cases, which the admin UI shows), unless -no-store is given (see ../README.md).
 //
-// Usage: go run ./evals/training/cmd -model ID [-v] [-eval name] [case-name ...]   (requires ANTHROPIC_API_KEY and a running sidecar)
+// Usage: go run ./internal/evals/training/cmd -model ID [-v] [-eval name] [case-name ...]   (requires ANTHROPIC_API_KEY and a running sidecar)
 // Without -eval the eval is the one named like the model's training dataset, as for the button.
 // -list-evals prints the available evals and exits; -list-models prints the trained models of the database and exits.
 // The results are printed and stored. The exit status is 1 if any case is not correct (score below 4) or errored.
@@ -21,12 +21,12 @@ import (
 	"slices"
 	"strings"
 
-	trainingeval "github.com/deepblue-phoenix/gligabao/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
 )

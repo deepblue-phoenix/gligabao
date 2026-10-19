@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
-	"github.com/deepblue-phoenix/gligabao/internal/experiments"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/experiments"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	log "github.com/sirupsen/logrus"
 )

@@ -17,7 +17,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
-	"github.com/deepblue-phoenix/gligabao/internal/experiments"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/experiments"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )

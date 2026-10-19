@@ -2,7 +2,7 @@ package model
 
 // The statuses of the RUNS and CASES of a trained model: the two kinds of TrainedModelRun, an eval and a training data audit,
 // and their TrainedModelCase use the same words, defined here once. The engine that produces them
-// (evals/training) and the admin UI's shared live view (admin_ui/src/eval_live.ts) know no other, so a status is never converted
+// (internal/evals/training) and the admin UI's shared live view (admin_ui/src/eval_live.ts) know no other, so a status is never converted
 // between the two kinds of run, and a typo is a compile error.
 //
 // They are not the Experiment* statuses of the knowledge evals (see model.go): there, passed and failed are verdicts about

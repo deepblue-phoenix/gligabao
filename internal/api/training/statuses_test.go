@@ -3,8 +3,8 @@ package training_test
 import (
 	"testing"
 
-	trainingeval "github.com/deepblue-phoenix/gligabao/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 )
 
 // Evals and audits share the statuses (model/trained_model_status.go) as Go constants, so they cannot drift apart. This checks that

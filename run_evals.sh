@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs a Go eval runner: the knowledge evals (evals/knowledge/main.go, default) or the training evals (evals/training/cmd/main.go).
+# Runs a Go eval runner: the knowledge evals (internal/evals/knowledge/main.go, default) or the training evals (internal/evals/training/cmd/main.go).
 # Usage: ./run_evals.sh [-t|--type knowledge|training] [-e|--eval name] [-v] [case-name ...]  (-h: help + eval list)
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -20,17 +20,17 @@ Options:
   -e, --eval NAME    run only the cases of the eval NAME (see the list below)
   -v                 knowledge: show the input and output of every LLM call; training: show every question and answer
   -h, --help         show this help
-  (other options are passed to the runner: knowledge: -experiment, -models, -reasoning, -db (go run ./evals/knowledge -h);
-   training: -model, -list-models, -db, -sidecar, -batch-size, -judge-model (go run ./evals/training/cmd -h))
+  (other options are passed to the runner: knowledge: -experiment, -models, -reasoning, -db (go run ./internal/evals/knowledge -h);
+   training: -model, -list-models, -db, -sidecar, -batch-size, -judge-model (go run ./internal/evals/training/cmd -h))
 
 Case names restrict the run to those cases (combined with --eval, they must belong to that eval).
 
 Knowledge evals (bin/evals_knowledge/*.json):
 USAGE
-	go run ./evals/knowledge -list-evals
+	go run ./internal/evals/knowledge -list-evals
 	echo
 	echo "Training evals (bin/evals_training/*.json):"
-	go run ./evals/training/cmd -list-evals
+	go run ./internal/evals/training/cmd -list-evals
 }
 
 kind=knowledge
@@ -117,13 +117,13 @@ start_sidecar() {
 }
 
 case "$kind" in
-knowledge) go run ./evals/knowledge ${args[@]+"${args[@]}"} ;;
+knowledge) go run ./internal/evals/knowledge ${args[@]+"${args[@]}"} ;;
 training)
 	start_sidecar
 	# Not exec'd, so the trap can stop the sidecar. SIDECAR_URL tells the runner where the sidecar is, unless -sidecar does.
 	rc=0
 	SIDECAR_URL="${SIDECAR_URL:-http://${SIDECAR_HOST:-127.0.0.1}:${SIDECAR_PORT:-8787}}" \
-		go run ./evals/training/cmd ${args[@]+"${args[@]}"} || rc=$?
+		go run ./internal/evals/training/cmd ${args[@]+"${args[@]}"} || rc=$?
 	exit "$rc"
 	;;
 *)

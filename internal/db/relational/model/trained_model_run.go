@@ -7,7 +7,7 @@ import (
 
 //---------------------------------------------------------------------------------------------
 // Runs of trained models judged by an LLM. There are two kinds of run, and they share these types, the statuses
-// (trained_model_status.go), the engine (evals/training), the HTTP shapes and the admin UI's live view:
+// (trained_model_status.go), the engine (internal/evals/training), the HTTP shapes and the admin UI's live view:
 //
 //   - an EVAL run (TrainedModelKindEval): one run of an eval, a named set of cases, against a trained model. The cases are
 //     meant to be ones the model never saw, so the score says how well it generalizes. It is a "training" run of the universal eval

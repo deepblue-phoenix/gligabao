@@ -3,7 +3,7 @@ package training
 // Training experiments: named series of evals of trained models, to compare trained models (training recipes) by their eval
 // scores. An experiment (relational.TrainingExperiment) is made by starting an eval with an "experiment" name (see StartOf); the
 // eval is then a run of it (relational.TrainingExperimentRun). They are separate from the knowledge-extraction experiments of
-// evals/knowledge.
+// internal/evals/knowledge.
 
 import (
 	"context"

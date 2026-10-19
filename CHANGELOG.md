@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.66.1] - 2026-10-19
+
+### Changed
+- Internal reorganisation: the eval code now lives in one package tree, `internal/evals/` (`experiments/`, `knowledge/`, `training/` and the evals README). The top-level `evals/` directory and `internal/experiments` are gone. The eval runners are started as `go run ./internal/evals/knowledge` and `go run ./internal/evals/training/cmd` (`./run_evals.sh` already does this); behaviour is unchanged.
+
 ## [0.66.0] - 2026-10-19
 
 ### Removed

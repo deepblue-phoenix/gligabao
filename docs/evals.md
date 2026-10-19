@@ -4,7 +4,7 @@ Evals are end-to-end checks that run `remember` and `recall` against the real LL
 
 Trajectories are generated **only for eval calls** (the calls the eval cases make). The regular endpoints and regular Go calls never build, store or return them.
 
-For the eval format and the runner's usage see [`evals/knowledge/README.md`](../evals/knowledge/README.md). This page is about the knowledge-extraction evals; the other eval system, which judges trained models with an LLM, is in [training/EVALS.md](training/EVALS.md) (the two are described together in [`evals/README.md`](../evals/README.md)).
+For the eval format and the runner's usage see [`internal/evals/knowledge/README.md`](../internal/evals/knowledge/README.md). This page is about the knowledge-extraction evals; the other eval system, which judges trained models with an LLM, is in [training/EVALS.md](training/EVALS.md) (the two are described together in [`evals/README.md`](../internal/evals/README.md)).
 
 ## Eval mode
 
@@ -53,7 +53,7 @@ Each trajectory is written as pretty-printed JSON to `<dir>/<trajectory_id>.json
 
 A call that fails is stored too, with `notes` set to `failed: <error>`, but the caller only gets the trajectory of a successful call. A failure to write the file is logged and never fails the call.
 
-The eval runner (`go run ./evals/knowledge`) writes everything to the eval database, `bin/gligabao-eval.db` (`-db`; the admin UI can show it, `serve --eval-db`), which isolates the evaluation data from the main database. It holds the datasets the cases build (artifacts, entities and edges), the experiments and their runs; a run references its datasets and artifacts instead of copying them. It is **never reset**: each run of an experiment creates its own datasets (`<case>_run<run id>`), so executions do not interfere. The experiment runs reference the trajectories by ID, so the trajectories are stored in an `atif/` directory next to the eval database (`-atif <dir>` changes it), see [experiments.md](experiments.md).
+The eval runner (`go run ./internal/evals/knowledge`) writes everything to the eval database, `bin/gligabao-eval.db` (`-db`; the admin UI can show it, `serve --eval-db`), which isolates the evaluation data from the main database. It holds the datasets the cases build (artifacts, entities and edges), the experiments and their runs; a run references its datasets and artifacts instead of copying them. It is **never reset**: each run of an experiment creates its own datasets (`<case>_run<run id>`), so executions do not interfere. The experiment runs reference the trajectories by ID, so the trajectories are stored in an `atif/` directory next to the eval database (`-atif <dir>` changes it), see [experiments.md](experiments.md).
 
 ## Trajectory format
 
@@ -132,7 +132,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 
 ## How the evals use it
 
-`evals/knowledge/main.go` starts an in-process server with eval mode on and runs each case through `/v1/gb/eval/remember` (once per memory, in order) and `/v1/gb/eval/recall`. It decodes the `trajectory` from every response and fails the case if one is missing. A case's outcome holds the answer, the failed temporal-fact checks and the trajectories (one per remember, then the recall's), so checks can use the steps and costs directly. For now the runner reports the trajectory count, step count and total cost with `-v`.
+`internal/evals/knowledge/main.go` starts an in-process server with eval mode on and runs each case through `/v1/gb/eval/remember` (once per memory, in order) and `/v1/gb/eval/recall`. It decodes the `trajectory` from every response and fails the case if one is missing. A case's outcome holds the answer, the failed temporal-fact checks and the trajectories (one per remember, then the recall's), so checks can use the steps and costs directly. For now the runner reports the trajectory count, step count and total cost with `-v`.
 
 ### Models
 

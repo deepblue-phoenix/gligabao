@@ -30,7 +30,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
-	"github.com/deepblue-phoenix/gligabao/internal/experiments"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/experiments"
 	log "github.com/sirupsen/logrus"
 )
 

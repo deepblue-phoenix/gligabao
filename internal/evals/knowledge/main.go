@@ -9,7 +9,7 @@
 // every call along with its result.
 // Besides the answer, the stored temporal facts (edges with valid_at / invalid_at) are checked in the database.
 //
-// Usage: go run ./evals/knowledge [-v] [-evals dir] [-eval name] [case-name ...]   (requires ANTHROPIC_API_KEY)
+// Usage: go run ./internal/evals/knowledge [-v] [-evals dir] [-eval name] [case-name ...]   (requires ANTHROPIC_API_KEY)
 // With -evals, evals are read from that directory instead of bin/evals_knowledge (used by gligabao_int).
 // With -eval, only the cases of that eval run; -list-evals prints the available evals and exits.
 // With -v, every LLM call's input and output is printed.
@@ -18,7 +18,7 @@
 //
 // Every invocation is a run of an experiment (-experiment, default "default"), persisted in the eval database
 // together with the cases (eval + case name) it executed, their results and the IDs of their ATIF trajectories; see
-// internal/experiments.
+// internal/evals/experiments.
 package main
 
 import (
@@ -46,7 +46,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
-	"github.com/deepblue-phoenix/gligabao/internal/experiments"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/experiments"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/server"
 )

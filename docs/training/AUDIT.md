@@ -6,7 +6,7 @@ A **training data audit** (an *audit*, a `TrainedModelRun` of kind `audit` in th
 - **Is the training data clean?** (data auditing) The examples the model keeps failing are often the bad ones: label noise, ambiguous prompts, contradictory completions, broken formatting.
 - **Does it replicate or generalize?** (fidelity check) Near-verbatim answers on every example, with nothing learned in between, is what overfitting looks like.
 
-An audit is **not an eval**. An [eval of a trained model](EVALS.md) is for cases the model never saw, which is the only way to measure generalization. The two have their own tables and their own endpoint to start one, and share the rest (see [Audit or eval](#audit-or-eval)). The code is the eval subsystem [`evals/training`](../../evals/training/README.md) (the logic, shared with the evals), `internal/api/training/audits.go` (the endpoint that starts an audit) and `runs.go` (the manager and the background runner, shared with the evals).
+An audit is **not an eval**. An [eval of a trained model](EVALS.md) is for cases the model never saw, which is the only way to measure generalization. The two have their own tables and their own endpoint to start one, and share the rest (see [Audit or eval](#audit-or-eval)). The code is the eval subsystem [`internal/evals/training`](../../internal/evals/training/README.md) (the logic, shared with the evals), `internal/api/training/audits.go` (the endpoint that starts an audit) and `runs.go` (the manager and the background runner, shared with the evals).
 
 ## What happens
 

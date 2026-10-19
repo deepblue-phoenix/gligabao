@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	trainingeval "github.com/deepblue-phoenix/gligabao/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
 )
 

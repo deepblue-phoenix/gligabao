@@ -241,11 +241,11 @@ CREATE TABLE IF NOT EXISTS gb_training_datasets (
 -- ---------------------------------------------------------------------------------------------------------------------
 -- EVALS. One set of tables for both kinds of eval; what is specific to a kind is in that kind's metadata table.
 --
---   type  'knowledge'  knowledge-extraction evals (evals/knowledge, internal/experiments): remember, then recall, checked by
+--   type  'knowledge'  knowledge-extraction evals (internal/evals/knowledge, internal/evals/experiments): remember, then recall, checked by
 --                      programmatic checks. Run by the runner, into the eval database.
---         'training'   evals of trained models (evals/training, internal/api/training/evals.go): the model is asked the cases
+--         'training'   evals of trained models (internal/evals/training, internal/api/training/evals.go): the model is asked the cases
 --                      of an eval (bin/evals_training/*.json) and an external LLM judges the answers. Run by the server (the
---                      admin UI's Eval button, the API) or by the command-line runner evals/training/cmd.
+--                      admin UI's Eval button, the API) or by the command-line runner internal/evals/training/cmd.
 --   UNIVERSAL tables (every eval has these; each has a type column):
 --     gb_experiments            a named series of runs
 --     gb_experiment_cases       the cases (eval + case_name) an experiment has executed
@@ -412,7 +412,7 @@ CREATE TABLE IF NOT EXISTS gb_knowledge_case_meta (
 	FOREIGN KEY (case_result_id, type) REFERENCES gb_experiment_case_results(id, type) ON DELETE CASCADE
 );
 
--- TRAINING metadata of a run (type 'training'; evals/training, internal/api/training/evals.go; the API calls the run an eval):
+-- TRAINING metadata of a run (type 'training'; internal/evals/training, internal/api/training/evals.go; the API calls the run an eval):
 -- what only the eval runs of trained models have. The trained model is asked the cases of an eval (bin/evals_training/*.json) and
 -- an external LLM scores its answers against the expected ones, a batch of questions per LLM call. The counters are rewritten after every batch, so
 -- the row shows the progress while the eval run runs. The status, the times and the settings (batch_size,
@@ -483,7 +483,7 @@ CREATE TABLE IF NOT EXISTS gb_training_case_meta (
 );
 
 -- ---------------------------------------------------------------------------------------------------------------------
--- TRAINING DATA AUDITS of trained models (internal/api/training/audits.go, evals/training). An audit asks a trained model the
+-- TRAINING DATA AUDITS of trained models (internal/api/training/audits.go, internal/evals/training). An audit asks a trained model the
 -- questions of its OWN fine-tuning dataset and has an LLM judge, a batch of questions per call, how closely its answers reproduce
 -- the dataset's. Every case is something the model was trained on, so it checks that the training took (and, through the examples
 -- it fails, finds bad training data); it measures memorization and fit, NOT generalization. That is what an EVAL of a trained model

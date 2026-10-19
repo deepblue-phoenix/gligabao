@@ -3,7 +3,7 @@ package training
 import "testing"
 
 // testEvalsDir is the directory of the evals (the tests run in the package directory).
-const testEvalsDir = "../../bin/evals_training"
+const testEvalsDir = "../../../bin/evals_training"
 
 func TestLoadEvals(t *testing.T) {
 	cases, err := LoadEvals(testEvalsDir, nil, "")

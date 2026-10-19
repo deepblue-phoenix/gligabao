@@ -117,9 +117,9 @@ type InferenceGroup struct {
 // (gb_knowledge_case_meta, gb_training_case_meta, gb_training_eval_run_meta).
 const (
 	// EvalTypeKnowledge is the type of the knowledge-extraction evals: remember, then recall, checked programmatically
-	// (evals/knowledge, package experiments).
+	// (internal/evals/knowledge, package experiments).
 	EvalTypeKnowledge = "knowledge"
-	// EvalTypeTraining is the type of the evals of trained models (evals/training, internal/api/training): an eval run of a
+	// EvalTypeTraining is the type of the evals of trained models (internal/evals/training, internal/api/training): an eval run of a
 	// trained model, whose run has one case result per example of the eval (case_name = the example's index in the dataset).
 	EvalTypeTraining = "training"
 )

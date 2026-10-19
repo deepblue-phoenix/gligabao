@@ -13,7 +13,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
-	"github.com/deepblue-phoenix/gligabao/internal/experiments"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/experiments"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
@@ -257,7 +257,7 @@ func TestChunkingCase(t *testing.T) {
 }
 
 // testEvalsDir is the directory of the evals (the tests run in the package directory).
-const testEvalsDir = "../../bin/evals_knowledge"
+const testEvalsDir = "../../../bin/evals_knowledge"
 
 func TestTextFileErrors(t *testing.T) {
 	dir := t.TempDir()

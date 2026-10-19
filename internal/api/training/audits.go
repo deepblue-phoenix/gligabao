@@ -20,9 +20,9 @@ import (
 	"os"
 	"strings"
 
-	trainingeval "github.com/deepblue-phoenix/gligabao/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	log "github.com/sirupsen/logrus"
 )
