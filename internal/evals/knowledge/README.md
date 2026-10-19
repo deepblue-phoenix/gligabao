@@ -25,7 +25,7 @@ An **eval case** (a *case*) is one input/output combination, plus metadata, to b
 
 ## Eval format
 
-Each file in `bin/evals_knowledge/` is an eval: a JSON list of cases (read from disk; `-evals dir` reads another directory). Case names must be unique across all evals. `basic.json` holds the first two cases above, `chunking.json` the third, `web_search.json` the fourth, `timeseries.json` the fifth. A `remember` entry may carry `timeseries` (the request's `timeseries`, see [docs/timeseries.md](../../../docs/timeseries.md)) and a case `expect_series` (see above). A case with no `query` skips the recall.
+Each file in `bin/evals_knowledge/` is an eval: a JSON object with a `name` (the eval's name) and a list of `cases` (read from disk; `-evals dir` reads another directory). Case names must be unique across all evals. `basic.json` holds the first two cases above, `chunking.json` the third, `web_search.json` the fourth, `timeseries.json` the fifth. A `remember` entry may carry `timeseries` (the request's `timeseries`, see [docs/timeseries.md](../../../docs/timeseries.md)) and a case `expect_series` (see above). A case with no `query` skips the recall.
 
 A `remember` entry has either `text` or `text_file`, a path relative to the evals directory (e.g. `corpus/harbor_cooperative.txt`) whose content is the text, for corpora too large for JSON. A `remember` entry may set `"web_search": true` to make that call search the web for its key entities, and a case `expect_web_searches` (see above). A case may also set `chunk_size` (tokens; 32 to 8000, default 1024) to run with a smaller chunk size, and `expect_min_chunks` (see above).
 
