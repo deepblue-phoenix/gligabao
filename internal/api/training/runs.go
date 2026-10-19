@@ -30,6 +30,7 @@ import (
 	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -206,8 +207,8 @@ func (m *runManager) startPrelude(w http.ResponseWriter, r *http.Request) (Datab
 }
 
 // getModel reads trained model id, answering 404 or 500 itself.
-func getModel(w http.ResponseWriter, r *http.Request, n Database, id int64) (*relational.TrainedModel, bool) {
-	tm, err := relational.GetTrainedModel(r.Context(), n.DB, id)
+func getModel(w http.ResponseWriter, r *http.Request, n Database, id int64) (*trainingdb.TrainedModel, bool) {
+	tm, err := trainingdb.GetTrainedModel(r.Context(), n.DB, id)
 	if errors.Is(err, relational.ErrNotFound) {
 		httputil.Error(w, http.StatusNotFound, "unknown trained model")
 		return nil, false
@@ -222,7 +223,7 @@ func getModel(w http.ResponseWriter, r *http.Request, n Database, id int64) (*re
 // runSpec is a run ready to start: what StartOf of each kind works out and start carries out.
 type runSpec struct {
 	n      Database
-	tm     *relational.TrainedModel
+	tm     *trainingdb.TrainedModel
 	cfg    trainingeval.Config
 	params RunParams
 	// row is the run to record (Eval, or Dataset and DatasetSHA256; the settings and NumExamples are set by start).
@@ -312,7 +313,7 @@ func RunProgress(runID int64, p trainingeval.Progress) evalsdb.TrainedModelRun {
 
 // Generator makes the engine's GenerateFunc of trained model tm: one sidecar inference per question, with the settings of params
 // (the server's runs and the command-line runner internal/evals/training/cmd ask the model the same way).
-func Generator(sc Inferer, tm *relational.TrainedModel, params RunParams) trainingeval.GenerateFunc {
+func Generator(sc Inferer, tm *trainingdb.TrainedModel, params RunParams) trainingeval.GenerateFunc {
 	return func(ctx context.Context, prompt string) (trainingeval.Generation, error) {
 		ctx, cancel := context.WithTimeout(ctx, inferTimeout)
 		defer cancel()

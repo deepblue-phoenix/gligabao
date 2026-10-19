@@ -1,4 +1,4 @@
-// Package dbtest runs tests against every available database backend (relational, graph and eval tables).
+// Package dbtest runs tests against every available database backend (relational, graph, training and eval tables).
 //
 // SQLite is always used (a fresh database file per test). PostgreSQL is used too when the environment variable
 // POSTGRES_TEST_DSN names a database (e.g. postgres://postgres:pw@127.0.0.1:5432/gb?sslmode=disable); each test
@@ -21,6 +21,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
+	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -32,7 +33,7 @@ var counter atomic.Int64
 
 // Run calls fn as a subtest once per backend ("sqlite", and "postgres" if POSTGRES_TEST_DSN is set), each time with
 // a freshly opened, empty database. The database is closed (and, for postgres, its schema dropped) afterwards.
-// Subtests run sequentially, because packages relational, graph and evals/db route to the backend of the last Open.
+// Subtests run sequentially, because packages relational, graph, training/db and evals/db route to the backend of the last Open.
 func Run(t *testing.T, fn func(t *testing.T, d *sql.DB)) {
 	t.Helper()
 	t.Run(config.DBBackendSQLite, func(t *testing.T) { fn(t, OpenSQLite(t)) })
@@ -53,6 +54,10 @@ func OpenSQLite(t *testing.T) *sql.DB {
 		t.Fatal(err)
 	}
 	if err := graph.Open(config.DBBackendSQLite, d); err != nil {
+		d.Close()
+		t.Fatal(err)
+	}
+	if err := trainingdb.Open(config.DBBackendSQLite, d); err != nil {
 		d.Close()
 		t.Fatal(err)
 	}
@@ -80,7 +85,9 @@ func OpenPostgres(t *testing.T, dsn string) *sql.DB {
 	d, err := relational.Open(config.DBBackendPostgres, withSearchPath(dsn, schema))
 	if err == nil {
 		if err = graph.Open(config.DBBackendPostgres, d); err == nil {
-			err = evalsdb.Open(config.DBBackendPostgres, d)
+			if err = trainingdb.Open(config.DBBackendPostgres, d); err == nil {
+				err = evalsdb.Open(config.DBBackendPostgres, d)
+			}
 		}
 		if err != nil {
 			d.Close()

@@ -5,9 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	rpostgres "github.com/deepblue-phoenix/gligabao/internal/db/relational/postgres"
 	"strings"
 
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational/model"
+	"github.com/deepblue-phoenix/gligabao/internal/training/db/model"
 )
 
 //---------------------------------------------------------------------------------------------
@@ -20,7 +21,7 @@ func InsertTrainingJobRun(ctx context.Context, d *sql.DB, r model.TrainingJobRun
 		INSERT INTO gb_training_job_runs (job_id, provider_job_id, status, model_size, dataset, num_train_steps, started_at, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id`,
-		r.JobID, r.ProviderJobID, r.Status, r.ModelSize, r.Dataset, r.NumTrainSteps, Normalize(r.StartedAt), Now()).Scan(&id)
+		r.JobID, r.ProviderJobID, r.Status, r.ModelSize, r.Dataset, r.NumTrainSteps, rpostgres.Normalize(r.StartedAt), rpostgres.Now()).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insert training job run: %w", err)
 	}
@@ -117,7 +118,7 @@ func UpdateTrainingJobRun(ctx context.Context, d *sql.DB, id int64, u model.Trai
 		set("error", u.Error)
 	}
 	if u.FinishedAt != nil {
-		set("finished_at", Normalize(*u.FinishedAt))
+		set("finished_at", rpostgres.Normalize(*u.FinishedAt))
 	}
 	if len(sets) == 0 {
 		return nil
@@ -137,7 +138,7 @@ func UpdateTrainingJobRun(ctx context.Context, d *sql.DB, id int64, u model.Trai
 func InsertTrainingJobEvent(ctx context.Context, d *sql.DB, runID int64, seq int, typ, data string) (bool, error) {
 	res, err := d.ExecContext(ctx, `
 		INSERT INTO gb_training_job_events (run_id, seq, type, data, created_at) VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (run_id, seq) DO NOTHING`, runID, seq, typ, data, Now())
+		ON CONFLICT (run_id, seq) DO NOTHING`, runID, seq, typ, data, rpostgres.Now())
 	if err != nil {
 		return false, fmt.Errorf("insert training job event: %w", err)
 	}

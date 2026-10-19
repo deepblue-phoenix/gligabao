@@ -33,6 +33,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -317,6 +318,10 @@ func openAdminDB(path string) (*sql.DB, error) {
 		return nil, err
 	}
 	if err := graph.Open(config.DBBackendSQLite, rel); err != nil {
+		rel.Close()
+		return nil, err
+	}
+	if err := trainingdb.Open(config.DBBackendSQLite, rel); err != nil {
 		rel.Close()
 		return nil, err
 	}

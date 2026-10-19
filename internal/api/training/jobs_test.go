@@ -14,6 +14,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
 type fakeSidecar struct {
@@ -76,7 +77,7 @@ func testStartTrainingJob(t *testing.T, d *sql.DB) {
 	if len(sc.reqs) != 1 || sc.reqs[0].NumTrainSteps != 7 || sc.reqs[0].ModelSize != "12b" || sc.reqs[0].Dataset != "mine.jsonl" {
 		t.Fatalf("sidecar request: %+v", sc.reqs)
 	}
-	run, err := relational.GetTrainingJobRun(ctx, d, 1)
+	run, err := trainingdb.GetTrainingJobRun(ctx, d, 1)
 	if err != nil || run.JobID != "fc-12b" || run.ProviderJobID != "prov-12b" || run.Status != "started" || run.ModelSize != "12b" ||
 		run.NumTrainSteps != 7 || run.Dataset != "mine.jsonl" || run.FinishedAt != nil {
 		t.Fatalf("stored run: %+v, %v", run, err)
@@ -113,7 +114,7 @@ func testStartTrainingJob(t *testing.T, d *sql.DB) {
 	if rec := post(h, "/x", `{"dataset":"mine"}`); rec.Code != http.StatusBadGateway {
 		t.Fatalf("sidecar error: %d", rec.Code)
 	}
-	if _, err := relational.GetTrainingJobRun(ctx, d, 3); !errors.Is(err, relational.ErrNotFound) {
+	if _, err := trainingdb.GetTrainingJobRun(ctx, d, 3); !errors.Is(err, relational.ErrNotFound) {
 		t.Fatalf("a failed start was recorded: %v", err)
 	}
 	if rec := post(training.StartJobOf(dbs, nil, nil), "/x", ""); rec.Code != http.StatusServiceUnavailable {
@@ -142,12 +143,12 @@ func testStopTrainingJob(t *testing.T, d *sql.DB) {
 	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: t.TempDir()}}
 	sc := &fakeSidecar{}
 	for _, jobID := range []string{"j1", "j2"} {
-		if _, err := relational.RecordTrainingJobRun(ctx, d, relational.TrainingJobRun{JobID: jobID, Status: "training", ModelSize: "4b", NumTrainSteps: 10, StartedAt: time.Now()}); err != nil {
+		if _, err := trainingdb.RecordTrainingJobRun(ctx, d, trainingdb.TrainingJobRun{JobID: jobID, Status: "training", ModelSize: "4b", NumTrainSteps: 10, StartedAt: time.Now()}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	end := time.Now()
-	if err := relational.UpdateTrainingJobRun(ctx, d, 2, relational.TrainingJobRunUpdate{Status: relational.TrainingJobCancelled, FinishedAt: &end}); err != nil {
+	if err := trainingdb.UpdateTrainingJobRun(ctx, d, 2, trainingdb.TrainingJobRunUpdate{Status: trainingdb.TrainingJobCancelled, FinishedAt: &end}); err != nil {
 		t.Fatal(err)
 	}
 	stop := func(h http.HandlerFunc, id string) *httptest.ResponseRecorder {

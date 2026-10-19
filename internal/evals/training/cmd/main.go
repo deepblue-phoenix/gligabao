@@ -25,11 +25,11 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
 // defaultModelSize is the size of the model evaluated when -model is not given (Gemma 4 4B, google/gemma-4-E4B-it).
@@ -78,7 +78,7 @@ func mainErr() error {
 	defer stop()
 
 	if *listModels {
-		models, err := relational.ListTrainedModels(ctx, database.Relational, 0)
+		models, err := trainingdb.ListTrainedModels(ctx, database.Relational, 0)
 		if err != nil {
 			return err
 		}
@@ -95,17 +95,17 @@ func mainErr() error {
 	}
 	if *modelID == 0 {
 		// The default model: the newest trained Gemma 4 4B (the newest are listed first).
-		models, err := relational.ListTrainedModels(ctx, database.Relational, 0)
+		models, err := trainingdb.ListTrainedModels(ctx, database.Relational, 0)
 		if err != nil {
 			return err
 		}
-		i := slices.IndexFunc(models, func(m relational.TrainedModel) bool { return m.ModelSize == defaultModelSize })
+		i := slices.IndexFunc(models, func(m trainingdb.TrainedModel) bool { return m.ModelSize == defaultModelSize })
 		if i < 0 {
 			return fmt.Errorf("no trained %s model in %s: train one, or pass -model ID (see -list-models)", defaultModelSize, *dbPath)
 		}
 		*modelID = models[i].ID
 	}
-	tm, err := relational.GetTrainedModel(ctx, database.Relational, *modelID)
+	tm, err := trainingdb.GetTrainedModel(ctx, database.Relational, *modelID)
 	if err != nil {
 		return fmt.Errorf("trained model %d: %w", *modelID, err)
 	}

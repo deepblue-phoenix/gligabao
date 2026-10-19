@@ -1,4 +1,4 @@
-package relational
+package db
 
 import "fmt"
 

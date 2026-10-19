@@ -10,6 +10,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
+	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
 func TestTrainingExperiments(t *testing.T) { dbtest.Run(t, trainingExperimentsScenario) }
@@ -17,7 +18,7 @@ func TestTrainingExperiments(t *testing.T) { dbtest.Run(t, trainingExperimentsSc
 func trainingExperimentsScenario(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	loss := 0.5
-	mid, _, err := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{
+	mid, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{
 		JobID: "jobexp00001", ModelSize: "4b", BaseModel: "google/gemma", Dataset: "mine.jsonl", NumTrainSteps: 7, FinalLoss: &loss,
 		Path: "trained/jobexp00001"})
 	if err != nil {

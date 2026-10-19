@@ -5,8 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	rpostgres "github.com/deepblue-phoenix/gligabao/internal/db/relational/postgres"
 
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational/model"
+	"github.com/deepblue-phoenix/gligabao/internal/training/db/model"
 )
 
 //---------------------------------------------------------------------------------------------
@@ -21,7 +22,7 @@ func UpsertTrainingDataset(ctx context.Context, d *sql.DB, ds model.TrainingData
 		ON CONFLICT (filename) DO UPDATE SET size_bytes = excluded.size_bytes, num_records = excluded.num_records,
 			sha256 = excluded.sha256, status = excluded.status, synced_at = NULL, updated_at = excluded.updated_at
 		RETURNING id`,
-		ds.Filename, ds.SizeBytes, ds.NumRecords, ds.SHA256, model.TrainingDatasetStored, Now()).Scan(&id)
+		ds.Filename, ds.SizeBytes, ds.NumRecords, ds.SHA256, model.TrainingDatasetStored, rpostgres.Now()).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("upsert training dataset: %w", err)
 	}
@@ -31,7 +32,7 @@ func UpsertTrainingDataset(ctx context.Context, d *sql.DB, ds model.TrainingData
 // MarkTrainingDatasetSynced sets the dataset 'synced' if it still has the digest sha256; it reports whether it did.
 func MarkTrainingDatasetSynced(ctx context.Context, d *sql.DB, id int64, sha256 string) (bool, error) {
 	res, err := d.ExecContext(ctx, `UPDATE gb_training_datasets SET status = $1, synced_at = $2 WHERE id = $3 AND sha256 = $4`,
-		model.TrainingDatasetSynced, Now(), id, sha256)
+		model.TrainingDatasetSynced, rpostgres.Now(), id, sha256)
 	if err != nil {
 		return false, fmt.Errorf("mark training dataset synced: %w", err)
 	}

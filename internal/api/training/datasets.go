@@ -28,6 +28,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -98,10 +99,10 @@ func stageDatasetFile(dir, name string, content []byte) (commit func() error, di
 	return func() error { return os.Rename(tmp.Name(), filepath.Join(dir, name)) }, discard, nil
 }
 
-// DatasetInfo is a dataset as the API shows it: its record (relational.TrainingDataset; Filename is the name it has on
+// DatasetInfo is a dataset as the API shows it: its record (trainingdb.TrainingDataset; Filename is the name it has on
 // the sidecar, "<name>.jsonl") and what its manifest says.
 type DatasetInfo struct {
-	relational.TrainingDataset
+	trainingdb.TrainingDataset
 	Manifest
 	// Dir is the dataset's subdirectory in the training datasets directory.
 	Dir string `json:"dir"`
@@ -109,22 +110,22 @@ type DatasetInfo struct {
 
 // ensureRecord returns the record of ds, whose data file has the stats s: the stored one if it describes this version of
 // the file, otherwise a new one (status stored, not synced), replacing the record that described an earlier version.
-func ensureRecord(ctx context.Context, n Database, ds LocalDataset, s fileStats) (*relational.TrainingDataset, error) {
-	rec, err := relational.GetTrainingDatasetByFilename(ctx, n.DB, ds.Filename())
+func ensureRecord(ctx context.Context, n Database, ds LocalDataset, s fileStats) (*trainingdb.TrainingDataset, error) {
+	rec, err := trainingdb.GetTrainingDatasetByFilename(ctx, n.DB, ds.Filename())
 	if err == nil && rec.SHA256 == s.sha256 && rec.SizeBytes == s.size && rec.NumRecords == s.records {
 		return rec, nil
 	}
 	if err != nil && !errors.Is(err, relational.ErrNotFound) {
 		return nil, err
 	}
-	if _, err := relational.SaveTrainingDataset(ctx, n.DB, relational.TrainingDataset{
+	if _, err := trainingdb.SaveTrainingDataset(ctx, n.DB, trainingdb.TrainingDataset{
 		Filename: ds.Filename(), SizeBytes: s.size, NumRecords: s.records, SHA256: s.sha256}); err != nil {
 		return nil, err
 	}
-	return relational.GetTrainingDatasetByFilename(ctx, n.DB, ds.Filename())
+	return trainingdb.GetTrainingDatasetByFilename(ctx, n.DB, ds.Filename())
 }
 
-func infoOf(ds LocalDataset, rec *relational.TrainingDataset) DatasetInfo {
+func infoOf(ds LocalDataset, rec *trainingdb.TrainingDataset) DatasetInfo {
 	return DatasetInfo{TrainingDataset: *rec, Manifest: ds.Manifest, Dir: filepath.Base(ds.Dir)}
 }
 
@@ -168,7 +169,7 @@ func findDataset(n Database, name string) (*LocalDataset, error) {
 // loadTrainingDataset returns the record and the file of the dataset called name, to be sent to the sidecar with a job.
 // The record is brought up to date with the file just read. An unknown name gives errUnknownDataset. The other errors
 // are safe to show to the user.
-func loadTrainingDataset(ctx context.Context, n Database, name string) (*relational.TrainingDataset, []byte, error) {
+func loadTrainingDataset(ctx context.Context, n Database, name string) (*trainingdb.TrainingDataset, []byte, error) {
 	ds, err := findDataset(n, name)
 	if err != nil {
 		return nil, nil, err
@@ -288,7 +289,7 @@ func UploadDatasetOf(dbs []Database) http.HandlerFunc {
 		}
 		ds := LocalDataset{Manifest: Manifest{Name: name, Description: uploadedManifestDescription, Format: FormatJSONL, File: filename},
 			Dir: dsDir, Path: filepath.Join(dsDir, filename)}
-		if _, err := relational.SaveTrainingDataset(ctx, n.DB, relational.TrainingDataset{
+		if _, err := trainingdb.SaveTrainingDataset(ctx, n.DB, trainingdb.TrainingDataset{
 			Filename: ds.Filename(), SizeBytes: stats.size, NumRecords: stats.records, SHA256: stats.sha256}); err != nil {
 			discard()
 			log.WithError(err).Error("training: record training dataset failed")
@@ -308,7 +309,7 @@ func UploadDatasetOf(dbs []Database) http.HandlerFunc {
 				return
 			}
 		}
-		rec, err := relational.GetTrainingDatasetByFilename(ctx, n.DB, ds.Filename())
+		rec, err := trainingdb.GetTrainingDatasetByFilename(ctx, n.DB, ds.Filename())
 		if err != nil {
 			log.WithError(err).Error("training: read training dataset failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the dataset's record")

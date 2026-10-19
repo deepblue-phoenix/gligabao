@@ -200,7 +200,7 @@ client / admin UI ── POST /v1/gb/training/models/{id}/infer ──► Go ser
 There are three layers, and a new endpoint touches one or more of them. Redeploy the Modal app after a change to the Python side (the training view's `Redeploy`), or the running app keeps the old code.
 
 1. **A new Go endpoint over trained models** (no Python change; for example a batch call, or a different default):
-   - write the handler next to `InferOf` in `internal/api/training/models.go`: pick the database (`pick`), read the model with `relational.GetTrainedModel`, and take `ModelSize` and `Path` **from the record, never from the request**;
+   - write the handler next to `InferOf` in `internal/api/training/models.go`: pick the database (`pick`), read the model with `trainingdb.GetTrainedModel`, and take `ModelSize` and `Path` **from the record, never from the request**;
    - if it needs something new from the sidecar, add a method to `internal/sidecar/inference.go` (a long call uses `postVia(ctx, c.stream, …)`, which has no overall timeout) and to the `Inferer` interface in `models.go` (the fake sidecar of the tests implements it);
    - register it in `registerTraining` (`internal/server/server.go`);
    - test it with the fake sidecar (`internal/api/training/models_test.go`).

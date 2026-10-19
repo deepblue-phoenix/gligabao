@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
+	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
 // The fake model, judge and dataset of the eval tests (evals_test.go) serve here too: an audit asks the same questions.
@@ -57,7 +57,7 @@ func TestAuditATrainedModel(t *testing.T) { dbtest.Run(t, testAuditATrainedModel
 func testAuditATrainedModel(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 5)}}
-	mid, _, err := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{
+	mid, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{
 		JobID: "jobaudit1", ModelSize: "12b", Dataset: "mine.jsonl", NumTrainSteps: 5, Path: "trained/jobaudit1"})
 	if err != nil {
 		t.Fatal(err)
@@ -135,9 +135,9 @@ func TestAuditRefusals(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx := context.Background()
 	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 2)}}
-	ok, _, _ := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{JobID: "j-ok", ModelSize: "4b", Dataset: "mine.jsonl", NumTrainSteps: 1, Path: "trained/j-ok"})
-	dflt, _, _ := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{JobID: "j-default", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j-default"})
-	gone, _, _ := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{JobID: "j-gone", ModelSize: "4b", Dataset: "deleted.jsonl", NumTrainSteps: 1, Path: "trained/j-gone"})
+	ok, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j-ok", ModelSize: "4b", Dataset: "mine.jsonl", NumTrainSteps: 1, Path: "trained/j-ok"})
+	dflt, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j-default", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j-default"})
+	gone, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j-gone", ModelSize: "4b", Dataset: "deleted.jsonl", NumTrainSteps: 1, Path: "trained/j-gone"})
 	m := training.NewAuditManager(ctx, dbs, &evalSidecar{}, &evalJudge{})
 
 	for _, tc := range []struct {
@@ -189,7 +189,7 @@ func TestAuditCancelAndConflict(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx := context.Background()
 	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 6)}}
-	mid, _, _ := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{JobID: "j1", ModelSize: "4b", Dataset: "mine.jsonl", NumTrainSteps: 1, Path: "trained/j1"})
+	mid, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j1", ModelSize: "4b", Dataset: "mine.jsonl", NumTrainSteps: 1, Path: "trained/j1"})
 	sc := &evalSidecar{block: make(chan struct{}), started: make(chan struct{}, 1)}
 	m := training.NewAuditManager(ctx, dbs, sc, &evalJudge{})
 
@@ -231,7 +231,7 @@ func TestAuditFailsWhenTheModelDoesNotAnswer(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx := context.Background()
 	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 20)}}
-	mid, _, _ := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{JobID: "j1", ModelSize: "4b", Dataset: "mine.jsonl", NumTrainSteps: 1, Path: "trained/j1"})
+	mid, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j1", ModelSize: "4b", Dataset: "mine.jsonl", NumTrainSteps: 1, Path: "trained/j1"})
 	m := training.NewAuditManager(ctx, dbs, &failingInferer{}, &evalJudge{})
 	c := startAudit(m, fmt.Sprint(mid), `{"batch_size": 2}`)
 	m.Wait()
@@ -245,7 +245,7 @@ func TestAuditFailsWhenTheModelDoesNotAnswer(t *testing.T) {
 func TestAuditsInterruptedByARestartAreFailed(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx := context.Background()
-	mid, _, _ := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{JobID: "j1", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j1"})
+	mid, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j1", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j1"})
 	id, err := evalsdb.RecordTrainedModelAuditRun(ctx, d, evalsdb.TrainedModelRun{TrainedModelID: mid})
 	if err != nil {
 		t.Fatal(err)
@@ -262,7 +262,7 @@ func TestAuditLiveFeed(t *testing.T) { dbtest.Run(t, testAuditLiveFeed) }
 func testAuditLiveFeed(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 3)}}
-	mid, _, err := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{
+	mid, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{
 		JobID: "jobaudit9", ModelSize: "12b", Dataset: "mine.jsonl", NumTrainSteps: 5, Path: "trained/jobaudit9"})
 	if err != nil {
 		t.Fatal(err)

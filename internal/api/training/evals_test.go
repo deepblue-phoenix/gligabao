@@ -18,11 +18,11 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
 // evalSidecar is a trained model that answers "a<i>" to "q<i>" (what a dataset says; an audit's), or the expected answer of the
@@ -96,7 +96,7 @@ func evalAnswers(t *testing.T, wrong ...int) *evalSidecar {
 // evalModel records a trained model whose dataset is the one theEval is named after.
 func evalModel(t *testing.T, d *sql.DB, job string) int64 {
 	t.Helper()
-	mid, _, err := relational.RecordTrainedModel(context.Background(), d, relational.TrainedModel{
+	mid, _, err := trainingdb.RecordTrainedModel(context.Background(), d, trainingdb.TrainedModel{
 		JobID: job, ModelSize: "12b", Dataset: theEval + ".jsonl", NumTrainSteps: 5, Path: "trained/" + job})
 	if err != nil {
 		t.Fatal(err)
@@ -287,8 +287,8 @@ func TestEvalRefusals(t *testing.T) {
 	ctx := context.Background()
 	dbs := []training.Database{{Name: "standard", DB: d}}
 	ok := evalModel(t, d, "j-ok")
-	dflt, _, _ := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{JobID: "j-default", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j-default"})
-	other, _, _ := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{JobID: "j-other", ModelSize: "4b", Dataset: "other.jsonl", NumTrainSteps: 1, Path: "trained/j-other"})
+	dflt, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j-default", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j-default"})
+	other, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j-other", ModelSize: "4b", Dataset: "other.jsonl", NumTrainSteps: 1, Path: "trained/j-other"})
 	m := training.NewEvalManager(ctx, dbs, testEvalsDir, evalAnswers(t), &evalJudge{})
 
 	for _, tc := range []struct {
@@ -415,7 +415,7 @@ func (failingInferer) Infer(context.Context, sidecar.InferRequest) (sidecar.Infe
 func TestEvalsInterruptedByARestartAreFailed(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx := context.Background()
-	mid, _, _ := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{JobID: "j1", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j1"})
+	mid, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j1", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j1"})
 	id, err := evalsdb.RecordTrainedModelEvalRun(ctx, d, evalsdb.TrainedModelRun{TrainedModelID: mid, Eval: theEval})
 	if err != nil {
 		t.Fatal(err)
@@ -546,7 +546,7 @@ func testEvalExperiments(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	dbs := []training.Database{{Name: "standard", DB: d}}
 	loss := 0.8
-	mid, _, err := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{
+	mid, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{
 		JobID: "jobexp1", ModelSize: "4b", Dataset: theEval + ".jsonl", NumTrainSteps: 3, FinalLoss: &loss, Path: "trained/jobexp1"})
 	if err != nil {
 		t.Fatal(err)

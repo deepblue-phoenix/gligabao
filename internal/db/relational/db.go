@@ -1,5 +1,7 @@
 // Package relational opens the database selected in the config and routes every database operation to the backend
-// subpackage in use (sqlite or postgres). It covers datasets, ontologies, the inferences (gb_inferences), remember runs and trained models; graph operations are in internal/db/graph and eval operations in internal/evals/db. All SQL lives in the backends (internal/db/relational/sqlite, internal/db/relational/postgres);
+// subpackage in use (sqlite or postgres). It covers datasets, ontologies, the inferences (gb_inferences) and remember runs; graph operations are in
+// internal/db/graph, eval operations in internal/evals/db and the training data (jobs, trained models, datasets) in
+// internal/training/db. All SQL lives in the backends (internal/db/relational/sqlite, internal/db/relational/postgres);
 // other packages only call the functions here and never write SQL. Each backend owns its schema, its SQL dialect
 // and its timestamp storage format.
 package relational
@@ -18,48 +20,18 @@ import (
 
 // Types shared with the backends (see package model).
 type (
-	Dataset               = model.Dataset
-	Model                 = model.Model
-	Inference             = model.Inference
-	InferenceStat         = model.InferenceStat
-	InferenceFilter       = model.InferenceFilter
-	InferenceGroup        = model.InferenceGroup
-	Ontology              = model.Ontology
-	RememberRun           = model.RememberRun
-	RememberStage         = model.RememberStage
-	RememberStageDef      = model.RememberStageDef
-	RememberRunFilter     = model.RememberRunFilter
-	TrainingJobRun        = model.TrainingJobRun
-	TrainingJobRunUpdate  = model.TrainingJobRunUpdate
-	TrainingJobEvent      = model.TrainingJobEvent
-	TrainingDataset       = model.TrainingDataset
-	TrainedModel          = model.TrainedModel
-	TrainedModelFile      = model.TrainedModelFile
-	TrainedModelInference = model.TrainedModelInference
+	Dataset           = model.Dataset
+	Model             = model.Model
+	Inference         = model.Inference
+	InferenceStat     = model.InferenceStat
+	InferenceFilter   = model.InferenceFilter
+	InferenceGroup    = model.InferenceGroup
+	Ontology          = model.Ontology
+	RememberRun       = model.RememberRun
+	RememberStage     = model.RememberStage
+	RememberStageDef  = model.RememberStageDef
+	RememberRunFilter = model.RememberRunFilter
 )
-
-// Statuses of a TrainedModelInference.
-const (
-	TrainedModelInferenceRunning   = model.TrainedModelInferenceRunning
-	TrainedModelInferenceCompleted = model.TrainedModelInferenceCompleted
-	TrainedModelInferenceFailed    = model.TrainedModelInferenceFailed
-)
-
-// Statuses of a TrainingDataset.
-const (
-	TrainingDatasetStored = model.TrainingDatasetStored
-	TrainingDatasetSynced = model.TrainingDatasetSynced
-)
-
-// Statuses that end a training job (see model.TrainingJobRun).
-const (
-	TrainingJobCompleted = model.TrainingJobCompleted
-	TrainingJobFailed    = model.TrainingJobFailed
-	TrainingJobCancelled = model.TrainingJobCancelled
-)
-
-// TrainingJobFinished reports whether a training job status ends the job.
-func TrainingJobFinished(status string) bool { return model.TrainingJobFinished(status) }
 
 // Statuses of a remember run and of its stages, and the stages (see model.RememberStages and gb_remember_runs).
 const (

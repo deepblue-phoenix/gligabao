@@ -62,7 +62,7 @@ Only the main database has a training datasets directory; other databases (the e
 
 ### The `gb_training_datasets` record
 
-One row per dataset (Go: `relational.TrainingDataset`). The directory is the source of truth; the row is made when the server first sees the data file, and replaced (status `stored` again) when it sees the file changed:
+One row per dataset (Go: `trainingdb.TrainingDataset`). The directory is the source of truth; the row is made when the server first sees the data file, and replaced (status `stored` again) when it sees the file changed:
 
 | Field | Meaning |
 |---|---|

@@ -8,6 +8,7 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
 ## [0.66.2] - 2026-10-19
 
 ### Changed
+- Internal reorganisation: all database code for training moved from `internal/db/relational` to a new `internal/training/db` package (with `model`, `sqlite` and `postgres` subpackages): the training job runs and their events, the trained models and their inferences, and the training datasets. Their tables and types (`trainingdb.TrainedModel`, `trainingdb.TrainingJobRun`, ...) are no longer part of `relational`; `db.Open` applies the training schema after the relational and graph ones and before the eval ones. Tables, API and behaviour are unchanged.
 - Internal reorganisation: all database code for evals moved from `internal/db/relational` to a new `internal/evals/db` package (with `model`, `sqlite` and `postgres` subpackages, like `internal/db/graph`): the experiments, runs and case results of the knowledge evals, and the eval and audit runs of trained models. Their tables and types (`evalsdb.TrainedModelRun`, `evalsdb.ExperimentRun`, ...) are no longer part of `relational`; `db.Open` applies the eval schema after the relational and graph ones. Tables, API and behaviour are unchanged.
 
 ## [0.66.1] - 2026-10-19

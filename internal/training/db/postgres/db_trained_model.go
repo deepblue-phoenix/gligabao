@@ -1,40 +1,40 @@
-package sqlite
+package postgres
 
 import (
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	rpostgres "github.com/deepblue-phoenix/gligabao/internal/db/relational/postgres"
 
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational/model"
+	"github.com/deepblue-phoenix/gligabao/internal/training/db/model"
 )
 
 //---------------------------------------------------------------------------------------------
-// Trained models (gb_trained_models, see db_schema.go)
+// Trained models (see sqlite/db_trained_model.go for what the functions do)
 
-// InsertTrainedModel stores the model a completed job saved and returns its ID and whether it is new: the job (JobID)
-// may have a model already, which is then left as it is and its ID returned. m.ID and m.CreatedAt are ignored.
+// InsertTrainedModel stores the model a completed job saved and returns its ID and whether it is new.
 func InsertTrainedModel(ctx context.Context, d *sql.DB, m model.TrainedModel) (int64, bool, error) {
 	var runID any
 	if m.RunID != nil {
 		runID = *m.RunID
 	}
-	res, err := d.ExecContext(ctx, `
+	var id int64
+	err := d.QueryRowContext(ctx, `
 		INSERT INTO gb_trained_models (name, run_id, job_id, base_model, model_size, dataset, dataset_sha256, num_examples,
 			num_train_steps, final_loss, params, path, files, size_bytes, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (job_id) DO NOTHING`,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		ON CONFLICT (job_id) DO NOTHING
+		RETURNING id`,
 		m.Name, runID, m.JobID, m.BaseModel, m.ModelSize, m.Dataset, m.DatasetSHA256, m.NumExamples, m.NumTrainSteps,
-		m.FinalLoss, m.ParamsJSON(), m.Path, m.FilesJSON(), m.SizeBytes, FormatTime(Now()))
-	if err != nil {
+		m.FinalLoss, m.ParamsJSON(), m.Path, m.FilesJSON(), m.SizeBytes, rpostgres.Now()).Scan(&id)
+	if err == nil {
+		return id, true, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
 		return 0, false, fmt.Errorf("insert trained model: %w", err)
 	}
-	if n, _ := res.RowsAffected(); n > 0 {
-		id, err := res.LastInsertId()
-		return id, true, err
-	}
-	var id int64
-	err = d.QueryRowContext(ctx, `SELECT id FROM gb_trained_models WHERE job_id = ?`, m.JobID).Scan(&id)
+	err = d.QueryRowContext(ctx, `SELECT id FROM gb_trained_models WHERE job_id = $1`, m.JobID).Scan(&id)
 	return id, false, err
 }
 
@@ -45,9 +45,9 @@ func scanTrainedModel(s rowScanner) (*model.TrainedModel, error) {
 	var m model.TrainedModel
 	var runID sql.NullInt64
 	var finalLoss sql.NullFloat64
-	var params, files, created string
+	var params, files string
 	if err := s.Scan(&m.ID, &m.Name, &runID, &m.JobID, &m.BaseModel, &m.ModelSize, &m.Dataset, &m.DatasetSHA256, &m.NumExamples,
-		&m.NumTrainSteps, &finalLoss, &params, &m.Path, &files, &m.SizeBytes, &created); err != nil {
+		&m.NumTrainSteps, &finalLoss, &params, &m.Path, &files, &m.SizeBytes, &m.CreatedAt); err != nil {
 		return nil, err
 	}
 	if runID.Valid {
@@ -57,13 +57,13 @@ func scanTrainedModel(s rowScanner) (*model.TrainedModel, error) {
 		m.FinalLoss = &finalLoss.Float64
 	}
 	m.SetStoredJSON(params, files)
-	m.CreatedAt = parseStoredTime(created)
+	m.CreatedAt = m.CreatedAt.UTC()
 	return &m, nil
 }
 
 // GetTrainedModel returns the trained model with that ID, or model.ErrNotFound.
 func GetTrainedModel(ctx context.Context, d *sql.DB, id int64) (*model.TrainedModel, error) {
-	m, err := scanTrainedModel(d.QueryRowContext(ctx, `SELECT `+trainedModelColumns+` FROM gb_trained_models WHERE id = ?`, id))
+	m, err := scanTrainedModel(d.QueryRowContext(ctx, `SELECT `+trainedModelColumns+` FROM gb_trained_models WHERE id = $1`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
@@ -75,7 +75,7 @@ func ListTrainedModels(ctx context.Context, d *sql.DB, limit int) ([]model.Train
 	q := `SELECT ` + trainedModelColumns + ` FROM gb_trained_models ORDER BY id DESC`
 	var args []any
 	if limit > 0 {
-		q += ` LIMIT ?`
+		q += ` LIMIT $1`
 		args = append(args, limit)
 	}
 	rows, err := d.QueryContext(ctx, q, args...)

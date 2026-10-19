@@ -14,8 +14,8 @@ import (
 	"testing"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
 const goodDataset = "{\"instruction\":\"a\",\"input\":\"\",\"output\":\"b\"}\n\n{\"instruction\":\"c\",\"output\":\"d\"}\r\n"
@@ -84,7 +84,7 @@ func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 		found[0].Path != filepath.Join(dir, "mine", "mine.jsonl") || found[0].Description == "" {
 		t.Fatalf("discovered: %+v, %v", found, problems)
 	}
-	ds, err := relational.GetTrainingDatasetByFilename(ctx, d, "mine.jsonl")
+	ds, err := trainingdb.GetTrainingDatasetByFilename(ctx, d, "mine.jsonl")
 	if err != nil || ds.Status != "stored" || ds.SizeBytes != int64(len(goodDataset)) || len(ds.SHA256) != 64 {
 		t.Fatalf("stored: %+v, %v", ds, err)
 	}
@@ -143,7 +143,7 @@ func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 	if rec := upload(h, "/x?db=nope", "file", "a.jsonl", goodDataset, nil); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown db: %d", rec.Code)
 	}
-	list, _ := relational.ListTrainingDatasets(ctx, d)
+	list, _ := trainingdb.ListTrainingDatasets(ctx, d)
 	entries, _ := os.ReadDir(dir)
 	files, _ := os.ReadDir(filepath.Join(dir, "mine"))
 	if len(list) != 3 || len(entries) != 5 || len(files) != 2 { // mine, renamed, x, own, elsewhere; no temp files left either
@@ -163,7 +163,7 @@ func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 			t.Fatalf("list lacks %s: %d %s", want, lrec.Code, lrec.Body)
 		}
 	}
-	if rec, err := relational.GetTrainingDatasetByFilename(ctx, d, "own.jsonl"); err != nil || rec.NumRecords != 2 {
+	if rec, err := trainingdb.GetTrainingDatasetByFilename(ctx, d, "own.jsonl"); err != nil || rec.NumRecords != 2 {
 		t.Fatalf("record of the dataset added by hand: %+v, %v", rec, err)
 	}
 }
@@ -202,20 +202,20 @@ func testStartJobSendsDataset(t *testing.T, d *sql.DB) {
 	if len(sc.reqs) != 1 || sc.reqs[0].Dataset != "mine.jsonl" || sent(0) != goodDataset {
 		t.Fatalf("sidecar request: %+v", sc.reqs)
 	}
-	if ds, _ := relational.GetTrainingDatasetByFilename(ctx, d, "mine.jsonl"); ds.Status != "synced" || ds.SyncedAt == nil {
+	if ds, _ := trainingdb.GetTrainingDatasetByFilename(ctx, d, "mine.jsonl"); ds.Status != "synced" || ds.SyncedAt == nil {
 		t.Fatalf("after start: %+v", ds)
 	}
 
 	// Uploaded again: the new version is sent, and the dataset is "stored" until a job takes it.
 	upload(up, "/x", "file", "mine.jsonl", goodDataset+goodDataset, nil)
-	if ds, _ := relational.GetTrainingDatasetByFilename(ctx, d, "mine.jsonl"); ds.Status != "stored" {
+	if ds, _ := trainingdb.GetTrainingDatasetByFilename(ctx, d, "mine.jsonl"); ds.Status != "stored" {
 		t.Fatalf("after re-upload: %+v", ds)
 	}
 	sc.err = errors.New("down")
 	if rec := startDS("mine"); rec.Code != http.StatusBadGateway {
 		t.Fatalf("sidecar down: %d %s", rec.Code, rec.Body)
 	}
-	if ds, _ := relational.GetTrainingDatasetByFilename(ctx, d, "mine.jsonl"); ds.Status != "stored" {
+	if ds, _ := trainingdb.GetTrainingDatasetByFilename(ctx, d, "mine.jsonl"); ds.Status != "stored" {
 		t.Fatalf("after failed start: %+v", ds)
 	}
 	sc.err = nil

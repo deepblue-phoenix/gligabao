@@ -21,10 +21,10 @@ import (
 	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -85,7 +85,7 @@ func (m *AuditManager) StartOf() http.HandlerFunc {
 
 // loadModelDataset reads the training dataset of tm from n's training datasets directory: the dataset's name, the digest of
 // the file and its examples. The errors are safe to show to the user.
-func loadModelDataset(n Database, tm *relational.TrainedModel) (name, sum string, examples []trainingeval.Example, err error) {
+func loadModelDataset(n Database, tm *trainingdb.TrainedModel) (name, sum string, examples []trainingeval.Example, err error) {
 	name = strings.TrimSuffix(tm.Dataset, ".jsonl")
 	if name == "" {
 		return "", "", nil, errors.New("this model was trained on the sidecar's default dataset, which gligabao does not have: there are no questions to ask")

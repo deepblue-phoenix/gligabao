@@ -5,8 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	rsqlite "github.com/deepblue-phoenix/gligabao/internal/db/relational/sqlite"
 
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational/model"
+	"github.com/deepblue-phoenix/gligabao/internal/training/db/model"
 )
 
 //---------------------------------------------------------------------------------------------
@@ -15,7 +16,7 @@ import (
 // UpsertTrainingDataset records a dataset file under its filename (a new row, or replacing the row that has that name) as
 // 'stored', not synced, and returns its ID. Only Filename, SizeBytes, NumRecords and SHA256 of ds are used.
 func UpsertTrainingDataset(ctx context.Context, d *sql.DB, ds model.TrainingDataset) (int64, error) {
-	now := FormatTime(Now())
+	now := rsqlite.FormatTime(rsqlite.Now())
 	var id int64
 	err := d.QueryRowContext(ctx, `
 		INSERT INTO gb_training_datasets (filename, size_bytes, num_records, sha256, status, created_at, updated_at)
@@ -35,7 +36,7 @@ func UpsertTrainingDataset(ctx context.Context, d *sql.DB, ds model.TrainingData
 // there is no such dataset.
 func MarkTrainingDatasetSynced(ctx context.Context, d *sql.DB, id int64, sha256 string) (bool, error) {
 	res, err := d.ExecContext(ctx, `UPDATE gb_training_datasets SET status = ?, synced_at = ? WHERE id = ? AND sha256 = ?`,
-		model.TrainingDatasetSynced, FormatTime(Now()), id, sha256)
+		model.TrainingDatasetSynced, rsqlite.FormatTime(rsqlite.Now()), id, sha256)
 	if err != nil {
 		return false, fmt.Errorf("mark training dataset synced: %w", err)
 	}

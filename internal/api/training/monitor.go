@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -94,7 +94,7 @@ func NewMonitor(ctx context.Context, dbs []Database, sc Sidecar, opts ...Monitor
 	}
 	if sc != nil {
 		for _, n := range dbs {
-			runs, err := relational.ListTrainingJobRuns(ctx, n.DB, 0, true)
+			runs, err := trainingdb.ListTrainingJobRuns(ctx, n.DB, 0, true)
 			if err != nil {
 				log.WithError(err).WithField("db", n.Name).Error("training: list unfinished training jobs failed")
 				continue
@@ -108,7 +108,7 @@ func NewMonitor(ctx context.Context, dbs []Database, sc Sidecar, opts ...Monitor
 }
 
 // Watch starts following the training job run in n (a no-op if it is already followed, or the monitor has no sidecar).
-func (m *Monitor) Watch(n Database, run relational.TrainingJobRun) {
+func (m *Monitor) Watch(n Database, run trainingdb.TrainingJobRun) {
 	if m == nil || m.sc == nil {
 		return
 	}
@@ -131,10 +131,10 @@ func (m *Monitor) Watch(n Database, run relational.TrainingJobRun) {
 }
 
 // follow streams the events of the job from the sidecar until it ends, the deadline passes or the monitor's context is done.
-func (m *Monitor) follow(n Database, run relational.TrainingJobRun) {
+func (m *Monitor) follow(n Database, run trainingdb.TrainingJobRun) {
 	l := log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID})
 	deadline := run.StartedAt.Add(m.maxWatch)
-	from, err := relational.NextTrainingJobEventSeq(m.ctx, n.DB, run.ID)
+	from, err := trainingdb.NextTrainingJobEventSeq(m.ctx, n.DB, run.ID)
 	if err != nil {
 		l.WithError(err).Error("training: training job: reading the stored events failed")
 		return
@@ -159,7 +159,7 @@ func (m *Monitor) follow(n Database, run relational.TrainingJobRun) {
 		}
 		if time.Now().After(deadline) {
 			l.Warn("training: training job: no end reported in time, marking it failed")
-			ev := sidecar.TrainingEvent{Seq: from, Type: sidecar.EventStatus, Status: relational.TrainingJobFailed,
+			ev := sidecar.TrainingEvent{Seq: from, Type: sidecar.EventStatus, Status: trainingdb.TrainingJobFailed,
 				Error: fmt.Sprintf("the sidecar did not report the job's end within %s", m.maxWatch), Timestamp: float64(time.Now().Unix())}
 			if err := m.record(n, run, ev); err != nil {
 				l.WithError(err).Error("training: training job: recording the timeout failed")
@@ -180,19 +180,19 @@ func (m *Monitor) follow(n Database, run relational.TrainingJobRun) {
 }
 
 // record stores the event, updates the job's row from it and forwards it to the subscribers.
-func (m *Monitor) record(n Database, run relational.TrainingJobRun, ev sidecar.TrainingEvent) error {
+func (m *Monitor) record(n Database, run trainingdb.TrainingJobRun, ev sidecar.TrainingEvent) error {
 	ctx := context.WithoutCancel(m.ctx) // an event that arrived is stored even while the server shuts down
 	data, err := json.Marshal(ev)
 	if err != nil {
 		return err
 	}
-	if ev.Type == sidecar.EventStatus && ev.Status == relational.TrainingJobCompleted {
+	if ev.Type == sidecar.EventStatus && ev.Status == trainingdb.TrainingJobCompleted {
 		// Before the event is stored: a failure here makes the stream retry the event, and the model is recorded once.
 		if err := m.recordModel(ctx, n, run, ev); err != nil {
 			return err
 		}
 	}
-	isNew, err := relational.RecordTrainingJobEvent(ctx, n.DB, run.ID, ev.Seq, ev.Type, string(data))
+	isNew, err := trainingdb.RecordTrainingJobEvent(ctx, n.DB, run.ID, ev.Seq, ev.Type, string(data))
 	if err != nil {
 		return err
 	}
@@ -205,15 +205,15 @@ func (m *Monitor) record(n Database, run relational.TrainingJobRun, ev sidecar.T
 	if ev.Type == sidecar.EventProgress && ev.Step != nil {
 		log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID, "step": *ev.Step, "loss": ev.Loss}).Debug("training: progress")
 	}
-	if ev.Type == sidecar.EventStatus && ev.Status != relational.TrainingJobFailed {
+	if ev.Type == sidecar.EventStatus && ev.Status != trainingdb.TrainingJobFailed {
 		log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID}).Infof("training: status %s", ev.Status)
 	}
-	if ev.Type == sidecar.EventStatus && ev.Status == relational.TrainingJobFailed {
+	if ev.Type == sidecar.EventStatus && ev.Status == trainingdb.TrainingJobFailed {
 		log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID, "error": ev.Error}).
 			Errorf("training: training job failed\n%s", ev.Traceback)
 	}
 	if u := trainingRunUpdate(ev); u != nil {
-		if err := relational.UpdateTrainingJobRun(ctx, n.DB, run.ID, *u); err != nil {
+		if err := trainingdb.UpdateTrainingJobRun(ctx, n.DB, run.ID, *u); err != nil {
 			return err
 		}
 	}
@@ -223,14 +223,14 @@ func (m *Monitor) record(n Database, run relational.TrainingJobRun, ev sidecar.T
 
 // recordModel stores the weights a completed job reports (the "model" of its completed event) as a trained model. A
 // completed event without them (from a sidecar that does not report them yet) records nothing.
-func (m *Monitor) recordModel(ctx context.Context, n Database, run relational.TrainingJobRun, ev sidecar.TrainingEvent) error {
+func (m *Monitor) recordModel(ctx context.Context, n Database, run trainingdb.TrainingJobRun, ev sidecar.TrainingEvent) error {
 	l := log.WithFields(log.Fields{"db": n.Name, "run_id": run.ID, "job_id": run.JobID})
 	info := ev.Model
 	if info == nil || info.Path == "" {
 		l.Warn("training: the job completed without reporting its saved model: no trained model recorded (redeploy the Modal app)")
 		return nil
 	}
-	tm := relational.TrainedModel{
+	tm := trainingdb.TrainedModel{
 		RunID: &run.ID, JobID: run.JobID, BaseModel: info.BaseModel, ModelSize: info.ModelSize, Dataset: run.Dataset,
 		DatasetSHA256: info.DatasetSHA256, NumExamples: info.NumExamples, NumTrainSteps: run.NumTrainSteps, FinalLoss: ev.FinalLoss,
 		Params: info.Params, Path: info.Path, SizeBytes: info.SizeBytes,
@@ -239,9 +239,9 @@ func (m *Monitor) recordModel(ctx context.Context, n Database, run relational.Tr
 		tm.ModelSize = run.ModelSize
 	}
 	for _, f := range info.Files {
-		tm.Files = append(tm.Files, relational.TrainedModelFile{Path: f.Path, SizeBytes: f.SizeBytes, SHA256: f.SHA256})
+		tm.Files = append(tm.Files, trainingdb.TrainedModelFile{Path: f.Path, SizeBytes: f.SizeBytes, SHA256: f.SHA256})
 	}
-	id, isNew, err := relational.RecordTrainedModel(ctx, n.DB, tm)
+	id, isNew, err := trainingdb.RecordTrainedModel(ctx, n.DB, tm)
 	if err != nil {
 		return fmt.Errorf("record trained model: %w", err)
 	}
@@ -252,15 +252,15 @@ func (m *Monitor) recordModel(ctx context.Context, n Database, run relational.Tr
 }
 
 // trainingRunUpdate is the change an event makes to its job's row (nil: none).
-func trainingRunUpdate(ev sidecar.TrainingEvent) *relational.TrainingJobRunUpdate {
+func trainingRunUpdate(ev sidecar.TrainingEvent) *trainingdb.TrainingJobRunUpdate {
 	switch ev.Type {
 	case sidecar.EventProgress:
 		if ev.Step == nil {
 			return nil
 		}
-		return &relational.TrainingJobRunUpdate{Step: ev.Step, Loss: ev.Loss}
+		return &trainingdb.TrainingJobRunUpdate{Step: ev.Step, Loss: ev.Loss}
 	case sidecar.EventStatus:
-		u := &relational.TrainingJobRunUpdate{Status: ev.Status}
+		u := &trainingdb.TrainingJobRunUpdate{Status: ev.Status}
 		if ev.Finished() {
 			now := time.Now().UTC()
 			u.FinishedAt, u.FinalLoss, u.Error = &now, ev.FinalLoss, ev.Error

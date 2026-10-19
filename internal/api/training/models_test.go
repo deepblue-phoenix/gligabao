@@ -11,9 +11,9 @@ import (
 	"testing"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
 func TestTrainedModelEndpoints(t *testing.T) { dbtest.Run(t, testTrainedModelEndpoints) }
@@ -21,11 +21,11 @@ func TestTrainedModelEndpoints(t *testing.T) { dbtest.Run(t, testTrainedModelEnd
 func testTrainedModelEndpoints(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	dbs := []training.Database{{Name: "standard", DB: d}}
-	for _, m := range []relational.TrainedModel{
+	for _, m := range []trainingdb.TrainedModel{
 		{JobID: "j1", ModelSize: "4b", NumTrainSteps: 10, Path: "trained/j1"},
 		{JobID: "j2", ModelSize: "12b", NumTrainSteps: 20, Path: "trained/j2", Dataset: "mine.jsonl"},
 	} {
-		if _, _, err := relational.RecordTrainedModel(ctx, d, m); err != nil {
+		if _, _, err := trainingdb.RecordTrainedModel(ctx, d, m); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -40,7 +40,7 @@ func testTrainedModelEndpoints(t *testing.T, d *sql.DB) {
 	}
 
 	rec := get(training.ListModelsOf(dbs), "/x", "")
-	var list struct{ Models []relational.TrainedModel }
+	var list struct{ Models []trainingdb.TrainedModel }
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || rec.Code != 200 || len(list.Models) != 2 ||
 		list.Models[0].JobID != "j2" || list.Models[1].JobID != "j1" || list.Models[0].Files == nil {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body)
@@ -54,7 +54,7 @@ func testTrainedModelEndpoints(t *testing.T, d *sql.DB) {
 		}
 	}
 	rec = get(training.GetModelOf(dbs), "/x", "2")
-	var m relational.TrainedModel
+	var m trainingdb.TrainedModel
 	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil || m.JobID != "j2" || m.Dataset != "mine.jsonl" {
 		t.Fatalf("get: %d %s", rec.Code, rec.Body)
 	}
@@ -70,7 +70,7 @@ func TestInferWithATrainedModel(t *testing.T) { dbtest.Run(t, testInferWithATrai
 func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	dbs := []training.Database{{Name: "standard", DB: d}}
-	id, _, err := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{JobID: "j2", ModelSize: "12b", NumTrainSteps: 20, Path: "trained/j2"})
+	id, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j2", ModelSize: "12b", NumTrainSteps: 20, Path: "trained/j2"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,18 +131,18 @@ func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
 	}
 
 	// Every request that reached the sidecar is stored, with its outcome.
-	list, err := relational.ListTrainedModelInferences(ctx, d, 1, 0)
+	list, err := trainingdb.ListTrainedModelInferences(ctx, d, 1, 0)
 	if err != nil || len(list) != 3 {
 		t.Fatalf("stored requests: %+v %v", list, err)
 	}
-	if r := list[2]; r.Status != relational.TrainedModelInferenceCompleted || r.Response != "hello" || r.Prompt != "hi" || r.ModelPath != "trained/j2" ||
+	if r := list[2]; r.Status != trainingdb.TrainedModelInferenceCompleted || r.Response != "hello" || r.Prompt != "hi" || r.ModelPath != "trained/j2" ||
 		r.ModelSize != "12b" || r.MaxTokens != 50 || r.Temperature == nil || *r.Temperature != 0.2 || r.ID != int64(out.ID) {
 		t.Fatalf("completed request: %+v", r)
 	}
-	if r := list[1]; r.Status != relational.TrainedModelInferenceFailed || !strings.Contains(r.Error, "No trained model") || r.Response != "" {
+	if r := list[1]; r.Status != trainingdb.TrainedModelInferenceFailed || !strings.Contains(r.Error, "No trained model") || r.Response != "" {
 		t.Fatalf("failed request: %+v", r)
 	}
-	if r := list[0]; r.Status != relational.TrainedModelInferenceFailed || !strings.Contains(r.Error, "refused") {
+	if r := list[0]; r.Status != trainingdb.TrainedModelInferenceFailed || !strings.Contains(r.Error, "refused") {
 		t.Fatalf("sidecar down request: %+v", r)
 	}
 	rec = httptest.NewRecorder()
@@ -150,7 +150,7 @@ func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
 	req.SetPathValue("id", "1")
 	training.ListInferencesOf(dbs)(rec, req)
 	var listed struct {
-		Inferences []relational.TrainedModelInference `json:"inferences"`
+		Inferences []trainingdb.TrainedModelInference `json:"inferences"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil || rec.Code != 200 || len(listed.Inferences) != 2 || listed.Inferences[0].ID != list[0].ID {
 		t.Fatalf("list inferences: %d %s", rec.Code, rec.Body)

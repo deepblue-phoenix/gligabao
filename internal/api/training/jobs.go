@@ -17,6 +17,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -41,7 +42,7 @@ const maxTrainingJobBody = 1 << 16
 // {"dataset": "my-dataset", "num_train_steps": 100, "model_size": "4b"} (only dataset is required): it starts a training job on the sidecar through sc
 // (the sidecar's REST API) and stores the TrainingJob the sidecar reports in the gb_training_job_runs table of one of dbs
 // (the first without db), then has mon (may be nil) follow the job's progress. It answers 201 with the stored record
-// (relational.TrainingJobRun). A nil sc (no sidecar) answers 503, a sidecar error 502, except that a request the sidecar
+// (trainingdb.TrainingJobRun). A nil sc (no sidecar) answers 503, a sidecar error 502, except that a request the sidecar
 // rejects as invalid answers 400 with its message.
 func StartJobOf(dbs []Database, sc JobStarter, mon *Monitor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -107,10 +108,10 @@ func StartJobOf(dbs []Database, sc JobStarter, mon *Monitor) http.HandlerFunc {
 		// The job is running now: record it even if the client went away meanwhile.
 		ctx = context.WithoutCancel(ctx)
 		// the sidecar has taken this version of the file
-		if _, err := relational.MarkTrainingDatasetSynced(ctx, n.DB, dataset.ID, dataset.SHA256); err != nil {
+		if _, err := trainingdb.MarkTrainingDatasetSynced(ctx, n.DB, dataset.ID, dataset.SHA256); err != nil {
 			log.WithError(err).WithField("filename", dataset.Filename).Error("training: mark training dataset synced failed")
 		}
-		id, err := relational.RecordTrainingJobRun(ctx, n.DB, relational.TrainingJobRun{
+		id, err := trainingdb.RecordTrainingJobRun(ctx, n.DB, trainingdb.TrainingJobRun{
 			JobID: job.JobID, ProviderJobID: job.ProviderJobID, Status: job.Status, ModelSize: job.ModelSize, Dataset: job.Dataset,
 			NumTrainSteps: job.NumTrainSteps, StartedAt: job.StartedAt})
 		if err != nil {
@@ -118,7 +119,7 @@ func StartJobOf(dbs []Database, sc JobStarter, mon *Monitor) http.HandlerFunc {
 			httputil.Error(w, http.StatusInternalServerError, "training job "+job.JobID+" started but could not be recorded")
 			return
 		}
-		run, err := relational.GetTrainingJobRun(ctx, n.DB, id)
+		run, err := trainingdb.GetTrainingJobRun(ctx, n.DB, id)
 		if err != nil {
 			log.WithError(err).WithField("job_id", job.JobID).Error("training: read training job run failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the training job run")
@@ -149,7 +150,7 @@ func StopJobOf(dbs []Database, sc JobCanceller) http.HandlerFunc {
 			httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not active")
 			return
 		}
-		run, err := relational.GetTrainingJobRun(r.Context(), n.DB, id)
+		run, err := trainingdb.GetTrainingJobRun(r.Context(), n.DB, id)
 		if errors.Is(err, relational.ErrNotFound) {
 			httputil.Error(w, http.StatusNotFound, "unknown training job run")
 			return
@@ -158,7 +159,7 @@ func StopJobOf(dbs []Database, sc JobCanceller) http.HandlerFunc {
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the training job run")
 			return
 		}
-		if relational.TrainingJobFinished(run.Status) {
+		if trainingdb.TrainingJobFinished(run.Status) {
 			httputil.Error(w, http.StatusConflict, "the training job is over already ("+run.Status+")")
 			return
 		}
@@ -202,7 +203,7 @@ func ListJobsOf(dbs []Database) http.HandlerFunc {
 			}
 			limit = min(v, trainingJobsMaxLimit)
 		}
-		runs, err := relational.ListTrainingJobRuns(r.Context(), n.DB, limit, false)
+		runs, err := trainingdb.ListTrainingJobRuns(r.Context(), n.DB, limit, false)
 		if err != nil {
 			log.WithError(err).Error("training: list training jobs failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to list the training jobs")
@@ -255,11 +256,11 @@ func EventsOf(dbs []Database, mon *Monitor) http.HandlerFunc {
 		// Subscribe before reading the stored events, so none falls between the two; the overlap is skipped by seq.
 		sub, cancel := mon.subscribe(n.Name, runID)
 		defer cancel()
-		var run *relational.TrainingJobRun
-		var history []relational.TrainingJobEvent
+		var run *trainingdb.TrainingJobRun
+		var history []trainingdb.TrainingJobEvent
 		if runID != 0 {
 			var err error
-			if run, err = relational.GetTrainingJobRun(r.Context(), n.DB, runID); errors.Is(err, relational.ErrNotFound) {
+			if run, err = trainingdb.GetTrainingJobRun(r.Context(), n.DB, runID); errors.Is(err, relational.ErrNotFound) {
 				httputil.Error(w, http.StatusNotFound, "unknown training job run")
 				return
 			} else if err != nil {
@@ -267,7 +268,7 @@ func EventsOf(dbs []Database, mon *Monitor) http.HandlerFunc {
 				httputil.Error(w, http.StatusInternalServerError, "failed to read the training job run")
 				return
 			}
-			if history, err = relational.ListTrainingJobEvents(r.Context(), n.DB, runID, from); err != nil {
+			if history, err = trainingdb.ListTrainingJobEvents(r.Context(), n.DB, runID, from); err != nil {
 				log.WithError(err).Error("training: read training job events failed")
 				httputil.Error(w, http.StatusInternalServerError, "failed to read the training job events")
 				return

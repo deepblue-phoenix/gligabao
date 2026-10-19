@@ -22,6 +22,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
+	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
 //---------------------------------------------------------------------------------------------
@@ -177,6 +178,11 @@ func Open(cfg Config) (*DB, error) {
 		return nil, err
 	}
 	d.Graph = rel
+	// The training tables come before the evals': the eval tables reference the trained models.
+	if err := trainingdb.Open(cfg.Backend, rel); err != nil {
+		rel.Close()
+		return nil, err
+	}
 	if err := evalsdb.Open(cfg.Backend, rel); err != nil {
 		rel.Close()
 		return nil, err

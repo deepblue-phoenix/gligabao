@@ -10,6 +10,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
+	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
 func TestUnifiedEvalTables(t *testing.T) { dbtest.Run(t, unifiedEvalTablesScenario) }
@@ -83,7 +84,7 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 
 	// A training eval run: an ad-hoc one is a run in no experiment; joining an experiment sets it and lists the eval there.
 	loss := 0.5
-	mid, _, err := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{
+	mid, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{
 		JobID: "jobunify001", ModelSize: "4b", Dataset: "mine.jsonl", NumTrainSteps: 7, FinalLoss: &loss, Path: "trained/jobunify001"})
 	if err != nil {
 		t.Fatal(err)

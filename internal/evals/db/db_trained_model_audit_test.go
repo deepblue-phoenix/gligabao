@@ -10,13 +10,14 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
+	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
 func TestTrainedModelAuditRuns(t *testing.T) { dbtest.Run(t, trainedModelAuditRunsScenario) }
 
 func trainedModelAuditRunsScenario(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	mid, _, err := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{
+	mid, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{
 		JobID: "jobaudit0001", ModelSize: "4b", Dataset: "mine.jsonl", NumTrainSteps: 5, Path: "trained/jobaudit0001"})
 	if err != nil {
 		t.Fatal(err)

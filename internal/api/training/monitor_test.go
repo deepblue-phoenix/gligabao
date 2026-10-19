@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
 // streamSidecar is a sidecar whose job events the test feeds: StreamTrainingJobEvents replays what was fed so far from
@@ -162,7 +162,7 @@ func testTrainingMonitor(t *testing.T, d *sql.DB) {
 	sc.feed <- status("running")
 	sc.feed <- progress(5, 2.5)
 	sc.feed <- progress(10, 1.5)
-	waitFor(t, "3 events stored", func() bool { n, _ := relational.NextTrainingJobEventSeq(ctx, d, 1); return n == 3 })
+	waitFor(t, "3 events stored", func() bool { n, _ := trainingdb.NextTrainingJobEventSeq(ctx, d, 1); return n == 3 })
 	for i, want := range []string{"status", "progress", "progress"} {
 		for _, c := range []*sseClient{all, live} {
 			ev := c.next()
@@ -174,7 +174,7 @@ func testTrainingMonitor(t *testing.T, d *sql.DB) {
 			}
 		}
 	}
-	run, _ := relational.GetTrainingJobRun(ctx, d, 1)
+	run, _ := trainingdb.GetTrainingJobRun(ctx, d, 1)
 	if run.Status != "running" || run.LastStep != 10 || run.LastLoss == nil || *run.LastLoss != 1.5 || run.FinishedAt != nil {
 		t.Fatalf("run mid-training: %+v", run)
 	}
@@ -189,13 +189,13 @@ func testTrainingMonitor(t *testing.T, d *sql.DB) {
 	if ev := live.next(); ev.Name != "status" || ev.Data.Status != "completed" || ev.ID != "3" {
 		t.Fatalf("completed event: %+v", ev)
 	}
-	waitFor(t, "run finished", func() bool { r, _ := relational.GetTrainingJobRun(ctx, d, 1); return r.FinishedAt != nil })
-	run, _ = relational.GetTrainingJobRun(ctx, d, 1)
+	waitFor(t, "run finished", func() bool { r, _ := trainingdb.GetTrainingJobRun(ctx, d, 1); return r.FinishedAt != nil })
+	run, _ = trainingdb.GetTrainingJobRun(ctx, d, 1)
 	if run.Status != "completed" || run.FinalLoss == nil || *run.FinalLoss != 0.9 {
 		t.Fatalf("finished run: %+v", run)
 	}
 	// The completed job left a trained model, made from its run and the completed event.
-	models, err := relational.ListTrainedModels(ctx, d, 0)
+	models, err := trainingdb.ListTrainedModels(ctx, d, 0)
 	if err != nil || len(models) != 1 {
 		t.Fatalf("trained models: %+v, %v", models, err)
 	}
@@ -205,7 +205,7 @@ func testTrainingMonitor(t *testing.T, d *sql.DB) {
 		string(tm.Params) != `{"lora_rank":16}` {
 		t.Fatalf("trained model: %+v", tm)
 	}
-	stored, err := relational.ListTrainingJobEvents(ctx, d, 1, 0)
+	stored, err := trainingdb.ListTrainingJobEvents(ctx, d, 1, 0)
 	if err != nil || len(stored) != 4 || stored[3].Seq != 3 || stored[3].Type != "status" {
 		t.Fatalf("stored events: %+v, %v", stored, err)
 	}
@@ -229,7 +229,7 @@ func testTrainingMonitor(t *testing.T, d *sql.DB) {
 	// Jobs list, newest first.
 	rec = httptest.NewRecorder()
 	training.ListJobsOf(dbs)(rec, httptest.NewRequest("GET", "/x", nil))
-	var list struct{ Jobs []relational.TrainingJobRun }
+	var list struct{ Jobs []trainingdb.TrainingJobRun }
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || len(list.Jobs) != 1 || list.Jobs[0].Status != "completed" {
 		t.Fatalf("list: %v %s", err, rec.Body)
 	}
@@ -255,11 +255,11 @@ func TestTrainingMonitorTimeoutAndResume(t *testing.T) {
 
 	// Resume: run 1 is unfinished with 2 events stored; run 2 is finished and left alone.
 	started := time.Now().Add(-time.Minute)
-	id1, _ := relational.RecordTrainingJobRun(ctx, d, relational.TrainingJobRun{JobID: "j1", Status: "started", ModelSize: "4b", NumTrainSteps: 5, StartedAt: started})
-	relational.RecordTrainingJobEvent(ctx, d, id1, 0, "status", `{"seq":0,"type":"status","status":"running"}`)
-	relational.RecordTrainingJobEvent(ctx, d, id1, 1, "progress", `{"seq":1,"type":"progress","step":1}`)
-	id2, _ := relational.RecordTrainingJobRun(ctx, d, relational.TrainingJobRun{JobID: "j2", Status: "started", ModelSize: "4b", NumTrainSteps: 5, StartedAt: started})
-	relational.UpdateTrainingJobRun(ctx, d, id2, relational.TrainingJobRunUpdate{Status: relational.TrainingJobCompleted})
+	id1, _ := trainingdb.RecordTrainingJobRun(ctx, d, trainingdb.TrainingJobRun{JobID: "j1", Status: "started", ModelSize: "4b", NumTrainSteps: 5, StartedAt: started})
+	trainingdb.RecordTrainingJobEvent(ctx, d, id1, 0, "status", `{"seq":0,"type":"status","status":"running"}`)
+	trainingdb.RecordTrainingJobEvent(ctx, d, id1, 1, "progress", `{"seq":1,"type":"progress","step":1}`)
+	id2, _ := trainingdb.RecordTrainingJobRun(ctx, d, trainingdb.TrainingJobRun{JobID: "j2", Status: "started", ModelSize: "4b", NumTrainSteps: 5, StartedAt: started})
+	trainingdb.UpdateTrainingJobRun(ctx, d, id2, trainingdb.TrainingJobRunUpdate{Status: trainingdb.TrainingJobCompleted})
 
 	sc := newStreamSidecar()
 	sc.sent = []sidecar.TrainingEvent{status("running"), progress(1, 3)}
@@ -271,24 +271,24 @@ func TestTrainingMonitorTimeoutAndResume(t *testing.T) {
 	}
 	sc.mu.Unlock()
 	sc.feed <- status("completed")
-	waitFor(t, "run 1 finished", func() bool { r, _ := relational.GetTrainingJobRun(ctx, d, id1); return r.Status == "completed" })
-	if r, _ := relational.GetTrainingJobRun(ctx, d, id2); r.Status != "completed" {
+	waitFor(t, "run 1 finished", func() bool { r, _ := trainingdb.GetTrainingJobRun(ctx, d, id1); return r.Status == "completed" })
+	if r, _ := trainingdb.GetTrainingJobRun(ctx, d, id2); r.Status != "completed" {
 		t.Fatal(r)
 	}
 
 	// Timeout: the sidecar's stream ends again and again without the job ending.
 	sc2 := newStreamSidecar()
 	mon := training.NewMonitor(ctx, dbs, sc2, training.WithRetryDelay(time.Millisecond), training.WithWatchTimeout(50*time.Millisecond))
-	id3, _ := relational.RecordTrainingJobRun(ctx, d, relational.TrainingJobRun{JobID: "j3", Status: "started", ModelSize: "4b", NumTrainSteps: 5, StartedAt: time.Now()})
-	run3, _ := relational.GetTrainingJobRun(ctx, d, id3)
+	id3, _ := trainingdb.RecordTrainingJobRun(ctx, d, trainingdb.TrainingJobRun{JobID: "j3", Status: "started", ModelSize: "4b", NumTrainSteps: 5, StartedAt: time.Now()})
+	run3, _ := trainingdb.GetTrainingJobRun(ctx, d, id3)
 	close(sc2.feed) // every stream ends at once
 	mon.Watch(dbs[0], *run3)
-	waitFor(t, "run 3 failed", func() bool { r, _ := relational.GetTrainingJobRun(ctx, d, id3); return r.Status == "failed" })
-	run3, _ = relational.GetTrainingJobRun(ctx, d, id3)
+	waitFor(t, "run 3 failed", func() bool { r, _ := trainingdb.GetTrainingJobRun(ctx, d, id3); return r.Status == "failed" })
+	run3, _ = trainingdb.GetTrainingJobRun(ctx, d, id3)
 	if run3.FinishedAt == nil || !strings.Contains(run3.Error, "did not report") {
 		t.Fatalf("timed out run: %+v", run3)
 	}
-	if evs, _ := relational.ListTrainingJobEvents(ctx, d, id3, 0); len(evs) != 1 || evs[0].Type != "status" {
+	if evs, _ := trainingdb.ListTrainingJobEvents(ctx, d, id3, 0); len(evs) != 1 || evs[0].Type != "status" {
 		t.Fatalf("timeout event: %+v", evs)
 	}
 }
@@ -307,26 +307,26 @@ func TestTrainingMonitorTrainedModels(t *testing.T) {
 	for i, last := range []sidecar.TrainingEvent{status("failed"), status("cancelled"), status("completed")} {
 		sc := newStreamSidecar()
 		mon := training.NewMonitor(ctx, dbs, sc, training.WithRetryDelay(time.Millisecond))
-		id, _ := relational.RecordTrainingJobRun(ctx, d, relational.TrainingJobRun{JobID: "j" + strconv.Itoa(i), Status: "started", ModelSize: "4b", NumTrainSteps: 5, StartedAt: time.Now()})
-		run, _ := relational.GetTrainingJobRun(ctx, d, id)
+		id, _ := trainingdb.RecordTrainingJobRun(ctx, d, trainingdb.TrainingJobRun{JobID: "j" + strconv.Itoa(i), Status: "started", ModelSize: "4b", NumTrainSteps: 5, StartedAt: time.Now()})
+		run, _ := trainingdb.GetTrainingJobRun(ctx, d, id)
 		sc.feed <- last // none of them has a model attached (the completed one is from a sidecar that does not report it)
 		mon.Watch(dbs[0], *run)
-		waitFor(t, "run finished", func() bool { r, _ := relational.GetTrainingJobRun(ctx, d, id); return r.FinishedAt != nil })
+		waitFor(t, "run finished", func() bool { r, _ := trainingdb.GetTrainingJobRun(ctx, d, id); return r.FinishedAt != nil })
 	}
-	if models, _ := relational.ListTrainedModels(ctx, d, 0); len(models) != 0 {
+	if models, _ := trainingdb.ListTrainedModels(ctx, d, 0); len(models) != 0 {
 		t.Fatalf("models without weights: %+v", models)
 	}
 
 	// The same completed event replayed (a restart) does not make a second model.
-	id, _ := relational.RecordTrainingJobRun(ctx, d, relational.TrainingJobRun{JobID: "jm", Status: "started", ModelSize: "4b", NumTrainSteps: 5, StartedAt: time.Now()})
-	run, _ := relational.GetTrainingJobRun(ctx, d, id)
+	id, _ := trainingdb.RecordTrainingJobRun(ctx, d, trainingdb.TrainingJobRun{JobID: "jm", Status: "started", ModelSize: "4b", NumTrainSteps: 5, StartedAt: time.Now()})
+	run, _ := trainingdb.GetTrainingJobRun(ctx, d, id)
 	done := status("completed")
 	done.Model = model
 	sc.feed <- done
 	mon.Watch(dbs[0], *run)
-	waitFor(t, "model recorded", func() bool { m, _ := relational.ListTrainedModels(ctx, d, 0); return len(m) == 1 })
-	waitFor(t, "run finished", func() bool { r, _ := relational.GetTrainingJobRun(ctx, d, id); return r.FinishedAt != nil })
-	if models, _ := relational.ListTrainedModels(ctx, d, 0); len(models) != 1 || models[0].ModelSize != "4b" || models[0].Name == "" {
+	waitFor(t, "model recorded", func() bool { m, _ := trainingdb.ListTrainedModels(ctx, d, 0); return len(m) == 1 })
+	waitFor(t, "run finished", func() bool { r, _ := trainingdb.GetTrainingJobRun(ctx, d, id); return r.FinishedAt != nil })
+	if models, _ := trainingdb.ListTrainedModels(ctx, d, 0); len(models) != 1 || models[0].ModelSize != "4b" || models[0].Name == "" {
 		t.Fatalf("models: %+v", models)
 	}
 }
