@@ -203,22 +203,6 @@ type ExperimentResult struct {
 	Trajectories []ExperimentTrajectory `json:"trajectories,omitempty"`
 }
 
-// ExperimentCasePoint is the result of one case in one run of an experiment: a point of the case's history.
-type ExperimentCasePoint struct {
-	RunID        int64     `json:"run_id"`
-	ResultID     int64     `json:"result_id"`
-	RunStatus    string    `json:"run_status"`
-	RunStartedAt time.Time `json:"run_started_at"`
-	Status       string    `json:"status"`        // ExperimentPassed, ExperimentFailed or ExperimentErrored
-	Problems     []string  `json:"problems"`      // failed checks
-	PassedChecks []string  `json:"passed_checks"` // checks that held
-	Error        string    `json:"error,omitempty"`
-	Steps        int       `json:"steps"`
-	CostUSD      float64   `json:"cost_usd"`
-	StartedAt    time.Time `json:"started_at"`
-	FinishedAt   time.Time `json:"finished_at"`
-}
-
 // ExperimentTrajectory references the ATIF trajectory of one remember or recall call of a case. The trajectory
 // itself is the JSON file <TrajectoryID>.json (Path, when it was stored) of the trajectory directory.
 type ExperimentTrajectory struct {

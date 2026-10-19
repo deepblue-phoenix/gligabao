@@ -30,7 +30,6 @@ type (
 	ExperimentRun          = model.ExperimentRun
 	ExperimentResult       = model.ExperimentResult
 	ExperimentTrajectory   = model.ExperimentTrajectory
-	ExperimentCasePoint    = model.ExperimentCasePoint
 	ExperimentArtifact     = model.ExperimentArtifact
 	RememberRun            = model.RememberRun
 	RememberStage          = model.RememberStage

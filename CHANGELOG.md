@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.54.0] - 2026-10-19
+
+### Changed
+- **A case's history is made of its results.** `ExperimentCasePoint` is gone: `ListExperimentCaseHistory` and `experiments.CaseHistory` return the case's `ExperimentResult`s over the runs of the experiment (oldest run first, without trajectories), the same type a run's cases have.
+- The admin API's `GET /v1/gb/admin/api/evals/experiments/{id}/history` sends each point with only what the UI plots (`run_id`, `run_started_at`, `status`, `problems`, `passed_checks`, `error`, `steps`, `started_at`, `finished_at`); `result_id`, `run_status` and `cost_usd` are no longer in it.
+
 ## [0.53.0] - 2026-10-19
 
 ### Changed

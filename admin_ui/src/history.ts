@@ -5,8 +5,8 @@
 declare const d3: typeof import("d3");
 
 interface Point {
-  run_id: number; result_id: number; run_status: string; run_started_at: string; status: string;
-  problems?: string[]; passed_checks?: string[]; error?: string; steps: number; cost_usd: number; started_at: string; finished_at: string;
+  run_id: number; run_started_at: string; status: string;
+  problems?: string[]; passed_checks?: string[]; error?: string; steps: number; started_at: string; finished_at: string;
 }
 interface History { suite: string; name: string; points: Point[] }
 interface Dot extends Point { t: Date; seconds: number }

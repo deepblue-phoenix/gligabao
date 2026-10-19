@@ -36,7 +36,6 @@ type (
 	Result     = relational.ExperimentResult
 	Trajectory = relational.ExperimentTrajectory
 	Artifact   = relational.ExperimentArtifact
-	CasePoint  = relational.ExperimentCasePoint
 )
 
 // Statuses of runs and cases.
@@ -226,8 +225,8 @@ func Runs(ctx context.Context, d *sql.DB, experimentID int64) ([]Run, error) {
 }
 
 // CaseHistory returns the results of one case (suite and case name) over the runs of the experiment, oldest run first:
-// how its status progressed over time.
-func CaseHistory(ctx context.Context, d *sql.DB, experimentID int64, suite, name string) ([]CasePoint, error) {
+// how its status progressed over time. Each result has its RunID; the trajectories are not loaded.
+func CaseHistory(ctx context.Context, d *sql.DB, experimentID int64, suite, name string) ([]Result, error) {
 	return relational.ListExperimentCaseHistory(ctx, d, experimentID, suite, name)
 }
 

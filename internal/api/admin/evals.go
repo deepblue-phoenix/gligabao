@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/experiments"
@@ -53,9 +54,44 @@ type experimentDetail struct {
 
 // caseHistory is the progression of one case over the runs of an experiment.
 type caseHistory struct {
-	Suite  string                  `json:"suite"`
-	Name   string                  `json:"name"`
-	Points []experiments.CasePoint `json:"points"`
+	Suite  string      `json:"suite"`
+	Name   string      `json:"name"`
+	Points []casePoint `json:"points"`
+}
+
+// casePoint is what the admin UI plots of one result of a case in the history of that case: one dot per run.
+type casePoint struct {
+	RunID        int64     `json:"run_id"`
+	RunStartedAt time.Time `json:"run_started_at"`
+	Status       string    `json:"status"`
+	Problems     []string  `json:"problems"`
+	PassedChecks []string  `json:"passed_checks"`
+	Error        string    `json:"error,omitempty"`
+	Steps        int       `json:"steps"`
+	StartedAt    time.Time `json:"started_at"`
+	FinishedAt   time.Time `json:"finished_at"`
+}
+
+// historyPoints keeps of the results of a case (its history) only what the UI plots, and adds when the run of each
+// started. Results of runs not in runs are dropped. It leaves out what the history does not need: the answer, the dataset,
+// the trajectories and the cost.
+func historyPoints(results []experiments.Result, runs []experiments.Run) []casePoint {
+	started := make(map[int64]time.Time, len(runs))
+	for _, r := range runs {
+		started[r.ID] = r.StartedAt
+	}
+	out := make([]casePoint, 0, len(results))
+	for _, e := range results {
+		at, ok := started[e.RunID]
+		if !ok {
+			continue
+		}
+		out = append(out, casePoint{
+			RunID: e.RunID, RunStartedAt: at, Status: e.Status, Problems: e.Problems, PassedChecks: e.PassedChecks,
+			Error: e.Error, Steps: e.Steps, StartedAt: e.StartedAt, FinishedAt: e.FinishedAt,
+		})
+	}
+	return out
 }
 
 func evalFail(w http.ResponseWriter, err error, what string) {
@@ -180,12 +216,17 @@ func EvalCaseHistory(d *sql.DB) http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, "suite and name are required")
 			return
 		}
-		points, err := experiments.CaseHistory(r.Context(), d, id, suite, name)
+		results, err := experiments.CaseHistory(r.Context(), d, id, suite, name)
 		if err != nil {
 			evalFail(w, err, "case history")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, caseHistory{Suite: suite, Name: name, Points: points})
+		runs, err := experiments.Runs(r.Context(), d, id)
+		if err != nil {
+			evalFail(w, err, "experiment runs")
+			return
+		}
+		httputil.WriteJSON(w, http.StatusOK, caseHistory{Suite: suite, Name: name, Points: historyPoints(results, runs)})
 	}
 }
 

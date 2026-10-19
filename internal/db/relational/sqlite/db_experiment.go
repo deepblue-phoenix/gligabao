@@ -354,6 +354,30 @@ func scanTrajectory(r scanner) (*model.ExperimentTrajectory, error) {
 	return &t, nil
 }
 
+// resultColumns are the columns scanResult reads (gb_experiment_results as e, gb_knowledge_case_meta as k).
+const resultColumns = `e.id, e.type, e.run_id, e.suite, e.case_name, e.status, k.answer, k.problems, k.passed_checks, k.dataset_id, e.error,
+	k.steps, e.cost_usd, e.started_at, e.finished_at`
+
+// scanResult reads a result selected with resultColumns; its Trajectories are empty.
+func scanResult(r scanner) (*model.ExperimentResult, error) {
+	var e model.ExperimentResult
+	var problems, passed, started string
+	var finished sql.NullString
+	var datasetID sql.NullInt64
+	if err := r.Scan(&e.ID, &e.Type, &e.RunID, &e.Suite, &e.Name, &e.Status, &e.Answer, &problems, &passed, &datasetID, &e.Error, &e.Steps,
+		&e.CostUSD, &started, &finished); err != nil {
+		return nil, err
+	}
+	if datasetID.Valid {
+		e.DatasetID = &datasetID.Int64
+	}
+	e.Problems = parseList(problems)
+	e.PassedChecks = parseList(passed)
+	e.StartedAt, e.FinishedAt = parseStoredTime(started), parseStoredTime(finished.String)
+	e.Trajectories = []model.ExperimentTrajectory{}
+	return &e, nil
+}
+
 // GetExperimentRun returns the run with all its cases and their trajectory references, or model.ErrNotFound.
 func GetExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*model.ExperimentRun, error) {
 	run, err := getRun(ctx, d, runID)
@@ -361,8 +385,7 @@ func GetExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*model.Exper
 		return nil, err
 	}
 	rows, err := d.QueryContext(ctx, `
-		SELECT e.id, e.type, e.run_id, e.suite, e.case_name, e.status, k.answer, k.problems, k.passed_checks, k.dataset_id, e.error,
-			k.steps, e.cost_usd, e.started_at, e.finished_at
+		SELECT `+resultColumns+`
 		FROM gb_experiment_results e
 		JOIN gb_knowledge_case_meta k ON k.result_id = e.id
 		WHERE e.run_id = ?
@@ -374,23 +397,12 @@ func GetExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*model.Exper
 	run.Results = []model.ExperimentResult{}
 	byID := map[int64]int{}
 	for rows.Next() {
-		var e model.ExperimentResult
-		var problems, passed, started string
-		var finished sql.NullString
-		var datasetID sql.NullInt64
-		if err := rows.Scan(&e.ID, &e.Type, &e.RunID, &e.Suite, &e.Name, &e.Status, &e.Answer, &problems, &passed, &datasetID, &e.Error, &e.Steps,
-			&e.CostUSD, &started, &finished); err != nil {
+		e, err := scanResult(rows)
+		if err != nil {
 			return nil, err
 		}
-		if datasetID.Valid {
-			e.DatasetID = &datasetID.Int64
-		}
-		e.Problems = parseList(problems)
-		e.PassedChecks = parseList(passed)
-		e.StartedAt, e.FinishedAt = parseStoredTime(started), parseStoredTime(finished.String)
-		e.Trajectories = []model.ExperimentTrajectory{}
 		byID[e.ID] = len(run.Results)
-		run.Results = append(run.Results, e)
+		run.Results = append(run.Results, *e)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -443,10 +455,11 @@ func FindExperimentTrajectory(ctx context.Context, d *sql.DB, trajectoryID strin
 	return t, err
 }
 
-// ListExperimentCaseHistory returns the results of one case over the runs of the experiment, oldest run first.
-func ListExperimentCaseHistory(ctx context.Context, d *sql.DB, experimentID int64, suite, name string) ([]model.ExperimentCasePoint, error) {
+// ListExperimentCaseHistory returns the results of one case over the runs of the experiment, oldest run first. Each
+// result has its RunID; the trajectories are not loaded.
+func ListExperimentCaseHistory(ctx context.Context, d *sql.DB, experimentID int64, suite, name string) ([]model.ExperimentResult, error) {
 	rows, err := d.QueryContext(ctx, `
-		SELECT r.id, e.id, r.status, r.started_at, e.status, k.problems, k.passed_checks, e.error, k.steps, e.cost_usd, e.started_at, e.finished_at
+		SELECT `+resultColumns+`
 		FROM gb_experiment_results e
 		JOIN gb_knowledge_case_meta k ON k.result_id = e.id
 		JOIN gb_experiment_runs r ON r.id = e.run_id
@@ -456,18 +469,13 @@ func ListExperimentCaseHistory(ctx context.Context, d *sql.DB, experimentID int6
 		return nil, fmt.Errorf("list experiment case history: %w", err)
 	}
 	defer rows.Close()
-	out := []model.ExperimentCasePoint{}
+	out := []model.ExperimentResult{}
 	for rows.Next() {
-		var p model.ExperimentCasePoint
-		var problems, passed, runStarted, started string
-		var finished sql.NullString
-		if err := rows.Scan(&p.RunID, &p.ResultID, &p.RunStatus, &runStarted, &p.Status, &problems, &passed, &p.Error, &p.Steps,
-			&p.CostUSD, &started, &finished); err != nil {
+		e, err := scanResult(rows)
+		if err != nil {
 			return nil, err
 		}
-		p.Problems, p.PassedChecks = parseList(problems), parseList(passed)
-		p.RunStartedAt, p.StartedAt, p.FinishedAt = parseStoredTime(runStarted), parseStoredTime(started), parseStoredTime(finished.String)
-		out = append(out, p)
+		out = append(out, *e)
 	}
 	return out, rows.Err()
 }
