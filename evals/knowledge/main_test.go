@@ -39,7 +39,7 @@ func (l *scriptedLLM) Complete(_ context.Context, req ai.Request) (*ai.Response,
 }
 
 // TestRunCasesTracksExperiment runs two cases (one passing, one failing its expected answer) and checks what the
-// experiment run holds: the cases with their suite, the results and the trajectory IDs.
+// experiment run holds: the cases with their eval, the results and the trajectory IDs.
 func TestRunCasesTracksExperiment(t *testing.T) {
 	dir := t.TempDir()
 	atifDir = filepath.Join(dir, "atif")
@@ -47,8 +47,8 @@ func TestRunCasesTracksExperiment(t *testing.T) {
 	t.Cleanup(func() { atifDir = "" })
 
 	cases := []Case{
-		{Suite: "s1", Name: "good", Remember: []Artifact{{Text: "Alice is here."}}, Query: "Who?", ExpectContains: []string{"alice"}},
-		{Suite: "s2", Name: "bad", Remember: []Artifact{{Text: "Alice is here."}, {Text: "Alice again."}}, Query: "Who?", ExpectContains: []string{"Bob"}},
+		{Eval: "s1", Name: "good", Remember: []Artifact{{Text: "Alice is here."}}, Query: "Who?", ExpectContains: []string{"alice"}},
+		{Eval: "s2", Name: "bad", Remember: []Artifact{{Text: "Alice is here."}, {Text: "Alice again."}}, Query: "Who?", ExpectContains: []string{"Bob"}},
 	}
 
 	trackDB, err := db.Open(db.Config{SQLitePath: filepath.Join(dir, "eval.db")})
@@ -77,10 +77,10 @@ func TestRunCasesTracksExperiment(t *testing.T) {
 		t.Fatal(err)
 	}
 	good, bad := full.CaseResults[0], full.CaseResults[1]
-	if good.Suite != "s1" || good.Name != "good" || good.Status != experiments.StatusPassed || len(good.Trajectories) != 2 {
+	if good.Eval != "s1" || good.Name != "good" || good.Status != experiments.StatusPassed || len(good.Trajectories) != 2 {
 		t.Fatalf("good: %+v", good)
 	}
-	if bad.Suite != "s2" || bad.Status != experiments.StatusFailed || len(bad.Problems) != 1 || len(bad.Trajectories) != 3 {
+	if bad.Eval != "s2" || bad.Status != experiments.StatusFailed || len(bad.Problems) != 1 || len(bad.Trajectories) != 3 {
 		t.Fatalf("bad: %+v", bad)
 	}
 	if len(good.PassedChecks) != 1 || len(bad.PassedChecks) != 0 {
@@ -107,19 +107,19 @@ func TestRunCasesTracksExperiment(t *testing.T) {
 		t.Fatalf("kinds: %+v", k)
 	}
 	exp, err := experiments.Get(ctx, trackDB.Relational, "exp")
-	if err != nil || len(exp.Cases) != 2 || exp.Cases[0].Suite != "s1" || exp.Cases[1].Suite != "s2" {
+	if err != nil || len(exp.Cases) != 2 || exp.Cases[0].Eval != "s1" || exp.Cases[1].Eval != "s2" {
 		t.Fatalf("experiment: %+v, %v", exp, err)
 	}
 }
 
-func TestLoadCasesSetsSuite(t *testing.T) {
+func TestLoadCasesSetsEval(t *testing.T) {
 	cases, err := loadCases(nil, "", "")
 	if err != nil || len(cases) == 0 {
 		t.Fatalf("%v, %v", cases, err)
 	}
 	for _, c := range cases {
-		if c.Suite == "" {
-			t.Fatalf("case %q has no suite", c.Name)
+		if c.Eval == "" {
+			t.Fatalf("case %q has no eval", c.Name)
 		}
 	}
 }
@@ -137,7 +137,7 @@ func TestRunsAreIsolatedAndKept(t *testing.T) {
 	}
 	defer database.Close()
 	ctx := context.Background()
-	cases := []Case{{Suite: "s", Name: "c", Remember: []Artifact{{Text: "Alice is here."}}, Query: "Who?", ExpectContains: []string{"alice"}}}
+	cases := []Case{{Eval: "s", Name: "c", Remember: []Artifact{{Text: "Alice is here."}}, Query: "Who?", ExpectContains: []string{"alice"}}}
 
 	var runs []int64
 	for i := 0; i < 2; i++ {
@@ -206,7 +206,7 @@ func (l *chunkingLLM) Complete(_ context.Context, req ai.Request) (*ai.Response,
 	return &ai.Response{Text: out, StopReason: "end_turn", Provider: ai.ProviderAnthropic, Model: "m"}, nil
 }
 
-// TestChunkingCase loads the chunking suite (whose text lives in a file) and runs its case offline: the corpus must
+// TestChunkingCase loads the chunking eval (whose text lives in a file) and runs its case offline: the corpus must
 // need many chunks and the chunking checks must pass. Raising expect_min_chunks above what the corpus yields must fail.
 func TestChunkingCase(t *testing.T) {
 	dir := t.TempDir()
@@ -309,7 +309,7 @@ func TestCaseModels(t *testing.T) {
 		}
 		return llm.models
 	}
-	base := Case{Suite: "s", Name: "m1", Remember: []Artifact{{Text: "Alice is here."}}, Query: "Who?", ExpectContains: []string{"alice"}}
+	base := Case{Eval: "s", Name: "m1", Remember: []Artifact{{Text: "Alice is here."}}, Query: "Who?", ExpectContains: []string{"alice"}}
 
 	// extract (remember) then answer (recall, no model).
 	if got := fmt.Sprint(run1(base)); got != "[model-default ]" {
@@ -400,7 +400,7 @@ func TestCaseReasoning(t *testing.T) {
 		}
 		return llm.levels, failed
 	}
-	base := Case{Suite: "s", Name: "r1", Remember: []Artifact{{Text: "Alice is here."}}, Query: "Who?", ExpectContains: []string{"alice"}}
+	base := Case{Eval: "s", Name: "r1", Remember: []Artifact{{Text: "Alice is here."}}, Query: "Who?", ExpectContains: []string{"alice"}}
 
 	// extract (remember) then answer (recall).
 	if got, failed := run1(base, defaults); failed != 0 || fmt.Sprint(got) != "[low high]" {
@@ -430,9 +430,9 @@ func TestCaseReasoning(t *testing.T) {
 	}
 }
 
-// TestSuitesSetReasoning checks that every case of the embedded suites sets the reasoning of every stage, and of the
+// TestEvalsSetReasoning checks that every case of the embedded evals sets the reasoning of every stage, and of the
 // recall, explicitly to none, so a run does not depend on the server's defaults and is the baseline for comparing levels.
-func TestSuitesSetReasoning(t *testing.T) {
+func TestEvalsSetReasoning(t *testing.T) {
 	cases, err := loadCases(nil, "", "")
 	if err != nil || len(cases) == 0 {
 		t.Fatalf("loadCases: %d cases, %v", len(cases), err)
@@ -440,7 +440,7 @@ func TestSuitesSetReasoning(t *testing.T) {
 	for _, c := range cases {
 		for _, stage := range reasoningStages() {
 			if c.Reasoning[stage] != "none" {
-				t.Errorf("%s/%s: reasoning[%s] = %q, want none", c.Suite, c.Name, stage, c.Reasoning[stage])
+				t.Errorf("%s/%s: reasoning[%s] = %q, want none", c.Eval, c.Name, stage, c.Reasoning[stage])
 			}
 		}
 	}

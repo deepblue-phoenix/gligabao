@@ -2,7 +2,7 @@
 //
 // An Experiment is a named series of runs (table gb_experiments, type "knowledge"). Each execution of it is an ExperimentRun
 // (gb_experiment_runs) that holds one ExperimentCaseResult per case it executed (gb_experiment_case_results, with the knowledge-only
-// columns in gb_knowledge_case_meta). A case is one input plus what is checked (and metadata) and belongs to a suite. Each result
+// columns in gb_knowledge_case_meta). A case is one input plus what is checked (and metadata) and belongs to an eval. Each result
 // has references to the ATIF trajectories of its remember and recall calls (gb_experiment_trajectories: the trajectory IDs, so the
 // JSON files can be found again). The cases an experiment has executed over all its runs are listed in Experiment.Cases
 // (gb_experiment_cases).
@@ -66,7 +66,7 @@ type Options struct {
 	// Description and Config are stored when the experiment is created; an existing experiment keeps its own.
 	Description string
 	Config      map[string]any
-	// Params describes how this run was invoked (suites directory, selected cases, ...). Stored with the run.
+	// Params describes how this run was invoked (evals directory, selected cases, ...). Stored with the run.
 	Params map[string]any
 }
 
@@ -98,9 +98,9 @@ func Start(ctx context.Context, d *sql.DB, opts Options) (*Tracker, error) {
 
 // CaseOutcome is what one case produced.
 type CaseOutcome struct {
-	// Suite is the suite the case is in (its file name without ".json") and Name the case name.
-	Suite, Name string
-	Answer      string
+	// Eval is the eval the case is in (its file name without ".json") and Name the case name.
+	Eval, Name string
+	Answer     string
 	// Problems are the failed checks. Err is why the case could not be run to the end. Without either the case passed.
 	Problems []string
 	// PassedChecks are the checks that held.
@@ -134,8 +134,8 @@ func (r CaseOutcome) Status() string {
 // Record stores the result of one case in the run, with references to its trajectories, and adds the case to the
 // experiment's cases.
 func (t *Tracker) Record(ctx context.Context, r CaseOutcome) (*CaseResult, error) {
-	if r.Suite == "" || r.Name == "" {
-		return nil, errors.New("case suite and name are required")
+	if r.Eval == "" || r.Name == "" {
+		return nil, errors.New("case eval and name are required")
 	}
 	now := time.Now()
 	if r.FinishedAt.IsZero() {
@@ -146,7 +146,7 @@ func (t *Tracker) Record(ctx context.Context, r CaseOutcome) (*CaseResult, error
 	}
 	e := CaseResult{
 		RunID:        t.Run.ID,
-		Suite:        r.Suite,
+		Eval:         r.Eval,
 		Name:         r.Name,
 		Status:       r.Status(),
 		Answer:       r.Answer,
@@ -224,10 +224,10 @@ func Runs(ctx context.Context, d *sql.DB, experimentID int64) ([]Run, error) {
 	return relational.ListExperimentRuns(ctx, d, experimentID)
 }
 
-// CaseHistory returns the results of one case (suite and case name) over the runs of the experiment, oldest run first:
+// CaseHistory returns the results of one case (eval and case name) over the runs of the experiment, oldest run first:
 // how its status progressed over time. Each result has its RunID; the trajectories are not loaded.
-func CaseHistory(ctx context.Context, d *sql.DB, experimentID int64, suite, name string) ([]CaseResult, error) {
-	return relational.ListExperimentCaseHistory(ctx, d, experimentID, suite, name)
+func CaseHistory(ctx context.Context, d *sql.DB, experimentID int64, eval, name string) ([]CaseResult, error) {
+	return relational.ListExperimentCaseHistory(ctx, d, experimentID, eval, name)
 }
 
 // GetRun returns a run with all its cases and their trajectory references, or ErrNotFound. The artifacts of each

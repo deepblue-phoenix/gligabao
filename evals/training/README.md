@@ -1,8 +1,8 @@
 # Trained-model evals (LLM as a judge)
 
-Checks how well a freshly trained model learned its training dataset. This is the `finetune_dataset` **scheme** (`TrainingSchemeFineTuneDataset`): the dataset is the eval suite and each example is a case. The model is asked each case's question (`instruction`, plus `input` as context, as in training) and an external LLM, the one gligabao uses for knowledge ingestion (Anthropic, `ANTHROPIC_API_KEY`), judges how closely each answer agrees with the dataset's `output`.
+Checks how well a freshly trained model learned its training dataset. This is the `finetune_dataset` **scheme** (`TrainingSchemeFineTuneDataset`): the dataset is the eval and each example is a case. The model is asked each case's question (`instruction`, plus `input` as context, as in training) and an external LLM, the one gligabao uses for knowledge ingestion (Anthropic, `ANTHROPIC_API_KEY`), judges how closely each answer agrees with the dataset's `output`.
 
-It is separate from the knowledge-extraction evals in [`../knowledge`](../knowledge/README.md). The other scheme one could have here, the one of those evals (cases whose input and expected output the model never saw in training), is not implemented yet. In the code an eval of a trained model is a *suite run* (`relational.TrainedModelSuiteRun`) and the outcome of one example a *case result* (`relational.TrainedModelCaseResult`, `trainingeval.CaseResult`); the HTTP API and the UI call the suite run an eval.
+It is separate from the knowledge-extraction evals in [`../knowledge`](../knowledge/README.md). The other scheme one could have here, the one of those evals (cases whose input and expected output the model never saw in training), is not implemented yet. In the code, running an eval against a trained model is an *eval run* (`relational.TrainedModelEvalRun`) and the outcome of one example a *case result* (`relational.TrainedModelCaseResult`, `trainingeval.CaseResult`); the HTTP API and the UI call the eval run just an eval.
 
 ## Running one
 

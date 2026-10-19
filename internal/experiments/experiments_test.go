@@ -52,7 +52,7 @@ func scenario(t *testing.T, d *sql.DB) {
 	rem, rec := traj("remember", 0.01), traj("recall", 0.02)
 	started := time.Now().Add(-time.Minute)
 	pass, err := tr.Record(ctx, experiments.CaseOutcome{
-		Suite: "basic", Name: "a", Answer: "yes", StartedAt: started,
+		Eval: "basic", Name: "a", Answer: "yes", StartedAt: started,
 		Trajectories: []*atif.Trajectory{rem, rec}, TrajectoryDir: "/tmp/atif",
 	})
 	check(err)
@@ -60,14 +60,14 @@ func scenario(t *testing.T, d *sql.DB) {
 		pass.Trajectories[0].Seq != 1 || pass.Trajectories[1].Seq != 2 || pass.Trajectories[1].ID == 0 {
 		t.Fatalf("recorded: %+v", pass)
 	}
-	_, err = tr.Record(ctx, experiments.CaseOutcome{Suite: "basic", Name: "b", Problems: []string{"x: no edge stored"}, Trajectories: []*atif.Trajectory{traj("remember", 0.5)}})
+	_, err = tr.Record(ctx, experiments.CaseOutcome{Eval: "basic", Name: "b", Problems: []string{"x: no edge stored"}, Trajectories: []*atif.Trajectory{traj("remember", 0.5)}})
 	check(err)
-	_, err = tr.Record(ctx, experiments.CaseOutcome{Suite: "news", Name: "c", Err: errors.New("boom")})
+	_, err = tr.Record(ctx, experiments.CaseOutcome{Eval: "news", Name: "c", Err: errors.New("boom")})
 	check(err)
 	if _, err := tr.Record(ctx, experiments.CaseOutcome{Name: "x"}); err == nil {
-		t.Fatal("Record without a suite succeeded")
+		t.Fatal("Record without an eval succeeded")
 	}
-	if _, err := tr.Record(ctx, experiments.CaseOutcome{Suite: "s", Name: "x", Trajectories: []*atif.Trajectory{{TrajectoryID: "t", Agent: atif.Agent{Name: "other"}}}}); err == nil {
+	if _, err := tr.Record(ctx, experiments.CaseOutcome{Eval: "s", Name: "x", Trajectories: []*atif.Trajectory{{TrajectoryID: "t", Agent: atif.Agent{Name: "other"}}}}); err == nil {
 		t.Fatal("Record with an unknown agent succeeded")
 	}
 
@@ -77,7 +77,7 @@ func scenario(t *testing.T, d *sql.DB) {
 		run.FinishedAt == nil || run.CostUSD < 0.529 || run.CostUSD > 0.531 {
 		t.Fatalf("finished: %+v", run)
 	}
-	if _, err := tr.Record(ctx, experiments.CaseOutcome{Suite: "basic", Name: "late"}); !errors.Is(err, experiments.ErrRunNotRunning) {
+	if _, err := tr.Record(ctx, experiments.CaseOutcome{Eval: "basic", Name: "late"}); !errors.Is(err, experiments.ErrRunNotRunning) {
 		t.Fatalf("Record after Finish: %v", err)
 	}
 	if again, err := tr.Finish(ctx); err != nil || again.FinishedAt == nil || !again.FinishedAt.Equal(*run.FinishedAt) {
@@ -91,7 +91,7 @@ func scenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("GetRun: %+v", full)
 	}
 	a, b, c := full.CaseResults[0], full.CaseResults[1], full.CaseResults[2]
-	if a.Suite != "basic" || a.Name != "a" || a.Answer != "yes" || a.Status != experiments.StatusPassed || len(a.Problems) != 0 ||
+	if a.Eval != "basic" || a.Name != "a" || a.Answer != "yes" || a.Status != experiments.StatusPassed || len(a.Problems) != 0 ||
 		a.StartedAt.After(a.FinishedAt) || len(a.Trajectories) != 2 {
 		t.Fatalf("case a: %+v", a)
 	}
@@ -112,7 +112,7 @@ func scenario(t *testing.T, d *sql.DB) {
 	// The experiment knows which cases ran.
 	exp, err := experiments.Get(ctx, d, "base")
 	check(err)
-	want := []experiments.CaseRef{{Suite: "basic", Name: "a"}, {Suite: "basic", Name: "b"}, {Suite: "news", Name: "c"}}
+	want := []experiments.CaseRef{{Eval: "basic", Name: "a"}, {Eval: "basic", Name: "b"}, {Eval: "news", Name: "c"}}
 	if !reflect.DeepEqual(exp.Cases, want) {
 		t.Fatalf("experiment cases: %+v", exp.Cases)
 	}
@@ -123,7 +123,7 @@ func scenario(t *testing.T, d *sql.DB) {
 	if tr2.Experiment.ID != exp.ID || tr2.Experiment.Description != "baseline" || tr2.Run.ID == run.ID {
 		t.Fatalf("second run: %+v / %+v", tr2.Experiment, tr2.Run)
 	}
-	_, err = tr2.Record(ctx, experiments.CaseOutcome{Suite: "basic", Name: "a"})
+	_, err = tr2.Record(ctx, experiments.CaseOutcome{Eval: "basic", Name: "a"})
 	check(err)
 	run2, err := tr2.Finish(ctx)
 	check(err)

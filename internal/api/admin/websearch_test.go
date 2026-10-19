@@ -99,7 +99,7 @@ func testWebSearches(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tr.Record(ctx, experiments.CaseOutcome{Suite: "s", Name: "a", DatasetID: dsID, Trajectories: append([]*atif.Trajectory{res.Trajectory}, plain.Trajectory), TrajectoryDir: dir}); err != nil {
+	if _, err := tr.Record(ctx, experiments.CaseOutcome{Eval: "s", Name: "a", DatasetID: dsID, Trajectories: append([]*atif.Trajectory{res.Trajectory}, plain.Trajectory), TrajectoryDir: dir}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tr.Finish(ctx); err != nil {

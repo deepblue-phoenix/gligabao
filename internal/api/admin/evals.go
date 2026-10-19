@@ -20,7 +20,7 @@ import (
 type EvalTotals struct {
 	Experiments int `json:"experiments"`
 	Runs        int `json:"runs"`
-	// Cases is the number of distinct cases (suite + case name) any experiment executed (counted once across experiments).
+	// Cases is the number of distinct cases (eval + case name) any experiment executed (counted once across experiments).
 	Cases int `json:"cases"`
 	// Executions is the number of case results over all finished runs; Passed of them passed, Failed did not.
 	Executions int     `json:"executions"`
@@ -54,7 +54,7 @@ type experimentDetail struct {
 
 // caseHistory is the progression of one case over the runs of an experiment.
 type caseHistory struct {
-	Suite  string      `json:"suite"`
+	Eval   string      `json:"eval"`
 	Name   string      `json:"name"`
 	Points []casePoint `json:"points"`
 }
@@ -203,7 +203,7 @@ func EvalExperiment(d *sql.DB) http.HandlerFunc {
 	}
 }
 
-// EvalCaseHistory serves GET /admin/api/evals/experiments/{id}/history?suite=..&name=..: the status of one case in each run
+// EvalCaseHistory serves GET /admin/api/evals/experiments/{id}/history?eval=..&name=..: the status of one case in each run
 // of the experiment, oldest run first.
 func EvalCaseHistory(d *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -211,12 +211,12 @@ func EvalCaseHistory(d *sql.DB) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		suite, name := r.URL.Query().Get("suite"), r.URL.Query().Get("name")
-		if suite == "" || name == "" {
-			httputil.Error(w, http.StatusBadRequest, "suite and name are required")
+		eval, name := r.URL.Query().Get("eval"), r.URL.Query().Get("name")
+		if eval == "" || name == "" {
+			httputil.Error(w, http.StatusBadRequest, "eval and name are required")
 			return
 		}
-		results, err := experiments.CaseHistory(r.Context(), d, id, suite, name)
+		results, err := experiments.CaseHistory(r.Context(), d, id, eval, name)
 		if err != nil {
 			evalFail(w, err, "case history")
 			return
@@ -226,7 +226,7 @@ func EvalCaseHistory(d *sql.DB) http.HandlerFunc {
 			evalFail(w, err, "experiment runs")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, caseHistory{Suite: suite, Name: name, Points: historyPoints(results, runs)})
+		httputil.WriteJSON(w, http.StatusOK, caseHistory{Eval: eval, Name: name, Points: historyPoints(results, runs)})
 	}
 }
 

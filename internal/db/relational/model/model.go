@@ -114,13 +114,13 @@ type InferenceGroup struct {
 
 // Eval types: the type column of the universal eval tables (gb_experiments, gb_experiment_cases, gb_experiment_runs and
 // gb_experiment_case_results, see sqlite/db_schema.go). What is only one kind's is in its metadata table
-// (gb_knowledge_case_meta, gb_training_suite_run_meta, gb_training_case_results).
+// (gb_knowledge_case_meta, gb_training_eval_run_meta, gb_training_case_results).
 const (
 	// EvalTypeKnowledge is the type of the knowledge-extraction evals: remember, then recall, checked programmatically
 	// (evals/knowledge, package experiments). Its results are one per case.
 	EvalTypeKnowledge = "knowledge"
-	// EvalTypeTraining is the type of the evals of trained models (evals/training, internal/api/training): a suite run of a
-	// trained model. Its result is that of the whole suite (case_name ''); the cases are in gb_training_case_results.
+	// EvalTypeTraining is the type of the evals of trained models (evals/training, internal/api/training): an eval run of a
+	// trained model. Its result is that of the whole eval (case_name ''); the cases are in gb_training_case_results.
 	EvalTypeTraining = "training"
 )
 
@@ -144,7 +144,7 @@ const (
 )
 
 // Experiment is a named series of eval runs. Its runs (ExperimentRun) are what was actually executed; Cases lists
-// every case (suite + case name) any of its runs executed. Names are unique.
+// every case (eval + case name) any of its runs executed. Names are unique.
 type Experiment struct {
 	ID          int64          `json:"id"`
 	Type        string         `json:"type"` // EvalTypeKnowledge
@@ -152,23 +152,23 @@ type Experiment struct {
 	Description string         `json:"description,omitempty"`
 	Config      map[string]any `json:"config"` // free-form settings under test (models, prompts, ...)
 	CreatedAt   time.Time      `json:"created_at"`
-	// Cases are the cases the experiment's runs executed, ordered by suite and name. Filled by GetExperiment only.
+	// Cases are the cases the experiment's runs executed, ordered by eval and name. Filled by GetExperiment only.
 	Cases []CaseRef `json:"cases,omitempty"`
 }
 
-// CaseRef identifies a case: its case name and the suite (the suite file name without ".json") that holds it.
+// CaseRef identifies a case: its case name and the eval (the eval file name without ".json") that holds it.
 type CaseRef struct {
-	Suite string `json:"suite"`
-	Name  string `json:"name"`
+	Eval string `json:"eval"`
+	Name string `json:"name"`
 }
 
-// ExperimentRun is one execution of an experiment: a pass over some of the cases in the suites.
+// ExperimentRun is one execution of an experiment: a pass over some of the cases in the evals.
 type ExperimentRun struct {
 	ID           int64                  `json:"id"`
 	Type         string                 `json:"type"` // EvalTypeKnowledge
 	ExperimentID int64                  `json:"experiment_id"`
 	Status       string                 `json:"status"`       // ExperimentRunning, ExperimentPassed or ExperimentFailed
-	Params       map[string]any         `json:"params"`       // how the run was invoked (suites dir, selected cases, ...)
+	Params       map[string]any         `json:"params"`       // how the run was invoked (evals dir, selected cases, ...)
 	TotalCases   int                    `json:"total_cases"`  // set when the run is finished
 	PassedCases  int                    `json:"passed_cases"` // set when the run is finished
 	FailedCases  int                    `json:"failed_cases"` // failed + errored; set when the run is finished
@@ -178,13 +178,13 @@ type ExperimentRun struct {
 	CaseResults  []ExperimentCaseResult `json:"case_results,omitempty"` // filled by GetExperimentRun only
 }
 
-// ExperimentCaseResult is the result of one case within a run: the outcome of that case of a suite in that run (a case is one
+// ExperimentCaseResult is the result of one case within a run: the outcome of that case of an eval in that run (a case is one
 // input plus what is checked, with its metadata).
 type ExperimentCaseResult struct {
 	ID       int64    `json:"id"`
 	Type     string   `json:"type"` // EvalTypeKnowledge
 	RunID    int64    `json:"run_id"`
-	Suite    string   `json:"suite"`
+	Eval     string   `json:"eval"`
 	Name     string   `json:"name"`
 	Status   string   `json:"status"` // ExperimentPassed, ExperimentFailed or ExperimentErrored
 	Answer   string   `json:"answer,omitempty"`

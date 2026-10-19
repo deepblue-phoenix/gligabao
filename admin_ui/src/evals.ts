@@ -16,9 +16,9 @@ interface Trajectory {
   artifacts?: Artifact[];
 }
 interface Artifact { id: number; kind: string; text: string; valid_at: string; created_at: string }
-// The outcome of one case of a suite in one run.
+// The outcome of one case of an eval in one run.
 interface CaseResult {
-  id: number; suite: string; name: string; status: string; answer?: string; problems?: string[]; passed_checks?: string[]; dataset_id?: number; error?: string;
+  id: number; eval: string; name: string; status: string; answer?: string; problems?: string[]; passed_checks?: string[]; dataset_id?: number; error?: string;
   steps: number; cost_usd: number; started_at: string; finished_at: string; trajectories?: Trajectory[];
 }
 // The web searches the remember calls of one result (case) made (see websearch.ts), read from its trajectories.
@@ -33,7 +33,7 @@ interface Overview {
 }
 interface ExperimentDetail {
   id: number; name: string; description?: string; config?: Record<string, unknown>;
-  cases?: { suite: string; name: string }[]; runs: Run[];
+  cases?: { eval: string; name: string }[]; runs: Run[];
 }
 
 function $<T extends HTMLElement>(id: string): T {
@@ -172,8 +172,8 @@ async function loadExperiment(id: number): Promise<void> {
         const li = h("li");
         const btn = h("button", "small", "History");
         btn.type = "button";
-        btn.addEventListener("click", () => void showCaseHistory(exp.id, exp.name, e.suite, e.name, (id) => void showRun(id, exp.name)));
-        li.append(btn, " ", h("code", undefined, `${e.suite}/${e.name}`));
+        btn.addEventListener("click", () => void showCaseHistory(exp.id, exp.name, e.eval, e.name, (id) => void showRun(id, exp.name)));
+        li.append(btn, " ", h("code", undefined, `${e.eval}/${e.name}`));
         ul.append(li);
       }
       extra.push(h("h4", undefined, "Cases"), ul);
@@ -232,12 +232,12 @@ async function showRun(runID: number, experiment: string): Promise<void> {
       return;
     }
     const { table: tbl, body } = table([
-      ["Suite", false], ["Case", false], ["Status", false], ["Steps", true], ["Cost", true], ["Duration", true], ["Trajectories", true], ["Web searches", true],
+      ["Eval", false], ["Case", false], ["Status", false], ["Steps", true], ["Cost", true], ["Duration", true], ["Trajectories", true], ["Web searches", true],
     ]);
     tbl.className = "clickable";
     for (const e of cases) {
       const tr = body.insertRow();
-      tr.insertCell().textContent = e.suite;
+      tr.insertCell().textContent = e.eval;
       tr.insertCell().textContent = e.name;
       tr.insertCell().append(statusBadge(e.status));
       numCell(tr, String(e.steps));
@@ -285,7 +285,7 @@ function caseRecord(run: Run, e: CaseResult, experiment: string, web?: EvalWebSe
   hbtn.type = "button";
   hbtn.addEventListener("click", (ev) => {
     ev.stopPropagation();
-    void showCaseHistory(run.experiment_id, experiment, e.suite, e.name, (id) => void showRun(id, experiment));
+    void showCaseHistory(run.experiment_id, experiment, e.eval, e.name, (id) => void showRun(id, experiment));
   });
   out.push(h("h4", undefined, "History"), hbtn);
   out.push(h("h4", undefined, "Knowledge graph"));
@@ -294,7 +294,7 @@ function caseRecord(run: Run, e: CaseResult, experiment: string, web?: EvalWebSe
     gbtn.type = "button";
     gbtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      void showGraphAt(`${e.suite}/${e.name} (run #${run.id})`, `api/evals/case_results/${e.id}/graph`);
+      void showGraphAt(`${e.eval}/${e.name} (run #${run.id})`, `api/evals/case_results/${e.id}/graph`);
     });
     out.push(gbtn);
   } else {
@@ -306,7 +306,7 @@ function caseRecord(run: Run, e: CaseResult, experiment: string, web?: EvalWebSe
     wbtn.type = "button";
     wbtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      showWebSearches(`${e.suite}/${e.name} (run #${run.id})`, web.searches, totalsLine(web.totals));
+      showWebSearches(`${e.eval}/${e.name} (run #${run.id})`, web.searches, totalsLine(web.totals));
     });
     out.push(wbtn);
   }
@@ -323,7 +323,7 @@ function caseRecord(run: Run, e: CaseResult, experiment: string, web?: EvalWebSe
     btn.type = "button";
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      void showTrace(t.trajectory_id, `${e.suite}/${e.name} · #${t.seq} ${t.kind} (run #${run.id})`);
+      void showTrace(t.trajectory_id, `${e.eval}/${e.name} · #${t.seq} ${t.kind} (run #${run.id})`);
     });
     const artBtn = h("button", "small", "View artifacts");
     artBtn.type = "button";

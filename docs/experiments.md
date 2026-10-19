@@ -1,21 +1,21 @@
 # Eval experiments
 
-An **experiment** is a named series of eval runs. Every time the eval runner (`go run ./evals/knowledge`, `./run_evals.sh`) executes, it records one **run** of an experiment in the **eval** database (`bin/gligabao-eval.db`), which keeps the evaluation data apart from the main database and is never reset. Each run works in datasets of its own (`<case>_run<run id>`), so runs do not interfere with each other. A run records which cases of which suites it executed, how each ended, and the IDs of the [ATIF trajectories](evals.md) of their calls. Go code lives in `internal/experiments`; the tables are in `internal/db/relational/{sqlite,postgres}/db_schema.go`, the structs in `internal/db/relational/model`.
+An **experiment** is a named series of eval runs. Every time the eval runner (`go run ./evals/knowledge`, `./run_evals.sh`) executes, it records one **run** of an experiment in the **eval** database (`bin/gligabao-eval.db`), which keeps the evaluation data apart from the main database and is never reset. Each run works in datasets of its own (`<case>_run<run id>`), so runs do not interfere with each other. A run records which cases of which evals it executed, how each ended, and the IDs of the [ATIF trajectories](evals.md) of their calls. Go code lives in `internal/experiments`; the tables are in `internal/db/relational/{sqlite,postgres}/db_schema.go`, the structs in `internal/db/relational/model`.
 
 ## Data model
 
 The knowledge-extraction evals and the [evals of trained models](training/EVALS.md) share one set of tables. The **universal** tables hold what every eval (knowledge or training) has and carry a `type` column (`knowledge` or `training`); what only one kind has is in that kind's **metadata** table, one row per row of `gb_experiment_case_results`. A composite foreign key `(parent id, type)` keeps the type the same down the chain: the database refuses a training run under a knowledge experiment, a result under a run of the other type, or metadata on a result of the other type. Experiment names are unique within a type, so a knowledge and a training experiment can have the same name. Everything on this page is the `knowledge` type; the functions of this package only see those rows.
 
-**Terms.** An *eval case* (a *case*) is one input/output combination, plus metadata, to be evaluated (an input and what is expected or checked). Cases are part of an *eval suite* (a *suite*, a set of cases). A *run* executes some cases once, and a *result* is the outcome of one case in one run: a case has many results, one per run it was in. An *experiment* is a named series of runs. The case definitions live in the suite files; the database holds the names (`gb_experiment_cases`) and the results (`gb_experiment_case_results`).
+**Terms.** An *eval case* (a *case*) is one input/output combination, plus metadata, to be evaluated (an input and what is expected or checked). Cases are grouped into an *eval* (a set of cases). A *run* executes some cases once, and a *result* is the outcome of one case in one run: a case has many results, one per run it was in. An *experiment* is a named series of runs. The case definitions live in the eval files; the database holds the names (`gb_experiment_cases`) and the results (`gb_experiment_case_results`).
 
 Universal tables:
 
 | table | struct | meaning |
 |---|---|---|
 | `gb_experiments` | `Experiment` | `type`, `name`, `description`, `config` (free-form JSON: the settings under test) |
-| `gb_experiment_cases` | `Experiment.Cases` (`CaseRef`) | the cases (`suite` + `case_name`) that any run of the experiment executed; added the first time a case is recorded |
+| `gb_experiment_cases` | `Experiment.Cases` (`CaseRef`) | the cases (`eval` + `case_name`) that any run of the experiment executed; added the first time a case is recorded |
 | `gb_experiment_runs` | `ExperimentRun` | one execution: `type`, `experiment_id` (always set for knowledge), `status` (`running`, then `passed` or `failed`), `params` (how it was invoked), totals (`total_cases`, `passed_cases`, `failed_cases`, `cost_usd`), `started_at`, `finished_at` |
-| `gb_experiment_case_results` | `ExperimentCaseResult` | one case's result in a run: `type`, `suite`, `case_name`, `status` (`passed`, `failed`: a check did not hold, `error`: it could not run to the end), `error`, `cost_usd`, times |
+| `gb_experiment_case_results` | `ExperimentCaseResult` | one case's result in a run: `type`, `eval`, `case_name`, `status` (`passed`, `failed`: a check did not hold, `error`: it could not run to the end), `error`, `cost_usd`, times |
 | `gb_experiment_trajectories` | `ExperimentTrajectory` | the ATIF trajectories of a case, in call order (`seq`): `kind` (`remember` / `recall`), `trajectory_id`, `agent_name`, `steps`, `cost_usd`, `path` of the JSON file, `artifact_ids` (the IDs, in the case's dataset, of the call's artifacts: the artifact a remember stored, or the artifacts a recall's evidence edges were sourced from via the edge provenance links; `experiments.GetRun` and the admin API resolve them to `artifacts` by reading the dataset) |
 
 Metadata tables (the struct fields are those of `ExperimentCaseResult`; the result's `Type` is `knowledge`):
@@ -23,13 +23,13 @@ Metadata tables (the struct fields are those of `ExperimentCaseResult`; the resu
 | table | meaning |
 |---|---|
 | `gb_knowledge_case_meta` | `answer`, `problems` (failed checks), `passed_checks`, `dataset_id` (the dataset the case ran in, which holds the knowledge graph it built; null if it was never created), `steps` (ATIF steps over its trajectories) |
-| `gb_training_suite_run_meta`, `gb_training_case_results` | the training suite runs' own columns: trained model, scheme, dataset, judge, counters, per-case outcomes. See [training/EVALS.md](training/EVALS.md#tables) |
+| `gb_training_eval_run_meta`, `gb_training_case_results` | the training eval runs' own columns: trained model, scheme, dataset, judge, counters, per-case outcomes. See [training/EVALS.md](training/EVALS.md#tables) |
 
-Both kinds have **suites**: a case (`case_name`) belongs to a suite (`suite`). Knowledge suites are the files of `evals/knowledge/suites/`. A training suite is a dataset (`suite` = the dataset's name) whose cases are its examples; a training eval is a *suite run* (one run of the suite against one trained model), so its result row is that of the whole suite (`case_name = ''`) and the cases are in `gb_training_case_results`.
+Both kinds have **evals**: a case (`case_name`) belongs to an eval (`eval`). Knowledge evals are the files of `evals/knowledge/evals/`. A training eval is a dataset (`eval` = the dataset's name) whose cases are its examples; a training eval is an *eval run* (one run of the eval against one trained model), so its result row is that of the whole eval (`case_name = ''`) and the cases are in `gb_training_case_results`.
 
 The graph and the artifacts of a case are not copied into the experiment tables: they are read from the dataset the case ran in, via `dataset_id` and `artifact_ids`. Datasets are only ever soft-deleted, so they stay readable; if a dataset (or an artifact) is purged from the eval database, its case shows no graph (or no artifact).
 
-A suite is a file in `evals/knowledge/suites/` and its name is the file name without `.json`; a case is one of its cases, so `suite` + `case_name` identifies it. Rows cascade: deleting an experiment removes its runs, cases and trajectory references.
+An eval is a file in `evals/knowledge/evals/` and its name is the file name without `.json`; a case is one of its cases, so `eval` + `case_name` identifies it. Rows cascade: deleting an experiment removes its runs, cases and trajectory references.
 
 Only the trajectory *reference* is stored in the database; the trajectory is the file `<trajectory_id>.json` in the trajectory directory. The runner stores the files in an `atif/` directory next to the eval database (`bin/atif/` by default) so the IDs stay resolvable; `-atif <dir>` changes it. `gb_experiment_trajectories.path` records where each file went.
 
@@ -51,7 +51,7 @@ t, err := experiments.Start(ctx, d, experiments.Options{
     Params: map[string]any{"cases": []string{"job_change"}},
 })                                   // get-or-create the experiment, start a run
 _, err = t.Record(ctx, experiments.CaseOutcome{
-    Suite: "basic", Name: "job_change", Answer: answer,
+    Eval: "basic", Name: "job_change", Answer: answer,
     Problems: problems,              // failed checks; PassedChecks: the ones that held; Err: why it could not run
     DatasetID: dsID,                 // the dataset the case ran in (holds its graph and artifacts)
     ArtifactIDs: artIDs,             // per trajectory: the IDs of its artifacts in that dataset
@@ -66,4 +66,4 @@ run, err := t.Finish(ctx)            // totals the cases, sets passed / failed
 
 With the admin UI enabled (`serve --admin-ui`, see the README), the **Evals** block shows the experiments of the eval database (`--eval-db`; without it the block has nothing to show): totals (experiments, runs, distinct cases, passed/total case results, cost), the experiment list and, by clicking an experiment, its runs. Clicking a run opens its cases; expanding a case shows its answer, all its checks (passed and failed) and error, plus its ATIF traces. Each case also has a **View graph** button that opens the knowledge graph it built, read live from the case's dataset, in the same graph view as the datasets' **View graph** (`showGraphAt` in `graph.ts`). Each trace also has a **View artifacts** button: the stored artifact for a `remember` call, the source artifacts of the answer for a `recall`; they are read from the case's dataset. **View trace** draws a trajectory as a labeled process flow (d3): start → steps (system / user / agent; edges are labeled with the time between steps) → tool calls (`calls`) → tool results (`returns`) → end. Clicking a node shows its full content (message, reasoning, arguments, result, tokens, cost).
 
-The JSON behind it is under `/v1/gb/admin/api/evals`: `GET /` (overview), `GET /experiments/{id}`, `GET /runs/{id}`, `GET /runs/{id}/web-searches` (the [web searches](web-search.md#admin-ui) each case made, read from its trajectories), `GET /case_results/{id}/graph` (the graph of the case's dataset), `GET /experiments/{id}/history?suite=..&name=..` (the results of one case over the experiment's runs) and `GET /trajectories/{trajectory_id}`. A trajectory is served only if an experiment recorded its ID. Its file is read from the `atif/` directory next to the eval database, then from the `path` stored with the reference, so the server must be able to read the directory the evals wrote to.
+The JSON behind it is under `/v1/gb/admin/api/evals`: `GET /` (overview), `GET /experiments/{id}`, `GET /runs/{id}`, `GET /runs/{id}/web-searches` (the [web searches](web-search.md#admin-ui) each case made, read from its trajectories), `GET /case_results/{id}/graph` (the graph of the case's dataset), `GET /experiments/{id}/history?eval=..&name=..` (the results of one case over the experiment's runs) and `GET /trajectories/{trajectory_id}`. A trajectory is served only if an experiment recorded its ID. Its file is read from the `atif/` directory next to the eval database, then from the `path` stored with the reference, so the server must be able to read the directory the evals wrote to.

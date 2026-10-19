@@ -130,14 +130,14 @@ func FindExperimentTrajectory(ctx context.Context, d *sql.DB, trajectoryID strin
 	return nil, unsupported()
 }
 
-// ListExperimentCaseHistory returns the results of one case (suite and case name) over the runs of the experiment,
+// ListExperimentCaseHistory returns the results of one case (eval and case name) over the runs of the experiment,
 // oldest run first, without trajectories. It is empty if the case was never recorded.
-func ListExperimentCaseHistory(ctx context.Context, d *sql.DB, experimentID int64, suite, name string) ([]ExperimentCaseResult, error) {
+func ListExperimentCaseHistory(ctx context.Context, d *sql.DB, experimentID int64, eval, name string) ([]ExperimentCaseResult, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListExperimentCaseHistory(ctx, d, experimentID, suite, name)
+		return sqlite.ListExperimentCaseHistory(ctx, d, experimentID, eval, name)
 	case config.DBBackendPostgres:
-		return postgres.ListExperimentCaseHistory(ctx, d, experimentID, suite, name)
+		return postgres.ListExperimentCaseHistory(ctx, d, experimentID, eval, name)
 	}
 	return nil, unsupported()
 }

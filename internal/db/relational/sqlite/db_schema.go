@@ -250,33 +250,33 @@ CREATE TABLE IF NOT EXISTS gb_training_datasets (
 --   type  'knowledge'  knowledge-extraction evals (evals/knowledge, internal/experiments): remember, then recall, checked by
 --                      programmatic checks. Run by the runner, into the eval database.
 --         'training'   evals of trained models (evals/training, internal/api/training/evals.go): the model is asked the cases
---                      of a suite (a dataset) and an external LLM judges the answers. Run by the server, from the admin UI.
+--                      of an eval (a dataset) and an external LLM judges the answers. Run by the server, from the admin UI.
 --
 --   UNIVERSAL tables (every eval has these; each has a type column):
 --     gb_experiments            a named series of runs
---     gb_experiment_cases       the cases (suite + case_name) an experiment has executed
+--     gb_experiment_cases       the cases (eval + case_name) an experiment has executed
 --     gb_experiment_runs        one execution: one or more cases
---     gb_experiment_case_results     the result of one case in one run (training: of the whole suite, see below)
+--     gb_experiment_case_results     the result of one case in one run (training: of the whole eval, see below)
 --     gb_experiment_trajectories  ATIF trajectories of a case (the trajectory files; only knowledge cases have them for now)
 --   METADATA tables (one row per row of gb_experiment_case_results, of the matching type; the columns only that kind has):
 --     gb_knowledge_case_meta    answer, checks, dataset the case built its graph in
---     gb_training_suite_run_meta  trained model, scheme, dataset, judge, counters and score of a training suite run
---     gb_training_case_results  the per-case outcomes of a training suite run
+--     gb_training_eval_run_meta  trained model, scheme, dataset, judge, counters and score of a training eval run
+--     gb_training_case_results  the per-case outcomes of a training eval run
 --
 -- type is the same on a row and on its parent: the composite foreign keys (<parent id>, type) -> parent (id, type) make the
 -- database refuse a run of one type under an experiment of the other, a result under a run of the other type, and a metadata
 -- row on a result of the wrong type.
 --
--- TERMS. A CASE is one input and what is expected or checked (an input/output combination, plus metadata) to be evaluated. A
--- SUITE is a set of cases. A RUN executes some cases once; a RESULT is the outcome of one case in one run, so a case has many
+-- TERMS. A CASE is one input and what is expected or checked (an input/output combination, plus metadata) to be evaluated. An
+-- EVAL is a set of cases. A RUN executes some cases once; a RESULT is the outcome of one case in one run, so a case has many
 -- results and a run has many results; an EXPERIMENT is a named series of runs. gb_experiment_cases lists the cases (the
--- definitions are in the suite files, not in the database); gb_experiment_case_results has the outcomes.
+-- definitions are in the eval files, not in the database); gb_experiment_case_results has the outcomes.
 --
--- SUITES. A case is identified by its suite and its name (case_name). Knowledge evals: a suite is a file in
--- evals/knowledge/suites/ (its name without ".json") and the case is one of its cases. Training evals: the suite is a dataset
--- (suite = the dataset's name) and its cases are the dataset's examples. A training eval is a SUITE RUN: one run of the suite
--- against one trained model, whose result row is that of the whole suite (case_name = '') and whose cases are in
--- gb_training_case_results. The scheme (gb_training_suite_run_meta.scheme) says how the suite's cases were made:
+-- EVALS AND CASES. A case is identified by its eval and its name (case_name). Knowledge evals: an eval is a file in
+-- evals/knowledge/evals/ (its name without ".json") and the case is one of its cases. Training evals: the eval is a dataset
+-- (eval = the dataset's name) and its cases are the dataset's examples. A training eval run is one run of the eval
+-- against one trained model, whose result row is that of the whole eval (case_name = '') and whose cases are in
+-- gb_training_case_results. The scheme (gb_training_eval_run_meta.scheme) says how the eval's cases were made:
 --   'finetune_dataset'  the trained model's own fine-tuning dataset: each example is a case, and the judge scores how closely
 --                       the model's answer reproduces the dataset's output (how well the model learned its training data).
 -- (A scheme with cases the model never saw in training, like the knowledge evals' cases, is not implemented yet.)
@@ -296,25 +296,25 @@ CREATE TABLE IF NOT EXISTS gb_experiments (
 	UNIQUE (id, type)
 );
 
--- The cases (a case name within a suite) that an experiment has executed.
--- A row is added the first time one of the experiment's runs executes the case. A training suite run adds its suite with
--- case_name '' (the whole suite).
+-- The cases (a case name within an eval) that an experiment has executed.
+-- A row is added the first time one of the experiment's runs executes the case. A training eval run adds its eval with
+-- case_name '' (the whole eval).
 CREATE TABLE IF NOT EXISTS gb_experiment_cases (
 	experiment_id INTEGER NOT NULL,
 	type          TEXT NOT NULL,
-	suite         TEXT NOT NULL DEFAULT '',
+	eval         TEXT NOT NULL DEFAULT '',
 	case_name     TEXT NOT NULL,
 	created_at    DATETIME NOT NULL,
-	PRIMARY KEY (experiment_id, suite, case_name),
+	PRIMARY KEY (experiment_id, eval, case_name),
 	FOREIGN KEY (experiment_id, type) REFERENCES gb_experiments(id, type) ON DELETE CASCADE
 );
 
--- One execution of an experiment: a pass over one or more cases (training: one suite run).
---   experiment_id  NULL for a run that is in no experiment (a training suite run started without an experiment name);
+-- One execution of an experiment: a pass over one or more cases (training: one eval run).
+--   experiment_id  NULL for a run that is in no experiment (a training eval run started without an experiment name);
 --                  knowledge runs always have one
 --   status         'running', then when finished: knowledge 'passed' (every case passed) or 'failed'; training 'completed' (the
---                  suite run ran to the end; it has a score, not a verdict), 'failed' or 'cancelled'
---   params         JSON object describing how the run was invoked (knowledge: suites dir, selected cases, models, reasoning;
+--                  eval run ran to the end; it has a score, not a verdict), 'failed' or 'cancelled'
+--   params         JSON object describing how the run was invoked (knowledge: evals dir, selected cases, models, reasoning;
 --                  training: batch_size, max_tokens, temperature, limit, ...)
 --   total_cases, passed_cases, failed_cases, cost_usd: totals over the run's cases, set when the run is finished
 --                  (passed_cases: passed or completed; failed_cases: all the others; cost_usd: the LLM cost, the judge's for training)
@@ -336,19 +336,19 @@ CREATE TABLE IF NOT EXISTS gb_experiment_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_runs(experiment_id);
 
--- The result of one case within one run (the universal part; the rest is in the metadata table of its type). A training suite
--- run has ONE result, that of the whole suite: its case_name is '' (its cases are in gb_training_case_results).
---   status       'running' (training suite runs are long: it is updated as they go), 'passed', 'failed' (knowledge: a check did not
+-- The result of one case within one run (the universal part; the rest is in the metadata table of its type). A training eval
+-- run has ONE result, that of the whole eval: its case_name is '' (its cases are in gb_training_case_results).
+--   status       'running' (training eval runs are long: it is updated as they go), 'passed', 'failed' (knowledge: a check did not
 --                hold; training: the model or the judge kept failing), 'error' (knowledge: the case could not be run to the end),
 --                'completed' (training: it ran to the end and has a score) or 'cancelled' (training: stopped by the user)
 --   error        why it failed or could not be run
 --   cost_usd     the LLM cost of the case (knowledge: its remember and recall calls; training: the judge's)
---   finished_at  NULL while the case or suite run runs
+--   finished_at  NULL while the case or eval run runs
 CREATE TABLE IF NOT EXISTS gb_experiment_case_results (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
 	type        TEXT NOT NULL CHECK (type IN ('knowledge', 'training')),
 	run_id      INTEGER NOT NULL,
-	suite       TEXT NOT NULL DEFAULT '',
+	eval       TEXT NOT NULL DEFAULT '',
 	case_name   TEXT NOT NULL,
 	status      TEXT NOT NULL CHECK (status IN ('running', 'passed', 'failed', 'error', 'completed', 'cancelled')),
 	error       TEXT NOT NULL DEFAULT '',
@@ -397,21 +397,21 @@ CREATE TABLE IF NOT EXISTS gb_knowledge_case_meta (
 	FOREIGN KEY (case_result_id, type) REFERENCES gb_experiment_case_results(id, type) ON DELETE CASCADE
 );
 
--- TRAINING metadata of a suite run (type 'training'; evals/training, internal/api/training/evals.go; the API calls it an eval):
--- what only the suite runs of trained models have. The trained model is asked the cases of a suite (a dataset: its fine-tuning
+-- TRAINING metadata of an eval run (type 'training'; evals/training, internal/api/training/evals.go; the API calls it an eval):
+-- what only the eval runs of trained models have. The trained model is asked the cases of an eval (a dataset: its fine-tuning
 -- dataset for now) and an external LLM scores its answers against the dataset's, a batch of questions per LLM call. The counters are rewritten after every batch, so
--- the row shows the progress while the suite run runs. The status, the error, the times and the judge's cost are those of the
+-- the row shows the progress while the eval run runs. The status, the error, the times and the judge's cost are those of the
 -- universal gb_experiment_case_results row, and the settings (batch_size, concurrency, max_tokens, temperature, limit) the params of
 -- its gb_experiment_runs row. A row still 'running' after a restart of the server is set to 'failed' when the server starts.
 --   trained_model_id  the model (gb_trained_models) that was asked; deleting the model deletes this row (and its cases)
---   scheme           how the suite's cases were made, see SUITES above ('finetune_dataset': the model's fine-tuning dataset)
---   dataset, dataset_sha256  the dataset (the suite) the cases came from, and the digest of the file that was read
+--   scheme           how the eval's cases were made, see EVALS AND CASES above ('finetune_dataset': the model's fine-tuning dataset)
+--   dataset, dataset_sha256  the dataset (the eval) the cases came from, and the digest of the file that was read
 --   judge_model      the model that judged ('' until its first reply)
 --   num_examples     the questions asked; num_answered the ones the model answered; num_judged the ones scored; num_failed the ones
 --                    where the model or the judge failed; num_correct/num_partial/num_incorrect split num_judged by score
 --                    (>= 4 / 2-3 / 0-1); score_sum the sum of the scores (0 to 5 each) of the judged ones
 --   num_batches      judge batches done; judge_calls the LLM calls made (a batch may need a retry); judge_*_tokens its tokens
-CREATE TABLE IF NOT EXISTS gb_training_suite_run_meta (
+CREATE TABLE IF NOT EXISTS gb_training_eval_run_meta (
 	case_result_id         INTEGER PRIMARY KEY,
 	type                TEXT NOT NULL DEFAULT 'training' CHECK (type = 'training'),
 	trained_model_id    INTEGER NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
@@ -433,16 +433,16 @@ CREATE TABLE IF NOT EXISTS gb_training_suite_run_meta (
 	judge_output_tokens INTEGER NOT NULL DEFAULT 0,
 	FOREIGN KEY (case_result_id, type) REFERENCES gb_experiment_case_results(id, type) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_gb_training_suite_run_meta_model ON gb_training_suite_run_meta(trained_model_id, case_result_id);
--- The foreign keys cascade downwards only, so deleting a trained model deletes the metadata of its suite runs (and their cases) but would
--- leave their universal rows behind: this trigger deletes the run of each (a training run has one suite run; its result row goes with it).
-CREATE TRIGGER IF NOT EXISTS trg_gb_training_suite_run_meta_deleted AFTER DELETE ON gb_training_suite_run_meta
+CREATE INDEX IF NOT EXISTS idx_gb_training_eval_run_meta_model ON gb_training_eval_run_meta(trained_model_id, case_result_id);
+-- The foreign keys cascade downwards only, so deleting a trained model deletes the metadata of its eval runs (and their cases) but would
+-- leave their universal rows behind: this trigger deletes the run of each (a training run has one eval run; its result row goes with it).
+CREATE TRIGGER IF NOT EXISTS trg_gb_training_eval_run_meta_deleted AFTER DELETE ON gb_training_eval_run_meta
 BEGIN
 	DELETE FROM gb_experiment_runs WHERE type = 'training'
 		AND id = (SELECT run_id FROM gb_experiment_case_results WHERE id = OLD.case_result_id);
 END;
 
--- The outcome for each case (question) of a training suite run, written when its judge batch is done.
+-- The outcome for each case (question) of a training eval run, written when its judge batch is done.
 --   idx          the example's position in the dataset (0-based); batch the judge batch (1-based)
 --   instruction, input  the question; reference the dataset's answer; response the model's ('' if it failed)
 --   status       'judged' or 'failed' (error says why: the model or the judge)
@@ -450,7 +450,7 @@ END;
 --   input_tokens, output_tokens, duration_ms  of the model's answer
 CREATE TABLE IF NOT EXISTS gb_training_case_results (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
-	suite_run_id       INTEGER NOT NULL REFERENCES gb_training_suite_run_meta(case_result_id) ON DELETE CASCADE,
+	eval_run_id       INTEGER NOT NULL REFERENCES gb_training_eval_run_meta(case_result_id) ON DELETE CASCADE,
 	idx           INTEGER NOT NULL,
 	batch         INTEGER NOT NULL,
 	instruction   TEXT NOT NULL,
@@ -464,7 +464,7 @@ CREATE TABLE IF NOT EXISTS gb_training_case_results (
 	input_tokens  INTEGER NOT NULL DEFAULT 0,
 	output_tokens INTEGER NOT NULL DEFAULT 0,
 	duration_ms   INTEGER NOT NULL DEFAULT 0,
-	UNIQUE (suite_run_id, idx)
+	UNIQUE (eval_run_id, idx)
 );`
 
 // initSchema applies the database schema.

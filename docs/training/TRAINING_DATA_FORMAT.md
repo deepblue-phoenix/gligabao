@@ -42,7 +42,7 @@ else:
     "<|turn>user\n{instruction}<turn|>\n<|turn>model\n{output}<turn|>"
 ```
 
-- **EOS in the data:** the dataset file (JSONL) has no EOS and should not: the end-of-turn token is added by `format_instruction` to every example, and the test suite checks (against the real Gemma 4 tokenizer) that the encoded text ends with id 106. `SFTTrainer` also appends the tokenizer's `eos_token` when the text does not already end with it (`<eos>`, id 1, for `google/gemma-4-*`; nothing for a tokenizer whose `eos_token` is `<turn|>`, such as Unsloth's); both ids stop generation.
+- **EOS in the data:** the dataset file (JSONL) has no EOS and should not: the end-of-turn token is added by `format_instruction` to every example, and the test eval checks (against the real Gemma 4 tokenizer) that the encoded text ends with id 106. `SFTTrainer` also appends the tokenizer's `eos_token` when the text does not already end with it (`<eos>`, id 1, for `google/gemma-4-*`; nothing for a tokenizer whose `eos_token` is `<turn|>`, such as Unsloth's); both ids stop generation.
 
 - **BOS:** Gemma 4's chat template starts with `<bos>`, but the tokenizer does not necessarily add it (the raw `tokenizer.json` has no BOS post-processor). `bos_prefix(tokenizer)` returns `""` if the tokenizer already adds it and `<bos>` otherwise; `run_finetuning` prepends it to every training text (`add_text_prefix`) and inference prepends it to the prompt, so both have exactly one `<bos>`.
 

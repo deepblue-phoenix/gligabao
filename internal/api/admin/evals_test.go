@@ -34,7 +34,7 @@ func testEvals(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tr.Record(ctx, experiments.CaseOutcome{Suite: "s", Name: "a", Trajectories: []*atif.Trajectory{traj}, TrajectoryDir: dir}); err != nil {
+	if _, err := tr.Record(ctx, experiments.CaseOutcome{Eval: "s", Name: "a", Trajectories: []*atif.Trajectory{traj}, TrajectoryDir: dir}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tr.Finish(ctx); err != nil {
@@ -90,7 +90,7 @@ func testEvals(t *testing.T, d *sql.DB) {
 		}
 	}
 	if c := get(func(w http.ResponseWriter, r *http.Request) {
-		r.URL.RawQuery = "suite=s&name=a"
+		r.URL.RawQuery = "eval=s&name=a"
 		admin.EvalCaseHistory(d)(w, r)
 	}, "/x/{id}", strconv.FormatInt(tr.Experiment.ID, 10), &hist); c != 200 || len(hist.Points) != 1 ||
 		hist.Points[0].RunID != tr.Run.ID || hist.Points[0].Status != "passed" {

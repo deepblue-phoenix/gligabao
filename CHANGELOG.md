@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.56.0] - 2026-10-19
+
+### Changed
+- **A set of cases is an eval; there are no suites (breaking for the eval database: the tables must be rebuilt, nothing is migrated; SQLite and PostgreSQL).** An *eval case* (a *case*) is one input/output combination, plus metadata, to be evaluated; cases are grouped into *evals*; a *run* executes cases (or a whole eval) once; an *experiment* is a named series of runs. What was an "eval suite" is now an **eval**, and "suite" is no longer a concept anywhere (nothing groups evals together). The word eval keeps meaning the whole activity too.
+  - Schema: the column `suite` of `gb_experiment_cases` and `gb_experiment_case_results` is `eval`; `gb_training_suite_run_meta` is `gb_training_eval_run_meta` (and its index and delete trigger/function follow), and `suite_run_id` of `gb_training_case_results` is `eval_run_id`.
+  - Go: `CaseRef.Suite`, `ExperimentCaseResult.Suite`, `experiments.CaseOutcome.Suite` and `experiments.CaseResult.Suite` are `Eval`; `TrainedModelSuiteRun` is `TrainedModelEvalRun` (with `RecordTrainedModelEvalRun`, `GetTrainedModelEvalRun`, `ListTrainedModelEvalRuns`, `SaveTrainedModelEvalRunBatch`, `FinishTrainedModelEvalRun`, the `TrainedModelEvalRunRunning/Completed/Failed/Cancelled` statuses, ...), `TrainedModelCaseResult.SuiteRunID` is `EvalRunID`, `TrainingExperimentRun.SuiteRun` / `SuiteRunID` are `EvalRun` / `EvalRunID`.
+  - Admin API (`/v1/gb/admin/api/evals/...`): the `suite` of a case result and of an experiment's cases is `eval`, and `GET /experiments/{id}/history?suite=..&name=..` is `?eval=..&name=..` (its answer has `eval`). Training API: `suite_run_id` (of a case and of a training experiment run) is `eval_run_id`. The URLs of the training evals (`/v1/gb/training/models/{id}/evals`) are unchanged: the API and the UI call an eval run of a trained model just an eval.
+  - Eval runner (`go run ./evals/knowledge`): the directory `evals/knowledge/suites/` is `evals/knowledge/evals/`; the flags `-suites dir`, `-suite name` and `-list-suites` are `-evals dir`, `-eval name` and `-list-evals`; the run's `params` keys `suites_dir` and `suite` are `evals_dir` and `eval`. `run_evals.sh` takes `-e|--eval NAME` (was `-s|--suite NAME`).
+  - Admin UI: the Evals block has an *Eval* column and "eval/case" labels where it said suite.
+  - Docs, schema comments and READMEs say eval where they said eval suite, suite or "suite run" (now *eval run*).
+
+
 ## [0.55.0] - 2026-10-19
 
 ### Changed

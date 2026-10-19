@@ -1,6 +1,6 @@
 // Command knowledge runs end-to-end evals against the real LLM.
 //
-// Each suite in evals/knowledge/suites/*.json is a JSON list of cases. The cases run in the eval database (-db), which isolates
+// Each eval in evals/knowledge/evals/*.json is a JSON list of cases. The cases run in the eval database (-db), which isolates
 // the evaluation data from the main database. It is never reset: every run of an experiment creates its own datasets
 // (one per case, named after the case and the run, see datasetName), so runs do not interfere with each other and
 // the graphs of all runs are kept. The experiments and their runs are recorded in the same eval database. The cases
@@ -9,15 +9,15 @@
 // every call along with its result.
 // Besides the answer, the stored temporal facts (edges with valid_at / invalid_at) are checked in the database.
 //
-// Usage: go run ./evals/knowledge [-v] [-suites dir] [-suite name] [case-name ...]   (requires ANTHROPIC_API_KEY)
-// With -suites, suites are read from that directory instead of the embedded evals/knowledge/suites (used by gligabao_int).
-// With -suite, only the cases of that suite run; -list-suites prints the available suites and exits.
+// Usage: go run ./evals/knowledge [-v] [-evals dir] [-eval name] [case-name ...]   (requires ANTHROPIC_API_KEY)
+// With -evals, evals are read from that directory instead of the embedded evals/knowledge/evals (used by gligabao_int).
+// With -eval, only the cases of that eval run; -list-evals prints the available evals and exits.
 // With -v, every LLM call's input and output is printed.
 // With -atif dir, the trajectories are stored there as JSON (default: an "atif" directory next to the -db file,
 // since the experiments reference them).
 //
 // Every invocation is a run of an experiment (-experiment, default "default"), persisted in the eval database
-// together with the cases (suite + case name) it executed, their results and the IDs of their ATIF trajectories; see
+// together with the cases (eval + case name) it executed, their results and the IDs of their ATIF trajectories; see
 // internal/experiments.
 package main
 
@@ -52,8 +52,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/server"
 )
 
-//go:embed suites/*.json suites/corpus/*.txt
-var suitesFS embed.FS
+//go:embed evals/*.json evals/corpus/*.txt
+var evalsFS embed.FS
 
 // datasetName is the dataset a case remembers into and recalls from: one per case and run of the experiment
 // ("<case>_run<runID>"), so runs are isolated from each other and the graph of every case of every run stays in the
@@ -82,8 +82,8 @@ const evalUser = "eval"
 
 // Case is one eval case (an input and what is checked, plus metadata): remember some texts in order, then ask a question about them.
 type Case struct {
-	// Suite is the suite (file name without ".json") the case was loaded from; it is not part of the JSON.
-	Suite          string       `json:"-"`
+	// Eval is the eval (file name without ".json") the case was loaded from; it is not part of the JSON.
+	Eval           string       `json:"-"`
 	Name           string       `json:"name"`
 	Remember       []Artifact   `json:"remember"`
 	Query          string       `json:"query"`
@@ -100,7 +100,7 @@ type Case struct {
 	Models map[string]string `json:"models,omitempty"`
 	// Reasoning picks the reasoning (thinking) level ("none", "low", "medium" or "high") of each LLM stage of remember
 	// ("extract_graph", "summarize_chunk", "resolve_edges", "resolve_series", "extract_image") and of the recall's
-	// answer ("recall"), on top of the runner's -reasoning: a stage named here wins, like Models. Every case of the suites
+	// answer ("recall"), on top of the runner's -reasoning: a stage named here wins, like Models. Every case of the evals
 	// sets all of them explicitly (to "none"), so a run does not depend on the server's defaults or the flag; a stage
 	// named by neither uses the server's default.
 	Reasoning map[string]string `json:"reasoning,omitempty"`
@@ -129,7 +129,7 @@ type ExpectSeries struct {
 
 // Artifact is one text to remember; ReferenceTime (RFC 3339) is when it was written. Kind is the artifact kind
 // ("knowledge" or "episode"); empty uses the server default. TextFile, instead of Text, names a file (relative to the
-// suites directory, e.g. "corpus/doc.txt") whose content is the text; loadCases reads it into Text.
+// evals directory, e.g. "corpus/doc.txt") whose content is the text; loadCases reads it into Text.
 type Artifact struct {
 	Kind          string `json:"kind"`
 	Text          string `json:"text"`
@@ -152,22 +152,22 @@ type ExpectEdge struct {
 	Ended     bool   `json:"ended"`
 }
 
-// loadCases loads the cases of the suites in suitesDir (the embedded ones if empty). A non-empty suite restricts them
-// to the cases of that suite, and a non-empty only to the cases with those names.
-func loadCases(only []string, suitesDir, suite string) ([]Case, error) {
-	var fsys fs.FS = suitesFS
-	dir := "suites"
-	if suitesDir != "" {
-		fsys, dir = os.DirFS(suitesDir), "."
+// loadCases loads the cases of the evals in evalsDir (the embedded ones if empty). A non-empty eval restricts them
+// to the cases of that eval, and a non-empty only to the cases with those names.
+func loadCases(only []string, evalsDir, eval string) ([]Case, error) {
+	var fsys fs.FS = evalsFS
+	dir := "evals"
+	if evalsDir != "" {
+		fsys, dir = os.DirFS(evalsDir), "."
 	}
 	entries, err := fs.ReadDir(fsys, dir)
 	if err != nil {
 		return nil, err
 	}
-	wantSuite := suite
+	wantEval := eval
 	var cases []Case
 	seen := map[string]bool{}
-	suiteFound := wantSuite == ""
+	evalFound := wantEval == ""
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
@@ -176,14 +176,14 @@ func loadCases(only []string, suitesDir, suite string) ([]Case, error) {
 		if err != nil {
 			return nil, err
 		}
-		var suiteCases []Case
-		if err := json.Unmarshal(data, &suiteCases); err != nil {
+		var evalCases []Case
+		if err := json.Unmarshal(data, &evalCases); err != nil {
 			return nil, fmt.Errorf("%s: %w", e.Name(), err)
 		}
-		suiteName := strings.TrimSuffix(e.Name(), ".json")
-		suiteFound = suiteFound || suiteName == wantSuite
-		for i, c := range suiteCases {
-			c.Suite = suiteName
+		evalName := strings.TrimSuffix(e.Name(), ".json")
+		evalFound = evalFound || evalName == wantEval
+		for i, c := range evalCases {
+			c.Eval = evalName
 			if c.Name == "" {
 				return nil, fmt.Errorf("%s: case %d has no name", e.Name(), i)
 			}
@@ -205,13 +205,13 @@ func loadCases(only []string, suitesDir, suite string) ([]Case, error) {
 				c.Remember[j].Text = string(b)
 			}
 			seen[c.Name] = true
-			if (wantSuite == "" || suiteName == wantSuite) && (len(only) == 0 || contains(only, c.Name)) {
+			if (wantEval == "" || evalName == wantEval) && (len(only) == 0 || contains(only, c.Name)) {
 				cases = append(cases, c)
 			}
 		}
 	}
-	if !suiteFound {
-		return nil, fmt.Errorf("unknown suite %q (available: %s)", wantSuite, strings.Join(suiteNames(fsys, dir), ", "))
+	if !evalFound {
+		return nil, fmt.Errorf("unknown eval %q (available: %s)", wantEval, strings.Join(evalNames(fsys, dir), ", "))
 	}
 	for _, name := range only {
 		found := false
@@ -225,7 +225,7 @@ func loadCases(only []string, suitesDir, suite string) ([]Case, error) {
 	return cases, nil
 }
 
-func suiteNames(fsys fs.FS, dir string) []string {
+func evalNames(fsys fs.FS, dir string) []string {
 	entries, _ := fs.ReadDir(fsys, dir)
 	var names []string
 	for _, e := range entries {
@@ -236,18 +236,18 @@ func suiteNames(fsys fs.FS, dir string) []string {
 	return names
 }
 
-// printSuites prints the suites of suitesDir (the embedded ones if empty) with their cases, as a table.
-func printSuites(w *os.File, suitesDir string) error {
-	cases, err := loadCases(nil, suitesDir, "")
+// printEvals prints the evals of evalsDir (the embedded ones if empty) with their cases, as a table.
+func printEvals(w *os.File, evalsDir string) error {
+	cases, err := loadCases(nil, evalsDir, "")
 	if err != nil {
 		return err
 	}
-	var fsys fs.FS = suitesFS
-	dir := "suites"
-	if suitesDir != "" {
-		fsys, dir = os.DirFS(suitesDir), "."
+	var fsys fs.FS = evalsFS
+	dir := "evals"
+	if evalsDir != "" {
+		fsys, dir = os.DirFS(evalsDir), "."
 	}
-	names := suiteNames(fsys, dir)
+	names := evalNames(fsys, dir)
 	bold, dim, reset := "", "", ""
 	if st, err := w.Stat(); err == nil && st.Mode()&os.ModeCharDevice != 0 && os.Getenv("NO_COLOR") == "" {
 		bold, dim, reset = "\033[1m", "\033[2m", "\033[0m"
@@ -259,7 +259,7 @@ func printSuites(w *os.File, suitesDir string) error {
 	for _, n := range names {
 		var in []string
 		for _, c := range cases {
-			if c.Suite == n {
+			if c.Eval == n {
 				in = append(in, c.Name)
 			}
 		}
@@ -933,7 +933,7 @@ func runCases(cases []Case, llm memory_core.LLM, emb memory_core.Embedder, ws me
 		}
 		{
 			res := experiments.CaseOutcome{
-				Suite: c.Suite, Name: c.Name, Answer: answer, Err: err,
+				Eval: c.Eval, Name: c.Name, Answer: answer, Err: err,
 				Problems: problems, PassedChecks: passed,
 				ArtifactIDs: out.ArtifactIDs, DatasetID: out.DatasetID,
 				StartedAt: started, FinishedAt: time.Now(),
@@ -943,7 +943,7 @@ func runCases(cases []Case, llm memory_core.LLM, emb memory_core.Embedder, ws me
 				res.Problems = append(append([]string(nil), problems...), fmt.Sprintf("answer missing %q", missing))
 			}
 			if _, rerr := tracker.Record(context.Background(), res); rerr != nil {
-				fmt.Fprintf(os.Stderr, "warning: record %s/%s in experiment %q: %v\n", c.Suite, c.Name, tracker.Experiment.Name, rerr)
+				fmt.Fprintf(os.Stderr, "warning: record %s/%s in experiment %q: %v\n", c.Eval, c.Name, tracker.Experiment.Name, rerr)
 			}
 		}
 
@@ -979,9 +979,9 @@ func main() {
 
 func mainErr() error {
 	verbose := flag.Bool("v", false, "print the input and output of every LLM call")
-	suitesDir := flag.String("suites", "", "read suites from this directory instead of the embedded ones")
-	suite := flag.String("suite", "", "run only the cases of this suite (file name without .json; see -list-suites)")
-	listSuites := flag.Bool("list-suites", false, "print the available suites and their cases, then exit")
+	evalsDir := flag.String("evals", "", "read evals from this directory instead of the embedded ones")
+	eval := flag.String("eval", "", "run only the cases of this eval (file name without .json; see -list-evals)")
+	listEvals := flag.Bool("list-evals", false, "print the available evals and their cases, then exit")
 	flag.StringVar(&atifDir, "atif", "", `store every ATIF trajectory as JSON in this directory (default: "atif" next to the -db file)`)
 	experiment := flag.String("experiment", "default", "name of the experiment this run belongs to (created if new)")
 	experimentDesc := flag.String("experiment-desc", "", "description of the experiment, used when it is created")
@@ -989,8 +989,8 @@ func mainErr() error {
 	modelsFlag := flag.String("models", "", `LLM model per remember stage, e.g. "extract_graph=claude-sonnet-4-5,resolve_edges=claude-haiku-5-5" (stages: `+strings.Join(memory_core.Stages, ", ")+`); a stage left out uses the default model; a case's "models" win`)
 	reasoningFlag := flag.String("reasoning", "", `reasoning level per stage, e.g. "extract_graph=low,recall=medium" (stages: `+strings.Join(reasoningStages(), ", ")+`; levels: `+strings.Join(ai.ReasoningLevels, ", ")+`); a stage left out uses the server default (none); a case's "reasoning" wins`)
 	flag.Parse()
-	if *listSuites {
-		return printSuites(os.Stdout, *suitesDir)
+	if *listEvals {
+		return printEvals(os.Stdout, *evalsDir)
 	}
 	models, err := memory_core.ParseModels(*modelsFlag)
 	if err != nil {
@@ -1026,7 +1026,7 @@ func mainErr() error {
 		emb = e
 	}
 
-	cases, err := loadCases(flag.Args(), *suitesDir, *suite)
+	cases, err := loadCases(flag.Args(), *evalsDir, *eval)
 	if err != nil {
 		return err
 	}
@@ -1036,7 +1036,7 @@ func mainErr() error {
 		return err
 	}
 	defer database.Close()
-	params := map[string]any{"suites_dir": *suitesDir, "suite": *suite, "cases": flag.Args(), "atif_dir": atifDir}
+	params := map[string]any{"evals_dir": *evalsDir, "eval": *eval, "cases": flag.Args(), "atif_dir": atifDir}
 	if len(models) > 0 {
 		params["models"] = models
 	}

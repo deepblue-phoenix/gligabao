@@ -178,10 +178,10 @@ CREATE TABLE IF NOT EXISTS gb_experiments (
 CREATE TABLE IF NOT EXISTS gb_experiment_cases (
 	experiment_id BIGINT NOT NULL,
 	type          TEXT NOT NULL,
-	suite         TEXT NOT NULL DEFAULT '',
+	eval         TEXT NOT NULL DEFAULT '',
 	case_name     TEXT NOT NULL,
 	created_at    TIMESTAMPTZ NOT NULL,
-	PRIMARY KEY (experiment_id, suite, case_name),
+	PRIMARY KEY (experiment_id, eval, case_name),
 	FOREIGN KEY (experiment_id, type) REFERENCES gb_experiments(id, type) ON DELETE CASCADE
 );
 
@@ -207,7 +207,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_case_results (
 	id          BIGSERIAL PRIMARY KEY,
 	type        TEXT NOT NULL CHECK (type IN ('knowledge', 'training')),
 	run_id      BIGINT NOT NULL,
-	suite       TEXT NOT NULL DEFAULT '',
+	eval       TEXT NOT NULL DEFAULT '',
 	case_name   TEXT NOT NULL,
 	status      TEXT NOT NULL CHECK (status IN ('running', 'passed', 'failed', 'error', 'completed', 'cancelled')),
 	error       TEXT NOT NULL DEFAULT '',
@@ -246,7 +246,7 @@ CREATE TABLE IF NOT EXISTS gb_knowledge_case_meta (
 	FOREIGN KEY (case_result_id, type) REFERENCES gb_experiment_case_results(id, type) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS gb_training_suite_run_meta (
+CREATE TABLE IF NOT EXISTS gb_training_eval_run_meta (
 	case_result_id         BIGINT PRIMARY KEY,
 	type                TEXT NOT NULL DEFAULT 'training' CHECK (type = 'training'),
 	trained_model_id    BIGINT NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
@@ -268,23 +268,23 @@ CREATE TABLE IF NOT EXISTS gb_training_suite_run_meta (
 	judge_output_tokens BIGINT NOT NULL DEFAULT 0,
 	FOREIGN KEY (case_result_id, type) REFERENCES gb_experiment_case_results(id, type) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_gb_training_suite_run_meta_model ON gb_training_suite_run_meta(trained_model_id, case_result_id);
+CREATE INDEX IF NOT EXISTS idx_gb_training_eval_run_meta_model ON gb_training_eval_run_meta(trained_model_id, case_result_id);
 
--- Deleting a trained model deletes the metadata of its suite runs; this trigger deletes their runs too (see sqlite/db_schema.go).
-CREATE OR REPLACE FUNCTION gb_training_suite_run_meta_deleted() RETURNS trigger AS $$
+-- Deleting a trained model deletes the metadata of its eval runs; this trigger deletes their runs too (see sqlite/db_schema.go).
+CREATE OR REPLACE FUNCTION gb_training_eval_run_meta_deleted() RETURNS trigger AS $$
 BEGIN
 	DELETE FROM gb_experiment_runs WHERE type = 'training'
 		AND id = (SELECT run_id FROM gb_experiment_case_results WHERE id = OLD.case_result_id);
 	RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
-DROP TRIGGER IF EXISTS trg_gb_training_suite_run_meta_deleted ON gb_training_suite_run_meta;
-CREATE TRIGGER trg_gb_training_suite_run_meta_deleted AFTER DELETE ON gb_training_suite_run_meta
-	FOR EACH ROW EXECUTE FUNCTION gb_training_suite_run_meta_deleted();
+DROP TRIGGER IF EXISTS trg_gb_training_eval_run_meta_deleted ON gb_training_eval_run_meta;
+CREATE TRIGGER trg_gb_training_eval_run_meta_deleted AFTER DELETE ON gb_training_eval_run_meta
+	FOR EACH ROW EXECUTE FUNCTION gb_training_eval_run_meta_deleted();
 
 CREATE TABLE IF NOT EXISTS gb_training_case_results (
 	id            BIGSERIAL PRIMARY KEY,
-	suite_run_id       BIGINT NOT NULL REFERENCES gb_training_suite_run_meta(case_result_id) ON DELETE CASCADE,
+	eval_run_id       BIGINT NOT NULL REFERENCES gb_training_eval_run_meta(case_result_id) ON DELETE CASCADE,
 	idx           BIGINT NOT NULL,
 	batch         BIGINT NOT NULL,
 	instruction   TEXT NOT NULL,
@@ -298,7 +298,7 @@ CREATE TABLE IF NOT EXISTS gb_training_case_results (
 	input_tokens  BIGINT NOT NULL DEFAULT 0,
 	output_tokens BIGINT NOT NULL DEFAULT 0,
 	duration_ms   BIGINT NOT NULL DEFAULT 0,
-	UNIQUE (suite_run_id, idx)
+	UNIQUE (eval_run_id, idx)
 );`
 
 // initSchema applies the database schema. Concurrent starters are serialized with an advisory lock, because

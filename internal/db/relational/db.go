@@ -42,7 +42,7 @@ type (
 	TrainedModel           = model.TrainedModel
 	TrainedModelFile       = model.TrainedModelFile
 	TrainedModelInference  = model.TrainedModelInference
-	TrainedModelSuiteRun   = model.TrainedModelSuiteRun
+	TrainedModelEvalRun    = model.TrainedModelEvalRun
 	TrainedModelCaseResult = model.TrainedModelCaseResult
 
 	TrainingExperiment      = model.TrainingExperiment
@@ -50,18 +50,18 @@ type (
 	TrainingExperimentModel = model.TrainingExperimentModel
 )
 
-// Statuses of a TrainedModelSuiteRun and of its cases.
+// Statuses of a TrainedModelEvalRun and of its cases.
 const (
-	TrainedModelSuiteRunRunning   = model.TrainedModelSuiteRunRunning
-	TrainedModelSuiteRunCompleted = model.TrainedModelSuiteRunCompleted
-	TrainedModelSuiteRunFailed    = model.TrainedModelSuiteRunFailed
-	TrainedModelSuiteRunCancelled = model.TrainedModelSuiteRunCancelled
-	TrainedModelCaseJudged        = model.TrainedModelCaseJudged
-	TrainedModelCaseFailed        = model.TrainedModelCaseFailed
-	TrainedModelCaseAnswered      = model.TrainedModelCaseAnswered
+	TrainedModelEvalRunRunning   = model.TrainedModelEvalRunRunning
+	TrainedModelEvalRunCompleted = model.TrainedModelEvalRunCompleted
+	TrainedModelEvalRunFailed    = model.TrainedModelEvalRunFailed
+	TrainedModelEvalRunCancelled = model.TrainedModelEvalRunCancelled
+	TrainedModelCaseJudged       = model.TrainedModelCaseJudged
+	TrainedModelCaseFailed       = model.TrainedModelCaseFailed
+	TrainedModelCaseAnswered     = model.TrainedModelCaseAnswered
 )
 
-// Eval schemes of a TrainedModelSuiteRun (see model.TrainingSchemeFineTuneDataset).
+// Eval schemes of a TrainedModelEvalRun (see model.TrainingSchemeFineTuneDataset).
 const (
 	TrainingSchemeFineTuneDataset = model.TrainingSchemeFineTuneDataset
 )

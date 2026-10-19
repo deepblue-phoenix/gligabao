@@ -1,7 +1,7 @@
-// Package training is the eval subsystem for freshly trained models: a suite run asks a trained model the cases of an eval
-// suite and has an external LLM (the one gligabao uses for knowledge ingestion) judge, in batches, how well the model's
+// Package training is the eval subsystem for freshly trained models: an eval run asks a trained model the cases of an eval
+// eval and has an external LLM (the one gligabao uses for knowledge ingestion) judge, in batches, how well the model's
 // answers agree with the expected ones. The only scheme implemented is the fine-tuning dataset one
-// (relational.TrainingSchemeFineTuneDataset): the suite is the model's own training dataset, each example is a case (the
+// (relational.TrainingSchemeFineTuneDataset): the eval is the model's own training dataset, each example is a case (the
 // question) and the dataset's output is the expected answer. It is separate from evals/knowledge, which checks the knowledge
 // extraction (remember / recall) end to end.
 //

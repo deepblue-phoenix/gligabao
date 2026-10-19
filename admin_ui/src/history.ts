@@ -8,7 +8,7 @@ interface Point {
   run_id: number; run_started_at: string; status: string;
   problems?: string[]; passed_checks?: string[]; error?: string; steps: number; started_at: string; finished_at: string;
 }
-interface History { suite: string; name: string; points: Point[] }
+interface History { eval: string; name: string; points: Point[] }
 interface Dot extends Point { t: Date; seconds: number }
 
 const STATUSES = ["passed", "failed", "error"];
@@ -48,18 +48,18 @@ function clear(): void {
   el("history-canvas").replaceChildren();
 }
 
-// Opens the modal and plots the history of case suite/name in the experiment. onRun, when given, is called with a
+// Opens the modal and plots the history of case eval/name in the experiment. onRun, when given, is called with a
 // run ID when its dot is clicked.
-export async function showCaseHistory(experimentID: number, experiment: string, suite: string, name: string, onRun?: (runID: number) => void): Promise<void> {
+export async function showCaseHistory(experimentID: number, experiment: string, evalName: string, name: string, onRun?: (runID: number) => void): Promise<void> {
   const modal = el<HTMLDialogElement>("history-modal");
   const status = el("history-status");
-  el("history-title").textContent = `${suite}/${name} — history (${experiment})`;
+  el("history-title").textContent = `${evalName}/${name} — history (${experiment})`;
   status.className = "muted";
   status.textContent = "Loading…";
   clear();
   if (!modal.open) modal.showModal();
   try {
-    const params = new URLSearchParams({ suite, name });
+    const params = new URLSearchParams({ eval: evalName, name });
     const res = await fetch(`api/evals/experiments/${experimentID}/history?${params}`);
     if (!res.ok) throw new Error(`${res.status}: ${(await res.text()).trim()}`);
     const data = (await res.json()) as History;

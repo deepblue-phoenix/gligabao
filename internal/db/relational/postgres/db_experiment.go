@@ -89,10 +89,10 @@ func scanExperiment(r scanner) (*model.Experiment, error) {
 
 func experimentCases(ctx context.Context, q rower, experimentID int64) ([]model.CaseRef, error) {
 	rows, err := q.QueryContext(ctx, `
-		SELECT suite, case_name
+		SELECT eval, case_name
 		FROM gb_experiment_cases
 		WHERE experiment_id = $1
-		ORDER BY suite, case_name`, experimentID)
+		ORDER BY eval, case_name`, experimentID)
 	if err != nil {
 		return nil, fmt.Errorf("list experiment cases: %w", err)
 	}
@@ -100,7 +100,7 @@ func experimentCases(ctx context.Context, q rower, experimentID int64) ([]model.
 	out := []model.CaseRef{}
 	for rows.Next() {
 		var r model.CaseRef
-		if err := rows.Scan(&r.Suite, &r.Name); err != nil {
+		if err := rows.Scan(&r.Eval, &r.Name); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -240,10 +240,10 @@ func RecordExperimentCaseResult(ctx context.Context, d *sql.DB, e model.Experime
 
 	e.Type = model.EvalTypeKnowledge
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO gb_experiment_case_results (type, run_id, suite, case_name, status, error, cost_usd, started_at, finished_at)
+		INSERT INTO gb_experiment_case_results (type, run_id, eval, case_name, status, error, cost_usd, started_at, finished_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id`,
-		e.Type, e.RunID, e.Suite, e.Name, e.Status, e.Error, e.CostUSD, Normalize(e.StartedAt), Normalize(e.FinishedAt)).Scan(&e.ID)
+		e.Type, e.RunID, e.Eval, e.Name, e.Status, e.Error, e.CostUSD, Normalize(e.StartedAt), Normalize(e.FinishedAt)).Scan(&e.ID)
 	if err != nil {
 		return nil, fmt.Errorf("record experiment case: %w", err)
 	}
@@ -255,10 +255,10 @@ func RecordExperimentCaseResult(ctx context.Context, d *sql.DB, e model.Experime
 	}
 
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO gb_experiment_cases (experiment_id, type, suite, case_name, created_at)
+		INSERT INTO gb_experiment_cases (experiment_id, type, eval, case_name, created_at)
 		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (experiment_id, suite, case_name) DO NOTHING`,
-		experimentID, model.EvalTypeKnowledge, e.Suite, e.Name, Now()); err != nil {
+		ON CONFLICT (experiment_id, eval, case_name) DO NOTHING`,
+		experimentID, model.EvalTypeKnowledge, e.Eval, e.Name, Now()); err != nil {
 		return nil, fmt.Errorf("record experiment case: %w", err)
 	}
 
@@ -341,7 +341,7 @@ func scanTrajectory(r scanner) (*model.ExperimentTrajectory, error) {
 }
 
 // caseResultColumns are the columns scanCaseResult reads (gb_experiment_case_results as e, gb_knowledge_case_meta as k).
-const caseResultColumns = `e.id, e.type, e.run_id, e.suite, e.case_name, e.status, k.answer, k.problems::text, k.passed_checks::text, k.dataset_id,
+const caseResultColumns = `e.id, e.type, e.run_id, e.eval, e.case_name, e.status, k.answer, k.problems::text, k.passed_checks::text, k.dataset_id,
 	e.error, k.steps, e.cost_usd, e.started_at, e.finished_at`
 
 // scanCaseResult reads a result selected with caseResultColumns; its Trajectories are empty.
@@ -350,7 +350,7 @@ func scanCaseResult(r scanner) (*model.ExperimentCaseResult, error) {
 	var problems, passed string
 	var datasetID sql.NullInt64
 	var finished sql.NullTime
-	if err := r.Scan(&e.ID, &e.Type, &e.RunID, &e.Suite, &e.Name, &e.Status, &e.Answer, &problems, &passed, &datasetID, &e.Error, &e.Steps,
+	if err := r.Scan(&e.ID, &e.Type, &e.RunID, &e.Eval, &e.Name, &e.Status, &e.Answer, &problems, &passed, &datasetID, &e.Error, &e.Steps,
 		&e.CostUSD, &e.StartedAt, &finished); err != nil {
 		return nil, err
 	}
@@ -446,14 +446,14 @@ func FindExperimentTrajectory(ctx context.Context, d *sql.DB, trajectoryID strin
 
 // ListExperimentCaseHistory returns the results of one case over the runs of the experiment, oldest run first. Each
 // result has its RunID; the trajectories are not loaded.
-func ListExperimentCaseHistory(ctx context.Context, d *sql.DB, experimentID int64, suite, name string) ([]model.ExperimentCaseResult, error) {
+func ListExperimentCaseHistory(ctx context.Context, d *sql.DB, experimentID int64, eval, name string) ([]model.ExperimentCaseResult, error) {
 	rows, err := d.QueryContext(ctx, `
 		SELECT `+caseResultColumns+`
 		FROM gb_experiment_case_results e
 		JOIN gb_knowledge_case_meta k ON k.case_result_id = e.id
 		JOIN gb_experiment_runs r ON r.id = e.run_id
-		WHERE r.experiment_id = $1 AND r.type = $2 AND e.suite = $3 AND e.case_name = $4
-		ORDER BY r.id, e.id`, experimentID, model.EvalTypeKnowledge, suite, name)
+		WHERE r.experiment_id = $1 AND r.type = $2 AND e.eval = $3 AND e.case_name = $4
+		ORDER BY r.id, e.id`, experimentID, model.EvalTypeKnowledge, eval, name)
 	if err != nil {
 		return nil, fmt.Errorf("list experiment case history: %w", err)
 	}

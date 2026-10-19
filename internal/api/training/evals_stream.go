@@ -43,7 +43,7 @@ const (
 // EvalEvent is one event of the feed.
 type EvalEvent struct {
 	Type  string                              `json:"type"`
-	Eval  *relational.TrainedModelSuiteRun    `json:"eval,omitempty"`
+	Eval  *relational.TrainedModelEvalRun     `json:"eval,omitempty"`
 	Cases []relational.TrainedModelCaseResult `json:"cases,omitempty"`
 }
 
@@ -117,7 +117,7 @@ func (s *evalStream) answer(it relational.TrainedModelCaseResult) {
 }
 
 // batch announces the judged cases of a batch and the progress after it.
-func (s *evalStream) batch(e relational.TrainedModelSuiteRun, cases []relational.TrainedModelCaseResult) {
+func (s *evalStream) batch(e relational.TrainedModelEvalRun, cases []relational.TrainedModelCaseResult) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -130,7 +130,7 @@ func (s *evalStream) batch(e relational.TrainedModelSuiteRun, cases []relational
 }
 
 // end announces the end of the eval and closes the feed.
-func (s *evalStream) end(e relational.TrainedModelSuiteRun) {
+func (s *evalStream) end(e relational.TrainedModelEvalRun) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -147,7 +147,7 @@ func (s *evalStream) end(e relational.TrainedModelSuiteRun) {
 
 // caseResultRow is the stored form of a case of the run.
 func caseResultRow(evalID int64, it trainingeval.CaseResult) relational.TrainedModelCaseResult {
-	return relational.TrainedModelCaseResult{SuiteRunID: evalID, Idx: it.Idx, Batch: it.Batch, Instruction: it.Instruction, Input: it.Input,
+	return relational.TrainedModelCaseResult{EvalRunID: evalID, Idx: it.Idx, Batch: it.Batch, Instruction: it.Instruction, Input: it.Input,
 		Reference: it.Reference, Response: it.Response, Status: it.Status, Error: it.Error, Score: it.Score, Reason: it.Reason,
 		InputTokens: it.InputTokens, OutputTokens: it.OutputTokens, DurationMS: it.DurationMS}
 }
@@ -182,7 +182,7 @@ func (m *EvalManager) EventsOf() http.HandlerFunc {
 				defer stream.unsubscribe(ch)
 			}
 		}
-		ev, err := relational.GetTrainedModelSuiteRun(r.Context(), n.DB, id)
+		ev, err := relational.GetTrainedModelEvalRun(r.Context(), n.DB, id)
 		if errors.Is(err, relational.ErrNotFound) {
 			httputil.Error(w, http.StatusNotFound, "unknown eval")
 			return
@@ -258,10 +258,10 @@ func (m *EvalManager) EventsOf() http.HandlerFunc {
 
 // publishEnd announces the end of eval evalID on its stream, with the eval as stored.
 func (m *EvalManager) publishEnd(ctx context.Context, n Database, s *evalStream, evalID int64) {
-	if ev, err := relational.GetTrainedModelSuiteRun(ctx, n.DB, evalID); err == nil {
+	if ev, err := relational.GetTrainedModelEvalRun(ctx, n.DB, evalID); err == nil {
 		s.end(*ev)
 	} else {
-		log.WithError(err).WithField("suite_run_id", evalID).Warn("training: read the ended eval for its stream failed")
-		s.end(relational.TrainedModelSuiteRun{ID: evalID})
+		log.WithError(err).WithField("eval_run_id", evalID).Warn("training: read the ended eval for its stream failed")
+		s.end(relational.TrainedModelEvalRun{ID: evalID})
 	}
 }

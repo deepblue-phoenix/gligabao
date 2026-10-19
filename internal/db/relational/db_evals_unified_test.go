@@ -57,19 +57,19 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("StartExperimentRun: %+v %v", run, err)
 	}
 	now := time.Now()
-	rec, err := relational.RecordExperimentCaseResult(ctx, d, relational.ExperimentCaseResult{RunID: run.ID, Suite: "basic", Name: "job_change",
+	rec, err := relational.RecordExperimentCaseResult(ctx, d, relational.ExperimentCaseResult{RunID: run.ID, Eval: "basic", Name: "job_change",
 		Status: relational.ExperimentFailed, Answer: "Globex", Problems: []string{"p"}, PassedChecks: []string{"q"}, Steps: 3, CostUSD: 0.5,
 		StartedAt: now, FinishedAt: now})
 	if err != nil || rec.Type != relational.EvalTypeKnowledge {
 		t.Fatalf("RecordExperimentCaseResult: %+v %v", rec, err)
 	}
-	if n := count(`SELECT COUNT(*) FROM gb_experiment_case_results WHERE type = 'knowledge' AND suite = 'basic' AND case_name = 'job_change'`); n != 1 {
+	if n := count(`SELECT COUNT(*) FROM gb_experiment_case_results WHERE type = 'knowledge' AND eval = 'basic' AND case_name = 'job_change'`); n != 1 {
 		t.Fatalf("universal row: %d", n)
 	}
 	if n := count(`SELECT COUNT(*) FROM gb_knowledge_case_meta WHERE answer = 'Globex' AND steps = 3`); n != 1 {
 		t.Fatalf("knowledge metadata: %d", n)
 	}
-	if n := count(`SELECT COUNT(*) FROM gb_experiment_cases WHERE type = 'knowledge' AND suite = 'basic'`); n != 1 {
+	if n := count(`SELECT COUNT(*) FROM gb_experiment_cases WHERE type = 'knowledge' AND eval = 'basic'`); n != 1 {
 		t.Fatalf("experiment cases: %d", n)
 	}
 	got, err := relational.GetExperimentRun(ctx, d, run.ID)
@@ -80,36 +80,36 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("unknown run: %v", err)
 	}
 
-	// A training suite run: an ad-hoc one is a run in no experiment; joining an experiment sets it and lists the suite there.
+	// A training eval run: an ad-hoc one is a run in no experiment; joining an experiment sets it and lists the eval there.
 	loss := 0.5
 	mid, _, err := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{
 		JobID: "jobunify001", ModelSize: "4b", Dataset: "mine.jsonl", NumTrainSteps: 7, FinalLoss: &loss, Path: "trained/jobunify001"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	eid, err := relational.RecordTrainedModelSuiteRun(ctx, d, relational.TrainedModelSuiteRun{TrainedModelID: mid, Dataset: "mine", NumExamples: 2})
+	eid, err := relational.RecordTrainedModelEvalRun(ctx, d, relational.TrainedModelEvalRun{TrainedModelID: mid, Dataset: "mine", NumExamples: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
 	q := fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_runs r JOIN gb_experiment_case_results e ON e.run_id = r.id
-		WHERE e.id = %d AND r.type = 'training' AND e.type = 'training' AND r.experiment_id IS NULL AND e.suite = 'mine' AND e.case_name = ''`, eid)
+		WHERE e.id = %d AND r.type = 'training' AND e.type = 'training' AND r.experiment_id IS NULL AND e.eval = 'mine' AND e.case_name = ''`, eid)
 	if n := count(q); n != 1 {
-		t.Fatalf("ad-hoc training suite run rows: %d", n)
+		t.Fatalf("ad-hoc training eval run rows: %d", n)
 	}
-	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_training_suite_run_meta WHERE case_result_id = %d AND trained_model_id = %d`, eid, mid)); n != 1 {
+	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_training_eval_run_meta WHERE case_result_id = %d AND trained_model_id = %d`, eid, mid)); n != 1 {
 		t.Fatalf("training metadata: %d", n)
 	}
 	if _, err := relational.StartTrainingExperimentRun(ctx, d, tx.ID, eid); err != nil {
 		t.Fatal(err)
 	}
-	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_cases WHERE experiment_id = %d AND type = 'training' AND suite = 'mine' AND case_name = ''`, tx.ID)); n != 1 {
+	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_cases WHERE experiment_id = %d AND type = 'training' AND eval = 'mine' AND case_name = ''`, tx.ID)); n != 1 {
 		t.Fatalf("training experiment cases: %d", n)
 	}
-	// Judge cost and the end of the suite run reach the universal rows: the run is totalled and takes the suite run's status.
-	if err := relational.SaveTrainedModelSuiteRunBatch(ctx, d, relational.TrainedModelSuiteRun{ID: eid, NumJudged: 2, NumCorrect: 2, ScoreSum: 9, JudgeCostUSD: 0.25}, nil); err != nil {
+	// Judge cost and the end of the eval run reach the universal rows: the run is totalled and takes the eval run's status.
+	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, relational.TrainedModelEvalRun{ID: eid, NumJudged: 2, NumCorrect: 2, ScoreSum: 9, JudgeCostUSD: 0.25}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := relational.FinishTrainedModelSuiteRun(ctx, d, eid, relational.TrainedModelSuiteRunCompleted, ""); err != nil {
+	if err := relational.FinishTrainedModelEvalRun(ctx, d, eid, relational.TrainedModelEvalRunCompleted, ""); err != nil {
 		t.Fatal(err)
 	}
 	var status string
@@ -137,7 +137,7 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 		`INSERT INTO gb_experiment_runs (type, status, started_at) VALUES ('knowledge', 'running', '2026-01-01')`,
 		// knowledge metadata on a training result, and training metadata on a knowledge result
 		fmt.Sprintf(`INSERT INTO gb_knowledge_case_meta (case_result_id) VALUES (%d)`, eid),
-		fmt.Sprintf(`INSERT INTO gb_training_suite_run_meta (case_result_id, trained_model_id) VALUES (%d, %d)`, rec.ID, mid),
+		fmt.Sprintf(`INSERT INTO gb_training_eval_run_meta (case_result_id, trained_model_id) VALUES (%d, %d)`, rec.ID, mid),
 		// an unknown type
 		`INSERT INTO gb_experiments (type, name, created_at) VALUES ('other', 'z', '2026-01-01')`,
 	}
