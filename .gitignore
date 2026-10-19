@@ -3,6 +3,7 @@ bin/*
 !bin/datasets_training/
 !bin/evals_knowledge/
 !bin/evals_training/
+!bin/ontology/
 
 __pycache__/
 *.pyc

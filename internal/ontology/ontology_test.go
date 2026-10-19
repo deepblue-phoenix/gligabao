@@ -21,7 +21,7 @@ func parse(t *testing.T, body string) *Ontology {
 }
 
 func TestMarketOntology(t *testing.T) {
-	f, err := os.Open("../../ontology/market.owl")
+	f, err := os.Open("../../bin/ontology/market.owl")
 	if err != nil {
 		t.Fatal(err)
 	}

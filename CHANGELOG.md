@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.65.0] - 2026-10-19
+
+### Changed
+- The example ontology moved from `ontology/` to `bin/ontology/`, next to the other static definitions (evals, datasets, config). Nothing reads it at runtime; docs and tests point to the new path.
+
 ## [0.64.1] - 2026-10-19
 
 ### Fixed
