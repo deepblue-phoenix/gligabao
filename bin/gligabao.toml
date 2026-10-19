@@ -33,6 +33,11 @@ chunk_overlap_percent = 20
 # with their results. Default false; `serve --eval` turns it on.
 eval = false
 
+# Register the training endpoints (/v1/gb/training/...: jobs, models, datasets, evals, audits, progress feed) and start
+# the training monitor. Default false (not needed, and better off, in deployments that do not train);
+# `serve --training` turns it on.
+training = false
+
 # Serve the admin UI at /v1/gb/admin/ (the web assets are embedded in the binary when built with ./run_build.sh).
 # Default false; `serve --admin-ui` turns it on.
 admin_ui = false

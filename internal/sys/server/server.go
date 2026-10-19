@@ -95,6 +95,8 @@ type Options struct {
 	// EvalModeEnable registers the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/recall), which return ATIF
 	// trajectories with their results. Off by default.
 	EvalModeEnable bool
+	// TrainingModeEnable registers the training handlers (/v1/gb/training/...) and starts the training monitor. Off by default.
+	TrainingModeEnable bool
 	// EvalDBPath is a second SQLite file, the eval database (see internal/evals/knowledge/main.go): the evaluation datasets, the
 	// experiments and their runs. The admin UI shows it next to the main database and reads the Evals block (and the
 	// ATIF files, from an "atif" directory next to it) from it. Opened for the admin UI only; ignored (with a warning)
@@ -172,9 +174,9 @@ const EvalDBName = "eval"
 // llm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities.
 // jv may be nil, in which case remember skips the steps that run on Jev. ws may be nil, in which case web search is not available
 // (a remember request with web_search returns 503); it is the Anthropic web search tool, so it is only set with an Anthropic API key.
-// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). sc starts the training jobs (/v1/gb/training/) on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The eval endpoints are registered only if eval is true,
+// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). sc starts the training jobs (/v1/gb/training/) on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The eval endpoints are registered only if eval is true, the training endpoints (/v1/gb/training/) only if trainingMode is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary.
-func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, sc coretraining.Sidecar, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
+func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "gligabao is running")
@@ -200,7 +202,9 @@ func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_c
 		tdbs[i] = coretraining.Database{Name: n.Name, DB: n.DB}
 	}
 	tdbs[0].DatasetDir = d.TrainingDatasetDir
-	registerTraining(ctx, mux, tdbs, d.TrainingEvalDir, sc, llm)
+	if trainingMode {
+		registerTraining(ctx, mux, tdbs, d.TrainingEvalDir, sc, llm)
+	}
 	if adminUI {
 		registerAdminUI(mux, dbs, sc)
 	}
@@ -218,7 +222,7 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // registerTraining registers the training endpoints under /v1/gb/training/ (they are part of the API, not of the admin UI,
-// and are served whether or not the admin UI is on): the jobs, the datasets and the feed of the jobs' progress. dbs are the
+// and are served whether or not the admin UI is on, but only in training mode): the jobs, the datasets and the feed of the jobs' progress. dbs are the
 // databases they can be used with (?db=, the first by default); evalDir is the directory of the evals. The training monitor follows the progress the sidecar
 // reports for the jobs (it resumes the unfinished ones now) and feeds it to the SSE endpoint. llm judges the evals and the training data audits of the
 // trained models (nil: starting one answers 503).
@@ -379,6 +383,11 @@ func Run(ctx context.Context, opts Options) error {
 	if opts.EvalModeEnable {
 		log.Warn("eval mode: /v1/gb/eval/remember and /v1/gb/eval/recall are enabled")
 	}
+	if opts.TrainingModeEnable {
+		log.Warn("training mode: the training endpoints (/v1/gb/training/) are enabled")
+	} else {
+		log.Info("training mode is off: the training endpoints are not registered (enable with training = true or --training)")
+	}
 	if opts.EvalModeEnable {
 		log.WithField("trajectory_dir", memory_core.TrajectoryDir).Info("ATIF trajectories are stored here")
 	}
@@ -459,7 +468,7 @@ func Run(ctx context.Context, opts Options) error {
 	// The remember manager stops only when Run returns, i.e. after the graceful shutdown has given the runs in progress their time.
 	mgrCtx, stopMgr := context.WithCancel(ctx)
 	defer stopMgr()
-	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(mgrCtx, database, llm, emb, jv, ws, providers, sc, opts.EvalModeEnable, opts.AdminUIenable, extra...)}
+	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(mgrCtx, database, llm, emb, jv, ws, providers, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, extra...)}
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

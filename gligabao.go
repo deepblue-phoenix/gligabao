@@ -161,10 +161,11 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 
 		TimeseriesProviders: opts.TimeseriesProviders,
 
-		TrajectoryDir:  opts.TrajectoryDir,
-		EvalDBPath:     opts.EvalDBPath,
-		EvalModeEnable: cfg.EvalModeEnable,
-		AdminUIenable:  cfg.AdminUIenable,
+		TrajectoryDir:      opts.TrajectoryDir,
+		EvalDBPath:         opts.EvalDBPath,
+		EvalModeEnable:     cfg.EvalModeEnable,
+		TrainingModeEnable: cfg.TrainingModeEnable,
+		AdminUIenable:      cfg.AdminUIenable,
 	})
 }
 

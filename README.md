@@ -127,6 +127,10 @@ Configuration is read from `bin/gligabao.toml` (override with `--config`). It se
 
 With `serve --eval` (or `eval = true` in the config; default `false`) the server also registers `POST /v1/gb/eval/remember` and `POST /v1/gb/eval/recall`. They take the same bodies as the regular endpoints, record the call as an [ATIF](https://github.com/laude-institute/harbor) trajectory, store it as pretty-printed JSON in an `atif/` directory next to the SQLite file, and return the full `trajectory` (and its `trajectory_id`) in the response. They are not registered otherwise, and the regular endpoints never generate trajectories. Details: [docs/evals.md](docs/evals/knowledge.md). `go run ./internal/evals/knowledge` runs through these endpoints (`-atif <dir>` also keeps the trajectories as files).
 
+### Training mode
+
+With `serve --training` (or `training = true` in the config; default `false`) the server registers the training endpoints under `/v1/gb/training/` (jobs, models, datasets, evals, audits, the progress feed) and starts the training monitor. They are not registered otherwise, which suits deployments that do not train. `./run_server_local.sh` and the knowledge eval runner turn it on.
+
 ### Admin UI
 
 `admin_ui/` holds a small admin panel (TypeScript, SCSS, HTML). `./run_build.sh` builds it (needs node/npm) and embeds `admin_ui/dist` into the binary with `go:embed`; pass `--no-admin-ui` (or `BUILD_ADMIN_UI=false`) to skip it. With `admin_ui = true` in the config (or `serve --admin-ui`; default `false`) the server serves it at `/v1/gb/admin/`. If the assets were not embedded, the server logs a warning and does not register the handlers.

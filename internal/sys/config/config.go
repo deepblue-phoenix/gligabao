@@ -89,6 +89,10 @@ type Config struct {
 	// EvalModeEnable registers the eval endpoints (/v1/gb/eval/remember, /v1/gb/eval/recall) that return ATIF trajectories
 	// with their results. Default false; `serve --eval` turns it on.
 	EvalModeEnable bool `toml:"eval"`
+	// TrainingModeEnable registers the training handlers (/v1/gb/training/...: jobs, models, datasets, evals, audits, the
+	// progress feed) and starts the training monitor. Default false (deployments that do not train have no use for them);
+	// `serve --training` turns it on.
+	TrainingModeEnable bool `toml:"training"`
 	// AdminUIenable registers the admin UI handlers (served at /v1/gb/admin/). Default false; `serve --admin-ui` turns it on.
 	// Needs a binary built with the web assets embedded (./run_build.sh, on by default).
 	AdminUIenable bool `toml:"admin_ui"`

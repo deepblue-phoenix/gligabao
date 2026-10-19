@@ -383,7 +383,7 @@ func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_c
 	}
 	mgrCtx, stopMgr := context.WithCancel(context.Background()) // stops the remember manager of the handler
 	defer stopMgr()
-	srv := httptest.NewServer(server.NewHandler(mgrCtx, database, llm, emb, nil, ws, nil, nil, true, false))
+	srv := httptest.NewServer(server.NewHandler(mgrCtx, database, llm, emb, nil, ws, nil, nil, true, true, false))
 	defer srv.Close()
 
 	dataset := datasetName(c, runID)

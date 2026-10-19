@@ -14,6 +14,7 @@ var (
 	serveEvalDir    string
 	serveEvalDB     string
 	serveEval       bool
+	serveTraining   bool
 	serveAdminUI    bool
 )
 
@@ -25,6 +26,9 @@ var serveCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if cmd.Flags().Changed("eval") {
 			cfg.EvalModeEnable = serveEval
+		}
+		if cmd.Flags().Changed("training") {
+			cfg.TrainingModeEnable = serveTraining
 		}
 		if cmd.Flags().Changed("admin-ui") {
 			cfg.AdminUIenable = serveAdminUI
@@ -50,6 +54,7 @@ func init() {
 	serveCmd.Flags().StringVar(&serveEvalDir, "training-eval-dir", "", "directory of the evals of trained models: one JSON file (a map with the keys name and cases) per eval (default: an evals_training directory next to --db)")
 	serveCmd.Flags().StringVar(&serveEvalDB, "eval-db", "", "eval database: SQLite file with the eval datasets, experiments and runs (./run_evals.sh); shown next to the main database in the admin UI, which reads the Evals block from it")
 	serveCmd.Flags().BoolVar(&serveEval, "eval", false, "register the eval endpoints that return ATIF trajectories (config: eval)")
+	serveCmd.Flags().BoolVar(&serveTraining, "training", false, "register the training endpoints under /v1/gb/training/ (config: training)")
 	serveCmd.Flags().BoolVar(&serveAdminUI, "admin-ui", false, "serve the admin UI at /v1/gb/admin/ (config: admin_ui)")
 	rootCmd.AddCommand(serveCmd)
 }

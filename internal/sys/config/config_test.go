@@ -200,6 +200,16 @@ func TestLoadEval(t *testing.T) {
 	}
 }
 
+func TestLoadTraining(t *testing.T) {
+	cfg, err := Load(write(t, ""))
+	if err != nil || cfg.TrainingModeEnable {
+		t.Fatalf("default: %v %+v", err, cfg)
+	}
+	if cfg, err = Load(write(t, "training = true\n")); err != nil || !cfg.TrainingModeEnable {
+		t.Fatalf("training = true: %v %+v", err, cfg)
+	}
+}
+
 func TestChunkingSettings(t *testing.T) {
 	cfg, err := Load(write(t, ""))
 	if err != nil {
