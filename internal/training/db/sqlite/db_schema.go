@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS gb_training_job_events (
 
 -- Trained models: ONE ROW PER COMPLETED TRAINING JOB, the set of weights the job saved on the sidecar's models volume (a LoRA
 -- adapter: a few files). Training again never replaces a model, it makes a new row; any row can be picked to run inference on.
--- The row is made from the job's "completed" event (internal/api/training/monitor.go).
+-- The row is made from the job's "completed" event (internal/training/monitor.go).
 --   run_id           the job run (gb_training_job_runs) that made it; NULL if that run was deleted. job_id is unique: a job makes one model
 --   name             for lists; made from the settings when the row is made
 --   base_model       the model that was fine-tuned (e.g. google/gemma-4-E4B-it); model_size '4b' or '12b' (inference needs it)
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS gb_trained_models (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_trained_models_run ON gb_trained_models(run_id);
 
--- Inference requests to trained models: ONE ROW PER REQUEST to run a prompt through a trained model (internal/api/training/models.go).
+-- Inference requests to trained models: ONE ROW PER REQUEST to run a prompt through a trained model (internal/training/inference.go).
 -- The row is made when the request starts (status 'running') and updated when the sidecar answers or fails, so every request can be
 -- reviewed afterwards, failed ones too. A row still 'running' long after its start was interrupted (e.g. the server restarted).
 --   trained_model_id  the model (gb_trained_models) the prompt was run through
@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS gb_trained_model_inferences (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_trained_model_inferences_model ON gb_trained_model_inferences(trained_model_id, id);
 
--- JSONL training datasets (internal/api/training): the datasets are subdirectories of the training datasets directory
+-- JSONL training datasets (internal/training): the datasets are subdirectories of the training datasets directory
 -- that have a dataset.toml manifest; this table has ONE ROW PER DATASET, made when the Go server first sees the data file
 -- and replaced when it sees it changed. The sidecar is not involved, it gets the file when a training job that uses it
 -- is started.

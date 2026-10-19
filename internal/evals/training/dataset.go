@@ -1,6 +1,6 @@
 // Package training is the engine of the LLM-judged checks of freshly trained models: a run asks a trained model a list of cases and has
 // an external LLM (the one gligabao uses for knowledge ingestion) judge, in batches, how well the model's answers agree with the
-// expected ones. Two things use it, kept apart in the database but sharing the types and the API shapes (internal/api/training):
+// expected ones. Two things use it, kept apart in the database but sharing the types and the API shapes (internal/training):
 //   - the EVAL (evalsdb.TrainedModelKindEval): the cases are those of an eval (Evals, LoadEvals: bin/evals_training/*.json), cases the model
 //     never saw, so the score says how well it generalizes. Run by the server, by the Eval button of the admin UI, or by the
 //     command-line runner internal/evals/training/cmd;
@@ -10,7 +10,7 @@
 // It is separate from internal/evals/knowledge, which checks the knowledge extraction (remember / recall) end to end.
 //
 // The package knows nothing about HTTP, the sidecar or the database: Run takes the model as a function (GenerateFunc),
-// the judge as an LLM and reports through a Sink. internal/api/training wires those up and stores the results.
+// the judge as an LLM and reports through a Sink. internal/training wires those up and stores the results.
 package training
 
 import (

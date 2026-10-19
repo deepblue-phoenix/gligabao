@@ -23,6 +23,7 @@ import (
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	core "github.com/deepblue-phoenix/gligabao/internal/training"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -37,8 +38,8 @@ type EvalManager struct {
 // NewEvalManager makes the manager of the evals of the trained models of dbs, which are the ones in the directory evalDir. sc answers the questions (nil: starting an eval
 // answers 503) and llm judges (nil: the same). The evals stop when ctx is done. Evals that a restart interrupted (still
 // "running" in the database) are marked error.
-func NewEvalManager(ctx context.Context, dbs []Database, evalDir string, sc Inferer, llm memory_core.LLM) *EvalManager {
-	return &EvalManager{newRunManager(ctx, dbs, sc, llm, evalOps), evalDir}
+func NewEvalManager(ctx context.Context, dbs []core.Database, evalDir string, sc core.Inferer, llm memory_core.LLM) *EvalManager {
+	return &EvalManager{&runManager{core.NewRunManager(ctx, dbs, sc, llm, core.EvalOps)}, evalDir}
 }
 
 // StartOf serves POST /v1/gb/training/models/{id}/evals[?db=<name>] with an optional JSON body {"eval": "", "cases": [], "limit": 0,
@@ -62,7 +63,7 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 			return
 		}
 		var in struct {
-			RunOptions
+			core.RunOptions
 			Eval  string   `json:"eval"`
 			Cases []string `json:"cases"`
 
@@ -74,13 +75,13 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, "invalid JSON body")
 			return
 		}
-		cfg, params, err := in.resolve()
+		cfg, params, err := in.Resolve()
 		switch {
 		case err != nil:
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
-		case len(strings.TrimSpace(in.Experiment)) > maxExperimentName:
-			httputil.Error(w, http.StatusBadRequest, "experiment must be at most "+strconv.Itoa(maxExperimentName)+" characters")
+		case len(strings.TrimSpace(in.Experiment)) > core.MaxExperimentName:
+			httputil.Error(w, http.StatusBadRequest, "experiment must be at most "+strconv.Itoa(core.MaxExperimentName)+" characters")
 			return
 		}
 		tm, ok := getModel(w, r, n, id)
@@ -89,7 +90,7 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 		}
 		name := strings.TrimSpace(in.Eval)
 		if name == "" {
-			if name = strings.TrimSuffix(tm.Dataset, ".jsonl"); name == "" || !hasEval(m.dir, name) {
+			if name = strings.TrimSuffix(tm.Dataset, ".jsonl"); name == "" || !core.HasEval(m.dir, name) {
 				httputil.Error(w, http.StatusBadRequest, "there is no eval named like this model's training dataset"+
 					"; set \"eval\" to one of: "+strings.Join(trainingeval.EvalNames(m.dir), ", "))
 				return
@@ -103,17 +104,17 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 		if params.Limit > 0 && params.Limit < len(cases) {
 			cases = cases[:params.Limit]
 		}
-		spec := runSpec{n: n, tm: tm, cfg: cfg, params: params, row: evalsdb.TrainedModelRun{Eval: name},
-			examples: make([]trainingeval.Example, len(cases)), names: make([]string, len(cases))}
+		spec := core.RunSpec{Database: n, Model: tm, Config: cfg, Params: params, Row: evalsdb.TrainedModelRun{Eval: name},
+			Examples: make([]trainingeval.Example, len(cases)), Names: make([]string, len(cases))}
 		for i, c := range cases {
-			spec.examples[i], spec.names[i] = c.Example(), c.Name
+			spec.Examples[i], spec.Names[i] = c.Example(), c.Name
 		}
 		if len(in.Cases) > 0 {
-			spec.params.Cases = spec.names
+			spec.Params.Cases = spec.Names
 		}
 		if x := strings.TrimSpace(in.Experiment); x != "" {
-			spec.afterRecord = func(ctx context.Context, runID int64) error {
-				err := joinExperiment(ctx, n.DB, x, in.ExperimentDescription, in.ExperimentConfig, runID)
+			spec.AfterRecord = func(ctx context.Context, runID int64) error {
+				err := core.JoinExperiment(ctx, n.DB, x, in.ExperimentDescription, in.ExperimentConfig, runID)
 				if err != nil {
 					log.WithError(err).WithField("experiment", x).Error("training: adding the eval to its experiment failed")
 				}
@@ -122,15 +123,6 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 		}
 		m.start(w, r, spec)
 	}
-}
-
-func hasEval(dir, name string) bool {
-	for _, n := range trainingeval.EvalNames(dir) {
-		if n == name {
-			return true
-		}
-	}
-	return false
 }
 
 // DefinitionsOf serves GET /v1/gb/training/eval-definitions: {"evals": [{"name": ..., "cases": [{"name", "instruction", "input",

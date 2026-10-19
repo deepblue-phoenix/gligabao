@@ -2,7 +2,7 @@
 
 A dataset is a subdirectory of the training datasets directory (`bin/datasets_training/` of the gligabao repo) with a `dataset.toml`
 manifest that names it and says where its JSONL data file is, relative to the manifest. This reads the manifests the way the
-Go server does (internal/api/training/manifest.go; the keys are in docs/training/DATASETS.md), so a dataset the server
+Go server does (internal/training/manifest.go; the keys are in docs/training/DATASETS.md), so a dataset the server
 lists can be uploaded from here too. Needs Python 3.11+ (tomllib).
 """
 import os

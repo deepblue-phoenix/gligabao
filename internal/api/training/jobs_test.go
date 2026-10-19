@@ -14,6 +14,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	core "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
@@ -58,7 +59,7 @@ func TestStartTrainingJob(t *testing.T) { dbtest.Run(t, testStartTrainingJob) }
 
 func testStartTrainingJob(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: t.TempDir()}}
+	dbs := []core.Database{{Name: "standard", DB: d, DatasetDir: t.TempDir()}}
 	sc := &fakeSidecar{}
 	h := training.StartJobOf(dbs, sc, nil)
 	if rec := upload(training.UploadDatasetOf(dbs), "/x", "file", "mine.jsonl", goodDataset, nil); rec.Code != http.StatusCreated {
@@ -129,7 +130,7 @@ func TestStartTrainingJobSidecarRejects(t *testing.T) {
 	addDataset(t, dir, "mine")
 	sc := &fakeSidecar{err: &sidecar.StatusError{Method: "POST", Path: "/training/job_start", Code: 400, Body: `{"error":"num_train_steps must be a positive integer"}`}}
 	rec := httptest.NewRecorder()
-	training.StartJobOf([]training.Database{{Name: "standard", DB: d, DatasetDir: dir}}, sc, nil)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(`{"dataset":"mine","num_train_steps":5}`)))
+	training.StartJobOf([]core.Database{{Name: "standard", DB: d, DatasetDir: dir}}, sc, nil)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(`{"dataset":"mine","num_train_steps":5}`)))
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "num_train_steps must be a positive integer") {
 		t.Fatalf("got %d %s", rec.Code, rec.Body)
 	}
@@ -140,7 +141,7 @@ func TestStopTrainingJob(t *testing.T) { dbtest.Run(t, testStopTrainingJob) }
 
 func testStopTrainingJob(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: t.TempDir()}}
+	dbs := []core.Database{{Name: "standard", DB: d, DatasetDir: t.TempDir()}}
 	sc := &fakeSidecar{}
 	for _, jobID := range []string{"j1", "j2"} {
 		if _, err := trainingdb.RecordTrainingJobRun(ctx, d, trainingdb.TrainingJobRun{JobID: jobID, Status: "training", ModelSize: "4b", NumTrainSteps: 10, StartedAt: time.Now()}); err != nil {

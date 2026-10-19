@@ -14,6 +14,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
+	core "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
@@ -56,7 +57,7 @@ func TestAuditATrainedModel(t *testing.T) { dbtest.Run(t, testAuditATrainedModel
 
 func testAuditATrainedModel(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 5)}}
+	dbs := []core.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 5)}}
 	mid, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{
 		JobID: "jobaudit1", ModelSize: "12b", Dataset: "mine.jsonl", NumTrainSteps: 5, Path: "trained/jobaudit1"})
 	if err != nil {
@@ -100,8 +101,8 @@ func testAuditATrainedModel(t *testing.T, d *sql.DB) {
 	}
 	// The judge's calls are recorded like the other LLM calls, under the audit's own type.
 	var n, nEval int
-	if training.CallAuditJudge != "training_audit_judge" {
-		t.Fatalf("call type %q", training.CallAuditJudge)
+	if core.CallAuditJudge != "training_audit_judge" {
+		t.Fatalf("call type %q", core.CallAuditJudge)
 	}
 	if err := d.QueryRow(`SELECT count(*) FROM gb_inferences WHERE type = 'training_audit_judge' AND stage = 'judge'`).Scan(&n); err != nil || n != 3 {
 		t.Fatalf("recorded judge calls: %d %v", n, err)
@@ -134,7 +135,7 @@ func testAuditATrainedModel(t *testing.T, d *sql.DB) {
 func TestAuditRefusals(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx := context.Background()
-	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 2)}}
+	dbs := []core.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 2)}}
 	ok, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j-ok", ModelSize: "4b", Dataset: "mine.jsonl", NumTrainSteps: 1, Path: "trained/j-ok"})
 	dflt, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j-default", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j-default"})
 	gone, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j-gone", ModelSize: "4b", Dataset: "deleted.jsonl", NumTrainSteps: 1, Path: "trained/j-gone"})
@@ -188,7 +189,7 @@ func TestAuditRefusals(t *testing.T) {
 func TestAuditCancelAndConflict(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx := context.Background()
-	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 6)}}
+	dbs := []core.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 6)}}
 	mid, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j1", ModelSize: "4b", Dataset: "mine.jsonl", NumTrainSteps: 1, Path: "trained/j1"})
 	sc := &evalSidecar{block: make(chan struct{}), started: make(chan struct{}, 1)}
 	m := training.NewAuditManager(ctx, dbs, sc, &evalJudge{})
@@ -230,7 +231,7 @@ func TestAuditCancelAndConflict(t *testing.T) {
 func TestAuditFailsWhenTheModelDoesNotAnswer(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx := context.Background()
-	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 20)}}
+	dbs := []core.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 20)}}
 	mid, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j1", ModelSize: "4b", Dataset: "mine.jsonl", NumTrainSteps: 1, Path: "trained/j1"})
 	m := training.NewAuditManager(ctx, dbs, &failingInferer{}, &evalJudge{})
 	c := startAudit(m, fmt.Sprint(mid), `{"batch_size": 2}`)
@@ -250,7 +251,7 @@ func TestAuditsInterruptedByARestartAreFailed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	training.NewAuditManager(ctx, []training.Database{{Name: "standard", DB: d}}, nil, nil)
+	training.NewAuditManager(ctx, []core.Database{{Name: "standard", DB: d}}, nil, nil)
 	au, err := evalsdb.GetTrainedModelAuditRun(ctx, d, id)
 	if err != nil || au.Status != evalsdb.TrainedModelRunErrored || !strings.Contains(au.Error, "restart") {
 		t.Fatalf("%+v %v", au, err)
@@ -261,7 +262,7 @@ func TestAuditLiveFeed(t *testing.T) { dbtest.Run(t, testAuditLiveFeed) }
 
 func testAuditLiveFeed(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 3)}}
+	dbs := []core.Database{{Name: "standard", DB: d, DatasetDir: evalDatasetDir(t, 3)}}
 	mid, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{
 		JobID: "jobaudit9", ModelSize: "12b", Dataset: "mine.jsonl", NumTrainSteps: 5, Path: "trained/jobaudit9"})
 	if err != nil {
@@ -285,7 +286,7 @@ func testAuditLiveFeed(t *testing.T, d *sql.DB) {
 		t.Fatalf("content type %q", ct)
 	}
 	events := sseEvents(resp.Body)
-	next := func() training.RunEvent {
+	next := func() core.RunEvent {
 		t.Helper()
 		select {
 		case e, ok := <-events:
@@ -296,7 +297,7 @@ func testAuditLiveFeed(t *testing.T, d *sql.DB) {
 		case <-time.After(5 * time.Second):
 			t.Fatal("timed out waiting for an event")
 		}
-		return training.RunEvent{}
+		return core.RunEvent{}
 	}
 	if e := next(); e.Type != "snapshot" || e.Run == nil || e.Run.Status != "running" || len(e.Cases) != 0 {
 		t.Fatalf("first event: %+v", e)
@@ -304,7 +305,7 @@ func testAuditLiveFeed(t *testing.T, d *sql.DB) {
 	close(sc.block)
 	var got []string
 	answers := 0
-	var last training.RunEvent
+	var last core.RunEvent
 	for e := next(); ; e = next() {
 		switch e.Type {
 		case "answer":

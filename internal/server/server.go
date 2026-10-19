@@ -33,6 +33,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	coretraining "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	log "github.com/sirupsen/logrus"
 )
@@ -150,7 +151,7 @@ const sidecarPingTimeout = 5 * time.Second
 
 // connectSidecar pings the sidecar at url (default if empty). It returns the client and true if the sidecar is operating
 // correctly; otherwise it logs a warning and returns a nil client (a true nil interface, so callers can check == nil) and false.
-func connectSidecar(ctx context.Context, url string) (training.Sidecar, bool) {
+func connectSidecar(ctx context.Context, url string) (coretraining.Sidecar, bool) {
 	c := sidecar.New(url)
 	sidecarClient.Store(c)
 	pingCtx, cancel := context.WithTimeout(ctx, sidecarPingTimeout)
@@ -173,7 +174,7 @@ const EvalDBName = "eval"
 // (a remember request with web_search returns 503); it is the Anthropic web search tool, so it is only set with an Anthropic API key.
 // providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). sc starts the training jobs (/v1/gb/training/) on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The eval endpoints are registered only if eval is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary.
-func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, sc training.Sidecar, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
+func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, sc coretraining.Sidecar, eval, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "gligabao is running")
@@ -194,9 +195,9 @@ func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_c
 	}
 	dbs := append([]admin.Named{{Name: "standard", DB: d.Relational, Vectors: d.Vector, ImageDir: d.ImageDir}}, extraAdminDBs...)
 	// The training endpoints work with the same databases; only the main one has a training datasets directory.
-	tdbs := make([]training.Database, len(dbs))
+	tdbs := make([]coretraining.Database, len(dbs))
 	for i, n := range dbs {
-		tdbs[i] = training.Database{Name: n.Name, DB: n.DB}
+		tdbs[i] = coretraining.Database{Name: n.Name, DB: n.DB}
 	}
 	tdbs[0].DatasetDir = d.TrainingDatasetDir
 	registerTraining(ctx, mux, tdbs, d.TrainingEvalDir, sc, llm)
@@ -221,9 +222,9 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 // databases they can be used with (?db=, the first by default); evalDir is the directory of the evals. The training monitor follows the progress the sidecar
 // reports for the jobs (it resumes the unfinished ones now) and feeds it to the SSE endpoint. llm judges the evals and the training data audits of the
 // trained models (nil: starting one answers 503).
-func registerTraining(ctx context.Context, mux *http.ServeMux, dbs []training.Database, evalDir string, sc training.Sidecar, llm memory_core.LLM) {
-	mon := training.NewMonitor(ctx, dbs, sc)
-	var inf training.Inferer // not sc itself: a nil Sidecar must become a nil Inferer
+func registerTraining(ctx context.Context, mux *http.ServeMux, dbs []coretraining.Database, evalDir string, sc coretraining.Sidecar, llm memory_core.LLM) {
+	mon := coretraining.NewMonitor(ctx, dbs, sc)
+	var inf coretraining.Inferer // not sc itself: a nil Sidecar must become a nil Inferer
 	if sc != nil {
 		inf = sc
 	}
@@ -257,7 +258,7 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, dbs []training.Da
 
 // registerAdminUI serves the embedded admin UI assets under /v1/gb/admin/. It is a no-op (with a warning) if the
 // assets were not built into the binary (see admin_ui/ and run_build.sh).
-func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, sc training.Sidecar) {
+func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, sc coretraining.Sidecar) {
 	if !adminui.Available() {
 		log.Warn("admin_ui is enabled but the web assets are not embedded in this binary; build with ./run_build.sh (admin UI build enabled)")
 		return

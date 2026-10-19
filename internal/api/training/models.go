@@ -1,56 +1,36 @@
 package training
 
-// Trained models: the weights the completed training jobs saved (gb_trained_models, recorded by the Monitor). They are
-// listed, and each can be picked to run inference on.
+// The trained models: listing them, reading one, inferences with one.
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
-	"strconv"
-	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
-	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	core "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	log "github.com/sirupsen/logrus"
 )
 
-// Inferer runs a prompt through a trained model on the sidecar; *sidecar.Client is one.
-type Inferer interface {
-	Infer(ctx context.Context, req sidecar.InferRequest) (sidecar.InferResponse, error)
-}
-
 const (
 	trainedModelsDefaultLimit = 100
 	trainedModelsMaxLimit     = 500
-	// inferTimeout bounds one inference call: the model loads on a GPU container first, which takes minutes when cold.
-	inferTimeout   = 15 * time.Minute
-	maxInferBody   = 1 << 16
-	maxInferTokens = 8192
+	maxInferBody              = 1 << 16
 )
 
 // ListModelsOf serves GET /v1/gb/training/models[?db=<name>][&limit=<n>]: {"models": [...]}, the trained models of one of dbs
 // (the first without db), newest first, at most limit (default 100, at most 500).
-func ListModelsOf(dbs []Database) http.HandlerFunc {
+func ListModelsOf(dbs []core.Database) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		n, ok := pick(dbs, q.Get("db"))
+		n, ok := pickDB(w, r, dbs)
 		if !ok {
-			httputil.Error(w, http.StatusNotFound, "unknown database")
 			return
 		}
-		limit := trainedModelsDefaultLimit
-		if s := q.Get("limit"); s != "" {
-			v, err := strconv.Atoi(s)
-			if err != nil || v < 1 {
-				httputil.Error(w, http.StatusBadRequest, "limit must be a positive integer")
-				return
-			}
-			limit = min(v, trainedModelsMaxLimit)
+		limit, ok := limitParam(w, r, trainedModelsDefaultLimit, trainedModelsMaxLimit)
+		if !ok {
+			return
 		}
 		models, err := trainingdb.ListTrainedModels(r.Context(), n.DB, limit)
 		if err != nil {
@@ -63,25 +43,19 @@ func ListModelsOf(dbs []Database) http.HandlerFunc {
 }
 
 // GetModelOf serves GET /v1/gb/training/models/{id}[?db=<name>]: one trained model (trainingdb.TrainedModel), 404 if unknown.
-func GetModelOf(dbs []Database) http.HandlerFunc {
+func GetModelOf(dbs []core.Database) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n, ok := pick(dbs, r.URL.Query().Get("db"))
+		n, ok := pickDB(w, r, dbs)
 		if !ok {
-			httputil.Error(w, http.StatusNotFound, "unknown database")
 			return
 		}
-		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-		if err != nil || id < 1 {
-			httputil.Error(w, http.StatusBadRequest, "id must be a positive integer")
+		id, ok := pathID(w, r)
+		if !ok {
 			return
 		}
-		m, err := trainingdb.GetTrainedModel(r.Context(), n.DB, id)
-		if errors.Is(err, relational.ErrNotFound) {
-			httputil.Error(w, http.StatusNotFound, "unknown trained model")
-			return
-		} else if err != nil {
-			log.WithError(err).Error("training: read trained model failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read the trained model")
+		m, err := core.GetModel(r.Context(), n, id)
+		if err != nil {
+			writeErr(w, err)
 			return
 		}
 		httputil.WriteJSON(w, http.StatusOK, m)
@@ -94,16 +68,14 @@ func GetModelOf(dbs []Database) http.HandlerFunc {
 // ListInferencesOf; failed ones are stored too). It can take minutes when the model has to be loaded. 404 is for
 // an unknown model, 400 for a bad body, 503 for a nil sc (no sidecar), 502 when the sidecar fails (with its message when the
 // generation itself failed, e.g. the weights are gone from its volume).
-func InferOf(dbs []Database, sc Inferer) http.HandlerFunc {
+func InferOf(dbs []core.Database, sc core.Inferer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		n, ok := pick(dbs, r.URL.Query().Get("db"))
+		n, ok := pickDB(w, r, dbs)
 		if !ok {
-			httputil.Error(w, http.StatusNotFound, "unknown database")
 			return
 		}
-		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-		if err != nil || id < 1 {
-			httputil.Error(w, http.StatusBadRequest, "id must be a positive integer")
+		id, ok := pathID(w, r)
+		if !ok {
 			return
 		}
 		if sc == nil {
@@ -119,101 +91,46 @@ func InferOf(dbs []Database, sc Inferer) http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, "invalid JSON body")
 			return
 		}
-		switch {
-		case in.Prompt == "":
-			httputil.Error(w, http.StatusBadRequest, "prompt is required")
-			return
-		case in.MaxTokens < 0 || in.MaxTokens > maxInferTokens:
-			httputil.Error(w, http.StatusBadRequest, "max_tokens must be between 1 and "+strconv.Itoa(maxInferTokens))
-			return
-		case in.Temperature != nil && (*in.Temperature <= 0 || *in.Temperature > 2):
-			httputil.Error(w, http.StatusBadRequest, "temperature must be above 0 and at most 2")
+		req := core.InferRequest{Prompt: in.Prompt, MaxTokens: in.MaxTokens, Temperature: in.Temperature}
+		if err := req.Validate(); err != nil {
+			writeErr(w, err)
 			return
 		}
-		m, err := trainingdb.GetTrainedModel(r.Context(), n.DB, id)
-		if errors.Is(err, relational.ErrNotFound) {
-			httputil.Error(w, http.StatusNotFound, "unknown trained model")
-			return
-		} else if err != nil {
-			log.WithError(err).Error("training: read trained model failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read the trained model")
-			return
-		}
-		// The request is stored before it goes to the sidecar and updated when it ends, so it can be reviewed later whatever
-		// happens to it (a failure, the client giving up, a restart of the server). The writes must outlive the HTTP request.
-		dbCtx := context.WithoutCancel(r.Context())
-		reqID, err := trainingdb.RecordTrainedModelInference(dbCtx, n.DB, trainingdb.TrainedModelInference{
-			TrainedModelID: m.ID, Prompt: in.Prompt, ModelSize: m.ModelSize, ModelPath: m.Path, MaxTokens: in.MaxTokens, Temperature: in.Temperature})
+		m, err := core.GetModel(r.Context(), n, id)
 		if err != nil {
-			log.WithError(err).WithField("model_id", m.ID).Error("training: recording the inference request failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to record the inference request")
+			writeErr(w, err)
 			return
 		}
-		finish := func(status, response, errText string, inTok, outTok int, cold *bool, loadS float64, started time.Time) {
-			if err := trainingdb.FinishTrainedModelInference(dbCtx, n.DB, reqID, status, response, errText, inTok, outTok, cold, loadS, time.Since(started).Milliseconds()); err != nil {
-				log.WithError(err).WithField("request_id", reqID).Error("training: updating the inference request failed")
-			}
-		}
-		started := time.Now()
-		ctx, cancel := context.WithTimeout(r.Context(), inferTimeout)
-		defer cancel()
-		out, err := sc.Infer(ctx, sidecar.InferRequest{Prompt: in.Prompt, ModelSize: m.ModelSize, ModelPath: m.Path,
-			MaxTokens: in.MaxTokens, Temperature: in.Temperature})
+		out, err := core.Infer(r.Context(), n, sc, m, req)
 		if err != nil {
-			var ie *sidecar.InferError
-			var se *sidecar.StatusError
-			switch {
-			case errors.As(err, &ie):
-				finish(trainingdb.TrainedModelInferenceFailed, "", ie.Message, 0, 0, nil, 0, started)
-				httputil.Error(w, http.StatusBadGateway, ie.Message)
-			case errors.As(err, &se) && se.Code == http.StatusBadRequest:
-				finish(trainingdb.TrainedModelInferenceFailed, "", se.Message(), 0, 0, nil, 0, started)
-				httputil.Error(w, http.StatusBadRequest, se.Message())
-			default:
-				log.WithError(err).WithField("model_id", m.ID).Error("training: inference failed")
-				finish(trainingdb.TrainedModelInferenceFailed, "", err.Error(), 0, 0, nil, 0, started)
-				httputil.Error(w, http.StatusBadGateway, "sidecar failed to run the inference")
-			}
+			writeErr(w, err)
 			return
 		}
-		finish(trainingdb.TrainedModelInferenceCompleted, out.Response, "", out.InputTokens, out.OutputTokens, out.ColdStart, out.LoadSeconds, started)
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"id": reqID, "model_id": m.ID, "response": out.Response,
-			"status": trainingdb.TrainedModelInferenceCompleted, "input_tokens": out.InputTokens, "output_tokens": out.OutputTokens, "duration_ms": time.Since(started).Milliseconds(),
-			"cold_start": out.ColdStart, "load_seconds": out.LoadSeconds})
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"id": out.ID, "model_id": out.ModelID, "response": out.Response,
+			"status": trainingdb.TrainedModelInferenceCompleted, "input_tokens": out.InputTokens, "output_tokens": out.OutputTokens,
+			"duration_ms": out.DurationMS, "cold_start": out.ColdStart, "load_seconds": out.LoadSeconds})
 	}
 }
 
 // ListInferencesOf serves GET /v1/gb/training/models/{id}/inferences[?db=<name>][&limit=<n>]: {"inferences": [...]}, the
 // inference requests made to trained model {id} (trainingdb.TrainedModelInference: prompt, response, status, error, ...),
 // newest first, at most limit (default 100, at most 500). 404 for an unknown model.
-func ListInferencesOf(dbs []Database) http.HandlerFunc {
+func ListInferencesOf(dbs []core.Database) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		n, ok := pick(dbs, q.Get("db"))
+		n, ok := pickDB(w, r, dbs)
 		if !ok {
-			httputil.Error(w, http.StatusNotFound, "unknown database")
 			return
 		}
-		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-		if err != nil || id < 1 {
-			httputil.Error(w, http.StatusBadRequest, "id must be a positive integer")
+		id, ok := pathID(w, r)
+		if !ok {
 			return
 		}
-		limit := trainedModelsDefaultLimit
-		if s := q.Get("limit"); s != "" {
-			v, err := strconv.Atoi(s)
-			if err != nil || v < 1 {
-				httputil.Error(w, http.StatusBadRequest, "limit must be a positive integer")
-				return
-			}
-			limit = min(v, trainedModelsMaxLimit)
-		}
-		if _, err := trainingdb.GetTrainedModel(r.Context(), n.DB, id); errors.Is(err, relational.ErrNotFound) {
-			httputil.Error(w, http.StatusNotFound, "unknown trained model")
+		limit, ok := limitParam(w, r, trainedModelsDefaultLimit, trainedModelsMaxLimit)
+		if !ok {
 			return
-		} else if err != nil {
-			log.WithError(err).Error("training: read trained model failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read the trained model")
+		}
+		if _, err := core.GetModel(r.Context(), n, id); err != nil {
+			writeErr(w, err)
 			return
 		}
 		list, err := trainingdb.ListTrainedModelInferences(r.Context(), n.DB, id, limit)

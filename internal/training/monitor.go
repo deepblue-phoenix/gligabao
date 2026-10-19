@@ -2,7 +2,7 @@ package training
 
 // The training monitor: for each training job started through the training API (and each unfinished one found at startup) it
 // follows the sidecar's SSE stream of the job's progress, stores every event (gb_training_job_events), keeps the job's
-// row (gb_training_job_runs) up to date, and forwards the events to the SSE streams (EventsOf).
+// row (gb_training_job_runs) up to date, and forwards the events to the SSE streams (api/training EventsOf).
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Sidecar is what the training handlers need from the sidecar; *sidecar.Client is one.
+// Sidecar is what the training API needs from the sidecar; *sidecar.Client is one.
 type Sidecar interface {
 	JobStarter
 	JobCanceller
@@ -54,7 +54,7 @@ type Monitor struct {
 	retry    time.Duration
 
 	mu       sync.Mutex
-	subs     map[*sub]struct{}
+	subs     map[*Subscription]struct{}
 	watching map[watchKey]struct{}
 }
 
@@ -63,10 +63,11 @@ type watchKey struct {
 	runID int64
 }
 
-type sub struct {
+// Subscription is a subscriber to the monitor's events: they arrive on C.
+type Subscription struct {
 	db    string
 	runID int64 // 0: every run
-	ch    chan FeedEvent
+	C     chan FeedEvent
 }
 
 // MonitorOption configures a Monitor.
@@ -87,7 +88,7 @@ func WithRetryDelay(d time.Duration) MonitorOption {
 func NewMonitor(ctx context.Context, dbs []Database, sc Sidecar, opts ...MonitorOption) *Monitor {
 	m := &Monitor{
 		ctx: ctx, dbs: dbs, sc: sc, maxWatch: DefaultWatchTimeout, retry: DefaultRetryDelay,
-		subs: map[*sub]struct{}{}, watching: map[watchKey]struct{}{},
+		subs: map[*Subscription]struct{}{}, watching: map[watchKey]struct{}{},
 	}
 	for _, o := range opts {
 		o(m)
@@ -270,10 +271,10 @@ func trainingRunUpdate(ev sidecar.TrainingEvent) *trainingdb.TrainingJobRunUpdat
 	return nil
 }
 
-// subscribe returns a subscription to the events of one run of database db (runID 0: of every run). cancel ends it. The
+// Subscribe returns a subscription to the events of one run of database db (runID 0: of every run). cancel ends it. The
 // channel is closed, without cancel, when the subscriber falls too far behind.
-func (m *Monitor) subscribe(db string, runID int64) (*sub, func()) {
-	s := &sub{db: db, runID: runID, ch: make(chan FeedEvent, subBuffer)}
+func (m *Monitor) Subscribe(db string, runID int64) (*Subscription, func()) {
+	s := &Subscription{db: db, runID: runID, C: make(chan FeedEvent, subBuffer)}
 	m.mu.Lock()
 	m.subs[s] = struct{}{}
 	m.mu.Unlock()
@@ -282,10 +283,13 @@ func (m *Monitor) subscribe(db string, runID int64) (*sub, func()) {
 		defer m.mu.Unlock()
 		if _, ok := m.subs[s]; ok {
 			delete(m.subs, s)
-			close(s.ch)
+			close(s.C)
 		}
 	}
 }
+
+// Done is closed when the monitor's context is done.
+func (m *Monitor) Done() <-chan struct{} { return m.ctx.Done() }
 
 func (m *Monitor) publish(ev FeedEvent) {
 	m.mu.Lock()
@@ -295,10 +299,10 @@ func (m *Monitor) publish(ev FeedEvent) {
 			continue
 		}
 		select {
-		case s.ch <- ev:
+		case s.C <- ev:
 		default: // too slow: drop it; it reconnects and is caught up from the database
 			delete(m.subs, s)
-			close(s.ch)
+			close(s.C)
 		}
 	}
 }

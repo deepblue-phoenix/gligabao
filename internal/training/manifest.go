@@ -39,7 +39,7 @@ const FormatJSONL = "jsonl"
 // (sidecar/ai_train/ai_train_core/dataset.py), hence the length limit.
 var datasetNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,121}$`)
 
-func validDatasetName(name string) bool {
+func ValidDatasetName(name string) bool {
 	return datasetNameRe.MatchString(name) && !strings.Contains(name, "..")
 }
 
@@ -73,8 +73,8 @@ type DatasetProblem struct {
 	Error string `json:"error"`
 }
 
-// parseManifest reads the manifest at path (in the dataset directory dir) and checks it, not the data file's existence.
-func parseManifest(path string) (*LocalDataset, error) {
+// ParseManifest reads the manifest at path (in the dataset directory dir) and checks it, not the data file's existence.
+func ParseManifest(path string) (*LocalDataset, error) {
 	dir := filepath.Dir(path)
 	var m Manifest
 	if _, err := toml.DecodeFile(path, &m); err != nil {
@@ -83,7 +83,7 @@ func parseManifest(path string) (*LocalDataset, error) {
 	if m.Name == "" {
 		m.Name = filepath.Base(dir)
 	}
-	if !validDatasetName(m.Name) {
+	if !ValidDatasetName(m.Name) {
 		return nil, fmt.Errorf("invalid dataset name %q: letters, digits, . _ - (starting with a letter or digit), at most 122 characters; set `name` in the manifest", m.Name)
 	}
 	if m.Format == "" {
@@ -130,7 +130,7 @@ func DiscoverDatasets(dir string) ([]LocalDataset, []DatasetProblem) {
 		if _, err := os.Stat(manifest); err != nil {
 			continue
 		}
-		ds, err := parseManifest(manifest)
+		ds, err := ParseManifest(manifest)
 		if err == nil {
 			if st, serr := os.Stat(ds.Path); serr != nil || !st.Mode().IsRegular() {
 				err = fmt.Errorf("the data file %s is missing", ds.Manifest.File)
@@ -152,49 +152,49 @@ func DiscoverDatasets(dir string) ([]LocalDataset, []DatasetProblem) {
 	return found, problems
 }
 
-// fileStats describes a data file's content.
-type fileStats struct {
-	size    int64
+// FileStats describes a data file's content.
+type FileStats struct {
+	Size    int64
 	modTime time.Time
-	sha256  string
-	records int
+	SHA256  string
+	Records int
 }
 
 // statsCache remembers the stats of data files by path, valid while a file's size and modification time stay the same:
 // listing the datasets (the admin UI does it often) must not read every file each time.
-var statsCache sync.Map // path -> fileStats
+var statsCache sync.Map // path -> FileStats
 
-// contentStats validates content as a dataset (ValidateDataset) and returns its stats.
-func contentStats(content []byte) (fileStats, error) {
+// ContentStats validates content as a dataset (ValidateDataset) and returns its stats.
+func ContentStats(content []byte) (FileStats, error) {
 	records, err := ValidateDataset(content)
 	if err != nil {
-		return fileStats{}, err
+		return FileStats{}, err
 	}
 	sum := sha256.Sum256(content)
-	return fileStats{size: int64(len(content)), sha256: hex.EncodeToString(sum[:]), records: records}, nil
+	return FileStats{Size: int64(len(content)), SHA256: hex.EncodeToString(sum[:]), Records: records}, nil
 }
 
-// datasetFileStats returns the stats of the data file at path; an error says why it is not a usable dataset.
-func datasetFileStats(path string) (fileStats, error) {
+// DatasetFileStats returns the stats of the data file at path; an error says why it is not a usable dataset.
+func DatasetFileStats(path string) (FileStats, error) {
 	st, err := os.Stat(path)
 	if err != nil {
-		return fileStats{}, err
+		return FileStats{}, err
 	}
 	if st.Size() > MaxDatasetBytes {
-		return fileStats{}, fmt.Errorf("the data file is over %d MB", MaxDatasetBytes>>20)
+		return FileStats{}, fmt.Errorf("the data file is over %d MB", MaxDatasetBytes>>20)
 	}
 	if v, ok := statsCache.Load(path); ok {
-		if s := v.(fileStats); s.size == st.Size() && s.modTime.Equal(st.ModTime()) {
+		if s := v.(FileStats); s.Size == st.Size() && s.modTime.Equal(st.ModTime()) {
 			return s, nil
 		}
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return fileStats{}, err
+		return FileStats{}, err
 	}
-	s, err := contentStats(content)
+	s, err := ContentStats(content)
 	if err != nil {
-		return fileStats{}, fmt.Errorf("invalid data file: %w", err)
+		return FileStats{}, fmt.Errorf("invalid data file: %w", err)
 	}
 	s.modTime = st.ModTime()
 	statsCache.Store(path, s)

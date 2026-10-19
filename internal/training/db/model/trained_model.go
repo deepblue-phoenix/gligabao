@@ -8,7 +8,7 @@ import (
 // TrainedModel is the result of one completed training job (gb_trained_models): a set of weights (for the fine-tuning the
 // sidecar does, a LoRA adapter of a few files) saved on the sidecar's models volume. A job that completes makes a new
 // record, so training again, with other data, steps or size, never replaces an earlier model: each can be picked to run
-// inference on. The record is made from the "completed" event of the job (see internal/api/training/monitor.go).
+// inference on. The record is made from the "completed" event of the job (see internal/training/monitor.go).
 type TrainedModel struct {
 	ID int64 `json:"id"`
 	// Name is shown in lists; it is made from the training settings when the record is made.

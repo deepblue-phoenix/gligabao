@@ -22,6 +22,7 @@ import (
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	core "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
@@ -201,7 +202,7 @@ func TestEvalATrainedModel(t *testing.T) { dbtest.Run(t, testEvalATrainedModel) 
 
 func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	dbs := []training.Database{{Name: "standard", DB: d}}
+	dbs := []core.Database{{Name: "standard", DB: d}}
 	mid := evalModel(t, d, "jobeval1")
 	cases0 := evalCases(t)
 	sc, judge := evalAnswers(t, 3), &evalJudge{}
@@ -285,7 +286,7 @@ func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 func TestEvalRefusals(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx := context.Background()
-	dbs := []training.Database{{Name: "standard", DB: d}}
+	dbs := []core.Database{{Name: "standard", DB: d}}
 	ok := evalModel(t, d, "j-ok")
 	dflt, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j-default", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j-default"})
 	other, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j-other", ModelSize: "4b", Dataset: "other.jsonl", NumTrainSteps: 1, Path: "trained/j-other"})
@@ -348,7 +349,7 @@ func TestEvalRefusals(t *testing.T) {
 func TestEvalCancelAndConflict(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx := context.Background()
-	dbs := []training.Database{{Name: "standard", DB: d}}
+	dbs := []core.Database{{Name: "standard", DB: d}}
 	mid := evalModel(t, d, "j1")
 	sc := evalAnswers(t)
 	sc.block, sc.started = make(chan struct{}), make(chan struct{}, 1)
@@ -394,7 +395,7 @@ func TestEvalCancelAndConflict(t *testing.T) {
 func TestEvalFailsWhenTheModelDoesNotAnswer(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx := context.Background()
-	dbs := []training.Database{{Name: "standard", DB: d}}
+	dbs := []core.Database{{Name: "standard", DB: d}}
 	mid := evalModel(t, d, "j1")
 	m := training.NewEvalManager(ctx, dbs, testEvalsDir, &failingInferer{}, &evalJudge{})
 	c := startEval(m, fmt.Sprint(mid), `{"batch_size": 2}`)
@@ -420,7 +421,7 @@ func TestEvalsInterruptedByARestartAreFailed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	training.NewEvalManager(ctx, []training.Database{{Name: "standard", DB: d}}, testEvalsDir, nil, nil)
+	training.NewEvalManager(ctx, []core.Database{{Name: "standard", DB: d}}, testEvalsDir, nil, nil)
 	ev, err := evalsdb.GetTrainedModelEvalRun(ctx, d, id)
 	if err != nil || ev.Status != evalsdb.TrainedModelRunErrored || !strings.Contains(ev.Error, "restart") {
 		t.Fatalf("%+v %v", ev, err)
@@ -428,15 +429,15 @@ func TestEvalsInterruptedByARestartAreFailed(t *testing.T) {
 }
 
 // sseEvents reads a server-sent events body and sends the data of each event to the channel.
-func sseEvents(body io.Reader) <-chan training.RunEvent {
-	out := make(chan training.RunEvent, 100)
+func sseEvents(body io.Reader) <-chan core.RunEvent {
+	out := make(chan core.RunEvent, 100)
 	go func() {
 		defer close(out)
 		sc := bufio.NewScanner(body)
 		sc.Buffer(make([]byte, 1<<20), 1<<20)
 		for sc.Scan() {
 			if data, ok := strings.CutPrefix(sc.Text(), "data: "); ok {
-				var e training.RunEvent
+				var e core.RunEvent
 				if json.Unmarshal([]byte(data), &e) == nil {
 					out <- e
 				}
@@ -450,7 +451,7 @@ func TestEvalLiveFeed(t *testing.T) { dbtest.Run(t, testEvalLiveFeed) }
 
 func testEvalLiveFeed(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	dbs := []training.Database{{Name: "standard", DB: d}}
+	dbs := []core.Database{{Name: "standard", DB: d}}
 	mid := evalModel(t, d, "jobeval9")
 	cases0 := evalCases(t)
 	// The model holds its first answer until the watcher is connected.
@@ -473,7 +474,7 @@ func testEvalLiveFeed(t *testing.T, d *sql.DB) {
 		t.Fatalf("content type %q", ct)
 	}
 	events := sseEvents(resp.Body)
-	next := func() training.RunEvent {
+	next := func() core.RunEvent {
 		t.Helper()
 		select {
 		case e, ok := <-events:
@@ -484,7 +485,7 @@ func testEvalLiveFeed(t *testing.T, d *sql.DB) {
 		case <-time.After(5 * time.Second):
 			t.Fatal("timed out waiting for an event")
 		}
-		return training.RunEvent{}
+		return core.RunEvent{}
 	}
 	if e := next(); e.Type != "snapshot" || e.Run == nil || e.Run.Status != "running" || len(e.Cases) != 0 {
 		t.Fatalf("first event: %+v", e)
@@ -492,7 +493,7 @@ func testEvalLiveFeed(t *testing.T, d *sql.DB) {
 	close(sc.block)
 	var got []string
 	answers := 0
-	var last training.RunEvent
+	var last core.RunEvent
 	for e := next(); ; e = next() {
 		switch e.Type {
 		case "answer":
@@ -544,7 +545,7 @@ func TestEvalExperiments(t *testing.T) { dbtest.Run(t, testEvalExperiments) }
 
 func testEvalExperiments(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	dbs := []training.Database{{Name: "standard", DB: d}}
+	dbs := []core.Database{{Name: "standard", DB: d}}
 	loss := 0.8
 	mid, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{
 		JobID: "jobexp1", ModelSize: "4b", Dataset: theEval + ".jsonl", NumTrainSteps: 3, FinalLoss: &loss, Path: "trained/jobexp1"})

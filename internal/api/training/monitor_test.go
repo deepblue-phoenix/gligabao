@@ -16,6 +16,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	core "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
@@ -96,7 +97,7 @@ func openSSE(t *testing.T, ctx context.Context, url string, header ...string) *s
 
 type sseEvent struct {
 	ID, Name string
-	Data     training.FeedEvent
+	Data     core.FeedEvent
 }
 
 // next returns the next event, skipping comments.
@@ -144,9 +145,9 @@ func testTrainingMonitor(t *testing.T, d *sql.DB) {
 	defer cancel()
 	dir := t.TempDir()
 	addDataset(t, dir, "mine")
-	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: dir}}
+	dbs := []core.Database{{Name: "standard", DB: d, DatasetDir: dir}}
 	sc := newStreamSidecar()
-	mon := training.NewMonitor(ctx, dbs, sc, training.WithRetryDelay(time.Millisecond))
+	mon := core.NewMonitor(ctx, dbs, sc, core.WithRetryDelay(time.Millisecond))
 
 	events := httptest.NewServer(training.EventsOf(dbs, mon))
 	defer func() { cancel(); events.Close() }() // the open SSE streams end with ctx; Close waits for them
@@ -251,7 +252,7 @@ func TestTrainingMonitorTimeoutAndResume(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	dbs := []training.Database{{Name: "standard", DB: d}}
+	dbs := []core.Database{{Name: "standard", DB: d}}
 
 	// Resume: run 1 is unfinished with 2 events stored; run 2 is finished and left alone.
 	started := time.Now().Add(-time.Minute)
@@ -263,7 +264,7 @@ func TestTrainingMonitorTimeoutAndResume(t *testing.T) {
 
 	sc := newStreamSidecar()
 	sc.sent = []sidecar.TrainingEvent{status("running"), progress(1, 3)}
-	training.NewMonitor(ctx, dbs, sc, training.WithRetryDelay(time.Millisecond), training.WithWatchTimeout(time.Hour))
+	core.NewMonitor(ctx, dbs, sc, core.WithRetryDelay(time.Millisecond), core.WithWatchTimeout(time.Hour))
 	waitFor(t, "resumed stream", func() bool { sc.mu.Lock(); defer sc.mu.Unlock(); return len(sc.froms) == 1 })
 	sc.mu.Lock()
 	if sc.froms[0] != 2 {
@@ -278,7 +279,7 @@ func TestTrainingMonitorTimeoutAndResume(t *testing.T) {
 
 	// Timeout: the sidecar's stream ends again and again without the job ending.
 	sc2 := newStreamSidecar()
-	mon := training.NewMonitor(ctx, dbs, sc2, training.WithRetryDelay(time.Millisecond), training.WithWatchTimeout(50*time.Millisecond))
+	mon := core.NewMonitor(ctx, dbs, sc2, core.WithRetryDelay(time.Millisecond), core.WithWatchTimeout(50*time.Millisecond))
 	id3, _ := trainingdb.RecordTrainingJobRun(ctx, d, trainingdb.TrainingJobRun{JobID: "j3", Status: "started", ModelSize: "4b", NumTrainSteps: 5, StartedAt: time.Now()})
 	run3, _ := trainingdb.GetTrainingJobRun(ctx, d, id3)
 	close(sc2.feed) // every stream ends at once
@@ -299,14 +300,14 @@ func TestTrainingMonitorTrainedModels(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	dbs := []training.Database{{Name: "standard", DB: d}}
+	dbs := []core.Database{{Name: "standard", DB: d}}
 	sc := newStreamSidecar()
-	mon := training.NewMonitor(ctx, dbs, sc, training.WithRetryDelay(time.Millisecond))
+	mon := core.NewMonitor(ctx, dbs, sc, core.WithRetryDelay(time.Millisecond))
 	model := &sidecar.TrainedModelInfo{Path: "trained/x", Files: []sidecar.TrainedModelFile{{Path: "a", SizeBytes: 1}}, SizeBytes: 1}
 
 	for i, last := range []sidecar.TrainingEvent{status("failed"), status("cancelled"), status("completed")} {
 		sc := newStreamSidecar()
-		mon := training.NewMonitor(ctx, dbs, sc, training.WithRetryDelay(time.Millisecond))
+		mon := core.NewMonitor(ctx, dbs, sc, core.WithRetryDelay(time.Millisecond))
 		id, _ := trainingdb.RecordTrainingJobRun(ctx, d, trainingdb.TrainingJobRun{JobID: "j" + strconv.Itoa(i), Status: "started", ModelSize: "4b", NumTrainSteps: 5, StartedAt: time.Now()})
 		run, _ := trainingdb.GetTrainingJobRun(ctx, d, id)
 		sc.feed <- last // none of them has a model attached (the completed one is from a sidecar that does not report it)

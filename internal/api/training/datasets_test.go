@@ -15,29 +15,29 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	core "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
 const goodDataset = "{\"instruction\":\"a\",\"input\":\"\",\"output\":\"b\"}\n\n{\"instruction\":\"c\",\"output\":\"d\"}\r\n"
 
-func TestValidateTrainingDataset(t *testing.T) {
-	if n, err := training.ValidateDataset([]byte(goodDataset)); err != nil || n != 2 {
-		t.Fatalf("good: %d, %v", n, err)
+// write creates dir/rel with content (and the directories above it).
+func write(t *testing.T, dir, rel, content string) {
+	t.Helper()
+	p := filepath.Join(dir, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	for in, want := range map[string]string{
-		"":           "no records",
-		"\n \n":      "no records",
-		"not json\n": "line 1 is not a JSON object",
-		"[1]\n":      "line 1 is not a JSON object",
-		"{\"instruction\":\"a\",\"output\":\"b\"}\n{\"instruction\":\"a\"}\n": "line 2 has no \"output\"",
-		"{\"instruction\":1,\"output\":\"b\"}\n":                              "\"instruction\" must be a string",
-		"{\"instruction\":\"a\",\"output\":\"b\",\"input\":null}\n":           "\"input\" must be a string",
-		"\xff\xfe\n": "UTF-8",
-	} {
-		if _, err := training.ValidateDataset([]byte(in)); err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("%q: got %v, want %q", in, err, want)
-		}
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
 	}
+}
+
+// addDataset adds a dataset to dir by hand: a subdirectory called name with a manifest and a valid data file.
+func addDataset(t *testing.T, dir, name string) {
+	t.Helper()
+	write(t, dir, name+"/dataset.toml", "file = \"data.jsonl\"\n")
+	write(t, dir, name+"/data.jsonl", goodDataset)
 }
 
 func upload(h http.HandlerFunc, url, field, filename, content string, extra map[string]string) *httptest.ResponseRecorder {
@@ -63,7 +63,7 @@ func TestUploadTrainingDataset(t *testing.T) { dbtest.Run(t, testUploadTrainingD
 func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 	ctx := t.Context()
 	dir := filepath.Join(t.TempDir(), "datasets_training") // created by the first upload
-	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: dir}}
+	dbs := []core.Database{{Name: "standard", DB: d, DatasetDir: dir}}
 	h := training.UploadDatasetOf(dbs)
 
 	rec := upload(h, "/x", "file", "mine.jsonl", goodDataset, nil)
@@ -79,7 +79,7 @@ func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 		t.Fatalf("file: %q, %v", b, err)
 	}
 	// ... in a dataset directory of its own, with a manifest, so that it is found as a dataset.
-	found, problems := training.DiscoverDatasets(dir)
+	found, problems := core.DiscoverDatasets(dir)
 	if len(found) != 1 || len(problems) != 0 || found[0].Name != "mine" || found[0].Manifest.File != "mine.jsonl" ||
 		found[0].Path != filepath.Join(dir, "mine", "mine.jsonl") || found[0].Description == "" {
 		t.Fatalf("discovered: %+v, %v", found, problems)
@@ -97,7 +97,7 @@ func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 		t.Fatalf("path: %d %s", rec.Code, rec.Body)
 	}
 	for _, f := range []string{"renamed", "x"} {
-		for _, name := range []string{f + ".jsonl", training.ManifestFilename} {
+		for _, name := range []string{f + ".jsonl", core.ManifestFilename} {
 			if _, err := os.Stat(filepath.Join(dir, f, name)); err != nil {
 				t.Fatal(err)
 			}
@@ -114,7 +114,7 @@ func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 	// A dataset directory with a manifest of its own is not taken over by an upload of the same name.
 	own := filepath.Join(dir, "own")
 	os.MkdirAll(own, 0o755)
-	os.WriteFile(filepath.Join(own, training.ManifestFilename), []byte("file = \"data.jsonl\"\n"), 0o644)
+	os.WriteFile(filepath.Join(own, core.ManifestFilename), []byte("file = \"data.jsonl\"\n"), 0o644)
 	os.WriteFile(filepath.Join(own, "data.jsonl"), []byte(goodDataset), 0o644)
 	if rec := upload(h, "/x", "file", "own.jsonl", goodDataset, nil); rec.Code != http.StatusConflict {
 		t.Fatalf("own manifest: %d %s", rec.Code, rec.Body)
@@ -122,7 +122,7 @@ func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 	// ... nor is a name another dataset (in another directory) has.
 	named := filepath.Join(dir, "elsewhere")
 	os.MkdirAll(named, 0o755)
-	os.WriteFile(filepath.Join(named, training.ManifestFilename), []byte("name = \"taken\"\nfile = \"d.jsonl\"\n"), 0o644)
+	os.WriteFile(filepath.Join(named, core.ManifestFilename), []byte("name = \"taken\"\nfile = \"d.jsonl\"\n"), 0o644)
 	os.WriteFile(filepath.Join(named, "d.jsonl"), []byte(goodDataset), 0o644)
 	if rec := upload(h, "/x", "file", "taken.jsonl", goodDataset, nil); rec.Code != http.StatusConflict {
 		t.Fatalf("taken name: %d %s", rec.Code, rec.Body)
@@ -151,7 +151,7 @@ func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 	}
 
 	// No directory configured: refused.
-	if rec := upload(training.UploadDatasetOf([]training.Database{{Name: "standard", DB: d}}), "/x", "file", "n.jsonl", goodDataset, nil); rec.Code != http.StatusInternalServerError {
+	if rec := upload(training.UploadDatasetOf([]core.Database{{Name: "standard", DB: d}}), "/x", "file", "n.jsonl", goodDataset, nil); rec.Code != http.StatusInternalServerError {
 		t.Fatalf("no dir: %d", rec.Code)
 	}
 
@@ -175,7 +175,7 @@ func TestStartJobSendsDataset(t *testing.T) { dbtest.Run(t, testStartJobSendsDat
 func testStartJobSendsDataset(t *testing.T, d *sql.DB) {
 	ctx := t.Context()
 	dir := t.TempDir()
-	dbs := []training.Database{{Name: "standard", DB: d, DatasetDir: dir}}
+	dbs := []core.Database{{Name: "standard", DB: d, DatasetDir: dir}}
 	sc := &fakeSidecar{}
 	up := training.UploadDatasetOf(dbs)
 	start := func(body string) *httptest.ResponseRecorder {
@@ -226,7 +226,7 @@ func testStartJobSendsDataset(t *testing.T, d *sql.DB) {
 	// A dataset added by hand to the directory (a manifest and a data file) works at once, and is recorded.
 	hand := filepath.Join(dir, "by-hand")
 	os.MkdirAll(hand, 0o755)
-	os.WriteFile(filepath.Join(hand, training.ManifestFilename), []byte("file = \"sub/rows.jsonl\"\n"), 0o644)
+	os.WriteFile(filepath.Join(hand, core.ManifestFilename), []byte("file = \"sub/rows.jsonl\"\n"), 0o644)
 	os.MkdirAll(filepath.Join(hand, "sub"), 0o755)
 	os.WriteFile(filepath.Join(hand, "sub", "rows.jsonl"), []byte(goodDataset), 0o644)
 	n := len(sc.reqs)
@@ -253,15 +253,15 @@ func testStartJobSendsDataset(t *testing.T, d *sql.DB) {
 	if rec := startDS("lost"); rec.Code != http.StatusBadRequest {
 		t.Fatalf("lost file: %d %s", rec.Code, rec.Body)
 	}
-	if _, problems := training.DiscoverDatasets(dir); len(problems) != 1 || problems[0].Dir != "lost" || !strings.Contains(problems[0].Error, "missing") {
+	if _, problems := core.DiscoverDatasets(dir); len(problems) != 1 || problems[0].Dir != "lost" || !strings.Contains(problems[0].Error, "missing") {
 		t.Fatalf("problems: %+v", problems)
 	}
 }
 
 func TestUploadTrainingDatasetTooLarge(t *testing.T) {
 	dbtest.Run(t, func(t *testing.T, d *sql.DB) {
-		h := training.UploadDatasetOf([]training.Database{{Name: "standard", DB: d, DatasetDir: t.TempDir()}})
-		big := strings.Repeat("x", training.MaxDatasetBytes+1)
+		h := training.UploadDatasetOf([]core.Database{{Name: "standard", DB: d, DatasetDir: t.TempDir()}})
+		big := strings.Repeat("x", core.MaxDatasetBytes+1)
 		if rec := upload(h, "/x", "file", "a.jsonl", big, nil); rec.Code != http.StatusRequestEntityTooLarge {
 			t.Fatalf("too large: %d %s", rec.Code, rec.Body)
 		}

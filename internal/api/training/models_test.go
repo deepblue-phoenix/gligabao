@@ -13,6 +13,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	core "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
@@ -20,7 +21,7 @@ func TestTrainedModelEndpoints(t *testing.T) { dbtest.Run(t, testTrainedModelEnd
 
 func testTrainedModelEndpoints(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	dbs := []training.Database{{Name: "standard", DB: d}}
+	dbs := []core.Database{{Name: "standard", DB: d}}
 	for _, m := range []trainingdb.TrainedModel{
 		{JobID: "j1", ModelSize: "4b", NumTrainSteps: 10, Path: "trained/j1"},
 		{JobID: "j2", ModelSize: "12b", NumTrainSteps: 20, Path: "trained/j2", Dataset: "mine.jsonl"},
@@ -69,13 +70,13 @@ func TestInferWithATrainedModel(t *testing.T) { dbtest.Run(t, testInferWithATrai
 
 func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	dbs := []training.Database{{Name: "standard", DB: d}}
+	dbs := []core.Database{{Name: "standard", DB: d}}
 	id, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j2", ModelSize: "12b", NumTrainSteps: 20, Path: "trained/j2"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	sc := &fakeSidecar{inferResp: sidecar.InferResponse{Response: "hello", InputTokens: 7, OutputTokens: 3}}
-	post := func(sc training.Inferer, modelID, body string) *httptest.ResponseRecorder {
+	post := func(sc core.Inferer, modelID, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest("POST", "/x", strings.NewReader(body))
 		req.SetPathValue("id", modelID)

@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.66.3] - 2026-10-19
+
+### Changed
+- Internal reorganisation: everything in `internal/api/training` that is not HTTP moved to `internal/training` (package `training`, next to `internal/training/db`): the datasets directory and its manifests (`DiscoverDatasets`, `ListDatasets`, `SaveDataset`, `PreviewDataset`, `ValidateDataset`), starting and stopping jobs (`StartJob`, `StopJob`, `JobHistory`), the `Monitor`, inferences (`Infer`), and the evals and audits (`RunManager` with its `RunStream`, `Generator`, `CaseRow`, `RunProgress`, `LoadModelDataset`). Failures are `*training.Error` with a `Kind`, which the handlers turn into the HTTP status. `internal/api/training` now only holds the handlers (`StartJobOf`, `EvalManager`, ...), which read the request and write the response; they take `training.Database`, `*training.Monitor` and `training.Inferer` from the new package. Endpoints and behaviour are unchanged.
+
 ## [0.66.2] - 2026-10-19
 
 ### Changed

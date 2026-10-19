@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/api/training"
+	"github.com/deepblue-phoenix/gligabao/internal/training"
 )
 
 // write creates dir/rel with content (and the directories above it).

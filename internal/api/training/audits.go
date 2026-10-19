@@ -10,22 +10,15 @@ package training
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
-	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
-	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
-	log "github.com/sirupsen/logrus"
+	core "github.com/deepblue-phoenix/gligabao/internal/training"
 )
 
 // AuditManager starts the training data audits and runs them in the background, one at a time per trained model. Audits still
@@ -36,8 +29,8 @@ type AuditManager struct{ *runManager }
 // NewAuditManager makes the manager of the training data audits of the trained models of dbs. sc answers the questions (nil:
 // starting an audit answers 503) and llm judges (nil: the same). The audits stop when ctx is done. Audits that a restart
 // interrupted (still "running" in the database) are marked error.
-func NewAuditManager(ctx context.Context, dbs []Database, sc Inferer, llm memory_core.LLM) *AuditManager {
-	return &AuditManager{newRunManager(ctx, dbs, sc, llm, auditOps)}
+func NewAuditManager(ctx context.Context, dbs []core.Database, sc core.Inferer, llm memory_core.LLM) *AuditManager {
+	return &AuditManager{&runManager{core.NewRunManager(ctx, dbs, sc, llm, core.AuditOps)}}
 }
 
 // StartOf serves POST /v1/gb/training/models/{id}/audits[?db=<name>] with an optional JSON body {"limit": 0, "batch_size": 10,
@@ -56,12 +49,12 @@ func (m *AuditManager) StartOf() http.HandlerFunc {
 		if !ok {
 			return
 		}
-		var in RunOptions
+		var in core.RunOptions
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRunBody)).Decode(&in); err != nil && !errors.Is(err, io.EOF) {
 			httputil.Error(w, http.StatusBadRequest, "invalid JSON body")
 			return
 		}
-		cfg, params, err := in.resolve()
+		cfg, params, err := in.Resolve()
 		if err != nil {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
@@ -70,7 +63,7 @@ func (m *AuditManager) StartOf() http.HandlerFunc {
 		if !ok {
 			return
 		}
-		dataset, sum, examples, err := loadModelDataset(n, tm)
+		dataset, sum, examples, err := core.LoadModelDataset(n, tm)
 		if err != nil {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
@@ -78,33 +71,7 @@ func (m *AuditManager) StartOf() http.HandlerFunc {
 		if params.Limit > 0 && params.Limit < len(examples) {
 			examples = examples[:params.Limit]
 		}
-		m.start(w, r, runSpec{n: n, tm: tm, cfg: cfg, params: params, examples: examples,
-			row: evalsdb.TrainedModelRun{Dataset: dataset, DatasetSHA256: sum}})
+		m.start(w, r, core.RunSpec{Database: n, Model: tm, Config: cfg, Params: params, Examples: examples,
+			Row: evalsdb.TrainedModelRun{Dataset: dataset, DatasetSHA256: sum}})
 	}
-}
-
-// loadModelDataset reads the training dataset of tm from n's training datasets directory: the dataset's name, the digest of
-// the file and its examples. The errors are safe to show to the user.
-func loadModelDataset(n Database, tm *trainingdb.TrainedModel) (name, sum string, examples []trainingeval.Example, err error) {
-	name = strings.TrimSuffix(tm.Dataset, ".jsonl")
-	if name == "" {
-		return "", "", nil, errors.New("this model was trained on the sidecar's default dataset, which gligabao does not have: there are no questions to ask")
-	}
-	ds, err := findDataset(n, name)
-	if err != nil {
-		return "", "", nil, fmt.Errorf("the training dataset %s of this model is not in the training datasets directory", name)
-	}
-	content, err := os.ReadFile(ds.Path)
-	if err != nil {
-		log.WithError(err).WithField("dataset", name).Error("training: read training dataset file failed")
-		return "", "", nil, fmt.Errorf("the data file of dataset %s cannot be read", name)
-	}
-	if len(content) > MaxDatasetBytes {
-		return "", "", nil, fmt.Errorf("the data file of dataset %s is over %d MB", name, MaxDatasetBytes>>20)
-	}
-	if examples, err = trainingeval.ParseExamples(content); err != nil {
-		return "", "", nil, fmt.Errorf("dataset %s: %w", name, err)
-	}
-	h := sha256.Sum256(content)
-	return name, hex.EncodeToString(h[:]), examples, nil
 }
