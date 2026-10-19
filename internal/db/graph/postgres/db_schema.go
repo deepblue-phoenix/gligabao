@@ -14,6 +14,28 @@ import (
 // BIGSERIAL ids and TIMESTAMPTZ times. They reference gb_datasets, which is created by the relational backend
 // (internal/db/relational/postgres), so that schema must be applied first.
 const schema = `
+-- A timeseries (see sqlite/db_schema.go for what the columns mean). It comes first because gb_artifacts references it;
+-- its points and anchors are defined further down.
+CREATE TABLE IF NOT EXISTS gb_series (
+	id          BIGSERIAL PRIMARY KEY,
+	dataset_id  BIGINT NOT NULL REFERENCES gb_datasets(id),
+	key         TEXT NOT NULL,
+	field       TEXT NOT NULL DEFAULT 'value',
+	name        TEXT NOT NULL DEFAULT '',
+	unit        TEXT NOT NULL DEFAULT '',
+	frequency   TEXT NOT NULL DEFAULT '',
+	source      TEXT NOT NULL DEFAULT 'supplied',
+	provider    TEXT NOT NULL DEFAULT '',
+	definition  TEXT NOT NULL DEFAULT '',
+	first_ts    TIMESTAMPTZ,
+	last_ts     TIMESTAMPTZ,
+	point_count BIGINT NOT NULL DEFAULT 0,
+	stats       TEXT NOT NULL DEFAULT '',
+	created_at  TIMESTAMPTZ NOT NULL,
+	updated_at  TIMESTAMPTZ NOT NULL,
+	UNIQUE (dataset_id, provider, key, field)
+);
+
 CREATE TABLE IF NOT EXISTS gb_artifacts (
 	id         BIGSERIAL PRIMARY KEY,
 	dataset_id BIGINT NOT NULL REFERENCES gb_datasets(id),
@@ -32,6 +54,8 @@ CREATE TABLE IF NOT EXISTS gb_artifacts (
 	query        TEXT,
 	-- Only for a 'chunk_summary' artifact: the run of the model that wrote it (see sqlite/db_schema.go).
 	inference_id BIGINT REFERENCES gb_inferences(id),
+	-- Only for a 'series_observation' artifact: the series it describes (see sqlite/db_schema.go).
+	series_id    BIGINT REFERENCES gb_series(id) ON DELETE SET NULL,
 	valid_at   TIMESTAMPTZ NOT NULL,
 	created_at TIMESTAMPTZ NOT NULL,
 	UNIQUE (parent_id, chunk_index)
@@ -157,27 +181,6 @@ CREATE TABLE IF NOT EXISTS gb_onto_edges (
 CREATE INDEX IF NOT EXISTS idx_gb_onto_edges_source ON gb_onto_edges(source_id);
 CREATE INDEX IF NOT EXISTS idx_gb_onto_edges_target ON gb_onto_edges(target_id);
 
--- Timeseries (see sqlite/db_schema.go for what the columns mean): a series, its points, and its anchors to an
--- artifact, entity or edge.
-CREATE TABLE IF NOT EXISTS gb_series (
-	id          BIGSERIAL PRIMARY KEY,
-	dataset_id  BIGINT NOT NULL REFERENCES gb_datasets(id),
-	key         TEXT NOT NULL,
-	field       TEXT NOT NULL DEFAULT 'value',
-	name        TEXT NOT NULL DEFAULT '',
-	unit        TEXT NOT NULL DEFAULT '',
-	frequency   TEXT NOT NULL DEFAULT '',
-	source      TEXT NOT NULL DEFAULT 'supplied',
-	provider    TEXT NOT NULL DEFAULT '',
-	definition  TEXT NOT NULL DEFAULT '',
-	first_ts    TIMESTAMPTZ,
-	last_ts     TIMESTAMPTZ,
-	point_count BIGINT NOT NULL DEFAULT 0,
-	stats       TEXT NOT NULL DEFAULT '',
-	created_at  TIMESTAMPTZ NOT NULL,
-	updated_at  TIMESTAMPTZ NOT NULL,
-	UNIQUE (dataset_id, provider, key, field)
-);
 CREATE TABLE IF NOT EXISTS gb_series_points (
 	series_id BIGINT NOT NULL REFERENCES gb_series(id) ON DELETE CASCADE,
 	ts        TIMESTAMPTZ NOT NULL,
@@ -200,9 +203,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_series_anchors_artifact ON gb_series_an
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_series_anchors_entity ON gb_series_anchors(series_id, entity_id) WHERE entity_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_series_anchors_edge ON gb_series_anchors(series_id, edge_id) WHERE edge_id IS NOT NULL;
 
--- The series a 'series_observation' artifact describes (see sqlite/db_schema.go). It is added here, after gb_series
--- exists; SQLite declares it in gb_artifacts itself.
-ALTER TABLE gb_artifacts ADD COLUMN IF NOT EXISTS series_id BIGINT REFERENCES gb_series(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_gb_series_dataset ON gb_series(dataset_id);
 
 CREATE INDEX IF NOT EXISTS idx_gb_image_artifacts_dataset ON gb_image_artifacts(dataset_id);

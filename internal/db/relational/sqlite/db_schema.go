@@ -116,10 +116,6 @@ CREATE INDEX IF NOT EXISTS idx_gb_inferences_model ON gb_inferences(model_id);
 
 // initSchema applies the database schema.
 func initSchema(d *sql.DB) error {
-	// gb_items was an unused placeholder table; drop it from databases created by older builds.
-	if _, err := d.Exec(`DROP TABLE IF EXISTS gb_items`); err != nil {
-		return fmt.Errorf("init schema: drop legacy gb_items: %w", err)
-	}
 	if _, err := d.Exec(schema + rememberRunsSchema()); err != nil {
 		return fmt.Errorf("init schema: %w", err)
 	}

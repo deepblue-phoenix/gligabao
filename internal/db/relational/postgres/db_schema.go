@@ -81,10 +81,6 @@ func initSchema(ctx context.Context, d *sql.DB) error {
 		return fmt.Errorf("init schema: lock: %w", err)
 	}
 	defer conn.ExecContext(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1)`, int64(lockID))
-	// gb_items was an unused placeholder table; drop it from databases created by older builds.
-	if _, err := conn.ExecContext(ctx, `DROP TABLE IF EXISTS gb_items`); err != nil {
-		return fmt.Errorf("init schema: drop legacy gb_items: %w", err)
-	}
 	if _, err := conn.ExecContext(ctx, schema+rememberRunsSchema()); err != nil {
 		return fmt.Errorf("init schema: %w", err)
 	}
