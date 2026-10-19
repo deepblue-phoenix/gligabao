@@ -8,12 +8,6 @@ import (
 //---------------------------------------------------------------------------------------------
 
 const schema = `
-CREATE TABLE IF NOT EXISTS gb_items (
-	id         INTEGER PRIMARY KEY AUTOINCREMENT,
-	name       TEXT NOT NULL,
-	created_at DATETIME NOT NULL DEFAULT (` + SQLNow + `)
-);
-
 -- A dataset is a hard logical container: every memory, entity and edge (see internal/db/graph) belongs to exactly
 -- one dataset, and datasets never share nodes. A dataset is owned by one user (user_id); everything in it belongs to that user.
 -- Names are unique per user. Deletion is soft (deleted = 1); the rows stay but are invisible, and the name can
@@ -582,6 +576,10 @@ func initSchema(d *sql.DB) error {
 				return fmt.Errorf("init schema: add cold_start columns: %w", err)
 			}
 		}
+	}
+	// gb_items was an unused placeholder table; drop it from databases created by older builds.
+	if _, err := d.Exec(`DROP TABLE IF EXISTS gb_items`); err != nil {
+		return fmt.Errorf("init schema: drop legacy gb_items: %w", err)
 	}
 	if _, err := d.Exec(schema + rememberRunsSchema()); err != nil {
 		return fmt.Errorf("init schema: %w", err)

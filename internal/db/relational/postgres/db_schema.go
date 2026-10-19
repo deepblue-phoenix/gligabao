@@ -11,12 +11,6 @@ import (
 // The same tables as the sqlite backend (see sqlite/db_schema.go for what the columns mean), with native types:
 // BIGSERIAL ids, TIMESTAMPTZ times, BOOLEAN flags and JSONB tags.
 const schema = `
-CREATE TABLE IF NOT EXISTS gb_items (
-	id         BIGSERIAL PRIMARY KEY,
-	name       TEXT NOT NULL,
-	created_at TIMESTAMPTZ NOT NULL DEFAULT ` + SQLNow + `
-);
-
 CREATE TABLE IF NOT EXISTS gb_datasets (
 	id          BIGSERIAL PRIMARY KEY,
 	user_id     TEXT NOT NULL,
@@ -372,6 +366,10 @@ func initSchema(ctx context.Context, d *sql.DB) error {
 			DROP TABLE gb_training_datasets;
 		END IF; END $$`); err != nil {
 		return fmt.Errorf("init schema: drop legacy gb_training_datasets: %w", err)
+	}
+	// gb_items was an unused placeholder table; drop it from databases created by older builds.
+	if _, err := conn.ExecContext(ctx, `DROP TABLE IF EXISTS gb_items`); err != nil {
+		return fmt.Errorf("init schema: drop legacy gb_items: %w", err)
 	}
 	if _, err := conn.ExecContext(ctx, schema+rememberRunsSchema()); err != nil {
 		return fmt.Errorf("init schema: %w", err)

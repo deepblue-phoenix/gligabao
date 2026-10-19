@@ -258,7 +258,6 @@ All tables are prefixed with `gb_` (see `internal/db/relational/{sqlite,postgres
 | `gb_edge_sessions` | `edge_id` → `gb_edges`, `session_id`; primary key (`edge_id`, `session_id`) |
 | `gb_series`, `gb_series_points`, `gb_series_anchors` | The [timeseries](timeseries.md) and what they are anchored to (`gb_artifacts.series_id` links a [series observation](timeseries.md#observations) to its series) |
 | `gb_remember_runs` | One row per call: its `status`, and for each stage a status, error, start and end time and inferences. See [Run log](#run-log) |
-| `gb_items` | `id`, `name`, `created_at` (placeholder) |
 
 Foreign keys are enabled on every connection. Deleting an entity cascades to its edges and its `gb_entity_artifacts` links, and deleting an edge removes its `gb_edge_artifacts` links; deleting an artifact sets `artifact_id` to NULL on its edges and removes its `gb_edge_artifacts` and `gb_entity_artifacts` links. Deleting an entity or an edge also removes its `gb_entity_sessions` or `gb_edge_sessions` links; deleting an artifact leaves them (they record that the session discovered the entity or fact, not which artifact did).
 
