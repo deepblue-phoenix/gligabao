@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.63.1] - 2026-10-19
+
+### Fixed
+- Stale paths of the eval definitions in comments and READMEs (`evals/README.md`, `evals/training/README.md`, `evals/training/dataset.go`) now say `bin/evals_training/*.json`, and the admin UI's live-view comment names the real `/v1/gb/training/evals/<id>/events` URL. No behaviour change.
+
 ## [0.63.0] - 2026-10-19
 
 ### Changed

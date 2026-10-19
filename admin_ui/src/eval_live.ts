@@ -1,5 +1,5 @@
 // Live view of a trained-model run: the dialog #eval-modal follows the SSE feed of a training data AUDIT (../training/audits/<id>/events,
-// the model asked its own training dataset) or of an EVAL (../training/evals/<id>/events), which have the same shape, and shows each
+// the model asked its own training dataset) or of an EVAL (/v1/gb/training/evals/<id>/events), which have the same shape, and shows each
 // question as the model answers it (the reference answer next to the model's), then its score and the judge's reason when the batch
 // it is in is judged (the judge grades a batch of questions per call). One sees how the model behaves from the first question on.
 // Closing the dialog leaves the run going.
