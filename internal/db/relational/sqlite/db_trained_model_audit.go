@@ -10,12 +10,12 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Training data audits of trained models (model.TrainedModelAuditRun): gb_training_audit_runs, one row per audit, and
+// Training data audits of trained models (model.TrainedModelRun): gb_training_audit_runs, one row per audit, and
 // gb_training_audit_cases, one row per example, see db_schema.go. Separate from the evals of trained models (db_trained_model_eval.go).
 
 // InsertTrainedModelAuditRun stores a new audit run (status running unless a.Status says otherwise) and returns its ID. The ID, the
 // creation time and the finish time are ignored; the counters and the judge's usage start as given (normally 0).
-func InsertTrainedModelAuditRun(ctx context.Context, d *sql.DB, a model.TrainedModelAuditRun) (int64, error) {
+func InsertTrainedModelAuditRun(ctx context.Context, d *sql.DB, a model.TrainedModelRun) (int64, error) {
 	res, err := d.ExecContext(ctx, `
 		INSERT INTO gb_training_audit_runs (trained_model_id, status, dataset, dataset_sha256, params, judge_model, num_examples, started_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -29,7 +29,7 @@ func InsertTrainedModelAuditRun(ctx context.Context, d *sql.DB, a model.TrainedM
 // SaveTrainedModelAuditRunBatch stores the cases of a finished batch and the audit run's counters after it (a.ID names the audit
 // run; its judge model, counters, the judge's usage and cost are written), in one transaction. model.ErrNotFound if there is no
 // such audit run.
-func SaveTrainedModelAuditRunBatch(ctx context.Context, d *sql.DB, a model.TrainedModelAuditRun, cases []model.TrainedModelAuditCase) error {
+func SaveTrainedModelAuditRunBatch(ctx context.Context, d *sql.DB, a model.TrainedModelRun, cases []model.TrainedModelCase) error {
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("save audit run batch: %w", err)
@@ -101,8 +101,8 @@ const trainedModelAuditRunColumns = `id, trained_model_id, status, dataset, data
 	num_judged, num_errored, num_correct, num_partial, num_incorrect, score_sum, num_batches, judge_calls, judge_input_tokens,
 	judge_output_tokens, judge_cost_usd, error, started_at, finished_at`
 
-func scanTrainedModelAuditRun(s rowScanner) (*model.TrainedModelAuditRun, error) {
-	var a model.TrainedModelAuditRun
+func scanTrainedModelAuditRun(s rowScanner) (*model.TrainedModelRun, error) {
+	a := model.TrainedModelRun{Kind: model.TrainedModelKindAudit}
 	var params, created string
 	var finished sql.NullString
 	if err := s.Scan(&a.ID, &a.TrainedModelID, &a.Status, &a.Dataset, &a.DatasetSHA256, &params, &a.JudgeModel, &a.NumExamples,
@@ -119,7 +119,7 @@ func scanTrainedModelAuditRun(s rowScanner) (*model.TrainedModelAuditRun, error)
 }
 
 // GetTrainedModelAuditRun returns the audit run with that ID, or model.ErrNotFound.
-func GetTrainedModelAuditRun(ctx context.Context, d *sql.DB, id int64) (*model.TrainedModelAuditRun, error) {
+func GetTrainedModelAuditRun(ctx context.Context, d *sql.DB, id int64) (*model.TrainedModelRun, error) {
 	a, err := scanTrainedModelAuditRun(d.QueryRowContext(ctx, `SELECT `+trainedModelAuditRunColumns+` FROM gb_training_audit_runs WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
@@ -128,7 +128,7 @@ func GetTrainedModelAuditRun(ctx context.Context, d *sql.DB, id int64) (*model.T
 }
 
 // ListTrainedModelAuditRuns returns the newest audit runs first (of one trained model, or of all for modelID 0), at most limit (all for limit <= 0).
-func ListTrainedModelAuditRuns(ctx context.Context, d *sql.DB, modelID int64, limit int) ([]model.TrainedModelAuditRun, error) {
+func ListTrainedModelAuditRuns(ctx context.Context, d *sql.DB, modelID int64, limit int) ([]model.TrainedModelRun, error) {
 	q := `SELECT ` + trainedModelAuditRunColumns + ` FROM gb_training_audit_runs`
 	var args []any
 	if modelID > 0 {
@@ -145,7 +145,7 @@ func ListTrainedModelAuditRuns(ctx context.Context, d *sql.DB, modelID int64, li
 		return nil, fmt.Errorf("list trained model audit runs: %w", err)
 	}
 	defer rows.Close()
-	out := []model.TrainedModelAuditRun{}
+	out := []model.TrainedModelRun{}
 	for rows.Next() {
 		a, err := scanTrainedModelAuditRun(rows)
 		if err != nil {
@@ -157,7 +157,7 @@ func ListTrainedModelAuditRuns(ctx context.Context, d *sql.DB, modelID int64, li
 }
 
 // ListTrainedModelAuditCases returns the cases of an audit run stored so far, in dataset order.
-func ListTrainedModelAuditCases(ctx context.Context, d *sql.DB, auditRunID int64) ([]model.TrainedModelAuditCase, error) {
+func ListTrainedModelAuditCases(ctx context.Context, d *sql.DB, auditRunID int64) ([]model.TrainedModelCase, error) {
 	rows, err := d.QueryContext(ctx, `
 		SELECT id, run_id, idx, batch, instruction, input, reference, response, status, error, score, reason, input_tokens,
 			output_tokens, duration_ms
@@ -166,11 +166,11 @@ func ListTrainedModelAuditCases(ctx context.Context, d *sql.DB, auditRunID int64
 		return nil, fmt.Errorf("list trained model audit run cases: %w", err)
 	}
 	defer rows.Close()
-	out := []model.TrainedModelAuditCase{}
+	out := []model.TrainedModelCase{}
 	for rows.Next() {
-		var it model.TrainedModelAuditCase
+		var it model.TrainedModelCase
 		var score sql.NullInt64
-		if err := rows.Scan(&it.ID, &it.AuditRunID, &it.Idx, &it.Batch, &it.Instruction, &it.Input, &it.Reference, &it.Response,
+		if err := rows.Scan(&it.ID, &it.RunID, &it.Idx, &it.Batch, &it.Instruction, &it.Input, &it.Reference, &it.Response,
 			&it.Status, &it.Error, &score, &it.Reason, &it.InputTokens, &it.OutputTokens, &it.DurationMS); err != nil {
 			return nil, err
 		}

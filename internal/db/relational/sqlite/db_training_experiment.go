@@ -88,8 +88,9 @@ func scanTrainingExperimentRun(s rowScanner) (*model.TrainingExperimentRun, erro
 	var runFinished sql.NullString
 	var loss sql.NullFloat64
 	e, m := &r.EvalRun, &r.Model
+	e.Kind = model.TrainedModelKindEval
 	if err := s.Scan(&r.ID, &r.ExperimentID, &created,
-		&e.ID, &e.TrainedModelID, &e.Status, &e.Scheme, &e.Dataset, &e.DatasetSHA256, &runParams, &e.JudgeModel, &e.NumExamples,
+		&e.ID, &e.TrainedModelID, &e.Status, &e.Eval, &runParams, &e.JudgeModel, &e.NumExamples,
 		&e.NumAnswered, &e.NumJudged, &e.NumErrored, &e.NumCorrect, &e.NumPartial, &e.NumIncorrect, &e.ScoreSum, &e.NumBatches,
 		&e.JudgeCalls, &e.JudgeInputTokens, &e.JudgeOutputTokens, &e.JudgeCostUSD, &e.Error, &runCreated, &runFinished,
 		&m.ID, &m.Name, &m.BaseModel, &m.ModelSize, &m.NumTrainSteps, &loss, &modelParams); err != nil {

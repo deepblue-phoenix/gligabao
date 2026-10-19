@@ -1,12 +1,10 @@
 package training_test
 
 import (
-	"bufio"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -28,29 +26,29 @@ func startAudit(m *training.AuditManager, modelID, body string) evalCall {
 	return evalCall{rec.Code, rec.Body.Bytes()}
 }
 
-func auditOf(t *testing.T, c evalCall) relational.TrainedModelAuditRun {
+func auditOf(t *testing.T, c evalCall) relational.TrainedModelRun {
 	t.Helper()
-	var a relational.TrainedModelAuditRun
+	var a relational.TrainedModelRun
 	if err := json.Unmarshal(c.body, &a); err != nil {
 		t.Fatalf("%d %s", c.code, c.body)
 	}
 	return a
 }
 
-func getAudit(t *testing.T, m *training.AuditManager, id int64) (relational.TrainedModelAuditRun, []relational.TrainedModelAuditCase) {
+func getAudit(t *testing.T, m *training.AuditManager, id int64) (relational.TrainedModelRun, []relational.TrainedModelCase) {
 	t.Helper()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/x", nil)
 	req.SetPathValue("id", fmt.Sprint(id))
 	m.GetOf()(rec, req)
 	var out struct {
-		Audit relational.TrainedModelAuditRun
-		Cases []relational.TrainedModelAuditCase
+		Run   relational.TrainedModelRun
+		Cases []relational.TrainedModelCase
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != 200 {
 		t.Fatalf("get audit: %d %s", rec.Code, rec.Body)
 	}
-	return out.Audit, out.Cases
+	return out.Run, out.Cases
 }
 
 func TestAuditATrainedModel(t *testing.T) { dbtest.Run(t, testAuditATrainedModel) }
@@ -71,7 +69,7 @@ func testAuditATrainedModel(t *testing.T, d *sql.DB) {
 		t.Fatalf("start: %d %s", call.code, call.body)
 	}
 	started := auditOf(t, call)
-	if started.Status != relational.TrainedModelRunRunning || started.TrainedModelID != mid || started.Dataset != "mine" || started.NumExamples != 5 ||
+	if started.Status != relational.TrainedModelRunRunning || started.TrainedModelID != mid || started.Kind != "audit" || started.Eval != "" || started.Dataset != "mine" || started.NumExamples != 5 ||
 		len(started.DatasetSHA256) != 64 || !strings.Contains(string(started.Params), `"batch_size":2`) {
 		t.Fatalf("started: %+v", started)
 	}
@@ -91,7 +89,7 @@ func testAuditATrainedModel(t *testing.T, d *sql.DB) {
 		t.Fatalf("judge usage: %+v", au)
 	}
 	if len(cases) != 5 || cases[3].Response != "wrong" || cases[3].Score == nil || *cases[3].Score != 1 || cases[0].Reference != "a0" ||
-		cases[0].Reason != "because" || cases[0].Status != relational.TrainedModelCaseJudged || cases[0].AuditRunID != started.ID {
+		cases[0].Reason != "because" || cases[0].Status != relational.TrainedModelCaseJudged || cases[0].RunID != started.ID {
 		t.Fatalf("cases: %+v", cases)
 	}
 	// The model got the dataset's questions on its own weights, with the settings of the audit.
@@ -107,7 +105,7 @@ func testAuditATrainedModel(t *testing.T, d *sql.DB) {
 	if err := d.QueryRow(`SELECT count(*) FROM gb_inferences WHERE type = 'training_audit_judge' AND stage = 'judge'`).Scan(&n); err != nil || n != 3 {
 		t.Fatalf("recorded judge calls: %d %v", n, err)
 	}
-	if err := d.QueryRow(`SELECT count(*) FROM gb_inferences WHERE type = 'eval_judge'`).Scan(&nEval); err != nil || nEval != 0 {
+	if err := d.QueryRow(`SELECT count(*) FROM gb_inferences WHERE type = 'training_eval_judge'`).Scan(&nEval); err != nil || nEval != 0 {
 		t.Fatalf("an audit recorded eval judge calls: %d %v", nEval, err)
 	}
 	// An audit is not an eval run.
@@ -125,7 +123,7 @@ func testAuditATrainedModel(t *testing.T, d *sql.DB) {
 	req.SetPathValue("id", fmt.Sprint(mid))
 	m.ListOf()(rec, req)
 	var list struct {
-		Audits []relational.TrainedModelAuditRun
+		Audits []relational.TrainedModelRun
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || rec.Code != 200 || len(list.Audits) != 2 || list.Audits[0].NumExamples != 3 || list.Audits[0].Status != "completed" {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body)
@@ -247,7 +245,7 @@ func TestAuditsInterruptedByARestartAreFailed(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx := context.Background()
 	mid, _, _ := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{JobID: "j1", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j1"})
-	id, err := relational.RecordTrainedModelAuditRun(ctx, d, relational.TrainedModelAuditRun{TrainedModelID: mid})
+	id, err := relational.RecordTrainedModelAuditRun(ctx, d, relational.TrainedModelRun{TrainedModelID: mid})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,8 +283,8 @@ func testAuditLiveFeed(t *testing.T, d *sql.DB) {
 	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
 		t.Fatalf("content type %q", ct)
 	}
-	events := sseAuditEvents(resp.Body)
-	next := func() training.AuditEvent {
+	events := sseEvents(resp.Body)
+	next := func() training.RunEvent {
 		t.Helper()
 		select {
 		case e, ok := <-events:
@@ -297,15 +295,15 @@ func testAuditLiveFeed(t *testing.T, d *sql.DB) {
 		case <-time.After(5 * time.Second):
 			t.Fatal("timed out waiting for an event")
 		}
-		return training.AuditEvent{}
+		return training.RunEvent{}
 	}
-	if e := next(); e.Type != "snapshot" || e.Audit == nil || e.Audit.Status != "running" || len(e.Cases) != 0 {
+	if e := next(); e.Type != "snapshot" || e.Run == nil || e.Run.Status != "running" || len(e.Cases) != 0 {
 		t.Fatalf("first event: %+v", e)
 	}
 	close(sc.block)
 	var got []string
 	answers := 0
-	var last training.AuditEvent
+	var last training.RunEvent
 	for e := next(); ; e = next() {
 		switch e.Type {
 		case "answer":
@@ -316,7 +314,7 @@ func testAuditLiveFeed(t *testing.T, d *sql.DB) {
 			answers++
 			got = append(got, fmt.Sprintf("%d=%s", it.Idx, it.Response))
 		case "batch":
-			if e.Audit == nil || e.Audit.NumExamples != 3 || len(e.Cases) == 0 || e.Cases[0].Status != "judged" || e.Cases[0].Score == nil {
+			if e.Run == nil || e.Run.NumExamples != 3 || len(e.Cases) == 0 || e.Cases[0].Status != "judged" || e.Cases[0].Score == nil {
 				t.Fatalf("batch event: %+v", e)
 			}
 			got = append(got, fmt.Sprintf("batch%d", len(e.Cases)))
@@ -329,7 +327,7 @@ func testAuditLiveFeed(t *testing.T, d *sql.DB) {
 	if fmt.Sprint(got) != "[0=a0 1=wrong batch2 2=a2 batch1]" {
 		t.Fatalf("events: %v", got)
 	}
-	if last.Audit == nil || last.Audit.Status != "completed" || last.Audit.NumJudged != 3 {
+	if last.Run == nil || last.Run.Status != "completed" || last.Run.NumJudged != 3 {
 		t.Fatalf("end event: %+v", last)
 	}
 	m.Wait()
@@ -340,8 +338,8 @@ func testAuditLiveFeed(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 	defer resp2.Body.Close()
-	late := sseAuditEvents(resp2.Body)
-	if e := <-late; e.Type != "snapshot" || len(e.Cases) != 3 || e.Cases[1].Status != "judged" || e.Audit.Status != "completed" {
+	late := sseEvents(resp2.Body)
+	if e := <-late; e.Type != "snapshot" || len(e.Cases) != 3 || e.Cases[1].Status != "judged" || e.Run.Status != "completed" {
 		t.Fatalf("late snapshot: %+v", e)
 	}
 	if e := <-late; e.Type != "end" {
@@ -350,23 +348,4 @@ func testAuditLiveFeed(t *testing.T, d *sql.DB) {
 	if resp3, err := http.Get(srv.URL + "/audits/999/events"); err != nil || resp3.StatusCode != 404 {
 		t.Fatalf("unknown audit: %v %v", resp3, err)
 	}
-}
-
-// sseAuditEvents reads a server-sent events body and sends the data of each event to the channel.
-func sseAuditEvents(body io.Reader) <-chan training.AuditEvent {
-	out := make(chan training.AuditEvent, 100)
-	go func() {
-		defer close(out)
-		sc := bufio.NewScanner(body)
-		sc.Buffer(make([]byte, 1<<20), 1<<20)
-		for sc.Scan() {
-			if data, ok := strings.CutPrefix(sc.Text(), "data: "); ok {
-				var e training.AuditEvent
-				if json.Unmarshal([]byte(data), &e) == nil {
-					out <- e
-				}
-			}
-		}
-	}()
-	return out
 }

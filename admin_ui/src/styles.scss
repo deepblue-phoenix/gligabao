@@ -745,6 +745,7 @@ tr.removing {
   &.ev-bad, &.ev-failed { border-left-color: $err; }
   .ev-head { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; font-size: 0.8rem; margin-bottom: 0.25rem; }
   .ev-num { font-weight: 600; }
+  .ev-name { font-family: var(--mono, monospace); font-size: 0.85em; }
   .ev-score { font-weight: 700; font-size: 0.9rem; }
   .ev-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; @media (max-width: 40rem) { grid-template-columns: 1fr; } }
   .ev-label { color: $muted; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 0.3rem; }

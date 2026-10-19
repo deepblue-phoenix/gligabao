@@ -20,7 +20,7 @@ func trainedModelAuditRunsScenario(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id, err := relational.RecordTrainedModelAuditRun(ctx, d, relational.TrainedModelAuditRun{
+	id, err := relational.RecordTrainedModelAuditRun(ctx, d, relational.TrainedModelRun{
 		TrainedModelID: mid, Dataset: "mine", DatasetSHA256: "abc", NumExamples: 3, Params: json.RawMessage(`{"batch_size":2}`)})
 	if err != nil || id == 0 {
 		t.Fatalf("RecordTrainedModelAuditRun: %d %v", id, err)
@@ -36,7 +36,7 @@ func trainedModelAuditRunsScenario(t *testing.T, d *sql.DB) {
 	a := *got
 	a.JudgeModel, a.NumAnswered, a.NumJudged, a.NumErrored, a.NumCorrect, a.ScoreSum = "judge-1", 2, 1, 1, 1, 5
 	a.NumBatches, a.JudgeCalls, a.JudgeInputTokens, a.JudgeOutputTokens, a.JudgeCostUSD = 1, 1, 100, 10, 0.25
-	cases := []relational.TrainedModelAuditCase{
+	cases := []relational.TrainedModelCase{
 		{Idx: 0, Batch: 1, Instruction: "q0", Input: "ctx", Reference: "a0", Response: "a0", Status: relational.TrainedModelCaseJudged,
 			Score: &score, Reason: "same", InputTokens: 3, OutputTokens: 2, DurationMS: 40},
 		{Idx: 1, Batch: 1, Instruction: "q1", Reference: "a1", Status: relational.TrainedModelCaseErrored, Error: "model: boom"},
@@ -54,7 +54,7 @@ func trainedModelAuditRunsScenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("cases: %+v %v", list, err)
 	}
 	if c := list[0]; c.Idx != 0 || c.Score == nil || *c.Score != 5 || c.Reason != "same" || c.Input != "ctx" || c.Response != "a0" ||
-		c.InputTokens != 3 || c.DurationMS != 40 || c.AuditRunID != id || c.Status != relational.TrainedModelCaseJudged {
+		c.InputTokens != 3 || c.DurationMS != 40 || c.RunID != id || c.Status != relational.TrainedModelCaseJudged {
 		t.Fatalf("case 0: %+v", c)
 	}
 	if c := list[1]; c.Score != nil || c.Status != relational.TrainedModelCaseErrored || c.Error != "model: boom" {
@@ -64,7 +64,7 @@ func trainedModelAuditRunsScenario(t *testing.T, d *sql.DB) {
 	if err := relational.SaveTrainedModelAuditRunBatch(ctx, d, a, cases[:1]); err == nil {
 		t.Fatal("a duplicate case was accepted")
 	}
-	if err := relational.SaveTrainedModelAuditRunBatch(ctx, d, relational.TrainedModelAuditRun{ID: id + 100}, nil); !errors.Is(err, relational.ErrNotFound) {
+	if err := relational.SaveTrainedModelAuditRunBatch(ctx, d, relational.TrainedModelRun{ID: id + 100}, nil); !errors.Is(err, relational.ErrNotFound) {
 		t.Fatalf("unknown audit run: %v", err)
 	}
 
@@ -84,7 +84,7 @@ func trainedModelAuditRunsScenario(t *testing.T, d *sql.DB) {
 	}
 
 	// A restart fails what was running, and only that.
-	id2, err := relational.RecordTrainedModelAuditRun(ctx, d, relational.TrainedModelAuditRun{TrainedModelID: mid, Dataset: "mine"})
+	id2, err := relational.RecordTrainedModelAuditRun(ctx, d, relational.TrainedModelRun{TrainedModelID: mid, Dataset: "mine"})
 	if err != nil {
 		t.Fatal(err)
 	}

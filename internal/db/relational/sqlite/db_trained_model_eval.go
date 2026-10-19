@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strconv"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/model"
 )
@@ -14,17 +13,14 @@ import (
 // Eval runs of trained models: the 'training' rows of the universal eval tables (gb_experiment_runs and gb_experiment_case_results)
 // with their metadata (gb_training_eval_run_meta and gb_training_case_meta), see db_schema.go.
 //
-// An eval run (model.TrainedModelEvalRun) is ONE RUN: its ID is the run's, its status, times and Params are the columns of the
+// An eval run (model.TrainedModelRun) is ONE RUN: its ID is the run's, its status, times and Params are the columns of the
 // gb_experiment_runs row, and the rest is in the run's metadata row. Each example of the eval is a case result of that run (a
 // gb_experiment_case_results row with a gb_training_case_meta row). A run is in no experiment until StartTrainingExperimentRun links it to one.
 
 // InsertTrainedModelEvalRun stores a new eval run (status running unless e.Status says otherwise) and returns its ID, which is the ID of
 // its gb_experiment_runs row. The ID, the creation time and the finish time are ignored; the counters and the judge's
 // usage start as given (normally 0).
-func InsertTrainedModelEvalRun(ctx context.Context, d *sql.DB, e model.TrainedModelEvalRun) (int64, error) {
-	if e.Scheme == "" {
-		e.Scheme = model.TrainingSchemeFineTuneDataset
-	}
+func InsertTrainedModelEvalRun(ctx context.Context, d *sql.DB, e model.TrainedModelRun) (int64, error) {
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("insert trained model eval run: %w", err)
@@ -41,9 +37,9 @@ func InsertTrainedModelEvalRun(ctx context.Context, d *sql.DB, e model.TrainedMo
 		return 0, err
 	}
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO gb_training_eval_run_meta (run_id, trained_model_id, scheme, dataset, dataset_sha256, judge_model, num_examples)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		id, e.TrainedModelID, e.Scheme, e.Dataset, e.DatasetSHA256, e.JudgeModel, e.NumExamples); err != nil {
+		INSERT INTO gb_training_eval_run_meta (run_id, trained_model_id, eval, judge_model, num_examples)
+		VALUES (?, ?, ?, ?, ?)`,
+		id, e.TrainedModelID, e.Eval, e.JudgeModel, e.NumExamples); err != nil {
 		return 0, fmt.Errorf("insert trained model eval run: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -55,7 +51,7 @@ func InsertTrainedModelEvalRun(ctx context.Context, d *sql.DB, e model.TrainedMo
 // SaveTrainedModelEvalRunBatch stores the cases of a finished batch (a case result and its metadata each, and the case in the run's
 // experiment if it has one) and the eval run's counters after it (e.ID names the eval run; its judge model, counters, the judge's
 // usage and cost are written), in one transaction. model.ErrNotFound if there is no such eval run.
-func SaveTrainedModelEvalRunBatch(ctx context.Context, d *sql.DB, e model.TrainedModelEvalRun, cases []model.TrainedModelCaseResult) error {
+func SaveTrainedModelEvalRunBatch(ctx context.Context, d *sql.DB, e model.TrainedModelRun, cases []model.TrainedModelCase) error {
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("save eval run batch: %w", err)
@@ -74,7 +70,7 @@ func SaveTrainedModelEvalRunBatch(ctx context.Context, d *sql.DB, e model.Traine
 		return model.ErrNotFound
 	}
 	var eval string
-	if err := tx.QueryRowContext(ctx, `SELECT dataset FROM gb_training_eval_run_meta WHERE run_id = ?`, e.ID).Scan(&eval); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT eval FROM gb_training_eval_run_meta WHERE run_id = ?`, e.ID).Scan(&eval); err != nil {
 		return fmt.Errorf("save eval run batch: %w", err)
 	}
 	now := FormatTime(Now())
@@ -83,7 +79,10 @@ func SaveTrainedModelEvalRunBatch(ctx context.Context, d *sql.DB, e model.Traine
 		if it.Status != model.TrainedModelCaseJudged {
 			status = model.TrainedModelCaseErrored
 		}
-		name := strconv.Itoa(it.Idx)
+		name := it.Name
+		if name == "" {
+			return fmt.Errorf("save eval run case %d: the case has no name", it.Idx)
+		}
 		res, err := tx.ExecContext(ctx, `
 			INSERT INTO gb_experiment_case_results (type, run_id, eval, case_name, status, error, started_at, finished_at)
 			VALUES ('training', ?, ?, ?, ?, ?, ?, ?)`, e.ID, eval, name, status, it.Error, now, now)
@@ -176,20 +175,20 @@ func FailRunningTrainedModelEvalRuns(ctx context.Context, d *sql.DB, reason stri
 	return n, tx.Commit()
 }
 
-// trainedModelEvalRunColumns and trainedModelEvalRunFrom select a model.TrainedModelEvalRun (scanTrainedModelEvalRun): the run r (which holds the
+// trainedModelEvalRunColumns and trainedModelEvalRunFrom select a model.TrainedModelRun (scanTrainedModelEvalRun): the run r (which holds the
 // status, the params and the times) and its training metadata tm.
-const trainedModelEvalRunColumns = `r.id, tm.trained_model_id, r.status, tm.scheme, tm.dataset, tm.dataset_sha256, r.params, tm.judge_model,
+const trainedModelEvalRunColumns = `r.id, tm.trained_model_id, r.status, tm.eval, r.params, tm.judge_model,
 	tm.num_examples, tm.num_answered, tm.num_judged, tm.num_errored, tm.num_correct, tm.num_partial, tm.num_incorrect, tm.score_sum,
 	tm.num_batches, tm.judge_calls, tm.judge_input_tokens, tm.judge_output_tokens, tm.judge_cost_usd, tm.error, r.started_at, r.finished_at`
 
 const trainedModelEvalRunFrom = ` FROM gb_experiment_runs r
 	JOIN gb_training_eval_run_meta tm ON tm.run_id = r.id`
 
-func scanTrainedModelEvalRun(s rowScanner) (*model.TrainedModelEvalRun, error) {
-	var e model.TrainedModelEvalRun
+func scanTrainedModelEvalRun(s rowScanner) (*model.TrainedModelRun, error) {
+	e := model.TrainedModelRun{Kind: model.TrainedModelKindEval}
 	var params, created string
 	var finished sql.NullString
-	if err := s.Scan(&e.ID, &e.TrainedModelID, &e.Status, &e.Scheme, &e.Dataset, &e.DatasetSHA256, &params, &e.JudgeModel, &e.NumExamples,
+	if err := s.Scan(&e.ID, &e.TrainedModelID, &e.Status, &e.Eval, &params, &e.JudgeModel, &e.NumExamples,
 		&e.NumAnswered, &e.NumJudged, &e.NumErrored, &e.NumCorrect, &e.NumPartial, &e.NumIncorrect, &e.ScoreSum, &e.NumBatches,
 		&e.JudgeCalls, &e.JudgeInputTokens, &e.JudgeOutputTokens, &e.JudgeCostUSD, &e.Error, &created, &finished); err != nil {
 		return nil, err
@@ -203,7 +202,7 @@ func scanTrainedModelEvalRun(s rowScanner) (*model.TrainedModelEvalRun, error) {
 }
 
 // GetTrainedModelEvalRun returns the eval run with that ID, or model.ErrNotFound.
-func GetTrainedModelEvalRun(ctx context.Context, d *sql.DB, id int64) (*model.TrainedModelEvalRun, error) {
+func GetTrainedModelEvalRun(ctx context.Context, d *sql.DB, id int64) (*model.TrainedModelRun, error) {
 	e, err := scanTrainedModelEvalRun(d.QueryRowContext(ctx, `SELECT `+trainedModelEvalRunColumns+trainedModelEvalRunFrom+` WHERE r.id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
@@ -212,7 +211,7 @@ func GetTrainedModelEvalRun(ctx context.Context, d *sql.DB, id int64) (*model.Tr
 }
 
 // ListTrainedModelEvalRuns returns the newest eval runs first (of one trained model, or of all for modelID 0), at most limit (all for limit <= 0).
-func ListTrainedModelEvalRuns(ctx context.Context, d *sql.DB, modelID int64, limit int) ([]model.TrainedModelEvalRun, error) {
+func ListTrainedModelEvalRuns(ctx context.Context, d *sql.DB, modelID int64, limit int) ([]model.TrainedModelRun, error) {
 	q := `SELECT ` + trainedModelEvalRunColumns + trainedModelEvalRunFrom
 	var args []any
 	if modelID > 0 {
@@ -229,7 +228,7 @@ func ListTrainedModelEvalRuns(ctx context.Context, d *sql.DB, modelID int64, lim
 		return nil, fmt.Errorf("list trained model eval runs: %w", err)
 	}
 	defer rows.Close()
-	out := []model.TrainedModelEvalRun{}
+	out := []model.TrainedModelRun{}
 	for rows.Next() {
 		e, err := scanTrainedModelEvalRun(rows)
 		if err != nil {
@@ -240,10 +239,10 @@ func ListTrainedModelEvalRuns(ctx context.Context, d *sql.DB, modelID int64, lim
 	return out, rows.Err()
 }
 
-// ListTrainedModelCaseResults returns the cases of an eval run stored so far, in dataset order.
-func ListTrainedModelCaseResults(ctx context.Context, d *sql.DB, evalRunID int64) ([]model.TrainedModelCaseResult, error) {
+// ListTrainedModelEvalCases returns the cases of an eval run stored so far, in dataset order.
+func ListTrainedModelEvalCases(ctx context.Context, d *sql.DB, evalRunID int64) ([]model.TrainedModelCase, error) {
 	rows, err := d.QueryContext(ctx, `
-		SELECT e.id, e.run_id, cm.idx, cm.batch, cm.instruction, cm.input, cm.reference, cm.response,
+		SELECT e.id, e.run_id, cm.idx, e.case_name, cm.batch, cm.instruction, cm.input, cm.reference, cm.response,
 			e.status, e.error, cm.score, cm.reason, cm.input_tokens,
 			cm.output_tokens, cm.duration_ms
 		FROM gb_experiment_case_results e JOIN gb_training_case_meta cm ON cm.case_result_id = e.id
@@ -252,11 +251,11 @@ func ListTrainedModelCaseResults(ctx context.Context, d *sql.DB, evalRunID int64
 		return nil, fmt.Errorf("list trained model eval run cases: %w", err)
 	}
 	defer rows.Close()
-	out := []model.TrainedModelCaseResult{}
+	out := []model.TrainedModelCase{}
 	for rows.Next() {
-		var it model.TrainedModelCaseResult
+		var it model.TrainedModelCase
 		var score sql.NullInt64
-		if err := rows.Scan(&it.ID, &it.EvalRunID, &it.Idx, &it.Batch, &it.Instruction, &it.Input, &it.Reference, &it.Response,
+		if err := rows.Scan(&it.ID, &it.RunID, &it.Idx, &it.Name, &it.Batch, &it.Instruction, &it.Input, &it.Reference, &it.Response,
 			&it.Status, &it.Error, &score, &it.Reason, &it.InputTokens, &it.OutputTokens, &it.DurationMS); err != nil {
 			return nil, err
 		}

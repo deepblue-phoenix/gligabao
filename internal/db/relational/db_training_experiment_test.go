@@ -23,7 +23,7 @@ func trainingExperimentsScenario(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 	newEval := func() int64 {
-		id, err := relational.RecordTrainedModelEvalRun(ctx, d, relational.TrainedModelEvalRun{TrainedModelID: mid, Dataset: "mine", NumExamples: 4})
+		id, err := relational.RecordTrainedModelEvalRun(ctx, d, relational.TrainedModelRun{TrainedModelID: mid, Eval: "mine", NumExamples: 4})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -51,8 +51,8 @@ func trainingExperimentsScenario(t *testing.T, d *sql.DB) {
 	if _, err := relational.StartTrainingExperimentRun(ctx, d, x.ID, e2); err != nil {
 		t.Fatal(err)
 	}
-	e := relational.TrainedModelEvalRun{ID: e1, JudgeModel: "j", NumAnswered: 4, NumJudged: 4, NumCorrect: 3, NumIncorrect: 1, ScoreSum: 16, NumBatches: 1, JudgeCostUSD: 0.25}
-	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, e, []relational.TrainedModelCaseResult{{Idx: 0, Batch: 1, Instruction: "q", Status: relational.TrainedModelCaseErrored}}); err != nil {
+	e := relational.TrainedModelRun{ID: e1, JudgeModel: "j", NumAnswered: 4, NumJudged: 4, NumCorrect: 3, NumIncorrect: 1, ScoreSum: 16, NumBatches: 1, JudgeCostUSD: 0.25}
+	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, e, []relational.TrainedModelCase{{Idx: 0, Name: "c0", Batch: 1, Instruction: "q", Status: relational.TrainedModelCaseErrored}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := relational.FinishTrainedModelEvalRun(ctx, d, e1, relational.TrainedModelRunCompleted, ""); err != nil {

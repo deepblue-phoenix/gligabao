@@ -1,26 +1,33 @@
 // Command training runs the evals of a trained model (evals/training/evals/*.json) from the command line: the model is asked
 // each case's question through the sidecar, and the LLM judge (the one used for knowledge ingestion) scores its answer
-// against the case's expected answer, as the Eval button of the admin UI does (see ../README.md).
+// against the case's expected answer. It is the Eval button of the admin UI (POST /v1/gb/training/models/{id}/evals) without the
+// server: the same eval, the same questions to the model, the same judge, and the run is stored in the database the same way
+// (an eval run with its cases, which the admin UI shows), unless -no-store is given (see ../README.md).
 //
 // Usage: go run ./evals/training/cmd -model ID [-v] [-eval name] [case-name ...]   (requires ANTHROPIC_API_KEY and a running sidecar)
+// Without -eval the eval is the one named like the model's training dataset, as for the button.
 // -list-evals prints the available evals and exits; -list-models prints the trained models of the database and exits.
-// The results are printed, not stored. The exit status is 1 if any case is not correct (score below 4) or failed.
+// The results are printed and stored. The exit status is 1 if any case is not correct (score below 4) or errored.
 package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 
 	trainingeval "github.com/deepblue-phoenix/gligabao/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
 )
 
@@ -33,7 +40,8 @@ func main() {
 
 func mainErr() error {
 	verbose := flag.Bool("v", false, "print the question, the expected answer, the model's answer and the judge's reason of every case")
-	eval := flag.String("eval", "", "run only the cases of this eval (file name without .json; see -list-evals)")
+	eval := flag.String("eval", "", "the eval to run (file name without .json; see -list-evals; default: the eval named like the model's training dataset)")
+	noStore := flag.Bool("no-store", false, "do not store the run in the database")
 	listEvals := flag.Bool("list-evals", false, "print the available evals and their cases, then exit")
 	listModels := flag.Bool("list-models", false, "print the trained models of the database (the ids -model takes), then exit")
 	modelID := flag.Int64("model", 0, "id of the trained model to evaluate (see -list-models)")
@@ -47,10 +55,6 @@ func mainErr() error {
 
 	if *listEvals {
 		return printEvals(os.Stdout)
-	}
-	cases, err := trainingeval.LoadEvals(flag.Args(), *eval)
-	if err != nil {
-		return err
 	}
 	cfg, err := trainingeval.Config{BatchSize: *batchSize, JudgeModel: *judgeModel}.Normalize()
 	if err != nil {
@@ -88,11 +92,21 @@ func mainErr() error {
 	if err != nil {
 		return fmt.Errorf("trained model %d: %w", *modelID, err)
 	}
+	name := *eval
+	if name == "" {
+		if name = strings.TrimSuffix(tm.Dataset, ".jsonl"); name == "" || !slices.Contains(trainingeval.EvalNames(), name) {
+			return fmt.Errorf("no eval is named like the training dataset of model %d: use -eval (%s)", tm.ID, strings.Join(trainingeval.EvalNames(), ", "))
+		}
+	}
+	cases, err := trainingeval.LoadEvals(flag.Args(), name)
+	if err != nil {
+		return err
+	}
 	key := os.Getenv("ANTHROPIC_API_KEY")
 	if key == "" {
 		return errors.New("ANTHROPIC_API_KEY must be set to run evals")
 	}
-	judge, err := ai.New(key)
+	judgeLLM, err := ai.New(key)
 	if err != nil {
 		return err
 	}
@@ -101,26 +115,43 @@ func mainErr() error {
 		return err
 	}
 
-	gen := func(ctx context.Context, prompt string) (trainingeval.Generation, error) {
-		out, err := sc.Infer(ctx, sidecar.InferRequest{Prompt: prompt, ModelSize: tm.ModelSize, ModelPath: tm.Path,
-			MaxTokens: *maxTokens, Temperature: temperature})
-		if err != nil {
-			var ie *sidecar.InferError
-			if errors.As(err, &ie) {
-				return trainingeval.Generation{}, errors.New(ie.Message)
-			}
-			return trainingeval.Generation{}, err
-		}
-		return trainingeval.Generation{Response: out.Response, InputTokens: out.InputTokens, OutputTokens: out.OutputTokens}, nil
+	params := training.RunParams{BatchSize: cfg.BatchSize, MaxTokens: *maxTokens, Temperature: *temperature}
+	if len(flag.Args()) > 0 {
+		params.Cases = flag.Args()
 	}
-	examples := make([]trainingeval.Example, len(cases))
+	gen := training.Generator(sc, tm, params)
+	examples, names := make([]trainingeval.Example, len(cases)), make([]string, len(cases))
 	for i, c := range cases {
-		examples[i] = c.Example()
+		examples[i], names[i] = c.Example(), c.Name
 	}
-	fmt.Printf("model %d %q (%s): %d cases\n", tm.ID, tm.Name, tm.ModelSize, len(cases))
+	fmt.Printf("model %d %q (%s): eval %s, %d cases\n", tm.ID, tm.Name, tm.ModelSize, name, len(cases))
+
+	// The run is stored like the server's (the admin UI shows it); the judge's calls are recorded as the server's are.
+	var runID int64
+	if !*noStore {
+		pj, _ := json.Marshal(params)
+		if runID, err = relational.RecordTrainedModelEvalRun(ctx, database.Relational, relational.TrainedModelRun{
+			TrainedModelID: tm.ID, Eval: name, Params: pj, JudgeModel: cfg.JudgeModel, NumExamples: len(cases)}); err != nil {
+			return err
+		}
+		fmt.Printf("stored as eval run #%d\n", runID)
+	}
+	llm := memory_core.LLM(judgeLLM)
+	if !*noStore {
+		llm = memory_core.WithRecording(judgeLLM, database.Relational, training.CallEvalJudge)
+	}
 
 	failed := 0
-	sink := func(_ context.Context, results []trainingeval.CaseResult, _ trainingeval.Progress) error {
+	sink := func(_ context.Context, results []trainingeval.CaseResult, p trainingeval.Progress) error {
+		if !*noStore {
+			rows := make([]relational.TrainedModelCase, len(results))
+			for i, r := range results {
+				rows[i] = training.CaseRow(runID, names, r)
+			}
+			if err := relational.SaveTrainedModelEvalRunBatch(context.WithoutCancel(ctx), database.Relational, training.RunProgress(runID, p), rows); err != nil {
+				return err
+			}
+		}
 		for _, r := range results {
 			c := cases[r.Idx]
 			verdict := "FAIL"
@@ -139,11 +170,23 @@ func mainErr() error {
 		}
 		return nil
 	}
-	p, err := trainingeval.Run(ctx, cfg, examples, gen, judge, sink)
+	p, err := trainingeval.Run(memory_core.WithStage(ctx, training.StageJudge), cfg, examples, gen, llm, sink)
+	if !*noStore {
+		status, errText := relational.TrainedModelRunCompleted, ""
+		switch {
+		case errors.Is(err, context.Canceled):
+			status = relational.TrainedModelRunCancelled
+		case err != nil:
+			status, errText = relational.TrainedModelRunErrored, err.Error()
+		}
+		if ferr := relational.FinishTrainedModelEvalRun(context.WithoutCancel(ctx), database.Relational, runID, status, errText); ferr != nil {
+			fmt.Fprintln(os.Stderr, "error: ending the stored run:", ferr)
+		}
+	}
 	if err != nil {
 		return err
 	}
-	fmt.Printf("---\ncorrect: %d, partial: %d, incorrect: %d, failed: %d; mean score %.2f / %d; judge cost $%.6f\n",
+	fmt.Printf("---\ncorrect: %d, partial: %d, incorrect: %d, errored: %d; mean score %.2f / %d; judge cost $%.6f\n",
 		p.Correct, p.Partial, p.Incorrect, p.Errored, p.MeanScore(), trainingeval.MaxScore, p.JudgeCostUSD)
 	if failed > 0 {
 		os.Exit(1)

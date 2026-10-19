@@ -11,24 +11,26 @@ export type RunStatus = (typeof RunStatus)[keyof typeof RunStatus];
 export const CaseStatus = { judged: "judged", error: "error", answered: "answered" } as const; // answered: only in the live feed
 export type CaseStatus = (typeof CaseStatus)[keyof typeof CaseStatus];
 
-export interface EvalRun {
-  id: number; trained_model_id: number; status: RunStatus; dataset: string; dataset_sha256: string;
+// A run of a trained model, of either kind (relational.TrainedModelRun). An eval run has `eval` (the eval whose cases were asked); an
+// audit run has `dataset` and `dataset_sha256` (the training dataset whose examples were asked).
+export interface TrainedModelRun {
+  id: number; trained_model_id: number; kind: "eval" | "audit"; status: RunStatus; eval?: string; dataset?: string; dataset_sha256?: string;
   params: { batch_size?: number; max_tokens?: number; temperature?: number; limit?: number };
   judge_model: string; num_examples: number; num_answered: number; num_judged: number; num_errored: number; num_correct: number;
   num_partial: number; num_incorrect: number; score_sum: number; num_batches: number; judge_calls: number; judge_input_tokens: number;
   judge_output_tokens: number; judge_cost_usd: number; error: string; created_at: string; finished_at: string | null;
 }
-export interface EvalCase {
-  idx: number; batch: number; instruction: string; input: string; reference: string; response: string;
+// One case of a run (relational.TrainedModelCase); an eval's cases have a `name`, an audit's (dataset examples) have none.
+export interface TrainedModelCase {
+  idx: number; name?: string; batch: number; instruction: string; input: string; reference: string; response: string;
   // CaseStatus.answered: the model answered and the judge has not scored it yet (only in the live feed)
   status: CaseStatus;
   error: string; score: number | null; reason: string; input_tokens: number; output_tokens: number; duration_ms: number;
 }
 // The two kinds of run of a trained model: a training data audit (URL segment "audits") and an eval ("evals"). The runs of both
-// have the shape of EvalRun, and their cases that of EvalCase.
+// have the shape of TrainedModelRun, and their cases that of TrainedModelCase, and the feed's events are the same for both.
 export type RunKind = "audits" | "evals";
-// A feed event carries the run under the key of its kind: "audit" or "eval".
-interface FeedEvent { type: "snapshot" | "answer" | "batch" | "end"; audit?: EvalRun; eval?: EvalRun; cases?: EvalCase[] }
+interface FeedEvent { type: "snapshot" | "answer" | "batch" | "end"; run?: TrainedModelRun; cases?: TrainedModelCase[] }
 
 const MAX_SCORE = 5; // the judge's scale: 0 to 5
 
@@ -46,16 +48,16 @@ function node<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""
 
 // How an case is doing: pending (answered, awaiting the judge), good (4-5), mid (2-3), bad (0-1) or error.
 type Verdict = "pending" | "good" | "mid" | "bad" | "error";
-const verdictOf = (i: EvalCase): Verdict =>
+const verdictOf = (i: TrainedModelCase): Verdict =>
   i.status === CaseStatus.error ? "error" : i.status === CaseStatus.answered || i.score === null ? "pending" : i.score >= 4 ? "good" : i.score >= 2 ? "mid" : "bad";
 
 // What the open dialog follows.
 let stream: EventSource | undefined;
 let watching = -1;
 let watchingKind: RunKind = "audits";
-let run: EvalRun | undefined;
+let run: TrainedModelRun | undefined;
 let ended = false;
-let cases = new Map<number, EvalCase>();
+let cases = new Map<number, TrainedModelCase>();
 let cards = new Map<number, HTMLElement>();
 let squares: HTMLElement[] = [];
 let onChange: (() => void) | undefined;
@@ -95,12 +97,13 @@ function textBlock(label: string, text: string, cls = ""): HTMLElement {
   return box;
 }
 
-function buildCard(i: EvalCase): HTMLElement {
+function buildCard(i: TrainedModelCase): HTMLElement {
   const v = verdictOf(i);
   const card = node("article", `ev-card ev-${v}`);
   card.dataset.idx = String(i.idx);
   const head = node("div", "ev-head");
   head.append(node("span", "ev-num", `#${i.idx + 1}`));
+  if (i.name) head.append(node("span", "ev-name", i.name));
   if (v === "pending") head.append(node("span", ended ? "badge badge-unknown" : "badge badge-active", ended ? "not judged" : "answered · awaiting judge"));
   else if (v === "error") head.append(node("span", "badge badge-error", "error"));
   else head.append(node("span", `ev-score score-${v}`, `${i.score} / ${MAX_SCORE}`));
@@ -109,7 +112,7 @@ function buildCard(i: EvalCase): HTMLElement {
   card.append(head);
   card.append(textBlock("Question", i.input ? `${i.instruction}\n\n${i.input}` : i.instruction, "ev-question"));
   const cols = node("div", "ev-cols");
-  cols.append(textBlock("Dataset answer", i.reference), textBlock("Model answer", i.status === CaseStatus.error && !i.response ? "(no answer)" : i.response === "" ? "(empty)" : i.response, "ev-model"));
+  cols.append(textBlock(watchingKind === "evals" ? "Expected answer" : "Dataset answer", i.reference), textBlock("Model answer", i.status === CaseStatus.error && !i.response ? "(no answer)" : i.response === "" ? "(empty)" : i.response, "ev-model"));
   card.append(cols);
   if (i.status === CaseStatus.error) card.append(node("div", "error ev-reason", i.error));
   else if (i.reason) card.append(node("div", "muted ev-reason", `Judge: ${i.reason}`));
@@ -117,7 +120,7 @@ function buildCard(i: EvalCase): HTMLElement {
 }
 
 // Adds or updates cases. A judged or errored case is never turned back into an answered one (a reconnect's snapshot can race the feed).
-function apply(list: EvalCase[]): void {
+function apply(list: TrainedModelCase[]): void {
   const feed = el("eval-live-feed");
   const follow = el<HTMLInputElement>("eval-live-follow").checked;
   for (const i of list) {
@@ -180,7 +183,7 @@ function drawSummary(): void {
   }
 }
 
-function setRun(r: EvalRun): void {
+function setRun(r: TrainedModelRun): void {
   const first = run === undefined || run.num_examples !== r.num_examples;
   run = r;
   if (first) { // one square per question, to see the whole run at a glance
@@ -224,11 +227,8 @@ export function watchEval(kind: RunKind, id: number, title: string, cb?: () => v
   conn.textContent = "Connecting…";
   es.onopen = () => { conn.textContent = "Live."; };
   es.onerror = () => { conn.textContent = "Connection lost, reconnecting…"; }; // EventSource retries; a new snapshot catches up
-  const on = (type: FeedEvent["type"], fn: (e: FeedEvent & { run?: EvalRun }) => void): void =>
-    es.addEventListener(type, (m) => {
-      const e = JSON.parse((m as MessageEvent<string>).data) as FeedEvent;
-      fn({ ...e, run: kind === "audits" ? e.audit : e.eval });
-    });
+  const on = (type: FeedEvent["type"], fn: (e: FeedEvent) => void): void =>
+    es.addEventListener(type, (m) => fn(JSON.parse((m as MessageEvent<string>).data) as FeedEvent));
   on("snapshot", (e) => {
     if (e.run) setRun(e.run);
     apply(e.cases ?? []);

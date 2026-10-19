@@ -22,16 +22,16 @@ type TrainingExperiment struct {
 	NumRuns int `json:"num_runs"`
 }
 
-// TrainingExperimentRun is one run of a training experiment: an eval run (TrainedModelEvalRun) of one trained model. The run
+// TrainingExperimentRun is one run of a training experiment: an eval run (a TrainedModelRun of kind eval) of one trained model. The run
 // holds the link; EvalRun is the eval run as it is now (status, counters, score and the judge's cost, so a running run shows its
 // progress) and Model the model that was evaluated.
 type TrainingExperimentRun struct {
 	ID           int64 `json:"id"` // the same as EvalRun.ID: the eval run is the run
 	ExperimentID int64 `json:"experiment_id"`
-	// Status is the eval run's status (TrainedModelRunRunning, ...Completed, ...Failed or ...Cancelled).
+	// Status is the eval run's status (TrainedModelRunRunning, ...Completed, ...Errored or ...Cancelled).
 	Status    string                  `json:"status"`
 	CreatedAt time.Time               `json:"created_at"`
-	EvalRun   TrainedModelEvalRun     `json:"eval"`
+	EvalRun   TrainedModelRun         `json:"eval"`
 	Model     TrainingExperimentModel `json:"model"`
 	// MeanScore is the mean judge score (0 to 5) of the judged answers and CorrectRate the share of them that is correct
 	// (a score of 4 or 5); both are nil while nothing is judged.

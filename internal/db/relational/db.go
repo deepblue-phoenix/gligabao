@@ -18,34 +18,32 @@ import (
 
 // Types shared with the backends (see package model).
 type (
-	Dataset                = model.Dataset
-	Model                  = model.Model
-	Inference              = model.Inference
-	InferenceStat          = model.InferenceStat
-	InferenceFilter        = model.InferenceFilter
-	InferenceGroup         = model.InferenceGroup
-	Ontology               = model.Ontology
-	Experiment             = model.Experiment
-	CaseRef                = model.CaseRef
-	ExperimentRun          = model.ExperimentRun
-	ExperimentCaseResult   = model.ExperimentCaseResult
-	ExperimentTrajectory   = model.ExperimentTrajectory
-	ExperimentArtifact     = model.ExperimentArtifact
-	RememberRun            = model.RememberRun
-	RememberStage          = model.RememberStage
-	RememberStageDef       = model.RememberStageDef
-	RememberRunFilter      = model.RememberRunFilter
-	TrainingJobRun         = model.TrainingJobRun
-	TrainingJobRunUpdate   = model.TrainingJobRunUpdate
-	TrainingJobEvent       = model.TrainingJobEvent
-	TrainingDataset        = model.TrainingDataset
-	TrainedModel           = model.TrainedModel
-	TrainedModelFile       = model.TrainedModelFile
-	TrainedModelInference  = model.TrainedModelInference
-	TrainedModelEvalRun    = model.TrainedModelEvalRun
-	TrainedModelCaseResult = model.TrainedModelCaseResult
-	TrainedModelAuditRun   = model.TrainedModelAuditRun
-	TrainedModelAuditCase  = model.TrainedModelAuditCase
+	Dataset               = model.Dataset
+	Model                 = model.Model
+	Inference             = model.Inference
+	InferenceStat         = model.InferenceStat
+	InferenceFilter       = model.InferenceFilter
+	InferenceGroup        = model.InferenceGroup
+	Ontology              = model.Ontology
+	Experiment            = model.Experiment
+	CaseRef               = model.CaseRef
+	ExperimentRun         = model.ExperimentRun
+	ExperimentCaseResult  = model.ExperimentCaseResult
+	ExperimentTrajectory  = model.ExperimentTrajectory
+	ExperimentArtifact    = model.ExperimentArtifact
+	RememberRun           = model.RememberRun
+	RememberStage         = model.RememberStage
+	RememberStageDef      = model.RememberStageDef
+	RememberRunFilter     = model.RememberRunFilter
+	TrainingJobRun        = model.TrainingJobRun
+	TrainingJobRunUpdate  = model.TrainingJobRunUpdate
+	TrainingJobEvent      = model.TrainingJobEvent
+	TrainingDataset       = model.TrainingDataset
+	TrainedModel          = model.TrainedModel
+	TrainedModelFile      = model.TrainedModelFile
+	TrainedModelInference = model.TrainedModelInference
+	TrainedModelRun       = model.TrainedModelRun
+	TrainedModelCase      = model.TrainedModelCase
 
 	TrainingExperiment      = model.TrainingExperiment
 	TrainingExperimentRun   = model.TrainingExperimentRun
@@ -63,9 +61,10 @@ const (
 	TrainedModelCaseAnswered = model.TrainedModelCaseAnswered
 )
 
-// Eval schemes of a TrainedModelEvalRun (see model.TrainingSchemeFineTuneDataset).
+// The kinds of TrainedModelRun.
 const (
-	TrainingSchemeFineTuneDataset = model.TrainingSchemeFineTuneDataset
+	TrainedModelKindEval  = model.TrainedModelKindEval
+	TrainedModelKindAudit = model.TrainedModelKindAudit
 )
 
 // Statuses of a TrainedModelInference.

@@ -11,12 +11,12 @@ func TestLoadEvals(t *testing.T) {
 		t.Fatalf("got %d cases, want 10", len(cases))
 	}
 	for _, c := range cases {
-		if c.Eval != "world_knowledge_base" || c.Example().Prompt() == "" || c.Output == "" {
+		if c.Eval != "world-knowledge-base" || c.Example().Prompt() == "" || c.Output == "" {
 			t.Errorf("bad case %+v", c)
 		}
 	}
 
-	one, err := LoadEvals([]string{"maastricht-treaty"}, "world_knowledge_base")
+	one, err := LoadEvals([]string{"maastricht-treaty"}, "world-knowledge-base")
 	if err != nil || len(one) != 1 {
 		t.Fatalf("one case: %v, %v", one, err)
 	}

@@ -275,7 +275,7 @@
         <p id="model-audits-status" class="muted"></p>
         <div id="model-audits"></div>
         <h3>Evals</h3>
-        <p class="muted">The model is asked the questions of an eval and an LLM judges its answers against the expected ones, a batch of question/answer pairs per LLM call. Evals are for cases the model never saw; for now the server's eval still reads the model's training dataset (use the audit above for that).</p>
+        <p class="muted">The model is asked the cases of an <b>eval</b>, a named set of questions with the answers expected, and an LLM judges its answers against them, a batch of question/answer pairs per LLM call. The cases are ones the model never saw, so this measures how well it generalizes; the eval named like the model's training dataset is the default.</p>
         <div id="model-evals-form" class="row training-form"></div>
         <p id="model-evals-status" class="muted"></p>
         <div id="model-evals"></div>

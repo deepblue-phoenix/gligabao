@@ -16,7 +16,7 @@ import (
 
 // RecordTrainedModelAuditRun stores a new audit run (status "running" unless a.Status says otherwise) and returns its ID. a.ID,
 // a.CreatedAt and a.FinishedAt are ignored.
-func RecordTrainedModelAuditRun(ctx context.Context, d *sql.DB, a TrainedModelAuditRun) (int64, error) {
+func RecordTrainedModelAuditRun(ctx context.Context, d *sql.DB, a TrainedModelRun) (int64, error) {
 	if a.Status == "" {
 		a.Status = TrainedModelRunRunning
 	}
@@ -31,7 +31,7 @@ func RecordTrainedModelAuditRun(ctx context.Context, d *sql.DB, a TrainedModelAu
 
 // SaveTrainedModelAuditRunBatch stores the cases of a finished judge batch and the audit run's counters after it (a.ID names the
 // audit run; its JudgeModel, counters and the judge's usage are written), atomically. ErrNotFound if there is no such audit run.
-func SaveTrainedModelAuditRunBatch(ctx context.Context, d *sql.DB, a TrainedModelAuditRun, cases []TrainedModelAuditCase) error {
+func SaveTrainedModelAuditRunBatch(ctx context.Context, d *sql.DB, a TrainedModelRun, cases []TrainedModelCase) error {
 	switch backend() {
 	case config.DBBackendSQLite:
 		return sqlite.SaveTrainedModelAuditRunBatch(ctx, d, a, cases)
@@ -66,7 +66,7 @@ func FailRunningTrainedModelAuditRuns(ctx context.Context, d *sql.DB, reason str
 }
 
 // GetTrainedModelAuditRun returns the audit run with that ID, or ErrNotFound.
-func GetTrainedModelAuditRun(ctx context.Context, d *sql.DB, id int64) (*TrainedModelAuditRun, error) {
+func GetTrainedModelAuditRun(ctx context.Context, d *sql.DB, id int64) (*TrainedModelRun, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
 		return sqlite.GetTrainedModelAuditRun(ctx, d, id)
@@ -78,7 +78,7 @@ func GetTrainedModelAuditRun(ctx context.Context, d *sql.DB, id int64) (*Trained
 
 // ListTrainedModelAuditRuns returns the newest audit runs first, at most limit of them (all for limit <= 0): those of trained model
 // modelID, or of every model when modelID is 0.
-func ListTrainedModelAuditRuns(ctx context.Context, d *sql.DB, modelID int64, limit int) ([]TrainedModelAuditRun, error) {
+func ListTrainedModelAuditRuns(ctx context.Context, d *sql.DB, modelID int64, limit int) ([]TrainedModelRun, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
 		return sqlite.ListTrainedModelAuditRuns(ctx, d, modelID, limit)
@@ -89,7 +89,7 @@ func ListTrainedModelAuditRuns(ctx context.Context, d *sql.DB, modelID int64, li
 }
 
 // ListTrainedModelAuditCases returns the cases of an audit run stored so far (one per example whose judge batch is done), in dataset order.
-func ListTrainedModelAuditCases(ctx context.Context, d *sql.DB, auditRunID int64) ([]TrainedModelAuditCase, error) {
+func ListTrainedModelAuditCases(ctx context.Context, d *sql.DB, auditRunID int64) ([]TrainedModelCase, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
 		return sqlite.ListTrainedModelAuditCases(ctx, d, auditRunID)

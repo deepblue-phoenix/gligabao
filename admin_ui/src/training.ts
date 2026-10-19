@@ -3,7 +3,7 @@
 // server as SSE (../training/events), which forwards what the sidecar reports; d3 is loaded as a global by index.html.
 
 import { alertDialog, confirmDialog } from "./dialogs.js";
-import { CaseStatus, RunStatus, initEvalLive, watchEval, type EvalCase, type EvalRun } from "./eval_live.js";
+import { CaseStatus, RunStatus, initEvalLive, watchEval, type TrainedModelCase, type TrainedModelRun } from "./eval_live.js";
 import { initActionModal, showActionLog, startAction, type ActionState } from "./actions.js";
 
 declare const d3: typeof import("d3");
@@ -509,7 +509,8 @@ async function infer(m: TrainedModel, prompt: string, maxTokens: number, tempera
 // pairs per call, and the server runs them in the background and stores their progress, so the dialog just polls while one runs.
 //   - an AUDIT asks the model the questions of its OWN training dataset (the cases are things it was trained on): it checks that the
 //     training took and finds bad training data; it measures memorization and fit, not generalization.
-//   - an EVAL is meant for cases the model never saw. The server's eval still reads the model's training dataset for now.
+//   - an EVAL asks the cases of an eval (a named set of questions with the answers expected, served by ../training/eval-definitions), which
+//     the model never saw: it measures how well the model generalizes. The eval named like the model's dataset is the default.
 // They share the code below; a RunKind holds what differs (URLs, words, elements) and the state of one list in the dialog.
 
 interface RunKind {
@@ -517,13 +518,12 @@ interface RunKind {
   noun: string; // "audit" or "eval"
   button: string; // the label of its button
   formId: string; statusId: string; listId: string; // the elements of the dialog's section
-  runs: EvalRun[];
+  runs: TrainedModelRun[];
   timer: number | undefined;
   open: Set<number>; // runs whose answers are expanded
-  cases: Map<number, EvalCase[]>; // their answers, as last fetched
+  cases: Map<number, TrainedModelCase[]>; // their answers, as last fetched
   status: HTMLElement | undefined; // the message line of the dialog's form
   listKey: "audits" | "evals"; // the key of the list in GET .../models/{id}/<path>
-  oneKey: "audit" | "eval"; // the key of the run in GET .../<path>/{id}
   // What the button asks, as a tooltip, and what the "dataset changed" badge means.
   tip: (dataset: string) => string;
 }
@@ -533,21 +533,23 @@ const newKind = (k: Omit<RunKind, "runs" | "timer" | "open" | "cases" | "status"
   ({ ...k, runs: [], timer: undefined, open: new Set(), cases: new Map(), status: undefined });
 const AUDIT = newKind({
   path: "audits", noun: "audit", button: "Audit", formId: "model-audits-form", statusId: "model-audits-status", listId: "model-audits",
-  listKey: "audits", oneKey: "audit",
+  listKey: "audits",
   tip: (dataset) => `Ask this model the questions of its own training dataset ${dataset} and have the LLM judge how closely its answers reproduce the dataset's`,
 });
 const EVAL = newKind({
   path: "evals", noun: "eval", button: "Eval", formId: "model-evals-form", statusId: "model-evals-status", listId: "model-evals",
-  listKey: "evals", oneKey: "eval",
-  tip: (dataset) => `Ask this model the questions of ${dataset} and have the LLM judge its answers`,
+  listKey: "evals",
+  tip: (dataset) => `Ask this model the questions of the eval named ${dataset} (cases it never saw) and have the LLM judge its answers`,
 });
 const KINDS: RunKind[] = [AUDIT, EVAL];
 
-const runRunning = (e: EvalRun): boolean => e.status === RunStatus.running;
-const runMean = (e: EvalRun): number | null => (e.num_judged > 0 ? e.score_sum / e.num_judged : null);
+// What a run asked: its eval (an eval run) or its training dataset (an audit run).
+const runSource = (e: TrainedModelRun): string => e.eval ?? e.dataset ?? "";
+const runRunning = (e: TrainedModelRun): boolean => e.status === RunStatus.running;
+const runMean = (e: TrainedModelRun): number | null => (e.num_judged > 0 ? e.score_sum / e.num_judged : null);
 
 // Starts a run of kind k on model m (the options the server understands: limit, batch_size, ...) and opens its dialog to follow it.
-async function startRun(k: RunKind, m: TrainedModel, opts: { limit?: number; batch_size?: number }): Promise<void> {
+async function startRun(k: RunKind, m: TrainedModel, opts: { limit?: number; batch_size?: number; eval?: string }): Promise<void> {
   const say = (text: string, cls: string): void => {
     for (const e of [el("training-models-status"), k.status]) if (e?.isConnected) { e.className = cls; e.textContent = text; }
   };
@@ -557,7 +559,7 @@ async function startRun(k: RunKind, m: TrainedModel, opts: { limit?: number; bat
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(opts),
     });
     if (!res.ok) throw await failure(res);
-    const started = (await res.json()) as EvalRun;
+    const started = (await res.json()) as TrainedModelRun;
     k.open.add(started.id);
     if (selectedModel !== m.id) selectModel(m.id);
     else await loadRuns(k, m.id);
@@ -583,27 +585,63 @@ async function cancelRun(kind: RunKindPath, id: number): Promise<void> {
 }
 
 // Opens the live view of a run: its questions and the model's answers as they come, then their scores.
-function openRunLive(k: RunKind, e: EvalRun, m?: TrainedModel): void {
+function openRunLive(k: RunKind, e: TrainedModelRun, m?: TrainedModel): void {
   const model = m ?? models.find((x) => x.id === e.trained_model_id);
-  watchEval(k.path, e.id, `${capital(k.noun)} #${e.id} · ${model ? `${model.name} (#${model.id})` : `model #${e.trained_model_id}`} · ${e.dataset}`,
+  watchEval(k.path, e.id, `${capital(k.noun)} #${e.id} · ${model ? `${model.name} (#${model.id})` : `model #${e.trained_model_id}`} · ${runSource(e)}`,
     () => { if (selectedModel !== null) void loadRuns(k, selectedModel); });
 }
 
-// The form above the list: how many questions (blank = all of the dataset), the judge's batch size, and the run button.
+// The evals the server can run (GET ../training/eval-definitions), fetched once.
+interface EvalDefinition { name: string; cases: { name: string }[] }
+let evalDefinitions: Promise<EvalDefinition[]> | undefined;
+function loadEvalDefinitions(): Promise<EvalDefinition[]> {
+  evalDefinitions ??= fetch("../training/eval-definitions")
+    .then(async (res) => { if (!res.ok) throw await failure(res); return ((await res.json()) as { evals: EvalDefinition[] }).evals ?? []; })
+    .catch((err) => { evalDefinitions = undefined; throw err; });
+  return evalDefinitions;
+}
+
+// The form above the list: how many questions (blank = all of the eval's or the dataset's), the judge's batch size, and the run
+// button; an eval's also has the choice of the eval, the one named like the model's dataset by default.
 function renderRunForm(k: RunKind, m: TrainedModel): void {
+  const isEval = k.path === "evals";
   const limit = node("input");
-  limit.type = "number"; limit.min = "1"; limit.step = "1"; limit.placeholder = m.num_examples ? `all (${m.num_examples})` : "all";
+  limit.type = "number"; limit.min = "1"; limit.step = "1"; limit.placeholder = !isEval && m.num_examples ? `all (${m.num_examples})` : "all";
   const batch = node("input");
   batch.type = "number"; batch.value = "10"; batch.min = "1"; batch.max = "25"; batch.step = "1";
   batch.title = "Question/answer pairs sent to the judge LLM in one call";
   const run = node("button", "", k.button);
   run.type = "button";
-  run.disabled = !m.dataset;
   const status = node("span", "muted");
   k.status = status;
-  if (!m.dataset) status.textContent = "This model was trained on the sidecar's default dataset: there are no questions to ask.";
+  const evalSelect = node("select");
+  const labelled = (text: string, input: HTMLElement): HTMLElement => { const l = node("label", "", text); l.append(input); return l; };
+  const fields = [labelled("Questions", limit), labelled("Judge batch size", batch), run, status];
+  if (isEval) {
+    fields.unshift(labelled("Eval", evalSelect));
+    run.disabled = true;
+    status.textContent = "Loading the evals…";
+    void loadEvalDefinitions().then((defs) => {
+      if (!evalSelect.isConnected) return;
+      const own = m.dataset.replace(/\.jsonl$/, "");
+      if (!defs.some((d) => d.name === own)) evalSelect.append(new Option("Choose an eval…", ""));
+      for (const d of defs) evalSelect.append(new Option(`${d.name} (${d.cases.length} cases)`, d.name, false, d.name === own));
+      const sync = (): void => {
+        const d = defs.find((x) => x.name === evalSelect.value);
+        limit.placeholder = d ? `all (${d.cases.length})` : "all";
+        run.disabled = !d;
+      };
+      evalSelect.addEventListener("change", sync);
+      sync();
+      status.textContent = defs.length === 0 ? "The server has no evals." : "";
+    }).catch((err) => { status.className = "error"; status.textContent = `Could not load the evals: ${errText(err)}`; });
+  } else {
+    run.disabled = !m.dataset;
+    if (!m.dataset) status.textContent = "This model was trained on the sidecar's default dataset: there are no questions to ask.";
+  }
   run.addEventListener("click", () => {
-    const opts: { limit?: number; batch_size?: number } = {};
+    const opts: { limit?: number; batch_size?: number; eval?: string } = {};
+    if (isEval) opts.eval = evalSelect.value;
     if (limit.value.trim() !== "") {
       const n = Number.parseInt(limit.value, 10);
       if (!Number.isInteger(n) || n < 1) { status.className = "error"; status.textContent = "Questions must be a positive integer (or blank for all)."; return; }
@@ -614,8 +652,7 @@ function renderRunForm(k: RunKind, m: TrainedModel): void {
     opts.batch_size = b;
     void startRun(k, m, opts);
   });
-  const labelled = (text: string, input: HTMLElement): HTMLElement => { const l = node("label", "", text); l.append(input); return l; };
-  el(k.formId).replaceChildren(labelled("Questions", limit), labelled("Judge batch size", batch), run, status);
+  el(k.formId).replaceChildren(...fields);
 }
 
 async function loadRuns(k: RunKind, modelID: number): Promise<void> {
@@ -624,11 +661,11 @@ async function loadRuns(k: RunKind, modelID: number): Promise<void> {
   try {
     const res = await fetch(`../training/models/${modelID}/${k.path}`);
     if (!res.ok) throw await failure(res);
-    const list = ((await res.json()) as Record<string, EvalRun[]>)[k.listKey] ?? [];
+    const list = ((await res.json()) as Record<string, TrainedModelRun[]>)[k.listKey] ?? [];
     // The answers of the expanded runs: the ones of a running run grow, so they are fetched again each time.
     await Promise.all(list.filter((e) => k.open.has(e.id) && (runRunning(e) || !k.cases.has(e.id))).map(async (e) => {
       const r = await fetch(`../training/${k.path}/${e.id}`);
-      if (r.ok) k.cases.set(e.id, ((await r.json()) as { cases: EvalCase[] }).cases ?? []);
+      if (r.ok) k.cases.set(e.id, ((await r.json()) as { cases: TrainedModelCase[] }).cases ?? []);
     }));
     if (selectedModel !== modelID) return; // another model, or closed, while loading
     k.runs = list;
@@ -661,7 +698,7 @@ function renderRuns(k: RunKind): void {
     const item = node("article", "infer-item eval-card");
     const head = node("div", "infer-head");
     head.append(evalBadge(e.status), node("span", "muted", `#${e.id} · ${fmtTime(e.created_at)} UTC`),
-      node("span", "muted", `${e.dataset} · batches of ${e.params.batch_size ?? "?"}${e.params.limit ? ` · first ${e.params.limit} questions` : ""}`));
+      node("span", "muted", `${runSource(e)} · batches of ${e.params.batch_size ?? "?"}${e.params.limit ? ` · first ${e.params.limit} questions` : ""}`));
     if (m && m.dataset_sha256 && e.dataset_sha256 && m.dataset_sha256 !== e.dataset_sha256) {
       const warn = node("span", "badge badge-unknown", "dataset changed since training");
       warn.title = `The dataset file read by this ${k.noun} is not the one the model was trained on (its sha256 differs)`;
@@ -706,26 +743,28 @@ function renderRuns(k: RunKind): void {
       if (details.open === k.open.has(e.id)) return;
       if (details.open) { k.open.add(e.id); if (selectedModel !== null) void loadRuns(k, selectedModel); } else k.open.delete(e.id);
     });
-    if (details.open) details.append(runCasesTable(k.cases.get(e.id)));
+    if (details.open) details.append(runCasesTable(k, k.cases.get(e.id)));
     item.append(details);
     box.append(item);
   }
 }
 
-// The answers of a run, the worst first: the question, the dataset's answer, the model's, the score and the judge's reason.
-function runCasesTable(cases: EvalCase[] | undefined): HTMLElement {
+// The answers of a run, the worst first: the question, the expected answer, the model's, the score and the judge's reason.
+function runCasesTable(k: RunKind, cases: TrainedModelCase[] | undefined): HTMLElement {
   if (!cases) return node("p", "muted", "Loading the answers…");
   if (cases.length === 0) return node("p", "muted", "No answers yet: they appear as each batch is judged.");
-  const rank = (i: EvalCase): number => (i.status === CaseStatus.error ? -1 : i.score ?? -1);
+  const rank = (i: TrainedModelCase): number => (i.status === CaseStatus.error ? -1 : i.score ?? -1);
   const sorted = [...cases].sort((a, b) => rank(a) - rank(b) || a.idx - b.idx);
   const table = node("table", "eval-table");
   const head = table.createTHead().insertRow();
-  for (const h of ["#", "Question", "Dataset answer", "Model answer", "Score", "Judge's reason"]) head.appendChild(node("th", h === "Score" ? "num" : "", h));
+  for (const h of ["#", "Question", k.path === "evals" ? "Expected answer" : "Dataset answer", "Model answer", "Score", "Judge's reason"]) head.appendChild(node("th", h === "Score" ? "num" : "", h));
   const body = table.createTBody();
   const text = (tr: HTMLTableRowElement, s: string, cls = ""): void => { const c = tr.insertCell(); c.className = `eval-text ${cls}`; c.textContent = s; };
   for (const i of sorted) {
     const tr = body.insertRow();
-    tr.insertCell().textContent = String(i.idx + 1);
+    const num = tr.insertCell();
+    num.textContent = String(i.idx + 1);
+    if (i.name) num.title = i.name;
     text(tr, i.input ? `${i.instruction}\n\n${i.input}` : i.instruction);
     text(tr, i.reference);
     if (i.status === CaseStatus.error) {

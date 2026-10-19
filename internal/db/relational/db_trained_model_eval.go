@@ -16,7 +16,7 @@ import (
 
 // RecordTrainedModelEvalRun stores a new eval run (status "running" unless e.Status says otherwise) and returns its ID. e.ID,
 // e.CreatedAt and e.FinishedAt are ignored.
-func RecordTrainedModelEvalRun(ctx context.Context, d *sql.DB, e TrainedModelEvalRun) (int64, error) {
+func RecordTrainedModelEvalRun(ctx context.Context, d *sql.DB, e TrainedModelRun) (int64, error) {
 	if e.Status == "" {
 		e.Status = TrainedModelRunRunning
 	}
@@ -31,7 +31,7 @@ func RecordTrainedModelEvalRun(ctx context.Context, d *sql.DB, e TrainedModelEva
 
 // SaveTrainedModelEvalRunBatch stores the cases of a finished judge batch and the eval run's counters after it (e.ID names the
 // eval run; its JudgeModel, counters and the judge's usage are written), atomically. ErrNotFound if there is no such eval run.
-func SaveTrainedModelEvalRunBatch(ctx context.Context, d *sql.DB, e TrainedModelEvalRun, cases []TrainedModelCaseResult) error {
+func SaveTrainedModelEvalRunBatch(ctx context.Context, d *sql.DB, e TrainedModelRun, cases []TrainedModelCase) error {
 	switch backend() {
 	case config.DBBackendSQLite:
 		return sqlite.SaveTrainedModelEvalRunBatch(ctx, d, e, cases)
@@ -66,7 +66,7 @@ func FailRunningTrainedModelEvalRuns(ctx context.Context, d *sql.DB, reason stri
 }
 
 // GetTrainedModelEvalRun returns the eval run with that ID, or ErrNotFound.
-func GetTrainedModelEvalRun(ctx context.Context, d *sql.DB, id int64) (*TrainedModelEvalRun, error) {
+func GetTrainedModelEvalRun(ctx context.Context, d *sql.DB, id int64) (*TrainedModelRun, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
 		return sqlite.GetTrainedModelEvalRun(ctx, d, id)
@@ -78,7 +78,7 @@ func GetTrainedModelEvalRun(ctx context.Context, d *sql.DB, id int64) (*TrainedM
 
 // ListTrainedModelEvalRuns returns the newest eval runs first, at most limit of them (all for limit <= 0): those of trained model
 // modelID, or of every model when modelID is 0.
-func ListTrainedModelEvalRuns(ctx context.Context, d *sql.DB, modelID int64, limit int) ([]TrainedModelEvalRun, error) {
+func ListTrainedModelEvalRuns(ctx context.Context, d *sql.DB, modelID int64, limit int) ([]TrainedModelRun, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
 		return sqlite.ListTrainedModelEvalRuns(ctx, d, modelID, limit)
@@ -88,13 +88,13 @@ func ListTrainedModelEvalRuns(ctx context.Context, d *sql.DB, modelID int64, lim
 	return nil, unsupported()
 }
 
-// ListTrainedModelCaseResults returns the cases of an eval run stored so far (one per example whose judge batch is done), in dataset order.
-func ListTrainedModelCaseResults(ctx context.Context, d *sql.DB, evalRunID int64) ([]TrainedModelCaseResult, error) {
+// ListTrainedModelEvalCases returns the cases of an eval run stored so far (one per example whose judge batch is done), in dataset order.
+func ListTrainedModelEvalCases(ctx context.Context, d *sql.DB, evalRunID int64) ([]TrainedModelCase, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.ListTrainedModelCaseResults(ctx, d, evalRunID)
+		return sqlite.ListTrainedModelEvalCases(ctx, d, evalRunID)
 	case config.DBBackendPostgres:
-		return postgres.ListTrainedModelCaseResults(ctx, d, evalRunID)
+		return postgres.ListTrainedModelEvalCases(ctx, d, evalRunID)
 	}
 	return nil, unsupported()
 }

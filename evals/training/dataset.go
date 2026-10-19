@@ -1,10 +1,11 @@
-// Package training is the engine of the LLM-judged checks of freshly trained models: a run asks a trained model the cases of a
-// dataset and has an external LLM (the one gligabao uses for knowledge ingestion) judge, in batches, how well the model's answers
-// agree with the expected ones. Two things use it, kept apart in the database and the API (internal/api/training):
-//   - the training data AUDIT (relational.TrainedModelAuditRun): the cases are the examples of the model's own fine-tuning
-//     dataset, so the score says whether the training took, not how well the model generalizes;
-//   - the EVAL (relational.TrainedModelEvalRun): meant for cases the model never saw. For now its only scheme is the fine-tuning
-//     dataset one (relational.TrainingSchemeFineTuneDataset).
+// Package training is the engine of the LLM-judged checks of freshly trained models: a run asks a trained model a list of cases and has
+// an external LLM (the one gligabao uses for knowledge ingestion) judge, in batches, how well the model's answers agree with the
+// expected ones. Two things use it, kept apart in the database but sharing the types and the API shapes (internal/api/training):
+//   - the EVAL (relational.TrainedModelKindEval): the cases are those of an eval (Evals, LoadEvals: evals/*.json), cases the model
+//     never saw, so the score says how well it generalizes. Run by the server, by the Eval button of the admin UI, or by the
+//     command-line runner evals/training/cmd;
+//   - the training data AUDIT (relational.TrainedModelKindAudit): the cases are the examples of the model's own fine-tuning
+//     dataset (ParseExamples), so the score says whether the training took, not how well the model generalizes.
 //
 // It is separate from evals/knowledge, which checks the knowledge extraction (remember / recall) end to end.
 //
@@ -21,7 +22,7 @@ import (
 	"unicode/utf8"
 )
 
-// Example is one record of a training dataset (docs/training/TRAINING_DATA_FORMAT.md): the question (Instruction, plus
+// Example is one record of a training dataset (docs/training/TRAINING_DATA_FORMAT.md) or the input and expected output of an eval Case: the question (Instruction, plus
 // Input as context) and the answer the model was trained to give (Output).
 type Example struct {
 	Instruction string `json:"instruction"`

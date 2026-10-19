@@ -13,8 +13,9 @@ import (
 var evalsFS embed.FS
 
 // Case is one eval case of a trained model: a question and the answer expected (what the judge compares the model's answer to),
-// plus a name. The cases of an eval ask about the knowledge in a training dataset but are phrased differently from its
-// examples (several facts per question), so they check whether the model learned the facts, not the exact training prompts.
+// plus a name, unique among all the evals' cases. The cases of an eval ask about the knowledge in a training dataset (the eval is
+// named after it) but are phrased differently from its examples (several facts per question), so they check whether the model
+// learned the facts, not the exact training prompts: they are cases the model never saw.
 type Case struct {
 	// Eval is the eval (file name without ".json") the case was loaded from; it is not part of the JSON.
 	Eval        string `json:"-"`
@@ -28,6 +29,32 @@ type Case struct {
 // Example is the case as a dataset record, which Run takes.
 func (c Case) Example() Example {
 	return Example{Instruction: c.Instruction, Input: c.Input, Output: c.Output}
+}
+
+// Eval is a named set of cases: one file of evals/*.json. Its name is the file name without ".json", and is the name of the
+// training dataset its cases ask about when they are about one, so that a model trained on a dataset has an eval of that name.
+type Eval struct {
+	Name  string `json:"name"`
+	Cases []Case `json:"cases"`
+}
+
+// Evals returns the embedded evals, ordered by name.
+func Evals() ([]Eval, error) {
+	cases, err := LoadEvals(nil, "")
+	if err != nil {
+		return nil, err
+	}
+	var out []Eval
+	for _, name := range EvalNames() {
+		e := Eval{Name: name, Cases: []Case{}}
+		for _, c := range cases {
+			if c.Eval == name {
+				e.Cases = append(e.Cases, c)
+			}
+		}
+		out = append(out, e)
+	}
+	return out, nil
 }
 
 // LoadEvals loads the cases of the embedded evals (evals/*.json). A non-empty eval restricts them to that eval, and a

@@ -234,6 +234,7 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, dbs []training.Da
 	mux.HandleFunc("GET /v1/gb/training/models/{id}", training.GetModelOf(dbs))
 	mux.HandleFunc("POST /v1/gb/training/models/{id}/infer", training.InferOf(dbs, sc))
 	mux.HandleFunc("GET /v1/gb/training/models/{id}/inferences", training.ListInferencesOf(dbs))
+	mux.HandleFunc("GET /v1/gb/training/eval-definitions", training.DefinitionsOf())
 	mux.HandleFunc("POST /v1/gb/training/models/{id}/evals", evals.StartOf())
 	mux.HandleFunc("GET /v1/gb/training/models/{id}/evals", evals.ListOf())
 	mux.HandleFunc("GET /v1/gb/training/evals/{id}", evals.GetOf())
