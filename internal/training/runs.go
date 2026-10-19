@@ -27,7 +27,7 @@ import (
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
-	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	log "github.com/sirupsen/logrus"
 )

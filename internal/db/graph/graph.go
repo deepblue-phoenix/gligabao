@@ -13,10 +13,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph/model"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph/postgres"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph/sqlite"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 )
 
 // Artifact kinds (see model.Artifact).

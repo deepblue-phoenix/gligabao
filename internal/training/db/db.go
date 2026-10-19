@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/deepblue-phoenix/gligabao/internal/config"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	"github.com/deepblue-phoenix/gligabao/internal/training/db/model"
 	"github.com/deepblue-phoenix/gligabao/internal/training/db/postgres"
 	"github.com/deepblue-phoenix/gligabao/internal/training/db/sqlite"

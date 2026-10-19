@@ -11,11 +11,11 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/deepblue-phoenix/gligabao/internal/config"
 	relmodel "github.com/deepblue-phoenix/gligabao/internal/db/relational/model"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/db/model"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/db/postgres"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/db/sqlite"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 )
 
 // Types shared with the backends (see package model).

@@ -13,11 +13,11 @@ import (
 	_ "embed"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/buildinfo"
-	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
-	"github.com/deepblue-phoenix/gligabao/internal/server"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/server"
 	"github.com/deepblue-phoenix/gligabao/monitoring"
 )
 

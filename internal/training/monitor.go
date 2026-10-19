@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	log "github.com/sirupsen/logrus"
 )

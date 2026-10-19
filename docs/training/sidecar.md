@@ -1,12 +1,12 @@
 # Python sidecar
 
-`internal/api/training/`, `sidecar/`, `sidecar/routes.py`, `sidecar/backends/`, `sidecar/ai_train/`, `Dockerfile.sidecar`, `docker-compose.yml`, `run_build_sidecar.sh`, `internal/sidecar/`
+`internal/api/training/`, `sidecar/`, `sidecar/routes.py`, `sidecar/backends/`, `sidecar/ai_train/`, `Dockerfile.sidecar`, `docker-compose.yml`, `run_build_sidecar.sh`, `internal/sys/sidecar/`
 
 The sidecar is a small Python service that runs next to the Go server and that the server talks to over HTTP. It exists for work that is easier to do in Python (libraries that have no good Go equivalent). **The Go server only ever talks to the sidecar, and the sidecar proxies to the compute backend (Modal today).** The Go code never calls Modal or any other provider, never holds provider credentials and never learns what runs behind the sidecar's REST API.
 
 ```
 Go server ── HTTP ──► sidecar (sidecar/, FastAPI) ── HTTP ──► backend: web API of the Modal app (sidecar/ai_train)
-internal/sidecar        routes.py → Backend.forward              runs the jobs on a cloud GPU
+internal/sys/sidecar        routes.py → Backend.forward              runs the jobs on a cloud GPU
 ```
 
 The sidecar answers a health check itself and forwards the training/dataset API, unchanged, to its backend. Behind the `modal` backend sits the bootstrap for remote (cloud GPU) training jobs; see [Remote training bootstrap](#remote-training-bootstrap).
@@ -22,7 +22,7 @@ The sidecar answers a health check itself and forwards the training/dataset API,
 
 ### Backends
 
-The routes in `sidecar/routes.py` are the only API the Go server knows (`internal/sidecar/`); it never talks to Modal or any other provider. Each route is forwarded unchanged (method, query, body; status and body come back as they are, SSE streamed) to the configured `Backend` (`sidecar/backends/`). A `4xx`/`5xx` from the backend reaches the Go server unchanged; if the backend cannot be reached the sidecar answers `502 {"error": ...}` (for `modal`, also when the deployed app's web URL cannot be found). To add a backend, implement `Backend.forward` in `backends/` and register it in `backends/__init__.py::get_backend`; an HTTP service that serves the same API can subclass `HttpBackend` and only provide its URL.
+The routes in `sidecar/routes.py` are the only API the Go server knows (`internal/sys/sidecar/`); it never talks to Modal or any other provider. Each route is forwarded unchanged (method, query, body; status and body come back as they are, SSE streamed) to the configured `Backend` (`sidecar/backends/`). A `4xx`/`5xx` from the backend reaches the Go server unchanged; if the backend cannot be reached the sidecar answers `502 {"error": ...}` (for `modal`, also when the deployed app's web URL cannot be found). To add a backend, implement `Backend.forward` in `backends/` and register it in `backends/__init__.py::get_backend`; an HTTP service that serves the same API can subclass `HttpBackend` and only provide its URL.
 
 The only backend today is `modal`: the web API (`serve_api`) of the Modal app in `sidecar/ai_train/app.py`. Deploy it from the admin UI ([modal.md](modal.md)) or with `cd sidecar/ai_train && modal deploy app.py`; the sidecar finds its URL through the Modal SDK (once, on the first request). With `modal serve` (dev), set `SIDECAR_MODAL_WEB_URL` to the URL it prints.
 
@@ -201,8 +201,8 @@ There are three layers, and a new endpoint touches one or more of them. Redeploy
 
 1. **A new Go endpoint over trained models** (no Python change; for example a batch call, or a different default):
    - write the handler next to `InferOf` in `internal/api/training/models.go`: pick the database (`pick`), read the model with `trainingdb.GetTrainedModel`, and take `ModelSize` and `Path` **from the record, never from the request**;
-   - if it needs something new from the sidecar, add a method to `internal/sidecar/inference.go` (a long call uses `postVia(ctx, c.stream, …)`, which has no overall timeout) and to the `Inferer` interface in `models.go` (the fake sidecar of the tests implements it);
-   - register it in `registerTraining` (`internal/server/server.go`);
+   - if it needs something new from the sidecar, add a method to `internal/sys/sidecar/inference.go` (a long call uses `postVia(ctx, c.stream, …)`, which has no overall timeout) and to the `Inferer` interface in `models.go` (the fake sidecar of the tests implements it);
+   - register it in `registerTraining` (`internal/sys/server/server.go`);
    - test it with the fake sidecar (`internal/api/training/models_test.go`).
 2. **A new sidecar route** (a new kind of request to the Modal app):
    - add `("METHOD", "/path")` to `ROUTES` in `sidecar/routes.py`: the sidecar forwards the route to its backend untouched, it does not parse the body;
@@ -317,7 +317,7 @@ On that network the server reaches the sidecar at `http://sidecar:8787` (the ser
 
 ## The Go client
 
-`internal/sidecar` is the only package in the Go code that knows the sidecar's HTTP API, and the sidecar is the only thing the Go server calls for this work: there is no Modal client, token or URL anywhere in Go. `sidecar.go` has the client and `Health`; `training_datasets.go`, `training_jobs.go` and `training_events.go` the training calls.
+`internal/sys/sidecar` is the only package in the Go code that knows the sidecar's HTTP API, and the sidecar is the only thing the Go server calls for this work: there is no Modal client, token or URL anywhere in Go. `sidecar.go` has the client and `Health`; `training_datasets.go`, `training_jobs.go` and `training_events.go` the training calls.
 
 ```go
 c := sidecar.New("")                       // "" is sidecar.DefaultBaseURL, http://127.0.0.1:8787
@@ -335,13 +335,13 @@ On startup the Go server calls `GET /health` once (5 second timeout). If the sid
 
 `GET /v1/gb/admin/api/sidecar/status` answers `{"sidecar_up": bool, "sidecar_active": bool}` (see the table above); the admin UI shows `sidecar_up` as a badge in the top bar.
 
-The tests (`internal/sidecar/*_test.go`) run the client against an `httptest` server, so they need neither Python nor Docker.
+The tests (`internal/sys/sidecar/*_test.go`) run the client against an `httptest` server, so they need neither Python nor Docker.
 
 ## Adding an endpoint
 
 1. Add the path to `ROUTES` in `sidecar/routes.py`. It is then forwarded to the backend as it is.
 2. Implement it in the backend: for `modal`, a route of the web API in `sidecar/ai_train/api/`. Another backend must serve the same path.
-3. Add a method to `Client` in `internal/sidecar` (a new file per topic, like `training_jobs.go`), with typed request and response structs. Keep all calls to the sidecar in that package, and never call a backend from Go.
+3. Add a method to `Client` in `internal/sys/sidecar` (a new file per topic, like `training_jobs.go`), with typed request and response structs. Keep all calls to the sidecar in that package, and never call a backend from Go.
 4. If the Go server should start it, add an admin handler in `internal/api/admin` that takes the client through a small interface.
 5. A route answered by the sidecar itself, like `/health`, goes in `sidecar/main_sidecar.py` instead (and any new package in `sidecar/requirements_sidecar.txt`). If the Dockerfile must copy new files, update `Dockerfile.sidecar`.
 6. Document the endpoint in the tables above.

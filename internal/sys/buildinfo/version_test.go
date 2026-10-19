@@ -8,12 +8,12 @@ import (
 // The version rules (AGENTS.md) are enforced here: VERSION is semver, and CHANGELOG.md's newest entry is VERSION.
 // Both files live at the repo root (VERSION is embedded by the root package), two levels up from here.
 func TestVersionMatchesChangelog(t *testing.T) {
-	vb, err := os.ReadFile("../../VERSION")
+	vb, err := os.ReadFile("../../../VERSION")
 	if err != nil {
 		t.Fatal(err)
 	}
 	v := Parse(string(vb))
-	b, err := os.ReadFile("../../CHANGELOG.md")
+	b, err := os.ReadFile("../../../CHANGELOG.md")
 	if err != nil {
 		t.Fatal(err)
 	}

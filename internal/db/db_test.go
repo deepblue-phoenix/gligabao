@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 )
 
 func TestOpenSQLiteChromem(t *testing.T) {

@@ -17,10 +17,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 
 	_ "github.com/jackc/pgx/v5/stdlib"

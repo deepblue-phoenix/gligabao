@@ -42,13 +42,13 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/chunk"
-	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/experiments"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
-	"github.com/deepblue-phoenix/gligabao/internal/server"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/server"
 )
 
 // defaultEvalsDir is the directory the evals are read from by default (relative to the repository root, where the runner

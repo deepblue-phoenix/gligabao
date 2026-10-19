@@ -1,4 +1,4 @@
-"""The sidecar's REST API. This table is the contract with the Go server (internal/sidecar/); each route is answered by
+"""The sidecar's REST API. This table is the contract with the Go server (internal/sys/sidecar/); each route is answered by
 the configured backend (see backends/), so the Go side never learns what runs behind it."""
 import logging
 

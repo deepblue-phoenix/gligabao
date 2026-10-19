@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/deepblue-phoenix/gligabao/internal/buildinfo"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
 )
 
 var versionCmd = &cobra.Command{

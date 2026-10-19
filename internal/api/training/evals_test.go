@@ -21,7 +21,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
-	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
 	core "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )

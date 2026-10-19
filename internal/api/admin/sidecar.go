@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
-	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
 )
 
 // sidecarPingTimeout bounds the live health check of SidecarStatusOf.

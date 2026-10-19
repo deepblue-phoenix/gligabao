@@ -11,7 +11,7 @@ import (
 // The training tables are created in the same database as the relational data, which is opened by
 // internal/db/relational/sqlite (its timestamp convention applies: all DATETIME columns hold RFC 3339 UTC strings).
 const schema = `
--- Training jobs started on the sidecar (internal/sidecar, sidecar/ai_train): ONE ROW PER JOB the sidecar reported as started,
+-- Training jobs started on the sidecar (internal/sys/sidecar, sidecar/ai_train): ONE ROW PER JOB the sidecar reported as started,
 -- made from the TrainingJob it returned from POST /training/job_start.
 --   job_id           the sidecar's ID of the job (names its progress file there); provider_job_id is the compute provider's
 --   status           'started' when the sidecar reports the job started, then the job's status events ('running', 'training'),
@@ -42,7 +42,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_training_job_runs_job ON gb_training_job_runs(
 
 -- The events the sidecar reported for a training job (status changes and progress with the loss), in the order of the
 -- sidecar's progress file: seq is the event's index there, so a reconnect can resume after the last seq stored.
---   data: the event as JSON (internal/sidecar: TrainingEvent)
+--   data: the event as JSON (internal/sys/sidecar: TrainingEvent)
 CREATE TABLE IF NOT EXISTS gb_training_job_events (
 	run_id     INTEGER NOT NULL REFERENCES gb_training_job_runs(id) ON DELETE CASCADE,
 	seq        INTEGER NOT NULL,

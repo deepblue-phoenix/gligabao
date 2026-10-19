@@ -49,7 +49,7 @@ class TrainingDataset(BaseModel):
 class TrainingJob(BaseModel):
     """A training job started on the sidecar.
 
-    Returned by POST /training/job_start; golang decodes it (internal/sidecar: TrainingJob) and records it in its
+    Returned by POST /training/job_start; golang decodes it (internal/sys/sidecar: TrainingJob) and records it in its
     `gb_training_job_runs` table.
     """
     job_id: str = Field(min_length=1)       # the sidecar's id of the job: names its event log (GET /training/job_events)

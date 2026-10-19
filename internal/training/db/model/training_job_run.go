@@ -3,7 +3,7 @@ package model
 import "time"
 
 // TrainingJobRun is one training job started on the sidecar (gb_training_job_runs): a record is made for each job the
-// sidecar reports as started (see internal/sidecar: TrainingJob), and updated as the job's progress events arrive.
+// sidecar reports as started (see internal/sys/sidecar: TrainingJob), and updated as the job's progress events arrive.
 type TrainingJobRun struct {
 	ID int64 `json:"id"`
 	// JobID is the sidecar's ID of the job (it names the job's event log there); ProviderJobID is the compute
@@ -55,7 +55,7 @@ type TrainingJobRunUpdate struct {
 }
 
 // TrainingJobEvent is one event of a training job as the sidecar reported it (gb_training_job_events). Seq is its index
-// in the sidecar's event log for the job; Data is the event as JSON (see internal/sidecar: TrainingEvent).
+// in the sidecar's event log for the job; Data is the event as JSON (see internal/sys/sidecar: TrainingEvent).
 type TrainingJobEvent struct {
 	RunID     int64     `json:"run_id"`
 	Seq       int       `json:"seq"`

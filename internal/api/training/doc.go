@@ -1,7 +1,7 @@
 // Package training holds the HTTP handlers of the training API (/v1/gb/training/): starting training jobs on the sidecar,
 // listing them, following their progress (the Monitor and its SSE feed), the training datasets (the subdirectories of
 // the training datasets directory that have a manifest), the trained models and their inferences, and the evals and audits of
-// trained models. They are registered by internal/server; the admin UI is one of their clients.
+// trained models. They are registered by internal/sys/server; the admin UI is one of their clients.
 //
 // The handlers only read the request and write the response: what they do is in internal/training.
 package training

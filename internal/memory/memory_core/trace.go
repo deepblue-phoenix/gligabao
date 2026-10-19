@@ -12,7 +12,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
-	"github.com/deepblue-phoenix/gligabao/internal/jev"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/jev"
 
 	log "github.com/sirupsen/logrus"
 )

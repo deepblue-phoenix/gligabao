@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
-	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
 )
 
 // TestSidecarBackendProxy checks that a backend's action and volumes routes reach the sidecar's /backends/{name}/actions/{action}[/events]

@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/deepblue-phoenix/gligabao/internal/config"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	"github.com/deepblue-phoenix/gligabao/internal/training/db/postgres"
 	"github.com/deepblue-phoenix/gligabao/internal/training/db/sqlite"
 )
