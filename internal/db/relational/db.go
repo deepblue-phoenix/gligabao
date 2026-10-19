@@ -44,6 +44,8 @@ type (
 	TrainedModelInference  = model.TrainedModelInference
 	TrainedModelEvalRun    = model.TrainedModelEvalRun
 	TrainedModelCaseResult = model.TrainedModelCaseResult
+	TrainedModelAuditRun   = model.TrainedModelAuditRun
+	TrainedModelAuditCase  = model.TrainedModelAuditCase
 
 	TrainingExperiment      = model.TrainingExperiment
 	TrainingExperimentRun   = model.TrainingExperimentRun
@@ -59,6 +61,17 @@ const (
 	TrainedModelCaseJudged       = model.TrainedModelCaseJudged
 	TrainedModelCaseFailed       = model.TrainedModelCaseFailed
 	TrainedModelCaseAnswered     = model.TrainedModelCaseAnswered
+)
+
+// Statuses of a TrainedModelAuditRun (a training data audit) and of its cases.
+const (
+	TrainedModelAuditRunRunning   = model.TrainedModelAuditRunRunning
+	TrainedModelAuditRunCompleted = model.TrainedModelAuditRunCompleted
+	TrainedModelAuditRunFailed    = model.TrainedModelAuditRunFailed
+	TrainedModelAuditRunCancelled = model.TrainedModelAuditRunCancelled
+	TrainedModelAuditCaseJudged   = model.TrainedModelAuditCaseJudged
+	TrainedModelAuditCaseFailed   = model.TrainedModelAuditCaseFailed
+	TrainedModelAuditCaseAnswered = model.TrainedModelAuditCaseAnswered
 )
 
 // Eval schemes of a TrainedModelEvalRun (see model.TrainingSchemeFineTuneDataset).

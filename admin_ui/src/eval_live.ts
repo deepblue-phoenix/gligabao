@@ -1,7 +1,8 @@
-// Live view of a trained-model eval: the dialog #eval-modal follows an eval's SSE feed (../training/evals/<id>/events) and
-// shows each question as the model answers it (the dataset's answer next to the model's), then its score and the judge's reason
-// when the batch it is in is judged (the judge grades a batch of questions per call). One sees how the model behaves from the first
-// question on. Closing the dialog leaves the eval running.
+// Live view of a trained-model run: the dialog #eval-modal follows the SSE feed of a training data AUDIT (../training/audits/<id>/events,
+// the model asked its own training dataset) or of an EVAL (../training/evals/<id>/events), which have the same shape, and shows each
+// question as the model answers it (the reference answer next to the model's), then its score and the judge's reason when the batch
+// it is in is judged (the judge grades a batch of questions per call). One sees how the model behaves from the first question on.
+// Closing the dialog leaves the run going.
 
 export interface EvalRun {
   id: number; trained_model_id: number; status: "running" | "completed" | "failed" | "cancelled"; dataset: string; dataset_sha256: string;
@@ -16,7 +17,11 @@ export interface EvalCase {
   status: "answered" | "judged" | "failed";
   error: string; score: number | null; reason: string; input_tokens: number; output_tokens: number; duration_ms: number;
 }
-interface FeedEvent { type: "snapshot" | "answer" | "batch" | "end"; eval?: EvalRun; cases?: EvalCase[] }
+// The two kinds of run of a trained model: a training data audit (URL segment "audits") and an eval ("evals"). The runs of both
+// have the shape of EvalRun, and their cases that of EvalCase.
+export type RunKind = "audits" | "evals";
+// A feed event carries the run under the key of its kind: "audit" or "eval".
+interface FeedEvent { type: "snapshot" | "answer" | "batch" | "end"; audit?: EvalRun; eval?: EvalRun; cases?: EvalCase[] }
 
 const MAX_SCORE = 5; // the judge's scale: 0 to 5
 
@@ -40,6 +45,7 @@ const verdictOf = (i: EvalCase): Verdict =>
 // What the open dialog follows.
 let stream: EventSource | undefined;
 let watching = -1;
+let watchingKind: RunKind = "audits";
 let run: EvalRun | undefined;
 let ended = false;
 let cases = new Map<number, EvalCase>();
@@ -190,38 +196,44 @@ function setRun(r: EvalRun): void {
   queueSummary();
 }
 
-// Opens the dialog on the feed of eval `id` and follows it until it ends. cb is called when the eval ended.
-export function watchEval(id: number, title: string, cb?: () => void): void {
+// Opens the dialog on the feed of run `id` of that kind and follows it until it ends. cb is called when the run ended.
+export function watchEval(kind: RunKind, id: number, title: string, cb?: () => void): void {
   const modal = el<HTMLDialogElement>("eval-modal");
   stop();
   reset();
   watching = id;
+  watchingKind = kind;
   onChange = cb;
+  const word = kind === "audits" ? "audit" : "eval";
+  el("eval-live-cancel").textContent = `Cancel ${word}`;
   el("eval-live-title").textContent = title;
   el<HTMLInputElement>("eval-live-follow").checked = true;
   el("eval-live-cancel").hidden = true;
   if (!modal.open) modal.showModal();
 
-  const es = new EventSource(`../training/evals/${id}/events`);
+  const es = new EventSource(`../training/${kind}/${id}/events`);
   stream = es;
   const conn = el("eval-live-conn");
   conn.textContent = "Connecting…";
   es.onopen = () => { conn.textContent = "Live."; };
   es.onerror = () => { conn.textContent = "Connection lost, reconnecting…"; }; // EventSource retries; a new snapshot catches up
-  const on = (type: FeedEvent["type"], fn: (e: FeedEvent) => void): void =>
-    es.addEventListener(type, (m) => fn(JSON.parse((m as MessageEvent<string>).data) as FeedEvent));
+  const on = (type: FeedEvent["type"], fn: (e: FeedEvent & { run?: EvalRun }) => void): void =>
+    es.addEventListener(type, (m) => {
+      const e = JSON.parse((m as MessageEvent<string>).data) as FeedEvent;
+      fn({ ...e, run: kind === "audits" ? e.audit : e.eval });
+    });
   on("snapshot", (e) => {
-    if (e.eval) setRun(e.eval);
+    if (e.run) setRun(e.run);
     apply(e.cases ?? []);
   });
   on("answer", (e) => apply(e.cases ?? []));
   on("batch", (e) => {
-    if (e.eval) setRun(e.eval);
+    if (e.run) setRun(e.run);
     apply(e.cases ?? []);
   });
   on("end", (e) => {
     ended = true;
-    if (e.eval && e.eval.status) setRun(e.eval);
+    if (e.run && e.run.status) setRun(e.run);
     // answers the judge never scored (a cancelled or failed eval): redraw them as "not judged"
     for (const i of cases.values()) {
       if (i.status !== "answered") continue;
@@ -229,7 +241,7 @@ export function watchEval(id: number, title: string, cb?: () => void): void {
       cards.get(i.idx)?.replaceWith(card);
       cards.set(i.idx, card);
     }
-    conn.textContent = e.eval?.status === "completed" ? "Finished." : `Ended (${e.eval?.status ?? "unknown"}).`;
+    conn.textContent = e.run?.status === "completed" ? "Finished." : `Ended (${e.run?.status ?? "unknown"}).`;
     stop();
     queueSummary();
     onChange?.();
@@ -237,7 +249,7 @@ export function watchEval(id: number, title: string, cb?: () => void): void {
   ticker = window.setInterval(queueSummary, 1000); // the elapsed time of a running eval
 }
 
-export function initEvalLive(cancel: (evalID: number) => Promise<void>): void {
+export function initEvalLive(cancel: (kind: RunKind, runID: number) => Promise<void>): void {
   const modal = el<HTMLDialogElement>("eval-modal");
   modal.addEventListener("close", () => { stop(); watching = -1; });
   modal.addEventListener("click", (e) => { if (e.target === modal) modal.close(); });
@@ -245,7 +257,7 @@ export function initEvalLive(cancel: (evalID: number) => Promise<void>): void {
   el("eval-live-cancel").addEventListener("click", () => {
     const btn = el<HTMLButtonElement>("eval-live-cancel");
     btn.disabled = true;
-    void cancel(watching).finally(() => { btn.disabled = false; });
+    void cancel(watchingKind, watching).finally(() => { btn.disabled = false; });
   });
   el<HTMLInputElement>("eval-live-problems").addEventListener("change", (e) =>
     el("eval-live-feed").classList.toggle("only-problems", (e.target as HTMLInputElement).checked));

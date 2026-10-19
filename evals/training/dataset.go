@@ -1,9 +1,12 @@
-// Package training is the eval subsystem for freshly trained models: an eval run asks a trained model the cases of an eval
-// eval and has an external LLM (the one gligabao uses for knowledge ingestion) judge, in batches, how well the model's
-// answers agree with the expected ones. The only scheme implemented is the fine-tuning dataset one
-// (relational.TrainingSchemeFineTuneDataset): the eval is the model's own training dataset, each example is a case (the
-// question) and the dataset's output is the expected answer. It is separate from evals/knowledge, which checks the knowledge
-// extraction (remember / recall) end to end.
+// Package training is the engine of the LLM-judged checks of freshly trained models: a run asks a trained model the cases of a
+// dataset and has an external LLM (the one gligabao uses for knowledge ingestion) judge, in batches, how well the model's answers
+// agree with the expected ones. Two things use it, kept apart in the database and the API (internal/api/training):
+//   - the training data AUDIT (relational.TrainedModelAuditRun): the cases are the examples of the model's own fine-tuning
+//     dataset, so the score says whether the training took, not how well the model generalizes;
+//   - the EVAL (relational.TrainedModelEvalRun): meant for cases the model never saw. For now its only scheme is the fine-tuning
+//     dataset one (relational.TrainingSchemeFineTuneDataset).
+//
+// It is separate from evals/knowledge, which checks the knowledge extraction (remember / recall) end to end.
 //
 // The package knows nothing about HTTP, the sidecar or the database: Run takes the model as a function (GenerateFunc),
 // the judge as an LLM and reports through a Sink. internal/api/training wires those up and stores the results.

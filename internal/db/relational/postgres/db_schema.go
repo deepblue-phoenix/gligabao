@@ -299,6 +299,53 @@ CREATE TABLE IF NOT EXISTS gb_training_case_meta (
 	output_tokens BIGINT NOT NULL DEFAULT 0,
 	duration_ms   BIGINT NOT NULL DEFAULT 0,
 	FOREIGN KEY (case_result_id, type) REFERENCES gb_experiment_case_results(id, type) ON DELETE CASCADE
+);
+
+-- TRAINING DATA AUDITS of trained models: one table of runs and one of cases, separate from the evals above (see sqlite/db_schema.go).
+CREATE TABLE IF NOT EXISTS gb_training_audit_runs (
+	id                  BIGSERIAL PRIMARY KEY,
+	trained_model_id    BIGINT NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
+	status              TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed', 'cancelled')),
+	dataset             TEXT NOT NULL DEFAULT '',
+	dataset_sha256      TEXT NOT NULL DEFAULT '',
+	params              JSONB NOT NULL DEFAULT '{}',
+	judge_model         TEXT NOT NULL DEFAULT '',
+	num_examples        BIGINT NOT NULL DEFAULT 0,
+	num_answered        BIGINT NOT NULL DEFAULT 0,
+	num_judged          BIGINT NOT NULL DEFAULT 0,
+	num_failed          BIGINT NOT NULL DEFAULT 0,
+	num_correct         BIGINT NOT NULL DEFAULT 0,
+	num_partial         BIGINT NOT NULL DEFAULT 0,
+	num_incorrect       BIGINT NOT NULL DEFAULT 0,
+	score_sum           BIGINT NOT NULL DEFAULT 0,
+	num_batches         BIGINT NOT NULL DEFAULT 0,
+	judge_calls         BIGINT NOT NULL DEFAULT 0,
+	judge_input_tokens  BIGINT NOT NULL DEFAULT 0,
+	judge_output_tokens BIGINT NOT NULL DEFAULT 0,
+	judge_cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
+	error               TEXT NOT NULL DEFAULT '',
+	started_at          TIMESTAMPTZ NOT NULL,
+	finished_at         TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_gb_training_audit_runs_model ON gb_training_audit_runs(trained_model_id, id);
+
+CREATE TABLE IF NOT EXISTS gb_training_audit_cases (
+	id            BIGSERIAL PRIMARY KEY,
+	run_id        BIGINT NOT NULL REFERENCES gb_training_audit_runs(id) ON DELETE CASCADE,
+	idx           BIGINT NOT NULL,
+	batch         BIGINT NOT NULL,
+	instruction   TEXT NOT NULL,
+	input         TEXT NOT NULL DEFAULT '',
+	reference     TEXT NOT NULL DEFAULT '',
+	response      TEXT NOT NULL DEFAULT '',
+	status        TEXT NOT NULL CHECK (status IN ('judged', 'failed')),
+	error         TEXT NOT NULL DEFAULT '',
+	score         BIGINT,
+	reason        TEXT NOT NULL DEFAULT '',
+	input_tokens  BIGINT NOT NULL DEFAULT 0,
+	output_tokens BIGINT NOT NULL DEFAULT 0,
+	duration_ms   BIGINT NOT NULL DEFAULT 0,
+	UNIQUE (run_id, idx)
 );`
 
 // initSchema applies the database schema. Concurrent starters are serialized with an advisory lock, because

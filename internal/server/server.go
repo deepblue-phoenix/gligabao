@@ -217,8 +217,8 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 // registerTraining registers the training endpoints under /v1/gb/training/ (they are part of the API, not of the admin UI,
 // and are served whether or not the admin UI is on): the jobs, the datasets and the feed of the jobs' progress. dbs are the
 // databases they can be used with (?db=, the first by default). The training monitor follows the progress the sidecar
-// reports for the jobs (it resumes the unfinished ones now) and feeds it to the SSE endpoint. llm judges the evals of the trained
-// models (nil: starting one answers 503).
+// reports for the jobs (it resumes the unfinished ones now) and feeds it to the SSE endpoint. llm judges the evals and the training data audits of the
+// trained models (nil: starting one answers 503).
 func registerTraining(ctx context.Context, mux *http.ServeMux, dbs []training.Database, sc training.Sidecar, llm memory_core.LLM) {
 	mon := training.NewMonitor(ctx, dbs, sc)
 	var inf training.Inferer // not sc itself: a nil Sidecar must become a nil Inferer
@@ -226,6 +226,7 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, dbs []training.Da
 		inf = sc
 	}
 	evals := training.NewEvalManager(ctx, dbs, inf, llm)
+	audits := training.NewAuditManager(ctx, dbs, inf, llm)
 	mux.HandleFunc("POST /v1/gb/training/jobs", training.StartJobOf(dbs, sc, mon))
 	mux.HandleFunc("POST /v1/gb/training/jobs/{id}/stop", training.StopJobOf(dbs, sc))
 	mux.HandleFunc("GET /v1/gb/training/jobs", training.ListJobsOf(dbs))
@@ -238,6 +239,11 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, dbs []training.Da
 	mux.HandleFunc("GET /v1/gb/training/evals/{id}", evals.GetOf())
 	mux.HandleFunc("GET /v1/gb/training/evals/{id}/events", evals.EventsOf())
 	mux.HandleFunc("POST /v1/gb/training/evals/{id}/cancel", evals.CancelOf())
+	mux.HandleFunc("POST /v1/gb/training/models/{id}/audits", audits.StartOf())
+	mux.HandleFunc("GET /v1/gb/training/models/{id}/audits", audits.ListOf())
+	mux.HandleFunc("GET /v1/gb/training/audits/{id}", audits.GetOf())
+	mux.HandleFunc("GET /v1/gb/training/audits/{id}/events", audits.EventsOf())
+	mux.HandleFunc("POST /v1/gb/training/audits/{id}/cancel", audits.CancelOf())
 	mux.HandleFunc("GET /v1/gb/training/experiments", evals.ExperimentsOf())
 	mux.HandleFunc("GET /v1/gb/training/experiments/{id}", evals.ExperimentOf())
 	mux.HandleFunc("GET /v1/gb/training/datasets", training.ListDatasetsOf(dbs))

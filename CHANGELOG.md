@@ -5,6 +5,20 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.58.0] - 2026-10-19
+
+### Added
+- **Training data audit of trained models, separate from evals.** Asking a trained model the questions of its *own* fine-tuning dataset is not an eval: every case is something the model was trained on, so the score says whether the training took (memorization / capacity, a too-low learning rate, prompt/format bugs) and, through the examples the model keeps failing, which training data is bad (label noise, contradictions); it says nothing about generalization, which is what an eval, with cases the model never saw, is for. The audit now has its own code, tables and API, apart from the evals, which are untouched and stay for the dedicated eval cases coming next.
+  - Admin UI: a trained model has an **Audit** button (a column of the models table and a "Training data audit" section of the model's dialog) next to the existing **Eval** one; both open the same live view.
+  - API: `POST /v1/gb/training/models/{id}/audits` (body: `limit`, `batch_size`, `judge_model`, `max_tokens`, `temperature`; no `scheme`, no experiments), `GET /v1/gb/training/models/{id}/audits`, `GET /v1/gb/training/audits/{id}`, `GET /v1/gb/training/audits/{id}/events` (SSE, the run is in the `audit` field of the events) and `POST /v1/gb/training/audits/{id}/cancel`.
+  - Schema (SQLite and PostgreSQL, created on start-up, nothing existing is touched or migrated): `gb_training_audit_runs` (one row per audit: the model, status, dataset, judge, counters and score) and `gb_training_audit_cases` (one row per example). Deleting a trained model deletes its audits.
+  - Go: `relational.TrainedModelAuditRun` and `TrainedModelAuditCase` with `RecordTrainedModelAuditRun`, `SaveTrainedModelAuditRunBatch`, `FinishTrainedModelAuditRun`, `FailRunningTrainedModelAuditRuns`, `GetTrainedModelAuditRun`, `ListTrainedModelAuditRuns` and `ListTrainedModelAuditCases`; `training.AuditManager` in `internal/api/training`. The judge's calls are recorded in `gb_inferences` as type `training_audit_judge` (the evals' stay `eval_judge`). The audit reuses the engine of `evals/training` (one question at a time to the model, judged in batches).
+  - Docs: `docs/training/AUDIT.md` (what an audit is for, how it differs from an eval, the API and the tables).
+
+### Changed
+- The model dialog and the models table of the admin UI call the two checks by their names: *Training data audit* and *Evals* (the eval section says that the server's eval still reads the model's training dataset until evals have cases of their own). The shared UI code (`admin_ui/src/training.ts`, `eval_live.ts`) handles both kinds of run.
+- The eval code is unchanged: `POST /v1/gb/training/models/{id}/evals` and the `finetune_dataset` scheme still work as before.
+
 ## [0.57.0] - 2026-10-19
 
 ### Changed

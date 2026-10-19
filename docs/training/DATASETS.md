@@ -96,4 +96,4 @@ modal run app.py --action train --dataset <name> --train-steps 100 --model-size 
 2. Write `bin/datasets_training/<dir>/dataset.toml` with at least `file`.
 3. It shows up in `GET /v1/gb/training/datasets` and in the admin UI's training view; pick it there or pass its name as `dataset` to `POST /v1/gb/training/jobs`.
 
-A dataset is also what a trained model can be evaluated on: the **Eval** of a model asks it the questions of the dataset it was trained on, so the dataset must stay in this directory (see [EVALS.md](EVALS.md)).
+A dataset is also what a trained model can be evaluated on: the **Audit** of a model asks it the questions of the dataset it was trained on (a [training data audit](AUDIT.md)), so the dataset must stay in this directory.

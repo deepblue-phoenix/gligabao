@@ -232,13 +232,16 @@ function renderModels(): void {
     trained.textContent = fmtAgo(m.created_at);
     trained.title = `${fmtTime(m.created_at)} UTC`;
     trained.className = "nowrap";
-    const evalCell = tr.insertCell();
-    const evalBtn = node("button", "small", "Eval");
-    evalBtn.type = "button";
-    evalBtn.title = m.dataset ? `Ask this model the questions of ${m.dataset} and have the LLM judge its answers` : "This model was trained on the sidecar's default dataset: there are no questions to ask";
-    evalBtn.disabled = !m.dataset;
-    evalBtn.addEventListener("click", (e) => { e.stopPropagation(); void startEval(m, {}); }); // not the row's click: it opens the dialog
-    evalCell.append(evalBtn);
+    // not the row's click: it opens the dialog
+    for (const k of KINDS) {
+      const cell = tr.insertCell();
+      const btn = node("button", "small", k.button);
+      btn.type = "button";
+      btn.title = m.dataset ? k.tip(m.dataset) : "This model was trained on the sidecar's default dataset: there are no questions to ask";
+      btn.disabled = !m.dataset;
+      btn.addEventListener("click", (e) => { e.stopPropagation(); void startRun(k, m, {}); });
+      cell.append(btn);
+    }
     tr.addEventListener("click", () => selectModel(m.id));
   }
   el("training-models-status").textContent = models.length === 0 ? "No trained models yet: one is saved when a job completes." : "";
@@ -267,7 +270,7 @@ function selectModel(id: number): void {
   const modal = el<HTMLDialogElement>("model-modal");
   if (!modal.open) modal.showModal();
   void loadInferences(id);
-  void loadEvals(id);
+  for (const k of KINDS) void loadRuns(k, id);
   warm = "unknown";
   drawWarm();
   void pollWarm(id);
@@ -276,8 +279,7 @@ function selectModel(id: number): void {
 function closeModelModal(): void {
   selectedModel = null;
   clearTimeout(warmTimer);
-  clearTimeout(evalTimer);
-  evals = [];
+  for (const k of KINDS) { clearTimeout(k.timer); k.runs = []; }
   renderModels();
 }
 
@@ -344,7 +346,7 @@ function renderModelDetail(): void {
   form.append(labelled("Max tokens", tokens), labelled("Temperature", temp), run, status);
 
   el("model-detail").replaceChildren(info, warmRow, prompt, form);
-  renderEvalForm(m);
+  for (const k of KINDS) renderRunForm(k, m);
   el("model-inferences").replaceChildren();
   el("model-inferences-status").textContent = "Loading the past requests…";
 }
@@ -503,70 +505,102 @@ async function infer(m: TrainedModel, prompt: string, maxTokens: number, tempera
 }
 
 //---------------------------------------------------------------------------------------------
-// Evals of a trained model: the model is asked the questions of its training dataset and an LLM judges its answers, a batch of
-// pairs per call. The server runs an eval in the background and stores its progress, so the dialog just polls while one runs.
+// Training data audits and evals of a trained model. Both ask the model questions and have an LLM judge its answers, a batch of
+// pairs per call, and the server runs them in the background and stores their progress, so the dialog just polls while one runs.
+//   - an AUDIT asks the model the questions of its OWN training dataset (the cases are things it was trained on): it checks that the
+//     training took and finds bad training data; it measures memorization and fit, not generalization.
+//   - an EVAL is meant for cases the model never saw. The server's eval still reads the model's training dataset for now.
+// They share the code below; a RunKind holds what differs (URLs, words, elements) and the state of one list in the dialog.
 
-let evals: EvalRun[] = [];
-let evalTimer: number | undefined;
-const openEvals = new Set<number>(); // evals whose answers are expanded
-const evalCases = new Map<number, EvalCase[]>(); // their answers, as last fetched
-let evalStatus: HTMLElement | undefined; // the message line of the dialog's form
+interface RunKind {
+  path: RunKindPath; // URL segment: ../training/<path>/...
+  noun: string; // "audit" or "eval"
+  button: string; // the label of its button
+  formId: string; statusId: string; listId: string; // the elements of the dialog's section
+  runs: EvalRun[];
+  timer: number | undefined;
+  open: Set<number>; // runs whose answers are expanded
+  cases: Map<number, EvalCase[]>; // their answers, as last fetched
+  status: HTMLElement | undefined; // the message line of the dialog's form
+  listKey: "audits" | "evals"; // the key of the list in GET .../models/{id}/<path>
+  oneKey: "audit" | "eval"; // the key of the run in GET .../<path>/{id}
+  // What the button asks, as a tooltip, and what the "dataset changed" badge means.
+  tip: (dataset: string) => string;
+}
+type RunKindPath = "audits" | "evals";
 
-const evalRunning = (e: EvalRun): boolean => e.status === "running";
-const evalMean = (e: EvalRun): number | null => (e.num_judged > 0 ? e.score_sum / e.num_judged : null);
+const newKind = (k: Omit<RunKind, "runs" | "timer" | "open" | "cases" | "status">): RunKind =>
+  ({ ...k, runs: [], timer: undefined, open: new Set(), cases: new Map(), status: undefined });
+const AUDIT = newKind({
+  path: "audits", noun: "audit", button: "Audit", formId: "model-audits-form", statusId: "model-audits-status", listId: "model-audits",
+  listKey: "audits", oneKey: "audit",
+  tip: (dataset) => `Ask this model the questions of its own training dataset ${dataset} and have the LLM judge how closely its answers reproduce the dataset's`,
+});
+const EVAL = newKind({
+  path: "evals", noun: "eval", button: "Eval", formId: "model-evals-form", statusId: "model-evals-status", listId: "model-evals",
+  listKey: "evals", oneKey: "eval",
+  tip: (dataset) => `Ask this model the questions of ${dataset} and have the LLM judge its answers`,
+});
+const KINDS: RunKind[] = [AUDIT, EVAL];
 
-// Starts an eval of model m (the options the server understands: limit, batch_size, ...) and opens its dialog to follow it.
-async function startEval(m: TrainedModel, opts: { limit?: number; batch_size?: number }): Promise<void> {
+const runRunning = (e: EvalRun): boolean => e.status === "running";
+const runMean = (e: EvalRun): number | null => (e.num_judged > 0 ? e.score_sum / e.num_judged : null);
+
+// Starts a run of kind k on model m (the options the server understands: limit, batch_size, ...) and opens its dialog to follow it.
+async function startRun(k: RunKind, m: TrainedModel, opts: { limit?: number; batch_size?: number }): Promise<void> {
   const say = (text: string, cls: string): void => {
-    for (const e of [el("training-models-status"), evalStatus]) if (e?.isConnected) { e.className = cls; e.textContent = text; }
+    for (const e of [el("training-models-status"), k.status]) if (e?.isConnected) { e.className = cls; e.textContent = text; }
   };
-  say(`Starting an eval of model #${m.id}…`, "muted");
+  say(`Starting an ${k.noun} of model #${m.id}…`, "muted");
   try {
-    const res = await fetch(`../training/models/${m.id}/evals`, {
+    const res = await fetch(`../training/models/${m.id}/${k.path}`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(opts),
     });
     if (!res.ok) throw await failure(res);
     const started = (await res.json()) as EvalRun;
-    openEvals.add(started.id);
+    k.open.add(started.id);
     if (selectedModel !== m.id) selectModel(m.id);
-    else await loadEvals(m.id);
-    say(`Eval #${started.id} started: ${started.num_examples} questions.`, "muted");
-    openEvalLive(started, m); // watch it run
+    else await loadRuns(k, m.id);
+    say(`${capital(k.noun)} #${started.id} started: ${started.num_examples} questions.`, "muted");
+    openRunLive(k, started, m); // watch it run
   } catch (err) {
-    say(`Could not start the eval of model #${m.id}: ${errText(err)}`, "error");
+    say(`Could not start the ${k.noun} of model #${m.id}: ${errText(err)}`, "error");
   }
 }
 
-async function cancelEval(evalID: number): Promise<void> {
+const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
+async function cancelRun(kind: RunKindPath, id: number): Promise<void> {
+  const k = KINDS.find((x) => x.path === kind) ?? AUDIT;
   try {
-    const res = await fetch(`../training/evals/${evalID}/cancel`, { method: "POST" });
+    const res = await fetch(`../training/${k.path}/${id}/cancel`, { method: "POST" });
     if (!res.ok && res.status !== 409) throw await failure(res); // 409: it ended meanwhile
   } catch (err) {
-    void alertDialog(`Could not cancel eval #${evalID}: ${errText(err)}`);
+    void alertDialog(`Could not cancel ${k.noun} #${id}: ${errText(err)}`);
     return;
   }
-  if (selectedModel !== null) void loadEvals(selectedModel);
+  if (selectedModel !== null) void loadRuns(k, selectedModel);
 }
 
-// Opens the live view of an eval: its questions and the model's answers as they come, then their scores.
-function openEvalLive(e: EvalRun, m?: TrainedModel): void {
+// Opens the live view of a run: its questions and the model's answers as they come, then their scores.
+function openRunLive(k: RunKind, e: EvalRun, m?: TrainedModel): void {
   const model = m ?? models.find((x) => x.id === e.trained_model_id);
-  watchEval(e.id, `Eval #${e.id} · ${model ? `${model.name} (#${model.id})` : `model #${e.trained_model_id}`} · ${e.dataset}`,
-    () => { if (selectedModel !== null) void loadEvals(selectedModel); });
+  watchEval(k.path, e.id, `${capital(k.noun)} #${e.id} · ${model ? `${model.name} (#${model.id})` : `model #${e.trained_model_id}`} · ${e.dataset}`,
+    () => { if (selectedModel !== null) void loadRuns(k, selectedModel); });
 }
 
-// The form above the list: how many questions (blank = all of the dataset), the judge's batch size, and the Eval button.
-function renderEvalForm(m: TrainedModel): void {
+// The form above the list: how many questions (blank = all of the dataset), the judge's batch size, and the run button.
+function renderRunForm(k: RunKind, m: TrainedModel): void {
   const limit = node("input");
   limit.type = "number"; limit.min = "1"; limit.step = "1"; limit.placeholder = m.num_examples ? `all (${m.num_examples})` : "all";
   const batch = node("input");
   batch.type = "number"; batch.value = "10"; batch.min = "1"; batch.max = "25"; batch.step = "1";
   batch.title = "Question/answer pairs sent to the judge LLM in one call";
-  const run = node("button", "", "Eval");
+  const run = node("button", "", k.button);
   run.type = "button";
   run.disabled = !m.dataset;
   const status = node("span", "muted");
-  evalStatus = status;
+  k.status = status;
   if (!m.dataset) status.textContent = "This model was trained on the sidecar's default dataset: there are no questions to ask.";
   run.addEventListener("click", () => {
     const opts: { limit?: number; batch_size?: number } = {};
@@ -578,34 +612,34 @@ function renderEvalForm(m: TrainedModel): void {
     const b = Number.parseInt(batch.value, 10);
     if (!Number.isInteger(b) || b < 1 || b > 25) { status.className = "error"; status.textContent = "Batch size must be between 1 and 25."; return; }
     opts.batch_size = b;
-    void startEval(m, opts);
+    void startRun(k, m, opts);
   });
   const labelled = (text: string, input: HTMLElement): HTMLElement => { const l = node("label", "", text); l.append(input); return l; };
-  el("model-evals-form").replaceChildren(labelled("Questions", limit), labelled("Judge batch size", batch), run, status);
+  el(k.formId).replaceChildren(labelled("Questions", limit), labelled("Judge batch size", batch), run, status);
 }
 
-async function loadEvals(modelID: number): Promise<void> {
-  clearTimeout(evalTimer);
-  const status = el("model-evals-status");
+async function loadRuns(k: RunKind, modelID: number): Promise<void> {
+  clearTimeout(k.timer);
+  const status = el(k.statusId);
   try {
-    const res = await fetch(`../training/models/${modelID}/evals`);
+    const res = await fetch(`../training/models/${modelID}/${k.path}`);
     if (!res.ok) throw await failure(res);
-    const list = ((await res.json()) as { evals: EvalRun[] }).evals ?? [];
-    // The answers of the expanded evals: the ones of a running eval grow, so they are fetched again each time.
-    await Promise.all(list.filter((e) => openEvals.has(e.id) && (evalRunning(e) || !evalCases.has(e.id))).map(async (e) => {
-      const r = await fetch(`../training/evals/${e.id}`);
-      if (r.ok) evalCases.set(e.id, ((await r.json()) as { cases: EvalCase[] }).cases ?? []);
+    const list = ((await res.json()) as Record<string, EvalRun[]>)[k.listKey] ?? [];
+    // The answers of the expanded runs: the ones of a running run grow, so they are fetched again each time.
+    await Promise.all(list.filter((e) => k.open.has(e.id) && (runRunning(e) || !k.cases.has(e.id))).map(async (e) => {
+      const r = await fetch(`../training/${k.path}/${e.id}`);
+      if (r.ok) k.cases.set(e.id, ((await r.json()) as { cases: EvalCase[] }).cases ?? []);
     }));
     if (selectedModel !== modelID) return; // another model, or closed, while loading
-    evals = list;
+    k.runs = list;
     status.className = "muted";
-    status.textContent = list.length === 0 ? "No evals of this model yet." : `${list.length} eval${list.length === 1 ? "" : "s"}, newest first:`;
-    renderEvals();
-    if (list.some(evalRunning)) evalTimer = window.setTimeout(() => void loadEvals(modelID), EVAL_POLL_MS);
+    status.textContent = list.length === 0 ? `No ${k.noun}s of this model yet.` : `${list.length} ${k.noun}${list.length === 1 ? "" : "s"}, newest first:`;
+    renderRuns(k);
+    if (list.some(runRunning)) k.timer = window.setTimeout(() => void loadRuns(k, modelID), EVAL_POLL_MS);
   } catch (err) {
     if (selectedModel !== modelID) return;
     status.className = "error";
-    status.textContent = `Failed to load the evals: ${errText(err)}`;
+    status.textContent = `Failed to load the ${k.noun}s: ${errText(err)}`;
   }
 }
 
@@ -618,30 +652,30 @@ function scoreClass(score: number | null): string {
   return score === null ? "score-none" : score >= 4 ? "score-good" : score >= 2 ? "score-mid" : "score-bad";
 }
 
-function renderEvals(): void {
+function renderRuns(k: RunKind): void {
   const m = models.find((x) => x.id === selectedModel);
-  const box = el("model-evals");
+  const box = el(k.listId);
   box.replaceChildren();
-  for (const e of evals) {
+  for (const e of k.runs) {
     const item = node("article", "infer-item eval-card");
     const head = node("div", "infer-head");
     head.append(evalBadge(e.status), node("span", "muted", `#${e.id} · ${fmtTime(e.created_at)} UTC`),
       node("span", "muted", `${e.dataset} · batches of ${e.params.batch_size ?? "?"}${e.params.limit ? ` · first ${e.params.limit} questions` : ""}`));
     if (m && m.dataset_sha256 && e.dataset_sha256 && m.dataset_sha256 !== e.dataset_sha256) {
       const warn = node("span", "badge badge-unknown", "dataset changed since training");
-      warn.title = "The dataset file read by this eval is not the one the model was trained on (its sha256 differs)";
+      warn.title = `The dataset file read by this ${k.noun} is not the one the model was trained on (its sha256 differs)`;
       head.append(warn);
     }
-    if (evalRunning(e)) {
+    if (runRunning(e)) {
       const stop = node("button", "small danger", "Cancel");
       stop.type = "button";
-      stop.addEventListener("click", () => void cancelEval(e.id));
+      stop.addEventListener("click", () => void cancelRun(k.path, e.id));
       head.append(stop);
     }
-    const watch = node("button", "small", evalRunning(e) ? "Watch live" : "Open");
+    const watch = node("button", "small", runRunning(e) ? "Watch live" : "Open");
     watch.type = "button";
-    watch.title = evalRunning(e) ? "Follow the questions and answers as the eval runs" : "Every question with the model's answer and its score";
-    watch.addEventListener("click", () => openEvalLive(e, m));
+    watch.title = runRunning(e) ? `Follow the questions and answers as the ${k.noun} runs` : "Every question with the model's answer and its score";
+    watch.addEventListener("click", () => openRunLive(k, e, m));
     head.append(watch);
     item.append(head);
 
@@ -649,7 +683,7 @@ function renderEvals(): void {
     const bar = node("progress");
     bar.max = Math.max(e.num_examples, 1);
     bar.value = done;
-    const mean = evalMean(e);
+    const mean = runMean(e);
     const parts = [`${done} / ${e.num_examples} questions${e.num_failed ? ` (${e.num_failed} failed)` : ""}`];
     if (mean !== null) {
       parts.push(`mean score ${mean.toFixed(2)} / ${MAX_SCORE}`, `${Math.round((100 * e.num_correct) / e.num_judged)}% correct`,
@@ -665,20 +699,20 @@ function renderEvals(): void {
     if (e.error) item.append(node("div", "infer-label", "Error"), node("pre", "infer-error", e.error));
 
     const details = node("details", "eval-answers");
-    details.open = openEvals.has(e.id);
+    details.open = k.open.has(e.id);
     details.append(node("summary", "", "Answers, lowest score first"));
     details.addEventListener("toggle", () => {
-      if (details.open === openEvals.has(e.id)) return;
-      if (details.open) { openEvals.add(e.id); if (selectedModel !== null) void loadEvals(selectedModel); } else openEvals.delete(e.id);
+      if (details.open === k.open.has(e.id)) return;
+      if (details.open) { k.open.add(e.id); if (selectedModel !== null) void loadRuns(k, selectedModel); } else k.open.delete(e.id);
     });
-    if (details.open) details.append(evalCasesTable(evalCases.get(e.id)));
+    if (details.open) details.append(runCasesTable(k.cases.get(e.id)));
     item.append(details);
     box.append(item);
   }
 }
 
-// The answers of an eval, the worst first: the question, the dataset's answer, the model's, the score and the judge's reason.
-function evalCasesTable(cases: EvalCase[] | undefined): HTMLElement {
+// The answers of a run, the worst first: the question, the dataset's answer, the model's, the score and the judge's reason.
+function runCasesTable(cases: EvalCase[] | undefined): HTMLElement {
   if (!cases) return node("p", "muted", "Loading the answers…");
   if (cases.length === 0) return node("p", "muted", "No answers yet: they appear as each batch is judged.");
   const rank = (i: EvalCase): number => (i.status === "failed" ? -1 : i.score ?? -1);
@@ -1274,7 +1308,7 @@ export function initTraining(): void {
   el("training-upload").addEventListener("click", () => void uploadDataset());
   const datasetModal = el<HTMLDialogElement>("dataset-modal");
   const modelModal = el<HTMLDialogElement>("model-modal");
-  initEvalLive(cancelEval);
+  initEvalLive(cancelRun);
   el("model-close").addEventListener("click", () => modelModal.close());
   modelModal.addEventListener("close", closeModelModal);
   modelModal.addEventListener("click", (e) => { if (e.target === modelModal) modelModal.close(); });

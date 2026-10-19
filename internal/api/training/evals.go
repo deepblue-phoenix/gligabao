@@ -191,7 +191,7 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the trained model")
 			return
 		}
-		dataset, sum, examples, err := loadEvalDataset(n, tm)
+		dataset, sum, examples, err := loadModelDataset(n, tm)
 		if err != nil {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
@@ -265,9 +265,9 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 	}
 }
 
-// loadEvalDataset reads the training dataset of tm from n's training datasets directory: the dataset's name, the digest of
+// loadModelDataset (shared by the evals and the audits) reads the training dataset of tm from n's training datasets directory: the dataset's name, the digest of
 // the file and its examples. The errors are safe to show to the user.
-func loadEvalDataset(n Database, tm *relational.TrainedModel) (name, sum string, examples []trainingeval.Example, err error) {
+func loadModelDataset(n Database, tm *relational.TrainedModel) (name, sum string, examples []trainingeval.Example, err error) {
 	name = strings.TrimSuffix(tm.Dataset, ".jsonl")
 	if name == "" {
 		return "", "", nil, errors.New("this model was trained on the sidecar's default dataset, which gligabao does not have: there are no questions to ask")

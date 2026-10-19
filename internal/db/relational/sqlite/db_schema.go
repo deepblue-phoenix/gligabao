@@ -471,6 +471,82 @@ CREATE TABLE IF NOT EXISTS gb_training_case_meta (
 	output_tokens INTEGER NOT NULL DEFAULT 0,
 	duration_ms   INTEGER NOT NULL DEFAULT 0,
 	FOREIGN KEY (case_result_id, type) REFERENCES gb_experiment_case_results(id, type) ON DELETE CASCADE
+);
+
+-- ---------------------------------------------------------------------------------------------------------------------
+-- TRAINING DATA AUDITS of trained models (internal/api/training/audits.go, evals/training). An audit asks a trained model the
+-- questions of its OWN fine-tuning dataset and has an LLM judge, a batch of questions per call, how closely its answers reproduce
+-- the dataset's. Every case is something the model was trained on, so it checks that the training took (and, through the examples
+-- it fails, finds bad training data); it measures memorization and fit, NOT generalization. That is what an EVAL of a trained model
+-- is for (the 'training' rows of the universal tables above: its cases are meant to be ones the model never saw).
+--
+-- The two are kept apart on purpose, and an audit has tables of its own instead of rows of the universal eval tables: it has no
+-- experiments, no knowledge-style case definitions and no type column to share. One run per audit, one case per example.
+-- ---------------------------------------------------------------------------------------------------------------------
+
+-- ONE ROW PER AUDIT of a trained model. The counters are rewritten after every judge batch, so the row shows the progress while the
+-- audit runs. A run still 'running' after a restart of the server is set to 'failed' when the server starts.
+--   trained_model_id  the model (gb_trained_models) that was asked; deleting the model deletes the audit (and its cases)
+--   status            'running', 'completed' (it ran to the end: it has a score, not a verdict), 'failed' (error says why) or 'cancelled'
+--   dataset, dataset_sha256  the training dataset the cases came from, and the digest of the file that was read
+--   params            JSON object: batch_size, max_tokens, temperature, limit
+--   judge_model       the model that judged ('' until its first reply)
+--   num_examples      the questions asked; num_answered the ones the model answered; num_judged the ones scored; num_failed the ones
+--                     where the model or the judge failed; num_correct/num_partial/num_incorrect split num_judged by score
+--                     (>= 4 / 2-3 / 0-1); score_sum the sum of the scores (0 to 5 each) of the judged ones
+--   num_batches       judge batches done; judge_calls the LLM calls made (a batch may need a retry); judge_*_tokens its tokens
+--   judge_cost_usd    the judge's LLM cost so far
+--   error             why the audit failed ('' otherwise)
+CREATE TABLE IF NOT EXISTS gb_training_audit_runs (
+	id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+	trained_model_id    INTEGER NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
+	status              TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed', 'cancelled')),
+	dataset             TEXT NOT NULL DEFAULT '',
+	dataset_sha256      TEXT NOT NULL DEFAULT '',
+	params              TEXT NOT NULL DEFAULT '{}',
+	judge_model         TEXT NOT NULL DEFAULT '',
+	num_examples        INTEGER NOT NULL DEFAULT 0,
+	num_answered        INTEGER NOT NULL DEFAULT 0,
+	num_judged          INTEGER NOT NULL DEFAULT 0,
+	num_failed          INTEGER NOT NULL DEFAULT 0,
+	num_correct         INTEGER NOT NULL DEFAULT 0,
+	num_partial         INTEGER NOT NULL DEFAULT 0,
+	num_incorrect       INTEGER NOT NULL DEFAULT 0,
+	score_sum           INTEGER NOT NULL DEFAULT 0,
+	num_batches         INTEGER NOT NULL DEFAULT 0,
+	judge_calls         INTEGER NOT NULL DEFAULT 0,
+	judge_input_tokens  INTEGER NOT NULL DEFAULT 0,
+	judge_output_tokens INTEGER NOT NULL DEFAULT 0,
+	judge_cost_usd      REAL NOT NULL DEFAULT 0,
+	error               TEXT NOT NULL DEFAULT '',
+	started_at          DATETIME NOT NULL,
+	finished_at         DATETIME
+);
+CREATE INDEX IF NOT EXISTS idx_gb_training_audit_runs_model ON gb_training_audit_runs(trained_model_id, id);
+
+-- ONE ROW PER EXAMPLE of an audit, written when its judge batch is done (so it is never 'running').
+--   idx          the example's position in the dataset (0-based; unique within a run); batch the judge batch (1-based)
+--   instruction, input  the question; reference the dataset's answer; response the model's ('' if it failed)
+--   status       'judged' (the model answered and the judge scored it) or 'failed' (the model or the judge failed; error says why)
+--   score        the judge's, 0 to 5 (NULL unless judged); reason its explanation
+--   input_tokens, output_tokens, duration_ms  of the model's answer
+CREATE TABLE IF NOT EXISTS gb_training_audit_cases (
+	id            INTEGER PRIMARY KEY AUTOINCREMENT,
+	run_id        INTEGER NOT NULL REFERENCES gb_training_audit_runs(id) ON DELETE CASCADE,
+	idx           INTEGER NOT NULL,
+	batch         INTEGER NOT NULL,
+	instruction   TEXT NOT NULL,
+	input         TEXT NOT NULL DEFAULT '',
+	reference     TEXT NOT NULL DEFAULT '',
+	response      TEXT NOT NULL DEFAULT '',
+	status        TEXT NOT NULL CHECK (status IN ('judged', 'failed')),
+	error         TEXT NOT NULL DEFAULT '',
+	score         INTEGER,
+	reason        TEXT NOT NULL DEFAULT '',
+	input_tokens  INTEGER NOT NULL DEFAULT 0,
+	output_tokens INTEGER NOT NULL DEFAULT 0,
+	duration_ms   INTEGER NOT NULL DEFAULT 0,
+	UNIQUE (run_id, idx)
 );`
 
 // initSchema applies the database schema.
