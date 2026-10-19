@@ -13,6 +13,17 @@ In the admin UI, training view, press **Audit** (or **Eval**) on a trained model
 
 For an audit the questions are those of the model's own training dataset, so the score says how closely the model reproduces its training answers (memorization / fit), not how well it generalizes.
 
+## Eval cases and running them from the command line
+
+The cases of the evals are in `evals/*.json` (embedded in the package, loaded by `LoadEvals`): a list of `{name, instruction, input?, output}`, `output` being the expected answer. They ask about knowledge that is in a training dataset but are phrased differently from its examples (several facts per question). `world_knowledge_base.json` has 10 cases on the `world-knowledge-base` dataset (`bin/datasets_training/world-knowledge-base/`).
+
+```
+./run_evals.sh -t training -list-models          # the ids of the trained models in bin/gligabao.db
+./run_evals.sh -t training -model 3 [-v] [-e world_knowledge_base] [case-name ...]
+```
+
+It needs `ANTHROPIC_API_KEY` (the judge) and a running sidecar (`SIDECAR_URL` or `-sidecar`; the model is loaded there). The runner (`evals/training/cmd`) asks the model each question, has the judge grade the answers with the same engine as below, and prints a verdict per case and the totals; nothing is stored. A case passes with a score of 4 or 5; the exit status is 1 if any case does not. Other options: `-db`, `-batch-size`, `-judge-model`, `-max-tokens`, `-temperature` (`go run ./evals/training/cmd -h`).
+
 ## How it works
 
 1. The examples are read from the model's dataset (`ParseExamples`), the first `limit` of them if a limit is set.

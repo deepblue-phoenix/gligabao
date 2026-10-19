@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Runs the Go eval runner (evals/knowledge/main.go).
-# Usage: ./run_evals.sh [-e|--eval name] [-v] [case-name ...]  (-v: show LLM input/output; -h: help + eval list)
+# Runs a Go eval runner: the knowledge evals (evals/knowledge/main.go, default) or the training evals (evals/training/cmd/main.go).
+# Usage: ./run_evals.sh [-t|--type knowledge|training] [-e|--eval name] [-v] [case-name ...]  (-h: help + eval list)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -8,20 +8,30 @@ usage() {
 	cat <<USAGE
 Usage: ./run_evals.sh [options] [case-name ...]
 
-Runs the end-to-end evals against the real LLM (needs ANTHROPIC_API_KEY).
+Runs one of the two kinds of evals against the real LLM (needs ANTHROPIC_API_KEY):
+  knowledge   (default) knowledge extraction: remember, then recall
+  training    a trained model answers questions about the training data's knowledge, an LLM judges the answers
+              (needs a running sidecar and the id of a trained model: -model ID; see ./run_evals.sh -t training -list-models)
 
 Options:
+  -t, --type KIND    which evals to run: knowledge (default) or training
   -e, --eval NAME    run only the cases of the eval NAME (see the list below)
-  -v                 show the input and output of every LLM call
+  -v                 knowledge: show the input and output of every LLM call; training: show every question and answer
   -h, --help         show this help
-  (other options, e.g. -experiment, -models, -reasoning, -db, are passed to the runner: go run ./evals/knowledge -h)
+  (other options are passed to the runner: knowledge: -experiment, -models, -reasoning, -db (go run ./evals/knowledge -h);
+   training: -model, -list-models, -db, -sidecar, -batch-size, -judge-model (go run ./evals/training/cmd -h))
 
 Case names restrict the run to those cases (combined with --eval, they must belong to that eval).
 
-Evals (evals/knowledge/evals/*.json):
+Knowledge evals (evals/knowledge/evals/*.json):
 USAGE
 	go run ./evals/knowledge -list-evals
+	echo
+	echo "Training evals (evals/training/evals/*.json):"
+	go run ./evals/training/cmd -list-evals
 }
+
+kind=knowledge
 
 args=()
 while [ $# -gt 0 ]; do
@@ -29,6 +39,15 @@ while [ $# -gt 0 ]; do
 	-h | --help | -help)
 		usage
 		exit 0
+		;;
+	-t | --type | -type)
+		[ $# -ge 2 ] || { echo "error: $1 needs knowledge or training" >&2; exit 2; }
+		kind="$2"
+		shift 2
+		;;
+	--type=* | -type=*)
+		kind="${1#*=}"
+		shift
 		;;
 	-e | --eval | -eval)
 		[ $# -ge 2 ] || { echo "error: $1 needs an eval name (see --help)" >&2; exit 2; }
@@ -46,4 +65,11 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-go run ./evals/knowledge ${args[@]+"${args[@]}"}
+case "$kind" in
+knowledge) go run ./evals/knowledge ${args[@]+"${args[@]}"} ;;
+training) go run ./evals/training/cmd ${args[@]+"${args[@]}"} ;;
+*)
+	echo "error: unknown eval type \"$kind\" (knowledge or training)" >&2
+	exit 2
+	;;
+esac
