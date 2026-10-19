@@ -14,6 +14,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 )
 
 // The fake model, judge and dataset of the eval tests (evals_test.go) serve here too: an audit asks the same questions.
@@ -26,24 +27,24 @@ func startAudit(m *training.AuditManager, modelID, body string) evalCall {
 	return evalCall{rec.Code, rec.Body.Bytes()}
 }
 
-func auditOf(t *testing.T, c evalCall) relational.TrainedModelRun {
+func auditOf(t *testing.T, c evalCall) evalsdb.TrainedModelRun {
 	t.Helper()
-	var a relational.TrainedModelRun
+	var a evalsdb.TrainedModelRun
 	if err := json.Unmarshal(c.body, &a); err != nil {
 		t.Fatalf("%d %s", c.code, c.body)
 	}
 	return a
 }
 
-func getAudit(t *testing.T, m *training.AuditManager, id int64) (relational.TrainedModelRun, []relational.TrainedModelCase) {
+func getAudit(t *testing.T, m *training.AuditManager, id int64) (evalsdb.TrainedModelRun, []evalsdb.TrainedModelCase) {
 	t.Helper()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/x", nil)
 	req.SetPathValue("id", fmt.Sprint(id))
 	m.GetOf()(rec, req)
 	var out struct {
-		Run   relational.TrainedModelRun
-		Cases []relational.TrainedModelCase
+		Run   evalsdb.TrainedModelRun
+		Cases []evalsdb.TrainedModelCase
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != 200 {
 		t.Fatalf("get audit: %d %s", rec.Code, rec.Body)
@@ -69,14 +70,14 @@ func testAuditATrainedModel(t *testing.T, d *sql.DB) {
 		t.Fatalf("start: %d %s", call.code, call.body)
 	}
 	started := auditOf(t, call)
-	if started.Status != relational.TrainedModelRunRunning || started.TrainedModelID != mid || started.Kind != "audit" || started.Eval != "" || started.Dataset != "mine" || started.NumExamples != 5 ||
+	if started.Status != evalsdb.TrainedModelRunRunning || started.TrainedModelID != mid || started.Kind != "audit" || started.Eval != "" || started.Dataset != "mine" || started.NumExamples != 5 ||
 		len(started.DatasetSHA256) != 64 || !strings.Contains(string(started.Params), `"batch_size":2`) {
 		t.Fatalf("started: %+v", started)
 	}
 	m.Wait()
 
 	au, cases := getAudit(t, m, started.ID)
-	if au.Status != relational.TrainedModelRunCompleted || au.FinishedAt == nil || au.Error != "" {
+	if au.Status != evalsdb.TrainedModelRunCompleted || au.FinishedAt == nil || au.Error != "" {
 		t.Fatalf("finished: %+v", au)
 	}
 	if au.NumAnswered != 5 || au.NumJudged != 5 || au.NumErrored != 0 || au.NumCorrect != 4 || au.NumIncorrect != 1 || au.ScoreSum != 21 || au.NumBatches != 3 {
@@ -89,7 +90,7 @@ func testAuditATrainedModel(t *testing.T, d *sql.DB) {
 		t.Fatalf("judge usage: %+v", au)
 	}
 	if len(cases) != 5 || cases[3].Response != "wrong" || cases[3].Score == nil || *cases[3].Score != 1 || cases[0].Reference != "a0" ||
-		cases[0].Reason != "because" || cases[0].Status != relational.TrainedModelCaseJudged || cases[0].RunID != started.ID {
+		cases[0].Reason != "because" || cases[0].Status != evalsdb.TrainedModelCaseJudged || cases[0].RunID != started.ID {
 		t.Fatalf("cases: %+v", cases)
 	}
 	// The model got the dataset's questions on its own weights, with the settings of the audit.
@@ -109,7 +110,7 @@ func testAuditATrainedModel(t *testing.T, d *sql.DB) {
 		t.Fatalf("an audit recorded eval judge calls: %d %v", nEval, err)
 	}
 	// An audit is not an eval run.
-	if evs, err := relational.ListTrainedModelEvalRuns(ctx, d, mid, 0); err != nil || len(evs) != 0 {
+	if evs, err := evalsdb.ListTrainedModelEvalRuns(ctx, d, mid, 0); err != nil || len(evs) != 0 {
 		t.Fatalf("an audit shows up as an eval: %+v %v", evs, err)
 	}
 
@@ -123,7 +124,7 @@ func testAuditATrainedModel(t *testing.T, d *sql.DB) {
 	req.SetPathValue("id", fmt.Sprint(mid))
 	m.ListOf()(rec, req)
 	var list struct {
-		Audits []relational.TrainedModelRun
+		Audits []evalsdb.TrainedModelRun
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || rec.Code != 200 || len(list.Audits) != 2 || list.Audits[0].NumExamples != 3 || list.Audits[0].Status != "completed" {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body)
@@ -163,7 +164,7 @@ func TestAuditRefusals(t *testing.T) {
 	if c := startAudit(training.NewAuditManager(ctx, dbs, &evalSidecar{}, nil), fmt.Sprint(ok), `{}`); c.code != 503 {
 		t.Errorf("no LLM: %d", c.code)
 	}
-	if audits, _ := relational.ListTrainedModelAuditRuns(ctx, d, 0, 0); len(audits) != 0 {
+	if audits, _ := evalsdb.ListTrainedModelAuditRuns(ctx, d, 0, 0); len(audits) != 0 {
 		t.Errorf("refused audits left rows: %+v", audits)
 	}
 	rec := httptest.NewRecorder()
@@ -213,7 +214,7 @@ func TestAuditCancelAndConflict(t *testing.T) {
 	}
 	m.Wait()
 	au, cases := getAudit(t, m, id)
-	if au.Status != relational.TrainedModelRunCancelled || au.FinishedAt == nil || len(cases) != 0 {
+	if au.Status != evalsdb.TrainedModelRunCancelled || au.FinishedAt == nil || len(cases) != 0 {
 		t.Fatalf("cancelled: %+v, %d cases", au, len(cases))
 	}
 	if code := cancel(); code != http.StatusConflict {
@@ -235,8 +236,8 @@ func TestAuditFailsWhenTheModelDoesNotAnswer(t *testing.T) {
 	c := startAudit(m, fmt.Sprint(mid), `{"batch_size": 2}`)
 	m.Wait()
 	au, cases := getAudit(t, m, auditOf(t, c).ID)
-	if au.Status != relational.TrainedModelRunErrored || !strings.Contains(au.Error, "weights are gone") || au.NumErrored != 4 || au.NumJudged != 0 || len(cases) != 4 ||
-		cases[0].Status != relational.TrainedModelCaseErrored || !strings.Contains(cases[0].Error, "weights are gone") {
+	if au.Status != evalsdb.TrainedModelRunErrored || !strings.Contains(au.Error, "weights are gone") || au.NumErrored != 4 || au.NumJudged != 0 || len(cases) != 4 ||
+		cases[0].Status != evalsdb.TrainedModelCaseErrored || !strings.Contains(cases[0].Error, "weights are gone") {
 		t.Fatalf("%+v cases %+v", au, cases)
 	}
 }
@@ -245,13 +246,13 @@ func TestAuditsInterruptedByARestartAreFailed(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx := context.Background()
 	mid, _, _ := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{JobID: "j1", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j1"})
-	id, err := relational.RecordTrainedModelAuditRun(ctx, d, relational.TrainedModelRun{TrainedModelID: mid})
+	id, err := evalsdb.RecordTrainedModelAuditRun(ctx, d, evalsdb.TrainedModelRun{TrainedModelID: mid})
 	if err != nil {
 		t.Fatal(err)
 	}
 	training.NewAuditManager(ctx, []training.Database{{Name: "standard", DB: d}}, nil, nil)
-	au, err := relational.GetTrainedModelAuditRun(ctx, d, id)
-	if err != nil || au.Status != relational.TrainedModelRunErrored || !strings.Contains(au.Error, "restart") {
+	au, err := evalsdb.GetTrainedModelAuditRun(ctx, d, id)
+	if err != nil || au.Status != evalsdb.TrainedModelRunErrored || !strings.Contains(au.Error, "restart") {
 		t.Fatalf("%+v %v", au, err)
 	}
 }

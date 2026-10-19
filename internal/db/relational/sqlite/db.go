@@ -190,3 +190,11 @@ func EnsureDataset(ctx context.Context, d *sql.DB, userID, name string) (int64, 
 	}
 	return datasetID(ctx, d, userID, name)
 }
+
+// DatasetSelect is the SELECT of the columns ScanDataset reads (add a WHERE clause), for the packages that join to datasets.
+const DatasetSelect = datasetSelect
+
+// ScanDataset reads a row selected with DatasetSelect.
+func ScanDataset(r interface{ Scan(dest ...any) error }) (*model.Dataset, error) {
+	return scanDataset(r)
+}

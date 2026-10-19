@@ -26,29 +26,30 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 )
 
-// Types stored in the database (see internal/db/relational/model).
+// Types stored in the database (see internal/evals/db/model).
 type (
-	Experiment = relational.Experiment
-	CaseRef    = relational.CaseRef
-	Run        = relational.ExperimentRun
-	CaseResult = relational.ExperimentCaseResult
-	Trajectory = relational.ExperimentTrajectory
-	Artifact   = relational.ExperimentArtifact
+	Experiment = evalsdb.Experiment
+	CaseRef    = evalsdb.CaseRef
+	Run        = evalsdb.ExperimentRun
+	CaseResult = evalsdb.ExperimentCaseResult
+	Trajectory = evalsdb.ExperimentTrajectory
+	Artifact   = evalsdb.ExperimentArtifact
 )
 
 // Statuses of runs and cases.
 const (
-	StatusRunning = relational.ExperimentRunning
-	StatusPassed  = relational.ExperimentPassed
-	StatusFailed  = relational.ExperimentFailed
-	StatusErrored = relational.ExperimentErrored
+	StatusRunning = evalsdb.ExperimentRunning
+	StatusPassed  = evalsdb.ExperimentPassed
+	StatusFailed  = evalsdb.ExperimentFailed
+	StatusErrored = evalsdb.ExperimentErrored
 )
 
 // ErrRunNotRunning is returned by Record when the run is already finished.
 var (
-	ErrRunNotRunning = relational.ErrRunNotRunning
+	ErrRunNotRunning = evalsdb.ErrRunNotRunning
 )
 
 // ErrNotFound is returned by the lookups below when the experiment, run or trajectory does not exist.
@@ -85,11 +86,11 @@ func Start(ctx context.Context, d *sql.DB, opts Options) (*Tracker, error) {
 	if strings.TrimSpace(opts.Name) == "" {
 		return nil, errors.New("experiment name is required")
 	}
-	exp, err := relational.EnsureExperiment(ctx, d, opts.Name, opts.Description, opts.Config)
+	exp, err := evalsdb.EnsureExperiment(ctx, d, opts.Name, opts.Description, opts.Config)
 	if err != nil {
 		return nil, err
 	}
-	run, err := relational.StartExperimentRun(ctx, d, exp.ID, opts.Params)
+	run, err := evalsdb.StartExperimentRun(ctx, d, exp.ID, opts.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -173,12 +174,12 @@ func (t *Tracker) Record(ctx context.Context, r CaseOutcome) (*CaseResult, error
 		e.CostUSD += ref.CostUSD
 		e.Trajectories = append(e.Trajectories, ref)
 	}
-	return relational.RecordExperimentCaseResult(ctx, t.d, e)
+	return evalsdb.RecordExperimentCaseResult(ctx, t.d, e)
 }
 
 // Finish totals the run's cases and ends the run: passed if every recorded case passed, otherwise failed.
 func (t *Tracker) Finish(ctx context.Context) (*Run, error) {
-	run, err := relational.FinishExperimentRun(ctx, t.d, t.Run.ID)
+	run, err := evalsdb.FinishExperimentRun(ctx, t.d, t.Run.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +195,7 @@ func TrajectoryRef(traj *atif.Trajectory, dir string) (Trajectory, error) {
 		return Trajectory{}, errors.New("trajectory has no trajectory_id")
 	}
 	kind := strings.TrimPrefix(traj.Agent.Name, agentPrefix)
-	if kind != relational.TrajectoryRemember && kind != relational.TrajectoryRecall {
+	if kind != evalsdb.TrajectoryRemember && kind != evalsdb.TrajectoryRecall {
 		return Trajectory{}, fmt.Errorf("trajectory %s: unknown agent %q", traj.TrajectoryID, traj.Agent.Name)
 	}
 	ref := Trajectory{Kind: kind, TrajectoryID: traj.TrajectoryID, AgentName: traj.Agent.Name, Steps: len(traj.Steps)}
@@ -211,29 +212,29 @@ func TrajectoryRef(traj *atif.Trajectory, dir string) (Trajectory, error) {
 
 // Get returns the experiment called name with the cases its runs executed, or ErrNotFound.
 func Get(ctx context.Context, d *sql.DB, name string) (*Experiment, error) {
-	return relational.GetExperiment(ctx, d, name)
+	return evalsdb.GetExperiment(ctx, d, name)
 }
 
 // List returns all experiments, oldest first (without their Cases).
 func List(ctx context.Context, d *sql.DB) ([]Experiment, error) {
-	return relational.ListExperiments(ctx, d)
+	return evalsdb.ListExperiments(ctx, d)
 }
 
 // Runs returns the runs of the experiment, oldest first (without their cases; see GetRun).
 func Runs(ctx context.Context, d *sql.DB, experimentID int64) ([]Run, error) {
-	return relational.ListExperimentRuns(ctx, d, experimentID)
+	return evalsdb.ListExperimentRuns(ctx, d, experimentID)
 }
 
 // CaseHistory returns the results of one case (eval and case name) over the runs of the experiment, oldest run first:
 // how its status progressed over time. Each result has its RunID; the trajectories are not loaded.
 func CaseHistory(ctx context.Context, d *sql.DB, experimentID int64, eval, name string) ([]CaseResult, error) {
-	return relational.ListExperimentCaseHistory(ctx, d, experimentID, eval, name)
+	return evalsdb.ListExperimentCaseHistory(ctx, d, experimentID, eval, name)
 }
 
 // GetRun returns a run with all its cases and their trajectory references, or ErrNotFound. The artifacts of each
 // trajectory are read from the dataset its case ran in.
 func GetRun(ctx context.Context, d *sql.DB, runID int64) (*Run, error) {
-	run, err := relational.GetExperimentRun(ctx, d, runID)
+	run, err := evalsdb.GetExperimentRun(ctx, d, runID)
 	if err != nil {
 		return nil, err
 	}
@@ -269,11 +270,11 @@ func GetRun(ctx context.Context, d *sql.DB, runID int64) (*Run, error) {
 // CaseResultDataset returns the dataset a case ran in (deleted or not), whose graph is the one the case built, or
 // ErrNotFound if the case does not exist or recorded no dataset.
 func CaseResultDataset(ctx context.Context, d *sql.DB, caseResultID int64) (*relational.Dataset, error) {
-	return relational.GetExperimentCaseResultDataset(ctx, d, caseResultID)
+	return evalsdb.GetExperimentCaseResultDataset(ctx, d, caseResultID)
 }
 
 // FindTrajectory returns the reference to the trajectory with the given ATIF trajectory_id, or ErrNotFound. Its
 // CaseResultID leads to the case, and through it (CaseResult.RunID) to the run and the experiment.
 func FindTrajectory(ctx context.Context, d *sql.DB, trajectoryID string) (*Trajectory, error) {
-	return relational.FindExperimentTrajectory(ctx, d, trajectoryID)
+	return evalsdb.FindExperimentTrajectory(ctx, d, trajectoryID)
 }

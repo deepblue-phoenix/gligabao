@@ -1,4 +1,4 @@
-package relational_test
+package db_test
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 )
 
 func TestUnifiedEvalTables(t *testing.T) { dbtest.Run(t, unifiedEvalTablesScenario) }
@@ -26,41 +27,41 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 	}
 
 	// The same name is two experiments, one of each type, and each kind sees only its own.
-	kx, err := relational.EnsureExperiment(ctx, d, "same", "", nil)
-	if err != nil || kx.Type != relational.EvalTypeKnowledge {
+	kx, err := evalsdb.EnsureExperiment(ctx, d, "same", "", nil)
+	if err != nil || kx.Type != evalsdb.EvalTypeKnowledge {
 		t.Fatalf("EnsureExperiment: %+v %v", kx, err)
 	}
-	tx, err := relational.EnsureTrainingExperiment(ctx, d, "same", "", nil)
+	tx, err := evalsdb.EnsureTrainingExperiment(ctx, d, "same", "", nil)
 	if err != nil || tx.ID == kx.ID {
 		t.Fatalf("EnsureTrainingExperiment: %+v %v", tx, err)
 	}
-	if got, _ := relational.ListExperiments(ctx, d); len(got) != 1 || got[0].ID != kx.ID {
+	if got, _ := evalsdb.ListExperiments(ctx, d); len(got) != 1 || got[0].ID != kx.ID {
 		t.Fatalf("ListExperiments: %+v", got)
 	}
-	if got, _ := relational.ListTrainingExperiments(ctx, d); len(got) != 1 || got[0].ID != tx.ID {
+	if got, _ := evalsdb.ListTrainingExperiments(ctx, d); len(got) != 1 || got[0].ID != tx.ID {
 		t.Fatalf("ListTrainingExperiments: %+v", got)
 	}
 	if got := count(`SELECT COUNT(*) FROM gb_experiments WHERE type = 'knowledge'`) + count(`SELECT COUNT(*) FROM gb_experiments WHERE type = 'training'`); got != 2 {
 		t.Fatalf("experiments by type: %d", got)
 	}
 	// Each kind refuses the other's IDs.
-	if _, err := relational.StartExperimentRun(ctx, d, tx.ID, nil); err != relational.ErrNotFound {
+	if _, err := evalsdb.StartExperimentRun(ctx, d, tx.ID, nil); err != relational.ErrNotFound {
 		t.Fatalf("a knowledge run under a training experiment: %v", err)
 	}
-	if _, err := relational.GetTrainingExperiment(ctx, d, kx.ID); err != relational.ErrNotFound {
+	if _, err := evalsdb.GetTrainingExperiment(ctx, d, kx.ID); err != relational.ErrNotFound {
 		t.Fatalf("a knowledge experiment as a training one: %v", err)
 	}
 
 	// A knowledge case: universal row plus knowledge metadata.
-	run, err := relational.StartExperimentRun(ctx, d, kx.ID, map[string]any{"cases": []string{"a"}})
-	if err != nil || run.Type != relational.EvalTypeKnowledge {
+	run, err := evalsdb.StartExperimentRun(ctx, d, kx.ID, map[string]any{"cases": []string{"a"}})
+	if err != nil || run.Type != evalsdb.EvalTypeKnowledge {
 		t.Fatalf("StartExperimentRun: %+v %v", run, err)
 	}
 	now := time.Now()
-	rec, err := relational.RecordExperimentCaseResult(ctx, d, relational.ExperimentCaseResult{RunID: run.ID, Eval: "basic", Name: "job_change",
-		Status: relational.ExperimentFailed, Answer: "Globex", Problems: []string{"p"}, PassedChecks: []string{"q"}, Steps: 3, CostUSD: 0.5,
+	rec, err := evalsdb.RecordExperimentCaseResult(ctx, d, evalsdb.ExperimentCaseResult{RunID: run.ID, Eval: "basic", Name: "job_change",
+		Status: evalsdb.ExperimentFailed, Answer: "Globex", Problems: []string{"p"}, PassedChecks: []string{"q"}, Steps: 3, CostUSD: 0.5,
 		StartedAt: now, FinishedAt: now})
-	if err != nil || rec.Type != relational.EvalTypeKnowledge {
+	if err != nil || rec.Type != evalsdb.EvalTypeKnowledge {
 		t.Fatalf("RecordExperimentCaseResult: %+v %v", rec, err)
 	}
 	if n := count(`SELECT COUNT(*) FROM gb_experiment_case_results WHERE type = 'knowledge' AND eval = 'basic' AND case_name = 'job_change'`); n != 1 {
@@ -72,11 +73,11 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 	if n := count(`SELECT COUNT(*) FROM gb_experiment_cases WHERE type = 'knowledge' AND eval = 'basic'`); n != 1 {
 		t.Fatalf("experiment cases: %d", n)
 	}
-	got, err := relational.GetExperimentRun(ctx, d, run.ID)
-	if err != nil || len(got.CaseResults) != 1 || got.CaseResults[0].Answer != "Globex" || got.CaseResults[0].Steps != 3 || got.CaseResults[0].Type != relational.EvalTypeKnowledge {
+	got, err := evalsdb.GetExperimentRun(ctx, d, run.ID)
+	if err != nil || len(got.CaseResults) != 1 || got.CaseResults[0].Answer != "Globex" || got.CaseResults[0].Steps != 3 || got.CaseResults[0].Type != evalsdb.EvalTypeKnowledge {
 		t.Fatalf("GetExperimentRun: %+v %v", got, err)
 	}
-	if _, err := relational.GetExperimentRun(ctx, d, run.ID+1000); err != relational.ErrNotFound {
+	if _, err := evalsdb.GetExperimentRun(ctx, d, run.ID+1000); err != relational.ErrNotFound {
 		t.Fatalf("unknown run: %v", err)
 	}
 
@@ -87,7 +88,7 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	eid, err := relational.RecordTrainedModelEvalRun(ctx, d, relational.TrainedModelRun{TrainedModelID: mid, Eval: "mine", NumExamples: 2})
+	eid, err := evalsdb.RecordTrainedModelEvalRun(ctx, d, evalsdb.TrainedModelRun{TrainedModelID: mid, Eval: "mine", NumExamples: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,23 +104,23 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 	}
 	// A batch stores one case result (with its training metadata) per example; one that joined the experiment already is listed there.
 	score := 5
-	batch1 := []relational.TrainedModelCase{{Idx: 0, Name: "c0", Batch: 1, Instruction: "q0", Response: "a0", Status: relational.TrainedModelCaseJudged, Score: &score, Reason: "ok"}}
-	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, relational.TrainedModelRun{ID: eid, NumAnswered: 1, NumJudged: 1, NumCorrect: 1, ScoreSum: 5, NumBatches: 1}, batch1); err != nil {
+	batch1 := []evalsdb.TrainedModelCase{{Idx: 0, Name: "c0", Batch: 1, Instruction: "q0", Response: "a0", Status: evalsdb.TrainedModelCaseJudged, Score: &score, Reason: "ok"}}
+	if err := evalsdb.SaveTrainedModelEvalRunBatch(ctx, d, evalsdb.TrainedModelRun{ID: eid, NumAnswered: 1, NumJudged: 1, NumCorrect: 1, ScoreSum: 5, NumBatches: 1}, batch1); err != nil {
 		t.Fatal(err)
 	}
 	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_case_results e JOIN gb_training_case_meta c ON c.case_result_id = e.id
 		WHERE e.run_id = %d AND e.type = 'training' AND e.eval = 'mine' AND e.case_name = 'c0' AND e.status = 'judged' AND c.score = 5`, eid)); n != 1 {
 		t.Fatalf("training case result rows: %d", n)
 	}
-	if _, err := relational.StartTrainingExperimentRun(ctx, d, tx.ID, eid); err != nil {
+	if _, err := evalsdb.StartTrainingExperimentRun(ctx, d, tx.ID, eid); err != nil {
 		t.Fatal(err)
 	}
 	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_cases WHERE experiment_id = %d AND type = 'training' AND eval = 'mine' AND case_name = 'c0'`, tx.ID)); n != 1 {
 		t.Fatalf("training experiment cases after joining: %d", n)
 	}
 	// A case saved after the run joined the experiment is added to its cases, and an errored one is an errored case result.
-	batch2 := []relational.TrainedModelCase{{Idx: 1, Name: "c1", Batch: 2, Instruction: "q1", Status: relational.TrainedModelCaseErrored, Error: "boom"}}
-	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, relational.TrainedModelRun{ID: eid, NumAnswered: 2, NumJudged: 1, NumErrored: 1, NumCorrect: 1, ScoreSum: 5, NumBatches: 2}, batch2); err != nil {
+	batch2 := []evalsdb.TrainedModelCase{{Idx: 1, Name: "c1", Batch: 2, Instruction: "q1", Status: evalsdb.TrainedModelCaseErrored, Error: "boom"}}
+	if err := evalsdb.SaveTrainedModelEvalRunBatch(ctx, d, evalsdb.TrainedModelRun{ID: eid, NumAnswered: 2, NumJudged: 1, NumErrored: 1, NumCorrect: 1, ScoreSum: 5, NumBatches: 2}, batch2); err != nil {
 		t.Fatal(err)
 	}
 	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_cases WHERE experiment_id = %d AND type = 'training' AND eval = 'mine'`, tx.ID)); n != 2 {
@@ -133,10 +134,10 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 		t.Error("accepted a second result for one training case")
 	}
 	// Judge cost and the end of the eval run reach the universal run: it is totalled and takes the eval run's status.
-	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, relational.TrainedModelRun{ID: eid, NumJudged: 1, NumErrored: 1, NumCorrect: 1, ScoreSum: 5, JudgeCostUSD: 0.25}, nil); err != nil {
+	if err := evalsdb.SaveTrainedModelEvalRunBatch(ctx, d, evalsdb.TrainedModelRun{ID: eid, NumJudged: 1, NumErrored: 1, NumCorrect: 1, ScoreSum: 5, JudgeCostUSD: 0.25}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := relational.FinishTrainedModelEvalRun(ctx, d, eid, relational.TrainedModelRunCompleted, ""); err != nil {
+	if err := evalsdb.FinishTrainedModelEvalRun(ctx, d, eid, evalsdb.TrainedModelRunCompleted, ""); err != nil {
 		t.Fatal(err)
 	}
 	var status string
@@ -150,7 +151,7 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("training run: %s %d %d %d %d %d %v", status, total, passed, failed, errored, judged, cost)
 	}
 	// The knowledge run was not touched by it.
-	if r, _ := relational.GetExperimentRun(ctx, d, run.ID); r.Status != relational.ExperimentRunning {
+	if r, _ := evalsdb.GetExperimentRun(ctx, d, run.ID); r.Status != evalsdb.ExperimentRunning {
 		t.Fatalf("knowledge run: %+v", r)
 	}
 

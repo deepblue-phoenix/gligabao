@@ -11,7 +11,7 @@ export type RunStatus = (typeof RunStatus)[keyof typeof RunStatus];
 export const CaseStatus = { judged: "judged", error: "error", answered: "answered" } as const; // answered: only in the live feed
 export type CaseStatus = (typeof CaseStatus)[keyof typeof CaseStatus];
 
-// A run of a trained model, of either kind (relational.TrainedModelRun). An eval run has `eval` (the eval whose cases were asked); an
+// A run of a trained model, of either kind (evalsdb.TrainedModelRun). An eval run has `eval` (the eval whose cases were asked); an
 // audit run has `dataset` and `dataset_sha256` (the training dataset whose examples were asked).
 export interface TrainedModelRun {
   id: number; trained_model_id: number; kind: "eval" | "audit"; status: RunStatus; eval?: string; dataset?: string; dataset_sha256?: string;
@@ -20,7 +20,7 @@ export interface TrainedModelRun {
   num_partial: number; num_incorrect: number; score_sum: number; num_batches: number; judge_calls: number; judge_input_tokens: number;
   judge_output_tokens: number; judge_cost_usd: number; error: string; created_at: string; finished_at: string | null;
 }
-// One case of a run (relational.TrainedModelCase); an eval's cases have a `name`, an audit's (dataset examples) have none.
+// One case of a run (evalsdb.TrainedModelCase); an eval's cases have a `name`, an audit's (dataset examples) have none.
 export interface TrainedModelCase {
   idx: number; name?: string; batch: number; instruction: string; input: string; reference: string; response: string;
   // CaseStatus.answered: the model answered and the judge has not scored it yet (only in the live feed)

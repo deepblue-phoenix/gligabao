@@ -3,7 +3,7 @@
 // individual clients.
 //
 // The per-kind packages (internal/db/relational, internal/db/graph, internal/db/vector) hold the operations and the
-// backends; this package only opens them, keeps them together and closes them.
+// backends (the eval tables, which live in the relational database, are managed by internal/evals/db); this package only opens them, keeps them together and closes them.
 package db
 
 import (
@@ -21,6 +21,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 )
 
 //---------------------------------------------------------------------------------------------
@@ -176,6 +177,10 @@ func Open(cfg Config) (*DB, error) {
 		return nil, err
 	}
 	d.Graph = rel
+	if err := evalsdb.Open(cfg.Backend, rel); err != nil {
+		rel.Close()
+		return nil, err
+	}
 
 	models := cfg.Models
 	if models == nil {

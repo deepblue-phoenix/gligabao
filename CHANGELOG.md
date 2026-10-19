@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.66.2] - 2026-10-19
+
+### Changed
+- Internal reorganisation: all database code for evals moved from `internal/db/relational` to a new `internal/evals/db` package (with `model`, `sqlite` and `postgres` subpackages, like `internal/db/graph`): the experiments, runs and case results of the knowledge evals, and the eval and audit runs of trained models. Their tables and types (`evalsdb.TrainedModelRun`, `evalsdb.ExperimentRun`, ...) are no longer part of `relational`; `db.Open` applies the eval schema after the relational and graph ones. Tables, API and behaviour are unchanged.
+
 ## [0.66.1] - 2026-10-19
 
 ### Changed

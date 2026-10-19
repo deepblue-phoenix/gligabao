@@ -27,8 +27,8 @@ Reading the result: a mean score near 5 means the model reproduces its training 
 |---|---|---|
 | Cases | the model's own fine-tuning dataset: things it was trained on | the cases of an [eval](EVALS.md) (`bin/evals_training/*.json`), meant to be ones the model never saw |
 | Measures | memorization and fit; data quality | generalization |
-| Run (Go) | `relational.TrainedModelRun`, kind `audit`, with `Dataset` and `DatasetSHA256` | the same type, kind `eval`, with `Eval` |
-| Case (Go) | `relational.TrainedModelCase`, no `Name` (a dataset example has none) | the same type, with the case's `Name` |
+| Run (Go) | `evalsdb.TrainedModelRun`, kind `audit`, with `Dataset` and `DatasetSHA256` | the same type, kind `eval`, with `Eval` |
+| Case (Go) | `evalsdb.TrainedModelCase`, no `Name` (a dataset example has none) | the same type, with the case's `Name` |
 | Start | `internal/api/training/audits.go`, `POST /v1/gb/training/models/{id}/audits` | `internal/api/training/evals.go`, `POST /v1/gb/training/models/{id}/evals` |
 | Follow, cancel, list | `internal/api/training/runs.go` and `/v1/gb/training/audits/{id}[/events\|/cancel]`, `/models/{id}/audits` | the same code, at `/v1/gb/training/evals/{id}[/events\|/cancel]`, `/models/{id}/evals`; the same JSON shapes |
 | Tables | `gb_training_audit_runs`, `gb_training_audit_cases` | the `training` rows of the universal eval tables, `gb_training_eval_run_meta`, `gb_training_case_meta` |
@@ -61,4 +61,4 @@ An audit has two tables of its own, not rows of the universal eval tables: it ha
 | `gb_training_audit_runs` | one row per audit: `trained_model_id`, `status` (`running`, `completed`, `error`, `cancelled`), `dataset`, `dataset_sha256`, `params`, `judge_model`, the counters (`num_examples` ... `score_sum`, `num_batches`), the judge's `judge_calls`, tokens and `judge_cost_usd` (updated after every batch), `error`, `started_at`, `finished_at` |
 | `gb_training_audit_cases` | one row per example, written when its judge batch is done: `run_id`, `idx` (the example's index in the dataset, unique within a run), `batch`, `instruction`, `input`, `reference` (the dataset's answer), `response` (the model's), `status` (`judged` or `error`), `error`, `score`, `reason`, tokens and `duration_ms` |
 
-Go (the stored type of both kinds is `relational.TrainedModelRun` and `TrainedModelCase`): `relational.RecordTrainedModelAuditRun`, `SaveTrainedModelAuditRunBatch`, `FinishTrainedModelAuditRun`, `FailRunningTrainedModelAuditRuns`, `GetTrainedModelAuditRun`, `ListTrainedModelAuditRuns`, `ListTrainedModelAuditCases`.
+Go (the stored type of both kinds is `evalsdb.TrainedModelRun` and `TrainedModelCase`): `evalsdb.RecordTrainedModelAuditRun`, `SaveTrainedModelAuditRunBatch`, `FinishTrainedModelAuditRun`, `FailRunningTrainedModelAuditRuns`, `GetTrainedModelAuditRun`, `ListTrainedModelAuditRuns`, `ListTrainedModelAuditCases`.

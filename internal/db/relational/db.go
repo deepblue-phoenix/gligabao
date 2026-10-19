@@ -1,5 +1,5 @@
 // Package relational opens the database selected in the config and routes every database operation to the backend
-// subpackage in use (sqlite or postgres). It covers datasets and the inferences (gb_inferences); graph operations are in internal/db/graph. All SQL lives in the backends (internal/db/relational/sqlite, internal/db/relational/postgres);
+// subpackage in use (sqlite or postgres). It covers datasets, ontologies, the inferences (gb_inferences), remember runs and trained models; graph operations are in internal/db/graph and eval operations in internal/evals/db. All SQL lives in the backends (internal/db/relational/sqlite, internal/db/relational/postgres);
 // other packages only call the functions here and never write SQL. Each backend owns its schema, its SQL dialect
 // and its timestamp storage format.
 package relational
@@ -25,12 +25,6 @@ type (
 	InferenceFilter       = model.InferenceFilter
 	InferenceGroup        = model.InferenceGroup
 	Ontology              = model.Ontology
-	Experiment            = model.Experiment
-	CaseRef               = model.CaseRef
-	ExperimentRun         = model.ExperimentRun
-	ExperimentCaseResult  = model.ExperimentCaseResult
-	ExperimentTrajectory  = model.ExperimentTrajectory
-	ExperimentArtifact    = model.ExperimentArtifact
 	RememberRun           = model.RememberRun
 	RememberStage         = model.RememberStage
 	RememberStageDef      = model.RememberStageDef
@@ -42,29 +36,6 @@ type (
 	TrainedModel          = model.TrainedModel
 	TrainedModelFile      = model.TrainedModelFile
 	TrainedModelInference = model.TrainedModelInference
-	TrainedModelRun       = model.TrainedModelRun
-	TrainedModelCase      = model.TrainedModelCase
-
-	TrainingExperiment      = model.TrainingExperiment
-	TrainingExperimentRun   = model.TrainingExperimentRun
-	TrainingExperimentModel = model.TrainingExperimentModel
-)
-
-// Statuses of the runs and cases of a trained model, shared by evals and audits (see model/trained_model_status.go).
-const (
-	TrainedModelRunRunning   = model.TrainedModelRunRunning
-	TrainedModelRunCompleted = model.TrainedModelRunCompleted
-	TrainedModelRunErrored   = model.TrainedModelRunErrored
-	TrainedModelRunCancelled = model.TrainedModelRunCancelled
-	TrainedModelCaseJudged   = model.TrainedModelCaseJudged
-	TrainedModelCaseErrored  = model.TrainedModelCaseErrored
-	TrainedModelCaseAnswered = model.TrainedModelCaseAnswered
-)
-
-// The kinds of TrainedModelRun.
-const (
-	TrainedModelKindEval  = model.TrainedModelKindEval
-	TrainedModelKindAudit = model.TrainedModelKindAudit
 )
 
 // Statuses of a TrainedModelInference.
@@ -119,24 +90,10 @@ var RememberStageDefOf = model.RememberStageDefOf
 // NewRememberRun returns a run that has just started, with all its stages not started.
 var NewRememberRun = model.NewRememberRun
 
-// Experiment, run and trajectory constants (see package model).
-const (
-	EvalTypeKnowledge  = model.EvalTypeKnowledge
-	EvalTypeTraining   = model.EvalTypeTraining
-	ExperimentRunning  = model.ExperimentRunning
-	ExperimentPassed   = model.ExperimentPassed
-	ExperimentFailed   = model.ExperimentFailed
-	ExperimentErrored  = model.ExperimentErrored
-	TrajectoryRemember = model.TrajectoryRemember
-	TrajectoryRecall   = model.TrajectoryRecall
-)
-
 // Errors returned by the functions below.
 var (
 	ErrNotFound = model.ErrNotFound
 	ErrExists   = model.ErrExists
-
-	ErrRunNotRunning = model.ErrRunNotRunning
 )
 
 //---------------------------------------------------------------------------------------------

@@ -30,6 +30,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/experiments"
 	log "github.com/sirupsen/logrus"
 )
@@ -267,7 +268,7 @@ var trajectorySearches = struct {
 // searchesOfRecorded returns the web searches of the recorded remember trajectory ref (nil if it has none, or if its
 // file cannot be read: that is not an error, a trajectory directory may be gone).
 func searchesOfRecorded(ref *experiments.Trajectory, dir string) []WebSearch {
-	if ref.Kind != relational.TrajectoryRemember {
+	if ref.Kind != evalsdb.TrajectoryRemember {
 		return nil
 	}
 	trajectorySearches.Lock()
@@ -310,7 +311,7 @@ func EvalRunWebSearches(d *sql.DB, dir string) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		run, err := relational.GetExperimentRun(r.Context(), d, id)
+		run, err := evalsdb.GetExperimentRun(r.Context(), d, id)
 		if err != nil {
 			evalFail(w, err, "run")
 			return
@@ -343,7 +344,7 @@ func allRecordedSearches(ctx context.Context, d *sql.DB, dir string) (list []Web
 			return nil, 0, err
 		}
 		for _, r := range runs {
-			run, err := relational.GetExperimentRun(ctx, d, r.ID)
+			run, err := evalsdb.GetExperimentRun(ctx, d, r.ID)
 			if err != nil {
 				return nil, 0, err
 			}

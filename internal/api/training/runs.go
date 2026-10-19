@@ -11,7 +11,7 @@ package training
 //     the model generalizes.
 //
 // The logic is the subsystem internal/evals/training; this file wires it to the sidecar (the model), the LLM (the judge) and the database
-// (relational.TrainedModelRun, which holds the progress and the result), and runs it in the background: starting a run answers at
+// (evalsdb.TrainedModelRun, which holds the progress and the result), and runs it in the background: starting a run answers at
 // once and the run is followed by reading its row (or its live feed).
 
 import (
@@ -26,6 +26,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
@@ -91,15 +92,15 @@ func (o RunOptions) resolve() (trainingeval.Config, RunParams, error) {
 
 // runOps is what differs between the two kinds of run in the database: the functions that store and read them.
 type runOps struct {
-	kind        string // relational.TrainedModelKindEval or ...KindAudit
+	kind        string // evalsdb.TrainedModelKindEval or ...KindAudit
 	callType    string // the type of the judge's calls in gb_inferences
-	record      func(ctx context.Context, d *sql.DB, r relational.TrainedModelRun) (int64, error)
-	save        func(ctx context.Context, d *sql.DB, r relational.TrainedModelRun, cases []relational.TrainedModelCase) error
+	record      func(ctx context.Context, d *sql.DB, r evalsdb.TrainedModelRun) (int64, error)
+	save        func(ctx context.Context, d *sql.DB, r evalsdb.TrainedModelRun, cases []evalsdb.TrainedModelCase) error
 	finish      func(ctx context.Context, d *sql.DB, id int64, status, errText string) error
 	failRunning func(ctx context.Context, d *sql.DB, reason string) (int64, error)
-	get         func(ctx context.Context, d *sql.DB, id int64) (*relational.TrainedModelRun, error)
-	list        func(ctx context.Context, d *sql.DB, modelID int64, limit int) ([]relational.TrainedModelRun, error)
-	cases       func(ctx context.Context, d *sql.DB, runID int64) ([]relational.TrainedModelCase, error)
+	get         func(ctx context.Context, d *sql.DB, id int64) (*evalsdb.TrainedModelRun, error)
+	list        func(ctx context.Context, d *sql.DB, modelID int64, limit int) ([]evalsdb.TrainedModelRun, error)
+	cases       func(ctx context.Context, d *sql.DB, runID int64) ([]evalsdb.TrainedModelCase, error)
 }
 
 // noun is what the kind is called in messages ("eval" or "audit"); its URLs and the list in its responses are the plural.
@@ -107,27 +108,27 @@ func (o runOps) noun() string   { return o.kind }
 func (o runOps) plural() string { return o.kind + "s" }
 
 var evalOps = runOps{
-	kind:        relational.TrainedModelKindEval,
+	kind:        evalsdb.TrainedModelKindEval,
 	callType:    CallEvalJudge,
-	record:      relational.RecordTrainedModelEvalRun,
-	save:        relational.SaveTrainedModelEvalRunBatch,
-	finish:      relational.FinishTrainedModelEvalRun,
-	failRunning: relational.FailRunningTrainedModelEvalRuns,
-	get:         relational.GetTrainedModelEvalRun,
-	list:        relational.ListTrainedModelEvalRuns,
-	cases:       relational.ListTrainedModelEvalCases,
+	record:      evalsdb.RecordTrainedModelEvalRun,
+	save:        evalsdb.SaveTrainedModelEvalRunBatch,
+	finish:      evalsdb.FinishTrainedModelEvalRun,
+	failRunning: evalsdb.FailRunningTrainedModelEvalRuns,
+	get:         evalsdb.GetTrainedModelEvalRun,
+	list:        evalsdb.ListTrainedModelEvalRuns,
+	cases:       evalsdb.ListTrainedModelEvalCases,
 }
 
 var auditOps = runOps{
-	kind:        relational.TrainedModelKindAudit,
+	kind:        evalsdb.TrainedModelKindAudit,
 	callType:    CallAuditJudge,
-	record:      relational.RecordTrainedModelAuditRun,
-	save:        relational.SaveTrainedModelAuditRunBatch,
-	finish:      relational.FinishTrainedModelAuditRun,
-	failRunning: relational.FailRunningTrainedModelAuditRuns,
-	get:         relational.GetTrainedModelAuditRun,
-	list:        relational.ListTrainedModelAuditRuns,
-	cases:       relational.ListTrainedModelAuditCases,
+	record:      evalsdb.RecordTrainedModelAuditRun,
+	save:        evalsdb.SaveTrainedModelAuditRunBatch,
+	finish:      evalsdb.FinishTrainedModelAuditRun,
+	failRunning: evalsdb.FailRunningTrainedModelAuditRuns,
+	get:         evalsdb.GetTrainedModelAuditRun,
+	list:        evalsdb.ListTrainedModelAuditRuns,
+	cases:       evalsdb.ListTrainedModelAuditCases,
 }
 
 // runManager starts the runs of one kind and runs them in the background, one at a time per trained model. Runs still running when
@@ -225,7 +226,7 @@ type runSpec struct {
 	cfg    trainingeval.Config
 	params RunParams
 	// row is the run to record (Eval, or Dataset and DatasetSHA256; the settings and NumExamples are set by start).
-	row relational.TrainedModelRun
+	row evalsdb.TrainedModelRun
 	// examples are the questions to ask and names the names of the cases that go with them (nil for an audit's).
 	examples []trainingeval.Example
 	names    []string
@@ -270,7 +271,7 @@ func (m *runManager) start(w http.ResponseWriter, r *http.Request, s runSpec) {
 	}
 	fail := func(msg string, err error) {
 		release()
-		_ = m.ops.finish(dbCtx, n.DB, runID, relational.TrainedModelRunErrored, "could not start")
+		_ = m.ops.finish(dbCtx, n.DB, runID, evalsdb.TrainedModelRunErrored, "could not start")
 		log.WithError(err).WithField("run_id", runID).Errorf("training: %s", msg)
 		httputil.Error(w, http.StatusInternalServerError, "failed to "+msg)
 	}
@@ -303,8 +304,8 @@ func (m *runManager) start(w http.ResponseWriter, r *http.Request, s runSpec) {
 }
 
 // RunProgress is the run's row with the counters of the engine's progress: what SaveTrainedModel*RunBatch writes after a batch.
-func RunProgress(runID int64, p trainingeval.Progress) relational.TrainedModelRun {
-	return relational.TrainedModelRun{ID: runID, JudgeModel: p.JudgeModel, NumAnswered: p.Answered, NumJudged: p.Judged, NumErrored: p.Errored,
+func RunProgress(runID int64, p trainingeval.Progress) evalsdb.TrainedModelRun {
+	return evalsdb.TrainedModelRun{ID: runID, JudgeModel: p.JudgeModel, NumAnswered: p.Answered, NumJudged: p.Judged, NumErrored: p.Errored,
 		NumCorrect: p.Correct, NumPartial: p.Partial, NumIncorrect: p.Incorrect, ScoreSum: p.ScoreSum, NumBatches: p.Batches,
 		JudgeCalls: p.JudgeCalls, JudgeInputTokens: p.JudgeInputTokens, JudgeOutputTokens: p.JudgeOutputTokens, JudgeCostUSD: p.JudgeCostUSD}
 }
@@ -331,8 +332,8 @@ func Generator(sc Inferer, tm *relational.TrainedModel, params RunParams) traini
 // CaseRow is the stored form of a case of run runID. The engine's statuses (trainingeval.CaseJudged, CaseErrored, "" for an
 // answer the judge has not scored yet) are those of TrainedModelCase, so the status is copied as it is. names (an eval's) give
 // the case its name.
-func CaseRow(runID int64, names []string, it trainingeval.CaseResult) relational.TrainedModelCase {
-	c := relational.TrainedModelCase{RunID: runID, Idx: it.Idx, Batch: it.Batch, Instruction: it.Instruction, Input: it.Input,
+func CaseRow(runID int64, names []string, it trainingeval.CaseResult) evalsdb.TrainedModelCase {
+	c := evalsdb.TrainedModelCase{RunID: runID, Idx: it.Idx, Batch: it.Batch, Instruction: it.Instruction, Input: it.Input,
 		Reference: it.Reference, Response: it.Response, Status: it.Status, Error: it.Error, Score: it.Score, Reason: it.Reason,
 		InputTokens: it.InputTokens, OutputTokens: it.OutputTokens, DurationMS: it.DurationMS}
 	if it.Idx >= 0 && it.Idx < len(names) {
@@ -357,14 +358,14 @@ func (m *runManager) run(ctx context.Context, s runSpec, runID int64, stream *ru
 	defer func() {
 		if r := recover(); r != nil {
 			logf.Errorf("training: %s panicked: %v", noun, r)
-			finish(relational.TrainedModelRunErrored, fmt.Sprintf("internal error: %v", r))
+			finish(evalsdb.TrainedModelRunErrored, fmt.Sprintf("internal error: %v", r))
 		}
 	}()
 
 	gen := Generator(m.sc, tm, params)
 	judge := memory_core.WithRecording(m.llm, n.DB, m.ops.callType)
 	sink := func(_ context.Context, cases []trainingeval.CaseResult, p trainingeval.Progress) error {
-		rows := make([]relational.TrainedModelCase, len(cases))
+		rows := make([]evalsdb.TrainedModelCase, len(cases))
 		for i, it := range cases {
 			rows[i] = CaseRow(runID, s.names, it)
 		}
@@ -383,14 +384,14 @@ func (m *runManager) run(ctx context.Context, s runSpec, runID int64, stream *ru
 	_, err := trainingeval.Run(memory_core.WithStage(ctx, StageJudge), cfg, s.examples, gen, judge, sink)
 	switch {
 	case err == nil:
-		finish(relational.TrainedModelRunCompleted, "")
+		finish(evalsdb.TrainedModelRunCompleted, "")
 	case errors.Is(err, context.Canceled) && m.ctx.Err() != nil:
-		finish(relational.TrainedModelRunErrored, "interrupted: the server shut down while the "+noun+" ran")
+		finish(evalsdb.TrainedModelRunErrored, "interrupted: the server shut down while the "+noun+" ran")
 	case errors.Is(err, context.Canceled):
-		finish(relational.TrainedModelRunCancelled, "")
+		finish(evalsdb.TrainedModelRunCancelled, "")
 	default:
 		logf.WithError(err).Warnf("training: %s failed", noun)
-		finish(relational.TrainedModelRunErrored, err.Error())
+		finish(evalsdb.TrainedModelRunErrored, err.Error())
 	}
 }
 
@@ -404,7 +405,7 @@ func (m *runManager) dropStream(key streamKey, s *runStream) {
 }
 
 // ListOf serves GET /v1/gb/training/models/{id}/evals|audits[?db=<name>][&limit=<n>]: {"evals": [...]} or {"audits": [...]}, the
-// runs of trained model {id} (relational.TrainedModelRun, without their cases), newest first, at most limit (default 50, at most
+// runs of trained model {id} (evalsdb.TrainedModelRun, without their cases), newest first, at most limit (default 50, at most
 // 500). 404 for an unknown model.
 func (m *runManager) ListOf() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -441,7 +442,7 @@ func (m *runManager) ListOf() http.HandlerFunc {
 }
 
 // readRun reads run id, answering 404 or 500 itself.
-func (m *runManager) readRun(w http.ResponseWriter, r *http.Request, n Database, id int64) (*relational.TrainedModelRun, bool) {
+func (m *runManager) readRun(w http.ResponseWriter, r *http.Request, n Database, id int64) (*evalsdb.TrainedModelRun, bool) {
 	run, err := m.ops.get(r.Context(), n.DB, id)
 	if errors.Is(err, relational.ErrNotFound) {
 		httputil.Error(w, http.StatusNotFound, "unknown "+m.ops.noun())
@@ -455,7 +456,7 @@ func (m *runManager) readRun(w http.ResponseWriter, r *http.Request, n Database,
 }
 
 // GetOf serves GET /v1/gb/training/evals|audits/{id}[?db=<name>]: {"run": ..., "cases": [...]}, one run with the cases stored so far
-// (relational.TrainedModelCase: question, the expected answer, the model's, score and reason), in the order of the eval or the
+// (evalsdb.TrainedModelCase: question, the expected answer, the model's, score and reason), in the order of the eval or the
 // dataset. 404 for an unknown run.
 func (m *runManager) GetOf() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -499,7 +500,7 @@ func (m *runManager) CancelOf() http.HandlerFunc {
 		if !ok {
 			return
 		}
-		if run.Status != relational.TrainedModelRunRunning {
+		if run.Status != evalsdb.TrainedModelRunRunning {
 			httputil.Error(w, http.StatusConflict, "the "+m.ops.noun()+" is not running")
 			return
 		}
@@ -508,7 +509,7 @@ func (m *runManager) CancelOf() http.HandlerFunc {
 		m.mu.Unlock()
 		if cur == nil || cur.runID != id {
 			// Marked running, but nothing runs it (it cannot happen unless the bookkeeping failed): end it.
-			if err := m.ops.finish(r.Context(), n.DB, id, relational.TrainedModelRunCancelled, ""); err != nil {
+			if err := m.ops.finish(r.Context(), n.DB, id, evalsdb.TrainedModelRunCancelled, ""); err != nil {
 				log.WithError(err).Errorf("training: ending the %s failed", m.ops.noun())
 			}
 		} else {

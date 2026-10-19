@@ -26,6 +26,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/config"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sidecar"
@@ -146,7 +147,7 @@ func mainErr() error {
 	var runID int64
 	if !*noStore {
 		pj, _ := json.Marshal(params)
-		if runID, err = relational.RecordTrainedModelEvalRun(ctx, database.Relational, relational.TrainedModelRun{
+		if runID, err = evalsdb.RecordTrainedModelEvalRun(ctx, database.Relational, evalsdb.TrainedModelRun{
 			TrainedModelID: tm.ID, Eval: name, Params: pj, JudgeModel: cfg.JudgeModel, NumExamples: len(cases)}); err != nil {
 			return err
 		}
@@ -160,11 +161,11 @@ func mainErr() error {
 	failed := 0
 	sink := func(_ context.Context, results []trainingeval.CaseResult, p trainingeval.Progress) error {
 		if !*noStore {
-			rows := make([]relational.TrainedModelCase, len(results))
+			rows := make([]evalsdb.TrainedModelCase, len(results))
 			for i, r := range results {
 				rows[i] = training.CaseRow(runID, names, r)
 			}
-			if err := relational.SaveTrainedModelEvalRunBatch(context.WithoutCancel(ctx), database.Relational, training.RunProgress(runID, p), rows); err != nil {
+			if err := evalsdb.SaveTrainedModelEvalRunBatch(context.WithoutCancel(ctx), database.Relational, training.RunProgress(runID, p), rows); err != nil {
 				return err
 			}
 		}
@@ -188,14 +189,14 @@ func mainErr() error {
 	}
 	p, err := trainingeval.Run(memory_core.WithStage(ctx, training.StageJudge), cfg, examples, gen, llm, sink)
 	if !*noStore {
-		status, errText := relational.TrainedModelRunCompleted, ""
+		status, errText := evalsdb.TrainedModelRunCompleted, ""
 		switch {
 		case errors.Is(err, context.Canceled):
-			status = relational.TrainedModelRunCancelled
+			status = evalsdb.TrainedModelRunCancelled
 		case err != nil:
-			status, errText = relational.TrainedModelRunErrored, err.Error()
+			status, errText = evalsdb.TrainedModelRunErrored, err.Error()
 		}
-		if ferr := relational.FinishTrainedModelEvalRun(context.WithoutCancel(ctx), database.Relational, runID, status, errText); ferr != nil {
+		if ferr := evalsdb.FinishTrainedModelEvalRun(context.WithoutCancel(ctx), database.Relational, runID, status, errText); ferr != nil {
 			fmt.Fprintln(os.Stderr, "error: ending the stored run:", ferr)
 		}
 	}

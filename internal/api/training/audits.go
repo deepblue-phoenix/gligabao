@@ -1,6 +1,6 @@
 package training
 
-// Training data audits of trained models: the "Audit" button of the admin UI. An audit is one run (relational.TrainedModelRun, kind
+// Training data audits of trained models: the "Audit" button of the admin UI. An audit is one run (evalsdb.TrainedModelRun, kind
 // "audit") of a trained model against its OWN fine-tuning dataset: it asks the model the question of every example (a case) and
 // has the external LLM judge how closely the answer reproduces the dataset's output. Every case is something the model was trained
 // on, so the score says whether the training took (and, through the examples it fails, which training data is bad); it is NOT an
@@ -22,6 +22,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	log "github.com/sirupsen/logrus"
@@ -41,7 +42,7 @@ func NewAuditManager(ctx context.Context, dbs []Database, sc Inferer, llm memory
 
 // StartOf serves POST /v1/gb/training/models/{id}/audits[?db=<name>] with an optional JSON body {"limit": 0, "batch_size": 10,
 // "judge_model": "", "max_tokens": 1024, "temperature": 0.1}: it starts a training data audit of trained model {id} and answers 202
-// with the audit (relational.TrainedModelRun, status "running"); the work goes on in the background (see GetOf, ListOf, CancelOf).
+// with the audit (evalsdb.TrainedModelRun, status "running"); the work goes on in the background (see GetOf, ListOf, CancelOf).
 //   - limit: ask only the first n cases (default: all of them)
 //   - batch_size: question/answer pairs per judge call (default 10, at most 25)
 //   - judge_model: the LLM model that judges (default: the server's default model)
@@ -78,7 +79,7 @@ func (m *AuditManager) StartOf() http.HandlerFunc {
 			examples = examples[:params.Limit]
 		}
 		m.start(w, r, runSpec{n: n, tm: tm, cfg: cfg, params: params, examples: examples,
-			row: relational.TrainedModelRun{Dataset: dataset, DatasetSHA256: sum}})
+			row: evalsdb.TrainedModelRun{Dataset: dataset, DatasetSHA256: sum}})
 	}
 }
 

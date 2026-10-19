@@ -1,12 +1,12 @@
-package relational
+package db
 
 import (
 	"context"
 	"database/sql"
 
 	"github.com/deepblue-phoenix/gligabao/internal/config"
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational/postgres"
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational/sqlite"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/db/postgres"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/db/sqlite"
 )
 
 //---------------------------------------------------------------------------------------------

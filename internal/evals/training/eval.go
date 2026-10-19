@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational/model"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/db/model"
 )
 
 // Defaults and limits of Config.

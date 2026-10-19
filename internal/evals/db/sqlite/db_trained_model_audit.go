@@ -6,7 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational/model"
+	rsqlite "github.com/deepblue-phoenix/gligabao/internal/db/relational/sqlite"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/db/model"
 )
 
 //---------------------------------------------------------------------------------------------
@@ -19,7 +20,7 @@ func InsertTrainedModelAuditRun(ctx context.Context, d *sql.DB, a model.TrainedM
 	res, err := d.ExecContext(ctx, `
 		INSERT INTO gb_training_audit_runs (trained_model_id, status, dataset, dataset_sha256, params, judge_model, num_examples, started_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		a.TrainedModelID, a.Status, a.Dataset, a.DatasetSHA256, a.ParamsJSON(), a.JudgeModel, a.NumExamples, FormatTime(Now()))
+		a.TrainedModelID, a.Status, a.Dataset, a.DatasetSHA256, a.ParamsJSON(), a.JudgeModel, a.NumExamples, rsqlite.FormatTime(rsqlite.Now()))
 	if err != nil {
 		return 0, fmt.Errorf("insert trained model audit run: %w", err)
 	}
@@ -75,7 +76,7 @@ func finishAuditRuns(ctx context.Context, q rower, id int64, status, errText, no
 // FinishTrainedModelAuditRun ends a running audit run with the status and error given. An audit run that is not running is left as
 // it is (it was finished already); model.ErrNotFound if there is no such audit run.
 func FinishTrainedModelAuditRun(ctx context.Context, d *sql.DB, id int64, status, errText string) error {
-	n, err := finishAuditRuns(ctx, d, id, status, errText, FormatTime(Now()))
+	n, err := finishAuditRuns(ctx, d, id, status, errText, rsqlite.FormatTime(rsqlite.Now()))
 	if err != nil {
 		return fmt.Errorf("finish trained model audit run: %w", err)
 	}
@@ -90,7 +91,7 @@ func FinishTrainedModelAuditRun(ctx context.Context, d *sql.DB, id int64, status
 
 // FailRunningTrainedModelAuditRuns sets every running audit run to error with the reason, and returns how many there were.
 func FailRunningTrainedModelAuditRuns(ctx context.Context, d *sql.DB, reason string) (int64, error) {
-	n, err := finishAuditRuns(ctx, d, 0, model.TrainedModelRunErrored, reason, FormatTime(Now()))
+	n, err := finishAuditRuns(ctx, d, 0, model.TrainedModelRunErrored, reason, rsqlite.FormatTime(rsqlite.Now()))
 	if err != nil {
 		return 0, fmt.Errorf("fail running trained model audit runs: %w", err)
 	}
@@ -113,7 +114,7 @@ func scanTrainedModelAuditRun(s rowScanner) (*model.TrainedModelRun, error) {
 	a.SetStoredParams(params)
 	a.CreatedAt = parseStoredTime(created)
 	if finished.Valid {
-		a.FinishedAt = ParseTime(finished.String)
+		a.FinishedAt = rsqlite.ParseTime(finished.String)
 	}
 	return &a, nil
 }

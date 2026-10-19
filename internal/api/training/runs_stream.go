@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -40,9 +40,9 @@ const (
 
 // RunEvent is one event of the feed, for an eval and for an audit alike.
 type RunEvent struct {
-	Type  string                        `json:"type"`
-	Run   *relational.TrainedModelRun   `json:"run,omitempty"`
-	Cases []relational.TrainedModelCase `json:"cases,omitempty"`
+	Type  string                     `json:"type"`
+	Run   *evalsdb.TrainedModelRun   `json:"run,omitempty"`
+	Cases []evalsdb.TrainedModelCase `json:"cases,omitempty"`
 }
 
 type streamKey struct {
@@ -53,24 +53,24 @@ type streamKey struct {
 // runStream is the feed of one running run: the watchers, and the answers not judged yet (for a watcher that joins midway).
 type runStream struct {
 	mu      sync.Mutex
-	pending map[int]relational.TrainedModelCase // by idx
+	pending map[int]evalsdb.TrainedModelCase // by idx
 	subs    map[chan RunEvent]struct{}
 	closed  bool
 }
 
 func newRunStream() *runStream {
-	return &runStream{pending: map[int]relational.TrainedModelCase{}, subs: map[chan RunEvent]struct{}{}}
+	return &runStream{pending: map[int]evalsdb.TrainedModelCase{}, subs: map[chan RunEvent]struct{}{}}
 }
 
 // subscribe adds a watcher. It returns the answers awaiting the judge right now and the channel of the events after that
 // moment (nil if the feed has ended). The channel is closed when the feed ends or when the watcher fell too far behind.
-func (s *runStream) subscribe() ([]relational.TrainedModelCase, chan RunEvent) {
+func (s *runStream) subscribe() ([]evalsdb.TrainedModelCase, chan RunEvent) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
 		return nil, nil
 	}
-	pending := make([]relational.TrainedModelCase, 0, len(s.pending))
+	pending := make([]evalsdb.TrainedModelCase, 0, len(s.pending))
 	for _, it := range s.pending {
 		pending = append(pending, it)
 	}
@@ -101,21 +101,21 @@ func (s *runStream) send(ev RunEvent) {
 }
 
 // answer announces a case the model answered.
-func (s *runStream) answer(it relational.TrainedModelCase) {
+func (s *runStream) answer(it evalsdb.TrainedModelCase) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
 		return
 	}
 	if it.Status == "" {
-		it.Status = relational.TrainedModelCaseAnswered
+		it.Status = evalsdb.TrainedModelCaseAnswered
 	}
 	s.pending[it.Idx] = it
-	s.send(RunEvent{Type: runEventAnswer, Cases: []relational.TrainedModelCase{it}})
+	s.send(RunEvent{Type: runEventAnswer, Cases: []evalsdb.TrainedModelCase{it}})
 }
 
 // batch announces the judged cases of a batch and the progress after it.
-func (s *runStream) batch(r relational.TrainedModelRun, cases []relational.TrainedModelCase) {
+func (s *runStream) batch(r evalsdb.TrainedModelRun, cases []evalsdb.TrainedModelCase) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -128,7 +128,7 @@ func (s *runStream) batch(r relational.TrainedModelRun, cases []relational.Train
 }
 
 // end announces the end of the run and closes the feed.
-func (s *runStream) end(r relational.TrainedModelRun) {
+func (s *runStream) end(r evalsdb.TrainedModelRun) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -165,7 +165,7 @@ func (m *runManager) EventsOf() http.HandlerFunc {
 		m.mu.Lock()
 		stream := m.streams[streamKey{n.Name, id}]
 		m.mu.Unlock()
-		var pending []relational.TrainedModelCase
+		var pending []evalsdb.TrainedModelCase
 		var ch chan RunEvent
 		if stream != nil {
 			pending, ch = stream.subscribe()
@@ -248,6 +248,6 @@ func (m *runManager) publishEnd(ctx context.Context, n Database, s *runStream, r
 		s.end(*run)
 	} else {
 		log.WithError(err).WithField("run_id", runID).Warnf("training: read the ended %s for its stream failed", m.ops.noun())
-		s.end(relational.TrainedModelRun{ID: runID, Kind: m.ops.kind})
+		s.end(evalsdb.TrainedModelRun{ID: runID, Kind: m.ops.kind})
 	}
 }

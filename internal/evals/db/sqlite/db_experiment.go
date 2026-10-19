@@ -1,4 +1,4 @@
-package postgres
+package sqlite
 
 import (
 	"context"
@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational/model"
+	relmodel "github.com/deepblue-phoenix/gligabao/internal/db/relational/model"
+	rsqlite "github.com/deepblue-phoenix/gligabao/internal/db/relational/sqlite"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/db/model"
 )
 
 //---------------------------------------------------------------------------------------------
@@ -72,18 +75,25 @@ func parseIDs(s string) []int64 {
 	return ids
 }
 
+func parseStoredTime(s string) (t time.Time) {
+	if p := rsqlite.ParseTime(s); p != nil {
+		return *p
+	}
+	return
+}
+
 //---------------------------------------------------------------------------------------------
 
-const experimentColumns = `id, type, name, description, config::text, created_at`
+const experimentColumns = `id, type, name, description, config, created_at`
 
 func scanExperiment(r scanner) (*model.Experiment, error) {
 	var e model.Experiment
-	var config string
-	if err := r.Scan(&e.ID, &e.Type, &e.Name, &e.Description, &config, &e.CreatedAt); err != nil {
+	var config, created string
+	if err := r.Scan(&e.ID, &e.Type, &e.Name, &e.Description, &config, &created); err != nil {
 		return nil, err
 	}
 	e.Config = parseObject(config)
-	e.CreatedAt = e.CreatedAt.UTC()
+	e.CreatedAt = parseStoredTime(created)
 	return &e, nil
 }
 
@@ -91,7 +101,7 @@ func experimentCases(ctx context.Context, q rower, experimentID int64) ([]model.
 	rows, err := q.QueryContext(ctx, `
 		SELECT eval, case_name
 		FROM gb_experiment_cases
-		WHERE experiment_id = $1
+		WHERE experiment_id = ?
 		ORDER BY eval, case_name`, experimentID)
 	if err != nil {
 		return nil, fmt.Errorf("list experiment cases: %w", err)
@@ -113,9 +123,9 @@ func experimentCases(ctx context.Context, q rower, experimentID int64) ([]model.
 func EnsureExperiment(ctx context.Context, d *sql.DB, name, description string, config map[string]any) (*model.Experiment, error) {
 	if _, err := d.ExecContext(ctx, `
 		INSERT INTO gb_experiments (type, name, description, config, created_at)
-		VALUES ($1, $2, $3, $4::jsonb, $5)
+		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (type, name) DO NOTHING`,
-		model.EvalTypeKnowledge, name, description, jsonObject(config), Now()); err != nil {
+		model.EvalTypeKnowledge, name, description, jsonObject(config), rsqlite.FormatTime(rsqlite.Now())); err != nil {
 		return nil, fmt.Errorf("create experiment: %w", err)
 	}
 	return GetExperiment(ctx, d, name)
@@ -126,7 +136,7 @@ func GetExperiment(ctx context.Context, d *sql.DB, name string) (*model.Experime
 	e, err := scanExperiment(d.QueryRowContext(ctx, `
 		SELECT `+experimentColumns+`
 		FROM gb_experiments
-		WHERE type = $1 AND name = $2`, model.EvalTypeKnowledge, name))
+		WHERE type = ? AND name = ?`, model.EvalTypeKnowledge, name))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
@@ -144,7 +154,7 @@ func ListExperiments(ctx context.Context, d *sql.DB) ([]model.Experiment, error)
 	rows, err := d.QueryContext(ctx, `
 		SELECT `+experimentColumns+`
 		FROM gb_experiments
-		WHERE type = $1
+		WHERE type = ?
 		ORDER BY id`, model.EvalTypeKnowledge)
 	if err != nil {
 		return nil, fmt.Errorf("list experiments: %w", err)
@@ -164,38 +174,40 @@ func ListExperiments(ctx context.Context, d *sql.DB) ([]model.Experiment, error)
 //---------------------------------------------------------------------------------------------
 
 const runColumns = `
-	id, type, COALESCE(experiment_id, 0), status, params::text, total_cases, passed_cases, failed_cases, error_cases, judged_cases, cost_usd, started_at, finished_at`
+	id, type, COALESCE(experiment_id, 0), status, params, total_cases, passed_cases, failed_cases, error_cases, judged_cases, cost_usd, started_at, finished_at`
 
 func scanRun(r scanner) (*model.ExperimentRun, error) {
 	var run model.ExperimentRun
-	var params string
-	var finished sql.NullTime
+	var params, started string
+	var finished sql.NullString
 	if err := r.Scan(&run.ID, &run.Type, &run.ExperimentID, &run.Status, &params, &run.TotalCases, &run.PassedCases,
-		&run.FailedCases, &run.ErrorCases, &run.JudgedCases, &run.CostUSD, &run.StartedAt, &finished); err != nil {
+		&run.FailedCases, &run.ErrorCases, &run.JudgedCases, &run.CostUSD, &started, &finished); err != nil {
 		return nil, err
 	}
 	run.Params = parseObject(params)
-	run.StartedAt = run.StartedAt.UTC()
-	run.FinishedAt = utc(finished)
+	run.StartedAt = parseStoredTime(started)
+	run.FinishedAt = rsqlite.ParseTime(finished.String)
 	return &run, nil
 }
 
 // StartExperimentRun starts a run of the experiment (status running). It returns model.ErrNotFound if the
 // experiment does not exist.
 func StartExperimentRun(ctx context.Context, d *sql.DB, experimentID int64, params map[string]any) (*model.ExperimentRun, error) {
-	var id int64
-	err := d.QueryRowContext(ctx, `
+	res, err := d.ExecContext(ctx, `
 		INSERT INTO gb_experiment_runs (type, experiment_id, status, params, started_at)
-		SELECT type, id, 'running', $1::jsonb, $2::timestamptz
+		SELECT type, id, 'running', ?, ?
 		FROM gb_experiments
-		WHERE id = $3 AND type = $4
-		RETURNING id`,
-		jsonObject(params), Now(), experimentID, model.EvalTypeKnowledge).Scan(&id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, model.ErrNotFound
-	}
+		WHERE id = ? AND type = ?`,
+		jsonObject(params), rsqlite.FormatTime(rsqlite.Now()), experimentID, model.EvalTypeKnowledge)
 	if err != nil {
 		return nil, fmt.Errorf("start experiment run: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return nil, model.ErrNotFound
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
 	}
 	return getRun(ctx, d, id)
 }
@@ -204,7 +216,7 @@ func getRun(ctx context.Context, q rower, id int64) (*model.ExperimentRun, error
 	run, err := scanRun(q.QueryRowContext(ctx, `
 		SELECT `+runColumns+`
 		FROM gb_experiment_runs
-		WHERE id = $1 AND type = $2`, id, model.EvalTypeKnowledge))
+		WHERE id = ? AND type = ?`, id, model.EvalTypeKnowledge))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
@@ -227,7 +239,7 @@ func RecordExperimentCaseResult(ctx context.Context, d *sql.DB, e model.Experime
 	err = tx.QueryRowContext(ctx, `
 		SELECT experiment_id, status
 		FROM gb_experiment_runs
-		WHERE id = $1 AND type = $2`, e.RunID, model.EvalTypeKnowledge).Scan(&experimentID, &status)
+		WHERE id = ? AND type = ?`, e.RunID, model.EvalTypeKnowledge).Scan(&experimentID, &status)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
@@ -239,41 +251,45 @@ func RecordExperimentCaseResult(ctx context.Context, d *sql.DB, e model.Experime
 	}
 
 	e.Type = model.EvalTypeKnowledge
-	err = tx.QueryRowContext(ctx, `
+	res, err := tx.ExecContext(ctx, `
 		INSERT INTO gb_experiment_case_results (type, run_id, eval, case_name, status, error, cost_usd, started_at, finished_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		RETURNING id`,
-		e.Type, e.RunID, e.Eval, e.Name, e.Status, e.Error, e.CostUSD, Normalize(e.StartedAt), Normalize(e.FinishedAt)).Scan(&e.ID)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.Type, e.RunID, e.Eval, e.Name, e.Status, e.Error, e.CostUSD, rsqlite.FormatTime(e.StartedAt), rsqlite.FormatTime(e.FinishedAt))
 	if err != nil {
 		return nil, fmt.Errorf("record experiment case: %w", err)
 	}
+	if e.ID, err = res.LastInsertId(); err != nil {
+		return nil, err
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO gb_knowledge_case_meta (case_result_id, answer, problems, passed_checks, dataset_id, steps)
-		VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, $6)`,
+		VALUES (?, ?, ?, ?, ?, ?)`,
 		e.ID, e.Answer, jsonList(e.Problems), jsonList(e.PassedChecks), e.DatasetID, e.Steps); err != nil {
 		return nil, fmt.Errorf("record experiment case: %w", err)
 	}
 
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO gb_experiment_cases (experiment_id, type, eval, case_name, created_at)
-		VALUES ($1, $2, $3, $4, $5)
+		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (experiment_id, eval, case_name) DO NOTHING`,
-		experimentID, model.EvalTypeKnowledge, e.Eval, e.Name, Now()); err != nil {
+		experimentID, model.EvalTypeKnowledge, e.Eval, e.Name, rsqlite.FormatTime(rsqlite.Now())); err != nil {
 		return nil, fmt.Errorf("record experiment case: %w", err)
 	}
 
 	trajs := make([]model.ExperimentTrajectory, len(e.Trajectories))
 	for i, t := range e.Trajectories {
-		t.CaseResultID, t.Seq, t.CreatedAt = e.ID, i+1, Now()
-		err := tx.QueryRowContext(ctx, `
+		t.CaseResultID, t.Seq, t.CreatedAt = e.ID, i+1, rsqlite.Now()
+		res, err := tx.ExecContext(ctx, `
 			INSERT INTO gb_experiment_trajectories (
 				case_result_id, seq, kind, trajectory_id, agent_name, steps, cost_usd, path, artifact_ids, created_at
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
-			RETURNING id`,
-			t.CaseResultID, t.Seq, t.Kind, t.TrajectoryID, t.AgentName, t.Steps, t.CostUSD, t.Path, jsonIDs(t.ArtifactIDs), t.CreatedAt).Scan(&t.ID)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			t.CaseResultID, t.Seq, t.Kind, t.TrajectoryID, t.AgentName, t.Steps, t.CostUSD, t.Path, jsonIDs(t.ArtifactIDs), rsqlite.FormatTime(t.CreatedAt))
 		if err != nil {
 			return nil, fmt.Errorf("record experiment trajectory: %w", err)
+		}
+		if t.ID, err = res.LastInsertId(); err != nil {
+			return nil, err
 		}
 		trajs[i] = t
 	}
@@ -299,9 +315,9 @@ func FinishExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*model.Ex
 			status       = CASE
 				WHEN EXISTS (SELECT 1 FROM gb_experiment_case_results WHERE run_id = gb_experiment_runs.id AND status <> 'passed')
 				THEN 'failed' ELSE 'passed' END,
-			finished_at  = $1
-		WHERE id = $2 AND type = $3 AND status = 'running'`,
-		Now(), runID, model.EvalTypeKnowledge); err != nil {
+			finished_at  = ?
+		WHERE id = ? AND type = ? AND status = 'running'`,
+		rsqlite.FormatTime(rsqlite.Now()), runID, model.EvalTypeKnowledge); err != nil {
 		return nil, fmt.Errorf("finish experiment run: %w", err)
 	}
 	return getRun(ctx, d, runID)
@@ -312,7 +328,7 @@ func ListExperimentRuns(ctx context.Context, d *sql.DB, experimentID int64) ([]m
 	rows, err := d.QueryContext(ctx, `
 		SELECT `+runColumns+`
 		FROM gb_experiment_runs
-		WHERE experiment_id = $1 AND type = $2
+		WHERE experiment_id = ? AND type = ?
 		ORDER BY id`, experimentID, model.EvalTypeKnowledge)
 	if err != nil {
 		return nil, fmt.Errorf("list experiment runs: %w", err)
@@ -329,31 +345,31 @@ func ListExperimentRuns(ctx context.Context, d *sql.DB, experimentID int64) ([]m
 	return out, rows.Err()
 }
 
-const trajectoryColumns = `id, case_result_id, seq, kind, trajectory_id, agent_name, steps, cost_usd, path, artifact_ids::text, created_at`
+const trajectoryColumns = `id, case_result_id, seq, kind, trajectory_id, agent_name, steps, cost_usd, path, artifact_ids, created_at`
 
 func scanTrajectory(r scanner) (*model.ExperimentTrajectory, error) {
 	var t model.ExperimentTrajectory
-	var artifactIDs string
-	if err := r.Scan(&t.ID, &t.CaseResultID, &t.Seq, &t.Kind, &t.TrajectoryID, &t.AgentName, &t.Steps, &t.CostUSD, &t.Path, &artifactIDs, &t.CreatedAt); err != nil {
+	var created, artifactIDs string
+	if err := r.Scan(&t.ID, &t.CaseResultID, &t.Seq, &t.Kind, &t.TrajectoryID, &t.AgentName, &t.Steps, &t.CostUSD, &t.Path, &artifactIDs, &created); err != nil {
 		return nil, err
 	}
 	t.ArtifactIDs = parseIDs(artifactIDs)
-	t.CreatedAt = t.CreatedAt.UTC()
+	t.CreatedAt = parseStoredTime(created)
 	return &t, nil
 }
 
 // caseResultColumns are the columns scanCaseResult reads (gb_experiment_case_results as e, gb_knowledge_case_meta as k).
-const caseResultColumns = `e.id, e.type, e.run_id, e.eval, e.case_name, e.status, k.answer, k.problems::text, k.passed_checks::text, k.dataset_id,
-	e.error, k.steps, e.cost_usd, e.started_at, e.finished_at`
+const caseResultColumns = `e.id, e.type, e.run_id, e.eval, e.case_name, e.status, k.answer, k.problems, k.passed_checks, k.dataset_id, e.error,
+	k.steps, e.cost_usd, e.started_at, e.finished_at`
 
 // scanCaseResult reads a result selected with caseResultColumns; its Trajectories are empty.
 func scanCaseResult(r scanner) (*model.ExperimentCaseResult, error) {
 	var e model.ExperimentCaseResult
-	var problems, passed string
+	var problems, passed, started string
+	var finished sql.NullString
 	var datasetID sql.NullInt64
-	var finished sql.NullTime
 	if err := r.Scan(&e.ID, &e.Type, &e.RunID, &e.Eval, &e.Name, &e.Status, &e.Answer, &problems, &passed, &datasetID, &e.Error, &e.Steps,
-		&e.CostUSD, &e.StartedAt, &finished); err != nil {
+		&e.CostUSD, &started, &finished); err != nil {
 		return nil, err
 	}
 	if datasetID.Valid {
@@ -361,10 +377,7 @@ func scanCaseResult(r scanner) (*model.ExperimentCaseResult, error) {
 	}
 	e.Problems = parseList(problems)
 	e.PassedChecks = parseList(passed)
-	e.StartedAt = e.StartedAt.UTC()
-	if finished.Valid {
-		e.FinishedAt = finished.Time.UTC()
-	}
+	e.StartedAt, e.FinishedAt = parseStoredTime(started), parseStoredTime(finished.String)
 	e.Trajectories = []model.ExperimentTrajectory{}
 	return &e, nil
 }
@@ -379,7 +392,7 @@ func GetExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*model.Exper
 		SELECT `+caseResultColumns+`
 		FROM gb_experiment_case_results e
 		JOIN gb_knowledge_case_meta k ON k.case_result_id = e.id
-		WHERE e.run_id = $1
+		WHERE e.run_id = ?
 		ORDER BY e.id`, runID)
 	if err != nil {
 		return nil, fmt.Errorf("list experiment case results: %w", err)
@@ -403,7 +416,7 @@ func GetExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*model.Exper
 	trows, err := d.QueryContext(ctx, `
 		SELECT `+trajectoryColumns+`
 		FROM gb_experiment_trajectories
-		WHERE case_result_id IN (SELECT id FROM gb_experiment_case_results WHERE run_id = $1)
+		WHERE case_result_id IN (SELECT id FROM gb_experiment_case_results WHERE run_id = ?)
 		ORDER BY case_result_id, seq`, runID)
 	if err != nil {
 		return nil, fmt.Errorf("list experiment trajectories: %w", err)
@@ -422,9 +435,9 @@ func GetExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*model.Exper
 
 // GetExperimentCaseResultDataset returns the dataset (deleted or not) the case ran in, or model.ErrNotFound if the case
 // does not exist or has none.
-func GetExperimentCaseResultDataset(ctx context.Context, d *sql.DB, caseResultID int64) (*model.Dataset, error) {
-	ds, err := scanDataset(d.QueryRowContext(ctx, datasetSelect+`
-		WHERE id = (SELECT dataset_id FROM gb_knowledge_case_meta WHERE case_result_id = $1)`, caseResultID))
+func GetExperimentCaseResultDataset(ctx context.Context, d *sql.DB, caseResultID int64) (*relmodel.Dataset, error) {
+	ds, err := rsqlite.ScanDataset(d.QueryRowContext(ctx, rsqlite.DatasetSelect+`
+		WHERE id = (SELECT dataset_id FROM gb_knowledge_case_meta WHERE case_result_id = ?)`, caseResultID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
 	}
@@ -437,7 +450,7 @@ func FindExperimentTrajectory(ctx context.Context, d *sql.DB, trajectoryID strin
 	t, err := scanTrajectory(d.QueryRowContext(ctx, `
 		SELECT `+trajectoryColumns+`
 		FROM gb_experiment_trajectories
-		WHERE trajectory_id = $1
+		WHERE trajectory_id = ?
 		ORDER BY id
 		LIMIT 1`, trajectoryID))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -454,7 +467,7 @@ func ListExperimentCaseHistory(ctx context.Context, d *sql.DB, experimentID int6
 		FROM gb_experiment_case_results e
 		JOIN gb_knowledge_case_meta k ON k.case_result_id = e.id
 		JOIN gb_experiment_runs r ON r.id = e.run_id
-		WHERE r.experiment_id = $1 AND r.type = $2 AND e.eval = $3 AND e.case_name = $4
+		WHERE r.experiment_id = ? AND r.type = ? AND e.eval = ? AND e.case_name = ?
 		ORDER BY r.id, e.id`, experimentID, model.EvalTypeKnowledge, eval, name)
 	if err != nil {
 		return nil, fmt.Errorf("list experiment case history: %w", err)

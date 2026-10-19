@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"database/sql"
 	"strings"
 	"time"
 )
@@ -50,3 +51,6 @@ func ParseTime(s string) *time.Time {
 	}
 	return nil
 }
+
+// UTC converts a nullable timestamp column to UTC (nil for NULL).
+func UTC(n sql.NullTime) *time.Time { return utc(n) }

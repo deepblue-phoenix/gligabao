@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational/model"
+	rpostgres "github.com/deepblue-phoenix/gligabao/internal/db/relational/postgres"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/db/model"
 )
 
 //---------------------------------------------------------------------------------------------
@@ -30,7 +31,7 @@ func InsertTrainedModelEvalRun(ctx context.Context, d *sql.DB, e model.TrainedMo
 	var id int64
 	if err := tx.QueryRowContext(ctx, `
 		INSERT INTO gb_experiment_runs (type, status, params, started_at) VALUES ($1, $2, $3::jsonb, $4) RETURNING id`,
-		model.EvalTypeTraining, e.Status, e.ParamsJSON(), Now()).Scan(&id); err != nil {
+		model.EvalTypeTraining, e.Status, e.ParamsJSON(), rpostgres.Now()).Scan(&id); err != nil {
 		return 0, fmt.Errorf("insert trained model eval run: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -70,7 +71,7 @@ func SaveTrainedModelEvalRunBatch(ctx context.Context, d *sql.DB, e model.Traine
 	if err := tx.QueryRowContext(ctx, `SELECT eval FROM gb_training_eval_run_meta WHERE run_id = $1`, e.ID).Scan(&eval); err != nil {
 		return fmt.Errorf("save eval run batch: %w", err)
 	}
-	now := Now()
+	now := rpostgres.Now()
 	for _, it := range cases {
 		status := model.TrainedModelCaseJudged
 		if it.Status != model.TrainedModelCaseJudged {
@@ -140,7 +141,7 @@ func FinishTrainedModelEvalRun(ctx context.Context, d *sql.DB, id int64, status,
 		return fmt.Errorf("finish trained model eval run: %w", err)
 	}
 	defer tx.Rollback()
-	n, err := finishTrainingRuns(ctx, tx, id, status, errText, Now())
+	n, err := finishTrainingRuns(ctx, tx, id, status, errText, rpostgres.Now())
 	if err != nil {
 		return fmt.Errorf("finish trained model eval run: %w", err)
 	}
@@ -161,7 +162,7 @@ func FailRunningTrainedModelEvalRuns(ctx context.Context, d *sql.DB, reason stri
 		return 0, fmt.Errorf("fail running trained model eval runs: %w", err)
 	}
 	defer tx.Rollback()
-	n, err := finishTrainingRuns(ctx, tx, 0, model.TrainedModelRunErrored, reason, Now())
+	n, err := finishTrainingRuns(ctx, tx, 0, model.TrainedModelRunErrored, reason, rpostgres.Now())
 	if err != nil {
 		return 0, fmt.Errorf("fail running trained model eval runs: %w", err)
 	}

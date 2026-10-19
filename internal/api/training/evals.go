@@ -1,7 +1,7 @@
 package training
 
 // Evals of trained models: the "Eval" button of the admin UI and the runner internal/evals/training/cmd. An eval run is one run
-// (relational.TrainedModelRun, kind "eval") of an eval against a trained model. An eval is a named set of cases
+// (evalsdb.TrainedModelRun, kind "eval") of an eval against a trained model. An eval is a named set of cases
 // (*.json files of the evals directory, bin/evals_training by default), each a question and the answer expected; the cases are meant to be ones
 // the model never saw in training, so the score says how well it generalizes. The eval is named after the training dataset its
 // cases ask about, so a model trained on a dataset has the eval of that name unless another is asked for.
@@ -20,7 +20,7 @@ import (
 	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	log "github.com/sirupsen/logrus"
@@ -43,7 +43,7 @@ func NewEvalManager(ctx context.Context, dbs []Database, evalDir string, sc Infe
 
 // StartOf serves POST /v1/gb/training/models/{id}/evals[?db=<name>] with an optional JSON body {"eval": "", "cases": [], "limit": 0,
 // "batch_size": 10, "judge_model": "", "max_tokens": 1024, "temperature": 0.1}: it starts an eval of trained model {id} and answers
-// 202 with the eval run (relational.TrainedModelRun, status "running"); the work goes on in the background (see GetOf, ListOf, CancelOf).
+// 202 with the eval run (evalsdb.TrainedModelRun, status "running"); the work goes on in the background (see GetOf, ListOf, CancelOf).
 //   - eval: the name of the eval to run (see DefinitionsOf); default: the eval named like the model's training dataset
 //   - cases: run only the cases with these names (default: all of the eval's)
 //   - limit: ask only the first n cases (default: all of them)
@@ -103,7 +103,7 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 		if params.Limit > 0 && params.Limit < len(cases) {
 			cases = cases[:params.Limit]
 		}
-		spec := runSpec{n: n, tm: tm, cfg: cfg, params: params, row: relational.TrainedModelRun{Eval: name},
+		spec := runSpec{n: n, tm: tm, cfg: cfg, params: params, row: evalsdb.TrainedModelRun{Eval: name},
 			examples: make([]trainingeval.Example, len(cases)), names: make([]string, len(cases))}
 		for i, c := range cases {
 			spec.examples[i], spec.names[i] = c.Example(), c.Name

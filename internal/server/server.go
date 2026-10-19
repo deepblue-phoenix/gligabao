@@ -28,6 +28,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	"github.com/deepblue-phoenix/gligabao/internal/jev"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
@@ -316,6 +317,10 @@ func openAdminDB(path string) (*sql.DB, error) {
 		return nil, err
 	}
 	if err := graph.Open(config.DBBackendSQLite, rel); err != nil {
+		rel.Close()
+		return nil, err
+	}
+	if err := evalsdb.Open(config.DBBackendSQLite, rel); err != nil {
 		rel.Close()
 		return nil, err
 	}

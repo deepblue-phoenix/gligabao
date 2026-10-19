@@ -6,7 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/deepblue-phoenix/gligabao/internal/db/relational/model"
+	rsqlite "github.com/deepblue-phoenix/gligabao/internal/db/relational/sqlite"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/db/model"
 )
 
 //---------------------------------------------------------------------------------------------
@@ -28,7 +29,7 @@ func InsertTrainedModelEvalRun(ctx context.Context, d *sql.DB, e model.TrainedMo
 	defer tx.Rollback()
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO gb_experiment_runs (type, status, params, started_at) VALUES (?, ?, ?, ?)`,
-		model.EvalTypeTraining, e.Status, e.ParamsJSON(), FormatTime(Now()))
+		model.EvalTypeTraining, e.Status, e.ParamsJSON(), rsqlite.FormatTime(rsqlite.Now()))
 	if err != nil {
 		return 0, fmt.Errorf("insert trained model eval run: %w", err)
 	}
@@ -73,7 +74,7 @@ func SaveTrainedModelEvalRunBatch(ctx context.Context, d *sql.DB, e model.Traine
 	if err := tx.QueryRowContext(ctx, `SELECT eval FROM gb_training_eval_run_meta WHERE run_id = ?`, e.ID).Scan(&eval); err != nil {
 		return fmt.Errorf("save eval run batch: %w", err)
 	}
-	now := FormatTime(Now())
+	now := rsqlite.FormatTime(rsqlite.Now())
 	for _, it := range cases {
 		status := model.TrainedModelCaseJudged
 		if it.Status != model.TrainedModelCaseJudged {
@@ -147,7 +148,7 @@ func FinishTrainedModelEvalRun(ctx context.Context, d *sql.DB, id int64, status,
 		return fmt.Errorf("finish trained model eval run: %w", err)
 	}
 	defer tx.Rollback()
-	n, err := finishTrainingRuns(ctx, tx, id, status, errText, FormatTime(Now()))
+	n, err := finishTrainingRuns(ctx, tx, id, status, errText, rsqlite.FormatTime(rsqlite.Now()))
 	if err != nil {
 		return fmt.Errorf("finish trained model eval run: %w", err)
 	}
@@ -168,7 +169,7 @@ func FailRunningTrainedModelEvalRuns(ctx context.Context, d *sql.DB, reason stri
 		return 0, fmt.Errorf("fail running trained model eval runs: %w", err)
 	}
 	defer tx.Rollback()
-	n, err := finishTrainingRuns(ctx, tx, 0, model.TrainedModelRunErrored, reason, FormatTime(Now()))
+	n, err := finishTrainingRuns(ctx, tx, 0, model.TrainedModelRunErrored, reason, rsqlite.FormatTime(rsqlite.Now()))
 	if err != nil {
 		return 0, fmt.Errorf("fail running trained model eval runs: %w", err)
 	}
@@ -196,7 +197,7 @@ func scanTrainedModelEvalRun(s rowScanner) (*model.TrainedModelRun, error) {
 	e.SetStoredParams(params)
 	e.CreatedAt = parseStoredTime(created)
 	if finished.Valid {
-		e.FinishedAt = ParseTime(finished.String)
+		e.FinishedAt = rsqlite.ParseTime(finished.String)
 	}
 	return &e, nil
 }
