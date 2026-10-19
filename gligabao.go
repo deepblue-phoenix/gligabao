@@ -163,8 +163,8 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 
 		TrajectoryDir: opts.TrajectoryDir,
 		EvalDBPath:    opts.EvalDBPath,
-		Eval:          cfg.Eval,
-		AdminUI:       cfg.AdminUI,
+		Eval:          cfg.EvalModeEnable,
+		AdminUI:       cfg.AdminUIenable,
 	})
 }
 

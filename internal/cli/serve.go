@@ -24,10 +24,10 @@ var serveCmd = &cobra.Command{
 	Short: "Start the HTTP server",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if cmd.Flags().Changed("eval") {
-			cfg.Eval = serveEval
+			cfg.EvalModeEnable = serveEval
 		}
 		if cmd.Flags().Changed("admin-ui") {
-			cfg.AdminUI = serveAdminUI
+			cfg.AdminUIenable = serveAdminUI
 		}
 		return gligabao.Serve(cmd.Context(), cfg, gligabao.ServeOptions{
 			DBPath:             serveDBPath,

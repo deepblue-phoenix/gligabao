@@ -86,12 +86,12 @@ type Config struct {
 	// ChunkOverlapPercent is how much of a chunk repeats the end of the previous one, as a percentage of ChunkSize
 	// (0 = no overlap, at most chunk.MaxOverlapPercent). Default chunk.DefaultOverlapPercent (20).
 	ChunkOverlapPercent int `toml:"chunk_overlap_percent"`
-	// Eval registers the eval endpoints (/v1/gb/eval/remember, /v1/gb/eval/recall) that return ATIF trajectories
+	// EvalModeEnable registers the eval endpoints (/v1/gb/eval/remember, /v1/gb/eval/recall) that return ATIF trajectories
 	// with their results. Default false; `serve --eval` turns it on.
-	Eval bool `toml:"eval"`
-	// AdminUI registers the admin UI handlers (served at /v1/gb/admin/). Default false; `serve --admin-ui` turns it on.
+	EvalModeEnable bool `toml:"eval"`
+	// AdminUIenable registers the admin UI handlers (served at /v1/gb/admin/). Default false; `serve --admin-ui` turns it on.
 	// Needs a binary built with the web assets embedded (./run_build.sh, on by default).
-	AdminUI bool `toml:"admin_ui"`
+	AdminUIenable bool `toml:"admin_ui"`
 	// SidecarURL is the base URL of the Python sidecar's REST API (sidecar/), which runs the training jobs the admin
 	// endpoint POST /v1/gb/v1/gb/training/jobs starts. Default: SIDECAR_URL, else http://127.0.0.1:8787.
 	SidecarURL string `toml:"sidecar_url"`
