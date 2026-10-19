@@ -22,10 +22,13 @@ type EvalTotals struct {
 	Runs        int `json:"runs"`
 	// Cases is the number of distinct cases (eval + case name) any experiment executed (counted once across experiments).
 	Cases int `json:"cases"`
-	// Executions is the number of case results over all finished runs; Passed of them passed, Failed did not.
+	// Executions is the number of case results over all finished runs. Passed, Failed (a check did not hold), Errors (could not
+	// be run to the end) and Judged (training: scored) count the cases with that status; the rest were not reached.
 	Executions int     `json:"executions"`
 	Passed     int     `json:"passed"`
 	Failed     int     `json:"failed"`
+	Errors     int     `json:"errors"`
+	Judged     int     `json:"judged"`
 	CostUSD    float64 `json:"cost_usd"`
 }
 
@@ -139,6 +142,8 @@ func EvalOverview(d *sql.DB) http.HandlerFunc {
 				out.Totals.Executions += run.TotalCases
 				out.Totals.Passed += run.PassedCases
 				out.Totals.Failed += run.FailedCases
+				out.Totals.Errors += run.ErrorCases
+				out.Totals.Judged += run.JudgedCases
 				v.LastRun = &run
 			}
 			out.Totals.Runs += len(runs)

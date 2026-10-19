@@ -62,10 +62,10 @@ func SaveTrainedModelEvalRunBatch(ctx context.Context, d *sql.DB, e model.Traine
 	}
 	defer tx.Rollback()
 	res, err := tx.ExecContext(ctx, `
-		UPDATE gb_training_eval_run_meta SET judge_model = ?, num_answered = ?, num_judged = ?, num_failed = ?, num_correct = ?,
+		UPDATE gb_training_eval_run_meta SET judge_model = ?, num_answered = ?, num_judged = ?, num_errored = ?, num_correct = ?,
 			num_partial = ?, num_incorrect = ?, score_sum = ?, num_batches = ?, judge_calls = ?, judge_input_tokens = ?,
 			judge_output_tokens = ?, judge_cost_usd = ? WHERE run_id = ?`,
-		e.JudgeModel, e.NumAnswered, e.NumJudged, e.NumFailed, e.NumCorrect, e.NumPartial, e.NumIncorrect, e.ScoreSum,
+		e.JudgeModel, e.NumAnswered, e.NumJudged, e.NumErrored, e.NumCorrect, e.NumPartial, e.NumIncorrect, e.ScoreSum,
 		e.NumBatches, e.JudgeCalls, e.JudgeInputTokens, e.JudgeOutputTokens, e.JudgeCostUSD, e.ID)
 	if err != nil {
 		return fmt.Errorf("save eval run batch: %w", err)
@@ -81,7 +81,7 @@ func SaveTrainedModelEvalRunBatch(ctx context.Context, d *sql.DB, e model.Traine
 	for _, it := range cases {
 		status := model.TrainedModelCaseJudged
 		if it.Status != model.TrainedModelCaseJudged {
-			status = model.TrainedModelCaseFailed
+			status = model.TrainedModelCaseErrored
 		}
 		name := strconv.Itoa(it.Idx)
 		res, err := tx.ExecContext(ctx, `
@@ -114,8 +114,8 @@ func SaveTrainedModelEvalRunBatch(ctx context.Context, d *sql.DB, e model.Traine
 
 // finishTrainingRuns ends the running training run with that ID (every running training run for id 0) with the status, and the
 // error in its metadata, and sets its case totals from the eval run's counters: total_cases are the cases of the eval,
-// passed_cases the judged ones and failed_cases the others (failed, or not reached because the eval run was cancelled), and its
-// cost the judge's. It returns how many runs it ended.
+// judged_cases the judged ones and error_cases the ones that errored (passed_cases and failed_cases are the knowledge verdicts, so
+// 0; the cases not reached because the eval run was cancelled are in none), and its cost the judge's. It returns how many runs it ended.
 func finishTrainingRuns(ctx context.Context, q rower, id int64, status, errText, now string) (int64, error) {
 	if _, err := q.ExecContext(ctx, `
 		UPDATE gb_training_eval_run_meta SET error = ?
@@ -127,8 +127,10 @@ func finishTrainingRuns(ctx context.Context, q rower, id int64, status, errText,
 		UPDATE gb_experiment_runs
 		SET status       = ?,
 			total_cases  = (SELECT tm.num_examples FROM gb_training_eval_run_meta tm WHERE tm.run_id = gb_experiment_runs.id),
-			passed_cases = (SELECT tm.num_judged FROM gb_training_eval_run_meta tm WHERE tm.run_id = gb_experiment_runs.id),
-			failed_cases = (SELECT tm.num_examples - tm.num_judged FROM gb_training_eval_run_meta tm WHERE tm.run_id = gb_experiment_runs.id),
+			passed_cases = 0,
+			failed_cases = 0,
+			judged_cases = (SELECT tm.num_judged FROM gb_training_eval_run_meta tm WHERE tm.run_id = gb_experiment_runs.id),
+			error_cases  = (SELECT tm.num_errored FROM gb_training_eval_run_meta tm WHERE tm.run_id = gb_experiment_runs.id),
 			cost_usd     = (SELECT tm.judge_cost_usd FROM gb_training_eval_run_meta tm WHERE tm.run_id = gb_experiment_runs.id),
 			finished_at  = ?
 		WHERE type = 'training' AND status = 'running' AND (? = 0 OR id = ?)`, status, now, id, id)
@@ -160,14 +162,14 @@ func FinishTrainedModelEvalRun(ctx context.Context, d *sql.DB, id int64, status,
 	return tx.Commit()
 }
 
-// FailRunningTrainedModelEvalRuns sets every running eval run to failed with the reason, and returns how many there were.
+// FailRunningTrainedModelEvalRuns sets every running eval run to error with the reason, and returns how many there were.
 func FailRunningTrainedModelEvalRuns(ctx context.Context, d *sql.DB, reason string) (int64, error) {
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("fail running trained model eval runs: %w", err)
 	}
 	defer tx.Rollback()
-	n, err := finishTrainingRuns(ctx, tx, 0, model.TrainedModelRunFailed, reason, FormatTime(Now()))
+	n, err := finishTrainingRuns(ctx, tx, 0, model.TrainedModelRunErrored, reason, FormatTime(Now()))
 	if err != nil {
 		return 0, fmt.Errorf("fail running trained model eval runs: %w", err)
 	}
@@ -177,7 +179,7 @@ func FailRunningTrainedModelEvalRuns(ctx context.Context, d *sql.DB, reason stri
 // trainedModelEvalRunColumns and trainedModelEvalRunFrom select a model.TrainedModelEvalRun (scanTrainedModelEvalRun): the run r (which holds the
 // status, the params and the times) and its training metadata tm.
 const trainedModelEvalRunColumns = `r.id, tm.trained_model_id, r.status, tm.scheme, tm.dataset, tm.dataset_sha256, r.params, tm.judge_model,
-	tm.num_examples, tm.num_answered, tm.num_judged, tm.num_failed, tm.num_correct, tm.num_partial, tm.num_incorrect, tm.score_sum,
+	tm.num_examples, tm.num_answered, tm.num_judged, tm.num_errored, tm.num_correct, tm.num_partial, tm.num_incorrect, tm.score_sum,
 	tm.num_batches, tm.judge_calls, tm.judge_input_tokens, tm.judge_output_tokens, tm.judge_cost_usd, tm.error, r.started_at, r.finished_at`
 
 const trainedModelEvalRunFrom = ` FROM gb_experiment_runs r
@@ -188,7 +190,7 @@ func scanTrainedModelEvalRun(s rowScanner) (*model.TrainedModelEvalRun, error) {
 	var params, created string
 	var finished sql.NullString
 	if err := s.Scan(&e.ID, &e.TrainedModelID, &e.Status, &e.Scheme, &e.Dataset, &e.DatasetSHA256, &params, &e.JudgeModel, &e.NumExamples,
-		&e.NumAnswered, &e.NumJudged, &e.NumFailed, &e.NumCorrect, &e.NumPartial, &e.NumIncorrect, &e.ScoreSum, &e.NumBatches,
+		&e.NumAnswered, &e.NumJudged, &e.NumErrored, &e.NumCorrect, &e.NumPartial, &e.NumIncorrect, &e.ScoreSum, &e.NumBatches,
 		&e.JudgeCalls, &e.JudgeInputTokens, &e.JudgeOutputTokens, &e.JudgeCostUSD, &e.Error, &created, &finished); err != nil {
 		return nil, err
 	}

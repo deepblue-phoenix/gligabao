@@ -164,14 +164,14 @@ func ListExperiments(ctx context.Context, d *sql.DB) ([]model.Experiment, error)
 //---------------------------------------------------------------------------------------------
 
 const runColumns = `
-	id, type, COALESCE(experiment_id, 0), status, params::text, total_cases, passed_cases, failed_cases, cost_usd, started_at, finished_at`
+	id, type, COALESCE(experiment_id, 0), status, params::text, total_cases, passed_cases, failed_cases, error_cases, judged_cases, cost_usd, started_at, finished_at`
 
 func scanRun(r scanner) (*model.ExperimentRun, error) {
 	var run model.ExperimentRun
 	var params string
 	var finished sql.NullTime
 	if err := r.Scan(&run.ID, &run.Type, &run.ExperimentID, &run.Status, &params, &run.TotalCases, &run.PassedCases,
-		&run.FailedCases, &run.CostUSD, &run.StartedAt, &finished); err != nil {
+		&run.FailedCases, &run.ErrorCases, &run.JudgedCases, &run.CostUSD, &run.StartedAt, &finished); err != nil {
 		return nil, err
 	}
 	run.Params = parseObject(params)
@@ -292,7 +292,9 @@ func FinishExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*model.Ex
 		UPDATE gb_experiment_runs
 		SET total_cases  = (SELECT COUNT(*) FROM gb_experiment_case_results WHERE run_id = gb_experiment_runs.id),
 			passed_cases = (SELECT COUNT(*) FROM gb_experiment_case_results WHERE run_id = gb_experiment_runs.id AND status = 'passed'),
-			failed_cases = (SELECT COUNT(*) FROM gb_experiment_case_results WHERE run_id = gb_experiment_runs.id AND status <> 'passed'),
+			failed_cases = (SELECT COUNT(*) FROM gb_experiment_case_results WHERE run_id = gb_experiment_runs.id AND status = 'failed'),
+			error_cases  = (SELECT COUNT(*) FROM gb_experiment_case_results WHERE run_id = gb_experiment_runs.id AND status = 'error'),
+			judged_cases = 0,
 			cost_usd     = (SELECT COALESCE(SUM(cost_usd), 0) FROM gb_experiment_case_results WHERE run_id = gb_experiment_runs.id),
 			status       = CASE
 				WHEN EXISTS (SELECT 1 FROM gb_experiment_case_results WHERE run_id = gb_experiment_runs.id AND status <> 'passed')

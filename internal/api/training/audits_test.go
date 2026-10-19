@@ -81,7 +81,7 @@ func testAuditATrainedModel(t *testing.T, d *sql.DB) {
 	if au.Status != relational.TrainedModelRunCompleted || au.FinishedAt == nil || au.Error != "" {
 		t.Fatalf("finished: %+v", au)
 	}
-	if au.NumAnswered != 5 || au.NumJudged != 5 || au.NumFailed != 0 || au.NumCorrect != 4 || au.NumIncorrect != 1 || au.ScoreSum != 21 || au.NumBatches != 3 {
+	if au.NumAnswered != 5 || au.NumJudged != 5 || au.NumErrored != 0 || au.NumCorrect != 4 || au.NumIncorrect != 1 || au.ScoreSum != 21 || au.NumBatches != 3 {
 		t.Fatalf("counters: %+v", au)
 	}
 	if judge.calls != 3 || fmt.Sprint(judge.sizes) != "[2 2 1]" || judge.model != "my-judge" {
@@ -237,8 +237,8 @@ func TestAuditFailsWhenTheModelDoesNotAnswer(t *testing.T) {
 	c := startAudit(m, fmt.Sprint(mid), `{"batch_size": 2}`)
 	m.Wait()
 	au, cases := getAudit(t, m, auditOf(t, c).ID)
-	if au.Status != relational.TrainedModelRunFailed || !strings.Contains(au.Error, "weights are gone") || au.NumFailed != 4 || au.NumJudged != 0 || len(cases) != 4 ||
-		cases[0].Status != relational.TrainedModelCaseFailed || !strings.Contains(cases[0].Error, "weights are gone") {
+	if au.Status != relational.TrainedModelRunErrored || !strings.Contains(au.Error, "weights are gone") || au.NumErrored != 4 || au.NumJudged != 0 || len(cases) != 4 ||
+		cases[0].Status != relational.TrainedModelCaseErrored || !strings.Contains(cases[0].Error, "weights are gone") {
 		t.Fatalf("%+v cases %+v", au, cases)
 	}
 }
@@ -253,7 +253,7 @@ func TestAuditsInterruptedByARestartAreFailed(t *testing.T) {
 	}
 	training.NewAuditManager(ctx, []training.Database{{Name: "standard", DB: d}}, nil, nil)
 	au, err := relational.GetTrainedModelAuditRun(ctx, d, id)
-	if err != nil || au.Status != relational.TrainedModelRunFailed || !strings.Contains(au.Error, "restart") {
+	if err != nil || au.Status != relational.TrainedModelRunErrored || !strings.Contains(au.Error, "restart") {
 		t.Fatalf("%+v %v", au, err)
 	}
 }

@@ -6,15 +6,15 @@
 
 // The statuses of the runs and cases of a trained model, the same for evals and audits. They are the words of
 // internal/db/relational/model/trained_model_status.go (TrainedModelRun*, TrainedModelCase*): change them there and here.
-export const RunStatus = { running: "running", completed: "completed", failed: "failed", cancelled: "cancelled" } as const;
+export const RunStatus = { running: "running", completed: "completed", error: "error", cancelled: "cancelled" } as const;
 export type RunStatus = (typeof RunStatus)[keyof typeof RunStatus];
-export const CaseStatus = { judged: "judged", failed: "failed", answered: "answered" } as const; // answered: only in the live feed
+export const CaseStatus = { judged: "judged", error: "error", answered: "answered" } as const; // answered: only in the live feed
 export type CaseStatus = (typeof CaseStatus)[keyof typeof CaseStatus];
 
 export interface EvalRun {
   id: number; trained_model_id: number; status: RunStatus; dataset: string; dataset_sha256: string;
   params: { batch_size?: number; max_tokens?: number; temperature?: number; limit?: number };
-  judge_model: string; num_examples: number; num_answered: number; num_judged: number; num_failed: number; num_correct: number;
+  judge_model: string; num_examples: number; num_answered: number; num_judged: number; num_errored: number; num_correct: number;
   num_partial: number; num_incorrect: number; score_sum: number; num_batches: number; judge_calls: number; judge_input_tokens: number;
   judge_output_tokens: number; judge_cost_usd: number; error: string; created_at: string; finished_at: string | null;
 }
@@ -44,10 +44,10 @@ function node<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""
   return e;
 }
 
-// How an case is doing: pending (answered, awaiting the judge), good (4-5), mid (2-3), bad (0-1) or failed.
-type Verdict = "pending" | "good" | "mid" | "bad" | "failed";
+// How an case is doing: pending (answered, awaiting the judge), good (4-5), mid (2-3), bad (0-1) or error.
+type Verdict = "pending" | "good" | "mid" | "bad" | "error";
 const verdictOf = (i: EvalCase): Verdict =>
-  i.status === CaseStatus.failed ? "failed" : i.status === CaseStatus.answered || i.score === null ? "pending" : i.score >= 4 ? "good" : i.score >= 2 ? "mid" : "bad";
+  i.status === CaseStatus.error ? "error" : i.status === CaseStatus.answered || i.score === null ? "pending" : i.score >= 4 ? "good" : i.score >= 2 ? "mid" : "bad";
 
 // What the open dialog follows.
 let stream: EventSource | undefined;
@@ -83,7 +83,7 @@ function reset(): void {
 }
 
 function statusBadge(status: string): HTMLElement {
-  const cls = status === RunStatus.completed ? "badge-ok" : status === RunStatus.failed ? "badge-error" : status === RunStatus.cancelled ? "badge-unknown" : "badge-active";
+  const cls = status === RunStatus.completed ? "badge-ok" : status === RunStatus.error ? "badge-error" : status === RunStatus.cancelled ? "badge-unknown" : "badge-active";
   return node("span", `badge ${cls}`, status);
 }
 
@@ -102,21 +102,21 @@ function buildCard(i: EvalCase): HTMLElement {
   const head = node("div", "ev-head");
   head.append(node("span", "ev-num", `#${i.idx + 1}`));
   if (v === "pending") head.append(node("span", ended ? "badge badge-unknown" : "badge badge-active", ended ? "not judged" : "answered · awaiting judge"));
-  else if (v === "failed") head.append(node("span", "badge badge-error", "failed"));
+  else if (v === "error") head.append(node("span", "badge badge-error", "error"));
   else head.append(node("span", `ev-score score-${v}`, `${i.score} / ${MAX_SCORE}`));
-  const stats = i.status === CaseStatus.failed && !i.response ? "" : `${fmtSecs(i.duration_ms)} · ${i.input_tokens} in / ${i.output_tokens} out tokens`;
+  const stats = i.status === CaseStatus.error && !i.response ? "" : `${fmtSecs(i.duration_ms)} · ${i.input_tokens} in / ${i.output_tokens} out tokens`;
   if (stats) head.append(node("span", "muted", stats));
   card.append(head);
   card.append(textBlock("Question", i.input ? `${i.instruction}\n\n${i.input}` : i.instruction, "ev-question"));
   const cols = node("div", "ev-cols");
-  cols.append(textBlock("Dataset answer", i.reference), textBlock("Model answer", i.status === CaseStatus.failed && !i.response ? "(no answer)" : i.response === "" ? "(empty)" : i.response, "ev-model"));
+  cols.append(textBlock("Dataset answer", i.reference), textBlock("Model answer", i.status === CaseStatus.error && !i.response ? "(no answer)" : i.response === "" ? "(empty)" : i.response, "ev-model"));
   card.append(cols);
-  if (i.status === CaseStatus.failed) card.append(node("div", "error ev-reason", i.error));
+  if (i.status === CaseStatus.error) card.append(node("div", "error ev-reason", i.error));
   else if (i.reason) card.append(node("div", "muted ev-reason", `Judge: ${i.reason}`));
   return card;
 }
 
-// Adds or updates cases. A judged or failed case is never turned back into an answered one (a reconnect's snapshot can race the feed).
+// Adds or updates cases. A judged or errored case is never turned back into an answered one (a reconnect's snapshot can race the feed).
 function apply(list: EvalCase[]): void {
   const feed = el("eval-live-feed");
   const follow = el<HTMLInputElement>("eval-live-follow").checked;
@@ -148,9 +148,9 @@ function queueSummary(): void {
 
 function drawSummary(): void {
   const total = run?.num_examples ?? cases.size;
-  let judged = 0, failed = 0, good = 0, mid = 0, bad = 0, scoreSum = 0, ms = 0, answered = 0;
+  let judged = 0, errored = 0, good = 0, mid = 0, bad = 0, scoreSum = 0, ms = 0, answered = 0;
   for (const i of cases.values()) {
-    if (i.status === CaseStatus.failed) failed++;
+    if (i.status === CaseStatus.error) errored++;
     else { answered++; ms += i.duration_ms; }
     if (i.status !== CaseStatus.judged || i.score === null) continue;
     judged++;
@@ -159,7 +159,7 @@ function drawSummary(): void {
   }
   el<HTMLProgressElement>("eval-live-progress").max = Math.max(total, 1);
   el<HTMLProgressElement>("eval-live-progress").value = cases.size;
-  const parts = [`${cases.size} / ${total} answered`, `${judged} judged${failed ? ` · ${failed} failed` : ""}`];
+  const parts = [`${cases.size} / ${total} answered`, `${judged} judged${errored ? ` · ${errored} errored` : ""}`];
   if (judged > 0) {
     parts.push(`mean score ${(scoreSum / judged).toFixed(2)} / ${MAX_SCORE}`, `${Math.round((100 * good) / judged)}% correct`,
       `${good} correct · ${mid} partial · ${bad} incorrect`);
@@ -241,7 +241,7 @@ export function watchEval(kind: RunKind, id: number, title: string, cb?: () => v
   on("end", (e) => {
     ended = true;
     if (e.run && e.run.status) setRun(e.run);
-    // answers the judge never scored (a cancelled or failed eval): redraw them as "not judged"
+    // answers the judge never scored (a cancelled or errored eval): redraw them as "not judged"
     for (const i of cases.values()) {
       if (i.status !== CaseStatus.answered) continue;
       const card = buildCard(i);

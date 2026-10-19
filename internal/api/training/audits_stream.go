@@ -32,7 +32,7 @@ const (
 const (
 	// auditEventSnapshot: the audit and all its cases so far (stored ones, and answered ones awaiting the judge). First event.
 	auditEventSnapshot = "snapshot"
-	// auditEventAnswer: Cases has one case the model just answered (status "answered", or "failed" if the model failed).
+	// auditEventAnswer: Cases has one case the model just answered (status "answered", or "error" if the model failed).
 	auditEventAnswer = "answer"
 	// auditEventBatch: a batch was judged; Cases are its final cases and Audit the progress after it.
 	auditEventBatch = "batch"
@@ -153,7 +153,7 @@ func auditCaseRow(auditID int64, it trainingeval.CaseResult) relational.TrainedM
 }
 
 // EventsOf serves GET /v1/gb/training/audits/{id}/events[?db=<name>]: the live feed of an audit as Server-Sent Events. Every
-// event's data is an AuditEvent JSON. The first is a "snapshot" (the audit and all of its cases so far: the judged and failed
+// event's data is an AuditEvent JSON. The first is a "snapshot" (the audit and all of its cases so far: the judged and errored
 // ones from the database, and the ones the model answered that the judge has not scored yet, with status "answered"); then, while
 // the audit runs, an "answer" for every question the model answers, a "batch" when a batch is judged, and finally an "end" after
 // which the stream closes. For an audit that is over, the stream is a snapshot and the "end". A client that reconnects gets a new

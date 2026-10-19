@@ -90,7 +90,7 @@ func scanTrainingExperimentRun(s rowScanner) (*model.TrainingExperimentRun, erro
 	e, m := &r.EvalRun, &r.Model
 	if err := s.Scan(&r.ID, &r.ExperimentID, &r.CreatedAt,
 		&e.ID, &e.TrainedModelID, &e.Status, &e.Scheme, &e.Dataset, &e.DatasetSHA256, &runParams, &e.JudgeModel, &e.NumExamples,
-		&e.NumAnswered, &e.NumJudged, &e.NumFailed, &e.NumCorrect, &e.NumPartial, &e.NumIncorrect, &e.ScoreSum, &e.NumBatches,
+		&e.NumAnswered, &e.NumJudged, &e.NumErrored, &e.NumCorrect, &e.NumPartial, &e.NumIncorrect, &e.ScoreSum, &e.NumBatches,
 		&e.JudgeCalls, &e.JudgeInputTokens, &e.JudgeOutputTokens, &e.JudgeCostUSD, &e.Error, &e.CreatedAt, &runFinished,
 		&m.ID, &m.Name, &m.BaseModel, &m.ModelSize, &m.NumTrainSteps, &loss, &modelParams); err != nil {
 		return nil, err

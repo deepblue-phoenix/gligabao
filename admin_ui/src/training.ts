@@ -645,7 +645,7 @@ async function loadRuns(k: RunKind, modelID: number): Promise<void> {
 
 // Evals and audits end "completed" (the same statuses).
 function evalBadge(status: string): HTMLElement {
-  const cls = status === RunStatus.completed ? "badge-ok" : status === RunStatus.failed ? "badge-error" : status === RunStatus.cancelled ? "badge-unknown" : "badge-active";
+  const cls = status === RunStatus.completed ? "badge-ok" : status === RunStatus.error ? "badge-error" : status === RunStatus.cancelled ? "badge-unknown" : "badge-active";
   return node("span", `badge ${cls}`, status);
 }
 
@@ -680,12 +680,12 @@ function renderRuns(k: RunKind): void {
     head.append(watch);
     item.append(head);
 
-    const done = e.num_judged + e.num_failed;
+    const done = e.num_judged + e.num_errored;
     const bar = node("progress");
     bar.max = Math.max(e.num_examples, 1);
     bar.value = done;
     const mean = runMean(e);
-    const parts = [`${done} / ${e.num_examples} questions${e.num_failed ? ` (${e.num_failed} failed)` : ""}`];
+    const parts = [`${done} / ${e.num_examples} questions${e.num_errored ? ` (${e.num_errored} errored)` : ""}`];
     if (mean !== null) {
       parts.push(`mean score ${mean.toFixed(2)} / ${MAX_SCORE}`, `${Math.round((100 * e.num_correct) / e.num_judged)}% correct`,
         `${e.num_correct} correct · ${e.num_partial} partial · ${e.num_incorrect} incorrect`);
@@ -716,7 +716,7 @@ function renderRuns(k: RunKind): void {
 function runCasesTable(cases: EvalCase[] | undefined): HTMLElement {
   if (!cases) return node("p", "muted", "Loading the answers…");
   if (cases.length === 0) return node("p", "muted", "No answers yet: they appear as each batch is judged.");
-  const rank = (i: EvalCase): number => (i.status === CaseStatus.failed ? -1 : i.score ?? -1);
+  const rank = (i: EvalCase): number => (i.status === CaseStatus.error ? -1 : i.score ?? -1);
   const sorted = [...cases].sort((a, b) => rank(a) - rank(b) || a.idx - b.idx);
   const table = node("table", "eval-table");
   const head = table.createTHead().insertRow();
@@ -728,11 +728,11 @@ function runCasesTable(cases: EvalCase[] | undefined): HTMLElement {
     tr.insertCell().textContent = String(i.idx + 1);
     text(tr, i.input ? `${i.instruction}\n\n${i.input}` : i.instruction);
     text(tr, i.reference);
-    if (i.status === CaseStatus.failed) {
+    if (i.status === CaseStatus.error) {
       text(tr, i.response || "(no answer)", "muted");
       const c = tr.insertCell();
       c.className = "num";
-      c.append(node("span", "badge badge-error", "failed"));
+      c.append(node("span", "badge badge-error", "error"));
       text(tr, i.error, "error");
     } else {
       text(tr, i.response === "" ? "(empty)" : i.response);

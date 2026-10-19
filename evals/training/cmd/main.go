@@ -144,7 +144,7 @@ func mainErr() error {
 		return err
 	}
 	fmt.Printf("---\ncorrect: %d, partial: %d, incorrect: %d, failed: %d; mean score %.2f / %d; judge cost $%.6f\n",
-		p.Correct, p.Partial, p.Incorrect, p.Failed, p.MeanScore(), trainingeval.MaxScore, p.JudgeCostUSD)
+		p.Correct, p.Partial, p.Incorrect, p.Errored, p.MeanScore(), trainingeval.MaxScore, p.JudgeCostUSD)
 	if failed > 0 {
 		os.Exit(1)
 	}

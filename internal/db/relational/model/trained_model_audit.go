@@ -18,7 +18,7 @@ import (
 // cases are TrainedModelAuditCase rows). Each example of the dataset is a case: the model is asked its question and the LLM
 // scores the answer against the dataset's output. The counters are updated after every judge batch, so the row shows the
 // progress of a running audit and the result of a finished one.
-// Every case is judged or failed (NumJudged + NumFailed = the ones done so far, of NumExamples);
+// Every case is judged or errored (NumJudged + NumErrored = the ones done so far, of NumExamples);
 // NumCorrect + NumPartial + NumIncorrect = NumJudged, and ScoreSum is the sum of the scores (0 to 5) of the judged ones.
 type TrainedModelAuditRun struct {
 	ID             int64  `json:"id"`
@@ -34,7 +34,7 @@ type TrainedModelAuditRun struct {
 	NumExamples  int    `json:"num_examples"`
 	NumAnswered  int    `json:"num_answered"`
 	NumJudged    int    `json:"num_judged"`
-	NumFailed    int    `json:"num_failed"`
+	NumErrored   int    `json:"num_errored"`
 	NumCorrect   int    `json:"num_correct"`
 	NumPartial   int    `json:"num_partial"`
 	NumIncorrect int    `json:"num_incorrect"`
@@ -67,7 +67,7 @@ func (a *TrainedModelAuditRun) SetStoredParams(s string) {
 }
 
 // TrainedModelAuditCase is the outcome for one example of an audit run: the question, the dataset's answer (Reference), the
-// model's (Response) and the judge's score. Status is "judged" or "failed".
+// model's (Response) and the judge's score. Status is "judged" or "error".
 type TrainedModelAuditCase struct {
 	ID         int64 `json:"id"`
 	AuditRunID int64 `json:"audit_run_id"`

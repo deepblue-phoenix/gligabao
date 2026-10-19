@@ -126,12 +126,14 @@ const (
 
 // Run and case statuses of the KNOWLEDGE evals (the Experiment* constants). The statuses of the trained-model evals and audits
 // are their own (TrainedModelRun* and TrainedModelCase*, see trained_model_status.go), because they mean other things (a training
-// score is not a verdict). The CHECKs of the schema enforce the set of each type, and a word can mean different things in them:
+// score is not a verdict). The CHECKs of the schema enforce the set of each type:
 //
-//	knowledge run:  running, then passed or failed
+//	knowledge run:  running, then passed (every case passed) or failed (at least one did not)
 //	knowledge case: passed, failed (a check did not hold) or error (could not be run to the end)
-//	training run:   running, then completed (it ran to the end), failed (the run itself errored) or cancelled
-//	training case:  judged (the model answered and the judge scored it; a score of 0 too) or failed (the model or the judge errored)
+//	training run:   running, then completed (it ran to the end), error (the run itself errored) or cancelled
+//	training case:  judged (the model answered and the judge scored it; a score of 0 too) or error (the model or the judge errored)
+//
+// "failed" is a verdict about checks, so only knowledge has it; "error" means "could not be run to the end" wherever it is used.
 const (
 	// ExperimentRunning is the status of a run that has not been finished yet.
 	ExperimentRunning = "running"
@@ -169,7 +171,8 @@ type CaseRef struct {
 	Name string `json:"name"`
 }
 
-// ExperimentRun is one execution of an experiment: a pass over some of the cases in the evals.
+// ExperimentRun is one execution of an experiment: a pass over some of the cases in the evals. Each of the four counts is of
+// the cases with the status of its name and nothing else; TotalCases minus the four are the cases not reached (a cancelled run).
 type ExperimentRun struct {
 	ID           int64                  `json:"id"`
 	Type         string                 `json:"type"` // EvalTypeKnowledge
@@ -177,8 +180,10 @@ type ExperimentRun struct {
 	Status       string                 `json:"status"`       // ExperimentRunning, ExperimentPassed or ExperimentFailed
 	Params       map[string]any         `json:"params"`       // how the run was invoked (evals dir, selected cases, ...)
 	TotalCases   int                    `json:"total_cases"`  // set when the run is finished
-	PassedCases  int                    `json:"passed_cases"` // the cases that passed; set when the run is finished
-	FailedCases  int                    `json:"failed_cases"` // all the others (failed, errored, not reached); set when the run is finished
+	PassedCases  int                    `json:"passed_cases"` // the cases with status passed (knowledge); set when the run is finished
+	FailedCases  int                    `json:"failed_cases"` // the cases with status failed: a check did not hold (knowledge)
+	ErrorCases   int                    `json:"error_cases"`  // the cases with status error: could not be run to the end
+	JudgedCases  int                    `json:"judged_cases"` // the cases with status judged (training: scored, whatever the score)
 	CostUSD      float64                `json:"cost_usd"`     // LLM cost of all cases; set when the run is finished
 	StartedAt    time.Time              `json:"started_at"`   //
 	FinishedAt   *time.Time             `json:"finished_at,omitempty"`

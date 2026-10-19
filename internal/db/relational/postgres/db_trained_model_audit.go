@@ -37,10 +37,10 @@ func SaveTrainedModelAuditRunBatch(ctx context.Context, d *sql.DB, a model.Train
 	}
 	defer tx.Rollback()
 	res, err := tx.ExecContext(ctx, `
-		UPDATE gb_training_audit_runs SET judge_model = $1, num_answered = $2, num_judged = $3, num_failed = $4, num_correct = $5,
+		UPDATE gb_training_audit_runs SET judge_model = $1, num_answered = $2, num_judged = $3, num_errored = $4, num_correct = $5,
 			num_partial = $6, num_incorrect = $7, score_sum = $8, num_batches = $9, judge_calls = $10, judge_input_tokens = $11,
 			judge_output_tokens = $12, judge_cost_usd = $13 WHERE id = $14`,
-		a.JudgeModel, a.NumAnswered, a.NumJudged, a.NumFailed, a.NumCorrect, a.NumPartial, a.NumIncorrect, a.ScoreSum,
+		a.JudgeModel, a.NumAnswered, a.NumJudged, a.NumErrored, a.NumCorrect, a.NumPartial, a.NumIncorrect, a.ScoreSum,
 		a.NumBatches, a.JudgeCalls, a.JudgeInputTokens, a.JudgeOutputTokens, a.JudgeCostUSD, a.ID)
 	if err != nil {
 		return fmt.Errorf("save audit run batch: %w", err)
@@ -89,9 +89,9 @@ func FinishTrainedModelAuditRun(ctx context.Context, d *sql.DB, id int64, status
 	return nil
 }
 
-// FailRunningTrainedModelAuditRuns sets every running audit run to failed with the reason, and returns how many there were.
+// FailRunningTrainedModelAuditRuns sets every running audit run to error with the reason, and returns how many there were.
 func FailRunningTrainedModelAuditRuns(ctx context.Context, d *sql.DB, reason string) (int64, error) {
-	n, err := finishAuditRuns(ctx, d, 0, model.TrainedModelRunFailed, reason, Now())
+	n, err := finishAuditRuns(ctx, d, 0, model.TrainedModelRunErrored, reason, Now())
 	if err != nil {
 		return 0, fmt.Errorf("fail running trained model audit runs: %w", err)
 	}
@@ -99,7 +99,7 @@ func FailRunningTrainedModelAuditRuns(ctx context.Context, d *sql.DB, reason str
 }
 
 const trainedModelAuditRunColumns = `id, trained_model_id, status, dataset, dataset_sha256, params::text, judge_model, num_examples, num_answered,
-	num_judged, num_failed, num_correct, num_partial, num_incorrect, score_sum, num_batches, judge_calls, judge_input_tokens,
+	num_judged, num_errored, num_correct, num_partial, num_incorrect, score_sum, num_batches, judge_calls, judge_input_tokens,
 	judge_output_tokens, judge_cost_usd, error, started_at, finished_at`
 
 func scanTrainedModelAuditRun(s rowScanner) (*model.TrainedModelAuditRun, error) {
@@ -107,7 +107,7 @@ func scanTrainedModelAuditRun(s rowScanner) (*model.TrainedModelAuditRun, error)
 	var params string
 	var finished sql.NullTime
 	if err := s.Scan(&a.ID, &a.TrainedModelID, &a.Status, &a.Dataset, &a.DatasetSHA256, &params, &a.JudgeModel, &a.NumExamples,
-		&a.NumAnswered, &a.NumJudged, &a.NumFailed, &a.NumCorrect, &a.NumPartial, &a.NumIncorrect, &a.ScoreSum, &a.NumBatches,
+		&a.NumAnswered, &a.NumJudged, &a.NumErrored, &a.NumCorrect, &a.NumPartial, &a.NumIncorrect, &a.ScoreSum, &a.NumBatches,
 		&a.JudgeCalls, &a.JudgeInputTokens, &a.JudgeOutputTokens, &a.JudgeCostUSD, &a.Error, &a.CreatedAt, &finished); err != nil {
 		return nil, err
 	}

@@ -95,7 +95,7 @@ func TestRunBatchesJudgeCalls(t *testing.T) {
 	if fmt.Sprint(j.sizes) != "[5 5 2]" || c.calls != 3 {
 		t.Fatalf("judge batches %v, sink calls %d", j.sizes, c.calls)
 	}
-	if p.Total != 12 || p.Answered != 12 || p.Judged != 12 || p.Failed != 0 || p.Correct != 10 || p.Incorrect != 2 || p.Partial != 0 {
+	if p.Total != 12 || p.Answered != 12 || p.Judged != 12 || p.Errored != 0 || p.Correct != 10 || p.Incorrect != 2 || p.Partial != 0 {
 		t.Fatalf("progress: %+v", p)
 	}
 	if p.ScoreSum != 50 || p.MeanScore() < 4.16 || p.MeanScore() > 4.17 || p.CorrectRate() < 0.83 || p.CorrectRate() > 0.84 {
@@ -143,13 +143,13 @@ func TestRunItemFailuresDoNotStopTheRun(t *testing.T) {
 	j := &fakeJudge{}
 	var c collected
 	p, err := Run(context.Background(), Config{BatchSize: 3}, examples(3), gen, j, c.sink)
-	if err != nil || p.Failed != 1 || p.Judged != 2 || p.Answered != 2 || p.Done() != 3 {
+	if err != nil || p.Errored != 1 || p.Judged != 2 || p.Answered != 2 || p.Done() != 3 {
 		t.Fatalf("%+v %v", p, err)
 	}
 	if j.sizes[0] != 2 { // the failed one is not sent to the judge
 		t.Fatalf("judge batch sizes %v", j.sizes)
 	}
-	if it := c.cases[1]; it.Status != CaseFailed || it.Score != nil || !strings.Contains(it.Error, "boom") {
+	if it := c.cases[1]; it.Status != CaseErrored || it.Score != nil || !strings.Contains(it.Error, "boom") {
 		t.Fatalf("failed case: %+v", it)
 	}
 }
@@ -166,7 +166,7 @@ func TestRunRetriesItemsTheJudgeSkipped(t *testing.T) {
 	}}
 	var c collected
 	p, err := Run(context.Background(), Config{BatchSize: 3}, examples(3), echoGen(), j, c.sink)
-	if err != nil || p.Judged != 3 || p.Failed != 0 || p.JudgeCalls != 2 || fmt.Sprint(j.sizes) != "[3 2]" {
+	if err != nil || p.Judged != 3 || p.Errored != 0 || p.JudgeCalls != 2 || fmt.Sprint(j.sizes) != "[3 2]" {
 		t.Fatalf("%+v %v sizes %v", p, err, j.sizes)
 	}
 }
@@ -175,7 +175,7 @@ func TestRunUnjudgeableItemsFail(t *testing.T) {
 	j := &fakeJudge{mangle: func(int, []map[string]any) string { return "I cannot do that" }}
 	var c collected
 	p, err := Run(context.Background(), Config{BatchSize: 2}, examples(2), echoGen(), j, c.sink)
-	if err != nil || p.Failed != 2 || p.Judged != 0 || p.JudgeCalls != 2 {
+	if err != nil || p.Errored != 2 || p.Judged != 0 || p.JudgeCalls != 2 {
 		t.Fatalf("%+v %v", p, err)
 	}
 	if !strings.Contains(c.cases[0].Error, "judge") {
@@ -187,7 +187,7 @@ func TestRunGivesUpWhenTheJudgeIsDown(t *testing.T) {
 	j := &fakeJudge{failing: true}
 	var c collected
 	p, err := Run(context.Background(), Config{BatchSize: 2}, examples(20), echoGen(), j, c.sink)
-	if err == nil || !strings.Contains(err.Error(), "api down") || c.calls != maxFailedJudgeBatches || p.Failed != 2*maxFailedJudgeBatches {
+	if err == nil || !strings.Contains(err.Error(), "api down") || c.calls != maxFailedJudgeBatches || p.Errored != 2*maxFailedJudgeBatches {
 		t.Fatalf("%+v %v after %d batches", p, err, c.calls)
 	}
 }

@@ -73,7 +73,7 @@ func scenario(t *testing.T, d *sql.DB) {
 
 	run, err := tr.Finish(ctx)
 	check(err)
-	if run.Status != experiments.StatusFailed || run.TotalCases != 3 || run.PassedCases != 1 || run.FailedCases != 2 ||
+	if run.Status != experiments.StatusFailed || run.TotalCases != 3 || run.PassedCases != 1 || run.FailedCases != 1 || run.ErrorCases != 1 || run.JudgedCases != 0 ||
 		run.FinishedAt == nil || run.CostUSD < 0.529 || run.CostUSD > 0.531 {
 		t.Fatalf("finished: %+v", run)
 	}

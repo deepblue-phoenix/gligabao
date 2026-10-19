@@ -32,7 +32,7 @@ const (
 const (
 	// evalEventSnapshot: the eval and all its cases so far (stored ones, and answered ones awaiting the judge). First event.
 	evalEventSnapshot = "snapshot"
-	// evalEventAnswer: Cases has one case the model just answered (status "answered", or "failed" if the model failed).
+	// evalEventAnswer: Cases has one case the model just answered (status "answered", or "error" if the model failed).
 	evalEventAnswer = "answer"
 	// evalEventBatch: a batch was judged; Cases are its final cases and Eval the progress after it.
 	evalEventBatch = "batch"
@@ -145,7 +145,7 @@ func (s *evalStream) end(e relational.TrainedModelEvalRun) {
 	}
 }
 
-// caseResultRow is the stored form of a case of the run. The engine's statuses (trainingeval.CaseJudged, CaseFailed, "" for an
+// caseResultRow is the stored form of a case of the run. The engine's statuses (trainingeval.CaseJudged, CaseErrored, "" for an
 // answer the judge has not scored yet) are those of TrainedModelCaseResult, so the status is copied as it is.
 func caseResultRow(evalID int64, it trainingeval.CaseResult) relational.TrainedModelCaseResult {
 	return relational.TrainedModelCaseResult{EvalRunID: evalID, Idx: it.Idx, Batch: it.Batch, Instruction: it.Instruction, Input: it.Input,
@@ -154,7 +154,7 @@ func caseResultRow(evalID int64, it trainingeval.CaseResult) relational.TrainedM
 }
 
 // EventsOf serves GET /v1/gb/training/evals/{id}/events[?db=<name>]: the live feed of an eval as Server-Sent Events. Every
-// event's data is an EvalEvent JSON. The first is a "snapshot" (the eval and all of its cases so far: the judged and failed
+// event's data is an EvalEvent JSON. The first is a "snapshot" (the eval and all of its cases so far: the judged and errored
 // ones from the database, and the ones the model answered that the judge has not scored yet, with status "answered"); then, while
 // the eval runs, an "answer" for every question the model answers, a "batch" when a batch is judged, and finally an "end" after
 // which the stream closes. For an eval that is over, the stream is a snapshot and the "end". A client that reconnects gets a new

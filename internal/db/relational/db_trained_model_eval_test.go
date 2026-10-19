@@ -35,18 +35,18 @@ func trainedModelEvalRunsScenario(t *testing.T, d *sql.DB) {
 	// A batch: its cases and the counters after it.
 	score := 5
 	e := *got
-	e.JudgeModel, e.NumAnswered, e.NumJudged, e.NumFailed, e.NumCorrect, e.ScoreSum = "judge-1", 2, 1, 1, 1, 5
+	e.JudgeModel, e.NumAnswered, e.NumJudged, e.NumErrored, e.NumCorrect, e.ScoreSum = "judge-1", 2, 1, 1, 1, 5
 	e.NumBatches, e.JudgeCalls, e.JudgeInputTokens, e.JudgeOutputTokens, e.JudgeCostUSD = 1, 1, 100, 10, 0.25
 	cases := []relational.TrainedModelCaseResult{
 		{Idx: 0, Batch: 1, Instruction: "q0", Input: "ctx", Reference: "a0", Response: "a0", Status: relational.TrainedModelCaseJudged,
 			Score: &score, Reason: "same", InputTokens: 3, OutputTokens: 2, DurationMS: 40},
-		{Idx: 1, Batch: 1, Instruction: "q1", Reference: "a1", Status: relational.TrainedModelCaseFailed, Error: "model: boom"},
+		{Idx: 1, Batch: 1, Instruction: "q1", Reference: "a1", Status: relational.TrainedModelCaseErrored, Error: "model: boom"},
 	}
 	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, e, cases); err != nil {
 		t.Fatal(err)
 	}
 	got, err = relational.GetTrainedModelEvalRun(ctx, d, id)
-	if err != nil || got.JudgeModel != "judge-1" || got.NumJudged != 1 || got.NumFailed != 1 || got.NumAnswered != 2 || got.NumCorrect != 1 ||
+	if err != nil || got.JudgeModel != "judge-1" || got.NumJudged != 1 || got.NumErrored != 1 || got.NumAnswered != 2 || got.NumCorrect != 1 ||
 		got.ScoreSum != 5 || got.NumBatches != 1 || got.JudgeCalls != 1 || got.JudgeInputTokens != 100 || got.JudgeOutputTokens != 10 || got.JudgeCostUSD != 0.25 {
 		t.Fatalf("after a batch: %+v %v", got, err)
 	}
@@ -57,7 +57,7 @@ func trainedModelEvalRunsScenario(t *testing.T, d *sql.DB) {
 	if a := list[0]; a.Idx != 0 || a.Score == nil || *a.Score != 5 || a.Reason != "same" || a.Input != "ctx" || a.Response != "a0" || a.InputTokens != 3 || a.DurationMS != 40 || a.EvalRunID != id {
 		t.Fatalf("case 0: %+v", a)
 	}
-	if b := list[1]; b.Score != nil || b.Status != relational.TrainedModelCaseFailed || b.Error != "model: boom" {
+	if b := list[1]; b.Score != nil || b.Status != relational.TrainedModelCaseErrored || b.Error != "model: boom" {
 		t.Fatalf("case 1: %+v", b)
 	}
 	// The same example twice is refused, and nothing of that batch is kept.
@@ -79,7 +79,7 @@ func trainedModelEvalRunsScenario(t *testing.T, d *sql.DB) {
 	if got.Status != relational.TrainedModelRunCancelled || got.FinishedAt == nil {
 		t.Fatalf("finished: %+v", got)
 	}
-	if err := relational.FinishTrainedModelEvalRun(ctx, d, id+100, relational.TrainedModelRunFailed, "x"); !errors.Is(err, relational.ErrNotFound) {
+	if err := relational.FinishTrainedModelEvalRun(ctx, d, id+100, relational.TrainedModelRunErrored, "x"); !errors.Is(err, relational.ErrNotFound) {
 		t.Fatalf("finish unknown: %v", err)
 	}
 
@@ -93,7 +93,7 @@ func trainedModelEvalRunsScenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("FailRunningTrainedModelEvalRuns: %d %v", n, err)
 	}
 	got2, _ := relational.GetTrainedModelEvalRun(ctx, d, id2)
-	if got2.Status != relational.TrainedModelRunFailed || got2.Error != "restarted" || got2.FinishedAt == nil {
+	if got2.Status != relational.TrainedModelRunErrored || got2.Error != "restarted" || got2.FinishedAt == nil {
 		t.Fatalf("interrupted: %+v", got2)
 	}
 	if got, _ = relational.GetTrainedModelEvalRun(ctx, d, id); got.Status != relational.TrainedModelRunCancelled {

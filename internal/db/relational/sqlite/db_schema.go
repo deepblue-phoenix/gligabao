@@ -312,15 +312,20 @@ CREATE TABLE IF NOT EXISTS gb_experiment_cases (
 -- One execution of an experiment: a pass over one or more cases (training: one eval run, over the examples of its dataset).
 --   experiment_id  NULL for a run that is in no experiment (a training eval run started without an experiment name);
 --                  knowledge runs always have one
---   status         'running', then when finished, by type: knowledge 'passed' (every case passed) or 'failed'; training
---                  'completed' (the eval run ran to the end; it has a score, not a verdict), 'failed' (the run itself errored)
---                  or 'cancelled'. The CHECK enforces the set of each type.
+--   status         'running', then when finished, by type: knowledge 'passed' (every case passed) or 'failed' (at least one case
+--                  did not pass: a check did not hold, or it errored); training 'completed' (the eval run ran to the end; it has
+--                  a score, not a verdict), 'error' (the run itself errored) or 'cancelled'. 'failed' is a verdict about checks
+--                  and only knowledge has it; 'error' is "could not be run to the end" and means that in every type. The CHECK
+--                  enforces the set of each type.
 --   params         JSON object describing how the run was invoked (knowledge: evals dir, selected cases, models, reasoning;
 --                  training: batch_size, max_tokens, temperature, limit, ...)
---   total_cases, passed_cases, failed_cases, cost_usd: totals over the run's cases, set when the run is finished
---                  (passed_cases: the cases that passed; for training the ones that were judged, whatever the score: it is
---                  not a verdict, a score of 0 counts. failed_cases: all the others; cost_usd: the LLM cost, the
---                  judge's for training)
+--   total_cases    the cases of the run (training: the examples of the eval), set when the run is finished, like the counts below
+--   passed_cases, failed_cases, error_cases, judged_cases: how many cases ended with that status (see the case statuses in
+--                  gb_experiment_case_results): each counts one status and nothing else. passed_cases and failed_cases are
+--                  the knowledge verdicts (0 for training), judged_cases the training cases that were scored (whatever the
+--                  score: not a verdict; 0 for knowledge), error_cases those that could not be run, in both. What is left of
+--                  total_cases (total - the four) was not reached, e.g. the examples of a cancelled training run.
+--   cost_usd       the LLM cost (the judge's for training), set when the run is finished
 CREATE TABLE IF NOT EXISTS gb_experiment_runs (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
 	type          TEXT NOT NULL CHECK (type IN ('knowledge', 'training')),
@@ -330,6 +335,8 @@ CREATE TABLE IF NOT EXISTS gb_experiment_runs (
 	total_cases   INTEGER NOT NULL DEFAULT 0,
 	passed_cases  INTEGER NOT NULL DEFAULT 0,
 	failed_cases  INTEGER NOT NULL DEFAULT 0,
+	error_cases   INTEGER NOT NULL DEFAULT 0,
+	judged_cases  INTEGER NOT NULL DEFAULT 0,
 	cost_usd      REAL NOT NULL DEFAULT 0,
 	started_at    DATETIME NOT NULL,
 	finished_at   DATETIME,
@@ -337,7 +344,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_runs (
 	CHECK (type <> 'knowledge' OR experiment_id IS NOT NULL),
 	CHECK (status = 'running'
 		OR (type = 'knowledge' AND status IN ('passed', 'failed'))
-		OR (type = 'training' AND status IN ('completed', 'failed', 'cancelled'))),
+		OR (type = 'training' AND status IN ('completed', 'error', 'cancelled'))),
 	FOREIGN KEY (experiment_id, type) REFERENCES gb_experiments(id, type) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_runs(experiment_id);
@@ -345,11 +352,12 @@ CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_ru
 -- The result of one case within one run (the universal part; the rest is in the metadata table of its type): one row per case,
 -- for knowledge and for training. A training case is one example of the eval's dataset: its case_name is the example's index in
 -- the dataset (0-based) and its row is written when its judge batch is done, so it is never 'running'.
---   status       the set depends on the type, and 'failed' does not mean the same in both (the CHECK enforces the sets):
+--   status       the set depends on the type (the CHECK enforces the sets); 'failed' is only a verdict on checks, 'error' only
+--                means the case could not be run to the end:
 --                knowledge: 'passed' or 'failed' (a check did not hold: a missing edge, the answer lacks an expected string), or
 --                'error' (the case could not be run to the end);
 --                training: 'judged' (the model answered and the judge scored it; the score is in the metadata, not a verdict,
---                so a score of 0 is still 'judged') or 'failed' (the model or the judge errored: no score).
+--                so a score of 0 is still 'judged') or 'error' (the model or the judge errored: no score).
 --                'running' and 'cancelled' are not used by cases.
 --   error        why it failed or could not be run
 --   cost_usd     the LLM cost of the case (knowledge: its remember and recall calls; training: 0, the judge's cost is per batch and
@@ -367,7 +375,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_case_results (
 	started_at  DATETIME NOT NULL,
 	finished_at DATETIME,
 	UNIQUE (id, type),
-	CHECK ((type = 'knowledge' AND status IN ('passed', 'failed', 'error')) OR (type = 'training' AND status IN ('judged', 'failed'))),
+	CHECK ((type = 'knowledge' AND status IN ('passed', 'failed', 'error')) OR (type = 'training' AND status IN ('judged', 'error'))),
 	FOREIGN KEY (run_id, type) REFERENCES gb_experiment_runs(id, type) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_case_results_run ON gb_experiment_case_results(run_id);
@@ -416,17 +424,17 @@ CREATE TABLE IF NOT EXISTS gb_knowledge_case_meta (
 -- dataset for now) and an external LLM scores its answers against the dataset's, a batch of questions per LLM call. The counters are rewritten after every batch, so
 -- the row shows the progress while the eval run runs. The status, the times and the settings (batch_size, concurrency,
 -- max_tokens, temperature, limit; the params) are those of the universal gb_experiment_runs row. A run still 'running' after a restart of the
--- server is set to 'failed' when the server starts.
+-- server is set to 'error' when the server starts.
 --   trained_model_id  the model (gb_trained_models) that was asked; deleting the model deletes this row (and the run with its cases)
 --   scheme           how the eval's cases were made, see EVALS AND CASES above ('finetune_dataset': the model's fine-tuning dataset)
 --   dataset, dataset_sha256  the dataset (the eval) the cases came from, and the digest of the file that was read
 --   judge_model      the model that judged ('' until its first reply)
---   num_examples     the questions asked; num_answered the ones the model answered; num_judged the ones scored; num_failed the ones
---                    where the model or the judge failed; num_correct/num_partial/num_incorrect split num_judged by score
+--   num_examples     the questions asked; num_answered the ones the model answered; num_judged the ones scored; num_errored the ones
+--                    where the model or the judge errored; num_correct/num_partial/num_incorrect split num_judged by score
 --                    (>= 4 / 2-3 / 0-1); score_sum the sum of the scores (0 to 5 each) of the judged ones
 --   num_batches      judge batches done; judge_calls the LLM calls made (a batch may need a retry); judge_*_tokens its tokens
 --   judge_cost_usd   the judge's LLM cost so far (the run's cost_usd gets it when the run is finished)
---   error            why the eval run failed ('' otherwise)
+--   error            why the eval run errored ('' otherwise)
 CREATE TABLE IF NOT EXISTS gb_training_eval_run_meta (
 	run_id              INTEGER PRIMARY KEY,
 	type                TEXT NOT NULL DEFAULT 'training' CHECK (type = 'training'),
@@ -438,7 +446,7 @@ CREATE TABLE IF NOT EXISTS gb_training_eval_run_meta (
 	num_examples        INTEGER NOT NULL DEFAULT 0,
 	num_answered        INTEGER NOT NULL DEFAULT 0,
 	num_judged          INTEGER NOT NULL DEFAULT 0,
-	num_failed          INTEGER NOT NULL DEFAULT 0,
+	num_errored         INTEGER NOT NULL DEFAULT 0,
 	num_correct         INTEGER NOT NULL DEFAULT 0,
 	num_partial         INTEGER NOT NULL DEFAULT 0,
 	num_incorrect       INTEGER NOT NULL DEFAULT 0,
@@ -460,8 +468,8 @@ BEGIN
 END;
 
 -- TRAINING metadata of a case result (type 'training'): the outcome for one case (question) of an eval run, written with its
--- universal row when its judge batch is done. The universal row's status is 'judged' or 'failed', its error says why
--- the model or the judge failed.
+-- universal row when its judge batch is done. The universal row's status is 'judged' or 'error', its error says why
+-- the model or the judge errored.
 --   idx          the example's position in the dataset (0-based; the universal row's case_name); batch the judge batch (1-based)
 --   instruction, input  the question; reference the dataset's answer; response the model's ('' if it failed)
 --   score        the judge's, 0 to 5 (NULL unless judged); reason its explanation
@@ -495,22 +503,22 @@ CREATE TABLE IF NOT EXISTS gb_training_case_meta (
 -- ---------------------------------------------------------------------------------------------------------------------
 
 -- ONE ROW PER AUDIT of a trained model. The counters are rewritten after every judge batch, so the row shows the progress while the
--- audit runs. A run still 'running' after a restart of the server is set to 'failed' when the server starts.
+-- audit runs. A run still 'running' after a restart of the server is set to 'error' when the server starts.
 --   trained_model_id  the model (gb_trained_models) that was asked; deleting the model deletes the audit (and its cases)
---   status            'running', 'completed' (it ran to the end: it has a score, not a verdict), 'failed' (error says why) or 'cancelled'
+--   status            'running', 'completed' (it ran to the end: it has a score, not a verdict), 'error' (error says why) or 'cancelled'
 --   dataset, dataset_sha256  the training dataset the cases came from, and the digest of the file that was read
 --   params            JSON object: batch_size, max_tokens, temperature, limit
 --   judge_model       the model that judged ('' until its first reply)
---   num_examples      the questions asked; num_answered the ones the model answered; num_judged the ones scored; num_failed the ones
---                     where the model or the judge failed; num_correct/num_partial/num_incorrect split num_judged by score
+--   num_examples      the questions asked; num_answered the ones the model answered; num_judged the ones scored; num_errored the ones
+--                     where the model or the judge errored; num_correct/num_partial/num_incorrect split num_judged by score
 --                     (>= 4 / 2-3 / 0-1); score_sum the sum of the scores (0 to 5 each) of the judged ones
 --   num_batches       judge batches done; judge_calls the LLM calls made (a batch may need a retry); judge_*_tokens its tokens
 --   judge_cost_usd    the judge's LLM cost so far
---   error             why the audit failed ('' otherwise)
+--   error             why the audit errored ('' otherwise)
 CREATE TABLE IF NOT EXISTS gb_training_audit_runs (
 	id                  INTEGER PRIMARY KEY AUTOINCREMENT,
 	trained_model_id    INTEGER NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
-	status              TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed', 'cancelled')),
+	status              TEXT NOT NULL CHECK (status IN ('running', 'completed', 'error', 'cancelled')),
 	dataset             TEXT NOT NULL DEFAULT '',
 	dataset_sha256      TEXT NOT NULL DEFAULT '',
 	params              TEXT NOT NULL DEFAULT '{}',
@@ -518,7 +526,7 @@ CREATE TABLE IF NOT EXISTS gb_training_audit_runs (
 	num_examples        INTEGER NOT NULL DEFAULT 0,
 	num_answered        INTEGER NOT NULL DEFAULT 0,
 	num_judged          INTEGER NOT NULL DEFAULT 0,
-	num_failed          INTEGER NOT NULL DEFAULT 0,
+	num_errored         INTEGER NOT NULL DEFAULT 0,
 	num_correct         INTEGER NOT NULL DEFAULT 0,
 	num_partial         INTEGER NOT NULL DEFAULT 0,
 	num_incorrect       INTEGER NOT NULL DEFAULT 0,
@@ -537,7 +545,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_training_audit_runs_model ON gb_training_audit
 -- ONE ROW PER EXAMPLE of an audit, written when its judge batch is done (so it is never 'running').
 --   idx          the example's position in the dataset (0-based; unique within a run); batch the judge batch (1-based)
 --   instruction, input  the question; reference the dataset's answer; response the model's ('' if it failed)
---   status       'judged' (the model answered and the judge scored it) or 'failed' (the model or the judge failed; error says why)
+--   status       'judged' (the model answered and the judge scored it) or 'error' (the model or the judge errored; error says why)
 --   score        the judge's, 0 to 5 (NULL unless judged); reason its explanation
 --   input_tokens, output_tokens, duration_ms  of the model's answer
 CREATE TABLE IF NOT EXISTS gb_training_audit_cases (
@@ -549,7 +557,7 @@ CREATE TABLE IF NOT EXISTS gb_training_audit_cases (
 	input         TEXT NOT NULL DEFAULT '',
 	reference     TEXT NOT NULL DEFAULT '',
 	response      TEXT NOT NULL DEFAULT '',
-	status        TEXT NOT NULL CHECK (status IN ('judged', 'failed')),
+	status        TEXT NOT NULL CHECK (status IN ('judged', 'error')),
 	error         TEXT NOT NULL DEFAULT '',
 	score         INTEGER,
 	reason        TEXT NOT NULL DEFAULT '',

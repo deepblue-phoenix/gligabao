@@ -180,7 +180,7 @@ func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 	if ev.Scheme != relational.TrainingSchemeFineTuneDataset {
 		t.Fatalf("scheme: %q", ev.Scheme)
 	}
-	if ev.NumAnswered != 5 || ev.NumJudged != 5 || ev.NumFailed != 0 || ev.NumCorrect != 4 || ev.NumIncorrect != 1 || ev.ScoreSum != 21 || ev.NumBatches != 3 {
+	if ev.NumAnswered != 5 || ev.NumJudged != 5 || ev.NumErrored != 0 || ev.NumCorrect != 4 || ev.NumIncorrect != 1 || ev.ScoreSum != 21 || ev.NumBatches != 3 {
 		t.Fatalf("counters: %+v", ev)
 	}
 	// 5 questions in batches of 2: three judge calls (2, 2, 1), not five.
@@ -332,8 +332,8 @@ func TestEvalFailsWhenTheModelDoesNotAnswer(t *testing.T) {
 	c := startEval(m, fmt.Sprint(mid), `{"batch_size": 2}`)
 	m.Wait()
 	ev, cases := getEval(t, m, c.eval(t).ID)
-	if ev.Status != relational.TrainedModelRunFailed || !strings.Contains(ev.Error, "weights are gone") || ev.NumFailed != 4 || ev.NumJudged != 0 || len(cases) != 4 ||
-		cases[0].Status != relational.TrainedModelCaseFailed || !strings.Contains(cases[0].Error, "weights are gone") {
+	if ev.Status != relational.TrainedModelRunErrored || !strings.Contains(ev.Error, "weights are gone") || ev.NumErrored != 4 || ev.NumJudged != 0 || len(cases) != 4 ||
+		cases[0].Status != relational.TrainedModelCaseErrored || !strings.Contains(cases[0].Error, "weights are gone") {
 		t.Fatalf("%+v cases %+v", ev, cases)
 	}
 }
@@ -354,7 +354,7 @@ func TestEvalsInterruptedByARestartAreFailed(t *testing.T) {
 	}
 	training.NewEvalManager(ctx, []training.Database{{Name: "standard", DB: d}}, nil, nil)
 	ev, err := relational.GetTrainedModelEvalRun(ctx, d, id)
-	if err != nil || ev.Status != relational.TrainedModelRunFailed || !strings.Contains(ev.Error, "restart") {
+	if err != nil || ev.Status != relational.TrainedModelRunErrored || !strings.Contains(ev.Error, "restart") {
 		t.Fatalf("%+v %v", ev, err)
 	}
 }

@@ -52,7 +52,7 @@ func trainingExperimentsScenario(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 	e := relational.TrainedModelEvalRun{ID: e1, JudgeModel: "j", NumAnswered: 4, NumJudged: 4, NumCorrect: 3, NumIncorrect: 1, ScoreSum: 16, NumBatches: 1, JudgeCostUSD: 0.25}
-	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, e, []relational.TrainedModelCaseResult{{Idx: 0, Batch: 1, Instruction: "q", Status: relational.TrainedModelCaseFailed}}); err != nil {
+	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, e, []relational.TrainedModelCaseResult{{Idx: 0, Batch: 1, Instruction: "q", Status: relational.TrainedModelCaseErrored}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := relational.FinishTrainedModelEvalRun(ctx, d, e1, relational.TrainedModelRunCompleted, ""); err != nil {

@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.60.0] - 2026-10-19
+
+### Changed
+- **Each status word and each counter of an eval means one thing (breaking for the eval database, the training API and the admin API: existing eval and audit databases must be recreated, nothing is migrated; SQLite and PostgreSQL).**
+  - `failed` meant three things: a knowledge check did not hold, the model or the judge errored (training), or a run itself errored. Now `failed` is only a verdict about checks, so only the knowledge evals have it, and `error` means "could not be run to the end" everywhere. A training case is `judged` or `error` (was `failed`), a training eval or audit run is `running`, then `completed`, `error` or `cancelled` (was `failed`). The knowledge statuses are unchanged (case: `passed`, `failed`, `error`; run: `passed` or `failed`, `failed` when at least one case did not pass). The CHECKs of `gb_experiment_runs`, `gb_experiment_case_results`, `gb_training_audit_runs` and `gb_training_audit_cases` follow, so a database made by an older version rejects the new values. Runs that a restart interrupted are set to `error`.
+  - Training counters: `num_failed` is `num_errored` (`gb_training_eval_run_meta`, `gb_training_audit_runs`, and `num_errored` in the eval and audit JSON of the API). Go: `TrainedModelRunFailed`/`TrainedModelCaseFailed` are `TrainedModelRunErrored`/`TrainedModelCaseErrored` (value `error`), `trainingeval.CaseFailed` is `CaseErrored`, `Progress.Failed` is `Errored`, `NumFailed` is `NumErrored`.
+  - `passed_cases` of a training run was the number of *judged* cases (a count, not a pass) and `failed_cases` was "all the others", including the examples not reached after a cancel. `gb_experiment_runs` now has one count per case status and nothing else: `passed_cases`, `failed_cases`, `error_cases` and the new `judged_cases`, in `ExperimentRun` as `PassedCases`, `FailedCases`, `ErrorCases` and `JudgedCases` (JSON `error_cases`, `judged_cases`). Knowledge runs fill the first three, training runs the last two, the unused ones are 0. `total_cases` minus the four is the cases that were not reached. A knowledge run's `failed_cases` no longer includes the cases that errored (they are `error_cases`).
+  - The admin API's eval totals have `errors` and `judged` next to `passed` and `failed`; the admin UI's run table has an *Errors* column, and the live view of an eval or audit shows `error` and "errored" where it showed `failed`.
+
 ## [0.59.1] - 2026-10-19
 
 ### Changed

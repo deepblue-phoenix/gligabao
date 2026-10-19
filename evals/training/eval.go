@@ -18,8 +18,8 @@ const (
 
 // Statuses of a CaseResult: the words of every trained-model run, defined once in the model package (a case is stored as it is).
 const (
-	CaseJudged = model.TrainedModelCaseJudged // the model answered and the judge scored the answer
-	CaseFailed = model.TrainedModelCaseFailed // the model or the judge failed: Error says why
+	CaseJudged  = model.TrainedModelCaseJudged  // the model answered and the judge scored the answer
+	CaseErrored = model.TrainedModelCaseErrored // the model or the judge errored: Error says why
 )
 
 const (
@@ -49,7 +49,7 @@ type Config struct {
 	// JudgeModel is the judge's model; empty uses the LLM's default.
 	JudgeModel string
 	// OnAnswer, if set, is called with each case as soon as the model has answered its question (or failed to), before the
-	// batch is judged: the case has no Score yet, and Status is CaseFailed if the model failed, "" otherwise. It lets a
+	// batch is judged: the case has no Score yet, and Status is CaseErrored if the model errored, "" otherwise. It lets a
 	// caller show the model's behaviour live, ahead of the verdicts that Sink gets per batch. It runs on the run's
 	// goroutine, so it must not block for long.
 	OnAnswer func(CaseResult)
@@ -87,13 +87,13 @@ type CaseResult struct {
 	DurationMS                int64
 }
 
-// Progress is how far a run is. Every example is Answered (the model replied), Judged (and scored) or Failed (the model
-// or the judge failed); Correct + Partial + Incorrect = Judged.
+// Progress is how far a run is. Every example is Answered (the model replied), Judged (and scored) or Errored (the model
+// or the judge errored); Correct + Partial + Incorrect = Judged.
 type Progress struct {
 	Total     int
 	Answered  int
 	Judged    int
-	Failed    int
+	Errored   int
 	Correct   int
 	Partial   int
 	Incorrect int
@@ -110,7 +110,7 @@ type Progress struct {
 }
 
 // Done is the number of examples that were handled, one way or the other.
-func (p Progress) Done() int { return p.Judged + p.Failed }
+func (p Progress) Done() int { return p.Judged + p.Errored }
 
 // MeanScore is the mean score of the judged examples (MinScore..MaxScore), 0 if there are none.
 func (p Progress) MeanScore() float64 {
@@ -134,7 +134,7 @@ type Sink func(ctx context.Context, cases []CaseResult, p Progress) error
 // Run puts the examples to the model and has the judge grade the answers. The examples go in batches of cfg.BatchSize:
 // the model answers the questions of a batch (one at a time: parallel calls can start more GPU containers that each load the model), then ONE call to the judge grades all of them,
 // so n examples cost about n/BatchSize judge calls. Each finished batch is handed to sink. A failure of one example (the
-// model errors, the judge gives no verdict) marks that case failed and the run goes on; a run that only gets failures
+// model errors, the judge gives no verdict) marks that case errored and the run goes on; a run that only gets failures
 // stops with an error. When ctx ends the run stops with its error, without reporting the batch it was in. The Progress
 // reached is returned along with any error.
 func Run(ctx context.Context, cfg Config, examples []Example, gen GenerateFunc, judge LLM, sink Sink) (Progress, error) {
@@ -155,7 +155,7 @@ func Run(ctx context.Context, cfg Config, examples []Example, gen GenerateFunc, 
 		}
 		answered := 0
 		for _, it := range cases {
-			if it.Status != CaseFailed {
+			if it.Status != CaseErrored {
 				answered++
 			}
 		}
@@ -169,8 +169,8 @@ func Run(ctx context.Context, cfg Config, examples []Example, gen GenerateFunc, 
 		var lastErr string
 		for i := range cases {
 			it := &cases[i]
-			if it.Status == CaseFailed {
-				p.Failed++
+			if it.Status == CaseErrored {
+				p.Errored++
 				lastErr = it.Error
 				continue
 			}
@@ -209,21 +209,21 @@ func Run(ctx context.Context, cfg Config, examples []Example, gen GenerateFunc, 
 }
 
 // answerBatch asks the model the questions of examples (the first one is example number first), one after the other. An
-// case whose question failed has Status CaseFailed. When ctx ends, the questions not asked yet fail with its error.
+// case whose question failed has Status CaseErrored. When ctx ends, the questions not asked yet fail with its error.
 func answerBatch(ctx context.Context, examples []Example, first, batchNo int, gen GenerateFunc, onAnswer func(CaseResult)) []CaseResult {
 	cases := make([]CaseResult, len(examples))
 	for i, ex := range examples {
 		it := &cases[i]
 		*it = CaseResult{Idx: first + i, Batch: batchNo, Instruction: ex.Instruction, Input: ex.Input, Reference: ex.Output}
 		if err := ctx.Err(); err != nil {
-			it.Status, it.Error = CaseFailed, "model: "+err.Error()
+			it.Status, it.Error = CaseErrored, "model: "+err.Error()
 			continue
 		}
 		t0 := time.Now()
 		g, err := gen(ctx, ex.Prompt())
 		it.DurationMS = time.Since(t0).Milliseconds()
 		if err != nil {
-			it.Status, it.Error = CaseFailed, "model: "+err.Error()
+			it.Status, it.Error = CaseErrored, "model: "+err.Error()
 		} else {
 			it.Response, it.InputTokens, it.OutputTokens = g.Response, g.InputTokens, g.OutputTokens
 		}
@@ -235,12 +235,12 @@ func answerBatch(ctx context.Context, examples []Example, first, batchNo int, ge
 }
 
 // judgeBatch grades the answered cases of a batch with one call to the judge (a second one for the cases the first call
-// left without a verdict), filling in their Score and Reason; the ones it cannot grade become failed. The judge's usage is
+// left without a verdict), filling in their Score and Reason; the ones it cannot grade become errored. The judge's usage is
 // added to p. It returns the last error of the judge if some case could not be graded because of it, nil otherwise.
 func judgeBatch(ctx context.Context, cfg Config, judge LLM, cases []CaseResult, p *Progress) error {
 	var pending []int // indices into cases
 	for i := range cases {
-		if cases[i].Status != CaseFailed {
+		if cases[i].Status != CaseErrored {
 			pending = append(pending, i)
 		}
 	}
@@ -279,7 +279,7 @@ func judgeBatch(ctx context.Context, cfg Config, judge LLM, cases []CaseResult, 
 		return ctx.Err()
 	}
 	for _, i := range pending {
-		cases[i].Status = CaseFailed
+		cases[i].Status = CaseErrored
 		switch {
 		case lastErr != nil:
 			cases[i].Error = "judge: " + lastErr.Error()

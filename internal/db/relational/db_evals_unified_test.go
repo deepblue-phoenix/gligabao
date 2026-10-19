@@ -117,37 +117,37 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_cases WHERE experiment_id = %d AND type = 'training' AND eval = 'mine' AND case_name = '0'`, tx.ID)); n != 1 {
 		t.Fatalf("training experiment cases after joining: %d", n)
 	}
-	// A case saved after the run joined the experiment is added to its cases, and a failed one is a failed case result.
-	batch2 := []relational.TrainedModelCaseResult{{Idx: 1, Batch: 2, Instruction: "q1", Status: relational.TrainedModelCaseFailed, Error: "boom"}}
-	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, relational.TrainedModelEvalRun{ID: eid, NumAnswered: 2, NumJudged: 1, NumFailed: 1, NumCorrect: 1, ScoreSum: 5, NumBatches: 2}, batch2); err != nil {
+	// A case saved after the run joined the experiment is added to its cases, and an errored one is an errored case result.
+	batch2 := []relational.TrainedModelCaseResult{{Idx: 1, Batch: 2, Instruction: "q1", Status: relational.TrainedModelCaseErrored, Error: "boom"}}
+	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, relational.TrainedModelEvalRun{ID: eid, NumAnswered: 2, NumJudged: 1, NumErrored: 1, NumCorrect: 1, ScoreSum: 5, NumBatches: 2}, batch2); err != nil {
 		t.Fatal(err)
 	}
 	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_cases WHERE experiment_id = %d AND type = 'training' AND eval = 'mine'`, tx.ID)); n != 2 {
 		t.Fatalf("training experiment cases: %d", n)
 	}
-	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_case_results WHERE run_id = %d AND case_name = '1' AND status = 'failed' AND error = 'boom'`, eid)); n != 1 {
-		t.Fatalf("failed training case result: %d", n)
+	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_case_results WHERE run_id = %d AND case_name = '1' AND status = 'error' AND error = 'boom'`, eid)); n != 1 {
+		t.Fatalf("errored training case result: %d", n)
 	}
 	// The database refuses a second result for the same example.
 	if _, err := d.ExecContext(ctx, fmt.Sprintf(`INSERT INTO gb_experiment_case_results (type, run_id, eval, case_name, status, started_at) VALUES ('training', %d, 'mine', '0', 'judged', '2026-01-01')`, eid)); err == nil {
 		t.Error("accepted a second result for one training case")
 	}
 	// Judge cost and the end of the eval run reach the universal run: it is totalled and takes the eval run's status.
-	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, relational.TrainedModelEvalRun{ID: eid, NumJudged: 2, NumCorrect: 2, ScoreSum: 9, JudgeCostUSD: 0.25}, nil); err != nil {
+	if err := relational.SaveTrainedModelEvalRunBatch(ctx, d, relational.TrainedModelEvalRun{ID: eid, NumJudged: 1, NumErrored: 1, NumCorrect: 1, ScoreSum: 5, JudgeCostUSD: 0.25}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := relational.FinishTrainedModelEvalRun(ctx, d, eid, relational.TrainedModelRunCompleted, ""); err != nil {
 		t.Fatal(err)
 	}
 	var status string
-	var total, passed, failed int
+	var total, passed, failed, errored, judged int
 	var cost float64
-	if err := d.QueryRowContext(ctx, fmt.Sprintf(`SELECT r.status, r.total_cases, r.passed_cases, r.failed_cases, r.cost_usd
-		FROM gb_experiment_runs r WHERE r.id = %d`, eid)).Scan(&status, &total, &passed, &failed, &cost); err != nil {
+	if err := d.QueryRowContext(ctx, fmt.Sprintf(`SELECT r.status, r.total_cases, r.passed_cases, r.failed_cases, r.error_cases, r.judged_cases, r.cost_usd
+		FROM gb_experiment_runs r WHERE r.id = %d`, eid)).Scan(&status, &total, &passed, &failed, &errored, &judged, &cost); err != nil {
 		t.Fatal(err)
 	}
-	if status != "completed" || total != 2 || passed != 2 || failed != 0 || cost != 0.25 {
-		t.Fatalf("training run: %s %d %d %d %v", status, total, passed, failed, cost)
+	if status != "completed" || total != 2 || passed != 0 || failed != 0 || errored != 1 || judged != 1 || cost != 0.25 {
+		t.Fatalf("training run: %s %d %d %d %d %d %v", status, total, passed, failed, errored, judged, cost)
 	}
 	// The knowledge run was not touched by it.
 	if r, _ := relational.GetExperimentRun(ctx, d, run.ID); r.Status != relational.ExperimentRunning {

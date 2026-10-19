@@ -73,7 +73,7 @@ func RecordExperimentCaseResult(ctx context.Context, d *sql.DB, e ExperimentCase
 }
 
 // FinishExperimentRun totals the cases recorded for the run and ends it: passed if every case passed, otherwise
-// failed. Finishing a finished run changes nothing. It returns the stored run (without Cases), or ErrNotFound.
+// failed (a case that errored did not pass). Finishing a finished run changes nothing. It returns the stored run (without Cases), or ErrNotFound.
 func FinishExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*ExperimentRun, error) {
 	switch backend() {
 	case config.DBBackendSQLite:

@@ -41,7 +41,7 @@ func SaveTrainedModelAuditRunBatch(ctx context.Context, d *sql.DB, a TrainedMode
 	return unsupported()
 }
 
-// FinishTrainedModelAuditRun ends a running audit run: status is TrainedModelRunCompleted, Failed (with the error text) or
+// FinishTrainedModelAuditRun ends a running audit run: status is TrainedModelRunCompleted, TrainedModelRunErrored (with the error text) or
 // Cancelled. An audit run that is not running any more is left as it is. ErrNotFound if there is no such audit run.
 func FinishTrainedModelAuditRun(ctx context.Context, d *sql.DB, id int64, status, errText string) error {
 	switch backend() {
@@ -53,7 +53,7 @@ func FinishTrainedModelAuditRun(ctx context.Context, d *sql.DB, id int64, status
 	return unsupported()
 }
 
-// FailRunningTrainedModelAuditRuns sets every audit run that is still running to failed with the reason (the ones a restart of the
+// FailRunningTrainedModelAuditRuns sets every audit run that is still running to error with the reason (the ones a restart of the
 // server interrupted) and returns how many there were.
 func FailRunningTrainedModelAuditRuns(ctx context.Context, d *sql.DB, reason string) (int64, error) {
 	switch backend() {

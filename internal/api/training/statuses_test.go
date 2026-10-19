@@ -13,10 +13,10 @@ import (
 func TestSharedStatusWords(t *testing.T) {
 	for _, c := range []struct{ got, want string }{
 		{trainingeval.CaseJudged, "judged"}, {relational.TrainedModelCaseJudged, "judged"},
-		{trainingeval.CaseFailed, "failed"}, {relational.TrainedModelCaseFailed, "failed"},
+		{trainingeval.CaseErrored, "error"}, {relational.TrainedModelCaseErrored, "error"},
 		{relational.TrainedModelCaseAnswered, "answered"},
 		{relational.TrainedModelRunRunning, "running"}, {relational.TrainedModelRunCompleted, "completed"},
-		{relational.TrainedModelRunFailed, "failed"}, {relational.TrainedModelRunCancelled, "cancelled"},
+		{relational.TrainedModelRunErrored, "error"}, {relational.TrainedModelRunCancelled, "cancelled"},
 	} {
 		if c.got != c.want {
 			t.Errorf("status %q, want %q (admin_ui/src/eval_live.ts and the docs use that word)", c.got, c.want)

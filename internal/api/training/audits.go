@@ -52,7 +52,7 @@ type AuditParams struct {
 }
 
 // AuditManager starts the training data audits and runs them in the background, one at a time per trained model. Audits still
-// running when the server last stopped are marked failed when the manager is made.
+// running when the server last stopped are marked error when the manager is made.
 type AuditManager struct {
 	ctx context.Context
 	dbs []Database
@@ -77,14 +77,14 @@ type runningAudit struct {
 
 // NewAuditManager makes the manager of the training data audits of the trained models of dbs. sc answers the questions (nil:
 // starting an audit answers 503) and llm judges (nil: the same). The audits stop when ctx is done. Audits that a restart
-// interrupted (still "running" in the database) are marked failed.
+// interrupted (still "running" in the database) are marked error.
 func NewAuditManager(ctx context.Context, dbs []Database, sc Inferer, llm memory_core.LLM) *AuditManager {
 	m := &AuditManager{ctx: ctx, dbs: dbs, sc: sc, llm: llm, running: map[auditKey]*runningAudit{}, streams: map[auditStreamKey]*auditStream{}}
 	for _, n := range dbs {
 		if k, err := relational.FailRunningTrainedModelAuditRuns(ctx, n.DB, "interrupted: the server restarted while the audit ran"); err != nil {
-			log.WithError(err).WithField("db", n.Name).Warn("training: could not mark interrupted audits as failed")
+			log.WithError(err).WithField("db", n.Name).Warn("training: could not mark interrupted audits as error")
 		} else if k > 0 {
-			log.WithField("db", n.Name).Infof("training: %d audit(s) were interrupted by a restart and marked failed", k)
+			log.WithField("db", n.Name).Infof("training: %d audit(s) were interrupted by a restart and marked error", k)
 		}
 	}
 	return m
@@ -214,7 +214,7 @@ func (m *AuditManager) StartOf() http.HandlerFunc {
 		if err != nil {
 			release()
 			m.dropStream(skey, stream)
-			_ = relational.FinishTrainedModelAuditRun(dbCtx, n.DB, auditID, relational.TrainedModelRunFailed, "could not start")
+			_ = relational.FinishTrainedModelAuditRun(dbCtx, n.DB, auditID, relational.TrainedModelRunErrored, "could not start")
 			log.WithError(err).Error("training: read audit failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the audit")
 			return
@@ -245,7 +245,7 @@ func (m *AuditManager) run(ctx context.Context, n Database, tm relational.Traine
 	defer func() {
 		if r := recover(); r != nil {
 			logf.Errorf("training: audit panicked: %v", r)
-			finish(relational.TrainedModelRunFailed, fmt.Sprintf("internal error: %v", r))
+			finish(relational.TrainedModelRunErrored, fmt.Sprintf("internal error: %v", r))
 		}
 	}()
 
@@ -269,7 +269,7 @@ func (m *AuditManager) run(ctx context.Context, n Database, tm relational.Traine
 		for i, it := range cases {
 			rows[i] = auditCaseRow(auditID, it)
 		}
-		a := relational.TrainedModelAuditRun{ID: auditID, JudgeModel: p.JudgeModel, NumAnswered: p.Answered, NumJudged: p.Judged, NumFailed: p.Failed,
+		a := relational.TrainedModelAuditRun{ID: auditID, JudgeModel: p.JudgeModel, NumAnswered: p.Answered, NumJudged: p.Judged, NumErrored: p.Errored,
 			NumCorrect: p.Correct, NumPartial: p.Partial, NumIncorrect: p.Incorrect, ScoreSum: p.ScoreSum, NumBatches: p.Batches,
 			JudgeCalls: p.JudgeCalls, JudgeInputTokens: p.JudgeInputTokens, JudgeOutputTokens: p.JudgeOutputTokens, JudgeCostUSD: p.JudgeCostUSD}
 		if err := relational.SaveTrainedModelAuditRunBatch(dbCtx, n.DB, a, rows); err != nil {
@@ -287,12 +287,12 @@ func (m *AuditManager) run(ctx context.Context, n Database, tm relational.Traine
 	case err == nil:
 		finish(relational.TrainedModelRunCompleted, "")
 	case errors.Is(err, context.Canceled) && m.ctx.Err() != nil:
-		finish(relational.TrainedModelRunFailed, "interrupted: the server shut down while the audit ran")
+		finish(relational.TrainedModelRunErrored, "interrupted: the server shut down while the audit ran")
 	case errors.Is(err, context.Canceled):
 		finish(relational.TrainedModelRunCancelled, "")
 	default:
 		logf.WithError(err).Warn("training: audit failed")
-		finish(relational.TrainedModelRunFailed, err.Error())
+		finish(relational.TrainedModelRunErrored, err.Error())
 	}
 }
 

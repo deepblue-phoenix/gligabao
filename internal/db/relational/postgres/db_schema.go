@@ -194,6 +194,8 @@ CREATE TABLE IF NOT EXISTS gb_experiment_runs (
 	total_cases   BIGINT NOT NULL DEFAULT 0,
 	passed_cases  BIGINT NOT NULL DEFAULT 0,
 	failed_cases  BIGINT NOT NULL DEFAULT 0,
+	error_cases   BIGINT NOT NULL DEFAULT 0,
+	judged_cases  BIGINT NOT NULL DEFAULT 0,
 	cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
 	started_at    TIMESTAMPTZ NOT NULL,
 	finished_at   TIMESTAMPTZ,
@@ -201,7 +203,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_runs (
 	CHECK (type <> 'knowledge' OR experiment_id IS NOT NULL),
 	CHECK (status = 'running'
 		OR (type = 'knowledge' AND status IN ('passed', 'failed'))
-		OR (type = 'training' AND status IN ('completed', 'failed', 'cancelled'))),
+		OR (type = 'training' AND status IN ('completed', 'error', 'cancelled'))),
 	FOREIGN KEY (experiment_id, type) REFERENCES gb_experiments(id, type) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_runs(experiment_id);
@@ -218,7 +220,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_case_results (
 	started_at  TIMESTAMPTZ NOT NULL,
 	finished_at TIMESTAMPTZ,
 	UNIQUE (id, type),
-	CHECK ((type = 'knowledge' AND status IN ('passed', 'failed', 'error')) OR (type = 'training' AND status IN ('judged', 'failed'))),
+	CHECK ((type = 'knowledge' AND status IN ('passed', 'failed', 'error')) OR (type = 'training' AND status IN ('judged', 'error'))),
 	FOREIGN KEY (run_id, type) REFERENCES gb_experiment_runs(id, type) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_case_results_run ON gb_experiment_case_results(run_id);
@@ -262,7 +264,7 @@ CREATE TABLE IF NOT EXISTS gb_training_eval_run_meta (
 	num_examples        BIGINT NOT NULL DEFAULT 0,
 	num_answered        BIGINT NOT NULL DEFAULT 0,
 	num_judged          BIGINT NOT NULL DEFAULT 0,
-	num_failed          BIGINT NOT NULL DEFAULT 0,
+	num_errored         BIGINT NOT NULL DEFAULT 0,
 	num_correct         BIGINT NOT NULL DEFAULT 0,
 	num_partial         BIGINT NOT NULL DEFAULT 0,
 	num_incorrect       BIGINT NOT NULL DEFAULT 0,
@@ -309,7 +311,7 @@ CREATE TABLE IF NOT EXISTS gb_training_case_meta (
 CREATE TABLE IF NOT EXISTS gb_training_audit_runs (
 	id                  BIGSERIAL PRIMARY KEY,
 	trained_model_id    BIGINT NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
-	status              TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed', 'cancelled')),
+	status              TEXT NOT NULL CHECK (status IN ('running', 'completed', 'error', 'cancelled')),
 	dataset             TEXT NOT NULL DEFAULT '',
 	dataset_sha256      TEXT NOT NULL DEFAULT '',
 	params              JSONB NOT NULL DEFAULT '{}',
@@ -317,7 +319,7 @@ CREATE TABLE IF NOT EXISTS gb_training_audit_runs (
 	num_examples        BIGINT NOT NULL DEFAULT 0,
 	num_answered        BIGINT NOT NULL DEFAULT 0,
 	num_judged          BIGINT NOT NULL DEFAULT 0,
-	num_failed          BIGINT NOT NULL DEFAULT 0,
+	num_errored         BIGINT NOT NULL DEFAULT 0,
 	num_correct         BIGINT NOT NULL DEFAULT 0,
 	num_partial         BIGINT NOT NULL DEFAULT 0,
 	num_incorrect       BIGINT NOT NULL DEFAULT 0,
@@ -342,7 +344,7 @@ CREATE TABLE IF NOT EXISTS gb_training_audit_cases (
 	input         TEXT NOT NULL DEFAULT '',
 	reference     TEXT NOT NULL DEFAULT '',
 	response      TEXT NOT NULL DEFAULT '',
-	status        TEXT NOT NULL CHECK (status IN ('judged', 'failed')),
+	status        TEXT NOT NULL CHECK (status IN ('judged', 'error')),
 	error         TEXT NOT NULL DEFAULT '',
 	score         BIGINT,
 	reason        TEXT NOT NULL DEFAULT '',

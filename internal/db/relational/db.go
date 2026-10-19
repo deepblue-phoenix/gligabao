@@ -56,10 +56,10 @@ type (
 const (
 	TrainedModelRunRunning   = model.TrainedModelRunRunning
 	TrainedModelRunCompleted = model.TrainedModelRunCompleted
-	TrainedModelRunFailed    = model.TrainedModelRunFailed
+	TrainedModelRunErrored   = model.TrainedModelRunErrored
 	TrainedModelRunCancelled = model.TrainedModelRunCancelled
 	TrainedModelCaseJudged   = model.TrainedModelCaseJudged
-	TrainedModelCaseFailed   = model.TrainedModelCaseFailed
+	TrainedModelCaseErrored  = model.TrainedModelCaseErrored
 	TrainedModelCaseAnswered = model.TrainedModelCaseAnswered
 )
 

@@ -22,7 +22,7 @@ const (
 // Scheme), its cases are the dataset's examples: the model is asked the question of each case and the LLM scores its answer
 // against the expected output. The counters are updated after every judge batch, so the row shows the progress of a running
 // eval run and the result of a finished one.
-// Every case is judged or failed (NumJudged + NumFailed = the ones done so far, of NumExamples);
+// Every case is judged or errored (NumJudged + NumErrored = the ones done so far, of NumExamples);
 // NumCorrect + NumPartial + NumIncorrect = NumJudged, and ScoreSum is the sum of the scores (0 to 5) of the judged ones.
 //
 // ID is that of the eval run's gb_experiment_runs row. Status, Params, CreatedAt (the start) and FinishedAt are columns of that
@@ -43,7 +43,7 @@ type TrainedModelEvalRun struct {
 	NumExamples  int    `json:"num_examples"`
 	NumAnswered  int    `json:"num_answered"`
 	NumJudged    int    `json:"num_judged"`
-	NumFailed    int    `json:"num_failed"`
+	NumErrored   int    `json:"num_errored"`
 	NumCorrect   int    `json:"num_correct"`
 	NumPartial   int    `json:"num_partial"`
 	NumIncorrect int    `json:"num_incorrect"`
@@ -77,7 +77,7 @@ func (e *TrainedModelEvalRun) SetStoredParams(s string) {
 
 // TrainedModelCaseResult is the outcome for one example of an eval run: the question, the dataset's answer (Reference), the
 // model's (Response) and the judge's score. It is a case result of the eval run's run (a gb_experiment_case_results row with
-// status 'judged' or 'failed', whose case_name is Idx) with its gb_training_case_meta row; Status is "judged" or "failed".
+// status 'judged' or 'error', whose case_name is Idx) with its gb_training_case_meta row; Status is "judged" or "error".
 type TrainedModelCaseResult struct {
 	// ID is that of the case result row and EvalRunID that of the eval run (its run).
 	ID        int64 `json:"id"`

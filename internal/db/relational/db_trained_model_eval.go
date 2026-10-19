@@ -41,7 +41,7 @@ func SaveTrainedModelEvalRunBatch(ctx context.Context, d *sql.DB, e TrainedModel
 	return unsupported()
 }
 
-// FinishTrainedModelEvalRun ends a running eval run: status is TrainedModelRunCompleted, Failed (with the error text) or Cancelled.
+// FinishTrainedModelEvalRun ends a running eval run: status is TrainedModelRunCompleted, TrainedModelRunErrored (with the error text) or TrainedModelRunCancelled.
 // An eval run that is not running any more is left as it is. ErrNotFound if there is no such eval run.
 func FinishTrainedModelEvalRun(ctx context.Context, d *sql.DB, id int64, status, errText string) error {
 	switch backend() {
@@ -53,7 +53,7 @@ func FinishTrainedModelEvalRun(ctx context.Context, d *sql.DB, id int64, status,
 	return unsupported()
 }
 
-// FailRunningTrainedModelEvalRuns sets every eval run that is still running to failed with the reason (the ones a restart of the
+// FailRunningTrainedModelEvalRuns sets every eval run that is still running to error with the reason (the ones a restart of the
 // server interrupted) and returns how many there were.
 func FailRunningTrainedModelEvalRuns(ctx context.Context, d *sql.DB, reason string) (int64, error) {
 	switch backend() {

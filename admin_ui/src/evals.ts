@@ -8,7 +8,7 @@ import { showWebSearches, totalsLine, type WebSearch, type WebSearchTotals } fro
 
 interface Run {
   id: number; experiment_id: number; status: string; params?: Record<string, unknown>;
-  total_cases: number; passed_cases: number; failed_cases: number; cost_usd: number;
+  total_cases: number; passed_cases: number; failed_cases: number; error_cases: number; judged_cases: number; cost_usd: number;
   started_at: string; finished_at?: string; case_results?: CaseResult[];
 }
 interface Trajectory {
@@ -28,7 +28,7 @@ interface ExperimentRow {
   runs: number; cases: number; runs_passed: number; runs_failed: number; cost_usd: number; last_run?: Run;
 }
 interface Overview {
-  totals: { experiments: number; runs: number; cases: number; executions: number; passed: number; failed: number; cost_usd: number };
+  totals: { experiments: number; runs: number; cases: number; executions: number; passed: number; failed: number; errors: number; judged: number; cost_usd: number };
   experiments: ExperimentRow[];
 }
 interface ExperimentDetail {
@@ -76,7 +76,7 @@ function fmtDuration(from: string | undefined, to: string | undefined): string {
 const fmtCost = (usd: number): string => `$${usd.toFixed(4)}`;
 
 function statusBadge(status: string): HTMLElement {
-  const cls = status === "passed" ? "badge-ok" : status === "running" ? "badge-unknown" : "badge-error";
+  const cls = status === "passed" || status === "completed" ? "badge-ok" : status === "running" ? "badge-unknown" : "badge-error";
   return h("span", `badge ${cls}`, status);
 }
 
@@ -180,7 +180,7 @@ async function loadExperiment(id: number): Promise<void> {
     }
 
     const { table: tbl, body } = table([
-      ["Run", false], ["Status", false], ["Passed", true], ["Failed", true], ["Total", true], ["Cost", true],
+      ["Run", false], ["Status", false], ["Passed", true], ["Failed", true], ["Errors", true], ["Total", true], ["Cost", true],
       ["Started (UTC)", false], ["Duration", true],
     ]);
     tbl.className = "clickable";
@@ -190,6 +190,7 @@ async function loadExperiment(id: number): Promise<void> {
       tr.insertCell().append(statusBadge(r.status));
       numCell(tr, String(r.passed_cases));
       numCell(tr, String(r.failed_cases));
+      numCell(tr, String(r.error_cases));
       numCell(tr, String(r.total_cases));
       numCell(tr, fmtCost(r.cost_usd));
       tr.insertCell().textContent = fmtTime(r.started_at);
