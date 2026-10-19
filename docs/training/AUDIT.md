@@ -25,7 +25,7 @@ Reading the result: a mean score near 5 means the model reproduces its training 
 
 | | Training data audit | Eval of a trained model |
 |---|---|---|
-| Cases | the model's own fine-tuning dataset: things it was trained on | the cases of an [eval](EVALS.md) (`evals/training/evals/*.json`), meant to be ones the model never saw |
+| Cases | the model's own fine-tuning dataset: things it was trained on | the cases of an [eval](EVALS.md) (`bin/evals_training/*.json`), meant to be ones the model never saw |
 | Measures | memorization and fit; data quality | generalization |
 | Run (Go) | `relational.TrainedModelRun`, kind `audit`, with `Dataset` and `DatasetSHA256` | the same type, kind `eval`, with `Eval` |
 | Case (Go) | `relational.TrainedModelCase`, no `Name` (a dataset example has none) | the same type, with the case's `Name` |

@@ -25,11 +25,11 @@ Options:
 
 Case names restrict the run to those cases (combined with --eval, they must belong to that eval).
 
-Knowledge evals (evals/knowledge/evals/*.json):
+Knowledge evals (bin/evals_knowledge/*.json):
 USAGE
 	go run ./evals/knowledge -list-evals
 	echo
-	echo "Training evals (evals/training/evals/*.json):"
+	echo "Training evals (bin/evals_training/*.json):"
 	go run ./evals/training/cmd -list-evals
 }
 

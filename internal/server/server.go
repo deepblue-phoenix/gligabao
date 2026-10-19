@@ -197,7 +197,7 @@ func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_c
 		tdbs[i] = training.Database{Name: n.Name, DB: n.DB}
 	}
 	tdbs[0].DatasetDir = d.TrainingDatasetDir
-	registerTraining(ctx, mux, tdbs, sc, llm)
+	registerTraining(ctx, mux, tdbs, d.TrainingEvalDir, sc, llm)
 	if adminUI {
 		registerAdminUI(mux, dbs, sc)
 	}
@@ -216,16 +216,16 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 
 // registerTraining registers the training endpoints under /v1/gb/training/ (they are part of the API, not of the admin UI,
 // and are served whether or not the admin UI is on): the jobs, the datasets and the feed of the jobs' progress. dbs are the
-// databases they can be used with (?db=, the first by default). The training monitor follows the progress the sidecar
+// databases they can be used with (?db=, the first by default); evalDir is the directory of the evals. The training monitor follows the progress the sidecar
 // reports for the jobs (it resumes the unfinished ones now) and feeds it to the SSE endpoint. llm judges the evals and the training data audits of the
 // trained models (nil: starting one answers 503).
-func registerTraining(ctx context.Context, mux *http.ServeMux, dbs []training.Database, sc training.Sidecar, llm memory_core.LLM) {
+func registerTraining(ctx context.Context, mux *http.ServeMux, dbs []training.Database, evalDir string, sc training.Sidecar, llm memory_core.LLM) {
 	mon := training.NewMonitor(ctx, dbs, sc)
 	var inf training.Inferer // not sc itself: a nil Sidecar must become a nil Inferer
 	if sc != nil {
 		inf = sc
 	}
-	evals := training.NewEvalManager(ctx, dbs, inf, llm)
+	evals := training.NewEvalManager(ctx, dbs, evalDir, inf, llm)
 	audits := training.NewAuditManager(ctx, dbs, inf, llm)
 	mux.HandleFunc("POST /v1/gb/training/jobs", training.StartJobOf(dbs, sc, mon))
 	mux.HandleFunc("POST /v1/gb/training/jobs/{id}/stop", training.StopJobOf(dbs, sc))
@@ -234,7 +234,7 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, dbs []training.Da
 	mux.HandleFunc("GET /v1/gb/training/models/{id}", training.GetModelOf(dbs))
 	mux.HandleFunc("POST /v1/gb/training/models/{id}/infer", training.InferOf(dbs, sc))
 	mux.HandleFunc("GET /v1/gb/training/models/{id}/inferences", training.ListInferencesOf(dbs))
-	mux.HandleFunc("GET /v1/gb/training/eval-definitions", training.DefinitionsOf())
+	mux.HandleFunc("GET /v1/gb/training/eval-definitions", training.DefinitionsOf(evalDir))
 	mux.HandleFunc("POST /v1/gb/training/models/{id}/evals", evals.StartOf())
 	mux.HandleFunc("GET /v1/gb/training/models/{id}/evals", evals.ListOf())
 	mux.HandleFunc("GET /v1/gb/training/evals/{id}", evals.GetOf())

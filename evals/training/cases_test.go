@@ -2,8 +2,11 @@ package training
 
 import "testing"
 
+// testEvalsDir is the directory of the evals (the tests run in the package directory).
+const testEvalsDir = "../../bin/evals_training"
+
 func TestLoadEvals(t *testing.T) {
-	cases, err := LoadEvals(nil, "")
+	cases, err := LoadEvals(testEvalsDir, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -16,14 +19,14 @@ func TestLoadEvals(t *testing.T) {
 		}
 	}
 
-	one, err := LoadEvals([]string{"maastricht-treaty"}, "world-knowledge-base")
+	one, err := LoadEvals(testEvalsDir, []string{"maastricht-treaty"}, "world-knowledge-base")
 	if err != nil || len(one) != 1 {
 		t.Fatalf("one case: %v, %v", one, err)
 	}
-	if _, err := LoadEvals(nil, "nope"); err == nil {
+	if _, err := LoadEvals(testEvalsDir, nil, "nope"); err == nil {
 		t.Error("unknown eval accepted")
 	}
-	if _, err := LoadEvals([]string{"nope"}, ""); err == nil {
+	if _, err := LoadEvals(testEvalsDir, []string{"nope"}, ""); err == nil {
 		t.Error("unknown case accepted")
 	}
 }

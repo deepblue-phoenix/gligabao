@@ -39,7 +39,7 @@ type TrainedModelRun struct {
 	// Kind is TrainedModelKindEval or TrainedModelKindAudit. It is not stored: the table the run is read from says it.
 	Kind   string `json:"kind"`
 	Status string `json:"status"`
-	// Eval is the name of the eval whose cases were asked (an eval run only; "" for an audit): a file name of evals/training/evals
+	// Eval is the name of the eval whose cases were asked (an eval run only; "" for an audit): a file name of bin/evals_training
 	// without ".json", the same as the eval column of the run's case results.
 	Eval string `json:"eval,omitempty"`
 	// Dataset is the name of the training dataset whose examples were asked and DatasetSHA256 the digest of the file that was

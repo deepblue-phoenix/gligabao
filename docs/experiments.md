@@ -25,11 +25,11 @@ Metadata tables (the struct fields are those of `ExperimentCaseResult`; the resu
 | `gb_knowledge_case_meta` | `answer`, `problems` (failed checks), `passed_checks`, `dataset_id` (the dataset the case ran in, which holds the knowledge graph it built; null if it was never created), `steps` (ATIF steps over its trajectories) |
 | `gb_training_eval_run_meta` (one row per training run), `gb_training_case_meta` (one row per training case result) | the training eval runs' own columns (trained model, eval, judge, counters) and the per-case outcomes (question, the expected answer, the model's, the judge's score). See [training/EVALS.md](training/EVALS.md#tables) |
 
-Both kinds have **evals**: a case (`case_name`) belongs to an eval (`eval`). Knowledge evals are the files of `evals/knowledge/evals/`. Training evals are the files of `evals/training/evals/` (named after the training dataset their cases ask about); an *eval run* (one run of the eval against one trained model) is a run with one case result per case (`case_name` is the case's name, as for a knowledge case).
+Both kinds have **evals**: a case (`case_name`) belongs to an eval (`eval`). Knowledge evals are the files of `bin/evals_knowledge/`. Training evals are the files of `bin/evals_training/` (named after the training dataset their cases ask about); an *eval run* (one run of the eval against one trained model) is a run with one case result per case (`case_name` is the case's name, as for a knowledge case).
 
 The graph and the artifacts of a case are not copied into the experiment tables: they are read from the dataset the case ran in, via `dataset_id` and `artifact_ids`. Datasets are only ever soft-deleted, so they stay readable; if a dataset (or an artifact) is purged from the eval database, its case shows no graph (or no artifact).
 
-An eval is a file in `evals/knowledge/evals/` and its name is the file name without `.json`; a case is one of its cases, so `eval` + `case_name` identifies it. Rows cascade: deleting an experiment removes its runs, cases and trajectory references.
+An eval is a file in `bin/evals_knowledge/` and its name is the file name without `.json`; a case is one of its cases, so `eval` + `case_name` identifies it. Rows cascade: deleting an experiment removes its runs, cases and trajectory references.
 
 Only the trajectory *reference* is stored in the database; the trajectory is the file `<trajectory_id>.json` in the trajectory directory. The runner stores the files in an `atif/` directory next to the eval database (`bin/atif/` by default) so the IDs stay resolvable; `-atif <dir>` changes it. `gb_experiment_trajectories.path` records where each file went.
 

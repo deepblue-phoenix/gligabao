@@ -1,6 +1,8 @@
 bin/*
 !bin/gligabao.toml
 !bin/datasets_training/
+!bin/evals_knowledge/
+!bin/evals_training/
 
 __pycache__/
 *.pyc

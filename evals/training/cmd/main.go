@@ -1,4 +1,4 @@
-// Command training runs the evals of a trained model (evals/training/evals/*.json) from the command line: the model is asked
+// Command training runs the evals of a trained model (bin/evals_training/*.json) from the command line: the model is asked
 // each case's question through the sidecar, and the LLM judge (the one used for knowledge ingestion) scores its answer
 // against the case's expected answer. It is the Eval button of the admin UI (POST /v1/gb/training/models/{id}/evals) without the
 // server: the same eval, the same questions to the model, the same judge, and the run is stored in the database the same way
@@ -41,6 +41,7 @@ func main() {
 func mainErr() error {
 	verbose := flag.Bool("v", false, "print the question, the expected answer, the model's answer and the judge's reason of every case")
 	eval := flag.String("eval", "", "the eval to run (file name without .json; see -list-evals; default: the eval named like the model's training dataset)")
+	evalsDir := flag.String("evals", trainingeval.DefaultEvalDir, "directory of the evals (*.json files)")
 	noStore := flag.Bool("no-store", false, "do not store the run in the database")
 	listEvals := flag.Bool("list-evals", false, "print the available evals and their cases, then exit")
 	listModels := flag.Bool("list-models", false, "print the trained models of the database (the ids -model takes), then exit")
@@ -54,7 +55,7 @@ func mainErr() error {
 	flag.Parse()
 
 	if *listEvals {
-		return printEvals(os.Stdout)
+		return printEvals(os.Stdout, *evalsDir)
 	}
 	cfg, err := trainingeval.Config{BatchSize: *batchSize, JudgeModel: *judgeModel}.Normalize()
 	if err != nil {
@@ -94,11 +95,11 @@ func mainErr() error {
 	}
 	name := *eval
 	if name == "" {
-		if name = strings.TrimSuffix(tm.Dataset, ".jsonl"); name == "" || !slices.Contains(trainingeval.EvalNames(), name) {
-			return fmt.Errorf("no eval is named like the training dataset of model %d: use -eval (%s)", tm.ID, strings.Join(trainingeval.EvalNames(), ", "))
+		if name = strings.TrimSuffix(tm.Dataset, ".jsonl"); name == "" || !slices.Contains(trainingeval.EvalNames(*evalsDir), name) {
+			return fmt.Errorf("no eval is named like the training dataset of model %d: use -eval (%s)", tm.ID, strings.Join(trainingeval.EvalNames(*evalsDir), ", "))
 		}
 	}
-	cases, err := trainingeval.LoadEvals(flag.Args(), name)
+	cases, err := trainingeval.LoadEvals(*evalsDir, flag.Args(), name)
 	if err != nil {
 		return err
 	}
@@ -195,12 +196,12 @@ func mainErr() error {
 }
 
 // printEvals prints the evals with their cases, as a table.
-func printEvals(w *os.File) error {
-	cases, err := trainingeval.LoadEvals(nil, "")
+func printEvals(w *os.File, dir string) error {
+	cases, err := trainingeval.LoadEvals(dir, nil, "")
 	if err != nil {
 		return err
 	}
-	for _, n := range trainingeval.EvalNames() {
+	for _, n := range trainingeval.EvalNames(dir) {
 		var in []string
 		for _, c := range cases {
 			if c.Eval == n {

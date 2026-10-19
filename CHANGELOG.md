@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.62.0] - 2026-10-19
+
+### Changed
+- **The eval definitions are static files in `bin/`, no longer embedded in the code (breaking for `go`-API users of `evals/training`, and for deployments of the server).** `evals/knowledge/evals/` is now `bin/evals_knowledge/` (the evals and `corpus/`) and `evals/training/evals/` is `bin/evals_training/`, next to `bin/datasets_training/`; both are tracked in git like it.
+  - The knowledge runner reads `bin/evals_knowledge` by default (`-evals dir` for another one; it is relative to the working directory, so run it from the repository root, as `./run_evals.sh` does).
+  - The training evals are read from disk by the server, from the new `serve --training-eval-dir` (`ServeOptions.TrainingEvalDir`, `db.Config.TrainingEvalDir`; default: `evals_training` next to `--db`, so `bin/evals_training`) and by the command (`-evals dir`, default `bin/evals_training`). The Docker image copies them to `/app/evals_training` and passes the flag. In Go, `trainingeval.LoadEvals`, `Evals` and `EvalNames` take the directory, and `training.NewEvalManager` and `DefinitionsOf` too.
+
 ## [0.61.0] - 2026-10-19
 
 ### Changed

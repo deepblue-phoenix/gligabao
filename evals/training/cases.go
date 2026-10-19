@@ -1,16 +1,18 @@
 package training
 
 import (
-	"embed"
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"os"
 	"slices"
 	"strings"
 )
 
-//go:embed evals/*.json
-var evalsFS embed.FS
+// DefaultEvalDir is the directory the evals are read from when none is given: bin/evals_training of the repository, next to
+// the training datasets (bin/datasets_training). They are static definitions kept apart from the code, so they are read from
+// disk, not embedded.
+const DefaultEvalDir = "bin/evals_training"
 
 // Case is one eval case of a trained model: a question and the answer expected (what the judge compares the model's answer to),
 // plus a name, unique among all the evals' cases. The cases of an eval ask about the knowledge in a training dataset (the eval is
@@ -31,21 +33,21 @@ func (c Case) Example() Example {
 	return Example{Instruction: c.Instruction, Input: c.Input, Output: c.Output}
 }
 
-// Eval is a named set of cases: one file of evals/*.json. Its name is the file name without ".json", and is the name of the
+// Eval is a named set of cases: one *.json file of the evals directory. Its name is the file name without ".json", and is the name of the
 // training dataset its cases ask about when they are about one, so that a model trained on a dataset has an eval of that name.
 type Eval struct {
 	Name  string `json:"name"`
 	Cases []Case `json:"cases"`
 }
 
-// Evals returns the embedded evals, ordered by name.
-func Evals() ([]Eval, error) {
-	cases, err := LoadEvals(nil, "")
+// Evals returns the evals of the directory dir, ordered by name.
+func Evals(dir string) ([]Eval, error) {
+	cases, err := LoadEvals(dir, nil, "")
 	if err != nil {
 		return nil, err
 	}
 	var out []Eval
-	for _, name := range EvalNames() {
+	for _, name := range EvalNames(dir) {
 		e := Eval{Name: name, Cases: []Case{}}
 		for _, c := range cases {
 			if c.Eval == name {
@@ -57,10 +59,11 @@ func Evals() ([]Eval, error) {
 	return out, nil
 }
 
-// LoadEvals loads the cases of the embedded evals (evals/*.json). A non-empty eval restricts them to that eval, and a
+// LoadEvals loads the cases of the evals in the directory dir (dir/*.json). A non-empty eval restricts them to that eval, and a
 // non-empty only to the cases with those names; unknown names are errors.
-func LoadEvals(only []string, eval string) ([]Case, error) {
-	entries, err := fs.ReadDir(evalsFS, "evals")
+func LoadEvals(dir string, only []string, eval string) ([]Case, error) {
+	fsys := os.DirFS(dir)
+	entries, err := fs.ReadDir(fsys, ".")
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +74,7 @@ func LoadEvals(only []string, eval string) ([]Case, error) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		data, err := fs.ReadFile(evalsFS, "evals/"+e.Name())
+		data, err := fs.ReadFile(fsys, e.Name())
 		if err != nil {
 			return nil, err
 		}
@@ -98,7 +101,7 @@ func LoadEvals(only []string, eval string) ([]Case, error) {
 		}
 	}
 	if !evalFound {
-		return nil, fmt.Errorf("unknown eval %q (available: %s)", eval, strings.Join(EvalNames(), ", "))
+		return nil, fmt.Errorf("unknown eval %q (available: %s)", eval, strings.Join(EvalNames(dir), ", "))
 	}
 	for _, n := range only {
 		if !slices.ContainsFunc(cases, func(c Case) bool { return c.Name == n }) {
@@ -108,9 +111,9 @@ func LoadEvals(only []string, eval string) ([]Case, error) {
 	return cases, nil
 }
 
-// EvalNames are the names of the embedded evals.
-func EvalNames() []string {
-	entries, _ := fs.ReadDir(evalsFS, "evals")
+// EvalNames are the names of the evals in the directory dir.
+func EvalNames(dir string) []string {
+	entries, _ := fs.ReadDir(os.DirFS(dir), ".")
 	var names []string
 	for _, e := range entries {
 		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {

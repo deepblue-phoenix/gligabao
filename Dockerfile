@@ -25,6 +25,8 @@ WORKDIR /app
 COPY --from=build /out/gligabao /app/gligabao
 # Config is read from next to the binary by default.
 COPY bin/gligabao.toml /app/gligabao.toml
+# The evals of trained models (static definitions), read from disk.
+COPY bin/evals_training /app/evals_training
 USER gligabao
 VOLUME /data
 EXPOSE 7878
@@ -33,4 +35,4 @@ EXPOSE 7878
 # (/data/gligabao.images/) all live in /data, and so does the training datasets directory (/data/datasets_training/: one
 # subdirectory per dataset, with a dataset.toml manifest).
 ENTRYPOINT ["/app/gligabao"]
-CMD ["serve", "--db", "/data/gligabao.db"]
+CMD ["serve", "--db", "/data/gligabao.db", "--training-eval-dir", "/app/evals_training"]

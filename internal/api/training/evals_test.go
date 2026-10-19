@@ -62,13 +62,16 @@ func (s *evalSidecar) Infer(ctx context.Context, req sidecar.InferRequest) (side
 	return sidecar.InferResponse{Response: "a" + strings.TrimPrefix(req.Prompt, "q"), InputTokens: 4, OutputTokens: 2}, nil
 }
 
-// theEval is the eval the tests run: the embedded one named like the training dataset of the models of the tests.
+// testEvalsDir is the directory of the evals (the tests run in the package directory).
+const testEvalsDir = "../../../bin/evals_training"
+
+// theEval is the eval the tests run: the one named like the training dataset of the models of the tests.
 const theEval = "world-knowledge-base"
 
 // evalCases are the cases of theEval, in order.
 func evalCases(t *testing.T) []trainingeval.Case {
 	t.Helper()
-	cases, err := trainingeval.LoadEvals(nil, theEval)
+	cases, err := trainingeval.LoadEvals(testEvalsDir, nil, theEval)
 	if err != nil || len(cases) < 6 {
 		t.Fatalf("the eval %s: %d cases, %v", theEval, len(cases), err)
 	}
@@ -201,7 +204,7 @@ func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 	mid := evalModel(t, d, "jobeval1")
 	cases0 := evalCases(t)
 	sc, judge := evalAnswers(t, 3), &evalJudge{}
-	m := training.NewEvalManager(ctx, dbs, sc, judge)
+	m := training.NewEvalManager(ctx, dbs, testEvalsDir, sc, judge)
 
 	// With no "eval" the model is asked the eval named like its training dataset.
 	call := startEval(m, fmt.Sprint(mid), `{"limit": 5, "batch_size": 2, "judge_model": "my-judge", "max_tokens": 77, "temperature": 0.2}`)
@@ -285,7 +288,7 @@ func TestEvalRefusals(t *testing.T) {
 	ok := evalModel(t, d, "j-ok")
 	dflt, _, _ := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{JobID: "j-default", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j-default"})
 	other, _, _ := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{JobID: "j-other", ModelSize: "4b", Dataset: "other.jsonl", NumTrainSteps: 1, Path: "trained/j-other"})
-	m := training.NewEvalManager(ctx, dbs, evalAnswers(t), &evalJudge{})
+	m := training.NewEvalManager(ctx, dbs, testEvalsDir, evalAnswers(t), &evalJudge{})
 
 	for _, tc := range []struct {
 		name, model, body string
@@ -313,10 +316,10 @@ func TestEvalRefusals(t *testing.T) {
 	}
 	m.Wait()
 	// Without a sidecar or without an LLM there is nothing to run the eval with.
-	if c := startEval(training.NewEvalManager(ctx, dbs, nil, &evalJudge{}), fmt.Sprint(ok), `{}`); c.code != 503 {
+	if c := startEval(training.NewEvalManager(ctx, dbs, testEvalsDir, nil, &evalJudge{}), fmt.Sprint(ok), `{}`); c.code != 503 {
 		t.Errorf("no sidecar: %d", c.code)
 	}
-	if c := startEval(training.NewEvalManager(ctx, dbs, &evalSidecar{}, nil), fmt.Sprint(ok), `{}`); c.code != 503 {
+	if c := startEval(training.NewEvalManager(ctx, dbs, testEvalsDir, &evalSidecar{}, nil), fmt.Sprint(ok), `{}`); c.code != 503 {
 		t.Errorf("no LLM: %d", c.code)
 	}
 	if evals, _ := relational.ListTrainedModelEvalRuns(ctx, d, 0, 0); len(evals) != 1 {
@@ -348,7 +351,7 @@ func TestEvalCancelAndConflict(t *testing.T) {
 	mid := evalModel(t, d, "j1")
 	sc := evalAnswers(t)
 	sc.block, sc.started = make(chan struct{}), make(chan struct{}, 1)
-	m := training.NewEvalManager(ctx, dbs, sc, &evalJudge{})
+	m := training.NewEvalManager(ctx, dbs, testEvalsDir, sc, &evalJudge{})
 
 	first := startEval(m, fmt.Sprint(mid), `{"batch_size": 3}`)
 	if first.code != 202 {
@@ -392,7 +395,7 @@ func TestEvalFailsWhenTheModelDoesNotAnswer(t *testing.T) {
 	ctx := context.Background()
 	dbs := []training.Database{{Name: "standard", DB: d}}
 	mid := evalModel(t, d, "j1")
-	m := training.NewEvalManager(ctx, dbs, &failingInferer{}, &evalJudge{})
+	m := training.NewEvalManager(ctx, dbs, testEvalsDir, &failingInferer{}, &evalJudge{})
 	c := startEval(m, fmt.Sprint(mid), `{"batch_size": 2}`)
 	m.Wait()
 	ev, cases := getEval(t, m, c.eval(t).ID)
@@ -416,7 +419,7 @@ func TestEvalsInterruptedByARestartAreFailed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	training.NewEvalManager(ctx, []training.Database{{Name: "standard", DB: d}}, nil, nil)
+	training.NewEvalManager(ctx, []training.Database{{Name: "standard", DB: d}}, testEvalsDir, nil, nil)
 	ev, err := relational.GetTrainedModelEvalRun(ctx, d, id)
 	if err != nil || ev.Status != relational.TrainedModelRunErrored || !strings.Contains(ev.Error, "restart") {
 		t.Fatalf("%+v %v", ev, err)
@@ -452,7 +455,7 @@ func testEvalLiveFeed(t *testing.T, d *sql.DB) {
 	// The model holds its first answer until the watcher is connected.
 	sc := evalAnswers(t, 1)
 	sc.block, sc.started = make(chan struct{}), make(chan struct{}, 10)
-	m := training.NewEvalManager(ctx, dbs, sc, &evalJudge{})
+	m := training.NewEvalManager(ctx, dbs, testEvalsDir, sc, &evalJudge{})
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /evals/{id}/events", m.EventsOf())
 	srv := httptest.NewServer(mux)
@@ -547,7 +550,7 @@ func testEvalExperiments(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := training.NewEvalManager(ctx, dbs, evalAnswers(t, 1), &evalJudge{})
+	m := training.NewEvalManager(ctx, dbs, testEvalsDir, evalAnswers(t, 1), &evalJudge{})
 
 	// An eval without an experiment is not in any; with a name it is a run of it, and the same name is the same experiment.
 	if c := startEval(m, fmt.Sprint(mid), `{"limit": 4}`); c.code != http.StatusAccepted {
@@ -606,7 +609,7 @@ func testEvalExperiments(t *testing.T, d *sql.DB) {
 
 func TestEvalDefinitions(t *testing.T) {
 	rec := httptest.NewRecorder()
-	training.DefinitionsOf()(rec, httptest.NewRequest("GET", "/x", nil))
+	training.DefinitionsOf(testEvalsDir)(rec, httptest.NewRequest("GET", "/x", nil))
 	var out struct {
 		Evals []struct {
 			Name  string

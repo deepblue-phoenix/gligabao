@@ -1,6 +1,6 @@
 // Command knowledge runs end-to-end evals against the real LLM.
 //
-// Each eval in evals/knowledge/evals/*.json is a JSON list of cases. The cases run in the eval database (-db), which isolates
+// Each eval in bin/evals_knowledge/*.json (-evals) is a JSON list of cases. The cases run in the eval database (-db), which isolates
 // the evaluation data from the main database. It is never reset: every run of an experiment creates its own datasets
 // (one per case, named after the case and the run, see datasetName), so runs do not interfere with each other and
 // the graphs of all runs are kept. The experiments and their runs are recorded in the same eval database. The cases
@@ -10,7 +10,7 @@
 // Besides the answer, the stored temporal facts (edges with valid_at / invalid_at) are checked in the database.
 //
 // Usage: go run ./evals/knowledge [-v] [-evals dir] [-eval name] [case-name ...]   (requires ANTHROPIC_API_KEY)
-// With -evals, evals are read from that directory instead of the embedded evals/knowledge/evals (used by gligabao_int).
+// With -evals, evals are read from that directory instead of bin/evals_knowledge (used by gligabao_int).
 // With -eval, only the cases of that eval run; -list-evals prints the available evals and exits.
 // With -v, every LLM call's input and output is printed.
 // With -atif dir, the trajectories are stored there as JSON (default: an "atif" directory next to the -db file,
@@ -24,7 +24,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"embed"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -52,8 +51,9 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/server"
 )
 
-//go:embed evals/*.json evals/corpus/*.txt
-var evalsFS embed.FS
+// defaultEvalsDir is the directory the evals are read from by default (relative to the repository root, where the runner
+// is run from): static definitions kept in bin/, apart from the code, next to the training datasets.
+const defaultEvalsDir = "bin/evals_knowledge"
 
 // datasetName is the dataset a case remembers into and recalls from: one per case and run of the experiment
 // ("<case>_run<runID>"), so runs are isolated from each other and the graph of every case of every run stays in the
@@ -152,14 +152,10 @@ type ExpectEdge struct {
 	Ended     bool   `json:"ended"`
 }
 
-// loadCases loads the cases of the evals in evalsDir (the embedded ones if empty). A non-empty eval restricts them
+// loadCases loads the cases of the evals in evalsDir. A non-empty eval restricts them
 // to the cases of that eval, and a non-empty only to the cases with those names.
 func loadCases(only []string, evalsDir, eval string) ([]Case, error) {
-	var fsys fs.FS = evalsFS
-	dir := "evals"
-	if evalsDir != "" {
-		fsys, dir = os.DirFS(evalsDir), "."
-	}
+	fsys, dir := os.DirFS(evalsDir), "."
 	entries, err := fs.ReadDir(fsys, dir)
 	if err != nil {
 		return nil, err
@@ -236,18 +232,13 @@ func evalNames(fsys fs.FS, dir string) []string {
 	return names
 }
 
-// printEvals prints the evals of evalsDir (the embedded ones if empty) with their cases, as a table.
+// printEvals prints the evals of evalsDir with their cases, as a table.
 func printEvals(w *os.File, evalsDir string) error {
 	cases, err := loadCases(nil, evalsDir, "")
 	if err != nil {
 		return err
 	}
-	var fsys fs.FS = evalsFS
-	dir := "evals"
-	if evalsDir != "" {
-		fsys, dir = os.DirFS(evalsDir), "."
-	}
-	names := evalNames(fsys, dir)
+	names := evalNames(os.DirFS(evalsDir), ".")
 	bold, dim, reset := "", "", ""
 	if st, err := w.Stat(); err == nil && st.Mode()&os.ModeCharDevice != 0 && os.Getenv("NO_COLOR") == "" {
 		bold, dim, reset = "\033[1m", "\033[2m", "\033[0m"
@@ -979,7 +970,7 @@ func main() {
 
 func mainErr() error {
 	verbose := flag.Bool("v", false, "print the input and output of every LLM call")
-	evalsDir := flag.String("evals", "", "read evals from this directory instead of the embedded ones")
+	evalsDir := flag.String("evals", defaultEvalsDir, "directory the evals (*.json) and their corpus files are read from")
 	eval := flag.String("eval", "", "run only the cases of this eval (file name without .json; see -list-evals)")
 	listEvals := flag.Bool("list-evals", false, "print the available evals and their cases, then exit")
 	flag.StringVar(&atifDir, "atif", "", `store every ATIF trajectory as JSON in this directory (default: "atif" next to the -db file)`)

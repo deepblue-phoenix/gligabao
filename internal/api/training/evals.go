@@ -2,7 +2,7 @@ package training
 
 // Evals of trained models: the "Eval" button of the admin UI and the runner evals/training/cmd. An eval run is one run
 // (relational.TrainedModelRun, kind "eval") of an eval against a trained model. An eval is a named set of cases
-// (evals/training/evals/*.json, embedded in the binary), each a question and the answer expected; the cases are meant to be ones
+// (*.json files of the evals directory, bin/evals_training by default), each a question and the answer expected; the cases are meant to be ones
 // the model never saw in training, so the score says how well it generalizes. The eval is named after the training dataset its
 // cases ask about, so a model trained on a dataset has the eval of that name unless another is asked for.
 //
@@ -29,13 +29,16 @@ import (
 // EvalManager starts the evals and runs them in the background, one at a time per trained model. Evals still running when the
 // server last stopped are marked error when the manager is made. ListOf, GetOf, CancelOf, EventsOf and Wait are those of the
 // runManager it is made of.
-type EvalManager struct{ *runManager }
+type EvalManager struct {
+	*runManager
+	dir string // the evals directory
+}
 
-// NewEvalManager makes the manager of the evals of the trained models of dbs. sc answers the questions (nil: starting an eval
+// NewEvalManager makes the manager of the evals of the trained models of dbs, which are the ones in the directory evalDir. sc answers the questions (nil: starting an eval
 // answers 503) and llm judges (nil: the same). The evals stop when ctx is done. Evals that a restart interrupted (still
 // "running" in the database) are marked error.
-func NewEvalManager(ctx context.Context, dbs []Database, sc Inferer, llm memory_core.LLM) *EvalManager {
-	return &EvalManager{newRunManager(ctx, dbs, sc, llm, evalOps)}
+func NewEvalManager(ctx context.Context, dbs []Database, evalDir string, sc Inferer, llm memory_core.LLM) *EvalManager {
+	return &EvalManager{newRunManager(ctx, dbs, sc, llm, evalOps), evalDir}
 }
 
 // StartOf serves POST /v1/gb/training/models/{id}/evals[?db=<name>] with an optional JSON body {"eval": "", "cases": [], "limit": 0,
@@ -86,13 +89,13 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 		}
 		name := strings.TrimSpace(in.Eval)
 		if name == "" {
-			if name = strings.TrimSuffix(tm.Dataset, ".jsonl"); name == "" || !hasEval(name) {
+			if name = strings.TrimSuffix(tm.Dataset, ".jsonl"); name == "" || !hasEval(m.dir, name) {
 				httputil.Error(w, http.StatusBadRequest, "there is no eval named like this model's training dataset"+
-					"; set \"eval\" to one of: "+strings.Join(trainingeval.EvalNames(), ", "))
+					"; set \"eval\" to one of: "+strings.Join(trainingeval.EvalNames(m.dir), ", "))
 				return
 			}
 		}
-		cases, err := trainingeval.LoadEvals(in.Cases, name)
+		cases, err := trainingeval.LoadEvals(m.dir, in.Cases, name)
 		if err != nil {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
@@ -121,8 +124,8 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 	}
 }
 
-func hasEval(name string) bool {
-	for _, n := range trainingeval.EvalNames() {
+func hasEval(dir, name string) bool {
+	for _, n := range trainingeval.EvalNames(dir) {
 		if n == name {
 			return true
 		}
@@ -131,11 +134,11 @@ func hasEval(name string) bool {
 }
 
 // DefinitionsOf serves GET /v1/gb/training/eval-definitions: {"evals": [{"name": ..., "cases": [{"name", "instruction", "input",
-// "output"}, ...]}, ...]}, the evals the server can run (the ones embedded in it), by name. The "name" of an eval is what the "eval"
+// "output"}, ...]}, ...]}, the evals the server can run (the ones in the directory evalDir), by name. The "name" of an eval is what the "eval"
 // of POST .../evals takes.
-func DefinitionsOf() http.HandlerFunc {
+func DefinitionsOf(evalDir string) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
-		evals, err := trainingeval.Evals()
+		evals, err := trainingeval.Evals(evalDir)
 		if err != nil {
 			log.WithError(err).Error("training: load the eval definitions failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to load the evals")

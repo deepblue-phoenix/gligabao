@@ -105,7 +105,7 @@ res.WebSearches
 
 ## Eval
 
-The eval `evals/knowledge/evals/web_search.json` has one case, `web_search_companies`: it remembers a text about three big companies (Apple, Microsoft and Nvidia) with `"web_search": true`, then checks that the facts of the text are stored, that `recall` still answers from it, and (`expect_web_searches`) that at least one `web_search` artifact was stored, each with its query, text, a parent artifact in the dataset and entities of its own. It calls the real web search, so it needs `ANTHROPIC_API_KEY` with web search enabled and costs a few cents: `./run_evals.sh web_search_companies`. See [`evals/knowledge/README.md`](../evals/knowledge/README.md).
+The eval `bin/evals_knowledge/web_search.json` has one case, `web_search_companies`: it remembers a text about three big companies (Apple, Microsoft and Nvidia) with `"web_search": true`, then checks that the facts of the text are stored, that `recall` still answers from it, and (`expect_web_searches`) that at least one `web_search` artifact was stored, each with its query, text, a parent artifact in the dataset and entities of its own. It calls the real web search, so it needs `ANTHROPIC_API_KEY` with web search enabled and costs a few cents: `./run_evals.sh web_search_companies`. See [`evals/knowledge/README.md`](../evals/knowledge/README.md).
 
 ## Admin UI
 

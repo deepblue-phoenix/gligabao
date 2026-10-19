@@ -5,7 +5,7 @@ package training
 // pairs per LLM call, how close the answers are to the expected ones. They share everything but where the cases come from, so
 // they share this file (the manager, the HTTP endpoints that follow a run, the background runner) and the stream (runs_stream.go):
 //
-//   - an EVAL (evals.go) asks the cases of an eval (evals/training/evals/*.json), which the model never saw in training: it
+//   - an EVAL (evals.go) asks the cases of an eval (bin/evals_training/*.json), which the model never saw in training: it
 //     measures how well the model generalizes. Its cases have names and it can be part of an experiment;
 //   - an AUDIT (audits.go) asks the examples of the model's OWN fine-tuning dataset: it checks that the training took, not how well
 //     the model generalizes.

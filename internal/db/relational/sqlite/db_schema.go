@@ -250,7 +250,7 @@ CREATE TABLE IF NOT EXISTS gb_training_datasets (
 --   type  'knowledge'  knowledge-extraction evals (evals/knowledge, internal/experiments): remember, then recall, checked by
 --                      programmatic checks. Run by the runner, into the eval database.
 --         'training'   evals of trained models (evals/training, internal/api/training/evals.go): the model is asked the cases
---                      of an eval (evals/training/evals/*.json) and an external LLM judges the answers. Run by the server (the
+--                      of an eval (bin/evals_training/*.json) and an external LLM judges the answers. Run by the server (the
 --                      admin UI's Eval button, the API) or by the command-line runner evals/training/cmd.
 --   UNIVERSAL tables (every eval has these; each has a type column):
 --     gb_experiments            a named series of runs
@@ -274,8 +274,8 @@ CREATE TABLE IF NOT EXISTS gb_training_datasets (
 -- run for both kinds of eval.
 --
 -- EVALS AND CASES. A case is identified by its eval and its name (case_name), for both kinds. Knowledge evals: an eval is a file in
--- evals/knowledge/evals/ (its name without ".json") and the case is one of its cases. Training evals: an eval is a file in
--- evals/training/evals/ (its name without ".json"; named after the training dataset its cases ask about), whose cases are
+-- bin/evals_knowledge/ (its name without ".json") and the case is one of its cases. Training evals: an eval is a file in
+-- bin/evals_training/ (its name without ".json"; named after the training dataset its cases ask about), whose cases are
 -- {name, instruction, input, output}, the output being the answer expected. A training eval run is one run of the eval against
 -- one trained model: a run, with one case result per case (case_name = the case's name) and the run's own columns in
 -- gb_training_eval_run_meta. The cases are meant to be ones the model never saw in training, so the score measures generalization.
@@ -419,13 +419,13 @@ CREATE TABLE IF NOT EXISTS gb_knowledge_case_meta (
 );
 
 -- TRAINING metadata of a run (type 'training'; evals/training, internal/api/training/evals.go; the API calls the run an eval):
--- what only the eval runs of trained models have. The trained model is asked the cases of an eval (evals/training/evals/*.json) and
+-- what only the eval runs of trained models have. The trained model is asked the cases of an eval (bin/evals_training/*.json) and
 -- an external LLM scores its answers against the expected ones, a batch of questions per LLM call. The counters are rewritten after every batch, so
 -- the row shows the progress while the eval run runs. The status, the times and the settings (batch_size,
 -- max_tokens, temperature, limit; the params) are those of the universal gb_experiment_runs row. A run still 'running' after a restart of the
 -- server is set to 'error' when the server starts.
 --   trained_model_id  the model (gb_trained_models) that was asked; deleting the model deletes this row (and the run with its cases)
---   eval             the eval whose cases were asked (the file name in evals/training/evals without ".json"); a run asks one eval, so
+--   eval             the eval whose cases were asked (the file name in bin/evals_training without ".json"); a run asks one eval, so
 --                    its case results' eval column (which the universal tables key on) is this value
 --   judge_model      the model that judged ('' until its first reply)
 --   num_examples     the questions asked; num_answered the ones the model answered; num_judged the ones scored; num_errored the ones

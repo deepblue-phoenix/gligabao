@@ -96,6 +96,9 @@ type ServeOptions struct {
 	// TrainingDatasetDir is the training datasets directory: one subdirectory with a dataset.toml manifest per dataset
 	// (the datasets uploaded in the admin UI are saved there too). Default: a "datasets_training" directory next to DBPath.
 	TrainingDatasetDir string
+	// TrainingEvalDir is the directory of the evals of trained models: one JSON file per eval, a list of cases (the
+	// training evals the admin UI and the API run). Default: an "evals_training" directory next to DBPath.
+	TrainingEvalDir string
 	// EvalDBPath is the eval database (the SQLite file ./run_evals.sh writes the datasets, experiments and runs to); with
 	// the admin UI on it is shown next to the main database and feeds its Evals block.
 	EvalDBPath string
@@ -144,6 +147,7 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 	defer monitoring.SetHooks(nil)
 	dbConfig := db.ConfigFrom(cfg, opts.DBPath, opts.VectorDir, opts.ImageDir)
 	dbConfig.TrainingDatasetDir = opts.TrainingDatasetDir
+	dbConfig.TrainingEvalDir = opts.TrainingEvalDir
 	return server.Run(ctx, server.Options{
 		Addr:         cfg.Addr(),
 		DB:           dbConfig,

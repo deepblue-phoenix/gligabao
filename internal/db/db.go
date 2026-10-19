@@ -46,6 +46,9 @@ type Config struct {
 	// TrainingDatasetDir is the training datasets directory: one subdirectory with a dataset.toml manifest per dataset
 	// (uploads are saved there too). Default: a "datasets_training" directory next to SQLitePath.
 	TrainingDatasetDir string
+	// TrainingEvalDir is the directory of the evals of trained models (one JSON file per eval). Default: an "evals_training"
+	// directory next to SQLitePath.
+	TrainingEvalDir string
 	// EmbeddingDimensions is the embedding size. Default: config.DefaultEmbeddingDimensions.
 	EmbeddingDimensions int
 	// PineconeKey and PineconeIndexHost configure the Pinecone store.
@@ -110,6 +113,8 @@ type DB struct {
 	ImageDir string
 	// TrainingDatasetDir is the training datasets directory (created at the first upload; may not exist).
 	TrainingDatasetDir string
+	// TrainingEvalDir is the directory of the evals of trained models (may not exist: then there are no evals).
+	TrainingEvalDir string
 	// Chunking is the chunk size and overlap remember uses for a long text.
 	Chunking chunk.Config
 }
@@ -141,8 +146,13 @@ func Open(cfg Config) (*DB, error) {
 		cfg.TrainingDatasetDir = DefaultTrainingDatasetDir(cfg.SQLitePath)
 	}
 
+	if cfg.TrainingEvalDir == "" {
+		cfg.TrainingEvalDir = DefaultTrainingEvalDir(cfg.SQLitePath)
+	}
+
 	d := &DB{
 		ImageDir:            cfg.ImageDir,
+		TrainingEvalDir:     cfg.TrainingEvalDir,
 		TrainingDatasetDir:  cfg.TrainingDatasetDir,
 		Backend:             cfg.Backend,
 		VectorStore:         cfg.VectorStore,
@@ -222,6 +232,12 @@ func DefaultImageDir(sqlitePath string) string {
 // configured: "datasets_training" in the file's directory (bin/datasets_training for bin/gligabao.db).
 func DefaultTrainingDatasetDir(sqlitePath string) string {
 	return filepath.Join(filepath.Dir(sqlitePath), "datasets_training")
+}
+
+// DefaultTrainingEvalDir is the directory of the evals of trained models used for the SQLite file sqlitePath when none is
+// configured: "evals_training" in the file's directory (bin/evals_training for bin/gligabao.db).
+func DefaultTrainingEvalDir(sqlitePath string) string {
+	return filepath.Join(filepath.Dir(sqlitePath), "evals_training")
 }
 
 // Close closes every client. It is safe to call on a nil DB.

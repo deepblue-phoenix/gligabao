@@ -113,7 +113,7 @@ func TestRunCasesTracksExperiment(t *testing.T) {
 }
 
 func TestLoadCasesSetsEval(t *testing.T) {
-	cases, err := loadCases(nil, "", "")
+	cases, err := loadCases(nil, testEvalsDir, "")
 	if err != nil || len(cases) == 0 {
 		t.Fatalf("%v, %v", cases, err)
 	}
@@ -214,7 +214,7 @@ func TestChunkingCase(t *testing.T) {
 	memory_core.TrajectoryDir = atifDir
 	t.Cleanup(func() { atifDir = "" })
 
-	cases, err := loadCases([]string{"chunking_register"}, "", "")
+	cases, err := loadCases([]string{"chunking_register"}, testEvalsDir, "")
 	if err != nil || len(cases) != 1 {
 		t.Fatalf("%v, %v", cases, err)
 	}
@@ -255,6 +255,9 @@ func TestChunkingCase(t *testing.T) {
 		t.Fatalf("with 1000 chunks expected: failed = %d, want 1", failed)
 	}
 }
+
+// testEvalsDir is the directory of the evals (the tests run in the package directory).
+const testEvalsDir = "../../bin/evals_knowledge"
 
 func TestTextFileErrors(t *testing.T) {
 	dir := t.TempDir()
@@ -339,7 +342,7 @@ func TestTimeseriesIngestCase(t *testing.T) {
 	memory_core.TrajectoryDir = atifDir
 	t.Cleanup(func() { atifDir = "" })
 
-	cases, err := loadCases([]string{"timeseries_ingest_aapl"}, "", "")
+	cases, err := loadCases([]string{"timeseries_ingest_aapl"}, testEvalsDir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,10 +433,10 @@ func TestCaseReasoning(t *testing.T) {
 	}
 }
 
-// TestEvalsSetReasoning checks that every case of the embedded evals sets the reasoning of every stage, and of the
+// TestEvalsSetReasoning checks that every case of the evals sets the reasoning of every stage, and of the
 // recall, explicitly to none, so a run does not depend on the server's defaults and is the baseline for comparing levels.
 func TestEvalsSetReasoning(t *testing.T) {
-	cases, err := loadCases(nil, "", "")
+	cases, err := loadCases(nil, testEvalsDir, "")
 	if err != nil || len(cases) == 0 {
 		t.Fatalf("loadCases: %d cases, %v", len(cases), err)
 	}
