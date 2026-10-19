@@ -1,52 +1,55 @@
-[
-  {
-    "name": "toyota-exchange-and-founder",
-    "instruction": "Which stock exchange lists Toyota, and who founded the company?",
-    "output": "Toyota is listed on the Tokyo Stock Exchange. It was founded by Kiichiro Toyoda."
-  },
-  {
-    "name": "germany-currency-and-central-bank",
-    "instruction": "What currency does Germany use, and which institution is its central bank?",
-    "output": "Germany uses the euro. Its central bank is the Deutsche Bundesbank."
-  },
-  {
-    "name": "plaza-accord-aim-and-place",
-    "instruction": "What was the Plaza Accord meant to achieve, and where was it concluded?",
-    "output": "The Plaza Accord concerned depreciating the US dollar against the Japanese yen and the Deutsche mark. It was concluded in New York City."
-  },
-  {
-    "name": "norway-pension-fund",
-    "instruction": "Which country owns the Government Pension Fund Global, and where does its money come from?",
-    "output": "The Government Pension Fund Global belongs to Norway. It is financed by Norway's petroleum revenues and managed by Norges Bank Investment Management."
-  },
-  {
-    "name": "bretton-woods-outcome",
-    "instruction": "Which two institutions did the Bretton Woods Agreement create, and in what year was it concluded?",
-    "output": "The Bretton Woods Agreement created the IMF and the World Bank. It was concluded in 1944."
-  },
-  {
-    "name": "saudi-arabia-export-and-groups",
-    "instruction": "What is Saudi Arabia's main export, and which international groups is it part of?",
-    "output": "Saudi Arabia's main export is crude oil. It is a member of the G20 and OPEC."
-  },
-  {
-    "name": "nvidia-hq-and-ticker",
-    "instruction": "Where is NVIDIA based, and under what ticker does it trade, on which exchange?",
-    "output": "NVIDIA is headquartered in Santa Clara, California, the United States. It trades under the ticker NVDA on NASDAQ."
-  },
-  {
-    "name": "opec-hq-and-founders",
-    "instruction": "In which city is OPEC headquartered, and which were its five founding members?",
-    "output": "OPEC is headquartered in Vienna. Its five founding members were Iran, Iraq, Kuwait, Saudi Arabia and Venezuela."
-  },
-  {
-    "name": "maastricht-treaty",
-    "instruction": "What did the Maastricht Treaty create, and in which year was it concluded?",
-    "output": "The Maastricht Treaty created the European Union and set the path towards the euro. It was concluded in 1992."
-  },
-  {
-    "name": "tsmc-vs-airbus",
-    "instruction": "Compare TSMC and Airbus: what sector is each in, and where is each headquartered?",
-    "output": "TSMC is in semiconductor manufacturing and is headquartered in Hsinchu, Taiwan. Airbus is in aerospace and is headquartered in Toulouse, France."
-  }
-]
+{
+  "name": "world-knowledge-base",
+  "cases": [
+    {
+      "name": "toyota-exchange-and-founder",
+      "instruction": "Which stock exchange lists Toyota, and who founded the company?",
+      "output": "Toyota is listed on the Tokyo Stock Exchange. It was founded by Kiichiro Toyoda."
+    },
+    {
+      "name": "germany-currency-and-central-bank",
+      "instruction": "What currency does Germany use, and which institution is its central bank?",
+      "output": "Germany uses the euro. Its central bank is the Deutsche Bundesbank."
+    },
+    {
+      "name": "plaza-accord-aim-and-place",
+      "instruction": "What was the Plaza Accord meant to achieve, and where was it concluded?",
+      "output": "The Plaza Accord concerned depreciating the US dollar against the Japanese yen and the Deutsche mark. It was concluded in New York City."
+    },
+    {
+      "name": "norway-pension-fund",
+      "instruction": "Which country owns the Government Pension Fund Global, and where does its money come from?",
+      "output": "The Government Pension Fund Global belongs to Norway. It is financed by Norway's petroleum revenues and managed by Norges Bank Investment Management."
+    },
+    {
+      "name": "bretton-woods-outcome",
+      "instruction": "Which two institutions did the Bretton Woods Agreement create, and in what year was it concluded?",
+      "output": "The Bretton Woods Agreement created the IMF and the World Bank. It was concluded in 1944."
+    },
+    {
+      "name": "saudi-arabia-export-and-groups",
+      "instruction": "What is Saudi Arabia's main export, and which international groups is it part of?",
+      "output": "Saudi Arabia's main export is crude oil. It is a member of the G20 and OPEC."
+    },
+    {
+      "name": "nvidia-hq-and-ticker",
+      "instruction": "Where is NVIDIA based, and under what ticker does it trade, on which exchange?",
+      "output": "NVIDIA is headquartered in Santa Clara, California, the United States. It trades under the ticker NVDA on NASDAQ."
+    },
+    {
+      "name": "opec-hq-and-founders",
+      "instruction": "In which city is OPEC headquartered, and which were its five founding members?",
+      "output": "OPEC is headquartered in Vienna. Its five founding members were Iran, Iraq, Kuwait, Saudi Arabia and Venezuela."
+    },
+    {
+      "name": "maastricht-treaty",
+      "instruction": "What did the Maastricht Treaty create, and in which year was it concluded?",
+      "output": "The Maastricht Treaty created the European Union and set the path towards the euro. It was concluded in 1992."
+    },
+    {
+      "name": "tsmc-vs-airbus",
+      "instruction": "Compare TSMC and Airbus: what sector is each in, and where is each headquartered?",
+      "output": "TSMC is in semiconductor manufacturing and is headquartered in Hsinchu, Taiwan. Airbus is in aerospace and is headquartered in Toulouse, France."
+    }
+  ]
+}

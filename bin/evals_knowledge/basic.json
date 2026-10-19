@@ -1,30 +1,33 @@
-[
-  {
-    "name": "remember_recall",
-    "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "extract_image": "none", "recall": "none"},
-    "remember": [
-      {"kind": "episode", "text": "Alice works at Acme and lives in Paris.", "reference_time": "2023-01-01T00:00:00Z"}
-    ],
-    "query": "Where does Alice work?",
-    "expect_contains": ["Acme"],
-    "expect_edges": [
-      {"source": "Alice", "target": "Acme", "valid_at": "2023-01-01T00:00:00Z", "ended": false},
-      {"source": "Alice", "target": "Paris", "valid_at": "2023-01-01T00:00:00Z", "ended": false}
-    ]
-  },
-  {
-    "name": "job_change",
-    "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "extract_image": "none", "recall": "none"},
-    "remember": [
-      {"kind": "episode", "text": "Alice works at Acme and lives in Paris.", "reference_time": "2023-01-01T00:00:00Z"},
-      {"kind": "episode", "text": "Alice started working at Globex.", "reference_time": "2024-03-01T00:00:00Z"}
-    ],
-    "query": "Where does Alice work now?",
-    "expect_contains": ["Globex"],
-    "expect_edges": [
-      {"source": "Alice", "target": "Acme", "valid_at": "2023-01-01T00:00:00Z", "invalid_at": "2024-03-01T00:00:00Z", "ended": true},
-      {"source": "Alice", "target": "Globex", "valid_at": "2024-03-01T00:00:00Z", "ended": false},
-      {"source": "Alice", "target": "Paris", "ended": false}
-    ]
-  }
-]
+{
+  "name": "basic",
+  "cases": [
+    {
+      "name": "remember_recall",
+      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "extract_image": "none", "recall": "none"},
+      "remember": [
+        {"kind": "episode", "text": "Alice works at Acme and lives in Paris.", "reference_time": "2023-01-01T00:00:00Z"}
+      ],
+      "query": "Where does Alice work?",
+      "expect_contains": ["Acme"],
+      "expect_edges": [
+        {"source": "Alice", "target": "Acme", "valid_at": "2023-01-01T00:00:00Z", "ended": false},
+        {"source": "Alice", "target": "Paris", "valid_at": "2023-01-01T00:00:00Z", "ended": false}
+      ]
+    },
+    {
+      "name": "job_change",
+      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "extract_image": "none", "recall": "none"},
+      "remember": [
+        {"kind": "episode", "text": "Alice works at Acme and lives in Paris.", "reference_time": "2023-01-01T00:00:00Z"},
+        {"kind": "episode", "text": "Alice started working at Globex.", "reference_time": "2024-03-01T00:00:00Z"}
+      ],
+      "query": "Where does Alice work now?",
+      "expect_contains": ["Globex"],
+      "expect_edges": [
+        {"source": "Alice", "target": "Acme", "valid_at": "2023-01-01T00:00:00Z", "invalid_at": "2024-03-01T00:00:00Z", "ended": true},
+        {"source": "Alice", "target": "Globex", "valid_at": "2024-03-01T00:00:00Z", "ended": false},
+        {"source": "Alice", "target": "Paris", "ended": false}
+      ]
+    }
+  ]
+}

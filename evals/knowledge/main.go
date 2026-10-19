@@ -172,11 +172,17 @@ func loadCases(only []string, evalsDir, eval string) ([]Case, error) {
 		if err != nil {
 			return nil, err
 		}
-		var evalCases []Case
-		if err := json.Unmarshal(data, &evalCases); err != nil {
+		var file struct {
+			Name  string `json:"name"`
+			Cases []Case `json:"cases"`
+		}
+		if err := json.Unmarshal(data, &file); err != nil {
 			return nil, fmt.Errorf("%s: %w", e.Name(), err)
 		}
-		evalName := strings.TrimSuffix(e.Name(), ".json")
+		evalName, evalCases := file.Name, file.Cases
+		if evalName == "" {
+			return nil, fmt.Errorf("%s: the eval has no name", e.Name())
+		}
 		evalFound = evalFound || evalName == wantEval
 		for i, c := range evalCases {
 			c.Eval = evalName
@@ -225,8 +231,18 @@ func evalNames(fsys fs.FS, dir string) []string {
 	entries, _ := fs.ReadDir(fsys, dir)
 	var names []string
 	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
-			names = append(names, strings.TrimSuffix(e.Name(), ".json"))
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		data, err := fs.ReadFile(fsys, path.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		var file struct {
+			Name string `json:"name"`
+		}
+		if json.Unmarshal(data, &file) == nil && file.Name != "" {
+			names = append(names, file.Name)
 		}
 	}
 	return names

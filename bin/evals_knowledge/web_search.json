@@ -1,20 +1,23 @@
-[
-  {
-    "name": "web_search_companies",
-    "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "extract_image": "none", "recall": "none"},
-    "remember": [
-      {
-        "kind": "episode",
-        "text": "Apple, Microsoft and Nvidia are among the largest publicly traded companies in the world. Satya Nadella is the chief executive of Microsoft and Jensen Huang is the chief executive of Nvidia. Apple designs the iPhone.",
-        "web_search": true
-      }
-    ],
-    "query": "Who is the chief executive of Nvidia?",
-    "expect_contains": ["Huang"],
-    "expect_edges": [
-      {"source": "Satya Nadella", "target": "Microsoft", "ended": false},
-      {"source": "Jensen Huang", "target": "Nvidia", "ended": false}
-    ],
-    "expect_web_searches": 1
-  }
-]
+{
+  "name": "web_search",
+  "cases": [
+    {
+      "name": "web_search_companies",
+      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "extract_image": "none", "recall": "none"},
+      "remember": [
+        {
+          "kind": "episode",
+          "text": "Apple, Microsoft and Nvidia are among the largest publicly traded companies in the world. Satya Nadella is the chief executive of Microsoft and Jensen Huang is the chief executive of Nvidia. Apple designs the iPhone.",
+          "web_search": true
+        }
+      ],
+      "query": "Who is the chief executive of Nvidia?",
+      "expect_contains": ["Huang"],
+      "expect_edges": [
+        {"source": "Satya Nadella", "target": "Microsoft", "ended": false},
+        {"source": "Jensen Huang", "target": "Nvidia", "ended": false}
+      ],
+      "expect_web_searches": 1
+    }
+  ]
+}

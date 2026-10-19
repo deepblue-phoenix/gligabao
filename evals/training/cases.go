@@ -19,7 +19,7 @@ const DefaultEvalDir = "bin/evals_training"
 // named after it) but are phrased differently from its examples (several facts per question), so they check whether the model
 // learned the facts, not the exact training prompts: they are cases the model never saw.
 type Case struct {
-	// Eval is the eval (file name without ".json") the case was loaded from; it is not part of the JSON.
+	// Eval is the name of the eval (the "name" of its file) the case was loaded from; it is not part of the JSON.
 	Eval        string `json:"-"`
 	Name        string `json:"name"`
 	Instruction string `json:"instruction"`
@@ -33,7 +33,7 @@ func (c Case) Example() Example {
 	return Example{Instruction: c.Instruction, Input: c.Input, Output: c.Output}
 }
 
-// Eval is a named set of cases: one *.json file of the evals directory. Its name is the file name without ".json", and is the name of the
+// Eval is a named set of cases: one *.json file of the evals directory. Its name is the "name" key of the file (its "cases" key holds the list of cases), and is the name of the
 // training dataset its cases ask about when they are about one, so that a model trained on a dataset has an eval of that name.
 type Eval struct {
 	Name  string `json:"name"`
@@ -78,11 +78,14 @@ func LoadEvals(dir string, only []string, eval string) ([]Case, error) {
 		if err != nil {
 			return nil, err
 		}
-		var evalCases []Case
-		if err := json.Unmarshal(data, &evalCases); err != nil {
+		var file evalFile
+		if err := json.Unmarshal(data, &file); err != nil {
 			return nil, fmt.Errorf("%s: %w", e.Name(), err)
 		}
-		name := strings.TrimSuffix(e.Name(), ".json")
+		name, evalCases := file.Name, file.Cases
+		if name == "" {
+			return nil, fmt.Errorf("%s: the eval has no name", e.Name())
+		}
 		evalFound = evalFound || name == eval
 		for i, c := range evalCases {
 			c.Eval = name
@@ -111,13 +114,31 @@ func LoadEvals(dir string, only []string, eval string) ([]Case, error) {
 	return cases, nil
 }
 
-// EvalNames are the names of the evals in the directory dir.
+// evalFile is the content of an eval file: the name of the eval and its cases.
+type evalFile struct {
+	Name  string `json:"name"`
+	Cases []Case `json:"cases"`
+}
+
+// EvalNames are the names of the evals in the directory dir (the "name" of each of its *.json files; files that cannot be read
+// or have no name are skipped).
 func EvalNames(dir string) []string {
-	entries, _ := fs.ReadDir(os.DirFS(dir), ".")
+	fsys := os.DirFS(dir)
+	entries, _ := fs.ReadDir(fsys, ".")
 	var names []string
 	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
-			names = append(names, strings.TrimSuffix(e.Name(), ".json"))
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		data, err := fs.ReadFile(fsys, e.Name())
+		if err != nil {
+			continue
+		}
+		var file struct {
+			Name string `json:"name"`
+		}
+		if json.Unmarshal(data, &file) == nil && file.Name != "" {
+			names = append(names, file.Name)
 		}
 	}
 	return names

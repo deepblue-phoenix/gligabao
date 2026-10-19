@@ -1,21 +1,24 @@
-[
-  {
-    "name": "chunking_register",
-    "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "extract_image": "none", "recall": "none"},
-    "chunk_size": 512,
-    "expect_min_chunks": 15,
-    "remember": [
-      {"kind": "knowledge", "text_file": "corpus/harbor_cooperative.txt", "reference_time": "2024-01-01T00:00:00Z"}
-    ],
-    "query": "Which organisation employs Anselm Marchetti, in which city does Jocasta Underhill live, and what is the position of Dmitri Brandt?",
-    "expect_contains": ["Silverlake Brewing Company", "Brno", "restoration binder"],
-    "expect_edges": [
-      {"source": "Anselm Marchetti", "target": "Lisbon", "ended": false},
-      {"source": "Anselm Marchetti", "target": "Silverlake Brewing Company", "ended": false},
-      {"source": "Dmitri Brandt", "target": "Pula", "ended": false},
-      {"source": "Elowen Montague", "target": "Galway", "ended": false},
-      {"source": "Idris Jessop", "target": "Stavanger", "ended": false},
-      {"source": "Jocasta Underhill", "target": "Brno", "ended": false}
-    ]
-  }
-]
+{
+  "name": "chunking",
+  "cases": [
+    {
+      "name": "chunking_register",
+      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "extract_image": "none", "recall": "none"},
+      "chunk_size": 512,
+      "expect_min_chunks": 15,
+      "remember": [
+        {"kind": "knowledge", "text_file": "corpus/harbor_cooperative.txt", "reference_time": "2024-01-01T00:00:00Z"}
+      ],
+      "query": "Which organisation employs Anselm Marchetti, in which city does Jocasta Underhill live, and what is the position of Dmitri Brandt?",
+      "expect_contains": ["Silverlake Brewing Company", "Brno", "restoration binder"],
+      "expect_edges": [
+        {"source": "Anselm Marchetti", "target": "Lisbon", "ended": false},
+        {"source": "Anselm Marchetti", "target": "Silverlake Brewing Company", "ended": false},
+        {"source": "Dmitri Brandt", "target": "Pula", "ended": false},
+        {"source": "Elowen Montague", "target": "Galway", "ended": false},
+        {"source": "Idris Jessop", "target": "Stavanger", "ended": false},
+        {"source": "Jocasta Underhill", "target": "Brno", "ended": false}
+      ]
+    }
+  ]
+}

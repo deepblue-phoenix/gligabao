@@ -266,11 +266,11 @@ func TestTextFileErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write(`[{"name":"a","remember":[{"text_file":"missing.txt"}]}]`)
+	write(`{"name":"s","cases":[{"name":"a","remember":[{"text_file":"missing.txt"}]}]}`)
 	if _, err := loadCases(nil, dir, ""); err == nil {
 		t.Fatal("missing text_file accepted")
 	}
-	write(`[{"name":"a","remember":[{"text":"x","text_file":"s.json"}]}]`)
+	write(`{"name":"s","cases":[{"name":"a","remember":[{"text":"x","text_file":"s.json"}]}]}`)
 	if _, err := loadCases(nil, dir, ""); err == nil {
 		t.Fatal("text and text_file accepted")
 	}
