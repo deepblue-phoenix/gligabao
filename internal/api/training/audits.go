@@ -2,11 +2,10 @@ package training
 
 // Training data audits of trained models: the "Audit" button of the admin UI. An audit is one run (evalsdb.TrainedModelRun, kind
 // "audit") of a trained model against its OWN fine-tuning dataset: it asks the model the question of every example (a case) and
-// has the external LLM judge how closely the answer reproduces the dataset's output. Every case is something the model was trained
-// on, so the score says whether the training took (and, through the examples it fails, which training data is bad); it is NOT an
-// eval: it does not measure how well the model generalizes. The evals of trained models (evals.go) are the separate thing, for
-// cases the model never saw. The two share the manager and the endpoints that follow a run (runs.go); this file is what is
-// specific to an audit: where its cases come from.
+// has the external LLM judge how closely the answer reproduces the dataset's output. It is NOT an eval: it does not measure how well
+// the model generalizes. The evals of trained models (evals.go) are the separate thing, for cases the model never saw. The two share
+// the endpoints that follow a run (runs.go); this file is the endpoint that starts an audit, over the logic of
+// internal/training/audits.
 
 import (
 	"context"
@@ -17,24 +16,24 @@ import (
 	"net/http"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
-	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	core "github.com/deepblue-phoenix/gligabao/internal/training"
+	"github.com/deepblue-phoenix/gligabao/internal/training/audits"
 )
 
-// AuditManager starts the training data audits and runs them in the background, one at a time per trained model. Audits still
-// running when the server last stopped are marked error when the manager is made. ListOf, GetOf, CancelOf, EventsOf and Wait are
-// those of the runManager it is made of.
+// AuditManager is the endpoints of the training data audits. ListOf, GetOf, CancelOf, EventsOf and Wait are those of the
+// runManager it is made of.
 type AuditManager struct {
 	*runManager
-	dir string // the training datasets directory
+	audits *audits.Manager
 }
 
-// NewAuditManager makes the manager of the training data audits of the trained models in db, whose datasets are in the training datasets directory datasetDir. sc answers the questions (nil:
-// starting an audit answers 503) and llm judges (nil: the same). The audits stop when ctx is done. Audits that a restart
-// interrupted (still "running" in the database) are marked error.
+// NewAuditManager makes the endpoints of the training data audits of the trained models in db, whose datasets are in the training
+// datasets directory datasetDir. sc answers the questions (nil: starting an audit answers 503) and llm judges (nil: the same). The
+// audits stop when ctx is done. Audits that a restart interrupted (still "running" in the database) are marked error.
 func NewAuditManager(ctx context.Context, db *sql.DB, datasetDir string, sc core.Inferer, llm memory_core.LLM) *AuditManager {
-	return &AuditManager{&runManager{core.NewRunManager(ctx, db, sc, llm, core.AuditOps)}, datasetDir}
+	am := audits.NewManager(ctx, db, datasetDir, sc, llm)
+	return &AuditManager{&runManager{am.RunManager}, am}
 }
 
 // StartOf serves POST /v1/gb/training/models/{id}/audits with an optional JSON body {"limit": 0, "batch_size": 10,
@@ -58,24 +57,11 @@ func (m *AuditManager) StartOf() http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, "invalid JSON body")
 			return
 		}
-		cfg, params, err := in.Resolve()
+		rec, err := m.audits.Start(r.Context(), id, in)
 		if err != nil {
-			httputil.Error(w, http.StatusBadRequest, err.Error())
+			writeErr(w, err)
 			return
 		}
-		tm, ok := getModel(w, r, m.DB, id)
-		if !ok {
-			return
-		}
-		dataset, sum, examples, err := core.LoadModelDataset(m.dir, tm)
-		if err != nil {
-			httputil.Error(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		if params.Limit > 0 && params.Limit < len(examples) {
-			examples = examples[:params.Limit]
-		}
-		m.start(w, r, core.RunSpec{Model: tm, Config: cfg, Params: params, Examples: examples,
-			Row: evalsdb.TrainedModelRun{Dataset: dataset, DatasetSHA256: sum}})
+		httputil.WriteJSON(w, http.StatusAccepted, rec)
 	}
 }

@@ -5,8 +5,8 @@ package training
 //
 //   - an EVAL (evals.go) asks the cases of an eval (bin/evals_training/*.json), which the model never saw in training: it
 //     measures how well the model generalizes. Its cases have names and it can be part of an experiment;
-//   - an AUDIT (audits.go) asks the examples of the model's OWN fine-tuning dataset: it checks that the training took, not how well
-//     the model generalizes.
+//   - an AUDIT (audits.go; its logic is internal/training/audits) asks the examples of the model's OWN fine-tuning dataset: it checks
+//     that the training took, not how well the model generalizes.
 
 import (
 	"database/sql"

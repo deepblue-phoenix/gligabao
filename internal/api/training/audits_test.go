@@ -15,6 +15,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	core "github.com/deepblue-phoenix/gligabao/internal/training"
+	"github.com/deepblue-phoenix/gligabao/internal/training/audits"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
@@ -101,8 +102,8 @@ func testAuditATrainedModel(t *testing.T, d *sql.DB) {
 	}
 	// The judge's calls are recorded like the other LLM calls, under the audit's own type.
 	var n, nEval int
-	if core.CallAuditJudge != "training_audit_judge" {
-		t.Fatalf("call type %q", core.CallAuditJudge)
+	if audits.CallJudge != "training_audit_judge" {
+		t.Fatalf("call type %q", audits.CallJudge)
 	}
 	if err := d.QueryRow(`SELECT count(*) FROM gb_inferences WHERE type = 'training_audit_judge' AND stage = 'judge'`).Scan(&n); err != nil || n != 3 {
 		t.Fatalf("recorded judge calls: %d %v", n, err)

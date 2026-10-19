@@ -7,7 +7,7 @@ package training
 //
 //   - an EVAL (the evals of internal/evals/training) asks the cases of an eval (bin/evals_training/*.json), which the model never saw in training: it
 //     measures how well the model generalizes. Its cases have names and it can be part of an experiment;
-//   - an AUDIT (audit.go) asks the examples of the model's OWN fine-tuning dataset: it checks that the training took, not how well
+//   - an AUDIT (the subpackage audits, which also has its HTTP handlers) asks the examples of the model's OWN fine-tuning dataset: it checks that the training took, not how well
 //     the model generalizes.
 //
 // The logic is the subsystem internal/evals/training; this file wires it to the sidecar (the model), the LLM (the judge) and the database
@@ -33,11 +33,10 @@ import (
 )
 
 const (
-	// CallEvalJudge and CallAuditJudge are the types of the runs (gb_inferences) the judge's LLM calls of an eval and of an audit
-	// are recorded as; StageJudge is their stage.
-	CallEvalJudge  = "training_eval_judge"
-	CallAuditJudge = "training_audit_judge"
-	StageJudge     = "judge"
+	// CallEvalJudge is the type of the runs (gb_inferences) the judge's LLM calls of an eval are recorded as (those of an audit are
+	// audits.CallJudge); StageJudge is their stage.
+	CallEvalJudge = "training_eval_judge"
+	StageJudge    = "judge"
 
 	defaultRunMaxTokens = 1024
 	// defaultRunTemperature is low: a run checks what the model learned, not how varied it can be.
@@ -103,7 +102,7 @@ type RunOps struct {
 func (o RunOps) Noun() string   { return o.Kind }
 func (o RunOps) Plural() string { return o.Kind + "s" }
 
-// EvalOps and AuditOps are the two kinds of run.
+// EvalOps is the kind of run of the evals; the audits' is audits.Ops.
 var EvalOps = RunOps{
 	Kind:        evalsdb.TrainedModelKindEval,
 	CallType:    CallEvalJudge,
@@ -114,18 +113,6 @@ var EvalOps = RunOps{
 	Get:         evalsdb.GetTrainedModelEvalRun,
 	List:        evalsdb.ListTrainedModelEvalRuns,
 	Cases:       evalsdb.ListTrainedModelEvalCases,
-}
-
-var AuditOps = RunOps{
-	Kind:        evalsdb.TrainedModelKindAudit,
-	CallType:    CallAuditJudge,
-	Record:      evalsdb.RecordTrainedModelAuditRun,
-	Save:        evalsdb.SaveTrainedModelAuditRunBatch,
-	Finish:      evalsdb.FinishTrainedModelAuditRun,
-	FailRunning: evalsdb.FailRunningTrainedModelAuditRuns,
-	Get:         evalsdb.GetTrainedModelAuditRun,
-	List:        evalsdb.ListTrainedModelAuditRuns,
-	Cases:       evalsdb.ListTrainedModelAuditCases,
 }
 
 // RunManager starts the runs of one kind and runs them in the background, one at a time per trained model. Runs still running when
