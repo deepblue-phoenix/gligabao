@@ -16,12 +16,12 @@ type LLM interface {
 	Complete(ctx context.Context, req ai.Request) (*ai.Response, error)
 }
 
-// Scores are integers from MinScore to MaxScore. A score of at least PassScore is a pass ("correct"); below
+// Scores are integers from MinScore to MaxScore. A score of at least CorrectScore is "correct"; below
 // PartialScore the answer is "incorrect".
 const (
 	MinScore     = 0
 	MaxScore     = 5
-	PassScore    = 4
+	CorrectScore = 4
 	PartialScore = 2
 )
 
@@ -35,7 +35,7 @@ const (
 // VerdictOf maps a score to its verdict.
 func VerdictOf(score int) string {
 	switch {
-	case score >= PassScore:
+	case score >= CorrectScore:
 		return VerdictCorrect
 	case score >= PartialScore:
 		return VerdictPartial

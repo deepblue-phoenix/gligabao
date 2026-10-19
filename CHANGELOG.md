@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.59.0] - 2026-10-19
+
+### Changed
+- **Evals and audits of trained models use the same statuses (breaking for the eval database and the training API: existing eval databases must be recreated, nothing is migrated; SQLite and PostgreSQL).** The two kinds of run share the engine and the admin UI's live view, but an eval's run ended `passed` and its cases were `passed` while an audit's run ended `completed` and its cases were `judged`. Now both use one vocabulary: a run is `running`, then `completed`, `failed` or `cancelled`, and a case is `judged` or `failed` (plus `answered` in the live feed, never stored).
+  - Evals: the status of a finished eval and of a training experiment run is `completed` (was `passed`), and the status of a case is `judged` (was `passed`). The audits are unchanged. The CHECKs of `gb_experiment_runs` (training: `completed`, `failed`, `cancelled`) and `gb_experiment_case_results` (training: `judged`, `failed`) follow, so a database created by an older version rejects the new values.
+  - Why: `passed` meant two things for training. In the database a case was `passed` when it was judged, even with a score of 0, while the eval CLI (`evals/training/cmd`) counted a case as passing only with a score of 4 or 5. The word now belongs to the knowledge evals alone, where it is a verdict; for training, `passed_cases` of a run is the number of `judged` cases (a count, not a verdict) and the share of correct answers is `correct_rate`.
+  - Go: `TrainedModelEvalRunPassed` is `TrainedModelEvalRunCompleted` and `TrainedModelCasePassed` is `TrainedModelCaseJudged`. The statuses of the trained-model evals and audits are no longer described as `Experiment*` constants (those are the knowledge evals': `ExperimentRun.Status` and `ExperimentCaseResult.Status` list only them); `ExperimentFailed` and `ExperimentErrored` mean only what they mean for knowledge (a check did not hold; the case could not be run), and training has its own `...Failed` constants. The engine's statuses (`trainingeval.CaseJudged`, `CaseFailed`) are stored as they are (the conversion `judged` to `passed` in the eval path is gone), and a test checks that evals and audits agree on every status word. `trainingeval.PassScore` and `Progress.PassRate` are `CorrectScore` and `CorrectRate`: in the engine a score of 4 or 5 is "correct", not "passed".
+  - The 0.57.0 entry mentions a status constant `ExperimentCompleted`; it does not exist (the training statuses are the `TrainedModelEvalRun...` ones above).
+
+### Fixed
+- **The live view of a training data audit showed no results.** `admin_ui/src/eval_live.ts` (shared by evals and audits) only recognised the eval's `passed`, so an audit's judged cases were skipped in the summary (0 judged, no mean score, no correct share), its `completed` badge was drawn as "active" and the "Finished." message never appeared. The view now handles the one vocabulary above, and `training.ts` no longer needs a badge that accepts both words.
+
 ## [0.58.0] - 2026-10-19
 
 ### Added

@@ -22,7 +22,7 @@ The cases of the evals are in `evals/*.json` (embedded in the package, loaded by
 ./run_evals.sh -t training -model 3 [-v] [-e world_knowledge_base] [case-name ...]
 ```
 
-It needs `ANTHROPIC_API_KEY` (the judge) and a running sidecar (`SIDECAR_URL` or `-sidecar`; the model is loaded there). The runner (`evals/training/cmd`) asks the model each question, has the judge grade the answers with the same engine as below, and prints a verdict per case and the totals; nothing is stored. A case passes with a score of 4 or 5; the exit status is 1 if any case does not. Other options: `-db`, `-batch-size`, `-judge-model`, `-max-tokens`, `-temperature` (`go run ./evals/training/cmd -h`).
+It needs `ANTHROPIC_API_KEY` (the judge) and a running sidecar (`SIDECAR_URL` or `-sidecar`; the model is loaded there). The runner (`evals/training/cmd`) asks the model each question, has the judge grade the answers with the same engine as below, and prints a verdict per case and the totals; nothing is stored. A case is correct with a score of 4 or 5 (the engine's verdict, not a stored status: stored cases are `judged` or `failed`); the exit status is 1 if any case is not correct. Other options: `-db`, `-batch-size`, `-judge-model`, `-max-tokens`, `-temperature` (`go run ./evals/training/cmd -h`).
 
 ## How it works
 

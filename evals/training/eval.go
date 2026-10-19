@@ -118,8 +118,8 @@ func (p Progress) MeanScore() float64 {
 	return float64(p.ScoreSum) / float64(p.Judged)
 }
 
-// PassRate is the share of the judged examples that are correct (0..1), 0 if there are none.
-func (p Progress) PassRate() float64 {
+// CorrectRate is the share of the judged examples that are correct (0..1), 0 if there are none.
+func (p Progress) CorrectRate() float64 {
 	if p.Judged == 0 {
 		return 0
 	}

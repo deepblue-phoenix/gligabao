@@ -79,9 +79,9 @@ func SaveTrainedModelEvalRunBatch(ctx context.Context, d *sql.DB, e model.Traine
 	}
 	now := FormatTime(Now())
 	for _, it := range cases {
-		status := model.ExperimentPassed
-		if it.Status != model.TrainedModelCasePassed {
-			status = model.ExperimentFailed
+		status := model.TrainedModelCaseJudged
+		if it.Status != model.TrainedModelCaseJudged {
+			status = model.TrainedModelCaseFailed
 		}
 		name := strconv.Itoa(it.Idx)
 		res, err := tx.ExecContext(ctx, `

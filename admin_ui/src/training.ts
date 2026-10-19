@@ -643,9 +643,9 @@ async function loadRuns(k: RunKind, modelID: number): Promise<void> {
   }
 }
 
-// Evals end "passed", audits "completed".
+// Evals and audits end "completed" (the same statuses).
 function evalBadge(status: string): HTMLElement {
-  const cls = status === "passed" || status === "completed" ? "badge-ok" : status === "failed" ? "badge-error" : status === "cancelled" ? "badge-unknown" : "badge-active";
+  const cls = status === "completed" ? "badge-ok" : status === "failed" ? "badge-error" : status === "cancelled" ? "badge-unknown" : "badge-active";
   return node("span", `badge ${cls}`, status);
 }
 

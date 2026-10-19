@@ -5,7 +5,7 @@
 // Closing the dialog leaves the run going.
 
 export interface EvalRun {
-  id: number; trained_model_id: number; status: "running" | "passed" | "failed" | "cancelled"; dataset: string; dataset_sha256: string;
+  id: number; trained_model_id: number; status: "running" | "completed" | "failed" | "cancelled"; dataset: string; dataset_sha256: string;
   params: { batch_size?: number; max_tokens?: number; temperature?: number; limit?: number };
   judge_model: string; num_examples: number; num_answered: number; num_judged: number; num_failed: number; num_correct: number;
   num_partial: number; num_incorrect: number; score_sum: number; num_batches: number; judge_calls: number; judge_input_tokens: number;
@@ -14,7 +14,7 @@ export interface EvalRun {
 export interface EvalCase {
   idx: number; batch: number; instruction: string; input: string; reference: string; response: string;
   // "answered": the model answered and the judge has not scored it yet (only in the live feed)
-  status: "answered" | "passed" | "failed";
+  status: "answered" | "judged" | "failed";
   error: string; score: number | null; reason: string; input_tokens: number; output_tokens: number; duration_ms: number;
 }
 // The two kinds of run of a trained model: a training data audit (URL segment "audits") and an eval ("evals"). The runs of both
@@ -76,7 +76,7 @@ function reset(): void {
 }
 
 function statusBadge(status: string): HTMLElement {
-  const cls = status === "passed" ? "badge-ok" : status === "failed" ? "badge-error" : status === "cancelled" ? "badge-unknown" : "badge-active";
+  const cls = status === "completed" ? "badge-ok" : status === "failed" ? "badge-error" : status === "cancelled" ? "badge-unknown" : "badge-active";
   return node("span", `badge ${cls}`, status);
 }
 
@@ -145,7 +145,7 @@ function drawSummary(): void {
   for (const i of cases.values()) {
     if (i.status === "failed") failed++;
     else { answered++; ms += i.duration_ms; }
-    if (i.status !== "passed" || i.score === null) continue;
+    if (i.status !== "judged" || i.score === null) continue;
     judged++;
     scoreSum += i.score;
     if (i.score >= 4) good++; else if (i.score >= 2) mid++; else bad++;
@@ -241,7 +241,7 @@ export function watchEval(kind: RunKind, id: number, title: string, cb?: () => v
       cards.get(i.idx)?.replaceWith(card);
       cards.set(i.idx, card);
     }
-    conn.textContent = e.run?.status === "passed" ? "Finished." : `Ended (${e.run?.status ?? "unknown"}).`;
+    conn.textContent = e.run?.status === "completed" ? "Finished." : `Ended (${e.run?.status ?? "unknown"}).`;
     stop();
     queueSummary();
     onChange?.();

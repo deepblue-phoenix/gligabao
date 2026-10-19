@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_runs (
 	CHECK (type <> 'knowledge' OR experiment_id IS NOT NULL),
 	CHECK (status = 'running'
 		OR (type = 'knowledge' AND status IN ('passed', 'failed'))
-		OR (type = 'training' AND status IN ('passed', 'failed', 'cancelled'))),
+		OR (type = 'training' AND status IN ('completed', 'failed', 'cancelled'))),
 	FOREIGN KEY (experiment_id, type) REFERENCES gb_experiments(id, type) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_runs(experiment_id);
@@ -218,7 +218,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_case_results (
 	started_at  TIMESTAMPTZ NOT NULL,
 	finished_at TIMESTAMPTZ,
 	UNIQUE (id, type),
-	CHECK ((type = 'knowledge' AND status IN ('passed', 'failed', 'error')) OR (type = 'training' AND status IN ('passed', 'failed'))),
+	CHECK ((type = 'knowledge' AND status IN ('passed', 'failed', 'error')) OR (type = 'training' AND status IN ('judged', 'failed'))),
 	FOREIGN KEY (run_id, type) REFERENCES gb_experiment_runs(id, type) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_case_results_run ON gb_experiment_case_results(run_id);

@@ -32,6 +32,7 @@ Reading the result: a mean score near 5 means the model reproduces its training 
 | Tables | `gb_training_audit_runs`, `gb_training_audit_cases` | the `training` rows of the universal eval tables, `gb_training_eval_run_meta`, `gb_training_case_meta` |
 | Experiments | none | training experiments |
 | Judge calls in `gb_inferences` | `training_audit_judge` | `eval_judge` |
+| Statuses | a run is `running`, then `completed`, `failed` or `cancelled`; a case is `judged` or `failed` | the same words |
 
 Both reuse the same engine (`trainingeval.Run`: ask the model one question at a time, judge in batches) and the same admin UI components (the live view, the answers table). The server's eval endpoint still has the scheme `finetune_dataset` (the model's own dataset, which is what the audit does now); it stays until evals have cases of their own.
 

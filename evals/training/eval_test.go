@@ -98,8 +98,8 @@ func TestRunBatchesJudgeCalls(t *testing.T) {
 	if p.Total != 12 || p.Answered != 12 || p.Judged != 12 || p.Failed != 0 || p.Correct != 10 || p.Incorrect != 2 || p.Partial != 0 {
 		t.Fatalf("progress: %+v", p)
 	}
-	if p.ScoreSum != 50 || p.MeanScore() < 4.16 || p.MeanScore() > 4.17 || p.PassRate() < 0.83 || p.PassRate() > 0.84 {
-		t.Fatalf("score: %+v mean %v pass %v", p, p.MeanScore(), p.PassRate())
+	if p.ScoreSum != 50 || p.MeanScore() < 4.16 || p.MeanScore() > 4.17 || p.CorrectRate() < 0.83 || p.CorrectRate() > 0.84 {
+		t.Fatalf("score: %+v mean %v correct %v", p, p.MeanScore(), p.CorrectRate())
 	}
 	if p.JudgeCalls != 3 || p.JudgeModel != "judge-1" || p.JudgeInputTokens != 300 || p.JudgeCostUSD < 0.029 || p.JudgeCostUSD > 0.031 || p.Batches != 3 {
 		t.Fatalf("judge usage: %+v", p)

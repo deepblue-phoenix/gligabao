@@ -55,10 +55,10 @@ type (
 // Statuses of a TrainedModelEvalRun and of its cases.
 const (
 	TrainedModelEvalRunRunning   = model.TrainedModelEvalRunRunning
-	TrainedModelEvalRunPassed    = model.TrainedModelEvalRunPassed
+	TrainedModelEvalRunCompleted = model.TrainedModelEvalRunCompleted
 	TrainedModelEvalRunFailed    = model.TrainedModelEvalRunFailed
 	TrainedModelEvalRunCancelled = model.TrainedModelEvalRunCancelled
-	TrainedModelCasePassed       = model.TrainedModelCasePassed
+	TrainedModelCaseJudged       = model.TrainedModelCaseJudged
 	TrainedModelCaseFailed       = model.TrainedModelCaseFailed
 	TrainedModelCaseAnswered     = model.TrainedModelCaseAnswered
 )
