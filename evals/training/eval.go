@@ -14,10 +14,10 @@ const (
 	MaxBatchSize     = 25
 )
 
-// Statuses of an Item.
+// Statuses of a CaseResult.
 const (
-	ItemJudged = "judged" // the model answered and the judge scored the answer
-	ItemFailed = "failed" // the model or the judge failed: Error says why
+	CaseJudged = "judged" // the model answered and the judge scored the answer
+	CaseFailed = "failed" // the model or the judge failed: Error says why
 )
 
 const (
@@ -46,11 +46,11 @@ type Config struct {
 	BatchSize int
 	// JudgeModel is the judge's model; empty uses the LLM's default.
 	JudgeModel string
-	// OnAnswer, if set, is called with each item as soon as the model has answered its question (or failed to), before the
-	// batch is judged: the item has no Score yet, and Status is ItemFailed if the model failed, "" otherwise. It lets a
+	// OnAnswer, if set, is called with each case as soon as the model has answered its question (or failed to), before the
+	// batch is judged: the case has no Score yet, and Status is CaseFailed if the model failed, "" otherwise. It lets a
 	// caller show the model's behaviour live, ahead of the verdicts that Sink gets per batch. It runs on the run's
 	// goroutine, so it must not block for long.
-	OnAnswer func(Item)
+	OnAnswer func(CaseResult)
 }
 
 // Normalize fills in the defaults and checks the limits.
@@ -65,8 +65,8 @@ func (c Config) Normalize() (Config, error) {
 	return c, nil
 }
 
-// Item is the outcome for one example.
-type Item struct {
+// CaseResult is the outcome for one example.
+type CaseResult struct {
 	// Idx is the example's position in the dataset's examples that the run was given (0-based), Batch the judge batch
 	// it was in (1-based).
 	Idx, Batch  int
@@ -77,7 +77,7 @@ type Item struct {
 	Response  string
 	Status    string
 	Error     string
-	// Score (MinScore..MaxScore) and Reason are the judge's; nil / "" unless Status is ItemJudged.
+	// Score (MinScore..MaxScore) and Reason are the judge's; nil / "" unless Status is CaseJudged.
 	Score  *int
 	Reason string
 	// InputTokens, OutputTokens and DurationMS are the model's: the token counts it reported and how long it took.
@@ -126,13 +126,13 @@ func (p Progress) PassRate() float64 {
 	return float64(p.Correct) / float64(p.Judged)
 }
 
-// Sink receives the items of every finished batch with the progress after it. An error from it stops the run.
-type Sink func(ctx context.Context, items []Item, p Progress) error
+// Sink receives the cases of every finished batch with the progress after it. An error from it stops the run.
+type Sink func(ctx context.Context, cases []CaseResult, p Progress) error
 
 // Run puts the examples to the model and has the judge grade the answers. The examples go in batches of cfg.BatchSize:
 // the model answers the questions of a batch (one at a time: parallel calls can start more GPU containers that each load the model), then ONE call to the judge grades all of them,
 // so n examples cost about n/BatchSize judge calls. Each finished batch is handed to sink. A failure of one example (the
-// model errors, the judge gives no verdict) marks that item failed and the run goes on; a run that only gets failures
+// model errors, the judge gives no verdict) marks that case failed and the run goes on; a run that only gets failures
 // stops with an error. When ctx ends the run stops with its error, without reporting the batch it was in. The Progress
 // reached is returned along with any error.
 func Run(ctx context.Context, cfg Config, examples []Example, gen GenerateFunc, judge LLM, sink Sink) (Progress, error) {
@@ -147,32 +147,32 @@ func Run(ctx context.Context, cfg Config, examples []Example, gen GenerateFunc, 
 			return p, err
 		}
 		end := min(start+cfg.BatchSize, len(examples))
-		items := answerBatch(ctx, examples[start:end], start, batchNo, gen, cfg.OnAnswer)
+		cases := answerBatch(ctx, examples[start:end], start, batchNo, gen, cfg.OnAnswer)
 		if err := ctx.Err(); err != nil {
 			return p, err
 		}
 		answered := 0
-		for _, it := range items {
-			if it.Status != ItemFailed {
+		for _, it := range cases {
+			if it.Status != CaseFailed {
 				answered++
 			}
 		}
 		p.Answered += answered
-		judgeErr := judgeBatch(ctx, cfg, judge, items, &p)
+		judgeErr := judgeBatch(ctx, cfg, judge, cases, &p)
 		if err := ctx.Err(); err != nil {
 			p.Answered -= answered // the batch is not reported
 			return p, err
 		}
 		p.Batches++
 		var lastErr string
-		for i := range items {
-			it := &items[i]
-			if it.Status == ItemFailed {
+		for i := range cases {
+			it := &cases[i]
+			if it.Status == CaseFailed {
 				p.Failed++
 				lastErr = it.Error
 				continue
 			}
-			it.Status = ItemJudged
+			it.Status = CaseJudged
 			p.Judged++
 			p.ScoreSum += *it.Score
 			switch VerdictOf(*it.Score) {
@@ -184,7 +184,7 @@ func Run(ctx context.Context, cfg Config, examples []Example, gen GenerateFunc, 
 				p.Incorrect++
 			}
 		}
-		if err := sink(ctx, items, p); err != nil {
+		if err := sink(ctx, cases, p); err != nil {
 			return p, err
 		}
 
@@ -207,21 +207,21 @@ func Run(ctx context.Context, cfg Config, examples []Example, gen GenerateFunc, 
 }
 
 // answerBatch asks the model the questions of examples (the first one is example number first), one after the other. An
-// item whose question failed has Status ItemFailed. When ctx ends, the questions not asked yet fail with its error.
-func answerBatch(ctx context.Context, examples []Example, first, batchNo int, gen GenerateFunc, onAnswer func(Item)) []Item {
-	items := make([]Item, len(examples))
+// case whose question failed has Status CaseFailed. When ctx ends, the questions not asked yet fail with its error.
+func answerBatch(ctx context.Context, examples []Example, first, batchNo int, gen GenerateFunc, onAnswer func(CaseResult)) []CaseResult {
+	cases := make([]CaseResult, len(examples))
 	for i, ex := range examples {
-		it := &items[i]
-		*it = Item{Idx: first + i, Batch: batchNo, Instruction: ex.Instruction, Input: ex.Input, Reference: ex.Output}
+		it := &cases[i]
+		*it = CaseResult{Idx: first + i, Batch: batchNo, Instruction: ex.Instruction, Input: ex.Input, Reference: ex.Output}
 		if err := ctx.Err(); err != nil {
-			it.Status, it.Error = ItemFailed, "model: "+err.Error()
+			it.Status, it.Error = CaseFailed, "model: "+err.Error()
 			continue
 		}
 		t0 := time.Now()
 		g, err := gen(ctx, ex.Prompt())
 		it.DurationMS = time.Since(t0).Milliseconds()
 		if err != nil {
-			it.Status, it.Error = ItemFailed, "model: "+err.Error()
+			it.Status, it.Error = CaseFailed, "model: "+err.Error()
 		} else {
 			it.Response, it.InputTokens, it.OutputTokens = g.Response, g.InputTokens, g.OutputTokens
 		}
@@ -229,26 +229,26 @@ func answerBatch(ctx context.Context, examples []Example, first, batchNo int, ge
 			onAnswer(*it)
 		}
 	}
-	return items
+	return cases
 }
 
-// judgeBatch grades the answered items of a batch with one call to the judge (a second one for the items the first call
+// judgeBatch grades the answered cases of a batch with one call to the judge (a second one for the cases the first call
 // left without a verdict), filling in their Score and Reason; the ones it cannot grade become failed. The judge's usage is
-// added to p. It returns the last error of the judge if some item could not be graded because of it, nil otherwise.
-func judgeBatch(ctx context.Context, cfg Config, judge LLM, items []Item, p *Progress) error {
-	var pending []int // indices into items
-	for i := range items {
-		if items[i].Status != ItemFailed {
+// added to p. It returns the last error of the judge if some case could not be graded because of it, nil otherwise.
+func judgeBatch(ctx context.Context, cfg Config, judge LLM, cases []CaseResult, p *Progress) error {
+	var pending []int // indices into cases
+	for i := range cases {
+		if cases[i].Status != CaseFailed {
 			pending = append(pending, i)
 		}
 	}
 	var lastErr error
 	for attempt := 0; attempt < judgeAttempts && len(pending) > 0 && ctx.Err() == nil; attempt++ {
-		send := make([]judgeItem, len(pending))
+		send := make([]judgeCase, len(pending))
 		for k, i := range pending {
-			send[k] = judgeItem{ID: k + 1, Question: items[i].Instruction, Reference: items[i].Reference, Answer: items[i].Response}
-			if items[i].Input != "" {
-				send[k].Question += "\n\n" + items[i].Input
+			send[k] = judgeCase{ID: k + 1, Question: cases[i].Instruction, Reference: cases[i].Reference, Answer: cases[i].Response}
+			if cases[i].Input != "" {
+				send[k].Question += "\n\n" + cases[i].Input
 			}
 		}
 		verdicts, resp, err := grade(ctx, judge, send, cfg.JudgeModel)
@@ -266,7 +266,7 @@ func judgeBatch(ctx context.Context, cfg Config, judge LLM, items []Item, p *Pro
 		for k, i := range pending {
 			if v, ok := verdicts[k+1]; ok {
 				score := v.Score
-				items[i].Score, items[i].Reason = &score, v.Reason
+				cases[i].Score, cases[i].Reason = &score, v.Reason
 			} else {
 				left = append(left, i)
 			}
@@ -277,16 +277,16 @@ func judgeBatch(ctx context.Context, cfg Config, judge LLM, items []Item, p *Pro
 		return ctx.Err()
 	}
 	for _, i := range pending {
-		items[i].Status = ItemFailed
+		cases[i].Status = CaseFailed
 		switch {
 		case lastErr != nil:
-			items[i].Error = "judge: " + lastErr.Error()
+			cases[i].Error = "judge: " + lastErr.Error()
 		default:
-			items[i].Error = "judge: no verdict returned for this item"
+			cases[i].Error = "judge: no verdict returned for this case"
 		}
 	}
 	if len(pending) > 0 && lastErr == nil {
-		lastErr = errors.New("the judge returned no verdict for some items")
+		lastErr = errors.New("the judge returned no verdict for some cases")
 	}
 	if len(pending) == 0 {
 		return nil

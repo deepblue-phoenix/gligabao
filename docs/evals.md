@@ -1,8 +1,8 @@
 # Evals and ATIF trajectories
 
-Evals are end-to-end checks that run `remember` and `recall` against the real LLM and verify the stored temporal facts and the answer. To let an eval look inside a run, remember and recall can record themselves as an [ATIF](https://github.com/laude-institute/harbor) (Agent Trajectory Interchange Format) trajectory: the ordered list of everything the call did, with the LLM's tokens and cost per step.
+Evals are end-to-end checks that run `remember` and `recall` against the real LLM and verify the stored temporal facts and the answer. Each individual check is an **eval case** (an input, here some texts to remember and a question, plus what is expected and metadata), and the cases are grouped into **eval suites**. To let a case look inside a run, remember and recall can record themselves as an [ATIF](https://github.com/laude-institute/harbor) (Agent Trajectory Interchange Format) trajectory: the ordered list of everything the call did, with the LLM's tokens and cost per step.
 
-Trajectories are generated **only for eval calls**. The regular endpoints and regular Go calls never build, store or return them.
+Trajectories are generated **only for eval calls** (the calls the eval cases make). The regular endpoints and regular Go calls never build, store or return them.
 
 For the suite format and the runner's usage see [`evals/knowledge/README.md`](../evals/knowledge/README.md). This page is about the knowledge-extraction evals; the other eval system, which judges trained models with an LLM, is in [training/EVALS.md](training/EVALS.md) (the two are described together in [`evals/README.md`](../evals/README.md)).
 
@@ -136,7 +136,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 
 ### Models
 
-An eval can vary the model of each LLM stage of `remember` (`extract_graph`, `summarize_chunk`, `resolve_edges`, `web_search`, `extract_image`; see [remember.md](remember.md#choosing-the-model-of-each-stage)), to compare models stage by stage. The runner passes them as `models` in every `remember` request of a case, from two places that are combined stage by stage:
+An eval case can vary the model of each LLM stage of `remember` (`extract_graph`, `summarize_chunk`, `resolve_edges`, `web_search`, `extract_image`; see [remember.md](remember.md#choosing-the-model-of-each-stage)), to compare models stage by stage. The runner passes them as `models` in every `remember` request of a case, from two places that are combined stage by stage:
 
 1. `-models extract_graph=<model>,resolve_edges=<model>` on the command line: the defaults of the whole run (and recorded in the experiment run's `params.models`);
 2. `"models": {"extract_graph": "<model>"}` in a case of a suite: that case only; a stage named here wins over `-models`.
@@ -145,10 +145,10 @@ A stage named by neither uses the default model. The recall's LLM call is not af
 
 ### Reasoning levels
 
-An eval can also vary the reasoning (thinking) level of each LLM stage, to see how it affects the results (see [remember.md](remember.md#reasoning)). The stages are `extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series` and `extract_image` for `remember`, and `recall` for the LLM call that answers the question. The levels come from two places that are combined stage by stage:
+An eval case can also vary the reasoning (thinking) level of each LLM stage, to see how it affects the results (see [remember.md](remember.md#reasoning)). The stages are `extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series` and `extract_image` for `remember`, and `recall` for the LLM call that answers the question. The levels come from two places that are combined stage by stage:
 
 1. `-reasoning extract_graph=low,recall=medium` on the command line: the defaults of the whole run (recorded in the experiment run's `params.reasoning`);
-2. `"reasoning": {"extract_graph": "low", "recall": "medium"}` in a case of a suite: that case only; a stage named here wins over `-reasoning`, as for models (an eval controls its own parameters).
+2. `"reasoning": {"extract_graph": "low", "recall": "medium"}` in a case of a suite: that case only; a stage named here wins over `-reasoning`, as for models (a case controls its own parameters).
 
 The runner sends the `remember` stages as `reasoning` in every `remember` request of the case and `recall` as `reasoning` of its recall request. A stage named by neither runs with the server's default, which is `none` (no thinking). **Every case of the suites sets all of them explicitly to `none`**, so a run never depends on that default and is the baseline to compare against (a test checks it). So with the shipped suites `-reasoning` changes nothing until the stage is removed from the cases (or the cases are edited, e.g. a copy of the suites passed with `-suites`): the level a comparison varies is the one the case sets.
 
@@ -156,7 +156,7 @@ Each LLM call is a [inference](inferences.md) with the level it ran with, its to
 
 #### Using it: precision per stage, and how models behave
 
-Because each stage has its own model, an eval can answer two different questions.
+Because each stage has its own model, an eval run can answer two different questions.
 
 **How precise is a model at one stage?** Change one stage and hold the rest, so any difference in the results comes from that stage alone. Each setting is a run of the same experiment:
 

@@ -472,7 +472,7 @@ code { font-size: 0.8rem; color: $muted; }
   border-radius: 4px;
   pointer-events: none;
 }
-.eval-list { list-style: none; padding: 0; margin: 0.4rem 0; li { margin: 0.2rem 0; } }
+.case-list { list-style: none; padding: 0; margin: 0.4rem 0; li { margin: 0.2rem 0; } }
 
 tr.removing {
   opacity: 0;
@@ -726,7 +726,7 @@ tr.removing {
   .infer-response { background: $surface; cursor: pointer;
     &.collapsed { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; } }
   .infer-error { color: $err; } }
-.eval-item { progress { width: 100%; height: 0.5rem; margin: 0.4rem 0 0.2rem; accent-color: $accent; }
+.eval-card { progress { width: 100%; height: 0.5rem; margin: 0.4rem 0 0.2rem; accent-color: $accent; }
   .eval-summary { font-size: 0.85rem; font-weight: 600; }
   .eval-answers { margin-top: 0.4rem; summary { cursor: pointer; color: $muted; font-size: 0.85rem; margin-bottom: 0.4rem; } }
   .eval-table { width: 100%; td.eval-text { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 16rem; vertical-align: top; font-size: 0.8rem; }

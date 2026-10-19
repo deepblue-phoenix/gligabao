@@ -49,14 +49,14 @@ func (j *fakeJudge) Complete(_ context.Context, req ai.Request) (*ai.Response, e
 		return nil, errors.New("api down")
 	}
 	body := req.Messages[0].Content[strings.Index(req.Messages[0].Content, "["):]
-	var items []judgeItem
-	if err := json.Unmarshal([]byte(body), &items); err != nil {
+	var cases []judgeCase
+	if err := json.Unmarshal([]byte(body), &cases); err != nil {
 		return nil, err
 	}
-	j.sizes = append(j.sizes, len(items))
+	j.sizes = append(j.sizes, len(cases))
 	j.reqs = append(j.reqs, req)
 	var vs []map[string]any
-	for _, it := range items {
+	for _, it := range cases {
 		score := 0
 		if it.Answer == it.Reference {
 			score = 5
@@ -72,13 +72,13 @@ func (j *fakeJudge) Complete(_ context.Context, req ai.Request) (*ai.Response, e
 }
 
 type collected struct {
-	items []Item
+	cases []CaseResult
 	last  Progress
 	calls int
 }
 
-func (c *collected) sink(_ context.Context, items []Item, p Progress) error {
-	c.items = append(c.items, items...)
+func (c *collected) sink(_ context.Context, cases []CaseResult, p Progress) error {
+	c.cases = append(c.cases, cases...)
 	c.last = p
 	c.calls++
 	return nil
@@ -104,17 +104,17 @@ func TestRunBatchesJudgeCalls(t *testing.T) {
 	if p.JudgeCalls != 3 || p.JudgeModel != "judge-1" || p.JudgeInputTokens != 300 || p.JudgeCostUSD < 0.029 || p.JudgeCostUSD > 0.031 || p.Batches != 3 {
 		t.Fatalf("judge usage: %+v", p)
 	}
-	if len(c.items) != 12 || c.last != p {
-		t.Fatalf("sink: %d items, last %+v", len(c.items), c.last)
+	if len(c.cases) != 12 || c.last != p {
+		t.Fatalf("sink: %d cases, last %+v", len(c.cases), c.last)
 	}
-	for i, it := range c.items {
-		if it.Idx != i || it.Batch != i/5+1 || it.Status != ItemJudged || it.Score == nil || it.Instruction != fmt.Sprintf("q%d", i) ||
+	for i, it := range c.cases {
+		if it.Idx != i || it.Batch != i/5+1 || it.Status != CaseJudged || it.Score == nil || it.Instruction != fmt.Sprintf("q%d", i) ||
 			it.Reference != fmt.Sprintf("a%d", i) || it.InputTokens != 3 {
-			t.Fatalf("item %d: %+v", i, it)
+			t.Fatalf("case %d: %+v", i, it)
 		}
 	}
-	if *c.items[3].Score != 0 || c.items[3].Response != "nope" || *c.items[4].Score != 5 {
-		t.Fatalf("scores: %+v %+v", c.items[3], c.items[4])
+	if *c.cases[3].Score != 0 || c.cases[3].Response != "nope" || *c.cases[4].Score != 5 {
+		t.Fatalf("scores: %+v %+v", c.cases[3], c.cases[4])
 	}
 }
 
@@ -149,13 +149,13 @@ func TestRunItemFailuresDoNotStopTheRun(t *testing.T) {
 	if j.sizes[0] != 2 { // the failed one is not sent to the judge
 		t.Fatalf("judge batch sizes %v", j.sizes)
 	}
-	if it := c.items[1]; it.Status != ItemFailed || it.Score != nil || !strings.Contains(it.Error, "boom") {
-		t.Fatalf("failed item: %+v", it)
+	if it := c.cases[1]; it.Status != CaseFailed || it.Score != nil || !strings.Contains(it.Error, "boom") {
+		t.Fatalf("failed case: %+v", it)
 	}
 }
 
 func TestRunRetriesItemsTheJudgeSkipped(t *testing.T) {
-	// The first reply leaves out item 2 and has a bad score for item 3; the retry (of those two) answers.
+	// The first reply leaves out case 2 and has a bad score for case 3; the retry (of those two) answers.
 	j := &fakeJudge{mangle: func(call int, vs []map[string]any) string {
 		if call == 1 {
 			b, _ := json.Marshal([]map[string]any{vs[0], {"id": 3, "score": 9, "reason": "x"}})
@@ -178,8 +178,8 @@ func TestRunUnjudgeableItemsFail(t *testing.T) {
 	if err != nil || p.Failed != 2 || p.Judged != 0 || p.JudgeCalls != 2 {
 		t.Fatalf("%+v %v", p, err)
 	}
-	if !strings.Contains(c.items[0].Error, "judge") {
-		t.Fatalf("error: %q", c.items[0].Error)
+	if !strings.Contains(c.cases[0].Error, "judge") {
+		t.Fatalf("error: %q", c.cases[0].Error)
 	}
 }
 
@@ -205,8 +205,8 @@ func TestRunGivesUpWhenTheModelIsDown(t *testing.T) {
 func TestRunCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var c collected
-	sink := func(ctx context.Context, items []Item, p Progress) error {
-		err := c.sink(ctx, items, p)
+	sink := func(ctx context.Context, cases []CaseResult, p Progress) error {
+		err := c.sink(ctx, cases, p)
 		cancel() // after the first batch
 		return err
 	}
@@ -255,7 +255,7 @@ func TestConfigNormalize(t *testing.T) {
 
 func TestJudgeRequest(t *testing.T) {
 	long := strings.Repeat("é", maxJudgeText) // 2 bytes each: the cut must land on a character boundary
-	req, err := judgeRequest([]judgeItem{{ID: 1, Question: "q", Reference: long, Answer: "a"}}, "mm")
+	req, err := judgeRequest([]judgeCase{{ID: 1, Question: "q", Reference: long, Answer: "a"}}, "mm")
 	if err != nil || req.Model != "mm" || req.MaxTokens < 300 || req.System == "" {
 		t.Fatalf("%+v %v", req, err)
 	}
@@ -263,9 +263,9 @@ func TestJudgeRequest(t *testing.T) {
 	if !strings.Contains(content, "…[cut]") {
 		t.Fatal("the long text was not cut")
 	}
-	var items []judgeItem
-	if err := json.Unmarshal([]byte(content[strings.Index(content, "["):]), &items); err != nil || len(items) != 1 {
-		t.Fatalf("the items are not valid JSON: %v", err)
+	var cases []judgeCase
+	if err := json.Unmarshal([]byte(content[strings.Index(content, "["):]), &cases); err != nil || len(cases) != 1 {
+		t.Fatalf("the cases are not valid JSON: %v", err)
 	}
 }
 
@@ -292,15 +292,15 @@ func TestParseExamples(t *testing.T) {
 func TestOnAnswerGetsEachAnswerBeforeItsBatchIsJudged(t *testing.T) {
 	var c collected
 	var events []string
-	cfg := Config{BatchSize: 2, OnAnswer: func(it Item) {
+	cfg := Config{BatchSize: 2, OnAnswer: func(it CaseResult) {
 		events = append(events, fmt.Sprintf("answer %d %s", it.Idx, it.Response))
 		if it.Score != nil {
-			t.Errorf("item %d has a score before the judge ran", it.Idx)
+			t.Errorf("case %d has a score before the judge ran", it.Idx)
 		}
 	}}
-	sink := func(ctx context.Context, items []Item, p Progress) error {
-		events = append(events, fmt.Sprintf("batch of %d", len(items)))
-		return c.sink(ctx, items, p)
+	sink := func(ctx context.Context, cases []CaseResult, p Progress) error {
+		events = append(events, fmt.Sprintf("batch of %d", len(cases)))
+		return c.sink(ctx, cases, p)
 	}
 	gen := func(ctx context.Context, prompt string) (Generation, error) {
 		if prompt == "q1" {

@@ -94,7 +94,7 @@ func testWebSearches(t *testing.T, d *sql.DB) {
 		return w.Code
 	}
 
-	// The eval that holds both calls.
+	// The case that holds both calls.
 	tr, err := experiments.Start(ctx, d, experiments.Options{Name: "web"})
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +106,7 @@ func testWebSearches(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 
-	// Per result (eval), from the trajectory.
+	// Per result (case), from the trajectory.
 	var perResult struct {
 		Results []struct {
 			Totals   admin.WebSearchTotals `json:"totals"`

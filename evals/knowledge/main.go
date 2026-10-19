@@ -17,7 +17,7 @@
 // since the experiments reference them).
 //
 // Every invocation is a run of an experiment (-experiment, default "default"), persisted in the eval database
-// together with the evals (suite + case) it executed, their results and the IDs of their ATIF trajectories; see
+// together with the cases (suite + case name) it executed, their results and the IDs of their ATIF trajectories; see
 // internal/experiments.
 package main
 
@@ -80,7 +80,7 @@ const evalUser = "eval"
 
 //---------------------------------------------------------------------------------------------
 
-// Case is one eval: remember some texts in order, then ask a question about them.
+// Case is one eval case (an input and what is checked, plus metadata): remember some texts in order, then ask a question about them.
 type Case struct {
 	// Suite is the suite (file name without ".json") the case was loaded from; it is not part of the JSON.
 	Suite          string       `json:"-"`
@@ -319,7 +319,7 @@ func indent(s string) string {
 // next to the eval database.
 var atifDir string
 
-// Outcome is what one eval case produced.
+// Outcome is what one case produced.
 type Outcome struct {
 	Answer   string
 	Problems []string // failed temporal-fact expectations
@@ -533,7 +533,7 @@ func run(c Case, runID int64, database *db.DB, llm memory_core.LLM, emb memory_c
 	}
 	ids, err := sourceArtifactIDs(context.Background(), database, dataset, cited)
 	if err != nil {
-		// Not worth failing the eval for: the recall itself worked.
+		// Not worth failing the case for: the recall itself worked.
 		fmt.Fprintf(os.Stderr, "warning: %s: collect the recall's source artifacts: %v\n", c.Name, err)
 	}
 	out.ArtifactIDs = append(out.ArtifactIDs, ids)
@@ -862,7 +862,7 @@ func splitReasoning(m map[string]string) (remember memory_core.Reasoning, recall
 }
 
 // mergeReasoning combines the runner's -reasoning with a case's reasoning levels, stage by stage (the case wins, like its
-// models: an eval controls its own parameters), validates them and splits them into what the remember requests and the
+// models: a case controls its own parameters), validates them and splits them into what the remember requests and the
 // recall request carry.
 func mergeReasoning(flag, caseLevels map[string]string) (remember memory_core.Reasoning, recall string, err error) {
 	merged := map[string]string{}

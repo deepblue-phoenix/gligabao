@@ -18,48 +18,53 @@ import (
 
 // Types shared with the backends (see package model).
 type (
-	Dataset               = model.Dataset
-	Model                 = model.Model
-	Inference             = model.Inference
-	InferenceStat         = model.InferenceStat
-	InferenceFilter       = model.InferenceFilter
-	InferenceGroup        = model.InferenceGroup
-	Ontology              = model.Ontology
-	Experiment            = model.Experiment
-	EvalRef               = model.EvalRef
-	ExperimentRun         = model.ExperimentRun
-	ExperimentResult      = model.ExperimentResult
-	ExperimentTrajectory  = model.ExperimentTrajectory
-	ExperimentEvalPoint   = model.ExperimentEvalPoint
-	ExperimentArtifact    = model.ExperimentArtifact
-	RememberRun           = model.RememberRun
-	RememberStage         = model.RememberStage
-	RememberStageDef      = model.RememberStageDef
-	RememberRunFilter     = model.RememberRunFilter
-	TrainingJobRun        = model.TrainingJobRun
-	TrainingJobRunUpdate  = model.TrainingJobRunUpdate
-	TrainingJobEvent      = model.TrainingJobEvent
-	TrainingDataset       = model.TrainingDataset
-	TrainedModel          = model.TrainedModel
-	TrainedModelFile      = model.TrainedModelFile
-	TrainedModelInference = model.TrainedModelInference
-	TrainedModelEval      = model.TrainedModelEval
-	TrainedModelEvalItem  = model.TrainedModelEvalItem
+	Dataset                = model.Dataset
+	Model                  = model.Model
+	Inference              = model.Inference
+	InferenceStat          = model.InferenceStat
+	InferenceFilter        = model.InferenceFilter
+	InferenceGroup         = model.InferenceGroup
+	Ontology               = model.Ontology
+	Experiment             = model.Experiment
+	CaseRef                = model.CaseRef
+	ExperimentRun          = model.ExperimentRun
+	ExperimentResult       = model.ExperimentResult
+	ExperimentTrajectory   = model.ExperimentTrajectory
+	ExperimentCasePoint    = model.ExperimentCasePoint
+	ExperimentArtifact     = model.ExperimentArtifact
+	RememberRun            = model.RememberRun
+	RememberStage          = model.RememberStage
+	RememberStageDef       = model.RememberStageDef
+	RememberRunFilter      = model.RememberRunFilter
+	TrainingJobRun         = model.TrainingJobRun
+	TrainingJobRunUpdate   = model.TrainingJobRunUpdate
+	TrainingJobEvent       = model.TrainingJobEvent
+	TrainingDataset        = model.TrainingDataset
+	TrainedModel           = model.TrainedModel
+	TrainedModelFile       = model.TrainedModelFile
+	TrainedModelInference  = model.TrainedModelInference
+	TrainedModelSuiteRun   = model.TrainedModelSuiteRun
+	TrainedModelCaseResult = model.TrainedModelCaseResult
 
 	TrainingExperiment      = model.TrainingExperiment
 	TrainingExperimentRun   = model.TrainingExperimentRun
 	TrainingExperimentModel = model.TrainingExperimentModel
 )
 
-// Statuses of a TrainedModelEval and of its items.
+// Statuses of a TrainedModelSuiteRun and of its cases.
 const (
-	TrainedModelEvalRunning      = model.TrainedModelEvalRunning
-	TrainedModelEvalCompleted    = model.TrainedModelEvalCompleted
-	TrainedModelEvalFailed       = model.TrainedModelEvalFailed
-	TrainedModelEvalCancelled    = model.TrainedModelEvalCancelled
-	TrainedModelEvalItemJudged   = model.TrainedModelEvalItemJudged
-	TrainedModelEvalItemFailed   = model.TrainedModelEvalItemFailed
-	TrainedModelEvalItemAnswered = model.TrainedModelEvalItemAnswered
+	TrainedModelSuiteRunRunning   = model.TrainedModelSuiteRunRunning
+	TrainedModelSuiteRunCompleted = model.TrainedModelSuiteRunCompleted
+	TrainedModelSuiteRunFailed    = model.TrainedModelSuiteRunFailed
+	TrainedModelSuiteRunCancelled = model.TrainedModelSuiteRunCancelled
+	TrainedModelCaseJudged        = model.TrainedModelCaseJudged
+	TrainedModelCaseFailed        = model.TrainedModelCaseFailed
+	TrainedModelCaseAnswered      = model.TrainedModelCaseAnswered
+)
+
+// Eval schemes of a TrainedModelSuiteRun (see model.TrainingSchemeFineTuneDataset).
+const (
+	TrainingSchemeFineTuneDataset = model.TrainingSchemeFineTuneDataset
 )
 
 // Statuses of a TrainedModelInference.

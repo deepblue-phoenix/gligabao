@@ -39,7 +39,7 @@ func scenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("Get missing: %v", err)
 	}
 
-	// Run 1: one passing eval (2 trajectories), one failing check, one error.
+	// Run 1: one passing case (2 trajectories), one failing check, one error.
 	tr, err := experiments.Start(ctx, d, experiments.Options{
 		Name: "base", Description: "baseline", Config: map[string]any{"model": "m"}, Params: map[string]any{"only": []string{"a"}},
 	})
@@ -73,7 +73,7 @@ func scenario(t *testing.T, d *sql.DB) {
 
 	run, err := tr.Finish(ctx)
 	check(err)
-	if run.Status != experiments.StatusFailed || run.TotalEvals != 3 || run.PassedEvals != 1 || run.FailedEvals != 2 ||
+	if run.Status != experiments.StatusFailed || run.TotalCases != 3 || run.PassedCases != 1 || run.FailedCases != 2 ||
 		run.FinishedAt == nil || run.CostUSD < 0.529 || run.CostUSD > 0.531 {
 		t.Fatalf("finished: %+v", run)
 	}
@@ -93,7 +93,7 @@ func scenario(t *testing.T, d *sql.DB) {
 	a, b, c := full.Results[0], full.Results[1], full.Results[2]
 	if a.Suite != "basic" || a.Name != "a" || a.Answer != "yes" || a.Status != experiments.StatusPassed || len(a.Problems) != 0 ||
 		a.StartedAt.After(a.FinishedAt) || len(a.Trajectories) != 2 {
-		t.Fatalf("eval a: %+v", a)
+		t.Fatalf("case a: %+v", a)
 	}
 	if got := a.Trajectories[0]; got.TrajectoryID != rem.TrajectoryID || got.Kind != "remember" || got.Steps != 2 ||
 		got.Path != "/tmp/atif/"+rem.TrajectoryID+".json" || got.ResultID != a.ID || got.CreatedAt.IsZero() {
@@ -103,21 +103,21 @@ func scenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("trajectory: %+v", got)
 	}
 	if b.Status != experiments.StatusFailed || !reflect.DeepEqual(b.Problems, []string{"x: no edge stored"}) || b.Trajectories[0].Path != "" {
-		t.Fatalf("eval b: %+v", b)
+		t.Fatalf("case b: %+v", b)
 	}
 	if c.Status != experiments.StatusErrored || c.Error != "boom" || len(c.Trajectories) != 0 {
-		t.Fatalf("eval c: %+v", c)
+		t.Fatalf("case c: %+v", c)
 	}
 
-	// The experiment knows which evals ran.
+	// The experiment knows which cases ran.
 	exp, err := experiments.Get(ctx, d, "base")
 	check(err)
-	want := []experiments.EvalRef{{Suite: "basic", Name: "a"}, {Suite: "basic", Name: "b"}, {Suite: "news", Name: "c"}}
-	if !reflect.DeepEqual(exp.Evals, want) {
-		t.Fatalf("experiment evals: %+v", exp.Evals)
+	want := []experiments.CaseRef{{Suite: "basic", Name: "a"}, {Suite: "basic", Name: "b"}, {Suite: "news", Name: "c"}}
+	if !reflect.DeepEqual(exp.Cases, want) {
+		t.Fatalf("experiment cases: %+v", exp.Cases)
 	}
 
-	// Run 2 of the same experiment: it is reused, the evals are not duplicated, and a passing run is passed.
+	// Run 2 of the same experiment: it is reused, the cases are not duplicated, and a passing run is passed.
 	tr2, err := experiments.Start(ctx, d, experiments.Options{Name: "base", Description: "ignored"})
 	check(err)
 	if tr2.Experiment.ID != exp.ID || tr2.Experiment.Description != "baseline" || tr2.Run.ID == run.ID {
@@ -127,11 +127,11 @@ func scenario(t *testing.T, d *sql.DB) {
 	check(err)
 	run2, err := tr2.Finish(ctx)
 	check(err)
-	if run2.Status != experiments.StatusPassed || run2.TotalEvals != 1 || run2.FailedEvals != 0 {
+	if run2.Status != experiments.StatusPassed || run2.TotalCases != 1 || run2.FailedCases != 0 {
 		t.Fatalf("run2: %+v", run2)
 	}
-	if exp, err = experiments.Get(ctx, d, "base"); err != nil || len(exp.Evals) != 3 {
-		t.Fatalf("experiment evals after run 2: %+v, %v", exp, err)
+	if exp, err = experiments.Get(ctx, d, "base"); err != nil || len(exp.Cases) != 3 {
+		t.Fatalf("experiment cases after run 2: %+v, %v", exp, err)
 	}
 	if runs, err := experiments.Runs(ctx, d, exp.ID); err != nil || len(runs) != 2 || runs[0].ID != run.ID || len(runs[0].Results) != 0 {
 		t.Fatalf("Runs: %+v, %v", runs, err)

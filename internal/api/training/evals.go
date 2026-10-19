@@ -1,9 +1,11 @@
 package training
 
-// Evals of trained models: the "eval" button of the admin UI. An eval asks a trained model the questions of its training
-// dataset and has the external LLM (the one used for knowledge ingestion) judge, a batch of question/answer pairs per LLM call,
-// how close the answers are to the dataset's. The logic is the eval subsystem evals/training; this file wires it to the
-// sidecar (the model), the LLM (the judge) and the database (relational.TrainedModelEval, which holds the progress and the
+// Evals of trained models: the "eval" button of the admin UI. An eval is a run of an eval suite against a trained model (a
+// "suite run", relational.TrainedModelSuiteRun): it asks the model the cases of the suite and has the external LLM (the one used
+// for knowledge ingestion) judge, a batch of case question/answer pairs per LLM call, how close the answers are to the expected
+// ones. The suite and its cases depend on the scheme; the only one for now is relational.TrainingSchemeFineTuneDataset, where the
+// suite is the model's own fine-tuning dataset and each example is a case. The logic is the eval subsystem evals/training; this file wires it to the
+// sidecar (the model), the LLM (the judge) and the database (relational.TrainedModelSuiteRun, which holds the progress and the
 // result), and runs it in the background: starting an eval answers at once and the eval is followed by reading its row.
 
 import (
@@ -80,7 +82,7 @@ type runningEval struct {
 func NewEvalManager(ctx context.Context, dbs []Database, sc Inferer, llm memory_core.LLM) *EvalManager {
 	m := &EvalManager{ctx: ctx, dbs: dbs, sc: sc, llm: llm, running: map[evalKey]*runningEval{}, streams: map[evalStreamKey]*evalStream{}}
 	for _, n := range dbs {
-		if k, err := relational.FailRunningTrainedModelEvals(ctx, n.DB, "interrupted: the server restarted while the eval ran"); err != nil {
+		if k, err := relational.FailRunningTrainedModelSuiteRuns(ctx, n.DB, "interrupted: the server restarted while the eval ran"); err != nil {
 			log.WithError(err).WithField("db", n.Name).Warn("training: could not mark interrupted evals as failed")
 		} else if k > 0 {
 			log.WithField("db", n.Name).Infof("training: %d eval(s) were interrupted by a restart and marked failed", k)
@@ -103,16 +105,18 @@ func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 
 // StartOf serves POST /v1/gb/training/models/{id}/evals[?db=<name>] with an optional JSON body {"limit": 0, "batch_size": 10,
 // "judge_model": "", "max_tokens": 1024, "temperature": 0.1}: it starts an eval of trained model {id}
-// on its training dataset (the questions are the dataset's instructions, the references its outputs) and answers 202 with the
-// eval (relational.TrainedModelEval, status "running"); the work goes on in the background (see GetOf, ListOf, CancelOf).
-//   - limit: ask only the first n questions (default: all of them)
+// and answers 202 with the eval (relational.TrainedModelSuiteRun, status "running"); the work goes on in the background (see
+// GetOf, ListOf, CancelOf).
+//   - scheme: how the suite is made (default and only value: "finetune_dataset", the model's own training dataset: the cases
+//     are its examples, the questions the dataset's instructions and the references its outputs)
+//   - limit: ask only the first n cases (default: all of them)
 //   - batch_size: question/answer pairs per judge call (default 10, at most 25)
 //   - judge_model: the LLM model that judges (default: the server's default model)
 //   - max_tokens, temperature: of the model's answers (default 1024 and 0.1)
 //   - experiment: make the eval a run of the training experiment of that name (created if needed, see experiments.go);
 //     experiment_description and experiment_config (an object) are stored when it is created
 //
-// 404 for an unknown model, 400 for a bad body or when the model's dataset cannot be read (none recorded, gone from the
+// 404 for an unknown model, 400 for a bad body (or an unknown scheme) or when the model's dataset cannot be read (none recorded, gone from the
 // training datasets directory, invalid), 409 when an eval of this model is running already, 503 without a sidecar or an LLM.
 func (m *EvalManager) StartOf() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -134,6 +138,7 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 			return
 		}
 		var in struct {
+			Scheme      string   `json:"scheme"`
 			Limit       int      `json:"limit"`
 			BatchSize   int      `json:"batch_size"`
 			JudgeModel  string   `json:"judge_model"`
@@ -152,6 +157,9 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 		switch {
 		case err != nil:
 			httputil.Error(w, http.StatusBadRequest, err.Error())
+			return
+		case in.Scheme != "" && in.Scheme != relational.TrainingSchemeFineTuneDataset:
+			httputil.Error(w, http.StatusBadRequest, "scheme must be \""+relational.TrainingSchemeFineTuneDataset+"\"")
 			return
 		case in.Limit < 0:
 			httputil.Error(w, http.StatusBadRequest, "limit must be 0 (all) or more")
@@ -214,8 +222,8 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 
 		pj, _ := json.Marshal(params)
 		dbCtx := context.WithoutCancel(r.Context())
-		evalID, err := relational.RecordTrainedModelEval(dbCtx, n.DB, relational.TrainedModelEval{
-			TrainedModelID: tm.ID, Dataset: dataset, DatasetSHA256: sum, Params: pj, JudgeModel: cfg.JudgeModel, NumExamples: len(examples)})
+		evalID, err := relational.RecordTrainedModelSuiteRun(dbCtx, n.DB, relational.TrainedModelSuiteRun{
+			TrainedModelID: tm.ID, Scheme: relational.TrainingSchemeFineTuneDataset, Dataset: dataset, DatasetSHA256: sum, Params: pj, JudgeModel: cfg.JudgeModel, NumExamples: len(examples)})
 		if err != nil {
 			release()
 			log.WithError(err).WithField("model_id", tm.ID).Error("training: recording the eval failed")
@@ -225,7 +233,7 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 		if name := strings.TrimSpace(in.Experiment); name != "" {
 			if err := joinExperiment(dbCtx, n.DB, name, in.ExperimentDescription, in.ExperimentConfig, evalID); err != nil {
 				release()
-				_ = relational.FinishTrainedModelEval(dbCtx, n.DB, evalID, relational.TrainedModelEvalFailed, "could not start")
+				_ = relational.FinishTrainedModelSuiteRun(dbCtx, n.DB, evalID, relational.TrainedModelSuiteRunFailed, "could not start")
 				log.WithError(err).WithField("experiment", name).Error("training: adding the eval to its experiment failed")
 				httputil.Error(w, http.StatusInternalServerError, "failed to add the eval to the experiment")
 				return
@@ -237,11 +245,11 @@ func (m *EvalManager) StartOf() http.HandlerFunc {
 		run.evalID = evalID
 		m.streams[skey] = stream
 		m.mu.Unlock()
-		ev, err := relational.GetTrainedModelEval(dbCtx, n.DB, evalID)
+		ev, err := relational.GetTrainedModelSuiteRun(dbCtx, n.DB, evalID)
 		if err != nil {
 			release()
 			m.dropStream(skey, stream)
-			_ = relational.FinishTrainedModelEval(dbCtx, n.DB, evalID, relational.TrainedModelEvalFailed, "could not start")
+			_ = relational.FinishTrainedModelSuiteRun(dbCtx, n.DB, evalID, relational.TrainedModelSuiteRunFailed, "could not start")
 			log.WithError(err).Error("training: read eval failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the eval")
 			return
@@ -286,10 +294,10 @@ func loadEvalDataset(n Database, tm *relational.TrainedModel) (name, sum string,
 // run is the eval's goroutine: it runs trainingeval.Run, storing every finished batch, and ends the eval's row.
 func (m *EvalManager) run(ctx context.Context, n Database, tm relational.TrainedModel, evalID int64, stream *evalStream, examples []trainingeval.Example, cfg trainingeval.Config, params EvalParams) {
 	dbCtx := context.WithoutCancel(ctx) // the writes must outlive a cancelled eval
-	logf := log.WithFields(log.Fields{"db": n.Name, "model_id": tm.ID, "eval_id": evalID})
+	logf := log.WithFields(log.Fields{"db": n.Name, "model_id": tm.ID, "suite_run_id": evalID})
 	logf.WithField("examples", len(examples)).Info("training: eval started")
 	finish := func(status, errText string) {
-		if err := relational.FinishTrainedModelEval(dbCtx, n.DB, evalID, status, errText); err != nil {
+		if err := relational.FinishTrainedModelSuiteRun(dbCtx, n.DB, evalID, status, errText); err != nil {
 			logf.WithError(err).Error("training: ending the eval failed")
 		}
 		logf.WithField("status", status).Info("training: eval ended")
@@ -298,7 +306,7 @@ func (m *EvalManager) run(ctx context.Context, n Database, tm relational.Trained
 	defer func() {
 		if r := recover(); r != nil {
 			logf.Errorf("training: eval panicked: %v", r)
-			finish(relational.TrainedModelEvalFailed, fmt.Sprintf("internal error: %v", r))
+			finish(relational.TrainedModelSuiteRunFailed, fmt.Sprintf("internal error: %v", r))
 		}
 	}()
 
@@ -317,35 +325,35 @@ func (m *EvalManager) run(ctx context.Context, n Database, tm relational.Trained
 		return trainingeval.Generation{Response: out.Response, InputTokens: out.InputTokens, OutputTokens: out.OutputTokens}, nil
 	}
 	judge := memory_core.WithRecording(m.llm, n.DB, CallEvalJudge)
-	sink := func(_ context.Context, items []trainingeval.Item, p trainingeval.Progress) error {
-		rows := make([]relational.TrainedModelEvalItem, len(items))
-		for i, it := range items {
-			rows[i] = evalItemRow(evalID, it)
+	sink := func(_ context.Context, cases []trainingeval.CaseResult, p trainingeval.Progress) error {
+		rows := make([]relational.TrainedModelCaseResult, len(cases))
+		for i, it := range cases {
+			rows[i] = caseResultRow(evalID, it)
 		}
-		e := relational.TrainedModelEval{ID: evalID, JudgeModel: p.JudgeModel, NumAnswered: p.Answered, NumJudged: p.Judged, NumFailed: p.Failed,
+		e := relational.TrainedModelSuiteRun{ID: evalID, JudgeModel: p.JudgeModel, NumAnswered: p.Answered, NumJudged: p.Judged, NumFailed: p.Failed,
 			NumCorrect: p.Correct, NumPartial: p.Partial, NumIncorrect: p.Incorrect, ScoreSum: p.ScoreSum, NumBatches: p.Batches,
 			JudgeCalls: p.JudgeCalls, JudgeInputTokens: p.JudgeInputTokens, JudgeOutputTokens: p.JudgeOutputTokens, JudgeCostUSD: p.JudgeCostUSD}
-		if err := relational.SaveTrainedModelEvalBatch(dbCtx, n.DB, e, rows); err != nil {
+		if err := relational.SaveTrainedModelSuiteRunBatch(dbCtx, n.DB, e, rows); err != nil {
 			return err
 		}
-		if full, err := relational.GetTrainedModelEval(dbCtx, n.DB, evalID); err == nil { // the whole row, for the live feed
+		if full, err := relational.GetTrainedModelSuiteRun(dbCtx, n.DB, evalID); err == nil { // the whole row, for the live feed
 			e = *full
 		}
 		stream.batch(e, rows)
 		return nil
 	}
-	cfg.OnAnswer = func(it trainingeval.Item) { stream.answer(evalItemRow(evalID, it)) }
+	cfg.OnAnswer = func(it trainingeval.CaseResult) { stream.answer(caseResultRow(evalID, it)) }
 	_, err := trainingeval.Run(memory_core.WithStage(ctx, StageEvalJudge), cfg, examples, gen, judge, sink)
 	switch {
 	case err == nil:
-		finish(relational.TrainedModelEvalCompleted, "")
+		finish(relational.TrainedModelSuiteRunCompleted, "")
 	case errors.Is(err, context.Canceled) && m.ctx.Err() != nil:
-		finish(relational.TrainedModelEvalFailed, "interrupted: the server shut down while the eval ran")
+		finish(relational.TrainedModelSuiteRunFailed, "interrupted: the server shut down while the eval ran")
 	case errors.Is(err, context.Canceled):
-		finish(relational.TrainedModelEvalCancelled, "")
+		finish(relational.TrainedModelSuiteRunCancelled, "")
 	default:
 		logf.WithError(err).Warn("training: eval failed")
-		finish(relational.TrainedModelEvalFailed, err.Error())
+		finish(relational.TrainedModelSuiteRunFailed, err.Error())
 	}
 }
 
@@ -359,7 +367,7 @@ func (m *EvalManager) dropStream(key evalStreamKey, s *evalStream) {
 }
 
 // ListOf serves GET /v1/gb/training/models/{id}/evals[?db=<name>][&limit=<n>]: {"evals": [...]}, the evals of trained model
-// {id} (relational.TrainedModelEval, without their items), newest first, at most limit (default 50, at most 500). 404 for an
+// {id} (relational.TrainedModelSuiteRun, without their cases), newest first, at most limit (default 50, at most 500). 404 for an
 // unknown model.
 func (m *EvalManager) ListOf() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -390,7 +398,7 @@ func (m *EvalManager) ListOf() http.HandlerFunc {
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the trained model")
 			return
 		}
-		list, err := relational.ListTrainedModelEvals(r.Context(), n.DB, id, limit)
+		list, err := relational.ListTrainedModelSuiteRuns(r.Context(), n.DB, id, limit)
 		if err != nil {
 			log.WithError(err).Error("training: list evals failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to list the evals")
@@ -400,8 +408,8 @@ func (m *EvalManager) ListOf() http.HandlerFunc {
 	}
 }
 
-// GetOf serves GET /v1/gb/training/evals/{id}[?db=<name>]: {"eval": ..., "items": [...]}, one eval with the items stored so
-// far (relational.TrainedModelEvalItem: question, the dataset's answer, the model's, score and reason), in dataset order.
+// GetOf serves GET /v1/gb/training/evals/{id}[?db=<name>]: {"eval": ..., "cases": [...]}, one eval with the cases stored so
+// far (relational.TrainedModelCaseResult: question, the dataset's answer, the model's, score and reason), in dataset order.
 // 404 for an unknown eval.
 func (m *EvalManager) GetOf() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -414,7 +422,7 @@ func (m *EvalManager) GetOf() http.HandlerFunc {
 		if !ok {
 			return
 		}
-		ev, err := relational.GetTrainedModelEval(r.Context(), n.DB, id)
+		ev, err := relational.GetTrainedModelSuiteRun(r.Context(), n.DB, id)
 		if errors.Is(err, relational.ErrNotFound) {
 			httputil.Error(w, http.StatusNotFound, "unknown eval")
 			return
@@ -423,13 +431,13 @@ func (m *EvalManager) GetOf() http.HandlerFunc {
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the eval")
 			return
 		}
-		items, err := relational.ListTrainedModelEvalItems(r.Context(), n.DB, id)
+		cases, err := relational.ListTrainedModelCaseResults(r.Context(), n.DB, id)
 		if err != nil {
-			log.WithError(err).Error("training: list eval items failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read the eval's items")
+			log.WithError(err).Error("training: list eval cases failed")
+			httputil.Error(w, http.StatusInternalServerError, "failed to read the eval's cases")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"eval": ev, "items": items})
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"eval": ev, "cases": cases})
 	}
 }
 
@@ -446,7 +454,7 @@ func (m *EvalManager) CancelOf() http.HandlerFunc {
 		if !ok {
 			return
 		}
-		ev, err := relational.GetTrainedModelEval(r.Context(), n.DB, id)
+		ev, err := relational.GetTrainedModelSuiteRun(r.Context(), n.DB, id)
 		if errors.Is(err, relational.ErrNotFound) {
 			httputil.Error(w, http.StatusNotFound, "unknown eval")
 			return
@@ -455,7 +463,7 @@ func (m *EvalManager) CancelOf() http.HandlerFunc {
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the eval")
 			return
 		}
-		if ev.Status != relational.TrainedModelEvalRunning {
+		if ev.Status != relational.TrainedModelSuiteRunRunning {
 			httputil.Error(w, http.StatusConflict, "the eval is not running")
 			return
 		}
@@ -464,7 +472,7 @@ func (m *EvalManager) CancelOf() http.HandlerFunc {
 		m.mu.Unlock()
 		if run == nil || run.evalID != id {
 			// Marked running, but nothing runs it (it cannot happen unless the bookkeeping failed): end it.
-			if err := relational.FinishTrainedModelEval(r.Context(), n.DB, id, relational.TrainedModelEvalCancelled, ""); err != nil {
+			if err := relational.FinishTrainedModelSuiteRun(r.Context(), n.DB, id, relational.TrainedModelSuiteRunCancelled, ""); err != nil {
 				log.WithError(err).Error("training: ending the eval failed")
 			}
 		} else {

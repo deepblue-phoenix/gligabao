@@ -12,6 +12,8 @@ Each run of an experiment creates its own datasets, which isolates the runs from
 
 ## Cases
 
+An **eval case** (a *case*) is one input/output combination, plus metadata, to be evaluated: here, some texts to remember, a question, and what to check in the graph and the answer. Cases are part of an **eval suite** (a *suite*): a JSON file of cases. The cases are listed below, grouped by suite.
+
 - `remember_recall`: one text, stored with its temporal validity (`valid_at` = the artifact's time, still true), then a question about it.
 - `job_change`: "Alice works at Acme" is remembered, then later "Alice started working at Globex". The Acme fact must be closed (`invalid_at` = time of the second text), the Globex fact must be live, and "Where does Alice work now?" must be answered with Globex.
 
@@ -52,7 +54,7 @@ A `remember` entry has either `text` or `text_file`, a path relative to the suit
 
 ## Reasoning levels
 
-The thinking level of each LLM stage can be varied too: `extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series`, `extract_image` and `recall` (the answer of the recall), each `none`, `low`, `medium` or `high`. Two places, combined stage by stage like the models: `-reasoning extract_graph=low,recall=medium` on the command line (recorded in the experiment run's `params.reasoning`), and `"reasoning": {"extract_graph": "low"}` in a case, which wins (an eval controls its own parameters). **Every case of the suites sets every stage explicitly to `none`** (the server's default too, so that no thinking tokens are paid for), which is the baseline: to compare levels, set the stage in the cases (a copy of the suites passed with `-suites` is enough) and run each setting as a run of the same experiment. The inferences of the eval database record the level of each call with its tokens and cost. Details: [docs/evals.md](../../docs/evals.md#reasoning-levels).
+The thinking level of each LLM stage can be varied too: `extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series`, `extract_image` and `recall` (the answer of the recall), each `none`, `low`, `medium` or `high`. Two places, combined stage by stage like the models: `-reasoning extract_graph=low,recall=medium` on the command line (recorded in the experiment run's `params.reasoning`), and `"reasoning": {"extract_graph": "low"}` in a case, which wins (a case controls its own parameters). **Every case of the suites sets every stage explicitly to `none`** (the server's default too, so that no thinking tokens are paid for), which is the baseline: to compare levels, set the stage in the cases (a copy of the suites passed with `-suites` is enough) and run each setting as a run of the same experiment. The inferences of the eval database record the level of each call with its tokens and cost. Details: [docs/evals.md](../../docs/evals.md#reasoning-levels).
 
 ## Models
 

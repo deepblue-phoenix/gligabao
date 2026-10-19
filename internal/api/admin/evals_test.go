@@ -59,7 +59,7 @@ func testEvals(t *testing.T, d *sql.DB) {
 		Totals      admin.EvalTotals `json:"totals"`
 		Experiments []struct {
 			Name        string `json:"name"`
-			Runs, Evals int
+			Runs, Cases int
 			RunsPassed  int                 `json:"runs_passed"`
 			LastRun     *struct{ ID int64 } `json:"last_run"`
 		} `json:"experiments"`
@@ -67,7 +67,7 @@ func testEvals(t *testing.T, d *sql.DB) {
 	if c := get(admin.EvalOverview(d), "/x/", "", &ov); c != 200 {
 		t.Fatal(c)
 	}
-	if ov.Totals.Experiments != 1 || ov.Totals.Runs != 1 || ov.Totals.Evals != 1 || ov.Totals.Passed != 1 ||
+	if ov.Totals.Experiments != 1 || ov.Totals.Runs != 1 || ov.Totals.Cases != 1 || ov.Totals.Passed != 1 ||
 		len(ov.Experiments) != 1 || ov.Experiments[0].RunsPassed != 1 || ov.Experiments[0].LastRun == nil {
 		t.Fatalf("overview: %+v", ov)
 	}
@@ -91,13 +91,13 @@ func testEvals(t *testing.T, d *sql.DB) {
 	}
 	if c := get(func(w http.ResponseWriter, r *http.Request) {
 		r.URL.RawQuery = "suite=s&name=a"
-		admin.EvalHistory(d)(w, r)
+		admin.EvalCaseHistory(d)(w, r)
 	}, "/x/{id}", strconv.FormatInt(tr.Experiment.ID, 10), &hist); c != 200 || len(hist.Points) != 1 ||
 		hist.Points[0].RunID != tr.Run.ID || hist.Points[0].Status != "passed" {
 		t.Fatalf("history: %d %+v", c, hist)
 	}
-	if c := get(admin.EvalHistory(d), "/x/{id}", strconv.FormatInt(tr.Experiment.ID, 10), nil); c != http.StatusBadRequest {
-		t.Fatalf("history without eval: %d", c)
+	if c := get(admin.EvalCaseHistory(d), "/x/{id}", strconv.FormatInt(tr.Experiment.ID, 10), nil); c != http.StatusBadRequest {
+		t.Fatalf("history without case: %d", c)
 	}
 
 	var run struct {

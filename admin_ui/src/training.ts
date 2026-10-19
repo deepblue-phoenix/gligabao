@@ -3,7 +3,7 @@
 // server as SSE (../training/events), which forwards what the sidecar reports; d3 is loaded as a global by index.html.
 
 import { alertDialog, confirmDialog } from "./dialogs.js";
-import { initEvalLive, watchEval, type EvalItem, type EvalRun } from "./eval_live.js";
+import { initEvalLive, watchEval, type EvalCase, type EvalRun } from "./eval_live.js";
 import { initActionModal, showActionLog, startAction, type ActionState } from "./actions.js";
 
 declare const d3: typeof import("d3");
@@ -509,7 +509,7 @@ async function infer(m: TrainedModel, prompt: string, maxTokens: number, tempera
 let evals: EvalRun[] = [];
 let evalTimer: number | undefined;
 const openEvals = new Set<number>(); // evals whose answers are expanded
-const evalItems = new Map<number, EvalItem[]>(); // their answers, as last fetched
+const evalCases = new Map<number, EvalCase[]>(); // their answers, as last fetched
 let evalStatus: HTMLElement | undefined; // the message line of the dialog's form
 
 const evalRunning = (e: EvalRun): boolean => e.status === "running";
@@ -592,9 +592,9 @@ async function loadEvals(modelID: number): Promise<void> {
     if (!res.ok) throw await failure(res);
     const list = ((await res.json()) as { evals: EvalRun[] }).evals ?? [];
     // The answers of the expanded evals: the ones of a running eval grow, so they are fetched again each time.
-    await Promise.all(list.filter((e) => openEvals.has(e.id) && (evalRunning(e) || !evalItems.has(e.id))).map(async (e) => {
+    await Promise.all(list.filter((e) => openEvals.has(e.id) && (evalRunning(e) || !evalCases.has(e.id))).map(async (e) => {
       const r = await fetch(`../training/evals/${e.id}`);
-      if (r.ok) evalItems.set(e.id, ((await r.json()) as { items: EvalItem[] }).items ?? []);
+      if (r.ok) evalCases.set(e.id, ((await r.json()) as { cases: EvalCase[] }).cases ?? []);
     }));
     if (selectedModel !== modelID) return; // another model, or closed, while loading
     evals = list;
@@ -623,7 +623,7 @@ function renderEvals(): void {
   const box = el("model-evals");
   box.replaceChildren();
   for (const e of evals) {
-    const item = node("article", "infer-item eval-item");
+    const item = node("article", "infer-item eval-card");
     const head = node("div", "infer-head");
     head.append(evalBadge(e.status), node("span", "muted", `#${e.id} · ${fmtTime(e.created_at)} UTC`),
       node("span", "muted", `${e.dataset} · batches of ${e.params.batch_size ?? "?"}${e.params.limit ? ` · first ${e.params.limit} questions` : ""}`));
@@ -671,18 +671,18 @@ function renderEvals(): void {
       if (details.open === openEvals.has(e.id)) return;
       if (details.open) { openEvals.add(e.id); if (selectedModel !== null) void loadEvals(selectedModel); } else openEvals.delete(e.id);
     });
-    if (details.open) details.append(evalItemsTable(evalItems.get(e.id)));
+    if (details.open) details.append(evalCasesTable(evalCases.get(e.id)));
     item.append(details);
     box.append(item);
   }
 }
 
 // The answers of an eval, the worst first: the question, the dataset's answer, the model's, the score and the judge's reason.
-function evalItemsTable(items: EvalItem[] | undefined): HTMLElement {
-  if (!items) return node("p", "muted", "Loading the answers…");
-  if (items.length === 0) return node("p", "muted", "No answers yet: they appear as each batch is judged.");
-  const rank = (i: EvalItem): number => (i.status === "failed" ? -1 : i.score ?? -1);
-  const sorted = [...items].sort((a, b) => rank(a) - rank(b) || a.idx - b.idx);
+function evalCasesTable(cases: EvalCase[] | undefined): HTMLElement {
+  if (!cases) return node("p", "muted", "Loading the answers…");
+  if (cases.length === 0) return node("p", "muted", "No answers yet: they appear as each batch is judged.");
+  const rank = (i: EvalCase): number => (i.status === "failed" ? -1 : i.score ?? -1);
+  const sorted = [...cases].sort((a, b) => rank(a) - rank(b) || a.idx - b.idx);
   const table = node("table", "eval-table");
   const head = table.createTHead().insertRow();
   for (const h of ["#", "Question", "Dataset answer", "Model answer", "Score", "Judge's reason"]) head.appendChild(node("th", h === "Score" ? "num" : "", h));

@@ -39,7 +39,7 @@ func (l *scriptedLLM) Complete(_ context.Context, req ai.Request) (*ai.Response,
 }
 
 // TestRunCasesTracksExperiment runs two cases (one passing, one failing its expected answer) and checks what the
-// experiment run holds: the evals with their suite, the results and the trajectory IDs.
+// experiment run holds: the cases with their suite, the results and the trajectory IDs.
 func TestRunCasesTracksExperiment(t *testing.T) {
 	dir := t.TempDir()
 	atifDir = filepath.Join(dir, "atif")
@@ -68,7 +68,7 @@ func TestRunCasesTracksExperiment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if run.Status != experiments.StatusFailed || run.TotalEvals != 2 || run.PassedEvals != 1 || run.FailedEvals != 1 {
+	if run.Status != experiments.StatusFailed || run.TotalCases != 2 || run.PassedCases != 1 || run.FailedCases != 1 {
 		t.Fatalf("run: %+v", run)
 	}
 
@@ -107,7 +107,7 @@ func TestRunCasesTracksExperiment(t *testing.T) {
 		t.Fatalf("kinds: %+v", k)
 	}
 	exp, err := experiments.Get(ctx, trackDB.Relational, "exp")
-	if err != nil || len(exp.Evals) != 2 || exp.Evals[0].Suite != "s1" || exp.Evals[1].Suite != "s2" {
+	if err != nil || len(exp.Cases) != 2 || exp.Cases[0].Suite != "s1" || exp.Cases[1].Suite != "s2" {
 		t.Fatalf("experiment: %+v, %v", exp, err)
 	}
 }

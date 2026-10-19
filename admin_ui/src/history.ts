@@ -1,5 +1,5 @@
-// History of one eval within an experiment (d3, in a modal), as three plots one under the other, one dot per run that
-// executed the eval and x = when the run started: its status (shows when a failing eval started to pass), its latency,
+// History of one case within an experiment (d3, in a modal), as three plots one under the other, one dot per run that
+// executed the case and x = when the run started: its status (shows when a failing case started to pass), its latency,
 // and the number of checks that passed and failed. d3 is loaded as a global by index.html. Talks to /admin/api/evals/experiments/{id}/history.
 
 declare const d3: typeof import("d3");
@@ -24,7 +24,7 @@ const fmt = (d: Date): string => d.toISOString().replace("T", " ").slice(0, 19);
 
 // Summarises the progression: the current state and, if it passes now, since which run it does.
 export function summarize(dots: { run_id: number; status: string; t: Date }[]): string {
-  if (dots.length === 0) return "No runs recorded for this eval.";
+  if (dots.length === 0) return "No runs recorded for this case.";
   const last = dots[dots.length - 1];
   const passed = dots.filter((d) => d.status === "passed");
   if (last.status === "passed") {
@@ -48,9 +48,9 @@ function clear(): void {
   el("history-canvas").replaceChildren();
 }
 
-// Opens the modal and plots the history of eval suite/name in the experiment. onRun, when given, is called with a
+// Opens the modal and plots the history of case suite/name in the experiment. onRun, when given, is called with a
 // run ID when its dot is clicked.
-export async function showEvalHistory(experimentID: number, experiment: string, suite: string, name: string, onRun?: (runID: number) => void): Promise<void> {
+export async function showCaseHistory(experimentID: number, experiment: string, suite: string, name: string, onRun?: (runID: number) => void): Promise<void> {
   const modal = el<HTMLDialogElement>("history-modal");
   const status = el("history-status");
   el("history-title").textContent = `${suite}/${name} — history (${experiment})`;

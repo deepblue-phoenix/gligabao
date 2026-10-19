@@ -5,6 +5,20 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.53.0] - 2026-10-19
+
+### Changed
+- **Eval terminology: an eval case is one input/output combination (plus metadata) to be evaluated, and cases are part of an eval suite.** What the code, schema, API and docs called an "eval" when it meant one case of a suite is now a **case** everywhere (**breaking for the eval database: the tables must be rebuilt, nothing is migrated**; SQLite and PostgreSQL):
+  - tables and columns: `gb_experiment_evals` is `gb_experiment_cases`, `eval_name` is `case_name`, `total_evals` / `passed_evals` / `failed_evals` are `total_cases` / `passed_cases` / `failed_cases`, `gb_knowledge_eval_meta` is `gb_knowledge_case_meta`;
+  - Go: `EvalRef` is `CaseRef`, `Experiment.Evals` is `Experiment.Cases`, `ExperimentRun.TotalEvals` / `PassedEvals` / `FailedEvals` are `TotalCases` / `PassedCases` / `FailedCases`, `ExperimentEvalPoint` is `ExperimentCasePoint`, `experiments.EvalHistory` and `ListExperimentEvalHistory` are `CaseHistory` and `ListExperimentCaseHistory`, `admin.EvalHistory` is `admin.EvalCaseHistory`;
+  - admin API (`/v1/gb/admin/api/evals/...`, URLs unchanged): `evals` is `cases` in the overview (`totals.cases`, each experiment's `cases`) and in an experiment's detail, and a run's `total_evals` / `passed_evals` / `failed_evals` are `total_cases` / `passed_cases` / `failed_cases`;
+  - admin UI: the Evals block says case, cases and "Case history" where it said eval.
+- **Training evals: an eval of a trained model is a suite run, its items are cases.** An eval asks the model the cases of an eval suite; the suite is the model's fine-tuning dataset and each example is a case. In the code the eval is a `TrainedModelSuiteRun` (was `TrainedModelEval`) and its per-example outcomes are `TrainedModelCaseResult` (was `TrainedModelEvalItem`; `evals/training` has `CaseResult` for `Item`). Tables: `gb_training_eval_meta` is `gb_training_suite_run_meta` and `gb_training_eval_items` is `gb_training_case_results` (its `eval_id` is `suite_run_id`). A training eval's result row now has `suite` = the dataset's name and `case_name` = `''` (the whole suite); it had `suite = ''` and the dataset as the name. The run's `total_cases` / `passed_cases` / `failed_cases` count the suite's cases (all of them, the judged ones, the others). The HTTP and UI name of the thing stays "eval" (`/v1/gb/training/models/{id}/evals`).
+- Training API: the `items` of `GET /v1/gb/training/evals/{id}` and of the live feed events are now `cases`; `eval_id` (of a case, and of a training experiment run) is `suite_run_id`. The judge's prompt says "cases" where it said "items".
+
+### Added
+- **Eval schemes for trained models.** A training eval has a `scheme`, which says how its suite and cases are made. The only one is `finetune_dataset` (`TrainingSchemeFineTuneDataset`): the model is tested with its own fine-tuning dataset and the judge scores whether it returns the dataset's expected outputs, which shows its error rate on what it was trained on. `POST /v1/gb/training/models/{id}/evals` accepts `scheme` (default and only value `finetune_dataset`, others answer `400`), and evals carry it (column `gb_training_suite_run_meta.scheme`). A second scheme, like the knowledge evals' (cases with inputs and expected outputs never seen in training), is not implemented yet.
+
 ## [0.52.0] - 2026-10-26
 
 ### Changed

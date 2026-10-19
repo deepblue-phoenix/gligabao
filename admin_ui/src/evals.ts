@@ -1,14 +1,14 @@
 // Evals block of the admin UI: experiments (counts + listing), their runs, a run's results with their records, and
-// the ATIF trajectories of each eval (opened as a flow graph by trace.ts). Talks to /admin/api/evals/*.
+// the ATIF trajectories of each case (opened as a flow graph by trace.ts). Talks to /admin/api/evals/*.
 
 import { showGraphAt } from "./graph.js";
-import { showEvalHistory } from "./history.js";
+import { showCaseHistory } from "./history.js";
 import { showTrace } from "./trace.js";
 import { showWebSearches, totalsLine, type WebSearch, type WebSearchTotals } from "./websearch.js";
 
 interface Run {
   id: number; experiment_id: number; status: string; params?: Record<string, unknown>;
-  total_evals: number; passed_evals: number; failed_evals: number; cost_usd: number;
+  total_cases: number; passed_cases: number; failed_cases: number; cost_usd: number;
   started_at: string; finished_at?: string; results?: Result[];
 }
 interface Trajectory {
@@ -16,24 +16,24 @@ interface Trajectory {
   artifacts?: Artifact[];
 }
 interface Artifact { id: number; kind: string; text: string; valid_at: string; created_at: string }
-// The outcome of one eval (a case of a suite) in one run.
+// The outcome of one case of a suite in one run.
 interface Result {
   id: number; suite: string; name: string; status: string; answer?: string; problems?: string[]; passed_checks?: string[]; dataset_id?: number; error?: string;
   steps: number; cost_usd: number; started_at: string; finished_at: string; trajectories?: Trajectory[];
 }
-// The web searches the remember calls of one result (eval) made (see websearch.ts), read from its trajectories.
+// The web searches the remember calls of one result (case) made (see websearch.ts), read from its trajectories.
 interface EvalWebSearches { result_id: number; totals: WebSearchTotals; searches: WebSearch[] }
 interface ExperimentRow {
   id: number; name: string; description?: string; created_at: string;
-  runs: number; evals: number; runs_passed: number; runs_failed: number; cost_usd: number; last_run?: Run;
+  runs: number; cases: number; runs_passed: number; runs_failed: number; cost_usd: number; last_run?: Run;
 }
 interface Overview {
-  totals: { experiments: number; runs: number; evals: number; executions: number; passed: number; failed: number; cost_usd: number };
+  totals: { experiments: number; runs: number; cases: number; executions: number; passed: number; failed: number; cost_usd: number };
   experiments: ExperimentRow[];
 }
 interface ExperimentDetail {
   id: number; name: string; description?: string; config?: Record<string, unknown>;
-  evals?: { suite: string; name: string }[]; runs: Run[];
+  cases?: { suite: string; name: string }[]; runs: Run[];
 }
 
 function $<T extends HTMLElement>(id: string): T {
@@ -121,13 +121,13 @@ async function loadOverview(): Promise<void> {
     const data = await getJSON<Overview>("api/evals");
     const t = data.totals;
     stats.replaceChildren(
-      stat("Experiments", String(t.experiments)), stat("Runs", String(t.runs)), stat("Distinct evals", String(t.evals)),
-      stat("Eval results", t.executions ? `${t.passed}/${t.executions} passed` : "–"), stat("Cost", fmtCost(t.cost_usd)),
+      stat("Experiments", String(t.experiments)), stat("Runs", String(t.runs)), stat("Distinct cases", String(t.cases)),
+      stat("Case results", t.executions ? `${t.passed}/${t.executions} passed` : "–"), stat("Cost", fmtCost(t.cost_usd)),
     );
     const list = data.experiments ?? [];
     status.textContent = list.length === 0 ? "No experiments yet. Run ./run_evals.sh to record one." : "Click an experiment to list its runs.";
     const { table: tbl, body: tbody } = table([
-      ["Experiment", false], ["Description", false], ["Runs", true], ["Passed", true], ["Failed", true], ["Evals", true],
+      ["Experiment", false], ["Description", false], ["Runs", true], ["Passed", true], ["Failed", true], ["Cases", true],
       ["Cost", true], ["Last run", false],
     ]);
     tbl.className = "clickable";
@@ -139,7 +139,7 @@ async function loadOverview(): Promise<void> {
       numCell(tr, String(e.runs));
       numCell(tr, String(e.runs_passed));
       numCell(tr, String(e.runs_failed));
-      numCell(tr, String(e.evals));
+      numCell(tr, String(e.cases));
       numCell(tr, fmtCost(e.cost_usd));
       const last = tr.insertCell();
       if (e.last_run) last.append(statusBadge(e.last_run.status), ` ${fmtTime(e.last_run.started_at)}`);
@@ -166,17 +166,17 @@ async function loadExperiment(id: number): Promise<void> {
     const extra: HTMLElement[] = [];
     if (exp.description) extra.push(h("p", "muted", exp.description));
     if (exp.config && Object.keys(exp.config).length) extra.push(props([["config", JSON.stringify(exp.config)]]));
-    if (exp.evals?.length) {
-      const ul = h("ul", "eval-list");
-      for (const e of exp.evals) {
+    if (exp.cases?.length) {
+      const ul = h("ul", "case-list");
+      for (const e of exp.cases) {
         const li = h("li");
         const btn = h("button", "small", "History");
         btn.type = "button";
-        btn.addEventListener("click", () => void showEvalHistory(exp.id, exp.name, e.suite, e.name, (id) => void showRun(id, exp.name)));
+        btn.addEventListener("click", () => void showCaseHistory(exp.id, exp.name, e.suite, e.name, (id) => void showRun(id, exp.name)));
         li.append(btn, " ", h("code", undefined, `${e.suite}/${e.name}`));
         ul.append(li);
       }
-      extra.push(h("h4", undefined, "Evals"), ul);
+      extra.push(h("h4", undefined, "Cases"), ul);
     }
 
     const { table: tbl, body } = table([
@@ -188,9 +188,9 @@ async function loadExperiment(id: number): Promise<void> {
       const tr = body.insertRow();
       tr.insertCell().textContent = `#${r.id}`;
       tr.insertCell().append(statusBadge(r.status));
-      numCell(tr, String(r.passed_evals));
-      numCell(tr, String(r.failed_evals));
-      numCell(tr, String(r.total_evals));
+      numCell(tr, String(r.passed_cases));
+      numCell(tr, String(r.failed_cases));
+      numCell(tr, String(r.total_cases));
       numCell(tr, fmtCost(r.cost_usd));
       tr.insertCell().textContent = fmtTime(r.started_at);
       numCell(tr, fmtDuration(r.started_at, r.finished_at));
@@ -220,22 +220,22 @@ async function showRun(runID: number, experiment: string): Promise<void> {
       // Informational: the run is shown without them if they cannot be read.
       getJSON<{ results: EvalWebSearches[] }>(`api/evals/runs/${runID}/web-searches`).then((r) => r.results ?? [], () => [] as EvalWebSearches[]),
     ]);
-    const webByEval = new Map(webSearches.map((w) => [w.result_id, w]));
-    const evals = run.results ?? [];
-    status.replaceChildren(statusBadge(run.status), ` ${run.passed_evals}/${run.total_evals} passed · ${fmtCost(run.cost_usd)} · ${fmtDuration(run.started_at, run.finished_at)}`);
+    const webByCase = new Map(webSearches.map((w) => [w.result_id, w]));
+    const cases = run.results ?? [];
+    status.replaceChildren(statusBadge(run.status), ` ${run.passed_cases}/${run.total_cases} passed · ${fmtCost(run.cost_usd)} · ${fmtDuration(run.started_at, run.finished_at)}`);
     content.append(props([
       ["started", `${fmtTime(run.started_at)} UTC`], ["finished", run.finished_at ? `${fmtTime(run.finished_at)} UTC` : undefined],
       ["params", run.params && Object.keys(run.params).length ? JSON.stringify(run.params) : undefined],
     ]));
-    if (evals.length === 0) {
-      content.append(h("p", "muted", "No evals recorded in this run."));
+    if (cases.length === 0) {
+      content.append(h("p", "muted", "No cases recorded in this run."));
       return;
     }
     const { table: tbl, body } = table([
-      ["Suite", false], ["Eval", false], ["Status", false], ["Steps", true], ["Cost", true], ["Duration", true], ["Trajectories", true], ["Web searches", true],
+      ["Suite", false], ["Case", false], ["Status", false], ["Steps", true], ["Cost", true], ["Duration", true], ["Trajectories", true], ["Web searches", true],
     ]);
     tbl.className = "clickable";
-    for (const e of evals) {
+    for (const e of cases) {
       const tr = body.insertRow();
       tr.insertCell().textContent = e.suite;
       tr.insertCell().textContent = e.name;
@@ -244,29 +244,29 @@ async function showRun(runID: number, experiment: string): Promise<void> {
       numCell(tr, fmtCost(e.cost_usd));
       numCell(tr, fmtDuration(e.started_at, e.finished_at));
       numCell(tr, String(e.trajectories?.length ?? 0));
-      numCell(tr, webByEval.has(e.id) ? String(webByEval.get(e.id)!.searches.length) : "–");
+      numCell(tr, webByCase.has(e.id) ? String(webByCase.get(e.id)!.searches.length) : "–");
       const detail = body.insertRow();
       detail.hidden = true;
       detail.className = "detail";
       const cell = detail.insertCell();
       cell.colSpan = 8;
-      cell.append(...evalRecord(run, e, experiment, webByEval.get(e.id)));
+      cell.append(...caseRecord(run, e, experiment, webByCase.get(e.id)));
       tr.addEventListener("click", () => {
         detail.hidden = !detail.hidden;
         tr.classList.toggle("selected", !detail.hidden);
       });
     }
     content.append(tbl);
-    // A single-eval run is shown expanded.
-    if (evals.length === 1) body.rows[0].click();
+    // A single-case run is shown expanded.
+    if (cases.length === 1) body.rows[0].click();
   } catch (err) {
     status.className = "error";
     status.textContent = `Failed to load run: ${errText(err)}`;
   }
 }
 
-// The detail of one eval: its result and the list of its ATIF trajectories, each opening the flow graph.
-function evalRecord(run: Run, e: Result, experiment: string, web?: EvalWebSearches): HTMLElement[] {
+// The detail of one case: its result and the list of its ATIF trajectories, each opening the flow graph.
+function caseRecord(run: Run, e: Result, experiment: string, web?: EvalWebSearches): HTMLElement[] {
   const out: HTMLElement[] = [
     props([
       ["started", `${fmtTime(e.started_at)} UTC`], ["answer", e.answer], ["error", e.error],
@@ -285,7 +285,7 @@ function evalRecord(run: Run, e: Result, experiment: string, web?: EvalWebSearch
   hbtn.type = "button";
   hbtn.addEventListener("click", (ev) => {
     ev.stopPropagation();
-    void showEvalHistory(run.experiment_id, experiment, e.suite, e.name, (id) => void showRun(id, experiment));
+    void showCaseHistory(run.experiment_id, experiment, e.suite, e.name, (id) => void showRun(id, experiment));
   });
   out.push(h("h4", undefined, "History"), hbtn);
   out.push(h("h4", undefined, "Knowledge graph"));

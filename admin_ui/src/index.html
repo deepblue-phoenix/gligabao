@@ -111,7 +111,7 @@
 
             <div class="tr-section tr-models">
               <h3>Trained models</h3>
-              <p class="muted">Every completed job saves its weights as a new trained model, so training again (other data, steps or size) never replaces an earlier one. Click a model to open it: its files, a form to run inference on it, its evals, and the past replies of the model. <b>Eval</b> asks the model the questions of its training dataset and has the LLM judge, in batches, how close its answers are to the dataset's.</p>
+              <p class="muted">Every completed job saves its weights as a new trained model, so training again (other data, steps or size) never replaces an earlier one. Click a model to open it: its files, a form to run inference on it, its evals, and the past replies of the model. <b>Eval</b> runs the model's fine-tuning dataset as an eval suite: each example is a case, and the LLM judges, in batches, how close the model's answers are to the dataset's.</p>
               <p id="training-models-status" class="muted"></p>
               <div class="table-scroll">
               <table id="training-models" class="clickable" hidden>
@@ -239,7 +239,7 @@
 
     <dialog id="history-modal" class="modal">
       <div class="modal-head">
-        <h2 id="history-title">Eval history</h2>
+        <h2 id="history-title">Case history</h2>
         <span id="history-status" class="muted"></span>
         <button type="button" id="history-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
@@ -294,7 +294,7 @@
       <div class="ev-top">
         <progress id="eval-live-progress" value="0" max="1"></progress>
         <div id="eval-live-summary" class="eval-summary"></div>
-        <div id="eval-live-strip" class="ev-strip" title="One square per question: grey = not answered yet, blue = answered and awaiting the judge, green / amber / red = judged"></div>
+        <div id="eval-live-strip" class="ev-strip" title="One square per case: grey = not answered yet, blue = answered and awaiting the judge, green / amber / red = judged"></div>
         <p id="eval-live-error" class="error"></p>
       </div>
       <div class="modal-body"><div id="eval-live-feed" class="ev-feed"></div></div>

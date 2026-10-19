@@ -66,21 +66,21 @@ type evalJudge struct {
 
 func (j *evalJudge) Complete(_ context.Context, req ai.Request) (*ai.Response, error) {
 	content := req.Messages[0].Content
-	var items []struct {
+	var cases []struct {
 		ID        int    `json:"id"`
 		Reference string `json:"reference"`
 		Answer    string `json:"answer"`
 	}
-	if err := json.Unmarshal([]byte(content[strings.Index(content, "["):]), &items); err != nil {
+	if err := json.Unmarshal([]byte(content[strings.Index(content, "["):]), &cases); err != nil {
 		return nil, err
 	}
 	j.mu.Lock()
 	j.calls++
-	j.sizes = append(j.sizes, len(items))
+	j.sizes = append(j.sizes, len(cases))
 	j.model = req.Model
 	j.mu.Unlock()
 	var out []map[string]any
-	for _, it := range items {
+	for _, it := range cases {
 		score := 1
 		if it.Answer == it.Reference {
 			score = 5
@@ -116,9 +116,9 @@ type evalCall struct {
 	body []byte
 }
 
-func (c evalCall) eval(t *testing.T) relational.TrainedModelEval {
+func (c evalCall) eval(t *testing.T) relational.TrainedModelSuiteRun {
 	t.Helper()
-	var e relational.TrainedModelEval
+	var e relational.TrainedModelSuiteRun
 	if err := json.Unmarshal(c.body, &e); err != nil {
 		t.Fatalf("%d %s", c.code, c.body)
 	}
@@ -133,20 +133,20 @@ func startEval(m *training.EvalManager, modelID, body string) evalCall {
 	return evalCall{rec.Code, rec.Body.Bytes()}
 }
 
-func getEval(t *testing.T, m *training.EvalManager, id int64) (relational.TrainedModelEval, []relational.TrainedModelEvalItem) {
+func getEval(t *testing.T, m *training.EvalManager, id int64) (relational.TrainedModelSuiteRun, []relational.TrainedModelCaseResult) {
 	t.Helper()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/x", nil)
 	req.SetPathValue("id", fmt.Sprint(id))
 	m.GetOf()(rec, req)
 	var out struct {
-		Eval  relational.TrainedModelEval
-		Items []relational.TrainedModelEvalItem
+		Eval  relational.TrainedModelSuiteRun
+		Cases []relational.TrainedModelCaseResult
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != 200 {
 		t.Fatalf("get eval: %d %s", rec.Code, rec.Body)
 	}
-	return out.Eval, out.Items
+	return out.Eval, out.Cases
 }
 
 func TestEvalATrainedModel(t *testing.T) { dbtest.Run(t, testEvalATrainedModel) }
@@ -167,15 +167,18 @@ func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 		t.Fatalf("start: %d %s", call.code, call.body)
 	}
 	started := call.eval(t)
-	if started.Status != relational.TrainedModelEvalRunning || started.TrainedModelID != mid || started.Dataset != "mine" || started.NumExamples != 5 ||
+	if started.Status != relational.TrainedModelSuiteRunRunning || started.TrainedModelID != mid || started.Dataset != "mine" || started.NumExamples != 5 ||
 		len(started.DatasetSHA256) != 64 || !strings.Contains(string(started.Params), `"batch_size":2`) {
 		t.Fatalf("started: %+v", started)
 	}
 	m.Wait()
 
-	ev, items := getEval(t, m, started.ID)
-	if ev.Status != relational.TrainedModelEvalCompleted || ev.FinishedAt == nil || ev.Error != "" {
+	ev, cases := getEval(t, m, started.ID)
+	if ev.Status != relational.TrainedModelSuiteRunCompleted || ev.FinishedAt == nil || ev.Error != "" {
 		t.Fatalf("finished: %+v", ev)
+	}
+	if ev.Scheme != relational.TrainingSchemeFineTuneDataset {
+		t.Fatalf("scheme: %q", ev.Scheme)
 	}
 	if ev.NumAnswered != 5 || ev.NumJudged != 5 || ev.NumFailed != 0 || ev.NumCorrect != 4 || ev.NumIncorrect != 1 || ev.ScoreSum != 21 || ev.NumBatches != 3 {
 		t.Fatalf("counters: %+v", ev)
@@ -187,8 +190,8 @@ func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 	if ev.JudgeModel != "judge-model" || ev.JudgeCalls != 3 || ev.JudgeInputTokens != 150 || ev.JudgeOutputTokens != 60 || ev.JudgeCostUSD != 1.5 {
 		t.Fatalf("judge usage: %+v", ev)
 	}
-	if len(items) != 5 || items[3].Response != "wrong" || items[3].Score == nil || *items[3].Score != 1 || items[0].Reference != "a0" || items[0].Reason != "because" {
-		t.Fatalf("items: %+v", items)
+	if len(cases) != 5 || cases[3].Response != "wrong" || cases[3].Score == nil || *cases[3].Score != 1 || cases[0].Reference != "a0" || cases[0].Reason != "because" {
+		t.Fatalf("cases: %+v", cases)
 	}
 	// The model got the dataset's questions on its own weights, with the settings of the eval.
 	if len(sc.reqs) != 5 || sc.reqs[0].Prompt != "q0" || sc.reqs[0].ModelPath != "trained/jobeval1" || sc.reqs[0].ModelSize != "12b" ||
@@ -210,7 +213,9 @@ func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 	req := httptest.NewRequest("GET", "/x", nil)
 	req.SetPathValue("id", fmt.Sprint(mid))
 	m.ListOf()(rec, req)
-	var list struct{ Evals []relational.TrainedModelEval }
+	var list struct {
+		Evals []relational.TrainedModelSuiteRun
+	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || rec.Code != 200 || len(list.Evals) != 2 || list.Evals[0].NumExamples != 3 || list.Evals[0].Status != "completed" {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body)
 	}
@@ -235,6 +240,7 @@ func TestEvalRefusals(t *testing.T) {
 		{"dataset gone", fmt.Sprint(gone), `{}`, 400},
 		{"bad json", fmt.Sprint(ok), `{`, 400},
 		{"batch too big", fmt.Sprint(ok), `{"batch_size": 1000}`, 400},
+		{"unknown scheme", fmt.Sprint(ok), `{"scheme": "novel_cases"}`, 400},
 		{"negative limit", fmt.Sprint(ok), `{"limit": -1}`, 400},
 		{"bad temperature", fmt.Sprint(ok), `{"temperature": 5}`, 400},
 		{"too many tokens", fmt.Sprint(ok), `{"max_tokens": 999999}`, 400},
@@ -250,7 +256,7 @@ func TestEvalRefusals(t *testing.T) {
 	if c := startEval(training.NewEvalManager(ctx, dbs, &evalSidecar{}, nil), fmt.Sprint(ok), `{}`); c.code != 503 {
 		t.Errorf("no LLM: %d", c.code)
 	}
-	if evals, _ := relational.ListTrainedModelEvals(ctx, d, 0, 0); len(evals) != 0 {
+	if evals, _ := relational.ListTrainedModelSuiteRuns(ctx, d, 0, 0); len(evals) != 0 {
 		t.Errorf("refused evals left rows: %+v", evals)
 	}
 	// An unknown database or eval.
@@ -298,9 +304,9 @@ func TestEvalCancelAndConflict(t *testing.T) {
 		t.Fatalf("cancel: %d %s", rec.Code, rec.Body)
 	}
 	m.Wait()
-	ev, items := getEval(t, m, id)
-	if ev.Status != relational.TrainedModelEvalCancelled || ev.FinishedAt == nil || len(items) != 0 {
-		t.Fatalf("cancelled: %+v, %d items", ev, len(items))
+	ev, cases := getEval(t, m, id)
+	if ev.Status != relational.TrainedModelSuiteRunCancelled || ev.FinishedAt == nil || len(cases) != 0 {
+		t.Fatalf("cancelled: %+v, %d cases", ev, len(cases))
 	}
 	// A finished eval cannot be cancelled again, and the model can be evaluated again.
 	rec = httptest.NewRecorder()
@@ -325,10 +331,10 @@ func TestEvalFailsWhenTheModelDoesNotAnswer(t *testing.T) {
 	m := training.NewEvalManager(ctx, dbs, &failingInferer{}, &evalJudge{})
 	c := startEval(m, fmt.Sprint(mid), `{"batch_size": 2}`)
 	m.Wait()
-	ev, items := getEval(t, m, c.eval(t).ID)
-	if ev.Status != relational.TrainedModelEvalFailed || !strings.Contains(ev.Error, "weights are gone") || ev.NumFailed != 4 || ev.NumJudged != 0 || len(items) != 4 ||
-		items[0].Status != relational.TrainedModelEvalItemFailed || !strings.Contains(items[0].Error, "weights are gone") {
-		t.Fatalf("%+v items %+v", ev, items)
+	ev, cases := getEval(t, m, c.eval(t).ID)
+	if ev.Status != relational.TrainedModelSuiteRunFailed || !strings.Contains(ev.Error, "weights are gone") || ev.NumFailed != 4 || ev.NumJudged != 0 || len(cases) != 4 ||
+		cases[0].Status != relational.TrainedModelCaseFailed || !strings.Contains(cases[0].Error, "weights are gone") {
+		t.Fatalf("%+v cases %+v", ev, cases)
 	}
 }
 
@@ -342,13 +348,13 @@ func TestEvalsInterruptedByARestartAreFailed(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx := context.Background()
 	mid, _, _ := relational.RecordTrainedModel(ctx, d, relational.TrainedModel{JobID: "j1", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j1"})
-	id, err := relational.RecordTrainedModelEval(ctx, d, relational.TrainedModelEval{TrainedModelID: mid})
+	id, err := relational.RecordTrainedModelSuiteRun(ctx, d, relational.TrainedModelSuiteRun{TrainedModelID: mid})
 	if err != nil {
 		t.Fatal(err)
 	}
 	training.NewEvalManager(ctx, []training.Database{{Name: "standard", DB: d}}, nil, nil)
-	ev, err := relational.GetTrainedModelEval(ctx, d, id)
-	if err != nil || ev.Status != relational.TrainedModelEvalFailed || !strings.Contains(ev.Error, "restart") {
+	ev, err := relational.GetTrainedModelSuiteRun(ctx, d, id)
+	if err != nil || ev.Status != relational.TrainedModelSuiteRunFailed || !strings.Contains(ev.Error, "restart") {
 		t.Fatalf("%+v %v", ev, err)
 	}
 }
@@ -414,7 +420,7 @@ func testEvalLiveFeed(t *testing.T, d *sql.DB) {
 		}
 		return training.EvalEvent{}
 	}
-	if e := next(); e.Type != "snapshot" || e.Eval == nil || e.Eval.Status != "running" || len(e.Items) != 0 {
+	if e := next(); e.Type != "snapshot" || e.Eval == nil || e.Eval.Status != "running" || len(e.Cases) != 0 {
 		t.Fatalf("first event: %+v", e)
 	}
 	close(sc.block)
@@ -424,17 +430,17 @@ func testEvalLiveFeed(t *testing.T, d *sql.DB) {
 	for e := next(); ; e = next() {
 		switch e.Type {
 		case "answer":
-			it := e.Items[0]
+			it := e.Cases[0]
 			if it.Status != "answered" || it.Score != nil || it.Idx != answers {
 				t.Fatalf("answer event: %+v", it)
 			}
 			answers++
 			got = append(got, fmt.Sprintf("%d=%s", it.Idx, it.Response))
 		case "batch":
-			if e.Eval == nil || e.Eval.NumExamples != 3 || len(e.Items) == 0 || e.Items[0].Status != "judged" || e.Items[0].Score == nil {
+			if e.Eval == nil || e.Eval.NumExamples != 3 || len(e.Cases) == 0 || e.Cases[0].Status != "judged" || e.Cases[0].Score == nil {
 				t.Fatalf("batch event: %+v", e)
 			}
-			got = append(got, fmt.Sprintf("batch%d", len(e.Items)))
+			got = append(got, fmt.Sprintf("batch%d", len(e.Cases)))
 		}
 		last = e
 		if e.Type == "end" {
@@ -456,7 +462,7 @@ func testEvalLiveFeed(t *testing.T, d *sql.DB) {
 	}
 	defer resp2.Body.Close()
 	late := sseEvents(resp2.Body)
-	if e := <-late; e.Type != "snapshot" || len(e.Items) != 3 || e.Items[1].Status != "judged" || e.Eval.Status != "completed" {
+	if e := <-late; e.Type != "snapshot" || len(e.Cases) != 3 || e.Cases[1].Status != "judged" || e.Eval.Status != "completed" {
 		t.Fatalf("late snapshot: %+v", e)
 	}
 	if e := <-late; e.Type != "end" {
@@ -522,8 +528,8 @@ func testEvalExperiments(t *testing.T, d *sql.DB) {
 		t.Fatalf("experiment: %d %s", rec.Code, rec.Body)
 	}
 	r := got.Runs[0]
-	if r.EvalID != first.eval(t).ID || r.Status != relational.TrainedModelEvalCompleted || r.Model.ID != mid || r.Model.FinalLoss == nil ||
-		r.MeanScore == nil || *r.MeanScore != 4 || r.CorrectRate == nil || *r.CorrectRate != 0.75 || got.Runs[1].Eval.NumExamples != 2 {
+	if r.SuiteRunID != first.eval(t).ID || r.Status != relational.TrainedModelSuiteRunCompleted || r.Model.ID != mid || r.Model.FinalLoss == nil ||
+		r.MeanScore == nil || *r.MeanScore != 4 || r.CorrectRate == nil || *r.CorrectRate != 0.75 || got.Runs[1].SuiteRun.NumExamples != 2 {
 		t.Fatalf("run: %+v", r)
 	}
 

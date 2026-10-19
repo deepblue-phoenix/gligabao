@@ -10,13 +10,13 @@ export interface EvalRun {
   num_partial: number; num_incorrect: number; score_sum: number; num_batches: number; judge_calls: number; judge_input_tokens: number;
   judge_output_tokens: number; judge_cost_usd: number; error: string; created_at: string; finished_at: string | null;
 }
-export interface EvalItem {
+export interface EvalCase {
   idx: number; batch: number; instruction: string; input: string; reference: string; response: string;
   // "answered": the model answered and the judge has not scored it yet (only in the live feed)
   status: "answered" | "judged" | "failed";
   error: string; score: number | null; reason: string; input_tokens: number; output_tokens: number; duration_ms: number;
 }
-interface FeedEvent { type: "snapshot" | "answer" | "batch" | "end"; eval?: EvalRun; items?: EvalItem[] }
+interface FeedEvent { type: "snapshot" | "answer" | "batch" | "end"; eval?: EvalRun; cases?: EvalCase[] }
 
 const MAX_SCORE = 5; // the judge's scale: 0 to 5
 
@@ -32,9 +32,9 @@ function node<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""
   return e;
 }
 
-// How an item is doing: pending (answered, awaiting the judge), good (4-5), mid (2-3), bad (0-1) or failed.
+// How an case is doing: pending (answered, awaiting the judge), good (4-5), mid (2-3), bad (0-1) or failed.
 type Verdict = "pending" | "good" | "mid" | "bad" | "failed";
-const verdictOf = (i: EvalItem): Verdict =>
+const verdictOf = (i: EvalCase): Verdict =>
   i.status === "failed" ? "failed" : i.status === "answered" || i.score === null ? "pending" : i.score >= 4 ? "good" : i.score >= 2 ? "mid" : "bad";
 
 // What the open dialog follows.
@@ -42,7 +42,7 @@ let stream: EventSource | undefined;
 let watching = -1;
 let run: EvalRun | undefined;
 let ended = false;
-let items = new Map<number, EvalItem>();
+let cases = new Map<number, EvalCase>();
 let cards = new Map<number, HTMLElement>();
 let squares: HTMLElement[] = [];
 let onChange: (() => void) | undefined;
@@ -58,7 +58,7 @@ function stop(): void {
 function reset(): void {
   run = undefined;
   ended = false;
-  items = new Map();
+  cases = new Map();
   cards = new Map();
   squares = [];
   el("eval-live-feed").replaceChildren();
@@ -82,7 +82,7 @@ function textBlock(label: string, text: string, cls = ""): HTMLElement {
   return box;
 }
 
-function buildCard(i: EvalItem): HTMLElement {
+function buildCard(i: EvalCase): HTMLElement {
   const v = verdictOf(i);
   const card = node("article", `ev-card ev-${v}`);
   card.dataset.idx = String(i.idx);
@@ -103,14 +103,14 @@ function buildCard(i: EvalItem): HTMLElement {
   return card;
 }
 
-// Adds or updates items. A judged or failed item is never turned back into an answered one (a reconnect's snapshot can race the feed).
-function apply(list: EvalItem[]): void {
+// Adds or updates cases. A judged or failed case is never turned back into an answered one (a reconnect's snapshot can race the feed).
+function apply(list: EvalCase[]): void {
   const feed = el("eval-live-feed");
   const follow = el<HTMLInputElement>("eval-live-follow").checked;
   for (const i of list) {
-    const old = items.get(i.idx);
+    const old = cases.get(i.idx);
     if (old && old.status !== "answered" && i.status === "answered") continue;
-    items.set(i.idx, i);
+    cases.set(i.idx, i);
     const card = buildCard(i);
     const prev = cards.get(i.idx);
     if (prev) prev.replaceWith(card);
@@ -134,9 +134,9 @@ function queueSummary(): void {
 }
 
 function drawSummary(): void {
-  const total = run?.num_examples ?? items.size;
+  const total = run?.num_examples ?? cases.size;
   let judged = 0, failed = 0, good = 0, mid = 0, bad = 0, scoreSum = 0, ms = 0, answered = 0;
-  for (const i of items.values()) {
+  for (const i of cases.values()) {
     if (i.status === "failed") failed++;
     else { answered++; ms += i.duration_ms; }
     if (i.status !== "judged" || i.score === null) continue;
@@ -145,8 +145,8 @@ function drawSummary(): void {
     if (i.score >= 4) good++; else if (i.score >= 2) mid++; else bad++;
   }
   el<HTMLProgressElement>("eval-live-progress").max = Math.max(total, 1);
-  el<HTMLProgressElement>("eval-live-progress").value = items.size;
-  const parts = [`${items.size} / ${total} answered`, `${judged} judged${failed ? ` · ${failed} failed` : ""}`];
+  el<HTMLProgressElement>("eval-live-progress").value = cases.size;
+  const parts = [`${cases.size} / ${total} answered`, `${judged} judged${failed ? ` · ${failed} failed` : ""}`];
   if (judged > 0) {
     parts.push(`mean score ${(scoreSum / judged).toFixed(2)} / ${MAX_SCORE}`, `${Math.round((100 * good) / judged)}% correct`,
       `${good} correct · ${mid} partial · ${bad} incorrect`);
@@ -185,7 +185,7 @@ function setRun(r: EvalRun): void {
       squares.push(sq);
       strip.append(sq);
     }
-    for (const i of items.values()) squares[i.idx]?.classList.replace("ev-sq-todo", `ev-sq-${verdictOf(i)}`);
+    for (const i of cases.values()) squares[i.idx]?.classList.replace("ev-sq-todo", `ev-sq-${verdictOf(i)}`);
   }
   queueSummary();
 }
@@ -212,18 +212,18 @@ export function watchEval(id: number, title: string, cb?: () => void): void {
     es.addEventListener(type, (m) => fn(JSON.parse((m as MessageEvent<string>).data) as FeedEvent));
   on("snapshot", (e) => {
     if (e.eval) setRun(e.eval);
-    apply(e.items ?? []);
+    apply(e.cases ?? []);
   });
-  on("answer", (e) => apply(e.items ?? []));
+  on("answer", (e) => apply(e.cases ?? []));
   on("batch", (e) => {
     if (e.eval) setRun(e.eval);
-    apply(e.items ?? []);
+    apply(e.cases ?? []);
   });
   on("end", (e) => {
     ended = true;
     if (e.eval && e.eval.status) setRun(e.eval);
     // answers the judge never scored (a cancelled or failed eval): redraw them as "not judged"
-    for (const i of items.values()) {
+    for (const i of cases.values()) {
       if (i.status !== "answered") continue;
       const card = buildCard(i);
       cards.get(i.idx)?.replaceWith(card);

@@ -112,10 +112,10 @@ The suite `evals/knowledge/suites/web_search.json` has one case, `web_search_com
 With the [admin UI](experiments.md#admin-ui) enabled, web searches are shown in three places:
 
 - The **Web search** card of the dashboard: per database, what the web searches left in it (the `web_search` artifacts, the datasets that hold them, the pages they cite, the distinct entities linked to a result and how many of those no text of the user mentions, the facts they created or restated), and, for the eval database, the totals recorded in the trajectories of all runs: entity searches (found, empty, failed), searches made by the search tool, entities and facts extracted, facts closed, latency (average, median, maximum) and cost. A **View** button per dataset lists its web searches.
-- The **run** of an experiment has a *Web searches* column with the number of searches of each eval, and an eval that made some shows their totals and a **View web searches** button.
+- The **run** of an experiment has a *Web searches* column with the number of searches of each case, and a case that made some shows their totals and a **View web searches** button.
 - The list of web searches (a modal): one entry per search with its status, latency, cost and model, the query issued, the queries the model sent to the search engine, the result (the briefing), its sources, the entities and the facts that were extracted from it, the facts it closed, and the artifact the searched entity came from.
 
-The database keeps only the searches that found something, and not their latency, cost or the queries sent to the search engine, so the list of a dataset lacks those; the list of an eval is read from its [trajectory](evals.md) and has them. The entities and facts are those of the whole result (the briefing), which cites the sources: they are not attributed to individual pages.
+The database keeps only the searches that found something, and not their latency, cost or the queries sent to the search engine, so the list of a dataset lacks those; the list of a case is read from its [trajectory](evals.md) and has them. The entities and facts are those of the whole result (the briefing), which cites the sources: they are not attributed to individual pages.
 
 The JSON behind it (under `/v1/gb/admin/api`): `GET /web-searches?db=<name>[&include_deleted=true]` (the totals above), `GET /web-searches/dataset?db=<name>&dataset_id=<id>` (the searches stored in a dataset) and `GET /evals/runs/{id}/web-searches` (the searches of each eval of a run, from the trajectories).
 

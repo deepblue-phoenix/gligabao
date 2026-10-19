@@ -30,11 +30,11 @@ const (
 
 // Events of the feed (the SSE event name is Type).
 const (
-	// evalEventSnapshot: the eval and all its items so far (stored ones, and answered ones awaiting the judge). First event.
+	// evalEventSnapshot: the eval and all its cases so far (stored ones, and answered ones awaiting the judge). First event.
 	evalEventSnapshot = "snapshot"
-	// evalEventAnswer: Items has one item the model just answered (status "answered", or "failed" if the model failed).
+	// evalEventAnswer: Cases has one case the model just answered (status "answered", or "failed" if the model failed).
 	evalEventAnswer = "answer"
-	// evalEventBatch: a batch was judged; Items are its final items and Eval the progress after it.
+	// evalEventBatch: a batch was judged; Cases are its final cases and Eval the progress after it.
 	evalEventBatch = "batch"
 	// evalEventEnd: the eval is over (Eval has its final status); the stream closes after it.
 	evalEventEnd = "end"
@@ -42,9 +42,9 @@ const (
 
 // EvalEvent is one event of the feed.
 type EvalEvent struct {
-	Type  string                            `json:"type"`
-	Eval  *relational.TrainedModelEval      `json:"eval,omitempty"`
-	Items []relational.TrainedModelEvalItem `json:"items,omitempty"`
+	Type  string                              `json:"type"`
+	Eval  *relational.TrainedModelSuiteRun    `json:"eval,omitempty"`
+	Cases []relational.TrainedModelCaseResult `json:"cases,omitempty"`
 }
 
 type evalStreamKey struct {
@@ -55,24 +55,24 @@ type evalStreamKey struct {
 // evalStream is the feed of one running eval: the watchers, and the answers not judged yet (for a watcher that joins midway).
 type evalStream struct {
 	mu      sync.Mutex
-	pending map[int]relational.TrainedModelEvalItem // by idx
+	pending map[int]relational.TrainedModelCaseResult // by idx
 	subs    map[chan EvalEvent]struct{}
 	closed  bool
 }
 
 func newEvalStream() *evalStream {
-	return &evalStream{pending: map[int]relational.TrainedModelEvalItem{}, subs: map[chan EvalEvent]struct{}{}}
+	return &evalStream{pending: map[int]relational.TrainedModelCaseResult{}, subs: map[chan EvalEvent]struct{}{}}
 }
 
 // subscribe adds a watcher. It returns the answers awaiting the judge right now and the channel of the events after that
 // moment (nil if the feed has ended). The channel is closed when the feed ends or when the watcher fell too far behind.
-func (s *evalStream) subscribe() ([]relational.TrainedModelEvalItem, chan EvalEvent) {
+func (s *evalStream) subscribe() ([]relational.TrainedModelCaseResult, chan EvalEvent) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
 		return nil, nil
 	}
-	pending := make([]relational.TrainedModelEvalItem, 0, len(s.pending))
+	pending := make([]relational.TrainedModelCaseResult, 0, len(s.pending))
 	for _, it := range s.pending {
 		pending = append(pending, it)
 	}
@@ -102,35 +102,35 @@ func (s *evalStream) send(ev EvalEvent) {
 	}
 }
 
-// answer announces an item the model answered.
-func (s *evalStream) answer(it relational.TrainedModelEvalItem) {
+// answer announces a case the model answered.
+func (s *evalStream) answer(it relational.TrainedModelCaseResult) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
 		return
 	}
 	if it.Status == "" {
-		it.Status = relational.TrainedModelEvalItemAnswered
+		it.Status = relational.TrainedModelCaseAnswered
 	}
 	s.pending[it.Idx] = it
-	s.send(EvalEvent{Type: evalEventAnswer, Items: []relational.TrainedModelEvalItem{it}})
+	s.send(EvalEvent{Type: evalEventAnswer, Cases: []relational.TrainedModelCaseResult{it}})
 }
 
-// batch announces the judged items of a batch and the progress after it.
-func (s *evalStream) batch(e relational.TrainedModelEval, items []relational.TrainedModelEvalItem) {
+// batch announces the judged cases of a batch and the progress after it.
+func (s *evalStream) batch(e relational.TrainedModelSuiteRun, cases []relational.TrainedModelCaseResult) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
 		return
 	}
-	for _, it := range items {
+	for _, it := range cases {
 		delete(s.pending, it.Idx)
 	}
-	s.send(EvalEvent{Type: evalEventBatch, Eval: &e, Items: items})
+	s.send(EvalEvent{Type: evalEventBatch, Eval: &e, Cases: cases})
 }
 
 // end announces the end of the eval and closes the feed.
-func (s *evalStream) end(e relational.TrainedModelEval) {
+func (s *evalStream) end(e relational.TrainedModelSuiteRun) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -145,19 +145,19 @@ func (s *evalStream) end(e relational.TrainedModelEval) {
 	}
 }
 
-// evalItemRow is the stored form of an item of the run.
-func evalItemRow(evalID int64, it trainingeval.Item) relational.TrainedModelEvalItem {
-	return relational.TrainedModelEvalItem{EvalID: evalID, Idx: it.Idx, Batch: it.Batch, Instruction: it.Instruction, Input: it.Input,
+// caseResultRow is the stored form of a case of the run.
+func caseResultRow(evalID int64, it trainingeval.CaseResult) relational.TrainedModelCaseResult {
+	return relational.TrainedModelCaseResult{SuiteRunID: evalID, Idx: it.Idx, Batch: it.Batch, Instruction: it.Instruction, Input: it.Input,
 		Reference: it.Reference, Response: it.Response, Status: it.Status, Error: it.Error, Score: it.Score, Reason: it.Reason,
 		InputTokens: it.InputTokens, OutputTokens: it.OutputTokens, DurationMS: it.DurationMS}
 }
 
 // EventsOf serves GET /v1/gb/training/evals/{id}/events[?db=<name>]: the live feed of an eval as Server-Sent Events. Every
-// event's data is an EvalEvent JSON. The first is a "snapshot" (the eval and all of its items so far: the judged and failed
+// event's data is an EvalEvent JSON. The first is a "snapshot" (the eval and all of its cases so far: the judged and failed
 // ones from the database, and the ones the model answered that the judge has not scored yet, with status "answered"); then, while
 // the eval runs, an "answer" for every question the model answers, a "batch" when a batch is judged, and finally an "end" after
 // which the stream closes. For an eval that is over, the stream is a snapshot and the "end". A client that reconnects gets a new
-// snapshot, so it applies items by idx. 404 for an unknown eval.
+// snapshot, so it applies cases by idx. 404 for an unknown eval.
 func (m *EvalManager) EventsOf() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		n, ok := pick(m.dbs, r.URL.Query().Get("db"))
@@ -169,12 +169,12 @@ func (m *EvalManager) EventsOf() http.HandlerFunc {
 		if !ok {
 			return
 		}
-		// Subscribe before reading the database, so no event falls between the two; the overlap is harmless: the items are
+		// Subscribe before reading the database, so no event falls between the two; the overlap is harmless: the cases are
 		// applied by idx, and the judged version wins.
 		m.mu.Lock()
 		stream := m.streams[evalStreamKey{n.Name, id}]
 		m.mu.Unlock()
-		var pending []relational.TrainedModelEvalItem
+		var pending []relational.TrainedModelCaseResult
 		var ch chan EvalEvent
 		if stream != nil {
 			pending, ch = stream.subscribe()
@@ -182,7 +182,7 @@ func (m *EvalManager) EventsOf() http.HandlerFunc {
 				defer stream.unsubscribe(ch)
 			}
 		}
-		ev, err := relational.GetTrainedModelEval(r.Context(), n.DB, id)
+		ev, err := relational.GetTrainedModelSuiteRun(r.Context(), n.DB, id)
 		if errors.Is(err, relational.ErrNotFound) {
 			httputil.Error(w, http.StatusNotFound, "unknown eval")
 			return
@@ -191,22 +191,22 @@ func (m *EvalManager) EventsOf() http.HandlerFunc {
 			httputil.Error(w, http.StatusInternalServerError, "failed to read the eval")
 			return
 		}
-		items, err := relational.ListTrainedModelEvalItems(r.Context(), n.DB, id)
+		cases, err := relational.ListTrainedModelCaseResults(r.Context(), n.DB, id)
 		if err != nil {
-			log.WithError(err).Error("training: list eval items failed")
-			httputil.Error(w, http.StatusInternalServerError, "failed to read the eval's items")
+			log.WithError(err).Error("training: list eval cases failed")
+			httputil.Error(w, http.StatusInternalServerError, "failed to read the eval's cases")
 			return
 		}
-		stored := make(map[int]bool, len(items))
-		for _, it := range items {
+		stored := make(map[int]bool, len(cases))
+		for _, it := range cases {
 			stored[it.Idx] = true
 		}
 		for _, it := range pending {
 			if !stored[it.Idx] {
-				items = append(items, it)
+				cases = append(cases, it)
 			}
 		}
-		sort.Slice(items, func(i, j int) bool { return items[i].Idx < items[j].Idx })
+		sort.Slice(cases, func(i, j int) bool { return cases[i].Idx < cases[j].Idx })
 
 		rc := http.NewResponseController(w)
 		h := w.Header()
@@ -225,7 +225,7 @@ func (m *EvalManager) EventsOf() http.HandlerFunc {
 		if _, err := w.Write([]byte(": connected\n\n")); err != nil || rc.Flush() != nil {
 			return
 		}
-		if !send(EvalEvent{Type: evalEventSnapshot, Eval: ev, Items: items}) {
+		if !send(EvalEvent{Type: evalEventSnapshot, Eval: ev, Cases: cases}) {
 			return
 		}
 		if ch == nil { // nothing is running this eval (any more): it is as stored
@@ -258,10 +258,10 @@ func (m *EvalManager) EventsOf() http.HandlerFunc {
 
 // publishEnd announces the end of eval evalID on its stream, with the eval as stored.
 func (m *EvalManager) publishEnd(ctx context.Context, n Database, s *evalStream, evalID int64) {
-	if ev, err := relational.GetTrainedModelEval(ctx, n.DB, evalID); err == nil {
+	if ev, err := relational.GetTrainedModelSuiteRun(ctx, n.DB, evalID); err == nil {
 		s.end(*ev)
 	} else {
-		log.WithError(err).WithField("eval_id", evalID).Warn("training: read the ended eval for its stream failed")
-		s.end(relational.TrainedModelEval{ID: evalID})
+		log.WithError(err).WithField("suite_run_id", evalID).Warn("training: read the ended eval for its stream failed")
+		s.end(relational.TrainedModelSuiteRun{ID: evalID})
 	}
 }

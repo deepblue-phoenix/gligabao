@@ -295,7 +295,7 @@ func searchesOfRecorded(ref *experiments.Trajectory, dir string) []WebSearch {
 	return found
 }
 
-// resultWebSearches are the web searches of one result (one eval) of a run.
+// resultWebSearches are the web searches of one result (one case) of a run.
 type resultWebSearches struct {
 	ResultID int64           `json:"result_id"`
 	Totals   WebSearchTotals `json:"totals"`
@@ -303,7 +303,7 @@ type resultWebSearches struct {
 }
 
 // EvalRunWebSearches serves GET /admin/api/evals/runs/{id}/web-searches: the web searches that the remember calls of the
-// run's evals made, per result (only the results that made any), read from their trajectories in dir (see EvalTrajectory).
+// run's cases made, per result (only the results that made any), read from their trajectories in dir (see EvalTrajectory).
 func EvalRunWebSearches(d *sql.DB, dir string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)

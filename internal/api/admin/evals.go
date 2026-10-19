@@ -15,13 +15,13 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// EvalTotals are the eval counts over all experiments.
+// EvalTotals are the case counts over all experiments.
 type EvalTotals struct {
 	Experiments int `json:"experiments"`
 	Runs        int `json:"runs"`
-	// Evals is the number of distinct evals (suite + case name) any experiment executed (counted once across experiments).
-	Evals int `json:"evals"`
-	// Executions is the number of eval results over all finished runs; Passed of them passed, Failed did not.
+	// Cases is the number of distinct cases (suite + case name) any experiment executed (counted once across experiments).
+	Cases int `json:"cases"`
+	// Executions is the number of case results over all finished runs; Passed of them passed, Failed did not.
 	Executions int     `json:"executions"`
 	Passed     int     `json:"passed"`
 	Failed     int     `json:"failed"`
@@ -32,7 +32,7 @@ type EvalTotals struct {
 type experimentView struct {
 	experiments.Experiment
 	Runs       int     `json:"runs"`
-	Evals      int     `json:"evals"`
+	Cases      int     `json:"cases"`
 	RunsPassed int     `json:"runs_passed"`
 	RunsFailed int     `json:"runs_failed"`
 	CostUSD    float64 `json:"cost_usd"`
@@ -51,11 +51,11 @@ type experimentDetail struct {
 	Runs []experiments.Run `json:"runs"`
 }
 
-// evalHistory is the progression of one eval over the runs of an experiment.
-type evalHistory struct {
+// caseHistory is the progression of one case over the runs of an experiment.
+type caseHistory struct {
 	Suite  string                  `json:"suite"`
 	Name   string                  `json:"name"`
-	Points []experiments.EvalPoint `json:"points"`
+	Points []experiments.CasePoint `json:"points"`
 }
 
 func evalFail(w http.ResponseWriter, err error, what string) {
@@ -78,7 +78,7 @@ func EvalOverview(d *sql.DB) http.HandlerFunc {
 		}
 		out := evalOverview{Experiments: make([]experimentView, 0, len(list))}
 		out.Totals.Experiments = len(list)
-		distinct := map[experiments.EvalRef]bool{}
+		distinct := map[experiments.CaseRef]bool{}
 		for _, e := range list {
 			full, err := experiments.Get(ctx, d, e.Name)
 			if err != nil {
@@ -90,7 +90,7 @@ func EvalOverview(d *sql.DB) http.HandlerFunc {
 				evalFail(w, err, "experiment runs")
 				return
 			}
-			v := experimentView{Experiment: e, Runs: len(runs), Evals: len(full.Evals)}
+			v := experimentView{Experiment: e, Runs: len(runs), Cases: len(full.Cases)}
 			for i := range runs {
 				run := runs[i]
 				switch run.Status {
@@ -100,19 +100,19 @@ func EvalOverview(d *sql.DB) http.HandlerFunc {
 					v.RunsFailed++
 				}
 				v.CostUSD += run.CostUSD
-				out.Totals.Executions += run.TotalEvals
-				out.Totals.Passed += run.PassedEvals
-				out.Totals.Failed += run.FailedEvals
+				out.Totals.Executions += run.TotalCases
+				out.Totals.Passed += run.PassedCases
+				out.Totals.Failed += run.FailedCases
 				v.LastRun = &run
 			}
 			out.Totals.Runs += len(runs)
-			for _, ev := range full.Evals {
-				distinct[ev] = true
+			for _, c := range full.Cases {
+				distinct[c] = true
 			}
 			out.Totals.CostUSD += v.CostUSD
 			out.Experiments = append(out.Experiments, v)
 		}
-		out.Totals.Evals = len(distinct)
+		out.Totals.Cases = len(distinct)
 		httputil.WriteJSON(w, http.StatusOK, out)
 	}
 }
@@ -127,7 +127,7 @@ func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return id, true
 }
 
-// EvalExperiment serves GET /admin/api/evals/experiments/{id}: the experiment with its evals and its runs (newest first).
+// EvalExperiment serves GET /admin/api/evals/experiments/{id}: the experiment with its cases and its runs (newest first).
 func EvalExperiment(d *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
@@ -167,9 +167,9 @@ func EvalExperiment(d *sql.DB) http.HandlerFunc {
 	}
 }
 
-// EvalHistory serves GET /admin/api/evals/experiments/{id}/history?suite=..&name=..: the status of one eval in each run
+// EvalCaseHistory serves GET /admin/api/evals/experiments/{id}/history?suite=..&name=..: the status of one case in each run
 // of the experiment, oldest run first.
-func EvalHistory(d *sql.DB) http.HandlerFunc {
+func EvalCaseHistory(d *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
@@ -180,16 +180,16 @@ func EvalHistory(d *sql.DB) http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, "suite and name are required")
 			return
 		}
-		points, err := experiments.EvalHistory(r.Context(), d, id, suite, name)
+		points, err := experiments.CaseHistory(r.Context(), d, id, suite, name)
 		if err != nil {
-			evalFail(w, err, "eval history")
+			evalFail(w, err, "case history")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, evalHistory{Suite: suite, Name: name, Points: points})
+		httputil.WriteJSON(w, http.StatusOK, caseHistory{Suite: suite, Name: name, Points: points})
 	}
 }
 
-// EvalRun serves GET /admin/api/evals/runs/{id}: the run with its evals and their trajectory references.
+// EvalRun serves GET /admin/api/evals/runs/{id}: the run with its cases and their trajectory references.
 func EvalRun(d *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
@@ -205,8 +205,8 @@ func EvalRun(d *sql.DB) http.HandlerFunc {
 	}
 }
 
-// EvalResultGraph serves GET /admin/api/evals/results/{id}/graph: the knowledge graph the eval built, read from
-// the dataset the eval ran in (same JSON as /admin/api/graph).
+// EvalResultGraph serves GET /admin/api/evals/results/{id}/graph: the knowledge graph the case built, read from
+// the dataset the case ran in (same JSON as /admin/api/graph).
 func EvalResultGraph(d *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)

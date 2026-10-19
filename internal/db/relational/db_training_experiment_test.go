@@ -23,7 +23,7 @@ func trainingExperimentsScenario(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 	newEval := func() int64 {
-		id, err := relational.RecordTrainedModelEval(ctx, d, relational.TrainedModelEval{TrainedModelID: mid, Dataset: "mine", NumExamples: 4})
+		id, err := relational.RecordTrainedModelSuiteRun(ctx, d, relational.TrainedModelSuiteRun{TrainedModelID: mid, Dataset: "mine", NumExamples: 4})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -40,49 +40,49 @@ func trainingExperimentsScenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("second ensure: %+v %v", again, err)
 	}
 
-	// Two evals become runs of it; the run follows its eval.
+	// Two suite runs become runs of it; the run follows its suite run.
 	e1, e2 := newEval(), newEval()
 	run, err := relational.StartTrainingExperimentRun(ctx, d, x.ID, e1)
-	if err != nil || run.ID == 0 || run.ExperimentID != x.ID || run.EvalID != e1 || run.Status != relational.TrainedModelEvalRunning ||
+	if err != nil || run.ID == 0 || run.ExperimentID != x.ID || run.SuiteRunID != e1 || run.Status != relational.TrainedModelSuiteRunRunning ||
 		run.MeanScore != nil || run.CorrectRate != nil || run.Model.ID != mid || run.Model.NumTrainSteps != 7 || run.Model.BaseModel != "google/gemma" ||
-		run.Model.FinalLoss == nil || *run.Model.FinalLoss != 0.5 || run.Eval.NumExamples != 4 {
+		run.Model.FinalLoss == nil || *run.Model.FinalLoss != 0.5 || run.SuiteRun.NumExamples != 4 {
 		t.Fatalf("StartTrainingExperimentRun: %+v %v", run, err)
 	}
 	if _, err := relational.StartTrainingExperimentRun(ctx, d, x.ID, e2); err != nil {
 		t.Fatal(err)
 	}
-	e := relational.TrainedModelEval{ID: e1, JudgeModel: "j", NumAnswered: 4, NumJudged: 4, NumCorrect: 3, NumIncorrect: 1, ScoreSum: 16, NumBatches: 1, JudgeCostUSD: 0.25}
-	if err := relational.SaveTrainedModelEvalBatch(ctx, d, e, nil); err != nil {
+	e := relational.TrainedModelSuiteRun{ID: e1, JudgeModel: "j", NumAnswered: 4, NumJudged: 4, NumCorrect: 3, NumIncorrect: 1, ScoreSum: 16, NumBatches: 1, JudgeCostUSD: 0.25}
+	if err := relational.SaveTrainedModelSuiteRunBatch(ctx, d, e, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := relational.FinishTrainedModelEval(ctx, d, e1, relational.TrainedModelEvalCompleted, ""); err != nil {
+	if err := relational.FinishTrainedModelSuiteRun(ctx, d, e1, relational.TrainedModelSuiteRunCompleted, ""); err != nil {
 		t.Fatal(err)
 	}
 	runs, err := relational.ListTrainingExperimentRuns(ctx, d, x.ID)
-	if err != nil || len(runs) != 2 || runs[0].EvalID != e1 || runs[1].EvalID != e2 {
+	if err != nil || len(runs) != 2 || runs[0].SuiteRunID != e1 || runs[1].SuiteRunID != e2 {
 		t.Fatalf("ListTrainingExperimentRuns: %+v %v", runs, err)
 	}
-	if r := runs[0]; r.Status != relational.TrainedModelEvalCompleted || r.Eval.FinishedAt == nil || r.MeanScore == nil || *r.MeanScore != 4 ||
-		r.CorrectRate == nil || *r.CorrectRate != 0.75 || r.Eval.JudgeCostUSD != 0.25 || r.Eval.JudgeModel != "j" {
+	if r := runs[0]; r.Status != relational.TrainedModelSuiteRunCompleted || r.SuiteRun.FinishedAt == nil || r.MeanScore == nil || *r.MeanScore != 4 ||
+		r.CorrectRate == nil || *r.CorrectRate != 0.75 || r.SuiteRun.JudgeCostUSD != 0.25 || r.SuiteRun.JudgeModel != "j" {
 		t.Fatalf("finished run: %+v", r)
 	}
-	if r := runs[1]; r.Status != relational.TrainedModelEvalRunning || r.MeanScore != nil {
+	if r := runs[1]; r.Status != relational.TrainedModelSuiteRunRunning || r.MeanScore != nil {
 		t.Fatalf("running run: %+v", r)
 	}
-	if got, err := relational.GetTrainingExperimentRun(ctx, d, run.ID); err != nil || got.Status != relational.TrainedModelEvalCompleted {
+	if got, err := relational.GetTrainingExperimentRun(ctx, d, run.ID); err != nil || got.Status != relational.TrainedModelSuiteRunCompleted {
 		t.Fatalf("GetTrainingExperimentRun: %+v %v", got, err)
 	}
 
-	// An eval is in one experiment only; unknown experiments and evals are refused.
+	// A suite run is in one experiment only; unknown experiments and suite runs are refused.
 	other, _ := relational.EnsureTrainingExperiment(ctx, d, "other", "", nil)
 	if _, err := relational.StartTrainingExperimentRun(ctx, d, other.ID, e1); err == nil {
-		t.Fatal("an eval became a run of two experiments")
+		t.Fatal("a suite run became a run of two experiments")
 	}
 	if _, err := relational.StartTrainingExperimentRun(ctx, d, x.ID+100, e1); !errors.Is(err, relational.ErrNotFound) {
 		t.Fatalf("unknown experiment: %v", err)
 	}
 	if _, err := relational.StartTrainingExperimentRun(ctx, d, x.ID, e2+100); !errors.Is(err, relational.ErrNotFound) {
-		t.Fatalf("unknown eval: %v", err)
+		t.Fatalf("unknown suite run: %v", err)
 	}
 	if _, err := relational.GetTrainingExperimentRun(ctx, d, run.ID+100); !errors.Is(err, relational.ErrNotFound) {
 		t.Fatalf("unknown run: %v", err)
@@ -100,7 +100,7 @@ func trainingExperimentsScenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("ListTrainingExperiments: %+v %v", list, err)
 	}
 
-	// Deleting the model deletes its evals and so its runs, not the experiment.
+	// Deleting the model deletes its suite runs and so its runs, not the experiment.
 	if _, err := d.ExecContext(ctx, `DELETE FROM gb_trained_models WHERE id = `+fmt.Sprint(mid)); err != nil {
 		t.Fatal(err)
 	}

@@ -11,7 +11,7 @@ import (
 
 //---------------------------------------------------------------------------------------------
 // Training experiments: the 'training' rows of gb_experiments and gb_experiment_runs (see db_schema.go). A training run is a
-// gb_experiment_runs row with ONE eval (db_trained_model_eval.go); it is made with the eval and joins an experiment later.
+// gb_experiment_runs row with ONE suite run (db_trained_model_eval.go); it is made with the suite run and joins an experiment later.
 
 const trainingExperimentColumns = `x.id, x.name, x.description, x.config::text, x.created_at,
 	(SELECT COUNT(*) FROM gb_experiment_runs r WHERE r.experiment_id = x.id)`
@@ -76,31 +76,31 @@ func ListTrainingExperiments(ctx context.Context, d *sql.DB) ([]model.TrainingEx
 
 const trainingExperimentRunSelect = `
 	SELECT r.id, COALESCE(r.experiment_id, 0), e.id, r.started_at,
-		` + trainedModelEvalColumns + `,
+		` + trainedModelSuiteRunColumns + `,
 		m.id, m.name, m.base_model, m.model_size, m.num_train_steps, m.final_loss, m.params::text
 	FROM gb_experiment_runs r
 	JOIN gb_experiment_results e ON e.run_id = r.id
-	JOIN gb_training_eval_meta tm ON tm.result_id = e.id
+	JOIN gb_training_suite_run_meta tm ON tm.result_id = e.id
 	JOIN gb_trained_models m ON m.id = tm.trained_model_id`
 
 func scanTrainingExperimentRun(s rowScanner) (*model.TrainingExperimentRun, error) {
 	var r model.TrainingExperimentRun
-	var evalParams, modelParams string
-	var evalFinished sql.NullTime
+	var runParams, modelParams string
+	var runFinished sql.NullTime
 	var loss sql.NullFloat64
-	e, m := &r.Eval, &r.Model
-	if err := s.Scan(&r.ID, &r.ExperimentID, &r.EvalID, &r.CreatedAt,
-		&e.ID, &e.TrainedModelID, &e.Status, &e.Dataset, &e.DatasetSHA256, &evalParams, &e.JudgeModel, &e.NumExamples,
+	e, m := &r.SuiteRun, &r.Model
+	if err := s.Scan(&r.ID, &r.ExperimentID, &r.SuiteRunID, &r.CreatedAt,
+		&e.ID, &e.TrainedModelID, &e.Status, &e.Scheme, &e.Dataset, &e.DatasetSHA256, &runParams, &e.JudgeModel, &e.NumExamples,
 		&e.NumAnswered, &e.NumJudged, &e.NumFailed, &e.NumCorrect, &e.NumPartial, &e.NumIncorrect, &e.ScoreSum, &e.NumBatches,
-		&e.JudgeCalls, &e.JudgeInputTokens, &e.JudgeOutputTokens, &e.JudgeCostUSD, &e.Error, &e.CreatedAt, &evalFinished,
+		&e.JudgeCalls, &e.JudgeInputTokens, &e.JudgeOutputTokens, &e.JudgeCostUSD, &e.Error, &e.CreatedAt, &runFinished,
 		&m.ID, &m.Name, &m.BaseModel, &m.ModelSize, &m.NumTrainSteps, &loss, &modelParams); err != nil {
 		return nil, err
 	}
 	r.CreatedAt = r.CreatedAt.UTC()
-	e.SetStoredParams(evalParams)
+	e.SetStoredParams(runParams)
 	e.CreatedAt = e.CreatedAt.UTC()
-	if evalFinished.Valid {
-		t := evalFinished.Time.UTC()
+	if runFinished.Valid {
+		t := runFinished.Time.UTC()
 		e.FinishedAt = &t
 	}
 	if loss.Valid {
@@ -111,10 +111,10 @@ func scanTrainingExperimentRun(s rowScanner) (*model.TrainingExperimentRun, erro
 	return &r, nil
 }
 
-// StartTrainingExperimentRun makes the eval (its run) part of the experiment and returns the run: the run's experiment is set
-// and the eval is added to the experiment's evals (gb_experiment_evals). It returns model.ErrNotFound if the experiment or the
-// eval does not exist, and an error if the eval is in an experiment already (an eval can be in one experiment only).
-func StartTrainingExperimentRun(ctx context.Context, d *sql.DB, experimentID, evalID int64) (*model.TrainingExperimentRun, error) {
+// StartTrainingExperimentRun makes the suite run (its run) part of the experiment and returns the run: the run's experiment is set
+// and the suite run is added to the experiment's suite runs (gb_experiment_cases). It returns model.ErrNotFound if the experiment or the
+// suite run does not exist, and an error if the suite run is in an experiment already (a suite run can be in one experiment only).
+func StartTrainingExperimentRun(ctx context.Context, d *sql.DB, experimentID, suiteRunID int64) (*model.TrainingExperimentRun, error) {
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("start training experiment run: %w", err)
@@ -130,24 +130,24 @@ func StartTrainingExperimentRun(ctx context.Context, d *sql.DB, experimentID, ev
 	var suite, name string
 	var inExperiment sql.NullInt64
 	err = tx.QueryRowContext(ctx, `
-		SELECT r.id, r.experiment_id, e.suite, e.eval_name
+		SELECT r.id, r.experiment_id, e.suite, e.case_name
 		FROM gb_experiment_results e JOIN gb_experiment_runs r ON r.id = e.run_id
-		WHERE e.id = $1 AND e.type = 'training'`, evalID).Scan(&runID, &inExperiment, &suite, &name)
+		WHERE e.id = $1 AND e.type = 'training'`, suiteRunID).Scan(&runID, &inExperiment, &suite, &name)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
 	} else if err != nil {
 		return nil, fmt.Errorf("start training experiment run: %w", err)
 	}
 	if inExperiment.Valid {
-		return nil, fmt.Errorf("start training experiment run: eval %d is in experiment %d already", evalID, inExperiment.Int64)
+		return nil, fmt.Errorf("start training experiment run: suite run %d is in experiment %d already", suiteRunID, inExperiment.Int64)
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE gb_experiment_runs SET experiment_id = $1 WHERE id = $2`, experimentID, runID); err != nil {
 		return nil, fmt.Errorf("start training experiment run: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO gb_experiment_evals (experiment_id, type, suite, eval_name, created_at)
+		INSERT INTO gb_experiment_cases (experiment_id, type, suite, case_name, created_at)
 		VALUES ($1, 'training', $2, $3, $4)
-		ON CONFLICT (experiment_id, suite, eval_name) DO NOTHING`,
+		ON CONFLICT (experiment_id, suite, case_name) DO NOTHING`,
 		experimentID, suite, name, Now()); err != nil {
 		return nil, fmt.Errorf("start training experiment run: %w", err)
 	}

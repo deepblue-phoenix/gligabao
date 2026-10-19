@@ -5,36 +5,52 @@ import (
 	"time"
 )
 
-// Statuses of a TrainedModelEval.
+// Statuses of a TrainedModelSuiteRun.
 const (
-	TrainedModelEvalRunning   = "running"
-	TrainedModelEvalCompleted = "completed"
-	TrainedModelEvalFailed    = "failed"    // Error says why
-	TrainedModelEvalCancelled = "cancelled" // stopped by the user
+	TrainedModelSuiteRunRunning   = "running"
+	TrainedModelSuiteRunCompleted = "completed"
+	TrainedModelSuiteRunFailed    = "failed"    // Error says why
+	TrainedModelSuiteRunCancelled = "cancelled" // stopped by the user
 )
 
-// Statuses of a TrainedModelEvalItem.
+// Statuses of a TrainedModelCaseResult.
 const (
-	TrainedModelEvalItemJudged = "judged" // the model answered and the judge scored it
-	TrainedModelEvalItemFailed = "failed" // the model or the judge failed: Error says why
-	// TrainedModelEvalItemAnswered is never stored: the live stream of an eval (GET .../evals/{id}/events) uses it for an
-	// item the model answered whose batch the judge has not scored yet.
-	TrainedModelEvalItemAnswered = "answered"
+	TrainedModelCaseJudged = "judged" // the model answered and the judge scored it
+	TrainedModelCaseFailed = "failed" // the model or the judge failed: Error says why
+	// TrainedModelCaseAnswered is never stored: the live stream of a suite run (GET .../evals/{id}/events) uses it for a
+	// case the model answered whose batch the judge has not scored yet.
+	TrainedModelCaseAnswered = "answered"
 )
 
-// TrainedModelEval is one run of the LLM-as-a-judge eval of a trained model (a "training" row of gb_experiment_results with its gb_training_eval_meta; evals/training): the
-// model is asked the questions of a dataset and an external LLM scores its answers against the dataset's. The counters are
-// updated after every judge batch, so the row shows the progress of a running eval and the result of a finished one.
-// Every example is judged or failed (NumJudged + NumFailed = the ones done so far, of NumExamples);
+// Eval schemes of a trained model: how the cases of the suite are made and what the model's answer is compared with.
+const (
+	// TrainingSchemeFineTuneDataset is the scheme where the suite is the model's own fine-tuning dataset: every example is a
+	// case (the question is the training prompt, the expected output is the dataset's output) and the judge scores how
+	// closely the model's answer reproduces that output. It measures how well the model learned what it was trained on.
+	//
+	// The other scheme, the one of the knowledge evals (cases with an input and an output that was never in the training
+	// data, checked for), is not implemented for trained models yet; it will be a second value of the same field.
+	TrainingSchemeFineTuneDataset = "finetune_dataset"
+)
+
+// TrainedModelSuiteRun is one run of an eval suite against a trained model, judged by an external LLM (a "training" row of
+// gb_experiment_results, whose case_name is ” because it is the result of the whole suite, with its
+// gb_training_suite_run_meta; evals/training). The HTTP API and the admin UI call it an eval. The suite is a dataset (see
+// Scheme), its cases are the dataset's examples: the model is asked the question of each case and the LLM scores its answer
+// against the expected output. The counters are updated after every judge batch, so the row shows the progress of a running
+// suite run and the result of a finished one.
+// Every case is judged or failed (NumJudged + NumFailed = the ones done so far, of NumExamples);
 // NumCorrect + NumPartial + NumIncorrect = NumJudged, and ScoreSum is the sum of the scores (0 to 5) of the judged ones.
 //
-// ID is that of the eval's gb_experiment_results row. Status, Error, CreatedAt (the start), FinishedAt and JudgeCostUSD are
-// columns of that row, Params those of its run (gb_experiment_runs), and the rest is in gb_training_eval_meta.
-type TrainedModelEval struct {
+// ID is that of the suite run's gb_experiment_results row. Status, Error, CreatedAt (the start), FinishedAt and JudgeCostUSD are
+// columns of that row, Params those of its run (gb_experiment_runs), and the rest is in gb_training_suite_run_meta.
+type TrainedModelSuiteRun struct {
 	ID             int64  `json:"id"`
 	TrainedModelID int64  `json:"trained_model_id"`
 	Status         string `json:"status"`
-	// Dataset is the name of the dataset the questions came from and DatasetSHA256 the digest of the file that was read.
+	// Scheme says how the suite was made: TrainingSchemeFineTuneDataset.
+	Scheme string `json:"scheme"`
+	// Dataset is the name of the dataset the cases came from (the suite) and DatasetSHA256 the digest of the file that was read.
 	Dataset       string `json:"dataset"`
 	DatasetSHA256 string `json:"dataset_sha256"`
 	// Params are the settings of the run as a JSON object (batch_size, concurrency, max_tokens, temperature, limit).
@@ -61,7 +77,7 @@ type TrainedModelEval struct {
 }
 
 // ParamsJSON is Params as stored ("{}" when there are none or they are not valid JSON).
-func (e TrainedModelEval) ParamsJSON() string {
+func (e TrainedModelSuiteRun) ParamsJSON() string {
 	if len(e.Params) == 0 || !json.Valid(e.Params) {
 		return "{}"
 	}
@@ -69,18 +85,18 @@ func (e TrainedModelEval) ParamsJSON() string {
 }
 
 // SetStoredParams sets Params from the column it is stored in.
-func (e *TrainedModelEval) SetStoredParams(s string) {
+func (e *TrainedModelSuiteRun) SetStoredParams(s string) {
 	e.Params = json.RawMessage("{}")
 	if json.Valid([]byte(s)) {
 		e.Params = json.RawMessage(s)
 	}
 }
 
-// TrainedModelEvalItem is the outcome for one example of an eval (gb_training_eval_items): the question, the
+// TrainedModelCaseResult is the outcome for one example of a suite run (gb_training_case_results): the question, the
 // dataset's answer (Reference), the model's (Response) and the judge's score.
-type TrainedModelEvalItem struct {
-	ID     int64 `json:"id"`
-	EvalID int64 `json:"eval_id"`
+type TrainedModelCaseResult struct {
+	ID         int64 `json:"id"`
+	SuiteRunID int64 `json:"suite_run_id"`
 	// Idx is the example's position in the dataset (0-based), Batch the judge batch it was graded in (1-based).
 	Idx         int    `json:"idx"`
 	Batch       int    `json:"batch"`
@@ -90,7 +106,7 @@ type TrainedModelEvalItem struct {
 	Response    string `json:"response"`
 	Status      string `json:"status"`
 	Error       string `json:"error"`
-	// Score is the judge's, 0 to 5 (nil unless the item is judged); Reason its explanation.
+	// Score is the judge's, 0 to 5 (nil unless the case is judged); Reason its explanation.
 	Score  *int   `json:"score"`
 	Reason string `json:"reason"`
 	// InputTokens, OutputTokens and DurationMS are the model's for this question.

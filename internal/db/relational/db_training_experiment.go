@@ -10,9 +10,9 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Training experiments: named series of evals of trained models, the "training" rows of gb_experiments and gb_experiment_runs (see
-// sqlite/db_schema.go). A run is an eval (RecordTrainedModelEval) that was made part of an experiment; it holds no results of
-// its own, the eval does.
+// Training experiments: named series of suite runs of trained models, the "training" rows of gb_experiments and gb_experiment_runs (see
+// sqlite/db_schema.go). A run is a suite run (RecordTrainedModelSuiteRun) that was made part of an experiment; it holds no results of
+// its own, the suite run does.
 
 // EnsureTrainingExperiment returns the training experiment called name, creating it first (with the given description and
 // settings) if needed. An existing experiment is returned unchanged.
@@ -48,19 +48,19 @@ func ListTrainingExperiments(ctx context.Context, d *sql.DB) ([]TrainingExperime
 	return nil, unsupported()
 }
 
-// StartTrainingExperimentRun makes the eval a run of the experiment and returns the run. It returns ErrNotFound if the
-// experiment or the eval does not exist, and an error if the eval is a run already (an eval is in one experiment only).
-func StartTrainingExperimentRun(ctx context.Context, d *sql.DB, experimentID, evalID int64) (*TrainingExperimentRun, error) {
+// StartTrainingExperimentRun makes the suite run a run of the experiment and returns the run. It returns ErrNotFound if the
+// experiment or the suite run does not exist, and an error if the suite run is a run already (a suite run is in one experiment only).
+func StartTrainingExperimentRun(ctx context.Context, d *sql.DB, experimentID, suiteRunID int64) (*TrainingExperimentRun, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.StartTrainingExperimentRun(ctx, d, experimentID, evalID)
+		return sqlite.StartTrainingExperimentRun(ctx, d, experimentID, suiteRunID)
 	case config.DBBackendPostgres:
-		return postgres.StartTrainingExperimentRun(ctx, d, experimentID, evalID)
+		return postgres.StartTrainingExperimentRun(ctx, d, experimentID, suiteRunID)
 	}
 	return nil, unsupported()
 }
 
-// GetTrainingExperimentRun returns the run with that ID, with its eval as it is now and its model, or ErrNotFound.
+// GetTrainingExperimentRun returns the run with that ID, with its suite run as it is now and its model, or ErrNotFound.
 func GetTrainingExperimentRun(ctx context.Context, d *sql.DB, id int64) (*TrainingExperimentRun, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
@@ -71,7 +71,7 @@ func GetTrainingExperimentRun(ctx context.Context, d *sql.DB, id int64) (*Traini
 	return nil, unsupported()
 }
 
-// ListTrainingExperimentRuns returns the runs of the experiment, oldest first, each with its eval as it is now and its model.
+// ListTrainingExperimentRuns returns the runs of the experiment, oldest first, each with its suite run as it is now and its model.
 func ListTrainingExperimentRuns(ctx context.Context, d *sql.DB, experimentID int64) ([]TrainingExperimentRun, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
