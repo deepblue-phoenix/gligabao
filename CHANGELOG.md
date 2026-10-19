@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.65.1] - 2026-10-19
+
+### Changed
+- The ontology parser moved from `internal/ontology` to `internal/memory/memory_ontology`, as it is part of the memory subsystem. The package is now `memory_ontology`. No behaviour change.
+
 ## [0.65.0] - 2026-10-19
 
 ### Changed

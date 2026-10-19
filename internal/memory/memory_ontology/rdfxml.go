@@ -1,4 +1,4 @@
-package ontology
+package memory_ontology
 
 // A small RDF/XML reader: it turns a document into triples, which ontology.go then interprets as OWL. It covers
 // what OWL ontologies written in RDF/XML use: node elements (rdf:about, rdf:ID, rdf:nodeID, blank nodes, typed

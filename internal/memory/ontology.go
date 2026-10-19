@@ -21,7 +21,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
-	"github.com/deepblue-phoenix/gligabao/internal/ontology"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_ontology"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -79,7 +79,7 @@ func prepareOntology(userID, name, description string, content []byte) (userIDOu
 		err = fmt.Errorf("%w: larger than %d bytes", ErrInvalidOntology, MaxOntologyBytes)
 		return
 	}
-	o, perr := ontology.Parse(bytes.NewReader(content))
+	o, perr := memory_ontology.Parse(bytes.NewReader(content))
 	if perr != nil {
 		err = fmt.Errorf("%w: %v", ErrInvalidOntology, perr)
 		return

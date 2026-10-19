@@ -1,4 +1,4 @@
-// Package ontology reads OWL ontologies written in RDF/XML and reduces them to what gligabao stores in its graph:
+// Package memory_ontology reads OWL ontologies written in RDF/XML and reduces them to what gligabao stores in its graph:
 // a set of classes (nodes) and the relationships between them (edges).
 //
 // Mapping:
@@ -12,7 +12,7 @@
 //
 // Everything else (restrictions, datatype properties, individuals, properties without domain or range, other
 // anonymous class expressions) is ignored: a document using only those still parses, it just yields no classes.
-package ontology
+package memory_ontology
 
 import (
 	"fmt"

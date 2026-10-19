@@ -159,7 +159,7 @@ The graph rows reference the metadata row with `ON DELETE CASCADE`. Like everyth
 
 ## How OWL is mapped
 
-The document must be OWL in RDF/XML. The parser (`internal/ontology`) is a small RDF/XML reader plus an interpretation of the OWL terms below; it has no external dependencies.
+The document must be OWL in RDF/XML. The parser (`internal/memory/memory_ontology`) is a small RDF/XML reader plus an interpretation of the OWL terms below; it has no external dependencies.
 
 | In the document | In the graph |
 | --------------- | ------------ |
