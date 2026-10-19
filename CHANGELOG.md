@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.55.0] - 2026-10-19
+
+### Changed
+- **The outcome of a case in a run is a case result, everywhere (breaking for the eval database: the tables must be rebuilt, nothing is migrated; SQLite and PostgreSQL).** The table `gb_experiment_results` is `gb_experiment_case_results`, and the column that points to it, `result_id`, is `case_result_id` (in `gb_knowledge_case_meta`, `gb_training_suite_run_meta` and `gb_experiment_trajectories`). A training suite run is still one row of that table (`case_name ''`) until training evals have cases of their own.
+  - Go: `ExperimentResult` is `ExperimentCaseResult` (`experiments.Result` is `experiments.CaseResult`), `ExperimentRun.Results` is `CaseResults`, `ExperimentTrajectory.ResultID` is `CaseResultID`, `RecordExperimentResult` and `GetExperimentResultDataset` are `RecordExperimentCaseResult` and `GetExperimentCaseResultDataset`, `experiments.ResultDataset` is `experiments.CaseResultDataset`.
+  - Admin API (`/v1/gb/admin/api/evals/...`): a run's `results` is `case_results`, a trajectory's `result_id` is `case_result_id`, `GET /runs/{id}/web-searches` answers `case_results` (each with `case_result_id`) and `GET /results/{id}/graph` is `GET /case_results/{id}/graph`.
+
 ## [0.54.0] - 2026-10-19
 
 ### Changed

@@ -9,7 +9,7 @@ import { showWebSearches, totalsLine, type WebSearch, type WebSearchTotals } fro
 interface Run {
   id: number; experiment_id: number; status: string; params?: Record<string, unknown>;
   total_cases: number; passed_cases: number; failed_cases: number; cost_usd: number;
-  started_at: string; finished_at?: string; results?: Result[];
+  started_at: string; finished_at?: string; case_results?: CaseResult[];
 }
 interface Trajectory {
   seq: number; kind: string; trajectory_id: string; agent_name: string; steps: number; cost_usd: number;
@@ -17,12 +17,12 @@ interface Trajectory {
 }
 interface Artifact { id: number; kind: string; text: string; valid_at: string; created_at: string }
 // The outcome of one case of a suite in one run.
-interface Result {
+interface CaseResult {
   id: number; suite: string; name: string; status: string; answer?: string; problems?: string[]; passed_checks?: string[]; dataset_id?: number; error?: string;
   steps: number; cost_usd: number; started_at: string; finished_at: string; trajectories?: Trajectory[];
 }
 // The web searches the remember calls of one result (case) made (see websearch.ts), read from its trajectories.
-interface EvalWebSearches { result_id: number; totals: WebSearchTotals; searches: WebSearch[] }
+interface EvalWebSearches { case_result_id: number; totals: WebSearchTotals; searches: WebSearch[] }
 interface ExperimentRow {
   id: number; name: string; description?: string; created_at: string;
   runs: number; cases: number; runs_passed: number; runs_failed: number; cost_usd: number; last_run?: Run;
@@ -218,10 +218,10 @@ async function showRun(runID: number, experiment: string): Promise<void> {
     const [run, webSearches] = await Promise.all([
       getJSON<Run>(`api/evals/runs/${runID}`),
       // Informational: the run is shown without them if they cannot be read.
-      getJSON<{ results: EvalWebSearches[] }>(`api/evals/runs/${runID}/web-searches`).then((r) => r.results ?? [], () => [] as EvalWebSearches[]),
+      getJSON<{ case_results: EvalWebSearches[] }>(`api/evals/runs/${runID}/web-searches`).then((r) => r.case_results ?? [], () => [] as EvalWebSearches[]),
     ]);
-    const webByCase = new Map(webSearches.map((w) => [w.result_id, w]));
-    const cases = run.results ?? [];
+    const webByCase = new Map(webSearches.map((w) => [w.case_result_id, w]));
+    const cases = run.case_results ?? [];
     status.replaceChildren(statusBadge(run.status), ` ${run.passed_cases}/${run.total_cases} passed · ${fmtCost(run.cost_usd)} · ${fmtDuration(run.started_at, run.finished_at)}`);
     content.append(props([
       ["started", `${fmtTime(run.started_at)} UTC`], ["finished", run.finished_at ? `${fmtTime(run.finished_at)} UTC` : undefined],
@@ -266,7 +266,7 @@ async function showRun(runID: number, experiment: string): Promise<void> {
 }
 
 // The detail of one case: its result and the list of its ATIF trajectories, each opening the flow graph.
-function caseRecord(run: Run, e: Result, experiment: string, web?: EvalWebSearches): HTMLElement[] {
+function caseRecord(run: Run, e: CaseResult, experiment: string, web?: EvalWebSearches): HTMLElement[] {
   const out: HTMLElement[] = [
     props([
       ["started", `${fmtTime(e.started_at)} UTC`], ["answer", e.answer], ["error", e.error],
@@ -294,7 +294,7 @@ function caseRecord(run: Run, e: Result, experiment: string, web?: EvalWebSearch
     gbtn.type = "button";
     gbtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      void showGraphAt(`${e.suite}/${e.name} (run #${run.id})`, `api/evals/results/${e.id}/graph`);
+      void showGraphAt(`${e.suite}/${e.name} (run #${run.id})`, `api/evals/case_results/${e.id}/graph`);
     });
     out.push(gbtn);
   } else {

@@ -108,15 +108,15 @@ func testWebSearches(t *testing.T, d *sql.DB) {
 
 	// Per result (case), from the trajectory.
 	var perResult struct {
-		Results []struct {
+		CaseResults []struct {
 			Totals   admin.WebSearchTotals `json:"totals"`
 			Searches []admin.WebSearch     `json:"searches"`
-		} `json:"results"`
+		} `json:"case_results"`
 	}
-	if c := get(admin.EvalRunWebSearches(d, dir), "/x/"+strconv.FormatInt(tr.Run.ID, 10), &perResult); c != 200 || len(perResult.Results) != 1 {
+	if c := get(admin.EvalRunWebSearches(d, dir), "/x/"+strconv.FormatInt(tr.Run.ID, 10), &perResult); c != 200 || len(perResult.CaseResults) != 1 {
 		t.Fatalf("per result: %d %+v", c, perResult)
 	}
-	e := perResult.Results[0]
+	e := perResult.CaseResults[0]
 	if e.Totals.EntitySearches != 3 || e.Totals.Found != 2 || e.Totals.Empty != 1 || e.Totals.EngineSearches != 6 || e.Totals.Latency.Count != 3 || e.Totals.Sources != 3 {
 		t.Errorf("totals = %+v", e.Totals)
 	}

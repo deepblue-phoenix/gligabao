@@ -59,15 +59,15 @@ func StartExperimentRun(ctx context.Context, d *sql.DB, experimentID int64, para
 	return nil, unsupported()
 }
 
-// RecordExperimentResult stores the result of one case of a running run (e.RunID) together with the references to
+// RecordExperimentCaseResult stores the result of one case of a running run (e.RunID) together with the references to
 // its trajectories (numbered in order), and adds the case to the experiment's cases. It returns the stored copy,
 // ErrNotFound if the run does not exist, and ErrRunNotRunning if it is already finished.
-func RecordExperimentResult(ctx context.Context, d *sql.DB, e ExperimentResult) (*ExperimentResult, error) {
+func RecordExperimentCaseResult(ctx context.Context, d *sql.DB, e ExperimentCaseResult) (*ExperimentCaseResult, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.RecordExperimentResult(ctx, d, e)
+		return sqlite.RecordExperimentCaseResult(ctx, d, e)
 	case config.DBBackendPostgres:
-		return postgres.RecordExperimentResult(ctx, d, e)
+		return postgres.RecordExperimentCaseResult(ctx, d, e)
 	}
 	return nil, unsupported()
 }
@@ -106,20 +106,20 @@ func GetExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*ExperimentR
 	return nil, unsupported()
 }
 
-// GetExperimentResultDataset returns the dataset (deleted or not) a case ran in, whose graph is the one the case
+// GetExperimentCaseResultDataset returns the dataset (deleted or not) a case ran in, whose graph is the one the case
 // built, or ErrNotFound if the case does not exist or has none.
-func GetExperimentResultDataset(ctx context.Context, d *sql.DB, resultID int64) (*Dataset, error) {
+func GetExperimentCaseResultDataset(ctx context.Context, d *sql.DB, caseResultID int64) (*Dataset, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
-		return sqlite.GetExperimentResultDataset(ctx, d, resultID)
+		return sqlite.GetExperimentCaseResultDataset(ctx, d, caseResultID)
 	case config.DBBackendPostgres:
-		return postgres.GetExperimentResultDataset(ctx, d, resultID)
+		return postgres.GetExperimentCaseResultDataset(ctx, d, caseResultID)
 	}
 	return nil, unsupported()
 }
 
 // FindExperimentTrajectory returns the reference to the trajectory with the given ATIF trajectory_id, or ErrNotFound.
-// Its ResultID leads to the case, and through it to the run and the experiment.
+// Its CaseResultID leads to the case, and through it to the run and the experiment.
 func FindExperimentTrajectory(ctx context.Context, d *sql.DB, trajectoryID string) (*ExperimentTrajectory, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
@@ -132,7 +132,7 @@ func FindExperimentTrajectory(ctx context.Context, d *sql.DB, trajectoryID strin
 
 // ListExperimentCaseHistory returns the results of one case (suite and case name) over the runs of the experiment,
 // oldest run first, without trajectories. It is empty if the case was never recorded.
-func ListExperimentCaseHistory(ctx context.Context, d *sql.DB, experimentID int64, suite, name string) ([]ExperimentResult, error) {
+func ListExperimentCaseHistory(ctx context.Context, d *sql.DB, experimentID int64, suite, name string) ([]ExperimentCaseResult, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
 		return sqlite.ListExperimentCaseHistory(ctx, d, experimentID, suite, name)

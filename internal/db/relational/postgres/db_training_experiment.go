@@ -79,8 +79,8 @@ const trainingExperimentRunSelect = `
 		` + trainedModelSuiteRunColumns + `,
 		m.id, m.name, m.base_model, m.model_size, m.num_train_steps, m.final_loss, m.params::text
 	FROM gb_experiment_runs r
-	JOIN gb_experiment_results e ON e.run_id = r.id
-	JOIN gb_training_suite_run_meta tm ON tm.result_id = e.id
+	JOIN gb_experiment_case_results e ON e.run_id = r.id
+	JOIN gb_training_suite_run_meta tm ON tm.case_result_id = e.id
 	JOIN gb_trained_models m ON m.id = tm.trained_model_id`
 
 func scanTrainingExperimentRun(s rowScanner) (*model.TrainingExperimentRun, error) {
@@ -131,7 +131,7 @@ func StartTrainingExperimentRun(ctx context.Context, d *sql.DB, experimentID, su
 	var inExperiment sql.NullInt64
 	err = tx.QueryRowContext(ctx, `
 		SELECT r.id, r.experiment_id, e.suite, e.case_name
-		FROM gb_experiment_results e JOIN gb_experiment_runs r ON r.id = e.run_id
+		FROM gb_experiment_case_results e JOIN gb_experiment_runs r ON r.id = e.run_id
 		WHERE e.id = $1 AND e.type = 'training'`, suiteRunID).Scan(&runID, &inExperiment, &suite, &name)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound

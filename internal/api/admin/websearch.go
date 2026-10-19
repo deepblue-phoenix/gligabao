@@ -295,11 +295,11 @@ func searchesOfRecorded(ref *experiments.Trajectory, dir string) []WebSearch {
 	return found
 }
 
-// resultWebSearches are the web searches of one result (one case) of a run.
-type resultWebSearches struct {
-	ResultID int64           `json:"result_id"`
-	Totals   WebSearchTotals `json:"totals"`
-	Searches []WebSearch     `json:"searches"`
+// caseResultWebSearches are the web searches of one result (one case) of a run.
+type caseResultWebSearches struct {
+	CaseResultID int64           `json:"case_result_id"`
+	Totals       WebSearchTotals `json:"totals"`
+	Searches     []WebSearch     `json:"searches"`
 }
 
 // EvalRunWebSearches serves GET /admin/api/evals/runs/{id}/web-searches: the web searches that the remember calls of the
@@ -316,15 +316,15 @@ func EvalRunWebSearches(d *sql.DB, dir string) http.HandlerFunc {
 			return
 		}
 		out := struct {
-			Results []resultWebSearches `json:"results"`
-		}{Results: []resultWebSearches{}}
-		for _, e := range run.Results {
+			CaseResults []caseResultWebSearches `json:"case_results"`
+		}{CaseResults: []caseResultWebSearches{}}
+		for _, e := range run.CaseResults {
 			var list []WebSearch
 			for i := range e.Trajectories {
 				list = append(list, searchesOfRecorded(&e.Trajectories[i], dir)...)
 			}
 			if len(list) > 0 {
-				out.Results = append(out.Results, resultWebSearches{ResultID: e.ID, Totals: totalsOf(list), Searches: list})
+				out.CaseResults = append(out.CaseResults, caseResultWebSearches{CaseResultID: e.ID, Totals: totalsOf(list), Searches: list})
 			}
 		}
 		httputil.WriteJSON(w, http.StatusOK, out)
@@ -347,7 +347,7 @@ func allRecordedSearches(ctx context.Context, d *sql.DB, dir string) (list []Web
 			if err != nil {
 				return nil, 0, err
 			}
-			for _, ev := range run.Results {
+			for _, ev := range run.CaseResults {
 				for i := range ev.Trajectories {
 					if found := searchesOfRecorded(&ev.Trajectories[i], dir); len(found) > 0 {
 						list = append(list, found...)

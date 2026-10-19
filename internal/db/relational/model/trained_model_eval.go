@@ -34,7 +34,7 @@ const (
 )
 
 // TrainedModelSuiteRun is one run of an eval suite against a trained model, judged by an external LLM (a "training" row of
-// gb_experiment_results, whose case_name is ” because it is the result of the whole suite, with its
+// gb_experiment_case_results, whose case_name is ” because it is the result of the whole suite, with its
 // gb_training_suite_run_meta; evals/training). The HTTP API and the admin UI call it an eval. The suite is a dataset (see
 // Scheme), its cases are the dataset's examples: the model is asked the question of each case and the LLM scores its answer
 // against the expected output. The counters are updated after every judge batch, so the row shows the progress of a running
@@ -42,7 +42,7 @@ const (
 // Every case is judged or failed (NumJudged + NumFailed = the ones done so far, of NumExamples);
 // NumCorrect + NumPartial + NumIncorrect = NumJudged, and ScoreSum is the sum of the scores (0 to 5) of the judged ones.
 //
-// ID is that of the suite run's gb_experiment_results row. Status, Error, CreatedAt (the start), FinishedAt and JudgeCostUSD are
+// ID is that of the suite run's gb_experiment_case_results row. Status, Error, CreatedAt (the start), FinishedAt and JudgeCostUSD are
 // columns of that row, Params those of its run (gb_experiment_runs), and the rest is in gb_training_suite_run_meta.
 type TrainedModelSuiteRun struct {
 	ID             int64  `json:"id"`

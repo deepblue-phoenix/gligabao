@@ -113,7 +113,7 @@ type InferenceGroup struct {
 // Eval experiments
 
 // Eval types: the type column of the universal eval tables (gb_experiments, gb_experiment_cases, gb_experiment_runs and
-// gb_experiment_results, see sqlite/db_schema.go). What is only one kind's is in its metadata table
+// gb_experiment_case_results, see sqlite/db_schema.go). What is only one kind's is in its metadata table
 // (gb_knowledge_case_meta, gb_training_suite_run_meta, gb_training_case_results).
 const (
 	// EvalTypeKnowledge is the type of the knowledge-extraction evals: remember, then recall, checked programmatically
@@ -164,23 +164,23 @@ type CaseRef struct {
 
 // ExperimentRun is one execution of an experiment: a pass over some of the cases in the suites.
 type ExperimentRun struct {
-	ID           int64              `json:"id"`
-	Type         string             `json:"type"` // EvalTypeKnowledge
-	ExperimentID int64              `json:"experiment_id"`
-	Status       string             `json:"status"`       // ExperimentRunning, ExperimentPassed or ExperimentFailed
-	Params       map[string]any     `json:"params"`       // how the run was invoked (suites dir, selected cases, ...)
-	TotalCases   int                `json:"total_cases"`  // set when the run is finished
-	PassedCases  int                `json:"passed_cases"` // set when the run is finished
-	FailedCases  int                `json:"failed_cases"` // failed + errored; set when the run is finished
-	CostUSD      float64            `json:"cost_usd"`     // LLM cost of all cases; set when the run is finished
-	StartedAt    time.Time          `json:"started_at"`   //
-	FinishedAt   *time.Time         `json:"finished_at,omitempty"`
-	Results      []ExperimentResult `json:"results,omitempty"` // filled by GetExperimentRun only
+	ID           int64                  `json:"id"`
+	Type         string                 `json:"type"` // EvalTypeKnowledge
+	ExperimentID int64                  `json:"experiment_id"`
+	Status       string                 `json:"status"`       // ExperimentRunning, ExperimentPassed or ExperimentFailed
+	Params       map[string]any         `json:"params"`       // how the run was invoked (suites dir, selected cases, ...)
+	TotalCases   int                    `json:"total_cases"`  // set when the run is finished
+	PassedCases  int                    `json:"passed_cases"` // set when the run is finished
+	FailedCases  int                    `json:"failed_cases"` // failed + errored; set when the run is finished
+	CostUSD      float64                `json:"cost_usd"`     // LLM cost of all cases; set when the run is finished
+	StartedAt    time.Time              `json:"started_at"`   //
+	FinishedAt   *time.Time             `json:"finished_at,omitempty"`
+	CaseResults  []ExperimentCaseResult `json:"case_results,omitempty"` // filled by GetExperimentRun only
 }
 
-// ExperimentResult is the result of one case within a run: the outcome of that case of a suite in that run (a case is one
+// ExperimentCaseResult is the result of one case within a run: the outcome of that case of a suite in that run (a case is one
 // input plus what is checked, with its metadata).
-type ExperimentResult struct {
+type ExperimentCaseResult struct {
 	ID       int64    `json:"id"`
 	Type     string   `json:"type"` // EvalTypeKnowledge
 	RunID    int64    `json:"run_id"`
@@ -197,7 +197,7 @@ type ExperimentResult struct {
 	StartedAt    time.Time `json:"started_at"`
 	FinishedAt   time.Time `json:"finished_at"`
 	// DatasetID is the dataset the case ran in (nil if it was never created); the knowledge graph the case built
-	// is the graph of that dataset (see GetExperimentResultDataset).
+	// is the graph of that dataset (see GetExperimentCaseResultDataset).
 	DatasetID *int64 `json:"dataset_id,omitempty"`
 	// Trajectories are the ATIF trajectories of the case, in call order (remember calls, then the recall).
 	Trajectories []ExperimentTrajectory `json:"trajectories,omitempty"`
@@ -207,7 +207,7 @@ type ExperimentResult struct {
 // itself is the JSON file <TrajectoryID>.json (Path, when it was stored) of the trajectory directory.
 type ExperimentTrajectory struct {
 	ID           int64   `json:"id"`
-	ResultID     int64   `json:"result_id"`
+	CaseResultID int64   `json:"case_result_id"`
 	Seq          int     `json:"seq"`           // position within the case, from 1
 	Kind         string  `json:"kind"`          // TrajectoryRemember or TrajectoryRecall
 	TrajectoryID string  `json:"trajectory_id"` // ATIF trajectory_id

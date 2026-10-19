@@ -203,7 +203,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_runs(experiment_id);
 
-CREATE TABLE IF NOT EXISTS gb_experiment_results (
+CREATE TABLE IF NOT EXISTS gb_experiment_case_results (
 	id          BIGSERIAL PRIMARY KEY,
 	type        TEXT NOT NULL CHECK (type IN ('knowledge', 'training')),
 	run_id      BIGINT NOT NULL,
@@ -217,11 +217,11 @@ CREATE TABLE IF NOT EXISTS gb_experiment_results (
 	UNIQUE (id, type),
 	FOREIGN KEY (run_id, type) REFERENCES gb_experiment_runs(id, type) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_gb_experiment_results_run ON gb_experiment_results(run_id);
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_case_results_run ON gb_experiment_case_results(run_id);
 
 CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
 	id            BIGSERIAL PRIMARY KEY,
-	result_id   BIGINT NOT NULL REFERENCES gb_experiment_results(id) ON DELETE CASCADE,
+	case_result_id   BIGINT NOT NULL REFERENCES gb_experiment_case_results(id) ON DELETE CASCADE,
 	seq           BIGINT NOT NULL,
 	kind          TEXT NOT NULL CHECK (kind IN ('remember', 'recall')),
 	trajectory_id TEXT NOT NULL,
@@ -231,23 +231,23 @@ CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
 	path          TEXT NOT NULL DEFAULT '',
 	artifact_ids  JSONB NOT NULL DEFAULT '[]',
 	created_at    TIMESTAMPTZ NOT NULL,
-	UNIQUE (result_id, seq)
+	UNIQUE (case_result_id, seq)
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_trajectories_tid ON gb_experiment_trajectories(trajectory_id);
 
 CREATE TABLE IF NOT EXISTS gb_knowledge_case_meta (
-	result_id   BIGINT PRIMARY KEY,
+	case_result_id   BIGINT PRIMARY KEY,
 	type          TEXT NOT NULL DEFAULT 'knowledge' CHECK (type = 'knowledge'),
 	answer        TEXT NOT NULL DEFAULT '',
 	problems      JSONB NOT NULL DEFAULT '[]',
 	passed_checks JSONB NOT NULL DEFAULT '[]',
 	dataset_id    BIGINT REFERENCES gb_datasets(id),
 	steps         BIGINT NOT NULL DEFAULT 0,
-	FOREIGN KEY (result_id, type) REFERENCES gb_experiment_results(id, type) ON DELETE CASCADE
+	FOREIGN KEY (case_result_id, type) REFERENCES gb_experiment_case_results(id, type) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS gb_training_suite_run_meta (
-	result_id         BIGINT PRIMARY KEY,
+	case_result_id         BIGINT PRIMARY KEY,
 	type                TEXT NOT NULL DEFAULT 'training' CHECK (type = 'training'),
 	trained_model_id    BIGINT NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
 	scheme              TEXT NOT NULL DEFAULT 'finetune_dataset' CHECK (scheme IN ('finetune_dataset')),
@@ -266,15 +266,15 @@ CREATE TABLE IF NOT EXISTS gb_training_suite_run_meta (
 	judge_calls         BIGINT NOT NULL DEFAULT 0,
 	judge_input_tokens  BIGINT NOT NULL DEFAULT 0,
 	judge_output_tokens BIGINT NOT NULL DEFAULT 0,
-	FOREIGN KEY (result_id, type) REFERENCES gb_experiment_results(id, type) ON DELETE CASCADE
+	FOREIGN KEY (case_result_id, type) REFERENCES gb_experiment_case_results(id, type) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_gb_training_suite_run_meta_model ON gb_training_suite_run_meta(trained_model_id, result_id);
+CREATE INDEX IF NOT EXISTS idx_gb_training_suite_run_meta_model ON gb_training_suite_run_meta(trained_model_id, case_result_id);
 
 -- Deleting a trained model deletes the metadata of its suite runs; this trigger deletes their runs too (see sqlite/db_schema.go).
 CREATE OR REPLACE FUNCTION gb_training_suite_run_meta_deleted() RETURNS trigger AS $$
 BEGIN
 	DELETE FROM gb_experiment_runs WHERE type = 'training'
-		AND id = (SELECT run_id FROM gb_experiment_results WHERE id = OLD.result_id);
+		AND id = (SELECT run_id FROM gb_experiment_case_results WHERE id = OLD.case_result_id);
 	RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
@@ -284,7 +284,7 @@ CREATE TRIGGER trg_gb_training_suite_run_meta_deleted AFTER DELETE ON gb_trainin
 
 CREATE TABLE IF NOT EXISTS gb_training_case_results (
 	id            BIGSERIAL PRIMARY KEY,
-	suite_run_id       BIGINT NOT NULL REFERENCES gb_training_suite_run_meta(result_id) ON DELETE CASCADE,
+	suite_run_id       BIGINT NOT NULL REFERENCES gb_training_suite_run_meta(case_result_id) ON DELETE CASCADE,
 	idx           BIGINT NOT NULL,
 	batch         BIGINT NOT NULL,
 	instruction   TEXT NOT NULL,

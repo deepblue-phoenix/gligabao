@@ -256,9 +256,9 @@ CREATE TABLE IF NOT EXISTS gb_training_datasets (
 --     gb_experiments            a named series of runs
 --     gb_experiment_cases       the cases (suite + case_name) an experiment has executed
 --     gb_experiment_runs        one execution: one or more cases
---     gb_experiment_results     the result of one case in one run (training: of the whole suite, see below)
+--     gb_experiment_case_results     the result of one case in one run (training: of the whole suite, see below)
 --     gb_experiment_trajectories  ATIF trajectories of a case (the trajectory files; only knowledge cases have them for now)
---   METADATA tables (one row per row of gb_experiment_results, of the matching type; the columns only that kind has):
+--   METADATA tables (one row per row of gb_experiment_case_results, of the matching type; the columns only that kind has):
 --     gb_knowledge_case_meta    answer, checks, dataset the case built its graph in
 --     gb_training_suite_run_meta  trained model, scheme, dataset, judge, counters and score of a training suite run
 --     gb_training_case_results  the per-case outcomes of a training suite run
@@ -270,7 +270,7 @@ CREATE TABLE IF NOT EXISTS gb_training_datasets (
 -- TERMS. A CASE is one input and what is expected or checked (an input/output combination, plus metadata) to be evaluated. A
 -- SUITE is a set of cases. A RUN executes some cases once; a RESULT is the outcome of one case in one run, so a case has many
 -- results and a run has many results; an EXPERIMENT is a named series of runs. gb_experiment_cases lists the cases (the
--- definitions are in the suite files, not in the database); gb_experiment_results has the outcomes.
+-- definitions are in the suite files, not in the database); gb_experiment_case_results has the outcomes.
 --
 -- SUITES. A case is identified by its suite and its name (case_name). Knowledge evals: a suite is a file in
 -- evals/knowledge/suites/ (its name without ".json") and the case is one of its cases. Training evals: the suite is a dataset
@@ -344,7 +344,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_ru
 --   error        why it failed or could not be run
 --   cost_usd     the LLM cost of the case (knowledge: its remember and recall calls; training: the judge's)
 --   finished_at  NULL while the case or suite run runs
-CREATE TABLE IF NOT EXISTS gb_experiment_results (
+CREATE TABLE IF NOT EXISTS gb_experiment_case_results (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
 	type        TEXT NOT NULL CHECK (type IN ('knowledge', 'training')),
 	run_id      INTEGER NOT NULL,
@@ -358,7 +358,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_results (
 	UNIQUE (id, type),
 	FOREIGN KEY (run_id, type) REFERENCES gb_experiment_runs(id, type) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_gb_experiment_results_run ON gb_experiment_results(run_id);
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_case_results_run ON gb_experiment_case_results(run_id);
 
 -- The ATIF trajectories of a case (internal/ai/atif), in call order. Only the reference is kept here:
 -- trajectory_id is the ATIF trajectory_id, and path is the JSON file the trajectory was stored in ('' if none).
@@ -367,7 +367,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_experiment_results_run ON gb_experiment_result
 --   about (remember: its input; recall: the evidence's sources)
 CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
-	result_id   INTEGER NOT NULL REFERENCES gb_experiment_results(id) ON DELETE CASCADE,
+	case_result_id   INTEGER NOT NULL REFERENCES gb_experiment_case_results(id) ON DELETE CASCADE,
 	seq           INTEGER NOT NULL,
 	kind          TEXT NOT NULL CHECK (kind IN ('remember', 'recall')),
 	trajectory_id TEXT NOT NULL,
@@ -377,7 +377,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
 	path          TEXT NOT NULL DEFAULT '',
 	artifact_ids  TEXT NOT NULL DEFAULT '[]',
 	created_at    DATETIME NOT NULL,
-	UNIQUE (result_id, seq)
+	UNIQUE (case_result_id, seq)
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_trajectories_tid ON gb_experiment_trajectories(trajectory_id);
 
@@ -387,21 +387,21 @@ CREATE INDEX IF NOT EXISTS idx_gb_experiment_trajectories_tid ON gb_experiment_t
 --   dataset_id     the dataset the case ran in (NULL if it was never created); it holds the graph the case built
 --   steps          total ATIF steps over the case's trajectories
 CREATE TABLE IF NOT EXISTS gb_knowledge_case_meta (
-	result_id   INTEGER PRIMARY KEY,
+	case_result_id   INTEGER PRIMARY KEY,
 	type          TEXT NOT NULL DEFAULT 'knowledge' CHECK (type = 'knowledge'),
 	answer        TEXT NOT NULL DEFAULT '',
 	problems      TEXT NOT NULL DEFAULT '[]',
 	passed_checks TEXT NOT NULL DEFAULT '[]',
 	dataset_id    INTEGER REFERENCES gb_datasets(id),
 	steps         INTEGER NOT NULL DEFAULT 0,
-	FOREIGN KEY (result_id, type) REFERENCES gb_experiment_results(id, type) ON DELETE CASCADE
+	FOREIGN KEY (case_result_id, type) REFERENCES gb_experiment_case_results(id, type) ON DELETE CASCADE
 );
 
 -- TRAINING metadata of a suite run (type 'training'; evals/training, internal/api/training/evals.go; the API calls it an eval):
 -- what only the suite runs of trained models have. The trained model is asked the cases of a suite (a dataset: its fine-tuning
 -- dataset for now) and an external LLM scores its answers against the dataset's, a batch of questions per LLM call. The counters are rewritten after every batch, so
 -- the row shows the progress while the suite run runs. The status, the error, the times and the judge's cost are those of the
--- universal gb_experiment_results row, and the settings (batch_size, concurrency, max_tokens, temperature, limit) the params of
+-- universal gb_experiment_case_results row, and the settings (batch_size, concurrency, max_tokens, temperature, limit) the params of
 -- its gb_experiment_runs row. A row still 'running' after a restart of the server is set to 'failed' when the server starts.
 --   trained_model_id  the model (gb_trained_models) that was asked; deleting the model deletes this row (and its cases)
 --   scheme           how the suite's cases were made, see SUITES above ('finetune_dataset': the model's fine-tuning dataset)
@@ -412,7 +412,7 @@ CREATE TABLE IF NOT EXISTS gb_knowledge_case_meta (
 --                    (>= 4 / 2-3 / 0-1); score_sum the sum of the scores (0 to 5 each) of the judged ones
 --   num_batches      judge batches done; judge_calls the LLM calls made (a batch may need a retry); judge_*_tokens its tokens
 CREATE TABLE IF NOT EXISTS gb_training_suite_run_meta (
-	result_id         INTEGER PRIMARY KEY,
+	case_result_id         INTEGER PRIMARY KEY,
 	type                TEXT NOT NULL DEFAULT 'training' CHECK (type = 'training'),
 	trained_model_id    INTEGER NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
 	scheme              TEXT NOT NULL DEFAULT 'finetune_dataset' CHECK (scheme IN ('finetune_dataset')),
@@ -431,15 +431,15 @@ CREATE TABLE IF NOT EXISTS gb_training_suite_run_meta (
 	judge_calls         INTEGER NOT NULL DEFAULT 0,
 	judge_input_tokens  INTEGER NOT NULL DEFAULT 0,
 	judge_output_tokens INTEGER NOT NULL DEFAULT 0,
-	FOREIGN KEY (result_id, type) REFERENCES gb_experiment_results(id, type) ON DELETE CASCADE
+	FOREIGN KEY (case_result_id, type) REFERENCES gb_experiment_case_results(id, type) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_gb_training_suite_run_meta_model ON gb_training_suite_run_meta(trained_model_id, result_id);
+CREATE INDEX IF NOT EXISTS idx_gb_training_suite_run_meta_model ON gb_training_suite_run_meta(trained_model_id, case_result_id);
 -- The foreign keys cascade downwards only, so deleting a trained model deletes the metadata of its suite runs (and their cases) but would
 -- leave their universal rows behind: this trigger deletes the run of each (a training run has one suite run; its result row goes with it).
 CREATE TRIGGER IF NOT EXISTS trg_gb_training_suite_run_meta_deleted AFTER DELETE ON gb_training_suite_run_meta
 BEGIN
 	DELETE FROM gb_experiment_runs WHERE type = 'training'
-		AND id = (SELECT run_id FROM gb_experiment_results WHERE id = OLD.result_id);
+		AND id = (SELECT run_id FROM gb_experiment_case_results WHERE id = OLD.case_result_id);
 END;
 
 -- The outcome for each case (question) of a training suite run, written when its judge batch is done.
@@ -450,7 +450,7 @@ END;
 --   input_tokens, output_tokens, duration_ms  of the model's answer
 CREATE TABLE IF NOT EXISTS gb_training_case_results (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
-	suite_run_id       INTEGER NOT NULL REFERENCES gb_training_suite_run_meta(result_id) ON DELETE CASCADE,
+	suite_run_id       INTEGER NOT NULL REFERENCES gb_training_suite_run_meta(case_result_id) ON DELETE CASCADE,
 	idx           INTEGER NOT NULL,
 	batch         INTEGER NOT NULL,
 	instruction   TEXT NOT NULL,

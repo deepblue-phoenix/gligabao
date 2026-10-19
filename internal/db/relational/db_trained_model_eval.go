@@ -11,8 +11,8 @@ import (
 
 //---------------------------------------------------------------------------------------------
 // LLM-as-a-judge evals of trained models: the "training" rows of the universal eval tables (gb_experiment_runs and
-// gb_experiment_results) with their metadata (gb_training_suite_run_meta) and cases (gb_training_case_results), see sqlite/db_schema.go.
-// A suite run is one run with one suite run in it; its ID is the ID of the gb_experiment_results row.
+// gb_experiment_case_results) with their metadata (gb_training_suite_run_meta) and cases (gb_training_case_results), see sqlite/db_schema.go.
+// A suite run is one run with one suite run in it; its ID is the ID of the gb_experiment_case_results row.
 
 // RecordTrainedModelSuiteRun stores a new suite run (status "running" unless e.Status says otherwise) and returns its ID. e.ID,
 // e.CreatedAt and e.FinishedAt are ignored.

@@ -11,15 +11,15 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Suite runs of trained models: the 'training' rows of the universal eval tables (gb_experiment_runs and gb_experiment_results)
+// Suite runs of trained models: the 'training' rows of the universal eval tables (gb_experiment_runs and gb_experiment_case_results)
 // with their metadata (gb_training_suite_run_meta) and cases (gb_training_case_results), see db_schema.go and sqlite/db_schema.go.
 //
-// A suite run (model.TrainedModelSuiteRun) is ONE RUN with ONE RESULT in it: its ID is that of the gb_experiment_results row, its
+// A suite run (model.TrainedModelSuiteRun) is ONE RUN with ONE RESULT in it: its ID is that of the gb_experiment_case_results row, its
 // status, error, times and judge cost are the columns of that row, its Params are those of the run, and the rest is in the
 // metadata row. A run is in no experiment until StartTrainingExperimentRun links it to one.
 
 // InsertTrainedModelSuiteRun stores a new suite run (status running unless e.Status says otherwise) and returns its ID, which is the ID of
-// its gb_experiment_results row. The ID, the creation time and the finish time are ignored; the counters and the judge's
+// its gb_experiment_case_results row. The ID, the creation time and the finish time are ignored; the counters and the judge's
 // usage start as given (normally 0).
 func InsertTrainedModelSuiteRun(ctx context.Context, d *sql.DB, e model.TrainedModelSuiteRun) (int64, error) {
 	if e.Scheme == "" {
@@ -39,12 +39,12 @@ func InsertTrainedModelSuiteRun(ctx context.Context, d *sql.DB, e model.TrainedM
 	}
 	// The suite is the dataset; the result is that of the whole suite, so the case name is ''.
 	if err := tx.QueryRowContext(ctx, `
-		INSERT INTO gb_experiment_results (type, run_id, suite, case_name, status, started_at) VALUES ($1, $2, $3, '', $4, $5) RETURNING id`,
+		INSERT INTO gb_experiment_case_results (type, run_id, suite, case_name, status, started_at) VALUES ($1, $2, $3, '', $4, $5) RETURNING id`,
 		model.EvalTypeTraining, runID, e.Dataset, e.Status, now).Scan(&id); err != nil {
 		return 0, fmt.Errorf("insert trained model suite run: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO gb_training_suite_run_meta (result_id, trained_model_id, scheme, dataset, dataset_sha256, judge_model, num_examples)
+		INSERT INTO gb_training_suite_run_meta (case_result_id, trained_model_id, scheme, dataset, dataset_sha256, judge_model, num_examples)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 		id, e.TrainedModelID, e.Scheme, e.Dataset, e.DatasetSHA256, e.JudgeModel, e.NumExamples); err != nil {
 		return 0, fmt.Errorf("insert trained model suite run: %w", err)
@@ -66,7 +66,7 @@ func SaveTrainedModelSuiteRunBatch(ctx context.Context, d *sql.DB, e model.Train
 	res, err := tx.ExecContext(ctx, `
 		UPDATE gb_training_suite_run_meta SET judge_model = $1, num_answered = $2, num_judged = $3, num_failed = $4, num_correct = $5,
 			num_partial = $6, num_incorrect = $7, score_sum = $8, num_batches = $9, judge_calls = $10, judge_input_tokens = $11,
-			judge_output_tokens = $12 WHERE result_id = $13`,
+			judge_output_tokens = $12 WHERE case_result_id = $13`,
 		e.JudgeModel, e.NumAnswered, e.NumJudged, e.NumFailed, e.NumCorrect, e.NumPartial, e.NumIncorrect, e.ScoreSum,
 		e.NumBatches, e.JudgeCalls, e.JudgeInputTokens, e.JudgeOutputTokens, e.ID)
 	if err != nil {
@@ -75,7 +75,7 @@ func SaveTrainedModelSuiteRunBatch(ctx context.Context, d *sql.DB, e model.Train
 	if n, _ := res.RowsAffected(); n == 0 {
 		return model.ErrNotFound
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE gb_experiment_results SET cost_usd = $1 WHERE id = $2`, e.JudgeCostUSD, e.ID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE gb_experiment_case_results SET cost_usd = $1 WHERE id = $2`, e.JudgeCostUSD, e.ID); err != nil {
 		return fmt.Errorf("save suite run batch: %w", err)
 	}
 	for _, it := range cases {
@@ -97,18 +97,18 @@ func SaveTrainedModelSuiteRunBatch(ctx context.Context, d *sql.DB, e model.Train
 func finishTrainingRuns(ctx context.Context, q rower, now time.Time) error {
 	_, err := q.ExecContext(ctx, `
 		UPDATE gb_experiment_runs
-		SET status       = (SELECT CASE WHEN e.status = 'error' THEN 'failed' ELSE e.status END FROM gb_experiment_results e
+		SET status       = (SELECT CASE WHEN e.status = 'error' THEN 'failed' ELSE e.status END FROM gb_experiment_case_results e
 				WHERE e.run_id = gb_experiment_runs.id ORDER BY e.id LIMIT 1),
-			total_cases  = (SELECT COALESCE(SUM(tm.num_examples), 0) FROM gb_experiment_results e
-				JOIN gb_training_suite_run_meta tm ON tm.result_id = e.id WHERE e.run_id = gb_experiment_runs.id),
-			passed_cases = (SELECT COALESCE(SUM(tm.num_judged), 0) FROM gb_experiment_results e
-				JOIN gb_training_suite_run_meta tm ON tm.result_id = e.id WHERE e.run_id = gb_experiment_runs.id),
-			failed_cases = (SELECT COALESCE(SUM(tm.num_examples - tm.num_judged), 0) FROM gb_experiment_results e
-				JOIN gb_training_suite_run_meta tm ON tm.result_id = e.id WHERE e.run_id = gb_experiment_runs.id),
-			cost_usd     = (SELECT COALESCE(SUM(e.cost_usd), 0) FROM gb_experiment_results e WHERE e.run_id = gb_experiment_runs.id),
+			total_cases  = (SELECT COALESCE(SUM(tm.num_examples), 0) FROM gb_experiment_case_results e
+				JOIN gb_training_suite_run_meta tm ON tm.case_result_id = e.id WHERE e.run_id = gb_experiment_runs.id),
+			passed_cases = (SELECT COALESCE(SUM(tm.num_judged), 0) FROM gb_experiment_case_results e
+				JOIN gb_training_suite_run_meta tm ON tm.case_result_id = e.id WHERE e.run_id = gb_experiment_runs.id),
+			failed_cases = (SELECT COALESCE(SUM(tm.num_examples - tm.num_judged), 0) FROM gb_experiment_case_results e
+				JOIN gb_training_suite_run_meta tm ON tm.case_result_id = e.id WHERE e.run_id = gb_experiment_runs.id),
+			cost_usd     = (SELECT COALESCE(SUM(e.cost_usd), 0) FROM gb_experiment_case_results e WHERE e.run_id = gb_experiment_runs.id),
 			finished_at  = $1
 		WHERE type = 'training' AND status = 'running'
-			AND NOT EXISTS (SELECT 1 FROM gb_experiment_results e WHERE e.run_id = gb_experiment_runs.id AND e.status = 'running')`, now)
+			AND NOT EXISTS (SELECT 1 FROM gb_experiment_case_results e WHERE e.run_id = gb_experiment_runs.id AND e.status = 'running')`, now)
 	return err
 }
 
@@ -122,14 +122,14 @@ func FinishTrainedModelSuiteRun(ctx context.Context, d *sql.DB, id int64, status
 	defer tx.Rollback()
 	now := Now()
 	res, err := tx.ExecContext(ctx, `
-		UPDATE gb_experiment_results SET status = $1, error = $2, finished_at = $3
+		UPDATE gb_experiment_case_results SET status = $1, error = $2, finished_at = $3
 		WHERE id = $4 AND type = 'training' AND status = 'running'`, status, errText, now, id)
 	if err != nil {
 		return fmt.Errorf("finish trained model suite run: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		var one int
-		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM gb_experiment_results WHERE id = $1 AND type = 'training'`, id).Scan(&one); errors.Is(err, sql.ErrNoRows) {
+		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM gb_experiment_case_results WHERE id = $1 AND type = 'training'`, id).Scan(&one); errors.Is(err, sql.ErrNoRows) {
 			return model.ErrNotFound
 		}
 		return nil
@@ -149,7 +149,7 @@ func FailRunningTrainedModelSuiteRuns(ctx context.Context, d *sql.DB, reason str
 	defer tx.Rollback()
 	now := Now()
 	res, err := tx.ExecContext(ctx, `
-		UPDATE gb_experiment_results SET status = 'failed', error = $1, finished_at = $2
+		UPDATE gb_experiment_case_results SET status = 'failed', error = $1, finished_at = $2
 		WHERE type = 'training' AND status = 'running'`, reason, now)
 	if err != nil {
 		return 0, fmt.Errorf("fail running trained model suite runs: %w", err)
@@ -170,8 +170,8 @@ const trainedModelSuiteRunColumns = `e.id, tm.trained_model_id, e.status, tm.sch
 	tm.num_examples, tm.num_answered, tm.num_judged, tm.num_failed, tm.num_correct, tm.num_partial, tm.num_incorrect, tm.score_sum,
 	tm.num_batches, tm.judge_calls, tm.judge_input_tokens, tm.judge_output_tokens, e.cost_usd, e.error, e.started_at, e.finished_at`
 
-const trainedModelSuiteRunFrom = ` FROM gb_experiment_results e
-	JOIN gb_training_suite_run_meta tm ON tm.result_id = e.id
+const trainedModelSuiteRunFrom = ` FROM gb_experiment_case_results e
+	JOIN gb_training_suite_run_meta tm ON tm.case_result_id = e.id
 	JOIN gb_experiment_runs r ON r.id = e.run_id`
 
 func scanTrainedModelSuiteRun(s rowScanner) (*model.TrainedModelSuiteRun, error) {

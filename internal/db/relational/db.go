@@ -28,7 +28,7 @@ type (
 	Experiment             = model.Experiment
 	CaseRef                = model.CaseRef
 	ExperimentRun          = model.ExperimentRun
-	ExperimentResult       = model.ExperimentResult
+	ExperimentCaseResult   = model.ExperimentCaseResult
 	ExperimentTrajectory   = model.ExperimentTrajectory
 	ExperimentArtifact     = model.ExperimentArtifact
 	RememberRun            = model.RememberRun
