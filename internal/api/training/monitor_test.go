@@ -329,3 +329,37 @@ func TestTrainingMonitorTrainedModels(t *testing.T) {
 		t.Fatalf("models: %+v", models)
 	}
 }
+
+// A failure to update the job's row from an event must not leave the event stored and the row unchanged: the monitor
+// retries the event, and the row gets it. (The row used to be updated after the event was stored, so the retry found the
+// event stored and did nothing: a completed job stayed "training" in the database for good.)
+func TestTrainingMonitorRetriesAFailedRowUpdate(t *testing.T) {
+	d := dbtest.OpenSQLite(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	id, _ := trainingdb.RecordTrainingJobRun(ctx, d, trainingdb.TrainingJobRun{JobID: "j1", Status: "started", ModelSize: "4b", NumTrainSteps: 5, StartedAt: time.Now()})
+	// The row's updates fail until the trigger is dropped.
+	if _, err := d.ExecContext(ctx, `CREATE TRIGGER fail_updates BEFORE UPDATE ON gb_training_job_runs BEGIN SELECT RAISE(ABORT, 'database is busy'); END`); err != nil {
+		t.Fatal(err)
+	}
+	sc := newStreamSidecar()
+	sc.sent = []sidecar.TrainingEvent{status("completed")}
+	core.NewMonitor(ctx, d, sc, core.WithRetryDelay(time.Millisecond), core.WithWatchTimeout(time.Hour))
+	// The stream is opened again and again: the event is retried each time.
+	waitFor(t, "the event is retried", func() bool { sc.mu.Lock(); defer sc.mu.Unlock(); return len(sc.froms) >= 3 })
+	if r, _ := trainingdb.GetTrainingJobRun(ctx, d, id); r.Status == "completed" {
+		t.Fatalf("the row was updated while its updates fail: %+v", r)
+	}
+	if _, err := d.ExecContext(ctx, `DROP TRIGGER fail_updates`); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the row is updated", func() bool { r, _ := trainingdb.GetTrainingJobRun(ctx, d, id); return r.Status == "completed" })
+	r, _ := trainingdb.GetTrainingJobRun(ctx, d, id)
+	if r.FinishedAt == nil {
+		t.Fatalf("a completed run has an end: %+v", r)
+	}
+	if evs, _ := trainingdb.ListTrainingJobEvents(ctx, d, id, 0); len(evs) != 1 {
+		t.Fatalf("the event is stored once: %+v", evs)
+	}
+}

@@ -23,7 +23,7 @@ import re
 import time
 from typing import Optional
 
-from .event_log import EventLog
+from .event_log import INFORMING_RETRIES, EventLog
 
 TERMINAL_STATUSES = ("completed", "failed", "cancelled")
 
@@ -49,16 +49,24 @@ def stop_requested(log: Optional[EventLog]) -> bool:
     if log is None:
         return False
     try:
-        return log.stop_requested()
+        # Looked for every couple of seconds between steps: an unreachable store must not hold the training up (see
+        # event_log.INFORMING_RETRIES), and "cannot tell" counts as "no" anyway.
+        return log.stop_requested(retries=INFORMING_RETRIES)
     except Exception as e:
         print(f"[job] could not look for a stop request: {e!r}", flush=True)
         return False
 
 
 def _clean(v):
-    """Non-finite floats (a diverged loss is NaN) are not valid JSON; the Go side could not decode them."""
+    """Non-finite floats (a diverged loss is NaN) are not valid JSON; the Go side could not decode them. Nested values
+    (the "model" of a completed event, its params) are cleaned too: one NaN there would make EventLog.append raise
+    (json.dumps(allow_nan=False)) and the "completed" event would be lost."""
     if isinstance(v, float) and not math.isfinite(v):
         return None
+    if isinstance(v, dict):
+        return {k: _clean(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_clean(x) for x in v]
     return v
 
 
@@ -69,7 +77,8 @@ def write_event(log: Optional[EventLog], event: dict, best_effort: bool = False)
     event = {k: _clean(v) for k, v in event.items()}
     event.setdefault("timestamp", time.time())
     try:
-        log.append(event)
+        # best effort: a short back-off (see event_log.INFORMING_RETRIES), so a store that is down skips events, not stalls steps
+        log.append(event, retries=INFORMING_RETRIES if best_effort else None)
     except Exception as e:
         if not best_effort:
             raise

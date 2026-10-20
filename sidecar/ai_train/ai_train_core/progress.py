@@ -47,6 +47,12 @@ class ProgressCallback(TrainerCallback):
     def on_log(self, args, state, control, logs=None, **kwargs):
         if logs is None:
             return
+        if "loss" not in logs:
+            # Not a step: the Trainer's closing summary (train_runtime, train_loss, ...) is logged through here too. As an
+            # event it would be a "progress" one with no loss and no learning rate: a blank "step N · loss –" line in the
+            # admin UI's feed. The job's final loss is reported by the "completed" event, so nothing is lost.
+            print(f"[job] {logs}", flush=True)
+            return
         entry = {
             "type": "progress",
             "step": state.global_step,

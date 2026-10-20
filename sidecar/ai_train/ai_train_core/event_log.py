@@ -25,6 +25,12 @@ from typing import Any, Callable, Optional
 
 CHUNK_SIZE = 50
 
+# Retries for the events that only inform (progress, log) and for the stop check. The full `retries` back-off (0.5 + 1 +
+# 2 + 4 s = 7.5 s) is for the events that must get through (status). An informational write that waited that long on every
+# step would stall the training for as long as the store is down: with one event per step, an outage of the Dict could add
+# hours to a job. One retry (a 0.5 s wait at most) rides out a blip and then gives up; the event is skipped.
+INFORMING_RETRIES = 1
+
 
 class EventLog:
     def __init__(self, kv: Any, job_id: str, chunk_size: int = CHUNK_SIZE, retries: int = 4,
@@ -39,39 +45,47 @@ class EventLog:
     def _key(self, name: str) -> str:
         return f"{self.job_id}:{name}"
 
-    def _retry(self, fn: Callable, *args):
-        """A request to the store, tried again (waiting 0.5 s, 1 s, 2 s, ...) when it fails."""
-        for attempt in range(self.retries + 1):
+    def _retry(self, fn: Callable, *args, retries: Optional[int] = None):
+        """A request to the store, tried again (waiting 0.5 s, 1 s, 2 s, ...) when it fails. `retries` overrides the log's
+        own number of retries (see INFORMING_RETRIES)."""
+        retries = self.retries if retries is None else min(retries, self.retries)
+        for attempt in range(retries + 1):
             try:
                 return fn(*args)
             except Exception:
-                if attempt == self.retries:
+                if attempt == retries:
                     raise
                 self._sleep(0.5 * 2 ** attempt)
 
-    def _get(self, name: str, default=None):
-        return self._retry(self.kv.get, self._key(name), default)
+    def _get(self, name: str, default=None, retries: Optional[int] = None):
+        return self._retry(self.kv.get, self._key(name), default, retries=retries)
 
     # ---- writing ----
 
-    def _load_tail(self) -> None:
+    def _load_tail(self, retries: Optional[int] = None) -> None:
         """Continue after the events already in the store (a restarted writer)."""
-        head = self._get("head", -1)
-        self._head = head
+        head = self._get("head", -1, retries)
         if head >= 0:
-            self._chunk = list(self._get(f"c{head // self.chunk_size}", []))[: head % self.chunk_size + 1]
+            chunk = list(self._get(f"c{head // self.chunk_size}", [], retries))[: head % self.chunk_size + 1]
+        else:
+            chunk = []
+        # Both reads came through: only now is the tail known. (A failure above leaves _head None, so the next append
+        # loads the tail again instead of starting a log over from index 0.)
+        self._head, self._chunk = head, chunk
 
-    def append(self, event: dict) -> int:
+    def append(self, event: dict, retries: Optional[int] = None) -> int:
         """Add `event` (a dict that json.dumps(allow_nan=False) accepts) as the next event and return its index. Tried
-        again when the store fails; if it keeps failing, the exception is raised and the event is not in the log."""
+        again when the store fails (`retries`: fewer times than the log's default, for an event that only informs); if it
+        keeps failing, the exception is raised and the event is not in the log."""
         text = json.dumps(event, allow_nan=False)
         with self._lock:
             if self._head is None:
-                self._load_tail()
+                self._load_tail(retries)
             seq = self._head + 1
             chunk = self._chunk if seq % self.chunk_size else []
             chunk = chunk + [text]
-            self._retry(self.kv.update, {self._key(f"c{seq // self.chunk_size}"): chunk, self._key("head"): seq})
+            self._retry(self.kv.update, {self._key(f"c{seq // self.chunk_size}"): chunk, self._key("head"): seq},
+                        retries=retries)
             self._head, self._chunk = seq, chunk
             return seq
 
@@ -94,8 +108,8 @@ class EventLog:
         """Whether the job is known: it has events or meta."""
         return self.meta() is not None or self.head() >= 0
 
-    def stop_requested(self) -> bool:
-        return self._get("stop") is not None
+    def stop_requested(self, retries: Optional[int] = None) -> bool:
+        return self._get("stop", None, retries) is not None
 
     def read_from(self, start: int = 0) -> list:
         """The events with index >= `start` as (index, event dict) pairs, in order. Events without a "type" get "progress"."""

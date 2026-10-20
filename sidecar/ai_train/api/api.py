@@ -138,7 +138,16 @@ def create_api(
         events = events_of(job_id)
         meta = {"created": time.time(), "model_size": model_size}
         await run_in_threadpool(events.set_meta, meta)  # the job exists (cancel, events) before its container does
-        provider_job_id = await run_in_threadpool(spawn_training_job, num_train_steps, model_size, dataset, job_id)
+        try:
+            provider_job_id = await run_in_threadpool(spawn_training_job, num_train_steps, model_size, dataset, job_id)
+        except Exception as e:
+            # The log has meta but will never have a container or a call_id, so the watchdog (which needs the call_id)
+            # could not tell that nothing is running. Close the log here: nobody else will. Best effort: the error is raised anyway.
+            try:
+                await run_in_threadpool(write_status, events, "failed", error=f"the job could not be started: {e!r}"[:2000])
+            except Exception as we:
+                log.warning("training job %s: could not record that it failed to start: %r", job_id, we)
+            raise
         await run_in_threadpool(events.set_meta, {**meta, "call_id": str(provider_job_id)})  # for the watchdog
         job = TrainingJob(job_id=job_id, provider_job_id=str(provider_job_id), model_size=model_size,
                           num_train_steps=num_train_steps, dataset=dataset)

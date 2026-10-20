@@ -171,7 +171,7 @@ func (m *Monitor) follow(run trainingdb.TrainingJobRun) {
 	}
 }
 
-// record stores the event, updates the job's row from it and forwards it to the subscribers.
+// record updates the job's row from the event, stores the event and forwards it to the subscribers.
 func (m *Monitor) record(run trainingdb.TrainingJobRun, ev sidecar.TrainingEvent) error {
 	ctx := context.WithoutCancel(m.ctx) // an event that arrived is stored even while the server shuts down
 	data, err := json.Marshal(ev)
@@ -181,6 +181,18 @@ func (m *Monitor) record(run trainingdb.TrainingJobRun, ev sidecar.TrainingEvent
 	if ev.Type == sidecar.EventStatus && ev.Status == trainingdb.TrainingJobCompleted {
 		// Before the event is stored: a failure here makes the stream retry the event, and the model is recorded once.
 		if err := m.recordModel(ctx, run, ev); err != nil {
+			return err
+		}
+	}
+	// The job's row is updated BEFORE the event is stored. The stored event is what marks it as seen: a retry of an event
+	// that is stored already (isNew is false below) does nothing. With the two the other way round, a failure of the
+	// update (or a crash) between them left the event stored and the row unchanged, and nothing ever applied it again: for
+	// a "completed" event, a job that stays "training" in the database for good although the monitor has stopped following
+	// it. This way a failure of the insert only makes the stream resend the event, and the update is safe to repeat: it
+	// sets the row's step, loss, status and end to the values of this event (the retry is of the last event only: the
+	// stream resumes after the last stored seq).
+	if u := trainingRunUpdate(ev); u != nil {
+		if err := trainingdb.UpdateTrainingJobRun(ctx, m.db, run.ID, *u); err != nil {
 			return err
 		}
 	}
@@ -203,11 +215,6 @@ func (m *Monitor) record(run trainingdb.TrainingJobRun, ev sidecar.TrainingEvent
 	if ev.Type == sidecar.EventStatus && ev.Status == trainingdb.TrainingJobFailed {
 		log.WithFields(log.Fields{"run_id": run.ID, "job_id": run.JobID, "error": ev.Error}).
 			Errorf("training: training job failed\n%s", ev.Traceback)
-	}
-	if u := trainingRunUpdate(ev); u != nil {
-		if err := trainingdb.UpdateTrainingJobRun(ctx, m.db, run.ID, *u); err != nil {
-			return err
-		}
 	}
 	m.publish(FeedEvent{RunID: run.ID, JobID: run.JobID, TrainingEvent: ev})
 	return nil

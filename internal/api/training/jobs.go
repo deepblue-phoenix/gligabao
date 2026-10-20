@@ -102,8 +102,8 @@ func ListJobsOf(db *sql.DB) http.HandlerFunc {
 }
 
 // EventsOf serves GET /v1/gb/training/events[?run_id=<id>] as Server-Sent Events, the feed of the
-// events the sidecar reports for training jobs (forwarded by mon): `event: status` or `event: progress`, `data:` a
-// FeedEvent as JSON.
+// events the sidecar reports for training jobs (forwarded by mon): `event: status`, `event: progress` or `event: log` (what
+// the job is doing: loading the model, ...), `data:` a FeedEvent as JSON.
 //
 // With run_id the stream is of that run: first the events already stored (from the one after Last-Event-ID, which a
 // reconnecting EventSource sends, or from the `from` parameter), then the live ones; each has `id: <seq>`. The stream

@@ -323,6 +323,38 @@ class EventLogTest(unittest.TestCase):
         self.assertEqual(self.log.append({"step": 3}), 1)  # the failed one is not in the log; no gap
         self.assertEqual([e["step"] for _, e in self.log.read_from(0)], [1, 3])
 
+    def test_informing_events_give_up_fast(self):
+        """A store that is down must not hold the training up: an informing event waits at most one back-off."""
+        waits = []
+        log = event_log.EventLog(self.kv, "w", chunk_size=3, sleep=waits.append)
+        self.kv.fail = 100
+        with self.assertRaises(ConnectionError):
+            log.append({"step": 1}, retries=event_log.INFORMING_RETRIES)
+        self.assertEqual(waits, [0.5])
+        waits.clear()
+        with self.assertRaises(ConnectionError):
+            log.append({"step": 1})                      # a status event: the full back-off
+        self.assertEqual(waits, [0.5, 1, 2, 4])
+
+    def test_failed_tail_load_does_not_restart_the_log(self):
+        """A restarted writer whose read of the tail fails halfway must not carry on from an empty chunk."""
+        for i in range(4):
+            self.log.append({"step": i})
+        again = event_log.EventLog(self.kv, "j", chunk_size=3, retries=0, sleep=lambda s: None)
+        self.kv.fail = 0
+        real_get, calls = self.kv.get, []
+
+        def flaky_get(key, default=None):
+            calls.append(key)
+            if len(calls) == 2:                          # the head is read, the chunk is not
+                raise ConnectionError("store down")
+            return real_get(key, default)
+        self.kv.get = flaky_get
+        with self.assertRaises(ConnectionError):
+            again.append({"step": 4})
+        self.assertEqual(again.append({"step": 4}), 4)   # the tail is loaded again: no event is overwritten
+        self.assertEqual([e["step"] for _, e in again.read_from(0)], [0, 1, 2, 3, 4])
+
     def test_meta_stop_exists(self):
         self.assertFalse(self.log.exists())
         self.assertFalse(self.log.stop_requested())
@@ -369,6 +401,12 @@ class ProgressEventsTest(unittest.TestCase):
         progress_events.write_status(None, "running")
         progress_events.write_log(None, "x")
         self.assertFalse(progress_events.stop_requested(None))
+
+    def test_nested_non_finite_values_do_not_lose_the_event(self):
+        progress_events.write_status(self.log, "completed", final_loss=float("nan"),
+                                     model={"params": {"learning_rate": float("inf")}, "files": [float("nan")]})
+        ev = self.log.read_from(0)[0][1]
+        self.assertEqual((ev["final_loss"], ev["model"]), (None, {"params": {"learning_rate": None}, "files": [None]}))
 
     def test_best_effort_vs_status(self):
         self.kv.fail = 1000
@@ -531,8 +569,15 @@ class ApiTest(unittest.TestCase):
         self.kv = FakeKV()
         self.call_state = CallStatus("running")
         self.calls, self.commits = [], []
+        self.spawn_error = None
+
+        def spawn(steps, size, ds, job_id):
+            if self.spawn_error:
+                raise self.spawn_error
+            self.calls.append((steps, size, ds, job_id))
+            return "fc-1"
         api = create_api(
-            spawn_training_job=lambda steps, size, ds, job_id: self.calls.append((steps, size, ds, job_id)) or "fc-1",
+            spawn_training_job=spawn,
             infer_response=lambda *a: {"response": "ok", "args": list(a)},
             commit_volumes=self.commits.append,
             reload_volumes=lambda p: None,
@@ -712,6 +757,17 @@ class ApiTest(unittest.TestCase):
         for bad in (0, -1, "5", True):
             body = {"dataset": "mine.jsonl", "num_train_steps": bad}
             self.assertEqual(self.client.post("/training/job_start", json=body).status_code, 400)
+
+    def test_job_start_that_cannot_spawn_closes_the_log(self):
+        """No container, no call id: the watchdog could never tell, so the API ends the job's log itself."""
+        self.spawn_error = RuntimeError("modal is down")
+        client = type(self.client)(self.client.app, raise_server_exceptions=False)
+        self.assertEqual(client.post("/training/job_start", json={"dataset": "mine.jsonl"}).status_code, 500)
+        jobs = {k.split(":")[0] for k in self.kv.d}
+        self.assertEqual(len(jobs), 1)
+        events = self.log(jobs.pop()).read_from(0)
+        self.assertEqual([(e["type"], e["status"]) for _, e in events], [("status", "failed")])
+        self.assertIn("modal is down", events[0][1]["error"])
 
     def test_job_start_needs_a_dataset(self):
         n = len(self.calls)
