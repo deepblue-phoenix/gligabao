@@ -26,9 +26,9 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
-	"github.com/deepblue-phoenix/gligabao/internal/evals_neo"
-	evalstraining "github.com/deepblue-phoenix/gligabao/internal/evals_neo/training"
-	evalsapi "github.com/deepblue-phoenix/gligabao/internal/evals_neo/training/api"
+	"github.com/deepblue-phoenix/gligabao/internal/evals"
+	evalstraining "github.com/deepblue-phoenix/gligabao/internal/evals/training"
+	evalsapi "github.com/deepblue-phoenix/gligabao/internal/evals/training/api"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
@@ -101,7 +101,7 @@ type Options struct {
 	EvalModeEnable bool
 	// TrainingModeEnable registers the training handlers (/v1/gb/training/...) and starts the training monitor. Off by default.
 	TrainingModeEnable bool
-	// EvalDBPath is a second SQLite file, the eval database (see internal/evals_neo/knowledge/cmd): the evaluation datasets, the
+	// EvalDBPath is a second SQLite file, the eval database (see internal/evals/knowledge/cmd): the evaluation datasets, the
 	// experiments and their runs. The admin UI shows it next to the main database and reads the Evals block (and the
 	// ATIF files, from an "atif" directory next to it) from it. Opened for the admin UI only; ignored (with a warning)
 	// unless the main database is SQLite. Empty = not shown, and the Evals routes are not registered.
@@ -225,8 +225,8 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 // trained models (nil: starting one answers 503).
 func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, trainingDB *sql.DB, datasetDir, evalDir string, sc coretraining.Sidecar, llm memory_core.LLM) {
 	mon := coretraining.NewMonitor(ctx, trainingDB, sc)
-	// The evals and the training data audits are those of internal/evals_neo and internal/training_audits (their own tables).
-	evalStore, err := evals_neo.StoreFor(backend)
+	// The evals and the training data audits are those of internal/evals and internal/training_audits (their own tables).
+	evalStore, err := evals.StoreFor(backend)
 	if err != nil {
 		log.WithError(err).Fatal("training evals")
 	}
@@ -329,7 +329,7 @@ func openAdminDB(path string) (*sql.DB, error) {
 		rel.Close()
 		return nil, err
 	}
-	if err := evals_neo.Open(config.DBBackendSQLite, rel); err != nil {
+	if err := evals.Open(config.DBBackendSQLite, rel); err != nil {
 		rel.Close()
 		return nil, err
 	}
@@ -446,9 +446,9 @@ func Run(ctx context.Context, opts Options) error {
 			defer evalDB.Close()
 			log.WithField("path", opts.EvalDBPath).Info("eval database is shown in the admin UI")
 			// The eval runner (a separate process) keeps the eval database's vectors next to it, always in chromem with the
-			// default dimensions (see internal/evals_neo/knowledge/cmd), so open that directory afresh whenever it is needed.
+			// default dimensions (see internal/evals/knowledge/cmd), so open that directory afresh whenever it is needed.
 			vecDir := db.DefaultVectorDir(opts.EvalDBPath)
-			evalStore, err := evals_neo.StoreFor(database.Backend)
+			evalStore, err := evals.StoreFor(database.Backend)
 			if err != nil {
 				return err
 			}

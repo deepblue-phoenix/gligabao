@@ -1,4 +1,4 @@
-// Package core is the training audits data model (built like internal/evals_neo/core, which it does not import): plain structs, no
+// Package core is the training audits data model (built like internal/evals/core, which it does not import): plain structs, no
 // logic. The tables that hold them are in the sibling package db.
 //
 // # What an audit is

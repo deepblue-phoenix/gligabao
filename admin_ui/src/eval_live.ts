@@ -4,7 +4,7 @@
 // it is in is judged (the judge grades a batch of questions per call). One sees how the model behaves from the first question on.
 // Closing the dialog leaves the run going.
 
-// The statuses and verdicts of the runs and cases of a trained model are those of the model of internal/evals_neo/core (and of
+// The statuses and verdicts of the runs and cases of a trained model are those of the model of internal/evals/core (and of
 // internal/training_audits/core, which has the same statuses), shown as they are: a run or a case is pending, running, completed,
 // errored or cancelled (did it run to the end), and a completed eval case has the verdict pass or fail (the judge's score is at least
 // core.TrainingPassScore or below). In the live feed a case the model answered and the judge has not scored yet is running. An audit

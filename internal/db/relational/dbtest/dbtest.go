@@ -19,7 +19,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
-	"github.com/deepblue-phoenix/gligabao/internal/evals_neo"
+	"github.com/deepblue-phoenix/gligabao/internal/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 
@@ -61,7 +61,7 @@ func OpenSQLite(t *testing.T) *sql.DB {
 		d.Close()
 		t.Fatal(err)
 	}
-	if err := evals_neo.Open(config.DBBackendSQLite, d); err != nil {
+	if err := evals.Open(config.DBBackendSQLite, d); err != nil {
 		d.Close()
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func OpenPostgres(t *testing.T, dsn string) *sql.DB {
 	if err == nil {
 		if err = graph.Open(config.DBBackendPostgres, d); err == nil {
 			if err = trainingdb.Open(config.DBBackendPostgres, d); err == nil {
-				err = evals_neo.Open(config.DBBackendPostgres, d)
+				err = evals.Open(config.DBBackendPostgres, d)
 			}
 		}
 		if err != nil {

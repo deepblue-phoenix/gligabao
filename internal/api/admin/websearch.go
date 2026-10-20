@@ -30,8 +30,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
-	"github.com/deepblue-phoenix/gligabao/internal/evals_neo/core"
-	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals_neo/db"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
+	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	log "github.com/sirupsen/logrus"
 )
 

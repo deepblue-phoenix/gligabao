@@ -113,42 +113,42 @@ Tables of the training data audits (`internal/training_audits`, see `docs/traini
 
 ## EVALS
 
-Tables of the evals (`internal/evals_neo`, see its `README.md`; applied by `internal/db.Open`).
+Tables of the evals (`internal/evals`, see its `README.md`; applied by `internal/db.Open`).
 
-- `gb_neo_eval_defs`
-- `gb_neo_case_defs`
-- `gb_neo_case_def_meta_knowledge`
-- `gb_neo_case_def_meta_training`
-- `gb_neo_experiment_defs`
-- `gb_neo_experiment_def_evals`
-- `gb_neo_experiment_runs`
-- `gb_neo_eval_runs`
-- `gb_neo_eval_runs_meta_knowledge`
-- `gb_neo_eval_runs_meta_training`
-- `gb_neo_case_runs`
-- `gb_neo_case_runs_meta_knowledge`
-- `gb_neo_case_runs_meta_knowledge_trajectories`
-- `gb_neo_case_runs_meta_training`
+- `gb_eval_defs`
+- `gb_case_defs`
+- `gb_case_def_meta_knowledge`
+- `gb_case_def_meta_training`
+- `gb_experiment_defs`
+- `gb_experiment_def_evals`
+- `gb_experiment_runs`
+- `gb_eval_runs`
+- `gb_eval_runs_meta_knowledge`
+- `gb_eval_runs_meta_training`
+- `gb_case_runs`
+- `gb_case_runs_meta_knowledge`
+- `gb_case_runs_meta_knowledge_trajectories`
+- `gb_case_runs_meta_training`
 
 ### What each table is about
 
 | Table                                         | Description                                                                                                                       |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `gb_neo_eval_defs`                            | one row per eval definition: a named set of cases of one type (`knowledge`, `training`).                                          |
-| `gb_neo_case_defs`                            | one row per case definition of an eval: its name and position; the type-specific part is in the `gb_neo_case_def_meta_*` table.   |
-| `gb_neo_case_def_meta_knowledge`              | the texts to remember, the question, the checks and the settings of a knowledge case.                                             |
-| `gb_neo_case_def_meta_training`               | the question and the expected answer of a training case.                                                                          |
-| `gb_neo_experiment_defs`                      | one row per experiment definition: a named group of evals run together, with the settings under test.                             |
-| `gb_neo_experiment_def_evals`                 | the evals of an experiment, in the order they run.                                                                                |
-| `gb_neo_experiment_runs`                      | one row per execution of an experiment: status, counts and cost over the case runs of its eval runs.                              |
-| `gb_neo_eval_runs`                            | one row per execution of an eval (on its own or in an experiment run): status, params, counts, cost and times.                    |
-| `gb_neo_eval_runs_meta_knowledge`             | the statistics of a knowledge eval run as a whole: chunks, steps, remember and recall calls and cost, checks held and failed.     |
-| `gb_neo_eval_runs_meta_training`              | the statistics of a training eval run: the trained model, the judge, the split of the scores, the judge's calls, tokens and cost. |
-| `gb_neo_case_runs`                            | one row per execution of a case in an eval run: status (lifecycle), verdict (pass or fail), score, cost and times.                |
-| `gb_neo_case_runs_meta_knowledge`             | what a knowledge case run was given, its answer, the checks that held and failed, and the dataset its graph is in.               |
-| `gb_neo_case_runs_meta_knowledge_trajectories` | the ATIF trajectories of a knowledge case run (remember calls, then the recall), by reference.                                    |
-| `gb_neo_case_runs_meta_training`              | the question, the expected answer, the model's answer and the judge's score and reason of a training case run.                    |
+| `gb_eval_defs`                            | one row per eval definition: a named set of cases of one type (`knowledge`, `training`).                                          |
+| `gb_case_defs`                            | one row per case definition of an eval: its name and position; the type-specific part is in the `gb_case_def_meta_*` table.   |
+| `gb_case_def_meta_knowledge`              | the texts to remember, the question, the checks and the settings of a knowledge case.                                             |
+| `gb_case_def_meta_training`               | the question and the expected answer of a training case.                                                                          |
+| `gb_experiment_defs`                      | one row per experiment definition: a named group of evals run together, with the settings under test.                             |
+| `gb_experiment_def_evals`                 | the evals of an experiment, in the order they run.                                                                                |
+| `gb_experiment_runs`                      | one row per execution of an experiment: status, counts and cost over the case runs of its eval runs.                              |
+| `gb_eval_runs`                            | one row per execution of an eval (on its own or in an experiment run): status, params, counts, cost and times.                    |
+| `gb_eval_runs_meta_knowledge`             | the statistics of a knowledge eval run as a whole: chunks, steps, remember and recall calls and cost, checks held and failed.     |
+| `gb_eval_runs_meta_training`              | the statistics of a training eval run: the trained model, the judge, the split of the scores, the judge's calls, tokens and cost. |
+| `gb_case_runs`                            | one row per execution of a case in an eval run: status (lifecycle), verdict (pass or fail), score, cost and times.                |
+| `gb_case_runs_meta_knowledge`             | what a knowledge case run was given, its answer, the checks that held and failed, and the dataset its graph is in.               |
+| `gb_case_runs_meta_knowledge_trajectories` | the ATIF trajectories of a knowledge case run (remember calls, then the recall), by reference.                                    |
+| `gb_case_runs_meta_training`              | the question, the expected answer, the model's answer and the judge's score and reason of a training case run.                    |
 
 ### Where each table is defined
 
-All of them are in `internal/evals_neo/db/sqlite/schema.go` (SQLite) and `internal/evals_neo/db/postgres/schema.go` (Postgres).
+All of them are in `internal/evals/db/sqlite/schema.go` (SQLite) and `internal/evals/db/postgres/schema.go` (Postgres).

@@ -15,7 +15,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
-	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals_neo/db"
+	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	log "github.com/sirupsen/logrus"

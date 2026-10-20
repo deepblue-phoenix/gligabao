@@ -1,9 +1,9 @@
 // Package training_audits is the training data audits of trained models, detached from the evals: an audit asks a trained model the
 // questions of its OWN fine-tuning dataset and has an LLM judge the answers, to see whether the training took and which training
-// examples are bad. An eval (internal/evals_neo, type "training") asks cases the model never saw and measures how well it generalizes;
+// examples are bad. An eval (internal/evals, type "training") asks cases the model never saw and measures how well it generalizes;
 // the two share no types, tables or code.
 //
-// It is built like internal/evals_neo (same vocabulary, same rules, same layout) and its audit logic is that of the audits that were
+// It is built like internal/evals (same vocabulary, same rules, same layout) and its audit logic is that of the audits that were
 // in internal/training/audits and of the old evals (internal/evals, since removed), rewritten over its own data model. Its parts:
 //
 //	core       the data model: the structs and their vocabulary (see its package doc)

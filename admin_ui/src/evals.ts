@@ -6,7 +6,7 @@ import { showCaseHistory } from "./history.js";
 import { showTrace } from "./trace.js";
 import { showWebSearches, totalsLine, type WebSearch, type WebSearchTotals } from "./websearch.js";
 
-// The words of the model (internal/evals_neo/core): Status is the lifecycle of a run or case run, Verdict the judgement of a
+// The words of the model (internal/evals/core): Status is the lifecycle of a run or case run, Verdict the judgement of a
 // completed case run (empty when it has none). They are shown as they come.
 type Status = "pending" | "running" | "completed" | "errored" | "cancelled";
 type Verdict = "pass" | "fail";

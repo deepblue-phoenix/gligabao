@@ -11,7 +11,7 @@ interface Point {
 interface History { eval: string; name: string; points: Point[] }
 interface Dot extends Point { t: Date; seconds: number; outcome: string }
 
-// What the plots show of a result is the model's own word (internal/evals_neo/core): the verdict (pass or fail) of a completed
+// What the plots show of a result is the model's own word (internal/evals/core): the verdict (pass or fail) of a completed
 // case run that has one, otherwise its status (errored, cancelled, running, ...).
 export const outcomeOf = (p: { status: string; verdict?: string }): string => (p.status === "completed" && p.verdict ? p.verdict : p.status);
 

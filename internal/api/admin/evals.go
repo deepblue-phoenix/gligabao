@@ -15,13 +15,13 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
-	"github.com/deepblue-phoenix/gligabao/internal/evals_neo/core"
-	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals_neo/db"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
+	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	log "github.com/sirupsen/logrus"
 )
 
-// The evals views of the admin UI show the knowledge evals of internal/evals_neo: an experiment (core.ExperimentDef), its runs
+// The evals views of the admin UI show the knowledge evals of internal/evals: an experiment (core.ExperimentDef), its runs
 // (core.ExperimentRun) and, in a run, the case runs of its knowledge eval runs, each with its trajectories. The JSON is what the UI
 // (admin_ui/src/evals.ts) reads. It carries the model's own words, not statuses made from them: a run and a case run have the
 // core.Status (pending, running, completed, errored, cancelled), a case run also its core.Verdict (pass, fail, or none) and score,

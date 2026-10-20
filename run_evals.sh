@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs a Go eval runner: the knowledge evals (internal/evals_neo/knowledge/cmd, default) or the training evals (internal/evals_neo/training/cmd).
+# Runs a Go eval runner: the knowledge evals (internal/evals/knowledge/cmd, default) or the training evals (internal/evals/training/cmd).
 # Usage: ./run_evals.sh [-t|--type knowledge|training] [-e|--eval name] [-v] [case-name ...]  (-h: help + eval list)
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -20,17 +20,17 @@ Options:
   -e, --eval NAME    run only the cases of the eval NAME (see the list below)
   -v                 knowledge: show the input and output of every LLM call; training: show every question and answer
   -h, --help         show this help
-  (other options are passed to the runner: knowledge: -experiment, -experiment-desc, -models, -reasoning, -atif, -db (go run ./internal/evals_neo/knowledge/cmd -h);
-   training: -model, -list-models, -db, -sidecar, -batch-size, -judge-model, -max-tokens, -temperature (go run ./internal/evals_neo/training/cmd -h))
+  (other options are passed to the runner: knowledge: -experiment, -experiment-desc, -models, -reasoning, -atif, -db (go run ./internal/evals/knowledge/cmd -h);
+   training: -model, -list-models, -db, -sidecar, -batch-size, -judge-model, -max-tokens, -temperature (go run ./internal/evals/training/cmd -h))
 
 Case names restrict the run to those cases (combined with --eval, they must belong to that eval).
 
 Knowledge evals (bin/evals_knowledge/*.json):
 USAGE
-	go run ./internal/evals_neo/knowledge/cmd -list-evals
+	go run ./internal/evals/knowledge/cmd -list-evals
 	echo
 	echo "Training evals (bin/evals_training/*.json):"
-	go run ./internal/evals_neo/training/cmd -list-evals
+	go run ./internal/evals/training/cmd -list-evals
 }
 
 kind=knowledge
@@ -117,13 +117,13 @@ start_sidecar() {
 }
 
 case "$kind" in
-knowledge) go run ./internal/evals_neo/knowledge/cmd ${args[@]+"${args[@]}"} ;;
+knowledge) go run ./internal/evals/knowledge/cmd ${args[@]+"${args[@]}"} ;;
 training)
 	start_sidecar
 	# Not exec'd, so the trap can stop the sidecar. SIDECAR_URL tells the runner where the sidecar is, unless -sidecar does.
 	rc=0
 	SIDECAR_URL="${SIDECAR_URL:-http://${SIDECAR_HOST:-127.0.0.1}:${SIDECAR_PORT:-8787}}" \
-		go run ./internal/evals_neo/training/cmd ${args[@]+"${args[@]}"} || rc=$?
+		go run ./internal/evals/training/cmd ${args[@]+"${args[@]}"} || rc=$?
 	exit "$rc"
 	;;
 *)

@@ -3,7 +3,7 @@
 // individual clients.
 //
 // The per-kind packages (internal/db/relational, internal/db/graph, internal/db/vector) hold the operations and the
-// backends (the eval tables, which live in the relational database, are managed by internal/evals_neo); this package only opens them, keeps them together and closes them.
+// backends (the eval tables, which live in the relational database, are managed by internal/evals); this package only opens them, keeps them together and closes them.
 package db
 
 import (
@@ -20,7 +20,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
-	"github.com/deepblue-phoenix/gligabao/internal/evals_neo"
+	"github.com/deepblue-phoenix/gligabao/internal/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits"
@@ -184,7 +184,7 @@ func Open(cfg Config) (*DB, error) {
 		rel.Close()
 		return nil, err
 	}
-	if err := evals_neo.Open(cfg.Backend, rel); err != nil {
+	if err := evals.Open(cfg.Backend, rel); err != nil {
 		rel.Close()
 		return nil, err
 	}

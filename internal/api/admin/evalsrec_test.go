@@ -9,10 +9,10 @@ import (
 	"testing"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
-	"github.com/deepblue-phoenix/gligabao/internal/evals_neo"
-	"github.com/deepblue-phoenix/gligabao/internal/evals_neo/core"
-	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals_neo/db"
-	"github.com/deepblue-phoenix/gligabao/internal/evals_neo/runner"
+	"github.com/deepblue-phoenix/gligabao/internal/evals"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
+	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 )
 
@@ -23,7 +23,7 @@ func storeOf(t *testing.T, d *sql.DB) evalsdb.Store {
 	if strings.Contains(fmt.Sprintf("%T", d.Driver()), "stdlib") {
 		backend = config.DBBackendPostgres
 	}
-	s, err := evals_neo.StoreFor(backend)
+	s, err := evals.StoreFor(backend)
 	if err != nil {
 		t.Fatal(err)
 	}

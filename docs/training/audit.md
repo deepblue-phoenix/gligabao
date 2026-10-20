@@ -27,9 +27,9 @@ Reading the result: a mean score near 5 means the model reproduces its training 
 |---|---|---|
 | Cases | the model's own fine-tuning dataset: things it was trained on | the cases of an [eval](../evals/training.md) (`bin/evals_training/*.json`), meant to be ones the model never saw |
 | Measures | memorization and fit; data quality | generalization |
-| Code | `internal/training_audits` (types `core.AuditRun`, `core.AuditCaseRun`) | `internal/evals_neo/training` |
-| Endpoints | `internal/training_audits/api`, `/v1/gb/training/models/{id}/audits`, `/audits/{id}[/events\|/cancel]` | `internal/evals_neo/training/api`, the same under `/evals` |
-| Tables | `gb_training_audit_runs`, `gb_training_audit_case_runs` | the `training` rows of the universal eval tables (`gb_neo_eval_runs`, `gb_neo_case_runs`, ...), `gb_neo_eval_runs_meta_training`, `gb_neo_case_runs_meta_training` |
+| Code | `internal/training_audits` (types `core.AuditRun`, `core.AuditCaseRun`) | `internal/evals/training` |
+| Endpoints | `internal/training_audits/api`, `/v1/gb/training/models/{id}/audits`, `/audits/{id}[/events\|/cancel]` | `internal/evals/training/api`, the same under `/evals` |
+| Tables | `gb_training_audit_runs`, `gb_training_audit_case_runs` | the `training` rows of the universal eval tables (`gb_eval_runs`, `gb_case_runs`, ...), `gb_eval_runs_meta_training`, `gb_case_runs_meta_training` |
 | Experiments | none | training experiments |
 | Judge calls in `gb_inferences` | `training_audit_judge` | `training_eval_judge` |
 | Statuses | a run is `pending`, `running`, then `completed`, `errored` or `cancelled`; a case is the same, and its verdict is the `judge_score` | a run is `pending`, `running`, then `completed`, `errored` or `cancelled`; a case is the same, and its verdict is `pass` (the judge's score is at least 4) or `fail` |
@@ -59,6 +59,6 @@ An audit has two tables of its own, created on start-up (SQLite and PostgreSQL) 
 | `gb_training_audit_runs` | one row per audit: `trained_model_id`, `dataset`, `dataset_sha256`, `status`, `error`, `params`, `counts_*`, `cost_usd`, the statistics (`judge_model`, `num_*`, `score_sum`, `num_batches`, `judge_*`), `created_at`, `started_at`, `finished_at` (updated after every batch) |
 | `gb_training_audit_case_runs` | one row per example, written when its judge batch is done: `run_id`, `idx` (the example's index in the dataset, unique within a run), `status`, `error`, `instruction`, `input`, `reference`, `response`, `batch`, `judge_score`, `judge_reason`, tokens and `duration_ms`; deleting an audit deletes its case runs |
 
-Audits made before version 0.82.0 are in the tables `gb_neo_training_audit_runs` and `gb_neo_training_audit_case_runs`, and those made before 0.79.0 in the old `gb_training_audit_runs` and `gb_training_audit_cases`; the server reads neither (drop an old `gb_training_audit_*` table before first start so the new ones are created with the right columns).
+Audits made before version 0.82.0 are in the tables `gb_training_audit_runs` and `gb_training_audit_case_runs`, and those made before 0.79.0 in the old `gb_training_audit_runs` and `gb_training_audit_cases`; the server reads neither (drop an old `gb_training_audit_*` table before first start so the new ones are created with the right columns).
 
 Go: `training_audits.Manager` (`Start`, `ListRuns`, `GetRun`, `GetRunWithCaseRuns`, `CancelRun`, `Watch`) over `training_audits.Ops` (`SQLiteOps`, `PostgresOps`), whose `Store` is the functions of `training_audits/db/sqlite` or `postgres`.

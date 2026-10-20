@@ -1,0 +1,286 @@
+// Package postgres holds the Postgres storage of the evals data model (package core). It has the schema (Schema) and the functions that create the records of its tables (create.go; for now only creation).
+package postgres
+
+// Schema is the schema for Postgres: the same tables as the sqlite package (see there for what they hold), with native types
+// (BIGSERIAL ids, JSONB for params, tags and payloads, TIMESTAMPTZ for times). The statements are idempotent and in dependency
+// order, so the whole schema can be executed in one call.
+const Schema = `
+-- ---------------------------------------------------------------------------------------------------------------------
+-- DEFINITIONS (what to run; edited and reused)
+-- ---------------------------------------------------------------------------------------------------------------------
+
+-- core.EvalDef: a named collection of cases of one type. params: JSON object; tags: JSON array of strings.
+CREATE TABLE IF NOT EXISTS gb_eval_defs (
+	id          BIGSERIAL PRIMARY KEY,
+	name        TEXT NOT NULL UNIQUE,
+	description TEXT NOT NULL DEFAULT '',
+	type        TEXT NOT NULL CHECK (type <> ''),
+	tags        JSONB NOT NULL DEFAULT '[]',
+	params      JSONB NOT NULL DEFAULT '{}',
+	created_at  TIMESTAMPTZ NOT NULL,
+	updated_at  TIMESTAMPTZ NOT NULL,
+	UNIQUE (id, type)
+);
+
+-- core.CaseDef: what every type of eval shares of a case. It belongs to exactly one eval (its cases go with it); the name and
+-- the position are unique within the eval. type is that of the eval (the composite key makes the database check it); what is
+-- specific to the type is in the gb_case_def_meta_<type> table of that type, one row per case.
+CREATE TABLE IF NOT EXISTS gb_case_defs (
+	id          BIGSERIAL PRIMARY KEY,
+	eval_def_id BIGINT NOT NULL,
+	type        TEXT NOT NULL CHECK (type <> ''),
+	name        TEXT NOT NULL,
+	position    BIGINT NOT NULL CHECK (position >= 0),
+	description TEXT NOT NULL DEFAULT '',
+	tags        JSONB NOT NULL DEFAULT '[]',
+	created_at  TIMESTAMPTZ NOT NULL,
+	updated_at  TIMESTAMPTZ NOT NULL,
+	UNIQUE (eval_def_id, name),
+	UNIQUE (eval_def_id, position),
+	UNIQUE (id, type),
+	FOREIGN KEY (eval_def_id, type) REFERENCES gb_eval_defs(id, type) ON DELETE CASCADE
+);
+
+-- The metadata of the case defs of each type: one table per type, keyed by the case def (one row per case of that type). The
+-- type column is fixed by a CHECK and tied to the case def by the composite key, so a row can only belong to a case of its
+-- type. A new type of eval adds a table like these; the tables above do not change. Deleting the case def deletes the row.
+
+-- core.KnowledgeCaseDefMeta. remember, expect_*: JSON arrays; models, reasoning: JSON objects (see core.KnowledgeInput,
+-- core.KnowledgeExpected and core.KnowledgeParams). The checks that are 0 or empty are off.
+CREATE TABLE IF NOT EXISTS gb_case_def_meta_knowledge (
+	case_def_id         BIGINT PRIMARY KEY,
+	type                TEXT NOT NULL DEFAULT 'knowledge' CHECK (type = 'knowledge'),
+	remember            JSONB NOT NULL DEFAULT '[]',
+	query               TEXT NOT NULL DEFAULT '',
+	expect_contains     JSONB NOT NULL DEFAULT '[]',
+	expect_edges        JSONB NOT NULL DEFAULT '[]',
+	expect_min_chunks   BIGINT NOT NULL DEFAULT 0,
+	expect_web_searches BIGINT NOT NULL DEFAULT 0,
+	expect_series       JSONB NOT NULL DEFAULT '[]',
+	chunk_size          BIGINT NOT NULL DEFAULT 0,
+	models              JSONB NOT NULL DEFAULT '{}',
+	reasoning           JSONB NOT NULL DEFAULT '{}',
+	FOREIGN KEY (case_def_id, type) REFERENCES gb_case_defs(id, type) ON DELETE CASCADE
+);
+
+-- core.TrainingCaseDefMeta: the question asked to the trained model (instruction, with the optional context input) and the
+-- answer the judge compares the model's to (output).
+CREATE TABLE IF NOT EXISTS gb_case_def_meta_training (
+	case_def_id BIGINT PRIMARY KEY,
+	type        TEXT NOT NULL DEFAULT 'training' CHECK (type = 'training'),
+	instruction TEXT NOT NULL,
+	input       TEXT NOT NULL DEFAULT '',
+	output      TEXT NOT NULL,
+	FOREIGN KEY (case_def_id, type) REFERENCES gb_case_defs(id, type) ON DELETE CASCADE
+);
+
+-- core.ExperimentDef: a named group of evals run together, plus the settings under test.
+CREATE TABLE IF NOT EXISTS gb_experiment_defs (
+	id          BIGSERIAL PRIMARY KEY,
+	name        TEXT NOT NULL UNIQUE,
+	description TEXT NOT NULL DEFAULT '',
+	params      JSONB NOT NULL DEFAULT '{}',
+	created_at  TIMESTAMPTZ NOT NULL,
+	updated_at  TIMESTAMPTZ NOT NULL
+);
+
+-- core.ExperimentDef.EvalDefIDs: the evals of an experiment, in the order they run (many-to-many: an eval may be in many
+-- experiments). An eval that is in an experiment cannot be deleted.
+CREATE TABLE IF NOT EXISTS gb_experiment_def_evals (
+	experiment_def_id BIGINT NOT NULL REFERENCES gb_experiment_defs(id) ON DELETE CASCADE,
+	eval_def_id       BIGINT NOT NULL REFERENCES gb_eval_defs(id) ON DELETE RESTRICT,
+	position          BIGINT NOT NULL CHECK (position >= 0),
+	PRIMARY KEY (experiment_def_id, eval_def_id),
+	UNIQUE (experiment_def_id, position)
+);
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_def_evals_eval ON gb_experiment_def_evals(eval_def_id);
+
+-- ---------------------------------------------------------------------------------------------------------------------
+-- RUNS (what happened; append-only history). Links go from child to parent only. A def that has runs cannot be deleted
+-- (ON DELETE RESTRICT): the history must stay understandable. Deleting a run deletes the runs under it.
+--   status        core.Status: the lifecycle, never a verdict. error says why it errored (status 'errored' only).
+--   params        how the run was invoked (JSON object)
+--   counts_*      core.Counts, over the case runs (for an experiment run, over those of all its eval runs)
+--   cost_usd      LLM cost
+--   created_at, started_at, finished_at   core.Timing; finished_at is set once the status is final
+-- ---------------------------------------------------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS gb_experiment_runs (
+	id               BIGSERIAL PRIMARY KEY,
+	def_id           BIGINT NOT NULL REFERENCES gb_experiment_defs(id) ON DELETE RESTRICT,
+	status           TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'errored', 'cancelled')),
+	error            TEXT NOT NULL DEFAULT '',
+	params           JSONB NOT NULL DEFAULT '{}',
+	counts_total     BIGINT NOT NULL DEFAULT 0,
+	counts_pending   BIGINT NOT NULL DEFAULT 0,
+	counts_running   BIGINT NOT NULL DEFAULT 0,
+	counts_completed BIGINT NOT NULL DEFAULT 0,
+	counts_errored   BIGINT NOT NULL DEFAULT 0,
+	counts_cancelled BIGINT NOT NULL DEFAULT 0,
+	counts_passed    BIGINT NOT NULL DEFAULT 0,
+	counts_failed    BIGINT NOT NULL DEFAULT 0,
+	cost_usd         DOUBLE PRECISION NOT NULL DEFAULT 0,
+	created_at       TIMESTAMPTZ NOT NULL,
+	started_at       TIMESTAMPTZ,
+	finished_at      TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_def ON gb_experiment_runs(def_id);
+
+-- core.EvalRun: experiment_run_id is NULL when the eval was run on its own. type is that of the eval def (the composite key makes
+-- the database check it); the statistics of the run as a whole that are specific to the type are in the
+-- gb_eval_runs_meta_<type> table of that type, one row per eval run.
+CREATE TABLE IF NOT EXISTS gb_eval_runs (
+	id                BIGSERIAL PRIMARY KEY,
+	def_id            BIGINT NOT NULL,
+	experiment_run_id BIGINT REFERENCES gb_experiment_runs(id) ON DELETE CASCADE,
+	type              TEXT NOT NULL CHECK (type <> ''),
+	status            TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'errored', 'cancelled')),
+	error             TEXT NOT NULL DEFAULT '',
+	params            JSONB NOT NULL DEFAULT '{}',
+	counts_total      BIGINT NOT NULL DEFAULT 0,
+	counts_pending    BIGINT NOT NULL DEFAULT 0,
+	counts_running    BIGINT NOT NULL DEFAULT 0,
+	counts_completed  BIGINT NOT NULL DEFAULT 0,
+	counts_errored    BIGINT NOT NULL DEFAULT 0,
+	counts_cancelled  BIGINT NOT NULL DEFAULT 0,
+	counts_passed     BIGINT NOT NULL DEFAULT 0,
+	counts_failed     BIGINT NOT NULL DEFAULT 0,
+	cost_usd          DOUBLE PRECISION NOT NULL DEFAULT 0,
+	created_at        TIMESTAMPTZ NOT NULL,
+	started_at        TIMESTAMPTZ,
+	finished_at       TIMESTAMPTZ,
+	UNIQUE (id, type),
+	FOREIGN KEY (def_id, type) REFERENCES gb_eval_defs(id, type) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS idx_gb_eval_runs_def ON gb_eval_runs(def_id);
+CREATE INDEX IF NOT EXISTS idx_gb_eval_runs_experiment_run ON gb_eval_runs(experiment_run_id);
+
+-- The metadata of the eval runs of each type: one table per type, keyed by the eval run (one row per eval run of that type), tied
+-- to its type like the case def and case run metadata. They hold the statistics of the run as a whole, which differ between the
+-- types. Deleting the eval run deletes the row. A new type of eval adds a table.
+
+-- core.KnowledgeEvalRunMeta: the chunks, the ATIF steps, the remember and recall calls with their cost, and the checks that held
+-- and did not, over all the case runs. The pass and fail of the cases are the counts_* of the eval run.
+CREATE TABLE IF NOT EXISTS gb_eval_runs_meta_knowledge (
+	eval_run_id        BIGINT PRIMARY KEY,
+	type               TEXT NOT NULL DEFAULT 'knowledge' CHECK (type = 'knowledge'),
+	chunks             BIGINT NOT NULL DEFAULT 0,
+	steps              BIGINT NOT NULL DEFAULT 0,
+	remember_calls     BIGINT NOT NULL DEFAULT 0,
+	recall_calls       BIGINT NOT NULL DEFAULT 0,
+	remember_cost_usd  DOUBLE PRECISION NOT NULL DEFAULT 0,
+	recall_cost_usd    DOUBLE PRECISION NOT NULL DEFAULT 0,
+	checks_passed      BIGINT NOT NULL DEFAULT 0,
+	checks_failed      BIGINT NOT NULL DEFAULT 0,
+	FOREIGN KEY (eval_run_id, type) REFERENCES gb_eval_runs(id, type) ON DELETE CASCADE
+);
+
+-- core.TrainingEvalRunMeta: the trained model that was asked (trained_model_id is not a foreign key, because the trained model
+-- tables are not part of this schema), the judge, and the result of the run as a whole. The questions asked are the counts_total
+-- of the eval run and the ones that errored its counts_errored. num_answered: the ones the model answered; num_judged: the ones
+-- scored, split by the judge's score (>= 4 / 2-3 / 0-1) into num_correct, num_partial and num_incorrect; score_sum: the sum of the
+-- scores (0 to 5 each) of the judged ones. num_batches: judge batches done; judge_calls: LLM calls made (a batch may need a retry).
+CREATE TABLE IF NOT EXISTS gb_eval_runs_meta_training (
+	eval_run_id         BIGINT PRIMARY KEY,
+	type                TEXT NOT NULL DEFAULT 'training' CHECK (type = 'training'),
+	trained_model_id    BIGINT NOT NULL,
+	judge_model         TEXT NOT NULL DEFAULT '',
+	num_answered        BIGINT NOT NULL DEFAULT 0,
+	num_judged          BIGINT NOT NULL DEFAULT 0,
+	num_correct         BIGINT NOT NULL DEFAULT 0,
+	num_partial         BIGINT NOT NULL DEFAULT 0,
+	num_incorrect       BIGINT NOT NULL DEFAULT 0,
+	score_sum           BIGINT NOT NULL DEFAULT 0,
+	num_batches         BIGINT NOT NULL DEFAULT 0,
+	judge_calls         BIGINT NOT NULL DEFAULT 0,
+	judge_input_tokens  BIGINT NOT NULL DEFAULT 0,
+	judge_output_tokens BIGINT NOT NULL DEFAULT 0,
+	judge_cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
+	CHECK (num_correct + num_partial + num_incorrect = num_judged),
+	CHECK (score_sum <= 5 * num_judged),
+	FOREIGN KEY (eval_run_id, type) REFERENCES gb_eval_runs(id, type) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_gb_eval_runs_meta_training_model ON gb_eval_runs_meta_training(trained_model_id);
+
+-- core.CaseRun: what every type of eval shares of a case run. verdict (core.Verdict) is '' unless the case run completed and
+-- has one; score is in [0, 1], NULL if the case has none. type is that of the case def and of the eval run (the composite keys make the
+-- database check it); what is specific to the type is in the gb_case_runs_meta_<type> table of that type, one row per case run.
+CREATE TABLE IF NOT EXISTS gb_case_runs (
+	id          BIGSERIAL PRIMARY KEY,
+	def_id      BIGINT NOT NULL,
+	eval_run_id BIGINT NOT NULL,
+	type        TEXT NOT NULL CHECK (type <> ''),
+	status      TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'errored', 'cancelled')),
+	error       TEXT NOT NULL DEFAULT '',
+	verdict     TEXT NOT NULL DEFAULT '' CHECK (verdict IN ('', 'pass', 'fail')),
+	score       DOUBLE PRECISION CHECK (score IS NULL OR (score >= 0 AND score <= 1)),
+	cost_usd    DOUBLE PRECISION NOT NULL DEFAULT 0,
+	created_at  TIMESTAMPTZ NOT NULL,
+	started_at  TIMESTAMPTZ,
+	finished_at TIMESTAMPTZ,
+	CHECK (status = 'completed' OR (verdict = '' AND score IS NULL)),
+	UNIQUE (eval_run_id, def_id),
+	UNIQUE (id, type),
+	FOREIGN KEY (def_id, type) REFERENCES gb_case_defs(id, type) ON DELETE RESTRICT,
+	FOREIGN KEY (eval_run_id, type) REFERENCES gb_eval_runs(id, type) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_gb_case_runs_def ON gb_case_runs(def_id);
+
+-- The metadata of the case runs of each type: one table per type, keyed by the case run (one row per case run of that type),
+-- tied to its type like the case def metadata above. Deleting the case run deletes the row. A new type of eval adds a table.
+
+-- core.KnowledgeCaseRunMeta. input: JSON (core.KnowledgeInput) as it was given, with the text files read in. problems,
+-- passed_checks: JSON arrays of strings. dataset_id is the dataset the case ran in (the graph it built), NULL if it was never
+-- created; it is not a foreign key, because the dataset tables are not part of this schema. steps: ATIF steps over the
+-- trajectories of the case.
+CREATE TABLE IF NOT EXISTS gb_case_runs_meta_knowledge (
+	case_run_id   BIGINT PRIMARY KEY,
+	type          TEXT NOT NULL DEFAULT 'knowledge' CHECK (type = 'knowledge'),
+	input         JSONB,
+	answer        TEXT NOT NULL DEFAULT '',
+	problems      JSONB NOT NULL DEFAULT '[]',
+	passed_checks JSONB NOT NULL DEFAULT '[]',
+	dataset_id    BIGINT,
+	steps         BIGINT NOT NULL DEFAULT 0,
+	FOREIGN KEY (case_run_id, type) REFERENCES gb_case_runs(id, type) ON DELETE CASCADE
+);
+
+-- core.KnowledgeTrajectory: the ATIF trajectories (internal/ai/atif) of a knowledge case run, in call order. Only the reference
+-- is kept: trajectory_id is the ATIF trajectory_id, path the JSON file it was stored in ('' if none). kind: 'remember' or
+-- 'recall'. artifact_ids: JSON array of the IDs of the artifacts the call is about (remember: its input; recall: the sources
+-- of the evidence).
+CREATE TABLE IF NOT EXISTS gb_case_runs_meta_knowledge_trajectories (
+	id            BIGSERIAL PRIMARY KEY,
+	case_run_id   BIGINT NOT NULL REFERENCES gb_case_runs_meta_knowledge(case_run_id) ON DELETE CASCADE,
+	seq           BIGINT NOT NULL CHECK (seq >= 0),
+	kind          TEXT NOT NULL CHECK (kind IN ('remember', 'recall')),
+	trajectory_id TEXT NOT NULL,
+	agent_name    TEXT NOT NULL DEFAULT '',
+	steps         BIGINT NOT NULL DEFAULT 0,
+	cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
+	path          TEXT NOT NULL DEFAULT '',
+	artifact_ids  JSONB NOT NULL DEFAULT '[]',
+	created_at    TIMESTAMPTZ NOT NULL,
+	UNIQUE (case_run_id, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_gb_case_runs_meta_knowledge_trajectories_tid ON gb_case_runs_meta_knowledge_trajectories(trajectory_id);
+
+-- core.TrainingCaseRunMeta: instruction, input, reference are the question and the expected answer as they were when the case
+-- ran, response is the model's ('' if it failed). judge_score is the judge's, 0 to 5 (NULL unless judged; the case run's score is
+-- judge_score / 5), judge_reason its explanation; batch is the judge batch, from 1 (0 if not judged).
+CREATE TABLE IF NOT EXISTS gb_case_runs_meta_training (
+	case_run_id   BIGINT PRIMARY KEY,
+	type          TEXT NOT NULL DEFAULT 'training' CHECK (type = 'training'),
+	instruction   TEXT NOT NULL,
+	input         TEXT NOT NULL DEFAULT '',
+	reference     TEXT NOT NULL DEFAULT '',
+	response      TEXT NOT NULL DEFAULT '',
+	batch         BIGINT NOT NULL DEFAULT 0 CHECK (batch >= 0),
+	judge_score   BIGINT CHECK (judge_score IS NULL OR (judge_score >= 0 AND judge_score <= 5)),
+	judge_reason  TEXT NOT NULL DEFAULT '',
+	input_tokens  BIGINT NOT NULL DEFAULT 0,
+	output_tokens BIGINT NOT NULL DEFAULT 0,
+	duration_ms   BIGINT NOT NULL DEFAULT 0,
+	FOREIGN KEY (case_run_id, type) REFERENCES gb_case_runs(id, type) ON DELETE CASCADE
+);
+`

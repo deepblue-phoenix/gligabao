@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/evals_neo/core"
-	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals_neo/db"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
+	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 )
 
 func TestHistoryPoints(t *testing.T) {

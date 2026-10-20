@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.90.0] - 2026-10-23
+
+### Changed
+- **`internal/evals_neo` is now `internal/evals`** (package `evals`, import path `.../internal/evals`), and the `gb_neo_*` tables are `gb_*` (e.g. `gb_neo_eval_runs` is `gb_eval_runs`; the indexes lose `neo` too). The `neo` part only marked the migration from the old evals, which is complete. **Breaking:** the eval database must be rebuilt, nothing is migrated. `./run_evals.sh`, the docs and the comments follow.
+
 ## [0.89.0] - 2026-10-23
 
 ### Changed
