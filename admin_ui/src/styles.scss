@@ -209,6 +209,13 @@ button.danger { background: $err; color: #fff; vertical-align: middle; svg { dis
 }
 
 .modal.modal-small { width: min(92vw, 30rem); height: fit-content; max-height: 80vh; }
+.help-text { margin: 0.5rem 0 0; line-height: 1.45; overflow-wrap: anywhere; }
+button.help-btn {
+  width: 1.4rem; height: 1.4rem; padding: 0; margin-left: 0.3rem; border-radius: 50%; vertical-align: middle;
+  font-size: 0.8rem; font-weight: 600; line-height: 1; background: transparent; color: $muted; border: 1px solid $border;
+  &:hover { filter: none; color: $text; background: rgba(255, 255, 255, 0.1); }
+}
+.tr-section[hidden] { display: none; }
 .confirm-message { margin: 0.5rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 0.6rem; padding: 0.6rem 1rem; border-top: 1px solid $border; }
 

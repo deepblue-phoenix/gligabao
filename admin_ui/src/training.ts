@@ -165,10 +165,6 @@ async function loadJobs(): Promise<void> {
     if (!res.ok) throw await failure(res);
     jobs = ((await res.json()) as { jobs: Job[] }).jobs ?? [];
     el("training-jobs-status").className = "muted";
-    if (selected === null && jobs.length > 0) {
-      const running = jobs.find((j) => !FINISHED.includes(j.status));
-      select((running ?? jobs[0]).id);
-    }
     renderJobs();
     renderDetailHead();
   } catch (err) {
@@ -1217,6 +1213,7 @@ function renderDetailHead(): void {
   const j = jobs.find((x) => x.id === selected);
   const head = el("training-detail-head");
   head.replaceChildren();
+  el("training-selected").hidden = !j; // nothing to show until a job is picked from the list
   if (!j) return;
   head.append(node("strong", "", `Job #${j.id}`), " ", statusBadge(j.status), " ",
     node("span", "muted", `${j.model_size} · ${j.dataset || "(no dataset)"} · ${j.job_id}`));
@@ -1380,6 +1377,13 @@ export function initTraining(): void {
   const view = el("view-training");
   initActionModal();
   el("training-run").addEventListener("click", () => void run());
+  for (const b of Array.from(view.querySelectorAll<HTMLButtonElement>("button.help-btn"))) {
+    b.addEventListener("click", () => el<HTMLDialogElement>(b.dataset.help ?? "").showModal());
+  }
+  for (const d of Array.from(document.querySelectorAll<HTMLDialogElement>("dialog.help-modal"))) {
+    d.querySelector("[data-close-help]")?.addEventListener("click", () => d.close());
+    d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
+  }
   el("training-upload").addEventListener("click", () => void uploadDataset());
   const datasetModal = el<HTMLDialogElement>("dataset-modal");
   const modelModal = el<HTMLDialogElement>("model-modal");

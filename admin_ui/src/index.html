@@ -110,8 +110,7 @@
             <p id="training-sidecar-warning" class="error sidecar-warning" role="alert" hidden><strong>Sidecar not active.</strong> It did not pass its health check when the server started, so training jobs cannot be started or listed. Start the sidecar and restart the server.</p>
 
             <div class="tr-section tr-models">
-              <h3>Trained models</h3>
-              <p class="muted">Every completed job saves its weights as a new trained model, so training again (other data, steps or size) never replaces an earlier one. Click a model to open it: its files, a form to run inference on it, its evals, and the past replies of the model. <b>Audit</b> (the button of each model) opens its audit dialog: it asks the model the questions of its own fine-tuning dataset (each example is a case) and has the LLM judge, in batches, how close its answers are to the dataset's: a check that the training took, not a test of generalization.</p>
+              <h3>Trained models <button type="button" class="help-btn" data-help="models-help-modal" title="Help" aria-label="Help">?</button></h3>
               <p id="training-models-status" class="muted"></p>
               <div class="table-scroll">
               <table id="training-models" class="clickable" hidden>
@@ -131,8 +130,7 @@
             </div>
 
             <div class="tr-section tr-datasets">
-              <h3>Datasets</h3>
-              <p class="muted">The datasets are the subdirectories of the server's training datasets directory that have a <code>dataset.toml</code> manifest; it names the dataset and its JSONL data file. You can also upload a JSONL file (one JSON object per line with <code>instruction</code>, <code>output</code> and optionally <code>input</code>): it becomes a dataset named like the file. A dataset is sent to the sidecar only when a job that uses it starts.</p>
+              <h3>Datasets <button type="button" class="help-btn" data-help="datasets-help-modal" title="Help" aria-label="Help">?</button></h3>
               <div class="row training-form">
                 <label>JSONL file
                   <input type="file" id="training-upload-file" accept=".jsonl,application/jsonl,application/x-ndjson,text/plain" />
@@ -169,7 +167,7 @@
               </table>
             </div>
 
-            <div class="tr-section tr-selected">
+            <div id="training-selected" class="tr-section tr-selected" hidden>
               <h3>Selected job <span id="training-stream" class="muted"></span></h3>
               <div id="training-detail-head"></div>
               <div id="training-loss"></div>
@@ -204,6 +202,22 @@
         </aside>
       </div>
     </div>
+
+    <dialog id="models-help-modal" class="modal modal-small help-modal">
+      <div class="modal-head">
+        <h2>Trained models</h2>
+        <button type="button" class="close-x" data-close-help title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="modal-body"><p class="help-text">Every completed job saves its weights as a new trained model, so training again (other data, steps or size) never replaces an earlier one. Click a model to open it: its files, a form to run inference on it, its evals, and the past replies of the model. <b>Audit</b> (the button of each model) opens its audit dialog: it asks the model the questions of its own fine-tuning dataset (each example is a case) and has the LLM judge, in batches, how close its answers are to the dataset's: a check that the training took, not a test of generalization.</p></div>
+    </dialog>
+
+    <dialog id="datasets-help-modal" class="modal modal-small help-modal">
+      <div class="modal-head">
+        <h2>Datasets</h2>
+        <button type="button" class="close-x" data-close-help title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="modal-body"><p class="help-text">The datasets are the subdirectories of the server's training datasets directory that have a <code>dataset.toml</code> manifest; it names the dataset and its JSONL data file. You can also upload a JSONL file (one JSON object per line with <code>instruction</code>, <code>output</code> and optionally <code>input</code>): it becomes a dataset named like the file. A dataset is sent to the sidecar only when a job that uses it starts.</p></div>
+    </dialog>
 
     <dialog id="confirm-modal" class="modal modal-small">
       <div class="modal-head">

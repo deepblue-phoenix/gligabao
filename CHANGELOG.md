@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.91.0] - 2026-10-23
+
+### Changed
+- Admin UI, training view: the help texts of `Trained models` and `Datasets` are now behind a `?` button that opens a small modal, instead of a block of text under the heading.
+- Admin UI, training view: the `Selected job` section is hidden until a job is picked from the list. The newest or running job is no longer selected automatically when the list loads.
+
 ## [0.90.0] - 2026-10-23
 
 ### Changed
