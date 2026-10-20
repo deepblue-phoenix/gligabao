@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.94.2] - 2026-10-23
+
+### Changed
+- Admin UI, audit dialog: a case scored 0 / 5 in an audit is shown in bold magenta, in the Open view too (it was only in the inline answers table).
+
 ## [0.94.1] - 2026-10-23
 
 ### Changed

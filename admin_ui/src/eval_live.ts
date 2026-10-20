@@ -139,7 +139,7 @@ function buildCard(i: TrainedModelCase): HTMLElement {
   head.append(node("span", "ev-num", `#${i.idx + 1}`));
   if (i.name) head.append(node("span", "ev-name", i.name));
   if (i.status === "completed") {
-    if (i.score !== null) head.append(node("span", `ev-score score-${v}`, `${i.score} / ${MAX_SCORE}`));
+    if (i.score !== null) head.append(node("span", `ev-score ${watchingKind === "audits" && i.score === 0 ? "score-zero" : `score-${v}`}`, `${i.score} / ${MAX_SCORE}`));
     if (i.verdict) head.append(verdictBadge(i.verdict));
   } else {
     // running is a case the model answered whose batch the judge has not scored yet; once the run is over it never will be

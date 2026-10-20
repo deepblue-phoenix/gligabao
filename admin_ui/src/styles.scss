@@ -783,6 +783,8 @@ tr.removing {
 .score-good { color: #3fb950; }
 .score-mid { color: #d29922; }
 .score-bad { color: $err; }
+// 0 / 5 in an audit: a total failure, not even close.
+.score-zero { color: #ff00ff; font-weight: 700; }
 // Inference container state in the audit dialog's head (training.ts drawAuditContainer): a square, blinking while it starts.
 .container-state { flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem; font-size: 0.85rem; color: $muted;
   &:empty { display: none; }
