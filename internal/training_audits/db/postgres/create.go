@@ -40,7 +40,7 @@ func status(s core.Status) core.Status {
 	return s
 }
 
-// CreateAuditRun inserts r into gb_neo_training_audit_runs, with its AuditStats, and sets its ID, Status and CreatedAt. Its
+// CreateAuditRun inserts r into gb_training_audit_runs, with its AuditStats, and sets its ID, Status and CreatedAt. Its
 // CaseRuns are not stored: they are added with CreateAuditCaseRun.
 func CreateAuditRun(ctx context.Context, q db.Execer, r *core.AuditRun) error {
 	params, err := db.JSON(r.Params, "{}")
@@ -51,7 +51,7 @@ func CreateAuditRun(ctx context.Context, q db.Execer, r *core.AuditRun) error {
 	r.CreatedAt = fill(r.CreatedAt)
 	var id int64
 	if err := q.QueryRowContext(ctx, `
-		INSERT INTO gb_neo_training_audit_runs (trained_model_id, dataset, dataset_sha256, status, error, params,
+		INSERT INTO gb_training_audit_runs (trained_model_id, dataset, dataset_sha256, status, error, params,
 			counts_total, counts_pending, counts_running, counts_completed, counts_errored, counts_cancelled, cost_usd,
 			judge_model, num_answered, num_judged, num_correct, num_partial, num_incorrect, score_sum, num_batches, judge_calls,
 			judge_input_tokens, judge_output_tokens, created_at, started_at, finished_at)
@@ -67,14 +67,14 @@ func CreateAuditRun(ctx context.Context, q db.Execer, r *core.AuditRun) error {
 	return nil
 }
 
-// CreateAuditCaseRun inserts c into gb_neo_training_audit_case_runs, as an example of the audit run c.RunID, and sets its ID,
+// CreateAuditCaseRun inserts c into gb_training_audit_case_runs, as an example of the audit run c.RunID, and sets its ID,
 // Status and CreatedAt.
 func CreateAuditCaseRun(ctx context.Context, q db.Execer, c *core.AuditCaseRun) error {
 	c.Status = status(c.Status)
 	c.CreatedAt = fill(c.CreatedAt)
 	var id int64
 	if err := q.QueryRowContext(ctx, `
-		INSERT INTO gb_neo_training_audit_case_runs (run_id, idx, status, error, instruction, input, reference, response, batch,
+		INSERT INTO gb_training_audit_case_runs (run_id, idx, status, error, instruction, input, reference, response, batch,
 			judge_score, judge_reason, input_tokens, output_tokens, duration_ms, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING id`,

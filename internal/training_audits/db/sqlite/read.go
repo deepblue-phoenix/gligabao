@@ -82,7 +82,7 @@ func scanRun(s scanner) (*core.AuditRun, error) {
 
 // GetAuditRun returns the audit run with that ID, without its CaseRuns (see ListAuditCaseRuns), or db.ErrNotFound.
 func GetAuditRun(ctx context.Context, q db.Execer, id core.AuditRunID) (*core.AuditRun, error) {
-	r, err := scanRun(q.QueryRowContext(ctx, `SELECT `+runColumns+` FROM gb_neo_training_audit_runs WHERE id = ?`, int64(id)))
+	r, err := scanRun(q.QueryRowContext(ctx, `SELECT `+runColumns+` FROM gb_training_audit_runs WHERE id = ?`, int64(id)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, db.ErrNotFound
 	}
@@ -95,7 +95,7 @@ func GetAuditRun(ctx context.Context, q db.Execer, id core.AuditRunID) (*core.Au
 // ListAuditRuns returns the audit runs of trained model trainedModelID (of every model for 0), newest first, at most limit of them
 // (all for limit <= 0), without their CaseRuns.
 func ListAuditRuns(ctx context.Context, q db.Execer, trainedModelID int64, limit int) ([]core.AuditRun, error) {
-	query := `SELECT ` + runColumns + ` FROM gb_neo_training_audit_runs`
+	query := `SELECT ` + runColumns + ` FROM gb_training_audit_runs`
 	var args []any
 	if trainedModelID != 0 {
 		query += ` WHERE trained_model_id = ?`
@@ -131,7 +131,7 @@ func ListAuditCaseRuns(ctx context.Context, q db.Execer, runID core.AuditRunID) 
 	rows, err := q.QueryContext(ctx, `
 		SELECT id, run_id, idx, status, error, instruction, input, reference, response, batch, judge_score, judge_reason,
 			input_tokens, output_tokens, duration_ms, created_at
-		FROM gb_neo_training_audit_case_runs WHERE run_id = ? ORDER BY idx`, int64(runID))
+		FROM gb_training_audit_case_runs WHERE run_id = ? ORDER BY idx`, int64(runID))
 	if err != nil {
 		return nil, fmt.Errorf("list case runs of training audit run %d: %w", runID, err)
 	}
@@ -168,7 +168,7 @@ func ListAuditCaseRuns(ctx context.Context, q db.Execer, runID core.AuditRunID) 
 // creates the batch's case runs.
 func UpdateAuditRun(ctx context.Context, q db.Execer, r *core.AuditRun) error {
 	res, err := q.ExecContext(ctx, `
-		UPDATE gb_neo_training_audit_runs SET status = ?, error = ?, counts_total = ?, counts_pending = ?, counts_running = ?,
+		UPDATE gb_training_audit_runs SET status = ?, error = ?, counts_total = ?, counts_pending = ?, counts_running = ?,
 			counts_completed = ?, counts_errored = ?, counts_cancelled = ?, cost_usd = ?, judge_model = ?, num_answered = ?,
 			num_judged = ?, num_correct = ?, num_partial = ?, num_incorrect = ?, score_sum = ?, num_batches = ?, judge_calls = ?,
 			judge_input_tokens = ?, judge_output_tokens = ?, started_at = ?, finished_at = ?
@@ -198,7 +198,7 @@ func FinishAuditRun(ctx context.Context, q db.Execer, id core.AuditRunID, st cor
 	}
 	if n == 0 {
 		var one int
-		if err := q.QueryRowContext(ctx, `SELECT 1 FROM gb_neo_training_audit_runs WHERE id = ?`, int64(id)).Scan(&one); errors.Is(err, sql.ErrNoRows) {
+		if err := q.QueryRowContext(ctx, `SELECT 1 FROM gb_training_audit_runs WHERE id = ?`, int64(id)).Scan(&one); errors.Is(err, sql.ErrNoRows) {
 			return db.ErrNotFound
 		}
 	}
@@ -218,7 +218,7 @@ func FailRunningAuditRuns(ctx context.Context, q db.Execer, reason string) (int6
 // finish ends the unfinished run id (every unfinished run for id 0) and returns how many it ended.
 func finish(ctx context.Context, q db.Execer, id int64, st core.Status, errText string) (int64, error) {
 	res, err := q.ExecContext(ctx, `
-		UPDATE gb_neo_training_audit_runs SET status = ?, error = ?, finished_at = ?
+		UPDATE gb_training_audit_runs SET status = ?, error = ?, finished_at = ?
 		WHERE status IN ('pending', 'running') AND (? = 0 OR id = ?)`, string(st), errText, text(now()), id, id)
 	if err != nil {
 		return 0, err

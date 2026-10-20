@@ -14,7 +14,7 @@ const Schema = `
 -- the ones scored, split by the judge's score (>= 4 / 2-3 / 0-1) into num_correct, num_partial and num_incorrect; score_sum: the
 -- sum of the scores (0 to 5 each) of the judged ones; num_batches: judge batches done; judge_calls: LLM calls made (a batch may
 -- need a retry). created_at, started_at, finished_at: core.Timing; finished_at is set once the status is final.
-CREATE TABLE IF NOT EXISTS gb_neo_training_audit_runs (
+CREATE TABLE IF NOT EXISTS gb_training_audit_runs (
 	id                  BIGSERIAL PRIMARY KEY,
 	trained_model_id    BIGINT NOT NULL,
 	dataset             TEXT NOT NULL CHECK (dataset <> ''),
@@ -46,16 +46,16 @@ CREATE TABLE IF NOT EXISTS gb_neo_training_audit_runs (
 	CHECK (num_correct + num_partial + num_incorrect = num_judged),
 	CHECK (score_sum <= 5 * num_judged)
 );
-CREATE INDEX IF NOT EXISTS idx_gb_neo_training_audit_runs_model ON gb_neo_training_audit_runs(trained_model_id);
+CREATE INDEX IF NOT EXISTS idx_gb_training_audit_runs_model ON gb_training_audit_runs(trained_model_id);
 
 -- core.AuditCaseRun: one example of the dataset of an audit run, asked and judged. idx is its position in the examples the run was
 -- given (0-based; unique within the run). instruction, input, reference are the question and the answer the model was trained to
 -- give, as they were when the case ran; response is the model's ('' if it failed). judge_score is the judge's, 0 to 5 (NULL unless
 -- the case completed; its score is judge_score / 5), judge_reason its explanation; batch is the judge batch, from 1 (0 if not
 -- judged). input_tokens, output_tokens, duration_ms are those of the model's answer. Deleting the run deletes its case runs.
-CREATE TABLE IF NOT EXISTS gb_neo_training_audit_case_runs (
+CREATE TABLE IF NOT EXISTS gb_training_audit_case_runs (
 	id            BIGSERIAL PRIMARY KEY,
-	run_id        BIGINT NOT NULL REFERENCES gb_neo_training_audit_runs(id) ON DELETE CASCADE,
+	run_id        BIGINT NOT NULL REFERENCES gb_training_audit_runs(id) ON DELETE CASCADE,
 	idx           BIGINT NOT NULL CHECK (idx >= 0),
 	status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'errored', 'cancelled')),
 	error         TEXT NOT NULL DEFAULT '',

@@ -88,18 +88,18 @@ func TestCreate(t *testing.T) {
 		}
 	}
 
-	if n := count(t, d, `SELECT COUNT(*) FROM gb_neo_training_audit_runs WHERE id = ? AND trained_model_id = 3 AND dataset_sha256 = 'abc' AND counts_total = 2 AND started_at IS NOT NULL AND finished_at IS NULL AND params = '{"batch_size":10}'`, run.ID); n != 1 {
+	if n := count(t, d, `SELECT COUNT(*) FROM gb_training_audit_runs WHERE id = ? AND trained_model_id = 3 AND dataset_sha256 = 'abc' AND counts_total = 2 AND started_at IS NOT NULL AND finished_at IS NULL AND params = '{"batch_size":10}'`, run.ID); n != 1 {
 		t.Errorf("audit run: %d", n)
 	}
-	if n := count(t, d, `SELECT COUNT(*) FROM gb_neo_training_audit_case_runs WHERE run_id = ? AND judge_score IS NULL`, run.ID); n != 1 {
+	if n := count(t, d, `SELECT COUNT(*) FROM gb_training_audit_case_runs WHERE run_id = ? AND judge_score IS NULL`, run.ID); n != 1 {
 		t.Errorf("case runs without a score: %d", n)
 	}
 
 	// Deleting the run deletes its case runs.
-	if _, err := d.Exec(`DELETE FROM gb_neo_training_audit_runs WHERE id = ?`, run.ID); err != nil {
+	if _, err := d.Exec(`DELETE FROM gb_training_audit_runs WHERE id = ?`, run.ID); err != nil {
 		t.Fatal(err)
 	}
-	if n := count(t, d, `SELECT COUNT(*) FROM gb_neo_training_audit_case_runs`); n != 0 {
+	if n := count(t, d, `SELECT COUNT(*) FROM gb_training_audit_case_runs`); n != 0 {
 		t.Errorf("case runs left after their run was deleted: %d", n)
 	}
 
@@ -112,7 +112,7 @@ func TestCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 	tx.Rollback()
-	if n := count(t, d, `SELECT COUNT(*) FROM gb_neo_training_audit_runs WHERE trained_model_id = 77`); n != 0 {
+	if n := count(t, d, `SELECT COUNT(*) FROM gb_training_audit_runs WHERE trained_model_id = 77`); n != 0 {
 		t.Errorf("rolled back audit run: %d", n)
 	}
 }

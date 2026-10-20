@@ -118,19 +118,19 @@
 
 Tables of the training data audits (`internal/training_audits`, see `docs/training/audit.md`).
 
-- `gb_neo_training_audit_runs`
-- `gb_neo_training_audit_case_runs`
+- `gb_training_audit_runs`
+- `gb_training_audit_case_runs`
 
 ### What each table is about
 
 | Table                         | Description                                                                                                                                     |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gb_neo_training_audit_runs`  | one row per training data audit, a trained model run against its own fine-tuning dataset (not an eval), with counts, judge statistics and cost. |
-| `gb_neo_training_audit_case_runs` | one row per example of an audit, with the question, dataset answer, model response and judge score and reason.                                  |
+| `gb_training_audit_runs`  | one row per training data audit, a trained model run against its own fine-tuning dataset (not an eval), with counts, judge statistics and cost. |
+| `gb_training_audit_case_runs` | one row per example of an audit, with the question, dataset answer, model response and judge score and reason.                                  |
 
 ### Where each table is defined
 
 | Table                         | SQLite                                             | Postgres                                             |
 | ----------------------------- | -------------------------------------------------- | ---------------------------------------------------- |
-| `gb_neo_training_audit_runs`  | `internal/training_audits/db/sqlite/schema.go`     | `internal/training_audits/db/postgres/schema.go`     |
-| `gb_neo_training_audit_case_runs` | `internal/training_audits/db/sqlite/schema.go`     | `internal/training_audits/db/postgres/schema.go`     |
+| `gb_training_audit_runs`  | `internal/training_audits/db/sqlite/schema.go`     | `internal/training_audits/db/postgres/schema.go`     |
+| `gb_training_audit_case_runs` | `internal/training_audits/db/sqlite/schema.go`     | `internal/training_audits/db/postgres/schema.go`     |

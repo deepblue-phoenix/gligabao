@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.82.0] - 2026-10-22
+
+### Changed
+- **The audit tables lose the `neo` part of their names:** `gb_neo_training_audit_runs` is now `gb_training_audit_runs` and `gb_neo_training_audit_case_runs` is `gb_training_audit_case_runs` (and the index `idx_gb_neo_training_audit_runs_model` is `idx_gb_training_audit_runs_model`). **Breaking:** audits stored in the old `gb_neo_*` tables are not read any more (copy them over or drop them). An existing database that still has the tables of the removed old audit code, also called `gb_training_audit_runs`, must have them dropped first, or `CREATE TABLE IF NOT EXISTS` will keep their old columns.
+
 ## [0.81.1] - 2026-10-22
 
 ### Changed

@@ -9,6 +9,5 @@
 // written once, when their outcome is final, so there is no update of a case run. A function that is given an ID that does not
 // exist returns ErrNotFound.
 //
-// The tables have the prefix gb_neo_training_audit_, so that they can live next to the old gb_training_audit_ tables of internal/evals
-// while the audits are moved here.
+// The tables have the prefix gb_training_audit_.
 package db
