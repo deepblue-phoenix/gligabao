@@ -100,14 +100,6 @@
 | `gb_series_anchors`           | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
 | `gb_onto_classes`             | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
 | `gb_onto_edges`               | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
-| `gb_experiments_defs`         | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
-| `gb_experiment_cases_defs`    | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
-| `gb_experiment_runs`          | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
-| `gb_experiment_case_runs`     | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
-| `gb_experiment_case_runs_trajectories` | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
-| `gb_knowledge_case_meta`      | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
-| `gb_training_eval_run_meta`   | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
-| `gb_training_case_meta`       | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
 | `gb_training_job_runs`        | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
 | `gb_training_job_events`      | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
 | `gb_trained_models`           | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
@@ -137,7 +129,7 @@ Tables of the training data audits (`internal/training_audits`, see `docs/traini
 
 ## EVALS
 
-Tables of the evals (`internal/evals_neo`, see its `README.md`; applied by `internal/db.Open`, next to the old `gb_experiment*` tables of `internal/evals/db`, which are to be removed).
+Tables of the evals (`internal/evals_neo`, see its `README.md`; applied by `internal/db.Open`).
 
 - `gb_neo_eval_defs`
 - `gb_neo_case_defs`

@@ -177,37 +177,6 @@
 
 | Struct                                                    | Description                                                                                                            |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `internal/evals/db/model.CaseRef`                         | identifies an eval case by its eval and case name.                                                                     |
-| `internal/evals/db/model.Experiment`                      | is a named series of eval runs with the cases they executed.                                                           |
-| `internal/evals/db/model.ExperimentArtifact`              | is an artifact of the dataset a case ran in.                                                                           |
-| `internal/evals/db/model.ExperimentCaseRun`               | is the result of one case within an experiment run.                                                                    |
-| `internal/evals/db/model.ExperimentRun`                   | is one execution of an experiment with its case counts.                                                                |
-| `internal/evals/db/model.ExperimentTrajectory`            | references the ATIF trajectory of one remember or recall call of a case.                                               |
-| `internal/evals/db/model.TrainedModelCase`                | is the outcome for one case of a trained-model run, with the judge's score.                                            |
-| `internal/evals/db/model.TrainedModelRun`                 | is one run of a trained model against a set of cases, judged by an external LLM.                                       |
-| `internal/evals/db/model.TrainingExperiment`              | is a named series of eval runs of trained models.                                                                      |
-| `internal/evals/db/model.TrainingExperimentModel`         | summarizes the trained model evaluated by a run so runs can be compared by recipe.                                     |
-| `internal/evals/db/model.TrainingExperimentRun`           | is one eval run of a trained model within a training experiment.                                                       |
-| `internal/evals/experiments.CaseOutcome`                  | is what one experiment case produced.                                                                                  |
-| `internal/evals/experiments.Options`                      | describes the experiment and run to start.                                                                             |
-| `internal/evals/experiments.Tracker`                      | records one run of an experiment, case by case.                                                                        |
-| `internal/evals/knowledge.Artifact`                       | is one text to remember in a knowledge eval case, with its reference time.                                             |
-| `internal/evals/knowledge.Case`                           | is one knowledge eval case: texts to remember, then a question and the checks.                                         |
-| `internal/evals/knowledge.ExpectEdge`                     | is a temporal fact that must be stored between two entities.                                                           |
-| `internal/evals/knowledge.ExpectSeries`                   | is a stored series that a case checks for.                                                                             |
-| `internal/evals/knowledge.Outcome`                        | is what one knowledge eval case produced.                                                                              |
-| `internal/evals/knowledge.rememberedChunk`                | is a chunk as reported by the remember response.                                                                       |
-| `internal/evals/knowledge.verboseLLM`                     | wraps an LLM and prints the input and output of every call.                                                            |
-| `internal/evals/training.Case`                            | is one trained-model eval case with a question and its expected answer.                                                |
-| `internal/evals/training.CaseResult`                      | is the outcome of one example in a run.                                                                                |
-| `internal/evals/training.Config`                          | says how a trained-model eval run goes.                                                                                |
-| `internal/evals/training.Eval`                            | is a named set of cases loaded from one eval file.                                                                     |
-| `internal/evals/training.Example`                         | is one training dataset record or eval case input and expected output.                                                 |
-| `internal/evals/training.Generation`                      | is what the trained model answered to a prompt.                                                                        |
-| `internal/evals/training.Progress`                        | tracks how far an eval run is, with counts of judged outcomes.                                                         |
-| `internal/evals/training.evalFile`                        | is the JSON content of an eval file.                                                                                   |
-| `internal/evals/training.judgeCase`                       | is one case as presented to the judge.                                                                                 |
-| `internal/evals/training.verdict`                         | is the judge's score and reason for one case.                                                                          |
 
 >>> MEMORY
 

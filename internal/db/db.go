@@ -3,7 +3,7 @@
 // individual clients.
 //
 // The per-kind packages (internal/db/relational, internal/db/graph, internal/db/vector) hold the operations and the
-// backends (the eval tables, which live in the relational database, are managed by internal/evals/db); this package only opens them, keeps them together and closes them.
+// backends (the eval tables, which live in the relational database, are managed by internal/evals_neo); this package only opens them, keeps them together and closes them.
 package db
 
 import (
@@ -20,7 +20,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
-	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	"github.com/deepblue-phoenix/gligabao/internal/evals_neo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
@@ -182,10 +181,6 @@ func Open(cfg Config) (*DB, error) {
 	d.Graph = rel
 	// The training tables come before the evals': the eval tables reference the trained models.
 	if err := trainingdb.Open(cfg.Backend, rel); err != nil {
-		rel.Close()
-		return nil, err
-	}
-	if err := evalsdb.Open(cfg.Backend, rel); err != nil {
 		rel.Close()
 		return nil, err
 	}

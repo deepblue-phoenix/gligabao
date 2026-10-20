@@ -26,7 +26,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
-	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	"github.com/deepblue-phoenix/gligabao/internal/evals_neo"
 	evalstraining "github.com/deepblue-phoenix/gligabao/internal/evals_neo/training"
 	evalsapi "github.com/deepblue-phoenix/gligabao/internal/evals_neo/training/api"
@@ -327,10 +326,6 @@ func openAdminDB(path string) (*sql.DB, error) {
 		return nil, err
 	}
 	if err := trainingdb.Open(config.DBBackendSQLite, rel); err != nil {
-		rel.Close()
-		return nil, err
-	}
-	if err := evalsdb.Open(config.DBBackendSQLite, rel); err != nil {
 		rel.Close()
 		return nil, err
 	}

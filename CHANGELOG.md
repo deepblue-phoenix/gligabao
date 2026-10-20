@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.88.0] - 2026-10-23
+
+### Removed
+- **The old evals package `internal/evals`** (`db` with its sqlite and postgres backends, `experiments`, `knowledge`, `training`, and their READMEs), which nothing of the server used any more; `internal/evals_neo` replaces it. **Breaking:** `internal/db.Open` (and the server and the test helper `dbtest`) no longer create the old tables (`gb_experiments_defs`, `gb_experiment_*`, `gb_knowledge_case_meta`, `gb_training_eval_run_meta`, `gb_training_case_meta`); an existing database keeps them with their data, and they can be dropped by hand. The docs and listings point to `internal/evals_neo`.
+
 ## [0.87.0] - 2026-10-23
 
 ### Changed

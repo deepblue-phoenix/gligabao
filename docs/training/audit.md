@@ -27,7 +27,7 @@ Reading the result: a mean score near 5 means the model reproduces its training 
 |---|---|---|
 | Cases | the model's own fine-tuning dataset: things it was trained on | the cases of an [eval](../evals/training.md) (`bin/evals_training/*.json`), meant to be ones the model never saw |
 | Measures | memorization and fit; data quality | generalization |
-| Code | `internal/training_audits` (types `core.AuditRun`, `core.AuditCaseRun`) | `internal/evals/training` and `internal/training` (types `evalsdb.TrainedModelRun`, `TrainedModelCase`) |
+| Code | `internal/training_audits` (types `core.AuditRun`, `core.AuditCaseRun`) | `internal/evals_neo/training` |
 | Endpoints | `internal/training_audits/api`, `/v1/gb/training/models/{id}/audits`, `/audits/{id}[/events\|/cancel]` | `internal/api/training`, the same under `/evals` |
 | Tables | `gb_training_audit_runs`, `gb_training_audit_case_runs` | the `training` rows of the universal eval tables, `gb_training_eval_run_meta`, `gb_training_case_meta` |
 | Experiments | none | training experiments |

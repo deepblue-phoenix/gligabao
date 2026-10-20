@@ -1,12 +1,12 @@
 # Evals and ATIF trajectories
 
-> **Note:** the runner (`./run_evals.sh`) is now `internal/evals_neo/knowledge`, which stores its runs in the `gb_neo_*` tables; see [`internal/evals_neo/README.md`](../../internal/evals_neo/README.md). Where this page speaks of experiments, runs and their tables it describes the old ones (`internal/evals`), which the admin UI still reads.
+> **Note:** the runner (`./run_evals.sh`) is `internal/evals_neo/knowledge`, which stores its runs in the `gb_neo_*` tables; see [`internal/evals_neo/README.md`](../../internal/evals_neo/README.md). Where this page speaks of experiments, runs and their tables it may still describe the old ones (`internal/evals`, removed).
 
 Evals are end-to-end checks that run `remember` and `recall` against the real LLM and verify the stored temporal facts and the answer. Each individual check is an **eval case** (an input, here some texts to remember and a question, plus what is expected and metadata), and the cases are grouped into **evals**. To let a case look inside a run, remember and recall can record themselves as an [ATIF](https://github.com/laude-institute/harbor) (Agent Trajectory Interchange Format) trajectory: the ordered list of everything the call did, with the LLM's tokens and cost per step.
 
 Trajectories are generated **only for eval calls** (the calls the eval cases make). The regular endpoints and regular Go calls never build, store or return them.
 
-For the eval format and the runner's usage see [`internal/evals/knowledge/README.md`](../../internal/evals/knowledge/README.md). This page is about the knowledge-extraction evals; the other eval system, which judges trained models with an LLM, is in [training/EVALS.md](training.md) (the two are described together in [`evals/README.md`](../../internal/evals/README.md)).
+For the eval format and the runner's usage see [`internal/evals_neo/README.md`](../../internal/evals_neo/README.md). This page is about the knowledge-extraction evals; the other eval system, which judges trained models with an LLM, is in [training/EVALS.md](training.md) (the two are described together in [`internal/evals_neo/README.md`](../../internal/evals_neo/README.md)).
 
 ## Eval mode
 

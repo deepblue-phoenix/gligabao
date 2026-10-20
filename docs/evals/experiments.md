@@ -1,6 +1,6 @@
 # Eval experiments
 
-> **Note:** this page describes the old eval tables (`internal/evals/db`), which the server's admin UI still reads. The eval runners (`./run_evals.sh`) now store their runs in the `gb_neo_*` tables of [`internal/evals_neo`](../../internal/evals_neo/README.md), and the UI does not show those yet.
+> **Note:** the old eval tables (`internal/evals/db`) are gone; the runs are stored in the `gb_neo_*` tables of [`internal/evals_neo`](../../internal/evals_neo/README.md). Parts of this page may still describe the old ones.
 
 An **experiment** is a named series of eval runs. Every time the eval runner (`go run ./internal/evals_neo/knowledge/cmd`, `./run_evals.sh`) executes, it records one **run** of an experiment in the **eval** database (`bin/gligabao-eval.db`), which keeps the evaluation data apart from the main database and is never reset. Each run works in datasets of its own (`<case>_run<run id>`), so runs do not interfere with each other. A run records which cases of which evals it executed, how each ended, and the IDs of the [ATIF trajectories](knowledge.md) of their calls. Go code lives in `internal/evals/experiments`; the database code is in `internal/evals/db` (the tables are in `internal/evals/db/{sqlite,postgres}/db_schema.go`, the structs in `internal/evals/db/model`).
 
