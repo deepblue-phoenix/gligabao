@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.92.0] - 2026-10-23
+
+### Added
+- Admin UI, audit dialog: a square in the dialog's head shows the state of the Modal inference container of the audited model. It blinks while the container starts and loads the model (an audit is running but has no answer yet), is green once the model is loaded, amber when a container holds another model and grey when none is up.
+
+### Changed
+- Admin UI: the `Cancel` / `Cancel audit` / `Cancel eval` buttons of audit and eval runs are now just `Stop`.
+- Admin UI, audit dialog: the help text under `Training data audit` is now behind a `?` button that opens a small modal.
+
 ## [0.91.1] - 2026-10-23
 
 ### Changed

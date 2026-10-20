@@ -297,16 +297,23 @@
     <dialog id="audit-modal" class="modal">
       <div class="modal-head">
         <h2 id="audit-title">Audit</h2>
-        <span class="muted"></span>
+        <span id="audit-container" class="container-state"></span>
         <button type="button" id="audit-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <div class="modal-body">
-        <h3>Training data audit</h3>
-        <p class="muted">The model is asked the questions of its <b>own training dataset</b> and an LLM judges how closely its answers reproduce the dataset's, a batch of question/answer pairs per LLM call. Every case is something the model was trained on, so this checks that the training took (and, through the examples it fails, finds bad training data); it says nothing about how well the model generalizes.</p>
+        <h3>Training data audit <button type="button" class="help-btn" data-help="audit-help-modal" title="Help" aria-label="Help">?</button></h3>
         <div id="model-audits-form" class="row training-form"></div>
         <p id="model-audits-status" class="muted"></p>
         <div id="model-audits"></div>
       </div>
+    </dialog>
+
+    <dialog id="audit-help-modal" class="modal modal-small help-modal">
+      <div class="modal-head">
+        <h2>Training data audit</h2>
+        <button type="button" class="close-x" data-close-help title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="modal-body"><p class="help-text">The model is asked the questions of its <b>own training dataset</b> and an LLM judges how closely its answers reproduce the dataset's, a batch of question/answer pairs per LLM call. Every case is something the model was trained on, so this checks that the training took (and, through the examples it fails, finds bad training data); it says nothing about how well the model generalizes.</p><p class="help-text">The square at the top shows the Modal inference container: it blinks while the container starts and loads the model (the first answers wait for it, it can take minutes), it is green once the model is loaded, and grey when no container is up.</p></div>
     </dialog>
 
     <dialog id="eval-modal" class="modal">
@@ -317,7 +324,7 @@
         <span id="eval-live-conn" class="muted"></span>
         <label class="muted"><input type="checkbox" id="eval-live-problems" /> only problems</label>
         <label class="muted"><input type="checkbox" id="eval-live-follow" checked /> follow</label>
-        <button type="button" id="eval-live-cancel" class="danger" hidden>Cancel</button>
+        <button type="button" id="eval-live-cancel" class="danger" hidden>Stop</button>
         <button type="button" id="eval-live-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <div class="ev-top">

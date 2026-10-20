@@ -296,11 +296,56 @@ function openAudit(id: number): void {
   el("model-audits").replaceChildren();
   const modal = el<HTMLDialogElement>("audit-modal");
   if (!modal.open) modal.showModal();
+  auditWarm = "unknown";
+  drawAuditContainer();
+  void pollAuditWarm(id);
   void loadRuns(AUDIT, id);
 }
 
 function closeAuditModal(): void {
   clearTimeout(AUDIT.timer); AUDIT.runs = []; AUDIT.model = null; AUDIT.status = undefined;
+  clearTimeout(auditWarmTimer); auditWarm = "unknown"; el("audit-container").replaceChildren();
+}
+
+// The Modal inference container of the audited model, shown as a square in the dialog's head. It blinks while the container is
+// starting: an audit is running but has no answer yet (the container boots and loads the model on its first question). Green: the
+// model is loaded; amber: a container holds another model; grey: no container up. Polled while the dialog is open, faster while starting.
+let auditWarm: Warm = "unknown";
+let auditWarmTimer: number | undefined;
+const AUDIT_STARTING_POLL_MS = 4000;
+
+const auditStarting = (): boolean => AUDIT.runs.some((r) => runRunning(r) && r.num_answered === 0);
+
+function drawAuditContainer(): void {
+  const box = el("audit-container");
+  if (AUDIT.model === null) return;
+  const starting = auditStarting() && auditWarm !== "warm";
+  const state = starting ? "starting" : auditWarm;
+  const text = starting ? "Inference container starting… (loading the model)"
+    : auditWarm === "warm" ? "Inference container ready"
+    : auditWarm === "other" ? "Container up with another model"
+    : auditWarm === "cold" ? "No inference container up"
+    : "Container status unknown";
+  box.className = `container-state cs-${state}`;
+  box.title = starting ? "The audit is waiting for the Modal inference container to start and load the model; it can take minutes."
+    : auditWarm === "warm" ? "Inference container up, model loaded: questions are answered right away."
+    : auditWarm === "other" ? "An inference container is up but holds another model: this one is loaded first (shorter than a cold start)."
+    : auditWarm === "cold" ? "No inference container is up: the first question of an audit starts one and loads the model (can take minutes)."
+    : "Inference container status unknown.";
+  const sq = node("span", "cs-sq");
+  sq.setAttribute("aria-hidden", "true");
+  box.replaceChildren(sq, node("span", "", text));
+}
+
+async function pollAuditWarm(id: number): Promise<void> {
+  clearTimeout(auditWarmTimer);
+  const m = models.find((x) => x.id === id);
+  if (!m || AUDIT.model !== id) return;
+  const r = await fetchWarm(m);
+  if (AUDIT.model !== id) return;
+  auditWarm = r.state;
+  drawAuditContainer();
+  auditWarmTimer = window.setTimeout(() => void pollAuditWarm(id), auditStarting() ? AUDIT_STARTING_POLL_MS : WARM_POLL_MS);
 }
 
 // The facts and files of the selected model, and the inference form, in the dialog. The history under it is drawn by renderInferences.
@@ -391,8 +436,9 @@ function drawWarm(): void {
     : "Inference container status unknown.";
 }
 
-async function checkWarm(m: TrainedModel): Promise<void> {
-  let next: Warm = "unknown", info = "";
+// The state of the Modal inference container of model m, from the sidecar's app list.
+async function fetchWarm(m: TrainedModel): Promise<{ state: Warm; info: string }> {
+  let state: Warm = "unknown", info = "";
   try {
     const res = await fetch("api/sidecar/backends/modal/apps");
     if (res.ok) {
@@ -400,13 +446,18 @@ async function checkWarm(m: TrainedModel): Promise<void> {
       const containers = apps.filter((a) => a.configured).flatMap((a) => a.inference ?? []);
       const mine = containers.find((c) => c.model_path === m.path || (c.adapter ?? "").endsWith(m.path));
       if (mine) {
-        next = "warm";
+        state = "warm";
         info = `${mine.requests ?? 0} request(s)` + (mine.last_used ? `, last used ${fmtTime(new Date(mine.last_used * 1000).toISOString())} UTC` : "") + ".";
-      } else next = containers.some((c) => c.model_size === m.model_size) ? "other" : "cold";
+      } else state = containers.some((c) => c.model_size === m.model_size) ? "other" : "cold";
     }
   } catch { /* unreachable: stays unknown */ }
+  return { state, info };
+}
+
+async function checkWarm(m: TrainedModel): Promise<void> {
+  const r = await fetchWarm(m);
   if (selectedModel !== m.id) return;
-  warm = next; warmInfo = info;
+  warm = r.state; warmInfo = r.info;
   drawWarm();
 }
 
@@ -696,10 +747,16 @@ async function loadRuns(k: RunKind, modelID: number): Promise<void> {
       if (r.ok) k.cases.set(e.id, readCases(k, await r.json()));
     }));
     if (k.model !== modelID) return; // another model, or closed, while loading
+    const wasStarting = k === AUDIT && auditStarting();
     k.runs = list;
     status.className = "muted";
     status.textContent = list.length === 0 ? `No ${k.noun}s of this model yet.` : `${list.length} ${k.noun}${list.length === 1 ? "" : "s"}, newest first:`;
     renderRuns(k);
+    if (k === AUDIT) {
+      drawAuditContainer();
+      // A run just started: look at the container now rather than at the next poll.
+      if (!wasStarting && auditStarting() && auditWarm !== "warm") void pollAuditWarm(modelID);
+    }
     if (list.some(runRunning)) k.timer = window.setTimeout(() => void loadRuns(k, modelID), EVAL_POLL_MS);
   } catch (err) {
     if (k.model !== modelID) return;
@@ -727,7 +784,7 @@ function renderRuns(k: RunKind): void {
       head.append(warn);
     }
     if (runRunning(e)) {
-      const stop = node("button", "small danger", "Cancel");
+      const stop = node("button", "small danger", "Stop");
       stop.type = "button";
       stop.addEventListener("click", () => void cancelRun(k.path, e.id));
       head.append(stop);
@@ -1377,7 +1434,7 @@ export function initTraining(): void {
   const view = el("view-training");
   initActionModal();
   el("training-run").addEventListener("click", () => void run());
-  for (const b of Array.from(view.querySelectorAll<HTMLButtonElement>("button.help-btn"))) {
+  for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>("button.help-btn"))) {
     b.addEventListener("click", () => el<HTMLDialogElement>(b.dataset.help ?? "").showModal());
   }
   for (const d of Array.from(document.querySelectorAll<HTMLDialogElement>("dialog.help-modal"))) {

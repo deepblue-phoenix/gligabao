@@ -762,6 +762,13 @@ tr.removing {
 .score-good { color: #3fb950; }
 .score-mid { color: #d29922; }
 .score-bad { color: $err; }
+// Inference container state in the audit dialog's head (training.ts drawAuditContainer): a square, blinking while it starts.
+.container-state { flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem; font-size: 0.85rem; color: $muted;
+  &:empty { display: none; }
+  .cs-sq { width: 0.75rem; height: 0.75rem; border-radius: 2px; background: $muted; opacity: 0.5; }
+  &.cs-starting .cs-sq { background: $accent; opacity: 1; animation: blink 1s ease-in-out infinite; }
+  &.cs-warm .cs-sq { background: #3fb950; opacity: 1; box-shadow: 0 0 5px #3fb950; }
+  &.cs-other .cs-sq { background: #d29922; opacity: 1; } }
 .warm-row { display: flex; justify-content: flex-end; margin-bottom: 0.25rem; }
 .warm-dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: $muted; opacity: 0.5; cursor: help;
   &.warm-warm { background: #3fb950; opacity: 1; box-shadow: 0 0 5px #3fb950; }

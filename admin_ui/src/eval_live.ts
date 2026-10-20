@@ -254,8 +254,7 @@ export function watchEval(kind: RunKind, id: number, title: string, cb?: () => v
   watching = id;
   watchingKind = kind;
   onChange = cb;
-  const word = kind === "audits" ? "audit" : "eval";
-  el("eval-live-cancel").textContent = `Cancel ${word}`;
+  el("eval-live-cancel").textContent = "Stop";
   el("eval-live-title").textContent = title;
   el<HTMLInputElement>("eval-live-follow").checked = true;
   el("eval-live-cancel").hidden = true;
