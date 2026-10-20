@@ -235,7 +235,14 @@ function renderModels(): void {
     promptBtn.type = "button";
     promptBtn.title = "Open the prompt dialog of this model: run a prompt through it and see the past requests";
     promptBtn.addEventListener("click", (e) => { e.stopPropagation(); openPrompt(m.id); });
-    promptCell.append(promptBtn);
+    const infoBtn = node("button", "small icon-btn");
+    infoBtn.type = "button";
+    infoBtn.title = "Training details and files of this model";
+    infoBtn.setAttribute("aria-label", "Training details and files");
+    infoBtn.innerHTML = INFO_ICON;
+    infoBtn.addEventListener("click", (e) => { e.stopPropagation(); openDetails(m.id); });
+    promptCell.className = "nowrap";
+    promptCell.append(promptBtn, " ", infoBtn);
     // Audit and Eval only open a dialog for this model (the form and the past runs); nothing runs until its Run button is clicked.
     const auditCell = tr.insertCell();
     const auditBtn = node("button", "small", AUDIT.button);
@@ -279,6 +286,18 @@ function selectModel(id: number): void {
   if (!modal.open) modal.showModal();
   EVAL.model = id;
   void loadRuns(EVAL, id);
+}
+
+const INFO_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>';
+
+// Opens the details dialog of a model: how it was trained and its files.
+function openDetails(id: number): void {
+  const m = models.find((x) => x.id === id);
+  if (!m) return;
+  el("details-title").textContent = `${m.name} (#${m.id}): training details and files`;
+  renderModelDetails(m);
+  const modal = el<HTMLDialogElement>("details-modal");
+  if (!modal.open) modal.showModal();
 }
 
 // Opens the prompt dialog of a model: the form to run a prompt through it and the past requests.
@@ -371,11 +390,8 @@ async function pollAuditWarm(id: number): Promise<void> {
   auditWarmTimer = window.setTimeout(() => void pollAuditWarm(id), auditStarting() ? AUDIT_STARTING_POLL_MS : WARM_POLL_MS);
 }
 
-// The facts and files of the selected model in its dialog (the evals under them are drawn by renderRunForm / renderRuns).
-function renderModelDetail(): void {
-  const m = models.find((x) => x.id === selectedModel);
-  if (!m) return;
-  el("model-title").textContent = `${m.name} (#${m.id})`;
+// The facts and files of a model in the details dialog.
+function renderModelDetails(m: TrainedModel): void {
   const facts: [string, string][] = [
     ["Base model", m.base_model || m.model_size],
     ["Dataset", `${m.dataset || "(default)"}${m.num_examples ? ` · ${m.num_examples} examples` : ""}`],
@@ -402,10 +418,14 @@ function renderModelDetail(): void {
     sha.textContent = f.sha256 ? f.sha256.slice(0, 12) : "";
     sha.title = f.sha256 ?? "";
   }
-  const info = node("details", "model-info");
-  info.append(node("summary", "", "Training details and files"), dl, files);
+  el("details-detail").replaceChildren(dl, files);
+}
 
-  el("model-detail").replaceChildren(info);
+// The selected model's dialog: its evals (the form and the past runs are drawn by renderRunForm / renderRuns).
+function renderModelDetail(): void {
+  const m = models.find((x) => x.id === selectedModel);
+  if (!m) return;
+  el("model-title").textContent = `${m.name} (#${m.id})`;
   renderRunForm(EVAL, m);
 }
 
@@ -1492,6 +1512,9 @@ export function initTraining(): void {
   el("prompt-close").addEventListener("click", () => promptModal.close());
   promptModal.addEventListener("close", closePromptModal);
   promptModal.addEventListener("click", (e) => { if (e.target === promptModal) promptModal.close(); });
+  const detailsModal = el<HTMLDialogElement>("details-modal");
+  el("details-close").addEventListener("click", () => detailsModal.close());
+  detailsModal.addEventListener("click", (e) => { if (e.target === detailsModal) detailsModal.close(); });
   const auditModal = el<HTMLDialogElement>("audit-modal");
   el("audit-close").addEventListener("click", () => auditModal.close());
   auditModal.addEventListener("close", closeAuditModal);

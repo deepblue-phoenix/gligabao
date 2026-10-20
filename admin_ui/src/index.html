@@ -296,12 +296,22 @@
         <button type="button" id="model-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <div class="modal-body">
-        <div id="model-detail" class="model-detail"></div>
         <h3 id="model-evals-heading">Evals</h3>
         <p class="muted">The model is asked the cases of an <b>eval</b>, a named set of questions with the answers expected, and an LLM judges its answers against them, a batch of question/answer pairs per LLM call. The cases are ones the model never saw, so this measures how well it generalizes; the eval named like the model's training dataset is the default.</p>
         <div id="model-evals-form" class="row training-form"></div>
         <p id="model-evals-status" class="muted"></p>
         <div id="model-evals"></div>
+      </div>
+    </dialog>
+
+    <dialog id="details-modal" class="modal">
+      <div class="modal-head">
+        <h2 id="details-title">Training details and files</h2>
+        <span class="muted"></span>
+        <button type="button" id="details-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div id="details-detail" class="model-detail"></div>
       </div>
     </dialog>
 

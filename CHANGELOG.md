@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.93.0] - 2026-10-23
+
+### Changed
+- Admin UI, training view: the "Training details and files" block moved out of the trained model's eval dialog into its own dialog, opened by an info-icon button next to the `Prompt` button.
+
 ## [0.92.3] - 2026-10-23
 
 ### Changed
