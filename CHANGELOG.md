@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.92.2] - 2026-10-23
+
+### Changed
+- Admin UI, training view: the `Eval` button of a trained model no longer starts an eval right away. It opens the model's dialog at its Evals section, and the eval only runs when you click `Run` (the form's button, formerly `Eval`).
+
 ## [0.92.1] - 2026-10-23
 
 ### Changed

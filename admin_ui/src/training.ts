@@ -229,7 +229,7 @@ function renderModels(): void {
     trained.title = `${fmtTime(m.created_at)} UTC`;
     trained.className = "nowrap";
     // not the row's click: it opens the dialog
-    // Audit opens its own dialog for this model (the form and the past audits); Eval starts a run right away.
+    // Audit and Eval only open a dialog for this model (the form and the past runs); nothing runs until its Run button is clicked.
     const auditCell = tr.insertCell();
     const auditBtn = node("button", "small", AUDIT.button);
     auditBtn.type = "button";
@@ -239,9 +239,9 @@ function renderModels(): void {
     const evalCell = tr.insertCell();
     const evalBtn = node("button", "small", EVAL.button);
     evalBtn.type = "button";
-    evalBtn.title = m.dataset ? EVAL.tip(m.dataset) : "This model was trained on the sidecar's default dataset: there are no questions to ask";
+    evalBtn.title = m.dataset ? `Open the eval screen of this model. ${EVAL.tip(m.dataset)}` : "This model was trained on the sidecar's default dataset: there are no questions to ask";
     evalBtn.disabled = !m.dataset;
-    evalBtn.addEventListener("click", (e) => { e.stopPropagation(); void startRun(EVAL, m, {}); });
+    evalBtn.addEventListener("click", (e) => { e.stopPropagation(); selectModel(m.id); el("model-evals-heading").scrollIntoView({ block: "start" }); });
     evalCell.append(evalBtn);
     tr.addEventListener("click", () => selectModel(m.id));
   }
@@ -689,7 +689,7 @@ function renderRunForm(k: RunKind, m: TrainedModel): void {
   const batch = node("input");
   batch.type = "number"; batch.value = "10"; batch.min = "1"; batch.max = "25"; batch.step = "1";
   batch.title = "Question/answer pairs sent to the judge LLM in one call";
-  const run = node("button", "", k.button);
+  const run = node("button", "", isEval ? "Run" : k.button);
   run.type = "button";
   const status = node("span", "muted");
   k.status = status;
