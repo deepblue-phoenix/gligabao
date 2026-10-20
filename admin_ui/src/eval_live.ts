@@ -75,9 +75,10 @@ function node<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""
 }
 
 // How a case looks: its status while it is not completed (pending, running, errored, cancelled), and, once it is, the band of the
-// judge's score: good (4-5, the correct ones), mid (2-3, partial) or bad (0-1, incorrect).
+// judge's score: good (4-5, the correct ones), mid (2-3, partial) or bad (0-1, incorrect); in an audit a 0 is "zero" (a total failure).
 const lookOf = (i: TrainedModelCase): string =>
-  i.status !== "completed" ? i.status : i.score === null ? "done" : i.score >= 4 ? "good" : i.score >= 2 ? "mid" : "bad";
+  i.status !== "completed" ? i.status : i.score === null ? "done" : i.score >= 4 ? "good" : i.score >= 2 ? "mid"
+    : i.score === 0 && watchingKind === "audits" ? "zero" : "bad";
 
 // What the open dialog follows.
 let stream: EventSource | undefined;
@@ -139,7 +140,7 @@ function buildCard(i: TrainedModelCase): HTMLElement {
   head.append(node("span", "ev-num", `#${i.idx + 1}`));
   if (i.name) head.append(node("span", "ev-name", i.name));
   if (i.status === "completed") {
-    if (i.score !== null) head.append(node("span", `ev-score ${watchingKind === "audits" && i.score === 0 ? "score-zero" : `score-${v}`}`, `${i.score} / ${MAX_SCORE}`));
+    if (i.score !== null) head.append(node("span", `ev-score score-${v}`, `${i.score} / ${MAX_SCORE}`));
     if (i.verdict) head.append(verdictBadge(i.verdict));
   } else {
     // running is a case the model answered whose batch the judge has not scored yet; once the run is over it never will be

@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.94.3] - 2026-10-23
+
+### Fixed
+- Admin UI, audit Open dialog: the little square of a case scored 0 / 5 in the top strip, and the left border of its card, are magenta too (only the score text was).
+
 ## [0.94.2] - 2026-10-23
 
 ### Changed
