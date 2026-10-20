@@ -30,7 +30,10 @@ func (KnowledgeEvalRunMeta) EvalType() Type { return TypeKnowledge }
 //
 // The questions asked are the Counts.Total of the EvalRun and the ones where the model or the judge errored its Counts.Errored.
 // Every question that is not errored is Answered; the Judged ones are scored: NumCorrect + NumPartial + NumIncorrect = NumJudged,
-// split by the judge's score (>= 4, 2 to 3, 0 to 1). The EvalRun's CostUSD is the judge's cost (the cases of a training eval cost
+// split by the judge's score (>= 4, 2 to 3, 0 to 1). The headline is the pass/fail of the EvalRun's Counts, and it agrees with
+// this split: Counts.Passed = NumCorrect (score >= TrainingPassScore), Counts.Failed = NumPartial + NumIncorrect, and
+// Counts.Completed = NumJudged. The split and ScoreSum are the detail the verdict does not keep (the partial band, the mean
+// score). The EvalRun's CostUSD is the judge's cost (the cases of a training eval cost
 // nothing by themselves: the judge is called per batch), which is JudgeCostUSD.
 type TrainingEvalRunMeta struct {
 	EvalRunID EvalRunID `json:"eval_run_id"`

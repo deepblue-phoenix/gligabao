@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.84.0] - 2026-10-22
+
+### Added
+- **`internal/evals_neo`: the verdict of a training case.** A training case run now has a pass/fail verdict: pass if the judge's score (0 to 5) is at least `core.TrainingPassScore` (4), fail if it is below; a case that was not judged has none. The score stays as the detail. The pass/fail counts of a training eval run agree with its `TrainingEvalRunMeta` (`Passed` = `NumCorrect`, `Failed` = `NumPartial` + `NumIncorrect`). This is documented in `core`; nothing enforces or uses it yet.
+
 ## [0.83.0] - 2026-10-22
 
 ### Changed

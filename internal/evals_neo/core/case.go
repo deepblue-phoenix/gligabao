@@ -237,8 +237,14 @@ type TrainingCaseDefMeta struct {
 // CaseType implements CaseDefMeta.
 func (TrainingCaseDefMeta) CaseType() Type { return TypeTraining }
 
-// TrainingCaseRunMeta is the metadata of a training CaseRun (table gb_neo_case_runs_meta_training). The CaseRun has a Score
-// in [0, 1] and no Verdict; its Score is JudgeScore / 5.
+// TrainingPassScore is the lowest judge score (0 to 5) that is a pass: a training case run whose JudgeScore is at least this
+// has VerdictPass, a judged one below it VerdictFail. It is also what separates NumCorrect from NumPartial and NumIncorrect in
+// TrainingEvalRunMeta. Changing it does not change the verdicts already stored.
+const TrainingPassScore = 4
+
+// TrainingCaseRunMeta is the metadata of a training CaseRun (table gb_neo_case_runs_meta_training). The CaseRun's Score is
+// JudgeScore / 5 (the detail), and its Verdict (the headline) is VerdictPass if JudgeScore >= TrainingPassScore, else
+// VerdictFail. A case run that was not judged (the model or the judge errored) is StatusErrored, with no score and no verdict.
 type TrainingCaseRunMeta struct {
 	CaseRunID CaseRunID `json:"case_run_id"`
 	// Instruction, Input and Reference are what was actually asked and the expected answer, as they were in the def when

@@ -40,6 +40,9 @@ func (s Status) Finished() bool {
 
 // Verdict is the judgement of a COMPLETED case run: did it meet its expectations. It is empty (VerdictNone) for a case
 // that is scored only, or not completed. Eval and experiment runs do not have one: they have Counts.
+//
+// What pass means depends on the Type. Knowledge: every check held. Training: the judge's score is at least
+// TrainingPassScore (the verdict is the headline; the score, in CaseRun.Score and TrainingCaseRunMeta.JudgeScore, is the detail).
 type Verdict string
 
 const (
