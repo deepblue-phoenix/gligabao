@@ -22,10 +22,14 @@ type EvalDef struct {
 }
 
 // EvalRun is one execution of an EvalDef: it runs the def's cases (or the selected ones), one CaseRun each, which point back
-// here through CaseRun.EvalRunID. It holds no list of its case runs.
+// here through CaseRun.EvalRunID. It holds no list of its case runs. The part that every type of eval shares is here (status,
+// counts, cost, timing); the statistics of the run as a whole that are specific to the Type (what the cases cannot say alone:
+// the judge of a training eval, the chunks of a knowledge eval, ...) are in Meta, which has its own table per Type.
 type EvalRun struct {
 	ID    EvalRunID `json:"id"`
 	DefID EvalDefID `json:"def_id"`
+	// Type is the Type of the EvalDef (kept here so that the type-specific tables can be tied to the right kind of run).
+	Type Type `json:"type"`
 	// ExperimentRunID is the experiment run this eval run is part of; nil when the eval was run on its own.
 	ExperimentRunID *ExperimentRunID `json:"experiment_run_id,omitempty"`
 
@@ -38,6 +42,18 @@ type EvalRun struct {
 	CostUSD float64 `json:"cost_usd"` // LLM cost of all its case runs
 	Timing
 
+	// Meta is the type-specific part (KnowledgeEvalRunMeta, TrainingEvalRunMeta, ...), one row of the table of its Type. Its
+	// EvalType is this run's Type. Filled by getters only; not stored with the universal row.
+	Meta EvalRunMeta `json:"meta,omitempty"`
+
 	// CaseRuns are its case runs. Filled by getters only; not stored with the run.
 	CaseRuns []CaseRun `json:"case_runs,omitempty"`
+}
+
+// EvalRunMeta is the type-specific part of an EvalRun: the statistics of the run as a whole, which differ between the Types.
+// Each Type has one struct for it, stored in a table of its own that is keyed by the EvalRunID. A new Type adds a struct (and a
+// table) here; EvalRun and its table do not change.
+type EvalRunMeta interface {
+	// EvalType is the Type whose eval runs this is the metadata of.
+	EvalType() Type
 }

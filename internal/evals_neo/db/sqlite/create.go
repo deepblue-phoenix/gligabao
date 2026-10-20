@@ -193,7 +193,8 @@ func CreateExperimentRun(ctx context.Context, q db.Execer, r *core.ExperimentRun
 	return nil
 }
 
-// CreateEvalRun inserts r into gb_neo_eval_runs and sets its ID, Status and CreatedAt. Its CaseRuns are not stored.
+// CreateEvalRun inserts r into gb_neo_eval_runs and sets its ID, Status and CreatedAt. Its Type must be that of its eval def.
+// Its CaseRuns are not stored, and neither is its Meta: it has its own function per type (CreateKnowledgeEvalRunMeta, ...).
 func CreateEvalRun(ctx context.Context, q db.Execer, r *core.EvalRun) error {
 	params, err := db.JSON(r.Params, "{}")
 	if err != nil {
@@ -207,17 +208,43 @@ func CreateEvalRun(ctx context.Context, q db.Execer, r *core.EvalRun) error {
 	r.CreatedAt = fill(r.CreatedAt)
 	var id int64
 	if err := q.QueryRowContext(ctx, `
-		INSERT INTO gb_neo_eval_runs (def_id, experiment_run_id, status, error, params,
+		INSERT INTO gb_neo_eval_runs (def_id, experiment_run_id, type, status, error, params,
 			counts_total, counts_pending, counts_running, counts_completed, counts_errored, counts_cancelled, counts_passed, counts_failed,
 			cost_usd, created_at, started_at, finished_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id`,
-		int64(r.DefID), experimentRunID, string(r.Status), r.Error, params,
+		int64(r.DefID), experimentRunID, string(r.Type), string(r.Status), r.Error, params,
 		r.Counts.Total, r.Counts.Pending, r.Counts.Running, r.Counts.Completed, r.Counts.Errored, r.Counts.Cancelled, r.Counts.Passed, r.Counts.Failed,
 		r.CostUSD, text(r.CreatedAt), textPtr(r.StartedAt), textPtr(r.FinishedAt)).Scan(&id); err != nil {
 		return fmt.Errorf("create eval run of eval def %d: %w", r.DefID, err)
 	}
 	r.ID = core.EvalRunID(id)
+	return nil
+}
+
+// CreateKnowledgeEvalRunMeta inserts m into gb_neo_eval_runs_knowledge_meta, for the knowledge eval run m.EvalRunID.
+func CreateKnowledgeEvalRunMeta(ctx context.Context, q db.Execer, m *core.KnowledgeEvalRunMeta) error {
+	if _, err := q.ExecContext(ctx, `
+		INSERT INTO gb_neo_eval_runs_knowledge_meta (eval_run_id, type, chunks, steps, remember_calls, recall_calls, remember_cost_usd,
+			recall_cost_usd, checks_passed, checks_failed)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		int64(m.EvalRunID), string(core.TypeKnowledge), m.Chunks, m.Steps, m.RememberCalls, m.RecallCalls, m.RememberCostUSD,
+		m.RecallCostUSD, m.ChecksPassed, m.ChecksFailed); err != nil {
+		return fmt.Errorf("create knowledge eval run meta of eval run %d: %w", m.EvalRunID, err)
+	}
+	return nil
+}
+
+// CreateTrainingEvalRunMeta inserts m into gb_neo_eval_runs_training_meta, for the training eval run m.EvalRunID.
+func CreateTrainingEvalRunMeta(ctx context.Context, q db.Execer, m *core.TrainingEvalRunMeta) error {
+	if _, err := q.ExecContext(ctx, `
+		INSERT INTO gb_neo_eval_runs_training_meta (eval_run_id, type, trained_model_id, judge_model, num_answered, num_judged, num_correct,
+			num_partial, num_incorrect, score_sum, num_batches, judge_calls, judge_input_tokens, judge_output_tokens, judge_cost_usd)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		int64(m.EvalRunID), string(core.TypeTraining), m.TrainedModelID, m.JudgeModel, m.NumAnswered, m.NumJudged, m.NumCorrect,
+		m.NumPartial, m.NumIncorrect, m.ScoreSum, m.NumBatches, m.JudgeCalls, m.JudgeInputTokens, m.JudgeOutputTokens, m.JudgeCostUSD); err != nil {
+		return fmt.Errorf("create training eval run meta of eval run %d: %w", m.EvalRunID, err)
+	}
 	return nil
 }
 

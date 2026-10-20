@@ -32,7 +32,9 @@
 //  5. What is specific to a kind of eval (knowledge extraction, trained models, ...) is not a column of CaseDef or CaseRun:
 //     those hold what every eval shares, and the EvalDef has a Type. Each Type has its own metadata structs and tables, keyed
 //     by the ID of the universal row: KnowledgeCaseDefMeta and KnowledgeCaseRunMeta, TrainingCaseDefMeta and
-//     TrainingCaseRunMeta. They are reached through CaseDef.Meta and CaseRun.Meta (filled by getters). A new Type adds its
+//     TrainingCaseRunMeta. They are reached through CaseDef.Meta and CaseRun.Meta (filled by getters). An EvalRun has the
+//     same, for the statistics of the run as a whole, which differ between the Types (KnowledgeEvalRunMeta,
+//     TrainingEvalRunMeta, through EvalRun.Meta); the EvalRun has a Type too, that of its EvalDef. A new Type adds its
 //     own structs and tables; the universal ones do not change.
 //  6. Runs record the Params they were invoked with, so a run can be understood without looking at the def as it is now.
 package core

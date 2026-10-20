@@ -131,11 +131,14 @@ CREATE TABLE IF NOT EXISTS gb_neo_experiment_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_neo_experiment_runs_def ON gb_neo_experiment_runs(def_id);
 
--- experiment_run_id is NULL when the eval was run on its own.
+-- core.EvalRun: experiment_run_id is NULL when the eval was run on its own. type is that of the eval def (the composite key makes
+-- the database check it); the statistics of the run as a whole that are specific to the type are in the
+-- gb_neo_eval_runs_<type>_meta table of that type, one row per eval run.
 CREATE TABLE IF NOT EXISTS gb_neo_eval_runs (
 	id                INTEGER PRIMARY KEY AUTOINCREMENT,
-	def_id            INTEGER NOT NULL REFERENCES gb_neo_eval_defs(id) ON DELETE RESTRICT,
+	def_id            INTEGER NOT NULL,
 	experiment_run_id INTEGER REFERENCES gb_neo_experiment_runs(id) ON DELETE CASCADE,
+	type              TEXT NOT NULL CHECK (type <> ''),
 	status            TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'errored', 'cancelled')),
 	error             TEXT NOT NULL DEFAULT '',
 	params            TEXT NOT NULL DEFAULT '{}',
@@ -150,18 +153,67 @@ CREATE TABLE IF NOT EXISTS gb_neo_eval_runs (
 	cost_usd          REAL NOT NULL DEFAULT 0,
 	created_at        DATETIME NOT NULL,
 	started_at        DATETIME,
-	finished_at       DATETIME
+	finished_at       DATETIME,
+	UNIQUE (id, type),
+	FOREIGN KEY (def_id, type) REFERENCES gb_neo_eval_defs(id, type) ON DELETE RESTRICT
 );
 CREATE INDEX IF NOT EXISTS idx_gb_neo_eval_runs_def ON gb_neo_eval_runs(def_id);
 CREATE INDEX IF NOT EXISTS idx_gb_neo_eval_runs_experiment_run ON gb_neo_eval_runs(experiment_run_id);
 
+-- The metadata of the eval runs of each type: one table per type, keyed by the eval run (one row per eval run of that type), tied
+-- to its type like the case def and case run metadata. They hold the statistics of the run as a whole, which differ between the
+-- types. Deleting the eval run deletes the row. A new type of eval adds a table.
+
+-- core.KnowledgeEvalRunMeta: the chunks, the ATIF steps, the remember and recall calls with their cost, and the checks that held
+-- and did not, over all the case runs. The pass and fail of the cases are the counts_* of the eval run.
+CREATE TABLE IF NOT EXISTS gb_neo_eval_runs_knowledge_meta (
+	eval_run_id        INTEGER PRIMARY KEY,
+	type               TEXT NOT NULL DEFAULT 'knowledge' CHECK (type = 'knowledge'),
+	chunks             INTEGER NOT NULL DEFAULT 0,
+	steps              INTEGER NOT NULL DEFAULT 0,
+	remember_calls     INTEGER NOT NULL DEFAULT 0,
+	recall_calls       INTEGER NOT NULL DEFAULT 0,
+	remember_cost_usd  REAL NOT NULL DEFAULT 0,
+	recall_cost_usd    REAL NOT NULL DEFAULT 0,
+	checks_passed      INTEGER NOT NULL DEFAULT 0,
+	checks_failed      INTEGER NOT NULL DEFAULT 0,
+	FOREIGN KEY (eval_run_id, type) REFERENCES gb_neo_eval_runs(id, type) ON DELETE CASCADE
+);
+
+-- core.TrainingEvalRunMeta: the trained model that was asked (trained_model_id is not a foreign key, because the trained model
+-- tables are not part of this schema), the judge, and the result of the run as a whole. The questions asked are the counts_total
+-- of the eval run and the ones that errored its counts_errored. num_answered: the ones the model answered; num_judged: the ones
+-- scored, split by the judge's score (>= 4 / 2-3 / 0-1) into num_correct, num_partial and num_incorrect; score_sum: the sum of the
+-- scores (0 to 5 each) of the judged ones. num_batches: judge batches done; judge_calls: LLM calls made (a batch may need a retry).
+CREATE TABLE IF NOT EXISTS gb_neo_eval_runs_training_meta (
+	eval_run_id         INTEGER PRIMARY KEY,
+	type                TEXT NOT NULL DEFAULT 'training' CHECK (type = 'training'),
+	trained_model_id    INTEGER NOT NULL,
+	judge_model         TEXT NOT NULL DEFAULT '',
+	num_answered        INTEGER NOT NULL DEFAULT 0,
+	num_judged          INTEGER NOT NULL DEFAULT 0,
+	num_correct         INTEGER NOT NULL DEFAULT 0,
+	num_partial         INTEGER NOT NULL DEFAULT 0,
+	num_incorrect       INTEGER NOT NULL DEFAULT 0,
+	score_sum           INTEGER NOT NULL DEFAULT 0,
+	num_batches         INTEGER NOT NULL DEFAULT 0,
+	judge_calls         INTEGER NOT NULL DEFAULT 0,
+	judge_input_tokens  INTEGER NOT NULL DEFAULT 0,
+	judge_output_tokens INTEGER NOT NULL DEFAULT 0,
+	judge_cost_usd      REAL NOT NULL DEFAULT 0,
+	CHECK (num_correct + num_partial + num_incorrect = num_judged),
+	CHECK (score_sum <= 5 * num_judged),
+	FOREIGN KEY (eval_run_id, type) REFERENCES gb_neo_eval_runs(id, type) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_gb_neo_eval_runs_training_meta_model ON gb_neo_eval_runs_training_meta(trained_model_id);
+
 -- core.CaseRun: what every type of eval shares of a case run. verdict (core.Verdict) is '' unless the case run completed and
--- has one; score is in [0, 1], NULL if the case has none. type is that of the case def (the composite key makes the database
--- check it); what is specific to the type is in the *_case_run_meta table of that type, one row per case run.
+-- has one; score is in [0, 1], NULL if the case has none. type is that of the case def and of the eval run (the composite keys make the
+-- database check it); what is specific to the type is in the *_case_run_meta table of that type, one row per case run.
 CREATE TABLE IF NOT EXISTS gb_neo_case_runs (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
 	def_id      INTEGER NOT NULL,
-	eval_run_id INTEGER NOT NULL REFERENCES gb_neo_eval_runs(id) ON DELETE CASCADE,
+	eval_run_id INTEGER NOT NULL,
 	type        TEXT NOT NULL CHECK (type <> ''),
 	status      TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'errored', 'cancelled')),
 	error       TEXT NOT NULL DEFAULT '',
@@ -174,7 +226,8 @@ CREATE TABLE IF NOT EXISTS gb_neo_case_runs (
 	CHECK (status = 'completed' OR (verdict = '' AND score IS NULL)),
 	UNIQUE (eval_run_id, def_id),
 	UNIQUE (id, type),
-	FOREIGN KEY (def_id, type) REFERENCES gb_neo_case_defs(id, type) ON DELETE RESTRICT
+	FOREIGN KEY (def_id, type) REFERENCES gb_neo_case_defs(id, type) ON DELETE RESTRICT,
+	FOREIGN KEY (eval_run_id, type) REFERENCES gb_neo_eval_runs(id, type) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gb_neo_case_runs_def ON gb_neo_case_runs(def_id);
 

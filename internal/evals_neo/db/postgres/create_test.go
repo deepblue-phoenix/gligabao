@@ -130,11 +130,14 @@ func TestCreate(t *testing.T) {
 		t.Fatalf("CreateExperimentRun: %+v %v", xr, err)
 	}
 	started := time.Now()
-	er := &core.EvalRun{DefID: ev.ID, ExperimentRunID: &xr.ID, Status: core.StatusRunning, Counts: core.Counts{Total: 1}, Timing: core.Timing{StartedAt: &started}}
+	er := &core.EvalRun{DefID: ev.ID, Type: core.TypeKnowledge, ExperimentRunID: &xr.ID, Status: core.StatusRunning, Counts: core.Counts{Total: 1}, Timing: core.Timing{StartedAt: &started}}
 	if err := postgres.CreateEvalRun(ctx, d, er); err != nil || er.ID == 0 {
 		t.Fatalf("CreateEvalRun: %+v %v", er, err)
 	}
-	alone := &core.EvalRun{DefID: tr.ID}
+	if err := postgres.CreateEvalRun(ctx, d, &core.EvalRun{DefID: tr.ID, Type: core.TypeKnowledge}); err == nil {
+		t.Error("accepted an eval run whose type is not that of its eval def")
+	}
+	alone := &core.EvalRun{DefID: tr.ID, Type: core.TypeTraining}
 	if err := postgres.CreateEvalRun(ctx, d, alone); err != nil {
 		t.Fatalf("CreateEvalRun on its own: %v", err)
 	}
@@ -150,7 +153,14 @@ func TestCreate(t *testing.T) {
 	if err := postgres.CreateCaseRun(ctx, d, &core.CaseRun{DefID: kc.ID, EvalRunID: er.ID, Type: core.TypeKnowledge}); err == nil {
 		t.Error("accepted a second run of one case in an eval run")
 	}
-	if err := postgres.CreateCaseRun(ctx, d, &core.CaseRun{DefID: kc.ID, EvalRunID: alone.ID, Type: core.TypeKnowledge, Verdict: core.VerdictFail}); err == nil {
+	if err := postgres.CreateCaseRun(ctx, d, &core.CaseRun{DefID: kc.ID, EvalRunID: alone.ID, Type: core.TypeKnowledge}); err == nil {
+		t.Error("accepted a case run whose type is not that of its eval run")
+	}
+	er2 := &core.EvalRun{DefID: ev.ID, Type: core.TypeKnowledge}
+	if err := postgres.CreateEvalRun(ctx, d, er2); err != nil {
+		t.Fatal(err)
+	}
+	if err := postgres.CreateCaseRun(ctx, d, &core.CaseRun{DefID: kc.ID, EvalRunID: er2.ID, Type: core.TypeKnowledge, Verdict: core.VerdictFail}); err == nil {
 		t.Error("accepted a verdict on a case run that did not complete")
 	}
 	dataset := int64(7)
@@ -176,6 +186,27 @@ func TestCreate(t *testing.T) {
 	}
 	if err := postgres.CreateTrainingCaseRunMeta(ctx, d, &core.TrainingCaseRunMeta{CaseRunID: cr.ID, Instruction: "q"}); err == nil {
 		t.Error("accepted training metadata on a knowledge case run")
+	}
+
+	// Eval run metadata.
+	if err := postgres.CreateKnowledgeEvalRunMeta(ctx, d, &core.KnowledgeEvalRunMeta{EvalRunID: er.ID, Chunks: 3, Steps: 2, RememberCalls: 1, RecallCalls: 1, RememberCostUSD: 0.5, ChecksPassed: 1}); err != nil {
+		t.Fatalf("CreateKnowledgeEvalRunMeta: %v", err)
+	}
+	if err := postgres.CreateKnowledgeEvalRunMeta(ctx, d, &core.KnowledgeEvalRunMeta{EvalRunID: er.ID}); err == nil {
+		t.Error("accepted a second knowledge metadata on one eval run")
+	}
+	if err := postgres.CreateKnowledgeEvalRunMeta(ctx, d, &core.KnowledgeEvalRunMeta{EvalRunID: alone.ID}); err == nil {
+		t.Error("accepted knowledge metadata on a training eval run")
+	}
+	trm := &core.TrainingEvalRunMeta{EvalRunID: alone.ID, TrainedModelID: 9, JudgeModel: "j", NumAnswered: 3, NumJudged: 3, NumCorrect: 2, NumPartial: 1, ScoreSum: 12, NumBatches: 1, JudgeCalls: 1, JudgeCostUSD: 0.1}
+	if err := postgres.CreateTrainingEvalRunMeta(ctx, d, trm); err != nil {
+		t.Fatalf("CreateTrainingEvalRunMeta: %v", err)
+	}
+	if err := postgres.CreateTrainingEvalRunMeta(ctx, d, &core.TrainingEvalRunMeta{EvalRunID: er.ID}); err == nil {
+		t.Error("accepted training metadata on a knowledge eval run")
+	}
+	if err := postgres.CreateTrainingEvalRunMeta(ctx, d, &core.TrainingEvalRunMeta{EvalRunID: er2.ID, NumJudged: 2, NumCorrect: 1}); err == nil {
+		t.Error("accepted training metadata whose judged ones are not split")
 	}
 
 	// What was stored.

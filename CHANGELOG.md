@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.76.0] - 2026-10-22
+
+### Added
+- **`internal/evals_neo`: eval runs have type-specific metadata, like case runs.** The statistics of an eval run as a whole differ between the eval types, so each type has its own struct and table keyed by the eval run, reached through `EvalRun.Meta`: `KnowledgeEvalRunMeta` (`gb_neo_eval_runs_knowledge_meta`: chunks, ATIF steps, remember and recall calls and their cost, checks passed and failed) and `TrainingEvalRunMeta` (`gb_neo_eval_runs_training_meta`: trained model, judge model, answered, judged, correct, partial and incorrect counts, score sum, judge batches, calls, tokens and cost). New `CreateKnowledgeEvalRunMeta` and `CreateTrainingEvalRunMeta` in both `db/sqlite` and `db/postgres`.
+
+### Changed
+- **`internal/evals_neo`: `EvalRun` has a `Type`, tied by composite keys.** `gb_neo_eval_runs` has a `type` column that must be that of its eval def, and a case run must have the type of its eval run. `CreateEvalRun` writes it, so callers must set `EvalRun.Type`.
+
 ## [0.75.0] - 2026-10-22
 
 ### Added
