@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.89.0] - 2026-10-23
+
+### Changed
+- The default keep-alive of the GPU inference containers (`SIDECAR_INFER_IDLE_TIMEOUT_S`) is now `60` seconds instead of `300`: a container shuts down 1 minute after its last request, which costs less idle GPU time, and a request after that pays the model load again. Set `SIDECAR_INFER_IDLE_TIMEOUT_S` to keep the old behaviour. Redeploy the Modal app for the change to take effect. (The training container is not kept warm.)
+
 ## [0.88.1] - 2026-10-23
 
 ### Changed
