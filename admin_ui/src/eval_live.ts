@@ -5,7 +5,8 @@
 // Closing the dialog leaves the run going.
 
 // The statuses of the runs and cases of a trained model, the same for evals and audits. They are the words of
-// internal/db/relational/model/trained_model_status.go (TrainedModelRun*, TrainedModelCase*): change them there and here.
+// internal/db/relational/model/trained_model_status.go (TrainedModelRun*, TrainedModelCase*): change them there and here. (The
+// audits' own words are turned into these by auditRun and auditCase below.)
 export const RunStatus = { running: "running", completed: "completed", error: "error", cancelled: "cancelled" } as const;
 export type RunStatus = (typeof RunStatus)[keyof typeof RunStatus];
 export const CaseStatus = { judged: "judged", error: "error", answered: "answered" } as const; // answered: only in the live feed
@@ -31,6 +32,38 @@ export interface TrainedModelCase {
 // have the shape of TrainedModelRun, and their cases that of TrainedModelCase, and the feed's events are the same for both.
 export type RunKind = "audits" | "evals";
 interface FeedEvent { type: "snapshot" | "answer" | "batch" | "end"; run?: TrainedModelRun; cases?: TrainedModelCase[] }
+
+// The audits are served by internal/training_audits, whose JSON differs from that of the evals' (internal/evals): the run has its
+// counts in `counts` and its cost in `cost_usd`, "errored" for a failed status, and its case runs are `case_runs` with
+// `judge_score`/`judge_reason` and the statuses completed/errored/running. These two functions turn them into the shapes above, so
+// the rest of the UI treats both kinds alike. The audit run is core.AuditRun, its case run core.AuditCaseRun, its event
+// training_audits.Event (all in internal/training_audits).
+interface AuditRunJSON extends Omit<TrainedModelRun, "kind" | "status" | "num_examples" | "num_errored" | "judge_cost_usd" | "dataset_sha256"> {
+  status: string; dataset_sha256?: string; cost_usd: number; counts: { total: number; errored: number }; case_runs?: AuditCaseRunJSON[];
+}
+interface AuditCaseRunJSON extends Omit<TrainedModelCase, "status" | "score" | "reason" | "name"> {
+  status: string; judge_score?: number | null; judge_reason?: string;
+}
+export function auditRun(r: AuditRunJSON): TrainedModelRun {
+  const { counts, cost_usd, case_runs: _cases, status, ...rest } = r;
+  return {
+    ...rest, kind: "audit", params: r.params ?? {}, status: status === "errored" ? RunStatus.error : (status as RunStatus),
+    num_examples: counts.total, num_errored: counts.errored, judge_cost_usd: cost_usd,
+  };
+}
+export function auditCase(c: AuditCaseRunJSON): TrainedModelCase {
+  const { judge_score, judge_reason, status, ...rest } = c;
+  // errored: the model or the judge failed; completed: answered and scored; running: answered, awaiting the judge; pending and
+  // cancelled (the batch a cancel interrupted) were not judged either, which the dialog shows as "not judged" once the run ended.
+  const st = status === "errored" ? CaseStatus.error : status === "completed" ? CaseStatus.judged : CaseStatus.answered;
+  return { ...rest, status: st, score: judge_score ?? null, reason: judge_reason ?? "" };
+}
+// The run and the cases of the feed event (data is the parsed JSON of the event) of a run of that kind.
+function feedEvent(kind: RunKind, data: Record<string, unknown>): FeedEvent {
+  if (kind !== "audits") return data as unknown as FeedEvent;
+  const d = data as { type: FeedEvent["type"]; run?: AuditRunJSON; case_runs?: AuditCaseRunJSON[] };
+  return { type: d.type, run: d.run && auditRun(d.run), cases: d.case_runs?.map(auditCase) };
+}
 
 const MAX_SCORE = 5; // the judge's scale: 0 to 5
 
@@ -228,7 +261,7 @@ export function watchEval(kind: RunKind, id: number, title: string, cb?: () => v
   es.onopen = () => { conn.textContent = "Live."; };
   es.onerror = () => { conn.textContent = "Connection lost, reconnecting…"; }; // EventSource retries; a new snapshot catches up
   const on = (type: FeedEvent["type"], fn: (e: FeedEvent) => void): void =>
-    es.addEventListener(type, (m) => fn(JSON.parse((m as MessageEvent<string>).data) as FeedEvent));
+    es.addEventListener(type, (m) => fn(feedEvent(kind, JSON.parse((m as MessageEvent<string>).data) as Record<string, unknown>)));
   on("snapshot", (e) => {
     if (e.run) setRun(e.run);
     apply(e.cases ?? []);

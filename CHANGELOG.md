@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.79.0] - 2026-10-22
+
+### Changed
+- **The server and the admin UI now use the new training data audits of `internal/training_audits`.** The routes are the same (`POST/GET /v1/gb/training/models/{id}/audits`, `GET /v1/gb/training/audits/{id}`, `.../events`, `.../cancel`), but they are served by `training_audits/api`, and the audits are stored in the new tables `gb_neo_training_audit_runs` and `gb_neo_training_audit_case_runs` (created when the database is opened, `training_audits.Open`). **The audits that were run before this version stay in the old `gb_training_audit_*` tables and no longer show in the admin UI.** The JSON of an audit changed: counts are in `counts` (`total`, `errored`, ...), the cost is `cost_usd`, a failed audit is `errored`, and the case runs are `case_runs` with `judge_score` and `judge_reason`. The admin UI turns this into the shape it shows evals in (`auditRun`, `auditCase` in `eval_live.ts`). The evals are unchanged. The old audit code (`internal/training/audits`, `AuditManager`) is no longer used by the server.
+
 ## [0.78.0] - 2026-10-22
 
 ### Added

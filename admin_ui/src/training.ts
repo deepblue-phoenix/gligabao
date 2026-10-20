@@ -3,7 +3,7 @@
 // server as SSE (../training/events), which forwards what the sidecar reports; d3 is loaded as a global by index.html.
 
 import { alertDialog, confirmDialog } from "./dialogs.js";
-import { CaseStatus, RunStatus, initEvalLive, watchEval, type TrainedModelCase, type TrainedModelRun } from "./eval_live.js";
+import { CaseStatus, RunStatus, auditCase, auditRun, initEvalLive, watchEval, type TrainedModelCase, type TrainedModelRun } from "./eval_live.js";
 import { initActionModal, showActionLog, startAction, type ActionState } from "./actions.js";
 
 declare const d3: typeof import("d3");
@@ -559,7 +559,7 @@ async function startRun(k: RunKind, m: TrainedModel, opts: { limit?: number; bat
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(opts),
     });
     if (!res.ok) throw await failure(res);
-    const started = (await res.json()) as TrainedModelRun;
+    const started = readRun(k, await res.json());
     k.open.add(started.id);
     if (selectedModel !== m.id) selectModel(m.id);
     else await loadRuns(k, m.id);
@@ -569,6 +569,13 @@ async function startRun(k: RunKind, m: TrainedModel, opts: { limit?: number; bat
     say(`Could not start the ${k.noun} of model #${m.id}: ${errText(err)}`, "error");
   }
 }
+
+// The run (or case) of that kind as the server sent it, in the shape the dialog works with (see auditRun).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const readRun = (k: RunKind, raw: any): TrainedModelRun => (k.path === "audits" ? auditRun(raw) : (raw as TrainedModelRun));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const readCases = (k: RunKind, raw: any): TrainedModelCase[] =>
+  k.path === "audits" ? ((raw.case_runs ?? []) as Parameters<typeof auditCase>[0][]).map(auditCase) : ((raw.cases ?? []) as TrainedModelCase[]);
 
 const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -661,11 +668,11 @@ async function loadRuns(k: RunKind, modelID: number): Promise<void> {
   try {
     const res = await fetch(`../training/models/${modelID}/${k.path}`);
     if (!res.ok) throw await failure(res);
-    const list = ((await res.json()) as Record<string, TrainedModelRun[]>)[k.listKey] ?? [];
+    const list = (((await res.json()) as Record<string, unknown[]>)[k.listKey] ?? []).map((r) => readRun(k, r));
     // The answers of the expanded runs: the ones of a running run grow, so they are fetched again each time.
     await Promise.all(list.filter((e) => k.open.has(e.id) && (runRunning(e) || !k.cases.has(e.id))).map(async (e) => {
       const r = await fetch(`../training/${k.path}/${e.id}`);
-      if (r.ok) k.cases.set(e.id, ((await r.json()) as { cases: TrainedModelCase[] }).cases ?? []);
+      if (r.ok) k.cases.set(e.id, readCases(k, await r.json()));
     }));
     if (selectedModel !== modelID) return; // another model, or closed, while loading
     k.runs = list;

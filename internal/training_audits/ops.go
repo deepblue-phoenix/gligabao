@@ -1,7 +1,10 @@
 package training_audits
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits/db"
@@ -38,4 +41,38 @@ func OpsFor(backend string) (Ops, error) {
 		return PostgresOps, nil
 	}
 	return Ops{}, fmt.Errorf("unknown training audits db backend %q", backend)
+}
+
+// postgresSchemaLock is the advisory lock key that serializes the starters that apply the schema (CREATE ... IF NOT EXISTS can
+// still race in PostgreSQL).
+const postgresSchemaLock = 0x67620007
+
+// Open applies the schema of the training audits tables to d, the relational database opened for the backend (config.DBBackendSQLite
+// or config.DBBackendPostgres; empty is sqlite). The statements are idempotent. The training tables (the trained models) are made
+// by internal/training/db's Open, which is called before.
+func Open(backend string, d *sql.DB) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	switch backend {
+	case "", config.DBBackendSQLite:
+		if _, err := d.ExecContext(ctx, sqlite.Schema); err != nil {
+			return fmt.Errorf("training audits: init schema: %w", err)
+		}
+		return nil
+	case config.DBBackendPostgres:
+		conn, err := d.Conn(ctx)
+		if err != nil {
+			return fmt.Errorf("training audits: init schema: %w", err)
+		}
+		defer conn.Close()
+		if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, int64(postgresSchemaLock)); err != nil {
+			return fmt.Errorf("training audits: init schema: lock: %w", err)
+		}
+		defer conn.ExecContext(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1)`, int64(postgresSchemaLock))
+		if _, err := conn.ExecContext(ctx, postgres.Schema); err != nil {
+			return fmt.Errorf("training audits: init schema: %w", err)
+		}
+		return nil
+	}
+	return fmt.Errorf("unknown training audits db backend %q", backend)
 }

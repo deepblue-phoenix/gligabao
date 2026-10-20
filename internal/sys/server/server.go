@@ -35,6 +35,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
 	coretraining "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
+	"github.com/deepblue-phoenix/gligabao/internal/training_audits"
+	auditsapi "github.com/deepblue-phoenix/gligabao/internal/training_audits/api"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -197,7 +199,7 @@ func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_c
 	}
 	dbs := append([]admin.Named{{Name: "standard", DB: d.Relational, Vectors: d.Vector, ImageDir: d.ImageDir}}, extraAdminDBs...)
 	if trainingMode {
-		registerTraining(ctx, mux, d.Relational, d.TrainingDatasetDir, d.TrainingEvalDir, sc, llm)
+		registerTraining(ctx, mux, d.Backend, d.Relational, d.TrainingDatasetDir, d.TrainingEvalDir, sc, llm)
 	}
 	if adminUI {
 		registerAdminUI(mux, dbs, sc)
@@ -219,14 +221,23 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 // and are served whether or not the admin UI is on, but only in training mode): the jobs, the datasets and the feed of the jobs' progress. They work with trainingDB; datasetDir is the training datasets directory and evalDir the directory of the evals. The training monitor follows the progress the sidecar
 // reports for the jobs (it resumes the unfinished ones now) and feeds it to the SSE endpoint. llm judges the evals and the training data audits of the
 // trained models (nil: starting one answers 503).
-func registerTraining(ctx context.Context, mux *http.ServeMux, trainingDB *sql.DB, datasetDir, evalDir string, sc coretraining.Sidecar, llm memory_core.LLM) {
+func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, trainingDB *sql.DB, datasetDir, evalDir string, sc coretraining.Sidecar, llm memory_core.LLM) {
 	mon := coretraining.NewMonitor(ctx, trainingDB, sc)
 	var inf coretraining.Inferer // not sc itself: a nil Sidecar must become a nil Inferer
 	if sc != nil {
 		inf = sc
 	}
 	evals := training.NewEvalManager(ctx, trainingDB, evalDir, inf, llm)
-	audits := training.NewAuditManager(ctx, trainingDB, datasetDir, inf, llm)
+	// The training data audits are those of internal/training_audits (their own tables); the evals are still the old ones.
+	var auditInf training_audits.Inferer // likewise nil without a sidecar
+	if sc != nil {
+		auditInf = sc
+	}
+	auditOps, err := training_audits.OpsFor(backend)
+	if err != nil {
+		log.WithError(err).Fatal("training audits")
+	}
+	audits := training_audits.NewManager(ctx, trainingDB, auditOps, datasetDir, auditInf, llm)
 	mux.HandleFunc("POST /v1/gb/training/jobs", training.StartJobOf(trainingDB, datasetDir, sc, mon))
 	mux.HandleFunc("POST /v1/gb/training/jobs/{id}/stop", training.StopJobOf(trainingDB, sc))
 	mux.HandleFunc("GET /v1/gb/training/jobs", training.ListJobsOf(trainingDB))
@@ -240,11 +251,7 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, trainingDB *sql.D
 	mux.HandleFunc("GET /v1/gb/training/evals/{id}", evals.GetOf())
 	mux.HandleFunc("GET /v1/gb/training/evals/{id}/events", evals.EventsOf())
 	mux.HandleFunc("POST /v1/gb/training/evals/{id}/cancel", evals.CancelOf())
-	mux.HandleFunc("POST /v1/gb/training/models/{id}/audits", audits.StartOf())
-	mux.HandleFunc("GET /v1/gb/training/models/{id}/audits", audits.ListOf())
-	mux.HandleFunc("GET /v1/gb/training/audits/{id}", audits.GetOf())
-	mux.HandleFunc("GET /v1/gb/training/audits/{id}/events", audits.EventsOf())
-	mux.HandleFunc("POST /v1/gb/training/audits/{id}/cancel", audits.CancelOf())
+	auditsapi.New(audits).Register(mux, "/v1/gb/training")
 	mux.HandleFunc("GET /v1/gb/training/experiments", evals.ExperimentsOf())
 	mux.HandleFunc("GET /v1/gb/training/experiments/{id}", evals.ExperimentOf())
 	mux.HandleFunc("GET /v1/gb/training/datasets", training.ListDatasetsOf(trainingDB, datasetDir))

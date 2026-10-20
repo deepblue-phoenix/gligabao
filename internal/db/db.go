@@ -23,6 +23,7 @@ import (
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
+	"github.com/deepblue-phoenix/gligabao/internal/training_audits"
 )
 
 //---------------------------------------------------------------------------------------------
@@ -184,6 +185,10 @@ func Open(cfg Config) (*DB, error) {
 		return nil, err
 	}
 	if err := evalsdb.Open(cfg.Backend, rel); err != nil {
+		rel.Close()
+		return nil, err
+	}
+	if err := training_audits.Open(cfg.Backend, rel); err != nil {
 		rel.Close()
 		return nil, err
 	}

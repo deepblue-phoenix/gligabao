@@ -28,7 +28,7 @@
 // kept: the case runs of the batch it was in that were reached are stored as cancelled) or errored (the model or the judge kept
 // failing, or the server stopped); audits that a restart interrupted are errored when the Manager is made.
 //
-// Nothing uses this package yet (the server still wires the old audits of internal/training/audits and internal/api/training); it
-// shares no tables with them. It uses internal/training only for what is not part of the audits: the trained models, the training
+// The server wires this package (internal/sys/server) and the admin UI shows its audits; the old audits of internal/training/audits
+// and internal/api/training are not used any more. This package shares no tables with them (Open creates its own). It uses internal/training only for what is not part of the audits: the trained models, the training
 // datasets and the sidecar's inference.
 package training_audits
