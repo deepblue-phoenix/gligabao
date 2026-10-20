@@ -3,13 +3,32 @@
 // examples are bad. An eval (internal/evals_neo, type "training") asks cases the model never saw and measures how well it generalizes;
 // the two share no types, tables or code.
 //
-// It is built like internal/evals_neo (same vocabulary, same rules, same layout) and takes the audit logic of internal/training/audits.
-// Its parts:
+// It is built like internal/evals_neo (same vocabulary, same rules, same layout) and takes the audit logic of internal/training/audits
+// and internal/evals/training, rewritten over its own data model. Its parts:
 //
-//	core     the data model: the structs and their vocabulary (see its package doc)
-//	db       the storage of the data model: the schema and the functions that create the records (for now only creation)
-//	dataset  (this package) reading the training dataset of a trained model: LoadDataset
+//	core       the data model: the structs and their vocabulary (see its package doc)
+//	db         the storage of the data model: the schema and the functions that write and read the records (sqlite, postgres)
+//	api        the HTTP handlers: start, list, get, cancel and watch the audits
+//	audittest  fakes and databases for the tests
+//	(this package):
+//	  dataset.go   reading the training dataset of a trained model: LoadDataset
+//	  engine.go    the engine: Run asks the model the examples one at a time and has the judge grade them in batches
+//	  judge.go     the judge: the prompt, the scores and how its reply is read
+//	  options.go   the settings an audit is started with (Options) and stores (RunParams)
+//	  manager.go   the Manager: starts audits and runs them in the background, one at a time per trained model; lists, reads,
+//	               cancels and watches them
+//	  ops.go       Ops, what the Manager needs of the database backend (OpsFor, SQLiteOps, PostgresOps)
+//	  feed.go      the live feed (Feed, Event) of a running audit, which the Manager's Watch hands out
+//	  errors.go    Error, with a Kind that the HTTP handlers map to a status
 //
-// Not here yet (still in internal/training and internal/training/audits, on the old tables): the engine that asks and judges, the
-// manager that runs audits in the background, the live feed and the HTTP handlers. Nothing uses this package yet.
+// An audit runs like this: the Manager records an AuditRun (running) and starts it in the background. The engine takes the examples
+// in batches: the model answers the questions of a batch (the feed announces each answer at once), the judge grades the batch with
+// one LLM call, and the batch's case runs are written together with the run's updated Counts and AuditStats, in one transaction (so
+// the case runs are written once, final, and the run shows its progress). The run ends completed, cancelled (what was done is
+// kept: the case runs of the batch it was in that were reached are stored as cancelled) or errored (the model or the judge kept
+// failing, or the server stopped); audits that a restart interrupted are errored when the Manager is made.
+//
+// Nothing uses this package yet (the server still wires the old audits of internal/training/audits and internal/api/training); it
+// shares no tables with them. It uses internal/training only for what is not part of the audits: the trained models, the training
+// datasets and the sidecar's inference.
 package training_audits

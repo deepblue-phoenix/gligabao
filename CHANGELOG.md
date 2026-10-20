@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.78.0] - 2026-10-22
+
+### Added
+- **`internal/training_audits`: the engine, the manager, the live feed and the HTTP handlers of the new training data audits.** `Run` is the engine: it asks the trained model the dataset's examples one at a time, has the LLM judge grade them in batches (one call per batch, a retry for what it missed), and reports each batch as `core.AuditCaseRun`s and a `Progress` (the run's `Counts`, `AuditStats` and cost); it gives up after repeated batches of only failures, and when it is cancelled it hands over the cases it had reached as `cancelled`. `Manager` starts an audit (`Start`, with `Options`), runs it in the background, one at a time per trained model, writes every batch (its case runs and the run's updated progress) in one transaction, and lists, reads (`GetRun`, `GetRunWithCaseRuns`), cancels and watches (`Watch`) the audits; audits that a restart interrupted are marked errored when it is made. `Ops` (`SQLiteOps`, `PostgresOps`, `OpsFor`) is the database backend it works over. `Feed` and `Event` are the live feed: a snapshot, an `answer` per question as the model answers it, a `batch`, an `end`. The package `training_audits/api` has the handlers (`StartOf`, `ListOf`, `GetOf`, `CancelOf`, `EventsOf` and `Register` to put them on a mux under a path prefix); `GET /audits/{id}` answers the `AuditRun` with its `case_runs`.
+- **`internal/training_audits/db`: update, finish, get and list, in both `db/sqlite` and `db/postgres`.** `UpdateAuditRun` (status, counts, statistics, cost, times), `FinishAuditRun`, `FailRunningAuditRuns` (also ends the pending ones), `GetAuditRun`, `ListAuditRuns` and `ListAuditCaseRuns`, plus `db.ErrNotFound` and `db.Store`, the functions of a backend as one value (`sqlite.Store`, `postgres.Store`). `db.Execer` gains `QueryContext`. Case runs are append-only, so there is no update of a case run.
+- `internal/training_audits/audittest`: databases per backend (SQLite, and PostgreSQL with `POSTGRES_TEST_DSN`), a fake sidecar, a fake judge and a dataset directory for the tests. Nothing in the server uses the package yet, and the old audits keep working unchanged.
+
 ## [0.77.0] - 2026-10-22
 
 ### Added

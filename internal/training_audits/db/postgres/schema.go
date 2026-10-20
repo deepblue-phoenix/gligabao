@@ -1,4 +1,4 @@
-// Package postgres holds the Postgres storage of the training audits data model (package core). It has the schema (Schema) and the functions that create the records of its tables (create.go; for now only creation).
+// Package postgres holds the Postgres storage of the training audits data model (package core). It has the schema (Schema) and the functions that write and read the records of its tables (create.go: create; read.go: update, finish, get, list, and Store).
 package postgres
 
 // Schema is the schema for Postgres: the same tables as the sqlite package (see there for what they hold), with native types

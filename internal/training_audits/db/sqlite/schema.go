@@ -1,4 +1,4 @@
-// Package sqlite holds the SQLite storage of the training audits data model (package core). It has the schema (Schema) and the functions that create the records of its tables (create.go; for now only creation).
+// Package sqlite holds the SQLite storage of the training audits data model (package core). It has the schema (Schema) and the functions that write and read the records of its tables (create.go: create; read.go: update, finish, get, list, and Store).
 package sqlite
 
 // Schema is the schema for SQLite: one table per struct of package core (the AuditRun with its AuditStats, and the AuditCaseRun).

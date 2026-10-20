@@ -1,0 +1,31 @@
+package training_audits
+
+// Errors of the audit operations that say what went wrong in terms a caller can act on (the HTTP handlers map the Kind to a
+// status). Msg is safe to show to the user; Err, if any, is the cause (already logged where it happened).
+
+// Kind is what sort of failure an Error is.
+type Kind int
+
+const (
+	KindInternal    Kind = iota // something failed on our side
+	KindInvalid                 // the request is not acceptable as it is
+	KindNotFound                // what was asked for does not exist
+	KindConflict                // the request clashes with the current state
+	KindUnavailable             // what the operation needs (the sidecar, the LLM) is not there
+)
+
+// Error is a failure of an audit operation.
+type Error struct {
+	Kind Kind
+	Msg  string
+	Err  error
+}
+
+func (e *Error) Error() string { return e.Msg }
+func (e *Error) Unwrap() error { return e.Err }
+
+func internalErr(msg string, err error) *Error { return &Error{KindInternal, msg, err} }
+func invalidErr(msg string) *Error             { return &Error{Kind: KindInvalid, Msg: msg} }
+func notFoundErr(msg string) *Error            { return &Error{Kind: KindNotFound, Msg: msg} }
+func conflictErr(msg string) *Error            { return &Error{Kind: KindConflict, Msg: msg} }
+func unavailableErr(msg string) *Error         { return &Error{Kind: KindUnavailable, Msg: msg} }
