@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.71.0] - 2026-10-22
+
+### Added
+- **New package `internal/evals_neo`: the data model of the rewritten evals system (structs only, no DB tables or logic yet).** It defines `ExperimentDef`, `ExperimentRun`, `EvalDef`, `EvalRun`, `CaseDef` and `CaseRun`, with one ID type per record, a run lifecycle `Status` kept apart from the case `Verdict`, and `Counts`/`Timing` shared by the runs. Nothing uses it yet; the existing `internal/evals` is unchanged.
+
 ## [0.70.0] - 2026-10-21
 
 ### Changed
