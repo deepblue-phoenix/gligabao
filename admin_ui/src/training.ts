@@ -1199,13 +1199,15 @@ async function showDataset(name: string): Promise<void> {
 }
 
 async function uploadDataset(): Promise<void> {
-  const btn = el<HTMLButtonElement>("training-upload");
+  const btn = el<HTMLButtonElement>("training-upload-submit");
   const input = el<HTMLInputElement>("training-upload-file");
+  const modal = el<HTMLDialogElement>("upload-modal");
+  const err = el("training-upload-error");
   const status = el("training-upload-status");
+  err.textContent = "";
   const file = input.files?.[0];
   if (!file) {
-    status.className = "error";
-    status.textContent = "Choose a .jsonl file first.";
+    err.textContent = "Choose a .jsonl file first.";
     return;
   }
   const form = new FormData();
@@ -1219,11 +1221,12 @@ async function uploadDataset(): Promise<void> {
     const ds = (await res.json()) as DatasetRecord;
     status.textContent = `Saved dataset ${ds.name}: ${ds.num_records} records, ${fmtBytes(ds.size_bytes)}. It is sent to the sidecar when a job starts on it.`;
     input.value = "";
+    modal.close();
     await loadDatasets(); // the table and the picker
     el<HTMLSelectElement>("training-dataset").value = ds.name;
-  } catch (err) {
-    status.className = "error";
-    status.textContent = `Upload failed: ${errText(err)}`;
+  } catch (e) {
+    status.textContent = "";
+    err.textContent = `Upload failed: ${errText(e)}`;
   } finally {
     btn.disabled = false;
   }
@@ -1441,7 +1444,16 @@ export function initTraining(): void {
     d.querySelector("[data-close-help]")?.addEventListener("click", () => d.close());
     d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
   }
-  el("training-upload").addEventListener("click", () => void uploadDataset());
+  const uploadModal = el<HTMLDialogElement>("upload-modal");
+  el("training-upload").addEventListener("click", () => {
+    el<HTMLInputElement>("training-upload-file").value = "";
+    el("training-upload-error").textContent = "";
+    uploadModal.showModal();
+  });
+  el("training-upload-submit").addEventListener("click", () => void uploadDataset());
+  el("training-upload-cancel").addEventListener("click", () => uploadModal.close());
+  el("training-upload-close").addEventListener("click", () => uploadModal.close());
+  uploadModal.addEventListener("click", (e) => { if (e.target === uploadModal) uploadModal.close(); });
   const datasetModal = el<HTMLDialogElement>("dataset-modal");
   const modelModal = el<HTMLDialogElement>("model-modal");
   initEvalLive(cancelRun);

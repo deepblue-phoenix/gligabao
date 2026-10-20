@@ -154,6 +154,25 @@ button {
   &:hover { filter: brightness(1.1); }
 }
 
+input[type="file"] {
+  display: block;
+  margin-top: 0.3rem;
+  color: $muted;
+
+  &::file-selector-button {
+    background: $accent;
+    color: #0b1220;
+    border: 0;
+    border-radius: 6px;
+    padding: 0.4rem 0.9rem;
+    margin-right: 0.7rem;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  &::file-selector-button:hover { filter: brightness(1.1); }
+}
+
 table {
   width: 100%;
   margin-top: 1rem;
@@ -717,6 +736,7 @@ tr.removing {
 .tr-providers { @include tint($tint-blue); }
 .tr-models { @include tint($tint-green); }
 .tr-datasets { @include tint($tint-amber); }
+.tr-datasets .training-form { justify-content: flex-end; }
 .tr-jobs { @include tint($tint-purple); }
 .tr-selected { @include tint($tint-red); }
 .training-form { align-items: flex-end; label { display: flex; flex-direction: column; gap: 0.2rem; color: $muted; font-size: 0.8rem; } input[type="number"] { width: 6rem; } select { min-width: 12rem; } }

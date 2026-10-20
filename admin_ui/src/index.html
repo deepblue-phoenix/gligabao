@@ -132,9 +132,6 @@
             <div class="tr-section tr-datasets">
               <h3>Datasets <button type="button" class="help-btn" data-help="datasets-help-modal" title="Help" aria-label="Help">?</button></h3>
               <div class="row training-form">
-                <label>JSONL file
-                  <input type="file" id="training-upload-file" accept=".jsonl,application/jsonl,application/x-ndjson,text/plain" />
-                </label>
                 <button type="button" id="training-upload">Upload</button>
               </div>
               <p id="training-upload-status" class="muted"></p>
@@ -217,6 +214,23 @@
         <button type="button" class="close-x" data-close-help title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <div class="modal-body"><p class="help-text">The datasets are the subdirectories of the server's training datasets directory that have a <code>dataset.toml</code> manifest; it names the dataset and its JSONL data file. You can also upload a JSONL file (one JSON object per line with <code>instruction</code>, <code>output</code> and optionally <code>input</code>): it becomes a dataset named like the file. A dataset is sent to the sidecar only when a job that uses it starts.</p></div>
+    </dialog>
+
+    <dialog id="upload-modal" class="modal modal-small">
+      <div class="modal-head">
+        <h2>Upload dataset</h2>
+        <button type="button" class="close-x" id="training-upload-close" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <label>JSONL file
+          <input type="file" id="training-upload-file" accept=".jsonl,application/jsonl,application/x-ndjson,text/plain" />
+        </label>
+        <p id="training-upload-error" class="error"></p>
+      </div>
+      <div class="modal-foot">
+        <button type="button" id="training-upload-cancel">Cancel</button>
+        <button type="button" id="training-upload-submit">Upload</button>
+      </div>
     </dialog>
 
     <dialog id="confirm-modal" class="modal modal-small">

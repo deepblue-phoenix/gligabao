@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.92.1] - 2026-10-23
+
+### Changed
+- Admin UI, training view, datasets: only the right-aligned `Upload` button is shown; it opens a small modal with the file chooser (and `Upload` / `Cancel`). Upload errors show in the modal.
+- Admin UI: the native `Choose file` button of file inputs is now styled like the other buttons.
+
 ## [0.92.0] - 2026-10-23
 
 ### Added
