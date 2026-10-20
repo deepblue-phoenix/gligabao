@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.72.0] - 2026-10-22
+
+### Added
+- **`internal/evals_neo/db`: the schema of the rewritten evals data model, as `db/sqlite` (`sqlite.Schema`) and `db/postgres` (`postgres.Schema`).** It has tables `gb_neo_eval_defs`, `gb_neo_case_defs`, `gb_neo_experiment_defs`, `gb_neo_experiment_def_evals` (the ordered eval list of an experiment), `gb_neo_experiment_runs`, `gb_neo_eval_runs` and `gb_neo_case_runs`. Nothing applies it yet.
+
+### Changed
+- **The structs of `internal/evals_neo` are moved to the subpackage `internal/evals_neo/core`.** Nothing used them yet.
+
 ## [0.71.0] - 2026-10-22
 
 ### Added

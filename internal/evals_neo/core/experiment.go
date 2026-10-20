@@ -1,4 +1,4 @@
-package evals_neo
+package core
 
 import "time"
 
