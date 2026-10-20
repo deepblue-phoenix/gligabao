@@ -114,7 +114,7 @@
               <p id="training-models-status" class="muted"></p>
               <div class="table-scroll">
               <table id="training-models" class="clickable" hidden>
-                <thead><tr><th>ID</th><th>Name</th><th>Model</th><th>Dataset</th><th class="num">Steps</th><th class="num">Loss</th><th class="num">Weights</th><th>Trained</th><th>Audit</th><th>Eval</th></tr></thead>
+                <thead><tr><th>ID</th><th>Name</th><th>Model</th><th>Dataset</th><th class="num">Steps</th><th class="num">Loss</th><th class="num">Weights</th><th>Trained</th><th>Prompt</th><th>Audit</th><th>Eval</th></tr></thead>
                 <tbody></tbody>
               </table>
               </div>
@@ -302,6 +302,17 @@
         <div id="model-evals-form" class="row training-form"></div>
         <p id="model-evals-status" class="muted"></p>
         <div id="model-evals"></div>
+      </div>
+    </dialog>
+
+    <dialog id="prompt-modal" class="modal">
+      <div class="modal-head">
+        <h2 id="prompt-title">Prompt</h2>
+        <span class="muted"></span>
+        <button type="button" id="prompt-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div id="prompt-detail" class="model-detail"></div>
         <h3>Past requests</h3>
         <p id="model-inferences-status" class="muted"></p>
         <div id="model-inferences"></div>

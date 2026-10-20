@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.92.3] - 2026-10-23
+
+### Changed
+- Admin UI, training view: trained models get a `Prompt` button (new column) that opens a separate Prompt dialog with the warm indicator, the inference form and the past requests. The model's own dialog now only holds its training details, files and evals.
+
 ## [0.92.2] - 2026-10-23
 
 ### Changed

@@ -99,7 +99,8 @@ async function failure(res: Response): Promise<Error> {
 
 let jobs: Job[] = [];
 let models: TrainedModel[] = [];
-let selectedModel: number | null = null;
+let selectedModel: number | null = null; // the model whose details/evals dialog is open
+let promptModel: number | null = null; // the model whose prompt (inference) dialog is open
 let inferring = false; // an inference request is in flight
 let selected: number | null = null;
 let points: Point[] = [];
@@ -204,7 +205,7 @@ function renderModels(): void {
   for (const m of models) {
     const tr = body.insertRow();
     tr.classList.toggle("selected", m.id === selectedModel);
-    tr.title = "Open this model: its files, inference, evals and the past replies";
+    tr.title = "Open this model: how it was trained, its files and its evals";
     tr.insertCell().textContent = String(m.id);
     const name = tr.insertCell();
     name.textContent = shortName(m.name);
@@ -229,6 +230,12 @@ function renderModels(): void {
     trained.title = `${fmtTime(m.created_at)} UTC`;
     trained.className = "nowrap";
     // not the row's click: it opens the dialog
+    const promptCell = tr.insertCell();
+    const promptBtn = node("button", "small", "Prompt");
+    promptBtn.type = "button";
+    promptBtn.title = "Open the prompt dialog of this model: run a prompt through it and see the past requests";
+    promptBtn.addEventListener("click", (e) => { e.stopPropagation(); openPrompt(m.id); });
+    promptCell.append(promptBtn);
     // Audit and Eval only open a dialog for this model (the form and the past runs); nothing runs until its Run button is clicked.
     const auditCell = tr.insertCell();
     const auditBtn = node("button", "small", AUDIT.button);
@@ -270,17 +277,33 @@ function selectModel(id: number): void {
   renderModelDetail();
   const modal = el<HTMLDialogElement>("model-modal");
   if (!modal.open) modal.showModal();
-  void loadInferences(id);
   EVAL.model = id;
   void loadRuns(EVAL, id);
+}
+
+// Opens the prompt dialog of a model: the form to run a prompt through it and the past requests.
+function openPrompt(id: number): void {
+  const m = models.find((x) => x.id === id);
+  if (!m) return;
+  promptModel = id;
+  el("prompt-title").textContent = `Prompt: ${m.name} (#${m.id})`;
+  renderPromptForm(m);
+  const modal = el<HTMLDialogElement>("prompt-modal");
+  if (!modal.open) modal.showModal();
+  void loadInferences(id);
   warm = "unknown";
   drawWarm();
   void pollWarm(id);
 }
 
+function closePromptModal(): void {
+  promptModel = null;
+  clearTimeout(warmTimer);
+  inferStatus = undefined; inferButton = undefined; warmDot = undefined;
+}
+
 function closeModelModal(): void {
   selectedModel = null;
-  clearTimeout(warmTimer);
   clearTimeout(EVAL.timer); EVAL.runs = []; EVAL.model = null;
   renderModels();
 }
@@ -348,7 +371,7 @@ async function pollAuditWarm(id: number): Promise<void> {
   auditWarmTimer = window.setTimeout(() => void pollAuditWarm(id), auditStarting() ? AUDIT_STARTING_POLL_MS : WARM_POLL_MS);
 }
 
-// The facts and files of the selected model, and the inference form, in the dialog. The history under it is drawn by renderInferences.
+// The facts and files of the selected model in its dialog (the evals under them are drawn by renderRunForm / renderRuns).
 function renderModelDetail(): void {
   const m = models.find((x) => x.id === selectedModel);
   if (!m) return;
@@ -382,6 +405,12 @@ function renderModelDetail(): void {
   const info = node("details", "model-info");
   info.append(node("summary", "", "Training details and files"), dl, files);
 
+  el("model-detail").replaceChildren(info);
+  renderRunForm(EVAL, m);
+}
+
+// The inference form of the model in the prompt dialog. The history under it is drawn by renderInferences.
+function renderPromptForm(m: TrainedModel): void {
   const warmRow = node("div", "warm-row");
   warmDot = node("span", "warm-dot");
   warmRow.append(warmDot);
@@ -410,8 +439,7 @@ function renderModelDetail(): void {
   const form = node("div", "row training-form");
   form.append(labelled("Max tokens", tokens), labelled("Temperature", temp), run, status);
 
-  el("model-detail").replaceChildren(info, warmRow, prompt, form);
-  renderRunForm(EVAL, m);
+  el("prompt-detail").replaceChildren(warmRow, prompt, form);
   el("model-inferences").replaceChildren();
   el("model-inferences-status").textContent = "Loading the past requests…";
 }
@@ -456,7 +484,7 @@ async function fetchWarm(m: TrainedModel): Promise<{ state: Warm; info: string }
 
 async function checkWarm(m: TrainedModel): Promise<void> {
   const r = await fetchWarm(m);
-  if (selectedModel !== m.id) return;
+  if (promptModel !== m.id) return;
   warm = r.state; warmInfo = r.info;
   drawWarm();
 }
@@ -465,9 +493,9 @@ async function checkWarm(m: TrainedModel): Promise<void> {
 async function pollWarm(id: number): Promise<void> {
   clearTimeout(warmTimer);
   const m = models.find((x) => x.id === id);
-  if (!m || selectedModel !== id) return;
+  if (!m || promptModel !== id) return;
   await checkWarm(m);
-  if (selectedModel === id) warmTimer = window.setTimeout(() => void pollWarm(id), WARM_POLL_MS);
+  if (promptModel === id) warmTimer = window.setTimeout(() => void pollWarm(id), WARM_POLL_MS);
 }
 
 // Status and Run button of the open dialog's form (undefined when it was closed or redrawn): an inference outlives the dialog.
@@ -481,12 +509,12 @@ async function loadInferences(modelID: number): Promise<void> {
     const res = await fetch(`../training/models/${modelID}/inferences`);
     if (!res.ok) throw await failure(res);
     const list = ((await res.json()) as { inferences: Inference[] }).inferences ?? [];
-    if (selectedModel !== modelID) return; // another model, or closed, while loading
+    if (promptModel !== modelID) return; // another model, or closed, while loading
     status.className = "muted";
     status.textContent = list.length === 0 ? "No inference requests to this model yet." : `${list.length} past request${list.length === 1 ? "" : "s"}, newest first:`;
     renderInferences(list);
   } catch (err) {
-    if (selectedModel !== modelID) return;
+    if (promptModel !== modelID) return;
     status.className = "error";
     status.textContent = `Failed to load the past requests: ${errText(err)}`;
   }
@@ -572,7 +600,7 @@ async function infer(m: TrainedModel, prompt: string, maxTokens: number, tempera
     if (inferButton) inferButton.disabled = false; // the form of a dialog opened again meanwhile
   }
   if (status?.isConnected) { status.className = outcome.cls; status.textContent = outcome.text; }
-  if (selectedModel === m.id) { void pollWarm(m.id); await loadInferences(m.id); }
+  if (promptModel === m.id) { void pollWarm(m.id); await loadInferences(m.id); }
 }
 
 //---------------------------------------------------------------------------------------------
@@ -1460,6 +1488,10 @@ export function initTraining(): void {
   el("model-close").addEventListener("click", () => modelModal.close());
   modelModal.addEventListener("close", closeModelModal);
   modelModal.addEventListener("click", (e) => { if (e.target === modelModal) modelModal.close(); });
+  const promptModal = el<HTMLDialogElement>("prompt-modal");
+  el("prompt-close").addEventListener("click", () => promptModal.close());
+  promptModal.addEventListener("close", closePromptModal);
+  promptModal.addEventListener("click", (e) => { if (e.target === promptModal) promptModal.close(); });
   const auditModal = el<HTMLDialogElement>("audit-modal");
   el("audit-close").addEventListener("click", () => auditModal.close());
   auditModal.addEventListener("close", closeAuditModal);
