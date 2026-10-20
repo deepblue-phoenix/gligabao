@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.91.1] - 2026-10-23
+
+### Changed
+- `run_tests.sh` now runs the Go tests and then the Python tests (sidecar and `clients/py`). `-g`/`--go` and `-p`/`--py` select only one of them; without flags both run.
+
 ## [0.91.0] - 2026-10-23
 
 ### Changed
