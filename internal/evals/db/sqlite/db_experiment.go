@@ -280,7 +280,7 @@ func RecordExperimentCaseResult(ctx context.Context, d *sql.DB, e model.Experime
 	for i, t := range e.Trajectories {
 		t.CaseResultID, t.Seq, t.CreatedAt = e.ID, i+1, rsqlite.Now()
 		res, err := tx.ExecContext(ctx, `
-			INSERT INTO gb_experiment_trajectories (
+			INSERT INTO gb_experiment_case_runs_trajectories (
 				case_result_id, seq, kind, trajectory_id, agent_name, steps, cost_usd, path, artifact_ids, created_at
 			)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -415,7 +415,7 @@ func GetExperimentRun(ctx context.Context, d *sql.DB, runID int64) (*model.Exper
 
 	trows, err := d.QueryContext(ctx, `
 		SELECT `+trajectoryColumns+`
-		FROM gb_experiment_trajectories
+		FROM gb_experiment_case_runs_trajectories
 		WHERE case_result_id IN (SELECT id FROM gb_experiment_case_results WHERE run_id = ?)
 		ORDER BY case_result_id, seq`, runID)
 	if err != nil {
@@ -449,7 +449,7 @@ func GetExperimentCaseResultDataset(ctx context.Context, d *sql.DB, caseResultID
 func FindExperimentTrajectory(ctx context.Context, d *sql.DB, trajectoryID string) (*model.ExperimentTrajectory, error) {
 	t, err := scanTrajectory(d.QueryRowContext(ctx, `
 		SELECT `+trajectoryColumns+`
-		FROM gb_experiment_trajectories
+		FROM gb_experiment_case_runs_trajectories
 		WHERE trajectory_id = ?
 		ORDER BY id
 		LIMIT 1`, trajectoryID))

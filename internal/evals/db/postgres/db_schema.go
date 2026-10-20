@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_case_results (
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_case_results_run ON gb_experiment_case_results(run_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_experiment_case_results_training_case ON gb_experiment_case_results(run_id, eval, case_name) WHERE type = 'training';
 
-CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
+CREATE TABLE IF NOT EXISTS gb_experiment_case_runs_trajectories (
 	id            BIGSERIAL PRIMARY KEY,
 	case_result_id   BIGINT NOT NULL REFERENCES gb_experiment_case_results(id) ON DELETE CASCADE,
 	seq           BIGINT NOT NULL,
@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
 	created_at    TIMESTAMPTZ NOT NULL,
 	UNIQUE (case_result_id, seq)
 );
-CREATE INDEX IF NOT EXISTS idx_gb_experiment_trajectories_tid ON gb_experiment_trajectories(trajectory_id);
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_case_runs_trajectories_tid ON gb_experiment_case_runs_trajectories(trajectory_id);
 
 CREATE TABLE IF NOT EXISTS gb_knowledge_case_meta (
 	case_result_id   BIGINT PRIMARY KEY,

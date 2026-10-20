@@ -28,7 +28,7 @@
 - `gb_experiment_cases_defs`
 - `gb_experiment_runs`
 - `gb_experiment_case_results`
-- `gb_experiment_trajectories`
+- `gb_experiment_case_runs_trajectories`
 - `gb_knowledge_case_meta`
 - `gb_training_eval_run_meta`
 - `gb_training_case_meta`
@@ -68,7 +68,7 @@
 | `gb_experiment_cases_defs`    | the cases (eval + case name) an experiment has executed.                                                                                        |
 | `gb_experiment_runs`          | one execution of an experiment over one or more cases, with status, params and counts.                                                          |
 | `gb_experiment_case_results`  | the result of one case in one run, for both knowledge and training evals.                                                                       |
-| `gb_experiment_trajectories`  | references to the ATIF trajectory files of a case's remember and recall calls.                                                                  |
+| `gb_experiment_case_runs_trajectories` | references to the ATIF trajectory files of a case's remember and recall calls.                                                                  |
 | `gb_knowledge_case_meta`      | knowledge-eval specific data of a case result (answer, failed and passed checks, dataset, steps).                                               |
 | `gb_training_eval_run_meta`   | training-eval specific data of a run (trained model, eval name, judge model, progress counters and judge usage).                                |
 | `gb_training_case_meta`       | training-eval specific data of a case result (question, expected answer, model response, judge score and reason).                               |
@@ -108,7 +108,7 @@
 | `gb_experiment_cases_defs`    | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
 | `gb_experiment_runs`          | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
 | `gb_experiment_case_results`  | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
-| `gb_experiment_trajectories`  | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
+| `gb_experiment_case_runs_trajectories` | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
 | `gb_knowledge_case_meta`      | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
 | `gb_training_eval_run_meta`   | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
 | `gb_training_case_meta`       | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |

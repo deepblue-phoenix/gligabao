@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.69.0] - 2026-10-21
+
+### Changed
+- **The `gb_experiment_trajectories` table is renamed `gb_experiment_case_runs_trajectories` (breaking: SQLite and PostgreSQL eval databases must be rebuilt, nothing is migrated).** It holds the ATIF trajectory references of one case result (one case in one run); its index is renamed `idx_gb_experiment_case_runs_trajectories_tid` too. The queries and the docs use the new name.
+
 ## [0.68.0] - 2026-10-21
 
 ### Changed

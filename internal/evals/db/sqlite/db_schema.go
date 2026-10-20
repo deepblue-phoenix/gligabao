@@ -24,7 +24,7 @@ const schema = `
 --     gb_experiment_cases_defs       the cases (eval + case_name) an experiment has executed
 --     gb_experiment_runs        one execution: one or more cases
 --     gb_experiment_case_results     the result of one case in one run (both kinds: one row per case)
---     gb_experiment_trajectories  ATIF trajectories of a case (the trajectory files; only knowledge cases have them for now)
+--     gb_experiment_case_runs_trajectories  ATIF trajectories of a case (the trajectory files; only knowledge cases have them for now)
 --   METADATA tables (the columns only one kind has):
 --     gb_knowledge_case_meta     one row per knowledge case result: answer, checks, dataset the case built its graph in
 --     gb_training_case_meta      one row per training case result: the question, the dataset's answer, the model's, the judge's score
@@ -153,7 +153,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_experiment_case_results_training_case O
 --   kind: 'remember' or 'recall'
 --   artifact_ids: JSON array of the IDs of the artifacts (in the dataset of the case's gb_knowledge_case_meta) the call is
 --   about (remember: its input; recall: the evidence's sources)
-CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
+CREATE TABLE IF NOT EXISTS gb_experiment_case_runs_trajectories (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
 	case_result_id   INTEGER NOT NULL REFERENCES gb_experiment_case_results(id) ON DELETE CASCADE,
 	seq           INTEGER NOT NULL,
@@ -167,7 +167,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_trajectories (
 	created_at    DATETIME NOT NULL,
 	UNIQUE (case_result_id, seq)
 );
-CREATE INDEX IF NOT EXISTS idx_gb_experiment_trajectories_tid ON gb_experiment_trajectories(trajectory_id);
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_case_runs_trajectories_tid ON gb_experiment_case_runs_trajectories(trajectory_id);
 
 -- KNOWLEDGE metadata of a case (type 'knowledge'): what only the knowledge-extraction cases have.
 --   answer         the recall's answer

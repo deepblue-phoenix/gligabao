@@ -16,7 +16,7 @@ Universal tables:
 | `gb_experiment_cases_defs` | `Experiment.Cases` (`CaseRef`) | the cases (`eval` + `case_name`) that any run of the experiment executed; added the first time a case is recorded |
 | `gb_experiment_runs` | `ExperimentRun` | one execution: `type`, `experiment_id` (always set for knowledge), `status` (`running`, then: knowledge `passed` or `failed`; training `completed`, `error` or `cancelled`), `params` (how it was invoked), totals (`total_cases`, `passed_cases`, `failed_cases`, `error_cases`, `judged_cases`, `cost_usd`), `started_at`, `finished_at` |
 | `gb_experiment_case_results` | `ExperimentCaseResult` | one case's result in a run: `type`, `eval`, `case_name`, `status` (knowledge: `passed`, `failed`: a check did not hold, `error`: it could not run to the end; training: `judged`: whatever the score, `error`: the model or the judge errored), `error`, `cost_usd`, times |
-| `gb_experiment_trajectories` | `ExperimentTrajectory` | the ATIF trajectories of a case, in call order (`seq`): `kind` (`remember` / `recall`), `trajectory_id`, `agent_name`, `steps`, `cost_usd`, `path` of the JSON file, `artifact_ids` (the IDs, in the case's dataset, of the call's artifacts: the artifact a remember stored, or the artifacts a recall's evidence edges were sourced from via the edge provenance links; `experiments.GetRun` and the admin API resolve them to `artifacts` by reading the dataset) |
+| `gb_experiment_case_runs_trajectories` | `ExperimentTrajectory` | the ATIF trajectories of a case, in call order (`seq`): `kind` (`remember` / `recall`), `trajectory_id`, `agent_name`, `steps`, `cost_usd`, `path` of the JSON file, `artifact_ids` (the IDs, in the case's dataset, of the call's artifacts: the artifact a remember stored, or the artifacts a recall's evidence edges were sourced from via the edge provenance links; `experiments.GetRun` and the admin API resolve them to `artifacts` by reading the dataset) |
 
 Metadata tables (the struct fields are those of `ExperimentCaseResult`; the result's `Type` is `knowledge`):
 
@@ -31,7 +31,7 @@ The graph and the artifacts of a case are not copied into the experiment tables:
 
 An eval is a file in `bin/evals_knowledge/` and its name is the file name without `.json`; a case is one of its cases, so `eval` + `case_name` identifies it. Rows cascade: deleting an experiment removes its runs, cases and trajectory references.
 
-Only the trajectory *reference* is stored in the database; the trajectory is the file `<trajectory_id>.json` in the trajectory directory. The runner stores the files in an `atif/` directory next to the eval database (`bin/atif/` by default) so the IDs stay resolvable; `-atif <dir>` changes it. `gb_experiment_trajectories.path` records where each file went.
+Only the trajectory *reference* is stored in the database; the trajectory is the file `<trajectory_id>.json` in the trajectory directory. The runner stores the files in an `atif/` directory next to the eval database (`bin/atif/` by default) so the IDs stay resolvable; `-atif <dir>` changes it. `gb_experiment_case_runs_trajectories.path` records where each file went.
 
 A run is `passed` when every recorded case passed. A case fails when a stored-edge check does not hold or the answer lacks an expected string (`problems` lists them).
 
