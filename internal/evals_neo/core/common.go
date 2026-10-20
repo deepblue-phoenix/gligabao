@@ -1,9 +1,6 @@
 package core
 
-import (
-	"encoding/json"
-	"time"
-)
+import "time"
 
 // IDs are one type per kind of record, so that an EvalDefID cannot be passed where an EvalRunID is expected.
 type (
@@ -15,8 +12,8 @@ type (
 	CaseRunID       int64
 )
 
-// Type is the kind of an eval ("knowledge", "training", ...). It says how the Input, Expected, Output and Details of its
-// cases and case runs are to be read, and which runner executes them. An EvalDef has one Type and all its cases share it.
+// Type is the kind of an eval ("knowledge", "training", ...). It says which metadata (CaseDefMeta, CaseRunMeta) its cases and
+// case runs have, and which runner executes them. An EvalDef has one Type and all its cases share it.
 type Type string
 
 // Status is the lifecycle of a run (ExperimentRun, EvalRun, CaseRun). It says whether the run ran to the end, not how well
@@ -75,6 +72,3 @@ type Timing struct {
 // Params are free-form settings. On a def they are the settings under test (models, prompts, judge, ...); on a run they are
 // how that run was invoked (what was selected, overrides, ...).
 type Params map[string]any
-
-// Payload is type-specific JSON, opaque to this package. Its shape is defined by the Type of the eval.
-type Payload = json.RawMessage

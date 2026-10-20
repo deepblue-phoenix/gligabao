@@ -29,8 +29,10 @@
 //  4. Status is the LIFECYCLE of a run (did it run to the end?). It is never a verdict. The verdict about what was run
 //     (did it pass, what score) is a separate field set on a finished run. The old model mixed the two ("failed" vs "error",
 //     "judged" vs "passed"); here "errored" always means "could not be run to the end".
-//  5. What is specific to a kind of eval (knowledge extraction, trained models, ...) is not a column of these structs: the
-//     EvalDef has a Type, and the type-specific parts of a case or a result are opaque JSON (Input, Expected, Output, Details)
-//     that the code of that Type interprets.
+//  5. What is specific to a kind of eval (knowledge extraction, trained models, ...) is not a column of CaseDef or CaseRun:
+//     those hold what every eval shares, and the EvalDef has a Type. Each Type has its own metadata structs and tables, keyed
+//     by the ID of the universal row: KnowledgeCaseDefMeta and KnowledgeCaseRunMeta, TrainingCaseDefMeta and
+//     TrainingCaseRunMeta. They are reached through CaseDef.Meta and CaseRun.Meta (filled by getters). A new Type adds its
+//     own structs and tables; the universal ones do not change.
 //  6. Runs record the Params they were invoked with, so a run can be understood without looking at the def as it is now.
 package core

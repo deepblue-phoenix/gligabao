@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.74.0] - 2026-10-22
+
+### Changed
+- **`internal/evals_neo`: the type-specific parts of cases move out of the universal case tables into one metadata table per eval type.** `CaseDef` and `CaseRun` (tables `gb_neo_case_defs`, `gb_neo_case_runs`) keep only what every eval shares, plus a `type` column tied to the eval's type by a composite key; their `Input`, `Expected`, `Params`, `Output` and `Details` payloads are gone (so is `core.Payload`). Each type has its own structs and tables keyed by the case def or case run: `gb_neo_case_def_meta_knowledge`, `gb_neo_case_def_meta_training`, `gb_neo_knowledge_case_run_meta` (with `gb_neo_knowledge_case_run_trajectories`) and `gb_neo_training_case_run_meta`, reached through `CaseDef.Meta` and `CaseRun.Meta`. A new eval type adds its own tables. Nothing uses them yet.
+
 ## [0.73.0] - 2026-10-22
 
 ### Added

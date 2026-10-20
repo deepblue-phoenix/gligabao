@@ -18,25 +18,60 @@ CREATE TABLE IF NOT EXISTS gb_neo_eval_defs (
 	tags        JSONB NOT NULL DEFAULT '[]',
 	params      JSONB NOT NULL DEFAULT '{}',
 	created_at  TIMESTAMPTZ NOT NULL,
-	updated_at  TIMESTAMPTZ NOT NULL
+	updated_at  TIMESTAMPTZ NOT NULL,
+	UNIQUE (id, type)
 );
 
--- core.CaseDef: belongs to exactly one eval (its cases go with it); the name and the position are unique within the eval.
--- input, expected: type-specific JSON (core.Payload); expected is NULL if the case has none.
+-- core.CaseDef: what every type of eval shares of a case. It belongs to exactly one eval (its cases go with it); the name and
+-- the position are unique within the eval. type is that of the eval (the composite key makes the database check it); what is
+-- specific to the type is in the gb_neo_case_def_meta_<type> table of that type, one row per case.
 CREATE TABLE IF NOT EXISTS gb_neo_case_defs (
 	id          BIGSERIAL PRIMARY KEY,
-	eval_def_id BIGINT NOT NULL REFERENCES gb_neo_eval_defs(id) ON DELETE CASCADE,
+	eval_def_id BIGINT NOT NULL,
+	type        TEXT NOT NULL CHECK (type <> ''),
 	name        TEXT NOT NULL,
 	position    BIGINT NOT NULL CHECK (position >= 0),
 	description TEXT NOT NULL DEFAULT '',
 	tags        JSONB NOT NULL DEFAULT '[]',
-	input       JSONB,
-	expected    JSONB,
-	params      JSONB NOT NULL DEFAULT '{}',
 	created_at  TIMESTAMPTZ NOT NULL,
 	updated_at  TIMESTAMPTZ NOT NULL,
 	UNIQUE (eval_def_id, name),
-	UNIQUE (eval_def_id, position)
+	UNIQUE (eval_def_id, position),
+	UNIQUE (id, type),
+	FOREIGN KEY (eval_def_id, type) REFERENCES gb_neo_eval_defs(id, type) ON DELETE CASCADE
+);
+
+-- The metadata of the case defs of each type: one table per type, keyed by the case def (one row per case of that type). The
+-- type column is fixed by a CHECK and tied to the case def by the composite key, so a row can only belong to a case of its
+-- type. A new type of eval adds a table like these; the tables above do not change. Deleting the case def deletes the row.
+
+-- core.KnowledgeCaseDefMeta. remember, expect_*: JSON arrays; models, reasoning: JSON objects (see core.KnowledgeInput,
+-- core.KnowledgeExpected and core.KnowledgeParams). The checks that are 0 or empty are off.
+CREATE TABLE IF NOT EXISTS gb_neo_case_def_meta_knowledge (
+	case_def_id         BIGINT PRIMARY KEY,
+	type                TEXT NOT NULL DEFAULT 'knowledge' CHECK (type = 'knowledge'),
+	remember            JSONB NOT NULL DEFAULT '[]',
+	query               TEXT NOT NULL DEFAULT '',
+	expect_contains     JSONB NOT NULL DEFAULT '[]',
+	expect_edges        JSONB NOT NULL DEFAULT '[]',
+	expect_min_chunks   BIGINT NOT NULL DEFAULT 0,
+	expect_web_searches BIGINT NOT NULL DEFAULT 0,
+	expect_series       JSONB NOT NULL DEFAULT '[]',
+	chunk_size          BIGINT NOT NULL DEFAULT 0,
+	models              JSONB NOT NULL DEFAULT '{}',
+	reasoning           JSONB NOT NULL DEFAULT '{}',
+	FOREIGN KEY (case_def_id, type) REFERENCES gb_neo_case_defs(id, type) ON DELETE CASCADE
+);
+
+-- core.TrainingCaseDefMeta: the question asked to the trained model (instruction, with the optional context input) and the
+-- answer the judge compares the model's to (output).
+CREATE TABLE IF NOT EXISTS gb_neo_case_def_meta_training (
+	case_def_id BIGINT PRIMARY KEY,
+	type        TEXT NOT NULL DEFAULT 'training' CHECK (type = 'training'),
+	instruction TEXT NOT NULL,
+	input       TEXT NOT NULL DEFAULT '',
+	output      TEXT NOT NULL,
+	FOREIGN KEY (case_def_id, type) REFERENCES gb_neo_case_defs(id, type) ON DELETE CASCADE
 );
 
 -- core.ExperimentDef: a named group of evals run together, plus the settings under test.
@@ -115,25 +150,84 @@ CREATE TABLE IF NOT EXISTS gb_neo_eval_runs (
 CREATE INDEX IF NOT EXISTS idx_gb_neo_eval_runs_def ON gb_neo_eval_runs(def_id);
 CREATE INDEX IF NOT EXISTS idx_gb_neo_eval_runs_experiment_run ON gb_neo_eval_runs(experiment_run_id);
 
--- input, output, details: type-specific JSON (core.Payload), NULL if none. input is what was actually given (the def may change
--- later). verdict (core.Verdict) is '' unless the case run completed and has one; score is in [0, 1], NULL if the case has none.
+-- core.CaseRun: what every type of eval shares of a case run. verdict (core.Verdict) is '' unless the case run completed and
+-- has one; score is in [0, 1], NULL if the case has none. type is that of the case def (the composite key makes the database
+-- check it); what is specific to the type is in the *_case_run_meta table of that type, one row per case run.
 CREATE TABLE IF NOT EXISTS gb_neo_case_runs (
 	id          BIGSERIAL PRIMARY KEY,
-	def_id      BIGINT NOT NULL REFERENCES gb_neo_case_defs(id) ON DELETE RESTRICT,
+	def_id      BIGINT NOT NULL,
 	eval_run_id BIGINT NOT NULL REFERENCES gb_neo_eval_runs(id) ON DELETE CASCADE,
+	type        TEXT NOT NULL CHECK (type <> ''),
 	status      TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'errored', 'cancelled')),
 	error       TEXT NOT NULL DEFAULT '',
-	input       JSONB,
-	output      JSONB,
 	verdict     TEXT NOT NULL DEFAULT '' CHECK (verdict IN ('', 'pass', 'fail')),
 	score       DOUBLE PRECISION CHECK (score IS NULL OR (score >= 0 AND score <= 1)),
-	details     JSONB,
 	cost_usd    DOUBLE PRECISION NOT NULL DEFAULT 0,
 	created_at  TIMESTAMPTZ NOT NULL,
 	started_at  TIMESTAMPTZ,
 	finished_at TIMESTAMPTZ,
 	CHECK (status = 'completed' OR (verdict = '' AND score IS NULL)),
-	UNIQUE (eval_run_id, def_id)
+	UNIQUE (eval_run_id, def_id),
+	UNIQUE (id, type),
+	FOREIGN KEY (def_id, type) REFERENCES gb_neo_case_defs(id, type) ON DELETE RESTRICT
 );
 CREATE INDEX IF NOT EXISTS idx_gb_neo_case_runs_def ON gb_neo_case_runs(def_id);
+
+-- The metadata of the case runs of each type: one table per type, keyed by the case run (one row per case run of that type),
+-- tied to its type like the case def metadata above. Deleting the case run deletes the row. A new type of eval adds a table.
+
+-- core.KnowledgeCaseRunMeta. input: JSON (core.KnowledgeInput) as it was given, with the text files read in. problems,
+-- passed_checks: JSON arrays of strings. dataset_id is the dataset the case ran in (the graph it built), NULL if it was never
+-- created; it is not a foreign key, because the dataset tables are not part of this schema. steps: ATIF steps over the
+-- trajectories of the case.
+CREATE TABLE IF NOT EXISTS gb_neo_knowledge_case_run_meta (
+	case_run_id   BIGINT PRIMARY KEY,
+	type          TEXT NOT NULL DEFAULT 'knowledge' CHECK (type = 'knowledge'),
+	input         JSONB,
+	answer        TEXT NOT NULL DEFAULT '',
+	problems      JSONB NOT NULL DEFAULT '[]',
+	passed_checks JSONB NOT NULL DEFAULT '[]',
+	dataset_id    BIGINT,
+	steps         BIGINT NOT NULL DEFAULT 0,
+	FOREIGN KEY (case_run_id, type) REFERENCES gb_neo_case_runs(id, type) ON DELETE CASCADE
+);
+
+-- core.KnowledgeTrajectory: the ATIF trajectories (internal/ai/atif) of a knowledge case run, in call order. Only the reference
+-- is kept: trajectory_id is the ATIF trajectory_id, path the JSON file it was stored in ('' if none). kind: 'remember' or
+-- 'recall'. artifact_ids: JSON array of the IDs of the artifacts the call is about (remember: its input; recall: the sources
+-- of the evidence).
+CREATE TABLE IF NOT EXISTS gb_neo_knowledge_case_run_trajectories (
+	id            BIGSERIAL PRIMARY KEY,
+	case_run_id   BIGINT NOT NULL REFERENCES gb_neo_knowledge_case_run_meta(case_run_id) ON DELETE CASCADE,
+	seq           BIGINT NOT NULL CHECK (seq >= 0),
+	kind          TEXT NOT NULL CHECK (kind IN ('remember', 'recall')),
+	trajectory_id TEXT NOT NULL,
+	agent_name    TEXT NOT NULL DEFAULT '',
+	steps         BIGINT NOT NULL DEFAULT 0,
+	cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
+	path          TEXT NOT NULL DEFAULT '',
+	artifact_ids  JSONB NOT NULL DEFAULT '[]',
+	created_at    TIMESTAMPTZ NOT NULL,
+	UNIQUE (case_run_id, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_gb_neo_knowledge_case_run_trajectories_tid ON gb_neo_knowledge_case_run_trajectories(trajectory_id);
+
+-- core.TrainingCaseRunMeta: instruction, input, reference are the question and the expected answer as they were when the case
+-- ran, response is the model's ('' if it failed). judge_score is the judge's, 0 to 5 (NULL unless judged; the case run's score is
+-- judge_score / 5), judge_reason its explanation; batch is the judge batch, from 1 (0 if not judged).
+CREATE TABLE IF NOT EXISTS gb_neo_training_case_run_meta (
+	case_run_id   BIGINT PRIMARY KEY,
+	type          TEXT NOT NULL DEFAULT 'training' CHECK (type = 'training'),
+	instruction   TEXT NOT NULL,
+	input         TEXT NOT NULL DEFAULT '',
+	reference     TEXT NOT NULL DEFAULT '',
+	response      TEXT NOT NULL DEFAULT '',
+	batch         BIGINT NOT NULL DEFAULT 0 CHECK (batch >= 0),
+	judge_score   BIGINT CHECK (judge_score IS NULL OR (judge_score >= 0 AND judge_score <= 5)),
+	judge_reason  TEXT NOT NULL DEFAULT '',
+	input_tokens  BIGINT NOT NULL DEFAULT 0,
+	output_tokens BIGINT NOT NULL DEFAULT 0,
+	duration_ms   BIGINT NOT NULL DEFAULT 0,
+	FOREIGN KEY (case_run_id, type) REFERENCES gb_neo_case_runs(id, type) ON DELETE CASCADE
+);
 `
