@@ -222,10 +222,10 @@ func CreateEvalRun(ctx context.Context, q db.Execer, r *core.EvalRun) error {
 	return nil
 }
 
-// CreateKnowledgeEvalRunMeta inserts m into gb_neo_eval_runs_knowledge_meta, for the knowledge eval run m.EvalRunID.
+// CreateKnowledgeEvalRunMeta inserts m into gb_neo_eval_runs_meta_knowledge, for the knowledge eval run m.EvalRunID.
 func CreateKnowledgeEvalRunMeta(ctx context.Context, q db.Execer, m *core.KnowledgeEvalRunMeta) error {
 	if _, err := q.ExecContext(ctx, `
-		INSERT INTO gb_neo_eval_runs_knowledge_meta (eval_run_id, type, chunks, steps, remember_calls, recall_calls, remember_cost_usd,
+		INSERT INTO gb_neo_eval_runs_meta_knowledge (eval_run_id, type, chunks, steps, remember_calls, recall_calls, remember_cost_usd,
 			recall_cost_usd, checks_passed, checks_failed)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		int64(m.EvalRunID), string(core.TypeKnowledge), m.Chunks, m.Steps, m.RememberCalls, m.RecallCalls, m.RememberCostUSD,
@@ -235,10 +235,10 @@ func CreateKnowledgeEvalRunMeta(ctx context.Context, q db.Execer, m *core.Knowle
 	return nil
 }
 
-// CreateTrainingEvalRunMeta inserts m into gb_neo_eval_runs_training_meta, for the training eval run m.EvalRunID.
+// CreateTrainingEvalRunMeta inserts m into gb_neo_eval_runs_meta_training, for the training eval run m.EvalRunID.
 func CreateTrainingEvalRunMeta(ctx context.Context, q db.Execer, m *core.TrainingEvalRunMeta) error {
 	if _, err := q.ExecContext(ctx, `
-		INSERT INTO gb_neo_eval_runs_training_meta (eval_run_id, type, trained_model_id, judge_model, num_answered, num_judged, num_correct,
+		INSERT INTO gb_neo_eval_runs_meta_training (eval_run_id, type, trained_model_id, judge_model, num_answered, num_judged, num_correct,
 			num_partial, num_incorrect, score_sum, num_batches, judge_calls, judge_input_tokens, judge_output_tokens, judge_cost_usd)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		int64(m.EvalRunID), string(core.TypeTraining), m.TrainedModelID, m.JudgeModel, m.NumAnswered, m.NumJudged, m.NumCorrect,
@@ -266,7 +266,7 @@ func CreateCaseRun(ctx context.Context, q db.Execer, r *core.CaseRun) error {
 	return nil
 }
 
-// CreateKnowledgeCaseRunMeta inserts m into gb_neo_knowledge_case_run_meta, for the knowledge case run m.CaseRunID. Its
+// CreateKnowledgeCaseRunMeta inserts m into gb_neo_case_runs_meta_knowledge, for the knowledge case run m.CaseRunID. Its
 // Trajectories are not stored: they are added with CreateKnowledgeTrajectory.
 func CreateKnowledgeCaseRunMeta(ctx context.Context, q db.Execer, m *core.KnowledgeCaseRunMeta) error {
 	input, err := db.JSON(m.Input, "{}")
@@ -282,7 +282,7 @@ func CreateKnowledgeCaseRunMeta(ctx context.Context, q db.Execer, m *core.Knowle
 		return err
 	}
 	if _, err := q.ExecContext(ctx, `
-		INSERT INTO gb_neo_knowledge_case_run_meta (case_run_id, type, input, answer, problems, passed_checks, dataset_id, steps)
+		INSERT INTO gb_neo_case_runs_meta_knowledge (case_run_id, type, input, answer, problems, passed_checks, dataset_id, steps)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		int64(m.CaseRunID), string(core.TypeKnowledge), input, m.Answer, problems, passed, m.DatasetID, m.Steps); err != nil {
 		return fmt.Errorf("create knowledge case run meta of case run %d: %w", m.CaseRunID, err)
@@ -290,7 +290,7 @@ func CreateKnowledgeCaseRunMeta(ctx context.Context, q db.Execer, m *core.Knowle
 	return nil
 }
 
-// CreateKnowledgeTrajectory inserts t into gb_neo_knowledge_case_run_trajectories, as a trajectory of the knowledge case run
+// CreateKnowledgeTrajectory inserts t into gb_neo_case_runs_meta_knowledge_trajectories, as a trajectory of the knowledge case run
 // caseRunID (whose CreateKnowledgeCaseRunMeta must have been called), and sets its CreatedAt.
 func CreateKnowledgeTrajectory(ctx context.Context, q db.Execer, caseRunID core.CaseRunID, t *core.KnowledgeTrajectory) error {
 	artifacts, err := db.JSON(t.ArtifactIDs, "[]")
@@ -299,7 +299,7 @@ func CreateKnowledgeTrajectory(ctx context.Context, q db.Execer, caseRunID core.
 	}
 	t.CreatedAt = fill(t.CreatedAt)
 	if _, err := q.ExecContext(ctx, `
-		INSERT INTO gb_neo_knowledge_case_run_trajectories (case_run_id, seq, kind, trajectory_id, agent_name, steps, cost_usd, path,
+		INSERT INTO gb_neo_case_runs_meta_knowledge_trajectories (case_run_id, seq, kind, trajectory_id, agent_name, steps, cost_usd, path,
 			artifact_ids, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		int64(caseRunID), t.Seq, t.Kind, t.TrajectoryID, t.AgentName, t.Steps, t.CostUSD, t.Path, artifacts, text(t.CreatedAt)); err != nil {
@@ -308,10 +308,10 @@ func CreateKnowledgeTrajectory(ctx context.Context, q db.Execer, caseRunID core.
 	return nil
 }
 
-// CreateTrainingCaseRunMeta inserts m into gb_neo_training_case_run_meta, for the training case run m.CaseRunID.
+// CreateTrainingCaseRunMeta inserts m into gb_neo_case_runs_meta_training, for the training case run m.CaseRunID.
 func CreateTrainingCaseRunMeta(ctx context.Context, q db.Execer, m *core.TrainingCaseRunMeta) error {
 	if _, err := q.ExecContext(ctx, `
-		INSERT INTO gb_neo_training_case_run_meta (case_run_id, type, instruction, input, reference, response, batch, judge_score,
+		INSERT INTO gb_neo_case_runs_meta_training (case_run_id, type, instruction, input, reference, response, batch, judge_score,
 			judge_reason, input_tokens, output_tokens, duration_ms)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		int64(m.CaseRunID), string(core.TypeTraining), m.Instruction, m.Input, m.Reference, m.Response, m.Batch, m.JudgeScore,

@@ -96,7 +96,7 @@ type KnowledgeCaseDefMeta struct {
 // CaseType implements CaseDefMeta.
 func (KnowledgeCaseDefMeta) CaseType() Type { return TypeKnowledge }
 
-// KnowledgeCaseRunMeta is the metadata of a knowledge CaseRun (table gb_neo_knowledge_case_run_meta). The Verdict of the case
+// KnowledgeCaseRunMeta is the metadata of a knowledge CaseRun (table gb_neo_case_runs_meta_knowledge). The Verdict of the case
 // run is pass if Problems is empty.
 type KnowledgeCaseRunMeta struct {
 	CaseRunID CaseRunID `json:"case_run_id"`
@@ -114,7 +114,7 @@ type KnowledgeCaseRunMeta struct {
 	Steps int `json:"steps"`
 
 	// Trajectories are the ATIF trajectories of the case, in call order. Filled by getters only (table
-	// gb_neo_knowledge_case_run_trajectories).
+	// gb_neo_case_runs_meta_knowledge_trajectories).
 	Trajectories []KnowledgeTrajectory `json:"trajectories,omitempty"`
 }
 
@@ -237,7 +237,7 @@ type TrainingCaseDefMeta struct {
 // CaseType implements CaseDefMeta.
 func (TrainingCaseDefMeta) CaseType() Type { return TypeTraining }
 
-// TrainingCaseRunMeta is the metadata of a training CaseRun (table gb_neo_training_case_run_meta). The CaseRun has a Score
+// TrainingCaseRunMeta is the metadata of a training CaseRun (table gb_neo_case_runs_meta_training). The CaseRun has a Score
 // in [0, 1] and no Verdict; its Score is JudgeScore / 5.
 type TrainingCaseRunMeta struct {
 	CaseRunID CaseRunID `json:"case_run_id"`

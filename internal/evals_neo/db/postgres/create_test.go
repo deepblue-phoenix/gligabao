@@ -213,7 +213,7 @@ func TestCreate(t *testing.T) {
 	if n := count(t, d, `SELECT COUNT(*) FROM gb_neo_case_def_meta_knowledge WHERE case_def_id = $1 AND remember->0->>'text' = 'Alice works at Acme.' AND expect_edges = '[]'::jsonb`, kc.ID); n != 1 {
 		t.Errorf("knowledge case def meta: %d", n)
 	}
-	if n := count(t, d, `SELECT COUNT(*) FROM gb_neo_knowledge_case_run_meta WHERE case_run_id = $1 AND dataset_id = 7 AND answer = 'Acme'`, cr.ID); n != 1 {
+	if n := count(t, d, `SELECT COUNT(*) FROM gb_neo_case_runs_meta_knowledge WHERE case_run_id = $1 AND dataset_id = 7 AND answer = 'Acme'`, cr.ID); n != 1 {
 		t.Errorf("knowledge case run meta: %d", n)
 	}
 	if n := count(t, d, `SELECT COUNT(*) FROM gb_neo_eval_runs WHERE id = $1 AND experiment_run_id = $2 AND counts_total = 1 AND started_at IS NOT NULL AND finished_at IS NULL`, er.ID, xr.ID); n != 1 {

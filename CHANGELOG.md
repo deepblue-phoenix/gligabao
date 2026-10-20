@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.83.0] - 2026-10-22
+
+### Changed
+- **`internal/evals_neo`: one naming pattern for the per-type tables.** They are all `gb_neo_<kind>_meta_<type>` now: `gb_neo_case_def_meta_<type>` (unchanged), `gb_neo_eval_runs_meta_<type>` (was `gb_neo_eval_runs_<type>_meta`) and `gb_neo_case_runs_meta_<type>` (was `gb_neo_<type>_case_run_meta`). The knowledge trajectories table is `gb_neo_case_runs_meta_knowledge_trajectories` (was `gb_neo_knowledge_case_run_trajectories`), and the indexes follow (`idx_gb_neo_eval_runs_meta_training_model`, `idx_gb_neo_case_runs_meta_knowledge_trajectories_tid`). **Breaking:** data in the old tables is not read any more. Nothing uses these tables yet.
+
 ## [0.82.0] - 2026-10-22
 
 ### Changed

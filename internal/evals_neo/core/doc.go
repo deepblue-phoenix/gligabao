@@ -34,7 +34,8 @@
 //     by the ID of the universal row: KnowledgeCaseDefMeta and KnowledgeCaseRunMeta, TrainingCaseDefMeta and
 //     TrainingCaseRunMeta. They are reached through CaseDef.Meta and CaseRun.Meta (filled by getters). An EvalRun has the
 //     same, for the statistics of the run as a whole, which differ between the Types (KnowledgeEvalRunMeta,
-//     TrainingEvalRunMeta, through EvalRun.Meta); the EvalRun has a Type too, that of its EvalDef. A new Type adds its
+//     TrainingEvalRunMeta, through EvalRun.Meta); the EvalRun has a Type too, that of its EvalDef. The tables are named
+//     gb_neo_case_def_meta_<type>, gb_neo_case_runs_meta_<type> and gb_neo_eval_runs_meta_<type>. A new Type adds its
 //     own structs and tables; the universal ones do not change.
 //  6. Runs record the Params they were invoked with, so a run can be understood without looking at the def as it is now.
 package core

@@ -1,6 +1,6 @@
 package core
 
-// KnowledgeEvalRunMeta is the metadata of a knowledge EvalRun (table gb_neo_eval_runs_knowledge_meta): the statistics of the
+// KnowledgeEvalRunMeta is the metadata of a knowledge EvalRun (table gb_neo_eval_runs_meta_knowledge): the statistics of the
 // whole run, summed over its case runs. The counters are rewritten as the case runs finish, so a running eval run shows its
 // progress. The pass and fail of the cases are not here: they are the Counts of the EvalRun.
 type KnowledgeEvalRunMeta struct {
@@ -24,7 +24,7 @@ type KnowledgeEvalRunMeta struct {
 // EvalType implements EvalRunMeta.
 func (KnowledgeEvalRunMeta) EvalType() Type { return TypeKnowledge }
 
-// TrainingEvalRunMeta is the metadata of a training EvalRun (table gb_neo_eval_runs_training_meta): the model that was asked,
+// TrainingEvalRunMeta is the metadata of a training EvalRun (table gb_neo_eval_runs_meta_training): the model that was asked,
 // the judge, and the result of the run as a whole. The counters are rewritten after every judge batch, so a running eval run
 // shows its progress.
 //

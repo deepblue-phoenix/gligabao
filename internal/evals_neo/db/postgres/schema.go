@@ -128,7 +128,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_neo_experiment_runs_def ON gb_neo_experiment_r
 
 -- core.EvalRun: experiment_run_id is NULL when the eval was run on its own. type is that of the eval def (the composite key makes
 -- the database check it); the statistics of the run as a whole that are specific to the type are in the
--- gb_neo_eval_runs_<type>_meta table of that type, one row per eval run.
+-- gb_neo_eval_runs_meta_<type> table of that type, one row per eval run.
 CREATE TABLE IF NOT EXISTS gb_neo_eval_runs (
 	id                BIGSERIAL PRIMARY KEY,
 	def_id            BIGINT NOT NULL,
@@ -161,7 +161,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_neo_eval_runs_experiment_run ON gb_neo_eval_ru
 
 -- core.KnowledgeEvalRunMeta: the chunks, the ATIF steps, the remember and recall calls with their cost, and the checks that held
 -- and did not, over all the case runs. The pass and fail of the cases are the counts_* of the eval run.
-CREATE TABLE IF NOT EXISTS gb_neo_eval_runs_knowledge_meta (
+CREATE TABLE IF NOT EXISTS gb_neo_eval_runs_meta_knowledge (
 	eval_run_id        BIGINT PRIMARY KEY,
 	type               TEXT NOT NULL DEFAULT 'knowledge' CHECK (type = 'knowledge'),
 	chunks             BIGINT NOT NULL DEFAULT 0,
@@ -180,7 +180,7 @@ CREATE TABLE IF NOT EXISTS gb_neo_eval_runs_knowledge_meta (
 -- of the eval run and the ones that errored its counts_errored. num_answered: the ones the model answered; num_judged: the ones
 -- scored, split by the judge's score (>= 4 / 2-3 / 0-1) into num_correct, num_partial and num_incorrect; score_sum: the sum of the
 -- scores (0 to 5 each) of the judged ones. num_batches: judge batches done; judge_calls: LLM calls made (a batch may need a retry).
-CREATE TABLE IF NOT EXISTS gb_neo_eval_runs_training_meta (
+CREATE TABLE IF NOT EXISTS gb_neo_eval_runs_meta_training (
 	eval_run_id         BIGINT PRIMARY KEY,
 	type                TEXT NOT NULL DEFAULT 'training' CHECK (type = 'training'),
 	trained_model_id    BIGINT NOT NULL,
@@ -200,11 +200,11 @@ CREATE TABLE IF NOT EXISTS gb_neo_eval_runs_training_meta (
 	CHECK (score_sum <= 5 * num_judged),
 	FOREIGN KEY (eval_run_id, type) REFERENCES gb_neo_eval_runs(id, type) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_gb_neo_eval_runs_training_meta_model ON gb_neo_eval_runs_training_meta(trained_model_id);
+CREATE INDEX IF NOT EXISTS idx_gb_neo_eval_runs_meta_training_model ON gb_neo_eval_runs_meta_training(trained_model_id);
 
 -- core.CaseRun: what every type of eval shares of a case run. verdict (core.Verdict) is '' unless the case run completed and
 -- has one; score is in [0, 1], NULL if the case has none. type is that of the case def and of the eval run (the composite keys make the
--- database check it); what is specific to the type is in the *_case_run_meta table of that type, one row per case run.
+-- database check it); what is specific to the type is in the gb_neo_case_runs_meta_<type> table of that type, one row per case run.
 CREATE TABLE IF NOT EXISTS gb_neo_case_runs (
 	id          BIGSERIAL PRIMARY KEY,
 	def_id      BIGINT NOT NULL,
@@ -233,7 +233,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_neo_case_runs_def ON gb_neo_case_runs(def_id);
 -- passed_checks: JSON arrays of strings. dataset_id is the dataset the case ran in (the graph it built), NULL if it was never
 -- created; it is not a foreign key, because the dataset tables are not part of this schema. steps: ATIF steps over the
 -- trajectories of the case.
-CREATE TABLE IF NOT EXISTS gb_neo_knowledge_case_run_meta (
+CREATE TABLE IF NOT EXISTS gb_neo_case_runs_meta_knowledge (
 	case_run_id   BIGINT PRIMARY KEY,
 	type          TEXT NOT NULL DEFAULT 'knowledge' CHECK (type = 'knowledge'),
 	input         JSONB,
@@ -249,9 +249,9 @@ CREATE TABLE IF NOT EXISTS gb_neo_knowledge_case_run_meta (
 -- is kept: trajectory_id is the ATIF trajectory_id, path the JSON file it was stored in ('' if none). kind: 'remember' or
 -- 'recall'. artifact_ids: JSON array of the IDs of the artifacts the call is about (remember: its input; recall: the sources
 -- of the evidence).
-CREATE TABLE IF NOT EXISTS gb_neo_knowledge_case_run_trajectories (
+CREATE TABLE IF NOT EXISTS gb_neo_case_runs_meta_knowledge_trajectories (
 	id            BIGSERIAL PRIMARY KEY,
-	case_run_id   BIGINT NOT NULL REFERENCES gb_neo_knowledge_case_run_meta(case_run_id) ON DELETE CASCADE,
+	case_run_id   BIGINT NOT NULL REFERENCES gb_neo_case_runs_meta_knowledge(case_run_id) ON DELETE CASCADE,
 	seq           BIGINT NOT NULL CHECK (seq >= 0),
 	kind          TEXT NOT NULL CHECK (kind IN ('remember', 'recall')),
 	trajectory_id TEXT NOT NULL,
@@ -263,12 +263,12 @@ CREATE TABLE IF NOT EXISTS gb_neo_knowledge_case_run_trajectories (
 	created_at    TIMESTAMPTZ NOT NULL,
 	UNIQUE (case_run_id, seq)
 );
-CREATE INDEX IF NOT EXISTS idx_gb_neo_knowledge_case_run_trajectories_tid ON gb_neo_knowledge_case_run_trajectories(trajectory_id);
+CREATE INDEX IF NOT EXISTS idx_gb_neo_case_runs_meta_knowledge_trajectories_tid ON gb_neo_case_runs_meta_knowledge_trajectories(trajectory_id);
 
 -- core.TrainingCaseRunMeta: instruction, input, reference are the question and the expected answer as they were when the case
 -- ran, response is the model's ('' if it failed). judge_score is the judge's, 0 to 5 (NULL unless judged; the case run's score is
 -- judge_score / 5), judge_reason its explanation; batch is the judge batch, from 1 (0 if not judged).
-CREATE TABLE IF NOT EXISTS gb_neo_training_case_run_meta (
+CREATE TABLE IF NOT EXISTS gb_neo_case_runs_meta_training (
 	case_run_id   BIGINT PRIMARY KEY,
 	type          TEXT NOT NULL DEFAULT 'training' CHECK (type = 'training'),
 	instruction   TEXT NOT NULL,
