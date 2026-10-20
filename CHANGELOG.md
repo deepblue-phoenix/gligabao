@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.77.0] - 2026-10-22
+
+### Added
+- **`internal/training_audits`: new package for the training data audits of trained models, detached from the evals.** Built like `internal/evals_neo` (same vocabulary, rules and layout) but sharing no types, tables or code with it or with `internal/evals`. `core` has the data model: `AuditRun` (one audit of a trained model over one dataset, with its `AuditStats` and `Counts`) and `AuditCaseRun` (one dataset example, asked and judged; `Status` is a lifecycle, the judge's `JudgeScore` is the outcome). `db/sqlite` and `db/postgres` have the schema (tables `gb_neo_training_audit_runs` and `gb_neo_training_audit_case_runs`, next to the old `gb_training_audit_*` ones) and `CreateAuditRun` and `CreateAuditCaseRun`. The dataset loader of `internal/training/audits` is ported as `LoadDataset` (with its own `Example` and `ParseExamples`). Only creation for now; nothing uses the package yet, and the old audits keep working unchanged.
+
 ## [0.76.0] - 2026-10-22
 
 ### Added
