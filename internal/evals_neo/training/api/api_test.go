@@ -251,17 +251,17 @@ func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 		t.Fatalf("start: %d %s", call.code, call.body)
 	}
 	started := call.eval(t)
-	if started.Status != training.RunRunning || started.Kind != "eval" || started.TrainedModelID != mid || started.Eval != theEval || started.NumExamples != 5 ||
+	if started.Status != core.StatusRunning || started.Kind != "eval" || started.TrainedModelID != mid || started.Eval != theEval || started.Counts.Total != 5 ||
 		!strings.Contains(string(started.Params), `"batch_size":2`) {
 		t.Fatalf("started: %+v", started)
 	}
 	m.Wait()
 
 	ev, cases := getEval(t, m, started.ID)
-	if ev.Status != training.RunCompleted || ev.FinishedAt == nil || ev.Error != "" {
+	if ev.Status != core.StatusCompleted || ev.FinishedAt == nil || ev.Error != "" {
 		t.Fatalf("finished: %+v", ev)
 	}
-	if ev.NumAnswered != 5 || ev.NumJudged != 5 || ev.NumErrored != 0 || ev.NumCorrect != 4 || ev.NumIncorrect != 1 || ev.ScoreSum != 21 || ev.NumBatches != 3 {
+	if ev.NumAnswered != 5 || ev.NumJudged != 5 || ev.Counts.Errored != 0 || ev.NumCorrect != 4 || ev.NumIncorrect != 1 || ev.ScoreSum != 21 || ev.NumBatches != 3 {
 		t.Fatalf("counters: %+v", ev)
 	}
 	// 5 questions in batches of 2: three judge calls (2, 2, 1), not five.
@@ -298,14 +298,14 @@ func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 
 	// Named cases only; the model's evals are listed, newest first, and run again.
 	named := startEval(m, fmt.Sprint(mid), `{"eval": "`+theEval+`", "cases": ["`+cases0[2].Name+`", "`+cases0[1].Name+`"]}`)
-	if named.code != http.StatusAccepted || named.eval(t).NumExamples != 2 {
+	if named.code != http.StatusAccepted || named.eval(t).Counts.Total != 2 {
 		t.Fatalf("named cases: %d %s", named.code, named.body)
 	}
 	m.Wait()
 	if _, cs := getEval(t, m, named.eval(t).ID); len(cs) != 2 || cs[0].Name != cases0[1].Name || cs[1].Name != cases0[2].Name {
 		t.Fatalf("named cases ran: %+v", cs)
 	}
-	if c := startEval(m, fmt.Sprint(mid), `{"limit": 3}`); c.code != http.StatusAccepted || c.eval(t).NumExamples != 3 {
+	if c := startEval(m, fmt.Sprint(mid), `{"limit": 3}`); c.code != http.StatusAccepted || c.eval(t).Counts.Total != 3 {
 		t.Fatalf("limited eval: %d %s", c.code, c.body)
 	}
 	m.Wait()
@@ -316,7 +316,7 @@ func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 	var list struct {
 		Evals []training.RunView
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || rec.Code != 200 || len(list.Evals) != 3 || list.Evals[0].NumExamples != 3 || list.Evals[0].Status != "completed" {
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || rec.Code != 200 || len(list.Evals) != 3 || list.Evals[0].Counts.Total != 3 || list.Evals[0].Status != core.StatusCompleted {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body)
 	}
 }
@@ -403,7 +403,7 @@ func TestEvalCancelAndConflict(t *testing.T) {
 	}
 	m.Wait()
 	ev, cases := getEval(t, m, id)
-	if ev.Status != training.RunCancelled || ev.FinishedAt == nil || len(cases) != 0 {
+	if ev.Status != core.StatusCancelled || ev.FinishedAt == nil || len(cases) != 0 {
 		t.Fatalf("cancelled: %+v, %d cases", ev, len(cases))
 	}
 	// A finished eval cannot be cancelled again, and the model can be evaluated again.
@@ -429,8 +429,8 @@ func TestEvalFailsWhenTheModelDoesNotAnswer(t *testing.T) {
 	c := startEval(m, fmt.Sprint(mid), `{"batch_size": 2}`)
 	m.Wait()
 	ev, cases := getEval(t, m, c.eval(t).ID)
-	if ev.Status != training.RunErrored || !strings.Contains(ev.Error, "weights are gone") || ev.NumErrored != 4 || ev.NumJudged != 0 || len(cases) != 4 ||
-		cases[0].Status != training.ViewErrored || !strings.Contains(cases[0].Error, "weights are gone") {
+	if ev.Status != core.StatusErrored || !strings.Contains(ev.Error, "weights are gone") || ev.Counts.Errored != 4 || ev.NumJudged != 0 || len(cases) != 4 ||
+		cases[0].Status != core.StatusErrored || !strings.Contains(cases[0].Error, "weights are gone") {
 		t.Fatalf("%+v cases %+v", ev, cases)
 	}
 }
@@ -533,13 +533,13 @@ func testEvalLiveFeed(t *testing.T, d *sql.DB) {
 		switch e.Type {
 		case "answer":
 			it := e.Cases[0]
-			if it.Status != "answered" || it.Score != nil || it.Idx != answers || it.Name != cases0[answers].Name {
+			if it.Status != core.StatusRunning || it.Score != nil || it.Idx != answers || it.Name != cases0[answers].Name {
 				t.Fatalf("answer event: %+v", it)
 			}
 			answers++
 			got = append(got, fmt.Sprintf("%d=%s", it.Idx, it.Response))
 		case "batch":
-			if e.Run == nil || e.Run.NumExamples != 3 || len(e.Cases) == 0 || e.Cases[0].Status != "judged" || e.Cases[0].Score == nil {
+			if e.Run == nil || e.Run.Counts.Total != 3 || len(e.Cases) == 0 || e.Cases[0].Status != core.StatusCompleted || e.Cases[0].Verdict == "" || e.Cases[0].Score == nil {
 				t.Fatalf("batch event: %+v", e)
 			}
 			got = append(got, fmt.Sprintf("batch%d", len(e.Cases)))
@@ -552,7 +552,7 @@ func testEvalLiveFeed(t *testing.T, d *sql.DB) {
 	if want := fmt.Sprintf("[0=%s 1=wrong batch2 2=%s batch1]", cases0[0].Output, cases0[2].Output); fmt.Sprint(got) != want {
 		t.Fatalf("events: %v", got)
 	}
-	if last.Run == nil || last.Run.Status != "completed" || last.Run.NumJudged != 3 {
+	if last.Run == nil || last.Run.Status != core.StatusCompleted || last.Run.NumJudged != 3 {
 		t.Fatalf("end event: %+v", last)
 	}
 	m.Wait()
@@ -564,7 +564,7 @@ func testEvalLiveFeed(t *testing.T, d *sql.DB) {
 	}
 	defer resp2.Body.Close()
 	late := sseEvents(resp2.Body)
-	if e := <-late; e.Type != "snapshot" || len(e.Cases) != 3 || e.Cases[1].Status != "judged" || e.Run.Status != "completed" {
+	if e := <-late; e.Type != "snapshot" || len(e.Cases) != 3 || e.Cases[1].Status != core.StatusCompleted || e.Run.Status != core.StatusCompleted {
 		t.Fatalf("late snapshot: %+v", e)
 	}
 	if e := <-late; e.Type != "end" {
@@ -629,8 +629,8 @@ func testEvalExperiments(t *testing.T, d *sql.DB) {
 		t.Fatalf("experiment: %d %s", rec.Code, rec.Body)
 	}
 	r := got.Runs[0]
-	if r.ID != first.eval(t).ID || r.Status != training.RunCompleted || r.Model.ID != mid || r.Model.FinalLoss == nil ||
-		r.MeanScore == nil || *r.MeanScore != 4 || r.CorrectRate == nil || *r.CorrectRate != 0.75 || got.Runs[1].Eval.NumExamples != 2 {
+	if r.ID != first.eval(t).ID || r.Status != core.StatusCompleted || r.Model.ID != mid || r.Model.FinalLoss == nil ||
+		r.MeanScore == nil || *r.MeanScore != 4 || r.CorrectRate == nil || *r.CorrectRate != 0.75 || got.Runs[1].Eval.Counts.Total != 2 {
 		t.Fatalf("run: %+v", r)
 	}
 

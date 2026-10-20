@@ -4,28 +4,30 @@
 // it is in is judged (the judge grades a batch of questions per call). One sees how the model behaves from the first question on.
 // Closing the dialog leaves the run going.
 
-// The statuses of the runs and cases of a trained model, the same for evals and audits. They are the words of
-// internal/db/relational/model/trained_model_status.go (TrainedModelRun*, TrainedModelCase*): change them there and here. (The
-// audits' own words are turned into these by auditRun and auditCase below.)
-export const RunStatus = { running: "running", completed: "completed", error: "error", cancelled: "cancelled" } as const;
-export type RunStatus = (typeof RunStatus)[keyof typeof RunStatus];
-export const CaseStatus = { judged: "judged", error: "error", answered: "answered" } as const; // answered: only in the live feed
-export type CaseStatus = (typeof CaseStatus)[keyof typeof CaseStatus];
+// The statuses and verdicts of the runs and cases of a trained model are those of the model of internal/evals_neo/core (and of
+// internal/training_audits/core, which has the same statuses), shown as they are: a run or a case is pending, running, completed,
+// errored or cancelled (did it run to the end), and a completed eval case has the verdict pass or fail (the judge's score is at least
+// core.TrainingPassScore or below). In the live feed a case the model answered and the judge has not scored yet is running. An audit
+// has no verdicts, only scores.
+export type Status = "pending" | "running" | "completed" | "errored" | "cancelled";
+export type Verdict = "pass" | "fail";
+// core.Counts: every case is in exactly one of pending, running, completed, errored, cancelled; passed and failed split the completed
+// ones that have a verdict (an audit's counts have neither).
+export interface Counts { total: number; pending: number; running: number; completed: number; errored: number; cancelled: number; passed?: number; failed?: number }
 
-// A run of a trained model, of either kind (evalsdb.TrainedModelRun). An eval run has `eval` (the eval whose cases were asked); an
+// A run of a trained model, of either kind (training.RunView). An eval run has `eval` (the eval whose cases were asked); an
 // audit run has `dataset` and `dataset_sha256` (the training dataset whose examples were asked).
 export interface TrainedModelRun {
-  id: number; trained_model_id: number; kind: "eval" | "audit"; status: RunStatus; eval?: string; dataset?: string; dataset_sha256?: string;
+  id: number; trained_model_id: number; kind: "eval" | "audit"; status: Status; eval?: string; dataset?: string; dataset_sha256?: string;
   params: { batch_size?: number; max_tokens?: number; temperature?: number; limit?: number };
-  judge_model: string; num_examples: number; num_answered: number; num_judged: number; num_errored: number; num_correct: number;
+  judge_model: string; counts: Counts; num_answered: number; num_judged: number; num_correct: number;
   num_partial: number; num_incorrect: number; score_sum: number; num_batches: number; judge_calls: number; judge_input_tokens: number;
   judge_output_tokens: number; judge_cost_usd: number; error: string; created_at: string; finished_at: string | null;
 }
-// One case of a run (evalsdb.TrainedModelCase); an eval's cases have a `name`, an audit's (dataset examples) have none.
+// One case of a run (training.CaseView); an eval's cases have a `name`, an audit's (dataset examples) have none.
 export interface TrainedModelCase {
   idx: number; name?: string; batch: number; instruction: string; input: string; reference: string; response: string;
-  // CaseStatus.answered: the model answered and the judge has not scored it yet (only in the live feed)
-  status: CaseStatus;
+  status: Status; verdict?: Verdict;
   error: string; score: number | null; reason: string; input_tokens: number; output_tokens: number; duration_ms: number;
 }
 // The two kinds of run of a trained model: a training data audit (URL segment "audits") and an eval ("evals"). The runs of both
@@ -33,30 +35,23 @@ export interface TrainedModelCase {
 export type RunKind = "audits" | "evals";
 interface FeedEvent { type: "snapshot" | "answer" | "batch" | "end"; run?: TrainedModelRun; cases?: TrainedModelCase[] }
 
-// The audits are served by internal/training_audits, whose JSON differs from that of the evals' (internal/evals): the run has its
-// counts in `counts` and its cost in `cost_usd`, "errored" for a failed status, and its case runs are `case_runs` with
-// `judge_score`/`judge_reason` and the statuses completed/errored/running. These two functions turn them into the shapes above, so
-// the rest of the UI treats both kinds alike. The audit run is core.AuditRun, its case run core.AuditCaseRun, its event
+// The audits are served by internal/training_audits, whose JSON differs a little from that of the evals': the run has its cost in
+// `cost_usd` and no `kind`, and its case runs are `case_runs` with `judge_score`/`judge_reason`. These two functions turn them into
+// the shapes above (the statuses are already the same), so the rest of the UI treats both kinds alike. The audit run is core.AuditRun, its case run core.AuditCaseRun, its event
 // training_audits.Event (all in internal/training_audits).
-interface AuditRunJSON extends Omit<TrainedModelRun, "kind" | "status" | "num_examples" | "num_errored" | "judge_cost_usd" | "dataset_sha256"> {
-  status: string; dataset_sha256?: string; cost_usd: number; counts: { total: number; errored: number }; case_runs?: AuditCaseRunJSON[];
+interface AuditRunJSON extends Omit<TrainedModelRun, "kind" | "judge_cost_usd" | "dataset_sha256"> {
+  dataset_sha256?: string; cost_usd: number; case_runs?: AuditCaseRunJSON[];
 }
-interface AuditCaseRunJSON extends Omit<TrainedModelCase, "status" | "score" | "reason" | "name"> {
-  status: string; judge_score?: number | null; judge_reason?: string;
+interface AuditCaseRunJSON extends Omit<TrainedModelCase, "score" | "reason" | "name" | "verdict"> {
+  judge_score?: number | null; judge_reason?: string;
 }
 export function auditRun(r: AuditRunJSON): TrainedModelRun {
-  const { counts, cost_usd, case_runs: _cases, status, ...rest } = r;
-  return {
-    ...rest, kind: "audit", params: r.params ?? {}, status: status === "errored" ? RunStatus.error : (status as RunStatus),
-    num_examples: counts.total, num_errored: counts.errored, judge_cost_usd: cost_usd,
-  };
+  const { cost_usd, case_runs: _cases, ...rest } = r;
+  return { ...rest, kind: "audit", params: r.params ?? {}, judge_cost_usd: cost_usd };
 }
 export function auditCase(c: AuditCaseRunJSON): TrainedModelCase {
-  const { judge_score, judge_reason, status, ...rest } = c;
-  // errored: the model or the judge failed; completed: answered and scored; running: answered, awaiting the judge; pending and
-  // cancelled (the batch a cancel interrupted) were not judged either, which the dialog shows as "not judged" once the run ended.
-  const st = status === "errored" ? CaseStatus.error : status === "completed" ? CaseStatus.judged : CaseStatus.answered;
-  return { ...rest, status: st, score: judge_score ?? null, reason: judge_reason ?? "" };
+  const { judge_score, judge_reason, ...rest } = c;
+  return { ...rest, score: judge_score ?? null, reason: judge_reason ?? "" };
 }
 // The run and the cases of the feed event (data is the parsed JSON of the event) of a run of that kind.
 function feedEvent(kind: RunKind, data: Record<string, unknown>): FeedEvent {
@@ -79,10 +74,10 @@ function node<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text = ""
   return e;
 }
 
-// How an case is doing: pending (answered, awaiting the judge), good (4-5), mid (2-3), bad (0-1) or error.
-type Verdict = "pending" | "good" | "mid" | "bad" | "error";
-const verdictOf = (i: TrainedModelCase): Verdict =>
-  i.status === CaseStatus.error ? "error" : i.status === CaseStatus.answered || i.score === null ? "pending" : i.score >= 4 ? "good" : i.score >= 2 ? "mid" : "bad";
+// How a case looks: its status while it is not completed (pending, running, errored, cancelled), and, once it is, the band of the
+// judge's score: good (4-5, the correct ones), mid (2-3, partial) or bad (0-1, incorrect).
+const lookOf = (i: TrainedModelCase): string =>
+  i.status !== "completed" ? i.status : i.score === null ? "done" : i.score >= 4 ? "good" : i.score >= 2 ? "mid" : "bad";
 
 // What the open dialog follows.
 let stream: EventSource | undefined;
@@ -117,9 +112,15 @@ function reset(): void {
   el<HTMLProgressElement>("eval-live-progress").value = 0;
 }
 
-function statusBadge(status: string): HTMLElement {
-  const cls = status === RunStatus.completed ? "badge-ok" : status === RunStatus.error ? "badge-error" : status === RunStatus.cancelled ? "badge-unknown" : "badge-active";
+// The badge of a status as it is: completed is ok, errored an error, cancelled is muted, running and pending are active.
+export function statusBadge(status: string): HTMLElement {
+  const cls = status === "completed" ? "badge-ok" : status === "errored" ? "badge-error" : status === "cancelled" ? "badge-unknown" : "badge-active";
   return node("span", `badge ${cls}`, status);
+}
+
+// The badge of a verdict (pass or fail).
+export function verdictBadge(verdict: Verdict): HTMLElement {
+  return node("span", `badge ${verdict === "pass" ? "badge-ok" : "badge-error"}`, verdict);
 }
 
 const fmtSecs = (ms: number): string => `${(ms / 1000).toFixed(1)}s`;
@@ -131,34 +132,40 @@ function textBlock(label: string, text: string, cls = ""): HTMLElement {
 }
 
 function buildCard(i: TrainedModelCase): HTMLElement {
-  const v = verdictOf(i);
+  const v = lookOf(i);
   const card = node("article", `ev-card ev-${v}`);
   card.dataset.idx = String(i.idx);
   const head = node("div", "ev-head");
   head.append(node("span", "ev-num", `#${i.idx + 1}`));
   if (i.name) head.append(node("span", "ev-name", i.name));
-  if (v === "pending") head.append(node("span", ended ? "badge badge-unknown" : "badge badge-active", ended ? "not judged" : "answered · awaiting judge"));
-  else if (v === "error") head.append(node("span", "badge badge-error", "error"));
-  else head.append(node("span", `ev-score score-${v}`, `${i.score} / ${MAX_SCORE}`));
-  const stats = i.status === CaseStatus.error && !i.response ? "" : `${fmtSecs(i.duration_ms)} · ${i.input_tokens} in / ${i.output_tokens} out tokens`;
+  if (i.status === "completed") {
+    if (i.score !== null) head.append(node("span", `ev-score score-${v}`, `${i.score} / ${MAX_SCORE}`));
+    if (i.verdict) head.append(verdictBadge(i.verdict));
+  } else {
+    // running is a case the model answered whose batch the judge has not scored yet; once the run is over it never will be
+    const badge = statusBadge(i.status);
+    if (i.status === "running") badge.textContent = ended ? "running · never judged" : "running · awaiting judge";
+    head.append(badge);
+  }
+  const stats = i.status === "errored" && !i.response ? "" : `${fmtSecs(i.duration_ms)} · ${i.input_tokens} in / ${i.output_tokens} out tokens`;
   if (stats) head.append(node("span", "muted", stats));
   card.append(head);
   card.append(textBlock("Question", i.input ? `${i.instruction}\n\n${i.input}` : i.instruction, "ev-question"));
   const cols = node("div", "ev-cols");
-  cols.append(textBlock(watchingKind === "evals" ? "Expected answer" : "Dataset answer", i.reference), textBlock("Model answer", i.status === CaseStatus.error && !i.response ? "(no answer)" : i.response === "" ? "(empty)" : i.response, "ev-model"));
+  cols.append(textBlock(watchingKind === "evals" ? "Expected answer" : "Dataset answer", i.reference), textBlock("Model answer", i.status === "errored" && !i.response ? "(no answer)" : i.response === "" ? "(empty)" : i.response, "ev-model"));
   card.append(cols);
-  if (i.status === CaseStatus.error) card.append(node("div", "error ev-reason", i.error));
+  if (i.status === "errored") card.append(node("div", "error ev-reason", i.error));
   else if (i.reason) card.append(node("div", "muted ev-reason", `Judge: ${i.reason}`));
   return card;
 }
 
-// Adds or updates cases. A judged or errored case is never turned back into an answered one (a reconnect's snapshot can race the feed).
+// Adds or updates cases. A judged or errored case is never turned back into a running one (a reconnect's snapshot can race the feed).
 function apply(list: TrainedModelCase[]): void {
   const feed = el("eval-live-feed");
   const follow = el<HTMLInputElement>("eval-live-follow").checked;
   for (const i of list) {
     const old = cases.get(i.idx);
-    if (old && old.status !== CaseStatus.answered && i.status === CaseStatus.answered) continue;
+    if (old && old.status !== "running" && i.status === "running") continue;
     cases.set(i.idx, i);
     const card = buildCard(i);
     const prev = cards.get(i.idx);
@@ -170,7 +177,7 @@ function apply(list: TrainedModelCase[]): void {
     }
     cards.set(i.idx, card);
     const sq = squares[i.idx];
-    if (sq) sq.className = `ev-sq ev-sq-${verdictOf(i)}`;
+    if (sq) sq.className = `ev-sq ev-sq-${lookOf(i)}`;
   }
   if (follow) feed.parentElement!.scrollTop = feed.parentElement!.scrollHeight;
   queueSummary();
@@ -183,12 +190,12 @@ function queueSummary(): void {
 }
 
 function drawSummary(): void {
-  const total = run?.num_examples ?? cases.size;
+  const total = run?.counts.total ?? cases.size;
   let judged = 0, errored = 0, good = 0, mid = 0, bad = 0, scoreSum = 0, ms = 0, answered = 0;
   for (const i of cases.values()) {
-    if (i.status === CaseStatus.error) errored++;
+    if (i.status === "errored") errored++;
     else { answered++; ms += i.duration_ms; }
-    if (i.status !== CaseStatus.judged || i.score === null) continue;
+    if (i.status !== "completed" || i.score === null) continue;
     judged++;
     scoreSum += i.score;
     if (i.score >= 4) good++; else if (i.score >= 2) mid++; else bad++;
@@ -207,7 +214,7 @@ function drawSummary(): void {
   if (run) {
     const badge = el("eval-live-state");
     badge.replaceChildren(statusBadge(run.status));
-    el<HTMLButtonElement>("eval-live-cancel").hidden = run.status !== RunStatus.running;
+    el<HTMLButtonElement>("eval-live-cancel").hidden = run.status !== "running";
     el("eval-live-error").textContent = run.error ? `Error: ${run.error}` : "";
     const started = new Date(run.created_at).getTime();
     const until = run.finished_at ? new Date(run.finished_at).getTime() : Date.now();
@@ -217,13 +224,13 @@ function drawSummary(): void {
 }
 
 function setRun(r: TrainedModelRun): void {
-  const first = run === undefined || run.num_examples !== r.num_examples;
+  const first = run === undefined || run.counts.total !== r.counts.total;
   run = r;
   if (first) { // one square per question, to see the whole run at a glance
     const strip = el("eval-live-strip");
     strip.replaceChildren();
     squares = [];
-    for (let k = 0; k < r.num_examples; k++) {
+    for (let k = 0; k < r.counts.total; k++) {
       const sq = node("button", "ev-sq ev-sq-todo");
       sq.type = "button";
       sq.title = `Question ${k + 1}`;
@@ -234,7 +241,7 @@ function setRun(r: TrainedModelRun): void {
       squares.push(sq);
       strip.append(sq);
     }
-    for (const i of cases.values()) squares[i.idx]?.classList.replace("ev-sq-todo", `ev-sq-${verdictOf(i)}`);
+    for (const i of cases.values()) squares[i.idx]?.classList.replace("ev-sq-todo", `ev-sq-${lookOf(i)}`);
   }
   queueSummary();
 }
@@ -276,12 +283,12 @@ export function watchEval(kind: RunKind, id: number, title: string, cb?: () => v
     if (e.run && e.run.status) setRun(e.run);
     // answers the judge never scored (a cancelled or errored eval): redraw them as "not judged"
     for (const i of cases.values()) {
-      if (i.status !== CaseStatus.answered) continue;
+      if (i.status !== "running") continue;
       const card = buildCard(i);
       cards.get(i.idx)?.replaceWith(card);
       cards.set(i.idx, card);
     }
-    conn.textContent = e.run?.status === RunStatus.completed ? "Finished." : `Ended (${e.run?.status ?? "unknown"}).`;
+    conn.textContent = e.run?.status === "completed" ? "Finished." : `Ended (${e.run?.status ?? "unknown"}).`;
     stop();
     queueSummary();
     onChange?.();

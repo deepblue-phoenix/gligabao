@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.87.0] - 2026-10-23
+
+### Changed
+- **Admin UI: the evals views show neo's status and verdict as they are**, not statuses derived from them (`passed`/`failed`/`error`). **Breaking (the JSON of `/v1/gb/admin/api/evals`):** a run and a case run have `status` (`pending`, `running`, `completed`, `errored`, `cancelled`), a case run also `verdict` (`pass`, `fail`, absent if none), `score` and `error`, and a run has `error` and `counts` (`core.Counts`) in place of `total_cases`, `passed_cases`, `failed_cases`, `error_cases` and `judged_cases`. The overview has `totals.counts` in place of `executions`, `passed`, `failed`, `errors` and `judged`, and an experiment has `runs_by_status` in place of `runs_passed` and `runs_failed`. The tables show a status badge and (for a case) a verdict badge, the counts in neo's words (`3 pass · 1 fail · 1 errored of 5`), and a case's detail has its status, verdict and score. The history of a case plots its verdict (or its status if it has no verdict). 
+- **Admin UI and training API: the training views use neo's status and verdict too.** **Breaking (the JSON of the evals under `/v1/gb/training`):** a run's `status` is `pending`, `running`, `completed`, `errored` or `cancelled` (was `error` for errored), and the run has `counts` (`core.Counts`) in place of `num_examples` and `num_errored`; a case's `status` is `completed`, `errored` or (live feed only, an answer the judge has not scored yet) `running` (was `judged`, `error`, `answered`), and a completed case has `verdict` (`pass` if the score is at least `core.TrainingPassScore`, else `fail`). `training.RunRunning` and the other `Run*`/`View*` status constants are gone: the views use `core.Status`. The experiment runs' `status` is the same. The live view and the lists of evals and audits in the models dialog show the status badge, the verdict badge and the score as they come (an audit has no verdict, only a score); the audits' JSON already had these statuses, so the UI no longer converts them.
+
 ## [0.86.0] - 2026-10-23
 
 ### Changed

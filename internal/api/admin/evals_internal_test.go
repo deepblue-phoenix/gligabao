@@ -21,7 +21,7 @@ func TestHistoryPoints(t *testing.T) {
 		{ExperimentRunID: 2, CaseRun: done(core.VerdictPass, nil)},
 	}
 	got := historyPoints(results, runs)
-	if len(got) != 2 || got[0].RunID != 1 || !got[0].RunStartedAt.Equal(t0) || got[0].Steps != 3 || got[0].Status != "failed" || got[1].Status != "passed" || got[1].RunID != 2 ||
+	if len(got) != 2 || got[0].RunID != 1 || !got[0].RunStartedAt.Equal(t0) || got[0].Steps != 3 || got[0].Status != core.StatusCompleted || got[0].Verdict != core.VerdictFail || got[1].Verdict != core.VerdictPass || got[1].RunID != 2 ||
 		!got[1].RunStartedAt.Equal(t0.Add(time.Hour)) {
 		t.Fatalf("points: %+v", got)
 	}

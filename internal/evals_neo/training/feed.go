@@ -15,7 +15,7 @@ const feedBuffer = 1024
 const (
 	// EventSnapshot: the run and all its cases so far (stored ones, and answered ones awaiting the judge). First event.
 	EventSnapshot = "snapshot"
-	// EventAnswer: Cases has one case the model just answered (ViewAnswered, or ViewErrored if the model failed).
+	// EventAnswer: Cases has one case the model just answered (running: awaiting the judge; or errored if the model failed).
 	EventAnswer = "answer"
 	// EventBatch: a batch was judged; Cases are its final cases and Run the progress after it.
 	EventBatch = "batch"

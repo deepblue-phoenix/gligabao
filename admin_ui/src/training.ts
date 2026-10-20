@@ -3,7 +3,7 @@
 // server as SSE (../training/events), which forwards what the sidecar reports; d3 is loaded as a global by index.html.
 
 import { alertDialog, confirmDialog } from "./dialogs.js";
-import { CaseStatus, RunStatus, auditCase, auditRun, initEvalLive, watchEval, type TrainedModelCase, type TrainedModelRun } from "./eval_live.js";
+import { auditCase, auditRun, initEvalLive, statusBadge as caseStatusBadge, verdictBadge, watchEval, type TrainedModelCase, type TrainedModelRun } from "./eval_live.js";
 import { initActionModal, showActionLog, startAction, type ActionState } from "./actions.js";
 
 declare const d3: typeof import("d3");
@@ -570,7 +570,7 @@ const KINDS: RunKind[] = [AUDIT, EVAL];
 
 // What a run asked: its eval (an eval run) or its training dataset (an audit run).
 const runSource = (e: TrainedModelRun): string => e.eval ?? e.dataset ?? "";
-const runRunning = (e: TrainedModelRun): boolean => e.status === RunStatus.running;
+const runRunning = (e: TrainedModelRun): boolean => e.status === "running";
 const runMean = (e: TrainedModelRun): number | null => (e.num_judged > 0 ? e.score_sum / e.num_judged : null);
 
 // Starts a run of kind k on model m (the options the server understands: limit, batch_size, ...) and opens its dialog to follow it.
@@ -588,7 +588,7 @@ async function startRun(k: RunKind, m: TrainedModel, opts: { limit?: number; bat
     k.open.add(started.id);
     if (k.model !== m.id) { if (k === AUDIT) openAudit(m.id); else selectModel(m.id); }
     else await loadRuns(k, m.id);
-    say(`${capital(k.noun)} #${started.id} started: ${started.num_examples} questions.`, "muted");
+    say(`${capital(k.noun)} #${started.id} started: ${started.counts.total} questions.`, "muted");
     openRunLive(k, started, m); // watch it run
   } catch (err) {
     say(`Could not start the ${k.noun} of model #${m.id}: ${errText(err)}`, "error");
@@ -712,12 +712,6 @@ async function loadRuns(k: RunKind, modelID: number): Promise<void> {
   }
 }
 
-// Evals and audits end "completed" (the same statuses).
-function evalBadge(status: string): HTMLElement {
-  const cls = status === RunStatus.completed ? "badge-ok" : status === RunStatus.error ? "badge-error" : status === RunStatus.cancelled ? "badge-unknown" : "badge-active";
-  return node("span", `badge ${cls}`, status);
-}
-
 function scoreClass(score: number | null): string {
   return score === null ? "score-none" : score >= 4 ? "score-good" : score >= 2 ? "score-mid" : "score-bad";
 }
@@ -729,7 +723,7 @@ function renderRuns(k: RunKind): void {
   for (const e of k.runs) {
     const item = node("article", "infer-item eval-card");
     const head = node("div", "infer-head");
-    head.append(evalBadge(e.status), node("span", "muted", `#${e.id} · ${fmtTime(e.created_at)} UTC`),
+    head.append(caseStatusBadge(e.status), node("span", "muted", `#${e.id} · ${fmtTime(e.created_at)} UTC`),
       node("span", "muted", `${runSource(e)} · batches of ${e.params.batch_size ?? "?"}${e.params.limit ? ` · first ${e.params.limit} questions` : ""}`));
     if (m && m.dataset_sha256 && e.dataset_sha256 && m.dataset_sha256 !== e.dataset_sha256) {
       const warn = node("span", "badge badge-unknown", "dataset changed since training");
@@ -749,12 +743,16 @@ function renderRuns(k: RunKind): void {
     head.append(watch);
     item.append(head);
 
-    const done = e.num_judged + e.num_errored;
+    const c = e.counts;
+    const done = c.completed + c.errored + c.cancelled;
     const bar = node("progress");
-    bar.max = Math.max(e.num_examples, 1);
+    bar.max = Math.max(c.total, 1);
     bar.value = done;
     const mean = runMean(e);
-    const parts = [`${done} / ${e.num_examples} questions${e.num_errored ? ` (${e.num_errored} errored)` : ""}`];
+    const parts = [`${done} / ${c.total} questions`];
+    for (const [n, word] of [[c.passed ?? 0, "pass"], [c.failed ?? 0, "fail"], [c.errored, "errored"], [c.cancelled, "cancelled"], [c.pending, "pending"]] as const) {
+      if (n > 0) parts.push(`${n} ${word}`);
+    }
     if (mean !== null) {
       parts.push(`mean score ${mean.toFixed(2)} / ${MAX_SCORE}`, `${Math.round((100 * e.num_correct) / e.num_judged)}% correct`,
         `${e.num_correct} correct · ${e.num_partial} partial · ${e.num_incorrect} incorrect`);
@@ -785,11 +783,11 @@ function renderRuns(k: RunKind): void {
 function runCasesTable(k: RunKind, cases: TrainedModelCase[] | undefined): HTMLElement {
   if (!cases) return node("p", "muted", "Loading the answers…");
   if (cases.length === 0) return node("p", "muted", "No answers yet: they appear as each batch is judged.");
-  const rank = (i: TrainedModelCase): number => (i.status === CaseStatus.error ? -1 : i.score ?? -1);
+  const rank = (i: TrainedModelCase): number => (i.status === "errored" ? -1 : i.score ?? -1);
   const sorted = [...cases].sort((a, b) => rank(a) - rank(b) || a.idx - b.idx);
   const table = node("table", "eval-table");
   const head = table.createTHead().insertRow();
-  for (const h of ["#", "Question", k.path === "evals" ? "Expected answer" : "Dataset answer", "Model answer", "Score", "Judge's reason"]) head.appendChild(node("th", h === "Score" ? "num" : "", h));
+  for (const h of ["#", "Question", k.path === "evals" ? "Expected answer" : "Dataset answer", "Model answer", "Status", "Score", "Judge's reason"]) head.appendChild(node("th", h === "Score" ? "num" : "", h));
   const body = table.createTBody();
   const text = (tr: HTMLTableRowElement, s: string, cls = ""): void => { const c = tr.insertCell(); c.className = `eval-text ${cls}`; c.textContent = s; };
   for (const i of sorted) {
@@ -799,14 +797,19 @@ function runCasesTable(k: RunKind, cases: TrainedModelCase[] | undefined): HTMLE
     if (i.name) num.title = i.name;
     text(tr, i.input ? `${i.instruction}\n\n${i.input}` : i.instruction);
     text(tr, i.reference);
-    if (i.status === CaseStatus.error) {
-      text(tr, i.response || "(no answer)", "muted");
+    const st = (): void => {
       const c = tr.insertCell();
-      c.className = "num";
-      c.append(node("span", "badge badge-error", "error"));
+      c.append(caseStatusBadge(i.status));
+      if (i.verdict) c.append(" ", verdictBadge(i.verdict));
+    };
+    if (i.status === "errored") {
+      text(tr, i.response || "(no answer)", "muted");
+      st();
+      tr.insertCell().className = "num";
       text(tr, i.error, "error");
     } else {
       text(tr, i.response === "" ? "(empty)" : i.response);
+      st();
       const c = tr.insertCell();
       c.className = `num score ${scoreClass(i.score)}`;
       c.textContent = i.score === null ? "–" : `${i.score} / ${MAX_SCORE}`;

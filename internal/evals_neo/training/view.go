@@ -8,44 +8,31 @@ import (
 )
 
 // The views are the JSON the HTTP API serves of an eval run and its case runs, and that the admin UI (admin_ui/src/eval_live.ts)
-// reads: one flat record with the counters of the run (what its Counts and TrainingEvalRunMeta hold), and one per case. The words
-// of the statuses are those of the constants below, not those of core (an eval run is "error" here, "errored" in core).
-
-// The statuses of a RunView.
-const (
-	RunRunning   = "running"
-	RunCompleted = "completed" // it ran to the end: it has a score, not a verdict
-	RunErrored   = "error"     // the run itself errored: Error says why (the model or the judge kept failing, or a restart interrupted it)
-	RunCancelled = "cancelled" // stopped by the user; what was done is kept
-)
-
-// The statuses of a CaseView.
-const (
-	ViewJudged   = "judged" // the model answered and the judge scored it (a score of 0 too)
-	ViewErrored  = "error"  // the model or the judge errored: no score, Error says why
-	ViewAnswered = "answered"
-	// ViewAnswered is never stored: the live feed uses it for a case the model answered whose batch the judge has not scored yet.
-)
+// reads: one flat record with the counters of the run (what its Counts and TrainingEvalRunMeta hold), and one per case. The statuses
+// and verdicts are those of core, as they are stored: a run or a case run is pending, running, completed, errored or cancelled, and
+// a completed case run has the verdict pass or fail (the judge's score is at least core.TrainingPassScore or below it) and its score.
+// One case is not stored: in the live feed, a case the model answered whose batch the judge has not scored yet is running.
 
 // KindEval is the Kind of a RunView.
 const KindEval = "eval"
 
 // RunView is an eval run of a trained model.
 type RunView struct {
-	ID             int64  `json:"id"` // the ID of the eval run
-	TrainedModelID int64  `json:"trained_model_id"`
-	Kind           string `json:"kind"` // KindEval
-	Status         string `json:"status"`
+	ID             int64       `json:"id"` // the ID of the eval run
+	TrainedModelID int64       `json:"trained_model_id"`
+	Kind           string      `json:"kind"` // KindEval
+	Status         core.Status `json:"status"`
 	// Eval is the name of the eval whose cases were asked.
 	Eval string `json:"eval"`
 	// Params are the settings of the run as a JSON object (batch_size, max_tokens, temperature, limit).
 	Params json.RawMessage `json:"params"`
 	// JudgeModel is the model that judged ("" until its first reply).
-	JudgeModel  string `json:"judge_model"`
-	NumExamples int    `json:"num_examples"`
-	NumAnswered int    `json:"num_answered"`
-	NumJudged   int    `json:"num_judged"`
-	NumErrored  int    `json:"num_errored"`
+	JudgeModel string `json:"judge_model"`
+	// Counts are those of the run's case runs (Total is the number of questions it asks; Passed and Failed split the completed ones
+	// by the verdict).
+	Counts      core.Counts `json:"counts"`
+	NumAnswered int         `json:"num_answered"`
+	NumJudged   int         `json:"num_judged"`
 	// NumCorrect + NumPartial + NumIncorrect = NumJudged, and ScoreSum is the sum of the scores (0 to 5) of the judged ones.
 	NumCorrect   int `json:"num_correct"`
 	NumPartial   int `json:"num_partial"`
@@ -65,8 +52,8 @@ type RunView struct {
 // ViewOfRun is the view of a training eval run of the eval called eval. A run whose Meta is not that of a training eval run has no
 // counters of it.
 func ViewOfRun(r *core.EvalRun, eval string) RunView {
-	v := RunView{ID: int64(r.ID), Kind: KindEval, Status: runStatus(r.Status), Eval: eval, Params: json.RawMessage("{}"),
-		NumExamples: r.Counts.Total, NumErrored: r.Counts.Errored, JudgeCostUSD: r.CostUSD, Error: r.Error, CreatedAt: r.CreatedAt, FinishedAt: r.FinishedAt}
+	v := RunView{ID: int64(r.ID), Kind: KindEval, Status: r.Status, Eval: eval, Params: json.RawMessage("{}"),
+		Counts: r.Counts, JudgeCostUSD: r.CostUSD, Error: r.Error, CreatedAt: r.CreatedAt, FinishedAt: r.FinishedAt}
 	if r.StartedAt != nil {
 		v.CreatedAt = *r.StartedAt
 	}
@@ -90,18 +77,6 @@ func (v *RunView) fill(m *core.TrainingEvalRunMeta) {
 	v.NumCorrect, v.NumPartial, v.NumIncorrect, v.ScoreSum = m.NumCorrect, m.NumPartial, m.NumIncorrect, m.ScoreSum
 	v.NumBatches, v.JudgeCalls, v.JudgeInputTokens, v.JudgeOutputTokens, v.JudgeCostUSD =
 		m.NumBatches, m.JudgeCalls, m.JudgeInputTokens, m.JudgeOutputTokens, m.JudgeCostUSD
-}
-
-func runStatus(s core.Status) string {
-	switch s {
-	case core.StatusCompleted:
-		return RunCompleted
-	case core.StatusErrored:
-		return RunErrored
-	case core.StatusCancelled:
-		return RunCancelled
-	}
-	return RunRunning // pending too: it is about to run
 }
 
 // MeanScore and CorrectRate are the mean judge score (0 to 5) of the judged answers and the share of them that is correct (a score
@@ -136,9 +111,12 @@ type CaseView struct {
 	Input       string `json:"input"`
 	Reference   string `json:"reference"`
 	Response    string `json:"response"`
-	Status      string `json:"status"` // ViewJudged, ViewErrored or (live feed only) ViewAnswered
-	Error       string `json:"error"`
-	// Score is the judge's, 0 to 5 (nil unless the case is judged); Reason its explanation.
+	// Status is the lifecycle (completed: the model answered and the judge scored it; errored: the model or the judge failed, Error
+	// says why) and Verdict the judgement of a completed case (pass if the score is at least core.TrainingPassScore, else fail).
+	Status  core.Status  `json:"status"`
+	Verdict core.Verdict `json:"verdict,omitempty"`
+	Error   string       `json:"error"`
+	// Score is the judge's, 0 to 5 (nil unless the case is completed); Reason its explanation.
 	Score  *int   `json:"score"`
 	Reason string `json:"reason"`
 	// InputTokens, OutputTokens and DurationMS are the model's for this question.
@@ -153,18 +131,18 @@ func ViewOfResult(runID core.EvalRunID, name string, r CaseResult) CaseView {
 		Response: r.Response, Error: r.Error, Score: r.Score, Reason: r.Reason, InputTokens: r.InputTokens, OutputTokens: r.OutputTokens, DurationMS: r.DurationMS}
 	switch r.Status {
 	case CaseJudged:
-		v.Status = ViewJudged
+		v.Status, v.Verdict = core.StatusCompleted, verdictOfScore(r.Score)
 	case CaseErrored:
-		v.Status = ViewErrored
+		v.Status = core.StatusErrored
 	default: // answered, not judged yet
-		v.Status = ViewAnswered
+		v.Status = core.StatusRunning
 	}
 	return v
 }
 
 // ViewOfCaseRun is the view of a stored case run: name is that of its case def and idx its position among the cases of the run.
 func ViewOfCaseRun(c *core.CaseRun, name string, idx int) CaseView {
-	v := CaseView{ID: int64(c.ID), RunID: int64(c.EvalRunID), Idx: idx, Name: name, Status: ViewErrored, Error: c.Error}
+	v := CaseView{ID: int64(c.ID), RunID: int64(c.EvalRunID), Idx: idx, Name: name, Status: c.Status, Verdict: c.Verdict, Error: c.Error}
 	var m *core.TrainingCaseRunMeta
 	switch x := c.Meta.(type) {
 	case *core.TrainingCaseRunMeta:
@@ -177,8 +155,16 @@ func ViewOfCaseRun(c *core.CaseRun, name string, idx int) CaseView {
 		v.Score, v.Reason = m.JudgeScore, m.JudgeReason
 		v.InputTokens, v.OutputTokens, v.DurationMS = m.InputTokens, m.OutputTokens, int64(m.DurationMS)
 	}
-	if c.Status == core.StatusCompleted && v.Score != nil {
-		v.Status = ViewJudged
-	}
 	return v
+}
+
+// verdictOfScore is the verdict of a judge's score: pass if it is at least core.TrainingPassScore, fail below; none if there is no score.
+func verdictOfScore(score *int) core.Verdict {
+	switch {
+	case score == nil:
+		return core.VerdictNone
+	case *score >= core.TrainingPassScore:
+		return core.VerdictPass
+	}
+	return core.VerdictFail
 }

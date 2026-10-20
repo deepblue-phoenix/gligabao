@@ -736,12 +736,12 @@ tr.removing {
 #eval-modal .ev-top { padding: 0.5rem 1rem 0; progress { width: 100%; height: 0.5rem; accent-color: $accent; } .error { margin: 0.25rem 0 0; &:empty { display: none; } } }
 .ev-strip { display: flex; flex-wrap: wrap; gap: 2px; margin: 0.4rem 0 0.2rem; max-height: 4.2rem; overflow-y: auto; }
 .ev-sq { width: 0.55rem; height: 0.55rem; padding: 0; border: 0; border-radius: 2px; cursor: pointer; background: $border;
-  &-pending { background: $accent; } &-good { background: #3fb950; } &-mid { background: #d29922; } &-bad { background: $err; }
-  &-failed { background: $err; outline: 1px solid $text; } }
+  &-running { background: $accent; } &-good { background: #3fb950; } &-mid { background: #d29922; } &-bad { background: $err; }
+  &-errored { background: $err; outline: 1px solid $text; } &-cancelled { background: $muted; } }
 .ev-feed { display: flex; flex-direction: column; gap: 0.6rem; }
 .ev-feed.only-problems .ev-card.ev-good { display: none; }
 .ev-card { padding: 0.5rem 0.8rem; background: $bg; border: 1px solid $border; border-left-width: 4px; border-radius: 6px;
-  &.ev-pending { border-left-color: $accent; } &.ev-good { border-left-color: #3fb950; } &.ev-mid { border-left-color: #d29922; }
+  &.ev-running { border-left-color: $accent; } &.ev-errored { border-left-color: $err; } &.ev-good { border-left-color: #3fb950; } &.ev-mid { border-left-color: #d29922; }
   &.ev-bad, &.ev-failed { border-left-color: $err; }
   .ev-head { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; font-size: 0.8rem; margin-bottom: 0.25rem; }
   .ev-num { font-weight: 600; }

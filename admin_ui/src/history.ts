@@ -5,14 +5,19 @@
 declare const d3: typeof import("d3");
 
 interface Point {
-  run_id: number; run_started_at: string; status: string;
+  run_id: number; run_started_at: string; status: string; verdict?: string; score?: number;
   problems?: string[]; passed_checks?: string[]; error?: string; steps: number; started_at: string; finished_at: string;
 }
 interface History { eval: string; name: string; points: Point[] }
-interface Dot extends Point { t: Date; seconds: number }
+interface Dot extends Point { t: Date; seconds: number; outcome: string }
 
-const STATUSES = ["passed", "failed", "error"];
-const COLORS: Record<string, string> = { passed: "#3fb950", failed: "#f85149", error: "#d29922" };
+// What the plots show of a result is the model's own word (internal/evals_neo/core): the verdict (pass or fail) of a completed
+// case run that has one, otherwise its status (errored, cancelled, running, ...).
+export const outcomeOf = (p: { status: string; verdict?: string }): string => (p.status === "completed" && p.verdict ? p.verdict : p.status);
+
+const LANES = ["pass", "fail", "errored"];
+const COLORS: Record<string, string> = { pass: "#3fb950", fail: "#f85149", errored: "#d29922" };
+const OTHER_COLOR = "#8b949e";
 
 function el<T extends HTMLElement>(id: string): T {
   const e = document.getElementById(id);
@@ -23,21 +28,21 @@ function el<T extends HTMLElement>(id: string): T {
 const fmt = (d: Date): string => d.toISOString().replace("T", " ").slice(0, 19);
 
 // Summarises the progression: the current state and, if it passes now, since which run it does.
-export function summarize(dots: { run_id: number; status: string; t: Date }[]): string {
+export function summarize(dots: { run_id: number; outcome: string; t: Date }[]): string {
   if (dots.length === 0) return "No runs recorded for this case.";
   const last = dots[dots.length - 1];
-  const passed = dots.filter((d) => d.status === "passed");
-  if (last.status === "passed") {
+  const passed = dots.filter((d) => d.outcome === "pass");
+  if (last.outcome === "pass") {
     let i = dots.length - 1;
-    while (i > 0 && dots[i - 1].status === "passed") i--;
+    while (i > 0 && dots[i - 1].outcome === "pass") i--;
     const since = dots[i];
     return i === 0
       ? `Passing in all ${dots.length} run${dots.length === 1 ? "" : "s"} (since run #${since.run_id}, ${fmt(since.t)} UTC).`
-      : `Passing since run #${since.run_id} (${fmt(since.t)} UTC); it was ${dots[i - 1].status} in run #${dots[i - 1].run_id}.`;
+      : `Passing since run #${since.run_id} (${fmt(since.t)} UTC); it was ${dots[i - 1].outcome} in run #${dots[i - 1].run_id}.`;
   }
-  if (passed.length === 0) return `Never passed in ${dots.length} run${dots.length === 1 ? "" : "s"}; currently ${last.status}.`;
+  if (passed.length === 0) return `Never passed in ${dots.length} run${dots.length === 1 ? "" : "s"}; currently ${last.outcome}.`;
   const lp = passed[passed.length - 1];
-  return `Currently ${last.status} (run #${last.run_id}); last passed in run #${lp.run_id} (${fmt(lp.t)} UTC).`;
+  return `Currently ${last.outcome} (run #${last.run_id}); last passed in run #${lp.run_id} (${fmt(lp.t)} UTC).`;
 }
 
 let stop: (() => void) | undefined;
@@ -65,7 +70,7 @@ export async function showCaseHistory(experimentID: number, experiment: string, 
     const data = (await res.json()) as History;
     if (!modal.open) return; // closed while loading
     const dots: Dot[] = (data.points ?? []).map((p) => ({
-      ...p, t: new Date(p.run_started_at), seconds: Math.max(0, (new Date(p.finished_at).getTime() - new Date(p.started_at).getTime()) / 1000) || 0,
+      ...p, outcome: outcomeOf(p), t: new Date(p.run_started_at), seconds: Math.max(0, (new Date(p.finished_at).getTime() - new Date(p.started_at).getTime()) / 1000) || 0,
     })).sort((a, b) => a.t.getTime() - b.t.getTime() || a.run_id - b.run_id);
     status.textContent = summarize(dots);
     if (dots.length) draw(el("history-canvas"), dots, onRun);
@@ -125,8 +130,8 @@ function addDots(p: Panel, dots: Dot[], y: (d: Dot) => number, fill: (d: Dot) =>
     });
 }
 
-const baseTip = (d: Dot): string[] => [`run #${d.run_id} · ${d.status}`, `${fmt(d.t)} UTC`];
-const colorOf = (d: Dot): string => COLORS[d.status] ?? COLORS.error;
+const baseTip = (d: Dot): string[] => [`run #${d.run_id} · ${d.outcome}`, `${fmt(d.t)} UTC`, `status ${d.status}${d.verdict ? `, verdict ${d.verdict}` : ""}${d.score != null ? `, score ${d.score}` : ""}`];
+const colorOf = (d: Dot): string => COLORS[d.outcome] ?? OTHER_COLOR;
 
 function draw(container: HTMLElement, dots: Dot[], onRun?: (runID: number) => void): void {
   // A single run (or all runs at the same instant) still needs a non-empty time domain.
@@ -138,9 +143,10 @@ function draw(container: HTMLElement, dots: Dot[], onRun?: (runID: number) => vo
   // 1. Status over time.
   {
     const p = panel(container, "Status over time", domain);
-    const y = d3.scalePoint<string>().domain(STATUSES).range([M.top + 20, bottom - 20]);
-    const yOf = (d: Dot): number => y(STATUSES.includes(d.status) ? d.status : "error") ?? 0;
-    p.svg.append("g").selectAll("line").data(STATUSES).join("line")
+    const lanes = [...LANES, ...new Set(dots.map((d) => d.outcome).filter((o) => !LANES.includes(o)))];
+    const y = d3.scalePoint<string>().domain(lanes).range([M.top + 20, bottom - 20]);
+    const yOf = (d: Dot): number => y(d.outcome) ?? 0;
+    p.svg.append("g").selectAll("line").data(lanes).join("line")
       .attr("class", "history-lane").attr("x1", M.left).attr("x2", p.width - M.right)
       .attr("y1", (s) => y(s) ?? 0).attr("y2", (s) => y(s) ?? 0);
     p.svg.append("g").attr("class", "history-axis").attr("transform", `translate(${M.left},0)`).call(d3.axisLeft(y).tickSize(0).tickPadding(10));
@@ -148,7 +154,7 @@ function draw(container: HTMLElement, dots: Dot[], onRun?: (runID: number) => vo
       .attr("d", d3.line<Dot>().x((d) => p.x(d.t)).y(yOf).curve(d3.curveStepAfter)(dots));
     // Rule at each transition into passing: the moment it started to pass.
     dots.forEach((d, i) => {
-      if (d.status !== "passed" || i === 0 || dots[i - 1].status === "passed") return;
+      if (d.outcome !== "pass" || i === 0 || dots[i - 1].outcome === "pass") return;
       p.svg.append("line").attr("class", "history-fix").attr("x1", p.x(d.t)).attr("x2", p.x(d.t)).attr("y1", M.top).attr("y2", bottom);
       p.svg.append("text").attr("class", "history-label").attr("x", p.x(d.t) + 4).attr("y", M.top + 8).text(`passes from run #${d.run_id}`);
     });
@@ -181,7 +187,7 @@ function draw(container: HTMLElement, dots: Dot[], onRun?: (runID: number) => vo
     p.svg.append("g").attr("class", "history-axis").attr("transform", `translate(${M.left},0)`)
       .call(d3.axisLeft(y).ticks(Math.min(5, Math.ceil(max))).tickFormat(d3.format("d")));
     const series: { label: string; color: string; n: (d: Dot) => number }[] = [
-      { label: "passed", color: COLORS.passed, n: nPass }, { label: "failed", color: COLORS.failed, n: nFail },
+      { label: "passed", color: COLORS.pass, n: nPass }, { label: "failed", color: COLORS.fail, n: nFail },
     ];
     for (const s of series) {
       p.svg.append("path").attr("fill", "none").attr("stroke", s.color).attr("stroke-width", 2).attr("stroke-opacity", 0.85)

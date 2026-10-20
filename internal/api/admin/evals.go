@@ -23,8 +23,9 @@ import (
 
 // The evals views of the admin UI show the knowledge evals of internal/evals_neo: an experiment (core.ExperimentDef), its runs
 // (core.ExperimentRun) and, in a run, the case runs of its knowledge eval runs, each with its trajectories. The JSON is what the UI
-// (admin_ui/src/evals.ts) reads: the statuses are the words "running", "passed", "failed" and "error" (a case) rather than the
-// lifecycle and verdict of the model, which they are made from (see statusOfRun and statusOfCase).
+// (admin_ui/src/evals.ts) reads. It carries the model's own words, not statuses made from them: a run and a case run have the
+// core.Status (pending, running, completed, errored, cancelled), a case run also its core.Verdict (pass, fail, or none) and score,
+// and a run has its core.Counts.
 
 // EvalTotals are the case counts over all experiments.
 type EvalTotals struct {
@@ -32,55 +33,42 @@ type EvalTotals struct {
 	Runs        int `json:"runs"`
 	// Cases is the number of distinct cases (eval + case name) any experiment executed (counted once across experiments).
 	Cases int `json:"cases"`
-	// Executions is the number of case runs over all runs. Passed, Failed (a check did not hold) and Errors (could not be run to
-	// the end) count the cases with that outcome; Judged is for the training evals, which are not shown here.
-	Executions int     `json:"executions"`
-	Passed     int     `json:"passed"`
-	Failed     int     `json:"failed"`
-	Errors     int     `json:"errors"`
-	Judged     int     `json:"judged"`
-	CostUSD    float64 `json:"cost_usd"`
+	// Counts are the counts of all the runs added up (Total is the number of case runs the runs were to execute).
+	Counts  core.Counts `json:"counts"`
+	CostUSD float64     `json:"cost_usd"`
+}
+
+// addCounts adds the counts of b to those of a.
+func addCounts(a *core.Counts, b core.Counts) {
+	a.Total += b.Total
+	a.Pending += b.Pending
+	a.Running += b.Running
+	a.Completed += b.Completed
+	a.Errored += b.Errored
+	a.Cancelled += b.Cancelled
+	a.Passed += b.Passed
+	a.Failed += b.Failed
 }
 
 // experimentRunView is a run of an experiment, as listed in the admin UI.
 type experimentRunView struct {
-	ID           int64          `json:"id"`
-	ExperimentID int64          `json:"experiment_id"`
-	Status       string         `json:"status"`
-	Params       map[string]any `json:"params"`
-	// TotalCases is the number of case runs that ended; the four that follow count those with the outcome of their name.
-	TotalCases  int           `json:"total_cases"`
-	PassedCases int           `json:"passed_cases"`
-	FailedCases int           `json:"failed_cases"`
-	ErrorCases  int           `json:"error_cases"`
-	JudgedCases int           `json:"judged_cases"`
-	CostUSD     float64       `json:"cost_usd"`
-	StartedAt   time.Time     `json:"started_at"`
-	FinishedAt  *time.Time    `json:"finished_at,omitempty"`
-	CaseRuns    []caseRunView `json:"case_runs,omitempty"` // the run's only
-}
-
-// statusOfRun is the status the UI shows of an experiment run: passed if it ran to the end and every case passed.
-func statusOfRun(r *core.ExperimentRun) string {
-	switch r.Status {
-	case core.StatusCompleted:
-		if r.Counts.Failed == 0 && r.Counts.Errored == 0 {
-			return "passed"
-		}
-		return "failed"
-	case core.StatusErrored:
-		return "error"
-	case core.StatusCancelled:
-		return "cancelled"
-	}
-	return "running"
+	ID           int64       `json:"id"`
+	ExperimentID int64       `json:"experiment_id"`
+	Status       core.Status `json:"status"`
+	// Error is why the run errored (Status errored only).
+	Error  string         `json:"error,omitempty"`
+	Params map[string]any `json:"params"`
+	// Counts are those of the run's case runs, as the model has them.
+	Counts     core.Counts   `json:"counts"`
+	CostUSD    float64       `json:"cost_usd"`
+	StartedAt  time.Time     `json:"started_at"`
+	FinishedAt *time.Time    `json:"finished_at,omitempty"`
+	CaseRuns   []caseRunView `json:"case_runs,omitempty"` // the run's only
 }
 
 func viewOfRun(r *core.ExperimentRun) experimentRunView {
-	c := r.Counts
-	v := experimentRunView{ID: int64(r.ID), ExperimentID: int64(r.DefID), Status: statusOfRun(r), Params: map[string]any(r.Params),
-		TotalCases: c.Completed + c.Errored + c.Cancelled, PassedCases: c.Passed, FailedCases: c.Failed, ErrorCases: c.Errored, CostUSD: r.CostUSD,
-		StartedAt: r.CreatedAt, FinishedAt: r.FinishedAt}
+	v := experimentRunView{ID: int64(r.ID), ExperimentID: int64(r.DefID), Status: r.Status, Error: r.Error, Params: map[string]any(r.Params),
+		Counts: r.Counts, CostUSD: r.CostUSD, StartedAt: r.CreatedAt, FinishedAt: r.FinishedAt}
 	if r.StartedAt != nil {
 		v.StartedAt = *r.StartedAt
 	}
@@ -111,11 +99,11 @@ func experimentOf(d *core.ExperimentDef) experimentFields {
 // experimentView is an experiment with its counts, as listed in the admin UI.
 type experimentView struct {
 	experimentFields
-	Runs       int     `json:"runs"`
-	Cases      int     `json:"cases"`
-	RunsPassed int     `json:"runs_passed"`
-	RunsFailed int     `json:"runs_failed"`
-	CostUSD    float64 `json:"cost_usd"`
+	Runs  int `json:"runs"`
+	Cases int `json:"cases"`
+	// RunsByStatus is the number of runs with each status (only those that occur).
+	RunsByStatus map[core.Status]int `json:"runs_by_status"`
+	CostUSD      float64             `json:"cost_usd"`
 	// LastRun is the newest run (nil if the experiment has none).
 	LastRun *experimentRunView `json:"last_run,omitempty"`
 }
@@ -134,10 +122,13 @@ type experimentDetail struct {
 
 // caseRunView is the outcome of one case of an eval in one run.
 type caseRunView struct {
-	ID           int64            `json:"id"`
-	Eval         string           `json:"eval"`
-	Name         string           `json:"name"`
-	Status       string           `json:"status"` // "passed", "failed" (a check did not hold), "error" (it could not be run to the end), ...
+	ID   int64  `json:"id"`
+	Eval string `json:"eval"`
+	Name string `json:"name"`
+	// Status is the lifecycle (did it run to the end), Verdict the judgement of a completed one (pass or fail; none otherwise).
+	Status       core.Status      `json:"status"`
+	Verdict      core.Verdict     `json:"verdict,omitempty"`
+	Score        *float64         `json:"score,omitempty"`
 	Answer       string           `json:"answer,omitempty"`
 	Problems     []string         `json:"problems"`
 	PassedChecks []string         `json:"passed_checks"`
@@ -172,22 +163,6 @@ type artifactView struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// statusOfCase is the status the UI shows of a case run.
-func statusOfCase(c *core.CaseRun) string {
-	switch c.Status {
-	case core.StatusCompleted:
-		if c.Verdict == core.VerdictPass {
-			return "passed"
-		}
-		return "failed"
-	case core.StatusErrored:
-		return "error"
-	case core.StatusCancelled:
-		return "cancelled"
-	}
-	return "running"
-}
-
 func knowledgeMeta(c *core.CaseRun) *core.KnowledgeCaseRunMeta {
 	switch m := c.Meta.(type) {
 	case *core.KnowledgeCaseRunMeta:
@@ -217,7 +192,7 @@ func orEmpty[T any](s []T) []T {
 // viewOfCase is the view of a case run; the trajectories (with their artifacts) are added by the caller that needs them.
 func viewOfCase(c *core.CaseRun, eval, name string) caseRunView {
 	m := knowledgeMeta(c)
-	return caseRunView{ID: int64(c.ID), Eval: eval, Name: name, Status: statusOfCase(c), Answer: m.Answer, Problems: orEmpty(m.Problems),
+	return caseRunView{ID: int64(c.ID), Eval: eval, Name: name, Status: c.Status, Verdict: c.Verdict, Score: c.Score, Answer: m.Answer, Problems: orEmpty(m.Problems),
 		PassedChecks: orEmpty(m.PassedChecks), Error: c.Error, Steps: m.Steps, CostUSD: c.CostUSD, StartedAt: timeOr(c.StartedAt, c.CreatedAt),
 		FinishedAt: timeOr(c.FinishedAt, c.CreatedAt), DatasetID: m.DatasetID}
 }
@@ -344,20 +319,12 @@ func EvalOverview(d *sql.DB, s evalsdb.Store) http.HandlerFunc {
 				evalFail(w, err, "experiment runs")
 				return
 			}
-			v := experimentView{experimentFields: experimentOf(&list[i]), Runs: len(runs), Cases: len(cases)}
+			v := experimentView{experimentFields: experimentOf(&list[i]), Runs: len(runs), Cases: len(cases), RunsByStatus: map[core.Status]int{}}
 			for j := range runs {
 				run := viewOfRun(&runs[j])
-				switch run.Status {
-				case "passed":
-					v.RunsPassed++
-				case "failed":
-					v.RunsFailed++
-				}
+				v.RunsByStatus[run.Status]++
 				v.CostUSD += run.CostUSD
-				out.Totals.Executions += run.TotalCases
-				out.Totals.Passed += run.PassedCases
-				out.Totals.Failed += run.FailedCases
-				out.Totals.Errors += run.ErrorCases
+				addCounts(&out.Totals.Counts, run.Counts)
 				v.LastRun = &run
 			}
 			out.Totals.Runs += len(runs)
@@ -422,15 +389,17 @@ type caseHistory struct {
 
 // casePoint is what the admin UI plots of one result of a case in the history of that case: one dot per run.
 type casePoint struct {
-	RunID        int64     `json:"run_id"`
-	RunStartedAt time.Time `json:"run_started_at"`
-	Status       string    `json:"status"`
-	Problems     []string  `json:"problems"`
-	PassedChecks []string  `json:"passed_checks"`
-	Error        string    `json:"error,omitempty"`
-	Steps        int       `json:"steps"`
-	StartedAt    time.Time `json:"started_at"`
-	FinishedAt   time.Time `json:"finished_at"`
+	RunID        int64        `json:"run_id"`
+	RunStartedAt time.Time    `json:"run_started_at"`
+	Status       core.Status  `json:"status"`
+	Verdict      core.Verdict `json:"verdict,omitempty"`
+	Score        *float64     `json:"score,omitempty"`
+	Problems     []string     `json:"problems"`
+	PassedChecks []string     `json:"passed_checks"`
+	Error        string       `json:"error,omitempty"`
+	Steps        int          `json:"steps"`
+	StartedAt    time.Time    `json:"started_at"`
+	FinishedAt   time.Time    `json:"finished_at"`
 }
 
 // historyPoints keeps of the results of a case (its history) only what the UI plots, and adds when the run of each
@@ -449,7 +418,7 @@ func historyPoints(results []evalsdb.CaseHistoryEntry, runs []core.ExperimentRun
 		}
 		v := viewOfCase(&results[i].CaseRun, "", "")
 		out = append(out, casePoint{
-			RunID: int64(results[i].ExperimentRunID), RunStartedAt: at, Status: v.Status, Problems: v.Problems, PassedChecks: v.PassedChecks,
+			RunID: int64(results[i].ExperimentRunID), RunStartedAt: at, Status: v.Status, Verdict: v.Verdict, Score: v.Score, Problems: v.Problems, PassedChecks: v.PassedChecks,
 			Error: v.Error, Steps: v.Steps, StartedAt: v.StartedAt, FinishedAt: v.FinishedAt,
 		})
 	}

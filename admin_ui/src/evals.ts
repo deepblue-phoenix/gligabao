@@ -6,10 +6,16 @@ import { showCaseHistory } from "./history.js";
 import { showTrace } from "./trace.js";
 import { showWebSearches, totalsLine, type WebSearch, type WebSearchTotals } from "./websearch.js";
 
+// The words of the model (internal/evals_neo/core): Status is the lifecycle of a run or case run, Verdict the judgement of a
+// completed case run (empty when it has none). They are shown as they come.
+type Status = "pending" | "running" | "completed" | "errored" | "cancelled";
+type Verdict = "pass" | "fail";
+// core.Counts: every case run is in exactly one of pending, running, completed, errored, cancelled; passed and failed split the
+// completed ones that have a verdict.
+interface Counts { total: number; pending: number; running: number; completed: number; errored: number; cancelled: number; passed: number; failed: number }
 interface Run {
-  id: number; experiment_id: number; status: string; params?: Record<string, unknown>;
-  total_cases: number; passed_cases: number; failed_cases: number; error_cases: number; judged_cases: number; cost_usd: number;
-  started_at: string; finished_at?: string; case_runs?: CaseRun[];
+  id: number; experiment_id: number; status: Status; error?: string; params?: Record<string, unknown>;
+  counts: Counts; cost_usd: number; started_at: string; finished_at?: string; case_runs?: CaseRun[];
 }
 interface Trajectory {
   seq: number; kind: string; trajectory_id: string; agent_name: string; steps: number; cost_usd: number;
@@ -18,17 +24,17 @@ interface Trajectory {
 interface Artifact { id: number; kind: string; text: string; valid_at: string; created_at: string }
 // The outcome of one case of an eval in one run.
 interface CaseRun {
-  id: number; eval: string; name: string; status: string; answer?: string; problems?: string[]; passed_checks?: string[]; dataset_id?: number; error?: string;
+  id: number; eval: string; name: string; status: Status; verdict?: Verdict; score?: number; answer?: string; problems?: string[]; passed_checks?: string[]; dataset_id?: number; error?: string;
   steps: number; cost_usd: number; started_at: string; finished_at: string; trajectories?: Trajectory[];
 }
 // The web searches the remember calls of one result (case) made (see websearch.ts), read from its trajectories.
 interface EvalWebSearches { case_run_id: number; totals: WebSearchTotals; searches: WebSearch[] }
 interface ExperimentRow {
   id: number; name: string; description?: string; created_at: string;
-  runs: number; cases: number; runs_passed: number; runs_failed: number; cost_usd: number; last_run?: Run;
+  runs: number; cases: number; runs_by_status: Partial<Record<Status, number>>; cost_usd: number; last_run?: Run;
 }
 interface Overview {
-  totals: { experiments: number; runs: number; cases: number; executions: number; passed: number; failed: number; errors: number; judged: number; cost_usd: number };
+  totals: { experiments: number; runs: number; cases: number; counts: Counts; cost_usd: number };
   experiments: ExperimentRow[];
 }
 interface ExperimentDetail {
@@ -75,9 +81,32 @@ function fmtDuration(from: string | undefined, to: string | undefined): string {
 
 const fmtCost = (usd: number): string => `$${usd.toFixed(4)}`;
 
+// The badge of a status as the model has it: completed is ok, errored an error, running and pending are active, cancelled is muted.
 function statusBadge(status: string): HTMLElement {
-  const cls = status === "passed" || status === "completed" ? "badge-ok" : status === "running" ? "badge-unknown" : "badge-error";
+  const cls = status === "completed" ? "badge-ok" : status === "errored" ? "badge-error" : status === "cancelled" ? "badge-unknown" : "badge-active";
   return h("span", `badge ${cls}`, status);
+}
+
+// The badge of a verdict (pass or fail); "–" when the case run has none.
+function verdictBadge(verdict: string | undefined): HTMLElement {
+  if (!verdict) return h("span", "muted", "–");
+  return h("span", `badge ${verdict === "pass" ? "badge-ok" : "badge-error"}`, verdict);
+}
+
+// The counts of a run in the model's words, leaving out the zeros: "3 pass · 1 fail · 1 errored of 5".
+function countsLine(c: Counts): string {
+  const parts: [number, string][] = [
+    [c.passed, "pass"], [c.failed, "fail"], [c.completed - c.passed - c.failed, "no verdict"], [c.errored, "errored"], [c.cancelled, "cancelled"],
+    [c.running, "running"], [c.pending, "pending"],
+  ];
+  const shown = parts.filter(([n]) => n > 0).map(([n, w]) => `${n} ${w}`);
+  return `${shown.length ? shown.join(" · ") : "no case runs"} of ${c.total}`;
+}
+
+// The statuses of the runs of an experiment as "3 completed · 1 errored".
+function statusLine(by: Partial<Record<Status, number>>): string {
+  const parts = Object.entries(by).filter(([, n]) => (n ?? 0) > 0).map(([s, n]) => `${n} ${s}`);
+  return parts.length ? parts.join(" · ") : "–";
 }
 
 function numCell(row: HTMLTableRowElement, text: string): void {
@@ -122,12 +151,12 @@ async function loadOverview(): Promise<void> {
     const t = data.totals;
     stats.replaceChildren(
       stat("Experiments", String(t.experiments)), stat("Runs", String(t.runs)), stat("Distinct cases", String(t.cases)),
-      stat("Case runs", t.executions ? `${t.passed}/${t.executions} passed` : "–"), stat("Cost", fmtCost(t.cost_usd)),
+      stat("Case runs", t.counts.total ? countsLine(t.counts) : "–"), stat("Cost", fmtCost(t.cost_usd)),
     );
     const list = data.experiments ?? [];
     status.textContent = list.length === 0 ? "No experiments yet. Run ./run_evals.sh to record one." : "Click an experiment to list its runs.";
     const { table: tbl, body: tbody } = table([
-      ["Experiment", false], ["Description", false], ["Runs", true], ["Passed", true], ["Failed", true], ["Cases", true],
+      ["Experiment", false], ["Description", false], ["Runs", true], ["Run statuses", false], ["Cases", true],
       ["Cost", true], ["Last run", false],
     ]);
     tbl.className = "clickable";
@@ -137,12 +166,11 @@ async function loadOverview(): Promise<void> {
       tr.insertCell().textContent = e.name;
       tr.insertCell().textContent = e.description ?? "";
       numCell(tr, String(e.runs));
-      numCell(tr, String(e.runs_passed));
-      numCell(tr, String(e.runs_failed));
+      tr.insertCell().textContent = statusLine(e.runs_by_status ?? {});
       numCell(tr, String(e.cases));
       numCell(tr, fmtCost(e.cost_usd));
       const last = tr.insertCell();
-      if (e.last_run) last.append(statusBadge(e.last_run.status), ` ${fmtTime(e.last_run.started_at)}`);
+      if (e.last_run) last.append(statusBadge(e.last_run.status), ` ${countsLine(e.last_run.counts)} · ${fmtTime(e.last_run.started_at)}`);
       else last.textContent = "–";
       tr.addEventListener("click", () => {
         selectedExperiment = e.id;
@@ -180,18 +208,14 @@ async function loadExperiment(id: number): Promise<void> {
     }
 
     const { table: tbl, body } = table([
-      ["Run", false], ["Status", false], ["Passed", true], ["Failed", true], ["Errors", true], ["Total", true], ["Cost", true],
-      ["Started (UTC)", false], ["Duration", true],
+      ["Run", false], ["Status", false], ["Case runs", false], ["Cost", true], ["Started (UTC)", false], ["Duration", true],
     ]);
     tbl.className = "clickable";
     for (const r of exp.runs) {
       const tr = body.insertRow();
       tr.insertCell().textContent = `#${r.id}`;
       tr.insertCell().append(statusBadge(r.status));
-      numCell(tr, String(r.passed_cases));
-      numCell(tr, String(r.failed_cases));
-      numCell(tr, String(r.error_cases));
-      numCell(tr, String(r.total_cases));
+      tr.insertCell().textContent = countsLine(r.counts);
       numCell(tr, fmtCost(r.cost_usd));
       tr.insertCell().textContent = fmtTime(r.started_at);
       numCell(tr, fmtDuration(r.started_at, r.finished_at));
@@ -223,9 +247,10 @@ async function showRun(runID: number, experiment: string): Promise<void> {
     ]);
     const webByCase = new Map(webSearches.map((w) => [w.case_run_id, w]));
     const cases = run.case_runs ?? [];
-    status.replaceChildren(statusBadge(run.status), ` ${run.passed_cases}/${run.total_cases} passed · ${fmtCost(run.cost_usd)} · ${fmtDuration(run.started_at, run.finished_at)}`);
+    status.replaceChildren(statusBadge(run.status), ` ${countsLine(run.counts)} · ${fmtCost(run.cost_usd)} · ${fmtDuration(run.started_at, run.finished_at)}`);
     content.append(props([
       ["started", `${fmtTime(run.started_at)} UTC`], ["finished", run.finished_at ? `${fmtTime(run.finished_at)} UTC` : undefined],
+      ["error", run.error],
       ["params", run.params && Object.keys(run.params).length ? JSON.stringify(run.params) : undefined],
     ]));
     if (cases.length === 0) {
@@ -233,7 +258,7 @@ async function showRun(runID: number, experiment: string): Promise<void> {
       return;
     }
     const { table: tbl, body } = table([
-      ["Eval", false], ["Case", false], ["Status", false], ["Steps", true], ["Cost", true], ["Duration", true], ["Trajectories", true], ["Web searches", true],
+      ["Eval", false], ["Case", false], ["Status", false], ["Verdict", false], ["Steps", true], ["Cost", true], ["Duration", true], ["Trajectories", true], ["Web searches", true],
     ]);
     tbl.className = "clickable";
     for (const e of cases) {
@@ -241,6 +266,7 @@ async function showRun(runID: number, experiment: string): Promise<void> {
       tr.insertCell().textContent = e.eval;
       tr.insertCell().textContent = e.name;
       tr.insertCell().append(statusBadge(e.status));
+      tr.insertCell().append(verdictBadge(e.verdict));
       numCell(tr, String(e.steps));
       numCell(tr, fmtCost(e.cost_usd));
       numCell(tr, fmtDuration(e.started_at, e.finished_at));
@@ -250,7 +276,7 @@ async function showRun(runID: number, experiment: string): Promise<void> {
       detail.hidden = true;
       detail.className = "detail";
       const cell = detail.insertCell();
-      cell.colSpan = 8;
+      cell.colSpan = 9;
       cell.append(...caseRecord(run, e, experiment, webByCase.get(e.id)));
       tr.addEventListener("click", () => {
         detail.hidden = !detail.hidden;
@@ -270,6 +296,7 @@ async function showRun(runID: number, experiment: string): Promise<void> {
 function caseRecord(run: Run, e: CaseRun, experiment: string, web?: EvalWebSearches): HTMLElement[] {
   const out: HTMLElement[] = [
     props([
+      ["status", e.status], ["verdict", e.verdict], ["score", e.score != null ? String(e.score) : undefined],
       ["started", `${fmtTime(e.started_at)} UTC`], ["answer", e.answer], ["error", e.error],
     ]),
   ];

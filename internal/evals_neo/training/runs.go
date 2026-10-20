@@ -176,7 +176,7 @@ func (w *Watch) Close() {
 }
 
 // Watch starts watching eval id: the snapshot (the run and all of its cases so far: the ones stored, and the ones the model
-// answered that the judge has not scored yet, as ViewAnswered), and the events that follow while the eval goes on. The caller must
+// answered that the judge has not scored yet, as running), and the events that follow while the eval goes on. The caller must
 // Close it. Errors are *Error: KindNotFound for an unknown eval, KindInternal.
 func (m *Manager) Watch(ctx context.Context, id int64) (*Watch, error) {
 	// Subscribe before reading the database, so no event falls between the two; the overlap is harmless: the cases are applied by
@@ -230,12 +230,12 @@ type ExperimentView struct {
 // ExperimentRunView is one run of a training experiment: an eval of one trained model. Eval is the eval as it is now (so a running
 // one shows its progress) and Model the trained model that was evaluated.
 type ExperimentRunView struct {
-	ID           int64     `json:"id"` // the same as Eval.ID: the eval run is the run
-	ExperimentID int64     `json:"experiment_id"`
-	Status       string    `json:"status"`
-	CreatedAt    time.Time `json:"created_at"`
-	Eval         RunView   `json:"eval"`
-	Model        ModelView `json:"model"`
+	ID           int64       `json:"id"` // the same as Eval.ID: the eval run is the run
+	ExperimentID int64       `json:"experiment_id"`
+	Status       core.Status `json:"status"`
+	CreatedAt    time.Time   `json:"created_at"`
+	Eval         RunView     `json:"eval"`
+	Model        ModelView   `json:"model"`
 	// MeanScore is the mean judge score (0 to 5) of the judged answers and CorrectRate the share of them that is correct (a score
 	// of at least core.TrainingPassScore); both are nil while nothing is judged.
 	MeanScore   *float64 `json:"mean_score"`
