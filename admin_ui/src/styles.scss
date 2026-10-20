@@ -744,6 +744,7 @@ tr.removing {
 #training-loss { background: $bg; border: 1px solid $border; border-radius: 6px; padding: 0.25rem; svg { display: block; } > p { margin: 0.75rem; } }
 #model-modal[open], #audit-modal[open], #details-modal[open] { width: min(96vw, 60rem); }
 #model-modal h3, #audit-modal h3 { margin: 1rem 0 0.4rem; font-size: 0.95rem; }
+.model-menu { position: fixed; z-index: 1000; display: flex; gap: 0.35rem; padding: 0.4rem; background: $surface; border: 1px solid $border; border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5); }
 .icon-btn { padding: 0.2rem 0.35rem; line-height: 0; vertical-align: middle; svg { display: block; } }
 .infer-item { margin-bottom: 0.75rem; padding: 0.5rem 0.8rem; background: $bg; border: 1px solid $border; border-radius: 6px;
   .infer-head { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; font-size: 0.8rem; }

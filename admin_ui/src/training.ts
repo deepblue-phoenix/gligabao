@@ -205,7 +205,7 @@ function renderModels(): void {
   for (const m of models) {
     const tr = body.insertRow();
     tr.classList.toggle("selected", m.id === selectedModel);
-    tr.title = "Open this model: how it was trained, its files and its evals";
+    tr.title = "Click for this model's actions: info, prompt, eval, audit";
     tr.insertCell().textContent = String(m.id);
     const name = tr.insertCell();
     name.textContent = shortName(m.name);
@@ -229,35 +229,7 @@ function renderModels(): void {
     trained.textContent = fmtAgo(m.created_at);
     trained.title = `${fmtTime(m.created_at)} UTC`;
     trained.className = "nowrap";
-    // not the row's click: it opens the dialog
-    const promptCell = tr.insertCell();
-    const promptBtn = node("button", "small", "Prompt");
-    promptBtn.type = "button";
-    promptBtn.title = "Open the prompt dialog of this model: run a prompt through it and see the past requests";
-    promptBtn.addEventListener("click", (e) => { e.stopPropagation(); openPrompt(m.id); });
-    const infoBtn = node("button", "small icon-btn");
-    infoBtn.type = "button";
-    infoBtn.title = "Training details and files of this model";
-    infoBtn.setAttribute("aria-label", "Training details and files");
-    infoBtn.innerHTML = INFO_ICON;
-    infoBtn.addEventListener("click", (e) => { e.stopPropagation(); openDetails(m.id); });
-    promptCell.className = "nowrap";
-    promptCell.append(promptBtn, " ", infoBtn);
-    // Audit and Eval only open a dialog for this model (the form and the past runs); nothing runs until its Run button is clicked.
-    const auditCell = tr.insertCell();
-    const auditBtn = node("button", "small", AUDIT.button);
-    auditBtn.type = "button";
-    auditBtn.title = `Open the audit dialog of this model: run a training data audit and see the past ones. ${m.dataset ? AUDIT.tip(m.dataset) : "This model was trained on the sidecar's default dataset: there are no questions to ask"}`;
-    auditBtn.addEventListener("click", (e) => { e.stopPropagation(); openAudit(m.id); });
-    auditCell.append(auditBtn);
-    const evalCell = tr.insertCell();
-    const evalBtn = node("button", "small", EVAL.button);
-    evalBtn.type = "button";
-    evalBtn.title = m.dataset ? `Open the eval screen of this model. ${EVAL.tip(m.dataset)}` : "This model was trained on the sidecar's default dataset: there are no questions to ask";
-    evalBtn.disabled = !m.dataset;
-    evalBtn.addEventListener("click", (e) => { e.stopPropagation(); selectModel(m.id); el("model-evals-heading").scrollIntoView({ block: "start" }); });
-    evalCell.append(evalBtn);
-    tr.addEventListener("click", () => selectModel(m.id));
+    tr.addEventListener("click", (e) => { e.stopPropagation(); openModelMenu(m.id, e.clientX, e.clientY); });
   }
   el("training-models-status").textContent = models.length === 0 ? "No trained models yet: one is saved when a job completes." : "";
 }
@@ -289,6 +261,44 @@ function selectModel(id: number): void {
 }
 
 const INFO_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>';
+
+// The little box that opens where a model's row is clicked: info, prompt, eval, audit (in that order).
+function closeModelMenu(): void {
+  document.getElementById("model-menu")?.remove();
+}
+
+function openModelMenu(id: number, x: number, y: number): void {
+  closeModelMenu();
+  const m = models.find((v) => v.id === id);
+  if (!m) return;
+  const menu = node("div", "model-menu");
+  menu.id = "model-menu";
+  menu.setAttribute("role", "menu");
+  menu.addEventListener("click", (e) => e.stopPropagation());
+  const add = (btn: HTMLButtonElement, title: string, run: () => void): void => {
+    btn.type = "button";
+    btn.title = title;
+    btn.addEventListener("click", () => { closeModelMenu(); run(); });
+    menu.append(btn);
+  };
+  const info = node("button", "small icon-btn");
+  info.innerHTML = INFO_ICON;
+  info.setAttribute("aria-label", "Training details and files");
+  add(info, "Training details and files of this model", () => openDetails(id));
+  add(node("button", "small", "Prompt"), "Open the prompt dialog of this model: run a prompt through it and see the past requests", () => openPrompt(id));
+  const evalBtn = node("button", "small", EVAL.button);
+  evalBtn.disabled = !m.dataset;
+  add(evalBtn, m.dataset ? `Open the eval screen of this model. ${EVAL.tip(m.dataset)}` : "This model was trained on the sidecar's default dataset: there are no questions to ask",
+    () => { selectModel(id); el("model-evals-heading").scrollIntoView({ block: "start" }); });
+  add(node("button", "small", AUDIT.button),
+    `Open the audit dialog of this model: run a training data audit and see the past ones. ${m.dataset ? AUDIT.tip(m.dataset) : "This model was trained on the sidecar's default dataset: there are no questions to ask"}`,
+    () => openAudit(id));
+  document.body.append(menu);
+  // near the click, kept inside the viewport
+  const r = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(4, Math.min(x + 6, window.innerWidth - r.width - 4))}px`;
+  menu.style.top = `${Math.max(4, Math.min(y + 6, window.innerHeight - r.height - 4))}px`;
+}
 
 // Opens the details dialog of a model: how it was trained and its files.
 function openDetails(id: number): void {
@@ -1512,6 +1522,10 @@ export function initTraining(): void {
   el("prompt-close").addEventListener("click", () => promptModal.close());
   promptModal.addEventListener("close", closePromptModal);
   promptModal.addEventListener("click", (e) => { if (e.target === promptModal) promptModal.close(); });
+  document.addEventListener("click", closeModelMenu);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModelMenu(); });
+  window.addEventListener("scroll", closeModelMenu, true);
+  window.addEventListener("resize", closeModelMenu);
   const detailsModal = el<HTMLDialogElement>("details-modal");
   el("details-close").addEventListener("click", () => detailsModal.close());
   detailsModal.addEventListener("click", (e) => { if (e.target === detailsModal) detailsModal.close(); });

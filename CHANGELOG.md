@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.94.0] - 2026-10-23
+
+### Changed
+- Admin UI, training view: the per-model Prompt, Audit and Eval columns are gone. Clicking a trained model's row opens a small box next to the click with the actions: info, prompt, eval, audit (in that order). It closes on an outside click, Escape, scroll or after picking an action.
+
 ## [0.93.0] - 2026-10-23
 
 ### Changed
