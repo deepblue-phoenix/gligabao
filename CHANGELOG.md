@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.81.0] - 2026-10-22
+
+### Changed
+- **Admin UI: audits have their own dialog.** The **Audit** button in each row of the trained models list now opens an `audit` dialog for that model (the form with the number of questions and the judge's batch size, and the list of its past audits, with their live view), so a model is audited in place. The audit section is no longer in the trained model's dialog, which keeps the inference and the evals. The **Eval** button is unchanged.
+
 ## [0.80.0] - 2026-10-22
 
 ### Removed

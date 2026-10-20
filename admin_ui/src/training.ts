@@ -208,7 +208,7 @@ function renderModels(): void {
   for (const m of models) {
     const tr = body.insertRow();
     tr.classList.toggle("selected", m.id === selectedModel);
-    tr.title = "Open this model: its files, inference and the past replies";
+    tr.title = "Open this model: its files, inference, evals and the past replies";
     tr.insertCell().textContent = String(m.id);
     const name = tr.insertCell();
     name.textContent = shortName(m.name);
@@ -233,15 +233,20 @@ function renderModels(): void {
     trained.title = `${fmtTime(m.created_at)} UTC`;
     trained.className = "nowrap";
     // not the row's click: it opens the dialog
-    for (const k of KINDS) {
-      const cell = tr.insertCell();
-      const btn = node("button", "small", k.button);
-      btn.type = "button";
-      btn.title = m.dataset ? k.tip(m.dataset) : "This model was trained on the sidecar's default dataset: there are no questions to ask";
-      btn.disabled = !m.dataset;
-      btn.addEventListener("click", (e) => { e.stopPropagation(); void startRun(k, m, {}); });
-      cell.append(btn);
-    }
+    // Audit opens its own dialog for this model (the form and the past audits); Eval starts a run right away.
+    const auditCell = tr.insertCell();
+    const auditBtn = node("button", "small", AUDIT.button);
+    auditBtn.type = "button";
+    auditBtn.title = `Open the audit dialog of this model: run a training data audit and see the past ones. ${m.dataset ? AUDIT.tip(m.dataset) : "This model was trained on the sidecar's default dataset: there are no questions to ask"}`;
+    auditBtn.addEventListener("click", (e) => { e.stopPropagation(); openAudit(m.id); });
+    auditCell.append(auditBtn);
+    const evalCell = tr.insertCell();
+    const evalBtn = node("button", "small", EVAL.button);
+    evalBtn.type = "button";
+    evalBtn.title = m.dataset ? EVAL.tip(m.dataset) : "This model was trained on the sidecar's default dataset: there are no questions to ask";
+    evalBtn.disabled = !m.dataset;
+    evalBtn.addEventListener("click", (e) => { e.stopPropagation(); void startRun(EVAL, m, {}); });
+    evalCell.append(evalBtn);
     tr.addEventListener("click", () => selectModel(m.id));
   }
   el("training-models-status").textContent = models.length === 0 ? "No trained models yet: one is saved when a job completes." : "";
@@ -270,7 +275,8 @@ function selectModel(id: number): void {
   const modal = el<HTMLDialogElement>("model-modal");
   if (!modal.open) modal.showModal();
   void loadInferences(id);
-  for (const k of KINDS) void loadRuns(k, id);
+  EVAL.model = id;
+  void loadRuns(EVAL, id);
   warm = "unknown";
   drawWarm();
   void pollWarm(id);
@@ -279,8 +285,26 @@ function selectModel(id: number): void {
 function closeModelModal(): void {
   selectedModel = null;
   clearTimeout(warmTimer);
-  for (const k of KINDS) { clearTimeout(k.timer); k.runs = []; }
+  clearTimeout(EVAL.timer); EVAL.runs = []; EVAL.model = null;
   renderModels();
+}
+
+// Opens the audit dialog of a model: the form to audit it and the list of its past audits.
+function openAudit(id: number): void {
+  const m = models.find((x) => x.id === id);
+  if (!m) return;
+  AUDIT.model = id;
+  el("audit-title").textContent = `Audit: ${m.name} (#${m.id})`;
+  renderRunForm(AUDIT, m);
+  el("model-audits-status").textContent = "Loading the audits…";
+  el("model-audits").replaceChildren();
+  const modal = el<HTMLDialogElement>("audit-modal");
+  if (!modal.open) modal.showModal();
+  void loadRuns(AUDIT, id);
+}
+
+function closeAuditModal(): void {
+  clearTimeout(AUDIT.timer); AUDIT.runs = []; AUDIT.model = null; AUDIT.status = undefined;
 }
 
 // The facts and files of the selected model, and the inference form, in the dialog. The history under it is drawn by renderInferences.
@@ -346,7 +370,7 @@ function renderModelDetail(): void {
   form.append(labelled("Max tokens", tokens), labelled("Temperature", temp), run, status);
 
   el("model-detail").replaceChildren(info, warmRow, prompt, form);
-  for (const k of KINDS) renderRunForm(k, m);
+  renderRunForm(EVAL, m);
   el("model-inferences").replaceChildren();
   el("model-inferences-status").textContent = "Loading the past requests…";
 }
@@ -518,6 +542,7 @@ interface RunKind {
   noun: string; // "audit" or "eval"
   button: string; // the label of its button
   formId: string; statusId: string; listId: string; // the elements of the dialog's section
+  model: number | null; // the trained model whose dialog is open for this kind (null: closed)
   runs: TrainedModelRun[];
   timer: number | undefined;
   open: Set<number>; // runs whose answers are expanded
@@ -529,8 +554,8 @@ interface RunKind {
 }
 type RunKindPath = "audits" | "evals";
 
-const newKind = (k: Omit<RunKind, "runs" | "timer" | "open" | "cases" | "status">): RunKind =>
-  ({ ...k, runs: [], timer: undefined, open: new Set(), cases: new Map(), status: undefined });
+const newKind = (k: Omit<RunKind, "model" | "runs" | "timer" | "open" | "cases" | "status">): RunKind =>
+  ({ ...k, model: null, runs: [], timer: undefined, open: new Set(), cases: new Map(), status: undefined });
 const AUDIT = newKind({
   path: "audits", noun: "audit", button: "Audit", formId: "model-audits-form", statusId: "model-audits-status", listId: "model-audits",
   listKey: "audits",
@@ -561,7 +586,7 @@ async function startRun(k: RunKind, m: TrainedModel, opts: { limit?: number; bat
     if (!res.ok) throw await failure(res);
     const started = readRun(k, await res.json());
     k.open.add(started.id);
-    if (selectedModel !== m.id) selectModel(m.id);
+    if (k.model !== m.id) { if (k === AUDIT) openAudit(m.id); else selectModel(m.id); }
     else await loadRuns(k, m.id);
     say(`${capital(k.noun)} #${started.id} started: ${started.num_examples} questions.`, "muted");
     openRunLive(k, started, m); // watch it run
@@ -588,14 +613,14 @@ async function cancelRun(kind: RunKindPath, id: number): Promise<void> {
     void alertDialog(`Could not cancel ${k.noun} #${id}: ${errText(err)}`);
     return;
   }
-  if (selectedModel !== null) void loadRuns(k, selectedModel);
+  if (k.model !== null) void loadRuns(k, k.model);
 }
 
 // Opens the live view of a run: its questions and the model's answers as they come, then their scores.
 function openRunLive(k: RunKind, e: TrainedModelRun, m?: TrainedModel): void {
   const model = m ?? models.find((x) => x.id === e.trained_model_id);
   watchEval(k.path, e.id, `${capital(k.noun)} #${e.id} · ${model ? `${model.name} (#${model.id})` : `model #${e.trained_model_id}`} · ${runSource(e)}`,
-    () => { if (selectedModel !== null) void loadRuns(k, selectedModel); });
+    () => { if (k.model !== null) void loadRuns(k, k.model); });
 }
 
 // The evals the server can run (GET ../training/eval-definitions), fetched once.
@@ -674,14 +699,14 @@ async function loadRuns(k: RunKind, modelID: number): Promise<void> {
       const r = await fetch(`../training/${k.path}/${e.id}`);
       if (r.ok) k.cases.set(e.id, readCases(k, await r.json()));
     }));
-    if (selectedModel !== modelID) return; // another model, or closed, while loading
+    if (k.model !== modelID) return; // another model, or closed, while loading
     k.runs = list;
     status.className = "muted";
     status.textContent = list.length === 0 ? `No ${k.noun}s of this model yet.` : `${list.length} ${k.noun}${list.length === 1 ? "" : "s"}, newest first:`;
     renderRuns(k);
     if (list.some(runRunning)) k.timer = window.setTimeout(() => void loadRuns(k, modelID), EVAL_POLL_MS);
   } catch (err) {
-    if (selectedModel !== modelID) return;
+    if (k.model !== modelID) return;
     status.className = "error";
     status.textContent = `Failed to load the ${k.noun}s: ${errText(err)}`;
   }
@@ -698,7 +723,7 @@ function scoreClass(score: number | null): string {
 }
 
 function renderRuns(k: RunKind): void {
-  const m = models.find((x) => x.id === selectedModel);
+  const m = models.find((x) => x.id === k.model);
   const box = el(k.listId);
   box.replaceChildren();
   for (const e of k.runs) {
@@ -748,7 +773,7 @@ function renderRuns(k: RunKind): void {
     details.append(node("summary", "", "Answers, lowest score first"));
     details.addEventListener("toggle", () => {
       if (details.open === k.open.has(e.id)) return;
-      if (details.open) { k.open.add(e.id); if (selectedModel !== null) void loadRuns(k, selectedModel); } else k.open.delete(e.id);
+      if (details.open) { k.open.add(e.id); if (k.model !== null) void loadRuns(k, k.model); } else k.open.delete(e.id);
     });
     if (details.open) details.append(runCasesTable(k, k.cases.get(e.id)));
     item.append(details);
@@ -1359,6 +1384,10 @@ export function initTraining(): void {
   el("model-close").addEventListener("click", () => modelModal.close());
   modelModal.addEventListener("close", closeModelModal);
   modelModal.addEventListener("click", (e) => { if (e.target === modelModal) modelModal.close(); });
+  const auditModal = el<HTMLDialogElement>("audit-modal");
+  el("audit-close").addEventListener("click", () => auditModal.close());
+  auditModal.addEventListener("close", closeAuditModal);
+  auditModal.addEventListener("click", (e) => { if (e.target === auditModal) auditModal.close(); });
   el("dataset-close").addEventListener("click", () => datasetModal.close());
   datasetModal.addEventListener("click", (e) => { if (e.target === datasetModal) datasetModal.close(); });
   el("training-refresh").addEventListener("click", () => { void loadDatasets(); void loadBackends(); void loadJobs(); void loadModels(); });
