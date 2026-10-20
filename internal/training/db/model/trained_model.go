@@ -17,7 +17,7 @@ type TrainedModel struct {
 	// JobID is the sidecar's id of the job, unique: a job makes one model.
 	RunID *int64 `json:"run_id"`
 	JobID string `json:"job_id"`
-	// BaseModel is the model that was fine-tuned (e.g. "google/gemma-4-E4B-it"), ModelSize its size ("4b" or "12b"):
+	// BaseModel is the model that was fine-tuned (e.g. "google/gemma-4-E4B-it"), ModelSize its size ("4b", "12b" or "31b"):
 	// inference needs the size to pick the hardware.
 	BaseModel string `json:"base_model"`
 	ModelSize string `json:"model_size"`

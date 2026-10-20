@@ -1,5 +1,5 @@
-# Dependencies for the inference-only image (Gemma-4 4B and 12B: generate with a trained LoRA adapter). Installed by the
-# provider at image build; shared by infer_4b and infer_12b.
+# Dependencies for the inference-only image (Gemma-4 4B, 12B and 31B: generate with a trained LoRA adapter). Installed by the
+# provider at image build; shared by infer_4b, infer_12b and infer_31b.
 #
 # As light as possible: no unsloth/unsloth_zoo (and so none of what they pull in: xformers/triton extras, trl, datasets,
 # torchao, torchvision), no trainer. The base model is loaded 4-bit with bitsandbytes and the adapter attached with peft,

@@ -1,4 +1,4 @@
-"""Unsloth model loading for Gemma-4 4B and 12B (training only; inference loads without Unsloth: model_load_infer.py).
+"""Unsloth model loading for Gemma-4 4B, 12B and 31B (training only; inference loads without Unsloth: model_load_infer.py).
 
 Imports `unsloth` at module scope: only import this in the Unsloth image
 (requirements_train.txt).

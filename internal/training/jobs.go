@@ -50,9 +50,9 @@ func StartJob(ctx context.Context, db *sql.DB, dir string, sc JobStarter, mon *M
 		return nil, invalidErr("num_train_steps must be positive")
 	}
 	switch req.ModelSize {
-	case "", sidecar.ModelSize4B, sidecar.ModelSize12B:
+	case "", sidecar.ModelSize4B, sidecar.ModelSize12B, sidecar.ModelSize31B:
 	default:
-		return nil, invalidErr("model_size must be \"4b\" or \"12b\"")
+		return nil, invalidErr("model_size must be \"4b\", \"12b\" or \"31b\"")
 	}
 
 	dataset, content, err := LoadTrainingDataset(ctx, db, dir, name)

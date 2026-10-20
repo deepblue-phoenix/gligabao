@@ -11,7 +11,7 @@ import (
 // InferRequest is the body of POST /infer/query.
 type InferRequest struct {
 	Prompt string `json:"prompt"`
-	// ModelSize is "4b" or "12b" (default "4b"): it picks the hardware, and must be the size the model was trained for.
+	// ModelSize is "4b", "12b" or "31b" (default "4b"): it picks the hardware, and must be the size the model was trained for.
 	ModelSize string `json:"model_size,omitempty"`
 	// ModelPath picks the weights: the Path of a trained model ("trained/<job id>"). Without it the sidecar uses the
 	// adapter that older versions saved per model size.

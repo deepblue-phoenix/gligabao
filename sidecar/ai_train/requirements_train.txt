@@ -1,5 +1,5 @@
-# Dependencies for the Unsloth train image (Gemma-4 4B and 12B: train + inference). Installed by the
-# provider at image build; shared by the 4B and 12B functions.
+# Dependencies for the Unsloth train image (Gemma-4 4B, 12B and 31B: train + inference). Installed by the
+# provider at image build; shared by the 4B, 12B and 31B functions.
 #
 # Modernised stack: unsloth 2026.10.x supports transformers<=5.17 (incl. gemma4_unified),
 # trl<=1.15, peft>=0.18. The old pins (transformers<=5.5, torch<2.9, torchao<0.14) are gone:

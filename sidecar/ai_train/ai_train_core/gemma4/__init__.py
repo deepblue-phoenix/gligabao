@@ -1,4 +1,4 @@
-"""Everything specific to the Gemma-4 model family (4B and 12B). Nothing else in `ai_train_core` knows Gemma exists.
+"""Everything specific to the Gemma-4 model family (4B, 12B and 31B). Nothing else in `ai_train_core` knows Gemma exists.
 
 A model family is a package of this shape, registered in `..model_families`:
 

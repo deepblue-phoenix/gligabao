@@ -1,22 +1,22 @@
 # Gemma-4 Model Size Support
 
-This training system supports both **Gemma-4 4B** and **Gemma-4 12B** models for fine-tuning.
+This training system supports **Gemma-4 4B**, **Gemma-4 12B** and **Gemma-4 31B** models for fine-tuning.
 
 How the models work (prompt format, when generation stops, where a request's time goes): [model_internals.md](model_internals.md).
 
 ## Model Comparison
 
-| Feature | Gemma-4 4B | Gemma-4 12B |
-|---------|------------|-------------|
-| **Model Name** | `google/gemma-4-E4B-it` | `google/gemma-4-12B-it` |
-| **Parameters** | 4 Billion | 12 Billion |
-| **Trainable Params (LoRA r=16)** | ~60M (1.5%) | ~180M (1.5%) |
-| **Recommended GPU** | A10G (24GB) | A100 (40GB/80GB) |
-| **Modal Cost** | $1.10/hour | $4.10/hour |
-| **Batch Size** | 2 | 1 |
-| **Gradient Accumulation** | 4 steps | 8 steps |
-| **Effective Batch Size** | 8 | 8 |
-| **Training Speed** | ~1-2 min/100 steps | ~3-4 min/100 steps |
+| Feature | Gemma-4 4B | Gemma-4 12B | Gemma-4 31B |
+|---------|------------|-------------|-------------|
+| **Model Name** | `google/gemma-4-E4B-it` | `google/gemma-4-12B-it` | `google/gemma-4-31B-it` |
+| **Parameters** | 4 Billion | 12 Billion | 31 Billion |
+| **Trainable Params (LoRA r=16)** | ~60M (1.5%) | ~180M (1.5%) | ~450M (1.5%) |
+| **Recommended GPU** | A10G (24GB) | A100 (40GB/80GB) | A100 (80GB) |
+| **Modal Cost** | $1.10/hour | $4.10/hour | ~$5/hour (estimate) |
+| **Batch Size** | 2 | 1 | 1 |
+| **Gradient Accumulation** | 4 steps | 8 steps | 8 steps |
+| **Effective Batch Size** | 8 | 8 | 8 |
+| **Training Speed** | ~1-2 min/100 steps | ~3-4 min/100 steps | ~8-10 min/100 steps (estimate) |
 
 ## Training Cost Estimates
 
@@ -38,6 +38,7 @@ How the models work (prompt format, when generation stops, where a request's tim
 cd sidecar/ai_train
 modal run app.py --action train --train-steps 500 --model-size 4b     # A10G
 modal run app.py --action train --train-steps 500 --model-size 12b    # A100
+modal run app.py --action train --train-steps 500 --model-size 31b    # A100 80GB
 modal run app.py --action infer --model-size 12b --prompt "..."
 ```
 
@@ -57,6 +58,10 @@ curl -X POST $URL/training/job_start -H "Content-Type: application/json" \
 - ✅ Your task is **relatively simple** (tool calling, classification, basic Q&A)
 - ✅ You want to **test quickly** before committing to larger training runs
 
+### Use 31B Model When:
+- ✅ 12B is not good enough and quality matters more than cost or speed
+- ✅ You can run on an **80GB GPU** (A100 80GB)
+
 ### Use 12B Model When:
 - ✅ You need **higher quality** outputs
 - ✅ You have a **larger dataset** (>1000 examples)
@@ -72,17 +77,18 @@ curl -X POST $URL/training/job_start -H "Content-Type: application/json" \
 |-------|----------------|-----------------|---------------|----------------|
 | 4B | ~8GB | ~2GB | ~0.5GB | ~2.5GB |
 | 12B | ~24GB | ~6GB | ~1.5GB | ~7.5GB |
+| 31B | ~62GB | ~16GB | ~3.5GB | ~20GB (activations and optimizer state come on top; use an 80GB GPU) |
 
 ### GPU Selection Logic
 
-Defaults come from `ai_train_core/gemma4/model_config.py` (`default_gpu`): `4b` -> `a10g`, `12b` -> `a100`.
+Defaults come from `ai_train_core/gemma4/model_config.py` (`default_gpu`): `4b` -> `a10g`, `12b` -> `a100`, `31b` -> `a100-80gb`.
 `SIDECAR_GPU` overrides both.
 
 ### Training stack
 
-Both sizes train through Unsloth, in one shared image (`requirements_train.txt`: unsloth 2026.10.x, torch 2.10+, CUDA 12.8 toolkit). Code: `gemma4/model_load.py`, `gemma4/model_train.py`.
+All sizes train through Unsloth, in one shared image (`requirements_train.txt`: unsloth 2026.10.x, torch 2.10+, CUDA 12.8 toolkit). Code: `gemma4/model_load.py`, `gemma4/model_train.py`.
 
-Both sizes serve through plain `transformers` + `peft` + `bitsandbytes`, in a separate inference-only image (`requirements_infer.txt`: torch, transformers, peft, accelerate, bitsandbytes; no Unsloth, trl, datasets or torchao, and a slim base image without the CUDA toolkit). The base model is loaded 4-bit (nf4) and the trained adapter attached on top. Code: `model_load_infer.py`, `inference.py`. Keep the `torch` and `transformers` ranges of the two requirements files in step.
+All sizes serve through plain `transformers` + `peft` + `bitsandbytes`, in a separate inference-only image (`requirements_infer.txt`: torch, transformers, peft, accelerate, bitsandbytes; no Unsloth, trl, datasets or torchao, and a slim base image without the CUDA toolkit). The base model is loaded 4-bit (nf4) and the trained adapter attached on top. Code: `model_load_infer.py`, `inference.py`. Keep the `torch` and `transformers` ranges of the two requirements files in step.
 
 A job saves only its LoRA adapter, in `/models/trained/<job_id>` of the models volume, as a new trained model (the base model stays in the Hugging Face cache volume and is shared). Inference picks the adapter with `model_path` and needs `model_size` to match the size it was trained for. See [Trained models](sidecar.md#trained-models).
 
@@ -90,7 +96,7 @@ A job saves only its LoRA adapter, in `/models/trained/<job_id>` of the models v
 
 ### LoRA Configuration
 
-Both models use rank 16, alpha 16, dropout 0 on the q/k/v/o attention projections, with gradient checkpointing.
+All models use rank 16, alpha 16, dropout 0 on the q/k/v/o attention projections, with gradient checkpointing.
 
 ## Recommended Workflow
 

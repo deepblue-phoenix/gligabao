@@ -16,6 +16,7 @@ import (
 const (
 	ModelSize4B  = "4b"
 	ModelSize12B = "12b"
+	ModelSize31B = "31b"
 )
 
 // DefaultNumTrainSteps and DefaultModelSize are what the sidecar uses for the fields StartTrainingJobRequest leaves unset.
@@ -32,7 +33,7 @@ type TrainingJob struct {
 	JobID         string `json:"job_id"`
 	ProviderJobID string `json:"provider_job_id,omitempty"`
 	Status        string `json:"status"` // "started"
-	// ModelSize is "4b" or "12b".
+	// ModelSize is "4b", "12b" or "31b".
 	ModelSize     string `json:"model_size"`
 	NumTrainSteps int    `json:"num_train_steps"`
 	// Dataset is the file on the sidecar's data volume the job trains on (<dataset name>.jsonl).

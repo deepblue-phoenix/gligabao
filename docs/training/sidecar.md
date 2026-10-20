@@ -55,14 +55,14 @@ curl http://127.0.0.1:8787/health
 
 ## Remote training bootstrap
 
-`sidecar/ai_train/` fine-tunes Gemma-4 (4B and 12B, LoRA) on a cloud provider and serves the result. It is ported from `gloflow_phoenix/gf_phoenix/ai_train` and restructured so the cloud-specific parts sit behind a provider interface. It is the Modal side of the `modal` backend: it runs on Modal and is not imported by `main_sidecar.py`; `Dockerfile.sidecar` copies it only so that the sidecar can deploy it (see [modal.md](modal.md)).
+`sidecar/ai_train/` fine-tunes Gemma-4 (4B, 12B and 31B, LoRA) on a cloud provider and serves the result. It is ported from `gloflow_phoenix/gf_phoenix/ai_train` and restructured so the cloud-specific parts sit behind a provider interface. It is the Modal side of the `modal` backend: it runs on Modal and is not imported by `main_sidecar.py`; `Dockerfile.sidecar` copies it only so that the sidecar can deploy it (see [modal.md](modal.md)).
 
 ```
 sidecar/ai_train/
   app.py                      # declares the remote functions + CLI entrypoint (provider-neutral)
   config.py                   # TrainConfig, overridable by env vars
   training_data.py            # the local datasets (bin/datasets_training/*/dataset.toml), for the CLI
-  requirements_train.txt      # the training image (Unsloth; 4B and 12B)
+  requirements_train.txt      # the training image (Unsloth; 4B, 12B and 31B)
   requirements_infer.txt      # the inference-only image (transformers + peft + bitsandbytes; no Unsloth)
   requirements_web.txt        # web API image
   (training docs moved to top-level docs/training/)
@@ -76,9 +76,9 @@ sidecar/ai_train/
     progress_events.py        # the events of a job: write helpers, stop flag (no heavy imports)
     event_log.py              # the job's event log on the provider's key-value store (Modal Dict)
     gemma4/                   # everything Gemma-4 specific (the contract of a family: gemma4/__init__.py)
-      model_config.py         #   4b / 12b settings (pure data)
+      model_config.py         #   4b / 12b / 31b settings (pure data)
       prompt_format.py        #   Gemma turn-marker format shared by training and inference
-      model_load.py, model_train.py   # training: 4B and 12B via Unsloth
+      model_load.py, model_train.py   # training: 4B, 12B and 31B via Unsloth
       model_load_infer.py     #   inference loading: base model 4-bit + peft adapter, no Unsloth
     inference.py              # run inference with a trained adapter (model_path picks it)
     trained_model.py          # where a job's weights are saved, how they are described, model_path validation
@@ -95,7 +95,7 @@ sidecar/ai_train/
 
 ### One training path for both sizes
 
-`google/gemma-4-E4B-it` (4B) uses the `gemma4` architecture and `google/gemma-4-12B-it` (12B) the newer `gemma4_unified` one. Both train through Unsloth (2026.10.x, which supports `transformers<=5.17` and `gemma4_unified`) in one image built from `requirements_train.txt` (CUDA 12.8 toolkit, torch 2.10+), and serve through plain `transformers` + `peft` + `bitsandbytes` in a separate, lighter image built from `requirements_infer.txt` (see [Images](#images)). The sizes differ only in their settings (`gemma4/model_config.py`), GPU and Modal function (`train_4b` / `train_12b`, `infer_4b` / `infer_12b`). Every job saves its LoRA adapter in a directory of its own, `/models/trained/<job_id>`, so no job (of either size) overwrites an earlier model; see [Trained models](#trained-models). See [training/model_sizes.md](model_sizes.md).
+`google/gemma-4-E4B-it` (4B) uses the `gemma4` architecture and `google/gemma-4-12B-it` (12B) the newer `gemma4_unified` one. Both train through Unsloth (2026.10.x, which supports `transformers<=5.17` and `gemma4_unified`) in one image built from `requirements_train.txt` (CUDA 12.8 toolkit, torch 2.10+), and serve through plain `transformers` + `peft` + `bitsandbytes` in a separate, lighter image built from `requirements_infer.txt` (see [Images](#images)). The sizes differ only in their settings (`gemma4/model_config.py`), GPU and Modal function (`train_4b` / `train_12b` / `train_31b`, `infer_4b` / `infer_12b` / `infer_31b`). Every job saves its LoRA adapter in a directory of its own, `/models/trained/<job_id>`, so no job (of either size) overwrites an earlier model; see [Trained models](#trained-models). See [training/model_sizes.md](model_sizes.md).
 
 ### Images
 
@@ -105,8 +105,8 @@ sidecar/ai_train/
 | --- | --- | --- | --- |
 | `CPU_IMAGE` | Debian slim | none | `ping`, dataset checks, the `train` and `infer` routers |
 | `WEB_IMAGE` | Debian slim | `requirements_web.txt` | the web API (`serve_api`) |
-| `UNSLOTH_IMAGE` (training) | `nvidia/cuda:12.8.1-devel` | `requirements_train.txt` | `train_4b`, `train_12b` |
-| `INFER_IMAGE` (inference only) | Debian slim (no CUDA toolkit) | `requirements_infer.txt` | `infer_4b`, `infer_12b` |
+| `UNSLOTH_IMAGE` (training) | `nvidia/cuda:12.8.1-devel` | `requirements_train.txt` | `train_4b`, `train_12b`, `train_31b` |
+| `INFER_IMAGE` (inference only) | Debian slim (no CUDA toolkit) | `requirements_infer.txt` | `infer_4b`, `infer_12b`, `infer_31b` |
 
 The inference image is kept as light as possible: it has only `torch`, `transformers`, `peft`, `accelerate`, `bitsandbytes` and `modal`. No Unsloth (and none of what it pulls in), no `trl`, `datasets`, `torchao` or `torchvision`, and no CUDA toolkit: the torch wheels bring the CUDA libraries they need and Modal provides the driver (`ImageSpec(gpu=True, cuda_toolkit=False)`). That makes the build and the cold start of an inference container smaller than with the training image. The adapter a training job saves is a standard peft LoRA adapter, so inference loads the base model 4-bit (nf4) with `bitsandbytes` and attaches the adapter with `peft` (`model_load_infer.py`). Keep the `torch` and `transformers` ranges of `requirements_train.txt` and `requirements_infer.txt` in step. Redeploy the Modal app to build the new image.
 
@@ -120,7 +120,7 @@ modal run app.py                                   # ping: image, volumes, GPU i
 modal run app.py --action datasets                 # list the local datasets (bin/datasets_training/<name>/dataset.toml)
 modal run app.py --action sync --dataset <name>    # upload a local dataset to the data volume (only if it changed)
 modal run app.py --action validate --dataset <name>  # check the dataset on the data volume
-modal run app.py --action train --dataset <name> --train-steps 100 --model-size 4b   # 4b on A10G, 12b on A100
+modal run app.py --action train --dataset <name> --train-steps 100 --model-size 4b   # 4b on A10G, 12b on A100, 31b on A100 80GB
 modal run app.py --action infer --model-size 4b --prompt "..."     # run the fine-tuned model
 modal serve app.py                                 # web API in dev mode (`modal deploy app.py` to persist)
 ```
@@ -155,7 +155,7 @@ The weights live on the provider's **models volume** (Modal: `SIDECAR_VOL_MODELS
   finetuned_model_12b/               by every job of that size); not in the table, still loadable without model_path
 ```
 
-- **Only the adapter is saved, not the base model.** The base model (`google/gemma-4-E4B-it` or `google/gemma-4-12B-it`) is downloaded from Hugging Face into the **HF cache volume** (`SIDECAR_VOL_HF_CACHE`, mounted at `/root/.cache/huggingface`) and shared by all jobs. `adapter_config.json` names it, and inference loads it (4-bit) and attaches the adapter. A trained model therefore needs the base model to stay downloadable (`HF_TOKEN`, see `SIDECAR_HF_SECRET`) and its `model_size` to be right. The adapter is small next to the base model (the code's estimate is 64 MB and up; the 12B one is larger); `size_bytes` has the real number.
+- **Only the adapter is saved, not the base model.** The base model (`google/gemma-4-E4B-it` or `google/gemma-4-12B-it` ...) is downloaded from Hugging Face into the **HF cache volume** (`SIDECAR_VOL_HF_CACHE`, mounted at `/root/.cache/huggingface`) and shared by all jobs. `adapter_config.json` names it, and inference loads it (4-bit) and attaches the adapter. A trained model therefore needs the base model to stay downloadable (`HF_TOKEN`, see `SIDECAR_HF_SECRET`) and its `model_size` to be right. The adapter is small next to the base model (the code's estimate is 64 MB and up; the 12B one is larger); `size_bytes` has the real number.
 - **Who writes it.** Only the training container, as the last stage of a job: it saves the adapter, commits the models volume (`commit_fn([MODELS_DIR])`), then lists the files and hashes them. Only after that does the job report `completed`, so a model row never points at weights that were not committed. A job that fails or is cancelled earlier saves nothing; one that dies *while* saving can leave a partial directory, which has no row.
 - **Who reads it.** The inference containers mount the models and HF cache volumes (`INFER_VOLS` in `app.py`). A container that was already running does not see a volume change committed elsewhere, so `infer_response` reloads the models volume first; that is how an adapter trained a minute ago is found. The web container mounts neither volume (it only needs data and eval).
 - **Never overwritten, never deleted.** A job ID is used once, so a path is never written twice. gligabao has no endpoint that deletes weights or a model row; to free space, remove the directory yourself (`modal volume rm -r gligabao-train-models trained/<job_id>`); the row stays and inference on it then answers `502` with the sidecar's "No trained model at …" message.
@@ -182,7 +182,7 @@ client / admin UI ── POST /v1/gb/training/models/{id}/infer ──► Go ser
                           Modal web API (api/api.py): validates model_size and model_path
                                                    │  provider.call(infer, …)
                                                    ▼
-                          infer (CPU router, app.py) ─► infer_4b / infer_12b (GPU function of that size)
+                          infer (CPU router, app.py) ─► infer_4b / infer_12b / infer_31b (GPU function of that size)
                                                    │  inference.infer_response
                                                    ▼
                           reload the models volume ─► resolve_model_dir("trained/<job_id>") ─► transformers loads the
@@ -190,7 +190,7 @@ client / admin UI ── POST /v1/gb/training/models/{id}/infer ──► Go ser
 ```
 
 - **`model_path`** is `trained/<job_id>` and nothing else: the web API refuses anything with another shape (`400`), and `resolve_model_dir` checks again inside the container, so a path cannot leave the `trained/` directory. A directory without `adapter_config.json` is a "No trained model at …" error. Without `model_path` the legacy `finetuned_model_<size>` adapter is used.
-- **`model_size` must match the weights.** It chooses the GPU function (4b: A10G, 12b: A100). The Go endpoint passes the size recorded for the model; a direct caller of `/infer/query` has to pass the right one, or the wrong GPU may run out of memory.
+- **`model_size` must match the weights.** It chooses the GPU function (4b: A10G, 12b: A100, 31b: A100 80GB). The Go endpoint passes the size recorded for the model; a direct caller of `/infer/query` has to pass the right one, or the wrong GPU may run out of memory.
 - **Cold and warm requests.** A request that finds no GPU container holding the model is *cold*: Modal starts a container, which loads the base model from the HF cache (4-bit) and attaches the adapter, so it takes up to minutes. The container then keeps the model in memory and stays up for `SIDECAR_INFER_IDLE_TIMEOUT_S` (default 60 seconds) after its last request, so the requests that follow are *warm* and only generate; a request for another model replaces the loaded one (one model per container). Step by step, what a cold request does in the container, and how to read it: [Cold and warm starts](modal.md#cold-and-warm-starts). The Modal functions have a 600 second timeout per request (`app.py`; the model load counts); the Go client waits up to 15 minutes (`context` limit, no HTTP timeout).
 - **The answer** is `{"response", "model_size", "model_path", "adapter", "cold_start", "load_seconds", "input_tokens", "output_tokens"}` (`cold_start`: this request loaded the model; `load_seconds`: how long that took, container start not included; 0 when warm). Generation samples (`do_sample`) with the given `temperature` (default 0.7) up to `max_tokens` (default 1024; the Go endpoint allows at most 8192). The prompt is wrapped in the same Gemma turn markers as the training data (`gemma4/prompt_format.py`).
 - **Errors.** The Go endpoint answers `400` for a bad body, `404` for an unknown model, `502` if the sidecar fails (with its message when the generation itself failed, such as missing weights; a generic message otherwise) and `503` without a sidecar. The sidecar reports a failed generation as `200 {"error": "…"}`, which the Go client turns into `*sidecar.InferError`.
@@ -234,7 +234,7 @@ A different kind of weights (another model size, or a trainer that saves somethi
 
 ### Admin UI: the training view
 
-The **training** view of the [admin UI](../../README.md) has a dataset upload (a file input and the table of uploaded datasets), a `Run` button (model size 4B/12B, dataset, steps), the list of the jobs in `gb_training_job_runs`, the list of the **trained models** in `gb_trained_models` (click one for its settings and files, and a form that runs a prompt through it), and for the selected job the event feed and a graph of its loss. The training endpoints are part of the API, under `/v1/gb/training/` (served whether or not the admin UI is on); the sidecar status stays with the admin UI:
+The **training** view of the [admin UI](../../README.md) has a dataset upload (a file input and the table of uploaded datasets), a `Run` button (model size 4B/12B/31B, dataset, steps), the list of the jobs in `gb_training_job_runs`, the list of the **trained models** in `gb_trained_models` (click one for its settings and files, and a form that runs a prompt through it), and for the selected job the event feed and a graph of its loss. The training endpoints are part of the API, under `/v1/gb/training/` (served whether or not the admin UI is on); the sidecar status stays with the admin UI:
 
 | Endpoint | |
 |---|---|
@@ -261,7 +261,7 @@ All settings are in `config.py` and can be overridden by environment variable:
 |---|---|---|
 | `SIDECAR_PROVIDER` | `modal` | Compute provider (only `modal` exists). |
 | `SIDECAR_APP_NAME` | `gligabao-train` | Name of the provider app. |
-| `SIDECAR_GPU` | *(empty)* | GPU override for train/infer of every model size (Modal names, e.g. `a100`). Empty means the per-size default: `a10g` for 4b, `a100` for 12b. |
+| `SIDECAR_GPU` | *(empty)* | GPU override for train/infer of every model size (Modal names, e.g. `a100`). Empty means the per-size default: `a10g` for 4b, `a100` for 12b, `a100-80gb` for 31b. |
 | `SIDECAR_TRAIN_TIMEOUT_S` | `7200` | Timeout of the train jobs. |
 | `SIDECAR_INFER_IDLE_TIMEOUT_S` | `60` | How long a GPU inference container, with its model loaded, stays up after its last request (Modal: 2 to 1200). Requests within that time skip the model load. See [Warm inference containers](modal.md#warm-inference-containers). |
 | `SIDECAR_HF_SECRET` | *(empty)* | Name of a provider secret with `HF_TOKEN`. Empty means no secret is attached. |

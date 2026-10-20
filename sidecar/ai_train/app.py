@@ -6,7 +6,7 @@ Run (Modal):
     modal run app.py --action datasets                        # list the local datasets (bin/datasets_training/<name>/dataset.toml)
     modal run app.py --action sync --dataset <name>           # upload a local dataset to the data volume (if it changed)
     modal run app.py --action validate --dataset <name>       # validate the dataset on the data volume
-    modal run app.py --action train --dataset <name> --train-steps 100 --model-size 4b   # 4b (A10G) or 12b (A100);
+    modal run app.py --action train --dataset <name> --train-steps 100 --model-size 4b   # 4b (A10G), 12b (A100) or 31b (A100 80GB);
                                                               # uploads the (local) dataset first
     modal run app.py --action infer --model-size 4b --prompt "..."      # fine-tuned model inference
                                                               # [--model-path trained/<job id>: a trained model; default: the legacy adapter]
@@ -61,8 +61,8 @@ WEB_VOLS = _volumes(paths.DATA_DIR, paths.EVAL_DIR)
 # Images. Code is mounted last, so code edits don't rebuild the pip layers.
 CPU_IMAGE = ImageSpec(gpu=False)
 WEB_IMAGE = ImageSpec(gpu=False, requirements_path=f"{modd_str}/requirements_web.txt")
-UNSLOTH_IMAGE = ImageSpec(gpu=True, requirements_path=f"{modd_str}/requirements_train.txt")             # training, 4B and 12B
-# Inference only: transformers + peft + bitsandbytes on a slim base (no Unsloth, no trainer, no CUDA toolkit). 4B and 12B.
+UNSLOTH_IMAGE = ImageSpec(gpu=True, requirements_path=f"{modd_str}/requirements_train.txt")             # training, 4B, 12B and 31B
+# Inference only: transformers + peft + bitsandbytes on a slim base (no Unsloth, no trainer, no CUDA toolkit). 4B, 12B and 31B.
 INFER_IMAGE = ImageSpec(gpu=True, cuda_toolkit=False, requirements_path=f"{modd_str}/requirements_infer.txt")
 
 
@@ -120,7 +120,19 @@ def train_12b(dataset: str, num_train_steps: int = 100, job_id: str = "") -> dic
                                event_kv=provider.event_kv())
 
 
-TRAIN_FUNCTIONS = {"4b": train_4b, "12b": train_12b}
+@provider.function(FunctionSpec(
+    image=UNSLOTH_IMAGE,
+    gpu=CONFIG.gpu_for("31b"),
+    timeout_s=CONFIG.train_timeout_s,
+    volumes=TRAIN_VOLS,
+    secrets=secrets))
+def train_31b(dataset: str, num_train_steps: int = 100, job_id: str = "") -> dict:
+    from ai_train_core import bootstrap
+    return bootstrap.run_train(num_train_steps, "31b", commit_fn=provider.commit_volumes, dataset=dataset, job_id=job_id,
+                               event_kv=provider.event_kv())
+
+
+TRAIN_FUNCTIONS = {"4b": train_4b, "12b": train_12b, "31b": train_31b}
 
 
 # The router only waits on the GPU job, so its timeout must match the job's: a shorter one gets
@@ -182,7 +194,18 @@ def infer_12b(prompt: str, max_tokens: int = 1024, temperature: float = 0.7, mod
     return _infer("infer_12b", prompt, max_tokens, temperature, "12b", model_path)
 
 
-INFER_FUNCTIONS = {"4b": infer_4b, "12b": infer_12b}
+@provider.function(FunctionSpec(
+    image=INFER_IMAGE,
+    gpu=CONFIG.gpu_for("31b"),
+    timeout_s=600,
+    idle_timeout_s=CONFIG.infer_idle_timeout_s,
+    volumes=INFER_VOLS,
+    secrets=secrets))
+def infer_31b(prompt: str, max_tokens: int = 1024, temperature: float = 0.7, model_path: str = "") -> dict:
+    return _infer("infer_31b", prompt, max_tokens, temperature, "31b", model_path)
+
+
+INFER_FUNCTIONS = {"4b": infer_4b, "12b": infer_12b, "31b": infer_31b}
 
 
 @provider.function(FunctionSpec(image=CPU_IMAGE, timeout_s=600))

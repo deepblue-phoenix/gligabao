@@ -1,6 +1,6 @@
 """Gemma-4 model sizes and their training settings. Pure data: no heavy imports.
 
-Both sizes train through Unsloth (model_load.py / model_train.py, requirements_train.txt) and serve through plain
+All sizes train through Unsloth (model_load.py / model_train.py, requirements_train.txt) and serve through plain
 transformers + peft (model_load_infer.py) in a separate, lighter image
 (requirements_infer.txt). google/gemma-4-12B-it ships the newer `gemma4_unified` architecture, which Unsloth supports
 from 2026.10.x.
@@ -31,13 +31,25 @@ MODEL_CONFIGS = {
         "recommended_batch_size": 1,
         "recommended_grad_accumulation": 8,
     },
+    "31b": {
+        "model_name": "google/gemma-4-31B-it",
+        "display_name": "Gemma-4 31B",
+        "total_params": "31B",
+        "trainable_params_r16": "~450M",
+        "trainable_percent_r16": "1.5%",
+        "recommended_gpu": "A100 (80GB)",
+        "default_gpu": "a100-80gb",
+        "min_gpu_memory": "80GB",
+        "recommended_batch_size": 1,
+        "recommended_grad_accumulation": 8,
+    },
 }
 
 MODEL_SIZES = tuple(MODEL_CONFIGS)
 
 
 def get_model_config(model_size: str) -> dict:
-    """Config for a model size ("4b" or "12b"). Raises ValueError otherwise."""
+    """Config for a model size ("4b", "12b" or "31b"). Raises ValueError otherwise."""
     key = (model_size or "").lower()
     if key not in MODEL_CONFIGS:
         raise ValueError(f"Invalid model_size '{model_size}'. Must be one of {list(MODEL_SIZES)}.")

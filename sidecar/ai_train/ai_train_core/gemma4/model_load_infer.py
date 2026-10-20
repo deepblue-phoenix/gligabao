@@ -1,4 +1,4 @@
-"""Inference-only model loading for Gemma-4 4B and 12B: plain transformers + bitsandbytes + peft, no Unsloth.
+"""Inference-only model loading for Gemma-4 4B, 12B and 31B: plain transformers + bitsandbytes + peft, no Unsloth.
 
 This is what keeps the inference image light (requirements_infer.txt): the base model is loaded 4-bit (the same
 quantization the model was trained with) and the trained LoRA adapter is attached on top. Training loads through

@@ -16,7 +16,7 @@ const schema = `
 --   job_id           the sidecar's ID of the job (names its progress file there); provider_job_id is the compute provider's
 --   status           'started' when the sidecar reports the job started, then the job's status events ('running', 'training'),
 --                    finally 'completed' or 'failed'
---   model_size       '4b' or '12b'
+--   model_size       '4b', '12b' or '31b'
 --   dataset          the file on the sidecar's data volume the job trains on ('' only in a job started before a dataset was required)
 --   num_train_steps  how many steps the job was asked to train
 --   last_step, last_loss  from the newest progress event that has a loss; final_loss: the mean loss, when the job completed
@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS gb_training_job_events (
 -- The row is made from the job's "completed" event (internal/training/monitor.go).
 --   run_id           the job run (gb_training_job_runs) that made it; NULL if that run was deleted. job_id is unique: a job makes one model
 --   name             for lists; made from the settings when the row is made
---   base_model       the model that was fine-tuned (e.g. google/gemma-4-E4B-it); model_size '4b' or '12b' (inference needs it)
+--   base_model       the model that was fine-tuned (e.g. google/gemma-4-E4B-it); model_size '4b', '12b' or '31b' (inference needs it)
 --   dataset          the dataset file name ('' = the sidecar's default); dataset_sha256 the digest of the file the job read; num_examples its examples
 --   num_train_steps, final_loss  how long the job trained and its mean training loss
 --   params           JSON object: the other training settings (LoRA rank and alpha, learning rate, batch size, ...)

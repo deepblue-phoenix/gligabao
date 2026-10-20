@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.95.0] - 2026-10-24
+
+### Added
+- Gemma 4 31B (`google/gemma-4-31B-it`) as a third model size, `31b`: train and infer functions on the sidecar (`train_31b`, `infer_31b`, default GPU `a100-80gb`), accepted by the training API (`model_size`) and offered in the admin UI training size picker.
+
 ## [0.94.3] - 2026-10-23
 
 ### Fixed
