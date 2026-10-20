@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.75.0] - 2026-10-22
+
+### Added
+- **`internal/evals_neo/db`: functions that create the records of each table, in both `db/sqlite` and `db/postgres`.** `CreateEvalDef`, `CreateCaseDef`, `CreateKnowledgeCaseDefMeta`, `CreateTrainingCaseDefMeta`, `CreateExperimentDef`, `CreateExperimentDefEval`, `CreateExperimentRun`, `CreateEvalRun`, `CreateCaseRun`, `CreateKnowledgeCaseRunMeta`, `CreateKnowledgeTrajectory` and `CreateTrainingCaseRunMeta`. Each writes one table, takes a `*sql.DB` or a `*sql.Tx` (`db.Execer`), and sets the generated ID and the times on the record. Only creation for now; nothing uses them yet.
+
 ## [0.74.0] - 2026-10-22
 
 ### Changed
