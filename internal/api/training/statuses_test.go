@@ -7,7 +7,7 @@ import (
 	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 )
 
-// Evals and audits share the statuses (model/trained_model_status.go) as Go constants, so they cannot drift apart. This checks that
+// The statuses of the evals (model/trained_model_status.go) as Go constants, so they cannot drift apart. This checks that
 // the engine's and the relational package's names are the same constants and have the words the admin UI (eval_live.ts) and the
 // docs use.
 func TestSharedStatusWords(t *testing.T) {

@@ -1,7 +1,7 @@
 package training
 
-// The live feed of a run ("watch it run" in the admin UI): GET /v1/gb/training/evals|audits/{id}/events is a Server-Sent Events
-// stream of what the run does as it does it, the same for evals and audits (core.RunStream has the feed itself).
+// The live feed of a run ("watch it run" in the admin UI): GET /v1/gb/training/evals/{id}/events is a Server-Sent Events
+// stream of what the run does as it does it (core.RunStream has the feed itself).
 
 import (
 	"encoding/json"
@@ -13,7 +13,7 @@ import (
 
 const runStreamKeepalive = 15 * time.Second
 
-// EventsOf serves GET /v1/gb/training/evals|audits/{id}/events: the live feed of a run as Server-Sent Events. Every
+// EventsOf serves GET /v1/gb/training/evals/{id}/events: the live feed of a run as Server-Sent Events. Every
 // event's data is a core.RunEvent JSON. The first is a "snapshot" (the run and all of its cases so far: the judged and errored
 // ones from the database, and the ones the model answered that the judge has not scored yet, with status "answered"); then, while
 // the run goes on, an "answer" for every question the model answers, a "batch" when a batch is judged, and finally an "end" after

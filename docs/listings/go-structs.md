@@ -94,9 +94,8 @@
 | `internal/api/timeseries.anchorView`                      | is the API view of a series anchor.                                                                                    |
 | `internal/api/timeseries.attachRequest`                   | is the request body for attaching a series to a dataset.                                                               |
 | `internal/api/timeseries.seriesView`                      | is the API view of a series and its point count.                                                                       |
-| `internal/api/training.AuditManager`                      | provides the endpoints that run and manage training data audits.                                                       |
 | `internal/api/training.EvalManager`                       | starts trained-model evals in the background, one at a time per model.                                                 |
-| `internal/api/training.runManager`                        | provides the shared endpoints for the runs of one kind (eval or audit).                                                |
+| `internal/api/training.runManager`                        | provides the shared endpoints for the runs of one kind (an eval).                                                |
 
 >>> CHUNK
 
@@ -331,9 +330,9 @@
 | `internal/training.Manifest`                              | is the content of a dataset.toml manifest.                                                                             |
 | `internal/training.Monitor`                               | follows training jobs and fans their events out to subscribers.                                                        |
 | `internal/training.Preview`                               | is the beginning of a dataset's data file.                                                                             |
-| `internal/training.RunEvent`                              | is one event of a run feed, for an eval or an audit.                                                                   |
+| `internal/training.RunEvent`                              | is one event of the feed of an eval run.                                                                   |
 | `internal/training.RunManager`                            | starts runs of one kind in the background, one at a time per trained model.                                            |
-| `internal/training.RunOps`                                | holds the storage functions that differ between eval and audit runs.                                                   |
+| `internal/training.RunOps`                                | holds the storage functions that store and read the runs (of the evals).                                                   |
 | `internal/training.RunOptions`                            | holds the fields of the request body that starts a run.                                                                |
 | `internal/training.RunParams`                             | holds the settings a run was started with.                                                                             |
 | `internal/training.RunSpec`                               | is a run ready to start with its model, config and examples.                                                           |
@@ -342,7 +341,6 @@
 | `internal/training.StartJobRequest`                       | is what the caller of StartJob chooses for a training job.                                                             |
 | `internal/training.Subscription`                          | is a subscriber to the monitor's events, delivered on a channel.                                                       |
 | `internal/training.runningRun`                            | tracks a running run's ID and cancel function.                                                                         |
-| `internal/training/audits.Manager`                        | starts training data audits in the background, sourcing cases from a training dataset.                                 |
 | `internal/training/db/model.TrainedModel`                 | is the record of the weights a completed training job produced.                                                        |
 | `internal/training/db/model.TrainedModelFile`             | is one file of a trained model's weights.                                                                              |
 | `internal/training/db/model.TrainedModelInference`        | is one stored request to run a prompt through a trained model.                                                         |
@@ -350,3 +348,28 @@
 | `internal/training/db/model.TrainingJobEvent`             | is one event of a training job as reported by the sidecar.                                                             |
 | `internal/training/db/model.TrainingJobRun`               | is one training job started on the sidecar, updated as its progress arrives.                                           |
 | `internal/training/db/model.TrainingJobRunUpdate`         | is a partial update of a training job run where only set fields are written.                                           |
+| `internal/training_audits.Config`                         | holds the settings of the engine that runs an audit (batch size, judge model, callbacks).                              |
+| `internal/training_audits.Dataset`                        | is a training dataset read for an audit, with its examples and digest.                                                 |
+| `internal/training_audits.Error`                          | is a failure of an audit operation with a Kind the HTTP handlers map to a status.                                      |
+| `internal/training_audits.Event`                          | is one event of the live feed of a running audit.                                                                      |
+| `internal/training_audits.Example`                        | is one record of a training dataset: a question and the answer the model was trained to give.                          |
+| `internal/training_audits.Feed`                           | is the live feed of one running audit, with its watchers and pending answers.                                          |
+| `internal/training_audits.Generation`                     | is the model's answer to one question, with its token counts.                                                          |
+| `internal/training_audits.Manager`                        | starts training data audits in the background, one at a time per trained model.                                        |
+| `internal/training_audits.Options`                        | holds the fields of the request body that starts an audit.                                                             |
+| `internal/training_audits.Ops`                            | is the database backend the audit manager works over.                                                                  |
+| `internal/training_audits.Progress`                       | is the state of a running audit after a judge batch.                                                                   |
+| `internal/training_audits.RunParams`                      | holds the settings an audit was started with.                                                                          |
+| `internal/training_audits.Watch`                          | is an audit and its case runs so far, plus a live event feed.                                                          |
+| `internal/training_audits.judgeCase`                      | is one question/answer pair sent to the judge.                                                                         |
+| `internal/training_audits.runningAudit`                   | tracks a running audit's ID and cancel function.                                                                       |
+| `internal/training_audits.verdict`                        | is the judge's score and reason for one case.                                                                          |
+| `internal/training_audits/api.Handlers`                   | are the HTTP endpoints of the training audits.                                                                         |
+| `internal/training_audits/audittest.Judge`                | is a fake judge for the audit tests.                                                                                   |
+| `internal/training_audits/audittest.Sidecar`              | is a fake sidecar for the audit tests.                                                                                 |
+| `internal/training_audits/core.AuditCaseRun`              | is one dataset example of an audit, asked and judged.                                                                  |
+| `internal/training_audits/core.AuditRun`                  | is one audit of a trained model over one dataset.                                                                      |
+| `internal/training_audits/core.AuditStats`                | holds the statistics of an audit as a whole (judged, correct, tokens).                                                 |
+| `internal/training_audits/core.Counts`                    | counts the case runs of a run by status.                                                                               |
+| `internal/training_audits/core.Timing`                    | holds the creation, start and end times of a run.                                                                      |
+| `internal/training_audits/db.Store`                       | holds the functions of a database backend as one value.                                                                |

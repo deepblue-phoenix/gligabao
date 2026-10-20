@@ -1,4 +1,4 @@
-// Package sqlite stores the evals (experiments, runs and case results of the knowledge evals and of the evals and audits of
+// Package sqlite stores the evals (experiments, runs and case results of the knowledge evals and of the evals of
 // trained models) in SQLite tables and runs every SQL statement for them. The functions here are reached through the routing
 // functions of package db (internal/evals/db).
 //

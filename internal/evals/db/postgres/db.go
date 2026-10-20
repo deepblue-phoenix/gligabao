@@ -1,4 +1,4 @@
-// Package postgres stores the evals (experiments, runs and case results of the knowledge evals and of the evals and audits of
+// Package postgres stores the evals (experiments, runs and case results of the knowledge evals and of the evals of
 // trained models) in PostgreSQL tables and runs every SQL statement for them. The functions here are reached through the
 // routing functions of package db (internal/evals/db) and mirror those of package sqlite, in the PostgreSQL dialect ($n
 // placeholders, RETURNING, native types).

@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.80.0] - 2026-10-22
+
+### Removed
+- **The old training data audits are removed**: the package `internal/training/audits`, the `AuditManager` and the audit endpoints of `internal/api/training`, the audit functions of `internal/evals/db` (`RecordTrainedModelAuditRun`, ... in both backends), `evalsdb.TrainedModelKindAudit`, the `Dataset` and `DatasetSHA256` fields of `evalsdb.TrainedModelRun`, and `trainingeval.ParseExamples`. The audits are those of `internal/training_audits` (see 0.79.0). The schema of the evals no longer creates the tables `gb_training_audit_runs` and `gb_training_audit_cases`; an existing database keeps them with the audits made before 0.79.0 (the server does not read them), and they can be dropped by hand. The docs (`docs/training/audit.md`, the listings) describe the new audits.
+
 ## [0.79.0] - 2026-10-22
 
 ### Changed

@@ -277,18 +277,6 @@ func TestVerdictOf(t *testing.T) {
 	}
 }
 
-func TestParseExamples(t *testing.T) {
-	ex, err := ParseExamples([]byte("{\"instruction\":\"a\",\"output\":\"b\"}\n\n{\"instruction\":\"c\",\"input\":\"d\",\"output\":\"e\"}\n"))
-	if err != nil || len(ex) != 2 || ex[1].Input != "d" || ex[1].Prompt() != "c\n\nd" || ex[0].Prompt() != "a" {
-		t.Fatalf("%+v %v", ex, err)
-	}
-	for _, bad := range []string{"", "\n\n", "not json", `{"instruction":"","output":"x"}`} {
-		if _, err := ParseExamples([]byte(bad)); err == nil {
-			t.Errorf("%q accepted", bad)
-		}
-	}
-}
-
 func TestOnAnswerGetsEachAnswerBeforeItsBatchIsJudged(t *testing.T) {
 	var c collected
 	var events []string

@@ -1,5 +1,5 @@
-// Package db stores and queries the evals: the experiments, runs and case runs of the knowledge evals, and the eval and
-// audit runs of trained models (see internal/evals/README.md). Every operation goes through the functions here, which
+// Package db stores and queries the evals: the experiments, runs and case runs of the knowledge evals, and the eval
+// runs of trained models (see internal/evals/README.md). Every operation goes through the functions here, which
 // route to the backend in use (db/sqlite or db/postgres). The backends keep the eval tables in the relational database
 // opened by package relational (they reference its datasets and trained models), so Open must be called with the *sql.DB
 // returned by relational.Open. All SQL lives in the backends; other packages only call the functions here and never
@@ -38,7 +38,7 @@ type (
 	Dataset = relmodel.Dataset
 )
 
-// Statuses of the runs and cases of a trained model, shared by evals and audits (see model/trained_model_status.go).
+// Statuses of the runs and cases of a trained model, of the evals (see model/trained_model_status.go).
 const (
 	TrainedModelRunRunning   = model.TrainedModelRunRunning
 	TrainedModelRunCompleted = model.TrainedModelRunCompleted
@@ -51,8 +51,7 @@ const (
 
 // The kinds of TrainedModelRun.
 const (
-	TrainedModelKindEval  = model.TrainedModelKindEval
-	TrainedModelKindAudit = model.TrainedModelKindAudit
+	TrainedModelKindEval = model.TrainedModelKindEval
 )
 
 // Experiment, run and trajectory constants (see package model).

@@ -1,7 +1,7 @@
 package training
 
-// The live feed of a run ("watch it run" in the admin UI): GET /v1/gb/training/evals|audits/{id}/events is a Server-Sent Events
-// stream of what the run does as it does it, the same for evals and audits. The model's answers are sent as soon as it gives
+// The live feed of a run ("watch it run" in the admin UI): GET /v1/gb/training/evals/{id}/events is a Server-Sent Events
+// stream of what the run does as it does it. The model's answers are sent as soon as it gives
 // them, ahead of the judge's verdicts (which come per batch, since a batch is judged with one LLM call), so one sees how the model
 // behaves from the first question on. The feed is in memory and only for the run's duration; a stream that connects later (or to a
 // finished run) starts with a snapshot built from the database, so a reconnect loses nothing.
@@ -30,7 +30,7 @@ const (
 	RunEventEnd = "end"
 )
 
-// RunEvent is one event of the feed, for an eval and for an audit alike.
+// RunEvent is one event of the feed, of an eval.
 type RunEvent struct {
 	Type  string                     `json:"type"`
 	Run   *evalsdb.TrainedModelRun   `json:"run,omitempty"`

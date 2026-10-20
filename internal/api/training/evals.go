@@ -6,8 +6,7 @@ package training
 // the model never saw in training, so the score says how well it generalizes. The eval is named after the training dataset its
 // cases ask about, so a model trained on a dataset has the eval of that name unless another is asked for.
 //
-// The logic is the eval subsystem internal/evals/training; the manager and the endpoints that follow a run are shared with the training
-// data audits (runs.go); this file is what is specific to an eval: its cases, which come from the eval, and its experiments
+// The logic is the eval subsystem internal/evals/training; the manager and the endpoints that follow a run are in runs.go; this file is what is specific to an eval: its cases, which come from the eval, and its experiments
 // (experiments.go).
 
 import (

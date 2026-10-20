@@ -32,12 +32,12 @@
 - `gb_knowledge_case_meta`
 - `gb_training_eval_run_meta`
 - `gb_training_case_meta`
-- `gb_training_audit_runs`
-- `gb_training_audit_cases`
 - `gb_training_job_runs`
 - `gb_training_job_events`
 - `gb_trained_models`
 - `gb_trained_model_inferences`
+- `gb_neo_training_audit_runs`
+- `gb_neo_training_audit_case_runs`
 - `gb_training_datasets`
 
 ## What each table is about
@@ -72,12 +72,12 @@
 | `gb_knowledge_case_meta`      | knowledge-eval specific data of a case result (answer, failed and passed checks, dataset, steps).                                               |
 | `gb_training_eval_run_meta`   | training-eval specific data of a run (trained model, eval name, judge model, progress counters and judge usage).                                |
 | `gb_training_case_meta`       | training-eval specific data of a case result (question, expected answer, model response, judge score and reason).                               |
-| `gb_training_audit_runs`      | one row per training data audit, a trained model run against its own fine-tuning dataset (not an eval), with progress counters and judge usage. |
-| `gb_training_audit_cases`     | one row per example of an audit, with the question, dataset answer, model response and judge score.                                             |
 | `gb_training_job_runs`        | training jobs started on the sidecar, with status, settings, loss and timings.                                                                  |
 | `gb_training_job_events`      | the status and progress events (with loss) the sidecar reported for a training job, in order.                                                   |
 | `gb_trained_models`           | one row per completed training job, the saved weights (LoRA adapter) that inference, evals and audits run on.                                   |
 | `gb_trained_model_inferences` | one row per prompt run through a trained model, with response, status, tokens and cold-start timing.                                            |
+| `gb_neo_training_audit_runs`  | one row per training data audit, a trained model run against its own fine-tuning dataset (not an eval), with counts, judge statistics and cost. |
+| `gb_neo_training_audit_case_runs` | one row per example of an audit, with the question, dataset answer, model response and judge score and reason.                                  |
 | `gb_training_datasets`        | one row per JSONL training dataset the server has seen (file name, size, record count, digest, sync status with the sidecar).                   |
 
 ## Where each table is defined
@@ -112,10 +112,10 @@
 | `gb_knowledge_case_meta`      | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
 | `gb_training_eval_run_meta`   | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
 | `gb_training_case_meta`       | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
-| `gb_training_audit_runs`      | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
-| `gb_training_audit_cases`     | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
 | `gb_training_job_runs`        | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
 | `gb_training_job_events`      | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
 | `gb_trained_models`           | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
 | `gb_trained_model_inferences` | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
 | `gb_training_datasets`        | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
+| `gb_neo_training_audit_runs`  | `internal/training_audits/db/sqlite/schema.go`     | `internal/training_audits/db/postgres/schema.go`     |
+| `gb_neo_training_audit_case_runs` | `internal/training_audits/db/sqlite/schema.go`     | `internal/training_audits/db/postgres/schema.go`     |

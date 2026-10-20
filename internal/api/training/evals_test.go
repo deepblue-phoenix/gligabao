@@ -26,7 +26,7 @@ import (
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
-// evalSidecar is a trained model that answers "a<i>" to "q<i>" (what a dataset says; an audit's), or the expected answer of the
+// evalSidecar is a trained model that answers "a<i>" to "q<i>" (what a dataset says), or the expected answer of the
 // eval case when it is one (answers, see evalAnswers), except "wrong" to the prompts in wrong.
 // With block set, it holds each answer until block is closed or the request is cancelled.
 type evalSidecar struct {
@@ -214,7 +214,7 @@ func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 	}
 	started := call.eval(t)
 	if started.Status != evalsdb.TrainedModelRunRunning || started.Kind != "eval" || started.TrainedModelID != mid || started.Eval != theEval || started.NumExamples != 5 ||
-		started.Dataset != "" || !strings.Contains(string(started.Params), `"batch_size":2`) {
+		!strings.Contains(string(started.Params), `"batch_size":2`) {
 		t.Fatalf("started: %+v", started)
 	}
 	m.Wait()

@@ -1,14 +1,11 @@
 package training
 
-// Runs of trained models judged by an LLM: the evals and the training data audits. Both are a TrainedModelRun that asks the model
+// Runs of trained models judged by an LLM: the evals. An eval is a TrainedModelRun that asks the model
 // the question of each case and has the external LLM (the one used for knowledge ingestion) judge, a batch of question/answer
-// pairs per LLM call, how close the answers are to the expected ones. They share everything but where the cases come from, so
-// they share this file (the manager, the background runner) and the stream (runs_stream.go):
-//
-//   - an EVAL (the evals of internal/evals/training) asks the cases of an eval (bin/evals_training/*.json), which the model never saw in training: it
-//     measures how well the model generalizes. Its cases have names and it can be part of an experiment;
-//   - an AUDIT (the subpackage audits, which also has its HTTP handlers) asks the examples of the model's OWN fine-tuning dataset: it checks that the training took, not how well
-//     the model generalizes.
+// pairs per LLM call, how close the answers are to the expected ones. This file is the manager and the background runner, and runs_stream.go the stream. An eval (the evals of internal/evals/training) asks
+// the cases of an eval (bin/evals_training/*.json), which the model never saw in training: it measures how well the model generalizes.
+// Its cases have names and it can be part of an experiment. (The training data audits, which ask the model the examples of its OWN
+// fine-tuning dataset, are in internal/training_audits.)
 //
 // The logic is the subsystem internal/evals/training; this file wires it to the sidecar (the model), the LLM (the judge) and the database
 // (evalsdb.TrainedModelRun, which holds the progress and the result), and runs it in the background: starting a run answers at
@@ -33,8 +30,7 @@ import (
 )
 
 const (
-	// CallEvalJudge is the type of the runs (gb_inferences) the judge's LLM calls of an eval are recorded as (those of an audit are
-	// audits.CallJudge); StageJudge is their stage.
+	// CallEvalJudge is the type of the runs (gb_inferences) the judge's LLM calls of an eval are recorded as; StageJudge is their stage.
 	CallEvalJudge = "training_eval_judge"
 	StageJudge    = "judge"
 
@@ -54,7 +50,7 @@ type RunParams struct {
 	Cases []string `json:"cases,omitempty"`
 }
 
-// RunOptions are the fields of the body of the request that starts a run, the same for an eval and an audit.
+// RunOptions are the fields of the body of the request that starts an eval.
 type RunOptions struct {
 	Limit       int      `json:"limit"`
 	BatchSize   int      `json:"batch_size"`
@@ -87,7 +83,7 @@ func (o RunOptions) Resolve() (trainingeval.Config, RunParams, error) {
 
 // RunOps is what differs between the two kinds of run in the database: the functions that store and read them.
 type RunOps struct {
-	Kind        string // evalsdb.TrainedModelKindEval or ...KindAudit
+	Kind        string // evalsdb.TrainedModelKindEval
 	CallType    string // the type of the judge's calls in gb_inferences
 	Record      func(ctx context.Context, d *sql.DB, r evalsdb.TrainedModelRun) (int64, error)
 	Save        func(ctx context.Context, d *sql.DB, r evalsdb.TrainedModelRun, cases []evalsdb.TrainedModelCase) error
@@ -98,11 +94,11 @@ type RunOps struct {
 	Cases       func(ctx context.Context, d *sql.DB, runID int64) ([]evalsdb.TrainedModelCase, error)
 }
 
-// Noun is what the kind is called in messages ("eval" or "audit"); its URLs and the list in its responses are the plural.
+// Noun is what the kind is called in messages ("eval"); its URLs and the list in its responses are the plural.
 func (o RunOps) Noun() string   { return o.Kind }
 func (o RunOps) Plural() string { return o.Kind + "s" }
 
-// EvalOps is the kind of run of the evals; the audits' is audits.Ops.
+// EvalOps is the kind of run of the evals.
 var EvalOps = RunOps{
 	Kind:        evalsdb.TrainedModelKindEval,
 	CallType:    CallEvalJudge,
@@ -116,7 +112,7 @@ var EvalOps = RunOps{
 }
 
 // RunManager starts the runs of one kind and runs them in the background, one at a time per trained model. Runs still running when
-// the server last stopped are marked error when the manager is made. The HTTP API's EvalManager and AuditManager are one each.
+// the server last stopped are marked error when the manager is made. The HTTP API's EvalManager is one.
 type RunManager struct {
 	Ops RunOps
 	// DB holds the trained models; Sc answers the questions and LLM judges (nil: starting a run is not possible).
@@ -160,9 +156,9 @@ type RunSpec struct {
 	Model  *trainingdb.TrainedModel
 	Config trainingeval.Config
 	Params RunParams
-	// Row is the run to record (Eval, or Dataset and DatasetSHA256; the settings and NumExamples are set by Start).
+	// Row is the run to record (Eval; the settings and NumExamples are set by Start).
 	Row evalsdb.TrainedModelRun
-	// Examples are the questions to ask and Names the names of the cases that go with them (nil for an audit's).
+	// Examples are the questions to ask and Names the names of the cases that go with them.
 	Examples []trainingeval.Example
 	Names    []string
 	// AfterRecord, if set, is called with the ID of the recorded run, before it starts (an eval joins its experiment there).

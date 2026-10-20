@@ -1,12 +1,9 @@
 package training
 
-// The HTTP endpoints of the runs of trained models judged by an LLM, the evals and the training data audits: both are a
-// TrainedModelRun and they share these endpoints. What a run is and how it runs is core.RunManager (internal/training/runs.go).
-//
-//   - an EVAL (evals.go) asks the cases of an eval (bin/evals_training/*.json), which the model never saw in training: it
-//     measures how well the model generalizes. Its cases have names and it can be part of an experiment;
-//   - an AUDIT (audits.go; its logic is internal/training/audits) asks the examples of the model's OWN fine-tuning dataset: it checks
-//     that the training took, not how well the model generalizes.
+// The HTTP endpoints of the runs of trained models judged by an LLM, the evals: what a run is and how it runs is core.RunManager
+// (internal/training/runs.go). An EVAL (evals.go) asks the cases of an eval (bin/evals_training/*.json), which the model never saw
+// in training: it measures how well the model generalizes. Its cases have names and it can be part of an experiment. (The training
+// data audits are served by internal/training_audits/api.)
 
 import (
 	"database/sql"
@@ -22,7 +19,7 @@ const (
 	runsDefaultLimit = 50
 )
 
-// runManager is the endpoints of the runs of one kind. EvalManager and AuditManager are one each.
+// runManager is the endpoints of the runs of one kind. EvalManager is one.
 type runManager struct {
 	*core.RunManager
 }
@@ -65,7 +62,7 @@ func (m *runManager) start(w http.ResponseWriter, r *http.Request, s core.RunSpe
 	httputil.WriteJSON(w, http.StatusAccepted, rec)
 }
 
-// ListOf serves GET /v1/gb/training/models/{id}/evals|audits[?limit=<n>]: {"evals": [...]} or {"audits": [...]}, the
+// ListOf serves GET /v1/gb/training/models/{id}/evals[?limit=<n>]: {"evals": [...]}, the
 // runs of trained model {id} (evalsdb.TrainedModelRun, without their cases), newest first, at most limit (default 50, at most
 // 500). 404 for an unknown model.
 func (m *runManager) ListOf() http.HandlerFunc {
@@ -87,7 +84,7 @@ func (m *runManager) ListOf() http.HandlerFunc {
 	}
 }
 
-// GetOf serves GET /v1/gb/training/evals|audits/{id}: {"run": ..., "cases": [...]}, one run with the cases stored so far
+// GetOf serves GET /v1/gb/training/evals/{id}: {"run": ..., "cases": [...]}, one run with the cases stored so far
 // (evalsdb.TrainedModelCase: question, the expected answer, the model's, score and reason), in the order of the eval or the
 // dataset. 404 for an unknown run.
 func (m *runManager) GetOf() http.HandlerFunc {
@@ -110,7 +107,7 @@ func (m *runManager) GetOf() http.HandlerFunc {
 	}
 }
 
-// CancelOf serves POST /v1/gb/training/evals|audits/{id}/cancel: stops a running run (it ends as "cancelled", keeping
+// CancelOf serves POST /v1/gb/training/evals/{id}/cancel: stops a running run (it ends as "cancelled", keeping
 // the batches done so far) and answers 202 with it. 404 for an unknown run, 409 when it is not running.
 func (m *runManager) CancelOf() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

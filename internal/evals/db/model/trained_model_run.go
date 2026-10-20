@@ -6,27 +6,22 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Runs of trained models judged by an LLM. There are two kinds of run, and they share these types, the statuses
-// (trained_model_status.go), the engine (internal/evals/training), the HTTP shapes and the admin UI's live view:
+// Runs of trained models judged by an LLM: the evals. An EVAL run is one run of an eval, a named set of cases, against a trained
+// model. The cases are meant to be ones the model never saw, so the score says how well it generalizes. It is a "training" run of
+// the universal eval tables (gb_experiment_runs, gb_experiment_case_runs, with gb_training_eval_run_meta and gb_training_case_meta),
+// so it can be part of an experiment; its cases have names (the eval's case names). The types, the statuses
+// (trained_model_status.go) and the engine (internal/evals/training) are those of the HTTP shapes and the admin UI's live view.
 //
-//   - an EVAL run (TrainedModelKindEval): one run of an eval, a named set of cases, against a trained model. The cases are
-//     meant to be ones the model never saw, so the score says how well it generalizes. It is a "training" run of the universal eval
-//     tables (gb_experiment_runs, gb_experiment_case_runs, with gb_training_eval_run_meta and gb_training_case_meta), so it can
-//     be part of an experiment; its cases have names (the eval's case names).
-//   - an AUDIT run (TrainedModelKindAudit): the model asked the questions of its OWN fine-tuning dataset, so the score says whether
-//     the training took (memorization and fit), not whether it generalizes. It has tables of its own (gb_training_audit_runs and
-//     gb_training_audit_cases), no experiments, and its cases are the dataset's examples, which have no names.
-//
-// The two differ only in where the cases come from (Eval, the eval's name, or Dataset, the audited dataset) and in the case Name.
+// The training data audits (asking the model the questions of its own training dataset) are not here: internal/training_audits has
+// them, with their own types and tables.
 
 // The kinds of run of a trained model (TrainedModelRun.Kind).
 const (
-	TrainedModelKindEval  = "eval"
-	TrainedModelKindAudit = "audit"
+	TrainedModelKindEval = "eval"
 )
 
 // TrainedModelRun is one run of a trained model against a set of cases, judged by an external LLM: the model is asked the question
-// of each case and the LLM scores its answer against the expected output (see the comment above for the two Kinds). The counters
+// of each case and the LLM scores its answer against the expected output. The counters
 // are updated after every judge batch, so the row shows the progress of a running run and the result of a finished one.
 // Every case is judged or errored (NumJudged + NumErrored = the ones done so far, of NumExamples);
 // NumCorrect + NumPartial + NumIncorrect = NumJudged, and ScoreSum is the sum of the scores (0 to 5) of the judged ones.
@@ -36,16 +31,12 @@ const (
 type TrainedModelRun struct {
 	ID             int64 `json:"id"`
 	TrainedModelID int64 `json:"trained_model_id"`
-	// Kind is TrainedModelKindEval or TrainedModelKindAudit. It is not stored: the table the run is read from says it.
+	// Kind is TrainedModelKindEval. It is not stored.
 	Kind   string `json:"kind"`
 	Status string `json:"status"`
-	// Eval is the name of the eval whose cases were asked (an eval run only; "" for an audit): a file name of bin/evals_training
+	// Eval is the name of the eval whose cases were asked: a file name of bin/evals_training
 	// without ".json", the same as the eval column of the run's case results.
 	Eval string `json:"eval,omitempty"`
-	// Dataset is the name of the training dataset whose examples were asked and DatasetSHA256 the digest of the file that was
-	// read (an audit run only; "" for an eval: an eval's cases are in the eval, not in the model's dataset).
-	Dataset       string `json:"dataset,omitempty"`
-	DatasetSHA256 string `json:"dataset_sha256,omitempty"`
 	// Params are the settings of the run as a JSON object (batch_size, max_tokens, temperature, limit).
 	Params json.RawMessage `json:"params"`
 	// JudgeModel is the model that judged ("" until its first reply).
