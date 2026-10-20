@@ -348,6 +348,11 @@
 | `internal/training/db/model.TrainingJobEvent`             | is one event of a training job as reported by the sidecar.                                                             |
 | `internal/training/db/model.TrainingJobRun`               | is one training job started on the sidecar, updated as its progress arrives.                                           |
 | `internal/training/db/model.TrainingJobRunUpdate`         | is a partial update of a training job run where only set fields are written.                                           |
+
+>>> TRAINING_AUDIT
+
+| Struct                                                    | Description                                                                                                            |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `internal/training_audits.Config`                         | holds the settings of the engine that runs an audit (batch size, judge model, callbacks).                              |
 | `internal/training_audits.Dataset`                        | is a training dataset read for an audit, with its examples and digest.                                                 |
 | `internal/training_audits.Error`                          | is a failure of an audit operation with a Kind the HTTP handlers map to a status.                                      |

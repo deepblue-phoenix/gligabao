@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.81.1] - 2026-10-22
+
+### Changed
+- **Docs: the listings have a `TRAINING_AUDIT` section.** `docs/listings/go-structs.md` and `docs/listings/db-tables.md` now list the structs and tables of the training data audits (`internal/training_audits`) in a section of their own instead of among the other training entries.
+
 ## [0.81.0] - 2026-10-22
 
 ### Changed

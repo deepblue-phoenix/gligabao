@@ -36,8 +36,6 @@
 - `gb_training_job_events`
 - `gb_trained_models`
 - `gb_trained_model_inferences`
-- `gb_neo_training_audit_runs`
-- `gb_neo_training_audit_case_runs`
 - `gb_training_datasets`
 
 ## What each table is about
@@ -76,8 +74,6 @@
 | `gb_training_job_events`      | the status and progress events (with loss) the sidecar reported for a training job, in order.                                                   |
 | `gb_trained_models`           | one row per completed training job, the saved weights (LoRA adapter) that inference, evals and audits run on.                                   |
 | `gb_trained_model_inferences` | one row per prompt run through a trained model, with response, status, tokens and cold-start timing.                                            |
-| `gb_neo_training_audit_runs`  | one row per training data audit, a trained model run against its own fine-tuning dataset (not an eval), with counts, judge statistics and cost. |
-| `gb_neo_training_audit_case_runs` | one row per example of an audit, with the question, dataset answer, model response and judge score and reason.                                  |
 | `gb_training_datasets`        | one row per JSONL training dataset the server has seen (file name, size, record count, digest, sync status with the sidecar).                   |
 
 ## Where each table is defined
@@ -117,5 +113,24 @@
 | `gb_trained_models`           | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
 | `gb_trained_model_inferences` | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
 | `gb_training_datasets`        | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
+
+## TRAINING_AUDIT
+
+Tables of the training data audits (`internal/training_audits`, see `docs/training/audit.md`).
+
+- `gb_neo_training_audit_runs`
+- `gb_neo_training_audit_case_runs`
+
+### What each table is about
+
+| Table                         | Description                                                                                                                                     |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gb_neo_training_audit_runs`  | one row per training data audit, a trained model run against its own fine-tuning dataset (not an eval), with counts, judge statistics and cost. |
+| `gb_neo_training_audit_case_runs` | one row per example of an audit, with the question, dataset answer, model response and judge score and reason.                                  |
+
+### Where each table is defined
+
+| Table                         | SQLite                                             | Postgres                                             |
+| ----------------------------- | -------------------------------------------------- | ---------------------------------------------------- |
 | `gb_neo_training_audit_runs`  | `internal/training_audits/db/sqlite/schema.go`     | `internal/training_audits/db/postgres/schema.go`     |
 | `gb_neo_training_audit_case_runs` | `internal/training_audits/db/sqlite/schema.go`     | `internal/training_audits/db/postgres/schema.go`     |
