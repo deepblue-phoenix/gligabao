@@ -20,7 +20,7 @@ var ErrRunNotRunning = errors.New("experiment run is not running")
 //---------------------------------------------------------------------------------------------
 // Eval experiments
 
-// Eval types: the type column of the universal eval tables (gb_experiments, gb_experiment_cases, gb_experiment_runs and
+// Eval types: the type column of the universal eval tables (gb_experiments_defs, gb_experiment_cases_defs, gb_experiment_runs and
 // gb_experiment_case_results, see sqlite/db_schema.go). What is only one kind's is in its metadata table
 // (gb_knowledge_case_meta, gb_training_case_meta, gb_training_eval_run_meta).
 const (

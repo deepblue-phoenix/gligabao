@@ -42,7 +42,7 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 	if got, _ := evalsdb.ListTrainingExperiments(ctx, d); len(got) != 1 || got[0].ID != tx.ID {
 		t.Fatalf("ListTrainingExperiments: %+v", got)
 	}
-	if got := count(`SELECT COUNT(*) FROM gb_experiments WHERE type = 'knowledge'`) + count(`SELECT COUNT(*) FROM gb_experiments WHERE type = 'training'`); got != 2 {
+	if got := count(`SELECT COUNT(*) FROM gb_experiments_defs WHERE type = 'knowledge'`) + count(`SELECT COUNT(*) FROM gb_experiments_defs WHERE type = 'training'`); got != 2 {
 		t.Fatalf("experiments by type: %d", got)
 	}
 	// Each kind refuses the other's IDs.
@@ -71,7 +71,7 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 	if n := count(`SELECT COUNT(*) FROM gb_knowledge_case_meta WHERE answer = 'Globex' AND steps = 3`); n != 1 {
 		t.Fatalf("knowledge metadata: %d", n)
 	}
-	if n := count(`SELECT COUNT(*) FROM gb_experiment_cases WHERE type = 'knowledge' AND eval = 'basic'`); n != 1 {
+	if n := count(`SELECT COUNT(*) FROM gb_experiment_cases_defs WHERE type = 'knowledge' AND eval = 'basic'`); n != 1 {
 		t.Fatalf("experiment cases: %d", n)
 	}
 	got, err := evalsdb.GetExperimentRun(ctx, d, run.ID)
@@ -116,7 +116,7 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 	if _, err := evalsdb.StartTrainingExperimentRun(ctx, d, tx.ID, eid); err != nil {
 		t.Fatal(err)
 	}
-	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_cases WHERE experiment_id = %d AND type = 'training' AND eval = 'mine' AND case_name = 'c0'`, tx.ID)); n != 1 {
+	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_cases_defs WHERE experiment_id = %d AND type = 'training' AND eval = 'mine' AND case_name = 'c0'`, tx.ID)); n != 1 {
 		t.Fatalf("training experiment cases after joining: %d", n)
 	}
 	// A case saved after the run joined the experiment is added to its cases, and an errored one is an errored case result.
@@ -124,7 +124,7 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 	if err := evalsdb.SaveTrainedModelEvalRunBatch(ctx, d, evalsdb.TrainedModelRun{ID: eid, NumAnswered: 2, NumJudged: 1, NumErrored: 1, NumCorrect: 1, ScoreSum: 5, NumBatches: 2}, batch2); err != nil {
 		t.Fatal(err)
 	}
-	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_cases WHERE experiment_id = %d AND type = 'training' AND eval = 'mine'`, tx.ID)); n != 2 {
+	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_cases_defs WHERE experiment_id = %d AND type = 'training' AND eval = 'mine'`, tx.ID)); n != 2 {
 		t.Fatalf("training experiment cases: %d", n)
 	}
 	if n := count(fmt.Sprintf(`SELECT COUNT(*) FROM gb_experiment_case_results WHERE run_id = %d AND case_name = 'c1' AND status = 'error' AND error = 'boom'`, eid)); n != 1 {
@@ -174,7 +174,7 @@ func unifiedEvalTablesScenario(t *testing.T, d *sql.DB) {
 		fmt.Sprintf(`INSERT INTO gb_training_case_meta (case_result_id, idx, batch, instruction) VALUES (%d, 0, 1, 'q')`, rec.ID),
 		fmt.Sprintf(`INSERT INTO gb_training_eval_run_meta (run_id, trained_model_id, eval) VALUES (%d, %d, 'x')`, run.ID, mid),
 		// an unknown type
-		`INSERT INTO gb_experiments (type, name, created_at) VALUES ('other', 'z', '2026-01-01')`,
+		`INSERT INTO gb_experiments_defs (type, name, created_at) VALUES ('other', 'z', '2026-01-01')`,
 	}
 	for _, s := range bad {
 		if _, err := d.ExecContext(ctx, s); err == nil {

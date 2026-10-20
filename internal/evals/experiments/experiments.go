@@ -1,11 +1,11 @@
 // Package experiments tracks eval experiments in the relational database.
 //
-// An Experiment is a named series of runs (table gb_experiments, type "knowledge"). Each execution of it is an ExperimentRun
+// An Experiment is a named series of runs (table gb_experiments_defs, type "knowledge"). Each execution of it is an ExperimentRun
 // (gb_experiment_runs) that holds one ExperimentCaseResult per case it executed (gb_experiment_case_results, with the knowledge-only
 // columns in gb_knowledge_case_meta). A case is one input plus what is checked (and metadata) and belongs to an eval. Each result
 // has references to the ATIF trajectories of its remember and recall calls (gb_experiment_trajectories: the trajectory IDs, so the
 // JSON files can be found again). The cases an experiment has executed over all its runs are listed in Experiment.Cases
-// (gb_experiment_cases).
+// (gb_experiment_cases_defs).
 //
 // Typical use, as in internal/evals/knowledge/main.go:
 //

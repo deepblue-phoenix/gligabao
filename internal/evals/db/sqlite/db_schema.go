@@ -20,8 +20,8 @@ const schema = `
 --                      of an eval (bin/evals_training/*.json) and an external LLM judges the answers. Run by the server (the
 --                      admin UI's Eval button, the API) or by the command-line runner internal/evals/training/cmd.
 --   UNIVERSAL tables (every eval has these; each has a type column):
---     gb_experiments            a named series of runs
---     gb_experiment_cases       the cases (eval + case_name) an experiment has executed
+--     gb_experiments_defs            a named series of runs
+--     gb_experiment_cases_defs       the cases (eval + case_name) an experiment has executed
 --     gb_experiment_runs        one execution: one or more cases
 --     gb_experiment_case_results     the result of one case in one run (both kinds: one row per case)
 --     gb_experiment_trajectories  ATIF trajectories of a case (the trajectory files; only knowledge cases have them for now)
@@ -36,7 +36,7 @@ const schema = `
 --
 -- TERMS. A CASE is one input and what is expected or checked (an input/output combination, plus metadata) to be evaluated. An
 -- EVAL is a set of cases. A RUN executes some cases once; a RESULT is the outcome of one case in one run, so a case has many
--- results and a run has many results; an EXPERIMENT is a named series of runs. gb_experiment_cases lists the cases (the
+-- results and a run has many results; an EXPERIMENT is a named series of runs. gb_experiment_cases_defs lists the cases (the
 -- definitions are in the eval files, not in the database); gb_experiment_case_results has the outcomes, one row per case of a
 -- run for both kinds of eval.
 --
@@ -52,7 +52,7 @@ const schema = `
 -- An experiment is a named series of runs.
 --   type    see above; the name is unique within a type
 --   config  JSON object with the free-form settings under test
-CREATE TABLE IF NOT EXISTS gb_experiments (
+CREATE TABLE IF NOT EXISTS gb_experiments_defs (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
 	type        TEXT NOT NULL CHECK (type IN ('knowledge', 'training')),
 	name        TEXT NOT NULL,
@@ -65,14 +65,14 @@ CREATE TABLE IF NOT EXISTS gb_experiments (
 
 -- The cases (a case name within an eval) that an experiment has executed.
 -- A row is added the first time one of the experiment's runs executes the case.
-CREATE TABLE IF NOT EXISTS gb_experiment_cases (
+CREATE TABLE IF NOT EXISTS gb_experiment_cases_defs (
 	experiment_id INTEGER NOT NULL,
 	type          TEXT NOT NULL,
 	eval         TEXT NOT NULL DEFAULT '',
 	case_name     TEXT NOT NULL,
 	created_at    DATETIME NOT NULL,
 	PRIMARY KEY (experiment_id, eval, case_name),
-	FOREIGN KEY (experiment_id, type) REFERENCES gb_experiments(id, type) ON DELETE CASCADE
+	FOREIGN KEY (experiment_id, type) REFERENCES gb_experiments_defs(id, type) ON DELETE CASCADE
 );
 
 -- One execution of an experiment: a pass over one or more cases (training: one eval run, over the cases of its eval).
@@ -111,7 +111,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_runs (
 	CHECK (status = 'running'
 		OR (type = 'knowledge' AND status IN ('passed', 'failed'))
 		OR (type = 'training' AND status IN ('completed', 'error', 'cancelled'))),
-	FOREIGN KEY (experiment_id, type) REFERENCES gb_experiments(id, type) ON DELETE CASCADE
+	FOREIGN KEY (experiment_id, type) REFERENCES gb_experiments_defs(id, type) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_runs(experiment_id);
 

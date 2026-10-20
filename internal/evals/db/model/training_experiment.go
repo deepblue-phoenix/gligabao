@@ -6,7 +6,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Training experiments: the experiments of the eval runs of trained models, the rows of type "training" of gb_experiments and
+// Training experiments: the experiments of the eval runs of trained models, the rows of type "training" of gb_experiments_defs and
 // gb_experiment_runs (see sqlite/db_schema.go). The knowledge-extraction eval experiments (Experiment, ExperimentRun) are the
 // rows of type "knowledge" of the same tables.
 

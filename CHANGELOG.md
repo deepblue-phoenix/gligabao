@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.68.0] - 2026-10-21
+
+### Changed
+- **The `gb_experiments` table is renamed `gb_experiments_defs` and `gb_experiment_cases` is renamed `gb_experiment_cases_defs` (breaking: SQLite and PostgreSQL eval databases must be rebuilt, nothing is migrated).** `gb_experiments_defs` holds the definition of an experiment (name, description, config) and `gb_experiment_cases_defs` the cases that belong to it (one row per distinct case); `gb_experiment_runs` and `gb_experiment_case_results` hold the executions. The foreign keys, the queries and the docs use the new names.
+
 ## [0.67.0] - 2026-10-20
 
 ### Changed

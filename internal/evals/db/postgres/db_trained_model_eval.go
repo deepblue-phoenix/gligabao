@@ -96,7 +96,7 @@ func SaveTrainedModelEvalRunBatch(ctx context.Context, d *sql.DB, e model.Traine
 			return fmt.Errorf("save eval run case %d: %w", it.Idx, err)
 		}
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO gb_experiment_cases (experiment_id, type, eval, case_name, created_at)
+			INSERT INTO gb_experiment_cases_defs (experiment_id, type, eval, case_name, created_at)
 			SELECT experiment_id, 'training', $1::text, $2::text, $3::timestamptz FROM gb_experiment_runs WHERE id = $4 AND experiment_id IS NOT NULL
 			ON CONFLICT (experiment_id, eval, case_name) DO NOTHING`, eval, name, now, e.ID); err != nil {
 			return fmt.Errorf("save eval run case %d: %w", it.Idx, err)

@@ -92,7 +92,7 @@ func scanExperiment(r scanner) (*model.Experiment, error) {
 func experimentCases(ctx context.Context, q rower, experimentID int64) ([]model.CaseRef, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT eval, case_name
-		FROM gb_experiment_cases
+		FROM gb_experiment_cases_defs
 		WHERE experiment_id = $1
 		ORDER BY eval, case_name`, experimentID)
 	if err != nil {
@@ -114,7 +114,7 @@ func experimentCases(ctx context.Context, q rower, experimentID int64) ([]model.
 // if needed. An existing experiment is returned unchanged.
 func EnsureExperiment(ctx context.Context, d *sql.DB, name, description string, config map[string]any) (*model.Experiment, error) {
 	if _, err := d.ExecContext(ctx, `
-		INSERT INTO gb_experiments (type, name, description, config, created_at)
+		INSERT INTO gb_experiments_defs (type, name, description, config, created_at)
 		VALUES ($1, $2, $3, $4::jsonb, $5)
 		ON CONFLICT (type, name) DO NOTHING`,
 		model.EvalTypeKnowledge, name, description, jsonObject(config), rpostgres.Now()); err != nil {
@@ -127,7 +127,7 @@ func EnsureExperiment(ctx context.Context, d *sql.DB, name, description string, 
 func GetExperiment(ctx context.Context, d *sql.DB, name string) (*model.Experiment, error) {
 	e, err := scanExperiment(d.QueryRowContext(ctx, `
 		SELECT `+experimentColumns+`
-		FROM gb_experiments
+		FROM gb_experiments_defs
 		WHERE type = $1 AND name = $2`, model.EvalTypeKnowledge, name))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, model.ErrNotFound
@@ -145,7 +145,7 @@ func GetExperiment(ctx context.Context, d *sql.DB, name string) (*model.Experime
 func ListExperiments(ctx context.Context, d *sql.DB) ([]model.Experiment, error) {
 	rows, err := d.QueryContext(ctx, `
 		SELECT `+experimentColumns+`
-		FROM gb_experiments
+		FROM gb_experiments_defs
 		WHERE type = $1
 		ORDER BY id`, model.EvalTypeKnowledge)
 	if err != nil {
@@ -189,7 +189,7 @@ func StartExperimentRun(ctx context.Context, d *sql.DB, experimentID int64, para
 	err := d.QueryRowContext(ctx, `
 		INSERT INTO gb_experiment_runs (type, experiment_id, status, params, started_at)
 		SELECT type, id, 'running', $1::jsonb, $2::timestamptz
-		FROM gb_experiments
+		FROM gb_experiments_defs
 		WHERE id = $3 AND type = $4
 		RETURNING id`,
 		jsonObject(params), rpostgres.Now(), experimentID, model.EvalTypeKnowledge).Scan(&id)
@@ -257,7 +257,7 @@ func RecordExperimentCaseResult(ctx context.Context, d *sql.DB, e model.Experime
 	}
 
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO gb_experiment_cases (experiment_id, type, eval, case_name, created_at)
+		INSERT INTO gb_experiment_cases_defs (experiment_id, type, eval, case_name, created_at)
 		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (experiment_id, eval, case_name) DO NOTHING`,
 		experimentID, model.EvalTypeKnowledge, e.Eval, e.Name, rpostgres.Now()); err != nil {

@@ -24,8 +24,8 @@
 - `gb_series_anchors`
 - `gb_onto_classes`
 - `gb_onto_edges`
-- `gb_experiments`
-- `gb_experiment_cases`
+- `gb_experiments_defs`
+- `gb_experiment_cases_defs`
 - `gb_experiment_runs`
 - `gb_experiment_case_results`
 - `gb_experiment_trajectories`
@@ -64,8 +64,8 @@
 | `gb_series_anchors`           | many-to-many link anchoring a series (optionally a window of it) to an artifact, entity or edge.                                                |
 | `gb_onto_classes`             | the classes (nodes) of a loaded ontology.                                                                                                       |
 | `gb_onto_edges`               | the relationships between ontology classes (subclass, equivalence, disjointness, properties).                                                   |
-| `gb_experiments`              | a named series of eval runs (knowledge or training) with free-form config.                                                                      |
-| `gb_experiment_cases`         | the cases (eval + case name) an experiment has executed.                                                                                        |
+| `gb_experiments_defs`         | a named series of eval runs (knowledge or training) with free-form config.                                                                      |
+| `gb_experiment_cases_defs`    | the cases (eval + case name) an experiment has executed.                                                                                        |
 | `gb_experiment_runs`          | one execution of an experiment over one or more cases, with status, params and counts.                                                          |
 | `gb_experiment_case_results`  | the result of one case in one run, for both knowledge and training evals.                                                                       |
 | `gb_experiment_trajectories`  | references to the ATIF trajectory files of a case's remember and recall calls.                                                                  |
@@ -104,8 +104,8 @@
 | `gb_series_anchors`           | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
 | `gb_onto_classes`             | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
 | `gb_onto_edges`               | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
-| `gb_experiments`              | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
-| `gb_experiment_cases`         | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
+| `gb_experiments_defs`         | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
+| `gb_experiment_cases_defs`    | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
 | `gb_experiment_runs`          | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
 | `gb_experiment_case_results`  | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |
 | `gb_experiment_trajectories`  | `internal/evals/db/sqlite/db_schema.go`            | `internal/evals/db/postgres/db_schema.go`            |

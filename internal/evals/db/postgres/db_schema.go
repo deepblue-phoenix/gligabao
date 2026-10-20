@@ -15,7 +15,7 @@ const schema = `
 -- EVALS: one set of tables for both kinds of eval ('knowledge' and 'training'), the universal ones with a type column and
 -- a metadata table for each kind (see sqlite/db_schema.go for what the columns mean). The composite foreign keys
 -- (<parent id>, type) -> parent (id, type) keep the type the same down the chain.
-CREATE TABLE IF NOT EXISTS gb_experiments (
+CREATE TABLE IF NOT EXISTS gb_experiments_defs (
 	id          BIGSERIAL PRIMARY KEY,
 	type        TEXT NOT NULL CHECK (type IN ('knowledge', 'training')),
 	name        TEXT NOT NULL,
@@ -26,14 +26,14 @@ CREATE TABLE IF NOT EXISTS gb_experiments (
 	UNIQUE (id, type)
 );
 
-CREATE TABLE IF NOT EXISTS gb_experiment_cases (
+CREATE TABLE IF NOT EXISTS gb_experiment_cases_defs (
 	experiment_id BIGINT NOT NULL,
 	type          TEXT NOT NULL,
 	eval         TEXT NOT NULL DEFAULT '',
 	case_name     TEXT NOT NULL,
 	created_at    TIMESTAMPTZ NOT NULL,
 	PRIMARY KEY (experiment_id, eval, case_name),
-	FOREIGN KEY (experiment_id, type) REFERENCES gb_experiments(id, type) ON DELETE CASCADE
+	FOREIGN KEY (experiment_id, type) REFERENCES gb_experiments_defs(id, type) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS gb_experiment_runs (
@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_runs (
 	CHECK (status = 'running'
 		OR (type = 'knowledge' AND status IN ('passed', 'failed'))
 		OR (type = 'training' AND status IN ('completed', 'error', 'cancelled'))),
-	FOREIGN KEY (experiment_id, type) REFERENCES gb_experiments(id, type) ON DELETE CASCADE
+	FOREIGN KEY (experiment_id, type) REFERENCES gb_experiments_defs(id, type) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_runs(experiment_id);
 
