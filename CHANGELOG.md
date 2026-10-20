@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.73.0] - 2026-10-22
+
+### Added
+- **`internal/evals_neo/core`: the case structs of the knowledge and training evals (`KnowledgeCase`, `TrainingCase`).** They mirror the JSON cases of `bin/evals_knowledge` and `bin/evals_training`, and are split into the parts a `CaseDef` stores in `Input`, `Expected` and `Params` (`KnowledgeInput`, `KnowledgeExpected`, `KnowledgeParams`, `TrainingInput`, `TrainingExpected`). The Types are `TypeKnowledge` and `TypeTraining`. Nothing uses them yet.
+
 ## [0.72.0] - 2026-10-22
 
 ### Added
