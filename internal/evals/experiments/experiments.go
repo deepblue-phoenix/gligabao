@@ -1,7 +1,7 @@
 // Package experiments tracks eval experiments in the relational database.
 //
 // An Experiment is a named series of runs (table gb_experiments_defs, type "knowledge"). Each execution of it is an ExperimentRun
-// (gb_experiment_runs) that holds one ExperimentCaseResult per case it executed (gb_experiment_case_results, with the knowledge-only
+// (gb_experiment_runs) that holds one ExperimentCaseRun per case it executed (gb_experiment_case_runs, with the knowledge-only
 // columns in gb_knowledge_case_meta). A case is one input plus what is checked (and metadata) and belongs to an eval. Each result
 // has references to the ATIF trajectories of its remember and recall calls (gb_experiment_case_runs_trajectories: the trajectory IDs, so the
 // JSON files can be found again). The cases an experiment has executed over all its runs are listed in Experiment.Cases
@@ -34,7 +34,7 @@ type (
 	Experiment = evalsdb.Experiment
 	CaseRef    = evalsdb.CaseRef
 	Run        = evalsdb.ExperimentRun
-	CaseResult = evalsdb.ExperimentCaseResult
+	CaseRun    = evalsdb.ExperimentCaseRun
 	Trajectory = evalsdb.ExperimentTrajectory
 	Artifact   = evalsdb.ExperimentArtifact
 )
@@ -134,7 +134,7 @@ func (r CaseOutcome) Status() string {
 
 // Record stores the result of one case in the run, with references to its trajectories, and adds the case to the
 // experiment's cases.
-func (t *Tracker) Record(ctx context.Context, r CaseOutcome) (*CaseResult, error) {
+func (t *Tracker) Record(ctx context.Context, r CaseOutcome) (*CaseRun, error) {
 	if r.Eval == "" || r.Name == "" {
 		return nil, errors.New("case eval and name are required")
 	}
@@ -145,7 +145,7 @@ func (t *Tracker) Record(ctx context.Context, r CaseOutcome) (*CaseResult, error
 	if r.StartedAt.IsZero() {
 		r.StartedAt = r.FinishedAt
 	}
-	e := CaseResult{
+	e := CaseRun{
 		RunID:        t.Run.ID,
 		Eval:         r.Eval,
 		Name:         r.Name,
@@ -174,7 +174,7 @@ func (t *Tracker) Record(ctx context.Context, r CaseOutcome) (*CaseResult, error
 		e.CostUSD += ref.CostUSD
 		e.Trajectories = append(e.Trajectories, ref)
 	}
-	return evalsdb.RecordExperimentCaseResult(ctx, t.d, e)
+	return evalsdb.RecordExperimentCaseRun(ctx, t.d, e)
 }
 
 // Finish totals the run's cases and ends the run: passed if every recorded case passed, otherwise failed.
@@ -227,7 +227,7 @@ func Runs(ctx context.Context, d *sql.DB, experimentID int64) ([]Run, error) {
 
 // CaseHistory returns the results of one case (eval and case name) over the runs of the experiment, oldest run first:
 // how its status progressed over time. Each result has its RunID; the trajectories are not loaded.
-func CaseHistory(ctx context.Context, d *sql.DB, experimentID int64, eval, name string) ([]CaseResult, error) {
+func CaseHistory(ctx context.Context, d *sql.DB, experimentID int64, eval, name string) ([]CaseRun, error) {
 	return evalsdb.ListExperimentCaseHistory(ctx, d, experimentID, eval, name)
 }
 
@@ -238,8 +238,8 @@ func GetRun(ctx context.Context, d *sql.DB, runID int64) (*Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	for i := range run.CaseResults {
-		e := &run.CaseResults[i]
+	for i := range run.CaseRuns {
+		e := &run.CaseRuns[i]
 		var all map[int64]graph.Artifact // the dataset's artifacts, loaded when a trajectory needs them
 		for j := range e.Trajectories {
 			t := &e.Trajectories[j]
@@ -267,14 +267,14 @@ func GetRun(ctx context.Context, d *sql.DB, runID int64) (*Run, error) {
 	return run, nil
 }
 
-// CaseResultDataset returns the dataset a case ran in (deleted or not), whose graph is the one the case built, or
+// CaseRunDataset returns the dataset a case ran in (deleted or not), whose graph is the one the case built, or
 // ErrNotFound if the case does not exist or recorded no dataset.
-func CaseResultDataset(ctx context.Context, d *sql.DB, caseResultID int64) (*relational.Dataset, error) {
-	return evalsdb.GetExperimentCaseResultDataset(ctx, d, caseResultID)
+func CaseRunDataset(ctx context.Context, d *sql.DB, caseRunID int64) (*relational.Dataset, error) {
+	return evalsdb.GetExperimentCaseRunDataset(ctx, d, caseRunID)
 }
 
 // FindTrajectory returns the reference to the trajectory with the given ATIF trajectory_id, or ErrNotFound. Its
-// CaseResultID leads to the case, and through it (CaseResult.RunID) to the run and the experiment.
+// CaseRunID leads to the case, and through it (CaseRun.RunID) to the run and the experiment.
 func FindTrajectory(ctx context.Context, d *sql.DB, trajectoryID string) (*Trajectory, error) {
 	return evalsdb.FindExperimentTrajectory(ctx, d, trajectoryID)
 }

@@ -10,7 +10,7 @@ import (
 func TestHistoryPoints(t *testing.T) {
 	t0 := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	runs := []experiments.Run{{ID: 1, StartedAt: t0}, {ID: 2, StartedAt: t0.Add(time.Hour)}}
-	results := []experiments.CaseResult{
+	results := []experiments.CaseRun{
 		{RunID: 1, Status: "failed", Problems: []string{"x"}, Answer: "a", CostUSD: 1, Steps: 3},
 		{RunID: 9, Status: "passed"}, // run not in the experiment's runs
 		{RunID: 2, Status: "passed"},

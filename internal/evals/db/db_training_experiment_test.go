@@ -110,7 +110,7 @@ func trainingExperimentsScenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("after deleting the model: %+v %v", got, err)
 	}
 	var left int
-	if err := d.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM gb_experiment_case_results) + (SELECT COUNT(*) FROM gb_training_case_meta)`).Scan(&left); err != nil || left != 0 {
+	if err := d.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM gb_experiment_case_runs) + (SELECT COUNT(*) FROM gb_training_case_meta)`).Scan(&left); err != nil || left != 0 {
 		t.Fatalf("case results left after deleting the model: %d %v", left, err)
 	}
 }

@@ -5,7 +5,7 @@ Checks a trained model's answers with an LLM as the judge. The model is asked ea
 - An **eval** (`internal/api/training/evals.go` (core: `internal/training`), kind `eval`, the `training` rows of the universal eval tables, HTTP `/evals`): the cases are those of an **eval**, a named set of cases of `bin/evals_training/*.json` that the model never saw, so the score says how well it generalizes. [docs/evals/training.md](../../../docs/evals/training.md).
 - A **training data audit** (`internal/api/training/audits.go`, kind `audit`, tables `gb_training_audit_runs` / `gb_training_audit_cases`, HTTP `/audits`): the cases are the model's **own fine-tuning dataset**, so the score says whether the training took (memorization / fit) and, through the examples it fails, which training data is bad. It does not measure generalization. [docs/training/audit.md](../../../docs/training/audit.md).
 
-Both are separate from the knowledge-extraction evals in [`../knowledge`](../knowledge/README.md). The outcome of one case is a `trainingeval.CaseResult` here, stored as a `evalsdb.TrainedModelCase` (for an eval, a row of `gb_experiment_case_results` like a knowledge case's, with the case's name as its `case_name`).
+Both are separate from the knowledge-extraction evals in [`../knowledge`](../knowledge/README.md). The outcome of one case is a `trainingeval.CaseResult` here, stored as a `evalsdb.TrainedModelCase` (for an eval, a row of `gb_experiment_case_runs` like a knowledge case's, with the case's name as its `case_name`).
 
 ## Running one
 

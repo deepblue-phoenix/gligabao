@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_runs(experiment_id);
 
-CREATE TABLE IF NOT EXISTS gb_experiment_case_results (
+CREATE TABLE IF NOT EXISTS gb_experiment_case_runs (
 	id          BIGSERIAL PRIMARY KEY,
 	type        TEXT NOT NULL CHECK (type IN ('knowledge', 'training')),
 	run_id      BIGINT NOT NULL,
@@ -74,12 +74,12 @@ CREATE TABLE IF NOT EXISTS gb_experiment_case_results (
 	CHECK ((type = 'knowledge' AND status IN ('passed', 'failed', 'error')) OR (type = 'training' AND status IN ('judged', 'error'))),
 	FOREIGN KEY (run_id, type) REFERENCES gb_experiment_runs(id, type) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_gb_experiment_case_results_run ON gb_experiment_case_results(run_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_experiment_case_results_training_case ON gb_experiment_case_results(run_id, eval, case_name) WHERE type = 'training';
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_case_runs_run ON gb_experiment_case_runs(run_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_experiment_case_runs_training_case ON gb_experiment_case_runs(run_id, eval, case_name) WHERE type = 'training';
 
 CREATE TABLE IF NOT EXISTS gb_experiment_case_runs_trajectories (
 	id            BIGSERIAL PRIMARY KEY,
-	case_result_id   BIGINT NOT NULL REFERENCES gb_experiment_case_results(id) ON DELETE CASCADE,
+	case_run_id   BIGINT NOT NULL REFERENCES gb_experiment_case_runs(id) ON DELETE CASCADE,
 	seq           BIGINT NOT NULL,
 	kind          TEXT NOT NULL CHECK (kind IN ('remember', 'recall')),
 	trajectory_id TEXT NOT NULL,
@@ -89,19 +89,19 @@ CREATE TABLE IF NOT EXISTS gb_experiment_case_runs_trajectories (
 	path          TEXT NOT NULL DEFAULT '',
 	artifact_ids  JSONB NOT NULL DEFAULT '[]',
 	created_at    TIMESTAMPTZ NOT NULL,
-	UNIQUE (case_result_id, seq)
+	UNIQUE (case_run_id, seq)
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_case_runs_trajectories_tid ON gb_experiment_case_runs_trajectories(trajectory_id);
 
 CREATE TABLE IF NOT EXISTS gb_knowledge_case_meta (
-	case_result_id   BIGINT PRIMARY KEY,
+	case_run_id   BIGINT PRIMARY KEY,
 	type          TEXT NOT NULL DEFAULT 'knowledge' CHECK (type = 'knowledge'),
 	answer        TEXT NOT NULL DEFAULT '',
 	problems      JSONB NOT NULL DEFAULT '[]',
 	passed_checks JSONB NOT NULL DEFAULT '[]',
 	dataset_id    BIGINT REFERENCES gb_datasets(id),
 	steps         BIGINT NOT NULL DEFAULT 0,
-	FOREIGN KEY (case_result_id, type) REFERENCES gb_experiment_case_results(id, type) ON DELETE CASCADE
+	FOREIGN KEY (case_run_id, type) REFERENCES gb_experiment_case_runs(id, type) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS gb_training_eval_run_meta (
@@ -140,7 +140,7 @@ CREATE TRIGGER trg_gb_training_eval_run_meta_deleted AFTER DELETE ON gb_training
 	FOR EACH ROW EXECUTE FUNCTION gb_training_eval_run_meta_deleted();
 
 CREATE TABLE IF NOT EXISTS gb_training_case_meta (
-	case_result_id BIGINT PRIMARY KEY,
+	case_run_id BIGINT PRIMARY KEY,
 	type          TEXT NOT NULL DEFAULT 'training' CHECK (type = 'training'),
 	idx           BIGINT NOT NULL,
 	batch         BIGINT NOT NULL,
@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS gb_training_case_meta (
 	input_tokens  BIGINT NOT NULL DEFAULT 0,
 	output_tokens BIGINT NOT NULL DEFAULT 0,
 	duration_ms   BIGINT NOT NULL DEFAULT 0,
-	FOREIGN KEY (case_result_id, type) REFERENCES gb_experiment_case_results(id, type) ON DELETE CASCADE
+	FOREIGN KEY (case_run_id, type) REFERENCES gb_experiment_case_runs(id, type) ON DELETE CASCADE
 );
 
 -- TRAINING DATA AUDITS of trained models: one table of runs and one of cases, separate from the evals above (see sqlite/db_schema.go).

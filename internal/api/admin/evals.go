@@ -22,7 +22,7 @@ type EvalTotals struct {
 	Runs        int `json:"runs"`
 	// Cases is the number of distinct cases (eval + case name) any experiment executed (counted once across experiments).
 	Cases int `json:"cases"`
-	// Executions is the number of case results over all finished runs. Passed, Failed (a check did not hold), Errors (could not
+	// Executions is the number of case runs over all finished runs. Passed, Failed (a check did not hold), Errors (could not
 	// be run to the end) and Judged (training: scored) count the cases with that status; the rest were not reached.
 	Executions int     `json:"executions"`
 	Passed     int     `json:"passed"`
@@ -78,7 +78,7 @@ type casePoint struct {
 // historyPoints keeps of the results of a case (its history) only what the UI plots, and adds when the run of each
 // started. Results of runs not in runs are dropped. It leaves out what the history does not need: the answer, the dataset,
 // the trajectories and the cost.
-func historyPoints(results []experiments.CaseResult, runs []experiments.Run) []casePoint {
+func historyPoints(results []experiments.CaseRun, runs []experiments.Run) []casePoint {
 	started := make(map[int64]time.Time, len(runs))
 	for _, r := range runs {
 		started[r.ID] = r.StartedAt
@@ -251,15 +251,15 @@ func EvalRun(d *sql.DB) http.HandlerFunc {
 	}
 }
 
-// EvalCaseResultGraph serves GET /admin/api/evals/case_results/{id}/graph: the knowledge graph the case built, read from
+// EvalCaseRunGraph serves GET /admin/api/evals/case_runs/{id}/graph: the knowledge graph the case built, read from
 // the dataset the case ran in (same JSON as /admin/api/graph).
-func EvalCaseResultGraph(d *sql.DB) http.HandlerFunc {
+func EvalCaseRunGraph(d *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		ds, err := experiments.CaseResultDataset(r.Context(), d, id)
+		ds, err := experiments.CaseRunDataset(r.Context(), d, id)
 		if err != nil {
 			evalFail(w, err, "graph")
 			return

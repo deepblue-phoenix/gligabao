@@ -23,11 +23,11 @@ const schema = `
 --     gb_experiments_defs            a named series of runs
 --     gb_experiment_cases_defs       the cases (eval + case_name) an experiment has executed
 --     gb_experiment_runs        one execution: one or more cases
---     gb_experiment_case_results     the result of one case in one run (both kinds: one row per case)
+--     gb_experiment_case_runs     the result of one case in one run (both kinds: one row per case)
 --     gb_experiment_case_runs_trajectories  ATIF trajectories of a case (the trajectory files; only knowledge cases have them for now)
 --   METADATA tables (the columns only one kind has):
---     gb_knowledge_case_meta     one row per knowledge case result: answer, checks, dataset the case built its graph in
---     gb_training_case_meta      one row per training case result: the question, the dataset's answer, the model's, the judge's score
+--     gb_knowledge_case_meta     one row per knowledge case run: answer, checks, dataset the case built its graph in
+--     gb_training_case_meta      one row per training case run: the question, the dataset's answer, the model's, the judge's score
 --     gb_training_eval_run_meta  one row per training run: trained model, eval, judge, counters and score of the eval run
 --
 -- type is the same on a row and on its parent: the composite foreign keys (<parent id>, type) -> parent (id, type) make the
@@ -37,14 +37,14 @@ const schema = `
 -- TERMS. A CASE is one input and what is expected or checked (an input/output combination, plus metadata) to be evaluated. An
 -- EVAL is a set of cases. A RUN executes some cases once; a RESULT is the outcome of one case in one run, so a case has many
 -- results and a run has many results; an EXPERIMENT is a named series of runs. gb_experiment_cases_defs lists the cases (the
--- definitions are in the eval files, not in the database); gb_experiment_case_results has the outcomes, one row per case of a
+-- definitions are in the eval files, not in the database); gb_experiment_case_runs has the outcomes, one row per case of a
 -- run for both kinds of eval.
 --
 -- EVALS AND CASES. A case is identified by its eval and its name (case_name), for both kinds. Knowledge evals: an eval is a file in
 -- bin/evals_knowledge/ (its name without ".json") and the case is one of its cases. Training evals: an eval is a file in
 -- bin/evals_training/ (its name without ".json"; named after the training dataset its cases ask about), whose cases are
 -- {name, instruction, input, output}, the output being the answer expected. A training eval run is one run of the eval against
--- one trained model: a run, with one case result per case (case_name = the case's name) and the run's own columns in
+-- one trained model: a run, with one case run per case (case_name = the case's name) and the run's own columns in
 -- gb_training_eval_run_meta. The cases are meant to be ones the model never saw in training, so the score measures generalization.
 -- (Asking a model the questions of its OWN training dataset is not an eval but a training data audit, see the end of this file.)
 -- ---------------------------------------------------------------------------------------------------------------------
@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_cases_defs (
 --                  training: batch_size, max_tokens, temperature, limit, ...)
 --   total_cases    the cases of the run (training: the examples of the eval), set when the run is finished, like the counts below
 --   passed_cases, failed_cases, error_cases, judged_cases: how many cases ended with that status (see the case statuses in
---                  gb_experiment_case_results): each counts one status and nothing else. passed_cases and failed_cases are
+--                  gb_experiment_case_runs): each counts one status and nothing else. passed_cases and failed_cases are
 --                  the knowledge verdicts (0 for training), judged_cases the training cases that were scored (whatever the
 --                  score: not a verdict; 0 for knowledge), error_cases those that could not be run, in both. What is left of
 --                  total_cases (total - the four) was not reached, e.g. the examples of a cancelled training run.
@@ -129,7 +129,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_experiment_runs_experiment ON gb_experiment_ru
 --   cost_usd     the LLM cost of the case (knowledge: its remember and recall calls; training: 0, the judge's cost is per batch and
 --                is in gb_training_eval_run_meta.judge_cost_usd and the run's cost_usd)
 --   finished_at  NULL while the case runs
-CREATE TABLE IF NOT EXISTS gb_experiment_case_results (
+CREATE TABLE IF NOT EXISTS gb_experiment_case_runs (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,
 	type        TEXT NOT NULL CHECK (type IN ('knowledge', 'training')),
 	run_id      INTEGER NOT NULL,
@@ -144,9 +144,9 @@ CREATE TABLE IF NOT EXISTS gb_experiment_case_results (
 	CHECK ((type = 'knowledge' AND status IN ('passed', 'failed', 'error')) OR (type = 'training' AND status IN ('judged', 'error'))),
 	FOREIGN KEY (run_id, type) REFERENCES gb_experiment_runs(id, type) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_gb_experiment_case_results_run ON gb_experiment_case_results(run_id);
+CREATE INDEX IF NOT EXISTS idx_gb_experiment_case_runs_run ON gb_experiment_case_runs(run_id);
 -- a training run has one result per example
-CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_experiment_case_results_training_case ON gb_experiment_case_results(run_id, eval, case_name) WHERE type = 'training';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_experiment_case_runs_training_case ON gb_experiment_case_runs(run_id, eval, case_name) WHERE type = 'training';
 
 -- The ATIF trajectories of a case (internal/ai/atif), in call order. Only the reference is kept here:
 -- trajectory_id is the ATIF trajectory_id, and path is the JSON file the trajectory was stored in ('' if none).
@@ -155,7 +155,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_experiment_case_results_training_case O
 --   about (remember: its input; recall: the evidence's sources)
 CREATE TABLE IF NOT EXISTS gb_experiment_case_runs_trajectories (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
-	case_result_id   INTEGER NOT NULL REFERENCES gb_experiment_case_results(id) ON DELETE CASCADE,
+	case_run_id   INTEGER NOT NULL REFERENCES gb_experiment_case_runs(id) ON DELETE CASCADE,
 	seq           INTEGER NOT NULL,
 	kind          TEXT NOT NULL CHECK (kind IN ('remember', 'recall')),
 	trajectory_id TEXT NOT NULL,
@@ -165,7 +165,7 @@ CREATE TABLE IF NOT EXISTS gb_experiment_case_runs_trajectories (
 	path          TEXT NOT NULL DEFAULT '',
 	artifact_ids  TEXT NOT NULL DEFAULT '[]',
 	created_at    DATETIME NOT NULL,
-	UNIQUE (case_result_id, seq)
+	UNIQUE (case_run_id, seq)
 );
 CREATE INDEX IF NOT EXISTS idx_gb_experiment_case_runs_trajectories_tid ON gb_experiment_case_runs_trajectories(trajectory_id);
 
@@ -175,14 +175,14 @@ CREATE INDEX IF NOT EXISTS idx_gb_experiment_case_runs_trajectories_tid ON gb_ex
 --   dataset_id     the dataset the case ran in (NULL if it was never created); it holds the graph the case built
 --   steps          total ATIF steps over the case's trajectories
 CREATE TABLE IF NOT EXISTS gb_knowledge_case_meta (
-	case_result_id   INTEGER PRIMARY KEY,
+	case_run_id   INTEGER PRIMARY KEY,
 	type          TEXT NOT NULL DEFAULT 'knowledge' CHECK (type = 'knowledge'),
 	answer        TEXT NOT NULL DEFAULT '',
 	problems      TEXT NOT NULL DEFAULT '[]',
 	passed_checks TEXT NOT NULL DEFAULT '[]',
 	dataset_id    INTEGER REFERENCES gb_datasets(id),
 	steps         INTEGER NOT NULL DEFAULT 0,
-	FOREIGN KEY (case_result_id, type) REFERENCES gb_experiment_case_results(id, type) ON DELETE CASCADE
+	FOREIGN KEY (case_run_id, type) REFERENCES gb_experiment_case_runs(id, type) ON DELETE CASCADE
 );
 
 -- TRAINING metadata of a run (type 'training'; internal/evals/training, internal/api/training/evals.go; the API calls the run an eval):
@@ -193,7 +193,7 @@ CREATE TABLE IF NOT EXISTS gb_knowledge_case_meta (
 -- server is set to 'error' when the server starts.
 --   trained_model_id  the model (gb_trained_models) that was asked; deleting the model deletes this row (and the run with its cases)
 --   eval             the eval whose cases were asked (the file name in bin/evals_training without ".json"); a run asks one eval, so
---                    its case results' eval column (which the universal tables key on) is this value
+--                    its case runs' eval column (which the universal tables key on) is this value
 --   judge_model      the model that judged ('' until its first reply)
 --   num_examples     the questions asked; num_answered the ones the model answered; num_judged the ones scored; num_errored the ones
 --                    where the model or the judge errored; num_correct/num_partial/num_incorrect split num_judged by score
@@ -225,13 +225,13 @@ CREATE TABLE IF NOT EXISTS gb_training_eval_run_meta (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_training_eval_run_meta_model ON gb_training_eval_run_meta(trained_model_id, run_id);
 -- The foreign keys cascade downwards only, so deleting a trained model deletes the metadata of its eval runs but would leave their
--- universal rows behind: this trigger deletes the run of each (its case results and their metadata go with it).
+-- universal rows behind: this trigger deletes the run of each (its case runs and their metadata go with it).
 CREATE TRIGGER IF NOT EXISTS trg_gb_training_eval_run_meta_deleted AFTER DELETE ON gb_training_eval_run_meta
 BEGIN
 	DELETE FROM gb_experiment_runs WHERE type = 'training' AND id = OLD.run_id;
 END;
 
--- TRAINING metadata of a case result (type 'training'): the outcome for one case (question) of an eval run, written with its
+-- TRAINING metadata of a case run (type 'training'): the outcome for one case (question) of an eval run, written with its
 -- universal row when its judge batch is done. The universal row's status is 'judged' or 'error', its error says why
 -- the model or the judge errored.
 --   idx          the case's position in the eval (0-based; the case's name is the universal row's case_name); batch the judge batch (1-based)
@@ -239,7 +239,7 @@ END;
 --   score        the judge's, 0 to 5 (NULL unless judged); reason its explanation
 --   input_tokens, output_tokens, duration_ms  of the model's answer
 CREATE TABLE IF NOT EXISTS gb_training_case_meta (
-	case_result_id INTEGER PRIMARY KEY,
+	case_run_id INTEGER PRIMARY KEY,
 	type          TEXT NOT NULL DEFAULT 'training' CHECK (type = 'training'),
 	idx           INTEGER NOT NULL,
 	batch         INTEGER NOT NULL,
@@ -252,7 +252,7 @@ CREATE TABLE IF NOT EXISTS gb_training_case_meta (
 	input_tokens  INTEGER NOT NULL DEFAULT 0,
 	output_tokens INTEGER NOT NULL DEFAULT 0,
 	duration_ms   INTEGER NOT NULL DEFAULT 0,
-	FOREIGN KEY (case_result_id, type) REFERENCES gb_experiment_case_results(id, type) ON DELETE CASCADE
+	FOREIGN KEY (case_run_id, type) REFERENCES gb_experiment_case_runs(id, type) ON DELETE CASCADE
 );
 
 -- ---------------------------------------------------------------------------------------------------------------------

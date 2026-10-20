@@ -7,7 +7,7 @@ package model
 //
 // They are not the Experiment* statuses of the knowledge evals (see model.go): there, passed and failed are verdicts about
 // checks (the training statuses have no verdict; "error" is the one word they share with the knowledge evals, and means the
-// same: something could not be run to the end); a training score is not a verdict. The CHECKs of the schema (gb_experiment_runs and gb_experiment_case_results for evals,
+// same: something could not be run to the end); a training score is not a verdict. The CHECKs of the schema (gb_experiment_runs and gb_experiment_case_runs for evals,
 // gb_training_audit_runs and gb_training_audit_cases for audits) spell the same words.
 
 // Statuses of a run of a trained model.

@@ -143,7 +143,7 @@ func StartTrainingExperimentRun(ctx context.Context, d *sql.DB, experimentID, ev
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO gb_experiment_cases_defs (experiment_id, type, eval, case_name, created_at)
-		SELECT $1::bigint, 'training', eval, case_name, $2::timestamptz FROM gb_experiment_case_results WHERE run_id = $3
+		SELECT $1::bigint, 'training', eval, case_name, $2::timestamptz FROM gb_experiment_case_runs WHERE run_id = $3
 		ON CONFLICT (experiment_id, eval, case_name) DO NOTHING`,
 		experimentID, rpostgres.Now(), runID); err != nil {
 		return nil, fmt.Errorf("start training experiment run: %w", err)

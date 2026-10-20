@@ -12,12 +12,12 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Eval runs of trained models: the 'training' rows of the universal eval tables (gb_experiment_runs and gb_experiment_case_results)
+// Eval runs of trained models: the 'training' rows of the universal eval tables (gb_experiment_runs and gb_experiment_case_runs)
 // with their metadata (gb_training_eval_run_meta and gb_training_case_meta), see db_schema.go and sqlite/db_schema.go.
 //
 // An eval run (model.TrainedModelRun) is ONE RUN: its ID is the run's, its status, times and Params are the columns of the
-// gb_experiment_runs row, and the rest is in the run's metadata row. Each example of the eval is a case result of that run (a
-// gb_experiment_case_results row with a gb_training_case_meta row). A run is in no experiment until StartTrainingExperimentRun links it to one.
+// gb_experiment_runs row, and the rest is in the run's metadata row. Each example of the eval is a case run of that run (a
+// gb_experiment_case_runs row with a gb_training_case_meta row). A run is in no experiment until StartTrainingExperimentRun links it to one.
 
 // InsertTrainedModelEvalRun stores a new eval run (status running unless e.Status says otherwise) and returns its ID, which is the ID of
 // its gb_experiment_runs row. The ID, the creation time and the finish time are ignored; the counters and the judge's
@@ -46,7 +46,7 @@ func InsertTrainedModelEvalRun(ctx context.Context, d *sql.DB, e model.TrainedMo
 	return id, nil
 }
 
-// SaveTrainedModelEvalRunBatch stores the cases of a finished batch (a case result and its metadata each, and the case in the run's
+// SaveTrainedModelEvalRunBatch stores the cases of a finished batch (a case run and its metadata each, and the case in the run's
 // experiment if it has one) and the eval run's counters after it (e.ID names the eval run; its judge model, counters, the judge's
 // usage and cost are written), in one transaction. model.ErrNotFound if there is no such eval run.
 func SaveTrainedModelEvalRunBatch(ctx context.Context, d *sql.DB, e model.TrainedModelRun, cases []model.TrainedModelCase) error {
@@ -83,12 +83,12 @@ func SaveTrainedModelEvalRunBatch(ctx context.Context, d *sql.DB, e model.Traine
 		}
 		var id int64
 		if err := tx.QueryRowContext(ctx, `
-			INSERT INTO gb_experiment_case_results (type, run_id, eval, case_name, status, error, started_at, finished_at)
+			INSERT INTO gb_experiment_case_runs (type, run_id, eval, case_name, status, error, started_at, finished_at)
 			VALUES ('training', $1, $2, $3, $4, $5, $6, $6) RETURNING id`, e.ID, eval, name, status, it.Error, now).Scan(&id); err != nil {
 			return fmt.Errorf("save eval run case %d: %w", it.Idx, err)
 		}
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO gb_training_case_meta (case_result_id, idx, batch, instruction, input, reference, response, score, reason,
+			INSERT INTO gb_training_case_meta (case_run_id, idx, batch, instruction, input, reference, response, score, reason,
 				input_tokens, output_tokens, duration_ms)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
 			id, it.Idx, it.Batch, it.Instruction, it.Input, it.Reference, it.Response, it.Score, it.Reason,
@@ -240,7 +240,7 @@ func ListTrainedModelEvalCases(ctx context.Context, d *sql.DB, evalRunID int64) 
 		SELECT e.id, e.run_id, cm.idx, e.case_name, cm.batch, cm.instruction, cm.input, cm.reference, cm.response,
 			e.status, e.error, cm.score, cm.reason, cm.input_tokens,
 			cm.output_tokens, cm.duration_ms
-		FROM gb_experiment_case_results e JOIN gb_training_case_meta cm ON cm.case_result_id = e.id
+		FROM gb_experiment_case_runs e JOIN gb_training_case_meta cm ON cm.case_run_id = e.id
 		WHERE e.run_id = $1 ORDER BY cm.idx`, evalRunID)
 	if err != nil {
 		return nil, fmt.Errorf("list trained model eval run cases: %w", err)

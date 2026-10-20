@@ -21,14 +21,14 @@ var ErrRunNotRunning = errors.New("experiment run is not running")
 // Eval experiments
 
 // Eval types: the type column of the universal eval tables (gb_experiments_defs, gb_experiment_cases_defs, gb_experiment_runs and
-// gb_experiment_case_results, see sqlite/db_schema.go). What is only one kind's is in its metadata table
+// gb_experiment_case_runs, see sqlite/db_schema.go). What is only one kind's is in its metadata table
 // (gb_knowledge_case_meta, gb_training_case_meta, gb_training_eval_run_meta).
 const (
 	// EvalTypeKnowledge is the type of the knowledge-extraction evals: remember, then recall, checked programmatically
 	// (internal/evals/knowledge, package experiments).
 	EvalTypeKnowledge = "knowledge"
 	// EvalTypeTraining is the type of the evals of trained models (internal/evals/training, internal/api/training): an eval run of a
-	// trained model, whose run has one case result per example of the eval (case_name = the example's index in the dataset).
+	// trained model, whose run has one case run per example of the eval (case_name = the example's index in the dataset).
 	EvalTypeTraining = "training"
 )
 
@@ -82,25 +82,25 @@ type CaseRef struct {
 // ExperimentRun is one execution of an experiment: a pass over some of the cases in the evals. Each of the four counts is of
 // the cases with the status of its name and nothing else; TotalCases minus the four are the cases not reached (a cancelled run).
 type ExperimentRun struct {
-	ID           int64                  `json:"id"`
-	Type         string                 `json:"type"` // EvalTypeKnowledge
-	ExperimentID int64                  `json:"experiment_id"`
-	Status       string                 `json:"status"`       // ExperimentRunning, ExperimentPassed or ExperimentFailed
-	Params       map[string]any         `json:"params"`       // how the run was invoked (evals dir, selected cases, ...)
-	TotalCases   int                    `json:"total_cases"`  // set when the run is finished
-	PassedCases  int                    `json:"passed_cases"` // the cases with status passed (knowledge); set when the run is finished
-	FailedCases  int                    `json:"failed_cases"` // the cases with status failed: a check did not hold (knowledge)
-	ErrorCases   int                    `json:"error_cases"`  // the cases with status error: could not be run to the end
-	JudgedCases  int                    `json:"judged_cases"` // the cases with status judged (training: scored, whatever the score)
-	CostUSD      float64                `json:"cost_usd"`     // LLM cost of all cases; set when the run is finished
-	StartedAt    time.Time              `json:"started_at"`   //
-	FinishedAt   *time.Time             `json:"finished_at,omitempty"`
-	CaseResults  []ExperimentCaseResult `json:"case_results,omitempty"` // filled by GetExperimentRun only
+	ID           int64               `json:"id"`
+	Type         string              `json:"type"` // EvalTypeKnowledge
+	ExperimentID int64               `json:"experiment_id"`
+	Status       string              `json:"status"`       // ExperimentRunning, ExperimentPassed or ExperimentFailed
+	Params       map[string]any      `json:"params"`       // how the run was invoked (evals dir, selected cases, ...)
+	TotalCases   int                 `json:"total_cases"`  // set when the run is finished
+	PassedCases  int                 `json:"passed_cases"` // the cases with status passed (knowledge); set when the run is finished
+	FailedCases  int                 `json:"failed_cases"` // the cases with status failed: a check did not hold (knowledge)
+	ErrorCases   int                 `json:"error_cases"`  // the cases with status error: could not be run to the end
+	JudgedCases  int                 `json:"judged_cases"` // the cases with status judged (training: scored, whatever the score)
+	CostUSD      float64             `json:"cost_usd"`     // LLM cost of all cases; set when the run is finished
+	StartedAt    time.Time           `json:"started_at"`   //
+	FinishedAt   *time.Time          `json:"finished_at,omitempty"`
+	CaseRuns     []ExperimentCaseRun `json:"case_runs,omitempty"` // filled by GetExperimentRun only
 }
 
-// ExperimentCaseResult is the result of one case within a run: the outcome of that case of an eval in that run (a case is one
+// ExperimentCaseRun is the result of one case within a run: the outcome of that case of an eval in that run (a case is one
 // input plus what is checked, with its metadata).
-type ExperimentCaseResult struct {
+type ExperimentCaseRun struct {
 	ID       int64    `json:"id"`
 	Type     string   `json:"type"` // EvalTypeKnowledge
 	RunID    int64    `json:"run_id"`
@@ -117,7 +117,7 @@ type ExperimentCaseResult struct {
 	StartedAt    time.Time `json:"started_at"`
 	FinishedAt   time.Time `json:"finished_at"`
 	// DatasetID is the dataset the case ran in (nil if it was never created); the knowledge graph the case built
-	// is the graph of that dataset (see GetExperimentCaseResultDataset).
+	// is the graph of that dataset (see GetExperimentCaseRunDataset).
 	DatasetID *int64 `json:"dataset_id,omitempty"`
 	// Trajectories are the ATIF trajectories of the case, in call order (remember calls, then the recall).
 	Trajectories []ExperimentTrajectory `json:"trajectories,omitempty"`
@@ -127,7 +127,7 @@ type ExperimentCaseResult struct {
 // itself is the JSON file <TrajectoryID>.json (Path, when it was stored) of the trajectory directory.
 type ExperimentTrajectory struct {
 	ID           int64   `json:"id"`
-	CaseResultID int64   `json:"case_result_id"`
+	CaseRunID    int64   `json:"case_run_id"`
 	Seq          int     `json:"seq"`           // position within the case, from 1
 	Kind         string  `json:"kind"`          // TrajectoryRemember or TrajectoryRecall
 	TrajectoryID string  `json:"trajectory_id"` // ATIF trajectory_id

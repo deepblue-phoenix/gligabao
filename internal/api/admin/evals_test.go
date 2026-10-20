@@ -101,14 +101,14 @@ func testEvals(t *testing.T, d *sql.DB) {
 	}
 
 	var run struct {
-		CaseResults []struct {
+		CaseRuns []struct {
 			Trajectories []struct {
 				TrajectoryID string `json:"trajectory_id"`
 			}
-		} `json:"case_results"`
+		} `json:"case_runs"`
 	}
 	if c := get(admin.EvalRun(d), "/x/{id}", strconv.FormatInt(tr.Run.ID, 10), &run); c != 200 ||
-		len(run.CaseResults) != 1 || len(run.CaseResults[0].Trajectories) != 1 {
+		len(run.CaseRuns) != 1 || len(run.CaseRuns[0].Trajectories) != 1 {
 		t.Fatalf("run: %d %+v", c, run)
 	}
 

@@ -253,7 +253,7 @@ func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 		t.Fatalf("recorded judge calls: %d %v", n, err)
 	}
 	// The results are stored under the eval's name and the cases' names, like a knowledge eval's.
-	if err := d.QueryRow(fmt.Sprintf(`SELECT count(*) FROM gb_experiment_case_results WHERE type = 'training' AND eval = '%s' AND case_name = '%s'`, theEval, cases0[3].Name)).Scan(&n); err != nil || n != 1 {
+	if err := d.QueryRow(fmt.Sprintf(`SELECT count(*) FROM gb_experiment_case_runs WHERE type = 'training' AND eval = '%s' AND case_name = '%s'`, theEval, cases0[3].Name)).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("stored case result: %d %v", n, err)
 	}
 

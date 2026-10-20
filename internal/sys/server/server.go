@@ -297,7 +297,7 @@ func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, sc coretraining.Side
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/experiments/{id}/history", admin.EvalCaseHistory(e.DB))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}", admin.EvalRun(e.DB))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}/web-searches", admin.EvalRunWebSearches(e.DB, e.TrajectoryDir))
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_results/{id}/graph", admin.EvalCaseResultGraph(e.DB))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/graph", admin.EvalCaseRunGraph(e.DB))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/trajectories/{id}", admin.EvalTrajectory(e.DB, e.TrajectoryDir))
 		break
 	}

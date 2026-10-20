@@ -11,7 +11,7 @@ import (
 //
 //   - an EVAL run (TrainedModelKindEval): one run of an eval, a named set of cases, against a trained model. The cases are
 //     meant to be ones the model never saw, so the score says how well it generalizes. It is a "training" run of the universal eval
-//     tables (gb_experiment_runs, gb_experiment_case_results, with gb_training_eval_run_meta and gb_training_case_meta), so it can
+//     tables (gb_experiment_runs, gb_experiment_case_runs, with gb_training_eval_run_meta and gb_training_case_meta), so it can
 //     be part of an experiment; its cases have names (the eval's case names).
 //   - an AUDIT run (TrainedModelKindAudit): the model asked the questions of its OWN fine-tuning dataset, so the score says whether
 //     the training took (memorization and fit), not whether it generalizes. It has tables of its own (gb_training_audit_runs and
@@ -87,7 +87,7 @@ func (r *TrainedModelRun) SetStoredParams(s string) {
 
 // TrainedModelCase is the outcome for one case of a run: the question, the expected answer (Reference), the model's (Response)
 // and the judge's score. Status is TrainedModelCaseJudged or TrainedModelCaseErrored. For an eval it is a
-// gb_experiment_case_results row (whose case_name is Name) with its gb_training_case_meta row.
+// gb_experiment_case_runs row (whose case_name is Name) with its gb_training_case_meta row.
 type TrainedModelCase struct {
 	// ID is that of the stored row and RunID that of the run.
 	ID    int64 `json:"id"`

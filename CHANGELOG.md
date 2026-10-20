@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.70.0] - 2026-10-21
+
+### Changed
+- **The `gb_experiment_case_results` table is renamed `gb_experiment_case_runs` (breaking: SQLite and PostgreSQL eval databases must be rebuilt, nothing is migrated).** It holds one row per case in a run (the outcome of that case execution); its indexes are renamed `idx_gb_experiment_case_runs_run` and `idx_gb_experiment_case_runs_training_case` too. The `case_result_id` columns of the tables that reference it are now `case_run_id`. The admin API follows: the `case_results` JSON fields are `case_runs`, `case_result_id` is `case_run_id`, and `GET /v1/gb/admin/api/evals/case_results/{id}/graph` is `.../evals/case_runs/{id}/graph` (the admin UI is updated). In Go, `ExperimentCaseResult` is `ExperimentCaseRun` (and `RecordExperimentCaseResult`, `GetExperimentCaseResultDataset`, `experiments.CaseResultDataset`, `Run.CaseResults` are renamed alike). The queries and the docs use the new names.
+
 ## [0.69.0] - 2026-10-21
 
 ### Changed

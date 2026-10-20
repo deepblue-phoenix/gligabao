@@ -1,4 +1,4 @@
-// Package db stores and queries the evals: the experiments, runs and case results of the knowledge evals, and the eval and
+// Package db stores and queries the evals: the experiments, runs and case runs of the knowledge evals, and the eval and
 // audit runs of trained models (see internal/evals/README.md). Every operation goes through the functions here, which
 // route to the backend in use (db/sqlite or db/postgres). The backends keep the eval tables in the relational database
 // opened by package relational (they reference its datasets and trained models), so Open must be called with the *sql.DB
@@ -23,7 +23,7 @@ type (
 	Experiment           = model.Experiment
 	CaseRef              = model.CaseRef
 	ExperimentRun        = model.ExperimentRun
-	ExperimentCaseResult = model.ExperimentCaseResult
+	ExperimentCaseRun    = model.ExperimentCaseRun
 	ExperimentTrajectory = model.ExperimentTrajectory
 	ExperimentArtifact   = model.ExperimentArtifact
 
@@ -34,7 +34,7 @@ type (
 	TrainingExperimentRun   = model.TrainingExperimentRun
 	TrainingExperimentModel = model.TrainingExperimentModel
 
-	// Dataset is the dataset a knowledge case ran in (see GetExperimentCaseResultDataset).
+	// Dataset is the dataset a knowledge case ran in (see GetExperimentCaseRunDataset).
 	Dataset = relmodel.Dataset
 )
 

@@ -87,16 +87,16 @@ func scenario(t *testing.T, d *sql.DB) {
 	// The full run, as stored.
 	full, err := experiments.GetRun(ctx, d, run.ID)
 	check(err)
-	if len(full.CaseResults) != 3 || full.Params["only"] == nil {
+	if len(full.CaseRuns) != 3 || full.Params["only"] == nil {
 		t.Fatalf("GetRun: %+v", full)
 	}
-	a, b, c := full.CaseResults[0], full.CaseResults[1], full.CaseResults[2]
+	a, b, c := full.CaseRuns[0], full.CaseRuns[1], full.CaseRuns[2]
 	if a.Eval != "basic" || a.Name != "a" || a.Answer != "yes" || a.Status != experiments.StatusPassed || len(a.Problems) != 0 ||
 		a.StartedAt.After(a.FinishedAt) || len(a.Trajectories) != 2 {
 		t.Fatalf("case a: %+v", a)
 	}
 	if got := a.Trajectories[0]; got.TrajectoryID != rem.TrajectoryID || got.Kind != "remember" || got.Steps != 2 ||
-		got.Path != "/tmp/atif/"+rem.TrajectoryID+".json" || got.CaseResultID != a.ID || got.CreatedAt.IsZero() {
+		got.Path != "/tmp/atif/"+rem.TrajectoryID+".json" || got.CaseRunID != a.ID || got.CreatedAt.IsZero() {
 		t.Fatalf("trajectory: %+v", got)
 	}
 	if got := a.Trajectories[1]; got.TrajectoryID != rec.TrajectoryID || got.Kind != "recall" || got.CostUSD != 0.02 {
@@ -133,7 +133,7 @@ func scenario(t *testing.T, d *sql.DB) {
 	if exp, err = experiments.Get(ctx, d, "base"); err != nil || len(exp.Cases) != 3 {
 		t.Fatalf("experiment cases after run 2: %+v, %v", exp, err)
 	}
-	if runs, err := experiments.Runs(ctx, d, exp.ID); err != nil || len(runs) != 2 || runs[0].ID != run.ID || len(runs[0].CaseResults) != 0 {
+	if runs, err := experiments.Runs(ctx, d, exp.ID); err != nil || len(runs) != 2 || runs[0].ID != run.ID || len(runs[0].CaseRuns) != 0 {
 		t.Fatalf("Runs: %+v, %v", runs, err)
 	}
 
@@ -145,7 +145,7 @@ func scenario(t *testing.T, d *sql.DB) {
 	}
 	ref, err := experiments.FindTrajectory(ctx, d, rec.TrajectoryID)
 	check(err)
-	if ref.CaseResultID != a.ID || ref.Seq != 2 {
+	if ref.CaseRunID != a.ID || ref.Seq != 2 {
 		t.Fatalf("FindTrajectory: %+v", ref)
 	}
 	if _, err := experiments.FindTrajectory(ctx, d, "nope"); !errors.Is(err, experiments.ErrNotFound) {

@@ -76,7 +76,7 @@ func TestRunCasesTracksExperiment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	good, bad := full.CaseResults[0], full.CaseResults[1]
+	good, bad := full.CaseRuns[0], full.CaseRuns[1]
 	if good.Eval != "s1" || good.Name != "good" || good.Status != experiments.StatusPassed || len(good.Trajectories) != 2 {
 		t.Fatalf("good: %+v", good)
 	}
@@ -89,14 +89,14 @@ func TestRunCasesTracksExperiment(t *testing.T) {
 	if a := good.Trajectories[0].Artifacts; len(a) != 1 || a[0].Text != "Alice is here." || a[0].ID == 0 {
 		t.Fatalf("remember artifacts: %+v", a)
 	}
-	ds, err := experiments.CaseResultDataset(ctx, trackDB.Relational, good.ID)
+	ds, err := experiments.CaseRunDataset(ctx, trackDB.Relational, good.ID)
 	if err != nil || good.DatasetID == nil || ds.ID != *good.DatasetID || ds.Name != datasetName(cases[0], run.ID) {
 		t.Fatalf("dataset: %+v, %v, dataset_id=%v", ds, err, good.DatasetID)
 	}
 	if g, err := memory.ExportDatasetGraph(ctx, trackDB.Relational, ds); err != nil || len(g.Entities) == 0 {
 		t.Fatalf("graph: %+v, %v", g, err)
 	}
-	for _, e := range full.CaseResults {
+	for _, e := range full.CaseRuns {
 		for _, tr := range e.Trajectories {
 			if _, err := os.Stat(tr.Path); err != nil {
 				t.Fatalf("trajectory %s: %v", tr.TrajectoryID, err)
@@ -242,7 +242,7 @@ func TestChunkingCase(t *testing.T) {
 		t.Fatal(err)
 	}
 	full, err := experiments.GetRun(ctx, database.Relational, tr.Run.ID)
-	if err != nil || len(full.CaseResults) != 1 || len(full.CaseResults[0].PassedChecks) < 7 {
+	if err != nil || len(full.CaseRuns) != 1 || len(full.CaseRuns[0].PassedChecks) < 7 {
 		t.Fatalf("run: %+v, %v", full, err)
 	}
 
