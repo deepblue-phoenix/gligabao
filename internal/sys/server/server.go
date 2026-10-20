@@ -27,6 +27,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
+	"github.com/deepblue-phoenix/gligabao/internal/evals_neo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
@@ -99,7 +100,7 @@ type Options struct {
 	EvalModeEnable bool
 	// TrainingModeEnable registers the training handlers (/v1/gb/training/...) and starts the training monitor. Off by default.
 	TrainingModeEnable bool
-	// EvalDBPath is a second SQLite file, the eval database (see internal/evals/knowledge/main.go): the evaluation datasets, the
+	// EvalDBPath is a second SQLite file, the eval database (see internal/evals_neo/knowledge/cmd): the evaluation datasets, the
 	// experiments and their runs. The admin UI shows it next to the main database and reads the Evals block (and the
 	// ATIF files, from an "atif" directory next to it) from it. Opened for the admin UI only; ignored (with a warning)
 	// unless the main database is SQLite. Empty = not shown, and the Evals routes are not registered.
@@ -334,6 +335,10 @@ func openAdminDB(path string) (*sql.DB, error) {
 		rel.Close()
 		return nil, err
 	}
+	if err := evals_neo.Open(config.DBBackendSQLite, rel); err != nil {
+		rel.Close()
+		return nil, err
+	}
 	return rel, nil
 }
 
@@ -447,7 +452,7 @@ func Run(ctx context.Context, opts Options) error {
 			defer evalDB.Close()
 			log.WithField("path", opts.EvalDBPath).Info("eval database is shown in the admin UI")
 			// The eval runner (a separate process) keeps the eval database's vectors next to it, always in chromem with the
-			// default dimensions (see internal/evals/knowledge/main.go), so open that directory afresh whenever it is needed.
+			// default dimensions (see internal/evals_neo/knowledge/cmd), so open that directory afresh whenever it is needed.
 			vecDir := db.DefaultVectorDir(opts.EvalDBPath)
 			extra = append(extra, admin.Named{
 				Name:          EvalDBName,

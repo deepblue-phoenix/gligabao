@@ -5,6 +5,16 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.85.0] - 2026-10-22
+
+### Added
+- **`internal/evals_neo`: the runners.** New packages: `runner` (puts the evals of the JSON files in the database as defs, `SyncEval` and `EnsureExperiment`, and records experiment runs, eval runs and case runs as they go: `RunEval`, `EvalRecorder`, `ExperimentRecorder`), `evalfile` (reads the eval files), `knowledge` (the executor of the knowledge evals, ported from the old runner: the checks of the stored facts, chunks, web searches and timeseries, and of the answer), `training` (the executor of the training evals: the engine that asks the model and has the LLM judge the answers in batches), and the commands `knowledge/cmd` and `training/cmd`. `internal/evals_neo/db` got the functions the runners need, in both backends and as `db.Store`: the updates of defs and runs, and the reads of an eval def (with its cases and their metadata) and of an experiment def. A run is stored when it starts and rewritten as its cases finish. The runners do not use anything of `internal/evals` (the old code is still in the tree, to be removed).
+- **`internal/evals_neo` is the primary evals package.** `internal/db.Open` (and so every database of the server and of the runners) applies its schema (the `gb_neo_*` tables) next to the old one, `./run_evals.sh` runs its commands, and it has a `README.md`. The tables are listed in `docs/listings/db-tables.md`.
+
+### Changed
+- **`./run_evals.sh` runs the new runners**: `go run ./internal/evals_neo/knowledge/cmd` and `go run ./internal/evals_neo/training/cmd`. The flags are those of the old ones, except: the knowledge runner's `-experiment ""` runs the evals on their own (an eval run needs no experiment), and the training runner has no `-no-store` (a run is always stored); the dataset of a knowledge case is named after the eval run (`<case>_run<eval run id>`, was the experiment run's id). **Breaking:** the runs are stored in the `gb_neo_*` tables, which the admin UI's evals views and the Eval button of the server do not read yet (they still use the old tables, which the runners no longer write): a run of `./run_evals.sh` does not show in the admin UI until those move over.
+- The old evals code (`internal/evals`, its READMEs and the docs of its tables) is marked as old.
+
 ## [0.84.0] - 2026-10-22
 
 ### Added

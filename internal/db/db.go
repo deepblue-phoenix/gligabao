@@ -21,6 +21,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
+	"github.com/deepblue-phoenix/gligabao/internal/evals_neo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits"
@@ -185,6 +186,10 @@ func Open(cfg Config) (*DB, error) {
 		return nil, err
 	}
 	if err := evalsdb.Open(cfg.Backend, rel); err != nil {
+		rel.Close()
+		return nil, err
+	}
+	if err := evals_neo.Open(cfg.Backend, rel); err != nil {
 		rel.Close()
 		return nil, err
 	}

@@ -1,5 +1,15 @@
-// Package evals_neo is the rewrite of the evals. Its parts are in subpackages:
+// Package evals_neo is the evals system: the data model, its storage, and the runners that execute the evals. Its parts are in
+// subpackages:
 //
-//	core  the data model: the structs and their vocabulary (see its package doc)
-//	db    the storage of the data model: the schema and the functions that create the records (for now only creation)
+//	core       the data model: the structs and their vocabulary (see its package doc)
+//	db         the storage of the data model: the schema and the functions that write and read the records (sqlite, postgres)
+//	evalfile   reading the evals from their JSON files (bin/evals_knowledge, bin/evals_training)
+//	runner     what every Type of eval shares in running: putting the evals of the files in the DB as defs, recording experiment
+//	           runs, eval runs and case runs
+//	knowledge  the knowledge evals: remember some texts, then recall (the executor of the Type "knowledge"), and its command
+//	training   the training evals: a trained model answers, an LLM judges (the executor of the Type "training"), and its command
+//
+// The root package has Open, which applies the schema to the database (internal/db does it when it opens one), and StoreFor, which
+// gives the functions of a backend. The runners share no code, types or tables with the old evals (internal/evals), which are
+// to be removed.
 package evals_neo

@@ -1,5 +1,7 @@
 # Evals
 
+> **Deprecated.** This is the old evals code. It is replaced by [`internal/evals_neo`](../evals_neo/README.md), which `./run_evals.sh` and the database now use; this tree stays only until it is removed. The server's Eval button and the admin UI's evals views still use its tables.
+
 gligabao has two eval systems. They are separate: each lives in its own subdirectory, has its own code, README and tests, and checks something different.
 
 **Terms.** An **eval case** (*case*) is one input/output combination, plus metadata, to be evaluated. Cases are grouped into an **eval** (a set of cases). A *run* executes cases (or a whole eval) once and records a *result* for each case; an *experiment* is a named series of runs. Both eval systems below use these words.

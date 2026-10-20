@@ -1,5 +1,7 @@
 # Trained-model evals (LLM as a judge)
 
+> **Deprecated.** This is the old evals code. It is replaced by [`internal/evals_neo`](../../evals_neo/README.md), which `./run_evals.sh` and the database now use; this tree stays only until it is removed. The server's Eval button and the admin UI's evals views still use its tables.
+
 Checks a trained model's answers with an LLM as the judge. The model is asked each case's question (`instruction`, plus `input` as context, as in training) and an external LLM, the one gligabao uses for knowledge ingestion (Anthropic, `ANTHROPIC_API_KEY`), judges how closely each answer agrees with the reference `output`. The Go types are `evalsdb.TrainedModelRun` and `TrainedModelCase`; the statuses, the manager and the endpoints that follow a run are in `internal/training/runs.go`.
 
 - An **eval** (`internal/api/training/evals.go` (core: `internal/training`), kind `eval`, the `training` rows of the universal eval tables, HTTP `/evals`): the cases are those of an **eval**, a named set of cases of `bin/evals_training/*.json` that the model never saw, so the score says how well it generalizes. [docs/evals/training.md](../../../docs/evals/training.md).

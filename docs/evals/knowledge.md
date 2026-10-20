@@ -1,5 +1,7 @@
 # Evals and ATIF trajectories
 
+> **Note:** the runner (`./run_evals.sh`) is now `internal/evals_neo/knowledge`, which stores its runs in the `gb_neo_*` tables; see [`internal/evals_neo/README.md`](../../internal/evals_neo/README.md). Where this page speaks of experiments, runs and their tables it describes the old ones (`internal/evals`), which the admin UI still reads.
+
 Evals are end-to-end checks that run `remember` and `recall` against the real LLM and verify the stored temporal facts and the answer. Each individual check is an **eval case** (an input, here some texts to remember and a question, plus what is expected and metadata), and the cases are grouped into **evals**. To let a case look inside a run, remember and recall can record themselves as an [ATIF](https://github.com/laude-institute/harbor) (Agent Trajectory Interchange Format) trajectory: the ordered list of everything the call did, with the LLM's tokens and cost per step.
 
 Trajectories are generated **only for eval calls** (the calls the eval cases make). The regular endpoints and regular Go calls never build, store or return them.
@@ -53,7 +55,7 @@ Each trajectory is written as pretty-printed JSON to `<dir>/<trajectory_id>.json
 
 A call that fails is stored too, with `notes` set to `failed: <error>`, but the caller only gets the trajectory of a successful call. A failure to write the file is logged and never fails the call.
 
-The eval runner (`go run ./internal/evals/knowledge`) writes everything to the eval database, `bin/gligabao-eval.db` (`-db`; the admin UI can show it, `serve --eval-db`), which isolates the evaluation data from the main database. It holds the datasets the cases build (artifacts, entities and edges), the experiments and their runs; a run references its datasets and artifacts instead of copying them. It is **never reset**: each run of an experiment creates its own datasets (`<case>_run<run id>`), so executions do not interfere. The experiment runs reference the trajectories by ID, so the trajectories are stored in an `atif/` directory next to the eval database (`-atif <dir>` changes it), see [experiments.md](experiments.md).
+The eval runner (`go run ./internal/evals_neo/knowledge/cmd`) writes everything to the eval database, `bin/gligabao-eval.db` (`-db`; the admin UI can show it, `serve --eval-db`), which isolates the evaluation data from the main database. It holds the datasets the cases build (artifacts, entities and edges), the experiments and their runs; a run references its datasets and artifacts instead of copying them. It is **never reset**: each run of an experiment creates its own datasets (`<case>_run<run id>`), so executions do not interfere. The experiment runs reference the trajectories by ID, so the trajectories are stored in an `atif/` directory next to the eval database (`-atif <dir>` changes it), see [experiments.md](experiments.md).
 
 ## Trajectory format
 
@@ -132,7 +134,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 
 ## How the evals use it
 
-`internal/evals/knowledge/main.go` starts an in-process server with eval mode on and runs each case through `/v1/gb/eval/remember` (once per memory, in order) and `/v1/gb/eval/recall`. It decodes the `trajectory` from every response and fails the case if one is missing. A case's outcome holds the answer, the failed temporal-fact checks and the trajectories (one per remember, then the recall's), so checks can use the steps and costs directly. For now the runner reports the trajectory count, step count and total cost with `-v`.
+`internal/evals_neo/knowledge` starts an in-process server with eval mode on and runs each case through `/v1/gb/eval/remember` (once per memory, in order) and `/v1/gb/eval/recall`. It decodes the `trajectory` from every response and fails the case if one is missing. A case's outcome holds the answer, the failed temporal-fact checks and the trajectories (one per remember, then the recall's), so checks can use the steps and costs directly. For now the runner reports the trajectory count, step count and total cost with `-v`.
 
 ### Models
 

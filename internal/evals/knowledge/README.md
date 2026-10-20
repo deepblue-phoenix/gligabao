@@ -1,5 +1,7 @@
 # Knowledge-extraction evals
 
+> **Deprecated.** This is the old evals code. It is replaced by [`internal/evals_neo`](../../evals_neo/README.md), which `./run_evals.sh` and the database now use; this tree stays only until it is removed. The server's Eval button and the admin UI's evals views still use its tables.
+
 End-to-end checks that run against a real gligabao server (and the real LLM), so `ANTHROPIC_API_KEY` is required. `OPENAI_API_KEY` is also needed for `remember` to vector-index the entities and edges (into `bin/gligabao-eval.vectors`, shown by "View vec db" in the admin UI); without it the runner warns and no vectors are stored.
 
 These are the knowledge-extraction evals (the other eval system, which judges trained models, is in [`../training`](../training/README.md); see [`../README.md`](../README.md)).
