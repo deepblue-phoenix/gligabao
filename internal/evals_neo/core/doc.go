@@ -1,4 +1,4 @@
-// Package core is the evals data model (the rewrite of internal/evals): plain structs, no logic. The tables that hold them are
+// Package core is the evals data model (the rewrite of the old internal/evals, which is gone): plain structs, no logic. The tables that hold them are
 // in the sibling package db.
 //
 // # Vocabulary

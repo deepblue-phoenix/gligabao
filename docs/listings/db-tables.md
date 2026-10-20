@@ -24,14 +24,6 @@
 - `gb_series_anchors`
 - `gb_onto_classes`
 - `gb_onto_edges`
-- `gb_experiments_defs`
-- `gb_experiment_cases_defs`
-- `gb_experiment_runs`
-- `gb_experiment_case_runs`
-- `gb_experiment_case_runs_trajectories`
-- `gb_knowledge_case_meta`
-- `gb_training_eval_run_meta`
-- `gb_training_case_meta`
 - `gb_training_job_runs`
 - `gb_training_job_events`
 - `gb_trained_models`
@@ -62,14 +54,6 @@
 | `gb_series_anchors`           | many-to-many link anchoring a series (optionally a window of it) to an artifact, entity or edge.                                                |
 | `gb_onto_classes`             | the classes (nodes) of a loaded ontology.                                                                                                       |
 | `gb_onto_edges`               | the relationships between ontology classes (subclass, equivalence, disjointness, properties).                                                   |
-| `gb_experiments_defs`         | a named series of eval runs (knowledge or training) with free-form config.                                                                      |
-| `gb_experiment_cases_defs`    | the cases (eval + case name) an experiment has executed.                                                                                        |
-| `gb_experiment_runs`          | one execution of an experiment over one or more cases, with status, params and counts.                                                          |
-| `gb_experiment_case_runs`     | the result of one case in one run, for both knowledge and training evals.                                                                       |
-| `gb_experiment_case_runs_trajectories` | references to the ATIF trajectory files of a case's remember and recall calls.                                                                  |
-| `gb_knowledge_case_meta`      | knowledge-eval specific data of a case result (answer, failed and passed checks, dataset, steps).                                               |
-| `gb_training_eval_run_meta`   | training-eval specific data of a run (trained model, eval name, judge model, progress counters and judge usage).                                |
-| `gb_training_case_meta`       | training-eval specific data of a case result (question, expected answer, model response, judge score and reason).                               |
 | `gb_training_job_runs`        | training jobs started on the sidecar, with status, settings, loss and timings.                                                                  |
 | `gb_training_job_events`      | the status and progress events (with loss) the sidecar reported for a training job, in order.                                                   |
 | `gb_trained_models`           | one row per completed training job, the saved weights (LoRA adapter) that inference, evals and audits run on.                                   |

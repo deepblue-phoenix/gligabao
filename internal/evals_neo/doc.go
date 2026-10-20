@@ -10,6 +10,6 @@
 //	training   the training evals: a trained model answers, an LLM judges (the executor of the Type "training"), and its command
 //
 // The root package has Open, which applies the schema to the database (internal/db does it when it opens one), and StoreFor, which
-// gives the functions of a backend. The runners share no code, types or tables with the old evals (internal/evals), which are
-// to be removed.
+// gives the functions of a backend. The old evals package (internal/evals) is gone; nothing
+// refers to its tables (gb_experiment*) any more.
 package evals_neo

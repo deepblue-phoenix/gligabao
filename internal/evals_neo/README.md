@@ -1,6 +1,6 @@
 # Evals (`internal/evals_neo`)
 
-The evals system: the data model, its storage and the runners. It replaces `internal/evals`, which is still in the tree only until it is removed; the two share no code, types or tables (the tables here are `gb_neo_*`).
+The evals system: the data model, its storage and the runners. It replaced the old `internal/evals` (removed in 0.88.0); its tables are `gb_neo_*`.
 
 **Terms.** An **eval** is a named set of **cases** of one **type** (`knowledge`, `training`). Evals and cases are *definitions* (`EvalDef`, `CaseDef`: stored in the database, reusable); running them makes *runs* (`EvalRun`, `CaseRun`: append-only history). An **experiment** groups evals that are run together (`ExperimentDef`, run as an `ExperimentRun`). The whole vocabulary and the rules of the model are in [`core/doc.go`](core/doc.go).
 
@@ -40,4 +40,4 @@ Tests (`go test ./internal/evals_neo/...`) use fake LLMs, models and judges, and
 
 ## The server
 
-The admin UI's evals views (`internal/api/admin`) and the evals of trained models (`training.Manager` and its handlers in `training/api`, the **Eval** button) read and write these tables. The old `internal/evals` is used by nothing of the server any more.
+The admin UI's evals views (`internal/api/admin`) and the evals of trained models (`training.Manager` and its handlers in `training/api`, the **Eval** button) read and write these tables.

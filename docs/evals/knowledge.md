@@ -1,7 +1,5 @@
 # Evals and ATIF trajectories
 
-> **Note:** the runner (`./run_evals.sh`) is `internal/evals_neo/knowledge`, which stores its runs in the `gb_neo_*` tables; see [`internal/evals_neo/README.md`](../../internal/evals_neo/README.md). Where this page speaks of experiments, runs and their tables it may still describe the old ones (`internal/evals`, removed).
-
 Evals are end-to-end checks that run `remember` and `recall` against the real LLM and verify the stored temporal facts and the answer. Each individual check is an **eval case** (an input, here some texts to remember and a question, plus what is expected and metadata), and the cases are grouped into **evals**. To let a case look inside a run, remember and recall can record themselves as an [ATIF](https://github.com/laude-institute/harbor) (Agent Trajectory Interchange Format) trajectory: the ordered list of everything the call did, with the LLM's tokens and cost per step.
 
 Trajectories are generated **only for eval calls** (the calls the eval cases make). The regular endpoints and regular Go calls never build, store or return them.
@@ -55,7 +53,7 @@ Each trajectory is written as pretty-printed JSON to `<dir>/<trajectory_id>.json
 
 A call that fails is stored too, with `notes` set to `failed: <error>`, but the caller only gets the trajectory of a successful call. A failure to write the file is logged and never fails the call.
 
-The eval runner (`go run ./internal/evals_neo/knowledge/cmd`) writes everything to the eval database, `bin/gligabao-eval.db` (`-db`; the admin UI can show it, `serve --eval-db`), which isolates the evaluation data from the main database. It holds the datasets the cases build (artifacts, entities and edges), the experiments and their runs; a run references its datasets and artifacts instead of copying them. It is **never reset**: each run of an experiment creates its own datasets (`<case>_run<run id>`), so executions do not interfere. The experiment runs reference the trajectories by ID, so the trajectories are stored in an `atif/` directory next to the eval database (`-atif <dir>` changes it), see [experiments.md](experiments.md).
+The eval runner (`go run ./internal/evals_neo/knowledge/cmd`) writes everything to the eval database, `bin/gligabao-eval.db` (`-db`; the admin UI can show it, `serve --eval-db`), which isolates the evaluation data from the main database. It holds the datasets the cases build (artifacts, entities and edges), the experiments and their runs; a run references its datasets and artifacts instead of copying them. It is **never reset**: each run of an experiment creates its own datasets (`<case>_run<eval run id>`), so executions do not interfere. The experiment runs reference the trajectories by ID, so the trajectories are stored in an `atif/` directory next to the eval database (`-atif <dir>` changes it), see [experiments.md](experiments.md).
 
 ## Trajectory format
 
@@ -183,7 +181,7 @@ A case can also pin its own models (`"models"` in the eval), for example to run 
 **How do models behave?** Beyond pass or fail, a run keeps what each model did:
 
 - the **trajectories** hold the raw output of every LLM step with its `model_name`, tokens and cost, so you can read how a model extracted (the entities and edges it listed, how it typed and named them, what dates it gave) and what `resolve_edges` decided, side by side with another model's on the same text;
-- the **graph** of every case of every run is kept in its own dataset (`<case>_run<run id>`), and its entities and edges carry the `extract_graph` model as `model_id`, so the graphs two models built from the same text can be opened in the admin UI and compared (more or fewer entities, finer or coarser relations, different validity);
+- the **graph** of every case of every run is kept in its own dataset (`<case>_run<eval run id>`), and its entities and edges carry the `extract_graph` model as `model_id`, so the graphs two models built from the same text can be opened in the admin UI and compared (more or fewer entities, finer or coarser relations, different validity);
 - the **cost** of each case and of the whole run is recorded, so a model can be judged on what it costs for the quality it gives (a cheaper model for `resolve_edges` and a stronger one for `extract_graph`, say), and the steps and tokens show how verbose it is;
 - the **experiment run** records the `models` of the invocation in its `params` (see [experiments.md](experiments.md)), so a result can always be traced back to the setting that produced it. Runs of one experiment can then be compared by their `params`, results, and cost.
 

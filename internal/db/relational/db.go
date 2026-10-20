@@ -1,6 +1,6 @@
 // Package relational opens the database selected in the config and routes every database operation to the backend
 // subpackage in use (sqlite or postgres). It covers datasets, ontologies, the inferences (gb_inferences) and remember runs; graph operations are in
-// internal/db/graph, eval operations in internal/evals/db and the training data (jobs, trained models, datasets) in
+// internal/db/graph, eval operations in internal/evals_neo/db and the training data (jobs, trained models, datasets) in
 // internal/training/db. All SQL lives in the backends (internal/db/relational/sqlite, internal/db/relational/postgres);
 // other packages only call the functions here and never write SQL. Each backend owns its schema, its SQL dialect
 // and its timestamp storage format.

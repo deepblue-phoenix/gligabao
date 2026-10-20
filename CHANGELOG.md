@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.88.1] - 2026-10-23
+
+### Changed
+- Docs and comments no longer point at the removed `internal/evals`: `docs/evals/experiments.md` and `docs/evals/training.md` describe the `gb_neo_*` tables, statuses (`pending`, `running`, `completed`, `errored`, `cancelled`) and verdicts of `internal/evals_neo` (and its runner and manager in place of the old `experiments` package and `evalsdb` functions), `docs/listings/db-tables.md` lists only the current tables, and the links in `README.md`, `docs/remember.md`, `docs/web-search.md`, `docs/evals/knowledge.md` and `docs/training/audit.md` lead to `internal/evals_neo`. The package comments of `internal/evals_neo`, `internal/training_audits`, `internal/training/db` and `internal/db/relational` are updated the same way.
+
 ## [0.88.0] - 2026-10-23
 
 ### Removed

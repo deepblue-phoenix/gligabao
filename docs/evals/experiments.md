@@ -1,50 +1,54 @@
 # Eval experiments
 
-> **Note:** the old eval tables (`internal/evals/db`) are gone; the runs are stored in the `gb_neo_*` tables of [`internal/evals_neo`](../../internal/evals_neo/README.md). Parts of this page may still describe the old ones.
-
-An **experiment** is a named series of eval runs. Every time the eval runner (`go run ./internal/evals_neo/knowledge/cmd`, `./run_evals.sh`) executes, it records one **run** of an experiment in the **eval** database (`bin/gligabao-eval.db`), which keeps the evaluation data apart from the main database and is never reset. Each run works in datasets of its own (`<case>_run<run id>`), so runs do not interfere with each other. A run records which cases of which evals it executed, how each ended, and the IDs of the [ATIF trajectories](knowledge.md) of their calls. Go code lives in `internal/evals/experiments`; the database code is in `internal/evals/db` (the tables are in `internal/evals/db/{sqlite,postgres}/db_schema.go`, the structs in `internal/evals/db/model`).
+An **experiment** is a named group of evals that are run together, plus the settings under test. Every time the eval runner (`go run ./internal/evals_neo/knowledge/cmd`, `./run_evals.sh`) executes, it records one **run** of an experiment in the **eval** database (`bin/gligabao-eval.db`), which keeps the evaluation data apart from the main database and is never reset. Each case run works in a dataset of its own (`<case>_run<eval run id>`), so runs do not interfere with each other. A run records which cases of which evals it executed, how each ended, and the IDs of the [ATIF trajectories](knowledge.md) of their calls. The code is [`internal/evals_neo`](../../internal/evals_neo/README.md): the structs are in `core`, the tables in `db/{sqlite,postgres}/schema.go`, and the recording of the runs in `runner`.
 
 ## Data model
 
-The knowledge-extraction evals and the [evals of trained models](training.md) share one set of tables. The **universal** tables hold what every eval (knowledge or training) has and carry a `type` column (`knowledge` or `training`); what only one kind has is in that kind's **metadata** table, one row per row of `gb_experiment_case_runs`. A composite foreign key `(parent id, type)` keeps the type the same down the chain: the database refuses a training run under a knowledge experiment, a result under a run of the other type, or metadata on a result of the other type. Experiment names are unique within a type, so a knowledge and a training experiment can have the same name. Everything on this page is the `knowledge` type; the functions of this package only see those rows.
+The knowledge-extraction evals and the [evals of trained models](training.md) share one set of tables, the `gb_neo_*` tables. The **universal** tables hold what every eval has and carry a `type` column (`knowledge` or `training`); what only one type has is in that type's **metadata** tables, one row per row of the universal table. A composite foreign key `(parent id, type)` keeps the type the same down the chain: the database refuses a case def under an eval of the other type, a case run under an eval run of the other type, or metadata on a row of the other type. The vocabulary and the rules of the model are in [`core/doc.go`](../../internal/evals_neo/core/doc.go).
 
-**Terms.** An *eval case* (a *case*) is one input/output combination, plus metadata, to be evaluated (an input and what is expected or checked). Cases are grouped into an *eval* (a set of cases). A *run* executes some cases once, and a *result* is the outcome of one case in one run: a case has many results, one per run it was in. An *experiment* is a named series of runs. The case definitions live in the eval files; the database holds the names (`gb_experiment_cases_defs`) and the results (`gb_experiment_case_runs`).
+**Terms.** There are two sides, and every concept exists on both:
 
-Universal tables:
-
-| table | struct | meaning |
-|---|---|---|
-| `gb_experiments_defs` | `Experiment` | `type`, `name`, `description`, `config` (free-form JSON: the settings under test) |
-| `gb_experiment_cases_defs` | `Experiment.Cases` (`CaseRef`) | the cases (`eval` + `case_name`) that any run of the experiment executed; added the first time a case is recorded |
-| `gb_experiment_runs` | `ExperimentRun` | one execution: `type`, `experiment_id` (always set for knowledge), `status` (`running`, then: knowledge `passed` or `failed`; training `completed`, `error` or `cancelled`), `params` (how it was invoked), totals (`total_cases`, `passed_cases`, `failed_cases`, `error_cases`, `judged_cases`, `cost_usd`), `started_at`, `finished_at` |
-| `gb_experiment_case_runs` | `ExperimentCaseRun` | one case's result in a run: `type`, `eval`, `case_name`, `status` (knowledge: `passed`, `failed`: a check did not hold, `error`: it could not run to the end; training: `judged`: whatever the score, `error`: the model or the judge errored), `error`, `cost_usd`, times |
-| `gb_experiment_case_runs_trajectories` | `ExperimentTrajectory` | the ATIF trajectories of a case, in call order (`seq`): `kind` (`remember` / `recall`), `trajectory_id`, `agent_name`, `steps`, `cost_usd`, `path` of the JSON file, `artifact_ids` (the IDs, in the case's dataset, of the call's artifacts: the artifact a remember stored, or the artifacts a recall's evidence edges were sourced from via the edge provenance links; `experiments.GetRun` and the admin API resolve them to `artifacts` by reading the dataset) |
-
-Metadata tables (the struct fields are those of `ExperimentCaseRun`; the result's `Type` is `knowledge`):
-
-| table | meaning |
+| definitions (what to run; stored, reused) | runs (what happened; append-only history) |
 |---|---|
-| `gb_knowledge_case_meta` | `answer`, `problems` (failed checks), `passed_checks`, `dataset_id` (the dataset the case ran in, which holds the knowledge graph it built; null if it was never created), `steps` (ATIF steps over its trajectories) |
-| `gb_training_eval_run_meta` (one row per training run), `gb_training_case_meta` (one row per training case run) | the training eval runs' own columns (trained model, eval, judge, counters) and the per-case outcomes (question, the expected answer, the model's, the judge's score). See [training/EVALS.md](training.md#tables) |
+| `ExperimentDef`: which evals, plus settings | `ExperimentRun`: one execution of an experiment def |
+| `EvalDef`: a named collection of cases of one type | `EvalRun`: one execution of an eval def |
+| `CaseDef`: one input and what is expected or checked | `CaseRun`: one execution of a case def |
 
-Both kinds have **evals**: a case (`case_name`) belongs to an eval (`eval`). Knowledge evals are the files of `bin/evals_knowledge/`. Training evals are the files of `bin/evals_training/` (named after the training dataset their cases ask about); an *eval run* (one run of the eval against one trained model) is a run with one case run per case (`case_name` is the case's name, as for a knowledge case).
+An *eval case* (a *case*) is one input/output combination, plus metadata, to be evaluated. Cases are grouped into an *eval* (a set of cases). An *experiment* groups evals (an eval can be in many experiments). The definitions are stored in the database when a run starts (`runner.SyncEval` puts the evals of the JSON files in as defs, and rewrites a case def whose file changed); a run has a link to its def, and records the `params` it was invoked with, so it can be understood without looking at the def as it is now.
 
-The graph and the artifacts of a case are not copied into the experiment tables: they are read from the dataset the case ran in, via `dataset_id` and `artifact_ids`. Datasets are only ever soft-deleted, so they stay readable; if a dataset (or an artifact) is purged from the eval database, its case shows no graph (or no artifact).
-
-An eval is a file in `bin/evals_knowledge/` and its name is the file name without `.json`; a case is one of its cases, so `eval` + `case_name` identifies it. Rows cascade: deleting an experiment removes its runs, cases and trajectory references.
-
-Only the trajectory *reference* is stored in the database; the trajectory is the file `<trajectory_id>.json` in the trajectory directory. The runner stores the files in an `atif/` directory next to the eval database (`bin/atif/` by default) so the IDs stay resolvable; `-atif <dir>` changes it. `gb_experiment_case_runs_trajectories.path` records where each file went.
-
-A run is `passed` when every recorded case passed. A case fails when a stored-edge check does not hold or the answer lacks an expected string (`problems` lists them).
-
-The status sets depend on the type (the schema's `CHECK`s enforce the sets). `failed` is a verdict about checks, so only knowledge has it; `error` means "could not be run to the end" in both types:
-
-| | run | case |
+| table | struct (package `core`) | meaning |
 |---|---|---|
-| knowledge | `running`, then `passed` or `failed` | `passed`, `failed` (a check did not hold), `error` (could not be run to the end) |
-| training | `running`, then `completed` (it ran to the end), `error` (the run itself errored) or `cancelled` | `judged`, `error` (the model or the judge errored) |
+| `gb_neo_eval_defs` | `EvalDef` | `name` (unique), `type`, `description`, `tags`, `params` |
+| `gb_neo_case_defs` | `CaseDef` | a case of an eval: `name` and `position` (both unique within the eval), `type`; its type-specific part is in `gb_neo_case_def_meta_<type>` |
+| `gb_neo_case_def_meta_knowledge` | `KnowledgeCaseDefMeta` | the texts to `remember`, the `query`, the checks (`expect_contains`, `expect_edges`, `expect_min_chunks`, `expect_web_searches`, `expect_series`) and the settings (`chunk_size`, `models`, `reasoning`) |
+| `gb_neo_case_def_meta_training` | `TrainingCaseDefMeta` | `instruction`, `input` and the expected `output` |
+| `gb_neo_experiment_defs` | `ExperimentDef` | `name` (unique), `description`, `params` (free-form JSON: the settings under test) |
+| `gb_neo_experiment_def_evals` | `ExperimentDef.EvalDefIDs` | the evals of an experiment, in the order they run |
+| `gb_neo_experiment_runs` | `ExperimentRun` | one execution of an experiment: `status`, `error`, `params` (how it was invoked), `counts_*` and `cost_usd` over the case runs of all its eval runs, `created_at`, `started_at`, `finished_at` |
+| `gb_neo_eval_runs` | `EvalRun` | one execution of an eval, in an experiment run or on its own (`experiment_run_id` is NULL): `type`, `status`, `error`, `params`, `counts_*`, `cost_usd`, times |
+| `gb_neo_eval_runs_meta_knowledge` | `KnowledgeEvalRunMeta` | the statistics of the run as a whole: `chunks`, `steps`, `remember_calls`, `recall_calls` and their cost, `checks_passed`, `checks_failed` |
+| `gb_neo_eval_runs_meta_training` | `TrainingEvalRunMeta` | the trained model, the judge and the split of the scores, see [training.md](training.md#tables) |
+| `gb_neo_case_runs` | `CaseRun` | one case's result in an eval run: `type`, `status`, `error`, `verdict`, `score`, `cost_usd`, times |
+| `gb_neo_case_runs_meta_knowledge` | `KnowledgeCaseRunMeta` | `input` (as given), `answer`, `problems` (the checks that failed), `passed_checks`, `dataset_id` (the dataset the case ran in, which holds the knowledge graph it built; null if it was never created), `steps` (ATIF steps over its trajectories) |
+| `gb_neo_case_runs_meta_knowledge_trajectories` | `KnowledgeTrajectory` | the ATIF trajectories of a case, in call order (`seq`): `kind` (`remember` / `recall`), `trajectory_id`, `agent_name`, `steps`, `cost_usd`, `path` of the JSON file, `artifact_ids` (the IDs, in the case's dataset, of the call's artifacts: the artifact a remember stored, or the artifacts a recall's evidence edges were sourced from via the edge provenance links; the admin API resolves them to `artifacts` by reading the dataset) |
+| `gb_neo_case_runs_meta_training` | `TrainingCaseRunMeta` | the question, the expected answer, the model's answer and the judge's score and reason, see [training.md](training.md#tables) |
 
-A training score is not a verdict: a judged case with a score of 0 is still `judged`. A knowledge run is `failed` when at least one case did not pass (a check did not hold, or it errored). The totals of a run are one count per case status and nothing else: `passed_cases`, `failed_cases`, `error_cases`, `judged_cases` (knowledge uses the first three, training the last two; the unused ones are 0). `total_cases` minus the four is the cases not reached (the examples left when a training run is cancelled).
+Links between runs go from child to parent (`CaseRun.EvalRunID`, `EvalRun.ExperimentRunID`); a parent stores no list of its children. A def that has runs cannot be deleted (`ON DELETE RESTRICT`), so the history stays understandable; deleting a run deletes the runs under it and their metadata.
+
+Both types have **evals**: a case belongs to an eval, and a case name is unique within its eval (the runner also requires them to be unique over all the evals, so a case can be named on the command line). Knowledge evals are the files of `bin/evals_knowledge/`. Training evals are the files of `bin/evals_training/` (named after the training dataset their cases ask about); an *eval run* (one run of the eval against one trained model) has one case run per case.
+
+The graph and the artifacts of a case are not copied into the run tables: they are read from the dataset the case ran in, via `dataset_id` and `artifact_ids`. Datasets are only ever soft-deleted, so they stay readable; if a dataset (or an artifact) is purged from the eval database, its case shows no graph (or no artifact).
+
+Only the trajectory *reference* is stored in the database; the trajectory is the file `<trajectory_id>.json` in the trajectory directory. The runner stores the files in an `atif/` directory next to the eval database (`bin/atif/` by default) so the IDs stay resolvable; `-atif <dir>` changes it. `gb_neo_case_runs_meta_knowledge_trajectories.path` records where each file went.
+
+**Status and verdict.** The `status` of a run (experiment run, eval run or case run) is its *lifecycle*, never a verdict: `pending`, `running`, then `completed` (it ran to the end), `errored` (it could not run to the end; `error` says why) or `cancelled`. How it went is a separate field of a completed case run, its `verdict` (`pass` or `fail`) and its `score` (0 to 1). A run's `counts_*` are one count per status (`total`, `pending`, `running`, `completed`, `errored`, `cancelled`) and, of the completed case runs, `passed` and `failed`; every case is in exactly one of the five status counts, `pending` being the cases not reached (the ones left when a run is cancelled), and `total` is the number of cases the run is to execute. The schema's `CHECK`s enforce the sets.
+
+| | eval run | case run |
+|---|---|---|
+| knowledge | `running`, then `completed`, `errored` (the executor could not go on) or `cancelled` (Ctrl-C) | `completed` with the verdict `pass` (every check held) or `fail` (a check did not hold, or the answer lacks an expected string; `problems` lists them), or `errored` (it could not be run to the end) |
+| training | the same | `completed` with the verdict `pass` (the judge's score is at least 4 of 5) or `fail`, or `errored` (the model or the judge errored) |
+
+A case that errors does not stop the run: it is an `errored` case run and the run goes on. The exit status of the knowledge runner is 1 if any case did not pass.
 
 ## Runner
 
@@ -52,26 +56,21 @@ A training score is not a verdict: a judged case with a score of 0 is still `jud
 ./run_evals.sh [-experiment name] [-experiment-desc text] [-v] [case-name ...]
 ```
 
-`-experiment` (default `default`) names the experiment; it is created on first use and later runs with the same name are further runs of it. The runner records into the eval database (`-db`, default `bin/gligabao-eval.db`), which it never resets; the datasets of a run are named `<case>_run<run id>`. The runner prints `experiment "<name>" run <id>: <status>, cost $...` at the end.
+`-experiment` (default `default`) names the experiment; it is created on first use and later runs with the same name are further runs of it (`-experiment ""` runs the evals on their own, with no experiment run). The runner records into the eval database (`-db`, default `bin/gligabao-eval.db`), which it never resets; the datasets of a case run are named `<case>_run<eval run id>`. It prints the status and cost of the run at the end.
 
 ## From Go
 
 ```go
-t, err := experiments.Start(ctx, d, experiments.Options{
-    Name: "baseline", Description: "...", Config: map[string]any{"model": "claude-haiku-4-5"},
-    Params: map[string]any{"cases": []string{"job_change"}},
-})                                   // get-or-create the experiment, start a run
-_, err = t.Record(ctx, experiments.CaseOutcome{
-    Eval: "basic", Name: "job_change", Answer: answer,
-    Problems: problems,              // failed checks; PassedChecks: the ones that held; Err: why it could not run
-    DatasetID: dsID,                 // the dataset the case ran in (holds its graph and artifacts)
-    ArtifactIDs: artIDs,             // per trajectory: the IDs of its artifacts in that dataset
-    Trajectories: trajs, TrajectoryDir: dir,
-})
-run, err := t.Finish(ctx)            // totals the cases, sets passed / failed
+r := runner.New(d, store)             // d: the eval database's *sql.DB; store: from evals_neo.StoreFor(backend)
+def, err := r.SyncEval(ctx, spec)     // put an eval of the files in the database as defs
+xd, err := r.EnsureExperiment(ctx, "baseline", "...", []core.EvalDefID{def.ID})   // get-or-create the experiment def
+xr, err := r.StartExperimentRun(ctx, xd, core.Params{"models": models})           // start a run of it
+run, err := r.RunEval(ctx, def, executor, runner.EvalOptions{ /* ExperimentRunID, Params, ... */ })
+err = xr.Add(ctx, run)                // the experiment run sums the counts and the cost of its eval runs
+err = xr.Finish(ctx, nil)
 ```
 
-`d` is the eval database's `Relational`. Reading: `experiments.Get(ctx, d, name)` (with `Cases`), `List`, `Runs(ctx, d, experimentID)`, `GetRun(ctx, d, runID)` (its `CaseRuns` and their trajectory references included, with each trajectory's `Artifacts` read from the case's dataset), `CaseRunDataset(ctx, d, caseRunID)` (the dataset a case ran in; `memory.ExportDatasetGraph` reads its graph) and `FindTrajectory(ctx, d, trajectoryID)`, which leads from a trajectory ID back to its case (`CaseRunID`), run and experiment. `Record` fails with `ErrRunNotRunning` after `Finish`.
+`RunEval` records the eval run (`running`) and gives an `EvalRecorder` to the executor of the type (`knowledge.Executor`, `training.Executor`), which calls `StartCase` and `FinishCase` (or `RecordCases`) for each case and so rewrites the eval run as the cases finish. Reading is `db.Store` (`GetEvalRun`, `ListCaseRuns`, `ListExperimentRuns`, `ListCaseHistory`, `FindKnowledgeTrajectory`, ...): a case run comes with its metadata and, for a knowledge one, its trajectory references; `FindKnowledgeTrajectory` leads from a trajectory ID back to its case run, eval run and experiment.
 
 ## Admin UI
 
