@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/evals_neo/core"
 )
@@ -49,6 +50,24 @@ type Store struct {
 	UpdateCaseRun       func(ctx context.Context, q Execer, r *core.CaseRun) error
 	// CreateCaseRunMeta stores the metadata of a case run (a knowledge one with its Trajectories).
 	CreateCaseRunMeta func(ctx context.Context, q Execer, m core.CaseRunMeta) error
+
+	// Reads of the defs and the runs (see Reads, written once for both backends).
+	ListExperimentDefs          func(ctx context.Context, q Execer) ([]core.ExperimentDef, error)
+	GetExperimentDef            func(ctx context.Context, q Execer, id core.ExperimentDefID) (*core.ExperimentDef, error)
+	GetEvalDef                  func(ctx context.Context, q Execer, id core.EvalDefID) (*core.EvalDef, error)
+	ListCaseDefs                func(ctx context.Context, q Execer, evalDefID core.EvalDefID) ([]core.CaseDef, error)
+	ListExperimentCases         func(ctx context.Context, q Execer, experimentDefID core.ExperimentDefID) ([]core.CaseRef, error)
+	ListExperimentRuns          func(ctx context.Context, q Execer, defID core.ExperimentDefID) ([]core.ExperimentRun, error)
+	GetExperimentRun            func(ctx context.Context, q Execer, id core.ExperimentRunID) (*core.ExperimentRun, error)
+	GetEvalRun                  func(ctx context.Context, q Execer, id core.EvalRunID) (*core.EvalRun, error)
+	ListEvalRunsOfExperimentRun func(ctx context.Context, q Execer, id core.ExperimentRunID) ([]core.EvalRun, error)
+	ListEvalRunsOfExperiment    func(ctx context.Context, q Execer, defID core.ExperimentDefID) ([]core.EvalRun, error)
+	ListTrainingEvalRuns        func(ctx context.Context, q Execer, trainedModelID int64, limit int) ([]core.EvalRun, error)
+	ListCaseRuns                func(ctx context.Context, q Execer, evalRunID core.EvalRunID) ([]core.CaseRun, error)
+	GetCaseRun                  func(ctx context.Context, q Execer, id core.CaseRunID) (*core.CaseRun, error)
+	FindKnowledgeTrajectory     func(ctx context.Context, q Execer, trajectoryID string) (*TrajectoryRef, error)
+	ListCaseHistory             func(ctx context.Context, q Execer, defID core.ExperimentDefID, eval, name string) ([]CaseHistoryEntry, error)
+	FailRunning                 func(ctx context.Context, q Execer, typ core.Type, reason string, at time.Time) (int64, error)
 }
 
 // JSON marshals v as the text of a JSON column. A nil value (nil slice, nil map, nil pointer) is empty, which is the text the

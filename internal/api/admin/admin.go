@@ -15,6 +15,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals_neo/db"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	log "github.com/sirupsen/logrus"
@@ -46,6 +47,8 @@ type Named struct {
 	// TrajectoryDir is where the ATIF trajectories of the experiments recorded in DB are stored ("" = unknown);
 	// only used for the eval database.
 	TrajectoryDir string
+	// EvalStore is how the evals recorded in DB are read (nil: DB has none to show); only used for the eval database.
+	EvalStore *evalsdb.Store
 	// ImageDir is the directory of the image files of DB's image artifacts ("" = unknown: nothing is reported
 	// about the files on disk).
 	ImageDir string

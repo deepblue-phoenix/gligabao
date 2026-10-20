@@ -60,6 +60,10 @@ type EvalOptions struct {
 	// Meta is the initial metadata of the eval run, of the Type of the eval (for example a *core.TrainingEvalRunMeta with the
 	// trained model). Its EvalRunID is set. Nil for none.
 	Meta core.EvalRunMeta
+	// OnCreated, if set, is called with the eval run once it is recorded (running, with its ID), before the executor starts. The
+	// run is the one the recorder keeps: it changes as the cases finish, so a callback that keeps it must read it on the goroutine
+	// of RunEval (the executor's callbacks do) or copy it.
+	OnCreated func(run *core.EvalRun)
 }
 
 // RunEval runs the cases of def (def.Cases; the caller selects them) with ex as one eval run: it records the eval run, calls
@@ -85,6 +89,9 @@ func (r *Runner) RunEval(ctx context.Context, def *core.EvalDef, ex Executor, op
 	})
 	if err != nil {
 		return nil, err
+	}
+	if opts.OnCreated != nil {
+		opts.OnCreated(run)
 	}
 	rec := &EvalRecorder{r: r, run: run}
 	execErr := ex.Execute(ctx, rec, def)

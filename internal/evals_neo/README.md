@@ -38,6 +38,6 @@ A case run's `Status` says whether it ran to the end and its `Verdict` (`pass` o
 
 Tests (`go test ./internal/evals_neo/...`) use fake LLMs, models and judges, and a temporary SQLite database; the PostgreSQL tests of `db/postgres` run when `POSTGRES_TEST_DSN` is set.
 
-## Not done yet
+## The server
 
-The server's **Eval** button of the trained models, the evals views of the admin UI and the API behind them still read and write the old tables (`internal/evals/db`); the runs of the commands above are in the `gb_neo_*` tables, which nothing in the server reads yet.
+The admin UI's evals views (`internal/api/admin`) and the evals of trained models (`training.Manager` and its handlers in `training/api`, the **Eval** button) read and write these tables. The old `internal/evals` is used by nothing of the server any more.

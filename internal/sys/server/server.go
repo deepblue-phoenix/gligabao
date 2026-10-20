@@ -28,6 +28,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	"github.com/deepblue-phoenix/gligabao/internal/evals_neo"
+	evalstraining "github.com/deepblue-phoenix/gligabao/internal/evals_neo/training"
+	evalsapi "github.com/deepblue-phoenix/gligabao/internal/evals_neo/training/api"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
@@ -224,12 +226,16 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 // trained models (nil: starting one answers 503).
 func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, trainingDB *sql.DB, datasetDir, evalDir string, sc coretraining.Sidecar, llm memory_core.LLM) {
 	mon := coretraining.NewMonitor(ctx, trainingDB, sc)
-	var inf coretraining.Inferer // not sc itself: a nil Sidecar must become a nil Inferer
-	if sc != nil {
-		inf = sc
+	// The evals and the training data audits are those of internal/evals_neo and internal/training_audits (their own tables).
+	evalStore, err := evals_neo.StoreFor(backend)
+	if err != nil {
+		log.WithError(err).Fatal("training evals")
 	}
-	evals := training.NewEvalManager(ctx, trainingDB, evalDir, inf, llm)
-	// The training data audits are those of internal/training_audits (their own tables); the evals are still the old ones.
+	var evalInf evalstraining.Inferer // not sc itself: a nil Sidecar must become a nil Inferer
+	if sc != nil {
+		evalInf = sc
+	}
+	evals := evalstraining.NewManager(ctx, trainingDB, evalStore, evalDir, evalInf, llm)
 	var auditInf training_audits.Inferer // likewise nil without a sidecar
 	if sc != nil {
 		auditInf = sc
@@ -246,15 +252,8 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, t
 	mux.HandleFunc("GET /v1/gb/training/models/{id}", training.GetModelOf(trainingDB))
 	mux.HandleFunc("POST /v1/gb/training/models/{id}/infer", training.InferOf(trainingDB, sc))
 	mux.HandleFunc("GET /v1/gb/training/models/{id}/inferences", training.ListInferencesOf(trainingDB))
-	mux.HandleFunc("GET /v1/gb/training/eval-definitions", training.DefinitionsOf(evalDir))
-	mux.HandleFunc("POST /v1/gb/training/models/{id}/evals", evals.StartOf())
-	mux.HandleFunc("GET /v1/gb/training/models/{id}/evals", evals.ListOf())
-	mux.HandleFunc("GET /v1/gb/training/evals/{id}", evals.GetOf())
-	mux.HandleFunc("GET /v1/gb/training/evals/{id}/events", evals.EventsOf())
-	mux.HandleFunc("POST /v1/gb/training/evals/{id}/cancel", evals.CancelOf())
+	evalsapi.New(evals).Register(mux, "/v1/gb/training") // the evals, their definitions and the training experiments
 	auditsapi.New(audits).Register(mux, "/v1/gb/training")
-	mux.HandleFunc("GET /v1/gb/training/experiments", evals.ExperimentsOf())
-	mux.HandleFunc("GET /v1/gb/training/experiments/{id}", evals.ExperimentOf())
 	mux.HandleFunc("GET /v1/gb/training/datasets", training.ListDatasetsOf(trainingDB, datasetDir))
 	mux.HandleFunc("POST /v1/gb/training/datasets", training.UploadDatasetOf(trainingDB, datasetDir))
 	mux.HandleFunc("GET /v1/gb/training/datasets/preview", training.PreviewDatasetOf(datasetDir))
@@ -297,16 +296,16 @@ func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, sc coretraining.Side
 	mux.HandleFunc("POST "+appActions+"/cancel", admin.SidecarBackendProxy(sidecarOpen, "/cancel"))
 	// The experiments live in the eval database; without one there are none to show.
 	for _, e := range dbs {
-		if e.Name != EvalDBName {
+		if e.Name != EvalDBName || e.EvalStore == nil {
 			continue
 		}
-		mux.HandleFunc("GET /v1/gb/admin/api/evals", admin.EvalOverview(e.DB))
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/experiments/{id}", admin.EvalExperiment(e.DB))
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/experiments/{id}/history", admin.EvalCaseHistory(e.DB))
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}", admin.EvalRun(e.DB))
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}/web-searches", admin.EvalRunWebSearches(e.DB, e.TrajectoryDir))
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/graph", admin.EvalCaseRunGraph(e.DB))
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/trajectories/{id}", admin.EvalTrajectory(e.DB, e.TrajectoryDir))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals", admin.EvalOverview(e.DB, *e.EvalStore))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/experiments/{id}", admin.EvalExperiment(e.DB, *e.EvalStore))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/experiments/{id}/history", admin.EvalCaseHistory(e.DB, *e.EvalStore))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}", admin.EvalRun(e.DB, *e.EvalStore))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}/web-searches", admin.EvalRunWebSearches(e.DB, *e.EvalStore, e.TrajectoryDir))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/graph", admin.EvalCaseRunGraph(e.DB, *e.EvalStore))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/trajectories/{id}", admin.EvalTrajectory(e.DB, *e.EvalStore, e.TrajectoryDir))
 		break
 	}
 	mux.Handle("GET /v1/gb/admin/", http.StripPrefix("/v1/gb/admin/", http.FileServerFS(adminui.Assets())))
@@ -454,9 +453,14 @@ func Run(ctx context.Context, opts Options) error {
 			// The eval runner (a separate process) keeps the eval database's vectors next to it, always in chromem with the
 			// default dimensions (see internal/evals_neo/knowledge/cmd), so open that directory afresh whenever it is needed.
 			vecDir := db.DefaultVectorDir(opts.EvalDBPath)
+			evalStore, err := evals_neo.StoreFor(database.Backend)
+			if err != nil {
+				return err
+			}
 			extra = append(extra, admin.Named{
 				Name:          EvalDBName,
 				DB:            evalDB,
+				EvalStore:     &evalStore,
 				TrajectoryDir: filepath.Join(filepath.Dir(opts.EvalDBPath), "atif"),
 				OpenVectors: func() (vector.Store, error) {
 					return vector.NewChromem(vecDir, config.DefaultEmbeddingDimensions)

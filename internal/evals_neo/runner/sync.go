@@ -227,6 +227,12 @@ func sameJSON(a, b any) bool {
 // EnsureExperiment returns the experiment def called name, creating it (with the description) if it does not exist. Its evals are
 // the given ones, in this order, appended to the ones it has when they are not among them.
 func (r *Runner) EnsureExperiment(ctx context.Context, name, description string, evals []core.EvalDefID) (*core.ExperimentDef, error) {
+	return r.EnsureExperimentWith(ctx, name, description, nil, evals)
+}
+
+// EnsureExperimentWith is EnsureExperiment for a caller that has the settings under test: params are stored when the experiment is
+// created (an existing experiment keeps its own).
+func (r *Runner) EnsureExperimentWith(ctx context.Context, name, description string, params core.Params, evals []core.EvalDefID) (*core.ExperimentDef, error) {
 	if name == "" {
 		return nil, errors.New("ensure experiment: the name is required")
 	}
@@ -235,7 +241,7 @@ func (r *Runner) EnsureExperiment(ctx context.Context, name, description string,
 		var err error
 		def, err = r.Store.GetExperimentDefByName(ctx, q, name)
 		if errors.Is(err, db.ErrNotFound) {
-			def = &core.ExperimentDef{Name: name, Description: description, EvalDefIDs: []core.EvalDefID{}}
+			def = &core.ExperimentDef{Name: name, Description: description, Params: params, EvalDefIDs: []core.EvalDefID{}}
 			if err := r.Store.CreateExperimentDef(ctx, q, def); err != nil {
 				return err
 			}

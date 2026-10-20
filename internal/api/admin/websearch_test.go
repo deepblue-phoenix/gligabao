@@ -13,11 +13,9 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
-	"github.com/deepblue-phoenix/gligabao/internal/evals/experiments"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
@@ -95,16 +93,8 @@ func testWebSearches(t *testing.T, d *sql.DB) {
 	}
 
 	// The case that holds both calls.
-	tr, err := experiments.Start(ctx, d, experiments.Options{Name: "web"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tr.Record(ctx, experiments.CaseOutcome{Eval: "s", Name: "a", DatasetID: dsID, Trajectories: append([]*atif.Trajectory{res.Trajectory}, plain.Trajectory), TrajectoryDir: dir}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tr.Finish(ctx); err != nil {
-		t.Fatal(err)
-	}
+	rec := recordCase(t, d, "web", "s", "a", dsID, dir, res.Trajectory, plain.Trajectory)
+	store := storeOf(t, d)
 
 	// Per result (case), from the trajectory.
 	var perResult struct {
@@ -113,7 +103,7 @@ func testWebSearches(t *testing.T, d *sql.DB) {
 			Searches []admin.WebSearch     `json:"searches"`
 		} `json:"case_runs"`
 	}
-	if c := get(admin.EvalRunWebSearches(d, dir), "/x/"+strconv.FormatInt(tr.Run.ID, 10), &perResult); c != 200 || len(perResult.CaseRuns) != 1 {
+	if c := get(admin.EvalRunWebSearches(d, store, dir), "/x/"+strconv.FormatInt(int64(rec.RunID), 10), &perResult); c != 200 || len(perResult.CaseRuns) != 1 {
 		t.Fatalf("per result: %d %+v", c, perResult)
 	}
 	e := perResult.CaseRuns[0]
@@ -136,7 +126,7 @@ func testWebSearches(t *testing.T, d *sql.DB) {
 	}
 
 	// The totals of the eval database: the same, from all the recorded trajectories.
-	named := []admin.Named{{Name: "eval", DB: d, TrajectoryDir: dir}}
+	named := []admin.Named{{Name: "eval", DB: d, EvalStore: &store, TrajectoryDir: dir}}
 	var stats struct {
 		Database struct {
 			Datasets int `json:"datasets"`

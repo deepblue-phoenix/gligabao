@@ -1,4 +1,4 @@
-package training_test
+package api_test
 
 import (
 	"bufio"
@@ -17,12 +17,15 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
-	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
-	trainingeval "github.com/deepblue-phoenix/gligabao/internal/evals/training"
+	"github.com/deepblue-phoenix/gligabao/internal/evals_neo"
+	"github.com/deepblue-phoenix/gligabao/internal/evals_neo/core"
+	"github.com/deepblue-phoenix/gligabao/internal/evals_neo/db"
+	"github.com/deepblue-phoenix/gligabao/internal/evals_neo/runner"
+	"github.com/deepblue-phoenix/gligabao/internal/evals_neo/training"
+	"github.com/deepblue-phoenix/gligabao/internal/evals_neo/training/api"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
-	core "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 )
 
@@ -65,19 +68,30 @@ func (s *evalSidecar) Infer(ctx context.Context, req sidecar.InferRequest) (side
 }
 
 // testEvalsDir is the directory of the evals (the tests run in the package directory).
-const testEvalsDir = "../../../bin/evals_training"
+const testEvalsDir = "../../../../bin/evals_training"
 
 // theEval is the eval the tests run: the one named like the training dataset of the models of the tests.
 const theEval = "world-knowledge-base"
 
+// prompt is what the model is asked of a case.
+func prompt(c core.TrainingCase) string {
+	return training.Question{Instruction: c.Instruction, Input: c.Input}.Prompt()
+}
+
 // evalCases are the cases of theEval, in order.
-func evalCases(t *testing.T) []trainingeval.Case {
+func evalCases(t *testing.T) []core.TrainingCase {
 	t.Helper()
-	cases, err := trainingeval.LoadEvals(testEvalsDir, nil, theEval)
-	if err != nil || len(cases) < 6 {
-		t.Fatalf("the eval %s: %d cases, %v", theEval, len(cases), err)
+	evals, err := training.LoadEvals(testEvalsDir)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return cases
+	for _, e := range evals {
+		if e.Name == theEval && len(e.Cases) >= 6 {
+			return e.Cases
+		}
+	}
+	t.Fatalf("the eval %s is not in %s or has fewer than 6 cases", theEval, testEvalsDir)
+	return nil
 }
 
 // evalAnswers makes a sidecar that knows the expected answer of every case of theEval, and answers "wrong" to the cases listed.
@@ -86,10 +100,10 @@ func evalAnswers(t *testing.T, wrong ...int) *evalSidecar {
 	cases := evalCases(t)
 	sc := &evalSidecar{answers: map[string]string{}, wrong: map[string]bool{}}
 	for _, c := range cases {
-		sc.answers[c.Example().Prompt()] = c.Output
+		sc.answers[prompt(c)] = c.Output
 	}
 	for _, i := range wrong {
-		sc.wrong[cases[i].Example().Prompt()] = true
+		sc.wrong[prompt(cases[i])] = true
 	}
 	return sc
 }
@@ -140,6 +154,30 @@ func (j *evalJudge) Complete(_ context.Context, req ai.Request) (*ai.Response, e
 	return &ai.Response{Text: string(b), Model: "judge-model", Provider: "test", InputTokens: 50, OutputTokens: 20, CostUSD: 0.5}, nil
 }
 
+// mgr is a manager with its handlers, as the server makes them.
+type mgr struct {
+	*training.Manager
+	*api.Handlers
+}
+
+// storeOf is the Store of the backend d is open on (PostgreSQL if its driver is pgx's).
+func storeOf(d *sql.DB) db.Store {
+	backend := config.DBBackendSQLite
+	if strings.Contains(fmt.Sprintf("%T", d.Driver()), "stdlib") {
+		backend = config.DBBackendPostgres
+	}
+	store, err := evals_neo.StoreFor(backend)
+	if err != nil {
+		panic(err)
+	}
+	return store
+}
+
+func newMgr(ctx context.Context, d *sql.DB, sc training.Inferer, llm training.LLM) *mgr {
+	m := training.NewManager(ctx, d, storeOf(d), testEvalsDir, sc, llm)
+	return &mgr{m, api.New(m)}
+}
+
 func evalDatasetDir(t *testing.T, n int) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -165,16 +203,16 @@ type evalCall struct {
 	body []byte
 }
 
-func (c evalCall) eval(t *testing.T) evalsdb.TrainedModelRun {
+func (c evalCall) eval(t *testing.T) training.RunView {
 	t.Helper()
-	var e evalsdb.TrainedModelRun
+	var e training.RunView
 	if err := json.Unmarshal(c.body, &e); err != nil {
 		t.Fatalf("%d %s", c.code, c.body)
 	}
 	return e
 }
 
-func startEval(m *training.EvalManager, modelID, body string) evalCall {
+func startEval(m *mgr, modelID, body string) evalCall {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/x", strings.NewReader(body))
 	req.SetPathValue("id", modelID)
@@ -182,15 +220,15 @@ func startEval(m *training.EvalManager, modelID, body string) evalCall {
 	return evalCall{rec.Code, rec.Body.Bytes()}
 }
 
-func getEval(t *testing.T, m *training.EvalManager, id int64) (evalsdb.TrainedModelRun, []evalsdb.TrainedModelCase) {
+func getEval(t *testing.T, m *mgr, id int64) (training.RunView, []training.CaseView) {
 	t.Helper()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/x", nil)
 	req.SetPathValue("id", fmt.Sprint(id))
 	m.GetOf()(rec, req)
 	var out struct {
-		Run   evalsdb.TrainedModelRun
-		Cases []evalsdb.TrainedModelCase
+		Run   training.RunView
+		Cases []training.CaseView
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != 200 {
 		t.Fatalf("get eval: %d %s", rec.Code, rec.Body)
@@ -205,7 +243,7 @@ func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 	mid := evalModel(t, d, "jobeval1")
 	cases0 := evalCases(t)
 	sc, judge := evalAnswers(t, 3), &evalJudge{}
-	m := training.NewEvalManager(ctx, d, testEvalsDir, sc, judge)
+	m := newMgr(ctx, d, sc, judge)
 
 	// With no "eval" the model is asked the eval named like its training dataset.
 	call := startEval(m, fmt.Sprint(mid), `{"limit": 5, "batch_size": 2, "judge_model": "my-judge", "max_tokens": 77, "temperature": 0.2}`)
@@ -213,14 +251,14 @@ func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 		t.Fatalf("start: %d %s", call.code, call.body)
 	}
 	started := call.eval(t)
-	if started.Status != evalsdb.TrainedModelRunRunning || started.Kind != "eval" || started.TrainedModelID != mid || started.Eval != theEval || started.NumExamples != 5 ||
+	if started.Status != training.RunRunning || started.Kind != "eval" || started.TrainedModelID != mid || started.Eval != theEval || started.NumExamples != 5 ||
 		!strings.Contains(string(started.Params), `"batch_size":2`) {
 		t.Fatalf("started: %+v", started)
 	}
 	m.Wait()
 
 	ev, cases := getEval(t, m, started.ID)
-	if ev.Status != evalsdb.TrainedModelRunCompleted || ev.FinishedAt == nil || ev.Error != "" {
+	if ev.Status != training.RunCompleted || ev.FinishedAt == nil || ev.Error != "" {
 		t.Fatalf("finished: %+v", ev)
 	}
 	if ev.NumAnswered != 5 || ev.NumJudged != 5 || ev.NumErrored != 0 || ev.NumCorrect != 4 || ev.NumIncorrect != 1 || ev.ScoreSum != 21 || ev.NumBatches != 3 {
@@ -243,7 +281,7 @@ func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 		}
 	}
 	// The model got the eval's questions on its own weights, with the settings of the eval.
-	if len(sc.reqs) != 5 || sc.reqs[0].Prompt != cases0[0].Example().Prompt() || sc.reqs[0].ModelPath != "trained/jobeval1" || sc.reqs[0].ModelSize != "12b" ||
+	if len(sc.reqs) != 5 || sc.reqs[0].Prompt != prompt(cases0[0]) || sc.reqs[0].ModelPath != "trained/jobeval1" || sc.reqs[0].ModelSize != "12b" ||
 		sc.reqs[0].MaxTokens != 77 || sc.reqs[0].Temperature == nil || *sc.reqs[0].Temperature != 0.2 {
 		t.Fatalf("sidecar requests: %+v", sc.reqs)
 	}
@@ -253,7 +291,8 @@ func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 		t.Fatalf("recorded judge calls: %d %v", n, err)
 	}
 	// The results are stored under the eval's name and the cases' names, like a knowledge eval's.
-	if err := d.QueryRow(fmt.Sprintf(`SELECT count(*) FROM gb_experiment_case_runs WHERE type = 'training' AND eval = '%s' AND case_name = '%s'`, theEval, cases0[3].Name)).Scan(&n); err != nil || n != 1 {
+	if err := d.QueryRow(fmt.Sprintf(`SELECT count(*) FROM gb_neo_case_runs cr JOIN gb_neo_case_defs cd ON cd.id = cr.def_id JOIN gb_neo_eval_defs ed ON ed.id = cd.eval_def_id
+		WHERE cr.type = 'training' AND ed.name = '%s' AND cd.name = '%s'`, theEval, cases0[3].Name)).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("stored case result: %d %v", n, err)
 	}
 
@@ -275,7 +314,7 @@ func testEvalATrainedModel(t *testing.T, d *sql.DB) {
 	req.SetPathValue("id", fmt.Sprint(mid))
 	m.ListOf()(rec, req)
 	var list struct {
-		Evals []evalsdb.TrainedModelRun
+		Evals []training.RunView
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || rec.Code != 200 || len(list.Evals) != 3 || list.Evals[0].NumExamples != 3 || list.Evals[0].Status != "completed" {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body)
@@ -288,7 +327,7 @@ func TestEvalRefusals(t *testing.T) {
 	ok := evalModel(t, d, "j-ok")
 	dflt, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j-default", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j-default"})
 	other, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j-other", ModelSize: "4b", Dataset: "other.jsonl", NumTrainSteps: 1, Path: "trained/j-other"})
-	m := training.NewEvalManager(ctx, d, testEvalsDir, evalAnswers(t), &evalJudge{})
+	m := newMgr(ctx, d, evalAnswers(t), &evalJudge{})
 
 	for _, tc := range []struct {
 		name, model, body string
@@ -316,14 +355,15 @@ func TestEvalRefusals(t *testing.T) {
 	}
 	m.Wait()
 	// Without a sidecar or without an LLM there is nothing to run the eval with.
-	if c := startEval(training.NewEvalManager(ctx, d, testEvalsDir, nil, &evalJudge{}), fmt.Sprint(ok), `{}`); c.code != 503 {
+	if c := startEval(newMgr(ctx, d, nil, &evalJudge{}), fmt.Sprint(ok), `{}`); c.code != 503 {
 		t.Errorf("no sidecar: %d", c.code)
 	}
-	if c := startEval(training.NewEvalManager(ctx, d, testEvalsDir, &evalSidecar{}, nil), fmt.Sprint(ok), `{}`); c.code != 503 {
+	if c := startEval(newMgr(ctx, d, &evalSidecar{}, nil), fmt.Sprint(ok), `{}`); c.code != 503 {
 		t.Errorf("no LLM: %d", c.code)
 	}
-	if evals, _ := evalsdb.ListTrainedModelEvalRuns(ctx, d, 0, 0); len(evals) != 1 {
-		t.Errorf("refused evals left rows: %+v", evals)
+	var n int
+	if err := d.QueryRow(`SELECT count(*) FROM gb_neo_eval_runs`).Scan(&n); err != nil || n != 1 {
+		t.Errorf("refused evals left rows: %d %v", n, err)
 	}
 	for _, h := range []http.HandlerFunc{m.GetOf(), m.CancelOf()} {
 		rec := httptest.NewRecorder()
@@ -342,7 +382,7 @@ func TestEvalCancelAndConflict(t *testing.T) {
 	mid := evalModel(t, d, "j1")
 	sc := evalAnswers(t)
 	sc.block, sc.started = make(chan struct{}), make(chan struct{}, 1)
-	m := training.NewEvalManager(ctx, d, testEvalsDir, sc, &evalJudge{})
+	m := newMgr(ctx, d, sc, &evalJudge{})
 
 	first := startEval(m, fmt.Sprint(mid), `{"batch_size": 3}`)
 	if first.code != 202 {
@@ -363,7 +403,7 @@ func TestEvalCancelAndConflict(t *testing.T) {
 	}
 	m.Wait()
 	ev, cases := getEval(t, m, id)
-	if ev.Status != evalsdb.TrainedModelRunCancelled || ev.FinishedAt == nil || len(cases) != 0 {
+	if ev.Status != training.RunCancelled || ev.FinishedAt == nil || len(cases) != 0 {
 		t.Fatalf("cancelled: %+v, %d cases", ev, len(cases))
 	}
 	// A finished eval cannot be cancelled again, and the model can be evaluated again.
@@ -385,12 +425,12 @@ func TestEvalFailsWhenTheModelDoesNotAnswer(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx := context.Background()
 	mid := evalModel(t, d, "j1")
-	m := training.NewEvalManager(ctx, d, testEvalsDir, &failingInferer{}, &evalJudge{})
+	m := newMgr(ctx, d, &failingInferer{}, &evalJudge{})
 	c := startEval(m, fmt.Sprint(mid), `{"batch_size": 2}`)
 	m.Wait()
 	ev, cases := getEval(t, m, c.eval(t).ID)
-	if ev.Status != evalsdb.TrainedModelRunErrored || !strings.Contains(ev.Error, "weights are gone") || ev.NumErrored != 4 || ev.NumJudged != 0 || len(cases) != 4 ||
-		cases[0].Status != evalsdb.TrainedModelCaseErrored || !strings.Contains(cases[0].Error, "weights are gone") {
+	if ev.Status != training.RunErrored || !strings.Contains(ev.Error, "weights are gone") || ev.NumErrored != 4 || ev.NumJudged != 0 || len(cases) != 4 ||
+		cases[0].Status != training.ViewErrored || !strings.Contains(cases[0].Error, "weights are gone") {
 		t.Fatalf("%+v cases %+v", ev, cases)
 	}
 }
@@ -405,27 +445,35 @@ func TestEvalsInterruptedByARestartAreFailed(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
 	ctx := context.Background()
 	mid, _, _ := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "j1", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j1"})
-	id, err := evalsdb.RecordTrainedModelEvalRun(ctx, d, evalsdb.TrainedModelRun{TrainedModelID: mid, Eval: theEval})
+	store := storeOf(d)
+	def, err := runner.New(d, store).SyncEval(ctx, training.Spec(training.Eval{Name: theEval, Cases: evalCases(t)[:2]}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	training.NewEvalManager(ctx, d, testEvalsDir, nil, nil)
-	ev, err := evalsdb.GetTrainedModelEvalRun(ctx, d, id)
-	if err != nil || ev.Status != evalsdb.TrainedModelRunErrored || !strings.Contains(ev.Error, "restart") {
+	run := &core.EvalRun{DefID: def.ID, Type: core.TypeTraining, Status: core.StatusRunning, Counts: core.Counts{Total: 2, Pending: 2}}
+	if err := store.CreateEvalRun(ctx, d, run); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateEvalRunMeta(ctx, d, &core.TrainingEvalRunMeta{EvalRunID: run.ID, TrainedModelID: mid}); err != nil {
+		t.Fatal(err)
+	}
+	newMgr(ctx, d, nil, nil)
+	ev, err := store.GetEvalRun(ctx, d, run.ID)
+	if err != nil || ev.Status != core.StatusErrored || ev.FinishedAt == nil || !strings.Contains(ev.Error, "restart") {
 		t.Fatalf("%+v %v", ev, err)
 	}
 }
 
 // sseEvents reads a server-sent events body and sends the data of each event to the channel.
-func sseEvents(body io.Reader) <-chan core.RunEvent {
-	out := make(chan core.RunEvent, 100)
+func sseEvents(body io.Reader) <-chan training.Event {
+	out := make(chan training.Event, 100)
 	go func() {
 		defer close(out)
 		sc := bufio.NewScanner(body)
 		sc.Buffer(make([]byte, 1<<20), 1<<20)
 		for sc.Scan() {
 			if data, ok := strings.CutPrefix(sc.Text(), "data: "); ok {
-				var e core.RunEvent
+				var e training.Event
 				if json.Unmarshal([]byte(data), &e) == nil {
 					out <- e
 				}
@@ -444,7 +492,7 @@ func testEvalLiveFeed(t *testing.T, d *sql.DB) {
 	// The model holds its first answer until the watcher is connected.
 	sc := evalAnswers(t, 1)
 	sc.block, sc.started = make(chan struct{}), make(chan struct{}, 10)
-	m := training.NewEvalManager(ctx, d, testEvalsDir, sc, &evalJudge{})
+	m := newMgr(ctx, d, sc, &evalJudge{})
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /evals/{id}/events", m.EventsOf())
 	srv := httptest.NewServer(mux)
@@ -461,7 +509,7 @@ func testEvalLiveFeed(t *testing.T, d *sql.DB) {
 		t.Fatalf("content type %q", ct)
 	}
 	events := sseEvents(resp.Body)
-	next := func() core.RunEvent {
+	next := func() training.Event {
 		t.Helper()
 		select {
 		case e, ok := <-events:
@@ -472,7 +520,7 @@ func testEvalLiveFeed(t *testing.T, d *sql.DB) {
 		case <-time.After(5 * time.Second):
 			t.Fatal("timed out waiting for an event")
 		}
-		return core.RunEvent{}
+		return training.Event{}
 	}
 	if e := next(); e.Type != "snapshot" || e.Run == nil || e.Run.Status != "running" || len(e.Cases) != 0 {
 		t.Fatalf("first event: %+v", e)
@@ -480,7 +528,7 @@ func testEvalLiveFeed(t *testing.T, d *sql.DB) {
 	close(sc.block)
 	var got []string
 	answers := 0
-	var last core.RunEvent
+	var last training.Event
 	for e := next(); ; e = next() {
 		switch e.Type {
 		case "answer":
@@ -538,7 +586,7 @@ func testEvalExperiments(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := training.NewEvalManager(ctx, d, testEvalsDir, evalAnswers(t, 1), &evalJudge{})
+	m := newMgr(ctx, d, evalAnswers(t, 1), &evalJudge{})
 
 	// An eval without an experiment is not in any; with a name it is a run of it, and the same name is the same experiment.
 	if c := startEval(m, fmt.Sprint(mid), `{"limit": 4}`); c.code != http.StatusAccepted {
@@ -562,7 +610,7 @@ func testEvalExperiments(t *testing.T, d *sql.DB) {
 	rec := httptest.NewRecorder()
 	m.ExperimentsOf()(rec, httptest.NewRequest("GET", "/x", nil))
 	var list struct {
-		Experiments []evalsdb.TrainingExperiment
+		Experiments []training.ExperimentView
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || rec.Code != 200 || len(list.Experiments) != 1 ||
 		list.Experiments[0].Name != "sweep" || list.Experiments[0].NumRuns != 2 || list.Experiments[0].Description != "first try" {
@@ -574,15 +622,15 @@ func testEvalExperiments(t *testing.T, d *sql.DB) {
 	req.SetPathValue("id", fmt.Sprint(list.Experiments[0].ID))
 	m.ExperimentOf()(rec, req)
 	var got struct {
-		Experiment evalsdb.TrainingExperiment
-		Runs       []evalsdb.TrainingExperimentRun
+		Experiment training.ExperimentView
+		Runs       []training.ExperimentRunView
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || rec.Code != 200 || len(got.Runs) != 2 {
 		t.Fatalf("experiment: %d %s", rec.Code, rec.Body)
 	}
 	r := got.Runs[0]
-	if r.ID != first.eval(t).ID || r.Status != evalsdb.TrainedModelRunCompleted || r.Model.ID != mid || r.Model.FinalLoss == nil ||
-		r.MeanScore == nil || *r.MeanScore != 4 || r.CorrectRate == nil || *r.CorrectRate != 0.75 || got.Runs[1].EvalRun.NumExamples != 2 {
+	if r.ID != first.eval(t).ID || r.Status != training.RunCompleted || r.Model.ID != mid || r.Model.FinalLoss == nil ||
+		r.MeanScore == nil || *r.MeanScore != 4 || r.CorrectRate == nil || *r.CorrectRate != 0.75 || got.Runs[1].Eval.NumExamples != 2 {
 		t.Fatalf("run: %+v", r)
 	}
 
@@ -597,7 +645,7 @@ func testEvalExperiments(t *testing.T, d *sql.DB) {
 
 func TestEvalDefinitions(t *testing.T) {
 	rec := httptest.NewRecorder()
-	training.DefinitionsOf(testEvalsDir)(rec, httptest.NewRequest("GET", "/x", nil))
+	newMgr(context.Background(), dbtest.OpenSQLite(t), nil, nil).DefinitionsOf()(rec, httptest.NewRequest("GET", "/x", nil))
 	var out struct {
 		Evals []struct {
 			Name  string

@@ -75,3 +75,9 @@ type Timing struct {
 // Params are free-form settings. On a def they are the settings under test (models, prompts, judge, ...); on a run they are
 // how that run was invoked (what was selected, overrides, ...).
 type Params map[string]any
+
+// CaseRef names a case by the name of its eval and its own name (unique within the eval, and over all the evals of the files).
+type CaseRef struct {
+	Eval string `json:"eval"`
+	Name string `json:"name"`
+}

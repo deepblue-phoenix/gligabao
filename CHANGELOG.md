@@ -5,6 +5,19 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.86.0] - 2026-10-23
+
+### Changed
+- **The admin UI and the training API use `internal/evals_neo`.** The evals views of the admin UI (`/v1/gb/admin/api/evals/*`, the web-search totals of the eval database) read the `gb_neo_*` tables, so the runs of `./run_evals.sh` show in it again. An experiment is an `ExperimentDef`, its run an `ExperimentRun`, and a run's cases are those of its knowledge eval runs; the JSON the UI reads is unchanged (the statuses `passed`/`failed`/`error` are made from the status and verdict of the case run). Eval runs that were run on their own (`-experiment ""`) belong to no experiment and are not listed. The evals of trained models (the **Eval** button, `POST /v1/gb/training/models/{id}/evals` and the other eval and experiment endpoints under `/v1/gb/training`) are run and stored through the `training` runner of `internal/evals_neo`; the JSON of the endpoints is unchanged. An eval started with `experiment` is an experiment def with its own experiment run; the experiments listed are those that have a training eval. **Breaking:** the old tables are no longer read, so the eval runs made before this version do not show.
+- `internal/evals_neo/runner`: `EvalOptions.OnCreated` (called when the eval run is recorded) and `EnsureExperimentWith` (stores the experiment's params).
+- `internal/evals_neo/db`: the reads of the runs, written once for both backends (`db.Reads`, in `db.Store`): the experiment defs, eval defs and case defs, the runs of an experiment, the eval runs (with their metadata) of an experiment run, an experiment or a trained model, the case runs of an eval run (with their metadata and trajectories), the history of a case, trajectories by ID, and `FailRunning`.
+
+### Added
+- New package `internal/evals_neo/training` `Manager` (with `feed.go`, `view.go`, `options.go`) and `internal/evals_neo/training/api` (the handlers), which replace the eval manager of `internal/training` and `internal/api/training`.
+
+### Removed
+- From `internal/training`: the old run manager (`RunManager`, `RunEvent`, `JoinExperiment`, `HasEval`), and from `internal/api/training` the eval handlers. The old eval runner command `internal/evals/training/cmd` (`./run_evals.sh` runs the one of `evals_neo`). The rest of the old `internal/evals` is still in the tree and used by nothing of the server.
+
 ## [0.85.0] - 2026-10-22
 
 ### Added

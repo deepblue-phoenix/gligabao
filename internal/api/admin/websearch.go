@@ -30,8 +30,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
-	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
-	"github.com/deepblue-phoenix/gligabao/internal/evals/experiments"
+	"github.com/deepblue-phoenix/gligabao/internal/evals_neo/core"
+	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals_neo/db"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -258,6 +258,9 @@ func str(v any) string { s, _ := v.(string); return s }
 
 func num(v any) float64 { f, _ := v.(float64); return f }
 
+// trajectoryRemember is the Kind of the trajectory of a remember call (core.KnowledgeTrajectory).
+const trajectoryRemember = "remember"
+
 // trajectorySearches caches the web searches of each trajectory by its ID: a recorded trajectory never changes, and
 // reading the files of all runs for every request would be slow.
 var trajectorySearches = struct {
@@ -267,8 +270,8 @@ var trajectorySearches = struct {
 
 // searchesOfRecorded returns the web searches of the recorded remember trajectory ref (nil if it has none, or if its
 // file cannot be read: that is not an error, a trajectory directory may be gone).
-func searchesOfRecorded(ref *experiments.Trajectory, dir string) []WebSearch {
-	if ref.Kind != evalsdb.TrajectoryRemember {
+func searchesOfRecorded(ref *core.KnowledgeTrajectory, dir string) []WebSearch {
+	if ref.Kind != trajectoryRemember {
 		return nil
 	}
 	trajectorySearches.Lock()
@@ -305,13 +308,18 @@ type caseRunWebSearches struct {
 
 // EvalRunWebSearches serves GET /admin/api/evals/runs/{id}/web-searches: the web searches that the remember calls of the
 // run's cases made, per result (only the results that made any), read from their trajectories in dir (see EvalTrajectory).
-func EvalRunWebSearches(d *sql.DB, dir string) http.HandlerFunc {
+func EvalRunWebSearches(d *sql.DB, s evalsdb.Store, dir string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
-		run, err := evalsdb.GetExperimentRun(r.Context(), d, id)
+		run, err := s.GetExperimentRun(r.Context(), d, core.ExperimentRunID(id))
+		if err != nil {
+			evalFail(w, err, "run")
+			return
+		}
+		cases, err := knowledgeCaseRuns(r.Context(), d, s, run.ID)
 		if err != nil {
 			evalFail(w, err, "run")
 			return
@@ -319,13 +327,14 @@ func EvalRunWebSearches(d *sql.DB, dir string) http.HandlerFunc {
 		out := struct {
 			CaseRuns []caseRunWebSearches `json:"case_runs"`
 		}{CaseRuns: []caseRunWebSearches{}}
-		for _, e := range run.CaseRuns {
+		for _, e := range cases {
+			m := knowledgeMeta(&e.Run)
 			var list []WebSearch
-			for i := range e.Trajectories {
-				list = append(list, searchesOfRecorded(&e.Trajectories[i], dir)...)
+			for i := range m.Trajectories {
+				list = append(list, searchesOfRecorded(&m.Trajectories[i], dir)...)
 			}
 			if len(list) > 0 {
-				out.CaseRuns = append(out.CaseRuns, caseRunWebSearches{CaseRunID: e.ID, Totals: totalsOf(list), Searches: list})
+				out.CaseRuns = append(out.CaseRuns, caseRunWebSearches{CaseRunID: int64(e.Run.ID), Totals: totalsOf(list), Searches: list})
 			}
 		}
 		httputil.WriteJSON(w, http.StatusOK, out)
@@ -333,24 +342,25 @@ func EvalRunWebSearches(d *sql.DB, dir string) http.HandlerFunc {
 }
 
 // allRecordedSearches returns the web searches of every recorded remember trajectory of the experiments in d.
-func allRecordedSearches(ctx context.Context, d *sql.DB, dir string) (list []WebSearch, calls int, err error) {
-	exps, err := experiments.List(ctx, d)
+func allRecordedSearches(ctx context.Context, d *sql.DB, s evalsdb.Store, dir string) (list []WebSearch, calls int, err error) {
+	exps, err := knowledgeExperiments(ctx, d, s)
 	if err != nil {
 		return nil, 0, err
 	}
 	for _, e := range exps {
-		runs, err := experiments.Runs(ctx, d, e.ID)
+		runs, err := s.ListExperimentRuns(ctx, d, e.ID)
 		if err != nil {
 			return nil, 0, err
 		}
 		for _, r := range runs {
-			run, err := evalsdb.GetExperimentRun(ctx, d, r.ID)
+			cases, err := knowledgeCaseRuns(ctx, d, s, r.ID)
 			if err != nil {
 				return nil, 0, err
 			}
-			for _, ev := range run.CaseRuns {
-				for i := range ev.Trajectories {
-					if found := searchesOfRecorded(&ev.Trajectories[i], dir); len(found) > 0 {
+			for _, ev := range cases {
+				m := knowledgeMeta(&ev.Run)
+				for i := range m.Trajectories {
+					if found := searchesOfRecorded(&m.Trajectories[i], dir); len(found) > 0 {
 						list = append(list, found...)
 						calls++
 					}
@@ -593,8 +603,8 @@ func WebSearchStatsOf(dbs []Named) http.HandlerFunc {
 			t.Edges += sum.Edges
 			t.SupportedEdges += sum.SupportedEdges
 		}
-		if n.TrajectoryDir != "" {
-			searches, calls, err := allRecordedSearches(ctx, n.DB, n.TrajectoryDir)
+		if n.TrajectoryDir != "" && n.EvalStore != nil {
+			searches, calls, err := allRecordedSearches(ctx, n.DB, *n.EvalStore, n.TrajectoryDir)
 			if err != nil {
 				log.WithError(err).Error("admin: web search stats: read trajectories failed")
 				httputil.Error(w, http.StatusInternalServerError, "failed to read recorded web searches")

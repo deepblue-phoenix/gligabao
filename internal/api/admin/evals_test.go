@@ -1,7 +1,6 @@
 package admin_test
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -12,14 +11,12 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
-	"github.com/deepblue-phoenix/gligabao/internal/evals/experiments"
 )
 
 // TestEvals checks the admin eval endpoints: experiment counts, run details and trajectory files.
 func TestEvals(t *testing.T) { dbtest.Run(t, testEvals) }
 
 func testEvals(t *testing.T, d *sql.DB) {
-	ctx := context.Background()
 	dir := t.TempDir()
 
 	b := atif.NewBuilder(atif.Agent{Name: "gligabao-recall", Version: "0.1"})
@@ -30,16 +27,8 @@ func testEvals(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 
-	tr, err := experiments.Start(ctx, d, experiments.Options{Name: "base"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tr.Record(ctx, experiments.CaseOutcome{Eval: "s", Name: "a", Trajectories: []*atif.Trajectory{traj}, TrajectoryDir: dir}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tr.Finish(ctx); err != nil {
-		t.Fatal(err)
-	}
+	rec := recordCase(t, d, "base", "s", "a", 0, dir, traj)
+	store := storeOf(t, d)
 
 	get := func(h http.HandlerFunc, pattern, id string, out any) int {
 		t.Helper()
@@ -64,7 +53,7 @@ func testEvals(t *testing.T, d *sql.DB) {
 			LastRun     *struct{ ID int64 } `json:"last_run"`
 		} `json:"experiments"`
 	}
-	if c := get(admin.EvalOverview(d), "/x/", "", &ov); c != 200 {
+	if c := get(admin.EvalOverview(d, store), "/x/", "", &ov); c != 200 {
 		t.Fatal(c)
 	}
 	if ov.Totals.Experiments != 1 || ov.Totals.Runs != 1 || ov.Totals.Cases != 1 || ov.Totals.Passed != 1 ||
@@ -73,13 +62,13 @@ func testEvals(t *testing.T, d *sql.DB) {
 	}
 
 	var exp struct{ Runs []struct{ ID int64 } }
-	if c := get(admin.EvalExperiment(d), "/x/{id}", strconv.FormatInt(tr.Experiment.ID, 10), &exp); c != 200 || len(exp.Runs) != 1 {
+	if c := get(admin.EvalExperiment(d, store), "/x/{id}", strconv.FormatInt(int64(rec.ExperimentID), 10), &exp); c != 200 || len(exp.Runs) != 1 {
 		t.Fatalf("experiment: %d %+v", c, exp)
 	}
-	if c := get(admin.EvalExperiment(d), "/x/{id}", "999", nil); c != http.StatusNotFound {
+	if c := get(admin.EvalExperiment(d, store), "/x/{id}", "999", nil); c != http.StatusNotFound {
 		t.Fatalf("missing experiment: %d", c)
 	}
-	if c := get(admin.EvalExperiment(d), "/x/{id}", "abc", nil); c != http.StatusBadRequest {
+	if c := get(admin.EvalExperiment(d, store), "/x/{id}", "abc", nil); c != http.StatusBadRequest {
 		t.Fatalf("bad id: %d", c)
 	}
 
@@ -91,12 +80,12 @@ func testEvals(t *testing.T, d *sql.DB) {
 	}
 	if c := get(func(w http.ResponseWriter, r *http.Request) {
 		r.URL.RawQuery = "eval=s&name=a"
-		admin.EvalCaseHistory(d)(w, r)
-	}, "/x/{id}", strconv.FormatInt(tr.Experiment.ID, 10), &hist); c != 200 || len(hist.Points) != 1 ||
-		hist.Points[0].RunID != tr.Run.ID || hist.Points[0].Status != "passed" {
+		admin.EvalCaseHistory(d, store)(w, r)
+	}, "/x/{id}", strconv.FormatInt(int64(rec.ExperimentID), 10), &hist); c != 200 || len(hist.Points) != 1 ||
+		hist.Points[0].RunID != int64(rec.RunID) || hist.Points[0].Status != "passed" {
 		t.Fatalf("history: %d %+v", c, hist)
 	}
-	if c := get(admin.EvalCaseHistory(d), "/x/{id}", strconv.FormatInt(tr.Experiment.ID, 10), nil); c != http.StatusBadRequest {
+	if c := get(admin.EvalCaseHistory(d, store), "/x/{id}", strconv.FormatInt(int64(rec.ExperimentID), 10), nil); c != http.StatusBadRequest {
 		t.Fatalf("history without case: %d", c)
 	}
 
@@ -107,17 +96,17 @@ func testEvals(t *testing.T, d *sql.DB) {
 			}
 		} `json:"case_runs"`
 	}
-	if c := get(admin.EvalRun(d), "/x/{id}", strconv.FormatInt(tr.Run.ID, 10), &run); c != 200 ||
+	if c := get(admin.EvalRun(d, store), "/x/{id}", strconv.FormatInt(int64(rec.RunID), 10), &run); c != 200 ||
 		len(run.CaseRuns) != 1 || len(run.CaseRuns[0].Trajectories) != 1 {
 		t.Fatalf("run: %d %+v", c, run)
 	}
 
 	var got atif.Trajectory
-	if c := get(admin.EvalTrajectory(d, dir), "/x/{id}", traj.TrajectoryID, &got); c != 200 || got.TrajectoryID != traj.TrajectoryID || len(got.Steps) != 2 {
+	if c := get(admin.EvalTrajectory(d, store, dir), "/x/{id}", traj.TrajectoryID, &got); c != 200 || got.TrajectoryID != traj.TrajectoryID || len(got.Steps) != 2 {
 		t.Fatalf("trajectory: %d %+v", c, got)
 	}
 	// Only recorded trajectories are served, never arbitrary files.
-	if c := get(admin.EvalTrajectory(d, dir), "/x/{id}", "..%2Fetc%2Fpasswd", nil); c != http.StatusNotFound {
+	if c := get(admin.EvalTrajectory(d, store, dir), "/x/{id}", "..%2Fetc%2Fpasswd", nil); c != http.StatusNotFound {
 		t.Fatalf("unrecorded trajectory: %d", c)
 	}
 }
