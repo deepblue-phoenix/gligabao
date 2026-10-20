@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.94.1] - 2026-10-23
+
+### Changed
+- Admin UI, audit dialog: the past audits no longer have the "Answers, lowest score first" expander; their answers are viewed with the Open button. Evals keep it.
+
 ## [0.94.0] - 2026-10-23
 
 ### Changed

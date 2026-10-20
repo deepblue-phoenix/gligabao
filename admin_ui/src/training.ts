@@ -690,7 +690,7 @@ async function startRun(k: RunKind, m: TrainedModel, opts: { limit?: number; bat
     });
     if (!res.ok) throw await failure(res);
     const started = readRun(k, await res.json());
-    k.open.add(started.id);
+    if (k !== AUDIT) k.open.add(started.id); // audits show no inline answers
     if (k.model !== m.id) { if (k === AUDIT) openAudit(m.id); else selectModel(m.id); }
     else await loadRuns(k, m.id);
     say(`${capital(k.noun)} #${started.id} started: ${started.counts.total} questions.`, "muted");
@@ -877,15 +877,17 @@ function renderRuns(k: RunKind): void {
     item.append(node("div", "muted infer-stats", judge));
     if (e.error) item.append(node("div", "infer-label", "Error"), node("pre", "infer-error", e.error));
 
-    const details = node("details", "eval-answers");
-    details.open = k.open.has(e.id);
-    details.append(node("summary", "", "Answers, lowest score first"));
-    details.addEventListener("toggle", () => {
-      if (details.open === k.open.has(e.id)) return;
-      if (details.open) { k.open.add(e.id); if (k.model !== null) void loadRuns(k, k.model); } else k.open.delete(e.id);
-    });
-    if (details.open) details.append(runCasesTable(k, k.cases.get(e.id)));
-    item.append(details);
+    if (k !== AUDIT) { // audits: their answers are in the Open dialog only
+      const details = node("details", "eval-answers");
+      details.open = k.open.has(e.id);
+      details.append(node("summary", "", "Answers, lowest score first"));
+      details.addEventListener("toggle", () => {
+        if (details.open === k.open.has(e.id)) return;
+        if (details.open) { k.open.add(e.id); if (k.model !== null) void loadRuns(k, k.model); } else k.open.delete(e.id);
+      });
+      if (details.open) details.append(runCasesTable(k, k.cases.get(e.id)));
+      item.append(details);
+    }
     box.append(item);
   }
 }
@@ -922,7 +924,7 @@ function runCasesTable(k: RunKind, cases: TrainedModelCase[] | undefined): HTMLE
       text(tr, i.response === "" ? "(empty)" : i.response);
       st();
       const c = tr.insertCell();
-      c.className = `num score ${scoreClass(i.score)}`;
+      c.className = `num score ${k.path === "audits" && i.score === 0 ? "score-zero" : scoreClass(i.score)}`;
       c.textContent = i.score === null ? "–" : `${i.score} / ${MAX_SCORE}`;
       text(tr, i.reason, "muted");
     }
