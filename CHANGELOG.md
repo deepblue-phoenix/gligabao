@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.96.1] - 2026-10-24
+
+### Changed
+- New page [docs/model-exporting.md](docs/model-exporting.md): how model exporting works inside (the flow of an export request, fetching and verifying the weights, the `gb_trained_model_exports` record, the HTTP API and its statuses, system events, limits) and the contract of the exporter hook. [docs/hooks.md](docs/hooks.md#trained-model-exporters) links to it and its example uses a neutral exporter name.
+
 ## [0.96.0] - 2026-10-24
 
 ### Added

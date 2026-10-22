@@ -6,7 +6,7 @@ A program that embeds gligabao (see [Embedding in Go programs](../README.md#embe
 |---|---|---|---|
 | [`Hooks.SystemEvent`](#system-events) | `ServeOptions.Hooks` | after every `remember`, `remember` of an image, `recall` and timeseries request, successful or not | logging, metrics, shipping events to a monitoring service |
 | [`TimeseriesProvider.Fetch`](#timeseries-providers) | `ServeOptions.TimeseriesProviders` | when a `remember` request asks to fetch timeseries | supply timeseries from your own data source |
-| [`TrainedModelExporter.Export`](#trained-model-exporters) | `ServeOptions.TrainedModelExporters` | when a request exports a trained model (`POST /v1/gb/training/models/{id}/exports`) | hand the weights of a trained model to somewhere else (an upload to a third party, ...) |
+| [`TrainedModelExporter.Export`](#trained-model-exporters) | `ServeOptions.TrainedModelExporters` | when a request exports a trained model (`POST /v1/gb/training/models/{id}/exports`) | hand the weights of a trained model to somewhere else (an upload, a copy, a conversion, ...) |
 
 Everything else (the remember queue, the stores, the LLM clients) lives under `internal/` and is not part of the public API; it cannot be hooked from outside the module.
 
@@ -156,21 +156,21 @@ Contract, in short: `Fetch` is called concurrently, with a 60 s timeout per call
 
 ## Trained model exporters
 
-An exporter is a callback, `Export`, that receives a trained model's weights, as files in a directory on the local disk, and does with them whatever the embedding program wants: upload them to a third party, copy them somewhere, convert them. gligabao does not know or care what; it only fetches the files and records the outcome. Exporters are registered with `ServeOptions.TrainedModelExporters`:
+An exporter is a callback, `Export`, that receives a trained model's weights, as files in a directory on the local disk, and does with them whatever the embedding program wants: upload them to a service, copy them somewhere, convert them. gligabao does not know or care what; it only fetches the files and records the outcome. The full description of how exporting works is in [model-exporting.md](model-exporting.md). Exporters are registered with `ServeOptions.TrainedModelExporters`:
 
 ```go
 gligabao.ServeOptions{
     TrainedModelExporters: []gligabao.TrainedModelExporter{{
-        Name: "together",
+        Name: "bucket",
         Export: func(ctx context.Context, req gligabao.ExportTrainedModelRequest) (gligabao.ExportTrainedModelResult, error) {
             // req.Dir has req.Model.Files: adapter_config.json, adapter_model.safetensors, ...
-            return gligabao.ExportTrainedModelResult{Ref: "me/my-adapter", Details: map[string]any{"job_id": "..."}}, nil
+            return gligabao.ExportTrainedModelResult{Ref: "models/my-adapter", Details: map[string]any{"job_id": "..."}}, nil
         },
     }},
 }
 ```
 
-An export is asked for with `POST /v1/gb/training/models/{id}/exports` and a body `{"exporter": "together", "options": {...}}`; `options` is a free-form JSON object that reaches the callback unchanged (`req.Options`). It is available in training mode (`--training`) only, like the rest of the training API.
+An export is asked for with `POST /v1/gb/training/models/{id}/exports` and a body `{"exporter": "bucket", "options": {...}}`; `options` is a free-form JSON object that reaches the callback unchanged (`req.Options`). It is available in training mode (`--training`) only, like the rest of the training API.
 
 | Type | Fields |
 |---|---|
@@ -190,4 +190,4 @@ An export is asked for with `POST /v1/gb/training/models/{id}/exports` and a bod
 - **Validated at startup.** `Serve` returns an error for an exporter with no `Export`, a `Name` that is not 1-64 letters, digits, `_`, `-` or `.` (starting with a letter or digit), or a duplicate name. At most 20.
 - **System events.** Each export emits `training.model_export.completed` or `training.model_export.failed` to the [`SystemEvent`](#system-events) hook, with `model_id`, `export_id`, `exporter`, `duration_ms` (`int64`) and, on failure, `error`.
 
-Endpoints: [training/sidecar.md](training/sidecar.md#trained-models).
+Endpoints: [training/sidecar.md](training/sidecar.md#trained-models). How exporting works inside (fetching and verifying the files, the record of each export, the API, the limits): [model-exporting.md](model-exporting.md).
