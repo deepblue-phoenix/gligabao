@@ -8,6 +8,8 @@ A program that embeds gligabao (see [Embedding in Go programs](../README.md#embe
 | [`TimeseriesProvider.Fetch`](#timeseries-providers) | `ServeOptions.TimeseriesProviders` | when a `remember` request asks to fetch timeseries | supply timeseries from your own data source |
 | [`TrainedModelExporter.Export`](#trained-model-exporters) | `ServeOptions.TrainedModelExporters` | when a request exports a trained model (`POST /v1/gb/training/models/{id}/exports`) | hand the weights of a trained model to somewhere else (an upload, a copy, a conversion, ...) |
 
+Not a callback, but also supplied by the embedding program: [admin UI extensions](admin-extensions.md) (`ServeOptions.AdminExtensions`) add views and UI to the admin page.
+
 Everything else (the remember queue, the stores, the LLM clients) lives under `internal/` and is not part of the public API; it cannot be hooked from outside the module.
 
 ## System events

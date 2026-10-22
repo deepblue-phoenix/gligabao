@@ -13,6 +13,7 @@ import (
 	_ "embed"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
@@ -107,6 +108,10 @@ type TrainedModel = trainingdb.TrainedModel
 // TrainedModelFile is one file of a trained model's weights.
 type TrainedModelFile = trainingdb.TrainedModelFile
 
+// AdminExtension adds views and UI to the admin UI (see ServeOptions.AdminExtensions and docs/admin-extensions.md): a Name, the
+// browser files in Assets (index.js is required) and, optionally, an HTTP Handler that is the extension's own backend API.
+type AdminExtension = admin.Extension
+
 // ServeOptions holds the settings that are not part of the Config file.
 type ServeOptions struct {
 	// DBPath is the SQLite database file (sqlite backend). Default: DefaultDBPath.
@@ -142,6 +147,11 @@ type ServeOptions struct {
 	// use): gligabao fetches the model's files from the sidecar to a local directory and calls the exporter with it. Each has a
 	// Name and the Export callback. They are validated at startup: Serve returns the error if one is malformed.
 	TrainedModelExporters []TrainedModelExporter
+	// AdminExtensions add views, and buttons and blocks in the existing views, to the admin UI (served only with
+	// admin_ui = true): each is a Name, the browser files in Assets (an index.js ES module is required, style.css is optional) and an
+	// optional HTTP Handler, its own backend API. See docs/admin-extensions.md. Validated at startup: Serve returns the error if one
+	// is malformed.
+	AdminExtensions []AdminExtension
 	// Hooks are installed for the lifetime of Serve; every one is called for each event.
 	Hooks []Hooks
 }
@@ -192,6 +202,7 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 
 		TimeseriesProviders:   opts.TimeseriesProviders,
 		TrainedModelExporters: opts.TrainedModelExporters,
+		AdminExtensions:       opts.AdminExtensions,
 
 		TrajectoryDir:      opts.TrajectoryDir,
 		EvalDBPath:         opts.EvalDBPath,

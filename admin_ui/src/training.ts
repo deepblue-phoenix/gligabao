@@ -4,6 +4,7 @@
 
 import { alertDialog, confirmDialog } from "./dialogs.js";
 import { auditCase, auditRun, initEvalLive, statusBadge as caseStatusBadge, verdictBadge, watchEval, type TrainedModelCase, type TrainedModelRun } from "./eval_live.js";
+import { renderSlot } from "./extensions.js";
 import { initActionModal, showActionLog, startAction, type ActionState } from "./actions.js";
 
 declare const d3: typeof import("d3");
@@ -293,6 +294,9 @@ function openModelMenu(id: number, x: number, y: number): void {
   add(node("button", "small", AUDIT.button),
     `Open the audit dialog of this model: run a training data audit and see the past ones. ${m.dataset ? AUDIT.tip(m.dataset) : "This model was trained on the sidecar's default dataset: there are no questions to ask"}`,
     () => openAudit(id));
+  // what admin UI extensions add (docs/admin-extensions.md); a button they add closes the menu like the ones above
+  renderSlot("training.model.actions", menu, { model: m });
+  menu.addEventListener("click", (e) => { if ((e.target as Element).closest("button")) closeModelMenu(); });
   document.body.append(menu);
   // near the click, kept inside the viewport
   const r = menu.getBoundingClientRect();

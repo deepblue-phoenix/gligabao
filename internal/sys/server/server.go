@@ -112,6 +112,8 @@ type Options struct {
 	// TrainedModelExporters are the hooks that export trained models (POST /v1/gb/training/models/{id}/exports): each is given
 	// the model's files in a local directory and does with them what it wants. Validated at startup.
 	TrainedModelExporters []coretraining.TrainedModelExporter
+	// AdminExtensions add views and UI to the admin UI (see docs/admin-extensions.md); only used with AdminUIenable. Validated at startup.
+	AdminExtensions []admin.Extension
 	// AdminUIenable registers the admin UI handlers (served at /v1/gb/admin/ from the assets embedded in the binary).
 	AdminUIenable bool
 }
@@ -182,8 +184,9 @@ const EvalDBName = "eval"
 // jv may be nil, in which case remember skips the steps that run on Jev. ws may be nil, in which case web search is not available
 // (a remember request with web_search returns 503); it is the Anthropic web search tool, so it is only set with an Anthropic API key.
 // providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). exporters are the registered trained model exporters (already validated; may be nil: an export request then answers 400). sc starts the training jobs (/v1/gb/training/) on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The eval endpoints are registered only if eval is true, the training endpoints (/v1/gb/training/) only if trainingMode is true,
-// the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary.
-func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, exporters []coretraining.TrainedModelExporter, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
+// the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary; adminExts are the registered admin UI extensions
+// (already validated; may be nil), mounted with it.
+func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, exporters []coretraining.TrainedModelExporter, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "gligabao is running")
@@ -207,7 +210,7 @@ func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_c
 		registerTraining(ctx, mux, d.Backend, d.Relational, d.TrainingDatasetDir, d.TrainingEvalDir, d.TrainedModelExportDir, exporters, sc, llm)
 	}
 	if adminUI {
-		registerAdminUI(mux, dbs, sc)
+		registerAdminUI(mux, dbs, sc, adminExts)
 	}
 	return mux
 }
@@ -270,11 +273,12 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, t
 
 // registerAdminUI serves the embedded admin UI assets under /v1/gb/admin/. It is a no-op (with a warning) if the
 // assets were not built into the binary (see admin_ui/ and run_build.sh).
-func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, sc coretraining.Sidecar) {
+func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, sc coretraining.Sidecar, exts []admin.Extension) {
 	if !adminui.Available() {
 		log.Warn("admin_ui is enabled but the web assets are not embedded in this binary; build with ./run_build.sh (admin UI build enabled)")
 		return
 	}
+	admin.RegisterExtensions(mux, exts) // the extensions' list, assets and APIs (docs/admin-extensions.md)
 	mux.HandleFunc("GET /v1/gb/admin/api/databases", admin.Databases(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/overview", admin.OverviewOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/graph", admin.GraphOf(dbs))
@@ -424,6 +428,18 @@ func Run(ctx context.Context, opts Options) error {
 		log.WithField("exporter", e.Name).Info("trained model exporter registered: trained models can be exported through it (POST /v1/gb/training/models/{id}/exports)")
 	}
 
+	adminExts, err := admin.ResolveExtensions(opts.AdminExtensions)
+	if err != nil {
+		return err
+	}
+	for _, e := range adminExts {
+		if opts.AdminUIenable {
+			log.WithField("extension", e.Name).Info("admin UI extension registered: it is loaded by the admin UI")
+		} else {
+			log.WithField("extension", e.Name).Warn("admin UI extension not active: the admin UI is not enabled (admin_ui = true or --admin-ui)")
+		}
+	}
+
 	var llm memory_core.LLM
 	// Web search is Anthropic's cloud-based web search tool, so it needs the Anthropic API key and only exists with it.
 	var ws memory_core.WebSearcher
@@ -489,7 +505,7 @@ func Run(ctx context.Context, opts Options) error {
 	// The remember manager stops only when Run returns, i.e. after the graceful shutdown has given the runs in progress their time.
 	mgrCtx, stopMgr := context.WithCancel(ctx)
 	defer stopMgr()
-	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(mgrCtx, database, llm, emb, jv, ws, providers, exporters, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, extra...)}
+	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(mgrCtx, database, llm, emb, jv, ws, providers, exporters, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, extra...)}
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

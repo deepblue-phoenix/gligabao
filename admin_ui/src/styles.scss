@@ -841,3 +841,13 @@ tr.removing {
 
 // Per-database blocks of the timeseries, inferences and remember views.
 .ts-db, .mr-db { &:nth-of-type(odd) { @include tint($tint-blue); } &:nth-of-type(even) { @include tint($tint-green); } }
+
+// --- Admin UI extensions (extensions.ts, docs/admin-extensions.md) ---
+// The places extensions can fill ("<view>.top", "<view>.bottom", "topbar"): invisible while nothing was put in them.
+// The palette as CSS variables, for the stylesheets of extensions.
+:root { --gb-bg: #{$bg}; --gb-surface: #{$surface}; --gb-border: #{$border}; --gb-text: #{$text}; --gb-muted: #{$muted}; --gb-accent: #{$accent}; --gb-ok: #{$ok}; --gb-err: #{$err}; }
+.ext-slot { margin: 1rem 0; &:empty { display: none; } }
+.health-badges > .ext-slot { margin: 0; display: flex; align-items: center; gap: 0.5rem; }
+// Longer names than the built-in views have: the label wraps instead of overflowing the button.
+.view-btn.ext-view-btn { padding: 0 0.5rem; font-size: 0.78rem; line-height: 1.1; overflow: hidden; span { min-width: 0; overflow-wrap: anywhere; text-align: left; } }
+.ext-errors { margin: 1rem 0 0; text-align: center; font-size: 0.85rem; }

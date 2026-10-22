@@ -5,6 +5,17 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.97.0] - 2026-10-25
+
+### Added
+- Admin UI extensions: a program that embeds gligabao can add views (each with a button in the nav on the left) and buttons, modals and blocks inside the existing views to the admin UI, with plain JavaScript and no build step. `ServeOptions.AdminExtensions` takes a list of `gligabao.AdminExtension{Name, Assets, Handler}`: `Assets` is an `fs.FS` with an `index.js` ES module (and optionally `style.css`), `Handler` an optional `http.Handler` that is the extension's own backend. They are validated at startup and served only with the admin UI on: `GET /v1/gb/admin/api/extensions` lists them, `/v1/gb/admin/ext/<name>/` serves the files, `/v1/gb/admin/ext/<name>/api/` is the handler. The admin page loads them before it draws and gives each a `gb` object (`addView`, `slot`, `api`, `json`, `button`, `modal`, `confirm`, `alert`, `escape`); one that fails to load is reported and skipped.
+- Slots, the places in the existing admin UI that extensions can add to: `training.model.actions` (the box that opens on a click on a trained model: add buttons, given the model), and a `.top` and `.bottom` block in every built-in view (`main`, `evals`, `timeseries`, `inferences`, `remember_runs`, `training`) and `topbar` next to the health badges.
+- The admin UI's palette is available as CSS variables (`--gb-bg`, `--gb-surface`, `--gb-border`, `--gb-text`, `--gb-muted`, `--gb-accent`, `--gb-ok`, `--gb-err`) for the stylesheets of extensions.
+- [docs/admin-extensions.md](docs/admin-extensions.md): how to write an extension (quick start, registering it, the `gb` API, views, slots, a backend, styling, how it works, caveats), and `admin_ui/gligabao-admin.d.ts`, the types of `gb` for editor autocomplete.
+
+### Changed
+- Admin UI: the view switching moved from `main.ts` to a new `views.ts` and also handles views and buttons added after the page was built; the page starts after the extensions have loaded (a few milliseconds with none).
+
 ## [0.96.1] - 2026-10-24
 
 ### Changed

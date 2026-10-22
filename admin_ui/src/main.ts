@@ -1,6 +1,7 @@
-// gligabao admin UI: a health indicator, system totals, the datasets of all users and and, in their own views, the evals (evals.ts), timeseries (timeseries.ts), inferences (inferences.ts) and remember runs (remember_runs.ts) and training (training.ts). Talks to the server's own HTTP API.
+// gligabao admin UI: a health indicator, system totals, the datasets of all users and and, in their own views, the evals (evals.ts), timeseries (timeseries.ts), inferences (inferences.ts) and remember runs (remember_runs.ts) and training (training.ts); extensions (extensions.ts) can add views and UI. Talks to the server's own HTTP API.
 
 import { initEvals } from "./evals.js";
+import { loadExtensions } from "./extensions.js";
 import { initGraphModal, showGraph } from "./graph.js";
 import { initHistoryModal } from "./history.js";
 import { initImageOverlay } from "./image.js";
@@ -11,6 +12,7 @@ import { initTimeseries } from "./timeseries.js";
 import { initTraining } from "./training.js";
 import { initTraceModal } from "./trace.js";
 import { initVectorsModal, showVectors } from "./vectors.js";
+import { initViews } from "./views.js";
 import { initWebSearch } from "./websearch.js";
 
 interface Dataset {
@@ -323,45 +325,26 @@ $<HTMLFormElement>("datasets-form").addEventListener("submit", (e) => {
 });
 $("include-deleted").addEventListener("change", () => void loadAll(includeDeleted()));
 
-// Switches between the admin views (main, evals, timeseries, inferences, remember runs, training); the choice is kept in the URL hash.
-function initViews(): void {
-  const buttons = [...document.querySelectorAll<HTMLButtonElement>(".view-btn")];
-  const views = [...document.querySelectorAll<HTMLElement>(".view")];
-  const show = (name: string): void => {
-    if (!views.some((v) => v.dataset.view === name)) name = "main";
-    for (const v of views) v.hidden = v.dataset.view !== name;
-    for (const b of buttons) {
-      const on = b.dataset.view === name;
-      b.classList.toggle("active", on);
-      b.setAttribute("aria-pressed", String(on));
-    }
-  };
-  for (const b of buttons) {
-    b.addEventListener("click", () => {
-      const name = b.dataset.view ?? "main";
-      show(name);
-      history.replaceState(null, "", name === "main" ? location.pathname + location.search : `#${name}`);
-    });
-  }
-  show(location.hash.slice(1));
-}
-
-initViews();
-initGraphModal();
-initVectorsModal();
-initTraceModal();
-initHistoryModal();
-initEvals();
-initTimeseries();
-initInferences();
-initRememberRuns();
-initTraining();
-initImageOverlay();
-initImageStats();
-initWebSearch();
-void loadAll(false);
-void checkHealth();
-void checkSidecarHealth();
-void showVersion();
-setInterval(() => void checkHealth(), 15000);
-setInterval(() => void checkSidecarHealth(), 15000);
+// Starts the admin UI. The extensions load first (they add views and fill slots that the rest draws into).
+void (async () => {
+  await loadExtensions();
+  initViews();
+  initGraphModal();
+  initVectorsModal();
+  initTraceModal();
+  initHistoryModal();
+  initEvals();
+  initTimeseries();
+  initInferences();
+  initRememberRuns();
+  initTraining();
+  initImageOverlay();
+  initImageStats();
+  initWebSearch();
+  void loadAll(false);
+  void checkHealth();
+  void checkSidecarHealth();
+  void showVersion();
+  setInterval(() => void checkHealth(), 15000);
+  setInterval(() => void checkSidecarHealth(), 15000);
+})();
