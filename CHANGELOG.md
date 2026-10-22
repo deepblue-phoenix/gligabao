@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.98.0] - 2026-10-26
+
+### Added
+- The command-line interface is now a public package, `github.com/deepblue-phoenix/gligabao/cli` (it was `internal/cli`). A program that embeds gligabao builds its command tree with `cli.New(cli.Options{...})` and gets `serve`, `version`, `--config` and every flag of `gligabao serve` without redefining them; it only adds its own flags and commands (on the returned `Root` and `Serve` commands) and customizes `ServeOptions` through `Options.ServeOptions`. A flag added to `gligabao serve` later reaches such programs with no change on their side.
+
 ## [0.97.0] - 2026-10-25
 
 ### Added

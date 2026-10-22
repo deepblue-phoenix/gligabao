@@ -139,7 +139,7 @@ A program that embeds gligabao can extend the admin UI with its own views (a but
 
 ## Embedding in Go programs
 
-gligabao is also a Go library. All server code is under `internal/` (not importable); the public API is the root package `github.com/deepblue-phoenix/gligabao`, which the CLI (`cmd/gligabao`, `internal/cli`) itself uses, so embedded and standalone behave the same.
+gligabao is also a Go library. All server code is under `internal/` (not importable); the public API is the root package `github.com/deepblue-phoenix/gligabao`, which the CLI (`cmd/gligabao`, the public `cli` package) itself uses, so embedded and standalone behave the same. A program that wants the CLI too (all of `gligabao serve`'s flags) builds it with `cli.New` from `github.com/deepblue-phoenix/gligabao/cli` and adds only its own flags and `ServeOptions`; see `gligabao_int/cmd`.
 
 ```go
 import "github.com/deepblue-phoenix/gligabao"
