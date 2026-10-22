@@ -186,12 +186,14 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 	monitoring.SetHooks(opts.Hooks)
 	defer monitoring.SetHooks(nil)
 	dbConfig := db.ConfigFrom(cfg, opts.DBPath, opts.VectorDir, opts.ImageDir)
-	dbConfig.TrainingDatasetDir = opts.TrainingDatasetDir
-	dbConfig.TrainingEvalDir = opts.TrainingEvalDir
-	dbConfig.TrainedModelExportDir = opts.TrainedModelExportDir
+	trainingDirs := training.Dirs{Datasets: opts.TrainingDatasetDir, Evals: opts.TrainingEvalDir, ModelExport: opts.TrainedModelExportDir}
+	if trainingDirs.ModelExport == "" {
+		trainingDirs.ModelExport = cfg.TrainedModelExportDir
+	}
 	return server.Run(ctx, server.Options{
 		Addr:         cfg.Addr(),
 		DB:           dbConfig,
+		TrainingDirs: trainingDirs,
 		AnthropicKey: cfg.AnthropicKey,
 		OpenAIKey:    cfg.OpenAIKey,
 		JevKey:       cfg.JevKey,

@@ -290,6 +290,7 @@
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `internal/training.DatasetInfo`                           | is a training dataset as the API shows it, combining its record and manifest.                                          |
 | `internal/training.DatasetProblem`                        | is a dataset subdirectory that has a manifest but is not usable.                                                       |
+| `internal/training.Dirs`                                  | are the directories the training endpoints keep files in: datasets, evals and exported models.                         |
 | `internal/training.Error`                                 | is a failure of a training operation with its kind.                                                                    |
 | `internal/training.ExportRequest`                         | is what the caller of ExportModel chooses: the exporter's name and its options.                                        |
 | `internal/training.ExportTrainedModelRequest`             | is what a trained model exporter is asked to export: the model, its local directory and the options.                   |

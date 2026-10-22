@@ -42,6 +42,11 @@ training = false
 # Default false; `serve --admin-ui` turns it on.
 admin_ui = false
 
+# Directory the files of trained models are fetched to for an export, one subdirectory per training job (gligabao
+# never deletes them). Default: a trained_models directory next to the database file (bin/trained_models).
+# `serve --trained-model-export-dir` overrides it.
+# trained_model_export_dir = "trained_models"
+
 # Model prices in USD per 1M tokens, used to compute the cost of each LLM call (stored with each inference in gb_inferences).
 # Keys are model-name prefixes: the longest matching prefix wins, so "claude-haiku-4-5" also matches
 # "claude-haiku-4-5-20251001". Entries here override the built-in prices or add new models.

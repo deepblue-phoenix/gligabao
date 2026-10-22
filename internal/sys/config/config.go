@@ -99,6 +99,10 @@ type Config struct {
 	// SidecarURL is the base URL of the Python sidecar's REST API (sidecar/), which runs the training jobs the admin
 	// endpoint POST /v1/gb/v1/gb/training/jobs starts. Default: SIDECAR_URL, else http://127.0.0.1:8787.
 	SidecarURL string `toml:"sidecar_url"`
+	// TrainedModelExportDir is the directory the files of trained models are fetched to for an export, one subdirectory per
+	// training job (gligabao never deletes them). Default: a "trained_models" directory next to the SQLite database file.
+	// `serve --trained-model-export-dir` overrides it.
+	TrainedModelExportDir string `toml:"trained_model_export_dir"`
 	// Prices overrides/extends the built-in per-model price table used to compute LLM call costs.
 	// Keys are model-name prefixes (the longest matching prefix wins).
 	Prices map[string]Price `toml:"prices"`

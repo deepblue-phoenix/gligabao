@@ -12,6 +12,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	coretraining "github.com/deepblue-phoenix/gligabao/internal/training"
 )
 
 // TestTrainingEndpointsAreNotAdmin checks that the training endpoints are served under /v1/gb/training/ without the admin UI
@@ -19,7 +20,7 @@ import (
 func TestTrainingEndpointsAreNotAdmin(t *testing.T) {
 	dbtest.Run(t, func(t *testing.T, d *sql.DB) {
 		dir := filepath.Join(t.TempDir(), "datasets_training")
-		h := NewHandler(t.Context(), &db.DB{Relational: d, TrainingDatasetDir: dir}, nil, nil, nil, nil, nil, nil, nil, false, true, false, nil)
+		h := NewHandler(t.Context(), &db.DB{Relational: d}, nil, nil, nil, nil, nil, nil, coretraining.Dirs{Datasets: dir}, nil, false, true, false, nil)
 		do := func(req *http.Request) *httptest.ResponseRecorder {
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)

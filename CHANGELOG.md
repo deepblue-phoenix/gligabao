@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.99.0] - 2026-10-27
+
+### Added
+- The directory of trained models' exports can be set in the configuration file: `trained_model_export_dir` in `gligabao.toml` (the same as `serve --trained-model-export-dir`, which still overrides it, and `ServeOptions.TrainedModelExportDir` for embedding programs). Default: a `trained_models` directory next to the database file.
+
+### Changed
+- Internal: the directories of the training endpoints (datasets, evals, exported models) are no longer part of the database configuration (`db.Config` / `db.DB`, which only stored them for the server to read back). They are a `training.Dirs` value that the server takes in `server.Options.TrainingDirs`, with the defaults (next to the SQLite file) resolved in one place, `Dirs.WithDefaults`. No change in behaviour, flags or defaults.
+
 ## [0.98.0] - 2026-10-26
 
 ### Added

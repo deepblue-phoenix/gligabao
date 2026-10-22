@@ -101,6 +101,9 @@ type Options struct {
 	EvalModeEnable bool
 	// TrainingModeEnable registers the training handlers (/v1/gb/training/...) and starts the training monitor. Off by default.
 	TrainingModeEnable bool
+	// TrainingDirs are the directories the training endpoints keep files in. An empty field gets its default, next to the SQLite
+	// file (DB.SQLitePath, or db.DefaultSQLitePath if empty): see coretraining.DefaultDirs.
+	TrainingDirs coretraining.Dirs
 	// EvalDBPath is a second SQLite file, the eval database (see internal/evals/knowledge/cmd): the evaluation datasets, the
 	// experiments and their runs. The admin UI shows it next to the main database and reads the Evals block (and the
 	// ATIF files, from an "atif" directory next to it) from it. Opened for the admin UI only; ignored (with a warning)
@@ -183,10 +186,10 @@ const EvalDBName = "eval"
 // llm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities.
 // jv may be nil, in which case remember skips the steps that run on Jev. ws may be nil, in which case web search is not available
 // (a remember request with web_search returns 503); it is the Anthropic web search tool, so it is only set with an Anthropic API key.
-// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). exporters are the registered trained model exporters (already validated; may be nil: an export request then answers 400). sc starts the training jobs (/v1/gb/training/) on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The eval endpoints are registered only if eval is true, the training endpoints (/v1/gb/training/) only if trainingMode is true,
+// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). exporters are the registered trained model exporters (already validated; may be nil: an export request then answers 400). dirs are the directories of the training endpoints (all fields must be set when trainingMode is true; see coretraining.Dirs.WithDefaults). sc starts the training jobs (/v1/gb/training/) on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The eval endpoints are registered only if eval is true, the training endpoints (/v1/gb/training/) only if trainingMode is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary; adminExts are the registered admin UI extensions
 // (already validated; may be nil), mounted with it.
-func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, exporters []coretraining.TrainedModelExporter, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
+func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, exporters []coretraining.TrainedModelExporter, dirs coretraining.Dirs, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "gligabao is running")
@@ -207,7 +210,7 @@ func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_c
 	}
 	dbs := append([]admin.Named{{Name: "standard", DB: d.Relational, Vectors: d.Vector, ImageDir: d.ImageDir}}, extraAdminDBs...)
 	if trainingMode {
-		registerTraining(ctx, mux, d.Backend, d.Relational, d.TrainingDatasetDir, d.TrainingEvalDir, d.TrainedModelExportDir, exporters, sc, llm)
+		registerTraining(ctx, mux, d.Backend, d.Relational, dirs, exporters, sc, llm)
 	}
 	if adminUI {
 		registerAdminUI(mux, dbs, sc, adminExts)
@@ -226,10 +229,10 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // registerTraining registers the training endpoints under /v1/gb/training/ (they are part of the API, not of the admin UI,
-// and are served whether or not the admin UI is on, but only in training mode): the jobs, the datasets and the feed of the jobs' progress. They work with trainingDB; datasetDir is the training datasets directory and evalDir the directory of the evals. The training monitor follows the progress the sidecar
+// and are served whether or not the admin UI is on, but only in training mode): the jobs, the datasets and the feed of the jobs' progress. They work with trainingDB; dirs are the directories they keep files in (the datasets, the evals, the exported models). The training monitor follows the progress the sidecar
 // reports for the jobs (it resumes the unfinished ones now) and feeds it to the SSE endpoint. llm judges the evals and the training data audits of the
-// trained models (nil: starting one answers 503). Trained models are exported through exporters, after their files are fetched to exportDir.
-func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, trainingDB *sql.DB, datasetDir, evalDir, exportDir string, exporters []coretraining.TrainedModelExporter, sc coretraining.Sidecar, llm memory_core.LLM) {
+// trained models (nil: starting one answers 503). Trained models are exported through exporters, after their files are fetched to dirs.ModelExport.
+func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, trainingDB *sql.DB, dirs coretraining.Dirs, exporters []coretraining.TrainedModelExporter, sc coretraining.Sidecar, llm memory_core.LLM) {
 	mon := coretraining.NewMonitor(ctx, trainingDB, sc)
 	// The evals and the training data audits are those of internal/evals and internal/training_audits (their own tables).
 	evalStore, err := evals.StoreFor(backend)
@@ -240,7 +243,7 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, t
 	if sc != nil {
 		evalInf = sc
 	}
-	evals := evalstraining.NewManager(ctx, trainingDB, evalStore, evalDir, evalInf, llm)
+	evals := evalstraining.NewManager(ctx, trainingDB, evalStore, dirs.Evals, evalInf, llm)
 	var auditInf training_audits.Inferer // likewise nil without a sidecar
 	if sc != nil {
 		auditInf = sc
@@ -249,8 +252,8 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, t
 	if err != nil {
 		log.WithError(err).Fatal("training audits")
 	}
-	audits := training_audits.NewManager(ctx, trainingDB, auditOps, datasetDir, auditInf, llm)
-	mux.HandleFunc("POST /v1/gb/training/jobs", training.StartJobOf(trainingDB, datasetDir, sc, mon))
+	audits := training_audits.NewManager(ctx, trainingDB, auditOps, dirs.Datasets, auditInf, llm)
+	mux.HandleFunc("POST /v1/gb/training/jobs", training.StartJobOf(trainingDB, dirs.Datasets, sc, mon))
 	mux.HandleFunc("POST /v1/gb/training/jobs/{id}/stop", training.StopJobOf(trainingDB, sc))
 	mux.HandleFunc("GET /v1/gb/training/jobs", training.ListJobsOf(trainingDB))
 	mux.HandleFunc("GET /v1/gb/training/models", training.ListModelsOf(trainingDB))
@@ -261,13 +264,13 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, t
 	if f, ok := sc.(coretraining.ModelFileFetcher); ok {
 		fetcher = f
 	}
-	mux.HandleFunc("POST /v1/gb/training/models/{id}/exports", training.ExportOf(trainingDB, fetcher, exporters, exportDir))
+	mux.HandleFunc("POST /v1/gb/training/models/{id}/exports", training.ExportOf(trainingDB, fetcher, exporters, dirs.ModelExport))
 	mux.HandleFunc("GET /v1/gb/training/models/{id}/exports", training.ListExportsOf(trainingDB))
 	evalsapi.New(evals).Register(mux, "/v1/gb/training") // the evals, their definitions and the training experiments
 	auditsapi.New(audits).Register(mux, "/v1/gb/training")
-	mux.HandleFunc("GET /v1/gb/training/datasets", training.ListDatasetsOf(trainingDB, datasetDir))
-	mux.HandleFunc("POST /v1/gb/training/datasets", training.UploadDatasetOf(trainingDB, datasetDir))
-	mux.HandleFunc("GET /v1/gb/training/datasets/preview", training.PreviewDatasetOf(datasetDir))
+	mux.HandleFunc("GET /v1/gb/training/datasets", training.ListDatasetsOf(trainingDB, dirs.Datasets))
+	mux.HandleFunc("POST /v1/gb/training/datasets", training.UploadDatasetOf(trainingDB, dirs.Datasets))
+	mux.HandleFunc("GET /v1/gb/training/datasets/preview", training.PreviewDatasetOf(dirs.Datasets))
 	mux.HandleFunc("GET /v1/gb/training/events", training.EventsOf(trainingDB, mon))
 }
 
@@ -395,8 +398,13 @@ func Run(ctx context.Context, opts Options) error {
 	if opts.EvalModeEnable {
 		log.Warn("eval mode: /v1/gb/eval/remember and /v1/gb/eval/recall are enabled")
 	}
+	dbPath := opts.DB.SQLitePath
+	if dbPath == "" {
+		dbPath = db.DefaultSQLitePath
+	}
+	dirs := opts.TrainingDirs.WithDefaults(dbPath)
 	if opts.TrainingModeEnable {
-		log.Warn("training mode: the training endpoints (/v1/gb/training/) are enabled")
+		log.WithFields(log.Fields{"datasets_dir": dirs.Datasets, "evals_dir": dirs.Evals, "model_export_dir": dirs.ModelExport}).Warn("training mode: the training endpoints (/v1/gb/training/) are enabled")
 	} else {
 		log.Info("training mode is off: the training endpoints are not registered (enable with training = true or --training)")
 	}
@@ -505,7 +513,7 @@ func Run(ctx context.Context, opts Options) error {
 	// The remember manager stops only when Run returns, i.e. after the graceful shutdown has given the runs in progress their time.
 	mgrCtx, stopMgr := context.WithCancel(ctx)
 	defer stopMgr()
-	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(mgrCtx, database, llm, emb, jv, ws, providers, exporters, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, extra...)}
+	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(mgrCtx, database, llm, emb, jv, ws, providers, exporters, dirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, extra...)}
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

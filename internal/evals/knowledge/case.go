@@ -19,6 +19,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/server"
+	"github.com/deepblue-phoenix/gligabao/internal/training"
 )
 
 // EvalUser owns the eval datasets.
@@ -99,7 +100,7 @@ func (x *Executor) runCase(ctx context.Context, name string, in core.KnowledgeCa
 	}
 	mgrCtx, stopMgr := context.WithCancel(context.Background()) // stops the remember manager of the handler
 	defer stopMgr()
-	srv := httptest.NewServer(server.NewHandler(mgrCtx, database, llm, x.Embedder, nil, x.WebSearch, nil, nil, nil, true, true, false, nil))
+	srv := httptest.NewServer(server.NewHandler(mgrCtx, database, llm, x.Embedder, nil, x.WebSearch, nil, nil, training.DefaultDirs(database.SQLitePath), nil, true, true, false, nil))
 	defer srv.Close()
 
 	dataset := DatasetName(name, evalRunID)
