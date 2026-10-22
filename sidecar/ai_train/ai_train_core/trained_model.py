@@ -10,6 +10,7 @@ carries the description built here (`describe`), which the Go server stores as a
 `path` is relative to the models volume; inference takes it as `model_path` (`resolve_model_dir`).
 """
 import hashlib
+import re
 import time
 from pathlib import Path
 from typing import Optional
@@ -68,6 +69,16 @@ def valid_model_path(model_path: str) -> bool:
     """A model path is `trained/<job_id>` (what a job saved), nothing else: no absolute paths, no `..`."""
     parts = model_path.split("/") if isinstance(model_path, str) else []
     return len(parts) == 2 and parts[0] == TRAINED_MODELS_SUBDIR and valid_job_id(parts[1])
+
+
+_FILE_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
+
+
+def valid_model_file(file: str) -> bool:
+    """A file of a trained model is a relative path inside its directory (the `path` of an entry of `files`): segments of
+    a conservative character set, no absolute path, no `.`, `..` or empty segment."""
+    parts = file.split("/") if isinstance(file, str) else []
+    return 1 <= len(parts) <= 8 and all(_FILE_SEGMENT_RE.match(p) and p not in (".", "..") for p in parts)
 
 
 def resolve_model_dir(model_path: str, models_dir: str = MODELS_DIR) -> str:

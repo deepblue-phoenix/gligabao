@@ -116,6 +116,31 @@ CREATE TABLE IF NOT EXISTS gb_trained_model_inferences (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_trained_model_inferences_model ON gb_trained_model_inferences(trained_model_id, id);
 
+-- Exports of trained models: ONE ROW PER EXPORT of a trained model through an exporter, a hook of the embedding program
+-- (internal/training/export.go). The row is made when the export starts (status 'running') and updated when it ends, so every
+-- export can be reviewed afterwards, failed ones too. A row still 'running' long after its start was interrupted (e.g. the server restarted).
+--   trained_model_id  the model (gb_trained_models) that was exported
+--   exporter, options the name of the exporter and the free-form options (a JSON object) the request gave it
+--   status            'running', 'completed' or 'failed'; error is the reason of a failure
+--   dir               the local directory the weights were fetched to and the exporter was given ('' until they are fetched)
+--   ref, details      the exporter's identifier of the result and what else it reported (a JSON object); '' and '{}' until completed
+--   duration_ms       how long the export took; completed_at when it ended (NULL while running)
+CREATE TABLE IF NOT EXISTS gb_trained_model_exports (
+	id               INTEGER PRIMARY KEY AUTOINCREMENT,
+	trained_model_id INTEGER NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
+	exporter         TEXT NOT NULL,
+	options          TEXT NOT NULL DEFAULT '{}',
+	status           TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed')),
+	dir              TEXT NOT NULL DEFAULT '',
+	ref              TEXT NOT NULL DEFAULT '',
+	details          TEXT NOT NULL DEFAULT '{}',
+	error            TEXT NOT NULL DEFAULT '',
+	duration_ms      INTEGER NOT NULL DEFAULT 0,
+	created_at       DATETIME NOT NULL DEFAULT (` + rsqlite.SQLNow + `),
+	completed_at     DATETIME
+);
+CREATE INDEX IF NOT EXISTS idx_gb_trained_model_exports_model ON gb_trained_model_exports(trained_model_id, id);
+
 -- JSONL training datasets (internal/training): the datasets are subdirectories of the training datasets directory
 -- that have a dataset.toml manifest; this table has ONE ROW PER DATASET, made when the Go server first sees the data file
 -- and replaced when it sees it changed. The sidecar is not involved, it gets the file when a training job that uses it

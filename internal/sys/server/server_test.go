@@ -19,7 +19,7 @@ import (
 func TestTrainingEndpointsAreNotAdmin(t *testing.T) {
 	dbtest.Run(t, func(t *testing.T, d *sql.DB) {
 		dir := filepath.Join(t.TempDir(), "datasets_training")
-		h := NewHandler(t.Context(), &db.DB{Relational: d, TrainingDatasetDir: dir}, nil, nil, nil, nil, nil, nil, false, true, false)
+		h := NewHandler(t.Context(), &db.DB{Relational: d, TrainingDatasetDir: dir}, nil, nil, nil, nil, nil, nil, nil, false, true, false)
 		do := func(req *http.Request) *httptest.ResponseRecorder {
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)

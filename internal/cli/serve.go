@@ -13,6 +13,7 @@ var (
 	serveDatasetDir string
 	serveEvalDir    string
 	serveEvalDB     string
+	serveExportDir  string
 	serveEval       bool
 	serveTraining   bool
 	serveAdminUI    bool
@@ -34,12 +35,13 @@ var serveCmd = &cobra.Command{
 			cfg.AdminUIenable = serveAdminUI
 		}
 		return gligabao.Serve(cmd.Context(), cfg, gligabao.ServeOptions{
-			DBPath:             serveDBPath,
-			VectorDir:          serveVectorDir,
-			ImageDir:           serveImageDir,
-			TrainingDatasetDir: serveDatasetDir,
-			TrainingEvalDir:    serveEvalDir,
-			EvalDBPath:         serveEvalDB,
+			DBPath:                serveDBPath,
+			VectorDir:             serveVectorDir,
+			ImageDir:              serveImageDir,
+			TrainingDatasetDir:    serveDatasetDir,
+			TrainingEvalDir:       serveEvalDir,
+			TrainedModelExportDir: serveExportDir,
+			EvalDBPath:            serveEvalDB,
 		})
 	},
 }
@@ -52,6 +54,7 @@ func init() {
 	serveCmd.Flags().StringVar(&serveImageDir, "image-dir", "", "directory of the image files stored by remember with an image (default: next to --db)")
 	serveCmd.Flags().StringVar(&serveDatasetDir, "training-dataset-dir", "", "training datasets directory: one subdirectory with a dataset.toml manifest per dataset (default: a datasets_training directory next to --db)")
 	serveCmd.Flags().StringVar(&serveEvalDir, "training-eval-dir", "", "directory of the evals of trained models: one JSON file (a map with the keys name and cases) per eval (default: an evals_training directory next to --db)")
+	serveCmd.Flags().StringVar(&serveExportDir, "trained-model-export-dir", "", "directory the files of trained models are fetched to for an export, one subdirectory per training job (default: a trained_models directory next to --db)")
 	serveCmd.Flags().StringVar(&serveEvalDB, "eval-db", "", "eval database: SQLite file with the eval datasets, experiments and runs (./run_evals.sh); shown next to the main database in the admin UI, which reads the Evals block from it")
 	serveCmd.Flags().BoolVar(&serveEval, "eval", false, "register the eval endpoints that return ATIF trajectories (config: eval)")
 	serveCmd.Flags().BoolVar(&serveTraining, "training", false, "register the training endpoints under /v1/gb/training/ (config: training)")

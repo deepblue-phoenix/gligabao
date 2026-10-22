@@ -127,3 +127,68 @@ func ListInferencesOf(db *sql.DB) http.HandlerFunc {
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{"inferences": list})
 	}
 }
+
+// ExportOf serves POST /v1/gb/training/models/{id}/exports with a JSON body {"exporter": "...", "options": {...}} (only the
+// exporter is required; options is a free-form object that is handed to the exporter). It fetches the weights of trained model {id}
+// from the sidecar into a directory on the server's disk, calls the named exporter (a hook of the embedding program, see
+// ServeOptions.TrainedModelExporters) with it, waits for it and answers 200 with the stored export (trainingdb.TrainedModelExport:
+// status "completed", ref, details, dir, ...). The request takes as long as fetching and the exporter take, minutes for a large
+// model. 404 is for an unknown model, 400 for a bad body, an unknown exporter or none registered, 503 for a nil fetcher (no
+// sidecar), 502 when fetching the files or the exporter fails (the failed export is stored: see ListExportsOf).
+func ExportOf(db *sql.DB, f core.ModelFileFetcher, exporters []core.TrainedModelExporter, dir string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		var in struct {
+			Exporter string         `json:"exporter"`
+			Options  map[string]any `json:"options"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, core.MaxExportOptionsBytes+1024)).Decode(&in); err != nil && !errors.Is(err, io.EOF) {
+			httputil.Error(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+		m, err := core.GetModel(r.Context(), db, id)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		if f == nil {
+			httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not active")
+			return
+		}
+		out, err := core.ExportModel(r.Context(), db, f, exporters, dir, m, core.ExportRequest{Exporter: in.Exporter, Options: in.Options})
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		httputil.WriteJSON(w, http.StatusOK, out)
+	}
+}
+
+// ListExportsOf serves GET /v1/gb/training/models/{id}/exports[?limit=<n>]: {"exports": [...]}, the exports of trained model {id}
+// (trainingdb.TrainedModelExport: exporter, status, ref, details, error, ...), newest first, at most limit (default 100, at most
+// 500), failed ones included. 404 for an unknown model.
+func ListExportsOf(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		limit, ok := limitParam(w, r, trainedModelsDefaultLimit, trainedModelsMaxLimit)
+		if !ok {
+			return
+		}
+		if _, err := core.GetModel(r.Context(), db, id); err != nil {
+			writeErr(w, err)
+			return
+		}
+		list, err := core.ListExports(r.Context(), db, id, limit)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"exports": list})
+	}
+}

@@ -144,3 +144,68 @@ func trainedModelInferencesScenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("get unknown: %v", err)
 	}
 }
+
+func TestTrainedModelExports(t *testing.T) { dbtest.Run(t, trainedModelExportsScenario) }
+
+func trainedModelExportsScenario(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	var modelIDs []int64
+	for _, job := range []string{"jobAAAAAAAA", "jobBBBBBBBB"} {
+		id, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: job, ModelSize: "4b", NumTrainSteps: 1, Path: "trained/" + job})
+		if err != nil {
+			t.Fatal(err)
+		}
+		modelIDs = append(modelIDs, id)
+	}
+	id1, err := trainingdb.RecordTrainedModelExport(ctx, d, trainingdb.TrainedModelExport{TrainedModelID: modelIDs[0], Exporter: "together",
+		Options: json.RawMessage(`{"name":"x"}`)})
+	if err != nil || id1 == 0 {
+		t.Fatalf("RecordTrainedModelExport: %d %v", id1, err)
+	}
+	got, err := trainingdb.GetTrainedModelExport(ctx, d, id1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != trainingdb.TrainedModelExportRunning || got.Exporter != "together" || got.TrainedModelID != modelIDs[0] ||
+		string(got.Options) != `{"name":"x"}` || string(got.Details) != "{}" || got.Dir != "" || got.CompletedAt != nil || got.CreatedAt.IsZero() {
+		t.Fatalf("running export: %+v", got)
+	}
+	if err := trainingdb.SetTrainedModelExportDir(ctx, d, id1, "/data/trained_models/jobAAAAAAAA"); err != nil {
+		t.Fatal(err)
+	}
+	if err := trainingdb.FinishTrainedModelExport(ctx, d, id1, trainingdb.TrainedModelExportCompleted, "me/adapter", `{"job_id":"j1"}`, "", 4321); err != nil {
+		t.Fatal(err)
+	}
+	id2, err := trainingdb.RecordTrainedModelExport(ctx, d, trainingdb.TrainedModelExport{TrainedModelID: modelIDs[0], Exporter: "other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := trainingdb.FinishTrainedModelExport(ctx, d, id2, trainingdb.TrainedModelExportFailed, "", "", "boom", 5); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := trainingdb.RecordTrainedModelExport(ctx, d, trainingdb.TrainedModelExport{TrainedModelID: modelIDs[1], Exporter: "together"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := trainingdb.FinishTrainedModelExport(ctx, d, 999, trainingdb.TrainedModelExportFailed, "", "", "", 0); !errors.Is(err, relational.ErrNotFound) {
+		t.Fatalf("finish unknown: %v", err)
+	}
+	if err := trainingdb.SetTrainedModelExportDir(ctx, d, 999, "x"); !errors.Is(err, relational.ErrNotFound) {
+		t.Fatalf("set dir of unknown: %v", err)
+	}
+
+	got, err = trainingdb.GetTrainedModelExport(ctx, d, id1)
+	if err != nil || got.Status != trainingdb.TrainedModelExportCompleted || got.Ref != "me/adapter" || string(got.Details) != `{"job_id":"j1"}` ||
+		got.DurationMS != 4321 || got.CompletedAt == nil || got.Dir != "/data/trained_models/jobAAAAAAAA" {
+		t.Fatalf("completed export: %+v %v", got, err)
+	}
+	list, err := trainingdb.ListTrainedModelExports(ctx, d, modelIDs[0], 0)
+	if err != nil || len(list) != 2 || list[0].ID != id2 || list[0].Status != trainingdb.TrainedModelExportFailed || list[0].Error != "boom" || list[1].ID != id1 {
+		t.Fatalf("list of model 1: %+v %v", list, err)
+	}
+	if list, err = trainingdb.ListTrainedModelExports(ctx, d, 0, 2); err != nil || len(list) != 2 {
+		t.Fatalf("list of all, limit 2: %+v %v", list, err)
+	}
+	if _, err := trainingdb.GetTrainedModelExport(ctx, d, 999); !errors.Is(err, relational.ErrNotFound) {
+		t.Fatalf("get unknown: %v", err)
+	}
+}

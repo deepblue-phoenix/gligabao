@@ -18,6 +18,7 @@ The sidecar answers a health check itself and forwards the training/dataset API,
 | Endpoint | Response |
 |---|---|
 | `GET /health` | `200 {"status": "ok"}` (answered by the sidecar itself: it says the sidecar is up, not that the backend is reachable) |
+| `GET /models/file?model_path=trained/<job id>&file=<path>` | The raw bytes of one file of a trained model, answered by the sidecar itself (not forwarded), see [Fetching the files of a model](#fetching-the-files-of-a-model) |
 | `POST /training/job_start`, `GET /training/job_progress`, `GET /training/job_events` (SSE), `POST /training/job_cancel`, `POST /infer/query`, `POST /evals/add_to_dataset`, `GET /evals/get_dataset_count` | Answered by the **backend** (below) |
 
 ### Backends
@@ -231,6 +232,16 @@ A different kind of weights (another model size, or a trainer that saves somethi
 | `GET /v1/gb/training/models/{id}` | one trained model; 404 if unknown. |
 | `POST /v1/gb/training/models/{id}/infer` | body `{"prompt", "max_tokens"?, "temperature"?}`; runs the prompt through that model's weights on the sidecar (size and path come from the record) and answers `{"id", "model_id", "response", "status", "input_tokens", "output_tokens", "cold_start", "load_seconds", "duration_ms"}` (`cold_start`: the request loaded the model; `load_seconds`: how long that took; both are also stored in the request row). Every request is stored in `gb_trained_model_inferences` (prompt, response, status, error, ...), failed ones too; `id` is its row. It takes minutes when a GPU container has to start and load the model. 400 bad body, 404 unknown model, 502 sidecar failure (with its message if the generation failed, e.g. the weights are gone from the volume), 503 no sidecar. |
 | `GET /v1/gb/training/models/{id}/inferences[?limit=]` | `{"inferences": [...]}`: the stored inference requests of that model (`id`, `trained_model_id`, `prompt`, `response`, `status` running/completed/failed, `error`, `max_tokens`, `temperature`, `input_tokens`, `output_tokens`, `cold_start`, `load_seconds`, `duration_ms`, `created_at`, `completed_at`; `cold_start` is null when unknown), newest first (default 100, at most 500); 404 unknown model. |
+| `POST /v1/gb/training/models/{id}/exports` | body `{"exporter", "options"?}`; fetches the model's files from the sidecar to a local directory and hands it to the named exporter, a hook of the embedding program ([hooks.md](../hooks.md#trained-model-exporters)), then answers `200` with the stored export (`id`, `trained_model_id`, `exporter`, `options`, `status`, `dir`, `ref`, `details`, `error`, `duration_ms`, ...). It waits for the fetch and the exporter, so it can take minutes. 400 bad body, unknown or missing exporter (or none registered), 404 unknown model, 502 fetching the files or the exporter failed (the failed export is stored), 503 no sidecar. |
+| `GET /v1/gb/training/models/{id}/exports[?limit=]` | `{"exports": [...]}`: the stored exports of that model, newest first, failed ones too; 404 if the model is unknown. Stored in `gb_trained_model_exports`. |
+
+#### Fetching the files of a model
+
+The Go server needs a model's files on its own disk to export it (see [hooks.md](../hooks.md#trained-model-exporters)). The web container mounts neither the models volume nor the HF cache, so the sidecar reads the volume itself, through the Modal SDK, and serves it over HTTP:
+
+- `GET /models/file?model_path=trained/<job id>&file=<path>` answers the raw bytes (`application/octet-stream`) of one file of the model: `file` is a `path` of the model's `files` (relative to its directory, nested paths allowed). `model_path` must have the shape `trained/<job id>` and `file` must be a relative path of plain segments (no `..`, no absolute path): else `400`. A volume or file that does not exist is `404`; a backend without such storage is `404` too; a failure reading it is `502` (`{"error"}`).
+- The Modal backend (`backends/modal_backend.py`, `model_file`) runs `python -m providers.modal.read_model_file <model_path> <file>` (`ai_train/providers/modal/read_model_file.py`, read only, like the volume listing) in a subprocess and streams its stdout, so a multi-gigabyte file is never held in memory. The first chunk is read before the answer starts, so a missing file is a clean `404`; a failure after that aborts the response, which the Go side sees as a short body.
+- Go: `sidecar.Client.DownloadModelFile(ctx, modelPath, file, w)` streams it into a writer. `internal/training.FetchModelFiles` downloads every file of a model into a directory through a temporary name, checks the size and the sha256 recorded in `gb_trained_models.files`, and renames it into place; a file already there with the right size and sha256 is not downloaded again.
 
 ### Admin UI: the training view
 

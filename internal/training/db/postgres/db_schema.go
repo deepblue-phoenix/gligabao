@@ -84,6 +84,23 @@ CREATE TABLE IF NOT EXISTS gb_trained_model_inferences (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_trained_model_inferences_model ON gb_trained_model_inferences(trained_model_id, id);
 
+-- One row per export of a trained model through an exporter (see sqlite/db_schema.go).
+CREATE TABLE IF NOT EXISTS gb_trained_model_exports (
+	id               BIGSERIAL PRIMARY KEY,
+	trained_model_id BIGINT NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
+	exporter         TEXT NOT NULL,
+	options          TEXT NOT NULL DEFAULT '{}',
+	status           TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed')),
+	dir              TEXT NOT NULL DEFAULT '',
+	ref              TEXT NOT NULL DEFAULT '',
+	details          TEXT NOT NULL DEFAULT '{}',
+	error            TEXT NOT NULL DEFAULT '',
+	duration_ms      BIGINT NOT NULL DEFAULT 0,
+	created_at       TIMESTAMPTZ NOT NULL DEFAULT ` + rpostgres.SQLNow + `,
+	completed_at     TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_gb_trained_model_exports_model ON gb_trained_model_exports(trained_model_id, id);
+
 -- JSONL training datasets found in the training datasets directory by the Go server (see sqlite/db_schema.go).
 CREATE TABLE IF NOT EXISTS gb_training_datasets (
 	id          BIGSERIAL PRIMARY KEY,

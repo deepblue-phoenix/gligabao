@@ -109,6 +109,9 @@ type Options struct {
 	// TimeseriesProviders are the sources of timeseries that remember can fetch from (see docs/timeseries.md). Each has a
 	// natural-language description of when it applies, and a callback that does the fetching. Validated at startup.
 	TimeseriesProviders []memory_core.SeriesProvider
+	// TrainedModelExporters are the hooks that export trained models (POST /v1/gb/training/models/{id}/exports): each is given
+	// the model's files in a local directory and does with them what it wants. Validated at startup.
+	TrainedModelExporters []coretraining.TrainedModelExporter
 	// AdminUIenable registers the admin UI handlers (served at /v1/gb/admin/ from the assets embedded in the binary).
 	AdminUIenable bool
 }
@@ -178,9 +181,9 @@ const EvalDBName = "eval"
 // llm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities.
 // jv may be nil, in which case remember skips the steps that run on Jev. ws may be nil, in which case web search is not available
 // (a remember request with web_search returns 503); it is the Anthropic web search tool, so it is only set with an Anthropic API key.
-// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). sc starts the training jobs (/v1/gb/training/) on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The eval endpoints are registered only if eval is true, the training endpoints (/v1/gb/training/) only if trainingMode is true,
+// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). exporters are the registered trained model exporters (already validated; may be nil: an export request then answers 400). sc starts the training jobs (/v1/gb/training/) on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The eval endpoints are registered only if eval is true, the training endpoints (/v1/gb/training/) only if trainingMode is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary.
-func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
+func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, exporters []coretraining.TrainedModelExporter, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "gligabao is running")
@@ -201,7 +204,7 @@ func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_c
 	}
 	dbs := append([]admin.Named{{Name: "standard", DB: d.Relational, Vectors: d.Vector, ImageDir: d.ImageDir}}, extraAdminDBs...)
 	if trainingMode {
-		registerTraining(ctx, mux, d.Backend, d.Relational, d.TrainingDatasetDir, d.TrainingEvalDir, sc, llm)
+		registerTraining(ctx, mux, d.Backend, d.Relational, d.TrainingDatasetDir, d.TrainingEvalDir, d.TrainedModelExportDir, exporters, sc, llm)
 	}
 	if adminUI {
 		registerAdminUI(mux, dbs, sc)
@@ -222,8 +225,8 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 // registerTraining registers the training endpoints under /v1/gb/training/ (they are part of the API, not of the admin UI,
 // and are served whether or not the admin UI is on, but only in training mode): the jobs, the datasets and the feed of the jobs' progress. They work with trainingDB; datasetDir is the training datasets directory and evalDir the directory of the evals. The training monitor follows the progress the sidecar
 // reports for the jobs (it resumes the unfinished ones now) and feeds it to the SSE endpoint. llm judges the evals and the training data audits of the
-// trained models (nil: starting one answers 503).
-func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, trainingDB *sql.DB, datasetDir, evalDir string, sc coretraining.Sidecar, llm memory_core.LLM) {
+// trained models (nil: starting one answers 503). Trained models are exported through exporters, after their files are fetched to exportDir.
+func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, trainingDB *sql.DB, datasetDir, evalDir, exportDir string, exporters []coretraining.TrainedModelExporter, sc coretraining.Sidecar, llm memory_core.LLM) {
 	mon := coretraining.NewMonitor(ctx, trainingDB, sc)
 	// The evals and the training data audits are those of internal/evals and internal/training_audits (their own tables).
 	evalStore, err := evals.StoreFor(backend)
@@ -251,6 +254,12 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, t
 	mux.HandleFunc("GET /v1/gb/training/models/{id}", training.GetModelOf(trainingDB))
 	mux.HandleFunc("POST /v1/gb/training/models/{id}/infer", training.InferOf(trainingDB, sc))
 	mux.HandleFunc("GET /v1/gb/training/models/{id}/inferences", training.ListInferencesOf(trainingDB))
+	var fetcher coretraining.ModelFileFetcher // not sc itself: a nil Sidecar must become a nil fetcher
+	if f, ok := sc.(coretraining.ModelFileFetcher); ok {
+		fetcher = f
+	}
+	mux.HandleFunc("POST /v1/gb/training/models/{id}/exports", training.ExportOf(trainingDB, fetcher, exporters, exportDir))
+	mux.HandleFunc("GET /v1/gb/training/models/{id}/exports", training.ListExportsOf(trainingDB))
 	evalsapi.New(evals).Register(mux, "/v1/gb/training") // the evals, their definitions and the training experiments
 	auditsapi.New(audits).Register(mux, "/v1/gb/training")
 	mux.HandleFunc("GET /v1/gb/training/datasets", training.ListDatasetsOf(trainingDB, datasetDir))
@@ -407,6 +416,14 @@ func Run(ctx context.Context, opts Options) error {
 		log.WithField("provider", p.Name).Info("timeseries provider registered: remember can fetch series from it when asked (timeseries.fetch)")
 	}
 
+	exporters, err := coretraining.ResolveExporters(opts.TrainedModelExporters)
+	if err != nil {
+		return err
+	}
+	for _, e := range exporters {
+		log.WithField("exporter", e.Name).Info("trained model exporter registered: trained models can be exported through it (POST /v1/gb/training/models/{id}/exports)")
+	}
+
 	var llm memory_core.LLM
 	// Web search is Anthropic's cloud-based web search tool, so it needs the Anthropic API key and only exists with it.
 	var ws memory_core.WebSearcher
@@ -472,7 +489,7 @@ func Run(ctx context.Context, opts Options) error {
 	// The remember manager stops only when Run returns, i.e. after the graceful shutdown has given the runs in progress their time.
 	mgrCtx, stopMgr := context.WithCancel(ctx)
 	defer stopMgr()
-	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(mgrCtx, database, llm, emb, jv, ws, providers, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, extra...)}
+	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(mgrCtx, database, llm, emb, jv, ws, providers, exporters, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, extra...)}
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

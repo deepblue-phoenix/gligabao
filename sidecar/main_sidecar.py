@@ -10,7 +10,7 @@ from fastapi import FastAPI, Request
 from pydantic import ValidationError
 
 from backends import Backend, get_backend
-from routes import add_action_routes, add_backend_routes
+from routes import add_action_routes, add_backend_routes, add_model_file_route
 from sidecar_config import SidecarConfig
 
 
@@ -59,6 +59,7 @@ def create_app(config: SidecarConfig, backend: Optional[Backend] = None) -> Fast
         return {"backends": [await backend.status()]}
 
     add_action_routes(app, backend)
+    add_model_file_route(app, backend)
     add_backend_routes(app, backend)
     return app
 

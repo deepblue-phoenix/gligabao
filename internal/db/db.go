@@ -52,6 +52,9 @@ type Config struct {
 	// TrainingEvalDir is the directory of the evals of trained models (one JSON file per eval). Default: an "evals_training"
 	// directory next to SQLitePath.
 	TrainingEvalDir string
+	// TrainedModelExportDir is the directory the files of trained models are fetched to for an export: one subdirectory per
+	// training job. Default: a "trained_models" directory next to SQLitePath.
+	TrainedModelExportDir string
 	// EmbeddingDimensions is the embedding size. Default: config.DefaultEmbeddingDimensions.
 	EmbeddingDimensions int
 	// PineconeKey and PineconeIndexHost configure the Pinecone store.
@@ -118,6 +121,8 @@ type DB struct {
 	TrainingDatasetDir string
 	// TrainingEvalDir is the directory of the evals of trained models (may not exist: then there are no evals).
 	TrainingEvalDir string
+	// TrainedModelExportDir is the directory the files of trained models are fetched to for an export (created at the first export).
+	TrainedModelExportDir string
 	// Chunking is the chunk size and overlap remember uses for a long text.
 	Chunking chunk.Config
 }
@@ -153,14 +158,19 @@ func Open(cfg Config) (*DB, error) {
 		cfg.TrainingEvalDir = DefaultTrainingEvalDir(cfg.SQLitePath)
 	}
 
+	if cfg.TrainedModelExportDir == "" {
+		cfg.TrainedModelExportDir = DefaultTrainedModelExportDir(cfg.SQLitePath)
+	}
+
 	d := &DB{
-		ImageDir:            cfg.ImageDir,
-		TrainingEvalDir:     cfg.TrainingEvalDir,
-		TrainingDatasetDir:  cfg.TrainingDatasetDir,
-		Backend:             cfg.Backend,
-		VectorStore:         cfg.VectorStore,
-		EmbeddingDimensions: cfg.EmbeddingDimensions,
-		Chunking:            cfg.Chunking,
+		ImageDir:              cfg.ImageDir,
+		TrainedModelExportDir: cfg.TrainedModelExportDir,
+		TrainingEvalDir:       cfg.TrainingEvalDir,
+		TrainingDatasetDir:    cfg.TrainingDatasetDir,
+		Backend:               cfg.Backend,
+		VectorStore:           cfg.VectorStore,
+		EmbeddingDimensions:   cfg.EmbeddingDimensions,
+		Chunking:              cfg.Chunking,
 	}
 
 	target := cfg.SQLitePath
@@ -254,6 +264,12 @@ func DefaultTrainingDatasetDir(sqlitePath string) string {
 // configured: "evals_training" in the file's directory (bin/evals_training for bin/gligabao.db).
 func DefaultTrainingEvalDir(sqlitePath string) string {
 	return filepath.Join(filepath.Dir(sqlitePath), "evals_training")
+}
+
+// DefaultTrainedModelExportDir is the directory trained models are fetched to for an export, used for the SQLite file sqlitePath
+// when none is configured: "trained_models" in the file's directory (bin/trained_models for bin/gligabao.db).
+func DefaultTrainedModelExportDir(sqlitePath string) string {
+	return filepath.Join(filepath.Dir(sqlitePath), "trained_models")
 }
 
 // Close closes every client. It is safe to call on a nil DB.

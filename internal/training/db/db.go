@@ -1,6 +1,6 @@
 // Package db stores and queries the training data: the training jobs the sidecar runs and their events, the models they
-// trained, the inferences run on those, and the training datasets. Every operation goes through the functions here, which
-// route to the backend in use (db/sqlite or db/postgres). The backends keep the training tables in the relational database
+// trained, the inferences run on those, the exports of those models, and the training datasets. Every operation goes
+// through the functions here, which route to the backend in use (db/sqlite or db/postgres). The backends keep the training tables in the relational database
 // opened by package relational (the training eval runs of internal/evals refer to the trained models by ID), so Open must be
 // called with the *sql.DB returned by relational.Open, before the evals' Open (internal/evals). All SQL lives in the backends; other packages
 // only call the functions here and never write SQL.
@@ -26,6 +26,7 @@ type (
 	TrainedModel          = model.TrainedModel
 	TrainedModelFile      = model.TrainedModelFile
 	TrainedModelInference = model.TrainedModelInference
+	TrainedModelExport    = model.TrainedModelExport
 )
 
 // Statuses of a TrainedModelInference.
@@ -33,6 +34,13 @@ const (
 	TrainedModelInferenceRunning   = model.TrainedModelInferenceRunning
 	TrainedModelInferenceCompleted = model.TrainedModelInferenceCompleted
 	TrainedModelInferenceFailed    = model.TrainedModelInferenceFailed
+)
+
+// Statuses of a TrainedModelExport.
+const (
+	TrainedModelExportRunning   = model.TrainedModelExportRunning
+	TrainedModelExportCompleted = model.TrainedModelExportCompleted
+	TrainedModelExportFailed    = model.TrainedModelExportFailed
 )
 
 // Statuses of a TrainingDataset.

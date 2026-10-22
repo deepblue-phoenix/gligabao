@@ -472,6 +472,16 @@ class TrainedModelTest(unittest.TestCase):
                 trained_model.resolve_model_dir(bad, self.models)
 
 
+class ValidModelFileTest(unittest.TestCase):
+    def test_valid(self):
+        for ok in ("adapter_model.safetensors", "adapter_config.json", "sub/dir/tokenizer.model", "a-b_c.d"):
+            self.assertTrue(trained_model.valid_model_file(ok), ok)
+
+    def test_invalid(self):
+        for bad in ("", ".", "..", "../x", "a/../b", "/etc/passwd", "a//b", "a/", ".hidden", "a b", "a\\b", "x" * 5 + "/y" * 8, None, 3):
+            self.assertFalse(trained_model.valid_model_file(bad), bad)
+
+
 class RunTrainTest(unittest.TestCase):
     """bootstrap.run_train reports the job's life to its event log (the trainers themselves are faked)."""
 

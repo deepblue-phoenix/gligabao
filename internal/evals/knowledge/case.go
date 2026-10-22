@@ -99,7 +99,7 @@ func (x *Executor) runCase(ctx context.Context, name string, in core.KnowledgeCa
 	}
 	mgrCtx, stopMgr := context.WithCancel(context.Background()) // stops the remember manager of the handler
 	defer stopMgr()
-	srv := httptest.NewServer(server.NewHandler(mgrCtx, database, llm, x.Embedder, nil, x.WebSearch, nil, nil, true, true, false))
+	srv := httptest.NewServer(server.NewHandler(mgrCtx, database, llm, x.Embedder, nil, x.WebSearch, nil, nil, nil, true, true, false))
 	defer srv.Close()
 
 	dataset := DatasetName(name, evalRunID)

@@ -18,6 +18,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/server"
+	"github.com/deepblue-phoenix/gligabao/internal/training"
+	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	"github.com/deepblue-phoenix/gligabao/monitoring"
 )
 
@@ -84,6 +86,27 @@ type TimeseriesData = memory_core.SeriesData
 // TimeseriesPoint is one value of a series at a time.
 type TimeseriesPoint = memory_core.SeriesPoint
 
+// TrainedModelExporter is a named hook that exports trained models (see ServeOptions.TrainedModelExporters and
+// docs/hooks.md): gligabao fetches the weights of the model to a local directory and calls Export with it; what Export does
+// with the files (upload them to a third party, copy them, ...) is up to the embedding program.
+type TrainedModelExporter = training.TrainedModelExporter
+
+// ExportTrainedModelFunc is the Export callback of a TrainedModelExporter.
+type ExportTrainedModelFunc = training.ExportTrainedModelFunc
+
+// ExportTrainedModelRequest is what a TrainedModelExporter's Export callback is asked to export: the trained model, the local
+// directory with its files, and the options of the request.
+type ExportTrainedModelRequest = training.ExportTrainedModelRequest
+
+// ExportTrainedModelResult is what an Export callback reports: a reference to what it made and optional details.
+type ExportTrainedModelResult = training.ExportTrainedModelResult
+
+// TrainedModel is a trained model, the result of a completed training job (a LoRA adapter on the sidecar's models volume).
+type TrainedModel = trainingdb.TrainedModel
+
+// TrainedModelFile is one file of a trained model's weights.
+type TrainedModelFile = trainingdb.TrainedModelFile
+
 // ServeOptions holds the settings that are not part of the Config file.
 type ServeOptions struct {
 	// DBPath is the SQLite database file (sqlite backend). Default: DefaultDBPath.
@@ -99,6 +122,9 @@ type ServeOptions struct {
 	// TrainingEvalDir is the directory of the evals of trained models: one JSON file per eval, a map {"name", "cases"} (the
 	// training evals the admin UI and the API run). Default: an "evals_training" directory next to DBPath.
 	TrainingEvalDir string
+	// TrainedModelExportDir is the directory the files of trained models are fetched to for an export, one subdirectory per training
+	// job (gligabao never deletes them). Default: a "trained_models" directory next to DBPath.
+	TrainedModelExportDir string
 	// EvalDBPath is the eval database (the SQLite file ./run_evals.sh writes the datasets, experiments and runs to); with
 	// the admin UI on it is shown next to the main database and feeds its Evals block.
 	EvalDBPath string
@@ -112,6 +138,10 @@ type ServeOptions struct {
 	// decide which provider is for which entity of a text), an optional QueryFormat and the Fetch callback. They are
 	// validated at startup: Serve returns the error if one is malformed.
 	TimeseriesProviders []TimeseriesProvider
+	// TrainedModelExporters are the hooks that export trained models (POST /v1/gb/training/models/{id}/exports names the one to
+	// use): gligabao fetches the model's files from the sidecar to a local directory and calls the exporter with it. Each has a
+	// Name and the Export callback. They are validated at startup: Serve returns the error if one is malformed.
+	TrainedModelExporters []TrainedModelExporter
 	// Hooks are installed for the lifetime of Serve; every one is called for each event.
 	Hooks []Hooks
 }
@@ -148,6 +178,7 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 	dbConfig := db.ConfigFrom(cfg, opts.DBPath, opts.VectorDir, opts.ImageDir)
 	dbConfig.TrainingDatasetDir = opts.TrainingDatasetDir
 	dbConfig.TrainingEvalDir = opts.TrainingEvalDir
+	dbConfig.TrainedModelExportDir = opts.TrainedModelExportDir
 	return server.Run(ctx, server.Options{
 		Addr:         cfg.Addr(),
 		DB:           dbConfig,
@@ -159,7 +190,8 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 		SidecarURL:   cfg.SidecarURL,
 		Prices:       aiPrices(cfg),
 
-		TimeseriesProviders: opts.TimeseriesProviders,
+		TimeseriesProviders:   opts.TimeseriesProviders,
+		TrainedModelExporters: opts.TrainedModelExporters,
 
 		TrajectoryDir:      opts.TrajectoryDir,
 		EvalDBPath:         opts.EvalDBPath,

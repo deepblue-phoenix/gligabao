@@ -25,6 +25,14 @@ class BackendError(Exception):
     """The backend could not be reached or did not answer (the sidecar turns it into a 502)."""
 
 
+class ModelFileError(BackendError):
+    """A model file cannot be served; `status` is the HTTP status the sidecar answers with (400 invalid path, 404 no such file)."""
+
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+
+
 class Backend(ABC):
     name: str
 
@@ -57,6 +65,12 @@ class Backend(ABC):
     async def volumes(self) -> Optional[list]:
         """The storage volumes the backend uses, one dict each (`GET /backends/<name>/volumes`), or None if the backend
         has no such concept. Raises BackendError if they cannot be listed."""
+        return None
+
+    async def model_file(self, model_path: str, file: str) -> Optional[AsyncIterator[bytes]]:
+        """The bytes of `file` of the trained model at `model_path` (`trained/<job id>`), streamed, or None if the backend
+        has no such storage (`GET /models/file`). Raises ModelFileError (400 invalid path, 404 no such file) or BackendError
+        (it cannot be read). The Go server uses it to fetch a model's weights to its own disk."""
         return None
 
     async def aclose(self) -> None:

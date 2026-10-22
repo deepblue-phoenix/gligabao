@@ -2,11 +2,16 @@ package training_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,6 +20,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
 	core "github.com/deepblue-phoenix/gligabao/internal/training"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
+	"github.com/deepblue-phoenix/gligabao/monitoring"
 )
 
 func TestTrainedModelEndpoints(t *testing.T) { dbtest.Run(t, testTrainedModelEndpoints) }
@@ -160,5 +166,145 @@ func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
 	training.ListInferencesOf(d)(rec, req)
 	if rec.Code != 404 {
 		t.Fatalf("list inferences of unknown model: %d", rec.Code)
+	}
+}
+
+type fakeFetcher struct{ files map[string]string }
+
+func (f fakeFetcher) DownloadModelFile(ctx context.Context, modelPath, file string, w io.Writer) (int64, error) {
+	content, ok := f.files[modelPath+"/"+file]
+	if !ok {
+		return 0, errors.New("no such file")
+	}
+	n, err := io.WriteString(w, content)
+	return int64(n), err
+}
+
+func TestExportATrainedModel(t *testing.T) { dbtest.Run(t, testExportATrainedModel) }
+
+func testExportATrainedModel(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	sum := sha256.Sum256([]byte("weights"))
+	if _, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "job1", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/job1",
+		Files: []trainingdb.TrainedModelFile{{Path: "adapter_model.safetensors", SizeBytes: 7, SHA256: hex.EncodeToString(sum[:])}}}); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	var got []core.ExportTrainedModelRequest
+	var failWith error
+	exporters := []core.TrainedModelExporter{
+		{Name: "copy", Export: func(ctx context.Context, req core.ExportTrainedModelRequest) (core.ExportTrainedModelResult, error) {
+			got = append(got, req)
+			if failWith != nil {
+				return core.ExportTrainedModelResult{}, failWith
+			}
+			if _, err := os.Stat(filepath.Join(req.Dir, "adapter_model.safetensors")); err != nil {
+				return core.ExportTrainedModelResult{}, err
+			}
+			return core.ExportTrainedModelResult{Ref: "ref-" + req.Model.JobID, Details: map[string]any{"files": 1}}, nil
+		}},
+		{Name: "panics", Export: func(context.Context, core.ExportTrainedModelRequest) (core.ExportTrainedModelResult, error) {
+			panic("kaboom")
+		}},
+	}
+	fetcher := fakeFetcher{files: map[string]string{"trained/job1/adapter_model.safetensors": "weights"}}
+	var events []string
+	monitoring.SetHooks([]monitoring.Hooks{{SystemEvent: func(_ context.Context, typ string, _ monitoring.Event) { events = append(events, typ) }}})
+	defer monitoring.SetHooks(nil)
+
+	post := func(f core.ModelFileFetcher, modelID, body string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/x", strings.NewReader(body))
+		req.SetPathValue("id", modelID)
+		training.ExportOf(d, f, exporters, root)(rec, req)
+		return rec
+	}
+
+	rec := post(fetcher, "1", `{"exporter":"copy","options":{"name":"x"}}`)
+	var out trainingdb.TrainedModelExport
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != 200 {
+		t.Fatalf("export: %d %s", rec.Code, rec.Body)
+	}
+	wantDir := filepath.Join(root, "job1")
+	if out.Status != trainingdb.TrainedModelExportCompleted || out.Ref != "ref-job1" || out.Exporter != "copy" || out.TrainedModelID != 1 ||
+		out.Dir != wantDir || string(out.Details) != `{"files":1}` || string(out.Options) != `{"name":"x"}` || out.CompletedAt == nil {
+		t.Fatalf("export record: %+v", out)
+	}
+	if len(got) != 1 || got[0].ExportID != out.ID || got[0].Dir != wantDir || got[0].Model.JobID != "job1" || got[0].Options["name"] != "x" {
+		t.Fatalf("exporter request: %+v", got)
+	}
+	// the files are left in place for later
+	if b, err := os.ReadFile(filepath.Join(wantDir, "adapter_model.safetensors")); err != nil || string(b) != "weights" {
+		t.Fatalf("fetched file: %q %v", b, err)
+	}
+
+	for name, c := range map[string]struct {
+		f        core.ModelFileFetcher
+		id, body string
+		want     int
+	}{
+		"unknown model":    {fetcher, "9", `{"exporter":"copy"}`, 404},
+		"bad id":           {fetcher, "x", `{"exporter":"copy"}`, 400},
+		"no exporter":      {fetcher, "1", `{}`, 400},
+		"unknown exporter": {fetcher, "1", `{"exporter":"nope"}`, 400},
+		"bad json":         {fetcher, "1", `{`, 400},
+		"no sidecar":       {nil, "1", `{"exporter":"copy"}`, 503},
+	} {
+		if rec := post(c.f, c.id, c.body); rec.Code != c.want {
+			t.Fatalf("%s: %d %s", name, rec.Code, rec.Body)
+		}
+	}
+	// requests that never reached the exporter are not recorded
+	if list, err := trainingdb.ListTrainedModelExports(ctx, d, 1, 0); err != nil || len(list) != 1 {
+		t.Fatalf("stored exports: %+v %v", list, err)
+	}
+
+	// the exporter failing, panicking, and the files not being fetchable: 502, recorded as failed
+	failWith = errors.New("upload refused")
+	if rec := post(fetcher, "1", `{"exporter":"copy"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "upload refused") {
+		t.Fatalf("exporter error: %d %s", rec.Code, rec.Body)
+	}
+	if rec := post(fetcher, "1", `{"exporter":"panics"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "kaboom") {
+		t.Fatalf("exporter panic: %d %s", rec.Code, rec.Body)
+	}
+	os.RemoveAll(wantDir) // so the files have to be fetched again, which the fetcher cannot do
+	if rec := post(fakeFetcher{}, "1", `{"exporter":"copy"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "fetching") {
+		t.Fatalf("fetch error: %d %s", rec.Code, rec.Body)
+	}
+
+	list, err := trainingdb.ListTrainedModelExports(ctx, d, 1, 0)
+	if err != nil || len(list) != 4 {
+		t.Fatalf("stored exports: %+v %v", list, err)
+	}
+	if e := list[0]; e.Status != trainingdb.TrainedModelExportFailed || !strings.Contains(e.Error, "fetching") || e.Dir != "" {
+		t.Fatalf("fetch failure record: %+v", e)
+	}
+	if e := list[1]; e.Status != trainingdb.TrainedModelExportFailed || !strings.Contains(e.Error, "kaboom") || e.Dir == "" {
+		t.Fatalf("panic record: %+v", e)
+	}
+	if e := list[2]; e.Status != trainingdb.TrainedModelExportFailed || !strings.Contains(e.Error, "upload refused") {
+		t.Fatalf("failure record: %+v", e)
+	}
+	wantEvents := []string{"training.model_export.completed", "training.model_export.failed", "training.model_export.failed", "training.model_export.failed"}
+	if strings.Join(events, ",") != strings.Join(wantEvents, ",") {
+		t.Fatalf("system events: %v", events)
+	}
+
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/x?limit=2", nil)
+	req.SetPathValue("id", "1")
+	training.ListExportsOf(d)(rec, req)
+	var listed struct {
+		Exports []trainingdb.TrainedModelExport `json:"exports"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil || rec.Code != 200 || len(listed.Exports) != 2 || listed.Exports[0].ID != list[0].ID {
+		t.Fatalf("list exports: %d %s", rec.Code, rec.Body)
+	}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest("GET", "/x", nil)
+	req.SetPathValue("id", "9")
+	training.ListExportsOf(d)(rec, req)
+	if rec.Code != 404 {
+		t.Fatalf("list exports of unknown model: %d", rec.Code)
 	}
 }

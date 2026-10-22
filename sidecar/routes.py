@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.background import BackgroundTask
 
 from backends import Backend, BackendError
+from backends.base import ModelFileError
 from backends.actions import ActionBusy, ActionNotRunning
 
 log = logging.getLogger("uvicorn.error")
@@ -114,3 +115,23 @@ def add_action_routes(app: FastAPI, backend: Backend) -> None:
 
     app.add_api_route("/backends/{name}/volumes", lister("volumes", backend.volumes), methods=["GET"], include_in_schema=False)
     app.add_api_route("/backends/{name}/apps", lister("apps", backend.apps), methods=["GET"], include_in_schema=False)
+
+
+def add_model_file_route(app: FastAPI, backend: Backend) -> None:
+    """GET /models/file?model_path=trained/<job id>&file=<path in it>: the raw bytes of one file of a trained model, answered
+    by the sidecar itself (not forwarded). The Go server fetches a model's weights with it (the model's `files` list says
+    which). 400 for an invalid path, 404 for a file that is not there (or a backend without such storage), 502 if the
+    backend cannot read it."""
+    async def handler(model_path: str = Query(""), file: str = Query("")) -> Response:
+        try:
+            body = await backend.model_file(model_path, file)
+        except ModelFileError as e:
+            return JSONResponse({"error": str(e)}, status_code=e.status)
+        except BackendError as e:
+            log.error("GET /models/file %s %s: backend error, answering 502: %s", model_path, file, e)
+            return JSONResponse({"error": str(e)}, status_code=502)
+        if body is None:
+            return JSONResponse({"error": f"backend {backend.name!r} has no model files"}, status_code=404)
+        return StreamingResponse(body, media_type="application/octet-stream")
+
+    app.add_api_route("/models/file", handler, methods=["GET"], include_in_schema=False)

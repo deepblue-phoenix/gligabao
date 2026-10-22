@@ -291,6 +291,9 @@
 | `internal/training.DatasetInfo`                           | is a training dataset as the API shows it, combining its record and manifest.                                          |
 | `internal/training.DatasetProblem`                        | is a dataset subdirectory that has a manifest but is not usable.                                                       |
 | `internal/training.Error`                                 | is a failure of a training operation with its kind.                                                                    |
+| `internal/training.ExportRequest`                         | is what the caller of ExportModel chooses: the exporter's name and its options.                                        |
+| `internal/training.ExportTrainedModelRequest`             | is what a trained model exporter is asked to export: the model, its local directory and the options.                   |
+| `internal/training.ExportTrainedModelResult`              | is what a trained model exporter reports: a reference to what it made and details.                                     |
 | `internal/training.FeedEvent`                             | is a sidecar event tagged with its run and job as the admin UI receives it.                                            |
 | `internal/training.FileStats`                             | describes a data file's size, hash and record count.                                                                   |
 | `internal/training.InferRequest`                          | is a prompt for a trained model.                                                                                       |
@@ -309,8 +312,10 @@
 | `internal/training.RunWatch`                              | is a run and its cases so far, plus a live event feed.                                                                 |
 | `internal/training.StartJobRequest`                       | is what the caller of StartJob chooses for a training job.                                                             |
 | `internal/training.Subscription`                          | is a subscriber to the monitor's events, delivered on a channel.                                                       |
+| `internal/training.TrainedModelExporter`                  | is a named hook, registered by the embedding program, that exports trained models.                                     |
 | `internal/training.runningRun`                            | tracks a running run's ID and cancel function.                                                                         |
 | `internal/training/db/model.TrainedModel`                 | is the record of the weights a completed training job produced.                                                        |
+| `internal/training/db/model.TrainedModelExport`           | is one stored export of a trained model through an exporter.                                                           |
 | `internal/training/db/model.TrainedModelFile`             | is one file of a trained model's weights.                                                                              |
 | `internal/training/db/model.TrainedModelInference`        | is one stored request to run a prompt through a trained model.                                                         |
 | `internal/training/db/model.TrainingDataset`              | is the record of a training dataset's JSONL file and its manifest.                                                     |

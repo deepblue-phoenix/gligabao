@@ -28,6 +28,7 @@
 - `gb_training_job_events`
 - `gb_trained_models`
 - `gb_trained_model_inferences`
+- `gb_trained_model_exports`
 - `gb_training_datasets`
 
 ## What each table is about
@@ -58,6 +59,7 @@
 | `gb_training_job_events`      | the status and progress events (with loss) the sidecar reported for a training job, in order.                                                   |
 | `gb_trained_models`           | one row per completed training job, the saved weights (LoRA adapter) that inference, evals and audits run on.                                   |
 | `gb_trained_model_inferences` | one row per prompt run through a trained model, with response, status, tokens and cold-start timing.                                            |
+| `gb_trained_model_exports`    | one row per export of a trained model through an exporter hook, with status, local directory, the exporter's ref and error.                     |
 | `gb_training_datasets`        | one row per JSONL training dataset the server has seen (file name, size, record count, digest, sync status with the sidecar).                   |
 
 ## Where each table is defined
@@ -88,6 +90,7 @@
 | `gb_training_job_events`      | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
 | `gb_trained_models`           | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
 | `gb_trained_model_inferences` | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
+| `gb_trained_model_exports`    | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
 | `gb_training_datasets`        | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
 
 ## TRAINING_AUDIT

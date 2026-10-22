@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.96.0] - 2026-10-24
+
+### Added
+- Trained model exporters, a new hook: `ServeOptions.TrainedModelExporters` takes a list of `gligabao.TrainedModelExporter{Name, Export}`. `POST /v1/gb/training/models/{id}/exports` with `{"exporter", "options"?}` fetches the model's files from the sidecar to a local directory and calls the named exporter's `Export` callback with it (`ExportTrainedModelRequest`: the trained model, `Dir`, the options, an export ID; result: `Ref` and `Details`), waits for it (synchronous) and answers with the stored export; `502` if fetching or the exporter failed. What an exporter does with the files (upload them to a third party, ...) is up to the embedding program. Exporters are validated at startup. Documented in [docs/hooks.md](docs/hooks.md#trained-model-exporters).
+- `GET /v1/gb/training/models/{id}/exports`: the exports of a model, newest first, failed ones too. They are stored in the new table `gb_trained_model_exports` (exporter, options, status running/completed/failed, directory, ref, details, error, duration), created automatically; a system event `training.model_export.completed` / `.failed` is emitted for each.
+- The files of an exported model are fetched into `<trained model export dir>/<job id>` (`serve --trained-model-export-dir`, `ServeOptions.TrainedModelExportDir`, default `trained_models` next to the database file). Every file is checked against the size and sha256 recorded for the model; files already there and intact are reused by the next export. gligabao never deletes the directory.
+- Sidecar: `GET /models/file?model_path=trained/<job id>&file=<path>` streams one file of a trained model from the Modal models volume (`ai_train/providers/modal/read_model_file.py`), so the Go server can fetch weights; `400` for an invalid path, `404` for a missing file, `502` if it cannot be read. Redeploy nothing on Modal: the sidecar reads the volume itself.
+
 ## [0.95.0] - 2026-10-24
 
 ### Added
