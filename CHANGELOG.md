@@ -5,6 +5,21 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.100.0] - 2026-10-28
+
+### Added
+- Content directories are lists, set in the configuration file, so a program that embeds gligabao can keep its own datasets, evals and ontologies next to gligabao's: `datasets_training_dirs`, `evals_training_dirs`, `evals_knowledge_dirs` and `ontology_dirs` in `gligabao.toml`. The directories are searched in order and the first one wins when a name (a training dataset, an eval) is in more than one. Relative paths are relative to the config file, not to the working directory. `bin/gligabao.toml` lists gligabao's own.
+- Training datasets: uploads are saved in the first directory of `datasets_training_dirs`; the others are only read (an upload named like a dataset of another directory is a `409`). When there are several directories, a dataset problem's `dir` is the full path of its subdirectory.
+- Ontologies: `POST /v1/gb/ontologies` and `PUT /v1/gb/ontologies/{name}` take `"file": "market.owl"` instead of `content`, a file of the `ontology_dirs` (the first directory that has it). Nothing is scanned or loaded at startup, the file is named in the request, and the ontology belongs to the `user_id` of the request. `file` must be a plain file name (`400` otherwise, or when no directories are configured), `404` if no directory has it.
+- `serve --training-dataset-dir` and `--training-eval-dir` can be repeated, and `serve --ontology-dir` is new (also repeatable). All of them override the config file's lists. `ServeOptions` has `TrainingDatasetDirs`, `TrainingEvalDirs` and `OntologyDirs` for embedding programs; they too override the config.
+- The eval runners read their directories from the config file: `-config` (default `bin/gligabao.toml`) is read for `evals_knowledge_dirs` (knowledge) or `evals_training_dirs` (training). `-evals` can be repeated and still overrides the config; with neither, the directory is the old default. `./run_evals.sh` passes `-config` (`GLIGABAO_CONFIG` changes the file). A case's `text_file` is looked up in the eval directories in order.
+
+### Changed
+- Embedding programs: `ServeOptions.TrainingDatasetDir` and `TrainingEvalDir` (strings) are now `TrainingDatasetDirs` and `TrainingEvalDirs` (lists). The run params the knowledge and training runners store with a run have `evals_dirs` (a list) instead of `evals_dir`.
+- The server's training evals skip a directory of `evals_training_dirs` that does not exist (it has no evals) instead of failing to load the evals, so a list can name directories that exist only in some deployments.
+- The container image copies `bin/ontology` to `/app/ontology` (so `"file"` works with the config's `ontology_dirs`), and its `CMD` passes `--training-dataset-dir /data/datasets_training`, so uploaded datasets stay on the `/data` volume (the config's `datasets_training_dirs` would resolve to `/app/datasets_training`, not writable there).
+- Internal: `training.Dirs.Datasets` and `Evals` are lists, as are the directory arguments of the training dataset and eval functions; `api.Register` takes `api.WithOntologyDirs(...)`.
+
 ## [0.99.0] - 2026-10-27
 
 ### Added

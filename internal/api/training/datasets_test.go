@@ -63,7 +63,7 @@ func TestUploadTrainingDataset(t *testing.T) { dbtest.Run(t, testUploadTrainingD
 func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 	ctx := t.Context()
 	dir := filepath.Join(t.TempDir(), "datasets_training") // created by the first upload
-	dsDir := dir
+	dsDir := []string{dir}
 	h := training.UploadDatasetOf(d, dsDir)
 
 	rec := upload(h, "/x", "file", "mine.jsonl", goodDataset, nil)
@@ -148,7 +148,7 @@ func testUploadTrainingDataset(t *testing.T, d *sql.DB) {
 	}
 
 	// No directory configured: refused.
-	if rec := upload(training.UploadDatasetOf(d, ""), "/x", "file", "n.jsonl", goodDataset, nil); rec.Code != http.StatusInternalServerError {
+	if rec := upload(training.UploadDatasetOf(d, nil), "/x", "file", "n.jsonl", goodDataset, nil); rec.Code != http.StatusInternalServerError {
 		t.Fatalf("no dir: %d", rec.Code)
 	}
 
@@ -172,7 +172,7 @@ func TestStartJobSendsDataset(t *testing.T) { dbtest.Run(t, testStartJobSendsDat
 func testStartJobSendsDataset(t *testing.T, d *sql.DB) {
 	ctx := t.Context()
 	dir := t.TempDir()
-	dsDir := dir
+	dsDir := []string{dir}
 	sc := &fakeSidecar{}
 	up := training.UploadDatasetOf(d, dsDir)
 	start := func(body string) *httptest.ResponseRecorder {
@@ -257,7 +257,7 @@ func testStartJobSendsDataset(t *testing.T, d *sql.DB) {
 
 func TestUploadTrainingDatasetTooLarge(t *testing.T) {
 	dbtest.Run(t, func(t *testing.T, d *sql.DB) {
-		h := training.UploadDatasetOf(d, t.TempDir())
+		h := training.UploadDatasetOf(d, []string{t.TempDir()})
 		big := strings.Repeat("x", core.MaxDatasetBytes+1)
 		if rec := upload(h, "/x", "file", "a.jsonl", big, nil); rec.Code != http.StatusRequestEntityTooLarge {
 			t.Fatalf("too large: %d %s", rec.Code, rec.Body)

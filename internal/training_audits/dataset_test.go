@@ -23,7 +23,7 @@ func TestLoadDataset(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ds, err := training_audits.LoadDataset(dir, "mine.jsonl")
+	ds, err := training_audits.LoadDataset([]string{dir}, "mine.jsonl")
 	if err != nil || ds.Name != "mine" || len(ds.SHA256) != 64 || len(ds.Examples) != 2 {
 		t.Fatalf("%+v %v", ds, err)
 	}
@@ -34,7 +34,7 @@ func TestLoadDataset(t *testing.T) {
 		{"", "default dataset"},
 		{"deleted.jsonl", "not in the training datasets directory"},
 	} {
-		if _, err := training_audits.LoadDataset(dir, tc.dataset); err == nil || !strings.Contains(err.Error(), tc.want) {
+		if _, err := training_audits.LoadDataset([]string{dir}, tc.dataset); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("dataset %q: %v, want %q", tc.dataset, err, tc.want)
 		}
 	}

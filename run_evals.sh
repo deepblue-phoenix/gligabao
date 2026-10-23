@@ -4,6 +4,10 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# The config file whose evals_knowledge_dirs / evals_training_dirs list the eval directories (relative paths in it are relative to the
+# file). Override with GLIGABAO_CONFIG; a -evals DIR option (repeatable) still overrides the config.
+CONFIG="${GLIGABAO_CONFIG:-bin/gligabao.toml}"
+
 usage() {
 	cat <<USAGE
 Usage: ./run_evals.sh [options] [case-name ...]
@@ -25,12 +29,15 @@ Options:
 
 Case names restrict the run to those cases (combined with --eval, they must belong to that eval).
 
-Knowledge evals (bin/evals_knowledge/*.json):
+The eval directories are set in $CONFIG (evals_knowledge_dirs, evals_training_dirs; default config bin/gligabao.toml, GLIGABAO_CONFIG
+overrides it); -evals DIR (repeatable) overrides them.
+
+Knowledge evals (evals_knowledge_dirs):
 USAGE
-	go run ./internal/evals/knowledge/cmd -list-evals
+	go run ./internal/evals/knowledge/cmd -config "$CONFIG" -list-evals
 	echo
-	echo "Training evals (bin/evals_training/*.json):"
-	go run ./internal/evals/training/cmd -list-evals
+	echo "Training evals (evals_training_dirs):"
+	go run ./internal/evals/training/cmd -config "$CONFIG" -list-evals
 }
 
 kind=knowledge
@@ -117,13 +124,13 @@ start_sidecar() {
 }
 
 case "$kind" in
-knowledge) go run ./internal/evals/knowledge/cmd ${args[@]+"${args[@]}"} ;;
+knowledge) go run ./internal/evals/knowledge/cmd -config "$CONFIG" ${args[@]+"${args[@]}"} ;;
 training)
 	start_sidecar
 	# Not exec'd, so the trap can stop the sidecar. SIDECAR_URL tells the runner where the sidecar is, unless -sidecar does.
 	rc=0
 	SIDECAR_URL="${SIDECAR_URL:-http://${SIDECAR_HOST:-127.0.0.1}:${SIDECAR_PORT:-8787}}" \
-		go run ./internal/evals/training/cmd ${args[@]+"${args[@]}"} || rc=$?
+		go run ./internal/evals/training/cmd -config "$CONFIG" ${args[@]+"${args[@]}"} || rc=$?
 	exit "$rc"
 	;;
 *)

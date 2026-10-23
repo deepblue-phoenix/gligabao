@@ -101,52 +101,67 @@ func ParseManifest(path string) (*LocalDataset, error) {
 	return &LocalDataset{Manifest: m, Dir: dir, Path: filepath.Join(dir, filepath.FromSlash(m.File))}, nil
 }
 
-// DiscoverDatasets scans dir for the datasets: each direct subdirectory that has a dataset.toml is read. It returns the
-// usable ones, by name, and the problems of the others (a bad manifest, a missing data file, a name already taken by
-// another dataset). A subdirectory without a manifest is not a dataset and not a problem. A missing dir has no datasets.
-func DiscoverDatasets(dir string) ([]LocalDataset, []DatasetProblem) {
-	if dir == "" {
-		return nil, nil
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
-			return nil, []DatasetProblem{{Dir: ".", Error: err.Error()}}
-		}
-		return nil, nil
-	}
+// DiscoverDatasets scans the directories dirs, in order, for the datasets: each direct subdirectory that has a dataset.toml is
+// read. It returns the usable ones, by name, and the problems of the others (a bad manifest, a missing data file, a name already
+// taken by another dataset of the same directory). A subdirectory without a manifest is not a dataset and not a problem. A missing
+// directory has no datasets. A dataset whose name was found in an earlier directory is hidden by it: it is neither returned nor a
+// problem. With more than one directory, a problem's Dir is the path of the subdirectory (not just its name).
+func DiscoverDatasets(dirs ...string) ([]LocalDataset, []DatasetProblem) {
 	var found []LocalDataset
 	var problems []DatasetProblem
-	taken := map[string]string{} // name -> directory
-	for _, e := range entries {
-		sub := filepath.Join(dir, e.Name())
-		if strings.HasPrefix(e.Name(), ".") {
+	shown := map[string]bool{} // names found so far, in any directory
+	for _, dir := range dirs {
+		if dir == "" {
 			continue
 		}
-		if st, err := os.Stat(sub); err != nil || !st.IsDir() { // follows a symlink to a directory
-			continue
-		}
-		manifest := filepath.Join(sub, ManifestFilename)
-		if _, err := os.Stat(manifest); err != nil {
-			continue
-		}
-		ds, err := ParseManifest(manifest)
-		if err == nil {
-			if st, serr := os.Stat(ds.Path); serr != nil || !st.Mode().IsRegular() {
-				err = fmt.Errorf("the data file %s is missing", ds.Manifest.File)
-				if ds.Generator != "" {
-					err = fmt.Errorf("%w: run %s in the dataset's directory to create it", err, ds.Generator)
-				}
-			} else if other, dup := taken[ds.Name]; dup {
-				err = fmt.Errorf("the name %q is already taken by the dataset in %s", ds.Name, other)
+		problemDir := func(sub string) string { // how a problem names the subdirectory sub of dir
+			if len(dirs) > 1 {
+				return filepath.Join(dir, sub)
 			}
+			return sub
 		}
+		entries, err := os.ReadDir(dir)
 		if err != nil {
-			problems = append(problems, DatasetProblem{Dir: e.Name(), Error: err.Error()})
+			if !errors.Is(err, fs.ErrNotExist) {
+				problems = append(problems, DatasetProblem{Dir: problemDir("."), Error: err.Error()})
+			}
 			continue
 		}
-		taken[ds.Name] = e.Name()
-		found = append(found, *ds)
+		taken := map[string]string{} // name -> subdirectory, in this directory
+		for _, e := range entries {
+			sub := filepath.Join(dir, e.Name())
+			if strings.HasPrefix(e.Name(), ".") {
+				continue
+			}
+			if st, err := os.Stat(sub); err != nil || !st.IsDir() { // follows a symlink to a directory
+				continue
+			}
+			manifest := filepath.Join(sub, ManifestFilename)
+			if _, err := os.Stat(manifest); err != nil {
+				continue
+			}
+			ds, err := ParseManifest(manifest)
+			if err == nil {
+				if st, serr := os.Stat(ds.Path); serr != nil || !st.Mode().IsRegular() {
+					err = fmt.Errorf("the data file %s is missing", ds.Manifest.File)
+					if ds.Generator != "" {
+						err = fmt.Errorf("%w: run %s in the dataset's directory to create it", err, ds.Generator)
+					}
+				} else if other, dup := taken[ds.Name]; dup {
+					err = fmt.Errorf("the name %q is already taken by the dataset in %s", ds.Name, other)
+				}
+			}
+			if err != nil {
+				problems = append(problems, DatasetProblem{Dir: problemDir(e.Name()), Error: err.Error()})
+				continue
+			}
+			taken[ds.Name] = e.Name()
+			if shown[ds.Name] {
+				continue // hidden by a dataset of an earlier directory
+			}
+			shown[ds.Name] = true
+			found = append(found, *ds)
+		}
 	}
 	sort.Slice(found, func(i, j int) bool { return found[i].Name < found[j].Name })
 	return found, problems

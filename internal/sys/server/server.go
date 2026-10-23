@@ -104,6 +104,8 @@ type Options struct {
 	// TrainingDirs are the directories the training endpoints keep files in. An empty field gets its default, next to the SQLite
 	// file (DB.SQLitePath, or db.DefaultSQLitePath if empty): see coretraining.DefaultDirs.
 	TrainingDirs coretraining.Dirs
+	// OntologyDirs are the directories ontology documents are loaded from by file name (see api.WithOntologyDirs). Default: none.
+	OntologyDirs []string
 	// EvalDBPath is a second SQLite file, the eval database (see internal/evals/knowledge/cmd): the evaluation datasets, the
 	// experiments and their runs. The admin UI shows it next to the main database and reads the Evals block (and the
 	// ATIF files, from an "atif" directory next to it) from it. Opened for the admin UI only; ignored (with a warning)
@@ -186,10 +188,10 @@ const EvalDBName = "eval"
 // llm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities.
 // jv may be nil, in which case remember skips the steps that run on Jev. ws may be nil, in which case web search is not available
 // (a remember request with web_search returns 503); it is the Anthropic web search tool, so it is only set with an Anthropic API key.
-// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). exporters are the registered trained model exporters (already validated; may be nil: an export request then answers 400). dirs are the directories of the training endpoints (all fields must be set when trainingMode is true; see coretraining.Dirs.WithDefaults). sc starts the training jobs (/v1/gb/training/) on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The eval endpoints are registered only if eval is true, the training endpoints (/v1/gb/training/) only if trainingMode is true,
+// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). exporters are the registered trained model exporters (already validated; may be nil: an export request then answers 400). dirs are the directories of the training endpoints (all fields must be set when trainingMode is true; see coretraining.Dirs.WithDefaults). ontologyDirs are the directories ontology files are loaded from by name (may be nil). sc starts the training jobs (/v1/gb/training/) on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The eval endpoints are registered only if eval is true, the training endpoints (/v1/gb/training/) only if trainingMode is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary; adminExts are the registered admin UI extensions
 // (already validated; may be nil), mounted with it.
-func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, exporters []coretraining.TrainedModelExporter, dirs coretraining.Dirs, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
+func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, exporters []coretraining.TrainedModelExporter, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "gligabao is running")
@@ -204,7 +206,7 @@ func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_c
 	mux.HandleFunc("GET /version", versionHandler)
 	// The remember manager runs every remember pipeline run, one at a time, until ctx is done.
 	mgr := memory_remember.NewManager(ctx, d.Relational, llm)
-	api.Register(mux, mgr, d, llm, emb, jv, ws, providers)
+	api.Register(mux, mgr, d, llm, emb, jv, ws, providers, api.WithOntologyDirs(ontologyDirs))
 	if eval {
 		api.RegisterEval(mux, mgr, d, llm, emb, jv, ws, providers)
 	}
@@ -404,7 +406,7 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	dirs := opts.TrainingDirs.WithDefaults(dbPath)
 	if opts.TrainingModeEnable {
-		log.WithFields(log.Fields{"datasets_dir": dirs.Datasets, "evals_dir": dirs.Evals, "model_export_dir": dirs.ModelExport}).Warn("training mode: the training endpoints (/v1/gb/training/) are enabled")
+		log.WithFields(log.Fields{"datasets_dirs": dirs.Datasets, "evals_dirs": dirs.Evals, "model_export_dir": dirs.ModelExport}).Warn("training mode: the training endpoints (/v1/gb/training/) are enabled")
 	} else {
 		log.Info("training mode is off: the training endpoints are not registered (enable with training = true or --training)")
 	}
@@ -513,7 +515,7 @@ func Run(ctx context.Context, opts Options) error {
 	// The remember manager stops only when Run returns, i.e. after the graceful shutdown has given the runs in progress their time.
 	mgrCtx, stopMgr := context.WithCancel(ctx)
 	defer stopMgr()
-	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(mgrCtx, database, llm, emb, jv, ws, providers, exporters, dirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, extra...)}
+	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(mgrCtx, database, llm, emb, jv, ws, providers, exporters, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, extra...)}
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

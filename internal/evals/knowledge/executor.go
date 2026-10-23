@@ -23,8 +23,8 @@ type Executor struct {
 	LLM       memory_core.LLM
 	Embedder  memory_core.Embedder
 	WebSearch memory_core.WebSearcher
-	// EvalsDir is the directory the TextFiles of the cases are relative to (default DefaultEvalDir).
-	EvalsDir string
+	// EvalsDirs are the directories the TextFiles of the cases are relative to, searched in order (default DefaultEvalDir).
+	EvalsDirs []string
 	// Models is the default LLM model of each stage of remember; a case's own models win over it. Reasoning is the reasoning
 	// level of each stage, and of the recall with the key "recall"; a case's own win over it (see ParseReasoning).
 	Models    memory_core.Models
@@ -79,7 +79,7 @@ func (x *Executor) executeCase(ctx, dbCtx context.Context, rec *runner.EvalRecor
 	}
 
 	out := &outcome{}
-	input, err := readTexts(x.EvalsDir, m.KnowledgeInput)
+	input, err := readTexts(x.EvalsDirs, m.KnowledgeInput)
 	if err == nil {
 		out, err = x.runCase(ctx, c.Name, *m, input, rec.Run().ID, llm)
 	}

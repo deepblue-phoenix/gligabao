@@ -90,3 +90,28 @@ func TestDiscoverDatasets(t *testing.T) {
 		}
 	}
 }
+
+// With several directories, an earlier one hides the datasets of the same name in a later one; the problems name the path.
+func TestDiscoverDatasetsManyDirs(t *testing.T) {
+	first, second := t.TempDir(), t.TempDir()
+	addDataset(t, first, "shared")
+	write(t, first, "shared/marker", "first")
+	addDataset(t, second, "shared")
+	addDataset(t, second, "only-second")
+	write(t, second, "broken/dataset.toml", "file = \"x.jsonl\"\n")
+
+	found, problems := training.DiscoverDatasets(first, filepath.Join(second, "missing-dir"), second)
+	var names []string
+	for _, f := range found {
+		names = append(names, f.Name)
+		if f.Name == "shared" && f.Dir != filepath.Join(first, "shared") {
+			t.Errorf("shared comes from %s, want the first directory", f.Dir)
+		}
+	}
+	if strings.Join(names, ",") != "only-second,shared" {
+		t.Fatalf("names = %v", names)
+	}
+	if len(problems) != 1 || problems[0].Dir != filepath.Join(second, "broken") {
+		t.Fatalf("problems = %+v", problems)
+	}
+}

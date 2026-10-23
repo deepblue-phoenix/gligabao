@@ -262,3 +262,36 @@ func TestJevConfig(t *testing.T) {
 		t.Errorf("env not read: %+v", cfg)
 	}
 }
+
+// The directory lists are relative to the config file, not to the working directory; absolute ones are kept.
+func TestLoadDirs(t *testing.T) {
+	p := write(t, `datasets_training_dirs = ["datasets", "/abs/datasets"]
+evals_training_dirs = ["../evals_t"]
+evals_knowledge_dirs = ["evals_k"]
+ontology_dirs = ["onto"]
+`)
+	base := filepath.Dir(p)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eq := func(name string, got, want []string) {
+		t.Helper()
+		if len(got) != len(want) {
+			t.Fatalf("%s = %v, want %v", name, got, want)
+		}
+		for i := range got {
+			if got[i] != want[i] {
+				t.Fatalf("%s = %v, want %v", name, got, want)
+			}
+		}
+	}
+	eq("datasets", cfg.DatasetsTrainingDirs, []string{filepath.Join(base, "datasets"), "/abs/datasets"})
+	eq("evals_training", cfg.EvalsTrainingDirs, []string{filepath.Join(filepath.Dir(base), "evals_t")})
+	eq("evals_knowledge", cfg.EvalsKnowledgeDirs, []string{filepath.Join(base, "evals_k")})
+	eq("ontology", cfg.OntologyDirs, []string{filepath.Join(base, "onto")})
+
+	if _, err := Load(write(t, `ontology_dirs = [""]`)); err == nil {
+		t.Error("an empty directory should be rejected")
+	}
+}

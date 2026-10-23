@@ -174,7 +174,7 @@ func storeOf(d *sql.DB) db.Store {
 }
 
 func newMgr(ctx context.Context, d *sql.DB, sc training.Inferer, llm training.LLM) *mgr {
-	m := training.NewManager(ctx, d, storeOf(d), testEvalsDir, sc, llm)
+	m := training.NewManager(ctx, d, storeOf(d), []string{testEvalsDir}, sc, llm)
 	return &mgr{m, api.New(m)}
 }
 

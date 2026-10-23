@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -418,4 +419,57 @@ func testOntologyMerge(t *testing.T, d *sql.DB) {
 	if _, ok := edge(orig.ID, "Exchange", "subclass_of", "Market"); ok {
 		t.Error("replace kept an edge that is not in the document")
 	}
+}
+
+// "file" loads a document of the configured ontology directories, under the requesting user; it works only for a plain file name.
+func TestOntologyFile(t *testing.T) { dbtest.Run(t, testOntologyFile) }
+
+func testOntologyFile(t *testing.T, d *sql.DB) {
+	first, second := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(second, "small.owl"), []byte(smallOntology), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(first, "other.owl"), []byte("not an ontology"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(first, "sub.owl"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	database := &db.DB{Relational: d, Graph: d}
+	do := func(dirs []string, method, path string, v map[string]any) *httptest.ResponseRecorder {
+		mux := http.NewServeMux()
+		Register(mux, mgrFor(t, database, nil), database, nil, nil, nil, nil, nil, WithOntologyDirs(dirs))
+		body, _ := json.Marshal(v)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(method, path, strings.NewReader(string(body))))
+		return rec
+	}
+	dirs := []string{first, second}
+	want := func(rec *httptest.ResponseRecorder, code int) {
+		t.Helper()
+		if rec.Code != code {
+			t.Fatalf("status %d, want %d: %s", rec.Code, code, rec.Body)
+		}
+	}
+
+	rec := do(dirs, "POST", "/v1/gb/ontologies", map[string]any{"user_id": "u7", "name": "small", "file": "small.owl"})
+	want(rec, http.StatusCreated)
+	var got relational.Ontology
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.UserID != "u7" || got.Name != "small" || got.Classes != 2 {
+		t.Fatalf("loaded: %+v", got)
+	}
+	want(do(dirs, "PUT", "/v1/gb/ontologies/small", map[string]any{"user_id": "u7", "file": "small.owl", "replace": true}), http.StatusOK)
+
+	want(do(dirs, "POST", "/v1/gb/ontologies", map[string]any{"user_id": "u7", "name": "x", "file": "nope.owl"}), http.StatusNotFound)
+	want(do(dirs, "POST", "/v1/gb/ontologies", map[string]any{"user_id": "u7", "name": "x", "file": "sub.owl"}), http.StatusNotFound)
+	want(do(dirs, "POST", "/v1/gb/ontologies", map[string]any{"user_id": "u7", "name": "x", "file": "other.owl"}), http.StatusBadRequest)
+	for _, name := range []string{"../small.owl", "sub/small.owl", `..\small.owl`, ".hidden", filepath.Join(second, "small.owl")} {
+		want(do(dirs, "POST", "/v1/gb/ontologies", map[string]any{"user_id": "u7", "name": "x", "file": name}), http.StatusBadRequest)
+	}
+	want(do(dirs, "POST", "/v1/gb/ontologies", map[string]any{"user_id": "u7", "name": "x", "file": "small.owl", "content": smallOntology}), http.StatusBadRequest)
+	want(do(dirs, "POST", "/v1/gb/ontologies", map[string]any{"user_id": "u7", "name": "x"}), http.StatusBadRequest)
+	want(do(nil, "POST", "/v1/gb/ontologies", map[string]any{"user_id": "u7", "name": "x", "file": "small.owl"}), http.StatusBadRequest)
 }

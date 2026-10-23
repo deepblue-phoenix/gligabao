@@ -18,14 +18,14 @@ import (
 // UploadDatasetOf serves POST /v1/gb/training/datasets, a multipart form with the JSONL file in the
 // field "file" (and optionally "filename", which overrides the uploaded file's name). The file must be a valid dataset
 // (core.ValidateDataset) with a plain *.jsonl name. It becomes the dataset named like the file without ".jsonl": Go saves it
-// in the subdirectory of that name of the training datasets directory,
+// in the subdirectory of that name of the first of the training datasets directories,
 // next to a manifest it writes if there is none, and records it in gb_training_datasets of that database. Uploading a
 // name again replaces the dataset's file. A dataset of that name that has a manifest of its own, naming another data file,
 // or a dataset of that name in another directory, is not replaced: 409. The sidecar is not involved. It answers 201
 // with the dataset (core.DatasetInfo). A bad file answers 400, a file over MaxDatasetBytes 413.
-func UploadDatasetOf(db *sql.DB, datasetDir string) http.HandlerFunc {
+func UploadDatasetOf(db *sql.DB, datasetDirs []string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if datasetDir == "" {
+		if len(datasetDirs) == 0 || datasetDirs[0] == "" {
 			httputil.Error(w, http.StatusInternalServerError, "no training dataset directory is configured")
 			return
 		}
@@ -59,7 +59,7 @@ func UploadDatasetOf(db *sql.DB, datasetDir string) http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, "failed to read the file")
 			return
 		}
-		info, err := core.SaveDataset(r.Context(), db, datasetDir, filename, buf.Bytes())
+		info, err := core.SaveDataset(r.Context(), db, datasetDirs, filename, buf.Bytes())
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -71,9 +71,9 @@ func UploadDatasetOf(db *sql.DB, datasetDir string) http.HandlerFunc {
 // ListDatasetsOf serves GET /v1/gb/training/datasets: {"datasets": [...], "problems": [...]}, the training
 // datasets (core.DatasetInfo) found in the training datasets directory by their manifests, by name, and the subdirectories with a
 // manifest that are not usable (core.DatasetProblem). It never asks the sidecar.
-func ListDatasetsOf(db *sql.DB, datasetDir string) http.HandlerFunc {
+func ListDatasetsOf(db *sql.DB, datasetDirs []string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ds, problems, err := core.ListDatasets(r.Context(), db, datasetDir)
+		ds, problems, err := core.ListDatasets(r.Context(), db, datasetDirs)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -86,7 +86,7 @@ func ListDatasetsOf(db *sql.DB, datasetDir string) http.HandlerFunc {
 // (default 100, at most 1000) of a dataset's data file, so it can be inspected: {"name", "lines": [...], "num_records",
 // "truncated"}. truncated is true if the file has more lines than returned. Only the beginning of the file is read. An
 // unknown dataset answers 404.
-func PreviewDatasetOf(datasetDir string) http.HandlerFunc {
+func PreviewDatasetOf(datasetDirs []string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		name := q.Get("name")
@@ -103,7 +103,7 @@ func PreviewDatasetOf(datasetDir string) http.HandlerFunc {
 			}
 			limit = l
 		}
-		p, err := core.PreviewDataset(datasetDir, name, limit)
+		p, err := core.PreviewDataset(datasetDirs, name, limit)
 		if err != nil {
 			writeErr(w, err)
 			return

@@ -58,7 +58,7 @@ func TestAuditEndpoints(t *testing.T) { audittest.Run(t, testAuditEndpoints) }
 func testAuditEndpoints(t *testing.T, d *sql.DB, ops training_audits.Ops) {
 	ctx := context.Background()
 	mid := audittest.RecordModel(t, d, "jobapi", "mine.jsonl")
-	m := training_audits.NewManager(ctx, d, ops, audittest.DatasetDir(t, 5), &audittest.Sidecar{Wrong: map[string]bool{"q3": true}}, &audittest.Judge{})
+	m := training_audits.NewManager(ctx, d, ops, []string{audittest.DatasetDir(t, 5)}, &audittest.Sidecar{Wrong: map[string]bool{"q3": true}}, &audittest.Judge{})
 	s := server(t, m)
 	base := s.URL + "/v1/gb/training"
 
@@ -124,7 +124,7 @@ func testAuditEndpoints(t *testing.T, d *sql.DB, ops training_audits.Ops) {
 func TestAuditEndpointsRefuseWithoutSidecar(t *testing.T) {
 	d := audittest.OpenSQLite(t)
 	mid := audittest.RecordModel(t, d, "jobnone", "mine.jsonl")
-	m := training_audits.NewManager(context.Background(), d, training_audits.SQLiteOps, audittest.DatasetDir(t, 1), nil, nil)
+	m := training_audits.NewManager(context.Background(), d, training_audits.SQLiteOps, []string{audittest.DatasetDir(t, 1)}, nil, nil)
 	code, body := call(t, "POST", fmt.Sprintf("%s/v1/gb/training/models/%d/audits", server(t, m).URL, mid), "")
 	if code != http.StatusServiceUnavailable || !strings.Contains(string(body), "sidecar") {
 		t.Errorf("%d %s", code, body)
@@ -135,7 +135,7 @@ func TestAuditLiveFeedAndCancel(t *testing.T) {
 	d := audittest.OpenSQLite(t)
 	mid := audittest.RecordModel(t, d, "jobfeed", "mine.jsonl")
 	sc := &audittest.Sidecar{Block: make(chan struct{}), Started: make(chan struct{}, 1)}
-	m := training_audits.NewManager(context.Background(), d, training_audits.SQLiteOps, audittest.DatasetDir(t, 4), sc, &audittest.Judge{})
+	m := training_audits.NewManager(context.Background(), d, training_audits.SQLiteOps, []string{audittest.DatasetDir(t, 4)}, sc, &audittest.Judge{})
 	base := server(t, m).URL + "/v1/gb/training"
 
 	code, body := call(t, "POST", fmt.Sprintf("%s/models/%d/audits", base, mid), `{"batch_size": 2}`)

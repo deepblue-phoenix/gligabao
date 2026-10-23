@@ -34,8 +34,8 @@ type Manager struct {
 	// Ops is how the audits are stored and read.
 	Ops Ops
 
-	dir string // the training datasets directory
-	ctx context.Context
+	dirs []string // the training datasets directories
+	ctx  context.Context
 
 	mu      sync.Mutex
 	running map[int64]*runningAudit   // by trained model ID
@@ -48,11 +48,11 @@ type runningAudit struct {
 	cancel context.CancelFunc
 }
 
-// NewManager makes the manager of the audits of the trained models in d, whose datasets are in the training datasets directory
-// datasetDir. sc answers the questions and llm judges (the callers check for nil). The audits stop when ctx is done. Audits that
+// NewManager makes the manager of the audits of the trained models in d, whose datasets are in the training datasets directories
+// datasetDirs. sc answers the questions and llm judges (the callers check for nil). The audits stop when ctx is done. Audits that
 // a restart interrupted (still pending or running in the database) are marked errored.
-func NewManager(ctx context.Context, d *sql.DB, ops Ops, datasetDir string, sc Inferer, llm LLM) *Manager {
-	m := &Manager{DB: d, Sc: sc, LLM: llm, Ops: ops, dir: datasetDir, ctx: ctx,
+func NewManager(ctx context.Context, d *sql.DB, ops Ops, datasetDirs []string, sc Inferer, llm LLM) *Manager {
+	m := &Manager{DB: d, Sc: sc, LLM: llm, Ops: ops, dirs: datasetDirs, ctx: ctx,
 		running: map[int64]*runningAudit{}, feeds: map[core.AuditRunID]*Feed{}}
 	if k, err := ops.Store.FailRunningAuditRuns(ctx, d, "interrupted: the server restarted while the audit ran"); err != nil {
 		log.WithError(err).Warn("training audits: could not mark interrupted audits as errored")
@@ -88,7 +88,7 @@ func (m *Manager) Start(ctx context.Context, modelID int64, opts Options) (*core
 	if err != nil {
 		return nil, err
 	}
-	ds, err := LoadDataset(m.dir, tm.Dataset)
+	ds, err := LoadDataset(m.dirs, tm.Dataset)
 	if err != nil {
 		return nil, invalidErr(err.Error())
 	}

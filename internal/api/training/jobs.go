@@ -28,7 +28,7 @@ const maxTrainingJobBody = 1 << 16
 // (the first without db), then has mon (may be nil) follow the job's progress. It answers 201 with the stored record
 // (trainingdb.TrainingJobRun). A nil sc (no sidecar) answers 503, a sidecar error 502, except that a request the sidecar
 // rejects as invalid answers 400 with its message.
-func StartJobOf(db *sql.DB, datasetDir string, sc core.JobStarter, mon *core.Monitor) http.HandlerFunc {
+func StartJobOf(db *sql.DB, datasetDirs []string, sc core.JobStarter, mon *core.Monitor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if sc == nil {
 			httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not active")
@@ -45,7 +45,7 @@ func StartJobOf(db *sql.DB, datasetDir string, sc core.JobStarter, mon *core.Mon
 			httputil.Error(w, http.StatusBadRequest, "invalid JSON body")
 			return
 		}
-		run, err := core.StartJob(r.Context(), db, datasetDir, sc, mon, core.StartJobRequest{NumTrainSteps: in.NumTrainSteps, ModelSize: in.ModelSize, Dataset: in.Dataset})
+		run, err := core.StartJob(r.Context(), db, datasetDirs, sc, mon, core.StartJobRequest{NumTrainSteps: in.NumTrainSteps, ModelSize: in.ModelSize, Dataset: in.Dataset})
 		if err != nil {
 			writeErr(w, err)
 			return

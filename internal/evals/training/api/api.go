@@ -110,7 +110,7 @@ func (h *Handlers) DefinitionsOf() http.HandlerFunc {
 		Cases       []core.TrainingCase `json:"cases"`
 	}
 	return func(w http.ResponseWriter, _ *http.Request) {
-		evals, err := training.LoadEvals(h.m.EvalDir())
+		evals, err := h.m.LoadEvals()
 		if err != nil {
 			log.WithError(err).Error("training evals: load the eval definitions failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to load the evals")

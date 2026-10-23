@@ -40,7 +40,7 @@ type StartJobRequest struct {
 // reports in the gb_training_job_runs table of the database, then has mon (may be nil) follow the job's progress. It returns the stored
 // record. Errors are *Error: KindInvalid for a bad request (also one the sidecar rejects as invalid, with its message), KindUpstream
 // for a sidecar error, KindInternal.
-func StartJob(ctx context.Context, db *sql.DB, dir string, sc JobStarter, mon *Monitor, in StartJobRequest) (*trainingdb.TrainingJobRun, error) {
+func StartJob(ctx context.Context, db *sql.DB, dirs []string, sc JobStarter, mon *Monitor, in StartJobRequest) (*trainingdb.TrainingJobRun, error) {
 	req := sidecar.StartTrainingJobRequest{NumTrainSteps: in.NumTrainSteps, ModelSize: strings.ToLower(strings.TrimSpace(in.ModelSize))}
 	name := strings.TrimSpace(in.Dataset)
 	if name == "" {
@@ -55,7 +55,7 @@ func StartJob(ctx context.Context, db *sql.DB, dir string, sc JobStarter, mon *M
 		return nil, invalidErr("model_size must be \"4b\", \"12b\" or \"31b\"")
 	}
 
-	dataset, content, err := LoadTrainingDataset(ctx, db, dir, name)
+	dataset, content, err := LoadTrainingDataset(ctx, db, dirs, name)
 	if errors.Is(err, ErrUnknownDataset) {
 		return nil, invalidErr("unknown dataset " + name + ": there is no dataset of that name in the training datasets directory")
 	} else if err != nil {

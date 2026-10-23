@@ -1,13 +1,15 @@
 // Command knowledge runs the knowledge evals end to end against the real LLM.
 //
-// Each eval in bin/evals_knowledge/*.json (-evals) is a JSON object with a "name" and a list of "cases". The evals are put in the
+// Each eval in the *.json files of the eval directories (evals_knowledge_dirs of the config file -config, bin/gligabao.toml by default; or
+// -evals, repeatable, which wins; bin/evals_knowledge if neither is set; an eval of an earlier directory hides one of the same name in a
+// later one) is a JSON object with a "name" and a list of "cases". The evals are put in the
 // eval database (-db) as eval defs, with a case def for each case (rewritten if the file changed), and run from there. The database is
 // never reset: every run of a case has a dataset of its own, named after the case and the eval run (see knowledge.DatasetName), so
 // runs do not interfere with each other and the graphs of all runs are kept. The cases are run behind an in-process HTTP server in
 // eval mode through the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/recall): remember (once per text, in order), then
 // recall. These return the ATIF trajectory of every call along with its result.
 //
-// Usage: go run ./internal/evals/knowledge/cmd [-v] [-evals dir] [-eval name] [case-name ...]   (requires ANTHROPIC_API_KEY)
+// Usage: go run ./internal/evals/knowledge/cmd [-v] [-config file] [-evals dir ...] [-eval name] [case-name ...]   (requires ANTHROPIC_API_KEY)
 // With -eval, only the cases of that eval run; -list-evals prints the available evals and exits.
 // With -v, every LLM call's input and output is printed.
 // With -atif dir, the trajectories are stored there as JSON (default: an "atif" directory next to the -db file, since the case runs
@@ -31,6 +33,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/evalfile"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/knowledge"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
@@ -46,7 +49,9 @@ func main() {
 
 func mainErr() error {
 	verbose := flag.Bool("v", false, "print the input and output of every LLM call")
-	evalsDir := flag.String("evals", knowledge.DefaultEvalDir, "directory the evals (*.json) and their corpus files are read from")
+	var evalsFlag evalfile.DirsFlag
+	flag.Var(&evalsFlag, "evals", "directory the evals (*.json) and their corpus files are read from; repeatable, searched in order (default: evals_knowledge_dirs of the config, else "+knowledge.DefaultEvalDir+")")
+	configPath := flag.String("config", evalfile.DefaultConfigPath, "config file whose evals_knowledge_dirs lists the eval directories (relative paths in it are relative to the file)")
 	eval := flag.String("eval", "", "run only the cases of this eval (its name as set in the JSON file; see -list-evals)")
 	listEvals := flag.Bool("list-evals", false, "print the available evals and their cases, then exit")
 	atifDir := flag.String("atif", "", `store every ATIF trajectory as JSON in this directory (default: "atif" next to the -db file)`)
@@ -57,7 +62,13 @@ func mainErr() error {
 	reasoningFlag := flag.String("reasoning", "", `reasoning level per stage, e.g. "extract_graph=low,recall=medium" (stages: `+strings.Join(knowledge.ReasoningStages(), ", ")+`; levels: `+strings.Join(ai.ReasoningLevels, ", ")+`); a stage left out uses the server default (none); a case's "reasoning" wins`)
 	flag.Parse()
 
-	loaded, err := knowledge.LoadEvals(*evalsDir)
+	configSet := false
+	flag.Visit(func(f *flag.Flag) { configSet = configSet || f.Name == "config" })
+	evalsDirs, err := evalfile.ResolveDirs(evalsFlag, *configPath, configSet, func(c *config.Config) []string { return c.EvalsKnowledgeDirs }, knowledge.DefaultEvalDir)
+	if err != nil {
+		return err
+	}
+	loaded, err := knowledge.LoadEvals(evalsDirs...)
 	if err != nil {
 		return err
 	}
@@ -128,7 +139,7 @@ func mainErr() error {
 		defs, defIDs = append(defs, def), append(defIDs, def.ID)
 	}
 
-	params := core.Params{"evals_dir": *evalsDir, "eval": *eval, "cases": flag.Args(), "atif_dir": *atifDir}
+	params := core.Params{"evals_dirs": evalsDirs, "eval": *eval, "cases": flag.Args(), "atif_dir": *atifDir}
 	if len(models) > 0 {
 		params["models"] = models
 	}
@@ -147,7 +158,7 @@ func mainErr() error {
 	}
 
 	x := &knowledge.Executor{
-		DB: database, LLM: llm, Embedder: emb, WebSearch: llm, EvalsDir: *evalsDir, Models: models, Reasoning: reasoning,
+		DB: database, LLM: llm, Embedder: emb, WebSearch: llm, EvalsDirs: evalsDirs, Models: models, Reasoning: reasoning,
 		TrajectoryDir: *atifDir, Verbose: *verbose, Out: os.Stdout,
 	}
 	var counts core.Counts

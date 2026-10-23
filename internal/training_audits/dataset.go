@@ -72,12 +72,12 @@ type Dataset struct {
 // LoadDataset reads the training dataset of a trained model from the training datasets directory dir. trainedDataset is the
 // model's dataset as the model records it (its file name, "" if it was trained on the sidecar's default dataset). The errors are
 // safe to show to the user.
-func LoadDataset(dir, trainedDataset string) (*Dataset, error) {
+func LoadDataset(dirs []string, trainedDataset string) (*Dataset, error) {
 	name := strings.TrimSuffix(trainedDataset, ".jsonl")
 	if name == "" {
 		return nil, errors.New("this model was trained on the sidecar's default dataset, which gligabao does not have: there are no questions to ask")
 	}
-	ds, err := training.FindDataset(dir, name)
+	ds, err := training.FindDataset(dirs, name)
 	if err != nil {
 		return nil, fmt.Errorf("the training dataset %s of this model is not in the training datasets directory", name)
 	}

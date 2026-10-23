@@ -9,7 +9,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
 )
 
-// DefaultEvalDir is the directory the evals are read from when none is given: bin/evals_training of the repository, next to the
+// DefaultEvalDir is the directory the evals are read from when none is configured (evals_training_dirs, or -evals): bin/evals_training of the repository, next to the
 // training datasets (bin/datasets_training). They are static definitions kept apart from the code, so they are read from disk, not
 // embedded.
 const DefaultEvalDir = "bin/evals_training"
@@ -27,9 +27,10 @@ func checkCase(c *core.TrainingCase) error {
 	return nil
 }
 
-// LoadEvals reads the evals of the directory dir. Case names are unique over all of them.
-func LoadEvals(dir string) ([]Eval, error) {
-	return evalfile.Read(dir, caseName, checkCase)
+// LoadEvals reads the evals of the directories dirs, in order: an eval whose name was found in an earlier directory hides the same
+// name in a later one. Case names are unique over all of them.
+func LoadEvals(dirs ...string) ([]Eval, error) {
+	return evalfile.ReadDirs(dirs, caseName, checkCase)
 }
 
 // SelectEvals picks the eval called eval (all if empty) and, in it, the cases called by the names in only (all if none); see

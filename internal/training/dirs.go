@@ -4,11 +4,13 @@ import "path/filepath"
 
 // Dirs are the directories the training endpoints keep files in. An empty field means the default (see DefaultDirs).
 type Dirs struct {
-	// Datasets is the training datasets directory: one subdirectory with a dataset.toml manifest per dataset (uploads are
-	// saved there too). Created at the first upload; it may not exist.
-	Datasets string
-	// Evals is the directory of the evals of trained models, one JSON file per eval. It may not exist: then there are no evals.
-	Evals string
+	// Datasets are the training datasets directories, searched in order: one subdirectory with a dataset.toml manifest per
+	// dataset. A dataset name found in an earlier directory hides the same name in a later one. Uploads are saved in the first
+	// (created at the first upload; it may not exist). The others are only read.
+	Datasets []string
+	// Evals are the directories of the evals of trained models, searched in order, one JSON file per eval; an eval name found in an
+	// earlier directory hides the same name in a later one. They may not exist: then there are no evals in them.
+	Evals []string
 	// ModelExport is the directory the files of trained models are fetched to for an export, one subdirectory per training
 	// job. Created at the first export; gligabao never deletes it.
 	ModelExport string
@@ -19,8 +21,8 @@ type Dirs struct {
 func DefaultDirs(dbPath string) Dirs {
 	base := filepath.Dir(dbPath)
 	return Dirs{
-		Datasets:    filepath.Join(base, "datasets_training"),
-		Evals:       filepath.Join(base, "evals_training"),
+		Datasets:    []string{filepath.Join(base, "datasets_training")},
+		Evals:       []string{filepath.Join(base, "evals_training")},
 		ModelExport: filepath.Join(base, "trained_models"),
 	}
 }
@@ -28,10 +30,10 @@ func DefaultDirs(dbPath string) Dirs {
 // WithDefaults returns d with every empty field replaced by its DefaultDirs(dbPath) value.
 func (d Dirs) WithDefaults(dbPath string) Dirs {
 	def := DefaultDirs(dbPath)
-	if d.Datasets == "" {
+	if len(d.Datasets) == 0 {
 		d.Datasets = def.Datasets
 	}
-	if d.Evals == "" {
+	if len(d.Evals) == 0 {
 		d.Evals = def.Evals
 	}
 	if d.ModelExport == "" {

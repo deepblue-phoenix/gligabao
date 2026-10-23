@@ -20,7 +20,7 @@ func testAuditATrainedModel(t *testing.T, d *sql.DB, ops training_audits.Ops) {
 	ctx := context.Background()
 	mid := audittest.RecordModel(t, d, "jobaudit1", "mine.jsonl")
 	sc, judge := &audittest.Sidecar{Wrong: map[string]bool{"q3": true}}, &audittest.Judge{}
-	m := training_audits.NewManager(ctx, d, ops, audittest.DatasetDir(t, 5), sc, judge)
+	m := training_audits.NewManager(ctx, d, ops, []string{audittest.DatasetDir(t, 5)}, sc, judge)
 
 	temp := 0.2
 	started, err := m.Start(ctx, mid, training_audits.Options{BatchSize: 2, JudgeModel: "my-judge", MaxTokens: 77, Temperature: &temp})
@@ -94,7 +94,7 @@ func testAuditRefusals(t *testing.T, d *sql.DB, ops training_audits.Ops) {
 	ok := audittest.RecordModel(t, d, "j-ok", "mine.jsonl")
 	noDataset := audittest.RecordModel(t, d, "j-none", "")
 	gone := audittest.RecordModel(t, d, "j-gone", "deleted.jsonl")
-	m := training_audits.NewManager(ctx, d, ops, dir, &audittest.Sidecar{}, &audittest.Judge{})
+	m := training_audits.NewManager(ctx, d, ops, []string{dir}, &audittest.Sidecar{}, &audittest.Judge{})
 
 	for _, tc := range []struct {
 		name  string
@@ -133,10 +133,10 @@ func testAuditRefusals(t *testing.T, d *sql.DB, ops training_audits.Ops) {
 	}
 
 	// Without a sidecar or an LLM nothing starts.
-	if _, err := training_audits.NewManager(ctx, d, ops, dir, nil, &audittest.Judge{}).Start(ctx, ok, training_audits.Options{}); !isKind(err, training_audits.KindUnavailable) {
+	if _, err := training_audits.NewManager(ctx, d, ops, []string{dir}, nil, &audittest.Judge{}).Start(ctx, ok, training_audits.Options{}); !isKind(err, training_audits.KindUnavailable) {
 		t.Errorf("no sidecar: %v", err)
 	}
-	if _, err := training_audits.NewManager(ctx, d, ops, dir, &audittest.Sidecar{}, nil).Start(ctx, ok, training_audits.Options{}); !isKind(err, training_audits.KindUnavailable) {
+	if _, err := training_audits.NewManager(ctx, d, ops, []string{dir}, &audittest.Sidecar{}, nil).Start(ctx, ok, training_audits.Options{}); !isKind(err, training_audits.KindUnavailable) {
 		t.Errorf("no LLM: %v", err)
 	}
 }
@@ -152,7 +152,7 @@ func testAuditOneAtATimeAndCancel(t *testing.T, d *sql.DB, ops training_audits.O
 	ctx := context.Background()
 	mid := audittest.RecordModel(t, d, "j-cancel", "mine.jsonl")
 	sc := &audittest.Sidecar{Block: make(chan struct{}), Started: make(chan struct{}, 1)}
-	m := training_audits.NewManager(ctx, d, ops, audittest.DatasetDir(t, 6), sc, &audittest.Judge{})
+	m := training_audits.NewManager(ctx, d, ops, []string{audittest.DatasetDir(t, 6)}, sc, &audittest.Judge{})
 
 	run, err := m.Start(ctx, mid, training_audits.Options{BatchSize: 3})
 	if err != nil {
@@ -195,7 +195,7 @@ func testAuditFailsWhenTheModelDoes(t *testing.T, d *sql.DB, ops training_audits
 	ctx := context.Background()
 	mid := audittest.RecordModel(t, d, "j-fail", "mine.jsonl")
 	sc := &audittest.Sidecar{Fail: map[string]bool{"q0": true, "q1": true, "q2": true, "q3": true, "q4": true, "q5": true}}
-	m := training_audits.NewManager(ctx, d, ops, audittest.DatasetDir(t, 8), sc, &audittest.Judge{})
+	m := training_audits.NewManager(ctx, d, ops, []string{audittest.DatasetDir(t, 8)}, sc, &audittest.Judge{})
 	run, err := m.Start(ctx, mid, training_audits.Options{BatchSize: 2})
 	if err != nil {
 		t.Fatal(err)
@@ -220,7 +220,7 @@ func testAuditsInterruptedByARestart(t *testing.T, d *sql.DB, ops training_audit
 	if err := ops.Store.CreateAuditRun(ctx, d, r); err != nil {
 		t.Fatal(err)
 	}
-	m := training_audits.NewManager(ctx, d, ops, audittest.DatasetDir(t, 1), &audittest.Sidecar{}, &audittest.Judge{})
+	m := training_audits.NewManager(ctx, d, ops, []string{audittest.DatasetDir(t, 1)}, &audittest.Sidecar{}, &audittest.Judge{})
 	got, err := m.GetRun(ctx, r.ID)
 	if err != nil || got.Status != core.StatusErrored || !strings.Contains(got.Error, "restarted") || got.FinishedAt == nil {
 		t.Fatalf("%+v %v", got, err)
@@ -244,7 +244,7 @@ func testWatchAnAudit(t *testing.T, d *sql.DB, ops training_audits.Ops) {
 	ctx := context.Background()
 	mid := audittest.RecordModel(t, d, "j-watch", "mine.jsonl")
 	sc := &audittest.Sidecar{Block: make(chan struct{}), Started: make(chan struct{}, 1)}
-	m := training_audits.NewManager(ctx, d, ops, audittest.DatasetDir(t, 4), sc, &audittest.Judge{})
+	m := training_audits.NewManager(ctx, d, ops, []string{audittest.DatasetDir(t, 4)}, sc, &audittest.Judge{})
 	run, err := m.Start(ctx, mid, training_audits.Options{BatchSize: 2})
 	if err != nil {
 		t.Fatal(err)

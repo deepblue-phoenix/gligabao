@@ -103,6 +103,24 @@ type Config struct {
 	// training job (gligabao never deletes them). Default: a "trained_models" directory next to the SQLite database file.
 	// `serve --trained-model-export-dir` overrides it.
 	TrainedModelExportDir string `toml:"trained_model_export_dir"`
+	// DatasetsTrainingDirs are the training datasets directories (each has one subdirectory with a dataset.toml manifest per
+	// dataset), searched in order: a dataset name found in an earlier directory hides the same name in a later one, and uploads
+	// are saved in the first. Default: a "datasets_training" directory next to the SQLite database file.
+	// `serve --training-dataset-dir` (repeatable) overrides it.
+	DatasetsTrainingDirs []string `toml:"datasets_training_dirs"`
+	// EvalsTrainingDirs are the directories of the evals of trained models (one JSON file per eval), searched in order: an eval
+	// name found in an earlier directory hides the same name in a later one. Default: an "evals_training" directory next to the
+	// SQLite database file. `serve --training-eval-dir` (repeatable) and the runner's -evals override it.
+	EvalsTrainingDirs []string `toml:"evals_training_dirs"`
+	// EvalsKnowledgeDirs are the directories of the knowledge evals (one JSON file per eval, plus the corpus files the cases refer
+	// to with text_file), searched in order like EvalsTrainingDirs. Read by the knowledge eval runner, not by the server. Default
+	// (runner): bin/evals_knowledge. The runner's -evals (repeatable) overrides it.
+	EvalsKnowledgeDirs []string `toml:"evals_knowledge_dirs"`
+	// OntologyDirs are the directories ontology documents (OWL, RDF/XML) are loaded from by file name: a request to
+	// POST /v1/gb/ontologies or PUT /v1/gb/ontologies/{name} with "file" instead of "content" names a file that is looked up in
+	// these directories in order. Nothing is scanned or loaded at startup. Default: none (the "file" form is then rejected).
+	// `serve --ontology-dir` (repeatable) overrides it.
+	OntologyDirs []string `toml:"ontology_dirs"`
 	// Prices overrides/extends the built-in per-model price table used to compute LLM call costs.
 	// Keys are model-name prefixes (the longest matching prefix wins).
 	Prices map[string]Price `toml:"prices"`
@@ -192,6 +210,16 @@ func (c *Config) Validate() error {
 	if err := c.Chunking().Validate(); err != nil {
 		return fmt.Errorf("config: chunk_size / chunk_overlap_percent: %w", err)
 	}
+	for key, dirs := range map[string][]string{
+		"datasets_training_dirs": c.DatasetsTrainingDirs, "evals_training_dirs": c.EvalsTrainingDirs,
+		"evals_knowledge_dirs": c.EvalsKnowledgeDirs, "ontology_dirs": c.OntologyDirs,
+	} {
+		for _, d := range dirs {
+			if strings.TrimSpace(d) == "" {
+				return fmt.Errorf("config: %s: empty directory", key)
+			}
+		}
+	}
 	for model, p := range c.Prices {
 		if strings.TrimSpace(model) == "" {
 			return errors.New("config: prices: empty model name")
@@ -230,5 +258,18 @@ func Load(path string) (*Config, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	cfg.resolveDirs(filepath.Dir(path))
 	return cfg, nil
+}
+
+// resolveDirs makes the relative directories of the *_dirs lists relative to base, the directory of the config file, so that they
+// do not depend on the working directory the program is started from.
+func (c *Config) resolveDirs(base string) {
+	for _, list := range []*[]string{&c.DatasetsTrainingDirs, &c.EvalsTrainingDirs, &c.EvalsKnowledgeDirs, &c.OntologyDirs} {
+		for i, d := range *list {
+			if !filepath.IsAbs(d) {
+				(*list)[i] = filepath.Join(base, d)
+			}
+		}
+	}
 }

@@ -5,7 +5,7 @@ A training dataset is a JSONL file (format: [training_data_format.md](training_d
 ## Layout
 
 ```
-bin/datasets_training/                         the training datasets directory (serve --training-dataset-dir; default: "datasets_training" next to --db)
+bin/datasets_training/                         a training datasets directory (datasets_training_dirs in gligabao.toml, or serve --training-dataset-dir; default: "datasets_training" next to --db)
   world-knowledge-base/               one subdirectory per dataset: anything the dataset needs can live here
     dataset.toml                      the manifest: its presence makes the subdirectory a dataset
     generate_dataset.py               the script that generates the data (gligabao ignores it)
@@ -17,6 +17,7 @@ bin/datasets_training/                         the training datasets directory (
 ```
 
 - The generator scripts and their output belong to the dataset's own subdirectory, so a dataset is one self-contained directory.
+- **Several directories:** `datasets_training_dirs` in `gligabao.toml` is a list (relative paths are relative to the config file); `serve --training-dataset-dir` can be given more than once and overrides it. The directories are searched in order. A dataset name found in an earlier directory hides the same name in a later one (the later one is neither listed nor a problem), so a program that embeds gligabao can add its own directory in front of, or behind, gligabao's. Uploads are saved in the **first** directory; the others are only read, and an upload named like a dataset of another directory is a `409`. A problem's `dir` is then the full path of the subdirectory, not just its name. The Modal CLI below reads one directory.
 - **Discovery:** the server looks at the direct subdirectories of the training datasets directory and reads the `dataset.toml` of each one (a subdirectory without one is not a dataset; names starting with `.` are skipped). It does this every time it lists the datasets or starts a job, so a dataset added to the directory (or a regenerated data file) is available at once, with no restart. A directory that does not exist yet has no datasets.
 - **The manifest decides where the data is:** gligabao does not look for `*.jsonl` files; it reads the path in the manifest's `file`. Other files in the subdirectory (a second `.jsonl`, a `.json`) are not part of the dataset. For now only the JSONL format is supported.
 - **In the repository:** `bin/datasets_training/` is tracked (the rest of `bin/` is ignored); the generated data files of a dataset are ignored by a `.gitignore` in its subdirectory (run the generator to create them).

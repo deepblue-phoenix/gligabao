@@ -145,7 +145,7 @@ func testTrainingMonitor(t *testing.T, d *sql.DB) {
 	defer cancel()
 	dir := t.TempDir()
 	addDataset(t, dir, "mine")
-	dsDir := dir
+	dsDir := []string{dir}
 	sc := newStreamSidecar()
 	mon := core.NewMonitor(ctx, d, sc, core.WithRetryDelay(time.Millisecond))
 

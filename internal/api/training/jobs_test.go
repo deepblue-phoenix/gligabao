@@ -58,7 +58,7 @@ func TestStartTrainingJob(t *testing.T) { dbtest.Run(t, testStartTrainingJob) }
 
 func testStartTrainingJob(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	dsDir := t.TempDir()
+	dsDir := []string{t.TempDir()}
 	sc := &fakeSidecar{}
 	h := training.StartJobOf(d, dsDir, sc, nil)
 	if rec := upload(training.UploadDatasetOf(d, dsDir), "/x", "file", "mine.jsonl", goodDataset, nil); rec.Code != http.StatusCreated {
@@ -126,7 +126,7 @@ func TestStartTrainingJobSidecarRejects(t *testing.T) {
 	addDataset(t, dir, "mine")
 	sc := &fakeSidecar{err: &sidecar.StatusError{Method: "POST", Path: "/training/job_start", Code: 400, Body: `{"error":"num_train_steps must be a positive integer"}`}}
 	rec := httptest.NewRecorder()
-	training.StartJobOf(d, dir, sc, nil)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(`{"dataset":"mine","num_train_steps":5}`)))
+	training.StartJobOf(d, []string{dir}, sc, nil)(rec, httptest.NewRequest("POST", "/x", strings.NewReader(`{"dataset":"mine","num_train_steps":5}`)))
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "num_train_steps must be a positive integer") {
 		t.Fatalf("got %d %s", rec.Code, rec.Body)
 	}

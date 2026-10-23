@@ -12,6 +12,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -42,8 +44,8 @@ type Manager struct {
 	// Store is how the evals are stored and read (the backend of DB).
 	Store db.Store
 
-	dir string // the evals directory
-	ctx context.Context
+	dirs []string // the evals directories
+	ctx  context.Context
 
 	mu      sync.Mutex
 	running map[int64]*runningEval   // by trained model ID
@@ -57,10 +59,10 @@ type runningEval struct {
 }
 
 // NewManager makes the manager of the evals of the trained models in d (which has the schema of evals.Open), whose evals are in
-// the directory evalDir. sc answers the questions and llm judges (the callers check for nil). The evals stop when ctx is done. Evals
+// the directories evalDirs. sc answers the questions and llm judges (the callers check for nil). The evals stop when ctx is done. Evals
 // that a restart interrupted (still pending or running in the database) are marked errored.
-func NewManager(ctx context.Context, d *sql.DB, store db.Store, evalDir string, sc Inferer, llm memory_core.LLM) *Manager {
-	m := &Manager{DB: d, Sc: sc, LLM: llm, Store: store, dir: evalDir, ctx: ctx,
+func NewManager(ctx context.Context, d *sql.DB, store db.Store, evalDirs []string, sc Inferer, llm memory_core.LLM) *Manager {
+	m := &Manager{DB: d, Sc: sc, LLM: llm, Store: store, dirs: evalDirs, ctx: ctx,
 		running: map[int64]*runningEval{}, feeds: map[core.EvalRunID]*Feed{}}
 	if k, err := store.FailRunning(ctx, d, core.TypeTraining, "interrupted: the server restarted while the eval ran", time.Now()); err != nil {
 		log.WithError(err).Warn("training evals: could not mark interrupted evals as errored")
@@ -76,12 +78,24 @@ func (m *Manager) Wait() { m.wg.Wait() }
 // Done is closed when the manager's context is done.
 func (m *Manager) Done() <-chan struct{} { return m.ctx.Done() }
 
-// EvalDir is the directory the evals are read from.
-func (m *Manager) EvalDir() string { return m.dir }
+// EvalDirs are the directories the evals are read from, in order.
+func (m *Manager) EvalDirs() []string { return m.dirs }
 
-// HasEval reports whether the evals directory has an eval called name.
+// LoadEvals reads the evals of the manager's directories (see LoadEvals). A directory that does not exist has no evals (a program may
+// list directories that exist only in some deployments).
+func (m *Manager) LoadEvals() ([]Eval, error) {
+	var dirs []string
+	for _, d := range m.dirs {
+		if _, err := os.Stat(d); err == nil || !errors.Is(err, fs.ErrNotExist) {
+			dirs = append(dirs, d)
+		}
+	}
+	return LoadEvals(dirs...)
+}
+
+// HasEval reports whether the evals directories have an eval called name.
 func (m *Manager) HasEval(name string) bool {
-	evals, err := LoadEvals(m.dir)
+	evals, err := m.LoadEvals()
 	return err == nil && slices.ContainsFunc(evals, func(e Eval) bool { return e.Name == name })
 }
 
@@ -137,7 +151,7 @@ func (m *Manager) Start(ctx context.Context, modelID int64, opts Options) (*RunV
 	if err != nil {
 		return nil, err
 	}
-	evals, err := LoadEvals(m.dir)
+	evals, err := m.LoadEvals()
 	if err != nil {
 		log.WithError(err).Error("training evals: load the evals failed")
 		return nil, internalErr("failed to load the evals", err)

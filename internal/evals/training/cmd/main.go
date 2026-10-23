@@ -3,7 +3,7 @@
 // the case's expected answer. The eval is put in the database as an eval def (its cases as case defs), and the run is stored as an eval
 // run with a case run for each case.
 //
-// Usage: go run ./internal/evals/training/cmd -model ID [-v] [-eval name] [case-name ...]   (requires ANTHROPIC_API_KEY and a running sidecar)
+// Usage: go run ./internal/evals/training/cmd -model ID [-v] [-config file] [-evals dir ...] [-eval name] [case-name ...]   (requires ANTHROPIC_API_KEY and a running sidecar)
 // Without -eval the eval is the one named like the model's training dataset.
 // -list-evals prints the available evals and exits; -list-models prints the trained models of the database and exits.
 // The exit status is 1 if any case is not correct (score below core.TrainingPassScore) or errored.
@@ -24,6 +24,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/evalfile"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
@@ -45,7 +46,9 @@ func main() {
 func mainErr() error {
 	verbose := flag.Bool("v", false, "print the question, the expected answer, the model's answer and the judge's reason of every case")
 	eval := flag.String("eval", "", "the eval to run (see -list-evals; default: the eval named like the model's training dataset)")
-	evalsDir := flag.String("evals", training.DefaultEvalDir, "directory of the evals (*.json files)")
+	var evalsFlag evalfile.DirsFlag
+	flag.Var(&evalsFlag, "evals", "directory of the evals (*.json files); repeatable, searched in order (default: evals_training_dirs of the config, else "+training.DefaultEvalDir+")")
+	configPath := flag.String("config", evalfile.DefaultConfigPath, "config file whose evals_training_dirs lists the eval directories (relative paths in it are relative to the file)")
 	listEvals := flag.Bool("list-evals", false, "print the available evals and their cases, then exit")
 	listModels := flag.Bool("list-models", false, "print the trained models of the database (the ids -model takes), then exit")
 	modelID := flag.Int64("model", 0, "id of the trained model to evaluate (see -list-models; default: the newest Gemma 4 4B one)")
@@ -57,7 +60,13 @@ func mainErr() error {
 	temperature := flag.Float64("temperature", 0.1, "temperature of the model's answers")
 	flag.Parse()
 
-	loaded, err := training.LoadEvals(*evalsDir)
+	configSet := false
+	flag.Visit(func(f *flag.Flag) { configSet = configSet || f.Name == "config" })
+	evalsDirs, err := evalfile.ResolveDirs(evalsFlag, *configPath, configSet, func(c *config.Config) []string { return c.EvalsTrainingDirs }, training.DefaultEvalDir)
+	if err != nil {
+		return err
+	}
+	loaded, err := training.LoadEvals(evalsDirs...)
 	if err != nil {
 		return err
 	}
@@ -175,7 +184,7 @@ func mainErr() error {
 			}
 		},
 	}
-	params := core.Params{"evals_dir": *evalsDir, "batch_size": cfg.BatchSize, "max_tokens": *maxTokens, "temperature": *temperature}
+	params := core.Params{"evals_dirs": evalsDirs, "batch_size": cfg.BatchSize, "max_tokens": *maxTokens, "temperature": *temperature}
 	if cfg.JudgeModel != "" {
 		params["judge_model"] = cfg.JudgeModel
 	}

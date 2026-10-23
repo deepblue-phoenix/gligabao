@@ -121,15 +121,15 @@ func infoOf(ds LocalDataset, rec *trainingdb.TrainingDataset) DatasetInfo {
 	return DatasetInfo{TrainingDataset: *rec, Manifest: ds.Manifest, Dir: filepath.Base(ds.Dir)}
 }
 
-// ListDatasets scans the training datasets directory (DiscoverDatasets) and returns its usable datasets, by name, with their
+// ListDatasets scans the training datasets directories (DiscoverDatasets) and returns their usable datasets, by name, with their
 // records (made or updated here when the file is new or changed), and the problems of the ones that are not usable.
-func ListDatasets(ctx context.Context, db *sql.DB, dir string) ([]DatasetInfo, []DatasetProblem, error) {
-	found, problems := DiscoverDatasets(dir)
+func ListDatasets(ctx context.Context, db *sql.DB, dirs []string) ([]DatasetInfo, []DatasetProblem, error) {
+	found, problems := DiscoverDatasets(dirs...)
 	out := []DatasetInfo{}
 	for _, ds := range found {
 		s, err := DatasetFileStats(ds.Path)
 		if err != nil {
-			problems = append(problems, DatasetProblem{Dir: filepath.Base(ds.Dir), Error: err.Error()})
+			problems = append(problems, DatasetProblem{Dir: problemDirOf(ds, dirs), Error: err.Error()})
 			continue
 		}
 		rec, err := ensureRecord(ctx, db, ds, s)
@@ -145,16 +145,25 @@ func ListDatasets(ctx context.Context, db *sql.DB, dir string) ([]DatasetInfo, [
 	return out, problems, nil
 }
 
-// ErrUnknownDataset is returned for a dataset that is not in the training datasets directory.
+// problemDirOf is the Dir of a problem about ds, in the form DiscoverDatasets uses: the subdirectory's name, or with more than one
+// directory its path.
+func problemDirOf(ds LocalDataset, dirs []string) string {
+	if len(dirs) > 1 {
+		return ds.Dir
+	}
+	return filepath.Base(ds.Dir)
+}
+
+// ErrUnknownDataset is returned for a dataset that is not in the training datasets directories.
 var ErrUnknownDataset = errors.New("unknown dataset")
 
-// FindDataset returns the dataset called name in the training datasets directory, or ErrUnknownDataset. Other errors are
-// safe to show to the user.
-func FindDataset(dir, name string) (*LocalDataset, error) {
+// FindDataset returns the dataset called name in the training datasets directories (the first one that has it), or
+// ErrUnknownDataset. Other errors are safe to show to the user.
+func FindDataset(dirs []string, name string) (*LocalDataset, error) {
 	if !ValidDatasetName(name) {
 		return nil, ErrUnknownDataset
 	}
-	found, _ := DiscoverDatasets(dir)
+	found, _ := DiscoverDatasets(dirs...)
 	for i := range found {
 		if found[i].Name == name {
 			return &found[i], nil
@@ -179,8 +188,8 @@ func readDatasetFile(ds *LocalDataset, name string) ([]byte, error) {
 // LoadTrainingDataset returns the record and the file of the dataset called name, to be sent to the sidecar with a job.
 // The record is brought up to date with the file just read. An unknown name gives ErrUnknownDataset. The other errors
 // are safe to show to the user.
-func LoadTrainingDataset(ctx context.Context, db *sql.DB, dir, name string) (*trainingdb.TrainingDataset, []byte, error) {
-	ds, err := FindDataset(dir, name)
+func LoadTrainingDataset(ctx context.Context, db *sql.DB, dirs []string, name string) (*trainingdb.TrainingDataset, []byte, error) {
+	ds, err := FindDataset(dirs, name)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -205,14 +214,15 @@ const uploadedManifestDescription = "Uploaded through the training datasets API.
 
 // SaveDataset stores an uploaded dataset: content must be a valid dataset (ValidateDataset) and filename (its directory, if it
 // has one, is dropped) a plain *.jsonl name. It becomes the dataset named like the file without ".jsonl": it is saved in the
-// subdirectory of that name of dir, next to a manifest that is written if there is none, and recorded in
+// subdirectory of that name of the first of dirs, next to a manifest that is written if there is none, and recorded in
 // gb_training_datasets. Saving a name again replaces the dataset's file. The sidecar is not involved. Errors are *Error:
 // KindInvalid for a bad name or file, KindConflict for a dataset of that name that has a manifest of its own, naming another
 // data file, or that is in another directory (it is not replaced), KindInternal.
-func SaveDataset(ctx context.Context, db *sql.DB, dir, filename string, content []byte) (*DatasetInfo, error) {
-	if dir == "" {
+func SaveDataset(ctx context.Context, db *sql.DB, dirs []string, filename string, content []byte) (*DatasetInfo, error) {
+	if len(dirs) == 0 || dirs[0] == "" {
 		return nil, internalErr("no training dataset directory is configured", nil)
 	}
+	dir := dirs[0]
 	filename = path.Base(strings.ReplaceAll(filename, `\`, "/")) // some browsers send the full path
 	name := strings.TrimSuffix(filename, ".jsonl")
 	if !datasetFilenameRe.MatchString(filename) || !ValidDatasetName(name) {
@@ -233,10 +243,14 @@ func SaveDataset(ctx context.Context, db *sql.DB, dir, filename string, content 
 			return nil, conflictErr("a dataset named " + name + " exists already with its own manifest and data file; upload under another name")
 		}
 	}
-	found, _ := DiscoverDatasets(dir)
+	found, _ := DiscoverDatasets(dirs...)
 	for _, f := range found {
-		if f.Name == name && filepath.Base(f.Dir) != name {
-			return nil, conflictErr("a dataset named " + name + " exists already in " + filepath.Base(f.Dir))
+		if f.Name == name && filepath.Clean(f.Dir) != filepath.Clean(dsDir) {
+			where := filepath.Base(f.Dir)
+			if len(dirs) > 1 {
+				where = f.Dir
+			}
+			return nil, conflictErr("a dataset named " + name + " exists already in " + where)
 		}
 	}
 
@@ -309,8 +323,8 @@ type Preview struct {
 // PreviewDataset returns the first limit lines of the data file of the dataset called name (the name must be valid, see
 // ValidDatasetName), so it can be inspected. Only the beginning of the file is read. Errors are *Error: KindNotFound for an
 // unknown dataset or a data file that cannot be read, KindInternal.
-func PreviewDataset(dir, name string, limit int) (*Preview, error) {
-	ds, err := FindDataset(dir, name)
+func PreviewDataset(dirs []string, name string, limit int) (*Preview, error) {
+	ds, err := FindDataset(dirs, name)
 	if err != nil {
 		return nil, notFoundErr("unknown dataset")
 	}

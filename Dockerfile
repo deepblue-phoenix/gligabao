@@ -27,12 +27,15 @@ COPY --from=build /out/gligabao /app/gligabao
 COPY bin/gligabao.toml /app/gligabao.toml
 # The evals of trained models (static definitions), read from disk.
 COPY bin/evals_training /app/evals_training
+# The ontology files that can be loaded by name (POST /v1/gb/ontologies with "file"; ontology_dirs of the config).
+COPY bin/ontology /app/ontology
 USER gligabao
 VOLUME /data
 EXPOSE 7878
 # Pass ANTHROPIC_API_KEY / OPENAI_API_KEY (and PINECONE_API_KEY if vector_store = "pinecone") as environment variables.
 # The SQLite database (/data/gligabao.db), the chromem vector store (/data/gligabao.vectors/) and the image files
 # (/data/gligabao.images/) all live in /data, and so does the training datasets directory (/data/datasets_training/: one
-# subdirectory per dataset, with a dataset.toml manifest).
+# subdirectory per dataset, with a dataset.toml manifest): --training-dataset-dir overrides datasets_training_dirs of the config,
+# which would resolve to /app/datasets_training, not writable here.
 ENTRYPOINT ["/app/gligabao"]
-CMD ["serve", "--db", "/data/gligabao.db", "--training-eval-dir", "/app/evals_training"]
+CMD ["serve", "--db", "/data/gligabao.db", "--training-dataset-dir", "/data/datasets_training", "--training-eval-dir", "/app/evals_training"]

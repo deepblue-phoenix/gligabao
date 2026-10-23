@@ -121,12 +121,18 @@ type ServeOptions struct {
 	// ImageDir is the directory the image files of the image pipeline are kept in (the database only tracks their
 	// paths). Default: next to DBPath, as <name>.images.
 	ImageDir string
-	// TrainingDatasetDir is the training datasets directory: one subdirectory with a dataset.toml manifest per dataset
-	// (the datasets uploaded in the admin UI are saved there too). Default: a "datasets_training" directory next to DBPath.
-	TrainingDatasetDir string
-	// TrainingEvalDir is the directory of the evals of trained models: one JSON file per eval, a map {"name", "cases"} (the
-	// training evals the admin UI and the API run). Default: an "evals_training" directory next to DBPath.
-	TrainingEvalDir string
+	// TrainingDatasetDirs are the training datasets directories, searched in order: one subdirectory with a dataset.toml manifest
+	// per dataset (the datasets uploaded in the admin UI are saved in the first). If empty, Config.DatasetsTrainingDirs; if that
+	// is empty too, a "datasets_training" directory next to DBPath.
+	TrainingDatasetDirs []string
+	// TrainingEvalDirs are the directories of the evals of trained models, searched in order: one JSON file per eval, a map
+	// {"name", "cases"} (the training evals the admin UI and the API run). If empty, Config.EvalsTrainingDirs; if that is empty
+	// too, an "evals_training" directory next to DBPath.
+	TrainingEvalDirs []string
+	// OntologyDirs are the directories ontology documents (OWL, RDF/XML) are loaded from by file name, searched in order (a
+	// request to POST or PUT /v1/gb/ontologies with "file" instead of "content"). Nothing is loaded at startup. If empty,
+	// Config.OntologyDirs; if that is empty too, there are none and only "content" can be sent.
+	OntologyDirs []string
 	// TrainedModelExportDir is the directory the files of trained models are fetched to for an export, one subdirectory per training
 	// job (gligabao never deletes them). Default: a "trained_models" directory next to DBPath.
 	TrainedModelExportDir string
@@ -186,7 +192,17 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 	monitoring.SetHooks(opts.Hooks)
 	defer monitoring.SetHooks(nil)
 	dbConfig := db.ConfigFrom(cfg, opts.DBPath, opts.VectorDir, opts.ImageDir)
-	trainingDirs := training.Dirs{Datasets: opts.TrainingDatasetDir, Evals: opts.TrainingEvalDir, ModelExport: opts.TrainedModelExportDir}
+	trainingDirs := training.Dirs{Datasets: opts.TrainingDatasetDirs, Evals: opts.TrainingEvalDirs, ModelExport: opts.TrainedModelExportDir}
+	if len(trainingDirs.Datasets) == 0 {
+		trainingDirs.Datasets = cfg.DatasetsTrainingDirs
+	}
+	if len(trainingDirs.Evals) == 0 {
+		trainingDirs.Evals = cfg.EvalsTrainingDirs
+	}
+	ontologyDirs := opts.OntologyDirs
+	if len(ontologyDirs) == 0 {
+		ontologyDirs = cfg.OntologyDirs
+	}
 	if trainingDirs.ModelExport == "" {
 		trainingDirs.ModelExport = cfg.TrainedModelExportDir
 	}
@@ -194,6 +210,7 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 		Addr:         cfg.Addr(),
 		DB:           dbConfig,
 		TrainingDirs: trainingDirs,
+		OntologyDirs: ontologyDirs,
 		AnthropicKey: cfg.AnthropicKey,
 		OpenAIKey:    cfg.OpenAIKey,
 		JevKey:       cfg.JevKey,

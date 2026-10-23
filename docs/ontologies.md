@@ -18,9 +18,10 @@ Loads an ontology under a name.
 
 | Field | Required | Description |
 | ----- | -------- | ----------- |
-| `user_id` | yes | Owner of the ontology (see [identity.md](identity.md)). |
+| `user_id` | yes | Owner of the ontology (see [identity.md](identity.md)). An ontology loaded from a file belongs to the user who sends the request too. |
 | `name` | yes | Name of the ontology: 1-64 characters of letters, digits, `.`, `_`, `-`, starting with a letter or digit. Unique per user. |
-| `content` | yes | The ontology document, as a string (at most 8 MiB). |
+| `content` | one of `content` and `file` | The ontology document, as a string (at most 8 MiB). |
+| `file` | one of `content` and `file` | The name of a file of the [ontology directories](#ontology-directories) to load instead of sending `content`, e.g. `"market.owl"`. A plain file name, no directory. |
 | `format` | no | Serialization of `content`. Only `rdfxml` (OWL in RDF/XML) is supported, and it is the default. |
 | `description` | no | Free text. Defaults to the ontology's own `rdfs:comment`, if it has one. |
 
@@ -47,7 +48,8 @@ Response `201` with the metadata of the ontology:
 
 | Status | Meaning |
 | ------ | ------- |
-| `400` | Bad JSON, missing or invalid `user_id` or `name`, missing `content`, unsupported `format`, or a document that is not well-formed RDF/XML or defines no class. |
+| `400` | Bad JSON, missing or invalid `user_id` or `name`, neither `content` nor `file` (or both), a `file` that is not a plain file name or when no ontology directories are configured, unsupported `format`, or a document that is not well-formed RDF/XML or defines no class. |
+| `404` | The `file` is in none of the ontology directories. |
 | `409` | The user already has an ontology with that name. Nothing is replaced. |
 | `500` | Database error. |
 
@@ -56,6 +58,14 @@ Errors are `{"error": "..."}`. It makes no LLM call. Example, loading the bundle
 ```sh
 jq -n --rawfile c bin/ontology/market.owl '{user_id:"u1", name:"market", content:$c}' \
   | curl -s localhost:7878/v1/gb/ontologies -d @-
+```
+
+## Ontology directories
+
+`ontology_dirs` in `gligabao.toml` (relative paths are relative to the file; `serve --ontology-dir`, repeatable, and `ServeOptions.OntologyDirs` override it) lists directories of ontology documents. They are listed explicitly and **not scanned**: nothing is loaded at startup, and an ontology is only loaded when a request names its file with `file` (in `POST` or `PUT`). The directories are searched in order and the first one that has the file is used, so a program that embeds gligabao can list its own directory first to override a file of the same name. The ontology is stored under the `user_id` of the request and the `name` it gives, exactly as if the file's text had been sent in `content`. Without `ontology_dirs`, `file` is rejected with `400`.
+
+```sh
+curl -s localhost:7878/v1/gb/ontologies -d '{"user_id":"u1","name":"market","file":"market.owl"}'
 ```
 
 ## PUT /v1/gb/ontologies/{name}
@@ -72,7 +82,7 @@ Updates the ontology stored under `name` with a new document. By default the doc
 }
 ```
 
-`name` comes from the path. The other fields are as for `POST`, plus:
+`name` comes from the path. The other fields (`content` or `file`, ...) are as for `POST`, plus:
 
 | Field | Required | Description |
 | ----- | -------- | ----------- |
