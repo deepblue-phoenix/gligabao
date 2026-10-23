@@ -32,6 +32,7 @@ import "github.com/deepblue-phoenix/gligabao"
 err := gligabao.Serve(ctx, cfg, gligabao.ServeOptions{
     TrainedModelExporters: []gligabao.TrainedModelExporter{{
         Name: "bucket",
+        Description: "Uploads the model's files to the releases bucket.",
         Export: func(ctx context.Context, req gligabao.ExportTrainedModelRequest) (gligabao.ExportTrainedModelResult, error) {
             dest := fmt.Sprintf("models/%s/export-%d", req.Model.JobID, req.ExportID)
             for _, f := range req.Model.Files {
@@ -51,7 +52,7 @@ err := gligabao.Serve(ctx, cfg, gligabao.ServeOptions{
 
 | Type | Fields |
 |---|---|
-| `gligabao.TrainedModelExporter` | `Name`, `Export` |
+| `gligabao.TrainedModelExporter` | `Name`, `Description` (optional, shown in the admin UI), `Export` |
 | `gligabao.ExportTrainedModelFunc` | `func(ctx context.Context, req ExportTrainedModelRequest) (ExportTrainedModelResult, error)`, the type of `Export` |
 | `gligabao.ExportTrainedModelRequest` | `ExportID`, `Model`, `Dir`, `Options` |
 | `gligabao.ExportTrainedModelResult` | `Ref`, `Details` |
@@ -128,6 +129,7 @@ The table exists on SQLite and PostgreSQL and is created automatically. A row th
 | Endpoint | |
 |---|---|
 | `POST /v1/gb/training/models/{id}/exports` | Body `{"exporter": "<name>", "options": {...}}`. `exporter` is required (the error lists the registered names); `options` is a free-form JSON object of at most 64 KB that reaches the hook unchanged. Fetches the files, calls the exporter, waits, and answers `200` with the stored export (`id`, `trained_model_id`, `exporter`, `options`, `status` `completed`, `dir`, `ref`, `details`, `error`, `duration_ms`, `created_at`, `completed_at`). |
+| `GET /v1/gb/training/exporters` | `{"exporters": [{"name": "...", "description": "..."}]}`: the registered exporters, sorted by name (empty if none). The admin UI's *Exporters* block shows them. |
 | `GET /v1/gb/training/models/{id}/exports[?limit=]` | `{"exports": [...]}`: the stored exports of the model, newest first, failed ones too (default 100, at most 500). |
 
 ```
@@ -146,6 +148,10 @@ $ curl -X POST localhost:7878/v1/gb/training/models/3/exports \
 | `500` | the export could not be recorded or read back |
 | `502` | fetching the files failed, or the exporter returned an error or panicked; the failed export is stored (`error`) and has an ID, listed by the `GET` endpoint |
 | `503` | there is no active sidecar |
+
+## Admin UI
+
+In the admin UI's *Training* view, the action box of a trained model (click its row) has an **Export** button, after *Audit*: it opens a dialog listing the registered exporters with their descriptions, each with its own *Export* button; the one pressed calls `POST .../exports` with that exporter, and its outcome (status, `ref`, duration, or the error) is shown in its row. The *Exporters* block at the bottom of the view lists the registered exporters and their descriptions (from `GET /v1/gb/training/exporters`); with none registered, *Export* is disabled.
 
 ## System events
 

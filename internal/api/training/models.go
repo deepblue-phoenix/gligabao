@@ -192,3 +192,20 @@ func ListExportsOf(db *sql.DB) http.HandlerFunc {
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{"exports": list})
 	}
 }
+
+// ListExportersOf serves GET /v1/gb/training/exporters: {"exporters": [{"name": "...", "description": "..."}, ...]}, the trained model exporters the
+// embedding program registered (ServeOptions.TrainedModelExporters), sorted by name; an empty list if there are none. The admin UI
+// shows them and asks for an export with each.
+func ListExportersOf(exporters []core.TrainedModelExporter) http.HandlerFunc {
+	type exporter struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	list := make([]exporter, 0, len(exporters))
+	for _, e := range exporters {
+		list = append(list, exporter{Name: e.Name, Description: e.Description})
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"exporters": list})
+	}
+}

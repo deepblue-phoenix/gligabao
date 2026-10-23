@@ -75,6 +75,8 @@ type TrainedModelExporter struct {
 	// Name identifies the exporter: letters, digits, '_', '-' and '.', starting with a letter or digit, unique. It is what
 	// an export request names, and is stored with the export.
 	Name string
+	// Description says in plain words what the exporter does and where the model goes (optional). The admin UI shows it.
+	Description string
 	// Export does the exporting.
 	Export ExportTrainedModelFunc
 }

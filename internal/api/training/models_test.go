@@ -308,3 +308,20 @@ func testExportATrainedModel(t *testing.T, d *sql.DB) {
 		t.Fatalf("list exports of unknown model: %d", rec.Code)
 	}
 }
+
+func TestListExporters(t *testing.T) {
+	list := func(exporters []core.TrainedModelExporter) string {
+		rec := httptest.NewRecorder()
+		training.ListExportersOf(exporters)(rec, httptest.NewRequest("GET", "/x", nil))
+		if rec.Code != 200 {
+			t.Fatalf("status %d", rec.Code)
+		}
+		return strings.TrimSpace(rec.Body.String())
+	}
+	if got := list(nil); got != `{"exporters":[]}` {
+		t.Fatalf("none: %s", got)
+	}
+	if got := list([]core.TrainedModelExporter{{Name: "a", Description: "does a"}, {Name: "b"}}); got != `{"exporters":[{"name":"a","description":"does a"},{"name":"b","description":""}]}` {
+		t.Fatalf("two: %s", got)
+	}
+}

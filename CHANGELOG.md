@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.101.0] - 2026-10-29
+
+### Added
+- Admin UI, training view: every trained model's action box has an **Export** button, after Audit. It opens a dialog that lists the registered trained model exporters (the hooks of `ServeOptions.TrainedModelExporters`) with their descriptions, each with its own **Export** button; pressing one exports the model with that exporter and shows the outcome (status, ref, duration, or the error) in its row.
+- Admin UI, training view: a new **Exporters** block at the bottom lists the exporters registered through hooks, with their descriptions (or says that none is).
+- `TrainedModelExporter` has an optional `Description` field: what the exporter does and where the model goes. The admin UI shows it.
+- `GET /v1/gb/training/exporters`: `{"exporters": [{"name": "...", "description": "..."}]}`, the registered trained model exporters, sorted by name (empty list if none).
+
 ## [0.100.1] - 2026-10-28
 
 ### Changed

@@ -268,6 +268,7 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, t
 	}
 	mux.HandleFunc("POST /v1/gb/training/models/{id}/exports", training.ExportOf(trainingDB, fetcher, exporters, dirs.ModelExport))
 	mux.HandleFunc("GET /v1/gb/training/models/{id}/exports", training.ListExportsOf(trainingDB))
+	mux.HandleFunc("GET /v1/gb/training/exporters", training.ListExportersOf(exporters))
 	evalsapi.New(evals).Register(mux, "/v1/gb/training") // the evals, their definitions and the training experiments
 	auditsapi.New(audits).Register(mux, "/v1/gb/training")
 	mux.HandleFunc("GET /v1/gb/training/datasets", training.ListDatasetsOf(trainingDB, dirs.Datasets))

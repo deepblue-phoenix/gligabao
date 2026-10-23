@@ -170,6 +170,12 @@
               <div id="training-loss"></div>
               <div id="training-feed" class="tr-feed" role="log" aria-live="polite"></div>
             </div>
+
+            <div class="tr-section tr-exporters">
+              <h3>Exporters <button type="button" class="help-btn" data-help="exporters-help-modal" title="Help" aria-label="Help">?</button></h3>
+              <p id="training-exporters-status" class="muted"></p>
+              <ul id="training-exporters" class="exporters" hidden></ul>
+            </div>
           </section>
         </div>
       </div>
@@ -205,7 +211,26 @@
         <h2>Trained models</h2>
         <button type="button" class="close-x" data-close-help title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
-      <div class="modal-body"><p class="help-text">Every completed job saves its weights as a new trained model, so training again (other data, steps or size) never replaces an earlier one. Click a model to open a small box of actions: <b>info</b> (how it was trained and its files), <b>Prompt</b> (a form to run inference on it and the past replies), <b>Eval</b> and <b>Audit</b>. Audit opens its audit dialog: it asks the model the questions of its own fine-tuning dataset (each example is a case) and has the LLM judge, in batches, how close its answers are to the dataset's: a check that the training took, not a test of generalization.</p></div>
+      <div class="modal-body"><p class="help-text">Every completed job saves its weights as a new trained model, so training again (other data, steps or size) never replaces an earlier one. Click a model to open a small box of actions: <b>info</b> (how it was trained and its files), <b>Prompt</b> (a form to run inference on it and the past replies), <b>Eval</b>, <b>Audit</b> and <b>Export</b>. Export opens a box listing the exporters registered through hooks (also under <i>Exporters</i>): press the button of the one to hand the model's weights to. Audit opens its audit dialog: it asks the model the questions of its own fine-tuning dataset (each example is a case) and has the LLM judge, in batches, how close its answers are to the dataset's: a check that the training took, not a test of generalization.</p></div>
+    </dialog>
+
+    <dialog id="exporters-help-modal" class="modal modal-small help-modal">
+      <div class="modal-head">
+        <h2>Exporters</h2>
+        <button type="button" class="close-x" data-close-help title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="modal-body"><p class="help-text">Exporters are hooks: Go callbacks that the program embedding gligabao registers at startup (<code>ServeOptions.TrainedModelExporters</code>); they cannot be added here. The <b>Export</b> action of a trained model fetches its weights to the server's disk and calls the exporter you pick with them. What an exporter does with the files (upload, copy, convert, ...) is its own business.</p></div>
+    </dialog>
+
+    <dialog id="export-modal" class="modal">
+      <div class="modal-head">
+        <h2 id="export-title">Export</h2>
+        <button type="button" id="export-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <p class="muted">Pick the exporter to hand this model's weights to. The weights are fetched to the server first and the exporter runs while you wait: it can take minutes.</p>
+        <ul id="export-list" class="export-list"></ul>
+      </div>
     </dialog>
 
     <dialog id="datasets-help-modal" class="modal modal-small help-modal">

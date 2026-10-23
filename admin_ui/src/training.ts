@@ -25,6 +25,8 @@ interface Inference {
   max_tokens: number; temperature: number | null; input_tokens: number; output_tokens: number; cold_start: boolean | null;
   load_seconds: number; duration_ms: number; created_at: string; completed_at: string | null;
 }
+interface Exporter { name: string; description: string }
+interface ModelExport { id: number; exporter: string; status: string; ref: string; error: string; duration_ms: number }
 interface DatasetRecord {
   id: number; filename: string; size_bytes: number; num_records: number; sha256: string; status: "stored" | "synced";
   updated_at: string; synced_at: string | null;
@@ -111,6 +113,8 @@ let allJobs: EventSource | undefined; // live events of every job, to keep the l
 let drawQueued = false;
 const stopping = new Set<number>(); // runs a stop was requested of, until they end
 let stopError = ""; // why the last stop request failed
+let exporters: Exporter[] = []; // the exporter hooks the embedding program registered
+let exporting = false; // an export is in flight
 
 //---------------------------------------------------------------------------------------------
 // Jobs list
@@ -206,7 +210,7 @@ function renderModels(): void {
   for (const m of models) {
     const tr = body.insertRow();
     tr.classList.toggle("selected", m.id === selectedModel);
-    tr.title = "Click for this model's actions: info, prompt, eval, audit";
+    tr.title = "Click for this model's actions: info, prompt, eval, audit, export";
     tr.insertCell().textContent = String(m.id);
     const name = tr.insertCell();
     name.textContent = shortName(m.name);
@@ -250,6 +254,89 @@ async function loadModels(): Promise<void> {
   }
 }
 
+//---------------------------------------------------------------------------------------------
+// Exporters
+
+function renderExporters(): void {
+  const list = el("training-exporters");
+  list.replaceChildren(...exporters.map((e) => {
+    const li = node("li");
+    li.append(node("strong", "", e.name));
+    if (e.description) li.append(node("span", "exporter-desc", e.description));
+    return li;
+  }));
+  list.hidden = exporters.length === 0;
+}
+
+async function loadExporters(): Promise<void> {
+  const status = el("training-exporters-status");
+  try {
+    const res = await fetch("../training/exporters");
+    if (!res.ok) throw await failure(res);
+    exporters = ((await res.json()) as { exporters: Exporter[] }).exporters ?? [];
+    status.className = "muted";
+    status.textContent = exporters.length === 0
+      ? "No exporter is registered. The program that embeds gligabao registers them as hooks (ServeOptions.TrainedModelExporters); trained models cannot be exported."
+      : "Registered through hooks. Export on a trained model lets you pick one of them.";
+    renderExporters();
+  } catch (err) {
+    status.className = "error";
+    status.textContent = `Failed to load the exporters: ${errText(err)}`;
+  }
+}
+
+// Opens the export dialog of a model: one row per registered exporter, each with its own Export button.
+function openExport(id: number): void {
+  const m = models.find((x) => x.id === id);
+  if (!m || exporters.length === 0) return;
+  el("export-title").textContent = `Export: ${m.name} (#${m.id})`;
+  el("export-list").replaceChildren(...exporters.map((e) => {
+    const li = node("li");
+    const info = node("div");
+    info.append(node("div", "exporter-name", e.name));
+    if (e.description) info.append(node("div", "exporter-desc", e.description));
+    const btn = node("button", "small", "Export");
+    btn.type = "button";
+    btn.title = `Export this model with ${e.name}`;
+    const result = node("div", "export-result");
+    btn.addEventListener("click", () => void exportModel(m, e, result));
+    li.append(info, btn, result);
+    return li;
+  }));
+  setExporting(exporting);
+  const modal = el<HTMLDialogElement>("export-modal");
+  if (!modal.open) modal.showModal();
+}
+
+// While an export runs, the buttons of the dialog are off: one export at a time.
+function setExporting(on: boolean): void {
+  exporting = on;
+  for (const b of Array.from(el("export-list").querySelectorAll<HTMLButtonElement>("button"))) b.disabled = on;
+}
+
+// Exports the model with one exporter. The server answers when the exporter is done, which can take minutes for a large model;
+// the outcome is shown in the exporter's row (it stays if the dialog is closed meanwhile, the export goes on).
+async function exportModel(m: TrainedModel, e: Exporter, result: HTMLElement): Promise<void> {
+  if (exporting) return;
+  setExporting(true);
+  result.className = "export-result muted";
+  result.textContent = "Exporting…";
+  try {
+    const res = await fetch(`../training/models/${m.id}/exports`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ exporter: e.name }),
+    });
+    if (!res.ok) throw await failure(res);
+    const out = (await res.json()) as ModelExport;
+    result.className = "export-result";
+    result.textContent = `${out.status}${out.ref ? `, ref ${out.ref}` : ""} (${fmtSpan(out.duration_ms / 1000)}, export #${out.id})`;
+  } catch (err) {
+    result.className = "export-result error";
+    result.textContent = `Failed: ${errText(err)}`;
+  } finally {
+    setExporting(false);
+  }
+}
+
 // Opens the model's dialog: how it was trained, its files, a form to run a prompt through it and the past requests.
 function selectModel(id: number): void {
   selectedModel = id;
@@ -263,7 +350,7 @@ function selectModel(id: number): void {
 
 const INFO_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>';
 
-// The little box that opens where a model's row is clicked: info, prompt, eval, audit (in that order).
+// The little box that opens where a model's row is clicked: info, prompt, eval, audit, export (in that order).
 function closeModelMenu(): void {
   document.getElementById("model-menu")?.remove();
 }
@@ -294,6 +381,12 @@ function openModelMenu(id: number, x: number, y: number): void {
   add(node("button", "small", AUDIT.button),
     `Open the audit dialog of this model: run a training data audit and see the past ones. ${m.dataset ? AUDIT.tip(m.dataset) : "This model was trained on the sidecar's default dataset: there are no questions to ask"}`,
     () => openAudit(id));
+  const exportBtn = node("button", "small", "Export");
+  exportBtn.disabled = exporters.length === 0;
+  add(exportBtn,
+    exporters.length === 0 ? "No exporter is registered: the program that embeds gligabao registers them (see Exporters below)"
+      : "Choose an exporter to hand this model's weights to",
+    () => openExport(id));
   // what admin UI extensions add (docs/admin-extensions.md); a button they add closes the menu like the ones above
   renderSlot("training.model.actions", menu, { model: m });
   menu.addEventListener("click", (e) => { if ((e.target as Element).closest("button")) closeModelMenu(); });
@@ -1546,16 +1639,20 @@ export function initTraining(): void {
   const detailsModal = el<HTMLDialogElement>("details-modal");
   el("details-close").addEventListener("click", () => detailsModal.close());
   detailsModal.addEventListener("click", (e) => { if (e.target === detailsModal) detailsModal.close(); });
+  const exportModal = el<HTMLDialogElement>("export-modal");
+  el("export-close").addEventListener("click", () => exportModal.close());
+  exportModal.addEventListener("click", (e) => { if (e.target === exportModal) exportModal.close(); });
   const auditModal = el<HTMLDialogElement>("audit-modal");
   el("audit-close").addEventListener("click", () => auditModal.close());
   auditModal.addEventListener("close", closeAuditModal);
   auditModal.addEventListener("click", (e) => { if (e.target === auditModal) auditModal.close(); });
   el("dataset-close").addEventListener("click", () => datasetModal.close());
   datasetModal.addEventListener("click", (e) => { if (e.target === datasetModal) datasetModal.close(); });
-  el("training-refresh").addEventListener("click", () => { void loadDatasets(); void loadBackends(); void loadJobs(); void loadModels(); });
+  el("training-refresh").addEventListener("click", () => { void loadExporters(); void loadDatasets(); void loadBackends(); void loadJobs(); void loadModels(); });
   // The SSE streams are open only while the view is shown (a browser allows few connections to a host).
   const sync = (): void => {
     if (view.hidden) { closeStreams(); return; }
+    void loadExporters();
     void loadDatasets();
     void loadModels();
     openAllJobs();
@@ -1576,5 +1673,6 @@ export function initTraining(): void {
   setInterval(() => { if (!view.hidden) renderJobs(); }, 30000); // refreshes the "ago" texts
   void loadJobs();
   void loadModels();
+  void loadExporters();
   if (!view.hidden) sync();
 }

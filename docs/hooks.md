@@ -164,6 +164,7 @@ An exporter is a callback, `Export`, that receives a trained model's weights, as
 gligabao.ServeOptions{
     TrainedModelExporters: []gligabao.TrainedModelExporter{{
         Name: "bucket",
+        Description: "Uploads the model's files to the releases bucket.",
         Export: func(ctx context.Context, req gligabao.ExportTrainedModelRequest) (gligabao.ExportTrainedModelResult, error) {
             // req.Dir has req.Model.Files: adapter_config.json, adapter_model.safetensors, ...
             return gligabao.ExportTrainedModelResult{Ref: "models/my-adapter", Details: map[string]any{"job_id": "..."}}, nil
@@ -176,7 +177,7 @@ An export is asked for with `POST /v1/gb/training/models/{id}/exports` and a bod
 
 | Type | Fields |
 |---|---|
-| `gligabao.TrainedModelExporter` | `Name`, `Export` |
+| `gligabao.TrainedModelExporter` | `Name`, `Description` (optional, shown in the admin UI), `Export` |
 | `gligabao.ExportTrainedModelRequest` | `ExportID`, `Model` (`gligabao.TrainedModel`: `ID`, `Name`, `JobID`, `BaseModel`, `ModelSize`, `Dataset`, `NumExamples`, `NumTrainSteps`, `FinalLoss`, `Params`, `Path`, `Files` (`gligabao.TrainedModelFile`: `Path`, `SizeBytes`, `SHA256`), ...), `Dir`, `Options` |
 | `gligabao.ExportTrainedModelResult` | `Ref`, `Details` |
 
