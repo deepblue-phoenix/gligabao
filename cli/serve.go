@@ -19,6 +19,8 @@ func newServe(c *CLI, o Options) *cobra.Command {
 		Use:   "serve",
 		Short: "Start the HTTP server",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Arguments are parsed by now: a runtime error is not a usage error, so do not print the help for it.
+			cmd.SilenceUsage = true
 			cfg := c.cfg
 			if cmd.Flags().Changed("eval") {
 				cfg.EvalModeEnable = eval

@@ -536,7 +536,15 @@ func Run(ctx context.Context, opts Options) error {
 		log.Info("shutting down")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
-		return srv.Shutdown(shutdownCtx)
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			if !errors.Is(err, context.DeadlineExceeded) {
+				return err
+			}
+			// Open connections (e.g. streams) did not finish in time: close them and quit.
+			log.Warn("graceful shutdown timed out; closing the remaining connections")
+			_ = srv.Close()
+		}
+		return nil
 	}
 	return nil
 }
