@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -192,18 +193,26 @@ const EvalDBName = "eval"
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary; adminExts are the registered admin UI extensions
 // (already validated; may be nil), mounted with it.
 func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, exporters []coretraining.TrainedModelExporter, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
+	return newMux(ctx, true, d, llm, emb, jv, ws, providers, exporters, dirs, ontologyDirs, sc, eval, trainingMode, adminUI, adminExts, extraAdminDBs...)
+}
+
+// newMux is NewHandler; standalone is false when the routes are mounted on a host's mux (see Mount), where "/", "/health" and
+// "/version" belong to the host, so they are not registered: an unknown path under /v1/gb/ is a plain 404.
+func newMux(ctx context.Context, standalone bool, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, exporters []coretraining.TrainedModelExporter, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "gligabao is running")
-	})
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		if err := d.Ping(r.Context()); err != nil {
-			http.Error(w, "db unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		fmt.Fprintln(w, "ok")
-	})
-	mux.HandleFunc("GET /version", versionHandler)
+	if standalone {
+		mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprintln(w, "gligabao is running")
+		})
+		mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+			if err := d.Ping(r.Context()); err != nil {
+				http.Error(w, "db unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			fmt.Fprintln(w, "ok")
+		})
+		mux.HandleFunc("GET /version", versionHandler)
+	}
 	// The remember manager runs every remember pipeline run, one at a time, until ctx is done.
 	mgr := memory_remember.NewManager(ctx, d.Relational, llm)
 	api.Register(mux, mgr, d, llm, emb, jv, ws, providers, api.WithOntologyDirs(ontologyDirs))
@@ -370,6 +379,137 @@ func Run(ctx context.Context, opts Options) error {
 		fmt.Fprintf(os.Stderr, "Admin UI: %s%s%s\n", yellow, adminURL(opts.Addr), reset)
 	}
 	fmt.Fprintln(os.Stderr)
+
+	handler, closeAll, err := prepare(ctx, opts, true)
+	if err != nil {
+		return err
+	}
+	// The remember manager stops, and the databases close, only when Run returns, i.e. after the graceful shutdown has given the
+	// runs in progress their time.
+	defer closeAll()
+	srv := &http.Server{Addr: opts.Addr, Handler: handler}
+
+	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	errCh := make(chan error, 1)
+	go func() {
+		log.WithField("addr", opts.Addr).Info("listening")
+		errCh <- srv.ListenAndServe()
+	}()
+
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+	case <-ctx.Done():
+		log.Info("shutting down")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			if !errors.Is(err, context.DeadlineExceeded) {
+				return err
+			}
+			// Open connections (e.g. streams) did not finish in time: close them and quit.
+			log.Warn("graceful shutdown timed out; closing the remaining connections")
+			_ = srv.Close()
+		}
+		return nil
+	}
+	return nil
+}
+
+//---------------------------------------------------------------------------------------------
+
+// MountPrefix is the path prefix every route of gligabao is under (the API, the admin UI, the eval and training endpoints).
+const MountPrefix = "/v1/gb/"
+
+// mountMethods are the methods gligabao's routes use. Mount registers the subtree once per method ("GET /v1/gb/"), not as a
+// method-less "/v1/gb/": that one would conflict with a host's own "GET /" (ServeMux rejects patterns where neither is more specific).
+var mountMethods = []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete}
+
+// Mount does what Run does, except that it does not listen: it sets everything up (databases, providers, managers, ...) and
+// registers gligabao's handlers on mux, the mux of the program that hosts it, as the subtree MountPrefix ("/v1/gb/"). It returns
+// as soon as the handlers are registered (so register them before the host starts serving) and the returned function releases
+// what was set up (the remember manager and the databases); it is safe to call more than once. The same release happens by itself
+// when ctx is cancelled. Call it only after the host's server has stopped serving: once released, the mounted routes answer 503.
+//
+// gligabao's own "/", "/health" and "/version" routes are not registered, they belong to the host. wrap, if not nil, wraps the
+// handler (e.g. with the host's authentication) before it is registered. The Addr option is not used. Mount returns an error,
+// not a panic, if the host already has a conflicting route under "/v1/gb/".
+func Mount(ctx context.Context, opts Options, mux *http.ServeMux, wrap func(http.Handler) http.Handler) (release func(), err error) {
+	if mux == nil {
+		return nil, errors.New("gligabao: mount: mux is nil")
+	}
+	handler, closeAll, err := prepare(ctx, opts, false)
+	if err != nil {
+		return nil, err
+	}
+	var released atomic.Bool
+	inner := handler
+	handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if released.Load() {
+			http.Error(w, "gligabao is shut down", http.StatusServiceUnavailable)
+			return
+		}
+		inner.ServeHTTP(w, r)
+	})
+	if wrap != nil {
+		handler = wrap(handler)
+	}
+	var once sync.Once
+	release = func() {
+		once.Do(func() {
+			released.Store(true)
+			closeAll()
+		})
+	}
+	for _, m := range mountMethods {
+		if err := register(mux, m+" "+MountPrefix, handler); err != nil {
+			release() // routes registered before the conflict stay on the mux, and answer 503
+			return nil, err
+		}
+	}
+	go func() {
+		<-ctx.Done()
+		release()
+	}()
+	log.WithField("prefix", MountPrefix).Info("gligabao handlers are mounted on the host's mux (gligabao does not listen on its own)")
+	return release, nil
+}
+
+// register registers handler on mux under pattern; ServeMux panics on a conflicting route, which becomes an error here.
+func register(mux *http.ServeMux, pattern string, handler http.Handler) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("gligabao: mount: cannot register %q on the mux: %v", pattern, r)
+		}
+	}()
+	mux.Handle(pattern, handler)
+	return nil
+}
+
+//---------------------------------------------------------------------------------------------
+
+// prepare opens the databases, builds everything the server needs and returns its handler (the routes of NewHandler) and
+// a function that releases it all (the remember manager, then the databases), which the caller must call when done. Nothing is
+// listened on. On an error everything already set up is released.
+func prepare(ctx context.Context, opts Options, standalone bool) (handler http.Handler, closeAll func(), err error) {
+	var cleanups []func() // run in reverse order
+	closeAll = func() {
+		for i := len(cleanups) - 1; i >= 0; i-- {
+			cleanups[i]()
+		}
+		cleanups = nil
+	}
+	defer func() {
+		if err != nil {
+			closeAll()
+			handler, closeAll = nil, nil
+		}
+	}()
+
 	lib := buildinfo.Library()
 	fields := log.Fields{"version": lib.Version, "commit": lib.Commit}
 	if app, ok := buildinfo.App(); ok {
@@ -379,9 +519,9 @@ func Run(ctx context.Context, opts Options) error {
 	opts.DB.Models = ai.SupportedModels(ai.NewPriceTable(opts.Prices)) // the models gligabao supports are stored on startup
 	database, err := db.Open(opts.DB)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	defer database.Close()
+	cleanups = append(cleanups, func() { database.Close() })
 	// Only non-secret fields are logged (never the DSN).
 	log.WithFields(log.Fields{
 		"backend":              database.Backend,
@@ -416,7 +556,11 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	if opts.AdminUIenable && adminui.Available() {
-		log.WithField("url", adminURL(opts.Addr)).Info("admin UI is active")
+		adminPath := adminURL(opts.Addr)
+		if opts.Addr == "" { // mounted on a host's mux: the host's address is not known here
+			adminPath = "/v1/gb/admin/"
+		}
+		log.WithField("url", adminPath).Info("admin UI is active")
 	} else if opts.AdminUIenable {
 		log.Warn("admin UI is enabled but not active: web assets are not embedded in this binary")
 	} else {
@@ -425,7 +569,7 @@ func Run(ctx context.Context, opts Options) error {
 
 	providers, err := memory_core.ResolveSeriesProviders(opts.TimeseriesProviders)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	for _, p := range providers {
 		log.WithField("provider", p.Name).Info("timeseries provider registered: remember can fetch series from it when asked (timeseries.fetch)")
@@ -433,7 +577,7 @@ func Run(ctx context.Context, opts Options) error {
 
 	exporters, err := coretraining.ResolveExporters(opts.TrainedModelExporters)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	for _, e := range exporters {
 		log.WithField("exporter", e.Name).Info("trained model exporter registered: trained models can be exported through it (POST /v1/gb/training/models/{id}/exports)")
@@ -441,7 +585,7 @@ func Run(ctx context.Context, opts Options) error {
 
 	adminExts, err := admin.ResolveExtensions(opts.AdminExtensions)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	for _, e := range adminExts {
 		if opts.AdminUIenable {
@@ -487,14 +631,14 @@ func Run(ctx context.Context, opts Options) error {
 		} else if evalDB, err := openAdminDB(opts.EvalDBPath); err != nil {
 			log.WithError(err).WithField("path", opts.EvalDBPath).Warn("eval database not shown in the admin UI")
 		} else {
-			defer evalDB.Close()
+			cleanups = append(cleanups, func() { evalDB.Close() })
 			log.WithField("path", opts.EvalDBPath).Info("eval database is shown in the admin UI")
 			// The eval runner (a separate process) keeps the eval database's vectors next to it, always in chromem with the
 			// default dimensions (see internal/evals/knowledge/cmd), so open that directory afresh whenever it is needed.
 			vecDir := db.DefaultVectorDir(opts.EvalDBPath)
 			evalStore, err := evals.StoreFor(database.Backend)
 			if err != nil {
-				return err
+				return nil, nil, err
 			}
 			extra = append(extra, admin.Named{
 				Name:          EvalDBName,
@@ -513,40 +657,10 @@ func Run(ctx context.Context, opts Options) error {
 	sc, sidecarActive := connectSidecar(ctx, opts.SidecarURL)
 	SidecarActive.Store(sidecarActive)
 
-	// The remember manager stops only when Run returns, i.e. after the graceful shutdown has given the runs in progress their time.
+	// The remember manager stops when everything is released, i.e. after the graceful shutdown has given the runs in progress their time.
 	mgrCtx, stopMgr := context.WithCancel(ctx)
-	defer stopMgr()
-	srv := &http.Server{Addr: opts.Addr, Handler: NewHandler(mgrCtx, database, llm, emb, jv, ws, providers, exporters, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, extra...)}
-
-	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	errCh := make(chan error, 1)
-	go func() {
-		log.WithField("addr", opts.Addr).Info("listening")
-		errCh <- srv.ListenAndServe()
-	}()
-
-	select {
-	case err := <-errCh:
-		if !errors.Is(err, http.ErrServerClosed) {
-			return err
-		}
-	case <-ctx.Done():
-		log.Info("shutting down")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-		defer cancel()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			if !errors.Is(err, context.DeadlineExceeded) {
-				return err
-			}
-			// Open connections (e.g. streams) did not finish in time: close them and quit.
-			log.Warn("graceful shutdown timed out; closing the remaining connections")
-			_ = srv.Close()
-		}
-		return nil
-	}
-	return nil
+	cleanups = append(cleanups, stopMgr)
+	return newMux(mgrCtx, standalone, database, llm, emb, jv, ws, providers, exporters, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, extra...), closeAll, nil
 }
 
 // newJev builds the Jev client from the options.

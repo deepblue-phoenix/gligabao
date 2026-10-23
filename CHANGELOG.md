@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.102.0] - 2026-11-02
+
+### Added
+- `gligabao.Mount(ctx, cfg, opts, gligabao.MountOptions{Mux: mux})`: a program that already runs its own HTTP server can mount gligabao's handlers on its `*http.ServeMux` instead of letting gligabao start a server on `port`. All routes are registered as one subtree, `/v1/gb/` (`gligabao.MountPrefix`): the API and, when enabled by the config, the admin UI, eval and training endpoints. `Mount` does the whole setup (databases, sidecar check, providers, exporters, admin extensions), returns when the handlers are registered and gives back a `release` function that stops the remember manager and closes the databases (idempotent, and also called when `ctx` is cancelled; after it the mounted routes answer `503`). It does not handle SIGINT/SIGTERM, the host owns the process. gligabao's own `/`, `/health` and `/version` are not registered (they belong to the host), and `port` is not used. `MountOptions.Wrap` wraps the handler, e.g. with the host's authentication (gligabao has no access control of its own). A conflict with a route of the host under `/v1/gb/` is an error, not a panic.
+- `server.Mount` and `NewHandler`'s internals: the routes are registered per method (`GET /v1/gb/`, `POST /v1/gb/`, ...) so that they do not conflict with a host's `GET /`.
+
+### Changed
+- Internal: `server.Run` is split into the setup (`prepare`) and the listening part; `Serve` and the standalone CLI behave exactly as before.
+
 ## [0.101.0] - 2026-10-29
 
 ### Added

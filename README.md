@@ -155,6 +155,29 @@ err = gligabao.Serve(ctx, cfg, gligabao.ServeOptions{DBPath: "data/gligabao.db"}
 - `ServeOptions.Hooks`: callbacks gligabao invokes, today the system-event hook (called after every `remember`, `recall` and timeseries request, with counts and timings, for logging and metrics). `ServeOptions.TrainedModelExporters` are hooks that export a trained model (gligabao fetches its files to a local directory and calls the exporter with it; `POST /v1/gb/training/models/{id}/exports`; see [docs/model-exporting.md](docs/model-exporting.md)). All the hooks available to embedding programs are documented in [docs/hooks.md](docs/hooks.md).
 - `ServeOptions.AdminExtensions`: extensions of the admin UI, each a `gligabao.AdminExtension{Name, Assets, Handler}`: browser files (an `index.js` ES module that adds views and buttons/blocks to the admin page) and an optional HTTP handler of its own. See [docs/admin-extensions.md](docs/admin-extensions.md).
 - `Serve(ctx, cfg, opts)` blocks until `ctx` is cancelled or SIGINT/SIGTERM arrives, then shuts down gracefully. A nil `cfg` means `DefaultConfig()`.
+- `Mount(ctx, cfg, opts, gligabao.MountOptions{Mux: mux})`: see [Mounting on your own HTTP server](#mounting-on-your-own-http-server).
+
+### Mounting on your own HTTP server
+
+`Serve` starts gligabao's own HTTP server on the config's `port`. A program that already runs an HTTP server (a gloflow `gf_solo`, say) can instead have gligabao register its handlers on the program's `*http.ServeMux` and serve them on its own port, with no second server and no second port:
+
+```go
+mux := http.NewServeMux() // the host's mux, with the host's own routes
+release, err := gligabao.Mount(ctx, cfg, gligabao.ServeOptions{DBPath: "data/gligabao.db"}, gligabao.MountOptions{
+    Mux: mux,
+    Wrap: func(next http.Handler) http.Handler { return requireAuth(next) }, // optional
+})
+if err != nil { /* ... */ }
+defer release()
+// ... http.ListenAndServe(":8080", mux), and call release after the host's server has shut down
+```
+
+- Same `Config` and `ServeOptions` as `Serve` (providers, exporters, hooks, admin extensions, directories, ...). Everything is set up by `Mount` itself (databases, sidecar check, remember manager, ...) and it returns once the handlers are registered, so call it **before** the host starts serving. It does not block and does not handle SIGINT/SIGTERM: the host owns the process.
+- All routes are registered as one subtree, `gligabao.MountPrefix` (`/v1/gb/`): the API and, when the config enables them, the admin UI (`/v1/gb/admin/`) and the eval and training endpoints. They are registered per method (`GET /v1/gb/`, `POST /v1/gb/`, ...), so they do not conflict with a host's `GET /`. The host must not have routes of its own under `/v1/gb/` (`Mount` returns an error, not a panic, if it has).
+- gligabao's own `/`, `/health` and `/version` are **not** registered, they belong to the host (an unknown path under `/v1/gb/` is a plain `404`). The config's `port` is not used.
+- `release` stops the remember manager and closes the databases. It is idempotent, and is also called when `ctx` is cancelled. Call it after the host's server has shut down; after it the mounted routes answer `503`. The `Hooks` and `App` of `ServeOptions` are installed until then.
+- `MountOptions.Wrap` wraps the whole handler before it is registered. **gligabao has no access control of its own** (standalone it is meant to be on a private port), and mounted on a public server its API and admin UI are as public as that server: use `Wrap` to put the host's authentication in front of them.
+- Not changed: `Serve`, the `gligabao` CLI and the standalone `gligabao_int` run as before, on their own port. `gligabao_int/cmd` has `EmbedMount`, the counterpart of its `Embed` that mounts instead of listening.
 
 gligabao needs no CGO, so the embedding program can be built with `CGO_ENABLED=0` (see [Building](#building)). A working example with a cobra `serve` command is in the sibling `gligabao_int` project, which uses `replace github.com/deepblue-phoenix/gligabao => ../gligabao` during local development.
 

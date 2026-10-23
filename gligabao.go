@@ -11,6 +11,8 @@ package gligabao
 import (
 	"context"
 	_ "embed"
+	"net/http"
+	"sync"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
@@ -179,18 +181,78 @@ func LoadConfig(path string) (*Config, error) { return config.Load(path) }
 // Serve starts the HTTP server and blocks until ctx is cancelled or SIGINT/SIGTERM is
 // received, then shuts down gracefully. A nil cfg means DefaultConfig().
 func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
+	serverOpts, restore := serverOptions(cfg, opts)
+	defer restore()
+	return server.Run(ctx, serverOpts)
+}
+
+// MountOptions says where Mount registers gligabao's handlers.
+type MountOptions struct {
+	// Mux is the mux of the host program (required). gligabao registers all its routes on it as one subtree, MountPrefix
+	// ("/v1/gb/"), so the host must not have routes of its own under that prefix (Mount returns an error if it has).
+	Mux *http.ServeMux
+	// Wrap, if set, wraps gligabao's handler before it is registered: use it to put the host's authentication or other middleware
+	// in front of the API and the admin UI (gligabao has no access control of its own).
+	Wrap func(http.Handler) http.Handler
+}
+
+// MountPrefix is the path prefix of every route gligabao serves; Mount registers them on the host's mux under it.
+const MountPrefix = server.MountPrefix
+
+// Mount is the alternative to Serve for a program that already runs its own HTTP server: instead of starting a server on
+// Config.Port, gligabao registers its handlers (the API, and the admin UI, eval and training endpoints if the config enables
+// them) on the supplied mux, under MountPrefix, and the host serves them on its own port. Serve behaves as before.
+//
+// Mount does the whole setup (opens the databases, checks the sidecar, ...) and returns when the handlers are registered; register
+// them before the host starts serving. The returned release function stops the remember manager and closes the databases; it is
+// safe to call more than once and is also called when ctx is cancelled. Unlike Serve, Mount does not handle SIGINT/SIGTERM: the
+// host owns the process and should call release (or cancel ctx) after its own server has shut down. Config.Port is not used. The
+// hooks and App of opts are installed until release is called.
+//
+// gligabao's own "/", "/health" and "/version" routes are not registered, they belong to the host.
+// A nil cfg means DefaultConfig().
+func Mount(ctx context.Context, cfg *Config, opts ServeOptions, mount MountOptions) (release func(), err error) {
+	serverOpts, restore := serverOptions(cfg, opts)
+	serverOpts.Addr = ""
+	rel, err := server.Mount(ctx, serverOpts, mount.Mux, mount.Wrap)
+	if err != nil {
+		restore()
+		return nil, err
+	}
+	var once sync.Once
+	release = func() {
+		once.Do(func() {
+			rel()
+			restore()
+		})
+	}
+	go func() { // server.Mount releases its part when ctx is done; the process-wide settings go with it
+		<-ctx.Done()
+		release()
+	}()
+	return release, nil
+}
+
+// serverOptions turns the config and the ServeOptions into the server's options. It also installs the process-wide settings
+// of opts (App, Hooks); restore undoes them.
+func serverOptions(cfg *Config, opts ServeOptions) (serverOpts server.Options, restore func()) {
 	if cfg == nil {
 		cfg = config.Default()
 	}
 	if opts.DBPath == "" {
 		opts.DBPath = DefaultDBPath
 	}
+	restore = func() {
+		monitoring.SetHooks(nil)
+	}
 	if opts.App != nil {
 		buildinfo.SetApp(&buildinfo.Component{Name: opts.App.Name, Version: opts.App.Version, Commit: opts.App.Commit})
-		defer buildinfo.SetApp(nil)
+		restore = func() {
+			buildinfo.SetApp(nil)
+			monitoring.SetHooks(nil)
+		}
 	}
 	monitoring.SetHooks(opts.Hooks)
-	defer monitoring.SetHooks(nil)
 	dbConfig := db.ConfigFrom(cfg, opts.DBPath, opts.VectorDir, opts.ImageDir)
 	trainingDirs := training.Dirs{Datasets: opts.TrainingDatasetDirs, Evals: opts.TrainingEvalDirs, ModelExport: opts.TrainedModelExportDir}
 	if len(trainingDirs.Datasets) == 0 {
@@ -206,7 +268,7 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 	if trainingDirs.ModelExport == "" {
 		trainingDirs.ModelExport = cfg.TrainedModelExportDir
 	}
-	return server.Run(ctx, server.Options{
+	return server.Options{
 		Addr:         cfg.Addr(),
 		DB:           dbConfig,
 		TrainingDirs: trainingDirs,
@@ -228,7 +290,7 @@ func Serve(ctx context.Context, cfg *Config, opts ServeOptions) error {
 		EvalModeEnable:     cfg.EvalModeEnable,
 		TrainingModeEnable: cfg.TrainingModeEnable,
 		AdminUIenable:      cfg.AdminUIenable,
-	})
+	}, restore
 }
 
 // aiPrices converts the configured prices; omitted cache prices default to the input price.
