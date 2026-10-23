@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.100.1] - 2026-10-28
+
+### Changed
+- Admin UI, training view, datasets table: long dataset names and file paths are shortened to first 14 letters + `...` + last 14 (the full text is the tooltip), so they no longer overflow; "Updated" shows how long ago (minutes/hours/days) with the UTC time as tooltip; the Size column is a little wider.
+
 ## [0.100.0] - 2026-10-28
 
 ### Added

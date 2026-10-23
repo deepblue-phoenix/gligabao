@@ -736,6 +736,7 @@ tr.removing {
 .tr-providers { @include tint($tint-blue); }
 .tr-models { @include tint($tint-green); }
 .tr-datasets { @include tint($tint-amber); }
+#training-datasets .col-size, #training-datasets td.num:nth-child(5) { min-width: 6.5rem; white-space: nowrap; }
 .tr-datasets .training-form { justify-content: flex-end; }
 .tr-jobs { @include tint($tint-purple); }
 .tr-selected { @include tint($tint-red); }

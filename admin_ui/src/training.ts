@@ -1197,8 +1197,8 @@ function renderDatasetRecords(list: DatasetRecord[], entries?: Map<string, strin
     const tr = body.insertRow();
     tr.title = `${d.description ? d.description + "\n" : ""}sha256 ${d.sha256}\nClick to inspect the first ${PREVIEW_LINES} lines`;
     tr.addEventListener("click", () => void showDataset(d.name));
-    tr.insertCell().textContent = d.name;
-    tr.insertCell().textContent = `${d.dir}/${d.file}`;
+    clipped(tr.insertCell(), d.name);
+    clipped(tr.insertCell(), `${d.dir}/${d.file}`);
     const st = tr.insertCell();
     st.appendChild(node("span", `badge ${d.status === "synced" ? "badge-ok" : "badge-active"}`, d.status === "synced" ? "on sidecar" : "stored"));
     st.title = d.status === "synced" ? "The sidecar has this version" : "Saved on the server; sent to the sidecar when a job starts on it";
@@ -1208,8 +1208,19 @@ function renderDatasetRecords(list: DatasetRecord[], entries?: Map<string, strin
     const size = tr.insertCell();
     size.className = "num";
     size.textContent = fmtBytes(d.size_bytes);
-    tr.insertCell().textContent = fmtTime(d.updated_at);
+    const updated = tr.insertCell();
+    updated.textContent = fmtAgo(d.updated_at);
+    updated.title = `${fmtTime(d.updated_at)} UTC`;
   }
+}
+
+// Longer than this, a name is shown as its first 14 letters + "..." + its last 14 (the full text goes in the tooltip).
+const CLIP_OVER = 40;
+function clipped(cell: HTMLTableCellElement, text: string): void {
+  cell.className = "nowrap";
+  if (text.length <= CLIP_OVER) { cell.textContent = text; return; }
+  cell.textContent = `${text.slice(0, 14)}...${text.slice(-14)}`;
+  cell.title = text;
 }
 
 // Appends a JSON line to parent with its tokens in spans (json-key, json-str, json-num, json-lit, json-punct). It is a
