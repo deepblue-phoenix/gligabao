@@ -71,6 +71,78 @@ func testTrainedModelEndpoints(t *testing.T, d *sql.DB) {
 	}
 }
 
+func TestInferWithAnInferenceHook(t *testing.T) { dbtest.Run(t, testInferWithAnInferenceHook) }
+
+func testInferWithAnInferenceHook(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	for _, m := range []trainingdb.TrainedModel{
+		{JobID: "j1", Name: "hooked", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j1"},
+		{JobID: "j2", Name: "plain", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/j2"},
+	} {
+		if _, _, err := trainingdb.RecordTrainedModel(ctx, d, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var seen core.InferTrainedModelRequest
+	hooks := []core.TrainedModelInferenceHook{{Name: "ext", Model: "hooked", Description: "d",
+		Infer: func(_ context.Context, req core.InferTrainedModelRequest) (core.InferTrainedModelResult, error) {
+			seen = req
+			if req.Prompt == "fail" {
+				return core.InferTrainedModelResult{}, errors.New("upstream down")
+			}
+			return core.InferTrainedModelResult{Response: "from hook", InputTokens: 5, OutputTokens: 2}, nil
+		}}}
+	sc := &fakeSidecar{inferResp: sidecar.InferResponse{Response: "from sidecar"}}
+	post := func(sc core.Inferer, modelID, body string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/x", strings.NewReader(body))
+		req.SetPathValue("id", modelID)
+		training.InferOf(d, core.NewInferRouter(sc, hooks))(rec, req)
+		return rec
+	}
+	var out struct {
+		Response string `json:"response"`
+		Hook     string `json:"hook"`
+		InTok    int    `json:"input_tokens"`
+	}
+
+	// the hooked model runs on the hook, without a sidecar too
+	for _, s := range []core.Inferer{sc, nil} {
+		rec := post(s, "1", `{"prompt": "hi", "max_tokens": 9, "temperature": 0.5}`)
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != 200 || out.Response != "from hook" || out.Hook != "ext" || out.InTok != 5 {
+			t.Fatalf("hooked: %d %s", rec.Code, rec.Body)
+		}
+	}
+	if seen.Model.Name != "hooked" || seen.Prompt != "hi" || seen.MaxTokens != 9 || seen.Temperature == nil || *seen.Temperature != 0.5 {
+		t.Fatalf("hook request: %+v", seen)
+	}
+	if len(sc.infers) != 0 {
+		t.Fatalf("the sidecar was called: %+v", sc.infers)
+	}
+	// a model without a hook still runs on the sidecar
+	rec := post(sc, "2", `{"prompt": "hi"}`)
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != 200 || out.Response != "from sidecar" || out.Hook != "" || len(sc.infers) != 1 {
+		t.Fatalf("plain: %d %s", rec.Code, rec.Body)
+	}
+	if rec := post(nil, "2", `{"prompt": "hi"}`); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("plain without sidecar: %d", rec.Code)
+	}
+	// a failing hook answers 502 with its message, and the request is stored as failed
+	if rec := post(sc, "1", `{"prompt": "fail"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "upstream down") {
+		t.Fatalf("failing hook: %d %s", rec.Code, rec.Body)
+	}
+	list, err := trainingdb.ListTrainedModelInferences(ctx, d, 1, 0)
+	if err != nil || len(list) != 3 || list[0].Status != trainingdb.TrainedModelInferenceFailed || !strings.Contains(list[0].Error, "upstream down") || list[2].Response != "from hook" {
+		t.Fatalf("stored: %+v %v", list, err)
+	}
+
+	rec = httptest.NewRecorder()
+	training.ListInferenceHooksOf(hooks)(rec, httptest.NewRequest("GET", "/x", nil))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"model":"hooked"`) || !strings.Contains(rec.Body.String(), `"name":"ext"`) {
+		t.Fatalf("list hooks: %d %s", rec.Code, rec.Body)
+	}
+}
+
 func TestInferWithATrainedModel(t *testing.T) { dbtest.Run(t, testInferWithATrainedModel) }
 
 func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
@@ -84,7 +156,7 @@ func testInferWithATrainedModel(t *testing.T, d *sql.DB) {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest("POST", "/x", strings.NewReader(body))
 		req.SetPathValue("id", modelID)
-		training.InferOf(d, sc)(rec, req)
+		training.InferOf(d, core.NewInferRouter(sc, nil))(rec, req)
 		return rec
 	}
 

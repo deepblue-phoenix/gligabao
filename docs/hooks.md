@@ -6,6 +6,7 @@ A program that embeds gligabao (see [Embedding in Go programs](../README.md#embe
 |---|---|---|---|
 | [`Hooks.SystemEvent`](#system-events) | `ServeOptions.Hooks` | after every `remember`, `remember` of an image, `recall` and timeseries request, successful or not | logging, metrics, shipping events to a monitoring service |
 | [`TimeseriesProvider.Fetch`](#timeseries-providers) | `ServeOptions.TimeseriesProviders` | when a `remember` request asks to fetch timeseries | supply timeseries from your own data source |
+| [`TrainedModelInferenceHook.Infer`](#trained-model-inference-hooks) | `ServeOptions.TrainedModelInferenceHooks` | when a trained model whose name the hook targets is prompted (admin UI prompt dialog, `POST /v1/gb/training/models/{id}/infer`) | run the prompts of a trained model on your own infrastructure or a provider, instead of the sidecar (Modal) |
 | [`TrainedModelExporter.Export`](#trained-model-exporters) | `ServeOptions.TrainedModelExporters` | when a request exports a trained model (`POST /v1/gb/training/models/{id}/exports`) | hand the weights of a trained model to somewhere else (an upload, a copy, a conversion, ...) |
 
 Not a callback, but also supplied by the embedding program: [admin UI extensions](admin-extensions.md) (`ServeOptions.AdminExtensions`) add views and UI to the admin page.
@@ -155,6 +156,47 @@ gligabao.ServeOptions{
 | `gligabao.TimeseriesData` | `Key`, `Field`, `Name`, `Unit`, `Frequency`, `Points` (`[]TimeseriesPoint{TS, Value}`) |
 
 Contract, in short: `Fetch` is called concurrently, with a 60 s timeout per call, must honour `ctx`, may return no series and no error when it has nothing, and a panic in it is caught and reported as an error. The providers are validated when `Serve` starts and it returns the error for a malformed one. Full description, validation rules and the request side: [timeseries.md](timeseries.md#providers).
+
+## Trained model inference hooks
+
+By default a trained model (a LoRA adapter on the sidecar's models volume) is prompted on the sidecar, i.e. on Modal. An inference hook **bypasses Modal for one trained model**: it names the trained model it targets, and when that model is prompted gligabao calls the hook's `Infer` callback instead of the sidecar. The hook runs the inference wherever it wants (a provider that serves the model, your own GPU server) and returns the response. Hooks are registered with `ServeOptions.TrainedModelInferenceHooks`; **several can be supplied**, each naming its own model:
+
+```go
+gligabao.ServeOptions{
+    TrainedModelInferenceHooks: []gligabao.TrainedModelInferenceHook{
+        {
+            Name:  "together",
+            Model: "4b-mine.jsonl-100steps-1a2b3c4d", // the name of the trained model (as listed in the admin UI)
+            Infer: func(ctx context.Context, req gligabao.InferTrainedModelRequest) (gligabao.InferTrainedModelResult, error) {
+                // req.Model is the trained model, req.Prompt, req.MaxTokens (0: none chosen), req.Temperature (nil: none chosen)
+                return gligabao.InferTrainedModelResult{Response: "...", InputTokens: 120, OutputTokens: 80}, nil
+            },
+        },
+        {Name: "other", Model: "12b-other.jsonl-50steps-9f8e7d6c", Infer: otherInfer},
+    },
+}
+```
+
+| Type | Fields |
+|---|---|
+| `gligabao.TrainedModelInferenceHook` | `Name`, `Description` (optional), `Model` (the name of the trained model it targets), `Infer` |
+| `gligabao.InferTrainedModelRequest` | `Model` (`gligabao.TrainedModel`), `Prompt`, `MaxTokens`, `Temperature` |
+| `gligabao.InferTrainedModelResult` | `Response`, `InputTokens`, `OutputTokens` (0 if unknown) |
+
+### How gligabao resolves which model a hook runs
+
+When a trained model is prompted, gligabao looks at the model's **name** (`gb_trained_models.name`, e.g. `4b-mine.jsonl-100steps-1a2b3c4d`, shown in the admin UI) and uses the hook whose `Model` equals it exactly (case-sensitive, surrounding whitespace ignored). If there is one, the hook runs the prompt and the sidecar is not called; if there is none, the model runs on the sidecar as before. Model names are not unique (there is no rename), so a hook runs every trained model with that name; at most one hook may target a name.
+
+### Behaviour
+
+- **Where it applies: prompting only.** The prompt dialog of the admin UI and `POST /v1/gb/training/models/{id}/infer` (the answer has `hook`: the name of the hook, `""` for the sidecar). `GET /v1/gb/training/inference-hooks` lists the hooks (`name`, `description`, `model`).
+- **Where it does not apply: evals and audits.** The [training evals](evals/training.md) and the [training data audits](training/audit.md) of a model **always run on the sidecar (Modal)**, whether or not a hook targets the model: Modal is where the models are trained and where their weights live, so an eval or audit measures those weights, not whatever the hook serves. They still need the sidecar (and an LLM judge). Likewise training jobs, exports and fetching the weights.
+- **No sidecar needed for prompting a hooked model.** A hooked model can be prompted when the sidecar is not active; a model without a hook then answers `503`.
+- **Recorded the same.** The request is stored in `gb_trained_model_inferences` (prompt, response, status, error, tokens, duration; `cold_start` is unknown) before the hook is called, and updated when it ends, failures included.
+- **Synchronous, concurrent.** `Infer` runs on the goroutine of the request, may be called concurrently and must honour `ctx`, which times out after 15 minutes (as for the sidecar).
+- **Limits.** `MaxTokens` and `Temperature` are what the caller chose (validated: 1 to 8192 tokens, temperature above 0 and at most 2); when they were not given they are `0` and `nil` and the hook uses its own defaults.
+- **Failure.** An error returned by `Infer` (or a panic, which is caught) fails the request: it is stored as `failed` and answered `502` with the hook's message; a failed question of an eval or audit is reported with it. Negative token counts are an error too.
+- **Validated at startup.** `Serve` returns an error for a hook with no `Infer`, no `Model`, a `Name` that is not 1-64 letters, digits, `_`, `-` or `.` (starting with a letter or digit), a duplicate name, or two hooks for the same model. Each registered hook is logged at startup. At most 50.
 
 ## Trained model exporters
 

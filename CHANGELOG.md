@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.104.0] - 2026-11-04
+
+### Added
+- Inference hooks for trained models: `gligabao.ServeOptions.TrainedModelInferenceHooks` is a list of `gligabao.TrainedModelInferenceHook{Name, Description, Model, Infer}` that bypass the sidecar (Modal). `Model` is the name of the trained model the hook targets; when a trained model with that name is prompted, gligabao calls the hook's `Infer` callback (it gets the model, the prompt, and the max tokens and temperature if the caller chose them, and returns the response and optionally the token counts) and does not call the sidecar. A model without a hook still runs on the sidecar. Several hooks can be supplied, each for a different model. It applies to the prompt dialog of the admin UI and `POST /v1/gb/training/models/{id}/infer` only: the training evals and audits of a model always run on the sidecar (Modal), where the models are trained, hooked or not. The requests are stored in `gb_trained_model_inferences` as before. A hooked model can be prompted without an active sidecar. A failing or panicking hook fails the request (`502`, with its message). Hooks are validated at startup. New types: `InferTrainedModelFunc`, `InferTrainedModelRequest`, `InferTrainedModelResult`. See [docs/hooks.md](docs/hooks.md#trained-model-inference-hooks).
+- The answer of `POST /v1/gb/training/models/{id}/infer` has a new `hook` field (the hook that ran it, `""` for the sidecar). New `GET /v1/gb/training/inference-hooks` lists the hooks. The admin UI's prompt dialog says "Runs on inference hook <name> (not on Modal)" for a hooked model, and shows no Modal container status for it.
+
+### Changed
+- Internal: `server.NewHandler` takes a `training.Hooks` (exporters and inference hooks) in place of the list of exporters; the infer endpoint takes a `training.InferRouter`.
+
 ## [0.103.0] - 2026-11-03
 
 ### Added

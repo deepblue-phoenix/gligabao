@@ -8,6 +8,8 @@ A **training data audit** (an *audit*) asks a trained model the questions of its
 
 An audit is **not an eval**. An [eval of a trained model](../evals/training.md) is for cases the model never saw, which is the only way to measure generalization. The two share no code, types or tables (see [Audit or eval](#audit-or-eval)). The code is the package [`internal/training_audits`](../../internal/training_audits/doc.go): `core` (the data model), `db` (the storage, sqlite and postgres), `api` (the HTTP handlers) and the engine, judge and manager in the package itself.
 
+**Audits always run on the sidecar (Modal).** The questions are answered by the model's weights on the sidecar, where it was trained, even if an [inference hook](../hooks.md#trained-model-inference-hooks) targets the model's name and takes over its prompts in the prompt dialog and `POST /v1/gb/training/models/{id}/infer`. Hooks do not apply to audits (nor to [evals](../evals/training.md)): an audit checks that the training took, which only the trained weights can show.
+
 ## What happens
 
 `POST /v1/gb/training/models/{id}/audits` (the **Audit** button in the admin UI):

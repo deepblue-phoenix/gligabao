@@ -104,6 +104,20 @@ type ExportTrainedModelRequest = training.ExportTrainedModelRequest
 // ExportTrainedModelResult is what an Export callback reports: a reference to what it made and optional details.
 type ExportTrainedModelResult = training.ExportTrainedModelResult
 
+// TrainedModelInferenceHook is a named hook that runs the prompts of one trained model somewhere other than the sidecar (Modal): see
+// ServeOptions.TrainedModelInferenceHooks and docs/hooks.md. Model is the name of the trained model it targets; when that model is
+// prompted, gligabao calls Infer instead of the sidecar. Several hooks can be supplied, each for a different model.
+type TrainedModelInferenceHook = training.TrainedModelInferenceHook
+
+// InferTrainedModelFunc is the Infer callback of a TrainedModelInferenceHook.
+type InferTrainedModelFunc = training.InferTrainedModelFunc
+
+// InferTrainedModelRequest is what a hook's Infer callback is asked to run: the trained model, the prompt and the limits chosen by the caller.
+type InferTrainedModelRequest = training.InferTrainedModelRequest
+
+// InferTrainedModelResult is what an Infer callback answers: the response and, optionally, the token counts.
+type InferTrainedModelResult = training.InferTrainedModelResult
+
 // TrainedModel is a trained model, the result of a completed training job (a LoRA adapter on the sidecar's models volume).
 type TrainedModel = trainingdb.TrainedModel
 
@@ -155,6 +169,12 @@ type ServeOptions struct {
 	// use): gligabao fetches the model's files from the sidecar to a local directory and calls the exporter with it. Each has a
 	// Name and the Export callback. They are validated at startup: Serve returns the error if one is malformed.
 	TrainedModelExporters []TrainedModelExporter
+	// TrainedModelInferenceHooks run the prompts of trained models without the sidecar: each has a Name, the Model it targets (the
+	// name of a trained model, as the admin UI lists it) and the Infer callback. A model that has a hook is prompted through it (in the
+	// admin UI's prompt dialog and through POST /v1/gb/training/models/{id}/infer); a model that has none still runs on the sidecar.
+	// The training evals and audits are not affected: they always run on the sidecar (Modal), where the models are trained. Several
+	// hooks can be supplied, for different models. They are validated at startup: Serve returns the error if one is malformed.
+	TrainedModelInferenceHooks []TrainedModelInferenceHook
 	// AdminExtensions add views, and buttons and blocks in the existing views, to the admin UI (served only with
 	// admin_ui = true): each is a Name, the browser files in Assets (an index.js ES module is required, style.css is optional) and an
 	// optional HTTP Handler, its own backend API. See docs/admin-extensions.md. Validated at startup: Serve returns the error if one
@@ -283,7 +303,9 @@ func serverOptions(cfg *Config, opts ServeOptions) (serverOpts server.Options, r
 
 		TimeseriesProviders:   opts.TimeseriesProviders,
 		TrainedModelExporters: opts.TrainedModelExporters,
-		AdminExtensions:       opts.AdminExtensions,
+
+		TrainedModelInferenceHooks: opts.TrainedModelInferenceHooks,
+		AdminExtensions:            opts.AdminExtensions,
 
 		TrajectoryDir:      opts.TrajectoryDir,
 		EvalDBPath:         opts.EvalDBPath,

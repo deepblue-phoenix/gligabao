@@ -118,6 +118,10 @@ type Options struct {
 	// TrainedModelExporters are the hooks that export trained models (POST /v1/gb/training/models/{id}/exports): each is given
 	// the model's files in a local directory and does with them what it wants. Validated at startup.
 	TrainedModelExporters []coretraining.TrainedModelExporter
+	// TrainedModelInferenceHooks run the prompts of the trained models they target (by name) instead of the sidecar: a model prompted
+	// in the admin UI or through POST /v1/gb/training/models/{id}/infer that has a hook is run by it, the others on the sidecar. The
+	// training evals and audits always run on the sidecar, hooks or not. Validated at startup.
+	TrainedModelInferenceHooks []coretraining.TrainedModelInferenceHook
 	// AdminExtensions add views and UI to the admin UI (see docs/admin-extensions.md); only used with AdminUIenable. Validated at startup.
 	AdminExtensions []admin.Extension
 	// AdminUIenable registers the admin UI handlers (served at /v1/gb/admin/ from the assets embedded in the binary).
@@ -189,16 +193,16 @@ const EvalDBName = "eval"
 // llm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities.
 // jv may be nil, in which case remember skips the steps that run on Jev. ws may be nil, in which case web search is not available
 // (a remember request with web_search returns 503); it is the Anthropic web search tool, so it is only set with an Anthropic API key.
-// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). exporters are the registered trained model exporters (already validated; may be nil: an export request then answers 400). dirs are the directories of the training endpoints (all fields must be set when trainingMode is true; see coretraining.Dirs.WithDefaults). ontologyDirs are the directories ontology files are loaded from by name (may be nil). sc starts the training jobs (/v1/gb/training/) on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The eval endpoints are registered only if eval is true, the training endpoints (/v1/gb/training/) only if trainingMode is true,
+// providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). hooks are the registered hooks of the training API (already validated; the zero value has none): the trained model exporters (with none an export request answers 400) and the inference hooks of trained models. dirs are the directories of the training endpoints (all fields must be set when trainingMode is true; see coretraining.Dirs.WithDefaults). ontologyDirs are the directories ontology files are loaded from by name (may be nil). sc starts the training jobs (/v1/gb/training/) on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The eval endpoints are registered only if eval is true, the training endpoints (/v1/gb/training/) only if trainingMode is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary; adminExts are the registered admin UI extensions
 // (already validated; may be nil), mounted with it.
-func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, exporters []coretraining.TrainedModelExporter, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
-	return newMux(ctx, true, d, llm, emb, jv, ws, providers, exporters, dirs, ontologyDirs, sc, eval, trainingMode, adminUI, adminExts, extraAdminDBs...)
+func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
+	return newMux(ctx, true, d, llm, emb, jv, ws, providers, hooks, dirs, ontologyDirs, sc, eval, trainingMode, adminUI, adminExts, extraAdminDBs...)
 }
 
 // newMux is NewHandler; standalone is false when the routes are mounted on a host's mux (see Mount), where "/", "/health" and
 // "/version" belong to the host, so they are not registered: an unknown path under /v1/gb/ is a plain 404.
-func newMux(ctx context.Context, standalone bool, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, exporters []coretraining.TrainedModelExporter, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
+func newMux(ctx context.Context, standalone bool, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	if standalone {
 		mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
@@ -221,7 +225,7 @@ func newMux(ctx context.Context, standalone bool, d *db.DB, llm memory_core.LLM,
 	}
 	dbs := append([]admin.Named{{Name: "standard", DB: d.Relational, Vectors: d.Vector, ImageDir: d.ImageDir}}, extraAdminDBs...)
 	if trainingMode {
-		registerTraining(ctx, mux, d.Backend, d.Relational, dirs, exporters, sc, llm)
+		registerTraining(ctx, mux, d.Backend, d.Relational, dirs, hooks, sc, llm)
 	}
 	if adminUI {
 		registerAdminUI(mux, dbs, sc, adminExts)
@@ -242,8 +246,8 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 // registerTraining registers the training endpoints under /v1/gb/training/ (they are part of the API, not of the admin UI,
 // and are served whether or not the admin UI is on, but only in training mode): the jobs, the datasets and the feed of the jobs' progress. They work with trainingDB; dirs are the directories they keep files in (the datasets, the evals, the exported models). The training monitor follows the progress the sidecar
 // reports for the jobs (it resumes the unfinished ones now) and feeds it to the SSE endpoint. llm judges the evals and the training data audits of the
-// trained models (nil: starting one answers 503). Trained models are exported through exporters, after their files are fetched to dirs.ModelExport.
-func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, trainingDB *sql.DB, dirs coretraining.Dirs, exporters []coretraining.TrainedModelExporter, sc coretraining.Sidecar, llm memory_core.LLM) {
+// trained models (nil: starting one answers 503). Trained models are exported through hooks.Exporters, after their files are fetched to dirs.ModelExport.
+func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, trainingDB *sql.DB, dirs coretraining.Dirs, hooks coretraining.Hooks, sc coretraining.Sidecar, llm memory_core.LLM) {
 	mon := coretraining.NewMonitor(ctx, trainingDB, sc)
 	// The evals and the training data audits are those of internal/evals and internal/training_audits (their own tables).
 	evalStore, err := evals.StoreFor(backend)
@@ -269,15 +273,20 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, t
 	mux.HandleFunc("GET /v1/gb/training/jobs", training.ListJobsOf(trainingDB))
 	mux.HandleFunc("GET /v1/gb/training/models", training.ListModelsOf(trainingDB))
 	mux.HandleFunc("GET /v1/gb/training/models/{id}", training.GetModelOf(trainingDB))
-	mux.HandleFunc("POST /v1/gb/training/models/{id}/infer", training.InferOf(trainingDB, sc))
+	var inferSidecar coretraining.Inferer // likewise nil without a sidecar
+	if sc != nil {
+		inferSidecar = sc
+	}
+	mux.HandleFunc("POST /v1/gb/training/models/{id}/infer", training.InferOf(trainingDB, coretraining.NewInferRouter(inferSidecar, hooks.Inference)))
+	mux.HandleFunc("GET /v1/gb/training/inference-hooks", training.ListInferenceHooksOf(hooks.Inference))
 	mux.HandleFunc("GET /v1/gb/training/models/{id}/inferences", training.ListInferencesOf(trainingDB))
 	var fetcher coretraining.ModelFileFetcher // not sc itself: a nil Sidecar must become a nil fetcher
 	if f, ok := sc.(coretraining.ModelFileFetcher); ok {
 		fetcher = f
 	}
-	mux.HandleFunc("POST /v1/gb/training/models/{id}/exports", training.ExportOf(trainingDB, fetcher, exporters, dirs.ModelExport))
+	mux.HandleFunc("POST /v1/gb/training/models/{id}/exports", training.ExportOf(trainingDB, fetcher, hooks.Exporters, dirs.ModelExport))
 	mux.HandleFunc("GET /v1/gb/training/models/{id}/exports", training.ListExportsOf(trainingDB))
-	mux.HandleFunc("GET /v1/gb/training/exporters", training.ListExportersOf(exporters))
+	mux.HandleFunc("GET /v1/gb/training/exporters", training.ListExportersOf(hooks.Exporters))
 	evalsapi.New(evals).Register(mux, "/v1/gb/training") // the evals, their definitions and the training experiments
 	auditsapi.New(audits).Register(mux, "/v1/gb/training")
 	mux.HandleFunc("GET /v1/gb/training/datasets", training.ListDatasetsOf(trainingDB, dirs.Datasets))
@@ -583,6 +592,15 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 		log.WithField("exporter", e.Name).Info("trained model exporter registered: trained models can be exported through it (POST /v1/gb/training/models/{id}/exports)")
 	}
 
+	inferenceHooks, err := coretraining.ResolveInferenceHooks(opts.TrainedModelInferenceHooks)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, h := range inferenceHooks {
+		log.WithFields(log.Fields{"hook": h.Name, "model": h.Model}).Info("trained model inference hook registered: prompts of the model bypass the sidecar and run on it")
+	}
+	hooks := coretraining.Hooks{Exporters: exporters, Inference: inferenceHooks}
+
 	adminExts, err := admin.ResolveExtensions(opts.AdminExtensions)
 	if err != nil {
 		return nil, nil, err
@@ -660,7 +678,7 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 	// The remember manager stops when everything is released, i.e. after the graceful shutdown has given the runs in progress their time.
 	mgrCtx, stopMgr := context.WithCancel(ctx)
 	cleanups = append(cleanups, stopMgr)
-	return newMux(mgrCtx, standalone, database, llm, emb, jv, ws, providers, exporters, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, extra...), closeAll, nil
+	return newMux(mgrCtx, standalone, database, llm, emb, jv, ws, providers, hooks, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, extra...), closeAll, nil
 }
 
 // newJev builds the Jev client from the options.

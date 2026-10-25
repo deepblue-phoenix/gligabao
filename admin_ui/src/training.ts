@@ -26,6 +26,7 @@ interface Inference {
   load_seconds: number; duration_ms: number; created_at: string; completed_at: string | null;
 }
 interface Exporter { name: string; description: string }
+interface InferenceHook { name: string; description: string; model: string }
 interface ExportUpdate { time: string; message: string }
 interface ModelExport { id: number; exporter: string; status: string; ref: string; error: string; duration_ms: number; updates?: ExportUpdate[] }
 interface DatasetRecord {
@@ -115,6 +116,18 @@ let drawQueued = false;
 const stopping = new Set<number>(); // runs a stop was requested of, until they end
 let stopError = ""; // why the last stop request failed
 let exporters: Exporter[] = []; // the exporter hooks the embedding program registered
+let inferenceHooks: InferenceHook[] = []; // the inference hooks: the trained models they target are prompted through them, not on Modal
+
+// The inference hook that runs the prompts of model m (it targets the model's name), if there is one.
+function hookOf(m: TrainedModel): InferenceHook | undefined { return inferenceHooks.find((h) => h.model === m.name.trim()); }
+
+async function loadInferenceHooks(): Promise<void> {
+  try {
+    const res = await fetch("../training/inference-hooks");
+    if (!res.ok) throw await failure(res);
+    inferenceHooks = ((await res.json()) as { hooks: InferenceHook[] }).hooks ?? [];
+  } catch { /* stays as it was: the models then show as running on Modal */ }
+}
 let exporting = false; // an export is in flight
 const EXPORT_POLL_MS = 1500; // how often the progress of a running export is read
 
@@ -601,9 +614,17 @@ function renderModelDetail(): void {
 // The inference form of the model in the prompt dialog. The history under it is drawn by renderInferences.
 function renderPromptForm(m: TrainedModel): void {
   const warmRow = node("div", "warm-row");
-  warmDot = node("span", "warm-dot");
-  warmRow.append(warmDot);
-  drawWarm();
+  const hook = hookOf(m);
+  if (hook) { // runs on the hook: there is no Modal container to show
+    warmDot = undefined;
+    const via = node("span", "muted", `Runs on inference hook ${hook.name} (not on Modal)`);
+    if (hook.description) via.title = hook.description;
+    warmRow.append(via);
+  } else {
+    warmDot = node("span", "warm-dot");
+    warmRow.append(warmDot);
+    drawWarm();
+  }
 
   const prompt = node("textarea");
   prompt.placeholder = "Prompt to run through this model, e.g. Check recent news about NVIDIA and buy 10 shares if it's positive";
@@ -683,6 +704,7 @@ async function pollWarm(id: number): Promise<void> {
   clearTimeout(warmTimer);
   const m = models.find((x) => x.id === id);
   if (!m || promptModel !== id) return;
+  if (hookOf(m)) return; // the prompts of this model do not run on Modal
   await checkWarm(m);
   if (promptModel === id) warmTimer = window.setTimeout(() => void pollWarm(id), WARM_POLL_MS);
 }
@@ -759,7 +781,7 @@ function renderInferences(list: Inference[]): void {
   }
 }
 
-// Runs a prompt through a trained model on the sidecar. The first call after a while is slow: a GPU container starts and loads the model.
+// Runs a prompt through a trained model: on the sidecar, or on the model's inference hook if it has one. The first call after a while is slow: a GPU container starts and loads the model.
 // The server stores the request, so the history is reloaded afterwards, showing the response (or the error) at its top.
 async function infer(m: TrainedModel, prompt: string, maxTokens: number, temperature: number): Promise<void> {
   inferring = true;
@@ -767,7 +789,7 @@ async function infer(m: TrainedModel, prompt: string, maxTokens: number, tempera
   if (run) run.disabled = true;
   if (status) {
     status.className = "muted";
-    status.textContent = warm === "warm" ? "Running…" : "Running… (the first request loads the model on a GPU: this can take minutes)";
+    status.textContent = warm === "warm" || hookOf(m) ? "Running…" : "Running… (the first request loads the model on a GPU: this can take minutes)";
   }
   const started = Date.now();
   let outcome: { text: string; cls: string };
@@ -1710,11 +1732,12 @@ export function initTraining(): void {
   auditModal.addEventListener("click", (e) => { if (e.target === auditModal) auditModal.close(); });
   el("dataset-close").addEventListener("click", () => datasetModal.close());
   datasetModal.addEventListener("click", (e) => { if (e.target === datasetModal) datasetModal.close(); });
-  el("training-refresh").addEventListener("click", () => { void loadExporters(); void loadDatasets(); void loadBackends(); void loadJobs(); void loadModels(); });
+  el("training-refresh").addEventListener("click", () => { void loadExporters(); void loadInferenceHooks(); void loadDatasets(); void loadBackends(); void loadJobs(); void loadModels(); });
   // The SSE streams are open only while the view is shown (a browser allows few connections to a host).
   const sync = (): void => {
     if (view.hidden) { closeStreams(); return; }
     void loadExporters();
+    void loadInferenceHooks();
     void loadDatasets();
     void loadModels();
     openAllJobs();
@@ -1736,5 +1759,6 @@ export function initTraining(): void {
   void loadJobs();
   void loadModels();
   void loadExporters();
+  void loadInferenceHooks();
   if (!view.hidden) sync();
 }

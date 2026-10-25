@@ -56,19 +56,17 @@ func GetModelOf(db *sql.DB) http.HandlerFunc {
 }
 
 // InferOf serves POST /v1/gb/training/models/{id}/infer with a JSON body {"prompt": "...", "max_tokens": 1024,
-// "temperature": 0.7} (only the prompt is required): it runs the prompt through the weights of trained model {id} on the
-// sidecar and answers 200 with {"id", "model_id", "response", "status", "duration_ms"} (id: the stored request, see
-// ListInferencesOf; failed ones are stored too). It can take minutes when the model has to be loaded. 404 is for
-// an unknown model, 400 for a bad body, 503 for a nil sc (no sidecar), 502 when the sidecar fails (with its message when the
-// generation itself failed, e.g. the weights are gone from its volume).
-func InferOf(db *sql.DB, sc core.Inferer) http.HandlerFunc {
+// "temperature": 0.7} (only the prompt is required): it runs the prompt through trained model {id} and answers 200 with {"id",
+// "model_id", "response", "status", "duration_ms", "hook"} (id: the stored request, see ListInferencesOf; failed ones are stored
+// too). Where it runs is decided by router: on the inference hook that targets the model's name if there is one (ServeOptions.
+// TrainedModelInferenceHooks; the sidecar is bypassed and "hook" is its name), else on the weights of the model on the sidecar ("hook"
+// is ""). It can take minutes when the sidecar has to load the model. 404 is for an unknown model, 400 for a bad body, 503 when
+// the model has no hook and there is no sidecar, 502 when the hook or the sidecar fails (with its message when the generation
+// itself failed, e.g. the weights are gone from the sidecar's volume).
+func InferOf(db *sql.DB, router *core.InferRouter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
-			return
-		}
-		if sc == nil {
-			httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not active")
 			return
 		}
 		var in struct {
@@ -90,14 +88,19 @@ func InferOf(db *sql.DB, sc core.Inferer) http.HandlerFunc {
 			writeErr(w, err)
 			return
 		}
-		out, err := core.Infer(r.Context(), db, sc, m, req)
+		inf, hook := router.For(m)
+		if inf == nil {
+			httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not active")
+			return
+		}
+		out, err := core.Infer(r.Context(), db, inf, m, req)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{"id": out.ID, "model_id": out.ModelID, "response": out.Response,
 			"status": trainingdb.TrainedModelInferenceCompleted, "input_tokens": out.InputTokens, "output_tokens": out.OutputTokens,
-			"duration_ms": out.DurationMS, "cold_start": out.ColdStart, "load_seconds": out.LoadSeconds})
+			"duration_ms": out.DurationMS, "cold_start": out.ColdStart, "load_seconds": out.LoadSeconds, "hook": hook})
 	}
 }
 
@@ -207,5 +210,23 @@ func ListExportersOf(exporters []core.TrainedModelExporter) http.HandlerFunc {
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{"exporters": list})
+	}
+}
+
+// ListInferenceHooksOf serves GET /v1/gb/training/inference-hooks: {"hooks": [{"name": "...", "description": "...", "model": "..."}, ...]},
+// the trained model inference hooks the embedding program registered (ServeOptions.TrainedModelInferenceHooks), sorted by name, each
+// with the name of the trained model it targets; an empty list if there are none. The admin UI uses it to say where a model's prompts run.
+func ListInferenceHooksOf(hooks []core.TrainedModelInferenceHook) http.HandlerFunc {
+	type hook struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Model       string `json:"model"`
+	}
+	list := make([]hook, 0, len(hooks))
+	for _, h := range hooks {
+		list = append(list, hook{Name: h.Name, Description: h.Description, Model: h.Model})
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"hooks": list})
 	}
 }
