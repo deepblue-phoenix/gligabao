@@ -257,12 +257,30 @@ async function loadModels(): Promise<void> {
 //---------------------------------------------------------------------------------------------
 // Exporters
 
+// One line: the exporter's name and, when it has a description, a ? button that opens it in a dialog.
+function exporterLabel(e: Exporter, nameTag: "strong" | "span"): HTMLElement {
+  const wrap = node("div", "exporter-name");
+  wrap.append(node(nameTag, "", e.name));
+  if (e.description) {
+    const b = node("button", "help-btn", "?");
+    b.type = "button";
+    b.title = `About ${e.name}`;
+    b.setAttribute("aria-label", `About ${e.name}`);
+    b.addEventListener("click", () => {
+      el("exporter-desc-title").textContent = e.name;
+      el("exporter-desc-text").textContent = e.description;
+      el<HTMLDialogElement>("exporter-desc-modal").showModal();
+    });
+    wrap.append(b);
+  }
+  return wrap;
+}
+
 function renderExporters(): void {
   const list = el("training-exporters");
   list.replaceChildren(...exporters.map((e) => {
     const li = node("li");
-    li.append(node("strong", "", e.name));
-    if (e.description) li.append(node("span", "exporter-desc", e.description));
+    li.append(exporterLabel(e, "strong"));
     return li;
   }));
   list.hidden = exporters.length === 0;
@@ -277,10 +295,12 @@ async function loadExporters(): Promise<void> {
     status.className = "muted";
     status.textContent = exporters.length === 0
       ? "No exporter is registered. The program that embeds gligabao registers them as hooks (ServeOptions.TrainedModelExporters); trained models cannot be exported."
-      : "Registered through hooks. Export on a trained model lets you pick one of them.";
+      : "";
+    status.hidden = status.textContent === "";
     renderExporters();
   } catch (err) {
     status.className = "error";
+    status.hidden = false;
     status.textContent = `Failed to load the exporters: ${errText(err)}`;
   }
 }
@@ -293,8 +313,7 @@ function openExport(id: number): void {
   el("export-list").replaceChildren(...exporters.map((e) => {
     const li = node("li");
     const info = node("div");
-    info.append(node("div", "exporter-name", e.name));
-    if (e.description) info.append(node("div", "exporter-desc", e.description));
+    info.append(exporterLabel(e, "span"));
     const btn = node("button", "small", "Export");
     btn.type = "button";
     btn.title = `Export this model with ${e.name}`;

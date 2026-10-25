@@ -742,10 +742,10 @@ tr.removing {
 .tr-selected { @include tint($tint-red); }
 .tr-exporters { @include tint($tint-blue); }
 .exporters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
-.exporters li { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.4rem 0.6rem; border: 1px solid $border; border-radius: 6px; }
-.exporters .exporter-desc, .export-list .exporter-desc { color: $muted; font-size: 0.85rem; }
+.exporters li { display: flex; align-items: center; padding: 0.4rem 0.6rem; border: 1px solid $border; border-radius: 6px; }
 .export-list { list-style: none; margin: 0.5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
 .export-list li { display: grid; grid-template-columns: 1fr auto; gap: 0.2rem 0.75rem; align-items: center; padding: 0.5rem 0.75rem; border: 1px solid $border; border-radius: 6px; }
+.exporter-name { display: flex; align-items: center; }
 .export-list .exporter-name { font-weight: 600; }
 .export-list .export-result { grid-column: 1 / -1; font-size: 0.85rem; white-space: pre-wrap; overflow-wrap: anywhere; &:empty { display: none; } }
 .training-form { align-items: flex-end; label { display: flex; flex-direction: column; gap: 0.2rem; color: $muted; font-size: 0.8rem; } input[type="number"] { width: 6rem; } select { min-width: 12rem; } }

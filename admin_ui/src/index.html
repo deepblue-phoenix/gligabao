@@ -222,6 +222,14 @@
       <div class="modal-body"><p class="help-text">Exporters are hooks: Go callbacks that the program embedding gligabao registers at startup (<code>ServeOptions.TrainedModelExporters</code>); they cannot be added here. The <b>Export</b> action of a trained model fetches its weights to the server's disk and calls the exporter you pick with them. What an exporter does with the files (upload, copy, convert, ...) is its own business.</p></div>
     </dialog>
 
+    <dialog id="exporter-desc-modal" class="modal modal-small help-modal">
+      <div class="modal-head">
+        <h2 id="exporter-desc-title">Exporter</h2>
+        <button type="button" class="close-x" data-close-help title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="modal-body"><p id="exporter-desc-text" class="help-text"></p></div>
+    </dialog>
+
     <dialog id="export-modal" class="modal">
       <div class="modal-head">
         <h2 id="export-title">Export</h2>
