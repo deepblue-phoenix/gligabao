@@ -295,6 +295,7 @@
 | `internal/training.ExportRequest`                         | is what the caller of ExportModel chooses: the exporter's name and its options.                                        |
 | `internal/training.ExportTrainedModelRequest`             | is what a trained model exporter is asked to export: the model, its local directory and the options.                   |
 | `internal/training.ExportTrainedModelResult`              | is what a trained model exporter reports: a reference to what it made and details.                                     |
+| `internal/training.exportUpdates`                         | records the progress messages of one export.                                                                           |
 | `internal/training.FeedEvent`                             | is a sidecar event tagged with its run and job as the admin UI receives it.                                            |
 | `internal/training.FileStats`                             | describes a data file's size, hash and record count.                                                                   |
 | `internal/training.InferRequest`                          | is a prompt for a trained model.                                                                                       |
@@ -317,6 +318,7 @@
 | `internal/training.runningRun`                            | tracks a running run's ID and cancel function.                                                                         |
 | `internal/training/db/model.TrainedModel`                 | is the record of the weights a completed training job produced.                                                        |
 | `internal/training/db/model.TrainedModelExport`           | is one stored export of a trained model through an exporter.                                                           |
+| `internal/training/db/model.TrainedModelExportUpdate`     | is one progress message an exporter (or gligabao) reported while an export ran.                                        |
 | `internal/training/db/model.TrainedModelFile`             | is one file of a trained model's weights.                                                                              |
 | `internal/training/db/model.TrainedModelInference`        | is one stored request to run a prompt through a trained model.                                                         |
 | `internal/training/db/model.TrainingDataset`              | is the record of a training dataset's JSONL file and its manifest.                                                     |

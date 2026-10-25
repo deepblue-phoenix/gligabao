@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.103.0] - 2026-11-03
+
+### Added
+- Trained model exporters can report progress: `gligabao.ExportTrainedModelRequest` has a new `Update func(message string)` (never nil, safe for concurrent use) that every exporter gets. The messages are kept in memory only, not stored: while an export runs they are returned as `updates` (`[{"time", "message"}]`, at most the newest 200 messages of at most 500 characters) by `GET /v1/gb/training/models/{id}/exports`, and the answer of `POST .../exports` has them when it ends. gligabao adds its own messages (fetching the files, running the exporter, completed or failed). See [docs/model-exporting.md](docs/model-exporting.md#progress-updates).
+- Admin UI, training view: while an export runs, its row in the Export dialog shows the progress messages as they arrive (the same for every exporter) and keeps them under the outcome when it ends, also for a failed export.
+
 ## [0.102.1] - 2026-11-03
 
 ### Changed

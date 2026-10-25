@@ -195,6 +195,9 @@ func testExportATrainedModel(t *testing.T, d *sql.DB) {
 	exporters := []core.TrainedModelExporter{
 		{Name: "copy", Export: func(ctx context.Context, req core.ExportTrainedModelRequest) (core.ExportTrainedModelResult, error) {
 			got = append(got, req)
+			req.Update("copying the files")
+			req.Update("  ")                                           // blank: ignored
+			req.Update(strings.Repeat("x", 2*core.MaxExportUpdateLen)) // too long: cut
 			if failWith != nil {
 				return core.ExportTrainedModelResult{}, failWith
 			}
@@ -232,6 +235,18 @@ func testExportATrainedModel(t *testing.T, d *sql.DB) {
 	}
 	if len(got) != 1 || got[0].ExportID != out.ID || got[0].Dir != wantDir || got[0].Model.JobID != "job1" || got[0].Options["name"] != "x" {
 		t.Fatalf("exporter request: %+v", got)
+	}
+	// the progress messages: the exporter's own, between the ones of gligabao
+	var msgs []string
+	for _, u := range out.Updates {
+		if u.Time.IsZero() {
+			t.Fatalf("update without a time: %+v", out.Updates)
+		}
+		msgs = append(msgs, u.Message)
+	}
+	if len(msgs) != 5 || !strings.HasPrefix(msgs[0], "Fetching") || !strings.HasPrefix(msgs[1], "Files ready") || msgs[2] != "copying the files" ||
+		len([]rune(msgs[3])) != core.MaxExportUpdateLen || msgs[4] != "Completed" {
+		t.Fatalf("updates: %q", msgs)
 	}
 	// the files are left in place for later
 	if b, err := os.ReadFile(filepath.Join(wantDir, "adapter_model.safetensors")); err != nil || string(b) != "weights" {
@@ -323,5 +338,57 @@ func TestListExporters(t *testing.T) {
 	}
 	if got := list([]core.TrainedModelExporter{{Name: "a", Description: "does a"}, {Name: "b"}}); got != `{"exporters":[{"name":"a","description":"does a"},{"name":"b","description":""}]}` {
 		t.Fatalf("two: %s", got)
+	}
+}
+
+// While an export runs, the progress messages of its exporter are listed with it; once it ends they are only in the answer
+// of the request that ran it (they are not stored).
+func TestExportProgressIsLive(t *testing.T) { dbtest.Run(t, testExportProgressIsLive) }
+
+func testExportProgressIsLive(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	if _, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "job1", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/job1",
+		Files: []trainingdb.TrainedModelFile{{Path: "f", SizeBytes: 1}}}); err != nil {
+		t.Fatal(err)
+	}
+	reported, release := make(chan struct{}), make(chan struct{})
+	exporters := []core.TrainedModelExporter{{Name: "slow", Export: func(ctx context.Context, req core.ExportTrainedModelRequest) (core.ExportTrainedModelResult, error) {
+		req.Update("halfway")
+		close(reported)
+		<-release
+		return core.ExportTrainedModelResult{Ref: "r"}, nil
+	}}}
+	fetcher := fakeFetcher{files: map[string]string{"trained/job1/f": "x"}}
+	m, err := trainingdb.GetTrainedModel(ctx, d, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan *trainingdb.TrainedModelExport, 1)
+	go func() {
+		out, err := core.ExportModel(ctx, d, fetcher, exporters, t.TempDir(), m, core.ExportRequest{Exporter: "slow"})
+		if err != nil {
+			t.Error(err)
+		}
+		done <- out
+	}()
+	<-reported
+	list, err := core.ListExports(ctx, d, 1, 0)
+	if err != nil || len(list) != 1 || list[0].Status != trainingdb.TrainedModelExportRunning {
+		t.Fatalf("running export: %+v %v", list, err)
+	}
+	var msgs []string
+	for _, u := range list[0].Updates {
+		msgs = append(msgs, u.Message)
+	}
+	if len(msgs) != 3 || msgs[2] != "halfway" {
+		t.Fatalf("live updates: %q", msgs)
+	}
+	close(release)
+	if out := <-done; out == nil || len(out.Updates) != 4 {
+		t.Fatalf("answer of the request: %+v", out)
+	}
+	list, _ = core.ListExports(ctx, d, 1, 0)
+	if len(list) != 1 || list[0].Status != trainingdb.TrainedModelExportCompleted || list[0].Updates == nil || len(list[0].Updates) != 0 {
+		t.Fatalf("finished export: %+v", list)
 	}
 }

@@ -14,7 +14,7 @@ POST /v1/gb/training/models/{id}/exports   {"exporter": "<name>", "options": {..
   2. find the exporter by name, check the options            400 if none is registered, the name is unknown or the options are bad
   3. record the export in gb_trained_model_exports           status "running"
   4. fetch the model's files from the sidecar into Dir       each file verified (size, sha256)
-  5. call Export(ctx, ExportTrainedModelRequest)             your code; the request waits for it
+  5. call Export(ctx, ExportTrainedModelRequest)             your code; the request waits for it; it reports progress with req.Update
   6. update the record                                       status "completed" (ref, details) or "failed" (error)
   7. emit the system event training.model_export.completed / .failed
   8. answer 200 with the stored export                       502 if step 4 or 5 failed
@@ -54,7 +54,7 @@ err := gligabao.Serve(ctx, cfg, gligabao.ServeOptions{
 |---|---|
 | `gligabao.TrainedModelExporter` | `Name`, `Description` (optional, shown in the admin UI), `Export` |
 | `gligabao.ExportTrainedModelFunc` | `func(ctx context.Context, req ExportTrainedModelRequest) (ExportTrainedModelResult, error)`, the type of `Export` |
-| `gligabao.ExportTrainedModelRequest` | `ExportID`, `Model`, `Dir`, `Options` |
+| `gligabao.ExportTrainedModelRequest` | `ExportID`, `Model`, `Dir`, `Options`, `Update` |
 | `gligabao.ExportTrainedModelResult` | `Ref`, `Details` |
 
 ### What `Export` receives
@@ -65,6 +65,22 @@ err := gligabao.Serve(ctx, cfg, gligabao.ServeOptions{
 | `Model` | the trained model (`gligabao.TrainedModel`): `ID`, `Name`, `JobID`, `BaseModel`, `ModelSize`, `Dataset`, `NumExamples`, `NumTrainSteps`, `FinalLoss`, `Params`, `Path`, and `Files` (`gligabao.TrainedModelFile`: `Path`, `SizeBytes`, `SHA256`), ... |
 | `Dir` | the absolute path of a local directory that holds the model's files, at the paths `Model.Files` lists, relative to it |
 | `Options` | the `options` object of the request, unchanged, as a `map[string]any` (`nil` if the request gave none) |
+| `Update` | `func(message string)`: reports what the exporter is doing (see [Progress updates](#progress-updates)); never `nil` |
+
+### Progress updates
+
+An export can take minutes, so every exporter gets `req.Update`, a function to say what it is doing as it goes:
+
+```go
+req.Update("uploading the archive to S3")
+// ... the upload ...
+req.Update("waiting for the import job to finish")
+```
+
+- A message is a short plain-text line (steps, not bytes). Blank messages are ignored, messages longer than **500** characters are cut, and only the newest **200** are kept.
+- Messages are for display and are **not stored**: they are kept in memory while the export runs and shown by the admin UI (they are in `updates` of `GET .../exports` for a running export, with their times), and the answer of the `POST` that ran the export has them too. Once it is over they are gone (a restart loses them as well). What must survive belongs in the result's `Details`.
+- gligabao adds its own messages around the exporter's: `Fetching the model's N files from the sidecar`, `Files ready, running the <name> exporter` and, at the end, `Completed` or `Failed: <error>`.
+- Safe for concurrent use. Calls after `Export` has returned are ignored.
 
 ### What `Export` returns
 
@@ -128,7 +144,7 @@ The table exists on SQLite and PostgreSQL and is created automatically. A row th
 
 | Endpoint | |
 |---|---|
-| `POST /v1/gb/training/models/{id}/exports` | Body `{"exporter": "<name>", "options": {...}}`. `exporter` is required (the error lists the registered names); `options` is a free-form JSON object of at most 64 KB that reaches the hook unchanged. Fetches the files, calls the exporter, waits, and answers `200` with the stored export (`id`, `trained_model_id`, `exporter`, `options`, `status` `completed`, `dir`, `ref`, `details`, `error`, `duration_ms`, `created_at`, `completed_at`). |
+| `POST /v1/gb/training/models/{id}/exports` | Body `{"exporter": "<name>", "options": {...}}`. `exporter` is required (the error lists the registered names); `options` is a free-form JSON object of at most 64 KB that reaches the hook unchanged. Fetches the files, calls the exporter, waits, and answers `200` with the stored export (`id`, `trained_model_id`, `exporter`, `options`, `status` `completed`, `dir`, `ref`, `details`, `error`, `updates`, `duration_ms`, `created_at`, `completed_at`). `updates` is `[{"time", "message"}]`, not stored (see [Progress updates](#progress-updates)). |
 | `GET /v1/gb/training/exporters` | `{"exporters": [{"name": "...", "description": "..."}]}`: the registered exporters, sorted by name (empty if none). The admin UI's *Exporters* block shows them. |
 | `GET /v1/gb/training/models/{id}/exports[?limit=]` | `{"exports": [...]}`: the stored exports of the model, newest first, failed ones too (default 100, at most 500). |
 
@@ -151,7 +167,7 @@ $ curl -X POST localhost:7878/v1/gb/training/models/3/exports \
 
 ## Admin UI
 
-In the admin UI's *Training* view, the action box of a trained model (click its row) has an **Export** button, after *Audit*: it opens a dialog listing the registered exporters with their descriptions, each with its own *Export* button; the one pressed calls `POST .../exports` with that exporter, and its outcome (status, `ref`, duration, or the error) is shown in its row. The *Exporters* block at the bottom of the view lists the registered exporters and their descriptions (from `GET /v1/gb/training/exporters`); with none registered, *Export* is disabled.
+In the admin UI's *Training* view, the action box of a trained model (click its row) has an **Export** button, after *Audit*: it opens a dialog listing the registered exporters with their descriptions, each with its own *Export* button; the one pressed calls `POST .../exports` with that exporter. While it runs, its row shows the progress messages the exporter reported through `Update` (read every 1.5 s from `GET .../exports`), the same for every exporter; when it ends the row shows the outcome (status, `ref`, duration, or the error) and keeps the messages it received. The *Exporters* block at the bottom of the view lists the registered exporters and their descriptions (from `GET /v1/gb/training/exporters`); with none registered, *Export* is disabled.
 
 ## System events
 
@@ -173,6 +189,6 @@ Each export that reaches the fetch emits a system event to the [`SystemEvent`](h
 ## Limits and not included
 
 - Exporters are code in the embedding program; none is built in. There is no endpoint to register one at run time.
-- An export is one synchronous request. There is no background export, no progress, no cancellation besides the client leaving, and no resuming.
+- An export is one synchronous request. There is no background export, no cancellation besides the client leaving, and no resuming.
 - gligabao does not merge LoRA adapters into the base model, and does not convert formats: the exporter gets the files as they were saved (for the LoRA fine-tuning: `adapter_config.json`, `adapter_model.safetensors` and the tokenizer files, not the base model; `adapter_config.json` names the base model).
 - Exports are never deleted, and neither are the fetched files.

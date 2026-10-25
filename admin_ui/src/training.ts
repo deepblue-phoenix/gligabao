@@ -26,7 +26,8 @@ interface Inference {
   load_seconds: number; duration_ms: number; created_at: string; completed_at: string | null;
 }
 interface Exporter { name: string; description: string }
-interface ModelExport { id: number; exporter: string; status: string; ref: string; error: string; duration_ms: number }
+interface ExportUpdate { time: string; message: string }
+interface ModelExport { id: number; exporter: string; status: string; ref: string; error: string; duration_ms: number; updates?: ExportUpdate[] }
 interface DatasetRecord {
   id: number; filename: string; size_bytes: number; num_records: number; sha256: string; status: "stored" | "synced";
   updated_at: string; synced_at: string | null;
@@ -115,6 +116,7 @@ const stopping = new Set<number>(); // runs a stop was requested of, until they 
 let stopError = ""; // why the last stop request failed
 let exporters: Exporter[] = []; // the exporter hooks the embedding program registered
 let exporting = false; // an export is in flight
+const EXPORT_POLL_MS = 1500; // how often the progress of a running export is read
 
 //---------------------------------------------------------------------------------------------
 // Jobs list
@@ -333,25 +335,66 @@ function setExporting(on: boolean): void {
   for (const b of Array.from(el("export-list").querySelectorAll<HTMLButtonElement>("button"))) b.disabled = on;
 }
 
+// Shows the state of an export in the exporter's row: a line (status, outcome) and under it the progress messages the exporter
+// (and gligabao) reported so far, the same for every exporter.
+function showExportState(result: HTMLElement, cls: string, line: string, updates: ExportUpdate[] = []): void {
+  result.className = `export-result ${cls}`.trim();
+  const children: HTMLElement[] = [node("div", "", line)];
+  if (updates.length > 0) {
+    const list = node("ul", "export-updates");
+    for (const u of updates) {
+      const li = node("li");
+      li.append(node("span", "muted", new Date(u.time).toLocaleTimeString()), document.createTextNode(` ${u.message}`));
+      list.append(li);
+    }
+    children.push(list);
+  }
+  result.replaceChildren(...children);
+}
+
+// The newest export of the model made with exporter name (the one that was just asked for, or is running), or undefined. The
+// server lists the progress messages of an export only while it runs.
+async function latestExport(modelID: number, name: string): Promise<ModelExport | undefined> {
+  const res = await fetch(`../training/models/${modelID}/exports?limit=10`);
+  if (!res.ok) throw await failure(res);
+  return (((await res.json()) as { exports: ModelExport[] }).exports ?? []).find((x) => x.exporter === name);
+}
+
 // Exports the model with one exporter. The server answers when the exporter is done, which can take minutes for a large model;
-// the outcome is shown in the exporter's row (it stays if the dialog is closed meanwhile, the export goes on).
+// meanwhile the progress messages the exporter reports are polled and shown in the exporter's row. The outcome stays there if the
+// dialog is closed meanwhile, the export goes on.
 async function exportModel(m: TrainedModel, e: Exporter, result: HTMLElement): Promise<void> {
   if (exporting) return;
   setExporting(true);
-  result.className = "export-result muted";
-  result.textContent = "Exporting…";
+  showExportState(result, "muted", "Exporting…");
+  let polling = true;
+  let seen: ExportUpdate[] = []; // the last messages polled: the server does not keep them once the export is over
+  const poll = async (): Promise<void> => {
+    while (polling) {
+      await new Promise((r) => setTimeout(r, EXPORT_POLL_MS));
+      try {
+        const x = await latestExport(m.id, e.name);
+        if (polling && x && x.status === "running") {
+          seen = x.updates ?? [];
+          showExportState(result, "muted", "Exporting…", seen);
+        }
+      } catch { /* the next poll tries again */ }
+    }
+  };
+  void poll();
   try {
     const res = await fetch(`../training/models/${m.id}/exports`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ exporter: e.name }),
     });
     if (!res.ok) throw await failure(res);
     const out = (await res.json()) as ModelExport;
-    result.className = "export-result";
-    result.textContent = `${out.status}${out.ref ? `, ref ${out.ref}` : ""} (${fmtSpan(out.duration_ms / 1000)}, export #${out.id})`;
+    polling = false;
+    showExportState(result, "", `${out.status}${out.ref ? `, ref ${out.ref}` : ""} (${fmtSpan(out.duration_ms / 1000)}, export #${out.id})`, out.updates);
   } catch (err) {
-    result.className = "export-result error";
-    result.textContent = `Failed: ${errText(err)}`;
+    polling = false;
+    showExportState(result, "error", `Failed: ${errText(err)}`, seen); // the messages say how far it got
   } finally {
+    polling = false;
     setExporting(false);
   }
 }

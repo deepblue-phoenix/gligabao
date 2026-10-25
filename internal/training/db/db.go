@@ -19,14 +19,15 @@ import (
 
 // Types shared with the backends (see package model).
 type (
-	TrainingJobRun        = model.TrainingJobRun
-	TrainingJobRunUpdate  = model.TrainingJobRunUpdate
-	TrainingJobEvent      = model.TrainingJobEvent
-	TrainingDataset       = model.TrainingDataset
-	TrainedModel          = model.TrainedModel
-	TrainedModelFile      = model.TrainedModelFile
-	TrainedModelInference = model.TrainedModelInference
-	TrainedModelExport    = model.TrainedModelExport
+	TrainingJobRun           = model.TrainingJobRun
+	TrainingJobRunUpdate     = model.TrainingJobRunUpdate
+	TrainingJobEvent         = model.TrainingJobEvent
+	TrainingDataset          = model.TrainingDataset
+	TrainedModel             = model.TrainedModel
+	TrainedModelFile         = model.TrainedModelFile
+	TrainedModelInference    = model.TrainedModelInference
+	TrainedModelExport       = model.TrainedModelExport
+	TrainedModelExportUpdate = model.TrainedModelExportUpdate
 )
 
 // Statuses of a TrainedModelInference.

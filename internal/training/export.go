@@ -39,6 +39,10 @@ const (
 	FetchModelTimeout = 30 * time.Minute
 	// MaxExportOptionsBytes is the largest JSON a request may give an exporter as its options.
 	MaxExportOptionsBytes = 1 << 16
+	// MaxExportUpdates is how many progress messages of an export are kept (the newest ones), MaxExportUpdateLen the longest
+	// message (longer ones are cut).
+	MaxExportUpdates   = 200
+	MaxExportUpdateLen = 500
 )
 
 var exporterNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
@@ -56,6 +60,12 @@ type ExportTrainedModelRequest struct {
 	Dir string
 	// Options are the free-form options of the request that asked for the export (may be nil).
 	Options map[string]any
+	// Update reports what the exporter is doing, as a short plain-text message ("uploading the archive to S3"): the admin UI
+	// shows the messages while the export runs, the same for every exporter. They are kept in memory only (not stored with the
+	// export), so they are for display, not for the record: put what must survive in the result's Details. Never nil, safe for
+	// concurrent use, cheap. Messages are cut at MaxExportUpdateLen characters and only the last MaxExportUpdates are kept.
+	// Calls after Export has returned are ignored.
+	Update func(message string)
 }
 
 // ExportTrainedModelResult is what an exporter reports when it is done.
@@ -200,6 +210,58 @@ func fetchFile(ctx context.Context, f ModelFileFetcher, modelPath string, file t
 	return os.Rename(tmp.Name(), target)
 }
 
+// exportUpdates holds the progress messages of one export while it runs. They are kept in memory only (liveExports), for the admin UI.
+type exportUpdates struct {
+	mu     sync.Mutex
+	list   []trainingdb.TrainedModelExportUpdate
+	closed bool
+}
+
+// liveExports are the running exports' progress messages: export ID -> *exportUpdates.
+var liveExports sync.Map
+
+// add appends a message. It is the Update function of ExportTrainedModelRequest.
+func (u *exportUpdates) add(message string) {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return
+	}
+	if r := []rune(message); len(r) > MaxExportUpdateLen {
+		message = string(r[:MaxExportUpdateLen-1]) + "…"
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.closed {
+		return
+	}
+	u.list = append(u.list, trainingdb.TrainedModelExportUpdate{Time: time.Now().UTC(), Message: message})
+	if len(u.list) > MaxExportUpdates {
+		u.list = u.list[len(u.list)-MaxExportUpdates:]
+	}
+}
+
+// snapshot returns a copy of the messages so far (never nil).
+func (u *exportUpdates) snapshot() []trainingdb.TrainedModelExportUpdate {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return append([]trainingdb.TrainedModelExportUpdate{}, u.list...)
+}
+
+// close stops recording: later calls of add are ignored.
+func (u *exportUpdates) close() {
+	u.mu.Lock()
+	u.closed = true
+	u.mu.Unlock()
+}
+
+// withLiveUpdates sets e.Updates to the messages of e if it is running (empty otherwise).
+func withLiveUpdates(e *trainingdb.TrainedModelExport) {
+	e.Updates = []trainingdb.TrainedModelExportUpdate{}
+	if v, ok := liveExports.Load(e.ID); ok {
+		e.Updates = v.(*exportUpdates).snapshot()
+	}
+}
+
 // ExportRequest is what the caller of ExportModel chooses.
 type ExportRequest struct {
 	// Exporter is the name of the exporter to use.
@@ -240,8 +302,15 @@ func ExportModel(ctx context.Context, db *sql.DB, f ModelFileFetcher, exporters 
 		return nil, internalErr("failed to record the export", err)
 	}
 	l = l.WithField("export_id", id)
+	updates := &exportUpdates{}
+	liveExports.Store(id, updates)
+	defer func() {
+		updates.close()
+		liveExports.Delete(id)
+	}()
 	started := time.Now()
 	fail := func(msg string, cause error) error {
+		updates.add("Failed: " + msg)
 		l.WithError(cause).Error("training: model export failed")
 		ms := time.Since(started).Milliseconds()
 		if err := trainingdb.FinishTrainedModelExport(dbCtx, db, id, trainingdb.TrainedModelExportFailed, "", "", msg, ms); err != nil {
@@ -252,6 +321,7 @@ func ExportModel(ctx context.Context, db *sql.DB, f ModelFileFetcher, exporters 
 		return &Error{KindUpstream, fmt.Sprintf("export %d failed: %s", id, msg), cause}
 	}
 
+	updates.add(fmt.Sprintf("Fetching the model's %d files from the sidecar", len(tm.Files)))
 	fctx, cancel := context.WithTimeout(ctx, FetchModelTimeout)
 	err = FetchModelFiles(fctx, f, tm, modelDir)
 	cancel()
@@ -262,7 +332,8 @@ func ExportModel(ctx context.Context, db *sql.DB, f ModelFileFetcher, exporters 
 		l.WithError(err).Error("training: updating the export failed")
 	}
 
-	res, err := callExporter(ctx, exp, ExportTrainedModelRequest{ExportID: id, Model: *tm, Dir: modelDir, Options: in.Options})
+	updates.add(fmt.Sprintf("Files ready, running the %s exporter", exp.Name))
+	res, err := callExporter(ctx, exp, ExportTrainedModelRequest{ExportID: id, Model: *tm, Dir: modelDir, Options: in.Options, Update: updates.add})
 	if err != nil {
 		return nil, fail(err.Error(), err)
 	}
@@ -275,6 +346,7 @@ func ExportModel(ctx context.Context, db *sql.DB, f ModelFileFetcher, exporters 
 		details = string(b)
 	}
 	ms := time.Since(started).Milliseconds()
+	updates.add("Completed")
 	if err := trainingdb.FinishTrainedModelExport(dbCtx, db, id, trainingdb.TrainedModelExportCompleted, res.Ref, details, "", ms); err != nil {
 		l.WithError(err).Error("training: updating the export failed")
 		return nil, internalErr("the export completed but failed to record it", err)
@@ -286,6 +358,7 @@ func ExportModel(ctx context.Context, db *sql.DB, f ModelFileFetcher, exporters 
 	if err != nil {
 		return nil, internalErr("failed to read the export", err)
 	}
+	out.Updates = updates.snapshot()
 	return out, nil
 }
 
@@ -326,6 +399,9 @@ func ListExports(ctx context.Context, db *sql.DB, modelID int64, limit int) ([]t
 	if err != nil {
 		log.WithError(err).Error("training: list trained model exports failed")
 		return nil, internalErr("failed to list the exports", err)
+	}
+	for i := range list {
+		withLiveUpdates(&list[i])
 	}
 	return list, nil
 }

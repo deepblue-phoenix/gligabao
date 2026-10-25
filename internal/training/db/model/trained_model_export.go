@@ -12,6 +12,12 @@ const (
 	TrainedModelExportFailed    = "failed"    // fetching the files or the exporter failed: Error says why
 )
 
+// TrainedModelExportUpdate is one progress message of an export: what the exporter (or gligabao) reported while it ran.
+type TrainedModelExportUpdate struct {
+	Time    time.Time `json:"time"`
+	Message string    `json:"message"`
+}
+
 // TrainedModelExport is one request to export a trained model through an exporter, a hook of the embedding program
 // (gb_trained_model_exports). It is stored when the export starts (status "running") and updated when it ends, so every export
 // can be reviewed later, including the ones that failed or were interrupted by a restart of the server.
@@ -32,6 +38,10 @@ type TrainedModelExport struct {
 	Details json.RawMessage `json:"details"`
 	// Error is the reason when Status is "failed".
 	Error string `json:"error"`
+	// Updates are the progress messages the exporter (and gligabao) reported while the export ran, oldest first, for the admin UI.
+	// They are not stored: the API fills them in for an export that is running, and in the answer of the request that ran it
+	// (empty otherwise; never nil in the JSON).
+	Updates []TrainedModelExportUpdate `json:"updates"`
 	// DurationMS is how long the export took (0 while it runs); CompletedAt when it ended (nil while it runs).
 	DurationMS  int64      `json:"duration_ms"`
 	CreatedAt   time.Time  `json:"created_at"`
