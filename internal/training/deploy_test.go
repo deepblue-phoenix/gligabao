@@ -45,26 +45,26 @@ func testModel() *trainingdb.TrainedModel {
 	}}
 }
 
-func TestResolveExporters(t *testing.T) {
-	ok := func(ctx context.Context, r core.ExportTrainedModelRequest) (core.ExportTrainedModelResult, error) {
-		return core.ExportTrainedModelResult{}, nil
+func TestResolveDeployers(t *testing.T) {
+	ok := func(ctx context.Context, r core.DeployTrainedModelRequest) (core.DeployTrainedModelResult, error) {
+		return core.DeployTrainedModelResult{}, nil
 	}
-	got, err := core.ResolveExporters([]core.TrainedModelExporter{{Name: "b", Export: ok}, {Name: "a.x-1_", Export: ok}})
+	got, err := core.ResolveDeployers([]core.TrainedModelDeployer{{Name: "b", Deploy: ok}, {Name: "a.x-1_", Deploy: ok}})
 	if err != nil || len(got) != 2 || got[0].Name != "a.x-1_" {
 		t.Fatalf("valid: %+v %v", got, err)
 	}
-	for name, list := range map[string][]core.TrainedModelExporter{
-		"empty name": {{Name: "", Export: ok}},
-		"bad name":   {{Name: "a b", Export: ok}},
-		"slash":      {{Name: "a/b", Export: ok}},
+	for name, list := range map[string][]core.TrainedModelDeployer{
+		"empty name": {{Name: "", Deploy: ok}},
+		"bad name":   {{Name: "a b", Deploy: ok}},
+		"slash":      {{Name: "a/b", Deploy: ok}},
 		"no func":    {{Name: "a"}},
-		"duplicate":  {{Name: "a", Export: ok}, {Name: "a", Export: ok}},
+		"duplicate":  {{Name: "a", Deploy: ok}, {Name: "a", Deploy: ok}},
 	} {
-		if _, err := core.ResolveExporters(list); !errors.Is(err, core.ErrInvalidExporter) {
+		if _, err := core.ResolveDeployers(list); !errors.Is(err, core.ErrInvalidDeployer) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	if got, err := core.ResolveExporters(nil); err != nil || len(got) != 0 {
+	if got, err := core.ResolveDeployers(nil); err != nil || len(got) != 0 {
 		t.Errorf("none: %v %v", got, err)
 	}
 }

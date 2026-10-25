@@ -1,5 +1,5 @@
 // Package db stores and queries the training data: the training jobs the sidecar runs and their events, the models they
-// trained, the inferences run on those, the exports of those models, and the training datasets. Every operation goes
+// trained, the inferences run on those, the deployments of those models, and the training datasets. Every operation goes
 // through the functions here, which route to the backend in use (db/sqlite or db/postgres). The backends keep the training tables in the relational database
 // opened by package relational (the training eval runs of internal/evals refer to the trained models by ID), so Open must be
 // called with the *sql.DB returned by relational.Open, before the evals' Open (internal/evals). All SQL lives in the backends; other packages
@@ -19,15 +19,15 @@ import (
 
 // Types shared with the backends (see package model).
 type (
-	TrainingJobRun           = model.TrainingJobRun
-	TrainingJobRunUpdate     = model.TrainingJobRunUpdate
-	TrainingJobEvent         = model.TrainingJobEvent
-	TrainingDataset          = model.TrainingDataset
-	TrainedModel             = model.TrainedModel
-	TrainedModelFile         = model.TrainedModelFile
-	TrainedModelInference    = model.TrainedModelInference
-	TrainedModelExport       = model.TrainedModelExport
-	TrainedModelExportUpdate = model.TrainedModelExportUpdate
+	TrainingJobRun               = model.TrainingJobRun
+	TrainingJobRunUpdate         = model.TrainingJobRunUpdate
+	TrainingJobEvent             = model.TrainingJobEvent
+	TrainingDataset              = model.TrainingDataset
+	TrainedModel                 = model.TrainedModel
+	TrainedModelFile             = model.TrainedModelFile
+	TrainedModelInference        = model.TrainedModelInference
+	TrainedModelDeployment       = model.TrainedModelDeployment
+	TrainedModelDeploymentUpdate = model.TrainedModelDeploymentUpdate
 )
 
 // Statuses of a TrainedModelInference.
@@ -37,11 +37,11 @@ const (
 	TrainedModelInferenceFailed    = model.TrainedModelInferenceFailed
 )
 
-// Statuses of a TrainedModelExport.
+// Statuses of a TrainedModelDeployment.
 const (
-	TrainedModelExportRunning   = model.TrainedModelExportRunning
-	TrainedModelExportCompleted = model.TrainedModelExportCompleted
-	TrainedModelExportFailed    = model.TrainedModelExportFailed
+	TrainedModelDeploymentRunning   = model.TrainedModelDeploymentRunning
+	TrainedModelDeploymentCompleted = model.TrainedModelDeploymentCompleted
+	TrainedModelDeploymentFailed    = model.TrainedModelDeploymentFailed
 )
 
 // Statuses of a TrainingDataset.

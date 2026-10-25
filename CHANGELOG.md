@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.105.0] - 2026-11-04
+
+### Changed
+- Breaking: what was called *exporting* a trained model is now called *deploying* it, since it is a deployment of the weights that happens. Renamed throughout: the hook `ServeOptions.TrainedModelExporters` is `ServeOptions.TrainedModelDeployers` (`gligabao.TrainedModelDeployer{Name, Description, Deploy}`; types `DeployTrainedModelRequest` (`DeployID` instead of `ExportID`), `DeployTrainedModelResult` and `DeployTrainedModelFunc`); the endpoints are `POST|GET /v1/gb/training/models/{id}/deployments` (body `{"deployer", "options"?}`, answer `{"deployments": [...]}` with a `deployer` field) and `GET /v1/gb/training/deployers`; the config key `trained_model_export_dir`, the flag `--trained-model-export-dir` and `ServeOptions.TrainedModelExportDir` are `trained_model_deploy_dir`, `--trained-model-deploy-dir` and `ServeOptions.TrainedModelDeployDir`; the system events are `training.model_deploy.completed` / `.failed` (with `deploy_id` and `deployer`). Docs: `docs/model-exporting.md` is now [docs/model-deploying.md](docs/model-deploying.md).
+- Admin UI, training view: the **Export** button and dialog are **Deploy**, the **Exporters** block is **Deployers**.
+- Schema: the table `gb_trained_model_exports` is `gb_trained_model_deployments` (column `exporter` is `deployer`). There is no migration: an existing database has to be recreated (or the old table renamed by hand).
+
+
 ## [0.104.0] - 2026-11-04
 
 ### Added

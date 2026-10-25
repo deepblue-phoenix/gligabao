@@ -11,9 +11,9 @@ type Dirs struct {
 	// Evals are the directories of the evals of trained models, searched in order, one JSON file per eval; an eval name found in an
 	// earlier directory hides the same name in a later one. They may not exist: then there are no evals in them.
 	Evals []string
-	// ModelExport is the directory the files of trained models are fetched to for an export, one subdirectory per training
-	// job. Created at the first export; gligabao never deletes it.
-	ModelExport string
+	// ModelDeploy is the directory the files of trained models are fetched to for a deployment, one subdirectory per training
+	// job. Created at the first deploy; gligabao never deletes it.
+	ModelDeploy string
 }
 
 // DefaultDirs returns the default directories for the database file dbPath: "datasets_training", "evals_training" and
@@ -23,7 +23,7 @@ func DefaultDirs(dbPath string) Dirs {
 	return Dirs{
 		Datasets:    []string{filepath.Join(base, "datasets_training")},
 		Evals:       []string{filepath.Join(base, "evals_training")},
-		ModelExport: filepath.Join(base, "trained_models"),
+		ModelDeploy: filepath.Join(base, "trained_models"),
 	}
 }
 
@@ -36,8 +36,8 @@ func (d Dirs) WithDefaults(dbPath string) Dirs {
 	if len(d.Evals) == 0 {
 		d.Evals = def.Evals
 	}
-	if d.ModelExport == "" {
-		d.ModelExport = def.ModelExport
+	if d.ModelDeploy == "" {
+		d.ModelDeploy = def.ModelDeploy
 	}
 	return d
 }

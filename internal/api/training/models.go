@@ -131,24 +131,24 @@ func ListInferencesOf(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// ExportOf serves POST /v1/gb/training/models/{id}/exports with a JSON body {"exporter": "...", "options": {...}} (only the
-// exporter is required; options is a free-form object that is handed to the exporter). It fetches the weights of trained model {id}
-// from the sidecar into a directory on the server's disk, calls the named exporter (a hook of the embedding program, see
-// ServeOptions.TrainedModelExporters) with it, waits for it and answers 200 with the stored export (trainingdb.TrainedModelExport:
-// status "completed", ref, details, dir, ...). The request takes as long as fetching and the exporter take, minutes for a large
-// model. 404 is for an unknown model, 400 for a bad body, an unknown exporter or none registered, 503 for a nil fetcher (no
-// sidecar), 502 when fetching the files or the exporter fails (the failed export is stored: see ListExportsOf).
-func ExportOf(db *sql.DB, f core.ModelFileFetcher, exporters []core.TrainedModelExporter, dir string) http.HandlerFunc {
+// DeployOf serves POST /v1/gb/training/models/{id}/deployments with a JSON body {"deployer": "...", "options": {...}} (only the
+// deployer is required; options is a free-form object that is handed to the deployer). It fetches the weights of trained model {id}
+// from the sidecar into a directory on the server's disk, calls the named deployer (a hook of the embedding program, see
+// ServeOptions.TrainedModelDeployers) with it, waits for it and answers 200 with the stored deployment (trainingdb.TrainedModelDeployment:
+// status "completed", ref, details, dir, ...). The request takes as long as fetching and the deployer take, minutes for a large
+// model. 404 is for an unknown model, 400 for a bad body, an unknown deployer or none registered, 503 for a nil fetcher (no
+// sidecar), 502 when fetching the files or the deployer fails (the failed deployment is stored: see ListDeploymentsOf).
+func DeployOf(db *sql.DB, f core.ModelFileFetcher, deployers []core.TrainedModelDeployer, dir string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
 			return
 		}
 		var in struct {
-			Exporter string         `json:"exporter"`
+			Deployer string         `json:"deployer"`
 			Options  map[string]any `json:"options"`
 		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, core.MaxExportOptionsBytes+1024)).Decode(&in); err != nil && !errors.Is(err, io.EOF) {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, core.MaxDeployOptionsBytes+1024)).Decode(&in); err != nil && !errors.Is(err, io.EOF) {
 			httputil.Error(w, http.StatusBadRequest, "invalid JSON body")
 			return
 		}
@@ -161,7 +161,7 @@ func ExportOf(db *sql.DB, f core.ModelFileFetcher, exporters []core.TrainedModel
 			httputil.Error(w, http.StatusServiceUnavailable, "sidecar is not active")
 			return
 		}
-		out, err := core.ExportModel(r.Context(), db, f, exporters, dir, m, core.ExportRequest{Exporter: in.Exporter, Options: in.Options})
+		out, err := core.DeployModel(r.Context(), db, f, deployers, dir, m, core.DeployRequest{Deployer: in.Deployer, Options: in.Options})
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -170,10 +170,10 @@ func ExportOf(db *sql.DB, f core.ModelFileFetcher, exporters []core.TrainedModel
 	}
 }
 
-// ListExportsOf serves GET /v1/gb/training/models/{id}/exports[?limit=<n>]: {"exports": [...]}, the exports of trained model {id}
-// (trainingdb.TrainedModelExport: exporter, status, ref, details, error, ...), newest first, at most limit (default 100, at most
+// ListDeploymentsOf serves GET /v1/gb/training/models/{id}/deployments[?limit=<n>]: {"deployments": [...]}, the deployments of trained model {id}
+// (trainingdb.TrainedModelDeployment: deployer, status, ref, details, error, ...), newest first, at most limit (default 100, at most
 // 500), failed ones included. 404 for an unknown model.
-func ListExportsOf(db *sql.DB) http.HandlerFunc {
+func ListDeploymentsOf(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
@@ -187,29 +187,29 @@ func ListExportsOf(db *sql.DB) http.HandlerFunc {
 			writeErr(w, err)
 			return
 		}
-		list, err := core.ListExports(r.Context(), db, id, limit)
+		list, err := core.ListDeployments(r.Context(), db, id, limit)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"exports": list})
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"deployments": list})
 	}
 }
 
-// ListExportersOf serves GET /v1/gb/training/exporters: {"exporters": [{"name": "...", "description": "..."}, ...]}, the trained model exporters the
-// embedding program registered (ServeOptions.TrainedModelExporters), sorted by name; an empty list if there are none. The admin UI
-// shows them and asks for an export with each.
-func ListExportersOf(exporters []core.TrainedModelExporter) http.HandlerFunc {
-	type exporter struct {
+// ListDeployersOf serves GET /v1/gb/training/deployers: {"deployers": [{"name": "...", "description": "..."}, ...]}, the trained model deployers the
+// embedding program registered (ServeOptions.TrainedModelDeployers), sorted by name; an empty list if there are none. The admin UI
+// shows them and asks for a deployment with each.
+func ListDeployersOf(deployers []core.TrainedModelDeployer) http.HandlerFunc {
+	type deployer struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 	}
-	list := make([]exporter, 0, len(exporters))
-	for _, e := range exporters {
-		list = append(list, exporter{Name: e.Name, Description: e.Description})
+	list := make([]deployer, 0, len(deployers))
+	for _, e := range deployers {
+		list = append(list, deployer{Name: e.Name, Description: e.Description})
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"exporters": list})
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"deployers": list})
 	}
 }
 

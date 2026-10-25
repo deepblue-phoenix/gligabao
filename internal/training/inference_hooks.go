@@ -162,11 +162,11 @@ func (h hookInferer) Infer(ctx context.Context, req sidecar.InferRequest) (out s
 		InputTokens: res.InputTokens, OutputTokens: res.OutputTokens}, nil
 }
 
-// Hooks are the hooks the embedding program registered for the training API (already validated: see ResolveExporters and
+// Hooks are the hooks the embedding program registered for the training API (already validated: see ResolveDeployers and
 // ResolveInferenceHooks); the zero value has none.
 type Hooks struct {
-	// Exporters export trained models (POST /v1/gb/training/models/{id}/exports).
-	Exporters []TrainedModelExporter
+	// Deployers deploy trained models (POST /v1/gb/training/models/{id}/deployments).
+	Deployers []TrainedModelDeployer
 	// Inference run the prompts of the trained models they target, bypassing the sidecar.
 	Inference []TrainedModelInferenceHook
 }

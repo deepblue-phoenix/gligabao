@@ -17,7 +17,7 @@ func TestNewHasServeFlags(t *testing.T) {
 	if c.Root.Use != "embedder" {
 		t.Fatalf("Use = %q", c.Root.Use)
 	}
-	for _, f := range []string{"db", "vector-dir", "image-dir", "training", "eval", "eval-db", "admin-ui", "training-dataset-dir", "training-eval-dir", "trained-model-export-dir"} {
+	for _, f := range []string{"db", "vector-dir", "image-dir", "training", "eval", "eval-db", "admin-ui", "training-dataset-dir", "training-eval-dir", "trained-model-deploy-dir"} {
 		if c.Serve.Flags().Lookup(f) == nil {
 			t.Errorf("serve has no --%s", f)
 		}

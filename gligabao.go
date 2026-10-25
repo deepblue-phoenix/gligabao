@@ -89,20 +89,20 @@ type TimeseriesData = memory_core.SeriesData
 // TimeseriesPoint is one value of a series at a time.
 type TimeseriesPoint = memory_core.SeriesPoint
 
-// TrainedModelExporter is a named hook that exports trained models (see ServeOptions.TrainedModelExporters and
-// docs/hooks.md): gligabao fetches the weights of the model to a local directory and calls Export with it; what Export does
+// TrainedModelDeployer is a named hook that deploys trained models (see ServeOptions.TrainedModelDeployers and
+// docs/hooks.md): gligabao fetches the weights of the model to a local directory and calls Deploy with it; what Deploy does
 // with the files (upload them to a third party, copy them, ...) is up to the embedding program.
-type TrainedModelExporter = training.TrainedModelExporter
+type TrainedModelDeployer = training.TrainedModelDeployer
 
-// ExportTrainedModelFunc is the Export callback of a TrainedModelExporter.
-type ExportTrainedModelFunc = training.ExportTrainedModelFunc
+// DeployTrainedModelFunc is the Deploy callback of a TrainedModelDeployer.
+type DeployTrainedModelFunc = training.DeployTrainedModelFunc
 
-// ExportTrainedModelRequest is what a TrainedModelExporter's Export callback is asked to export: the trained model, the local
+// DeployTrainedModelRequest is what a TrainedModelDeployer's Deploy callback is asked to deploy: the trained model, the local
 // directory with its files, and the options of the request.
-type ExportTrainedModelRequest = training.ExportTrainedModelRequest
+type DeployTrainedModelRequest = training.DeployTrainedModelRequest
 
-// ExportTrainedModelResult is what an Export callback reports: a reference to what it made and optional details.
-type ExportTrainedModelResult = training.ExportTrainedModelResult
+// DeployTrainedModelResult is what a Deploy callback reports: a reference to what it made and optional details.
+type DeployTrainedModelResult = training.DeployTrainedModelResult
 
 // TrainedModelInferenceHook is a named hook that runs the prompts of one trained model somewhere other than the sidecar (Modal): see
 // ServeOptions.TrainedModelInferenceHooks and docs/hooks.md. Model is the name of the trained model it targets; when that model is
@@ -149,9 +149,9 @@ type ServeOptions struct {
 	// request to POST or PUT /v1/gb/ontologies with "file" instead of "content"). Nothing is loaded at startup. If empty,
 	// Config.OntologyDirs; if that is empty too, there are none and only "content" can be sent.
 	OntologyDirs []string
-	// TrainedModelExportDir is the directory the files of trained models are fetched to for an export, one subdirectory per training
+	// TrainedModelDeployDir is the directory the files of trained models are fetched to for a deployment, one subdirectory per training
 	// job (gligabao never deletes them). Default: a "trained_models" directory next to DBPath.
-	TrainedModelExportDir string
+	TrainedModelDeployDir string
 	// EvalDBPath is the eval database (the SQLite file ./run_evals.sh writes the datasets, experiments and runs to); with
 	// the admin UI on it is shown next to the main database and feeds its Evals block.
 	EvalDBPath string
@@ -165,10 +165,10 @@ type ServeOptions struct {
 	// decide which provider is for which entity of a text), an optional QueryFormat and the Fetch callback. They are
 	// validated at startup: Serve returns the error if one is malformed.
 	TimeseriesProviders []TimeseriesProvider
-	// TrainedModelExporters are the hooks that export trained models (POST /v1/gb/training/models/{id}/exports names the one to
-	// use): gligabao fetches the model's files from the sidecar to a local directory and calls the exporter with it. Each has a
-	// Name and the Export callback. They are validated at startup: Serve returns the error if one is malformed.
-	TrainedModelExporters []TrainedModelExporter
+	// TrainedModelDeployers are the hooks that deploy trained models (POST /v1/gb/training/models/{id}/deployments names the one to
+	// use): gligabao fetches the model's files from the sidecar to a local directory and calls the deployer with it. Each has a
+	// Name and the Deploy callback. They are validated at startup: Serve returns the error if one is malformed.
+	TrainedModelDeployers []TrainedModelDeployer
 	// TrainedModelInferenceHooks run the prompts of trained models without the sidecar: each has a Name, the Model it targets (the
 	// name of a trained model, as the admin UI lists it) and the Infer callback. A model that has a hook is prompted through it (in the
 	// admin UI's prompt dialog and through POST /v1/gb/training/models/{id}/infer); a model that has none still runs on the sidecar.
@@ -274,7 +274,7 @@ func serverOptions(cfg *Config, opts ServeOptions) (serverOpts server.Options, r
 	}
 	monitoring.SetHooks(opts.Hooks)
 	dbConfig := db.ConfigFrom(cfg, opts.DBPath, opts.VectorDir, opts.ImageDir)
-	trainingDirs := training.Dirs{Datasets: opts.TrainingDatasetDirs, Evals: opts.TrainingEvalDirs, ModelExport: opts.TrainedModelExportDir}
+	trainingDirs := training.Dirs{Datasets: opts.TrainingDatasetDirs, Evals: opts.TrainingEvalDirs, ModelDeploy: opts.TrainedModelDeployDir}
 	if len(trainingDirs.Datasets) == 0 {
 		trainingDirs.Datasets = cfg.DatasetsTrainingDirs
 	}
@@ -285,8 +285,8 @@ func serverOptions(cfg *Config, opts ServeOptions) (serverOpts server.Options, r
 	if len(ontologyDirs) == 0 {
 		ontologyDirs = cfg.OntologyDirs
 	}
-	if trainingDirs.ModelExport == "" {
-		trainingDirs.ModelExport = cfg.TrainedModelExportDir
+	if trainingDirs.ModelDeploy == "" {
+		trainingDirs.ModelDeploy = cfg.TrainedModelDeployDir
 	}
 	return server.Options{
 		Addr:         cfg.Addr(),
@@ -302,7 +302,7 @@ func serverOptions(cfg *Config, opts ServeOptions) (serverOpts server.Options, r
 		Prices:       aiPrices(cfg),
 
 		TimeseriesProviders:   opts.TimeseriesProviders,
-		TrainedModelExporters: opts.TrainedModelExporters,
+		TrainedModelDeployers: opts.TrainedModelDeployers,
 
 		TrainedModelInferenceHooks: opts.TrainedModelInferenceHooks,
 		AdminExtensions:            opts.AdminExtensions,

@@ -42,10 +42,10 @@ training = false
 # Default false; `serve --admin-ui` turns it on.
 admin_ui = false
 
-# Directory the files of trained models are fetched to for an export, one subdirectory per training job (gligabao
+# Directory the files of trained models are fetched to for a deployment, one subdirectory per training job (gligabao
 # never deletes them). Default: a trained_models directory next to the database file (bin/trained_models).
-# `serve --trained-model-export-dir` overrides it.
-# trained_model_export_dir = "trained_models"
+# `serve --trained-model-deploy-dir` overrides it.
+# trained_model_deploy_dir = "trained_models"
 
 # Content directories. Each is a list of directories, searched in order; a relative path is relative to THIS FILE (not to the working
 # directory). A program that embeds gligabao can list its own directories next to (or before) these, e.g. its own first and then

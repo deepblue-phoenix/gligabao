@@ -210,12 +210,12 @@ func TestLoadTraining(t *testing.T) {
 	}
 }
 
-func TestTrainedModelExportDir(t *testing.T) {
+func TestTrainedModelDeployDir(t *testing.T) {
 	cfg, err := Load(write(t, ""))
-	if err != nil || cfg.TrainedModelExportDir != "" {
+	if err != nil || cfg.TrainedModelDeployDir != "" {
 		t.Fatalf("default: %v %+v", err, cfg)
 	}
-	if cfg, err = Load(write(t, `trained_model_export_dir = "/data/models"`+"\n")); err != nil || cfg.TrainedModelExportDir != "/data/models" {
+	if cfg, err = Load(write(t, `trained_model_deploy_dir = "/data/models"`+"\n")); err != nil || cfg.TrainedModelDeployDir != "/data/models" {
 		t.Fatalf("set: %v %+v", err, cfg)
 	}
 }

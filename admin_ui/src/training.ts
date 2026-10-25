@@ -25,10 +25,10 @@ interface Inference {
   max_tokens: number; temperature: number | null; input_tokens: number; output_tokens: number; cold_start: boolean | null;
   load_seconds: number; duration_ms: number; created_at: string; completed_at: string | null;
 }
-interface Exporter { name: string; description: string }
+interface Deployer { name: string; description: string }
 interface InferenceHook { name: string; description: string; model: string }
-interface ExportUpdate { time: string; message: string }
-interface ModelExport { id: number; exporter: string; status: string; ref: string; error: string; duration_ms: number; updates?: ExportUpdate[] }
+interface DeployUpdate { time: string; message: string }
+interface ModelDeploy { id: number; deployer: string; status: string; ref: string; error: string; duration_ms: number; updates?: DeployUpdate[] }
 interface DatasetRecord {
   id: number; filename: string; size_bytes: number; num_records: number; sha256: string; status: "stored" | "synced";
   updated_at: string; synced_at: string | null;
@@ -115,7 +115,7 @@ let allJobs: EventSource | undefined; // live events of every job, to keep the l
 let drawQueued = false;
 const stopping = new Set<number>(); // runs a stop was requested of, until they end
 let stopError = ""; // why the last stop request failed
-let exporters: Exporter[] = []; // the exporter hooks the embedding program registered
+let deployers: Deployer[] = []; // the deployer hooks the embedding program registered
 let inferenceHooks: InferenceHook[] = []; // the inference hooks: the trained models they target are prompted through them, not on Modal
 
 // The inference hook that runs the prompts of model m (it targets the model's name), if there is one.
@@ -128,8 +128,8 @@ async function loadInferenceHooks(): Promise<void> {
     inferenceHooks = ((await res.json()) as { hooks: InferenceHook[] }).hooks ?? [];
   } catch { /* stays as it was: the models then show as running on Modal */ }
 }
-let exporting = false; // an export is in flight
-const EXPORT_POLL_MS = 1500; // how often the progress of a running export is read
+let deploying = false; // a deployment is in flight
+const DEPLOY_POLL_MS = 1500; // how often the progress of a running deployment is read
 
 //---------------------------------------------------------------------------------------------
 // Jobs list
@@ -225,7 +225,7 @@ function renderModels(): void {
   for (const m of models) {
     const tr = body.insertRow();
     tr.classList.toggle("selected", m.id === selectedModel);
-    tr.title = "Click for this model's actions: info, prompt, eval, audit, export";
+    tr.title = "Click for this model's actions: info, prompt, eval, audit, deploy";
     tr.insertCell().textContent = String(m.id);
     const name = tr.insertCell();
     name.textContent = shortName(m.name);
@@ -270,11 +270,11 @@ async function loadModels(): Promise<void> {
 }
 
 //---------------------------------------------------------------------------------------------
-// Exporters
+// Deployers
 
-// One line: the exporter's name and, when it has a description, a ? button that opens it in a dialog.
-function exporterLabel(e: Exporter, nameTag: "strong" | "span"): HTMLElement {
-  const wrap = node("div", "exporter-name");
+// One line: the deployer's name and, when it has a description, a ? button that opens it in a dialog.
+function deployerLabel(e: Deployer, nameTag: "strong" | "span"): HTMLElement {
+  const wrap = node("div", "deployer-name");
   wrap.append(node(nameTag, "", e.name));
   if (e.description) {
     const b = node("button", "help-btn", "?");
@@ -282,79 +282,79 @@ function exporterLabel(e: Exporter, nameTag: "strong" | "span"): HTMLElement {
     b.title = `About ${e.name}`;
     b.setAttribute("aria-label", `About ${e.name}`);
     b.addEventListener("click", () => {
-      el("exporter-desc-title").textContent = e.name;
-      el("exporter-desc-text").textContent = e.description;
-      el<HTMLDialogElement>("exporter-desc-modal").showModal();
+      el("deployer-desc-title").textContent = e.name;
+      el("deployer-desc-text").textContent = e.description;
+      el<HTMLDialogElement>("deployer-desc-modal").showModal();
     });
     wrap.append(b);
   }
   return wrap;
 }
 
-function renderExporters(): void {
-  const list = el("training-exporters");
-  list.replaceChildren(...exporters.map((e) => {
+function renderDeployers(): void {
+  const list = el("training-deployers");
+  list.replaceChildren(...deployers.map((e) => {
     const li = node("li");
-    li.append(exporterLabel(e, "strong"));
+    li.append(deployerLabel(e, "strong"));
     return li;
   }));
-  list.hidden = exporters.length === 0;
+  list.hidden = deployers.length === 0;
 }
 
-async function loadExporters(): Promise<void> {
-  const status = el("training-exporters-status");
+async function loadDeployers(): Promise<void> {
+  const status = el("training-deployers-status");
   try {
-    const res = await fetch("../training/exporters");
+    const res = await fetch("../training/deployers");
     if (!res.ok) throw await failure(res);
-    exporters = ((await res.json()) as { exporters: Exporter[] }).exporters ?? [];
+    deployers = ((await res.json()) as { deployers: Deployer[] }).deployers ?? [];
     status.className = "muted";
-    status.textContent = exporters.length === 0
-      ? "No exporter is registered. The program that embeds gligabao registers them as hooks (ServeOptions.TrainedModelExporters); trained models cannot be exported."
+    status.textContent = deployers.length === 0
+      ? "No deployer is registered. The program that embeds gligabao registers them as hooks (ServeOptions.TrainedModelDeployers); trained models cannot be deployed."
       : "";
     status.hidden = status.textContent === "";
-    renderExporters();
+    renderDeployers();
   } catch (err) {
     status.className = "error";
     status.hidden = false;
-    status.textContent = `Failed to load the exporters: ${errText(err)}`;
+    status.textContent = `Failed to load the deployers: ${errText(err)}`;
   }
 }
 
-// Opens the export dialog of a model: one row per registered exporter, each with its own Export button.
-function openExport(id: number): void {
+// Opens the deployment dialog of a model: one row per registered deployer, each with its own Deploy button.
+function openDeploy(id: number): void {
   const m = models.find((x) => x.id === id);
-  if (!m || exporters.length === 0) return;
-  el("export-title").textContent = `Export: ${m.name} (#${m.id})`;
-  el("export-list").replaceChildren(...exporters.map((e) => {
+  if (!m || deployers.length === 0) return;
+  el("deploy-title").textContent = `Deploy: ${m.name} (#${m.id})`;
+  el("deploy-list").replaceChildren(...deployers.map((e) => {
     const li = node("li");
     const info = node("div");
-    info.append(exporterLabel(e, "span"));
-    const btn = node("button", "small", "Export");
+    info.append(deployerLabel(e, "span"));
+    const btn = node("button", "small", "Deploy");
     btn.type = "button";
-    btn.title = `Export this model with ${e.name}`;
-    const result = node("div", "export-result");
-    btn.addEventListener("click", () => void exportModel(m, e, result));
+    btn.title = `Deploy this model with ${e.name}`;
+    const result = node("div", "deploy-result");
+    btn.addEventListener("click", () => void deployModel(m, e, result));
     li.append(info, btn, result);
     return li;
   }));
-  setExporting(exporting);
-  const modal = el<HTMLDialogElement>("export-modal");
+  setDeploying(deploying);
+  const modal = el<HTMLDialogElement>("deploy-modal");
   if (!modal.open) modal.showModal();
 }
 
-// While an export runs, the buttons of the dialog are off: one export at a time.
-function setExporting(on: boolean): void {
-  exporting = on;
-  for (const b of Array.from(el("export-list").querySelectorAll<HTMLButtonElement>("button"))) b.disabled = on;
+// While a deployment runs, the buttons of the dialog are off: one deployment at a time.
+function setDeploying(on: boolean): void {
+  deploying = on;
+  for (const b of Array.from(el("deploy-list").querySelectorAll<HTMLButtonElement>("button"))) b.disabled = on;
 }
 
-// Shows the state of an export in the exporter's row: a line (status, outcome) and under it the progress messages the exporter
-// (and gligabao) reported so far, the same for every exporter.
-function showExportState(result: HTMLElement, cls: string, line: string, updates: ExportUpdate[] = []): void {
-  result.className = `export-result ${cls}`.trim();
+// Shows the state of a deployment in the deployer's row: a line (status, outcome) and under it the progress messages the deployer
+// (and gligabao) reported so far, the same for every deployer.
+function showDeployState(result: HTMLElement, cls: string, line: string, updates: DeployUpdate[] = []): void {
+  result.className = `deploy-result ${cls}`.trim();
   const children: HTMLElement[] = [node("div", "", line)];
   if (updates.length > 0) {
-    const list = node("ul", "export-updates");
+    const list = node("ul", "deploy-updates");
     for (const u of updates) {
       const li = node("li");
       li.append(node("span", "muted", new Date(u.time).toLocaleTimeString()), document.createTextNode(` ${u.message}`));
@@ -365,50 +365,50 @@ function showExportState(result: HTMLElement, cls: string, line: string, updates
   result.replaceChildren(...children);
 }
 
-// The newest export of the model made with exporter name (the one that was just asked for, or is running), or undefined. The
-// server lists the progress messages of an export only while it runs.
-async function latestExport(modelID: number, name: string): Promise<ModelExport | undefined> {
-  const res = await fetch(`../training/models/${modelID}/exports?limit=10`);
+// The newest deploy of the model made with deployer name (the one that was just asked for, or is running), or undefined. The
+// server lists the progress messages of a deployment only while it runs.
+async function latestDeploy(modelID: number, name: string): Promise<ModelDeploy | undefined> {
+  const res = await fetch(`../training/models/${modelID}/deployments?limit=10`);
   if (!res.ok) throw await failure(res);
-  return (((await res.json()) as { exports: ModelExport[] }).exports ?? []).find((x) => x.exporter === name);
+  return (((await res.json()) as { deployments: ModelDeploy[] }).deployments ?? []).find((x) => x.deployer === name);
 }
 
-// Exports the model with one exporter. The server answers when the exporter is done, which can take minutes for a large model;
-// meanwhile the progress messages the exporter reports are polled and shown in the exporter's row. The outcome stays there if the
-// dialog is closed meanwhile, the export goes on.
-async function exportModel(m: TrainedModel, e: Exporter, result: HTMLElement): Promise<void> {
-  if (exporting) return;
-  setExporting(true);
-  showExportState(result, "muted", "Exporting…");
+// Deployments the model with one deployer. The server answers when the deployer is done, which can take minutes for a large model;
+// meanwhile the progress messages the deployer reports are polled and shown in the deployer's row. The outcome stays there if the
+// dialog is closed meanwhile, the deployment goes on.
+async function deployModel(m: TrainedModel, e: Deployer, result: HTMLElement): Promise<void> {
+  if (deploying) return;
+  setDeploying(true);
+  showDeployState(result, "muted", "Deploying…");
   let polling = true;
-  let seen: ExportUpdate[] = []; // the last messages polled: the server does not keep them once the export is over
+  let seen: DeployUpdate[] = []; // the last messages polled: the server does not keep them once the deployment is over
   const poll = async (): Promise<void> => {
     while (polling) {
-      await new Promise((r) => setTimeout(r, EXPORT_POLL_MS));
+      await new Promise((r) => setTimeout(r, DEPLOY_POLL_MS));
       try {
-        const x = await latestExport(m.id, e.name);
+        const x = await latestDeploy(m.id, e.name);
         if (polling && x && x.status === "running") {
           seen = x.updates ?? [];
-          showExportState(result, "muted", "Exporting…", seen);
+          showDeployState(result, "muted", "Deploying…", seen);
         }
       } catch { /* the next poll tries again */ }
     }
   };
   void poll();
   try {
-    const res = await fetch(`../training/models/${m.id}/exports`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ exporter: e.name }),
+    const res = await fetch(`../training/models/${m.id}/deployments`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ deployer: e.name }),
     });
     if (!res.ok) throw await failure(res);
-    const out = (await res.json()) as ModelExport;
+    const out = (await res.json()) as ModelDeploy;
     polling = false;
-    showExportState(result, "", `${out.status}${out.ref ? `, ref ${out.ref}` : ""} (${fmtSpan(out.duration_ms / 1000)}, export #${out.id})`, out.updates);
+    showDeployState(result, "", `${out.status}${out.ref ? `, ref ${out.ref}` : ""} (${fmtSpan(out.duration_ms / 1000)}, deploy #${out.id})`, out.updates);
   } catch (err) {
     polling = false;
-    showExportState(result, "error", `Failed: ${errText(err)}`, seen); // the messages say how far it got
+    showDeployState(result, "error", `Failed: ${errText(err)}`, seen); // the messages say how far it got
   } finally {
     polling = false;
-    setExporting(false);
+    setDeploying(false);
   }
 }
 
@@ -425,7 +425,7 @@ function selectModel(id: number): void {
 
 const INFO_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>';
 
-// The little box that opens where a model's row is clicked: info, prompt, eval, audit, export (in that order).
+// The little box that opens where a model's row is clicked: info, prompt, eval, audit, deploy (in that order).
 function closeModelMenu(): void {
   document.getElementById("model-menu")?.remove();
 }
@@ -456,12 +456,12 @@ function openModelMenu(id: number, x: number, y: number): void {
   add(node("button", "small", AUDIT.button),
     `Open the audit dialog of this model: run a training data audit and see the past ones. ${m.dataset ? AUDIT.tip(m.dataset) : "This model was trained on the sidecar's default dataset: there are no questions to ask"}`,
     () => openAudit(id));
-  const exportBtn = node("button", "small", "Export");
-  exportBtn.disabled = exporters.length === 0;
-  add(exportBtn,
-    exporters.length === 0 ? "No exporter is registered: the program that embeds gligabao registers them (see Exporters below)"
-      : "Choose an exporter to hand this model's weights to",
-    () => openExport(id));
+  const deployBtn = node("button", "small", "Deploy");
+  deployBtn.disabled = deployers.length === 0;
+  add(deployBtn,
+    deployers.length === 0 ? "No deployer is registered: the program that embeds gligabao registers them (see Deployers below)"
+      : "Choose a deployer to hand this model's weights to",
+    () => openDeploy(id));
   // what admin UI extensions add (docs/admin-extensions.md); a button they add closes the menu like the ones above
   renderSlot("training.model.actions", menu, { model: m });
   menu.addEventListener("click", (e) => { if ((e.target as Element).closest("button")) closeModelMenu(); });
@@ -1723,20 +1723,20 @@ export function initTraining(): void {
   const detailsModal = el<HTMLDialogElement>("details-modal");
   el("details-close").addEventListener("click", () => detailsModal.close());
   detailsModal.addEventListener("click", (e) => { if (e.target === detailsModal) detailsModal.close(); });
-  const exportModal = el<HTMLDialogElement>("export-modal");
-  el("export-close").addEventListener("click", () => exportModal.close());
-  exportModal.addEventListener("click", (e) => { if (e.target === exportModal) exportModal.close(); });
+  const deployModal = el<HTMLDialogElement>("deploy-modal");
+  el("deploy-close").addEventListener("click", () => deployModal.close());
+  deployModal.addEventListener("click", (e) => { if (e.target === deployModal) deployModal.close(); });
   const auditModal = el<HTMLDialogElement>("audit-modal");
   el("audit-close").addEventListener("click", () => auditModal.close());
   auditModal.addEventListener("close", closeAuditModal);
   auditModal.addEventListener("click", (e) => { if (e.target === auditModal) auditModal.close(); });
   el("dataset-close").addEventListener("click", () => datasetModal.close());
   datasetModal.addEventListener("click", (e) => { if (e.target === datasetModal) datasetModal.close(); });
-  el("training-refresh").addEventListener("click", () => { void loadExporters(); void loadInferenceHooks(); void loadDatasets(); void loadBackends(); void loadJobs(); void loadModels(); });
+  el("training-refresh").addEventListener("click", () => { void loadDeployers(); void loadInferenceHooks(); void loadDatasets(); void loadBackends(); void loadJobs(); void loadModels(); });
   // The SSE streams are open only while the view is shown (a browser allows few connections to a host).
   const sync = (): void => {
     if (view.hidden) { closeStreams(); return; }
-    void loadExporters();
+    void loadDeployers();
     void loadInferenceHooks();
     void loadDatasets();
     void loadModels();
@@ -1758,7 +1758,7 @@ export function initTraining(): void {
   setInterval(() => { if (!view.hidden) renderJobs(); }, 30000); // refreshes the "ago" texts
   void loadJobs();
   void loadModels();
-  void loadExporters();
+  void loadDeployers();
   void loadInferenceHooks();
   if (!view.hidden) sync();
 }

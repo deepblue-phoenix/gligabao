@@ -252,9 +252,9 @@ func (f fakeFetcher) DownloadModelFile(ctx context.Context, modelPath, file stri
 	return int64(n), err
 }
 
-func TestExportATrainedModel(t *testing.T) { dbtest.Run(t, testExportATrainedModel) }
+func TestDeployATrainedModel(t *testing.T) { dbtest.Run(t, testDeployATrainedModel) }
 
-func testExportATrainedModel(t *testing.T, d *sql.DB) {
+func testDeployATrainedModel(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	sum := sha256.Sum256([]byte("weights"))
 	if _, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "job1", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/job1",
@@ -262,23 +262,23 @@ func testExportATrainedModel(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 	root := t.TempDir()
-	var got []core.ExportTrainedModelRequest
+	var got []core.DeployTrainedModelRequest
 	var failWith error
-	exporters := []core.TrainedModelExporter{
-		{Name: "copy", Export: func(ctx context.Context, req core.ExportTrainedModelRequest) (core.ExportTrainedModelResult, error) {
+	deployers := []core.TrainedModelDeployer{
+		{Name: "copy", Deploy: func(ctx context.Context, req core.DeployTrainedModelRequest) (core.DeployTrainedModelResult, error) {
 			got = append(got, req)
 			req.Update("copying the files")
 			req.Update("  ")                                           // blank: ignored
-			req.Update(strings.Repeat("x", 2*core.MaxExportUpdateLen)) // too long: cut
+			req.Update(strings.Repeat("x", 2*core.MaxDeployUpdateLen)) // too long: cut
 			if failWith != nil {
-				return core.ExportTrainedModelResult{}, failWith
+				return core.DeployTrainedModelResult{}, failWith
 			}
 			if _, err := os.Stat(filepath.Join(req.Dir, "adapter_model.safetensors")); err != nil {
-				return core.ExportTrainedModelResult{}, err
+				return core.DeployTrainedModelResult{}, err
 			}
-			return core.ExportTrainedModelResult{Ref: "ref-" + req.Model.JobID, Details: map[string]any{"files": 1}}, nil
+			return core.DeployTrainedModelResult{Ref: "ref-" + req.Model.JobID, Details: map[string]any{"files": 1}}, nil
 		}},
-		{Name: "panics", Export: func(context.Context, core.ExportTrainedModelRequest) (core.ExportTrainedModelResult, error) {
+		{Name: "panics", Deploy: func(context.Context, core.DeployTrainedModelRequest) (core.DeployTrainedModelResult, error) {
 			panic("kaboom")
 		}},
 	}
@@ -291,24 +291,24 @@ func testExportATrainedModel(t *testing.T, d *sql.DB) {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest("POST", "/x", strings.NewReader(body))
 		req.SetPathValue("id", modelID)
-		training.ExportOf(d, f, exporters, root)(rec, req)
+		training.DeployOf(d, f, deployers, root)(rec, req)
 		return rec
 	}
 
-	rec := post(fetcher, "1", `{"exporter":"copy","options":{"name":"x"}}`)
-	var out trainingdb.TrainedModelExport
+	rec := post(fetcher, "1", `{"deployer":"copy","options":{"name":"x"}}`)
+	var out trainingdb.TrainedModelDeployment
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != 200 {
-		t.Fatalf("export: %d %s", rec.Code, rec.Body)
+		t.Fatalf("deploy: %d %s", rec.Code, rec.Body)
 	}
 	wantDir := filepath.Join(root, "job1")
-	if out.Status != trainingdb.TrainedModelExportCompleted || out.Ref != "ref-job1" || out.Exporter != "copy" || out.TrainedModelID != 1 ||
+	if out.Status != trainingdb.TrainedModelDeploymentCompleted || out.Ref != "ref-job1" || out.Deployer != "copy" || out.TrainedModelID != 1 ||
 		out.Dir != wantDir || string(out.Details) != `{"files":1}` || string(out.Options) != `{"name":"x"}` || out.CompletedAt == nil {
-		t.Fatalf("export record: %+v", out)
+		t.Fatalf("deploy record: %+v", out)
 	}
-	if len(got) != 1 || got[0].ExportID != out.ID || got[0].Dir != wantDir || got[0].Model.JobID != "job1" || got[0].Options["name"] != "x" {
-		t.Fatalf("exporter request: %+v", got)
+	if len(got) != 1 || got[0].DeployID != out.ID || got[0].Dir != wantDir || got[0].Model.JobID != "job1" || got[0].Options["name"] != "x" {
+		t.Fatalf("deployer request: %+v", got)
 	}
-	// the progress messages: the exporter's own, between the ones of gligabao
+	// the progress messages: the deployer's own, between the ones of gligabao
 	var msgs []string
 	for _, u := range out.Updates {
 		if u.Time.IsZero() {
@@ -317,7 +317,7 @@ func testExportATrainedModel(t *testing.T, d *sql.DB) {
 		msgs = append(msgs, u.Message)
 	}
 	if len(msgs) != 5 || !strings.HasPrefix(msgs[0], "Fetching") || !strings.HasPrefix(msgs[1], "Files ready") || msgs[2] != "copying the files" ||
-		len([]rune(msgs[3])) != core.MaxExportUpdateLen || msgs[4] != "Completed" {
+		len([]rune(msgs[3])) != core.MaxDeployUpdateLen || msgs[4] != "Completed" {
 		t.Fatalf("updates: %q", msgs)
 	}
 	// the files are left in place for later
@@ -330,49 +330,49 @@ func testExportATrainedModel(t *testing.T, d *sql.DB) {
 		id, body string
 		want     int
 	}{
-		"unknown model":    {fetcher, "9", `{"exporter":"copy"}`, 404},
-		"bad id":           {fetcher, "x", `{"exporter":"copy"}`, 400},
-		"no exporter":      {fetcher, "1", `{}`, 400},
-		"unknown exporter": {fetcher, "1", `{"exporter":"nope"}`, 400},
+		"unknown model":    {fetcher, "9", `{"deployer":"copy"}`, 404},
+		"bad id":           {fetcher, "x", `{"deployer":"copy"}`, 400},
+		"no deployer":      {fetcher, "1", `{}`, 400},
+		"unknown deployer": {fetcher, "1", `{"deployer":"nope"}`, 400},
 		"bad json":         {fetcher, "1", `{`, 400},
-		"no sidecar":       {nil, "1", `{"exporter":"copy"}`, 503},
+		"no sidecar":       {nil, "1", `{"deployer":"copy"}`, 503},
 	} {
 		if rec := post(c.f, c.id, c.body); rec.Code != c.want {
 			t.Fatalf("%s: %d %s", name, rec.Code, rec.Body)
 		}
 	}
-	// requests that never reached the exporter are not recorded
-	if list, err := trainingdb.ListTrainedModelExports(ctx, d, 1, 0); err != nil || len(list) != 1 {
-		t.Fatalf("stored exports: %+v %v", list, err)
+	// requests that never reached the deployer are not recorded
+	if list, err := trainingdb.ListTrainedModelDeployments(ctx, d, 1, 0); err != nil || len(list) != 1 {
+		t.Fatalf("stored deployments: %+v %v", list, err)
 	}
 
-	// the exporter failing, panicking, and the files not being fetchable: 502, recorded as failed
+	// the deployer failing, panicking, and the files not being fetchable: 502, recorded as failed
 	failWith = errors.New("upload refused")
-	if rec := post(fetcher, "1", `{"exporter":"copy"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "upload refused") {
-		t.Fatalf("exporter error: %d %s", rec.Code, rec.Body)
+	if rec := post(fetcher, "1", `{"deployer":"copy"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "upload refused") {
+		t.Fatalf("deployer error: %d %s", rec.Code, rec.Body)
 	}
-	if rec := post(fetcher, "1", `{"exporter":"panics"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "kaboom") {
-		t.Fatalf("exporter panic: %d %s", rec.Code, rec.Body)
+	if rec := post(fetcher, "1", `{"deployer":"panics"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "kaboom") {
+		t.Fatalf("deployer panic: %d %s", rec.Code, rec.Body)
 	}
 	os.RemoveAll(wantDir) // so the files have to be fetched again, which the fetcher cannot do
-	if rec := post(fakeFetcher{}, "1", `{"exporter":"copy"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "fetching") {
+	if rec := post(fakeFetcher{}, "1", `{"deployer":"copy"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "fetching") {
 		t.Fatalf("fetch error: %d %s", rec.Code, rec.Body)
 	}
 
-	list, err := trainingdb.ListTrainedModelExports(ctx, d, 1, 0)
+	list, err := trainingdb.ListTrainedModelDeployments(ctx, d, 1, 0)
 	if err != nil || len(list) != 4 {
-		t.Fatalf("stored exports: %+v %v", list, err)
+		t.Fatalf("stored deployments: %+v %v", list, err)
 	}
-	if e := list[0]; e.Status != trainingdb.TrainedModelExportFailed || !strings.Contains(e.Error, "fetching") || e.Dir != "" {
+	if e := list[0]; e.Status != trainingdb.TrainedModelDeploymentFailed || !strings.Contains(e.Error, "fetching") || e.Dir != "" {
 		t.Fatalf("fetch failure record: %+v", e)
 	}
-	if e := list[1]; e.Status != trainingdb.TrainedModelExportFailed || !strings.Contains(e.Error, "kaboom") || e.Dir == "" {
+	if e := list[1]; e.Status != trainingdb.TrainedModelDeploymentFailed || !strings.Contains(e.Error, "kaboom") || e.Dir == "" {
 		t.Fatalf("panic record: %+v", e)
 	}
-	if e := list[2]; e.Status != trainingdb.TrainedModelExportFailed || !strings.Contains(e.Error, "upload refused") {
+	if e := list[2]; e.Status != trainingdb.TrainedModelDeploymentFailed || !strings.Contains(e.Error, "upload refused") {
 		t.Fatalf("failure record: %+v", e)
 	}
-	wantEvents := []string{"training.model_export.completed", "training.model_export.failed", "training.model_export.failed", "training.model_export.failed"}
+	wantEvents := []string{"training.model_deploy.completed", "training.model_deploy.failed", "training.model_deploy.failed", "training.model_deploy.failed"}
 	if strings.Join(events, ",") != strings.Join(wantEvents, ",") {
 		t.Fatalf("system events: %v", events)
 	}
@@ -380,73 +380,73 @@ func testExportATrainedModel(t *testing.T, d *sql.DB) {
 	rec = httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/x?limit=2", nil)
 	req.SetPathValue("id", "1")
-	training.ListExportsOf(d)(rec, req)
+	training.ListDeploymentsOf(d)(rec, req)
 	var listed struct {
-		Exports []trainingdb.TrainedModelExport `json:"exports"`
+		Deployments []trainingdb.TrainedModelDeployment `json:"deployments"`
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil || rec.Code != 200 || len(listed.Exports) != 2 || listed.Exports[0].ID != list[0].ID {
-		t.Fatalf("list exports: %d %s", rec.Code, rec.Body)
+	if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil || rec.Code != 200 || len(listed.Deployments) != 2 || listed.Deployments[0].ID != list[0].ID {
+		t.Fatalf("list deployments: %d %s", rec.Code, rec.Body)
 	}
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest("GET", "/x", nil)
 	req.SetPathValue("id", "9")
-	training.ListExportsOf(d)(rec, req)
+	training.ListDeploymentsOf(d)(rec, req)
 	if rec.Code != 404 {
-		t.Fatalf("list exports of unknown model: %d", rec.Code)
+		t.Fatalf("list deployments of unknown model: %d", rec.Code)
 	}
 }
 
-func TestListExporters(t *testing.T) {
-	list := func(exporters []core.TrainedModelExporter) string {
+func TestListDeployers(t *testing.T) {
+	list := func(deployers []core.TrainedModelDeployer) string {
 		rec := httptest.NewRecorder()
-		training.ListExportersOf(exporters)(rec, httptest.NewRequest("GET", "/x", nil))
+		training.ListDeployersOf(deployers)(rec, httptest.NewRequest("GET", "/x", nil))
 		if rec.Code != 200 {
 			t.Fatalf("status %d", rec.Code)
 		}
 		return strings.TrimSpace(rec.Body.String())
 	}
-	if got := list(nil); got != `{"exporters":[]}` {
+	if got := list(nil); got != `{"deployers":[]}` {
 		t.Fatalf("none: %s", got)
 	}
-	if got := list([]core.TrainedModelExporter{{Name: "a", Description: "does a"}, {Name: "b"}}); got != `{"exporters":[{"name":"a","description":"does a"},{"name":"b","description":""}]}` {
+	if got := list([]core.TrainedModelDeployer{{Name: "a", Description: "does a"}, {Name: "b"}}); got != `{"deployers":[{"name":"a","description":"does a"},{"name":"b","description":""}]}` {
 		t.Fatalf("two: %s", got)
 	}
 }
 
-// While an export runs, the progress messages of its exporter are listed with it; once it ends they are only in the answer
+// While a deployment runs, the progress messages of its deployer are listed with it; once it ends they are only in the answer
 // of the request that ran it (they are not stored).
-func TestExportProgressIsLive(t *testing.T) { dbtest.Run(t, testExportProgressIsLive) }
+func TestDeployProgressIsLive(t *testing.T) { dbtest.Run(t, testDeployProgressIsLive) }
 
-func testExportProgressIsLive(t *testing.T, d *sql.DB) {
+func testDeployProgressIsLive(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	if _, _, err := trainingdb.RecordTrainedModel(ctx, d, trainingdb.TrainedModel{JobID: "job1", ModelSize: "4b", NumTrainSteps: 1, Path: "trained/job1",
 		Files: []trainingdb.TrainedModelFile{{Path: "f", SizeBytes: 1}}}); err != nil {
 		t.Fatal(err)
 	}
 	reported, release := make(chan struct{}), make(chan struct{})
-	exporters := []core.TrainedModelExporter{{Name: "slow", Export: func(ctx context.Context, req core.ExportTrainedModelRequest) (core.ExportTrainedModelResult, error) {
+	deployers := []core.TrainedModelDeployer{{Name: "slow", Deploy: func(ctx context.Context, req core.DeployTrainedModelRequest) (core.DeployTrainedModelResult, error) {
 		req.Update("halfway")
 		close(reported)
 		<-release
-		return core.ExportTrainedModelResult{Ref: "r"}, nil
+		return core.DeployTrainedModelResult{Ref: "r"}, nil
 	}}}
 	fetcher := fakeFetcher{files: map[string]string{"trained/job1/f": "x"}}
 	m, err := trainingdb.GetTrainedModel(ctx, d, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	done := make(chan *trainingdb.TrainedModelExport, 1)
+	done := make(chan *trainingdb.TrainedModelDeployment, 1)
 	go func() {
-		out, err := core.ExportModel(ctx, d, fetcher, exporters, t.TempDir(), m, core.ExportRequest{Exporter: "slow"})
+		out, err := core.DeployModel(ctx, d, fetcher, deployers, t.TempDir(), m, core.DeployRequest{Deployer: "slow"})
 		if err != nil {
 			t.Error(err)
 		}
 		done <- out
 	}()
 	<-reported
-	list, err := core.ListExports(ctx, d, 1, 0)
-	if err != nil || len(list) != 1 || list[0].Status != trainingdb.TrainedModelExportRunning {
-		t.Fatalf("running export: %+v %v", list, err)
+	list, err := core.ListDeployments(ctx, d, 1, 0)
+	if err != nil || len(list) != 1 || list[0].Status != trainingdb.TrainedModelDeploymentRunning {
+		t.Fatalf("running deployment: %+v %v", list, err)
 	}
 	var msgs []string
 	for _, u := range list[0].Updates {
@@ -459,8 +459,8 @@ func testExportProgressIsLive(t *testing.T, d *sql.DB) {
 	if out := <-done; out == nil || len(out.Updates) != 4 {
 		t.Fatalf("answer of the request: %+v", out)
 	}
-	list, _ = core.ListExports(ctx, d, 1, 0)
-	if len(list) != 1 || list[0].Status != trainingdb.TrainedModelExportCompleted || list[0].Updates == nil || len(list[0].Updates) != 0 {
-		t.Fatalf("finished export: %+v", list)
+	list, _ = core.ListDeployments(ctx, d, 1, 0)
+	if len(list) != 1 || list[0].Status != trainingdb.TrainedModelDeploymentCompleted || list[0].Updates == nil || len(list[0].Updates) != 0 {
+		t.Fatalf("finished deploy: %+v", list)
 	}
 }
