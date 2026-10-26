@@ -1,12 +1,11 @@
-bin/*
-!bin/gligabao.toml
-!bin/datasets_training/
-!bin/evals_knowledge/
-!bin/evals_training/
-!bin/ontology/
+build/*
+!build/gligabao.toml
+!build/datasets_training/
+!build/evals_knowledge/
+!build/evals_training/
+!build/ontology/
 
 __pycache__/
 *.pyc
 
-# run_pypi.sh staging directories
-build/
+# build/pypi (run_pypi.sh staging directories) is ignored by build/* above

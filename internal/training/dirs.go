@@ -17,7 +17,7 @@ type Dirs struct {
 }
 
 // DefaultDirs returns the default directories for the database file dbPath: "datasets_training", "evals_training" and
-// "trained_models" in the file's directory (bin/datasets_training, ... for bin/gligabao.db).
+// "trained_models" in the file's directory (build/datasets_training, ... for build/gligabao.db).
 func DefaultDirs(dbPath string) Dirs {
 	base := filepath.Dir(dbPath)
 	return Dirs{

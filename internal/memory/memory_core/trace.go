@@ -20,7 +20,7 @@ import (
 // TrajectoryDir is where Remember, Query and RememberImage store their ATIF trajectories (one pretty-printed JSON
 // file per call, named <trajectory_id>.json). It is read on every call; set it once at startup, or override it per
 // call with WithTrajectoryDir.
-var TrajectoryDir = "bin/atif"
+var TrajectoryDir = "build/atif"
 
 const agentVersion = "0.1"
 

@@ -43,13 +43,13 @@ training = false
 admin_ui = false
 
 # Directory the files of trained models are fetched to for a deployment, one subdirectory per training job (gligabao
-# never deletes them). Default: a trained_models directory next to the database file (bin/trained_models).
+# never deletes them). Default: a trained_models directory next to the database file (build/trained_models).
 # `serve --trained-model-deploy-dir` overrides it.
 # trained_model_deploy_dir = "trained_models"
 
 # Content directories. Each is a list of directories, searched in order; a relative path is relative to THIS FILE (not to the working
 # directory). A program that embeds gligabao can list its own directories next to (or before) these, e.g. its own first and then
-# "../../gligabao/bin/datasets_training". When a name (a dataset, an eval) is in more than one directory, the first one wins.
+# "../../gligabao/build/datasets_training". When a name (a dataset, an eval) is in more than one directory, the first one wins.
 # The command-line flags (--training-dataset-dir, --training-eval-dir, --ontology-dir, repeatable; the eval runners' -evals) override them.
 
 # Training datasets: one subdirectory with a dataset.toml manifest per dataset. Uploads are saved in the FIRST directory; the others are read only.
@@ -60,7 +60,7 @@ datasets_training_dirs = ["datasets_training"]
 evals_training_dirs = ["evals_training"]
 
 # Knowledge evals: one JSON file per eval, and the corpus files their cases refer to with text_file (looked up in these directories in order).
-# Read by the eval runner (./run_evals.sh), not by the server. Default if unset: bin/evals_knowledge.
+# Read by the eval runner (./run_evals.sh), not by the server. Default if unset: build/evals_knowledge.
 evals_knowledge_dirs = ["evals_knowledge"]
 
 # Ontologies: directories of OWL documents (RDF/XML). Nothing is loaded at startup: a request to POST /v1/gb/ontologies (or PUT

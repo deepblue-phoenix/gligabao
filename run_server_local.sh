@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# LOCAL/DEV ONLY (not for production): runs the server binary ./bin/gligabao (build it first with ./run_build.sh). Extra args are passed to `serve`.
+# LOCAL/DEV ONLY (not for production): runs the server binary ./build/gligabao (build it first with ./run_build.sh). Extra args are passed to `serve`.
 # The admin UI (--admin-ui) and the training endpoints (--training) are turned on.
-# The admin UI shows two databases: the standard one and the eval one (bin/gligabao-eval.db, written by ./run_evals.sh, never reset:
+# The admin UI shows two databases: the standard one and the eval one (build/gligabao-eval.db, written by ./run_evals.sh, never reset:
 # it holds the evaluation datasets, the experiments and their runs; override the path with EVAL_DB=...).
-# Run from the project root so the default DB path (bin/gligabao.db) resolves into bin/;
-# the config is read from bin/gligabao.toml (next to the binary).
+# Run from the project root so the default DB path (build/gligabao.db) resolves into build/;
+# the config is read from build/gligabao.toml (next to the binary).
 set -euo pipefail
 cd "$(dirname "$0")"
-[ -x bin/gligabao ] || { echo "bin/gligabao not found; run ./run_build.sh first" >&2; exit 1; }
+[ -x build/gligabao ] || { echo "build/gligabao not found; run ./run_build.sh first" >&2; exit 1; }
 
 # Start the sidecar (./run_server_sidecar_local.sh) if nothing answers on its health endpoint. The sidecar started here is
 # stopped when this script exits or is killed (INT/TERM/HUP; SIGKILL cannot be trapped).
@@ -45,7 +45,7 @@ else
 fi
 
 # Not exec'd, so the trap above can stop the sidecar when the server ends or this script is killed.
-./bin/gligabao serve --training --admin-ui --eval-db "${EVAL_DB:-bin/gligabao-eval.db}" "$@" &
+./build/gligabao serve --training --admin-ui --eval-db "${EVAL_DB:-build/gligabao-eval.db}" "$@" &
 SERVER_PID=$!
 rc=0
 wait "$SERVER_PID" || rc=$?

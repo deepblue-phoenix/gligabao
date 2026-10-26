@@ -11,7 +11,7 @@ import (
 
 // DefaultConfigPath is where the eval runners read the config file from when -config is not given (relative to the repository
 // root, where they are run from: next to the databases they default to).
-const DefaultConfigPath = "bin/gligabao.toml"
+const DefaultConfigPath = "build/gligabao.toml"
 
 // DirsFlag is a repeatable command-line flag that collects directories (flag.Var).
 type DirsFlag []string

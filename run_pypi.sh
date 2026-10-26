@@ -164,7 +164,7 @@ build_server_wheel() {
   # The sidecar (sidecar/) is not part of the package. The config is the default one the binary finds next to itself.
   CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
     go build -trimpath -ldflags="-s -w" -o "$stage/src/gligabao_server/_bin/$exe" ./cmd/gligabao
-  cp bin/gligabao.toml "$stage/src/gligabao_server/_bin/gligabao.toml"
+  cp build/gligabao.toml "$stage/src/gligabao_server/_bin/gligabao.toml"
 
   mkdir -p "$SERVER_DIR/dist"
   # Platform tags are dotted lists, so the wheel of this target is found by its first tag.

@@ -1,7 +1,7 @@
 package training
 
 // The Manager starts the evals of trained models, runs them in the background and lists, reads, cancels and watches them. An eval
-// is an eval run (core.EvalRun of the Type training) of an eval of bin/evals_training/*.json against a trained model: the model is
+// is an eval run (core.EvalRun of the Type training) of an eval of build/evals_training/*.json against a trained model: the model is
 // asked the cases, which it never saw in training, and the LLM judges the answers, so the score says how well it generalizes. The
 // eval is named after the training dataset its cases ask about, so a model trained on a dataset has the eval of that name unless
 // another is asked for. The work is that of Executor and runner.Runner; this file wires it to the sidecar (the model), the LLM (the

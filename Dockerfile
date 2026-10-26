@@ -24,11 +24,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 WORKDIR /app
 COPY --from=build /out/gligabao /app/gligabao
 # Config is read from next to the binary by default.
-COPY bin/gligabao.toml /app/gligabao.toml
+COPY build/gligabao.toml /app/gligabao.toml
 # The evals of trained models (static definitions), read from disk.
-COPY bin/evals_training /app/evals_training
+COPY build/evals_training /app/evals_training
 # The ontology files that can be loaded by name (POST /v1/gb/ontologies with "file"; ontology_dirs of the config).
-COPY bin/ontology /app/ontology
+COPY build/ontology /app/ontology
 USER gligabao
 VOLUME /data
 EXPOSE 7878

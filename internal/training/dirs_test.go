@@ -16,7 +16,7 @@ func TestDirsWithDefaults(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
-	if def := DefaultDirs("bin/gligabao.db"); def.ModelDeploy != filepath.Join("bin", "trained_models") {
+	if def := DefaultDirs("build/gligabao.db"); def.ModelDeploy != filepath.Join("build", "trained_models") {
 		t.Fatalf("default: %+v", def)
 	}
 }

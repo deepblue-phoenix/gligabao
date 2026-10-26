@@ -12,8 +12,8 @@ import (
 )
 
 // DefaultEvalDir is the directory the evals are read from when none is configured (evals_knowledge_dirs, or -evals; relative to the
-// repository root, where the runner is run from): static definitions kept in bin/, apart from the code, next to the training datasets.
-const DefaultEvalDir = "bin/evals_knowledge"
+// repository root, where the runner is run from): static definitions kept in build/, apart from the code, next to the training datasets.
+const DefaultEvalDir = "build/evals_knowledge"
 
 // Eval is an eval file: a name and its cases (see core.KnowledgeCase).
 type Eval = evalfile.Eval[core.KnowledgeCase]

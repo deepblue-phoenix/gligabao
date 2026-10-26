@@ -22,7 +22,7 @@ import (
 )
 
 // testEvalsDir is the directory of the evals of the repository (relative to this package).
-const testEvalsDir = "../../../bin/evals_knowledge"
+const testEvalsDir = "../../../build/evals_knowledge"
 
 // scriptedLLM answers by what the prompt asks for: the query prompt gets an answer, anything else an extraction.
 type scriptedLLM struct {

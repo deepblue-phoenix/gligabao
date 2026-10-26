@@ -61,7 +61,7 @@ type Config struct {
 }
 
 // DefaultSQLitePath is used when Config.SQLitePath is empty.
-const DefaultSQLitePath = "bin/gligabao.db"
+const DefaultSQLitePath = "build/gligabao.db"
 
 // ConfigFrom builds a Config from the application config plus the settings that are not part of it
 // (sqlitePath, vectorDir and imageDir may be empty for their defaults).

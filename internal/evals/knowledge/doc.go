@@ -7,7 +7,7 @@
 // Every run of a case has a dataset of its own, named after the case and the eval run (see DatasetName), so runs do not interfere and
 // the graphs of all of them are kept in the database that the Executor is given (the eval database, never reset).
 //
-// Files: files.go (reading the evals of bin/evals_knowledge), executor.go (Executor, which runs the cases and records them),
+// Files: files.go (reading the evals of build/evals_knowledge), executor.go (Executor, which runs the cases and records them),
 // case.go (running one case), checks.go (the checks of what was stored), reasoning.go (the -reasoning setting), post.go,
 // verbose.go (the printing of the LLM calls).
 package knowledge

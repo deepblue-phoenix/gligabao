@@ -26,7 +26,7 @@ func testOntologies(t *testing.T, d *sql.DB) {
 	mux := http.NewServeMux()
 	Register(mux, mgrFor(t, &db.DB{Relational: d, Graph: d}, nil), &db.DB{Relational: d, Graph: d}, nil, nil, nil, nil, nil) // loading an ontology needs no LLM
 
-	doc, err := os.ReadFile("../../bin/ontology/market.owl")
+	doc, err := os.ReadFile("../../build/ontology/market.owl")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func testOntologyUpdate(t *testing.T, d *sql.DB) {
 	mux := http.NewServeMux()
 	Register(mux, mgrFor(t, &db.DB{Relational: d, Graph: d}, nil), &db.DB{Relational: d, Graph: d}, nil, nil, nil, nil, nil)
 
-	doc, err := os.ReadFile("../../bin/ontology/market.owl")
+	doc, err := os.ReadFile("../../build/ontology/market.owl")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +249,7 @@ func testOntologyMerge(t *testing.T, d *sql.DB) {
 	mux := http.NewServeMux()
 	Register(mux, mgrFor(t, &db.DB{Relational: d, Graph: d}, nil), &db.DB{Relational: d, Graph: d}, nil, nil, nil, nil, nil)
 
-	doc, err := os.ReadFile("../../bin/ontology/market.owl")
+	doc, err := os.ReadFile("../../build/ontology/market.owl")
 	if err != nil {
 		t.Fatal(err)
 	}

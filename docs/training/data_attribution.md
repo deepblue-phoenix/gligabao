@@ -47,7 +47,7 @@ What the training does today (`sidecar/ai_train/ai_train_core/`):
 
 - The base model is frozen and in 4 bits; only a **LoRA adapter** (rank 16 on `q_proj`, `k_proj`, `v_proj`, `o_proj`) is trained and saved (`save_adapters`). The adapter is small, which makes per-example gradients affordable: they are taken on the adapter parameters only, not on the whole model.
 - Training runs for `max_steps` steps (`SFTConfig`, seed 42, learning rate 2e-4, `warmup_steps=10`, linear schedule). **Only the final adapter is saved**: `output_dir` is `/tmp/outputs` and no intermediate checkpoint is kept. That matters for TracIn (see 3.2).
-- The datasets are small. `bin/datasets_training/world-knowledge-base/` has 500 rows of `{"instruction", "input", "output"}`, one fact per row (for example `"In what year was Shell founded?"` and `"Shell was founded in 1907."`), generated from `world_knowledge_base_triples.json`.
+- The datasets are small. `build/datasets_training/world-knowledge-base/` has 500 rows of `{"instruction", "input", "output"}`, one fact per row (for example `"In what year was Shell founded?"` and `"Shell was founded in 1907."`), generated from `world_knowledge_base_triples.json`.
 
 ### 3.1 Why this is a favourable case
 

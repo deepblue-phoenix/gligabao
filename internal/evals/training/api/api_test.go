@@ -68,7 +68,7 @@ func (s *evalSidecar) Infer(ctx context.Context, req sidecar.InferRequest) (side
 }
 
 // testEvalsDir is the directory of the evals (the tests run in the package directory).
-const testEvalsDir = "../../../../bin/evals_training"
+const testEvalsDir = "../../../../build/evals_training"
 
 // theEval is the eval the tests run: the one named like the training dataset of the models of the tests.
 const theEval = "world-knowledge-base"

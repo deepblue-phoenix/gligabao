@@ -1,6 +1,6 @@
 """Local (client-side) training datasets, for the `modal run app.py` CLI.
 
-A dataset is a subdirectory of the training datasets directory (`bin/datasets_training/` of the gligabao repo) with a `dataset.toml`
+A dataset is a subdirectory of the training datasets directory (`build/datasets_training/` of the gligabao repo) with a `dataset.toml`
 manifest that names it and says where its JSONL data file is, relative to the manifest. This reads the manifests the way the
 Go server does (internal/training/manifest.go; the keys are in docs/training/datasets.md), so a dataset the server
 lists can be uploaded from here too. Needs Python 3.11+ (tomllib).
@@ -14,8 +14,8 @@ from pathlib import Path
 modd_str = os.path.abspath(os.path.dirname(__file__))  # module dir
 
 MANIFEST_FILENAME = "dataset.toml"
-# bin/datasets_training of the gligabao repo (this directory is sidecar/ai_train); GLIGABAO_DATASETS_TRAINING_DIR overrides it.
-DEFAULT_DATASETS_DIR = Path(modd_str).parent.parent / "bin" / "datasets_training"
+# build/datasets_training of the gligabao repo (this directory is sidecar/ai_train); GLIGABAO_DATASETS_TRAINING_DIR overrides it.
+DEFAULT_DATASETS_DIR = Path(modd_str).parent.parent / "build" / "datasets_training"
 _NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,121}")
 
 

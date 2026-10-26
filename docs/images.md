@@ -91,7 +91,7 @@ The call is recorded in `gb_inferences` with type `remember_image` (stage `extra
 
 ## Where the files are
 
-Image bytes are never stored in the database. They are files in the image directory, `<db path without extension>.images` next to the SQLite file (e.g. `bin/gligabao.images`, or `/data/gligabao.images` in the container). Override it with `serve --image-dir <path>`, or `ServeOptions.ImageDir` when embedding; the directory is created when the first image is stored. In Go, `memory_image.ImageDir` is the default and `memory_image.WithImageDir(dir)` overrides it for one call.
+Image bytes are never stored in the database. They are files in the image directory, `<db path without extension>.images` next to the SQLite file (e.g. `build/gligabao.images`, or `/data/gligabao.images` in the container). Override it with `serve --image-dir <path>`, or `ServeOptions.ImageDir` when embedding; the directory is created when the first image is stored. In Go, `memory_image.ImageDir` is the default and `memory_image.WithImageDir(dir)` overrides it for one call.
 
 A file is `<dataset id>/<sha256>.<ext>` (`jpg`, `png`, `gif` or `webp`) inside it, and `gb_image_artifacts.path` holds that relative path, so the directory can be moved. The name is the SHA-256 of the content, which is also how a repeated image is recognised (see [Repeated images](#repeated-images)). The file is written first (atomically, via a temporary file and a rename) and the rows after; if storing the rows fails, a file that this call created is removed again. Only a crash between the two steps can leave a file that no row tracks. With PostgreSQL the files still go to the local directory, so the directory must be on storage the server keeps (a volume, in the container).
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds ./bin/gligabao. Usage: ./run_build.sh [--no-admin-ui]
+# Builds ./build/gligabao. Usage: ./run_build.sh [--no-admin-ui]
 #
 # The admin UI (admin_ui/: TypeScript, SCSS, HTML) is built and embedded into the binary by default.
 # Disable that with --no-admin-ui or BUILD_ADMIN_UI=false (then admin_ui = true in the config only logs a warning).
@@ -27,6 +27,6 @@ else
   find admin_ui/dist -mindepth 1 -not -name .gitkeep -delete 2>/dev/null || true
 fi
 
-mkdir -p bin
-go build -o bin/gligabao ./cmd/gligabao
-echo "Built ./bin/gligabao (admin UI embedded: $BUILD_ADMIN_UI)"
+mkdir -p build
+go build -o build/gligabao ./cmd/gligabao
+echo "Built ./build/gligabao (admin UI embedded: $BUILD_ADMIN_UI)"

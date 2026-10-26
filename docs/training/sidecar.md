@@ -62,7 +62,7 @@ curl http://127.0.0.1:8787/health
 sidecar/ai_train/
   app.py                      # declares the remote functions + CLI entrypoint (provider-neutral)
   config.py                   # TrainConfig, overridable by env vars
-  training_data.py            # the local datasets (bin/datasets_training/*/dataset.toml), for the CLI
+  training_data.py            # the local datasets (build/datasets_training/*/dataset.toml), for the CLI
   requirements_train.txt      # the training image (Unsloth; 4B, 12B and 31B)
   requirements_infer.txt      # the inference-only image (transformers + peft + bitsandbytes; no Unsloth)
   requirements_web.txt        # web API image
@@ -118,7 +118,7 @@ Needs the `modal` CLI, logged in (`pip install modal && modal setup`), and a pro
 ```sh
 cd sidecar/ai_train
 modal run app.py                                   # ping: image, volumes, GPU info, whether HF_TOKEN is set
-modal run app.py --action datasets                 # list the local datasets (bin/datasets_training/<name>/dataset.toml)
+modal run app.py --action datasets                 # list the local datasets (build/datasets_training/<name>/dataset.toml)
 modal run app.py --action sync --dataset <name>    # upload a local dataset to the data volume (only if it changed)
 modal run app.py --action validate --dataset <name>  # check the dataset on the data volume
 modal run app.py --action train --dataset <name> --train-steps 100 --model-size 4b   # 4b on A10G, 12b on A100, 31b on A100 80GB
@@ -260,7 +260,7 @@ The **training** view of the [admin UI](../../README.md) has a dataset upload (a
 | `GET /v1/gb/training/datasets/preview?name=[&lines=]` | the first lines (default 100, at most 1000) of a dataset's data file: `{"name", "lines", "num_records", "truncated"}`; 404 for an unknown dataset. |
 | `GET /v1/gb/training/events[?run_id=]` | the SSE feed above. |
 
-The training datasets are the subdirectories of the **training datasets directory** (`datasets_training_dirs` in the config file or `serve --training-dataset-dir`, both lists; default `bin/datasets_training` next to `bin/gligabao.db`) that have a `dataset.toml` manifest; the manifest names the dataset and says where its JSONL file is, and the dataset's own subdirectory also holds the script that generates the data. The server scans the directory for manifests every time it lists the datasets or starts a job (a dataset added by hand is there at once) and keeps a `gb_training_datasets` record per dataset (size, records, digest, `synced` or not). The layout, the manifest's keys and the rules are in [training/datasets.md](datasets.md). When a job is started on a dataset, the server sends its file to the sidecar inside the `POST /training/job_start` request (`dataset_content`) and marks the record `synced` once the sidecar has taken it; if the sidecar fails the job is not started (502). A job needs a dataset: there is no default one. The evals of the trained models are read the same way, from the **training evals directory** (`evals_training_dirs` or `serve --training-eval-dir`, default `bin/evals_training`).
+The training datasets are the subdirectories of the **training datasets directory** (`datasets_training_dirs` in the config file or `serve --training-dataset-dir`, both lists; default `build/datasets_training` next to `build/gligabao.db`) that have a `dataset.toml` manifest; the manifest names the dataset and says where its JSONL file is, and the dataset's own subdirectory also holds the script that generates the data. The server scans the directory for manifests every time it lists the datasets or starts a job (a dataset added by hand is there at once) and keeps a `gb_training_datasets` record per dataset (size, records, digest, `synced` or not). The layout, the manifest's keys and the rules are in [training/datasets.md](datasets.md). When a job is started on a dataset, the server sends its file to the sidecar inside the `POST /training/job_start` request (`dataset_content`) and marks the record `synced` once the sidecar has taken it; if the sidecar fails the job is not started (502). A job needs a dataset: there is no default one. The evals of the trained models are read the same way, from the **training evals directory** (`evals_training_dirs` or `serve --training-eval-dir`, default `build/evals_training`).
 
 The sidecar's address is `sidecar_url` / `SIDECAR_URL` (default `http://127.0.0.1:8787`).
 

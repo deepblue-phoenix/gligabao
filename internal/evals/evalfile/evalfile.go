@@ -1,5 +1,5 @@
-// Package evalfile reads the evals from their files: a directory of JSON files, one eval per file, as in bin/evals_knowledge and
-// bin/evals_training. A file is {"name": "<eval name>", "description": "...", "cases": [...]}; what a case holds depends on the
+// Package evalfile reads the evals from their files: a directory of JSON files, one eval per file, as in build/evals_knowledge and
+// build/evals_training. A file is {"name": "<eval name>", "description": "...", "cases": [...]}; what a case holds depends on the
 // Type of the eval, so the case type is a parameter. The files are the source of the evals: the runner puts them in the
 // database as defs (internal/evals/runner) before it runs them.
 package evalfile

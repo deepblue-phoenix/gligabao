@@ -56,7 +56,7 @@ Response `201` with the metadata of the ontology:
 Errors are `{"error": "..."}`. It makes no LLM call. Example, loading the bundled ontology:
 
 ```sh
-jq -n --rawfile c bin/ontology/market.owl '{user_id:"u1", name:"market", content:$c}' \
+jq -n --rawfile c build/ontology/market.owl '{user_id:"u1", name:"market", content:$c}' \
   | curl -s localhost:7878/v1/gb/ontologies -d @-
 ```
 
@@ -96,7 +96,7 @@ jq -n --rawfile c extension.owl '{user_id:"u1", content:$c}' \
   | curl -s -X PUT localhost:7878/v1/gb/ontologies/market -d @-
 
 # replace it with a complete one
-jq -n --rawfile c bin/ontology/market.owl '{user_id:"u1", content:$c, replace:true}' \
+jq -n --rawfile c build/ontology/market.owl '{user_id:"u1", content:$c, replace:true}' \
   | curl -s -X PUT localhost:7878/v1/gb/ontologies/market -d @-
 ```
 
@@ -185,7 +185,7 @@ Not stored: anything else, in particular restrictions and other anonymous class 
 
 ## The market ontology
 
-[`bin/ontology/market.owl`](../bin/ontology/market.owl) is a basic, general ontology of markets with the 20 most important concepts: `Market`, `Exchange`, `MarketParticipant`, `Buyer`, `Seller`, `Intermediary`, `Regulator`, `Asset`, `Commodity`, `Security`, `Currency`, `Derivative`, `Order`, `Trade`, `Price`, `Supply`, `Demand`, `MarketIndex`, `Regulation` and `Risk`. `Exchange` is a kind of `Market`; `Buyer`, `Seller` and `Intermediary` are kinds of `MarketParticipant`; `Commodity`, `Security`, `Currency` and `Derivative` are kinds of `Asset`. The other relationships are object properties, for example `Trade -hasBuyer-> Buyer`, `Order -placedBy-> MarketParticipant`, `Price -denominatedIn-> Currency`, `Derivative -underlying-> Asset`, `Regulator -regulates-> Market`, and `Asset -tradedOn-> Market` (inverse of `Market -listsAsset-> Asset`). Add further ontologies to the `bin/ontology` directory the same way.
+[`build/ontology/market.owl`](../build/ontology/market.owl) is a basic, general ontology of markets with the 20 most important concepts: `Market`, `Exchange`, `MarketParticipant`, `Buyer`, `Seller`, `Intermediary`, `Regulator`, `Asset`, `Commodity`, `Security`, `Currency`, `Derivative`, `Order`, `Trade`, `Price`, `Supply`, `Demand`, `MarketIndex`, `Regulation` and `Risk`. `Exchange` is a kind of `Market`; `Buyer`, `Seller` and `Intermediary` are kinds of `MarketParticipant`; `Commodity`, `Security`, `Currency` and `Derivative` are kinds of `Asset`. The other relationships are object properties, for example `Trade -hasBuyer-> Buyer`, `Order -placedBy-> MarketParticipant`, `Price -denominatedIn-> Currency`, `Derivative -underlying-> Asset`, `Regulator -regulates-> Market`, and `Asset -tradedOn-> Market` (inverse of `Market -listsAsset-> Asset`). Add further ontologies to the `build/ontology` directory the same way.
 
 ## Limits
 

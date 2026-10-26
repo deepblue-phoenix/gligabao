@@ -1,6 +1,6 @@
 // Package training is the executor of the training evals (core.TypeTraining): it asks a trained model the questions of an eval and
 // has an external LLM (the one gligabao uses for knowledge ingestion) judge, in batches, how well the model's answers agree with the
-// expected ones. The cases are those of an eval of bin/evals_training/*.json (LoadEvals): questions about knowledge of a training
+// expected ones. The cases are those of an eval of build/evals_training/*.json (LoadEvals): questions about knowledge of a training
 // dataset, phrased differently from its examples, so they are cases the model never saw and the scores say how well it generalizes.
 // (Asking a model its own training dataset is a training data audit, internal/training_audits, not an eval.)
 //

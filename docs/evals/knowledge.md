@@ -48,14 +48,14 @@ Each trajectory is written as pretty-printed JSON to `<dir>/<trajectory_id>.json
 
 1. `memory.WithTrajectoryDir` (per call);
 2. `ServeOptions.TrajectoryDir` / `server.Options.TrajectoryDir`;
-3. an `atif/` directory next to the SQLite file (`bin/atif/` with the default `bin/gligabao.db`);
-4. `memory.TrajectoryDir`, default `bin/atif`, when there is no SQLite file.
+3. an `atif/` directory next to the SQLite file (`build/atif/` with the default `build/gligabao.db`);
+4. `memory.TrajectoryDir`, default `build/atif`, when there is no SQLite file.
 
 A call that fails is stored too, with `notes` set to `failed: <error>`, but the caller only gets the trajectory of a successful call. A failure to write the file is logged and never fails the call.
 
-The evals are read from the directories listed in `evals_knowledge_dirs` of the config file (`-config`, default `bin/gligabao.toml`; relative paths are relative to that file; `./run_evals.sh` passes it). More than one directory can be listed: an eval of an earlier directory hides one of the same name in a later one, and a case's `text_file` is looked up in the directories in order, so a program that embeds gligabao can keep its own evals (and corpus) in a directory of its own next to gligabao's. `-evals dir` (repeatable) overrides the list; with neither, the directory is `bin/evals_knowledge`.
+The evals are read from the directories listed in `evals_knowledge_dirs` of the config file (`-config`, default `build/gligabao.toml`; relative paths are relative to that file; `./run_evals.sh` passes it). More than one directory can be listed: an eval of an earlier directory hides one of the same name in a later one, and a case's `text_file` is looked up in the directories in order, so a program that embeds gligabao can keep its own evals (and corpus) in a directory of its own next to gligabao's. `-evals dir` (repeatable) overrides the list; with neither, the directory is `build/evals_knowledge`.
 
-The eval runner (`go run ./internal/evals/knowledge/cmd`) writes everything to the eval database, `bin/gligabao-eval.db` (`-db`; the admin UI can show it, `serve --eval-db`), which isolates the evaluation data from the main database. It holds the datasets the cases build (artifacts, entities and edges), the experiments and their runs; a run references its datasets and artifacts instead of copying them. It is **never reset**: each run of an experiment creates its own datasets (`<case>_run<eval run id>`), so executions do not interfere. The experiment runs reference the trajectories by ID, so the trajectories are stored in an `atif/` directory next to the eval database (`-atif <dir>` changes it), see [experiments.md](experiments.md).
+The eval runner (`go run ./internal/evals/knowledge/cmd`) writes everything to the eval database, `build/gligabao-eval.db` (`-db`; the admin UI can show it, `serve --eval-db`), which isolates the evaluation data from the main database. It holds the datasets the cases build (artifacts, entities and edges), the experiments and their runs; a run references its datasets and artifacts instead of copying them. It is **never reset**: each run of an experiment creates its own datasets (`<case>_run<eval run id>`), so executions do not interfere. The experiment runs reference the trajectories by ID, so the trajectories are stored in an `atif/` directory next to the eval database (`-atif <dir>` changes it), see [experiments.md](experiments.md).
 
 ## Trajectory format
 

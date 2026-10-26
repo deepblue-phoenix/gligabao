@@ -1,6 +1,6 @@
 .git
-bin/*
-!bin/gligabao.toml
+build/*
+!build/gligabao.toml
 admin_ui/node_modules
 admin_ui/dist
 sidecar/__pycache__

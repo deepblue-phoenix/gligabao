@@ -71,11 +71,11 @@ type CaseRunMeta interface {
 
 //-----------------------------------------------------
 
-// TypeKnowledge is the Type of the knowledge evals (the files of bin/evals_knowledge): remember some texts in order, then
+// TypeKnowledge is the Type of the knowledge evals (the files of build/evals_knowledge): remember some texts in order, then
 // ask a question about them and check what was stored and what is answered.
 const TypeKnowledge Type = "knowledge"
 
-// KnowledgeCase is a case of a knowledge eval, as it is in the "cases" of a file of bin/evals_knowledge. Its three parts are
+// KnowledgeCase is a case of a knowledge eval, as it is in the "cases" of a file of build/evals_knowledge. Its three parts are
 // embedded, so the JSON stays flat: together they are the columns of KnowledgeCaseDefMeta.
 type KnowledgeCase struct {
 	Name string `json:"name"`
@@ -214,11 +214,11 @@ type KnowledgeParams struct {
 
 //-----------------------------------------------------
 
-// TypeTraining is the Type of the training evals (the files of bin/evals_training): questions about the knowledge of a
+// TypeTraining is the Type of the training evals (the files of build/evals_training): questions about the knowledge of a
 // training dataset, phrased differently from its examples, asked to a trained model and judged against the expected answer.
 const TypeTraining Type = "training"
 
-// TrainingCase is a case of a training eval, as it is in the "cases" of a file of bin/evals_training. Its parts are
+// TrainingCase is a case of a training eval, as it is in the "cases" of a file of build/evals_training. Its parts are
 // embedded, so the JSON stays flat: together they are the columns of TrainingCaseDefMeta.
 type TrainingCase struct {
 	Name string `json:"name"`

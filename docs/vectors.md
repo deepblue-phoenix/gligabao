@@ -68,7 +68,7 @@ If you change `embedding_dimensions`, or the embedding model, the stored vectors
 ## chromem store
 
 - Each dataset (one per gligabao dataset and index) is a chromem collection, named after the dataset; on disk its directory is a hash of the name. The data is kept in memory for searching and every write is also persisted to a directory (one gob file per vector, plus `gligabao-dimensions`), which is loaded again on startup.
-- The directory is `<db path without extension>.vectors` next to the main SQLite database (e.g. `bin/gligabao.vectors`, or `/data/gligabao.vectors` in the container). Override it with `serve --vector-dir <path>`, or `ServeOptions.VectorDir` when embedding. `:memory:` gives a throwaway in-memory store (used by tests).
+- The directory is `<db path without extension>.vectors` next to the main SQLite database (e.g. `build/gligabao.vectors`, or `/data/gligabao.vectors` in the container). Override it with `serve --vector-dir <path>`, or `ServeOptions.VectorDir` when embedding. `:memory:` gives a throwaway in-memory store (used by tests).
 - Search is an exhaustive cosine-similarity scan of the dataset; `Match.Score` is the cosine similarity (higher is closer), like a Pinecone cosine index. Vectors are normalized to unit length when stored, so `IncludeValues` returns normalized vectors. All-zero vectors are rejected.
 - `embedding_dimensions` (default 1536) is fixed when the directory is created. Opening it with a different value fails with an error.
 - Metadata is any JSON-compatible map. Filters support equality only (`{"type": "person"}` or `{"type": {"$eq": "person"}}`, all must match); other operators return an error. The filter is applied before the search, so `TopK` results are returned whenever that many vectors match.

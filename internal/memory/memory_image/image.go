@@ -33,7 +33,7 @@ import (
 
 // ImageDir is where RememberImage stores the image files (see image_store.go); the database only tracks them.
 // It is read on every call; set it once at startup, or override it per call with WithImageDir.
-var ImageDir = "bin/images"
+var ImageDir = "build/images"
 
 // WithImageDir overrides ImageDir for this call: the directory RememberImage and LoadImage keep the image files in.
 func WithImageDir(dir string) memory_core.Option {

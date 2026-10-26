@@ -19,7 +19,7 @@ Both are built and uploaded by `./run_pypi.sh`.
 pip cannot compile Go, so the wheels contain a binary that was cross-compiled beforehand (the same approach as ruff or uv). For each target `run_pypi.sh`:
 
 1. builds `./cmd/gligabao` with `CGO_ENABLED=0 GOOS=<os> GOARCH=<arch>` (the build is pure Go and static, so cross-compiling needs nothing but the Go toolchain);
-2. assembles a staging directory `build/pypi/server-<os>-<arch>/` with the package sources, the binary and a copy of `bin/gligabao.toml`, and writes the version of the `VERSION` file into `_version.py` there (the server package has the version of the server; the client has its own, in `clients/py/pyproject.toml`);
+2. assembles a staging directory `build/pypi/server-<os>-<arch>/` with the package sources, the binary and a copy of `build/gligabao.toml`, and writes the version of the `VERSION` file into `_version.py` there (the server package has the version of the server; the client has its own, in `clients/py/pyproject.toml`);
 3. builds a wheel from it with hatchling. `hatch_build.py` marks the wheel as platform specific and sets its tag from `GLIGABAO_WHEEL_TAG`.
 
 `pip install gligabao-server` then picks the wheel matching the machine. An sdist is not published (it would have no binary). Nothing is generated inside `clients/py_server` itself; its `_bin/` directory only exists in the staging directories.
@@ -33,7 +33,7 @@ pip cannot compile Go, so the wheels contain a binary that was cross-compiled be
 ### What is installed
 
 - `gligabao_server/_bin/gligabao` (`gligabao.exe` on Windows), executable.
-- `gligabao_server/_bin/gligabao.toml`, the repo's `bin/gligabao.toml`. The binary reads its config from next to itself unless `--config` is given, so the packaged file is the default. It lives in site-packages and is replaced when the package is upgraded: keep your own settings in a file elsewhere and run `gligabao-server serve --config <path>`.
+- `gligabao_server/_bin/gligabao.toml`, the repo's `build/gligabao.toml`. The binary reads its config from next to itself unless `--config` is given, so the packaged file is the default. It lives in site-packages and is replaced when the package is upgraded: keep your own settings in a file elsewhere and run `gligabao-server serve --config <path>`.
 - The commands `gligabao-server` and `gligabao`, which run the binary with the same arguments; `gligabao_server.binary_path()` and `gligabao_server.config_path()` for Python code.
 - Not included: the Python sidecar (`sidecar/`, training). Use the Docker image for it. The directories the config names (`datasets_training`, `evals_*`, `ontology`) are not shipped either; they are resolved like for any other binary, relative to the database or as given by the flags.
 - The database and its neighbours (`--db`, default `data/gligabao.db`) are created relative to the current directory, not in site-packages.

@@ -1,6 +1,6 @@
 # Eval experiments
 
-An **experiment** is a named group of evals that are run together, plus the settings under test. Every time the eval runner (`go run ./internal/evals/knowledge/cmd`, `./run_evals.sh`) executes, it records one **run** of an experiment in the **eval** database (`bin/gligabao-eval.db`), which keeps the evaluation data apart from the main database and is never reset. Each case run works in a dataset of its own (`<case>_run<eval run id>`), so runs do not interfere with each other. A run records which cases of which evals it executed, how each ended, and the IDs of the [ATIF trajectories](knowledge.md) of their calls. The code is [`internal/evals`](../../internal/evals/README.md): the structs are in `core`, the tables in `db/{sqlite,postgres}/schema.go`, and the recording of the runs in `runner`.
+An **experiment** is a named group of evals that are run together, plus the settings under test. Every time the eval runner (`go run ./internal/evals/knowledge/cmd`, `./run_evals.sh`) executes, it records one **run** of an experiment in the **eval** database (`build/gligabao-eval.db`), which keeps the evaluation data apart from the main database and is never reset. Each case run works in a dataset of its own (`<case>_run<eval run id>`), so runs do not interfere with each other. A run records which cases of which evals it executed, how each ended, and the IDs of the [ATIF trajectories](knowledge.md) of their calls. The code is [`internal/evals`](../../internal/evals/README.md): the structs are in `core`, the tables in `db/{sqlite,postgres}/schema.go`, and the recording of the runs in `runner`.
 
 ## Data model
 
@@ -35,11 +35,11 @@ An *eval case* (a *case*) is one input/output combination, plus metadata, to be 
 
 Links between runs go from child to parent (`CaseRun.EvalRunID`, `EvalRun.ExperimentRunID`); a parent stores no list of its children. A def that has runs cannot be deleted (`ON DELETE RESTRICT`), so the history stays understandable; deleting a run deletes the runs under it and their metadata.
 
-Both types have **evals**: a case belongs to an eval, and a case name is unique within its eval (the runner also requires them to be unique over all the evals, so a case can be named on the command line). Knowledge evals are the files of `bin/evals_knowledge/`. Training evals are the files of `bin/evals_training/` (named after the training dataset their cases ask about); an *eval run* (one run of the eval against one trained model) has one case run per case.
+Both types have **evals**: a case belongs to an eval, and a case name is unique within its eval (the runner also requires them to be unique over all the evals, so a case can be named on the command line). Knowledge evals are the files of `build/evals_knowledge/`. Training evals are the files of `build/evals_training/` (named after the training dataset their cases ask about); an *eval run* (one run of the eval against one trained model) has one case run per case.
 
 The graph and the artifacts of a case are not copied into the run tables: they are read from the dataset the case ran in, via `dataset_id` and `artifact_ids`. Datasets are only ever soft-deleted, so they stay readable; if a dataset (or an artifact) is purged from the eval database, its case shows no graph (or no artifact).
 
-Only the trajectory *reference* is stored in the database; the trajectory is the file `<trajectory_id>.json` in the trajectory directory. The runner stores the files in an `atif/` directory next to the eval database (`bin/atif/` by default) so the IDs stay resolvable; `-atif <dir>` changes it. `gb_case_runs_meta_knowledge_trajectories.path` records where each file went.
+Only the trajectory *reference* is stored in the database; the trajectory is the file `<trajectory_id>.json` in the trajectory directory. The runner stores the files in an `atif/` directory next to the eval database (`build/atif/` by default) so the IDs stay resolvable; `-atif <dir>` changes it. `gb_case_runs_meta_knowledge_trajectories.path` records where each file went.
 
 **Status and verdict.** The `status` of a run (experiment run, eval run or case run) is its *lifecycle*, never a verdict: `pending`, `running`, then `completed` (it ran to the end), `errored` (it could not run to the end; `error` says why) or `cancelled`. How it went is a separate field of a completed case run, its `verdict` (`pass` or `fail`) and its `score` (0 to 1). A run's `counts_*` are one count per status (`total`, `pending`, `running`, `completed`, `errored`, `cancelled`) and, of the completed case runs, `passed` and `failed`; every case is in exactly one of the five status counts, `pending` being the cases not reached (the ones left when a run is cancelled), and `total` is the number of cases the run is to execute. The schema's `CHECK`s enforce the sets.
 
@@ -56,7 +56,7 @@ A case that errors does not stop the run: it is an `errored` case run and the ru
 ./run_evals.sh [-experiment name] [-experiment-desc text] [-v] [case-name ...]
 ```
 
-`-experiment` (default `default`) names the experiment; it is created on first use and later runs with the same name are further runs of it (`-experiment ""` runs the evals on their own, with no experiment run). The runner records into the eval database (`-db`, default `bin/gligabao-eval.db`), which it never resets; the datasets of a case run are named `<case>_run<eval run id>`. It prints the status and cost of the run at the end.
+`-experiment` (default `default`) names the experiment; it is created on first use and later runs with the same name are further runs of it (`-experiment ""` runs the evals on their own, with no experiment run). The runner records into the eval database (`-db`, default `build/gligabao-eval.db`), which it never resets; the datasets of a case run are named `<case>_run<eval run id>`. It prints the status and cost of the run at the end.
 
 ## From Go
 

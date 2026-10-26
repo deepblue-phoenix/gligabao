@@ -111,14 +111,14 @@ Deployers are sorted by name; each one registered is logged at startup. With no 
 
 The weights of a trained model live on the sidecar's storage (Modal: the models volume), not on the server. Before it calls the deployer, gligabao copies them to the server's disk. This is the part of deploying that is the same for every deployer.
 
-- **Where.** `<trained model deploy dir>/<job id>`, an absolute path (`Dir`). The deployment directory is `trained_model_deploy_dir` in the config file, overridden by `serve --trained-model-deploy-dir` (or `ServeOptions.TrainedModelDeployDir`); the default is a `trained_models` directory next to the database file (`bin/trained_models`). There is one subdirectory per training job, so models never mix. A job ID that is not usable as a directory name is refused (`400`).
+- **Where.** `<trained model deploy dir>/<job id>`, an absolute path (`Dir`). The deployment directory is `trained_model_deploy_dir` in the config file, overridden by `serve --trained-model-deploy-dir` (or `ServeOptions.TrainedModelDeployDir`); the default is a `trained_models` directory next to the database file (`build/trained_models`). There is one subdirectory per training job, so models never mix. A job ID that is not usable as a directory name is refused (`400`).
 - **What.** Every file in the model's `files` (the list recorded when the job completed), at its recorded relative path; nested paths are allowed. A path that is absolute, contains `..` or uses a backslash is refused.
 - **How.** One `GET /models/file?model_path=trained/<job id>&file=<path>` request per file to the sidecar, which streams the raw bytes out of the volume (see [training/sidecar.md](training/sidecar.md#fetching-the-files-of-a-model)); the file is never held in memory.
 - **Verified.** Each file must have exactly the recorded size and the recorded sha256 (a model with no sha256 recorded for a file is checked by size only). A mismatch fails the deployment; nothing is deployed from unverified bytes.
 - **Atomic.** A file is downloaded under a temporary name (`.fetch-*`, in its own directory) and renamed to its real name only when it is complete and verified, so the real names never hold half a file, even if the server dies halfway.
 - **Reused.** A file that is already in `Dir` with the right size and sha256 is kept and not downloaded again; only missing or damaged files are fetched. Deploying the same model a second time therefore costs only the verification.
 - **Serialized.** Fetches into one directory are serialized: two simultaneous deployments of the same model do not download it twice; the second waits and then finds the files in place.
-- **Never deleted.** gligabao does not clean `Dir`. The files stay until you remove them (`rm -r bin/trained_models/<job id>`); the next deploy fetches them again. Model weights are large, so plan for the disk space.
+- **Never deleted.** gligabao does not clean `Dir`. The files stay until you remove them (`rm -r build/trained_models/<job id>`); the next deploy fetches them again. Model weights are large, so plan for the disk space.
 - **No recorded files.** A model with no recorded files (for instance one saved by a version before files were listed) cannot be deployed: the deployment fails with "the trained model has no recorded files".
 
 ## The record of a deployment
@@ -152,7 +152,7 @@ The table exists on SQLite and PostgreSQL and is created automatically. A row th
 $ curl -X POST localhost:7878/v1/gb/training/models/3/deployments \
        -d '{"deployer": "bucket", "options": {"prefix": "release"}}'
 {"id":7,"trained_model_id":3,"deployer":"bucket","options":{"prefix":"release"},"status":"completed",
- "dir":"/srv/gligabao/bin/trained_models/fc4a...","ref":"models/fc4a.../deploy-7","details":{"files":3},
+ "dir":"/srv/gligabao/build/trained_models/fc4a...","ref":"models/fc4a.../deploy-7","details":{"files":3},
  "error":"","duration_ms":41873,"created_at":"...","completed_at":"..."}
 ```
 

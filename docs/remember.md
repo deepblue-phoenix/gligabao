@@ -278,7 +278,7 @@ Existing database files are not migrated when the schema changes: delete the fil
 - Web search (`web_search`) is available exactly when `ANTHROPIC_API_KEY` is set; there is no other setting. See [web-search.md](web-search.md).
 - `OPENAI_API_KEY` (or `openai_api_key` in `gligabao.toml`): used to embed entities, edges, chunks and chunk summaries. Optional: without it the endpoint works and stores the graph, but no vectors, and the server logs a warning at startup.
 - `embedding_dimensions` (default 1536) is the size of the embeddings; `vector_store` selects where they go (`chromem`, or `pinecone`). See [vectors.md](vectors.md).
-- `gligabao serve --db <path>` selects the SQLite file (default `bin/gligabao.db`).
+- `gligabao serve --db <path>` selects the SQLite file (default `build/gligabao.db`).
 
 ## Example
 
@@ -286,7 +286,7 @@ Existing database files are not migrated when the schema changes: delete the fil
 export ANTHROPIC_API_KEY=...
 export OPENAI_API_KEY=...    # optional: embeds the entities and edges
 ./run_build.sh
-./bin/gligabao serve &
+./build/gligabao serve &
 curl -s localhost:7878/v1/gb/remember \
   -d '{"user_id":"u1","text":"Alice works at Acme and lives in Paris."}'
 ```

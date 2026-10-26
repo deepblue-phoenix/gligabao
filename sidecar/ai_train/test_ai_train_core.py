@@ -199,7 +199,7 @@ class DatasetTest(unittest.TestCase):
             dataset.validate_dataset(self.data)
 
     def test_bundled_datasets_are_valid(self):
-        """Every dataset of bin/datasets_training whose data file has been generated is valid."""
+        """Every dataset of build/datasets_training whose data file has been generated is valid."""
         found, _ = training_data.list_local_datasets()
         for ds in found:
             self.assertGreater(dataset.validate_dataset(str(ds.path))["num_examples"], 0, ds.name)

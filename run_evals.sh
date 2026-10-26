@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 
 # The config file whose evals_knowledge_dirs / evals_training_dirs list the eval directories (relative paths in it are relative to the
 # file). Override with GLIGABAO_CONFIG; a -evals DIR option (repeatable) still overrides the config.
-CONFIG="${GLIGABAO_CONFIG:-bin/gligabao.toml}"
+CONFIG="${GLIGABAO_CONFIG:-build/gligabao.toml}"
 
 usage() {
 	cat <<USAGE
@@ -29,7 +29,7 @@ Options:
 
 Case names restrict the run to those cases (combined with --eval, they must belong to that eval).
 
-The eval directories are set in $CONFIG (evals_knowledge_dirs, evals_training_dirs; default config bin/gligabao.toml, GLIGABAO_CONFIG
+The eval directories are set in $CONFIG (evals_knowledge_dirs, evals_training_dirs; default config build/gligabao.toml, GLIGABAO_CONFIG
 overrides it); -evals DIR (repeatable) overrides them.
 
 Knowledge evals (evals_knowledge_dirs):

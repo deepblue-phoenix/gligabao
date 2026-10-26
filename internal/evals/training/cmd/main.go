@@ -1,4 +1,4 @@
-// Command training runs the training evals (bin/evals_training/*.json) against a trained model from the command line: the model is
+// Command training runs the training evals (build/evals_training/*.json) against a trained model from the command line: the model is
 // asked each case's question through the sidecar, and the LLM judge (the one used for knowledge ingestion) scores its answer against
 // the case's expected answer. The eval is put in the database as an eval def (its cases as case defs), and the run is stored as an eval
 // run with a case run for each case.
@@ -52,7 +52,7 @@ func mainErr() error {
 	listEvals := flag.Bool("list-evals", false, "print the available evals and their cases, then exit")
 	listModels := flag.Bool("list-models", false, "print the trained models of the database (the ids -model takes), then exit")
 	modelID := flag.Int64("model", 0, "id of the trained model to evaluate (see -list-models; default: the newest Gemma 4 4B one)")
-	dbPath := flag.String("db", "bin/gligabao.db", "SQLite file of the database that holds the trained models (and the evals and their runs)")
+	dbPath := flag.String("db", "build/gligabao.db", "SQLite file of the database that holds the trained models (and the evals and their runs)")
 	sidecarURL := flag.String("sidecar", os.Getenv(config.EnvSidecarURL), "URL of the sidecar (default: $SIDECAR_URL, else "+sidecar.DefaultBaseURL+")")
 	batchSize := flag.Int("batch-size", 0, fmt.Sprintf("question/answer pairs per judge call (default %d, at most %d)", training.DefaultBatchSize, training.MaxBatchSize))
 	judgeModel := flag.String("judge-model", "", "the judge's LLM model (default: the LLM's default)")

@@ -101,14 +101,14 @@ The cited IDs are validated against the subgraph that was actually sent:
 ## Configuration
 
 - `ANTHROPIC_API_KEY`: required. If missing, the server still starts and the endpoint returns 503.
-- `gligabao serve --db <path>` selects the SQLite file (default `bin/gligabao.db`).
+- `gligabao serve --db <path>` selects the SQLite file (default `build/gligabao.db`).
 
 ## Example
 
 ```sh
 export ANTHROPIC_API_KEY=...
 ./run_build.sh
-./bin/gligabao serve &
+./build/gligabao serve &
 curl -s localhost:7878/v1/gb/remember -d '{"user_id":"u1","text":"Alice works at Acme and lives in Paris."}'
 curl -s localhost:7878/v1/gb/query   -d '{"user_id":"u1","query":"Where does Alice work?"}'
 ```

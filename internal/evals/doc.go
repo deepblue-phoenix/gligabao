@@ -3,7 +3,7 @@
 //
 //	core       the data model: the structs and their vocabulary (see its package doc)
 //	db         the storage of the data model: the schema and the functions that write and read the records (sqlite, postgres)
-//	evalfile   reading the evals from their JSON files (bin/evals_knowledge, bin/evals_training)
+//	evalfile   reading the evals from their JSON files (build/evals_knowledge, build/evals_training)
 //	runner     what every Type of eval shares in running: putting the evals of the files in the DB as defs, recording experiment
 //	           runs, eval runs and case runs
 //	knowledge  the knowledge evals: remember some texts, then query (the executor of the Type "knowledge"), and its command

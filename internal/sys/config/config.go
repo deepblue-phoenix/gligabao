@@ -114,7 +114,7 @@ type Config struct {
 	EvalsTrainingDirs []string `toml:"evals_training_dirs"`
 	// EvalsKnowledgeDirs are the directories of the knowledge evals (one JSON file per eval, plus the corpus files the cases refer
 	// to with text_file), searched in order like EvalsTrainingDirs. Read by the knowledge eval runner, not by the server. Default
-	// (runner): bin/evals_knowledge. The runner's -evals (repeatable) overrides it.
+	// (runner): build/evals_knowledge. The runner's -evals (repeatable) overrides it.
 	EvalsKnowledgeDirs []string `toml:"evals_knowledge_dirs"`
 	// OntologyDirs are the directories ontology documents (OWL, RDF/XML) are loaded from by file name: a request to
 	// POST /v1/gb/ontologies or PUT /v1/gb/ontologies/{name} with "file" instead of "content" names a file that is looked up in

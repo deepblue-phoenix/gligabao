@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.109.0] - 2026-10-26
+
+### Changed
+- The `bin/` directory is now `build/`: the default config (`build/gligabao.toml`), database, eval database, vectors, images, trajectories and trained models, the built binary (`./run_build.sh` builds `build/gligabao`), and the bundled `datasets_training/`, `evals_knowledge/`, `evals_training/` and `ontology/` directories. The Go defaults (`DefaultConfigPath`, `DefaultSQLitePath`, `DefaultEvalDir`, `TrajectoryDir`, `ImageDir`), the scripts, the Dockerfile, `.gitignore`, `.dockerignore` and the docs use the new paths. `build/pypi/` (the `run_pypi.sh` staging directories) lives in the same directory.
+- Migration: move your state files from `bin/` to `build/`, or pass `--config`, `--db` and the other path flags; other programs that point at `gligabao/bin/...` (for example the `*_dirs` lists of a config) need `build/`.
+
 ## [0.108.1] - 2026-11-08
 
 ### Added

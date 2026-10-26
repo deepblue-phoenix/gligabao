@@ -9,10 +9,10 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
 )
 
-// DefaultEvalDir is the directory the evals are read from when none is configured (evals_training_dirs, or -evals): bin/evals_training of the repository, next to the
-// training datasets (bin/datasets_training). They are static definitions kept apart from the code, so they are read from disk, not
+// DefaultEvalDir is the directory the evals are read from when none is configured (evals_training_dirs, or -evals): build/evals_training of the repository, next to the
+// training datasets (build/datasets_training). They are static definitions kept apart from the code, so they are read from disk, not
 // embedded.
-const DefaultEvalDir = "bin/evals_training"
+const DefaultEvalDir = "build/evals_training"
 
 // Eval is an eval file: a name, and its cases ({name, instruction, input?, output}). Its name is that of the training dataset its
 // cases ask about, so that a model trained on a dataset has an eval of that name.

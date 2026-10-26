@@ -3,7 +3,7 @@
 Run (Modal):
     cd sidecar/ai_train
     modal run app.py                                          # ping: checks image/volumes
-    modal run app.py --action datasets                        # list the local datasets (bin/datasets_training/<name>/dataset.toml)
+    modal run app.py --action datasets                        # list the local datasets (build/datasets_training/<name>/dataset.toml)
     modal run app.py --action sync --dataset <name>           # upload a local dataset to the data volume (if it changed)
     modal run app.py --action validate --dataset <name>       # validate the dataset on the data volume
     modal run app.py --action train --dataset <name> --train-steps 100 --model-size 4b   # 4b (A10G), 12b (A100) or 31b (A100 80GB);

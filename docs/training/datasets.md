@@ -5,7 +5,7 @@ A training dataset is a JSONL file (format: [training_data_format.md](training_d
 ## Layout
 
 ```
-bin/datasets_training/                         a training datasets directory (datasets_training_dirs in gligabao.toml, or serve --training-dataset-dir; default: "datasets_training" next to --db)
+build/datasets_training/                         a training datasets directory (datasets_training_dirs in gligabao.toml, or serve --training-dataset-dir; default: "datasets_training" next to --db)
   world-knowledge-base/               one subdirectory per dataset: anything the dataset needs can live here
     dataset.toml                      the manifest: its presence makes the subdirectory a dataset
     generate_dataset.py               the script that generates the data (gligabao ignores it)
@@ -20,7 +20,7 @@ bin/datasets_training/                         a training datasets directory (da
 - **Several directories:** `datasets_training_dirs` in `gligabao.toml` is a list (relative paths are relative to the config file); `serve --training-dataset-dir` can be given more than once and overrides it. The directories are searched in order. A dataset name found in an earlier directory hides the same name in a later one (the later one is neither listed nor a problem), so a program that embeds gligabao can add its own directory in front of, or behind, gligabao's. Uploads are saved in the **first** directory; the others are only read, and an upload named like a dataset of another directory is a `409`. A problem's `dir` is then the full path of the subdirectory, not just its name. The Modal CLI below reads one directory.
 - **Discovery:** the server looks at the direct subdirectories of the training datasets directory and reads the `dataset.toml` of each one (a subdirectory without one is not a dataset; names starting with `.` are skipped). It does this every time it lists the datasets or starts a job, so a dataset added to the directory (or a regenerated data file) is available at once, with no restart. A directory that does not exist yet has no datasets.
 - **The manifest decides where the data is:** gligabao does not look for `*.jsonl` files; it reads the path in the manifest's `file`. Other files in the subdirectory (a second `.jsonl`, a `.json`) are not part of the dataset. For now only the JSONL format is supported.
-- **In the repository:** `bin/datasets_training/` is tracked (the rest of `bin/` is ignored); the generated data files of a dataset are ignored by a `.gitignore` in its subdirectory (run the generator to create them).
+- **In the repository:** `build/datasets_training/` is tracked (the rest of `build/` is ignored); the generated data files of a dataset are ignored by a `.gitignore` in its subdirectory (run the generator to create them).
 
 ## The manifest (`dataset.toml`)
 
@@ -82,7 +82,7 @@ Only through a job start. `POST /v1/gb/training/jobs` finds the dataset by name 
 
 ## The Modal CLI
 
-`modal run app.py` (in `sidecar/ai_train`) reads the same manifests, from `bin/datasets_training` (override: `GLIGABAO_DATASETS_TRAINING_DIR`), in `training_data.py` (`tomllib`, Python 3.11+):
+`modal run app.py` (in `sidecar/ai_train`) reads the same manifests, from `build/datasets_training` (override: `GLIGABAO_DATASETS_TRAINING_DIR`), in `training_data.py` (`tomllib`, Python 3.11+):
 
 ```sh
 modal run app.py --action datasets                          # list the local datasets and their problems
@@ -93,8 +93,8 @@ modal run app.py --action train --dataset <name> --train-steps 100 --model-size 
 
 ## Adding a dataset
 
-1. Make `bin/datasets_training/<dir>/`, put (or generate) the JSONL file there.
-2. Write `bin/datasets_training/<dir>/dataset.toml` with at least `file`.
+1. Make `build/datasets_training/<dir>/`, put (or generate) the JSONL file there.
+2. Write `build/datasets_training/<dir>/dataset.toml` with at least `file`.
 3. It shows up in `GET /v1/gb/training/datasets` and in the admin UI's training view; pick it there or pass its name as `dataset` to `POST /v1/gb/training/jobs`.
 
 A dataset is also what a trained model can be evaluated on: the **Audit** of a model asks it the questions of the dataset it was trained on (a [training data audit](audit.md)), so the dataset must stay in this directory.
