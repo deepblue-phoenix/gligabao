@@ -97,7 +97,7 @@ type keyEntity struct {
 // search. It is called for every text the call stores (the text itself, or each chunk) and does nothing unless the call
 // searches the web or fetches series (see remember_seriesfetch.go). The entities of a web search result are never recorded: the search does not recurse.
 func (j *job) noteKeyEntities(ex *Extraction, artifactID int64) {
-	if !(j.co.WebSearch || j.co.SeriesFetch != nil) || j.web != nil || j.obs != nil {
+	if !(j.co.WebSearch || j.co.SeriesFetch != nil || j.co.GeoResolver != nil) || j.web != nil || j.obs != nil {
 		return
 	}
 	degree := map[string]int{}

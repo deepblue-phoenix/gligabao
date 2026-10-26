@@ -62,6 +62,8 @@ type (
 	Series                       = model.Series
 	SeriesPoint                  = model.SeriesPoint
 	SeriesAnchor                 = model.SeriesAnchor
+	NewEntityGeo                 = model.NewEntityGeo
+	EntityGeo                    = model.EntityGeo
 )
 
 // Series anchor types and sources (see model.NewSeriesAnchor, model.NewSeries).
@@ -252,6 +254,31 @@ func ListSeriesAnchors(ctx context.Context, d *sql.DB, seriesID int64) ([]Series
 		return sqlite.ListSeriesAnchors(ctx, d, seriesID)
 	case config.DBBackendPostgres:
 		return postgres.ListSeriesAnchors(ctx, d, seriesID)
+	}
+	return nil, unsupported()
+}
+
+//---------------------------------------------------------------------------------------------
+// Geo metadata of entities (writes go through Tx.UpsertEntityGeo; see package internal/geo)
+
+// GetEntityGeo returns the geo metadata of an entity. It returns ErrNotFound if the entity has none.
+func GetEntityGeo(ctx context.Context, d *sql.DB, entityID int64) (*EntityGeo, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.GetEntityGeo(ctx, d, entityID)
+	case config.DBBackendPostgres:
+		return postgres.GetEntityGeo(ctx, d, entityID)
+	}
+	return nil, unsupported()
+}
+
+// ListEntityGeo returns the geo metadata of the entities of the dataset by entity ID, with each entity's name and type.
+func ListEntityGeo(ctx context.Context, d *sql.DB, dsID int64) ([]EntityGeo, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListEntityGeo(ctx, d, dsID)
+	case config.DBBackendPostgres:
+		return postgres.ListEntityGeo(ctx, d, dsID)
 	}
 	return nil, unsupported()
 }

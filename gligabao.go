@@ -18,6 +18,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
+	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
@@ -71,6 +72,19 @@ type Hooks = monitoring.Hooks
 
 // SystemEvent is the key/value data attached to a system event.
 type SystemEvent = monitoring.Event
+
+// GeoResolver turns the name of a place into its coordinates (see ServeOptions.GeoResolver). Resolve returns the best place for the
+// query, or GeoNotFound if it knows none; any other error means the resolver failed.
+type GeoResolver = geo.Resolver
+
+// GeoQuery is what a GeoResolver is asked for, and GeoPlace what it answers.
+type (
+	GeoQuery = geo.Query
+	GeoPlace = geo.Place
+)
+
+// GeoNotFound is the error of a GeoResolver that knows no place for the query.
+var GeoNotFound = geo.ErrNotFound
 
 // TimeseriesProvider is a source of timeseries that remember can fetch from (see ServeOptions.TimeseriesProviders and
 // docs/timeseries.md). Description says in natural language when the provider applies, so an LLM can decide which
@@ -165,6 +179,10 @@ type ServeOptions struct {
 	// App identifies the embedding program; if set, the server reports its version next to gligabao's
 	// (GET /version) and logs it at startup.
 	App *App
+	// GeoResolver finds the coordinates of the places remember extracts as entities (a city, a country, a region, a landmark, ...),
+	// which are stored in gb_entity_geo. Setting it turns the geo stage of remember on, whatever Config.Geo says; with Config.Geo
+	// and no GeoResolver the public Nominatim geocoder of OpenStreetMap is used.
+	GeoResolver GeoResolver
 	// TimeseriesProviders are the timeseries sources remember can fetch from when a request asks for it
 	// (timeseries.fetch). Each has a Name, a natural-language Description of when it should be used (an LLM reads it to
 	// decide which provider is for which entity of a text), an optional QueryFormat and the Fetch callback. They are
@@ -313,6 +331,8 @@ func serverOptions(cfg *Config, opts ServeOptions) (serverOpts server.Options, r
 		Prices:       aiPrices(cfg),
 
 		Auth:                  opts.Auth,
+		GeoResolver:           opts.GeoResolver,
+		Geo:                   cfg.Geo,
 		TimeseriesProviders:   opts.TimeseriesProviders,
 		TrainedModelDeployers: opts.TrainedModelDeployers,
 

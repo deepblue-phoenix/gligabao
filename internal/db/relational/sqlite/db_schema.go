@@ -100,11 +100,11 @@ CREATE INDEX IF NOT EXISTS idx_gb_inferences_model ON gb_inferences(model_id);
 --   status       of the call as a whole, so that it can be checked without looking at the stages: 'started', then
 --                'succeeded' if the call returned a result or 'failed' if it returned an error ('not_started' exists for
 --                the stages). A row that stays 'started' belongs to a process that died. The stages that never fail the
---                call (web_search, fetch_series, observe_series, classify_complexity) can be 'failed' in a 'succeeded' run.
+--                call (resolve_geo, web_search, fetch_series, observe_series, classify_complexity) can be 'failed' in a 'succeeded' run.
 --   error        why the call failed; NULL if it did not
 --   started_at, finished_at  of the call
 -- and, for each stage of the pipeline (model.RememberStages: classify_complexity, chunk_text, extract_graph,
--- summarize_chunk, load_candidates, resolve_edges, store, store_series, web_search, fetch_series, observe_series):
+-- summarize_chunk, load_candidates, resolve_edges, store, store_series, resolve_geo, web_search, fetch_series, observe_series):
 --   <stage>_status       'not_started' (not reached, or not used by the call), 'started', 'succeeded' or 'failed'
 --   <stage>_error        why the stage failed; NULL if it did not
 --   <stage>_started_at, <stage>_finished_at   when the stage began and when it last ended (a stage that runs for each chunk

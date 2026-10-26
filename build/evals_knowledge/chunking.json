@@ -3,7 +3,7 @@
   "cases": [
     {
       "name": "chunking_register",
-      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "extract_image": "none", "query": "none"},
+      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "chunk_size": 512,
       "expect_min_chunks": 15,
       "remember": [

@@ -42,6 +42,11 @@ training = false
 # Default false; `serve --admin-ui` turns it on.
 admin_ui = false
 
+# Make remember find the places among the entities it extracts (cities, countries, regions, landmarks, ...) and store their
+# coordinates (table gb_entity_geo), using the public Nominatim geocoder of OpenStreetMap. It costs one more LLM call per text and
+# sends the names of places to the geocoder. Default false; `serve --geo` turns it on.
+geo = false
+
 # Directory the files of trained models are fetched to for a deployment, one subdirectory per training job (gligabao
 # never deletes them). Default: a trained_models directory next to the database file (build/trained_models).
 # `serve --trained-model-deploy-dir` overrides it.

@@ -6,7 +6,7 @@
 | --- | --- |
 | `id` | The inference |
 | `type` | The operation that made the call: `remember`, `remember_image` or `query` |
-| `stage` | The pipeline stage: `extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series`, `extract_image`, `web_search`, `classify_complexity` (Jev) and `embed` for `remember`; `query` for `query`. Empty if unknown |
+| `stage` | The pipeline stage: `extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series`, `detect_geo`, `extract_image`, `web_search`, `classify_complexity` (Jev) and `embed` for `remember`; `query` for `query`. Empty if unknown |
 | `model_id` | The model that was run, as the API reported it (`gb_models.id`); NULL if it did not say (e.g. a Jev call that failed) |
 | `reasoning` | The thinking level the call ran with: `none`, `low`, `medium` or `high`. It is the level that was *applied*: `none` for embeddings, web searches, Jev, and models without extended thinking |
 | `input_tokens`, `output_tokens` | The usage (the thinking tokens are in `output_tokens`) |

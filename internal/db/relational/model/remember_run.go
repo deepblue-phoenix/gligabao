@@ -43,6 +43,9 @@ const (
 	RememberStageStore = "store"
 	// RememberStageStoreSeries is the storage of the timeseries the caller supplied.
 	RememberStageStoreSeries = "store_series"
+	// RememberStageResolveGeo is the detection of the entities that are places and the lookup of their coordinates (it
+	// includes the detect_geo model call).
+	RememberStageResolveGeo = "resolve_geo"
 	// RememberStageWebSearch is the web search for the key entities, and what is stored from its results.
 	RememberStageWebSearch = "web_search"
 	// RememberStageFetchSeries is the fetch of series from the providers for the key entities (it includes the
@@ -69,6 +72,7 @@ var RememberStages = []RememberStageDef{
 	{RememberStageResolveEdges, true},
 	{RememberStageStore, true},
 	{RememberStageStoreSeries, false},
+	{RememberStageResolveGeo, true},
 	{RememberStageWebSearch, true},
 	{RememberStageFetchSeries, true},
 	{RememberStageObserveSeries, true},

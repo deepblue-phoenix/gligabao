@@ -96,6 +96,11 @@ type Config struct {
 	// AdminUIenable registers the admin UI handlers (served at /v1/gb/admin/). Default false; `serve --admin-ui` turns it on.
 	// Needs a binary built with the web assets embedded (./run_build.sh, on by default).
 	AdminUIenable bool `toml:"admin_ui"`
+	// Geo makes remember find the places among the entities it extracts (a city, a country, a region, a landmark, ...) and store their
+	// coordinates in gb_entity_geo, using the public Nominatim geocoder of OpenStreetMap (a program that embeds gligabao can supply
+	// its own resolver, ServeOptions.GeoResolver, which turns it on too). Default false: it costs one more LLM call per text and
+	// sends the names of places to the geocoder. `serve --geo` turns it on.
+	Geo bool `toml:"geo"`
 	// SidecarURL is the base URL of the Python sidecar's REST API (sidecar/), which runs the training jobs the admin
 	// endpoint POST /v1/gb/v1/gb/training/jobs starts. Default: SIDECAR_URL, else http://127.0.0.1:8787.
 	SidecarURL string `toml:"sidecar_url"`

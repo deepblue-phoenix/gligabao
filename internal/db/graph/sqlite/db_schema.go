@@ -266,6 +266,43 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_series_anchors_entity ON gb_series_anch
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_series_anchors_edge ON gb_series_anchors(series_id, edge_id) WHERE edge_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_gb_series_dataset ON gb_series(dataset_id);
 
+-- The geo metadata of the entities that are places (see internal/geo): ONE ROW PER GEO ENTITY, keyed by the entity's ID, so
+-- an entity has at most one row and deleting the entity deletes it. Remember fills it after the entities of a text are
+-- stored: an LLM decides which are places, and a geo resolver gives their coordinates. Entities that are not places, and
+-- places the resolver could not find, have no row.
+--   kind          what the place is, as the LLM judged it: 'country', 'region', 'city' or 'place' (anything smaller)
+--   query         what the resolver was asked for: the name with the context that disambiguates it ("Paris, France")
+--   latitude, longitude  degrees, WGS 84
+--   display_name  the full name of the place as the resolver gives it
+--   country, country_code (ISO 3166-1 alpha-2, lowercase), region  where the place lies; '' if unknown
+--   place_type    the resolver's own type of the place ('city', 'administrative', ...)
+--   bbox_*        bounding box of the place (south, west, north, east); NULL if unknown
+--   importance    how prominent the place is according to the resolver, 0..1 (0: not given)
+--   provider, provider_ref  the resolver that found the place and the place's ID there ('' if none)
+CREATE TABLE IF NOT EXISTS gb_entity_geo (
+	entity_id    INTEGER PRIMARY KEY REFERENCES gb_entities(id) ON DELETE CASCADE,
+	kind         TEXT NOT NULL,
+	query        TEXT NOT NULL DEFAULT '',
+	latitude     REAL NOT NULL CHECK (latitude BETWEEN -90 AND 90),
+	longitude    REAL NOT NULL CHECK (longitude BETWEEN -180 AND 180),
+	display_name TEXT NOT NULL DEFAULT '',
+	country      TEXT NOT NULL DEFAULT '',
+	country_code TEXT NOT NULL DEFAULT '',
+	region       TEXT NOT NULL DEFAULT '',
+	place_type   TEXT NOT NULL DEFAULT '',
+	bbox_south   REAL,
+	bbox_west    REAL,
+	bbox_north   REAL,
+	bbox_east    REAL,
+	importance   REAL NOT NULL DEFAULT 0,
+	provider     TEXT NOT NULL,
+	provider_ref TEXT NOT NULL DEFAULT '',
+	created_at   DATETIME NOT NULL,
+	updated_at   DATETIME NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gb_entity_geo_coords ON gb_entity_geo(latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_gb_entity_geo_country ON gb_entity_geo(country_code);
+
 -- An ontology (metadata in gb_ontologies, see internal/db/relational) is a small graph of its own, kept apart from
 -- the dataset graph above: classes are nodes, and edges are the relationships between classes.
 --   kind: 'subclass_of' | 'equivalent_class' | 'disjoint_with' | 'property'

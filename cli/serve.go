@@ -14,6 +14,7 @@ func newServe(c *CLI, o Options) *cobra.Command {
 		datasetDirs, evalDirs       []string
 		ontologyDirs                []string
 		eval, training, adminUI     bool
+		geoOn                       bool
 	)
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -30,6 +31,9 @@ func newServe(c *CLI, o Options) *cobra.Command {
 			}
 			if cmd.Flags().Changed("admin-ui") {
 				cfg.AdminUIenable = adminUI
+			}
+			if cmd.Flags().Changed("geo") {
+				cfg.Geo = geoOn
 			}
 			opts := gligabao.ServeOptions{
 				DBPath:                dbPath,
@@ -64,6 +68,7 @@ func newServe(c *CLI, o Options) *cobra.Command {
 	f.StringVar(&evalDB, "eval-db", "", "eval database: SQLite file with the eval datasets, experiments and runs (./run_evals.sh); shown next to the main database in the admin UI, which reads the Evals block from it")
 	f.BoolVar(&eval, "eval", false, "register the eval endpoints that return ATIF trajectories (config: eval)")
 	f.BoolVar(&training, "training", false, "register the training endpoints under /v1/gb/training/ (config: training)")
+	f.BoolVar(&geoOn, "geo", false, "make remember find the places among the entities and store their coordinates, using OpenStreetMap's Nominatim (config: geo)")
 	f.BoolVar(&adminUI, "admin-ui", false, "serve the admin UI at /v1/gb/admin/ (config: admin_ui)")
 	return cmd
 }

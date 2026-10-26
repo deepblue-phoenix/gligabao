@@ -345,4 +345,10 @@ type Tx interface {
 	// AnchorSeries links the series to an artifact, entity or edge of its dataset (idempotent: it replaces the role
 	// and window of an existing anchor).
 	AnchorSeries(ctx context.Context, a NewSeriesAnchor) error
+
+	// UpsertEntityGeo stores the geo metadata of an entity of the dataset, replacing the stored one (an entity has at
+	// most one). The entity must exist.
+	UpsertEntityGeo(ctx context.Context, g NewEntityGeo) error
+	// GetEntityGeo reads the geo metadata of an entity. It returns ErrNotFound if the entity has none.
+	GetEntityGeo(ctx context.Context, entityID int64) (*EntityGeo, error)
 }

@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.110.0] - 2026-10-27
+
+### Added
+- New package `internal/geo`: geo resolvers that turn the name of a place into coordinates (`geo.Resolver`; `geo.NewNominatim` for OpenStreetMap's Nominatim, with its one request per second and a User-Agent; `geo.Cached`; `geo.Func`), the kinds of place (country, region, city, place) and `geo.ErrNotFound`.
+- `remember` finds the places among the entities it extracts and stores their coordinates. After the text is stored, a new stage (`resolve_geo`) asks an LLM (the new `detect_geo` stage, which takes a model and a reasoning level like the others) which entities are places (a city, a country, a region, a landmark, ...) and what to ask the resolver, asks the geo resolver, and stores the result. Entities that already have geo metadata are not looked up again. It never fails the call; the response has a new `geo` list with the outcome for each place.
+- New table `gb_entity_geo` (SQLite and PostgreSQL): one row per geo entity keyed by `entity_id` (latitude, longitude, kind, display name, country, country code, region, bounding box, provider, ...), deleted with its entity. Go: `graph.GetEntityGeo`, `graph.ListEntityGeo`, `Tx.UpsertEntityGeo`, `Tx.GetEntityGeo`.
+- Geo is off by default (it costs one more LLM call per text and sends place names to the geocoder). `geo = true` in the config or `serve --geo` turns it on with Nominatim; `ServeOptions.GeoResolver` (`gligabao.GeoResolver`) supplies another resolver and turns it on. Go callers: `memory_core.WithGeoResolver`, `api.WithGeoResolver`.
+- Docs: [docs/geo.md](docs/geo.md); the roadmap lists what is left (`query` using geo, geo for more than the text's entities).
+
+### Changed
+- Schema: `gb_remember_runs` has the columns of the new `resolve_geo` stage, and the knowledge evals in `build/evals_knowledge/` set the reasoning of `detect_geo` to `none` like the other stages. There is no migration: an existing database has to be recreated.
+
 ## [0.109.3] - 2026-10-27
 
 ### Changed

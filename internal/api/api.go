@@ -10,6 +10,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/query"
 	"github.com/deepblue-phoenix/gligabao/internal/api/remember"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
+	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_image"
@@ -29,7 +30,7 @@ func Register(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm me
 		opt(&o)
 	}
 	a := func(h http.HandlerFunc) http.Handler { return httputil.Authenticate(o.auth, h) } // routes of users: with WithAuth they need an API key
-	mux.Handle("POST /v1/gb/remember", a(remember.Handler(mgr, d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_image.WithImageDir(d.ImageDir))))
+	mux.Handle("POST /v1/gb/remember", a(remember.Handler(mgr, d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_core.WithGeoResolver(o.geo), memory_image.WithImageDir(d.ImageDir))))
 	mux.Handle("POST /v1/gb/query", a(query.Handler(d.Relational, llm)))
 	mux.Handle("POST /v1/gb/datasets", a(datasets.Create(d.Relational)))
 	mux.Handle("GET /v1/gb/datasets", a(datasets.List(d.Relational)))
@@ -45,6 +46,7 @@ func Register(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm me
 type options struct {
 	ontologyDirs []string
 	auth         httputil.Authenticator
+	geo          geo.Resolver
 }
 
 // Option configures Register.
@@ -55,13 +57,21 @@ type Option func(*options)
 // or whose key auth rejects (any error), gets 401. Without it, routes trust the user_id of the request. The eval routes are not covered.
 func WithAuth(auth httputil.Authenticator) Option { return func(o *options) { o.auth = auth } }
 
+// WithGeoResolver makes remember (Register and RegisterEval) find the places among the entities it extracts and store their
+// coordinates (see package geo and memory_remember's resolve_geo stage). Without it (or with nil) remember does not look at places.
+func WithGeoResolver(r geo.Resolver) Option { return func(o *options) { o.geo = r } }
+
 // WithOntologyDirs sets the directories ontology documents can be loaded from by file name (POST and PUT /v1/gb/ontologies with
 // "file"), searched in order. Without them only the "content" form works.
 func WithOntologyDirs(dirs []string) Option { return func(o *options) { o.ontologyDirs = dirs } }
 
 // RegisterEval mounts the eval-only routes: remember and query that also return their ATIF trajectories.
 // They are not part of Register; the server mounts them only in eval mode.
-func RegisterEval(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider) {
-	mux.HandleFunc("POST /v1/gb/eval/remember", remember.EvalHandler(mgr, d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_image.WithImageDir(d.ImageDir)))
+func RegisterEval(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, opts ...Option) {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
+	mux.HandleFunc("POST /v1/gb/eval/remember", remember.EvalHandler(mgr, d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_core.WithGeoResolver(o.geo), memory_image.WithImageDir(d.ImageDir)))
 	mux.HandleFunc("POST /v1/gb/eval/query", query.EvalHandler(d.Relational, llm))
 }

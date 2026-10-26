@@ -205,6 +205,32 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_series_anchors_edge ON gb_series_anchor
 
 CREATE INDEX IF NOT EXISTS idx_gb_series_dataset ON gb_series(dataset_id);
 
+-- The geo metadata of the entities that are places (see sqlite/db_schema.go for what the columns mean).
+CREATE TABLE IF NOT EXISTS gb_entity_geo (
+	entity_id    BIGINT PRIMARY KEY REFERENCES gb_entities(id) ON DELETE CASCADE,
+	kind         TEXT NOT NULL,
+	query        TEXT NOT NULL DEFAULT '',
+	latitude     DOUBLE PRECISION NOT NULL CHECK (latitude BETWEEN -90 AND 90),
+	longitude    DOUBLE PRECISION NOT NULL CHECK (longitude BETWEEN -180 AND 180),
+	display_name TEXT NOT NULL DEFAULT '',
+	country      TEXT NOT NULL DEFAULT '',
+	country_code TEXT NOT NULL DEFAULT '',
+	region       TEXT NOT NULL DEFAULT '',
+	place_type   TEXT NOT NULL DEFAULT '',
+	bbox_south   DOUBLE PRECISION,
+	bbox_west    DOUBLE PRECISION,
+	bbox_north   DOUBLE PRECISION,
+	bbox_east    DOUBLE PRECISION,
+	importance   DOUBLE PRECISION NOT NULL DEFAULT 0,
+	provider     TEXT NOT NULL,
+	provider_ref TEXT NOT NULL DEFAULT '',
+	created_at   TIMESTAMPTZ NOT NULL,
+	updated_at   TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gb_entity_geo_coords ON gb_entity_geo(latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_gb_entity_geo_country ON gb_entity_geo(country_code);
+
+
 CREATE INDEX IF NOT EXISTS idx_gb_image_artifacts_dataset ON gb_image_artifacts(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_image_extractions_image ON gb_image_extractions(image_artifact_id);
 CREATE INDEX IF NOT EXISTS idx_gb_artifacts_dataset ON gb_artifacts(dataset_id);

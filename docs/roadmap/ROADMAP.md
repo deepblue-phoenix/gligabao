@@ -16,6 +16,8 @@ changelog and remove it from here after a release or two).
 | `query` uses timeseries | Planned | `query` does not read stored series, and treats `series_observation` artifacts like any other. See [timeseries.md](../timeseries.md). |
 | Fetch timeseries from the standalone endpoint | Planned | Fetching from providers is in `remember` only; a series is not refreshed automatically. See [timeseries.md](../timeseries.md). |
 | Lookahead protection for timeseries | Planned | A series that runs past a text's `reference_time` is stored whole, so a memory of an event can contain its future. Clip fetched windows, or label the post-event part. See [timeseries-design.md](../timeseries-design.md). |
+| `query` uses geo | Planned | `gb_entity_geo` holds coordinates for the entities that are places, but `query` does not read them (no "near", "in" or distance questions). See [geo.md](../geo.md). |
+| Geo for more than `remember` text | Planned | Only the entities of the text itself are geocoded: not those of web search results or series observations, and not those of an image. Geo metadata is not refreshed or corrected once stored, and a place the resolver did not know is asked again on every mention. See [geo.md](../geo.md). |
 | Web search for image requests | Planned | `web_search` is rejected (`400`) together with `image`, since the image pipeline extracts no entities yet. Depends on grounding image extractions. See [web-search.md](../web-search.md). |
 | OpenAI as a main reasoning provider | Planned | `remember` and `query` use only Anthropic for the main reasoning; OpenAI is used for embeddings only. Add OpenAI as a supported reasoning provider too. |
 

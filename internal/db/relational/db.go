@@ -50,6 +50,7 @@ const (
 	RememberStageStoreSeries        = model.RememberStageStoreSeries
 	RememberStageWebSearch          = model.RememberStageWebSearch
 	RememberStageFetchSeries        = model.RememberStageFetchSeries
+	RememberStageResolveGeo         = model.RememberStageResolveGeo
 	RememberStageObserveSeries      = model.RememberStageObserveSeries
 )
 

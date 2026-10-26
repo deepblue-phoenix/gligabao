@@ -139,6 +139,10 @@ func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Confi
 	}
 
 	//--------------------------------------
+	// RESOLVE_GEO (only with a geo resolver): the places among the entities of the whole text, once the chunks are stored
+	doc.Geo = j.resolveGeo(ctx)
+
+	//--------------------------------------
 	// WEB_SEARCH (only with WithWebSearch): for the key entities of the whole text, once the chunks are stored
 	doc.WebSearches = j.webSearch(ctx)
 

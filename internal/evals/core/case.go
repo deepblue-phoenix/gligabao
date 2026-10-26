@@ -208,7 +208,7 @@ type KnowledgeParams struct {
 	// Models picks the LLM model of the stages of remember ("extract_graph", "resolve_edges", "extract_image").
 	Models map[string]string `json:"models,omitempty"`
 	// Reasoning picks the reasoning level ("none", "low", "medium", "high") of each LLM stage ("extract_graph",
-	// "summarize_chunk", "resolve_edges", "resolve_series", "extract_image", "query").
+	// "summarize_chunk", "resolve_edges", "resolve_series", "detect_geo", "extract_image", "query").
 	Reasoning map[string]string `json:"reasoning,omitempty"`
 }
 

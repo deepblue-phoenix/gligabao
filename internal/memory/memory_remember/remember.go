@@ -224,6 +224,11 @@ type Result struct {
 	// WithSeriesObservations): one per series, in order, each with the artifact it stored. See remember_observations.go.
 	SeriesObservations []SeriesObservationResult `json:"series_observations,omitempty"`
 
+	// Geo are the entities of the text that the LLM judged to be places, with what the geo resolver found for each (only
+	// when the call has a geo resolver, WithGeoResolver): one per entity, in the order of extraction. The coordinates are
+	// stored in gb_entity_geo. See remember_geo.go.
+	Geo []GeoResult `json:"geo,omitempty"`
+
 	// summary is the summary stored with a chunk (see ChunkResult.Summary); nil for anything else.
 	summary *SummaryResult
 
@@ -401,6 +406,10 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 		return nil, err
 	}
 	j.run.Artifact(res.ArtifactID)
+
+	//--------------------------------------
+	// RESOLVE_GEO (only with a geo resolver): the places among the entities, after the text is stored, so that it never fails the call
+	res.Geo = j.resolveGeo(ctx)
 
 	//--------------------------------------
 	// WEB_SEARCH (only with WithWebSearch): after the text is stored, so that it never fails the call

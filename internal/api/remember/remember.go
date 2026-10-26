@@ -51,7 +51,7 @@ type rememberRequest struct {
 	// out uses the default model. See memory_core.Models.
 	Models map[string]string `json:"models"`
 	// Reasoning (optional) picks the reasoning (thinking) level ("none", "low", "medium" or "high") of each LLM stage
-	// ("extract_graph", "summarize_chunk", "resolve_edges", "resolve_series", "extract_image"; not "web_search"). A stage
+	// ("extract_graph", "summarize_chunk", "resolve_edges", "resolve_series", "detect_geo", "extract_image"; not "web_search"). A stage
 	// left out runs with "none" (no thinking). Every call is recorded with its level as an inference
 	// (gb_inferences). See memory_core.Reasoning.
 	Reasoning map[string]string `json:"reasoning"`

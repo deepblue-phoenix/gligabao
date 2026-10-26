@@ -31,6 +31,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
 	evalstraining "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	evalsapi "github.com/deepblue-phoenix/gligabao/internal/evals/training/api"
+	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
@@ -120,6 +121,11 @@ type Options struct {
 	// TimeseriesProviders are the sources of timeseries that remember can fetch from (see docs/timeseries.md). Each has a
 	// natural-language description of when it applies, and a callback that does the fetching. Validated at startup.
 	TimeseriesProviders []memory_core.SeriesProvider
+	// GeoResolver finds the coordinates of the places remember extracts as entities (see package geo). Nil: the Nominatim resolver
+	// of OpenStreetMap if Geo is true, else remember does not look at places.
+	GeoResolver geo.Resolver
+	// Geo turns the geo stage of remember on (with GeoResolver, or Nominatim if there is none); a GeoResolver turns it on by itself.
+	Geo bool
 	// TrainedModelDeployers are the hooks that deploy trained models (POST /v1/gb/training/models/{id}/deployments): each is given
 	// the model's files in a local directory and does with them what it wants. Validated at startup.
 	TrainedModelDeployers []coretraining.TrainedModelDeployer
@@ -202,12 +208,12 @@ const EvalDBName = "eval"
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary; adminExts are the registered admin UI extensions
 // (already validated; may be nil), mounted with it.
 func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
-	return newMux(ctx, true, nil, d, llm, emb, jv, ws, providers, hooks, dirs, ontologyDirs, sc, eval, trainingMode, adminUI, adminExts, extraAdminDBs...)
+	return newMux(ctx, true, nil, nil, d, llm, emb, jv, ws, providers, hooks, dirs, ontologyDirs, sc, eval, trainingMode, adminUI, adminExts, extraAdminDBs...)
 }
 
 // newMux is NewHandler; standalone is false when the routes are mounted on a host's mux (see Mount), where "/", "/health" and
 // "/version" belong to the host, so they are not registered: an unknown path under /v1/gb/ is a plain 404.
-func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
+func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, geoResolver geo.Resolver, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	if standalone {
 		mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
@@ -224,9 +230,9 @@ func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, d
 	}
 	// The remember manager runs every remember pipeline run, one at a time, until ctx is done.
 	mgr := memory_remember.NewManager(ctx, d.Relational, llm)
-	api.Register(mux, mgr, d, llm, emb, jv, ws, providers, api.WithOntologyDirs(ontologyDirs), api.WithAuth(auth))
+	api.Register(mux, mgr, d, llm, emb, jv, ws, providers, api.WithOntologyDirs(ontologyDirs), api.WithAuth(auth), api.WithGeoResolver(geoResolver))
 	if eval {
-		api.RegisterEval(mux, mgr, d, llm, emb, jv, ws, providers)
+		api.RegisterEval(mux, mgr, d, llm, emb, jv, ws, providers, api.WithGeoResolver(geoResolver))
 	}
 	dbs := append([]admin.Named{{Name: "standard", DB: d.Relational, Vectors: d.Vector, ImageDir: d.ImageDir}}, extraAdminDBs...)
 	if trainingMode {
@@ -589,6 +595,19 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 		log.WithField("provider", p.Name).Info("timeseries provider registered: remember can fetch series from it when asked (timeseries.fetch)")
 	}
 
+	var geoResolver geo.Resolver
+	switch {
+	case opts.GeoResolver != nil:
+		geoResolver = opts.GeoResolver
+	case opts.Geo:
+		geoResolver = geo.Default()
+	}
+	if geoResolver != nil {
+		log.WithField("resolver", geoResolver.Name()).Info("geo is active: remember finds the places among the entities of a text and stores their coordinates")
+	} else {
+		log.Info("geo is not active: remember does not look up places (enable with geo = true or --geo)")
+	}
+
 	deployers, err := coretraining.ResolveDeployers(opts.TrainedModelDeployers)
 	if err != nil {
 		return nil, nil, err
@@ -683,7 +702,7 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 	// The remember manager stops when everything is released, i.e. after the graceful shutdown has given the runs in progress their time.
 	mgrCtx, stopMgr := context.WithCancel(ctx)
 	cleanups = append(cleanups, stopMgr)
-	return newMux(mgrCtx, standalone, opts.Auth, database, llm, emb, jv, ws, providers, hooks, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, extra...), closeAll, nil
+	return newMux(mgrCtx, standalone, opts.Auth, geoResolver, database, llm, emb, jv, ws, providers, hooks, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, extra...), closeAll, nil
 }
 
 // newJev builds the Jev client from the options.

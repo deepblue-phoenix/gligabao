@@ -45,6 +45,7 @@ const (
 	StageStore          = relational.RememberStageStore
 	StageStoreSeries    = relational.RememberStageStoreSeries
 	StageFetchSeries    = relational.RememberStageFetchSeries
+	StageResolveGeo     = relational.RememberStageResolveGeo
 	StageObserveSeries  = relational.RememberStageObserveSeries
 )
 

@@ -29,10 +29,13 @@ const (
 	// StageResolveSeries is the decision of which timeseries provider to fetch for which entity of a text (only with
 	// timeseries.fetch, see docs/timeseries.md): the LLM reads the providers' descriptions.
 	StageResolveSeries = "resolve_series"
+	// StageDetectGeo is the decision of which entities of a text are places (a city, a country, a region, a landmark, ...), and
+	// what to ask the geo resolver for each (only when a geo resolver is registered, see WithGeoResolver).
+	StageDetectGeo = "detect_geo"
 )
 
 // Stages lists the stages that take a model, in pipeline order.
-var Stages = []string{StageExtractGraph, StageSummarizeChunk, StageResolveEdges, StageWebSearch, StageResolveSeries, StageExtractImage}
+var Stages = []string{StageExtractGraph, StageSummarizeChunk, StageResolveEdges, StageWebSearch, StageResolveSeries, StageDetectGeo, StageExtractImage}
 
 // MaxModelLen is the maximum length of a model name in bytes.
 const MaxModelLen = 128
@@ -175,7 +178,7 @@ const StageQuery = "query"
 
 // ReasoningStages lists the stages that take a reasoning level: the LLM stages of remember (see Stages) but the web
 // search, which runs on Anthropic's web search tool without thinking (and Jev, which does not think either).
-var ReasoningStages = []string{StageExtractGraph, StageSummarizeChunk, StageResolveEdges, StageResolveSeries, StageExtractImage}
+var ReasoningStages = []string{StageExtractGraph, StageSummarizeChunk, StageResolveEdges, StageResolveSeries, StageDetectGeo, StageExtractImage}
 
 // The reasoning level a stage runs with unless the call chooses another. It is none (no thinking) for both pipelines, so
 // that no thinking tokens are paid for by default; a call turns it on per stage (WithReasoning).

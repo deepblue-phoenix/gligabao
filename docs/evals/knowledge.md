@@ -147,7 +147,7 @@ A stage named by neither uses the default model. The query's LLM call is not aff
 
 ### Reasoning levels
 
-An eval case can also vary the reasoning (thinking) level of each LLM stage, to see how it affects the results (see [remember.md](../remember.md#reasoning)). The stages are `extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series` and `extract_image` for `remember`, and `query` for the LLM call that answers the question. The levels come from two places that are combined stage by stage:
+An eval case can also vary the reasoning (thinking) level of each LLM stage, to see how it affects the results (see [remember.md](../remember.md#reasoning)). The stages are `extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series`, `detect_geo` and `extract_image` for `remember`, and `query` for the LLM call that answers the question. The levels come from two places that are combined stage by stage:
 
 1. `-reasoning extract_graph=low,query=medium` on the command line: the defaults of the whole run (recorded in the experiment run's `params.reasoning`);
 2. `"reasoning": {"extract_graph": "low", "query": "medium"}` in a case of an eval: that case only; a stage named here wins over `-reasoning`, as for models (a case controls its own parameters).

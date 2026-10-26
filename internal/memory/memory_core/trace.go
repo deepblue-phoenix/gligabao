@@ -12,6 +12,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/jev"
 
 	log "github.com/sirupsen/logrus"
@@ -88,6 +89,10 @@ type CallOptions struct {
 	// WithSeriesObservations.
 	SeriesObservations bool
 
+	// GeoResolver is what finds the coordinates of the entities that are places, set by WithGeoResolver; nil (the default)
+	// means Remember does not look at places at all.
+	GeoResolver geo.Resolver
+
 	// RememberRunID is the run log row (gb_remember_runs) Remember adopts instead of creating one, set by
 	// WithRememberRunID; 0 means Remember creates its own. The remember manager sets it: it creates the row when a
 	// request is queued, so that the caller has the ID right away.
@@ -131,6 +136,12 @@ func WithChunking(c chunk.Config) Option { return func(o *CallOptions) { o.Chunk
 // WithJev enables the steps of Remember that run on Jev (the complexity classification of the incoming text). A nil c
 // (Jev not configured) disables them. Jev is not a per-stage model: it is not part of Models.
 func WithJev(c Classifier) Option { return func(o *CallOptions) { o.Jev = c } }
+
+// WithGeoResolver makes Remember find the places among the entities it extracts (an LLM decides which are a city, a
+// country, a region or any other place) and ask r for their coordinates, which are stored in gb_entity_geo (see
+// package geo). A nil r (the default) leaves it off. Like the web search it runs after the text is stored, and its
+// failure never fails the call.
+func WithGeoResolver(r geo.Resolver) Option { return func(o *CallOptions) { o.GeoResolver = r } }
 
 // WithWebSearcher makes web search available to Remember: ws runs the searches of the calls that ask for them (see
 // WithWebSearch). It does not turn web search on by itself. A nil ws (no Anthropic API key) leaves it unavailable.
