@@ -9,12 +9,12 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/ontologies"
 	"github.com/deepblue-phoenix/gligabao/internal/api/query"
 	"github.com/deepblue-phoenix/gligabao/internal/api/remember"
-	"github.com/deepblue-phoenix/gligabao/internal/api/timeseries"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_image"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
+	"github.com/deepblue-phoenix/gligabao/internal/timeseries"
 )
 
 // Register mounts the API routes on mux. mgr is the remember manager, the one goroutine that runs the remember pipeline (shared with

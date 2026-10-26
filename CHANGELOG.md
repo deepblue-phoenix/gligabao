@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.109.1] - 2026-10-27
+
+### Changed
+- The timeseries endpoints package moved from `internal/api/timeseries` to its own package `internal/timeseries`. No change in behaviour or API.
+
 ## [0.109.0] - 2026-10-26
 
 ### Changed

@@ -191,7 +191,7 @@ Files to add, following the existing layout (v3 added `memory_remember/remember_
 
 - `internal/memory/memory_timeseries/` (parse, anchor, stats, fetch)
 - `internal/db/graph/{sqlite,postgres}/db_timeseries.go`
-- `internal/api/timeseries/`
+- `internal/timeseries/`
 - `docs/timeseries.md`
 
 ## Risks and open questions

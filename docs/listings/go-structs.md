@@ -91,9 +91,9 @@
 | `internal/api/remember.fetchRequest`                      | is the timeseries fetch part of a remember request.                                                                    |
 | `internal/api/remember.rememberRequest`                   | is the request body for a remember call.                                                                               |
 | `internal/api/remember.timeseriesRequest`                 | is the timeseries part of a remember request.                                                                          |
-| `internal/api/timeseries.anchorView`                      | is the API view of a series anchor.                                                                                    |
-| `internal/api/timeseries.attachRequest`                   | is the request body for attaching a series to a dataset.                                                               |
-| `internal/api/timeseries.seriesView`                      | is the API view of a series and its point count.                                                                       |
+| `internal/timeseries.anchorView`                      | is the API view of a series anchor.                                                                                    |
+| `internal/timeseries.attachRequest`                   | is the request body for attaching a series to a dataset.                                                               |
+| `internal/timeseries.seriesView`                      | is the API view of a series and its point count.                                                                       |
 | `internal/api/training.EvalManager`                       | starts trained-model evals in the background, one at a time per model.                                                 |
 | `internal/api/training.runManager`                        | provides the shared endpoints for the runs of one kind (an eval).                                                |
 
