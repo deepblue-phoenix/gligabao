@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.108.1] - 2026-11-08
+
+### Added
+- A roadmap: `docs/roadmap/ROADMAP.md` is the main list of planned features and plans, and `AGENTS.md` says all roadmap material belongs in `docs/roadmap/`.
+
 ## [0.108.0] - 2026-11-07
 
 ### Added

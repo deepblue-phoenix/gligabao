@@ -22,3 +22,10 @@ If several changes land in one working session before a commit, use one version 
 Do not add an `[Unreleased]` section: the top entry must always match `VERSION`.
 
 A built binary reports the version via `gligabao --version`, `gligabao version` and `GET /version`.
+
+## Roadmap
+
+Anything related to the project roadmap (planned features, plans, priorities, status, design notes for future work) lives in
+`docs/roadmap/`. The main list of features/plans is `docs/roadmap/ROADMAP.md`; put any supporting or more detailed roadmap
+documents in the same directory and link them from `ROADMAP.md`. Do not scatter roadmap items elsewhere (README, other docs, etc.).
+Create `docs/roadmap/ROADMAP.md` if it does not exist yet.
