@@ -84,6 +84,10 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 | remember | `load_candidates` | the two lookups merged by edge ID: the stored facts that could duplicate or contradict the new ones, each with how it was found (`found_by`: `name`, `similar`, `name+similar`) |
 | remember | `embed` | the embedding request (only with a vector store): the texts of the entities and edges (and, for a chunk, the chunk and its summary), with `model_name` and `metrics` (tokens, cost), so the embedding cost counts in `final_metrics` |
 | remember | `store_artifact` | `artifact_id`, entities, edges and `invalidated_edges` that were stored |
+| remember | `select_geo_entities` | (only when the server has a [geo resolver](../geo.md)) the entities that may be places (not a person, concept, product or event, and without those that already have geo metadata) |
+| remember | `detect_geo` | (only with a geo resolver, when there are candidates) which of them the LLM judged to be places, with their `kind` and the `query` for the resolver (the LLM call itself is the usual `system`, `user`, `agent` steps) |
+| remember | `resolve_geo` | (only with a geo resolver, one per place) the geo resolver's answer: whether it found the place, and its coordinates, display name and country; `latency_ms` in the extra. An error here is recorded but not fatal |
+| remember | `store_geo` | (only when a place was found) the number of places stored in `gb_entity_geo` |
 | remember | `select_web_search_entities` | (only with [`web_search`](../web-search.md)) the key entities that were picked to search the web for |
 | remember | `web_search` | (only with `web_search`, one per entity) the web search: the entity, the query issued, the briefing, the queries the model sent to the search engine, the sources and `search_errors`; `model_name`, `metrics` (tokens and cost, search fee included) and `latency_ms` in the extra. An error here is recorded but not fatal |
 | query | `retrieve_graph` | the subgraph handed to the LLM, as rendered in its prompt |
@@ -97,6 +101,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 4. LLM call: duplicate/contradiction resolution (only when there are stored facts to compare against; see [temporal.md](../temporal.md)).
 5. tool `embed` (only when vectors are enabled).
 6. tool `store_artifact`.
+6b. only when the server has a [geo resolver](../geo.md): tool `select_geo_entities`, then the LLM call of `detect_geo` and the tool `detect_geo`, then for each place tool `resolve_geo`, and tool `store_geo`.
 7. only with [`web_search`](../web-search.md): tool `select_web_search_entities`, then for each entity tool `web_search`, followed by the steps 2 to 6 for its briefing (`extract_graph` ... `store_artifact`, each labelled ` (web search for "<entity>")`; the artifact is of kind `web_search` with the `query` and `parent_id`).
 
 ### Query

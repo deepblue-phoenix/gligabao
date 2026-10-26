@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.110.1] - 2026-10-27
+
+### Changed
+- Docs: [docs/geo.md](docs/geo.md) gets the trajectory steps of the geo stage (`select_geo_entities`, `detect_geo`, `resolve_geo`, `store_geo`); [docs/remember.md](docs/remember.md) describes the geo step of the pipeline (4c) and the `geo` list of the response; [docs/evals/knowledge.md](docs/evals/knowledge.md) lists the geo steps of a remember trajectory; the table `gb_entity_geo` and the geo structs are in `docs/listings/`.
+
 ## [0.110.0] - 2026-10-27
 
 ### Added

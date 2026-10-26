@@ -120,6 +120,7 @@
 | `internal/db/graph/model.EdgeArtifact`                    | links an edge to an artifact it was inferred from.                                                                     |
 | `internal/db/graph/model.EdgeSession`                     | links an edge to a session it was inferred from.                                                                       |
 | `internal/db/graph/model.Entity`                          | is a thing mentioned in the text such as a person, place or concept.                                                   |
+| `internal/db/graph/model.EntityGeo`                       | is the stored geo metadata of an entity that is a place.                                                               |
 | `internal/db/graph/model.EntityArtifact`                  | links an entity to an artifact that mentions it.                                                                       |
 | `internal/db/graph/model.EntitySession`                   | links an entity to a session in which it was mentioned.                                                                |
 | `internal/db/graph/model.EvidenceEdge`                    | is a graph edge cited by an answer.                                                                                    |
@@ -132,6 +133,7 @@
 | `internal/db/graph/model.NewChunkArtifact`                | is a chunk artifact to insert as a child of its parent artifact.                                                       |
 | `internal/db/graph/model.NewChunkSummaryArtifact`         | is a chunk summary artifact to insert as a child of its chunk.                                                         |
 | `internal/db/graph/model.NewEdge`                         | is an edge to insert between two entity IDs.                                                                           |
+| `internal/db/graph/model.NewEntityGeo`                    | is the geo metadata to store for an entity.                                                                            |
 | `internal/db/graph/model.NewImage`                        | is an image artifact with its first extraction, stored in one transaction.                                             |
 | `internal/db/graph/model.NewImageExtraction`              | is what an LLM read from an image, ready to store.                                                                     |
 | `internal/db/graph/model.NewSeries`                       | is a series to insert or whose metadata to update.                                                                     |
@@ -177,6 +179,19 @@
 
 | Struct                                                    | Description                                                                                                            |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+
+>>> GEO
+
+| Struct                                                    | Description                                                                                                            |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `internal/geo.Func`                                       | adapts a function to a Resolver.                                                                                       |
+| `internal/geo.NominatimOptions`                           | configures the Nominatim resolver.                                                                                     |
+| `internal/geo.Place`                                      | is a place a Resolver found.                                                                                           |
+| `internal/geo.Query`                                      | is what a Resolver is asked for.                                                                                       |
+| `internal/geo.cacheEntry`                                 | is a cached answer of a Resolver.                                                                                      |
+| `internal/geo.cached`                                     | is a Resolver that remembers the answers of another one.                                                               |
+| `internal/geo.nominatim`                                  | is the Resolver of OpenStreetMap's Nominatim.                                                                          |
+| `internal/geo.nominatimResult`                            | is one element of Nominatim's search answer.                                                                           |
 
 >>> MEMORY
 
@@ -228,6 +243,7 @@
 | `internal/memory/memory_remember.QueueHooks`              | holds the enqueue and dequeue callbacks of the manager's queue.                                                        |
 | `internal/memory/memory_remember.Request`                 | asks the manager for one run of Remember.                                                                              |
 | `internal/memory/memory_remember.Result`                  | summarizes what was stored by Remember.                                                                                |
+| `internal/memory/memory_remember.GeoResult`               | is the outcome of the geo lookup for one entity of a Remember call that the LLM judged to be a place.                  |
 | `internal/memory/memory_remember.SeriesFetchResult`       | is the outcome of fetching series from one provider for one entity.                                                    |
 | `internal/memory/memory_remember.SeriesObservationResult` | is the observation made of one series in a Remember call.                                                              |
 | `internal/memory/memory_remember.SummaryResult`           | is a stored chunk summary, an artifact of its own.                                                                     |
@@ -237,6 +253,7 @@
 | `internal/memory/memory_remember.chunkSummary`            | is the summary of a chunk before it is stored.                                                                         |
 | `internal/memory/memory_remember.chunkVector`             | is a chunk whose text is embedded together with entities and edges.                                                    |
 | `internal/memory/memory_remember.job`                     | holds what one Remember call shares between the steps it runs on each text.                                            |
+| `internal/memory/memory_remember.geoPlace`                | is the LLM's decision that an entity is a place.                                                                       |
 | `internal/memory/memory_remember.keyEntity`               | is an entity of the call that may be searched for on the web.                                                          |
 | `internal/memory/memory_remember.merger`                  | accumulates the results of a text's chunks into the text's result.                                                     |
 | `internal/memory/memory_remember.observable`              | is a stored series that an observation may be made of.                                                                 |

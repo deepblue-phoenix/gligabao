@@ -19,6 +19,7 @@
 - `gb_image_artifacts`
 - `gb_image_extractions`
 - `gb_image_text_blocks`
+- `gb_entity_geo`
 - `gb_series`
 - `gb_series_points`
 - `gb_series_anchors`
@@ -50,6 +51,7 @@
 | `gb_image_artifacts`          | ingested images (media type, SHA-256, size, file path), kept apart from the graph; the bytes live on the file system.                           |
 | `gb_image_extractions`        | what an LLM read from an image (theme, title, text), with the raw output, tokens and cost.                                                      |
 | `gb_image_text_blocks`        | the text regions of an image extraction in reading order, each with a role (title, caption, label, ...).                                        |
+| `gb_entity_geo`               | geo metadata of an entity that is a place (coordinates, kind, display name, country, bounding box, provider), one row per entity.                |
 | `gb_series`                   | timeseries identified by (provider, key, field) in a dataset, with a summary and stats of all their points.                                     |
 | `gb_series_points`            | the timestamped values of a series.                                                                                                             |
 | `gb_series_anchors`           | many-to-many link anchoring a series (optionally a window of it) to an artifact, entity or edge.                                                |
@@ -81,6 +83,7 @@
 | `gb_image_artifacts`          | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
 | `gb_image_extractions`        | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
 | `gb_image_text_blocks`        | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
+| `gb_entity_geo`               | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
 | `gb_series`                   | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
 | `gb_series_points`            | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
 | `gb_series_anchors`           | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |

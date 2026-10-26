@@ -34,6 +34,10 @@ errors are logged, recorded in the trajectory and run log, and returned in `geo`
 ([remember.md](remember.md#choosing-the-model-of-each-stage)). In the run log the stage is `resolve_geo` and holds the
 `detect_geo` inference.
 
+## In the trajectory
+
+An [eval trajectory](evals/knowledge.md) of a call with a geo resolver has, after the steps of the text itself, a `select_geo_entities` step (the candidates), the `detect_geo` LLM call and a `detect_geo` step (the places it found, with `kind` and `query`), one `resolve_geo` step per place (found or not, the coordinates, `latency_ms`), and a `store_geo` step (how many places were stored). When there are no candidates, the stage stops after `select_geo_entities`.
+
 ## The result
 
 `geo` in the response of `remember` has one element per entity the LLM judged to be a place:

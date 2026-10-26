@@ -67,6 +67,7 @@ content-type: application/json
 - `series`: only with `timeseries`: one item per series (`id`, `key`, `created`, `points`, `point_count`, `stats`, `anchors`, ...). See [timeseries.md](timeseries.md#with-remember).
 - `series_fetches`: only with `timeseries.fetch`: one item per (entity, provider) the LLM chose (`entity`, `provider`, `query`, `reason`, `from`, `to`, the `series` stored, and an `error` if the provider failed). See [timeseries.md](timeseries.md#providers).
 - `series_observations`: only with `timeseries.observations`: one item per series observed (`series_id`, `key`, `parent_artifact_id`, `query`, `from`, `to`, the generated `text`, the `artifact_id` stored, its `entities` and `edges`, and an `error` if it failed). See [timeseries.md](timeseries.md#observations).
+- `geo`: only when the server has a [geo resolver](geo.md#turning-it-on): one item per entity of the text the LLM judged to be a place (`entity`, `entity_type`, `entity_id`, `kind`, `query`, `resolved`, `latitude`, `longitude`, `display_name`, `country`, `country_code`, `region`, `provider`, and an `error` if the resolver or the storage failed). See [geo.md](geo.md#the-result).
 - `web_searches`: only with `web_search`: one item per key entity that was searched for (`entity`, `query`, `parent_artifact_id`, the `web_search` `artifact_id`, the `sources`, and the `entities` and `edges` the result yielded; `entities` and `edges` above stay those of the text). See [web-search.md](web-search.md#response).
 - `chunks`, `embedded_chunks`, `embedded_summaries`: only for a text that was [chunked](chunking.md). `artifact_id` is then the parent artifact (the whole text), `chunks` lists the chunk artifacts (`artifact_id`, `index`, `tokens`, `overlap_tokens`, `start_offset`, `end_offset`, `entities`, `edges`, and the `summary` of the chunk: `{"artifact_id", "text", "model", "reasoning", "inference_id"}`, the [summary artifact](chunking.md#chunk-summaries) with the inference, i.e. the model and reasoning level, that wrote it), `entities`, `edges` and `invalidated_edges` are those of all the chunks, `embedded_chunks` counts the chunk vectors written and `embedded_summaries` the summary vectors.
 - `embedded_entities` and `embedded_edges` are the number of vectors written to the dataset's entity and edge indexes (see [Embed](#how-it-works)). Both are omitted when nothing was embedded (no `OPENAI_API_KEY`). `embedded_entities` counts the entities the text mentions, including those that already existed, and `embedded_edges` the facts it states, including repeated ones; they can be more than the number of new rows.
@@ -109,6 +110,8 @@ All steps use the LLM from `internal/ai` (Anthropic Messages API, default model 
 
 4b. **Timeseries** (only with `timeseries`): the supplied series are written inside step 3's transaction, after the entities and edges, and anchored: to the artifact, and to the entities and edges that their selectors find. A series that cannot be anchored stores nothing. For a chunked text they are stored after the last chunk, anchored to the parent. See [timeseries.md](timeseries.md).
 
+4c. **Geo** (only when the server has a [geo resolver](geo.md#turning-it-on), `geo = true` or `serve --geo`): the entities of the text that may be places are sent to an LLM (the `detect_geo` stage), which says which are a city, a country, a region or a landmark; the geo resolver (OpenStreetMap's Nominatim by default) is asked for their coordinates, and they are stored in `gb_entity_geo`, keyed by the entity. Entities that already have geo metadata are not looked up again. It runs after the text was stored, so a failure in it never fails the request. See [geo.md](geo.md).
+
 5. **Web search** (only with `web_search`, and only with an Anthropic API key): the key entities of the text are searched for on the web and the results are remembered as `web_search` artifacts, each with its query and its parent (the artifact the entity came from), and their own entities and edges. It runs after the text was stored, so a failure in it never fails the request. See [web-search.md](web-search.md).
 
 6. **Timeseries fetch** (only with `timeseries.fetch`, and only when the server has [timeseries providers](timeseries.md#providers)): an LLM decides from the providers' descriptions which provider fetches series for which entity of the text (only the entities of the text itself, not those a web search found), the providers' callbacks run, and the series are stored and anchored to the entity and the artifact it came from. It runs after the text was stored, so a failure in it never fails the request.
@@ -132,7 +135,7 @@ The LLM-invoking stages of the pipeline can each run on a different model, for i
 | `resolve_edges` | 2, `resolveEdges` (only when there are candidates to compare) | the duplicate / contradiction check |
 | `web_search` | 5, [web search](web-search.md) (only with `web_search`) | the model that runs the web search tool (it must support it); the briefings are extracted on `extract_graph` |
 | `resolve_series` | 6, [timeseries fetch](timeseries.md#providers) (only with `timeseries.fetch`) | the LLM call that decides which timeseries provider is used for which entity |
-| `detect_geo` | 4b, [geo](geo.md) (only when the server has a geo resolver) | the LLM call that decides which entities are places, and what to ask the geo resolver for each |
+| `detect_geo` | 4c, [geo](geo.md) (only when the server has a geo resolver) | the LLM call that decides which entities are places, and what to ask the geo resolver for each |
 | `extract_image` | the [image pipeline](images.md) | reading the image (applies only to a request with `image`) |
 
 The rules:
@@ -257,6 +260,7 @@ All tables are prefixed with `gb_` (see `internal/db/relational/{sqlite,postgres
 | `gb_entity_artifacts` | `entity_id` → `gb_entities`, `artifact_id` → `gb_artifacts`; primary key (`entity_id`, `artifact_id`) |
 | `gb_entity_sessions` | `entity_id` → `gb_entities`, `session_id`; primary key (`entity_id`, `session_id`) |
 | `gb_edge_sessions` | `edge_id` → `gb_edges`, `session_id`; primary key (`edge_id`, `session_id`) |
+| `gb_entity_geo` | The coordinates of the entities that are places (see [geo.md](geo.md#the-table)) |
 | `gb_series`, `gb_series_points`, `gb_series_anchors` | The [timeseries](timeseries.md) and what they are anchored to (`gb_artifacts.series_id` links a [series observation](timeseries.md#observations) to its series) |
 | `gb_remember_runs` | One row per call: its `status`, and for each stage a status, error, start and end time and inferences. See [Run log](#run-log) |
 
