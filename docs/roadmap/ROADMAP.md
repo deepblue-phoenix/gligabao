@@ -17,6 +17,7 @@ changelog and remove it from here after a release or two).
 | Fetch timeseries from the standalone endpoint | Planned | Fetching from providers is in `remember` only; a series is not refreshed automatically. See [timeseries.md](../timeseries.md). |
 | Lookahead protection for timeseries | Planned | A series that runs past a text's `reference_time` is stored whole, so a memory of an event can contain its future. Clip fetched windows, or label the post-event part. See [timeseries-design.md](../timeseries-design.md). |
 | Web search for image requests | Planned | `web_search` is rejected (`400`) together with `image`, since the image pipeline extracts no entities yet. Depends on grounding image extractions. See [web-search.md](../web-search.md). |
+| OpenAI as a main reasoning provider | Planned | `remember` and `query` use only Anthropic for the main reasoning; OpenAI is used for embeddings only. Add OpenAI as a supported reasoning provider too. |
 
 ## Considering
 
