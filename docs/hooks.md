@@ -127,7 +127,7 @@ SystemEvent: func(_ context.Context, typ string, ev gligabao.SystemEvent) {
 },
 ```
 
-A full example (logging every event with logrus and shipping it to BetterStack through a non-blocking sink) is `systemEventHook` in `gligabao_int/cmd/serve.go`.
+A full example (logging every event with logrus and shipping it to BetterStack through a non-blocking sink) is `systemEventHook` in `gligabao_int/gligabao_int/options.go`.
 
 ### Stability
 

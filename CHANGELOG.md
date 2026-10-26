@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.109.2] - 2026-10-27
+
+### Changed
+- Docs: the README and `docs/hooks.md` point at the new `gligabao_int` locations (`gligabao_int/gligabao_int`, `gligabao_int/gligabao_int_embed`, `gligabao_int/gligabao_int/options.go`) instead of `gligabao_int/cmd`.
+
 ## [0.109.1] - 2026-10-27
 
 ### Changed

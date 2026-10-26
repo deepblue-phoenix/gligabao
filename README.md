@@ -139,7 +139,7 @@ A program that embeds gligabao can extend the admin UI with its own views (a but
 
 ## Embedding in Go programs
 
-gligabao is also a Go library. All server code is under `internal/` (not importable); the public API is the root package `github.com/deepblue-phoenix/gligabao`, which the CLI (`cmd/gligabao`, the public `cli` package) itself uses, so embedded and standalone behave the same. A program that wants the CLI too (all of `gligabao serve`'s flags) builds it with `cli.New` from `github.com/deepblue-phoenix/gligabao/cli` and adds only its own flags and `ServeOptions`; see `gligabao_int/cmd`.
+gligabao is also a Go library. All server code is under `internal/` (not importable); the public API is the root package `github.com/deepblue-phoenix/gligabao`, which the CLI (`cmd/gligabao`, the public `cli` package) itself uses, so embedded and standalone behave the same. A program that wants the CLI too (all of `gligabao serve`'s flags) builds it with `cli.New` from `github.com/deepblue-phoenix/gligabao/cli` and adds only its own flags and `ServeOptions`; see `gligabao_int/gligabao_int`.
 
 ```go
 import "github.com/deepblue-phoenix/gligabao"
@@ -177,7 +177,7 @@ defer release()
 - gligabao's own `/`, `/health` and `/version` are **not** registered, they belong to the host (an unknown path under `/v1/gb/` is a plain `404`). The config's `port` is not used.
 - `release` stops the remember manager and closes the databases. It is idempotent, and is also called when `ctx` is cancelled. Call it after the host's server has shut down; after it the mounted routes answer `503`. The `Hooks` and `App` of `ServeOptions` are installed until then.
 - `MountOptions.Wrap` wraps the whole handler before it is registered. **gligabao has no access control of its own** (standalone it is meant to be on a private port), and mounted on a public server its API and admin UI are as public as that server: use `Wrap` to put the host's authentication in front of them.
-- Not changed: `Serve`, the `gligabao` CLI and the standalone `gligabao_int` run as before, on their own port. `gligabao_int/cmd` has `EmbedMount`, the counterpart of its `Embed` that mounts instead of listening.
+- Not changed: `Serve`, the `gligabao` CLI and the standalone `gligabao_int` run as before, on their own port. `gligabao_int/gligabao_int_embed` has `EmbedMount`, the counterpart of its `Embed` that mounts instead of listening.
 
 gligabao needs no CGO, so the embedding program can be built with `CGO_ENABLED=0` (see [Building](#building)). A working example with a cobra `serve` command is in the sibling `gligabao_int` project, which uses `replace github.com/deepblue-phoenix/gligabao => ../gligabao` during local development.
 
