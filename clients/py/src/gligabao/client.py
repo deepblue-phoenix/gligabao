@@ -131,6 +131,32 @@ class Client:
             )
         return self._request("POST", "/v1/gb/remember", body)
 
+    def query(
+        self,
+        user_id: str,
+        query: str,
+        dataset: str | None = None,
+        session_id: str | None = None,
+        reasoning: str | None = None,
+    ) -> dict[str, Any]:
+        """Answer a question from the knowledge graph (POST /v1/gb/query).
+
+        `dataset` defaults to "main" on the server (404 if it does not exist). `session_id` is a label for
+        one user/agent run, echoed in the response; it does not change the answer. `reasoning` is the thinking
+        level of the LLM call that writes the answer: "none" (the server default), "low", "medium" or "high".
+
+        Returns the decoded JSON response: `answer`, and `evidence` with the `entities` and `edges` it used
+        (session_id too, if one was given).
+        """
+        body: dict[str, Any] = {"user_id": user_id, "query": query}
+        if dataset is not None:
+            body["dataset"] = dataset
+        if session_id is not None:
+            body["session_id"] = session_id
+        if reasoning is not None:
+            body["reasoning"] = reasoning
+        return self._request("POST", "/v1/gb/query", body)
+
     def attach_timeseries(
         self,
         user_id: str,

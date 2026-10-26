@@ -167,3 +167,33 @@ def test_remember_needs_exactly_one_of_text_and_image():
         c.remember("u1", "hi", image=b"x")
     with pytest.raises(ValueError):
         c.remember("u1", image=b"x", kind="episode")
+
+
+def test_query():
+    seen = {}
+    srv = _serve(200, {"answer": "Acme.", "evidence": {"entities": [], "edges": []}}, seen)
+    try:
+        res = Client(f"http://127.0.0.1:{srv.server_port}").query(
+            "u1", "Where does Alice work?", dataset="d", session_id="s1", reasoning="low"
+        )
+    finally:
+        srv.shutdown()
+    assert seen["path"] == "/v1/gb/query"
+    assert seen["body"] == {
+        "user_id": "u1",
+        "query": "Where does Alice work?",
+        "dataset": "d",
+        "session_id": "s1",
+        "reasoning": "low",
+    }
+    assert res["answer"] == "Acme."
+
+
+def test_query_minimal():
+    seen = {}
+    srv = _serve(200, {"answer": "x"}, seen)
+    try:
+        Client(f"http://127.0.0.1:{srv.server_port}").query("u1", "q")
+    finally:
+        srv.shutdown()
+    assert seen["body"] == {"user_id": "u1", "query": "q"}

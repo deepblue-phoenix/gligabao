@@ -10,6 +10,14 @@ res = gb.remember("u1", "Alice works at Acme and lives in Paris.", kind="episode
 print(res["artifact_id"], res["edges"])
 ```
 
+`query` answers a question from the graph and returns the evidence (entities and edges) behind the answer:
+
+```python
+res = gb.query("u1", "Where does Alice work?")  # optional: dataset, session_id, reasoning ("none", "low", "medium", "high")
+print(res["answer"])
+print([(e["source"], e["relation"], e["target"]) for e in res["evidence"]["edges"]])
+```
+
 Each LLM stage of `remember` can run on a model of your choice with `models` (stages `extract_graph`, `resolve_edges` and, for
 images, `extract_image`); a stage you leave out uses the server's default model:
 
