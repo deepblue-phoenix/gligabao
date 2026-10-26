@@ -187,7 +187,7 @@ See [LICENSE](LICENSE).
 
 ## Building
 
-gligabao is pure Go and builds with `CGO_ENABLED=0`: SQLite uses the `modernc.org/sqlite` driver and the default vector store is [chromem-go](https://github.com/philippgille/chromem-go), so no C compiler is needed. `./run_build.sh` builds `bin/gligabao`, `./run_tests.sh` runs the tests, and `docker build .` (or `./run_build_container.sh`) builds a static binary in a container; the Dockerfile builds with `CGO_ENABLED=0`. Plain `go build ./cmd/gligabao` / `go test ./...` work as they are.
+gligabao is pure Go and builds with `CGO_ENABLED=0`: SQLite uses the `modernc.org/sqlite` driver and the default vector store is [chromem-go](https://github.com/philippgille/chromem-go), so no C compiler is needed. `./run_build.sh` builds `bin/gligabao`, `./run_tests.sh` runs the tests, and `docker build .` (or `./run_build_container.sh`) builds a static binary in a container; the Dockerfile builds with `CGO_ENABLED=0`. Plain `go build ./cmd/gligabao` / `go test ./...` work as they are. `./run_pypi.sh` builds and uploads the PyPI packages `gligabao` (the Python client) and `gligabao-server` (the binary and `gligabao.toml`, one wheel per platform; no sidecar), see [docs/pypi.md](docs/pypi.md).
 
 ## Versioning
 

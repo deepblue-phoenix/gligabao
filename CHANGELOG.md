@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.108.0] - 2026-11-07
+
+### Added
+- A second PyPI package, `gligabao-server` (`clients/py_server`): `pip install gligabao-server` installs the server, as a platform-specific wheel with the prebuilt binary (admin UI embedded) and the default `gligabao.toml`, and the commands `gligabao-server` and `gligabao` that run it. `pip install gligabao` still installs only the Python client. The sidecar is not part of the package. Wheels are built for Linux, macOS and Windows on amd64 and arm64. See `docs/pypi.md`.
+- `run_pypi.sh` builds one platform at a time: `--build_client`, `--build_server`, `--build_server_linux`, `--build_server_darwin`, `--build_server_windows`, narrowed with `--arch amd64|arm64`.
+
+### Changed
+- `run_pypi_upload.sh` is now `run_pypi.sh`, and uploading is a flag, `--upload` (with `--test` for TestPyPI and `--yes` to skip the confirmation). It no longer builds unless build flags are given, and it uploads every built file of the current versions (all platforms), not only what the same call built. `--dry-run` is gone: building without `--upload` is the dry run.
+
 ## [0.107.0] - 2026-11-06
 
 ### Added

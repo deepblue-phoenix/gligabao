@@ -7,3 +7,6 @@ bin/*
 
 __pycache__/
 *.pyc
+
+# run_pypi.sh staging directories
+build/
