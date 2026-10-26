@@ -11,18 +11,26 @@ from typing import Any
 from .errors import GligabaoError
 
 DEFAULT_BASE_URL = "http://127.0.0.1:7878"
+API_KEY_ENV = "GLIGABAO_API_KEY"
 
 
 class Client:
-    """Client for the gligabao HTTP API."""
+    """Client for the gligabao HTTP API.
 
-    def __init__(self, base_url: str = DEFAULT_BASE_URL, timeout: float = 120.0):
+    The API key identifies the caller: it is read from the GLIGABAO_API_KEY environment variable (or given as
+    `api_key`) and sent as "Authorization: Bearer <key>". The server maps it to the user it belongs to, so no call
+    takes a user ID. Raises GligabaoError if there is no key.
+    """
+
+    def __init__(self, base_url: str = DEFAULT_BASE_URL, timeout: float = 120.0, api_key: str | None = None):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self._api_key = (api_key if api_key is not None else os.environ.get(API_KEY_ENV, "")).strip()
+        if not self._api_key:
+            raise GligabaoError(f"no API key: set the {API_KEY_ENV} environment variable (or pass api_key=)")
 
     def remember(
         self,
-        user_id: str,
         text: str | None = None,
         dataset: str | None = None,
         reference_time: datetime | str | None = None,
@@ -90,7 +98,7 @@ class Client:
         """
         if (text is None) == (image is None):
             raise ValueError("remember takes exactly one of text and image")
-        body: dict[str, Any] = {"user_id": user_id}
+        body: dict[str, Any] = {}
         if image is not None:
             if kind is not None:
                 raise ValueError("kind does not apply to images")
@@ -133,7 +141,6 @@ class Client:
 
     def query(
         self,
-        user_id: str,
         query: str,
         dataset: str | None = None,
         session_id: str | None = None,
@@ -148,7 +155,7 @@ class Client:
         Returns the decoded JSON response: `answer`, and `evidence` with the `entities` and `edges` it used
         (session_id too, if one was given).
         """
-        body: dict[str, Any] = {"user_id": user_id, "query": query}
+        body: dict[str, Any] = {"query": query}
         if dataset is not None:
             body["dataset"] = dataset
         if session_id is not None:
@@ -159,7 +166,6 @@ class Client:
 
     def attach_timeseries(
         self,
-        user_id: str,
         series: list[dict[str, Any]],
         dataset: str | None = None,
     ) -> dict[str, Any]:
@@ -169,7 +175,7 @@ class Client:
         what exists: {"entity_id": 12}, {"artifact_id": 1, "window": [start, end]}, or an entity or edge
         selector. A series with the key of a stored one adds its points to it. The dataset must exist (404).
         """
-        body: dict[str, Any] = {"user_id": user_id, "series": _series(series)}
+        body: dict[str, Any] = {"series": _series(series)}
         if dataset is not None:
             body["dataset"] = dataset
         return self._request("POST", "/v1/gb/timeseries", body)
@@ -180,7 +186,11 @@ class Client:
             self.base_url + path,
             data=data,
             method=method,
-            headers={"content-type": "application/json", "accept": "application/json"},
+            headers={
+                "content-type": "application/json",
+                "accept": "application/json",
+                "authorization": f"Bearer {self._api_key}",
+            },
         )
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:

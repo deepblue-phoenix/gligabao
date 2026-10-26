@@ -22,6 +22,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
+	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
@@ -112,6 +113,10 @@ type Options struct {
 	// ATIF files, from an "atif" directory next to it) from it. Opened for the admin UI only; ignored (with a warning)
 	// unless the main database is SQLite. Empty = not shown, and the Evals routes are not registered.
 	EvalDBPath string
+	// Auth, if set, makes the user routes of the API (remember, query, datasets, timeseries, ontologies) require an API key
+	// ("Authorization: Bearer <key>"): it is called with the key and returns the ID of the user it belongs to, which the request then
+	// acts as; an error rejects the request (401). See docs/identity.md. Nil: the routes trust the user_id of the request.
+	Auth httputil.Authenticator
 	// TimeseriesProviders are the sources of timeseries that remember can fetch from (see docs/timeseries.md). Each has a
 	// natural-language description of when it applies, and a callback that does the fetching. Validated at startup.
 	TimeseriesProviders []memory_core.SeriesProvider
@@ -197,12 +202,12 @@ const EvalDBName = "eval"
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary; adminExts are the registered admin UI extensions
 // (already validated; may be nil), mounted with it.
 func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
-	return newMux(ctx, true, d, llm, emb, jv, ws, providers, hooks, dirs, ontologyDirs, sc, eval, trainingMode, adminUI, adminExts, extraAdminDBs...)
+	return newMux(ctx, true, nil, d, llm, emb, jv, ws, providers, hooks, dirs, ontologyDirs, sc, eval, trainingMode, adminUI, adminExts, extraAdminDBs...)
 }
 
 // newMux is NewHandler; standalone is false when the routes are mounted on a host's mux (see Mount), where "/", "/health" and
 // "/version" belong to the host, so they are not registered: an unknown path under /v1/gb/ is a plain 404.
-func newMux(ctx context.Context, standalone bool, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
+func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	if standalone {
 		mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
@@ -219,7 +224,7 @@ func newMux(ctx context.Context, standalone bool, d *db.DB, llm memory_core.LLM,
 	}
 	// The remember manager runs every remember pipeline run, one at a time, until ctx is done.
 	mgr := memory_remember.NewManager(ctx, d.Relational, llm)
-	api.Register(mux, mgr, d, llm, emb, jv, ws, providers, api.WithOntologyDirs(ontologyDirs))
+	api.Register(mux, mgr, d, llm, emb, jv, ws, providers, api.WithOntologyDirs(ontologyDirs), api.WithAuth(auth))
 	if eval {
 		api.RegisterEval(mux, mgr, d, llm, emb, jv, ws, providers)
 	}
@@ -678,7 +683,7 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 	// The remember manager stops when everything is released, i.e. after the graceful shutdown has given the runs in progress their time.
 	mgrCtx, stopMgr := context.WithCancel(ctx)
 	cleanups = append(cleanups, stopMgr)
-	return newMux(mgrCtx, standalone, database, llm, emb, jv, ws, providers, hooks, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, extra...), closeAll, nil
+	return newMux(mgrCtx, standalone, opts.Auth, database, llm, emb, jv, ws, providers, hooks, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, extra...), closeAll, nil
 }
 
 // newJev builds the Jev client from the options.

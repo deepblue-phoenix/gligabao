@@ -1,6 +1,10 @@
 # Identity
 
-Every request to gligabao says which user it acts for, with a `user_id`. gligabao does not authenticate users: `user_id` is an opaque string that the calling application supplies and is trusted to get right. Put gligabao behind your own auth layer and pass the authenticated user's ID.
+Every request to gligabao says which user it acts for, with a `user_id`. without the `Auth` hook gligabao does not authenticate users: `user_id` is an opaque string that the calling application supplies and is trusted to get right. Put gligabao behind your own auth layer and pass the authenticated user's ID.
+
+## With the `Auth` hook
+
+A program that embeds gligabao can set `ServeOptions.Auth` (see [hooks.md](hooks.md#auth)). The caller then sends an API key (`Authorization: Bearer <key>`) instead of a `user_id`: the hook maps the key to a user, and the request acts as that user, replacing any `user_id` it carries. A missing or rejected key is a `401`. Everything below about `user_id` (format, ownership) is unchanged, it is just not the caller that chooses it any more. The Python client works this way: it reads the key from `GLIGABAO_API_KEY`.
 
 ## Passing `user_id`
 

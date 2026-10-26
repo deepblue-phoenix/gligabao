@@ -16,6 +16,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
+	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
@@ -88,6 +89,10 @@ type TimeseriesData = memory_core.SeriesData
 
 // TimeseriesPoint is one value of a series at a time.
 type TimeseriesPoint = memory_core.SeriesPoint
+
+// Authenticator is the auth hook (see ServeOptions.Auth and docs/hooks.md): it is called with the API key of a request and returns
+// the ID of the user the key belongs to, or an error to reject it.
+type Authenticator = httputil.Authenticator
 
 // TrainedModelDeployer is a named hook that deploys trained models (see ServeOptions.TrainedModelDeployers and
 // docs/hooks.md): gligabao fetches the weights of the model to a local directory and calls Deploy with it; what Deploy does
@@ -180,6 +185,12 @@ type ServeOptions struct {
 	// optional HTTP Handler, its own backend API. See docs/admin-extensions.md. Validated at startup: Serve returns the error if one
 	// is malformed.
 	AdminExtensions []AdminExtension
+	// Auth is the auth hook. If set, the user routes of the API (remember, query, datasets, timeseries, ontologies) require an API
+	// key, sent as "Authorization: Bearer <key>" (the Python client sends the one in GLIGABAO_API_KEY): Auth is called with it and
+	// returns the ID of the user the key belongs to, and the request acts as that user (a user_id the caller sent is replaced). A
+	// request without a key, or for which Auth returns an error (or an empty user), gets 401. If nil, those routes trust the
+	// user_id of the request, as before. It does not cover the admin UI, the training and eval endpoints (use MountOptions.Wrap).
+	Auth Authenticator
 	// Hooks are installed for the lifetime of Serve; every one is called for each event.
 	Hooks []Hooks
 }
@@ -301,6 +312,7 @@ func serverOptions(cfg *Config, opts ServeOptions) (serverOpts server.Options, r
 		SidecarURL:   cfg.SidecarURL,
 		Prices:       aiPrices(cfg),
 
+		Auth:                  opts.Auth,
 		TimeseriesProviders:   opts.TimeseriesProviders,
 		TrainedModelDeployers: opts.TrainedModelDeployers,
 

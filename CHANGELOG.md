@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.107.0] - 2026-11-06
+
+### Added
+- The `Auth` hook (`ServeOptions.Auth`, type `gligabao.Authenticator`): when set, the user routes (`remember`, `query`, datasets, timeseries, ontologies) require an API key sent as `Authorization: Bearer <key>`; gligabao calls the hook with it, and the hook returns the ID of the user the key belongs to. The request then acts as that user (a `user_id` the caller sent is replaced), and a missing or rejected key is a `401`. Without the hook nothing changes. See `docs/hooks.md` and `docs/identity.md`.
+- Python client: the API key is read from the `GLIGABAO_API_KEY` environment variable (or passed as `Client(api_key=...)`) and sent as the bearer token. It replaces the `user_id` of `remember`, `query` and `attach_timeseries`, which no longer take one. `Client.query()` is new.
+
 ## [0.106.0] - 2026-11-05
 
 ### Changed

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/datasets"
+	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/api/ontologies"
 	"github.com/deepblue-phoenix/gligabao/internal/api/query"
 	"github.com/deepblue-phoenix/gligabao/internal/api/remember"
@@ -27,25 +28,32 @@ func Register(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm me
 	for _, opt := range opts {
 		opt(&o)
 	}
-	mux.HandleFunc("POST /v1/gb/remember", remember.Handler(mgr, d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_image.WithImageDir(d.ImageDir)))
-	mux.HandleFunc("POST /v1/gb/query", query.Handler(d.Relational, llm))
-	mux.HandleFunc("POST /v1/gb/datasets", datasets.Create(d.Relational))
-	mux.HandleFunc("GET /v1/gb/datasets", datasets.List(d.Relational))
-	mux.HandleFunc("DELETE /v1/gb/datasets/{name}", datasets.Delete(d.Relational, d.Vector))
-	mux.HandleFunc("GET /v1/gb/datasets/{name}/graph", datasets.Graph(d.Relational))
-	mux.HandleFunc("POST /v1/gb/timeseries", timeseries.Attach(d.Relational))
-	mux.HandleFunc("GET /v1/gb/timeseries", timeseries.List(d.Relational))
-	mux.HandleFunc("GET /v1/gb/timeseries/{id}", timeseries.Get(d.Relational))
-	mux.HandleFunc("POST /v1/gb/ontologies", ontologies.Load(d.Relational, o.ontologyDirs))
-	mux.HandleFunc("PUT /v1/gb/ontologies/{name}", ontologies.Update(d.Relational, o.ontologyDirs))
+	a := func(h http.HandlerFunc) http.Handler { return httputil.Authenticate(o.auth, h) } // routes of users: with WithAuth they need an API key
+	mux.Handle("POST /v1/gb/remember", a(remember.Handler(mgr, d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_image.WithImageDir(d.ImageDir))))
+	mux.Handle("POST /v1/gb/query", a(query.Handler(d.Relational, llm)))
+	mux.Handle("POST /v1/gb/datasets", a(datasets.Create(d.Relational)))
+	mux.Handle("GET /v1/gb/datasets", a(datasets.List(d.Relational)))
+	mux.Handle("DELETE /v1/gb/datasets/{name}", a(datasets.Delete(d.Relational, d.Vector)))
+	mux.Handle("GET /v1/gb/datasets/{name}/graph", a(datasets.Graph(d.Relational)))
+	mux.Handle("POST /v1/gb/timeseries", a(timeseries.Attach(d.Relational)))
+	mux.Handle("GET /v1/gb/timeseries", a(timeseries.List(d.Relational)))
+	mux.Handle("GET /v1/gb/timeseries/{id}", a(timeseries.Get(d.Relational)))
+	mux.Handle("POST /v1/gb/ontologies", a(ontologies.Load(d.Relational, o.ontologyDirs)))
+	mux.Handle("PUT /v1/gb/ontologies/{name}", a(ontologies.Update(d.Relational, o.ontologyDirs)))
 }
 
 type options struct {
 	ontologyDirs []string
+	auth         httputil.Authenticator
 }
 
 // Option configures Register.
 type Option func(*options)
+
+// WithAuth makes every route of Register require an API key ("Authorization: Bearer <key>"): auth is called with it and returns
+// the ID of the user it belongs to, who the request then acts as (the user_id the caller sent is replaced). A request without a key,
+// or whose key auth rejects (any error), gets 401. Without it, routes trust the user_id of the request. The eval routes are not covered.
+func WithAuth(auth httputil.Authenticator) Option { return func(o *options) { o.auth = auth } }
 
 // WithOntologyDirs sets the directories ontology documents can be loaded from by file name (POST and PUT /v1/gb/ontologies with
 // "file"), searched in order. Without them only the "content" form works.
