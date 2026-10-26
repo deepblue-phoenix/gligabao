@@ -145,11 +145,11 @@ Tables of the evals (`internal/evals`, see its `README.md`; applied by `internal
 | `gb_experiment_def_evals`                 | the evals of an experiment, in the order they run.                                                                                |
 | `gb_experiment_runs`                      | one row per execution of an experiment: status, counts and cost over the case runs of its eval runs.                              |
 | `gb_eval_runs`                            | one row per execution of an eval (on its own or in an experiment run): status, params, counts, cost and times.                    |
-| `gb_eval_runs_meta_knowledge`             | the statistics of a knowledge eval run as a whole: chunks, steps, remember and recall calls and cost, checks held and failed.     |
+| `gb_eval_runs_meta_knowledge`             | the statistics of a knowledge eval run as a whole: chunks, steps, remember and query calls and cost, checks held and failed.     |
 | `gb_eval_runs_meta_training`              | the statistics of a training eval run: the trained model, the judge, the split of the scores, the judge's calls, tokens and cost. |
 | `gb_case_runs`                            | one row per execution of a case in an eval run: status (lifecycle), verdict (pass or fail), score, cost and times.                |
 | `gb_case_runs_meta_knowledge`             | what a knowledge case run was given, its answer, the checks that held and failed, and the dataset its graph is in.               |
-| `gb_case_runs_meta_knowledge_trajectories` | the ATIF trajectories of a knowledge case run (remember calls, then the recall), by reference.                                    |
+| `gb_case_runs_meta_knowledge_trajectories` | the ATIF trajectories of a knowledge case run (remember calls, then the query), by reference.                                    |
 | `gb_case_runs_meta_training`              | the question, the expected answer, the model's answer and the judge's score and reason of a training case run.                    |
 
 ### Where each table is defined

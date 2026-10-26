@@ -1,10 +1,10 @@
 # Datasets
 
-A dataset is a hard logical container. Every artifact, entity and edge belongs to exactly one dataset (`dataset_id`), and datasets never share nodes: the same entity remembered into two datasets is two separate rows, and recall only sees the graph of the dataset it targets. Its embeddings are isolated the same way, in vector datasets of its own, one per purpose (see [Vectors](#vectors)).
+A dataset is a hard logical container. Every artifact, entity and edge belongs to exactly one dataset (`dataset_id`), and datasets never share nodes: the same entity remembered into two datasets is two separate rows, and query only sees the graph of the dataset it targets. Its embeddings are isolated the same way, in vector datasets of its own, one per purpose (see [Vectors](#vectors)).
 
 - Every dataset is owned by a `user_id`, and that ownership covers all its artifacts, entities and edges. All endpoints require `user_id` (see [identity.md](identity.md)) (a non-empty string of at most 128 bytes): in the JSON body for `POST`, in the query string for `GET` and `DELETE`. A missing or invalid one returns `400`. A user only sees and changes their own datasets; names are unique per user, so two users can each have a dataset called `work`.
-- `remember` and `recall` take an optional `dataset` (name). If omitted, the default dataset `main` is used. There is no dataset until it is created: `main` is created for a user by their first `remember`.
-- `remember` creates the dataset on demand if it does not exist. `recall` on a dataset that does not exist (or was deleted) returns `404`.
+- `remember` and `query` take an optional `dataset` (name). If omitted, the default dataset `main` is used. There is no dataset until it is created: `main` is created for a user by their first `remember`.
+- `remember` creates the dataset on demand if it does not exist. `query` on a dataset that does not exist (or was deleted) returns `404`.
 - Names are 1-64 characters of letters, digits, `.`, `_`, `-`, starting with a letter or digit. Invalid names return `400`.
 - A dataset has `id`, `user_id`, `name`, `description`, `tags` (list of strings), `created_at`, `deleted` and `deleted_at`.
 
@@ -24,11 +24,11 @@ They are keyed by the id, not the name, so:
 - a name reused after a delete is a new dataset with a new id, and so new, empty vector datasets;
 - no setup is needed on create: a vector dataset appears with the first vector stored in it, and a dataset without vectors has none.
 
-`remember` writes both indexes, see [vectors.md](vectors.md#what-remember-writes) for what is embedded and how a failure is handled. `recall` does not read vectors yet.
+`remember` writes both indexes, see [vectors.md](vectors.md#what-remember-writes) for what is embedded and how a failure is handled. `query` does not read vectors yet.
 
 ## Soft delete
 
-Deleting sets `deleted = true` (and `deleted_at`); no relational rows are removed. A deleted dataset is invisible to list, remember and recall. Its name can be reused: creating (or remembering into) that name makes a new dataset with a new id and an empty graph. The old rows stay in the database under the old id.
+Deleting sets `deleted = true` (and `deleted_at`); no relational rows are removed. A deleted dataset is invisible to list, remember and query. Its name can be reused: creating (or remembering into) that name makes a new dataset with a new id and an empty graph. The old rows stay in the database under the old id.
 
 The vectors are the exception: they are removed with the dataset (`DeleteAll` on each of its `dataset-<id>-<index>` vector datasets), since a deleted dataset can never be read again and its vectors could only take up memory or storage. If that cleanup fails, the delete still succeeds (the vector datasets are unreachable) and the error is logged.
 

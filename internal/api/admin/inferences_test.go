@@ -48,7 +48,7 @@ func testInferences(t *testing.T, d *sql.DB) {
 	for _, r := range []relational.Inference{
 		{Type: "remember", Stage: "zz_stage", Model: "zz-model", Provider: "anthropic", Reasoning: "low", InputTokens: 10, OutputTokens: 5, CostUSD: 0.5},
 		{Type: "remember", Stage: "zz_stage", Model: "zz-model", Provider: "anthropic", InputTokens: 20, OutputTokens: 1, CostUSD: 0.25},
-		{Type: "recall", Stage: "zz_recall", InputTokens: 1, OutputTokens: 1}, // no model
+		{Type: "query", Stage: "zz_query", InputTokens: 1, OutputTokens: 1}, // no model
 	} {
 		if _, err := relational.RecordInference(ctx, d, r); err != nil {
 			t.Fatal(err)
@@ -60,7 +60,7 @@ func testInferences(t *testing.T, d *sql.DB) {
 		t.Fatalf("all: %d", c)
 	}
 	if all.Totals.Inferences != before.Totals.Inferences+3 || all.Totals.InputTokens != before.Totals.InputTokens+31 || all.Total != int(before.Totals.Inferences)+3 ||
-		all.Limit != 100 || len(all.Inferences) != min(all.Total, 100) || all.Inferences[0].Stage != "zz_recall" {
+		all.Limit != 100 || len(all.Inferences) != min(all.Total, 100) || all.Inferences[0].Stage != "zz_query" {
 		t.Errorf("all = %+v", all)
 	}
 	find := func(list []admin.InferenceBreakdown, key string) admin.InferenceBreakdown {

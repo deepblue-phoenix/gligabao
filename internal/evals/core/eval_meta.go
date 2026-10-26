@@ -9,12 +9,12 @@ type KnowledgeEvalRunMeta struct {
 	Chunks int `json:"chunks"`
 	// Steps is the total of ATIF steps over the trajectories of all the cases (the sum of KnowledgeCaseRunMeta.Steps).
 	Steps int `json:"steps"`
-	// RememberCalls and RecallCalls are the calls made, and RememberCostUSD and RecallCostUSD what they cost. The two costs add
+	// RememberCalls and QueryCalls are the calls made, and RememberCostUSD and QueryCostUSD what they cost. The two costs add
 	// up to the EvalRun's CostUSD.
 	RememberCalls   int     `json:"remember_calls"`
-	RecallCalls     int     `json:"recall_calls"`
+	QueryCalls      int     `json:"query_calls"`
 	RememberCostUSD float64 `json:"remember_cost_usd"`
-	RecallCostUSD   float64 `json:"recall_cost_usd"`
+	QueryCostUSD    float64 `json:"query_cost_usd"`
 	// ChecksPassed and ChecksFailed are the checks that held and the ones that did not, over all the cases (the sums of
 	// KnowledgeCaseRunMeta.PassedChecks and Problems).
 	ChecksPassed int `json:"checks_passed"`

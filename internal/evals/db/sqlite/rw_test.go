@@ -161,7 +161,7 @@ func TestGetAndUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	meta := &core.KnowledgeCaseRunMeta{CaseRunID: cr.ID, Answer: "Acme", Steps: 3, Trajectories: []core.KnowledgeTrajectory{
-		{Seq: 0, Kind: "remember", TrajectoryID: "t1", ArtifactIDs: []int64{4}}, {Seq: 1, Kind: "recall", TrajectoryID: "t2"}}}
+		{Seq: 0, Kind: "remember", TrajectoryID: "t1", ArtifactIDs: []int64{4}}, {Seq: 1, Kind: "query", TrajectoryID: "t2"}}}
 	if err := s.CreateCaseRunMeta(ctx, d, meta); err != nil {
 		t.Fatal(err)
 	}

@@ -71,8 +71,8 @@ func TestReasoningDefaults(t *testing.T) {
 			t.Errorf("%s default = %q, want none", s, r.Level(s))
 		}
 	}
-	if r.Level(StageRecall) != ai.ReasoningNone {
-		t.Errorf("recall default = %q, want none", r.Level(StageRecall))
+	if r.Level(StageQuery) != ai.ReasoningNone {
+		t.Errorf("query default = %q, want none", r.Level(StageQuery))
 	}
 	if r.Level(StageWebSearch) != ai.ReasoningNone {
 		t.Errorf("web_search default = %q, want none", r.Level(StageWebSearch))
@@ -83,19 +83,19 @@ func TestReasoningDefaults(t *testing.T) {
 	if err != nil || len(got) != 2 || got.Level(StageSummarizeChunk) != "none" || got.Level(StageResolveEdges) != "high" || got.Level(StageExtractGraph) != "none" {
 		t.Fatalf("got %v, %v", got, err)
 	}
-	for _, bad := range []map[string]string{{"web_search": "low"}, {"recall": "low"}, {"extract_graph": "max"}} {
+	for _, bad := range []map[string]string{{"web_search": "low"}, {"query": "low"}, {"extract_graph": "max"}} {
 		if _, err := ResolveReasoning(bad); !errors.Is(err, ErrInvalidReasoning) {
 			t.Errorf("%v: err = %v", bad, err)
 		}
 	}
-	if r, err := ResolveRecallReasoning(" High"); err != nil || r.Level(StageRecall) != "high" {
-		t.Errorf("recall: %v, %v", r, err)
+	if r, err := ResolveQueryReasoning(" High"); err != nil || r.Level(StageQuery) != "high" {
+		t.Errorf("query: %v, %v", r, err)
 	}
-	if r, err := ResolveRecallReasoning(""); err != nil || r != nil {
-		t.Errorf("recall default: %v, %v", r, err)
+	if r, err := ResolveQueryReasoning(""); err != nil || r != nil {
+		t.Errorf("query default: %v, %v", r, err)
 	}
-	if _, err := ResolveRecallReasoning("max"); !errors.Is(err, ErrInvalidReasoning) {
-		t.Errorf("recall: err = %v", err)
+	if _, err := ResolveQueryReasoning("max"); !errors.Is(err, ErrInvalidReasoning) {
+		t.Errorf("query: err = %v", err)
 	}
 }
 
@@ -107,18 +107,18 @@ func TestModelLLMReasoningAndStage(t *testing.T) {
 		gotReq, gotStage = r, StageOf(ctx)
 		return &ai.Response{}, nil
 	})
-	o := NewCallOptions([]Option{WithReasoning(Reasoning{StageSummarizeChunk: "low", StageRecall: "high"})})
+	o := NewCallOptions([]Option{WithReasoning(Reasoning{StageSummarizeChunk: "low", StageQuery: "high"})})
 	for _, tc := range []struct{ stage, want string }{
-		{StageExtractGraph, "none"}, {StageSummarizeChunk, "low"}, {StageRecall, "high"},
+		{StageExtractGraph, "none"}, {StageSummarizeChunk, "low"}, {StageQuery, "high"},
 	} {
 		o.ModelLLM(llm, tc.stage).Complete(context.Background(), ai.Request{})
 		if gotReq.Reasoning != tc.want || gotStage != tc.stage {
 			t.Errorf("%s: reasoning %q, stage %q; want %q", tc.stage, gotReq.Reasoning, gotStage, tc.want)
 		}
 	}
-	NewCallOptions(nil).ModelLLM(llm, StageRecall).Complete(context.Background(), ai.Request{})
+	NewCallOptions(nil).ModelLLM(llm, StageQuery).Complete(context.Background(), ai.Request{})
 	if gotReq.Reasoning != "none" {
-		t.Errorf("recall default = %q", gotReq.Reasoning)
+		t.Errorf("query default = %q", gotReq.Reasoning)
 	}
 	NewCallOptions(nil).ModelLLM(llm, StageExtractGraph).Complete(context.Background(), ai.Request{Reasoning: "high"})
 	if gotReq.Reasoning != "high" {

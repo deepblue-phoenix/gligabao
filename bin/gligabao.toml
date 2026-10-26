@@ -29,7 +29,7 @@ embedding_dimensions = 1536
 chunk_size = 1024
 chunk_overlap_percent = 20
 
-# Register the eval endpoints (POST /v1/gb/eval/remember, /v1/gb/eval/recall), which return ATIF trajectories
+# Register the eval endpoints (POST /v1/gb/eval/remember, /v1/gb/eval/query), which return ATIF trajectories
 # with their results. Default false; `serve --eval` turns it on.
 eval = false
 

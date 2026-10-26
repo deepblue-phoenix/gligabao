@@ -98,7 +98,7 @@ func Run(t *testing.T, d *sql.DB, s db.Store) {
 			must(t, s.CreateCaseRunMeta(ctx, d, &core.KnowledgeCaseRunMeta{CaseRunID: cr.ID, Answer: "ans", Problems: []string{"p"}, PassedChecks: []string{"ok"},
 				DatasetID: &ds, Steps: 4, Input: core.KnowledgeInput{Query: "q?"}, Trajectories: []core.KnowledgeTrajectory{
 					{Seq: 0, Kind: "remember", TrajectoryID: "tr-" + string(rune('a'+i)) + string(rune('0'+j)) + "-0", AgentName: "gligabao-remember", Steps: 2, ArtifactIDs: []int64{5, 6}, Path: "/p/0.json"},
-					{Seq: 1, Kind: "recall", TrajectoryID: "tr-" + string(rune('a'+i)) + string(rune('0'+j)) + "-1", AgentName: "gligabao-recall", Steps: 2},
+					{Seq: 1, Kind: "query", TrajectoryID: "tr-" + string(rune('a'+i)) + string(rune('0'+j)) + "-1", AgentName: "gligabao-query", Steps: 2},
 				}}))
 			crs = append(crs, cr)
 		}
@@ -173,7 +173,7 @@ func Run(t *testing.T, d *sql.DB, s db.Store) {
 	m, ok := crs[0].Meta.(*core.KnowledgeCaseRunMeta)
 	if !ok || m.Answer != "ans" || m.Steps != 4 || m.DatasetID == nil || *m.DatasetID != 40 || !reflect.DeepEqual(m.Problems, []string{"p"}) || !reflect.DeepEqual(m.PassedChecks, []string{"ok"}) ||
 		m.Input.Query != "q?" || len(m.Trajectories) != 2 || m.Trajectories[0].Kind != "remember" || !reflect.DeepEqual(m.Trajectories[0].ArtifactIDs, []int64{5, 6}) ||
-		m.Trajectories[0].Path != "/p/0.json" || m.Trajectories[1].Seq != 1 || m.Trajectories[1].Kind != "recall" || m.Trajectories[0].CreatedAt.IsZero() {
+		m.Trajectories[0].Path != "/p/0.json" || m.Trajectories[1].Seq != 1 || m.Trajectories[1].Kind != "query" || m.Trajectories[0].CreatedAt.IsZero() {
 		t.Fatalf("knowledge case run meta: %#v", crs[0].Meta)
 	}
 	tcrs, err := s.ListCaseRuns(ctx, d, tev.ID)
@@ -193,7 +193,7 @@ func Run(t *testing.T, d *sql.DB, s db.Store) {
 
 	// Trajectories by ID.
 	ref, err := s.FindKnowledgeTrajectory(ctx, d, "tr-b1-1")
-	if err != nil || ref.CaseRunID != caseRuns[1][1].ID || ref.Kind != "recall" || ref.AgentName != "gligabao-recall" {
+	if err != nil || ref.CaseRunID != caseRuns[1][1].ID || ref.Kind != "query" || ref.AgentName != "gligabao-query" {
 		t.Fatalf("FindKnowledgeTrajectory: %+v %v", ref, err)
 	}
 	if _, err := s.FindKnowledgeTrajectory(ctx, d, "nope"); !errors.Is(err, db.ErrNotFound) {

@@ -129,7 +129,7 @@ func ListEdges(ctx context.Context, d *sql.DB, userID, name string) ([]model.Edg
 }
 
 //---------------------------------------------------------------------------------------------
-// Recall retrieval
+// Query retrieval
 
 // FallbackSeedEntities returns the IDs of the most recently updated entities of the dataset.
 func FallbackSeedEntities(ctx context.Context, d *sql.DB, dsID int64, limit int) ([]int64, error) {

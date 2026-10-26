@@ -4,7 +4,7 @@ package memory
 // the document, records its metadata in the relational database (gb_ontologies: name, owner, hash, counts) and
 // stores the ontology itself, classes as nodes and relationships as edges, in the graph database
 // (gb_onto_classes, gb_onto_edges). A loaded ontology can later be updated by name: merged with a new document, or replaced by it (see UpdateOntology). Ontologies are owned by a user and named; names are unique per user. They are
-// separate from datasets and do not (yet) take part in remember or recall.
+// separate from datasets and do not (yet) take part in remember or query.
 
 import (
 	"bytes"

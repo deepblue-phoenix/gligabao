@@ -1,5 +1,5 @@
-// Package memory_recall answers a question from the knowledge graph of a dataset with an LLM.
-package memory_recall
+// Package memory_query answers a question from the knowledge graph of a dataset with an LLM.
+package memory_query
 
 import (
 	"context"
@@ -19,8 +19,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
-// CallRecall is the type of the inferences of Recall, stored in gb_inferences.type.
-const CallRecall = "recall"
+// CallQuery is the type of the inferences of Query, stored in gb_inferences.type.
+const CallQuery = "query"
 
 const (
 	maxQueryTokens  = 12
@@ -43,10 +43,10 @@ type Evidence struct {
 	Edges    []EvidenceEdge   `json:"edges"`
 }
 
-// RecallResult is the answer to a query together with its supporting evidence.
-type RecallResult struct {
+// QueryResult is the answer to a query together with its supporting evidence.
+type QueryResult struct {
 	// SessionID is the session the call was made in (WithSessionID); omitted if there was none. It only labels the
-	// call, so that a recall can be connected to the artifacts remembered in the same session: it does not change
+	// call, so that a query can be connected to the artifacts remembered in the same session: it does not change
 	// what is retrieved or answered.
 	SessionID string   `json:"session_id,omitempty"`
 	Answer    string   `json:"answer"`
@@ -59,20 +59,20 @@ type RecallResult struct {
 
 //---------------------------------------------------------------------------------------------
 
-// Recall answers query using the knowledge graph: relevant entities and their edges are retrieved,
+// Query answers query using the knowledge graph: relevant entities and their edges are retrieved,
 // the LLM answers from that context, and the entities/edges it used are returned as evidence. Only the named
 // dataset of userID (empty means DefaultDataset) is searched; ErrDatasetNotFound is returned if it does not exist.
 //
 // With WithSessionID the result carries that session ID, and so does the call's trajectory (as its session_id,
 // the same one the trajectories of the session's Remember calls have). The session does not influence retrieval or
-// the answer: Recall is the same function of the graph and the query with or without it.
+// the answer: Query is the same function of the graph and the query with or without it.
 //
 // The LLM call is recorded as an inference (gb_inferences) with the reasoning level medium by default (see
-// memory_core.DefaultRecallReasoning).
+// memory_core.DefaultQueryReasoning).
 //
 // Only with WithEval is the call recorded as an ATIF trajectory (stored as JSON in TrajectoryDir and returned in
-// RecallResult.Trajectory, with its ID in RecallResult.TrajectoryID).
-func Recall(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset, query string, opts ...memory_core.Option) (res *RecallResult, err error) {
+// QueryResult.Trajectory, with its ID in QueryResult.TrajectoryID).
+func Query(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset, query string, opts ...memory_core.Option) (res *QueryResult, err error) {
 	userID, err = memory_core.ResolveUserID(userID)
 	if err != nil {
 		return nil, err
@@ -92,7 +92,7 @@ func Recall(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset
 		return nil, err
 	}
 	co.SessionID = sessionID
-	tr := memory_core.StartTrace(CallRecall, co)
+	tr := memory_core.StartTrace(CallQuery, co)
 	defer func() {
 		if traj := tr.Finish(err); res != nil && traj != nil {
 			res.TrajectoryID, res.Trajectory = traj.TrajectoryID, traj
@@ -110,7 +110,7 @@ func Recall(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset
 	if len(rc.Graph.entities) == 0 {
 		const none = "I don't have any information in memory to answer that."
 		tr.Agent(none)
-		return &RecallResult{
+		return &QueryResult{
 			SessionID: sessionID,
 			Answer:    none,
 			Evidence:  Evidence{Entities: []EvidenceEntity{}, Edges: []EvidenceEdge{}},
@@ -118,45 +118,45 @@ func Recall(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset
 	}
 
 	// The answer is thought through with the reasoning level medium unless the call sets another (WithReasoning with
-	// memory_core.StageRecall); the inference records it.
-	out, err := recallLLM(ctx, co.ModelLLM(tr.Wrap(memory_core.WithRecording(llm, d, CallRecall)), memory_core.StageRecall), rc)
+	// memory_core.StageQuery); the inference records it.
+	out, err := queryLLM(ctx, co.ModelLLM(tr.Wrap(memory_core.WithRecording(llm, d, CallQuery)), memory_core.StageQuery), rc)
 	if err != nil {
 		return nil, err
 	}
-	return &RecallResult{SessionID: sessionID, Answer: out.Answer, Evidence: getEvidence(rc.Graph, out)}, nil
+	return &QueryResult{SessionID: sessionID, Answer: out.Answer, Evidence: getEvidence(rc.Graph, out)}, nil
 }
 
 //---------------------------------------------------------------------------------------------
 
-// recallContext is everything the recall LLM is given to answer a question: the memory (the retrieved subgraph),
+// queryContext is everything the query LLM is given to answer a question: the memory (the retrieved subgraph),
 // the current time (to interpret the validity of temporal facts) and the question itself.
-type recallContext struct {
+type queryContext struct {
 	Now      time.Time
 	Graph    *graphContext
 	Question string
 }
 
-// assembleContext builds the recallContext for query: it retrieves the subgraph of dataset dsID around the
+// assembleContext builds the queryContext for query: it retrieves the subgraph of dataset dsID around the
 // entities matching the query and stamps it with the current time.
-func assembleContext(ctx context.Context, d *sql.DB, dsID int64, query string) (*recallContext, error) {
+func assembleContext(ctx context.Context, d *sql.DB, dsID int64, query string) (*queryContext, error) {
 	g, err := retrieve(ctx, d, dsID, query)
 	if err != nil {
 		return nil, err
 	}
-	return &recallContext{Now: relational.Now(), Graph: g, Question: query}, nil
+	return &queryContext{Now: relational.Now(), Graph: g, Question: query}, nil
 }
 
 // render returns the user message sent to the LLM.
-func (c *recallContext) render() string {
+func (c *queryContext) render() string {
 	return "<current_time>\n" + relational.FormatTime(c.Now) + "\n</current_time>\n\n" +
 		"<graph>\n" + c.Graph.render() + "</graph>\n\n" +
 		"<question>\n" + c.Question + "\n</question>"
 }
 
-// recallLLM asks the LLM to answer rc.Question from rc and parses its structured output.
-func recallLLM(ctx context.Context, llm memory_core.LLM, rc *recallContext) (*recallOutput, error) {
+// queryLLM asks the LLM to answer rc.Question from rc and parses its structured output.
+func queryLLM(ctx context.Context, llm memory_core.LLM, rc *queryContext) (*queryOutput, error) {
 	resp, err := llm.Complete(ctx, ai.Request{
-		System:    recallSystemPrompt,
+		System:    querySystemPrompt,
 		Messages:  []ai.Message{{Role: ai.RoleUser, Content: rc.render()}},
 		MaxTokens: 2048,
 	})
@@ -166,23 +166,23 @@ func recallLLM(ctx context.Context, llm memory_core.LLM, rc *recallContext) (*re
 	if resp.StopReason == "max_tokens" {
 		return nil, errors.New("memory: LLM output truncated")
 	}
-	return parseRecall(resp.Text)
+	return parseQuery(resp.Text)
 }
 
 //---------------------------------------------------------------------------------------------
 
-type recallOutput struct {
+type queryOutput struct {
 	Answer   string  `json:"answer"`
 	Entities []int64 `json:"entities"`
 	Edges    []int64 `json:"edges"`
 }
 
-func parseRecall(s string) (*recallOutput, error) {
+func parseQuery(s string) (*queryOutput, error) {
 	start, end := strings.Index(s, "{"), strings.LastIndex(s, "}")
 	if start < 0 || end < start {
 		return nil, errors.New("memory: no JSON object in LLM output")
 	}
-	var o recallOutput
+	var o queryOutput
 	if err := json.Unmarshal([]byte(s[start:end+1]), &o); err != nil {
 		return nil, fmt.Errorf("memory: decode LLM output: %w", err)
 	}
@@ -219,7 +219,7 @@ func (g *graphContext) render() string {
 
 // getEvidence returns the entities and edges the LLM cited in o, keeping only cited IDs that were present in the
 // context. Endpoints of cited edges are included as cited entities.
-func getEvidence(g *graphContext, o *recallOutput) Evidence {
+func getEvidence(g *graphContext, o *queryOutput) Evidence {
 	ev := Evidence{Entities: []EvidenceEntity{}, Edges: []EvidenceEdge{}}
 	ents := map[int64]bool{}
 	for _, id := range o.Entities {

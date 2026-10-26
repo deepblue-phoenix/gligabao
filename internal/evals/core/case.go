@@ -103,7 +103,7 @@ type KnowledgeCaseRunMeta struct {
 	// Input is what was actually given: the def's input, with the text of every TextFile read in. The def may change after
 	// the run; this stays as it was.
 	Input KnowledgeInput `json:"input"`
-	// Answer is the answer of the recall ("" if the case has no Query).
+	// Answer is the answer of the query ("" if the case has no Query).
 	Answer string `json:"answer,omitempty"`
 	// Problems are the checks that did not hold, and PassedChecks the ones that did.
 	Problems     []string `json:"problems,omitempty"`
@@ -126,7 +126,7 @@ func (KnowledgeCaseRunMeta) CaseType() Type { return TypeKnowledge }
 type KnowledgeTrajectory struct {
 	// Seq is the order of the call within the case run, from 0.
 	Seq int `json:"seq"`
-	// Kind is "remember" or "recall".
+	// Kind is "remember" or "query".
 	Kind         string  `json:"kind"`
 	TrajectoryID string  `json:"trajectory_id"`
 	AgentName    string  `json:"agent_name,omitempty"`
@@ -134,7 +134,7 @@ type KnowledgeTrajectory struct {
 	CostUSD      float64 `json:"cost_usd"`
 	// Path is the JSON file the trajectory was stored in ("" if none).
 	Path string `json:"path,omitempty"`
-	// ArtifactIDs are the artifacts the call is about (remember: its input; recall: the sources of the evidence).
+	// ArtifactIDs are the artifacts the call is about (remember: its input; query: the sources of the evidence).
 	ArtifactIDs []int64   `json:"artifact_ids,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 }
@@ -143,7 +143,7 @@ type KnowledgeTrajectory struct {
 type KnowledgeInput struct {
 	// Remember are the texts to remember, in order.
 	Remember []KnowledgeArtifact `json:"remember,omitempty"`
-	// Query is the question asked once everything is remembered. Empty: no recall (the case checks only the storage).
+	// Query is the question asked once everything is remembered. Empty: no query (the case checks only the storage).
 	Query string `json:"query,omitempty"`
 }
 
@@ -208,7 +208,7 @@ type KnowledgeParams struct {
 	// Models picks the LLM model of the stages of remember ("extract_graph", "resolve_edges", "extract_image").
 	Models map[string]string `json:"models,omitempty"`
 	// Reasoning picks the reasoning level ("none", "low", "medium", "high") of each LLM stage ("extract_graph",
-	// "summarize_chunk", "resolve_edges", "resolve_series", "extract_image", "recall").
+	// "summarize_chunk", "resolve_edges", "resolve_series", "extract_image", "query").
 	Reasoning map[string]string `json:"reasoning,omitempty"`
 }
 

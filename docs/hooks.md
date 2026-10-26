@@ -4,7 +4,7 @@ A program that embeds gligabao (see [Embedding in Go programs](../README.md#embe
 
 | Hook | Where it is set | Called | Purpose |
 |---|---|---|---|
-| [`Hooks.SystemEvent`](#system-events) | `ServeOptions.Hooks` | after every `remember`, `remember` of an image, `recall` and timeseries request, successful or not | logging, metrics, shipping events to a monitoring service |
+| [`Hooks.SystemEvent`](#system-events) | `ServeOptions.Hooks` | after every `remember`, `remember` of an image, `query` and timeseries request, successful or not | logging, metrics, shipping events to a monitoring service |
 | [`TimeseriesProvider.Fetch`](#timeseries-providers) | `ServeOptions.TimeseriesProviders` | when a `remember` request asks to fetch timeseries | supply timeseries from your own data source |
 | [`TrainedModelInferenceHook.Infer`](#trained-model-inference-hooks) | `ServeOptions.TrainedModelInferenceHooks` | when a trained model whose name the hook targets is prompted (admin UI prompt dialog, `POST /v1/gb/training/models/{id}/infer`) | run the prompts of a trained model on your own infrastructure or a provider, instead of the sidecar (Modal) |
 | [`TrainedModelDeployer.Deploy`](#trained-model-deployers) | `ServeOptions.TrainedModelDeployers` | when a request deploys a trained model (`POST /v1/gb/training/models/{id}/deployments`) | hand the weights of a trained model to somewhere else (an upload, a copy, a conversion, ...) |
@@ -52,7 +52,7 @@ type Hooks struct {
 - **Read-only event.** The `SystemEvent` map must not be modified, and should not be retained after returning if you may change it: copy it first.
 - **Panics are contained.** A callback that panics does not affect the request or stop the remaining callbacks; the panic is silently discarded, so recover and log yourself if you want to know.
 - **`ctx`** is the context of the HTTP request that caused the event (cancelled if the client leaves).
-- Events are emitted by the regular endpoints **and** by their `eval` variants (`POST /v1/gb/eval/remember`, `POST /v1/gb/eval/recall`), which use the same handlers.
+- Events are emitted by the regular endpoints **and** by their `eval` variants (`POST /v1/gb/eval/remember`, `POST /v1/gb/eval/query`), which use the same handlers.
 
 ### Event types
 
@@ -94,15 +94,15 @@ Fields: `user_id`, `dataset`, `image_artifact_id`, `session_id`, `extraction_id`
 
 Fields: `user_id`, `dataset`, `session_id`, `image_bytes`, `duration_ms`, `error`.
 
-#### `recall.completed`
+#### `query.completed`
 
-A question was answered (`POST /v1/gb/recall`).
+A question was answered (`POST /v1/gb/query`).
 
 Fields: `user_id`, `dataset`, `session_id`, `query_bytes`, `evidence_entities`, `evidence_edges` (the size of the evidence returned), `duration_ms`.
 
-#### `recall.failed`
+#### `query.failed`
 
-Fields: `user_id`, `dataset`, `session_id`, `query_bytes`, `duration_ms`, `error`. It is emitted for any error of the recall, including those answered with 400/404 (invalid user or dataset, dataset not found), not only 502.
+Fields: `user_id`, `dataset`, `session_id`, `query_bytes`, `duration_ms`, `error`. It is emitted for any error of the query, including those answered with 400/404 (invalid user or dataset, dataset not found), not only 502.
 
 #### `timeseries.completed`
 

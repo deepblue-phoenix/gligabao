@@ -97,7 +97,7 @@ type Options struct {
 	// TrajectoryDir is where the ATIF trajectories of the eval endpoints are stored as JSON.
 	// Default: an "atif" directory next to the SQLite file (memory_core.TrajectoryDir if there is none).
 	TrajectoryDir string
-	// EvalModeEnable registers the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/recall), which return ATIF
+	// EvalModeEnable registers the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/query), which return ATIF
 	// trajectories with their results. Off by default.
 	EvalModeEnable bool
 	// TrainingModeEnable registers the training handlers (/v1/gb/training/...) and starts the training monitor. Off by default.
@@ -548,7 +548,7 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 		memory_core.TrajectoryDir = filepath.Join(filepath.Dir(database.SQLitePath), "atif")
 	}
 	if opts.EvalModeEnable {
-		log.Warn("eval mode: /v1/gb/eval/remember and /v1/gb/eval/recall are enabled")
+		log.Warn("eval mode: /v1/gb/eval/remember and /v1/gb/eval/query are enabled")
 	}
 	dbPath := opts.DB.SQLitePath
 	if dbPath == "" {
@@ -617,7 +617,7 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 	// Web search is Anthropic's cloud-based web search tool, so it needs the Anthropic API key and only exists with it.
 	var ws memory_core.WebSearcher
 	if c, err := ai.New(opts.AnthropicKey, ai.WithPrices(ai.NewPriceTable(opts.Prices))); err != nil {
-		log.WithError(err).Warn("LLM client unavailable; /v1/gb/remember and /v1/gb/recall will return 503")
+		log.WithError(err).Warn("LLM client unavailable; /v1/gb/remember and /v1/gb/query will return 503")
 		log.Info("web search is not available (no Anthropic API key); remember requests with web_search return 503")
 	} else {
 		llm, ws = c, c

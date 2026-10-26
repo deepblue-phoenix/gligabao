@@ -17,7 +17,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// TrajectoryDir is where Remember, Recall and RememberImage store their ATIF trajectories (one pretty-printed JSON
+// TrajectoryDir is where Remember, Query and RememberImage store their ATIF trajectories (one pretty-printed JSON
 // file per call, named <trajectory_id>.json). It is read on every call; set it once at startup, or override it per
 // call with WithTrajectoryDir.
 var TrajectoryDir = "bin/atif"
@@ -37,7 +37,7 @@ type Classifier interface {
 	Classify(ctx context.Context, text string) (*jev.Classification, jev.Call, error)
 }
 
-// Option customizes a single Remember, Recall or RememberImage call. Without WithEval no trajectory is generated.
+// Option customizes a single Remember, Query or RememberImage call. Without WithEval no trajectory is generated.
 type Option func(*CallOptions)
 
 // CallOptions are the settings of one call, built from Options by NewCallOptions. Each pipeline reads the fields
@@ -66,14 +66,14 @@ type CallOptions struct {
 	Chunking chunk.Config
 
 	// SessionID is the user/agent session the call belongs to ("" for none), set by WithSessionID. Remember and
-	// RememberImage attach it to what they store; Recall only records it (it never changes the answer).
+	// RememberImage attach it to what they store; Query only records it (it never changes the answer).
 	SessionID string
 
 	// Models is the model of each LLM stage of Remember and RememberImage, set by WithModels; a stage not in it uses the
 	// default model. See ModelLLM.
 	Models Models
 
-	// Reasoning is the reasoning level of each stage that takes one (see ReasoningStages, StageRecall), set by WithReasoning;
+	// Reasoning is the reasoning level of each stage that takes one (see ReasoningStages, StageQuery), set by WithReasoning;
 	// a stage not in it runs with its default (see DefaultReasoning).
 	Reasoning Reasoning
 
@@ -110,7 +110,7 @@ func WithEval() Option { return func(o *CallOptions) { o.Eval = true } }
 
 // WithSessionID attaches the call to a user/agent session, so that what comes from the same session can be
 // connected. Remember and Store attach it to the artifact and record it against every entity and edge the artifact
-// yields (see gb_entity_sessions, gb_edge_sessions), RememberImage to the image artifact; Recall only carries it
+// yields (see gb_entity_sessions, gb_edge_sessions), RememberImage to the image artifact; Query only carries it
 // into its result and trajectory, and its answer does not depend on it. The ID is used as given: validate it with
 // ResolveSessionID first. Empty means no session.
 func WithSessionID(id string) Option { return func(o *CallOptions) { o.SessionID = id } }
@@ -152,7 +152,7 @@ func WithTrajectoryDir(dir string) Option { return func(o *CallOptions) { o.Dir 
 
 //---------------------------------------------------------------------------------------------
 
-// Trace records one Remember/Recall/RememberImage call as an ATIF trajectory. A nil *Trace (eval not requested) is
+// Trace records one Remember/Query/RememberImage call as an ATIF trajectory. A nil *Trace (eval not requested) is
 // valid and records nothing, so callers need no checks.
 type Trace struct {
 	b   *atif.Builder

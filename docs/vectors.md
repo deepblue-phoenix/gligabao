@@ -1,6 +1,6 @@
 # Vector storage
 
-Embeddings live in a vector store (`internal/db/vector`), selected with `vector_store` in `gligabao.toml`. It is separate from the main database (`db_backend`) and isolates vectors by dataset (see [Datasets](#datasets)). The `Store` interface has `Upsert`, `Query`, `Delete` and `DeleteAll`; `remember` writes entity, edge and chunk embeddings to it (see [What `remember` writes](#what-remember-writes)); `recall` does not read it yet.
+Embeddings live in a vector store (`internal/db/vector`), selected with `vector_store` in `gligabao.toml`. It is separate from the main database (`db_backend`) and isolates vectors by dataset (see [Datasets](#datasets)). The `Store` interface has `Upsert`, `Query`, `Delete` and `DeleteAll`; `remember` writes entity, edge and chunk embeddings to it (see [What `remember` writes](#what-remember-writes)); `query` does not read it yet.
 
 | `vector_store` | Backend | Needs |
 |---|---|---|
@@ -33,7 +33,7 @@ The IDs are the row IDs of `gb_entities` and `gb_edges` (and, for chunks and sum
 
 The vector dataset is keyed by the gligabao dataset's numeric ID, not its name or owner, so:
 
-- datasets never share vectors, even if two users use the same dataset name, and a recall only ever searches its own dataset's vectors;
+- datasets never share vectors, even if two users use the same dataset name, and a query only ever searches its own dataset's vectors;
 - a name reused after a soft delete is a new dataset with a new ID, so it starts with empty vector datasets;
 - there is nothing to do when a dataset is created: the vector datasets appear with the first `Upsert`, and querying one that does not exist returns no matches. A dataset that has no entities or edges yet has none.
 
@@ -61,7 +61,7 @@ All the texts of one call (for a chunked text: of one chunk) are embedded in a s
 - The vectors are written right after the commit (the database and the vector store cannot share a transaction). If that write fails, the request fails with the relational data already saved; the vectors of those entities and edges are written again the next time they are mentioned.
 - Embedding needs `openai_api_key` (or `OPENAI_API_KEY`). Without it the server still starts, logs a warning, and `remember` stores no vectors.
 - The tokens and cost of each embedding request are stored as an inference in `gb_inferences` (type `remember`, stage `embed`, with the embedding model, reasoning `none` and `output_tokens` 0), next to the LLM calls.
-- The vectors have no effect yet on what `recall` returns: it does not read them.
+- The vectors have no effect yet on what `query` returns: it does not read them.
 
 If you change `embedding_dimensions`, or the embedding model, the stored vectors are no longer comparable with new ones (the chromem store rejects the new dimension outright); there is no re-embedding yet.
 

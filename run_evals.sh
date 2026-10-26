@@ -13,7 +13,7 @@ usage() {
 Usage: ./run_evals.sh [options] [case-name ...]
 
 Runs one of the two kinds of evals against the real LLM (needs ANTHROPIC_API_KEY):
-  knowledge   (default) knowledge extraction: remember, then recall
+  knowledge   (default) knowledge extraction: remember, then query
   training    a trained model answers the cases of an eval (questions about knowledge in its training data, phrased
               differently from the training examples), an LLM judges the answers; the run is stored in the database, as the
               admin UI's Eval button does it. Needs a running sidecar and the id of a trained model:

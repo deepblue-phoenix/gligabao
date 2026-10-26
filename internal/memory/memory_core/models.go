@@ -169,9 +169,9 @@ func StageOf(ctx context.Context) string {
 
 //---------------------------------------------------------------------------------------------
 
-// StageRecall is the LLM call of Recall that answers the question. It is not a stage of remember (so it is not in Stages,
+// StageQuery is the LLM call of Query that answers the question. It is not a stage of remember (so it is not in Stages,
 // and takes no model), but it has a reasoning level of its own.
-const StageRecall = "recall"
+const StageQuery = "query"
 
 // ReasoningStages lists the stages that take a reasoning level: the LLM stages of remember (see Stages) but the web
 // search, which runs on Anthropic's web search tool without thinking (and Jev, which does not think either).
@@ -181,14 +181,14 @@ var ReasoningStages = []string{StageExtractGraph, StageSummarizeChunk, StageReso
 // that no thinking tokens are paid for by default; a call turns it on per stage (WithReasoning).
 const (
 	DefaultRememberReasoning = ai.ReasoningNone
-	DefaultRecallReasoning   = ai.ReasoningNone
+	DefaultQueryReasoning    = ai.ReasoningNone
 )
 
-// DefaultReasoning is the reasoning level of a stage when the call sets none: DefaultRecallReasoning for StageRecall,
+// DefaultReasoning is the reasoning level of a stage when the call sets none: DefaultQueryReasoning for StageQuery,
 // DefaultRememberReasoning for a stage of ReasoningStages and none for any other.
 func DefaultReasoning(stage string) string {
-	if stage == StageRecall {
-		return DefaultRecallReasoning
+	if stage == StageQuery {
+		return DefaultQueryReasoning
 	}
 	for _, s := range ReasoningStages {
 		if s == stage {
@@ -201,7 +201,7 @@ func DefaultReasoning(stage string) string {
 // ErrInvalidReasoning means a stage that takes no reasoning level is named, or a level is unknown.
 var ErrInvalidReasoning = errors.New("invalid reasoning")
 
-// Reasoning maps a stage (see ReasoningStages, and StageRecall for Recall) to its reasoning level (ai.ReasoningLow, ...).
+// Reasoning maps a stage (see ReasoningStages, and StageQuery for Query) to its reasoning level (ai.ReasoningLow, ...).
 // A stage that is missing runs with its default (DefaultReasoning, none: no thinking); "low", "medium" and "high" turn it on.
 type Reasoning map[string]string
 
@@ -234,14 +234,14 @@ func ResolveReasoning(m map[string]string) (Reasoning, error) {
 	return out, nil
 }
 
-// ResolveRecallReasoning validates the reasoning level of Recall and returns it as a Reasoning for WithReasoning. An
-// empty level means the default (DefaultRecallReasoning) and gives nil.
-func ResolveRecallReasoning(level string) (Reasoning, error) {
-	l, err := resolveLevel(StageRecall, level)
+// ResolveQueryReasoning validates the reasoning level of Query and returns it as a Reasoning for WithReasoning. An
+// empty level means the default (DefaultQueryReasoning) and gives nil.
+func ResolveQueryReasoning(level string) (Reasoning, error) {
+	l, err := resolveLevel(StageQuery, level)
 	if err != nil || l == "" {
 		return nil, err
 	}
-	return Reasoning{StageRecall: l}, nil
+	return Reasoning{StageQuery: l}, nil
 }
 
 // resolveLevel normalizes a level; "" is returned for an empty one (the default).
@@ -256,8 +256,8 @@ func resolveLevel(stage, level string) (string, error) {
 	return l, nil
 }
 
-// WithReasoning sets the reasoning level of stages (see ReasoningStages; StageRecall for Recall). A stage that is not in r
-// runs with its default level (DefaultReasoning). Validate r with ResolveReasoning (or ResolveRecallReasoning) first.
+// WithReasoning sets the reasoning level of stages (see ReasoningStages; StageQuery for Query). A stage that is not in r
+// runs with its default level (DefaultReasoning). Validate r with ResolveReasoning (or ResolveQueryReasoning) first.
 func WithReasoning(r Reasoning) Option { return func(o *CallOptions) { o.Reasoning = r } }
 
 // Level is the reasoning level a stage runs with, as it is recorded: the one set for it, or its default

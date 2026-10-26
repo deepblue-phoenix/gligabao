@@ -7,7 +7,7 @@ Every request to gligabao says which user it acts for, with a `user_id`. gligaba
 | Endpoint | Where |
 | -------- | ----- |
 | `POST /v1/gb/remember` | JSON body: `"user_id"` |
-| `POST /v1/gb/recall` | JSON body: `"user_id"` |
+| `POST /v1/gb/query` | JSON body: `"user_id"` |
 | `POST /v1/gb/datasets` | JSON body: `"user_id"` |
 | `GET /v1/gb/datasets` | query string: `?user_id=u1` |
 | `DELETE /v1/gb/datasets/{name}` | query string: `?user_id=u1` |
@@ -36,7 +36,7 @@ A [dataset](datasets.md) is owned by the user who created it, and that ownership
 
 - Dataset names are unique per user. Two users can each have a dataset called `work`, and they are unrelated: separate ids, separate graphs and separate vector datasets.
 - `list` returns only the caller's datasets.
-- `remember` and `recall` look the dataset up by `(user_id, name)`. `remember` creates it for that user if missing. `recall` returns `404` if the user has no live dataset with that name, even when another user has one.
+- `remember` and `query` look the dataset up by `(user_id, name)`. `remember` creates it for that user if missing. `query` returns `404` if the user has no live dataset with that name, even when another user has one.
 - `delete` soft-deletes only the caller's dataset, and returns `404` for another user's.
 - There is no cross-user sharing. Nothing is read or written across users.
 - The default dataset `main` is per user, and is created by that user's first `remember`.

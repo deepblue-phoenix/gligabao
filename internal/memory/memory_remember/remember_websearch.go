@@ -12,7 +12,7 @@ package memory_remember
 //     parallel). The answer is a short, dated briefing.
 //  3. The briefing is processed like any other text: the graph is extracted from it, reconciled with the stored facts
 //     (so news can close an outdated fact) and stored, with the entities and edges it yields, which are nodes like all
-//     the others (they are linked to the briefing's artifact, can be embedded, and are found by recall).
+//     the others (they are linked to the briefing's artifact, can be embedded, and are found by query).
 //  4. The briefing is stored as an ARTIFACT OF ITS OWN, of kind "web_search" (graph.ArtifactWebSearch), that saves the
 //     query that was issued (gb_artifacts.query) and has as its PARENT (gb_artifacts.parent_id) the artifact the entity
 //     came from: the artifact (for a long text, the chunk) in which the entity was extracted. So the provenance chain

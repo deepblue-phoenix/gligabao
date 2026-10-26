@@ -1,9 +1,9 @@
-package memory_recall
+package memory_query
 
-// LLM system prompts for recall. User messages are assembled next to the code that calls the LLM.
+// LLM system prompts for query. User messages are assembled next to the code that calls the LLM.
 
-// Answering a question from the retrieved graph (Recall).
-const recallSystemPrompt = `You answer questions using ONLY a knowledge graph given in <graph>.
+// Answering a question from the retrieved graph (Query).
+const querySystemPrompt = `You answer questions using ONLY a knowledge graph given in <graph>.
 
 The graph lists entities as "[entity ID] name (type): description" and edges as
 "[edge ID] source(ID) --relation--> target(ID): fact [valid_at=..., invalid_at=...]".

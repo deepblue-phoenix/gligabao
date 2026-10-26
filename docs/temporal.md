@@ -64,9 +64,9 @@ Example: "Alice works at Acme" (artifact at 2023-01-01), then "Alice started wor
 | 1 | Alice works at Acme. | 2023-01-01 | 2024-03-01 | (time of the second `remember`) |
 | 2 | Alice works at Globex. | 2024-03-01 | | |
 
-## Recall
+## Query
 
-`recall` sends every retrieved edge to the LLM with its `valid_at` and `invalid_at` (and a "superseded" marker) plus the current time. The model is told that edges without `invalid_at` are still true, so "Where does Alice work now?" is answered from the Globex edge, while history questions can use the closed Acme edge. Evidence edges carry the temporal fields too.
+`query` sends every retrieved edge to the LLM with its `valid_at` and `invalid_at` (and a "superseded" marker) plus the current time. The model is told that edges without `invalid_at` are still true, so "Where does Alice work now?" is answered from the Globex edge, while history questions can use the closed Acme edge. Evidence edges carry the temporal fields too.
 
 ## Errors and cost
 

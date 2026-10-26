@@ -87,7 +87,7 @@
 | `internal/api/admin.webSearchStats`                       | is the answer of the web search statistics endpoint.                                                                   |
 | `internal/api/datasets.createRequest`                     | is the request body for creating a dataset.                                                                            |
 | `internal/api/ontologies.loadRequest`                     | is the request body for loading an ontology.                                                                           |
-| `internal/api/recall.recallRequest`                       | is the request body for a recall call.                                                                                 |
+| `internal/api/query.queryRequest`                       | is the request body for a query call.                                                                                 |
 | `internal/api/remember.fetchRequest`                      | is the timeseries fetch part of a remember request.                                                                    |
 | `internal/api/remember.rememberRequest`                   | is the request body for a remember call.                                                                               |
 | `internal/api/remember.timeseriesRequest`                 | is the timeseries part of a remember request.                                                                          |
@@ -199,7 +199,7 @@
 | `internal/memory/memory_core.SeriesProvider`              | is a registered source of timeseries.                                                                                  |
 | `internal/memory/memory_core.SeriesSpec`                  | is a timeseries the caller supplies with its points and anchors.                                                       |
 | `internal/memory/memory_core.ToolTiming`                  | records the model, timing and tokens of a traced step.                                                                 |
-| `internal/memory/memory_core.Trace`                       | records one Remember, Recall or image call as an ATIF trajectory.                                                      |
+| `internal/memory/memory_core.Trace`                       | records one Remember, Query or image call as an ATIF trajectory.                                                      |
 | `internal/memory/memory_core.modelLLM`                    | wraps an LLM to use a stage's model and reasoning level.                                                               |
 | `internal/memory/memory_core.recordingLLM`                | wraps an LLM and stores an inference record for every successful call.                                                 |
 | `internal/memory/memory_core.stageKey`                    | is the context key under which the current pipeline stage is stored.                                                   |
@@ -214,11 +214,11 @@
 | `internal/memory/memory_ontology.rdfParser`               | decodes RDF/XML into triples.                                                                                          |
 | `internal/memory/memory_ontology.term`                    | is the object of an RDF triple: an IRI, blank node or literal.                                                         |
 | `internal/memory/memory_ontology.triple`                  | is an RDF subject-predicate-object statement.                                                                          |
-| `internal/memory/memory_recall.Evidence`                  | lists the entities and edges an answer is based on.                                                                    |
-| `internal/memory/memory_recall.RecallResult`              | is the answer to a query together with its supporting evidence.                                                        |
-| `internal/memory/memory_recall.graphContext`              | is the subgraph handed to the recall LLM.                                                                              |
-| `internal/memory/memory_recall.recallContext`             | is everything the recall LLM is given: the memory, the current time and the question.                                  |
-| `internal/memory/memory_recall.recallOutput`              | is the structured answer the recall LLM returns.                                                                       |
+| `internal/memory/memory_query.Evidence`                  | lists the entities and edges an answer is based on.                                                                    |
+| `internal/memory/memory_query.QueryResult`              | is the answer to a query together with its supporting evidence.                                                        |
+| `internal/memory/memory_query.graphContext`              | is the subgraph handed to the query LLM.                                                                              |
+| `internal/memory/memory_query.queryContext`             | is everything the query LLM is given: the memory, the current time and the question.                                  |
+| `internal/memory/memory_query.queryOutput`              | is the structured answer the query LLM returns.                                                                       |
 | `internal/memory/memory_remember.ChunkResult`             | is the result for one chunk of a chunked text, itself an artifact.                                                     |
 | `internal/memory/memory_remember.Contradiction`           | says that an existing edge cannot hold together with a new edge.                                                       |
 | `internal/memory/memory_remember.EdgePlan`                | is the outcome of comparing new edges against existing ones.                                                           |

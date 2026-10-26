@@ -1,8 +1,8 @@
 # Timeseries support in `remember` (design proposal)
 
-> **Status: v1, v2 and the `series_observation` part of v3 are implemented; embedding series and `recall` integration (the rest of v3) are not.** v2 (providers and the fetch stage) differs from the sketch below: see [Changes made while building v2](#changes-made-while-building-v2); the observations differ too: see [Changes made while building v3](#changes-made-while-building-v3).
+> **Status: v1, v2 and the `series_observation` part of v3 are implemented; embedding series and `query` integration (the rest of v3) are not.** v2 (providers and the fetch stage) differs from the sketch below: see [Changes made while building v2](#changes-made-while-building-v2); the observations differ too: see [Changes made while building v3](#changes-made-while-building-v3).
 >
-> **v1:** What exists is described in [timeseries.md](timeseries.md): supplied series, anchors (artifact, entity, edge) resolved after `Store`, stats, the `POST /v1/gb/timeseries` endpoint and two read endpoints. This file keeps the reasoning behind it and the plan for what is left: the provider fetch stage (v2), and derived `series_observation` artifacts (v3, done), then embedding and `recall` (v3, still to do). Where the text below differs from `timeseries.md`, `timeseries.md` is right (see [Changes made while building v1](#changes-made-while-building-v1)).
+> **v1:** What exists is described in [timeseries.md](timeseries.md): supplied series, anchors (artifact, entity, edge) resolved after `Store`, stats, the `POST /v1/gb/timeseries` endpoint and two read endpoints. This file keeps the reasoning behind it and the plan for what is left: the provider fetch stage (v2), and derived `series_observation` artifacts (v3, done), then embedding and `query` (v3, still to do). Where the text below differs from `timeseries.md`, `timeseries.md` is right (see [Changes made while building v1](#changes-made-while-building-v1)).
 
 The goal is to let `POST /v1/gb/remember` associate **timeseries data** (not just text or images) with the events, entities and facts it remembers, so a memory such as "Apple fell sharply after the earnings miss" can be tied to Apple's price series around that date.
 
@@ -51,7 +51,7 @@ gb_series_stats    series_id, window, min, max, mean, last, pct_change, trend,
 - **Series identity** is (`dataset`, `provider`, `key`, `field`, `frequency`). Re-sending or re-fetching upserts points (as the image SHA-256 deduplicates images).
 - **`field`** supports OHLCV and multi-metric series without a table per shape.
 - **Bi-temporal points.** `ts` is event time. An optional `recorded_at` can be added later for restated data (macro revisions). It is not in v1, but nothing should be designed to exclude it.
-- **`gb_series_stats`** holds deterministic summaries computed in Go: min, max, last, percent change, trend, change points. These are what extraction, embedding and `recall` see. The LLM never sees raw points.
+- **`gb_series_stats`** holds deterministic summaries computed in Go: min, max, last, percent change, trend, change points. These are what extraction, embedding and `query` see. The LLM never sees raw points.
 - **Embed the description plus the stats, never the points**, for example "AAPL daily close, Jan 2025, -6.2%, largest drop on 2025-01-31".
 
 Datasets stay isolated: series are dataset-scoped like everything else, so a price series used by two datasets is stored once in each.
@@ -143,7 +143,7 @@ v1 writes no edges from raw points. A later step (**built in v3**, see [Changes 
 
 Provenance then reads: fact, then observation artifact, then series, then the artifact that anchored it.
 
-**(On hold.)** `recall` would return the series anchored to the entities of the recalled subgraph: summary and stats by default, downsampled points on request, through `GET /v1/gb/timeseries/{id}?from&to&resolution`.
+**(On hold.)** `query` would return the series anchored to the entities of the queried subgraph: summary and stats by default, downsampled points on request, through `GET /v1/gb/timeseries/{id}?from&to&resolution`.
 
 ## Changes made while building v1
 
@@ -169,14 +169,14 @@ The design above was simplified in these ways:
 
 ## Changes made while building v3
 
-Only the derived `series_observation` artifacts are built; embedding the series and `recall` are on hold (see the rollout table). What was built is described in [timeseries.md](timeseries.md#observations); where it differs from the sketch in [Making series part of the graph](#making-series-part-of-the-graph):
+Only the derived `series_observation` artifacts are built; embedding the series and `query` are on hold (see the rollout table). What was built is described in [timeseries.md](timeseries.md#observations); where it differs from the sketch in [Making series part of the graph](#making-series-part-of-the-graph):
 
 - **Opt-in** with `timeseries.observations`, at most 10 per request. The sketch did not say; each observation is an extraction call, as a web search is a search, so nothing is derived by default.
 - **It describes what the request wrote** (the period of the supplied points, or the fetched period), not the whole stored series, and uses the stats of those points computed on read in Go (`Summarize`), not the stored `gb_series.stats`. "Its largest one-day drop in 90 days" is therefore not said: the text only knows the window it was given (largest move between consecutive points, high, low, average, change, trend).
 - **The text names a subject**: the entity of the series' first entity selector (supplied), or the entity it was fetched for. Without it the extraction has nothing to attach the facts to.
 - **A column for the series**: `gb_artifacts.series_id` (→ `gb_series`, `ON DELETE SET NULL`), so the chain fact → observation → series is a real link and not a convention; `query` says which series and window. The sketch's "definition or query field" is `query`. The observation is a child of the artifact that anchors the series: the call's artifact (the parent, for a chunked text) for a supplied series, the artifact the entity came from for a fetched one. `valid_at` is the last point of the window.
 - **Last stage**, after the web search and the fetch (it needs the fetched series), and like them it never fails `remember`.
-- **Not done**: a kind-specific treatment in `recall` (it sees an observation's facts like any other fact), an observation by the standalone endpoint, deduplication of observations.
+- **Not done**: a kind-specific treatment in `query` (it sees an observation's facts like any other fact), an observation by the standalone endpoint, deduplication of observations.
 
 ## Rollout
 
@@ -184,7 +184,7 @@ Only the derived `series_observation` artifacts are built; embedding the series 
 | ----- | ----- |
 | **v1** (done) | Supplied series; artifact, entity and edge anchors resolved after `Store`; stats; the attach and read endpoints; trajectory steps; docs. No provider and no LLM. Not embedded (see above). |
 | **v2** (done, except the cache) | The provider interface (registered by the embedding program, chosen by an LLM from their descriptions), the fetch stage. No built-in finance provider; no entity-to-identifier cache; no fetch mode in the attach endpoint. |
-| **v3** (observations done) | `series_observation` artifacts feeding the graph: done (`timeseries.observations`). **`recall` integration and embedding the series: on hold.** |
+| **v3** (observations done) | `series_observation` artifacts feeding the graph: done (`timeseries.observations`). **`query` integration and embedding the series: on hold.** |
 | **Later** | Digitizing `plot` images into series (the image pipeline already classifies `plot`), and a vintage (`recorded_at`) model. |
 
 Files to add, following the existing layout (v3 added `memory_remember/remember_observations.go` and `memory_timeseries/observation.go`):

@@ -163,7 +163,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_eval_runs_experiment_run ON gb_eval_runs(exper
 -- to its type like the case def and case run metadata. They hold the statistics of the run as a whole, which differ between the
 -- types. Deleting the eval run deletes the row. A new type of eval adds a table.
 
--- core.KnowledgeEvalRunMeta: the chunks, the ATIF steps, the remember and recall calls with their cost, and the checks that held
+-- core.KnowledgeEvalRunMeta: the chunks, the ATIF steps, the remember and query calls with their cost, and the checks that held
 -- and did not, over all the case runs. The pass and fail of the cases are the counts_* of the eval run.
 CREATE TABLE IF NOT EXISTS gb_eval_runs_meta_knowledge (
 	eval_run_id        INTEGER PRIMARY KEY,
@@ -171,9 +171,9 @@ CREATE TABLE IF NOT EXISTS gb_eval_runs_meta_knowledge (
 	chunks             INTEGER NOT NULL DEFAULT 0,
 	steps              INTEGER NOT NULL DEFAULT 0,
 	remember_calls     INTEGER NOT NULL DEFAULT 0,
-	recall_calls       INTEGER NOT NULL DEFAULT 0,
+	query_calls       INTEGER NOT NULL DEFAULT 0,
 	remember_cost_usd  REAL NOT NULL DEFAULT 0,
-	recall_cost_usd    REAL NOT NULL DEFAULT 0,
+	query_cost_usd    REAL NOT NULL DEFAULT 0,
 	checks_passed      INTEGER NOT NULL DEFAULT 0,
 	checks_failed      INTEGER NOT NULL DEFAULT 0,
 	FOREIGN KEY (eval_run_id, type) REFERENCES gb_eval_runs(id, type) ON DELETE CASCADE
@@ -251,13 +251,13 @@ CREATE TABLE IF NOT EXISTS gb_case_runs_meta_knowledge (
 
 -- core.KnowledgeTrajectory: the ATIF trajectories (internal/ai/atif) of a knowledge case run, in call order. Only the reference
 -- is kept: trajectory_id is the ATIF trajectory_id, path the JSON file it was stored in ('' if none). kind: 'remember' or
--- 'recall'. artifact_ids: JSON array of the IDs of the artifacts the call is about (remember: its input; recall: the sources
+-- 'query'. artifact_ids: JSON array of the IDs of the artifacts the call is about (remember: its input; query: the sources
 -- of the evidence).
 CREATE TABLE IF NOT EXISTS gb_case_runs_meta_knowledge_trajectories (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
 	case_run_id   INTEGER NOT NULL REFERENCES gb_case_runs_meta_knowledge(case_run_id) ON DELETE CASCADE,
 	seq           INTEGER NOT NULL CHECK (seq >= 0),
-	kind          TEXT NOT NULL CHECK (kind IN ('remember', 'recall')),
+	kind          TEXT NOT NULL CHECK (kind IN ('remember', 'query')),
 	trajectory_id TEXT NOT NULL,
 	agent_name    TEXT NOT NULL DEFAULT '',
 	steps         INTEGER NOT NULL DEFAULT 0,

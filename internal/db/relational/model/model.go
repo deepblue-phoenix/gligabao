@@ -57,9 +57,9 @@ type Ontology struct {
 // recorded as one, with what that invocation used and cost.
 type Inference struct {
 	ID int64 `json:"id"`
-	// Type is the operation that made the call: "remember", "remember_image" or "recall".
+	// Type is the operation that made the call: "remember", "remember_image" or "query".
 	Type string `json:"type"`
-	// Stage is the pipeline stage that made it (e.g. "extract_graph", "summarize_chunk", "recall", "embed"); "" if unknown.
+	// Stage is the pipeline stage that made it (e.g. "extract_graph", "summarize_chunk", "query", "embed"); "" if unknown.
 	Stage string `json:"stage,omitempty"`
 	// ModelID is the ID (gb_models) of the model that was run, "" if the API did not say. On RecordInference it is filled
 	// in from Model.

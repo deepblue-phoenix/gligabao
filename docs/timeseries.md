@@ -2,7 +2,7 @@
 
 gligabao can store **timeseries** (a value over time, such as a price) and **anchor** them to what it remembers: the artifact a text was stored as, the entities and the facts (edges) extracted from it. A memory such as "Apple fell sharply after the earnings miss" can then be tied to Apple's price series around that date. The points are not part of the graph: a series has tables of its own (like [images](images.md)) and is linked to the graph by anchors.
 
-A series is supplied by the caller, in a `remember` request or with the standalone endpoint, or **fetched** by gligabao from a [provider](#providers) that the program embedding it registered. A series can also be turned into text that goes through the normal extraction, so it yields facts in the graph: the [`series_observation` artifact](#observations). Embedding series and using them in `recall` are not implemented yet: see [timeseries-design.md](timeseries-design.md) for the plan.
+A series is supplied by the caller, in a `remember` request or with the standalone endpoint, or **fetched** by gligabao from a [provider](#providers) that the program embedding it registered. A series can also be turned into text that goes through the normal extraction, so it yields facts in the graph: the [`series_observation` artifact](#observations). Embedding series and using them in `query` are not implemented yet: see [timeseries-design.md](timeseries-design.md) for the plan.
 
 Code: `internal/memory/memory_core/series.go` (the request types and their validation), `internal/memory/memory_timeseries/` (storing, anchoring, stats), `internal/memory/memory_remember/remember_series.go`, `remember_seriesfetch.go` and `remember_observations.go` (the parts in `remember`), `internal/memory/memory_timeseries/observation.go` (the text of an observation), `internal/api/timeseries/` (the endpoints), `internal/db/graph/{sqlite,postgres}/db_series.go` (SQL).
 
@@ -275,7 +275,7 @@ Stores series in an **existing** dataset and anchors them, for what `remember` c
 - `GET /v1/gb/timeseries?user_id=...&dataset=...`: the dataset's series (`id`, `key`, `field`, `name`, `unit`, `frequency`, `source`, `point_count`, `first_ts`, `last_ts`, `stats`, `anchors`, ...), without points. `anchors` are `type`, `id`, `role`, `window_start`, `window_end`.
 - `GET /v1/gb/timeseries/{id}?user_id=...&dataset=...&from=...&to=...&limit=...`: one series with the same fields plus its `points` (`[time, value]` pairs, oldest first) between `from` and `to` (RFC 3339, both optional, inclusive), at most `limit` (default 1000, at most 100,000). `truncated` says there were more. With `from` or `to` (and not truncated) `window_stats` has the [stats](#stats) of the points returned. `404` for an unknown series, dataset or user, `400` for a malformed `from`, `to` or `limit`.
 
-`recall` does not use series yet, and neither the endpoints nor `recall` treat a `series_observation` artifact any differently from other artifacts.
+`query` does not use series yet, and neither the endpoints nor `query` treat a `series_observation` artifact any differently from other artifacts.
 
 ## Schema
 
@@ -297,7 +297,7 @@ Go access, in package `graph`: `ListSeries`, `GetSeries`, `SeriesPoints`, `ListS
 - Fetching is in `remember` only: the standalone endpoint cannot fetch (yet), and a series is not refreshed automatically: remember again, or call the provider yourself and send the points.
 - The entity-to-identifier decision is made again for every request: the ticker an LLM chose for Apple is not cached on the entity.
 - Entities found by a [web search](web-search.md) are not offered to the providers, only the entities of the text itself are (see [Fetching in a `remember` request](#fetching-in-a-remember-request)).
-- Series, and the entities an anchor created, are not embedded, and `recall` does not return them. The facts of an [observation](#observations) are recalled like any fact (they are in the graph), but `recall` does not follow them to the series or return its stats or points. The stats are used by the endpoints, the response and the observations.
+- Series, and the entities an anchor created, are not embedded, and `query` does not return them. The facts of an [observation](#observations) are queried like any fact (they are in the graph), but `query` does not follow them to the series or return its stats or points. The stats are used by the endpoints, the response and the observations.
 - Observations are opt-in, at most 10 per request, made only by `remember` (not by the standalone endpoint), only of what the request wrote (never of a whole stored series), and not deduplicated. Their text is a fixed template from the stats: it does not know why the series moved. A supplied series that runs past the `reference_time` is described whole, future included (see the previous point on clipping).
 - A supplied series is never clipped at the `reference_time` of the text: the points are stored as given, so a series that runs past the event is stored whole (as memory it knows the future of the event). Clip it before sending if that matters. A fetched series is clipped to its period, which ends at the `reference_time` unless `fetch.after` says otherwise.
 - A chunked text's series are stored after its chunks, not atomically with them (see [With `remember`](#with-remember)).

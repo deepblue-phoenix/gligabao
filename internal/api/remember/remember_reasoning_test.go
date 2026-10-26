@@ -126,7 +126,7 @@ func testRememberSummaryModelAndReasoning(t *testing.T, d *sql.DB) {
 
 	for _, body := range []string{
 		`{"user_id":"u1","text":"x","reasoning":{"web_search":"low"}}`,
-		`{"user_id":"u1","text":"x","reasoning":{"recall":"low"}}`,
+		`{"user_id":"u1","text":"x","reasoning":{"query":"low"}}`,
 		`{"user_id":"u1","text":"x","reasoning":{"summarize_chunk":"max"}}`,
 		`{"user_id":"u1","image":"aGk=","reasoning":{"extract_image":"max"}}`,
 	} {

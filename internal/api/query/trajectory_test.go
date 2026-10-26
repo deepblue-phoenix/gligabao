@@ -1,4 +1,4 @@
-package recall
+package query
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
-	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_recall"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_query"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
 
@@ -41,7 +41,7 @@ func testTrajectories(t *testing.T, d *sql.DB) {
 	if rem.Trajectory == nil || rem.TrajectoryID != rem.Trajectory.TrajectoryID {
 		t.Fatalf("with eval: %+v", rem)
 	}
-	rec, err := memory_recall.Recall(ctx, d, llm, "u1", "", "Where does Alice work?", memory_core.WithTrajectoryDir(dir), memory_core.WithEval())
+	rec, err := memory_query.Query(ctx, d, llm, "u1", "", "Where does Alice work?", memory_core.WithTrajectoryDir(dir), memory_core.WithEval())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func testTrajectories(t *testing.T, d *sql.DB) {
 		t.Fatalf("with eval: %+v", rec)
 	}
 	if n := len(rec.Trajectory.Steps); n < 4 { // user, tool, system+user, agent
-		t.Fatalf("recall steps: %d", n)
+		t.Fatalf("query steps: %d", n)
 	}
 	for _, id := range []string{rem.TrajectoryID, rec.TrajectoryID} {
 		if _, err := os.Stat(filepath.Join(dir, id+".json")); err != nil {

@@ -1,4 +1,4 @@
-package recall
+package query
 
 import (
 	"os"

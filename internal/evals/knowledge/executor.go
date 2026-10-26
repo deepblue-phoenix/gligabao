@@ -26,7 +26,7 @@ type Executor struct {
 	// EvalsDirs are the directories the TextFiles of the cases are relative to, searched in order (default DefaultEvalDir).
 	EvalsDirs []string
 	// Models is the default LLM model of each stage of remember; a case's own models win over it. Reasoning is the reasoning
-	// level of each stage, and of the recall with the key "recall"; a case's own win over it (see ParseReasoning).
+	// level of each stage, and of the query with the key "query"; a case's own win over it (see ParseReasoning).
 	Models    memory_core.Models
 	Reasoning map[string]string
 	// TrajectoryDir is where the server stored the ATIF trajectories (memory_core.TrajectoryDir); the case runs reference the files.
@@ -127,8 +127,8 @@ func (x *Executor) executeCase(ctx, dbCtx context.Context, rec *runner.EvalRecor
 			evalMeta.RememberCalls++
 			evalMeta.RememberCostUSD += ref.CostUSD
 		} else {
-			evalMeta.RecallCalls++
-			evalMeta.RecallCostUSD += ref.CostUSD
+			evalMeta.QueryCalls++
+			evalMeta.QueryCostUSD += ref.CostUSD
 		}
 	}
 	evalMeta.Chunks += out.Chunks

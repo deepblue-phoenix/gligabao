@@ -1,11 +1,11 @@
-# POST /v1/gb/recall
+# POST /v1/gb/query
 
 Answers a question from the knowledge graph built by [`remember`](remember.md). The LLM writes a natural-language answer using only graph context, and the response includes `evidence`: the entities and edges it relied on.
 
 ## Request
 
 ```
-POST /v1/gb/recall
+POST /v1/gb/query
 content-type: application/json
 
 {"user_id": "u1", "query": "Where does Alice work?", "session_id": "chat-42"}
@@ -14,9 +14,9 @@ content-type: application/json
 - `query` (required): non-empty string. The request body is limited to 64 KiB.
 - `user_id` (required): the user who owns the dataset. `400` if missing.
 - `dataset` (optional): name of the [dataset](datasets.md) to search. Defaults to `main`. Only that user's dataset graph is used. `404` if it does not exist.
-- `session_id` (optional): the user/agent session the call belongs to, a string you choose (at most 128 bytes, no control characters; `400` otherwise). Use the same one as in the `remember` calls of that session, to connect the recall to the artifacts (and their entities and facts) of the same session, see [sessions.md](sessions.md). It is echoed in the response and recorded in the call's trajectory and monitoring event. It does **not** change retrieval or the answer.
+- `session_id` (optional): the user/agent session the call belongs to, a string you choose (at most 128 bytes, no control characters; `400` otherwise). Use the same one as in the `remember` calls of that session, to connect the query to the artifacts (and their entities and facts) of the same session, see [sessions.md](sessions.md). It is echoed in the response and recorded in the call's trajectory and monitoring event. It does **not** change retrieval or the answer.
 
-- `reasoning` (optional): the reasoning (thinking) level of the LLM call that writes the answer: `none`, `low`, `medium` or `high` (case-insensitive). Defaults to **`none`** (no thinking, so no thinking tokens are paid for). `400` for an unknown level. The call is recorded as a [inference](inferences.md) (`gb_inferences`, type `recall`, stage `recall`) with the level it ran with, its tokens and its cost.
+- `reasoning` (optional): the reasoning (thinking) level of the LLM call that writes the answer: `none`, `low`, `medium` or `high` (case-insensitive). Defaults to **`none`** (no thinking, so no thinking tokens are paid for). `400` for an unknown level. The call is recorded as a [inference](inferences.md) (`gb_inferences`, type `query`, stage `query`) with the level it ran with, its tokens and its cost.
 
 ## Response
 
@@ -55,7 +55,7 @@ Errors are returned as `{"error": "..."}`:
 
 ## How it works
 
-The code is in `internal/memory/recall.go` (logic) and `internal/api/recall.go` (HTTP handler).
+The code is in `internal/memory/query.go` (logic) and `internal/api/query.go` (HTTP handler).
 
 ### 1. Retrieve a subgraph
 
@@ -110,7 +110,7 @@ export ANTHROPIC_API_KEY=...
 ./run_build.sh
 ./bin/gligabao serve &
 curl -s localhost:7878/v1/gb/remember -d '{"user_id":"u1","text":"Alice works at Acme and lives in Paris."}'
-curl -s localhost:7878/v1/gb/recall   -d '{"user_id":"u1","query":"Where does Alice work?"}'
+curl -s localhost:7878/v1/gb/query   -d '{"user_id":"u1","query":"Where does Alice work?"}'
 ```
 
 ## Limitations

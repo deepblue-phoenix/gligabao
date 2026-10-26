@@ -1,18 +1,18 @@
 # Sessions
 
-A **session** is one run of a user or an agent: a conversation, a task, a crawl. `remember` and `recall` take an optional `session_id`, a string the caller chooses, which ties together everything that came from that run: the artifacts it remembered, the entities and facts those artifacts yielded, and the recalls it made.
+A **session** is one run of a user or an agent: a conversation, a task, a crawl. `remember` and `query` take an optional `session_id`, a string the caller chooses, which ties together everything that came from that run: the artifacts it remembered, the entities and facts those artifacts yielded, and the queries it made.
 
-A session is only a label. It is not a store: there is no session table, no expiry, no cache of turns, and `recall` gives the same answer with or without it. (For what a Cognee-style session memory would add, and why it is left out, see [not-included.md](not-included.md#session-memory).)
+A session is only a label. It is not a store: there is no session table, no expiry, no cache of turns, and `query` gives the same answer with or without it. (For what a Cognee-style session memory would add, and why it is left out, see [not-included.md](not-included.md#session-memory).)
 
 Code: `internal/memory/memory_core` (`ResolveSessionID`, `WithSessionID`), `internal/memory/memory_remember` (`Store`), `internal/db/graph/{sqlite,postgres}/db_schema.go` (tables).
 
 ## The `session_id`
 
-- Optional, on `POST /v1/gb/remember` (text and image) and `POST /v1/gb/recall`. Absent or empty means no session.
+- Optional, on `POST /v1/gb/remember` (text and image) and `POST /v1/gb/query`. Absent or empty means no session.
 - Chosen by the caller and used as given after trimming whitespace. At most 128 bytes, no control characters; anything else returns `400` before anything is stored or any LLM is called.
 - Not scoped to a user or dataset by gligabao: `"s1"` of two users is two unrelated sessions in practice, because the artifacts, entities and edges it labels live in their own datasets. Pick IDs that are unique for the caller (a UUID, say).
 
-In Go, pass `memory_core.WithSessionID(id)` as an option to `memory_remember.Remember`, `memory_remember.Store`, `memory_image.RememberImage` and `memory_recall.Recall`. Validate user input with `memory_core.ResolveSessionID` first (the functions do too, and return `ErrInvalidSession`).
+In Go, pass `memory_core.WithSessionID(id)` as an option to `memory_remember.Remember`, `memory_remember.Store`, `memory_image.RememberImage` and `memory_query.Query`. Validate user input with `memory_core.ResolveSessionID` first (the functions do too, and return `ErrInvalidSession`).
 
 ## What `remember` records
 
@@ -44,15 +44,15 @@ Example. Sessions `a` and `b` both remember "Alice works at Acme", then a third 
 | `gb_edges` | one edge, `artifact_id = 1` |
 | `gb_edge_sessions` | (edge, `a`), (edge, `b`) |
 
-## What `recall` does with it
+## What `query` does with it
 
-`recall` only carries the session:
+`query` only carries the session:
 
 - it is echoed in the response as `session_id` (omitted when there was none);
-- in an eval call ([evals.md](evals/knowledge.md)), the ATIF trajectory's `session_id` is set to it, instead of the trajectory's own ID, and `extra.input` has it. The trajectories of `remember` and `recall` calls from the same session then share a `session_id`, which is how ATIF intends to group them;
-- it is part of the `remember.*` and `recall.*` monitoring events and the log lines of the calls.
+- in an eval call ([evals.md](evals/knowledge.md)), the ATIF trajectory's `session_id` is set to it, instead of the trajectory's own ID, and `extra.input` has it. The trajectories of `remember` and `query` calls from the same session then share a `session_id`, which is how ATIF intends to group them;
+- it is part of the `remember.*` and `query.*` monitoring events and the log lines of the calls.
 
-It does **not** filter or boost retrieval, and the answer does not depend on it: `recall` stays a function of the graph and the query. Nothing about the recall is written to the database. To connect a recall to the artifacts of its session, use the same `session_id` on both and join on it (the artifacts through `gb_artifacts.session_id`, the entities and facts through the link tables, the recall through the response, monitoring event or trajectory).
+It does **not** filter or boost retrieval, and the answer does not depend on it: `query` stays a function of the graph and the query. Nothing about the query is written to the database. To connect a query to the artifacts of its session, use the same `session_id` on both and join on it (the artifacts through `gb_artifacts.session_id`, the entities and facts through the link tables, the query through the response, monitoring event or trajectory).
 
 ## Reading it back
 
@@ -69,5 +69,5 @@ SELECT e.* FROM gb_entities e JOIN gb_entity_sessions s ON s.entity_id = e.id WH
 
 - Existing database files are not migrated: the `session_id` columns and the two link tables exist only in a database created by this version (delete the file and the server recreates it).
 - An image the dataset already holds is answered from its stored extraction and adds no artifact, so a repeat from another session is not recorded; the response shows the session of the artifact that first stored it (see [images.md](images.md#repeated-images)).
-- Not exposed by the API: the [graph export](graph.md) and the recall `evidence` do not list sessions yet.
+- Not exposed by the API: the [graph export](graph.md) and the query `evidence` do not list sessions yet.
 - A session cannot be listed, closed or deleted: it exists only as the label on the rows above.

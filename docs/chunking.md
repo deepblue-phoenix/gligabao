@@ -85,7 +85,7 @@ The chunk's **summary** is embedded into a further index, in the same request:
 | ----- | -------------- | --------- | -------- | ------------- |
 | summaries | `dataset-<id>-summaries` (`memory_core.SummaryDataset`) | `summary-<summary artifact id>` | `kind` = `summary`, `artifact_id` (the summary's), `chunk_id` (the chunk's), `parent_id` (the document's), `index` (the chunk's) | the summary's text |
 
-The chunk's embedding and its summary's go in the same embeddings request as the entities and edges that the chunk yields, so a chunk still costs one request. It uses the same model and dimensions as the other indexes, so all vectors share one space. Like the others it needs an OpenAI key (without one chunks are still made, extracted and stored, but not embedded), is computed before the chunk's transaction commits and written right after it, and is removed with the dataset. `VectorStats` (the admin UI's **View vec db**) lists the chunk and summary indexes with the number of chunk and summary artifacts each should hold. The vectors do not affect `recall` yet.
+The chunk's embedding and its summary's go in the same embeddings request as the entities and edges that the chunk yields, so a chunk still costs one request. It uses the same model and dimensions as the other indexes, so all vectors share one space. Like the others it needs an OpenAI key (without one chunks are still made, extracted and stored, but not embedded), is computed before the chunk's transaction commits and written right after it, and is removed with the dataset. `VectorStats` (the admin UI's **View vec db**) lists the chunk and summary indexes with the number of chunk and summary artifacts each should hold. The vectors do not affect `query` yet.
 
 ## Response
 
@@ -105,4 +105,4 @@ For a chunked text the response is that of the document (see [remember.md](remem
 - The extractor sees one chunk at a time: a fact that needs two distant paragraphs, or a pronoun whose antecedent is in an earlier chunk beyond the overlap, is not resolved.
 - The token count is an estimate (above); a custom `Tokenizer` is only available from Go.
 - A summary sees one chunk, so it cannot use context from elsewhere in the document; a failed summary fails the request. Chunk summaries are not extracted into the graph.
-- `recall` does not read chunks, summaries or their vectors yet.
+- `query` does not read chunks, summaries or their vectors yet.

@@ -1,6 +1,6 @@
 # Evals and ATIF trajectories
 
-Evals are end-to-end checks that run `remember` and `recall` against the real LLM and verify the stored temporal facts and the answer. Each individual check is an **eval case** (an input, here some texts to remember and a question, plus what is expected and metadata), and the cases are grouped into **evals**. To let a case look inside a run, remember and recall can record themselves as an [ATIF](https://github.com/laude-institute/harbor) (Agent Trajectory Interchange Format) trajectory: the ordered list of everything the call did, with the LLM's tokens and cost per step.
+Evals are end-to-end checks that run `remember` and `query` against the real LLM and verify the stored temporal facts and the answer. Each individual check is an **eval case** (an input, here some texts to remember and a question, plus what is expected and metadata), and the cases are grouped into **evals**. To let a case look inside a run, remember and query can record themselves as an [ATIF](https://github.com/laude-institute/harbor) (Agent Trajectory Interchange Format) trajectory: the ordered list of everything the call did, with the LLM's tokens and cost per step.
 
 Trajectories are generated **only for eval calls** (the calls the eval cases make). The regular endpoints and regular Go calls never build, store or return them.
 
@@ -22,22 +22,22 @@ Same request body and behavior as [`POST /v1/gb/remember`](../remember.md), incl
 - `trajectory_id`: the ID of the trajectory (also the file name, see [Storage](#storage)).
 - `trajectory`: the full ATIF trajectory.
 
-### `POST /v1/gb/eval/recall`
+### `POST /v1/gb/eval/query`
 
-Same request body and behavior as [`POST /v1/gb/recall`](../recall.md). The response is the usual recall result (`answer`, `evidence`) plus `trajectory_id` and `trajectory`.
+Same request body and behavior as [`POST /v1/gb/query`](../query.md). The response is the usual query result (`answer`, `evidence`) plus `trajectory_id` and `trajectory`.
 
 Errors are the same as for the regular endpoints, and a failed call returns no trajectory (it is still stored, see below). Without eval mode both routes answer `404`/`405`.
 
 ## From Go
 
-`memory_remember.Remember` and `memory_recall.Recall` take options. `memory.WithEval()` is the only way to generate a trajectory; the eval endpoints are the only callers that pass it.
+`memory_remember.Remember` and `memory_query.Query` take options. `memory.WithEval()` is the only way to generate a trajectory; the eval endpoints are the only callers that pass it.
 
 ```go
 res, err := memory.Remember(ctx, db, llm, "u1", "main", text, time.Time{}, memory.WithEval())
 res.TrajectoryID // same as res.Trajectory.TrajectoryID
 res.Trajectory   // *atif.Trajectory
 
-ans, err := memory_recall.Recall(ctx, db, llm, "u1", "main", query, memory.WithEval(), memory.WithTrajectoryDir(dir))
+ans, err := memory_query.Query(ctx, db, llm, "u1", "main", query, memory.WithEval(), memory.WithTrajectoryDir(dir))
 ```
 
 Without `WithEval()`, `TrajectoryID` and `Trajectory` are empty and nothing is written. `memory.WithTrajectoryDir(dir)` overrides the storage directory for one call.
@@ -65,7 +65,7 @@ Package `internal/ai/atif` defines the types and a `Builder`; the schema version
 |---|---|
 | `schema_version` | `ATIF-v1.6` |
 | `trajectory_id`, `session_id` | `trajectory_id` is a random UUID. `session_id` is the request's [`session_id`](../sessions.md) if it gave one (so the trajectories of one session share it), else the same UUID |
-| `agent` | `name` (`gligabao-remember` / `gligabao-recall`), `version` |
+| `agent` | `name` (`gligabao-remember` / `gligabao-query`), `version` |
 | `steps` | the steps, below |
 | `notes` | set to `failed: <error>` if the call failed |
 | `final_metrics` | totals over all steps: prompt/completion tokens, `total_cost_usd`, `total_steps` |
@@ -86,7 +86,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 | remember | `store_artifact` | `artifact_id`, entities, edges and `invalidated_edges` that were stored |
 | remember | `select_web_search_entities` | (only with [`web_search`](../web-search.md)) the key entities that were picked to search the web for |
 | remember | `web_search` | (only with `web_search`, one per entity) the web search: the entity, the query issued, the briefing, the queries the model sent to the search engine, the sources and `search_errors`; `model_name`, `metrics` (tokens and cost, search fee included) and `latency_ms` in the extra. An error here is recorded but not fatal |
-| recall | `retrieve_graph` | the subgraph handed to the LLM, as rendered in its prompt |
+| query | `retrieve_graph` | the subgraph handed to the LLM, as rendered in its prompt |
 
 ### Remember
 
@@ -99,20 +99,20 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 6. tool `store_artifact`.
 7. only with [`web_search`](../web-search.md): tool `select_web_search_entities`, then for each entity tool `web_search`, followed by the steps 2 to 6 for its briefing (`extract_graph` ... `store_artifact`, each labelled ` (web search for "<entity>")`; the artifact is of kind `web_search` with the `query` and `parent_id`).
 
-### Recall
+### Query
 
 1. `user`: the query.
 2. tool `retrieve_graph`.
 3. LLM call: the answer (`system`, `user`, `agent`). If nothing was retrieved there is no LLM call; the last step is a plain `agent` step with the fixed "I don't have any information" answer.
 
-### Example (recall, shortened)
+### Example (query, shortened)
 
 ```json
 {
   "schema_version": "ATIF-v1.6",
   "trajectory_id": "5c1e0d52-7b1f-4a7e-9d3a-0f6a2f3b9c11",
   "session_id": "5c1e0d52-7b1f-4a7e-9d3a-0f6a2f3b9c11",
-  "agent": {"name": "gligabao-recall", "version": "0.1"},
+  "agent": {"name": "gligabao-query", "version": "0.1"},
   "steps": [
     {"step_id": 1, "timestamp": "2025-01-31T09:00:01Z", "source": "user", "message": "Where does Alice work?"},
     {"step_id": 2, "timestamp": "2025-01-31T09:00:01Z", "source": "agent",
@@ -134,7 +134,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 
 ## How the evals use it
 
-`internal/evals/knowledge` starts an in-process server with eval mode on and runs each case through `/v1/gb/eval/remember` (once per memory, in order) and `/v1/gb/eval/recall`. It decodes the `trajectory` from every response and fails the case if one is missing. A case's outcome holds the answer, the failed temporal-fact checks and the trajectories (one per remember, then the recall's), so checks can use the steps and costs directly. For now the runner reports the trajectory count, step count and total cost with `-v`.
+`internal/evals/knowledge` starts an in-process server with eval mode on and runs each case through `/v1/gb/eval/remember` (once per memory, in order) and `/v1/gb/eval/query`. It decodes the `trajectory` from every response and fails the case if one is missing. A case's outcome holds the answer, the failed temporal-fact checks and the trajectories (one per remember, then the query's), so checks can use the steps and costs directly. For now the runner reports the trajectory count, step count and total cost with `-v`.
 
 ### Models
 
@@ -143,16 +143,16 @@ An eval case can vary the model of each LLM stage of `remember` (`extract_graph`
 1. `-models extract_graph=<model>,resolve_edges=<model>` on the command line: the defaults of the whole run (and recorded in the experiment run's `params.models`);
 2. `"models": {"extract_graph": "<model>"}` in a case of an eval: that case only; a stage named here wins over `-models`.
 
-A stage named by neither uses the default model. The recall's LLM call is not affected. The model of each LLM step is in the trajectory (`model_name`), the requested `models` are in `extra.input.models`, and the entities and edges a case stores carry the `extract_graph` model as their `model_id`, so the graph of a run shows which model produced it. A runner invocation is a run of an experiment, so comparing models means running the eval once per setting under the same experiment (for instance `-experiment extract-models -models extract_graph=claude-sonnet-4-5`).
+A stage named by neither uses the default model. The query's LLM call is not affected. The model of each LLM step is in the trajectory (`model_name`), the requested `models` are in `extra.input.models`, and the entities and edges a case stores carry the `extract_graph` model as their `model_id`, so the graph of a run shows which model produced it. A runner invocation is a run of an experiment, so comparing models means running the eval once per setting under the same experiment (for instance `-experiment extract-models -models extract_graph=claude-sonnet-4-5`).
 
 ### Reasoning levels
 
-An eval case can also vary the reasoning (thinking) level of each LLM stage, to see how it affects the results (see [remember.md](../remember.md#reasoning)). The stages are `extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series` and `extract_image` for `remember`, and `recall` for the LLM call that answers the question. The levels come from two places that are combined stage by stage:
+An eval case can also vary the reasoning (thinking) level of each LLM stage, to see how it affects the results (see [remember.md](../remember.md#reasoning)). The stages are `extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series` and `extract_image` for `remember`, and `query` for the LLM call that answers the question. The levels come from two places that are combined stage by stage:
 
-1. `-reasoning extract_graph=low,recall=medium` on the command line: the defaults of the whole run (recorded in the experiment run's `params.reasoning`);
-2. `"reasoning": {"extract_graph": "low", "recall": "medium"}` in a case of an eval: that case only; a stage named here wins over `-reasoning`, as for models (a case controls its own parameters).
+1. `-reasoning extract_graph=low,query=medium` on the command line: the defaults of the whole run (recorded in the experiment run's `params.reasoning`);
+2. `"reasoning": {"extract_graph": "low", "query": "medium"}` in a case of an eval: that case only; a stage named here wins over `-reasoning`, as for models (a case controls its own parameters).
 
-The runner sends the `remember` stages as `reasoning` in every `remember` request of the case and `recall` as `reasoning` of its recall request. A stage named by neither runs with the server's default, which is `none` (no thinking). **Every case of the evals sets all of them explicitly to `none`**, so a run never depends on that default and is the baseline to compare against (a test checks it). So with the shipped evals `-reasoning` changes nothing until the stage is removed from the cases (or the cases are edited, e.g. a copy of the evals passed with `-evals`): the level a comparison varies is the one the case sets.
+The runner sends the `remember` stages as `reasoning` in every `remember` request of the case and `query` as `reasoning` of its query request. A stage named by neither runs with the server's default, which is `none` (no thinking). **Every case of the evals sets all of them explicitly to `none`**, so a run never depends on that default and is the baseline to compare against (a test checks it). So with the shipped evals `-reasoning` changes nothing until the stage is removed from the cases (or the cases are edited, e.g. a copy of the evals passed with `-evals`): the level a comparison varies is the one the case sets.
 
 Each LLM call is a [inference](../inferences.md) with the level it ran with, its tokens (thinking tokens count as output) and its cost, so a comparison can look at both the pass rate and what the thinking cost, per stage.
 
@@ -171,12 +171,12 @@ Because each stage has its own model, an eval run can answer two different quest
 
 What the cases check is what measures precision, so pick the case for the stage:
 
-- `extract_graph` is checked by `expect_edges` (is each expected fact stored between the right entities, with the right `valid_at` / `invalid_at`) and, through the graph it builds, by the recall's `expect_contains`. A model that misses a fact, attaches the wrong dates or names an entity differently fails these. For a long text, `chunking_register` checks that facts from the start, middle and end all came out.
+- `extract_graph` is checked by `expect_edges` (is each expected fact stored between the right entities, with the right `valid_at` / `invalid_at`) and, through the graph it builds, by the query's `expect_contains`. A model that misses a fact, attaches the wrong dates or names an entity differently fails these. For a long text, `chunking_register` checks that facts from the start, middle and end all came out.
 - `resolve_edges` only runs when the new facts have stored candidates to be compared with, so use a case that remembers more than one text about the same entities, like `job_change` (the Acme fact must be closed by the Globex one, and only that one). A model that misses a contradiction leaves the old fact live (`ended` fails); one that flags a contradiction that is not one closes a fact that should stay true; one that misses a duplicate stores it twice.
 - `web_search` is only used by a remember entry with `"web_search": true` (see [web-search.md](../web-search.md)).
 - `extract_image` is only used by an image remember, which the runner does not issue yet.
 
-Each case is pass or fail, and an LLM is not deterministic, so one run says little: repeat each setting a few times (each run is a run of the experiment, with its own datasets) and compare how often the cases pass. Add cases with `expect_edges` for the facts you care about; the more checks, the finer the comparison, and the checks of each run are kept (`passed_checks`, `problems`) so you can see *which* fact a model got wrong. Since the recall always uses the default model, a change in the answer comes from what the `remember` stages stored, not from a different answerer.
+Each case is pass or fail, and an LLM is not deterministic, so one run says little: repeat each setting a few times (each run is a run of the experiment, with its own datasets) and compare how often the cases pass. Add cases with `expect_edges` for the facts you care about; the more checks, the finer the comparison, and the checks of each run are kept (`passed_checks`, `problems`) so you can see *which* fact a model got wrong. Since the query always uses the default model, a change in the answer comes from what the `remember` stages stored, not from a different answerer.
 
 A case can also pin its own models (`"models"` in the eval), for example to run one case with a stronger model than the rest of the run, or to keep a regression case on the model that used to fail it.
 

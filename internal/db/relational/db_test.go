@@ -60,7 +60,7 @@ func scenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("GetInference: %+v, %v", run, err)
 	}
 	// No model reported and no level: a run without a model, with reasoning none.
-	noModel, err := relational.RecordInference(ctx, d, relational.Inference{Type: "recall", InputTokens: 1})
+	noModel, err := relational.RecordInference(ctx, d, relational.Inference{Type: "query", InputTokens: 1})
 	check(err)
 	if run, err := relational.GetInference(ctx, d, noModel); err != nil || run.ModelID != "" || run.Reasoning != "none" {
 		t.Fatalf("GetInference without model: %+v, %v", run, err)
@@ -71,7 +71,7 @@ func scenario(t *testing.T, d *sql.DB) {
 	if _, err := relational.GetInference(ctx, d, 12345); !errors.Is(err, relational.ErrNotFound) {
 		t.Fatalf("missing run: %v", err)
 	}
-	if st, err := relational.InferenceStats(ctx, d); err != nil || st["remember"] != (relational.InferenceStat{Inferences: 1, InputTokens: 10, OutputTokens: 5, CostUSD: 0.01}) || st["recall"].Inferences != 1 {
+	if st, err := relational.InferenceStats(ctx, d); err != nil || st["remember"] != (relational.InferenceStat{Inferences: 1, InputTokens: 10, OutputTokens: 5, CostUSD: 0.01}) || st["query"].Inferences != 1 {
 		t.Fatalf("InferenceStats: %+v, %v", st, err)
 	}
 	list, err := relational.ListDatasets(ctx, d, user, false)

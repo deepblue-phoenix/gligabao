@@ -50,7 +50,7 @@ func testEvalEndpoints(t *testing.T, d *sql.DB) {
 	}
 
 	// Not registered by default.
-	for _, p := range []string{"/v1/gb/eval/remember", "/v1/gb/eval/recall"} {
+	for _, p := range []string{"/v1/gb/eval/remember", "/v1/gb/eval/query"} {
 		if rec := do(plain, p, `{}`); rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
 			t.Fatalf("%s without eval mode: %d", p, rec.Code)
 		}
@@ -58,7 +58,7 @@ func testEvalEndpoints(t *testing.T, d *sql.DB) {
 
 	for _, c := range []struct{ plain, eval, body string }{
 		{"/v1/gb/remember", "/v1/gb/eval/remember", `{"user_id":"u1","text":"Alice"}`},
-		{"/v1/gb/recall", "/v1/gb/eval/recall", `{"user_id":"u1","query":"Alice?"}`},
+		{"/v1/gb/query", "/v1/gb/eval/query", `{"user_id":"u1","query":"Alice?"}`},
 	} {
 		// Only the eval endpoint generates a trajectory.
 		if r := decode(do(eval, c.plain, c.body)); r.TrajectoryID != "" || r.Trajectory != nil {

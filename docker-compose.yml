@@ -1,6 +1,6 @@
 # Runs the gligabao server and its Python sidecar on one private network.
 #
-#   export ANTHROPIC_API_KEY=...     # required for remember/recall
+#   export ANTHROPIC_API_KEY=...     # required for remember/query
 #   export OPENAI_API_KEY=...        # optional: embeddings (without it no vectors are stored)
 #   docker compose up --build
 #

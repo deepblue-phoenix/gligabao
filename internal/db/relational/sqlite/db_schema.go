@@ -68,9 +68,9 @@ CREATE TABLE IF NOT EXISTS gb_models (
 -- One row per invocation of a model: the dynamic counterpart of gb_models, which statically lists the models. Every LLM
 -- call, embedding request, web search and Jev classification the system makes is one row, written as the call happens
 -- (so what was spent is kept even if the operation fails later).
---   type       the operation that made the call: 'remember', 'remember_image' (the image pipeline) or 'recall'
+--   type       the operation that made the call: 'remember', 'remember_image' (the image pipeline) or 'query'
 --   stage      the pipeline stage: 'extract_graph', 'summarize_chunk', 'resolve_edges', 'resolve_series', 'extract_image',
---              'web_search', 'classify_complexity', 'embed' (remember) or 'recall'; '' if unknown
+--              'web_search', 'classify_complexity', 'embed' (remember) or 'query'; '' if unknown
 --   model_id   the model that was run, as the API reported it (a reference to gb_models); NULL if it did not say
 --   reasoning  the thinking level it ran with: 'none', 'low', 'medium' or 'high'. It is the level that was applied, so
 --              'none' for a model without thinking (embeddings, Jev, web search, models that do not support it). A chunk

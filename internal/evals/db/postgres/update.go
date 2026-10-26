@@ -239,10 +239,10 @@ func UpdateEvalRunMeta(ctx context.Context, q db.Execer, m core.EvalRunMeta) err
 // UpdateKnowledgeEvalRunMeta rewrites the row of m in gb_eval_runs_meta_knowledge.
 func UpdateKnowledgeEvalRunMeta(ctx context.Context, q db.Execer, m *core.KnowledgeEvalRunMeta) error {
 	res, err := q.ExecContext(ctx, `
-		UPDATE gb_eval_runs_meta_knowledge SET chunks = $1, steps = $2, remember_calls = $3, recall_calls = $4, remember_cost_usd = $5,
-			recall_cost_usd = $6, checks_passed = $7, checks_failed = $8
+		UPDATE gb_eval_runs_meta_knowledge SET chunks = $1, steps = $2, remember_calls = $3, query_calls = $4, remember_cost_usd = $5,
+			query_cost_usd = $6, checks_passed = $7, checks_failed = $8
 		WHERE eval_run_id = $9`,
-		m.Chunks, m.Steps, m.RememberCalls, m.RecallCalls, m.RememberCostUSD, m.RecallCostUSD, m.ChecksPassed, m.ChecksFailed, int64(m.EvalRunID))
+		m.Chunks, m.Steps, m.RememberCalls, m.QueryCalls, m.RememberCostUSD, m.QueryCostUSD, m.ChecksPassed, m.ChecksFailed, int64(m.EvalRunID))
 	if err != nil {
 		return fmt.Errorf("update knowledge eval run meta of eval run %d: %w", m.EvalRunID, err)
 	}

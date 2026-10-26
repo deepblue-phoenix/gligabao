@@ -2,7 +2,7 @@
 
 `POST /v1/gb/remember` also remembers images. An image goes through a pipeline of its own, separate from the text pipeline ([remember.md](remember.md)): a vision LLM reads the text in the image (OCR: its title and text blocks) and classifies the whole image by a theme (`plot`, `graph`, ...). The image file is kept on the file system, tracked by an **image artifact** row (metadata and the file's path, never the bytes), and what the model read is stored as an **image extraction**, in their own tables.
 
-For now nothing is added to the graph: no entities, edges or vectors come out of an image, and `recall` does not see it. Grounding the extractions in the rest of the graph is planned; the extraction tables are the input for it.
+For now nothing is added to the graph: no entities, edges or vectors come out of an image, and `query` does not see it. Grounding the extractions in the rest of the graph is planned; the extraction tables are the input for it.
 
 Code: `internal/memory/memory_image/image.go` (`RememberImage`, `ExtractImage`), `internal/memory/memory_image/image_prompts.go`, `internal/api/remember/remember.go` (the handler), `internal/memory/memory_image/image_store.go` (the files), `internal/db/graph/{sqlite,postgres}/db_image.go` (SQL).
 
@@ -114,7 +114,7 @@ Go access, in package `graph`: `InsertImage`, `ListImageArtifacts`, `GetImageArt
 ## Limitations
 
 - No endpoint reads, lists or deletes image artifacts or extractions yet; use the database.
-- Not grounded: entities, edges and embeddings are not derived from the extraction, and `recall` ignores images.
+- Not grounded: entities, edges and embeddings are not derived from the extraction, and `query` ignores images.
 - The files are on the local file system only (no object storage), and nothing deletes them: deleting a dataset (a soft delete) keeps its image rows and files, and there is no endpoint to remove an image.
 - The theme is the model's single best guess; there is no confidence value and no bounding boxes for the text blocks.
 - Huge images are not resized, and a dense image can exceed the output limit (`502`).

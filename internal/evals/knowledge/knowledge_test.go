@@ -24,7 +24,7 @@ import (
 // testEvalsDir is the directory of the evals of the repository (relative to this package).
 const testEvalsDir = "../../../bin/evals_knowledge"
 
-// scriptedLLM answers by what the prompt asks for: the recall prompt gets an answer, anything else an extraction.
+// scriptedLLM answers by what the prompt asks for: the query prompt gets an answer, anything else an extraction.
 type scriptedLLM struct {
 	answer string
 	mu     sync.Mutex
@@ -121,7 +121,7 @@ func TestExecutor(t *testing.T) {
 		WHERE c.eval_run_id = ? AND ((cd.name = 'good' AND c.verdict = 'pass') OR (cd.name = 'bad' AND c.verdict = 'fail')) AND c.status = 'completed' AND c.finished_at IS NOT NULL`, runID); n != 2 {
 		t.Errorf("case runs with their verdicts: %d", n)
 	}
-	// good: 2 trajectories (remember, recall), 1 check passed; bad: 3 trajectories, 1 problem.
+	// good: 2 trajectories (remember, query), 1 check passed; bad: 3 trajectories, 1 problem.
 	for name, want := range map[string][3]int{"good": {2, 1, 0}, "bad": {3, 0, 1}} {
 		var id int64
 		if err := d.QueryRow(`SELECT c.id FROM gb_case_runs c JOIN gb_case_defs cd ON cd.id = c.def_id WHERE c.eval_run_id = ? AND cd.name = ?`, runID, name).Scan(&id); err != nil {
@@ -137,7 +137,7 @@ func TestExecutor(t *testing.T) {
 			t.Errorf("%s: trajectories %d, passed %s, problems %s, answer %q, steps %d", name, trajectories, passed, problems, answer, steps)
 		}
 	}
-	// The trajectories are files, the first of a case is the remember and the last the recall.
+	// The trajectories are files, the first of a case is the remember and the last the query.
 	rows, err := d.Query(`SELECT path, kind, seq FROM gb_case_runs_meta_knowledge_trajectories ORDER BY case_run_id, seq`)
 	if err != nil {
 		t.Fatal(err)
@@ -149,12 +149,12 @@ func TestExecutor(t *testing.T) {
 		if err := rows.Scan(&path, &kind, &seq); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := os.Stat(path); err != nil || (kind != "remember" && kind != "recall") {
+		if _, err := os.Stat(path); err != nil || (kind != "remember" && kind != "query") {
 			t.Errorf("trajectory %s %s %d: %v", path, kind, seq, err)
 		}
 	}
 	// The eval run's metadata sums the cases.
-	if n := count(t, d, `SELECT COUNT(*) FROM gb_eval_runs_meta_knowledge WHERE eval_run_id = ? AND remember_calls = 3 AND recall_calls = 2 AND checks_passed = 1 AND checks_failed = 1 AND steps > 0 AND remember_cost_usd > 0 AND recall_cost_usd > 0`, runID); n != 1 {
+	if n := count(t, d, `SELECT COUNT(*) FROM gb_eval_runs_meta_knowledge WHERE eval_run_id = ? AND remember_calls = 3 AND query_calls = 2 AND checks_passed = 1 AND checks_failed = 1 AND steps > 0 AND remember_cost_usd > 0 AND query_cost_usd > 0`, runID); n != 1 {
 		t.Errorf("eval run meta: %d", n)
 	}
 	// The graph of a case is in its dataset.
@@ -216,7 +216,7 @@ func TestRunsAreIsolatedAndKept(t *testing.T) {
 
 func TestDatasetName(t *testing.T) {
 	for name, want := range map[string]string{
-		"remember_recall":       "remember_recall_run7",
+		"remember_query":        "remember_query_run7",
 		"job change (v2)":       "job_change__v2__run7",
 		"-lead":                 "_lead_run7",
 		strings.Repeat("a", 80): strings.Repeat("a", 59) + "_run7",
@@ -230,7 +230,7 @@ func TestDatasetName(t *testing.T) {
 
 // TestCaseReasoning checks that the runner's reasoning is the level of each stage, and that a case's own win, stage by stage.
 func TestCaseReasoning(t *testing.T) {
-	defaults, err := knowledge.ParseReasoning("extract_graph=low, recall=High")
+	defaults, err := knowledge.ParseReasoning("extract_graph=low, query=High")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +254,7 @@ func TestCaseReasoning(t *testing.T) {
 		t.Errorf("run levels: %v %+v", got, run.Counts)
 	}
 	over := kcase("r2", "Alice is here.", "Who?", "alice")
-	over.Reasoning = map[string]string{"extract_graph": "none", "recall": "medium"}
+	over.Reasoning = map[string]string{"extract_graph": "none", "query": "medium"}
 	if got, run := levels(over, defaults); run.Counts.Passed != 1 || fmt.Sprint(got) != "[none medium]" {
 		t.Errorf("case levels: %v %+v", got, run.Counts)
 	}
@@ -324,7 +324,7 @@ func TestLoadEvals(t *testing.T) {
 	if err != nil || len(evals) == 0 {
 		t.Fatalf("%v, %v", evals, err)
 	}
-	// Every case of the evals sets the reasoning of every stage, and of the recall, explicitly to none, so a run does not depend
+	// Every case of the evals sets the reasoning of every stage, and of the query, explicitly to none, so a run does not depend
 	// on the server's defaults and is the baseline for comparing levels.
 	for _, ev := range evals {
 		if ev.Name == "" || len(ev.Cases) == 0 {

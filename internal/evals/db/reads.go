@@ -440,9 +440,9 @@ func (r Reads) evalRunMeta(ctx context.Context, q Execer, id core.EvalRunID, typ
 	case core.TypeKnowledge:
 		m := &core.KnowledgeEvalRunMeta{EvalRunID: id}
 		err := r.queryRow(ctx, q, `
-			SELECT chunks, steps, remember_calls, recall_calls, remember_cost_usd, recall_cost_usd, checks_passed, checks_failed
+			SELECT chunks, steps, remember_calls, query_calls, remember_cost_usd, query_cost_usd, checks_passed, checks_failed
 			FROM gb_eval_runs_meta_knowledge WHERE eval_run_id = ?`, int64(id)).
-			Scan(&m.Chunks, &m.Steps, &m.RememberCalls, &m.RecallCalls, &m.RememberCostUSD, &m.RecallCostUSD, &m.ChecksPassed, &m.ChecksFailed)
+			Scan(&m.Chunks, &m.Steps, &m.RememberCalls, &m.QueryCalls, &m.RememberCostUSD, &m.QueryCostUSD, &m.ChecksPassed, &m.ChecksFailed)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil // an eval run may have been recorded without it
 		}

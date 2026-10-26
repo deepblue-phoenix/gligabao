@@ -225,11 +225,11 @@ func CreateEvalRun(ctx context.Context, q db.Execer, r *core.EvalRun) error {
 // CreateKnowledgeEvalRunMeta inserts m into gb_eval_runs_meta_knowledge, for the knowledge eval run m.EvalRunID.
 func CreateKnowledgeEvalRunMeta(ctx context.Context, q db.Execer, m *core.KnowledgeEvalRunMeta) error {
 	if _, err := q.ExecContext(ctx, `
-		INSERT INTO gb_eval_runs_meta_knowledge (eval_run_id, type, chunks, steps, remember_calls, recall_calls, remember_cost_usd,
-			recall_cost_usd, checks_passed, checks_failed)
+		INSERT INTO gb_eval_runs_meta_knowledge (eval_run_id, type, chunks, steps, remember_calls, query_calls, remember_cost_usd,
+			query_cost_usd, checks_passed, checks_failed)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		int64(m.EvalRunID), string(core.TypeKnowledge), m.Chunks, m.Steps, m.RememberCalls, m.RecallCalls, m.RememberCostUSD,
-		m.RecallCostUSD, m.ChecksPassed, m.ChecksFailed); err != nil {
+		int64(m.EvalRunID), string(core.TypeKnowledge), m.Chunks, m.Steps, m.RememberCalls, m.QueryCalls, m.RememberCostUSD,
+		m.QueryCostUSD, m.ChecksPassed, m.ChecksFailed); err != nil {
 		return fmt.Errorf("create knowledge eval run meta of eval run %d: %w", m.EvalRunID, err)
 	}
 	return nil

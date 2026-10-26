@@ -86,7 +86,7 @@ type Config struct {
 	// ChunkOverlapPercent is how much of a chunk repeats the end of the previous one, as a percentage of ChunkSize
 	// (0 = no overlap, at most chunk.MaxOverlapPercent). Default chunk.DefaultOverlapPercent (20).
 	ChunkOverlapPercent int `toml:"chunk_overlap_percent"`
-	// EvalModeEnable registers the eval endpoints (/v1/gb/eval/remember, /v1/gb/eval/recall) that return ATIF trajectories
+	// EvalModeEnable registers the eval endpoints (/v1/gb/eval/remember, /v1/gb/eval/query) that return ATIF trajectories
 	// with their results. Default false; `serve --eval` turns it on.
 	EvalModeEnable bool `toml:"eval"`
 	// TrainingModeEnable registers the training handlers (/v1/gb/training/...: jobs, models, datasets, evals, audits, the

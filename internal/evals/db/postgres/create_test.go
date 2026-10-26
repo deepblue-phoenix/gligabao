@@ -189,7 +189,7 @@ func TestCreate(t *testing.T) {
 	}
 
 	// Eval run metadata.
-	if err := postgres.CreateKnowledgeEvalRunMeta(ctx, d, &core.KnowledgeEvalRunMeta{EvalRunID: er.ID, Chunks: 3, Steps: 2, RememberCalls: 1, RecallCalls: 1, RememberCostUSD: 0.5, ChecksPassed: 1}); err != nil {
+	if err := postgres.CreateKnowledgeEvalRunMeta(ctx, d, &core.KnowledgeEvalRunMeta{EvalRunID: er.ID, Chunks: 3, Steps: 2, RememberCalls: 1, QueryCalls: 1, RememberCostUSD: 0.5, ChecksPassed: 1}); err != nil {
 		t.Fatalf("CreateKnowledgeEvalRunMeta: %v", err)
 	}
 	if err := postgres.CreateKnowledgeEvalRunMeta(ctx, d, &core.KnowledgeEvalRunMeta{EvalRunID: er.ID}); err == nil {

@@ -95,7 +95,7 @@ func (f Fact) Superseded() bool { return f.ExpiredAt != nil }
 // Span is the event-time validity as "(valid_at -> invalid_at)", with "?" for an unknown end.
 func (f Fact) Span() string { return span(f.ValidAt, f.InvalidAt) }
 
-// ContextLine is the fact as one line of the graph context given to the recall LLM.
+// ContextLine is the fact as one line of the graph context given to the query LLM.
 func (f Fact) ContextLine() string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "[edge %d] %s(%d) --%s--> %s(%d)", f.EdgeID, f.Source, f.SourceID, f.Relation, f.Target, f.TargetID)

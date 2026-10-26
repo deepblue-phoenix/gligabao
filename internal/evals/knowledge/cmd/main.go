@@ -6,8 +6,8 @@
 // eval database (-db) as eval defs, with a case def for each case (rewritten if the file changed), and run from there. The database is
 // never reset: every run of a case has a dataset of its own, named after the case and the eval run (see knowledge.DatasetName), so
 // runs do not interfere with each other and the graphs of all runs are kept. The cases are run behind an in-process HTTP server in
-// eval mode through the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/recall): remember (once per text, in order), then
-// recall. These return the ATIF trajectory of every call along with its result.
+// eval mode through the eval endpoints (/v1/gb/eval/remember and /v1/gb/eval/query): remember (once per text, in order), then
+// query. These return the ATIF trajectory of every call along with its result.
 //
 // Usage: go run ./internal/evals/knowledge/cmd [-v] [-config file] [-evals dir ...] [-eval name] [case-name ...]   (requires ANTHROPIC_API_KEY)
 // With -eval, only the cases of that eval run; -list-evals prints the available evals and exits.
@@ -59,7 +59,7 @@ func mainErr() error {
 	experimentDesc := flag.String("experiment-desc", "", "description of the experiment, used when it is created")
 	evalDBPath := flag.String("db", "bin/gligabao-eval.db", "SQLite file of the eval database: the datasets of the cases, the evals and their runs (never reset; show it with ./run_server_local.sh)")
 	modelsFlag := flag.String("models", "", `LLM model per remember stage, e.g. "extract_graph=claude-sonnet-4-5,resolve_edges=claude-haiku-5-5" (stages: `+strings.Join(memory_core.Stages, ", ")+`); a stage left out uses the default model; a case's "models" win`)
-	reasoningFlag := flag.String("reasoning", "", `reasoning level per stage, e.g. "extract_graph=low,recall=medium" (stages: `+strings.Join(knowledge.ReasoningStages(), ", ")+`; levels: `+strings.Join(ai.ReasoningLevels, ", ")+`); a stage left out uses the server default (none); a case's "reasoning" wins`)
+	reasoningFlag := flag.String("reasoning", "", `reasoning level per stage, e.g. "extract_graph=low,query=medium" (stages: `+strings.Join(knowledge.ReasoningStages(), ", ")+`; levels: `+strings.Join(ai.ReasoningLevels, ", ")+`); a stage left out uses the server default (none); a case's "reasoning" wins`)
 	flag.Parse()
 
 	configSet := false

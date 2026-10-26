@@ -25,7 +25,7 @@ func must0(t *testing.T, err error) {
 	}
 }
 
-// echoLLM answers extraction requests with a fixed graph and recall requests with a fixed answer.
+// echoLLM answers extraction requests with a fixed graph and query requests with a fixed answer.
 type echoLLM struct{}
 
 func (echoLLM) Complete(_ context.Context, r ai.Request) (*ai.Response, error) {
@@ -121,7 +121,7 @@ func testDatasets(t *testing.T, d *sql.DB) {
 	want(do("POST", "/v1/gb/datasets", `{"name":"x"}`), 400)
 	want(do("DELETE", "/v1/gb/datasets/x", ""), 400)
 	want(do("POST", "/v1/gb/remember", `{"text":"x"}`), 400)
-	want(do("POST", "/v1/gb/recall", `{"query":"x"}`), 400)
+	want(do("POST", "/v1/gb/query", `{"query":"x"}`), 400)
 
 	// Create.
 	rec := do("POST", "/v1/gb/datasets", `{"user_id":"u1","name":"ds1","tags":["a"," b ","a",""],"description":"first"}`)
@@ -140,7 +140,7 @@ func testDatasets(t *testing.T, d *sql.DB) {
 	want(do("POST", "/v1/gb/datasets", `{"user_id":"u1","name":""}`), 400)
 	want(do("POST", "/v1/gb/datasets", `{"user_id":"u1","name":"a b/c"}`), 400)
 
-	// remember/recall are scoped: the same entity in two datasets is two rows, never linked.
+	// remember/query are scoped: the same entity in two datasets is two rows, never linked.
 	want(do("POST", "/v1/gb/remember", `{"user_id":"u1","text":"x","dataset":"ds1"}`), 200)
 	want(do("POST", "/v1/gb/remember", `{"user_id":"u1","text":"x","dataset":"ds2"}`), 200) // created on demand
 	want(do("POST", "/v1/gb/remember", `{"user_id":"u1","text":"x"}`), 200)                 // default: main
@@ -167,11 +167,11 @@ func testDatasets(t *testing.T, d *sql.DB) {
 		t.Errorf("datasets = %v", got)
 	}
 
-	// recall: unknown dataset is a 404, an empty one answers without evidence.
-	want(do("POST", "/v1/gb/recall", `{"user_id":"u1","query":"Alice?","dataset":"nope"}`), 404)
-	want(do("POST", "/v1/gb/recall", `{"user_id":"u1","query":"Alice?","dataset":"bad name"}`), 400)
-	want(do("POST", "/v1/gb/recall", `{"user_id":"u1","query":"Alice?","dataset":"ds1"}`), 200)
-	want(do("POST", "/v1/gb/recall", `{"user_id":"u1","query":"Alice?"}`), 200)
+	// query: unknown dataset is a 404, an empty one answers without evidence.
+	want(do("POST", "/v1/gb/query", `{"user_id":"u1","query":"Alice?","dataset":"nope"}`), 404)
+	want(do("POST", "/v1/gb/query", `{"user_id":"u1","query":"Alice?","dataset":"bad name"}`), 400)
+	want(do("POST", "/v1/gb/query", `{"user_id":"u1","query":"Alice?","dataset":"ds1"}`), 200)
+	want(do("POST", "/v1/gb/query", `{"user_id":"u1","query":"Alice?"}`), 200)
 
 	// Each dataset has its own vector dataset, keyed by dataset ID.
 	for _, name := range []string{"ds1", "ds2"} {
@@ -187,7 +187,7 @@ func testDatasets(t *testing.T, d *sql.DB) {
 		t.Fatal("datasets do not have separate vector datasets")
 	}
 
-	// Soft delete: the row stays with deleted = 1, but the dataset is gone for remember/recall/list.
+	// Soft delete: the row stays with deleted = 1, but the dataset is gone for remember/query/list.
 	want(do("DELETE", "/v1/gb/datasets/ds1?user_id=u1", ""), 204)
 	want(do("DELETE", "/v1/gb/datasets/ds1?user_id=u1", ""), 404)
 	if n := vectorCount(ds.ID); n != 0 {
@@ -208,7 +208,7 @@ func testDatasets(t *testing.T, d *sql.DB) {
 	if n := counts(ds.ID).Entities; n != 2 {
 		t.Errorf("deleted dataset's entities = %d, want kept (2)", n)
 	}
-	want(do("POST", "/v1/gb/recall", `{"user_id":"u1","query":"Alice?","dataset":"ds1"}`), 404)
+	want(do("POST", "/v1/gb/query", `{"user_id":"u1","query":"Alice?","dataset":"ds1"}`), 404)
 	if got := names("/v1/gb/datasets?user_id=u1"); strings.Join(got, ",") != "ds2,main" {
 		t.Errorf("datasets after delete = %v", got)
 	}
@@ -225,11 +225,11 @@ func testDatasets(t *testing.T, d *sql.DB) {
 		t.Errorf("recreated dataset has %d vectors", n)
 	}
 
-	// Datasets belong to a user: another user sees none of u1's, can reuse its names, and cannot delete or recall them.
+	// Datasets belong to a user: another user sees none of u1's, can reuse its names, and cannot delete or query them.
 	if got := names("/v1/gb/datasets?user_id=u2"); len(got) != 0 {
 		t.Errorf("u2 datasets = %v, want none", got)
 	}
-	want(do("POST", "/v1/gb/recall", `{"user_id":"u2","query":"Alice?","dataset":"ds2"}`), 404)
+	want(do("POST", "/v1/gb/query", `{"user_id":"u2","query":"Alice?","dataset":"ds2"}`), 404)
 	want(do("DELETE", "/v1/gb/datasets/ds2?user_id=u2", ""), 404)
 	want(do("POST", "/v1/gb/datasets", `{"user_id":"u2","name":"ds2"}`), 201)
 	want(do("POST", "/v1/gb/remember", `{"user_id":"u2","text":"x","dataset":"ds2"}`), 200)

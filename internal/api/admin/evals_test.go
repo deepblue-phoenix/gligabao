@@ -19,7 +19,7 @@ func TestEvals(t *testing.T) { dbtest.Run(t, testEvals) }
 func testEvals(t *testing.T, d *sql.DB) {
 	dir := t.TempDir()
 
-	b := atif.NewBuilder(atif.Agent{Name: "gligabao-recall", Version: "0.1"})
+	b := atif.NewBuilder(atif.Agent{Name: "gligabao-query", Version: "0.1"})
 	b.User("question")
 	b.Tool("looking up", "search", map[string]any{"q": "x"}, "found")
 	traj := b.Build()

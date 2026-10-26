@@ -377,7 +377,7 @@ function caseRecord(run: Run, e: CaseRun, experiment: string, web?: EvalWebSearc
   return out;
 }
 
-// The artifacts of one trajectory: for a remember call the input artifact the caller gave, for a recall the artifacts
+// The artifacts of one trajectory: for a remember call the input artifact the caller gave, for a query the artifacts
 // the answer was sourced from (the provenance of its evidence).
 function artifactsPanel(t: Trajectory): HTMLElement {
   const box = h("div", "artifacts");

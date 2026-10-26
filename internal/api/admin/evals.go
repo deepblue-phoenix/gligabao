@@ -141,7 +141,7 @@ type caseRunView struct {
 	Trajectories []trajectoryView `json:"trajectories,omitempty"`
 }
 
-// trajectoryView references the ATIF trajectory of one remember or recall call of a case.
+// trajectoryView references the ATIF trajectory of one remember or query call of a case.
 type trajectoryView struct {
 	Seq          int            `json:"seq"` // from 1
 	Kind         string         `json:"kind"`

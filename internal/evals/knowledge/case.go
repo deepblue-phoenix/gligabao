@@ -25,7 +25,7 @@ import (
 // EvalUser owns the eval datasets.
 const EvalUser = "eval"
 
-// DatasetName is the dataset a case remembers into and recalls from: one per case and eval run ("<case>_run<evalRunID>"), so runs
+// DatasetName is the dataset a case remembers into and queries from: one per case and eval run ("<case>_run<evalRunID>"), so runs
 // are isolated from each other and the graph of every case of every run stays in the eval database (and can be viewed in the admin
 // UI). Characters a dataset name does not allow become "_"; the case part is cut so the whole name fits the 64-byte limit.
 func DatasetName(caseName string, evalRunID core.EvalRunID) string {
@@ -53,9 +53,9 @@ type outcome struct {
 	// DatasetID is the dataset the case ran in (0 if it was never created); it holds the graph the case built.
 	DatasetID int64
 	// ArtifactIDs[i] are the IDs, in DatasetID, of the artifacts of Trajectories[i]: the artifact a remember call stored, the
-	// artifacts a recall's evidence was sourced from.
+	// artifacts a query's evidence was sourced from.
 	ArtifactIDs [][]int64
-	// Trajectories are the ATIF trajectories returned by the eval endpoints: one per remember, then the recall's.
+	// Trajectories are the ATIF trajectories returned by the eval endpoints: one per remember, then the query's.
 	Trajectories []*atif.Trajectory
 	// Chunks is the total number of chunks the remember calls reported (0 if no text was chunked).
 	Chunks int
@@ -73,7 +73,7 @@ func (o *outcome) cost() (usd float64, steps int) {
 }
 
 // runCase executes one case in the eval database through the eval endpoints, in a dataset of its own (see DatasetName): remember
-// (once per text, in order), the checks of what was stored, then recall. input has the texts read in. The outcome is returned even
+// (once per text, in order), the checks of what was stored, then query. input has the texts read in. The outcome is returned even
 // when err is set, holding whatever was collected before the failure.
 func (x *Executor) runCase(ctx context.Context, name string, in core.KnowledgeCaseDefMeta, input core.KnowledgeInput, evalRunID core.EvalRunID, llm memory_core.LLM) (out *outcome, err error) {
 	out = &outcome{}
@@ -84,7 +84,7 @@ func (x *Executor) runCase(ctx context.Context, name string, in core.KnowledgeCa
 		return out, fmt.Errorf("models: %w", err)
 	}
 	models := x.Models.Merge(caseModels)
-	rememberReasoning, recallReasoning, err := mergeReasoning(x.Reasoning, in.Reasoning)
+	rememberReasoning, queryReasoning, err := mergeReasoning(x.Reasoning, in.Reasoning)
 	if err != nil {
 		return out, fmt.Errorf("reasoning: %w", err)
 	}
@@ -241,15 +241,15 @@ func (x *Executor) runCase(ctx context.Context, name string, in core.KnowledgeCa
 		} `json:"evidence"`
 		Trajectory *atif.Trajectory `json:"trajectory"`
 	}
-	recallBody := map[string]any{"user_id": EvalUser, "query": input.Query, "dataset": dataset}
-	if recallReasoning != "" {
-		recallBody["reasoning"] = recallReasoning
+	queryBody := map[string]any{"user_id": EvalUser, "query": input.Query, "dataset": dataset}
+	if queryReasoning != "" {
+		queryBody["reasoning"] = queryReasoning
 	}
-	if err := post(ctx, srv.URL+"/v1/gb/eval/recall", recallBody, &rec); err != nil {
-		return out, fmt.Errorf("recall: %w", err)
+	if err := post(ctx, srv.URL+"/v1/gb/eval/query", queryBody, &rec); err != nil {
+		return out, fmt.Errorf("query: %w", err)
 	}
 	if rec.Trajectory == nil {
-		return out, errors.New("recall: response has no trajectory (is the server in eval mode?)")
+		return out, errors.New("query: response has no trajectory (is the server in eval mode?)")
 	}
 	out.Answer = rec.Answer
 	out.Trajectories = append(out.Trajectories, rec.Trajectory)
@@ -259,21 +259,21 @@ func (x *Executor) runCase(ctx context.Context, name string, in core.KnowledgeCa
 	}
 	ids, err := sourceArtifactIDs(ctx, database, dataset, cited)
 	if err != nil {
-		// Not worth failing the case for: the recall itself worked.
-		fmt.Fprintf(os.Stderr, "warning: %s: collect the recall's source artifacts: %v\n", name, err)
+		// Not worth failing the case for: the query itself worked.
+		fmt.Fprintf(os.Stderr, "warning: %s: collect the query's source artifacts: %v\n", name, err)
 	}
 	out.ArtifactIDs = append(out.ArtifactIDs, ids)
 	return out, nil
 }
 
 // trajectoryRef builds the database reference to an ATIF trajectory: its ID, the operation that made it (taken from the agent name,
-// "gligabao-remember" or "gligabao-recall"), its size and cost, and the path of its file in dir (empty dir = not stored).
+// "gligabao-remember" or "gligabao-query"), its size and cost, and the path of its file in dir (empty dir = not stored).
 func trajectoryRef(seq int, traj *atif.Trajectory, dir string, artifactIDs []int64) (core.KnowledgeTrajectory, error) {
 	if traj == nil || traj.TrajectoryID == "" {
 		return core.KnowledgeTrajectory{}, errors.New("trajectory has no trajectory_id")
 	}
 	kind := strings.TrimPrefix(traj.Agent.Name, agentPrefix)
-	if kind != KindRemember && kind != KindRecall {
+	if kind != KindRemember && kind != KindQuery {
 		return core.KnowledgeTrajectory{}, fmt.Errorf("trajectory %s: unknown agent %q", traj.TrajectoryID, traj.Agent.Name)
 	}
 	ref := core.KnowledgeTrajectory{Seq: seq, Kind: kind, TrajectoryID: traj.TrajectoryID, AgentName: traj.Agent.Name, Steps: len(traj.Steps), ArtifactIDs: slices.Clone(artifactIDs)}
@@ -289,7 +289,7 @@ func trajectoryRef(seq int, traj *atif.Trajectory, dir string, artifactIDs []int
 // The kinds of the trajectories of a case (core.KnowledgeTrajectory.Kind).
 const (
 	KindRemember = "remember"
-	KindRecall   = "recall"
+	KindQuery    = "query"
 )
 
 // agentPrefix is what the memory package puts before the operation in the ATIF agent name ("gligabao-remember").

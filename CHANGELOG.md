@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.106.0] - 2026-11-05
+
+### Changed
+- Breaking: `recall` is now called `query`, everywhere. The endpoints are `POST /v1/gb/query` and (with `--eval`) `POST /v1/gb/eval/query`; the docs page is `docs/query.md`; the Go packages are `internal/memory/memory_query` (`memory_query.Query`, `QueryResult`) and `internal/api/query`; `memory_core.StageQuery`, `DefaultQueryReasoning` and `ResolveQueryReasoning` replace the `Recall` names.
+- The values `recall` became `query` in: the monitoring events (`query.completed`, `query.failed`), the type and stage of inferences (`gb_inferences.type` / `stage`), the `reasoning` key of an eval case and of the runner's `-reasoning` flag, the ATIF agent name (`gligabao-query`), and the eval's trajectory kind.
+- Schema: in the eval database, `gb_eval_runs_meta_knowledge.recall_calls` and `recall_cost_usd` are `query_calls` and `query_cost_usd` (JSON `query_calls`, `query_cost_usd`), and the trajectory `kind` check accepts `'query'` instead of `'recall'`. There is no migration: an existing database has to be recreated (or altered by hand).
+- "Precision and recall" in the docs is unchanged. Older changelog entries keep the old name.
+
 ## [0.105.0] - 2026-11-04
 
 ### Changed

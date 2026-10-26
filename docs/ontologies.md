@@ -1,6 +1,6 @@
 # Ontologies
 
-An ontology describes the concepts of a domain (its **classes**) and how they relate. gligabao can load ontologies written in OWL, update them (merge into or replace them), and keep them in the graph database next to the memory graph. This is initial support: ontologies are stored and tracked, but `remember` and `recall` do not use them yet.
+An ontology describes the concepts of a domain (its **classes**) and how they relate. gligabao can load ontologies written in OWL, update them (merge into or replace them), and keep them in the graph database next to the memory graph. This is initial support: ontologies are stored and tracked, but `remember` and `query` do not use them yet.
 
 ## POST /v1/gb/ontologies
 
@@ -193,4 +193,4 @@ Not stored: anything else, in particular restrictions and other anonymous class 
 - A merge cannot delete a class or an edge; replace the ontology to do that.
 - Updating changes the stored ontology in place; there is no version history beyond `sha256` (of the last document) and `updated_at`.
 - Only RDF/XML is read (no Turtle, JSON-LD, ...), and there is no reasoning or consistency checking.
-- Ontologies are not connected to datasets, and `remember` and `recall` ignore them.
+- Ontologies are not connected to datasets, and `remember` and `query` ignore them.
