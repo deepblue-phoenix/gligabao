@@ -20,7 +20,7 @@ An *eval case* (a *case*) is one input/output combination, plus metadata, to be 
 |---|---|---|
 | `gb_eval_defs` | `EvalDef` | `name` (unique), `type`, `description`, `tags`, `params` |
 | `gb_case_defs` | `CaseDef` | a case of an eval: `name` and `position` (both unique within the eval), `type`; its type-specific part is in `gb_case_def_meta_<type>` |
-| `gb_case_def_meta_knowledge` | `KnowledgeCaseDefMeta` | the texts to `remember`, the `query`, the checks (`expect_contains`, `expect_edges`, `expect_min_chunks`, `expect_web_searches`, `expect_series`) and the settings (`chunk_size`, `models`, `reasoning`) |
+| `gb_case_def_meta_knowledge` | `KnowledgeCaseDefMeta` | the texts to `remember`, the `query`, the checks (`expect_contains`, `expect_edges`, `expect_min_chunks`, `expect_web_searches`, `expect_series`, `expect_geo`) and the settings (`chunk_size`, `models`, `reasoning`) |
 | `gb_case_def_meta_training` | `TrainingCaseDefMeta` | `instruction`, `input` and the expected `output` |
 | `gb_experiment_defs` | `ExperimentDef` | `name` (unique), `description`, `params` (free-form JSON: the settings under test) |
 | `gb_experiment_def_evals` | `ExperimentDef.EvalDefIDs` | the evals of an experiment, in the order they run |

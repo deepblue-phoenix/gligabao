@@ -36,6 +36,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/evals/evalfile"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/knowledge"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
+	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 )
@@ -60,6 +61,7 @@ func mainErr() error {
 	evalDBPath := flag.String("db", "build/gligabao-eval.db", "SQLite file of the eval database: the datasets of the cases, the evals and their runs (never reset; show it with ./run_server_local.sh)")
 	modelsFlag := flag.String("models", "", `LLM model per stage, e.g. "extract_graph=claude-sonnet-4-5,query=claude-haiku-5-5" (stages: `+strings.Join(knowledge.ModelStages(), ", ")+`; query is the call that answers the question, and detect_geo applies to remember and query); a stage left out uses the default model; a case's "models" win`)
 	reasoningFlag := flag.String("reasoning", "", `reasoning level per stage, e.g. "extract_graph=low,query=medium" (stages: `+strings.Join(knowledge.ReasoningStages(), ", ")+`; levels: `+strings.Join(ai.ReasoningLevels, ", ")+`); a stage left out uses the server default (none); a case's "reasoning" wins`)
+	geoFlag := flag.Bool("geo", true, "turn geo on in the eval server: remember stores the coordinates of the places it finds, looked up in Nominatim (OpenStreetMap; needs internet, costs one more LLM call per text) and query finds the places of the question; -geo=false turns it off")
 	flag.Parse()
 
 	configSet := false
@@ -146,6 +148,7 @@ func mainErr() error {
 	if len(reasoning) > 0 {
 		params["reasoning"] = reasoning
 	}
+	params["geo"] = *geoFlag
 	var xr *runner.ExperimentRecorder
 	var xdef *core.ExperimentDef
 	if *experiment != "" {
@@ -157,8 +160,12 @@ func mainErr() error {
 		}
 	}
 
+	var geoResolver geo.Resolver
+	if *geoFlag {
+		geoResolver = geo.Default()
+	}
 	x := &knowledge.Executor{
-		DB: database, LLM: llm, Embedder: emb, WebSearch: llm, EvalsDirs: evalsDirs, Models: models, Reasoning: reasoning,
+		DB: database, LLM: llm, Embedder: emb, WebSearch: llm, Geo: geoResolver, EvalsDirs: evalsDirs, Models: models, Reasoning: reasoning,
 		TrajectoryDir: *atifDir, Verbose: *verbose, Out: os.Stdout,
 	}
 	var counts core.Counts

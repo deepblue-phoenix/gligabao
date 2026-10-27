@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS gb_case_def_meta_knowledge (
 	expect_min_chunks   INTEGER NOT NULL DEFAULT 0,
 	expect_web_searches INTEGER NOT NULL DEFAULT 0,
 	expect_series       TEXT NOT NULL DEFAULT '[]',
+	expect_geo          TEXT NOT NULL DEFAULT '[]',
 	chunk_size          INTEGER NOT NULL DEFAULT 0,
 	models              TEXT NOT NULL DEFAULT '{}',
 	reasoning           TEXT NOT NULL DEFAULT '{}',

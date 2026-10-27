@@ -41,6 +41,7 @@ func TestGetAndUpdate(t *testing.T) {
 		m.ExpectContains = []string{"Acme"}
 		m.ExpectEdges = []core.KnowledgeExpectEdge{{Source: "Alice", Target: "Acme", Ended: true}}
 		m.ExpectSeries = []core.KnowledgeExpectSeries{{Key: "k", Points: 3}}
+		m.ExpectGeo = []core.KnowledgeExpectGeo{{Entity: "Paris", Kind: "city", CountryCode: "fr"}}
 		m.Models = map[string]string{"extract_graph": "m"}
 		m.ChunkSize = 100
 		if err := s.CreateCaseDefMeta(ctx, d, m); err != nil {

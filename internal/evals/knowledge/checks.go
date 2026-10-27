@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"slices"
 	"strings"
 
@@ -173,6 +174,67 @@ func checkWebSearches(ctx context.Context, database *db.DB, dataset string, min 
 	}
 	check(ok, "web search: every web_search artifact has its query, text, a parent artifact and entities", "web search: "+problem)
 	return nil
+}
+
+// checkGeo verifies the places stored in the dataset (the rows of gb_entity_geo, found by the geo stage of remember and its resolver)
+// against the expected ones: each named entity must be stored as a place, of the kind, in the country and near the coordinates
+// that are given. The detection is the LLM's and the coordinates are the resolver's, so this is not independent of either.
+func checkGeo(ctx context.Context, database *db.DB, dataset string, want []core.KnowledgeExpectGeo, out io.Writer, check func(ok bool, pass, fail string)) error {
+	dsID, err := relational.DatasetID(ctx, database.Relational, EvalUser, dataset)
+	if err != nil {
+		return err
+	}
+	stored, err := graph.ListEntityGeo(ctx, database.Graph, dsID)
+	if err != nil {
+		return err
+	}
+	if out != nil {
+		fmt.Fprintln(out, "  stored places:")
+		for _, g := range stored {
+			fmt.Fprintf(out, "    [%d] %s kind=%s (%.4f, %.4f) country=%s %q\n", g.EntityID, g.EntityName, g.Kind, g.Latitude, g.Longitude, g.CountryCode, g.DisplayName)
+		}
+	}
+	for _, w := range want {
+		desc := "place " + w.Entity
+		var found *graph.EntityGeo
+		for i, g := range stored {
+			if strings.EqualFold(g.EntityName, w.Entity) {
+				found = &stored[i]
+				break
+			}
+		}
+		if found == nil {
+			check(false, "", desc+": not stored as a place")
+			continue
+		}
+		check(true, desc+": stored as a place", "")
+		if w.Kind != "" {
+			check(found.Kind == w.Kind, fmt.Sprintf("%s: kind = %s", desc, w.Kind), fmt.Sprintf("%s: kind = %q, want %s", desc, found.Kind, w.Kind))
+		}
+		if w.CountryCode != "" {
+			check(strings.EqualFold(found.CountryCode, w.CountryCode), fmt.Sprintf("%s: country = %s", desc, w.CountryCode),
+				fmt.Sprintf("%s: country = %q, want %s", desc, found.CountryCode, w.CountryCode))
+		}
+		if w.Latitude != nil && w.Longitude != nil {
+			radius := w.RadiusKm
+			if radius <= 0 {
+				radius = core.DefaultGeoRadiusKm
+			}
+			km := distanceKm(found.Latitude, found.Longitude, *w.Latitude, *w.Longitude)
+			check(km <= radius, fmt.Sprintf("%s: %.0f km from (%.2f, %.2f) (within %.0f)", desc, km, *w.Latitude, *w.Longitude, radius),
+				fmt.Sprintf("%s: at (%.4f, %.4f), %.0f km from (%.2f, %.2f), want within %.0f km", desc, found.Latitude, found.Longitude, km, *w.Latitude, *w.Longitude, radius))
+		}
+	}
+	return nil
+}
+
+// distanceKm is the great-circle distance between two points in degrees (haversine, mean Earth radius).
+func distanceKm(lat1, lon1, lat2, lon2 float64) float64 {
+	const earthKm = 6371.0
+	rad := func(d float64) float64 { return d * math.Pi / 180 }
+	dLat, dLon := rad(lat2-lat1), rad(lon2-lon1)
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) + math.Cos(rad(lat1))*math.Cos(rad(lat2))*math.Sin(dLon/2)*math.Sin(dLon/2)
+	return 2 * earthKm * math.Asin(math.Sqrt(a))
 }
 
 // checkSeries verifies the timeseries stored in the dataset against the expected ones: each must exist, have the

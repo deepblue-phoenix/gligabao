@@ -17,6 +17,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/knowledge"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
+	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
@@ -40,6 +41,26 @@ func (l *scriptedLLM) Complete(_ context.Context, req ai.Request) (*ai.Response,
 	out := `{"entities":[{"name":"Alice","type":"person"}],"edges":[]}`
 	if len(req.Messages) > 0 && strings.Contains(req.Messages[len(req.Messages)-1].Content, "<graph>") {
 		out = `{"answer":"` + l.answer + `","entities":[1],"edges":[]}`
+	}
+	return &ai.Response{Text: out, StopReason: "end_turn", Provider: ai.ProviderAnthropic, Model: "m", InputTokens: 10, OutputTokens: 5, CostUSD: 0.01}, nil
+}
+
+// geoLLM is scriptedLLM for a text about Alice living in Paris: it extracts both and says that Paris is a city.
+type geoLLM struct{ scriptedLLM }
+
+func (l *geoLLM) Complete(ctx context.Context, req ai.Request) (*ai.Response, error) {
+	var out string
+	switch {
+	case strings.Contains(req.System, "geographic places"): // remember: which entities are places
+		out = `{"places":[{"entity":0,"kind":"city","query":"Paris, France"}]}`
+	case strings.Contains(req.System, "places that a question mentions"):
+		out = `{"places":[]}`
+	case len(req.Messages) > 0 && strings.Contains(req.Messages[len(req.Messages)-1].Content, "<graph>"):
+	default: // extraction
+		out = `{"entities":[{"name":"Alice","type":"person"},{"name":"Paris","type":"location"}],"edges":[{"source":"Alice","target":"Paris","relation":"lives_in","description":"Alice lives in Paris"}]}`
+	}
+	if out == "" {
+		return l.scriptedLLM.Complete(ctx, req)
 	}
 	return &ai.Response{Text: out, StopReason: "end_turn", Provider: ai.ProviderAnthropic, Model: "m", InputTokens: 10, OutputTokens: 5, CostUSD: 0.01}, nil
 }
@@ -213,6 +234,60 @@ func TestRunsAreIsolatedAndKept(t *testing.T) {
 	// The def is the same one for both runs.
 	if n := count(t, e.db.Relational, `SELECT COUNT(DISTINCT def_id) FROM gb_case_runs`); n != 1 {
 		t.Errorf("case defs run: %d", n)
+	}
+}
+
+// TestExpectGeo runs a case with expect_geo against an executor with a geo resolver: the places the LLM finds are stored with the
+// resolver's coordinates, and the check passes or fails on them. Without a resolver the case errors.
+func TestExpectGeo(t *testing.T) {
+	paris := func(lat, lon float64) geo.Resolver {
+		return geo.Func{ResolverName: "fake", Fn: func(_ context.Context, q geo.Query) (*geo.Place, error) {
+			return &geo.Place{Latitude: lat, Longitude: lon, Kind: geo.KindCity, DisplayName: "Paris, France", Country: "France", CountryCode: "fr", Provider: "fake"}, nil
+		}}
+	}
+	f := func(v float64) *float64 { return &v }
+	c := kcase("where", "Alice lives in Paris.", "Where does Alice live?", "Paris")
+	c.ExpectGeo = []core.KnowledgeExpectGeo{
+		{Entity: "paris", Kind: "city", CountryCode: "FR", Latitude: f(48.86), Longitude: f(2.35), RadiusKm: 30},
+		{Entity: "Alice"}, // a person: not stored as a place
+	}
+	run := func(r geo.Resolver) (*core.EvalRun, *env) {
+		e := newEnv(t, "Paris.")
+		e.x.LLM, e.x.Geo = &geoLLM{scriptedLLM{answer: "Paris."}}, r
+		run, _ := e.run(knowledge.Eval{Name: "g", Cases: []core.KnowledgeCase{c}})
+		return run, e
+	}
+
+	run1, e := run(paris(48.8566, 2.3522))
+	if want := (core.Counts{Total: 1, Completed: 1, Failed: 1}); run1.Counts != want {
+		t.Fatalf("counts: %+v", run1.Counts)
+	}
+	var passed, problems string
+	if err := e.db.Relational.QueryRow(`SELECT passed_checks, problems FROM gb_case_runs_meta_knowledge`).Scan(&passed, &problems); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"place paris: stored as a place", "place paris: kind = city", "place paris: country = FR"} {
+		if !strings.Contains(passed, want) {
+			t.Errorf("passed checks lack %q: %s", want, passed)
+		}
+	}
+	if !strings.Contains(problems, "place Alice: not stored as a place") || strings.Contains(problems, "place paris") {
+		t.Errorf("problems: %s", problems)
+	}
+
+	// The resolver puts Paris on the wrong continent: the coordinates check fails.
+	_, e = run(paris(-33.87, 151.21))
+	if err := e.db.Relational.QueryRow(`SELECT problems FROM gb_case_runs_meta_knowledge`).Scan(&problems); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(problems, "place paris: at (-33.8700, 151.2100)") {
+		t.Errorf("problems: %s", problems)
+	}
+
+	// Geo off: the case cannot pass, so it errors instead of failing every check.
+	run3, _ := run(nil)
+	if run3.Counts.Errored != 1 {
+		t.Errorf("without a resolver: %+v", run3.Counts)
 	}
 }
 

@@ -140,7 +140,13 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 
 ## How the evals use it
 
+The in-process server has geo on: the runner gives it a geo resolver, Nominatim of OpenStreetMap (cached) by default, so `remember` stores the coordinates of the places it finds and `query` finds those of the question (one more LLM call each, and a lookup per place; it needs internet). `-geo=false` turns it off; a program that runs the evals sets `knowledge.Executor.Geo` (nil: off). A failed lookup never fails a case (see [geo.md](../geo.md)).
+
 `internal/evals/knowledge` starts an in-process server with eval mode on and runs each case through `/v1/gb/eval/remember` (once per memory, in order) and `/v1/gb/eval/query`. It decodes the `trajectory` from every response and fails the case if one is missing. A case's outcome holds the answer, the failed temporal-fact checks and the trajectories (one per remember, then the query's), so checks can use the steps and costs directly. For now the runner reports the trajectory count, step count and total cost with `-v`.
+
+### The `geo` eval and `expect_geo`
+
+`build/evals_knowledge/geo.json` has five cases about places: a city (`geo_city`), a city and its country (`geo_city_country`), a landmark (`geo_landmark`), two cities (`geo_two_cities`) and a mountain (`geo_mountain`). Each remembers a sentence, asks a question about it (`expect_contains`, `expect_edges`) and has an `expect_geo` check on what the geo stage stored. `expect_geo` is a list of `{"entity": "Paris", "kind": "city", "country_code": "fr", "latitude": 48.86, "longitude": 2.35, "radius_km": 30}`: the entity (name, case-insensitive) must have a row in `gb_entity_geo`, and each part that is given must hold: its `kind` (what the LLM judged it to be), its `country_code` (case-insensitive) and its coordinates within `radius_km` (default 100) of the given ones (great-circle distance). The LLM decides what is a place and the geo resolver where it is, so the check measures both; the coordinates and the country come from Nominatim and are generous on purpose. A case with `expect_geo` needs geo on in the eval server: with `-geo=false` it is errored, not failed. `-v` prints the places that were stored.
 
 ### Models
 
@@ -149,7 +155,7 @@ An eval case can vary the model of each LLM stage of `remember` (`extract_graph`
 1. `-models extract_graph=<model>,query=<model>` on the command line: the defaults of the whole run (and recorded in the experiment run's `params.models`);
 2. `"models": {"extract_graph": "<model>", "query": "<model>"}` in a case of an eval: that case only; a stage named here wins over `-models`.
 
-A stage named by neither uses the default model. The model of each LLM step is in the trajectory (`model_name`), the requested `models` are in `extra.input.models`, and the entities and edges a case stores carry the `extract_graph` model as their `model_id`, so the graph of a run shows which model produced it. A runner invocation is a run of an experiment, so comparing models means running the eval once per setting under the same experiment (for instance `-experiment extract-models -models extract_graph=claude-sonnet-4-5`, or `-experiment answer-models -models query=claude-sonnet-4-5` to vary the model that answers). The in-process server of the evals has no geo resolver, so `detect_geo` is accepted but has no effect on a run.
+A stage named by neither uses the default model. The model of each LLM step is in the trajectory (`model_name`), the requested `models` are in `extra.input.models`, and the entities and edges a case stores carry the `extract_graph` model as their `model_id`, so the graph of a run shows which model produced it. A runner invocation is a run of an experiment, so comparing models means running the eval once per setting under the same experiment (for instance `-experiment extract-models -models extract_graph=claude-sonnet-4-5`, or `-experiment answer-models -models query=claude-sonnet-4-5` to vary the model that answers). The in-process server of the evals has a [geo resolver](../geo.md) unless the runner is given `-geo=false`, so `detect_geo` applies to every run by default.
 
 ### Reasoning levels
 

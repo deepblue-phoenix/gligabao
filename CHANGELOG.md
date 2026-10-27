@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.115.0] - 2026-10-29
+
+### Added
+- The in-process server of the knowledge evals has a geo resolver: with it `remember` finds the places among the entities of a text and stores their coordinates (`gb_entity_geo`), and `query` finds the places of the question, so the trajectories of the evals have the `select_geo_entities`, `detect_geo`, `resolve_geo` and `store_geo` steps. The runner turns it on by default with the public Nominatim geocoder of OpenStreetMap (cached; needs internet; one more LLM call per text); `-geo=false` turns it off, and the setting is recorded in the experiment run's `params.geo`. Go: `knowledge.Executor.Geo`; without it geo stays off. The `detect_geo` model and reasoning of `-models`, `-reasoning` and the cases now take effect.
+
+- A knowledge case has a new check, `expect_geo`: places that must be stored for entities of the dataset (`gb_entity_geo`), each with the entity's name and, optionally, `kind`, `country_code` and `latitude`/`longitude` with `radius_km` (default 100 km). Go: `core.KnowledgeExpectGeo`; the column `expect_geo` of `gb_case_def_meta_knowledge` (SQLite and PostgreSQL). A case with it errors when geo is off.
+- The `geo` eval, `build/evals_knowledge/geo.json`, with five cases: a city, a city and its country, a landmark, two cities and a mountain. Each remembers a sentence, asks a question and checks the facts and the stored places.
+
+### Changed
+- Schema: `gb_case_def_meta_knowledge` has the column `expect_geo`. There is no migration: an existing eval database has to be recreated.
+- `server.NewHandler` takes the geo resolver (after the web searcher; nil: geo off).
+
 ## [0.114.0] - 2026-10-29
 
 ### Added

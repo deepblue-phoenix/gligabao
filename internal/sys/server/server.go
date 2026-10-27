@@ -207,11 +207,12 @@ const EvalDBName = "eval"
 // llm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities.
 // jv may be nil, in which case remember skips the steps that run on Jev. ws may be nil, in which case web search is not available
 // (a remember request with web_search returns 503); it is the Anthropic web search tool, so it is only set with an Anthropic API key.
+// geoResolver turns geo on (remember and query find the places of a text, see package geo); nil: geo is off.
 // providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). hooks are the registered hooks of the training API (already validated; the zero value has none): the trained model deployers (with none a deployment request answers 400) and the inference hooks of trained models. dirs are the directories of the training endpoints (all fields must be set when trainingMode is true; see coretraining.Dirs.WithDefaults). ontologyDirs are the directories ontology files are loaded from by name (may be nil). sc starts the training jobs (/v1/gb/training/) on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The eval endpoints are registered only if eval is true, the training endpoints (/v1/gb/training/) only if trainingMode is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary; adminExts are the registered admin UI extensions
 // (already validated; may be nil), mounted with it.
-func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
-	return newMux(ctx, true, nil, nil, false, d, llm, emb, jv, ws, providers, hooks, dirs, ontologyDirs, sc, eval, trainingMode, adminUI, adminExts, extraAdminDBs...)
+func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, geoResolver geo.Resolver, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
+	return newMux(ctx, true, nil, geoResolver, false, d, llm, emb, jv, ws, providers, hooks, dirs, ontologyDirs, sc, eval, trainingMode, adminUI, adminExts, extraAdminDBs...)
 }
 
 // newMux is NewHandler; standalone is false when the routes are mounted on a host's mux (see Mount), where "/", "/health" and

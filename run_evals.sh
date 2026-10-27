@@ -24,7 +24,7 @@ Options:
   -e, --eval NAME    run only the cases of the eval NAME (see the list below)
   -v                 knowledge: show the input and output of every LLM call; training: show every question and answer
   -h, --help         show this help
-  (other options are passed to the runner: knowledge: -experiment, -experiment-desc, -models, -reasoning, -atif, -db (go run ./internal/evals/knowledge/cmd -h);
+  (other options are passed to the runner: knowledge: -experiment, -experiment-desc, -models, -reasoning, -geo, -atif, -db (go run ./internal/evals/knowledge/cmd -h);
    training: -model, -list-models, -db, -sidecar, -batch-size, -judge-model, -max-tokens, -temperature (go run ./internal/evals/training/cmd -h))
 
 Case names restrict the run to those cases (combined with --eval, they must belong to that eval).

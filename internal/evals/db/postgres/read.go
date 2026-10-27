@@ -89,11 +89,11 @@ func getCaseDefMeta(ctx context.Context, q db.Execer, id core.CaseDefID, typ cor
 	switch typ {
 	case core.TypeKnowledge:
 		m := &core.KnowledgeCaseDefMeta{CaseDefID: id}
-		var remember, contains, edges, series, models, reasoning []byte
+		var remember, contains, edges, series, geoWant, models, reasoning []byte
 		err := q.QueryRowContext(ctx, `
-			SELECT remember, query, expect_contains, expect_edges, expect_min_chunks, expect_web_searches, expect_series, chunk_size, models, reasoning
+			SELECT remember, query, expect_contains, expect_edges, expect_min_chunks, expect_web_searches, expect_series, expect_geo, chunk_size, models, reasoning
 			FROM gb_case_def_meta_knowledge WHERE case_def_id = $1`, int64(id)).
-			Scan(&remember, &m.Query, &contains, &edges, &m.ExpectMinChunks, &m.ExpectWebSearches, &series, &m.ChunkSize, &models, &reasoning)
+			Scan(&remember, &m.Query, &contains, &edges, &m.ExpectMinChunks, &m.ExpectWebSearches, &series, &geoWant, &m.ChunkSize, &models, &reasoning)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("knowledge case def meta of case def %d: %w", id, db.ErrNotFound)
 		}
@@ -103,7 +103,7 @@ func getCaseDefMeta(ctx context.Context, q db.Execer, id core.CaseDefID, typ cor
 		for _, f := range []struct {
 			text []byte
 			to   any
-		}{{remember, &m.Remember}, {contains, &m.ExpectContains}, {edges, &m.ExpectEdges}, {series, &m.ExpectSeries}, {models, &m.Models}, {reasoning, &m.Reasoning}} {
+		}{{remember, &m.Remember}, {contains, &m.ExpectContains}, {edges, &m.ExpectEdges}, {series, &m.ExpectSeries}, {geoWant, &m.ExpectGeo}, {models, &m.Models}, {reasoning, &m.Reasoning}} {
 			if err := db.Unmarshal(f.text, f.to); err != nil {
 				return nil, err
 			}

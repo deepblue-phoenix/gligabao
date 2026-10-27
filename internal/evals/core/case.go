@@ -174,6 +174,9 @@ type KnowledgeExpected struct {
 	ExpectWebSearches int `json:"expect_web_searches,omitempty"`
 	// ExpectSeries are the timeseries that must be stored.
 	ExpectSeries []KnowledgeExpectSeries `json:"expect_series,omitempty"`
+	// ExpectGeo are the places that must have been found among the entities and stored with their coordinates (needs geo on in
+	// the eval server, see knowledge.Executor.Geo).
+	ExpectGeo []KnowledgeExpectGeo `json:"expect_geo,omitempty"`
 }
 
 // KnowledgeExpectEdge is a temporal fact that must be stored between two entities (any relation, names case-insensitive).
@@ -200,6 +203,26 @@ type KnowledgeExpectSeries struct {
 	AnchorEntity   string `json:"anchor_entity,omitempty"`
 	AnchorArtifact bool   `json:"anchor_artifact,omitempty"`
 }
+
+// KnowledgeExpectGeo is an entity that must be stored as a place (it has a row in gb_entity_geo). Only the parts that are set are
+// checked.
+type KnowledgeExpectGeo struct {
+	// Entity is the name of the entity (case-insensitive).
+	Entity string `json:"entity"`
+	// Kind, when set, is what the place must be: "country", "region", "city" or "place".
+	Kind string `json:"kind,omitempty"`
+	// CountryCode, when set, is the ISO 3166-1 alpha-2 code (case-insensitive) of the country it must lie in.
+	CountryCode string `json:"country_code,omitempty"`
+	// Latitude and Longitude, when both are set, are where the place must be, within RadiusKm (default
+	// DefaultGeoRadiusKm) of them.
+	Latitude  *float64 `json:"latitude,omitempty"`
+	Longitude *float64 `json:"longitude,omitempty"`
+	RadiusKm  float64  `json:"radius_km,omitempty"`
+}
+
+// DefaultGeoRadiusKm is the distance a place may be from the expected coordinates when KnowledgeExpectGeo.RadiusKm is not set:
+// a city is found by its name and a geocoder may put it at its centre or at a district, so it is generous.
+const DefaultGeoRadiusKm = 100
 
 // KnowledgeParams are the Params of a knowledge case: the settings it runs with.
 type KnowledgeParams struct {

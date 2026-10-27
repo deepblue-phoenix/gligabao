@@ -103,6 +103,10 @@ func CreateKnowledgeCaseDefMeta(ctx context.Context, q db.Execer, m *core.Knowle
 	if err != nil {
 		return err
 	}
+	geoWant, err := db.JSON(m.ExpectGeo, "[]")
+	if err != nil {
+		return err
+	}
 	models, err := db.JSON(m.Models, "{}")
 	if err != nil {
 		return err
@@ -113,10 +117,10 @@ func CreateKnowledgeCaseDefMeta(ctx context.Context, q db.Execer, m *core.Knowle
 	}
 	if _, err := q.ExecContext(ctx, `
 		INSERT INTO gb_case_def_meta_knowledge (case_def_id, type, remember, query, expect_contains, expect_edges,
-			expect_min_chunks, expect_web_searches, expect_series, chunk_size, models, reasoning)
-		VALUES ($1, $2, $3::jsonb, $4, $5::jsonb, $6::jsonb, $7, $8, $9::jsonb, $10, $11::jsonb, $12::jsonb)`,
+			expect_min_chunks, expect_web_searches, expect_series, expect_geo, chunk_size, models, reasoning)
+		VALUES ($1, $2, $3::jsonb, $4, $5::jsonb, $6::jsonb, $7, $8, $9::jsonb, $10::jsonb, $11, $12::jsonb, $13::jsonb)`,
 		int64(m.CaseDefID), string(core.TypeKnowledge), remember, m.Query, contains, edges,
-		m.ExpectMinChunks, m.ExpectWebSearches, series, m.ChunkSize, models, reasoning); err != nil {
+		m.ExpectMinChunks, m.ExpectWebSearches, series, geoWant, m.ChunkSize, models, reasoning); err != nil {
 		return fmt.Errorf("create knowledge case def meta of case def %d: %w", m.CaseDefID, err)
 	}
 	return nil

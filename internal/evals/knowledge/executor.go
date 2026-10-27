@@ -9,6 +9,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
+	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
@@ -23,6 +24,9 @@ type Executor struct {
 	LLM       memory_core.LLM
 	Embedder  memory_core.Embedder
 	WebSearch memory_core.WebSearcher
+	// Geo is the geo resolver of the in-process server (nil: geo is off, remember and query do not look for places). With it,
+	// remember stores the coordinates of the places it finds and query finds the places of the question.
+	Geo geo.Resolver
 	// EvalsDirs are the directories the TextFiles of the cases are relative to, searched in order (default DefaultEvalDir).
 	EvalsDirs []string
 	// Models is the default LLM model of each stage of remember, and of the query with the key "query"; a case's own models win

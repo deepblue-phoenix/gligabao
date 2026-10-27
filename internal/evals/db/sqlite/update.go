@@ -137,6 +137,10 @@ func UpdateKnowledgeCaseDefMeta(ctx context.Context, q db.Execer, m *core.Knowle
 	if err != nil {
 		return err
 	}
+	geoWant, err := db.JSON(m.ExpectGeo, "[]")
+	if err != nil {
+		return err
+	}
 	models, err := db.JSON(m.Models, "{}")
 	if err != nil {
 		return err
@@ -147,9 +151,9 @@ func UpdateKnowledgeCaseDefMeta(ctx context.Context, q db.Execer, m *core.Knowle
 	}
 	res, err := q.ExecContext(ctx, `
 		UPDATE gb_case_def_meta_knowledge SET remember = ?, query = ?, expect_contains = ?, expect_edges = ?,
-			expect_min_chunks = ?, expect_web_searches = ?, expect_series = ?, chunk_size = ?, models = ?, reasoning = ?
+			expect_min_chunks = ?, expect_web_searches = ?, expect_series = ?, expect_geo = ?, chunk_size = ?, models = ?, reasoning = ?
 		WHERE case_def_id = ?`,
-		remember, m.Query, contains, edges, m.ExpectMinChunks, m.ExpectWebSearches, series, m.ChunkSize, models, reasoning, int64(m.CaseDefID))
+		remember, m.Query, contains, edges, m.ExpectMinChunks, m.ExpectWebSearches, series, geoWant, m.ChunkSize, models, reasoning, int64(m.CaseDefID))
 	if err != nil {
 		return fmt.Errorf("update knowledge case def meta of case def %d: %w", m.CaseDefID, err)
 	}

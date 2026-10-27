@@ -99,7 +99,7 @@ func (x *Executor) runCase(ctx context.Context, name string, in core.KnowledgeCa
 	}
 	mgrCtx, stopMgr := context.WithCancel(context.Background()) // stops the remember manager of the handler
 	defer stopMgr()
-	srv := httptest.NewServer(server.NewHandler(mgrCtx, database, llm, x.Embedder, nil, x.WebSearch, nil, training.Hooks{}, training.DefaultDirs(database.SQLitePath), nil, nil, true, true, false, nil))
+	srv := httptest.NewServer(server.NewHandler(mgrCtx, database, llm, x.Embedder, nil, x.WebSearch, x.Geo, nil, training.Hooks{}, training.DefaultDirs(database.SQLitePath), nil, nil, true, true, false, nil))
 	defer srv.Close()
 
 	dataset := DatasetName(name, evalRunID)
@@ -223,6 +223,19 @@ func (x *Executor) runCase(ctx context.Context, name string, in core.KnowledgeCa
 		}
 		if err := checkSeries(ctx, database, dataset, in.ExpectSeries, w, check); err != nil {
 			return out, fmt.Errorf("check series: %w", err)
+		}
+	}
+
+	if len(in.ExpectGeo) > 0 {
+		var w io.Writer
+		if x.Verbose {
+			w = x.out()
+		}
+		if x.Geo == nil {
+			return out, errors.New("the case has expect_geo but geo is off (set Executor.Geo, do not pass -geo=false)")
+		}
+		if err := checkGeo(ctx, database, dataset, in.ExpectGeo, w, check); err != nil {
+			return out, fmt.Errorf("check geo: %w", err)
 		}
 	}
 

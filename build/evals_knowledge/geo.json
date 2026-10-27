@@ -1,0 +1,86 @@
+{
+  "name": "geo",
+  "description": "Places: remember finds the places among the entities of a text and stores their coordinates (the eval server has a geo resolver), and the facts about them can be queried.",
+  "cases": [
+    {
+      "name": "geo_city",
+      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
+      "remember": [
+        {"kind": "episode", "text": "Alice lives in Paris, France.", "reference_time": "2024-06-01T00:00:00Z"}
+      ],
+      "query": "Which city does Alice live in?",
+      "expect_contains": ["Paris"],
+      "expect_edges": [
+        {"source": "Alice", "target": "Paris", "ended": false}
+      ],
+      "expect_geo": [
+        {"entity": "Paris", "kind": "city", "country_code": "fr", "latitude": 48.86, "longitude": 2.35, "radius_km": 30}
+      ]
+    },
+    {
+      "name": "geo_city_country",
+      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
+      "remember": [
+        {"kind": "episode", "text": "Bob was born in Toronto, Canada.", "reference_time": "2024-06-01T00:00:00Z"}
+      ],
+      "query": "In which country was Bob born?",
+      "expect_contains": ["Canada"],
+      "expect_edges": [
+        {"source": "Bob", "target": "Toronto", "ended": false}
+      ],
+      "expect_geo": [
+        {"entity": "Toronto", "kind": "city", "country_code": "ca", "latitude": 43.65, "longitude": -79.38, "radius_km": 30},
+        {"entity": "Canada", "kind": "country", "country_code": "ca"}
+      ]
+    },
+    {
+      "name": "geo_landmark",
+      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
+      "remember": [
+        {"kind": "episode", "text": "The Eiffel Tower stands in Paris and was completed in 1889.", "reference_time": "2024-06-01T00:00:00Z"}
+      ],
+      "query": "In which city is the Eiffel Tower?",
+      "expect_contains": ["Paris"],
+      "expect_edges": [
+        {"source": "Eiffel Tower", "target": "Paris", "ended": false}
+      ],
+      "expect_geo": [
+        {"entity": "Eiffel Tower", "kind": "place", "country_code": "fr", "latitude": 48.858, "longitude": 2.294, "radius_km": 20},
+        {"entity": "Paris", "kind": "city", "country_code": "fr"}
+      ]
+    },
+    {
+      "name": "geo_two_cities",
+      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
+      "remember": [
+        {"kind": "episode", "text": "Erin flew from Berlin to Tokyo for a conference.", "reference_time": "2024-06-01T00:00:00Z"}
+      ],
+      "query": "Which two cities did Erin travel between?",
+      "expect_contains": ["Berlin", "Tokyo"],
+      "expect_edges": [
+        {"source": "Erin", "target": "Berlin", "ended": false},
+        {"source": "Erin", "target": "Tokyo", "ended": false}
+      ],
+      "expect_geo": [
+        {"entity": "Berlin", "kind": "city", "country_code": "de", "latitude": 52.52, "longitude": 13.40, "radius_km": 30},
+        {"entity": "Tokyo", "kind": "city", "country_code": "jp", "latitude": 35.68, "longitude": 139.69, "radius_km": 50}
+      ]
+    },
+    {
+      "name": "geo_mountain",
+      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
+      "remember": [
+        {"kind": "episode", "text": "Frank climbed Mount Fuji, the highest mountain in Japan, last summer.", "reference_time": "2024-06-01T00:00:00Z"}
+      ],
+      "query": "Which mountain did Frank climb?",
+      "expect_contains": ["Fuji"],
+      "expect_edges": [
+        {"source": "Frank", "target": "Mount Fuji", "ended": false}
+      ],
+      "expect_geo": [
+        {"entity": "Mount Fuji", "kind": "place", "country_code": "jp", "latitude": 35.36, "longitude": 138.73, "radius_km": 30},
+        {"entity": "Japan", "kind": "country", "country_code": "jp"}
+      ]
+    }
+  ]
+}
