@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
@@ -69,5 +70,56 @@ func testGeo(t *testing.T, d *sql.DB) {
 	}
 	if code, _ := get("/admin/api/geo?db=nope"); code != 404 {
 		t.Errorf("unknown db: %d", code)
+	}
+}
+
+// TestGeoNearby checks GET /admin/api/geo/nearby: the same selection as query, on the database named by db.
+func TestGeoNearby(t *testing.T) { dbtest.Run(t, testGeoNearby) }
+
+func testGeoNearby(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	dsID, err := relational.EnsureDataset(ctx, d, "u1", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := graph.Begin(ctx, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	now := relational.Now()
+	var ids []int64
+	for _, p := range []struct {
+		name     string
+		lat, lon float64
+	}{{"Paris", 48.8566, 2.3522}, {"Versailles", 48.8049, 2.1204}} {
+		id, _ := tx.UpsertEntity(ctx, dsID, graph.Entity{Name: p.name, Type: "place"}, p.name)
+		if err := tx.UpsertEntityGeo(ctx, graph.NewEntityGeo{EntityID: id, Kind: "city", Latitude: p.lat, Longitude: p.lon, Provider: "stub", Now: now}); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	h := admin.GeoNearbyOf([]admin.Named{{Name: "standard", DB: d}}, 0)
+	get := func(url string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		h(w, httptest.NewRequest(http.MethodGet, url, nil))
+		return w
+	}
+	w := get("/admin/api/geo/nearby?db=standard&user_id=u1&dataset=main&entity_id=" + strconv.FormatInt(ids[0], 10))
+	var res struct {
+		RadiusKm float64 `json:"radius_km"`
+		Nearby   []struct {
+			Name       string  `json:"name"`
+			DistanceKm float64 `json:"distance_km"`
+		} `json:"nearby"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil || w.Code != 200 || res.RadiusKm != 50 || len(res.Nearby) != 1 || res.Nearby[0].Name != "Versailles" {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if w := get("/admin/api/geo/nearby?db=nope&user_id=u1&entity_id=1"); w.Code != 404 {
+		t.Fatalf("unknown database: %d", w.Code)
 	}
 }

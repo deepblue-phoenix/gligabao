@@ -1,7 +1,7 @@
 // Builds the admin UI into dist/: tsc (src/*.ts -> dist/*.js), sass (src/styles.scss -> dist/styles.css)
-// a copy of src/index.html and of the d3 bundle (loaded as a global by index.html). Run via `npm run build` (run_build.sh does this).
+// a copy of src/index.html and of the d3 and Leaflet bundles (loaded as globals by index.html). Run via `npm run build` (run_build.sh does this).
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { copyFileSync, cpSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,5 +18,9 @@ for (const f of readdirSync(dist)) {
 execFileSync(bin("tsc"), ["-p", root], { stdio: "inherit" });
 execFileSync(bin("sass"), ["--no-source-map", "--style=compressed", join(root, "src/styles.scss"), join(dist, "styles.css")], { stdio: "inherit" });
 copyFileSync(join(root, "node_modules/d3/dist/d3.min.js"), join(dist, "d3.min.js"));
+mkdirSync(join(dist, "leaflet"), { recursive: true });
+copyFileSync(join(root, "node_modules/leaflet/dist/leaflet.js"), join(dist, "leaflet/leaflet.js"));
+copyFileSync(join(root, "node_modules/leaflet/dist/leaflet.css"), join(dist, "leaflet/leaflet.css"));
+cpSync(join(root, "node_modules/leaflet/dist/images"), join(dist, "leaflet/images"), { recursive: true });
 copyFileSync(join(root, "src/index.html"), join(dist, "index.html"));
 console.log("Built admin_ui/dist");

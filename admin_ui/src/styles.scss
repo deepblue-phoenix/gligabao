@@ -867,6 +867,8 @@ tr.removing {
 .geo-db { margin-top: 0.75rem; h3 { margin: 0 0 0.25rem; font-size: 0.95rem; } .stats { flex-wrap: wrap; dd { font-size: 1.3rem; } } }
 .geo-body { display: flex; flex: 1; min-height: 0; }
 #geo-map-box { flex: 1; min-width: 0; background: $bg; }
-iframe.geo-map { display: block; width: 100%; height: 100%; border: 0; }
+#geo-map-box .leaflet-container { width: 100%; height: 100%; font: inherit; }
+.geo-nearby { h3 { margin: 0.9rem 0 0.25rem; font-size: 0.9rem; } }
+.geo-radius { display: flex; gap: 0.5rem; align-items: center; input { width: 6rem; } }
+.geo-near-list { list-style: none; margin: 0.4rem 0 0; padding: 0; li { padding: 0.2rem 0.3rem; cursor: pointer; border-radius: 4px; &:hover { background: rgba(127, 127, 127, 0.15); } } }
 #geo-info { width: 18rem; flex: none; overflow: auto; padding: 0.5rem 1rem 1rem; border-left: 1px solid $border; }
-.geo-links { margin: 0.75rem 0 0; }

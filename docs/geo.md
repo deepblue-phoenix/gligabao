@@ -50,10 +50,13 @@ already existed in `gb_entity_geo`, because adding it cannot skip them; on SQLit
 
 The `geo` view of the admin UI shows, per database, how many entities are geo entities (have a row in `gb_entity_geo`, in live
 datasets) out of all entities, and a table of the 100 most connected ones. The connections of an entity are its live (not
-expired) edges, as source or as target (a self-loop counts once). Click an entity to open a modal with its place on an
-[OpenStreetMap](https://www.openstreetmap.org) map (the embedded map of openstreetmap.org, so the browser needs internet access):
-the bounding box of the place, or a small area around its coordinates, with a marker, and the details of the place and a link to
-the full map. It is read by `GET /v1/gb/admin/api/geo[?db=<name>]`:
+expired) edges, as source or as target (a self-loop counts once). Click an entity to open a modal with an
+[OpenStreetMap](https://www.openstreetmap.org) map (Leaflet on the tiles of openstreetmap.org, so the browser needs internet access):
+the entity (red, with the bounding box of its place), a circle of the search radius, and the geo entities near it (blue, with their
+distance), chosen by the same code as the proximity step of `query` ([Nearby entities without a question](#nearby-entities-without-a-question)).
+The side panel has the details of the place, a radius field (default: the server's `geo_radius_km`) and the list of the nearby
+entities (click one to center the map on it; click its marker to search around it). The list is read by
+`GET /v1/gb/admin/api/geo/nearby`, the same handler as the public endpoint, with `db`. The list of the entities is read by `GET /v1/gb/admin/api/geo[?db=<name>]`:
 `{"entities":12,"all_entities":340,"top":[{"entity_id":7,"name":"Paris","connections":9,"kind":"city","latitude":48.85,...}]}`
 (Go: `admin.GeoOf`, `graph.GeoStatistics`).
 
@@ -101,6 +104,15 @@ The result has `nearby` (omitted when the search was off or there was no anchor)
 **How it is searched.** The index prefilters (SQLite: the R*Tree, or the index on latitude and longitude when geo was never on for the database; PostgreSQL: PostGIS `ST_DWithin` on the GiST index, or a latitude/longitude box without it), and the candidates are refined with the haversine distance on a sphere, so the result is the same with or without an index. The box handles the antimeridian (a search near 180° also finds places at -179°) and the poles. Distances are straight lines (great circle), not travel distances.
 
 Like the answering call, it is recorded as an inference (type `query`, stage `detect_geo`). Its model is chosen with `models` in the [query request](query.md#request); its reasoning level with `reasoning` (the string form of `reasoning` is the `query` stage only, so use the object form: `{"detect_geo": "low"}`); a stage left out runs without thinking.
+
+### Nearby entities without a question
+
+`GET /v1/gb/geo/nearby` runs that same search (`memory_query.NearbyEntityOf` / `NearbyPoint`, which call the function `query` uses for its proximity step, so the two always select the same entities, with the same limits: the 20 nearest per anchor, at most 30, nearest first) for one anchor you name, with no question and no LLM:
+
+- `user_id`, `dataset` (default `main`), and either `entity_id` (a geo entity of the dataset: the anchor is its stored coordinates, and it is left out of the result) or `latitude` and `longitude` (a point; every geo entity in the radius is listed);
+- `radius_km` (optional): as for `query`, greater than 0 and at most 20015; default the server's `geo_radius_km`, else 50.
+
+The response is the `nearby` object of the query result: `{"radius_km": 50, "anchors": [{"name": "Paris", "entity_id": 3, "latitude": 48.85, "longitude": 2.35}], "nearby": [{"entity_id": 7, "name": "Versailles", "type": "place", "latitude": ..., "longitude": ..., "distance_km": 17.9, "anchor": "Paris"}]}`. `400` for a bad parameter, `404` for an unknown dataset, or an entity that is not in the dataset or has no coordinates. Like the other routes of users it needs an API key when the server has authentication (the `user_id` is then the key's owner). Unlike `query` it never asks the geo resolver and stores nothing, and works whether or not geo is on (it only reads what is stored). The admin UI calls the same handler as `GET /v1/gb/admin/api/geo/nearby?db=<name>&user_id=&dataset=&entity_id=[&radius_km=]`.
 
 ## The result
 

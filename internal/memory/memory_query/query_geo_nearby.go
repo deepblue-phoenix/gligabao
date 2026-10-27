@@ -211,6 +211,14 @@ func storePlace(ctx context.Context, d *sql.DB, dsID int64, r geo.Resolver, p Qu
 	return id, tx.Commit()
 }
 
+// searchNearby is the one place that decides which geo entities are "near" some anchors: the proximity step of Query (nearbyGeo) and
+// Nearby (GET /v1/gb/geo/nearby, and the geo view of the admin UI) both call it, so they always select the same entities. It returns
+// the geo entities of the dataset within radiusKm of the anchors (see findNearby for the limits and the order); errs are the anchors
+// that could not be searched.
+func searchNearby(ctx context.Context, d *sql.DB, dsID int64, anchors []GeoAnchor, radiusKm float64) (nearby []NearbyEntity, errs []string) {
+	return findNearby(ctx, d, dsID, anchors, radiusKm)
+}
+
 // findNearby returns the geo entities of the dataset within radiusKm of the anchors, nearest first, at most maxNearbyEntities. An
 // entity near several anchors is listed once, with the nearest. The anchors that are entities are left out.
 func findNearby(ctx context.Context, d *sql.DB, dsID int64, anchors []GeoAnchor, radiusKm float64) (out []NearbyEntity, errs []string) {
@@ -302,7 +310,7 @@ func nearbyGeo(ctx context.Context, d *sql.DB, co memory_core.CallOptions, tr *m
 	var nearby []NearbyEntity
 	if len(anchors) > 0 {
 		var more []string
-		nearby, more = findNearby(ctx, d, dsID, anchors, radiusKm)
+		nearby, more = searchNearby(ctx, d, dsID, anchors, radiusKm)
 		errs = append(errs, more...)
 	}
 	if len(nearby) > 0 {

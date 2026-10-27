@@ -5,7 +5,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/deepblue-phoenix/gligabao/internal/api/query"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	log "github.com/sirupsen/logrus"
 )
@@ -78,6 +80,27 @@ func GeoOf(dbs []Named) http.HandlerFunc {
 			}
 			httputil.WriteJSON(w, http.StatusOK, out)
 			return
+		}
+		httputil.Error(w, http.StatusNotFound, "unknown database")
+	}
+}
+
+// GeoNearbyOf serves GET /admin/api/geo/nearby?db=<name>&user_id=&dataset=&entity_id=[&radius_km=]: the geo entities near a geo
+// entity of the geo view, selected by the same code as the proximity step of query (the same handler as GET /v1/gb/geo/nearby, on
+// the database db). radius is the default radius, in kilometers, when the request has no radius_km (0: 50 km).
+func GeoNearbyOf(dbs []Named, radius float64) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := r.URL.Query().Get("db")
+		if name == "" && len(dbs) > 0 {
+			name = dbs[0].Name
+		}
+		for _, n := range dbs {
+			if n.Name == name {
+				ctx, cancel := context.WithTimeout(r.Context(), geoStatsTimeout)
+				defer cancel()
+				query.NearbyHandler(n.DB, memory_core.WithGeoRadius(radius))(w, r.WithContext(ctx))
+				return
+			}
 		}
 		httputil.Error(w, http.StatusNotFound, "unknown database")
 	}

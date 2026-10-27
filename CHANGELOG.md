@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.118.0] - 2026-10-27
+
+### Added
+- `GET /v1/gb/geo/nearby?user_id=&dataset=&entity_id=|latitude=&longitude=[&radius_km=]`: the geo entities near a stored geo entity or a point, with no question and no LLM. It runs the same search as the proximity step of `query` (same radius rules, limits and order), so the two select the same entities; the server's `geo_radius_km` is its default radius. It needs an API key when the server has authentication. Go: `memory_query.NearbyEntityOf`, `NearbyPoint`, `query.NearbyHandler`.
+- Admin UI, geo view: clicking a geo entity now opens an interactive map (Leaflet on OpenStreetMap tiles) that shows the entity, the search radius and the geo entities near it, as the query pipeline would select them, with a radius field and a list of them. The place's box and the radius circle light up when the pointer is over them (the circle also explains itself in a tooltip). The "Open in OpenStreetMap" link of the old modal is gone. Served by `GET /v1/gb/admin/api/geo/nearby`. Leaflet is bundled with the admin UI (`admin_ui/dist/leaflet`).
+
 ## [0.117.3] - 2026-10-28
 
 ### Changed

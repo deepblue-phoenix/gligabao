@@ -249,7 +249,7 @@ func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, g
 		registerTraining(ctx, mux, d.Backend, d.Relational, dirs, hooks, sc, llm)
 	}
 	if adminUI {
-		registerAdminUI(mux, dbs, sc, adminExts)
+		registerAdminUI(mux, dbs, geoRadiusKm, sc, adminExts)
 	}
 	return mux
 }
@@ -318,7 +318,7 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, t
 
 // registerAdminUI serves the embedded admin UI assets under /v1/gb/admin/. It is a no-op (with a warning) if the
 // assets were not built into the binary (see admin_ui/ and run_build.sh).
-func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, sc coretraining.Sidecar, exts []admin.Extension) {
+func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, geoRadiusKm float64, sc coretraining.Sidecar, exts []admin.Extension) {
 	if !adminui.Available() {
 		log.Warn("admin_ui is enabled but the web assets are not embedded in this binary; build with ./run_build.sh (admin UI build enabled)")
 		return
@@ -337,6 +337,7 @@ func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, sc coretraining.Side
 	mux.HandleFunc("DELETE /v1/gb/admin/api/datasets", admin.DeleteDatasetOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/geo-index", admin.GeoIndexOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/geo", admin.GeoOf(dbs))
+	mux.HandleFunc("GET /v1/gb/admin/api/geo/nearby", admin.GeoNearbyOf(dbs, geoRadiusKm))
 	mux.HandleFunc("GET /v1/gb/admin/api/sidecar/status", admin.SidecarStatusOf(sc != nil, sidecarPing))
 	mux.HandleFunc("GET /v1/gb/admin/api/sidecar/backends", admin.SidecarBackendsOf(sidecarBackends))
 	// A backend's long-running actions (e.g. deploy the Modal app): start, cancel, state with log, live log (SSE).
