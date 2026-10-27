@@ -4,7 +4,7 @@
 
 For now nothing is added to the graph: no entities, edges or vectors come out of an image, and `query` does not see it. Grounding the extractions in the rest of the graph is planned; the extraction tables are the input for it.
 
-Code: `internal/memory/memory_image/image.go` (`RememberImage`, `ExtractImage`), `internal/memory/memory_image/image_prompts.go`, `internal/api/remember/remember.go` (the handler), `internal/memory/memory_image/image_store.go` (the files), `internal/db/graph/{sqlite,postgres}/db_image.go` (SQL).
+Code: `internal/memory/memory_image/image.go` (`RememberImage`, `ExtractImage`), `internal/memory/memory_image/image_prompts.go`, `internal/remember/remember.go` (the handler), `internal/memory/memory_image/image_store.go` (the files), `internal/db/graph/{sqlite,postgres}/db_image.go` (SQL).
 
 ## Request
 

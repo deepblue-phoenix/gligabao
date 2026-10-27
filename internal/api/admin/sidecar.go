@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
 )
 

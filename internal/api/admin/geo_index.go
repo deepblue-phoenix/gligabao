@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 )
 
 // geoIndexTimeout bounds the checks of GeoIndex.

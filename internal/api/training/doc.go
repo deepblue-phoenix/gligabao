@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	core "github.com/deepblue-phoenix/gligabao/internal/training"
 )
 

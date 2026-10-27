@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.117.1] - 2026-10-27
+
+### Changed
+- Three packages moved out of `internal/api`: `internal/api/remember` to `internal/remember`, `internal/api/query` to `internal/query`, and `internal/api/httputil` to `internal/sys/httputil`. No change in behaviour or API. The docs (`docs/images.md`, `docs/query.md`, `docs/listings/go-structs.md`) point at the new paths.
+
 ## [0.117.0] - 2026-10-27
 
 ### Added

@@ -5,17 +5,17 @@ import (
 	"net/http"
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/datasets"
-	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/api/mcp"
 	"github.com/deepblue-phoenix/gligabao/internal/api/ontologies"
-	"github.com/deepblue-phoenix/gligabao/internal/api/query"
-	"github.com/deepblue-phoenix/gligabao/internal/api/remember"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_image"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
+	"github.com/deepblue-phoenix/gligabao/internal/query"
+	"github.com/deepblue-phoenix/gligabao/internal/remember"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/timeseries"
 )
 
