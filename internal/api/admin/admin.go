@@ -255,6 +255,38 @@ func VectorsOf(dbs []Named) http.HandlerFunc {
 	}
 }
 
+// VectorsAllOf serves GET /admin/api/vectors/all?db=<name> for one of dbs (the first without db): the vector statistics
+// of every live memory dataset, per index (see memory.VectorStatsAll), as {"datasets": [...]}.
+func VectorsAllOf(dbs []Named) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := r.URL.Query().Get("db")
+		if name == "" && len(dbs) > 0 {
+			name = dbs[0].Name
+		}
+		for _, n := range dbs {
+			if n.Name != name {
+				continue
+			}
+			vectors, release, err := n.vectors()
+			if err != nil {
+				log.WithError(err).Error("admin: open vector store failed")
+				httputil.Error(w, http.StatusInternalServerError, "failed to open vector store")
+				return
+			}
+			defer release()
+			list, err := memory.VectorStatsAll(r.Context(), n.DB, vectors)
+			if err != nil {
+				log.WithError(err).Error("admin: vector stats of all datasets failed")
+				httputil.Error(w, http.StatusInternalServerError, "failed to read vector stats")
+				return
+			}
+			httputil.WriteJSON(w, http.StatusOK, map[string]any{"datasets": list})
+			return
+		}
+		httputil.Error(w, http.StatusNotFound, "unknown database")
+	}
+}
+
 //---------------------------------------------------------------------------------------------
 
 // imageDisk describes the image directory next to what the database tracks.

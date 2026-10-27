@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func newTestChromem(t *testing.T) *Chromem {
@@ -157,5 +158,33 @@ func TestChromemStats(t *testing.T) {
 	}
 	if st, _ = s.Stats(ctx, "other"); st.Count != 0 {
 		t.Fatalf("other: %+v", st)
+	}
+}
+
+// TestChromemStatsStorage checks that a persisted dataset reports its size on disk and when it was last written, and
+// that an in-memory one does not.
+func TestChromemStatsStorage(t *testing.T) {
+	ctx := context.Background()
+	s := newTestChromem(t)
+	if st, _ := s.Stats(ctx, "main"); st.DiskBytes != 0 || st.LastWrite != nil {
+		t.Fatalf("empty: %+v", st)
+	}
+	before := time.Now().Add(-time.Minute)
+	if err := s.Upsert(ctx, "main", []Vector{{ID: "a", Values: []float32{1, 0, 0}}}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := s.Stats(ctx, "main")
+	if err != nil || st.DiskBytes <= 0 || st.LastWrite == nil || st.LastWrite.Before(before) {
+		t.Fatalf("stats: %+v %v", st, err)
+	}
+	mem, err := NewChromem(":memory:", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mem.Upsert(ctx, "main", []Vector{{ID: "a", Values: []float32{1, 0, 0}}}); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := mem.Stats(ctx, "main"); st.Count != 1 || st.DiskBytes != 0 || st.LastWrite != nil {
+		t.Fatalf("memory: %+v", st)
 	}
 }

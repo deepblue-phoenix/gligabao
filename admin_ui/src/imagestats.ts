@@ -1,6 +1,8 @@
 // The "Image store" dashboard card: how many images the database tracks (by media type and theme), the LLM usage
 // of their extractions, and how the image directory on disk compares with the database.
 
+import { formatBytes } from "./format.js";
+
 interface Group { name: string; count: number; bytes: number }
 interface Disk { dir: string; exists: boolean; files: number; bytes: number; missing: number; untracked: number }
 interface ImageStats {
@@ -19,15 +21,6 @@ function el<T extends HTMLElement>(id: string): T {
   const e = document.getElementById(id);
   if (!e) throw new Error(`missing element #${id}`);
   return e as T;
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  const units = ["KiB", "MiB", "GiB", "TiB"];
-  let v = n;
-  let i = -1;
-  do { v /= 1024; i++; } while (v >= 1024 && i < units.length - 1);
-  return `${v.toFixed(v < 10 ? 2 : 1)} ${units[i]}`;
 }
 
 function stat(parent: HTMLElement, label: string, value: string, cls = ""): void {

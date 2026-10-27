@@ -13,6 +13,7 @@ import { initTimeseries } from "./timeseries.js";
 import { initTraining } from "./training.js";
 import { initTraceModal } from "./trace.js";
 import { initVectorsModal, showVectors } from "./vectors.js";
+import { initVectorsView } from "./vectorsview.js";
 import { initViews } from "./views.js";
 import { initWebSearch } from "./websearch.js";
 
@@ -368,6 +369,7 @@ void (async () => {
   initImageStats();
   initWebSearch();
   initGeo();
+  initVectorsView();
   void loadAll(false);
   void checkHealth();
   void checkSidecarHealth();

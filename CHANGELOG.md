@@ -5,6 +5,16 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.119.0] - 2026-10-28
+
+### Added
+- Admin UI: a new **vectors** view. Per database it lists the vector indexes of every live memory dataset (not training datasets): the backend store, the number of vectors, the storage the index occupies and how long ago (minutes, hours, days, months) the last vector was written. Served by `GET /v1/gb/admin/api/vectors/all?db=` (`memory.VectorStatsAll`).
+- `vector.Stats` has two new fields, `disk_bytes` (the size of the index's files in the store; 0 if the store cannot say) and `last_write` (absent if not known). Chromem reports both for a persisted store (`last_write` is the newest modification time of the vector files); Pinecone reports neither, and the view shows `n/a` for its last write and an estimate (`~`) for its storage. The vector DB modal of the main view shows the two new columns as well. See docs/vectors.md.
+
+### Changed
+- Admin UI: the nav order is now main, vectors, remember, inferences, evals, timeseries, training, geo. The vectors view has no user column (the user is in the tooltip of the dataset name).
+- Admin UI: fetching and formatting of vector index statistics is shared between the vector DB modal (main view) and the new view (`admin_ui/src/vectors.ts`); byte and age formatting moved to `admin_ui/src/format.ts`.
+
 ## [0.118.0] - 2026-10-27
 
 ### Added

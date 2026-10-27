@@ -43,7 +43,14 @@ Further indexes are added the same way: another `memory.VectorIndex` and so anot
 
 ## Admin UI: View vec db
 
-Each live dataset in the admin UI has a **View vec db** button. It opens a modal with one row per index (entities, edges, chunks, summaries) (`GET /v1/gb/admin/api/vectors?db=&user_id=&dataset=`, `memory.VectorStats`): the vector dataset name, the number of vectors in it, the number of rows that should have one (entities / edges / chunk artifacts / summary artifacts), how many are missing, the dimension and the raw embedding size. The numbers come from the optional `vector.Statter` interface, which chromem (collection count) and Pinecone (`describe_index_stats`) implement.
+Each live dataset in the admin UI has a **View vec db** button. It opens a modal with one row per index (entities, edges, chunks, summaries) (`GET /v1/gb/admin/api/vectors?db=&user_id=&dataset=`, `memory.VectorStats`): the vector dataset name, the number of vectors in it, the number of rows that should have one (entities / edges / chunk artifacts / summary artifacts), how many are missing, the dimension, the raw embedding size, the storage the index occupies and how long ago the last vector was written. The numbers come from the optional `vector.Statter` interface, which chromem (collection count) and Pinecone (`describe_index_stats`) implement.
+
+## Admin UI: vectors view
+
+The **vectors** view lists, per database, every live memory dataset (not training datasets) with one row per index (`GET /v1/gb/admin/api/vectors/all?db=`, `memory.VectorStatsAll`): the backend store (`chromem` or `pinecone`), the number of vectors, the storage the index occupies and how long ago (minutes, hours, days, months) the last vector was written. It uses the same fetching and formatting code as the modal above (`admin_ui/src/vectors.ts`).
+
+- **Storage** is the size of the index's files for a persisted chromem store. Pinecone is hosted and does not report it, and an in-memory chromem has no files: the view then shows an estimate of the raw embeddings (vectors x dimensions x 4 bytes), marked `~`.
+- **Last write**: neither store records when a vector was written. For a persisted chromem store it is the newest modification time of the index's vector files (`vector.Stats.LastWrite`). For Pinecone and an in-memory chromem it is not available (`n/a`).
 
 ## What `remember` writes
 

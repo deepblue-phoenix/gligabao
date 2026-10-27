@@ -3,7 +3,10 @@
 // Store is the backend-neutral interface; Chromem (embedded, pure Go, the default) and Pinecone (hosted) are the implementations.
 package vector
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Vector is an embedding with an ID and optional metadata.
 type Vector struct {
@@ -55,6 +58,12 @@ type Stats struct {
 	Dimensions int `json:"dimensions"`
 	// Bytes is the size of the raw embeddings (Count * Dimensions * 4), not counting IDs, metadata or index overhead.
 	Bytes int64 `json:"bytes"`
+	// DiskBytes is the space the dataset occupies in the store's own storage (all its files), 0 if the store cannot say
+	// (Pinecone is hosted) or it is not persisted (an in-memory chromem). Then Bytes is the best estimate.
+	DiskBytes int64 `json:"disk_bytes"`
+	// LastWrite is when a vector was last written to the dataset, nil if the store does not record it (Pinecone does not)
+	// or the dataset is empty. Chromem has no timestamps either: it is the newest modification time of the vector files.
+	LastWrite *time.Time `json:"last_write,omitempty"`
 }
 
 // Statter is implemented by stores that can report statistics about a dataset; both Chromem and Pinecone do.

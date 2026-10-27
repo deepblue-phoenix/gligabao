@@ -328,6 +328,7 @@ func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, geoRadiusKm float64,
 	mux.HandleFunc("GET /v1/gb/admin/api/overview", admin.OverviewOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/graph", admin.GraphOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/vectors", admin.VectorsOf(dbs))
+	mux.HandleFunc("GET /v1/gb/admin/api/vectors/all", admin.VectorsAllOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/images", admin.ImagesOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/timeseries", admin.TimeseriesOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/inferences", admin.InferencesOf(dbs))

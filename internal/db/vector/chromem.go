@@ -2,6 +2,8 @@ package vector
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/philippgille/chromem-go"
 )
@@ -38,6 +41,7 @@ const (
 type Chromem struct {
 	db   *chromem.DB
 	dims int
+	dir  string // the persistence directory, "" for an in-memory store
 
 	mu sync.Mutex // serializes collection creation/deletion
 }
@@ -70,7 +74,7 @@ func NewChromem(dir string, dimensions int) (*Chromem, error) {
 	if err != nil {
 		return nil, fmt.Errorf("vector: open chromem: %w", err)
 	}
-	return &Chromem{db: db, dims: dimensions}, nil
+	return &Chromem{db: db, dims: dimensions, dir: dir}, nil
 }
 
 // checkDimensions verifies the size recorded in path, or records it if there is none yet.
@@ -244,7 +248,45 @@ func (s *Chromem) Stats(_ context.Context, dataset string) (Stats, error) {
 		st.Count = c.Count()
 	}
 	st.Bytes = int64(st.Count) * int64(s.dims) * 4
+	if c != nil && s.dir != "" {
+		st.DiskBytes, st.LastWrite = collectionFiles(filepath.Join(s.dir, hash2hex(collectionName(dataset))))
+	}
 	return st, nil
+}
+
+// hash2hex is chromem-go's name of the directory of a collection (and of a document's file in it): 4 bytes of the
+// SHA-256 of the name, hex encoded. chromem does not export it.
+func hash2hex(name string) string {
+	h := sha256.Sum256([]byte(name))
+	return hex.EncodeToString(h[:4])
+}
+
+// chromemMetadataFile is chromem-go's file (without extension) with the collection's own metadata: written when the
+// collection is created, not when a vector is.
+const chromemMetadataFile = "00000000"
+
+// collectionFiles returns the total size of the files in a collection's directory and the newest modification time of
+// its vector files (nil if there are none). Errors (e.g. a file deleted meanwhile) only make the numbers smaller: they
+// are informational.
+func collectionFiles(dir string) (bytes int64, last *time.Time) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0, nil
+	}
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		bytes += info.Size()
+		if strings.HasPrefix(e.Name(), chromemMetadataFile) {
+			continue
+		}
+		if m := info.ModTime(); last == nil || m.After(*last) {
+			last = &m
+		}
+	}
+	return bytes, last
 }
 
 //---------------------------------------------------------------------------------------------

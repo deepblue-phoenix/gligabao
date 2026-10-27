@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_dataset"
@@ -81,6 +82,36 @@ func VectorStats(ctx context.Context, d *sql.DB, vectors vector.Store, userID, n
 	if err != nil {
 		return nil, err
 	}
+	return datasetVectorStats(ctx, d, vectors, id)
+}
+
+// DatasetVectors is the vector state of one live dataset, in the list of VectorStatsAll.
+type DatasetVectors struct {
+	UserID  string `json:"user_id"`
+	Dataset string `json:"dataset"`
+	DatasetVectorStats
+}
+
+// VectorStatsAll is VectorStats for every live dataset (of all users) of the database d, oldest dataset first: what
+// the admin UI's vectors view shows. vectors may be nil (every dataset is then listed without indexes).
+func VectorStatsAll(ctx context.Context, d *sql.DB, vectors vector.Store) ([]DatasetVectors, error) {
+	list, err := relational.ListAllDatasets(ctx, d, false)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]DatasetVectors, 0, len(list))
+	for _, ds := range list {
+		st, err := datasetVectorStats(ctx, d, vectors, ds.ID)
+		if err != nil {
+			return nil, fmt.Errorf("memory: vector stats of dataset %s/%s: %w", ds.UserID, ds.Name, err)
+		}
+		out = append(out, DatasetVectors{UserID: ds.UserID, Dataset: ds.Name, DatasetVectorStats: *st})
+	}
+	return out, nil
+}
+
+// datasetVectorStats is VectorStats of the dataset with the given ID.
+func datasetVectorStats(ctx context.Context, d *sql.DB, vectors vector.Store, id int64) (*DatasetVectorStats, error) {
 	out := &DatasetVectorStats{Indexes: []IndexStats{}}
 	statter, ok := vectors.(vector.Statter)
 	if !ok {

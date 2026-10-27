@@ -178,6 +178,73 @@ func testVectors(t *testing.T, d *sql.DB) {
 	}
 }
 
+// TestVectorsAll checks that the admin vectors list has every live dataset of every user with its indexes, and 404s
+// for an unknown database.
+func TestVectorsAll(t *testing.T) { dbtest.Run(t, testVectorsAll) }
+
+func testVectorsAll(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	var first *memory_dataset.Dataset
+	for i, u := range []string{"alice", "bob"} {
+		ds, err := memory_dataset.CreateDataset(ctx, d, u, "main", "", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 {
+			first = ds
+		}
+	}
+	gone, err := memory_dataset.CreateDataset(ctx, d, "alice", "gone", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := memory_dataset.DeleteDataset(ctx, d, nil, "alice", gone.Name); err != nil {
+		t.Fatal(err)
+	}
+	store, err := vector.NewChromem(filepath.Join(t.TempDir(), "v"), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Upsert(ctx, memory_dataset.EntityDataset(first.ID), []vector.Vector{{ID: "entity-1", Values: []float32{1, 0}}}); err != nil {
+		t.Fatal(err)
+	}
+	h := admin.VectorsAllOf([]admin.Named{{Name: "standard", DB: d, Vectors: store}})
+	w := httptest.NewRecorder()
+	h(w, httptest.NewRequest(http.MethodGet, "/admin/api/vectors/all", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	var out struct {
+		Datasets []struct {
+			UserID  string `json:"user_id"`
+			Dataset string `json:"dataset"`
+			Backend string `json:"backend"`
+			Indexes []struct {
+				Index     string `json:"index"`
+				Count     int    `json:"count"`
+				DiskBytes int64  `json:"disk_bytes"`
+				LastWrite string `json:"last_write"`
+			} `json:"indexes"`
+		} `json:"datasets"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Datasets) != 2 || out.Datasets[0].UserID != "alice" || out.Datasets[1].UserID != "bob" {
+		t.Fatalf("%s", w.Body)
+	}
+	a := out.Datasets[0]
+	if a.Backend != "chromem" || len(a.Indexes) != len(memory_dataset.VectorIndexes) || a.Indexes[0].Count != 1 || a.Indexes[0].DiskBytes <= 0 ||
+		a.Indexes[0].LastWrite == "" || a.Indexes[1].Count != 0 || a.Indexes[1].LastWrite != "" {
+		t.Fatalf("%s", w.Body)
+	}
+	w = httptest.NewRecorder()
+	h(w, httptest.NewRequest(http.MethodGet, "/admin/api/vectors/all?db=nope", nil))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("unknown db: %d", w.Code)
+	}
+}
+
 // TestVectorsOpenOnDemand checks that a database with OpenVectors gets the store from it (and sees what is written
 // to it later, e.g. by another process).
 func TestVectorsOpenOnDemand(t *testing.T) { dbtest.Run(t, testVectorsOpenOnDemand) }
