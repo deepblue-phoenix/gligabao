@@ -6,6 +6,8 @@ Every request to gligabao says which user it acts for, with a `user_id`. without
 
 A program that embeds gligabao can set `ServeOptions.Auth` (see [hooks.md](hooks.md#auth)). The caller then sends an API key (`Authorization: Bearer <key>`) instead of a `user_id`: the hook maps the key to a user, and the request acts as that user, replacing any `user_id` it carries. A missing or rejected key is a `401`. Everything below about `user_id` (format, ownership) is unchanged, it is just not the caller that chooses it any more. The Python client works this way: it reads the key from `GLIGABAO_API_KEY`.
 
+The [MCP](mcp.md) tools (`remember`, `query`; off by default) take `user_id` as an argument and are not covered by the `Auth` hook: whoever can reach the MCP endpoint can act as any user.
+
 ## Passing `user_id`
 
 | Endpoint | Where |

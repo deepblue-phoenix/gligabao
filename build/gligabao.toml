@@ -47,6 +47,11 @@ admin_ui = false
 # sends the names of places to the geocoder. Default false; `serve --geo` turns it on.
 geo = false
 
+# Serve remember and query as MCP (Model Context Protocol) tools at /v1/gb/mcp (streamable HTTP transport), so MCP clients (Claude
+# Desktop, Claude Code, ...) can use gligabao as a memory. There is NO authentication yet: callers choose the user_id themselves, so
+# enable it only on a trusted network. Default false; `serve --mcp` turns it on.
+mcp = false
+
 # Directory the files of trained models are fetched to for a deployment, one subdirectory per training job (gligabao
 # never deletes them). Default: a trained_models directory next to the database file (build/trained_models).
 # `serve --trained-model-deploy-dir` overrides it.

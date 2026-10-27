@@ -333,6 +333,7 @@ func serverOptions(cfg *Config, opts ServeOptions) (serverOpts server.Options, r
 		Auth:                  opts.Auth,
 		GeoResolver:           opts.GeoResolver,
 		Geo:                   cfg.Geo,
+		MCPEnable:             cfg.MCP,
 		TimeseriesProviders:   opts.TimeseriesProviders,
 		TrainedModelDeployers: opts.TrainedModelDeployers,
 

@@ -101,6 +101,9 @@ type Config struct {
 	// its own resolver, ServeOptions.GeoResolver, which turns it on too). Default false: it costs one more LLM call per text and
 	// sends the names of places to the geocoder. `serve --geo` turns it on.
 	Geo bool `toml:"geo"`
+	// MCP registers the MCP (Model Context Protocol) endpoint, POST /v1/gb/mcp (streamable HTTP), which exposes remember and query as
+	// MCP tools. It has no authentication yet. Default false; `serve --mcp` turns it on.
+	MCP bool `toml:"mcp"`
 	// SidecarURL is the base URL of the Python sidecar's REST API (sidecar/), which runs the training jobs the admin
 	// endpoint POST /v1/gb/v1/gb/training/jobs starts. Default: SIDECAR_URL, else http://127.0.0.1:8787.
 	SidecarURL string `toml:"sidecar_url"`

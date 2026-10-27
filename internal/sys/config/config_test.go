@@ -295,3 +295,20 @@ ontology_dirs = ["onto"]
 		t.Error("an empty directory should be rejected")
 	}
 }
+
+func TestMCP(t *testing.T) {
+	cfg, err := Load(write(t, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.MCP {
+		t.Fatal("mcp must be off by default")
+	}
+	cfg, err = Load(write(t, "mcp = true\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.MCP {
+		t.Fatal("mcp = true was not read")
+	}
+}

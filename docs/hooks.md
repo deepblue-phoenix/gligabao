@@ -156,7 +156,7 @@ gligabao.ServeOptions{
 - The key is read from the header `Authorization: Bearer <key>`. A request without one gets `401` and the hook is not called.
 - When the hook returns a user ID, the request acts as that user: its `user_id` (the JSON body of `POST`/`PUT`, the query string of `GET`/`DELETE`) is **replaced** with it, whatever the caller sent or left out. A caller can therefore only reach the data of the owner of its key.
 - When it returns an error, or an empty ID, the request gets `401` with `{"error": "invalid API key"}` (the error itself is only logged, at debug level).
-- It covers the user routes: `POST /v1/gb/remember`, `POST /v1/gb/query`, the datasets, timeseries and ontologies endpoints. It does not cover the admin UI and the training and eval endpoints, which are not tied to a user; with `Mount`, protect those with `MountOptions.Wrap`.
+- It covers the user routes: `POST /v1/gb/remember`, `POST /v1/gb/query`, the datasets, timeseries and ontologies endpoints. It does not cover the admin UI and the training and eval endpoints, which are not tied to a user; with `Mount`, protect those with `MountOptions.Wrap`. It does not cover the [MCP](mcp.md) endpoint (`/v1/gb/mcp`, off by default, no authentication yet) either: where MCP is enabled, anyone who can reach it can act as any user; with `Mount`, `MountOptions.Wrap` covers it.
 - It is called once per request, concurrently: it must be safe for concurrent use and fast (cache the lookups if the key store is remote). It does not need to compare keys in constant time, only to return the user.
 - With no hook, nothing changes: `user_id` is trusted. See [identity.md](identity.md).
 

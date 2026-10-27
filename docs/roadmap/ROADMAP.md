@@ -19,6 +19,7 @@ changelog and remove it from here after a release or two).
 | `query` uses geo | Planned | `gb_entity_geo` holds coordinates for the entities that are places, but `query` does not read them (no "near", "in" or distance questions). See [geo.md](../geo.md). |
 | Geo for more than `remember` text | Planned | Only the entities of the text itself are geocoded: not those of web search results or series observations, and not those of an image. Geo metadata is not refreshed or corrected once stored, and a place the resolver did not know is asked again on every mention. See [geo.md](../geo.md). |
 | Web search for image requests | Planned | `web_search` is rejected (`400`) together with `image`, since the image pipeline extracts no entities yet. Depends on grounding image extractions. See [web-search.md](../web-search.md). |
+| MCP: authentication and more tools | Planned | MCP (`/v1/gb/mcp`, off by default) exposes only `remember` (text only) and `query`, with no authentication and outside the `Auth` hook. Missing: auth, the image/models/web_search/timeseries options of `remember`, the other endpoints as tools, resources and prompts. See [mcp.md](../mcp.md). |
 | OpenAI as a main reasoning provider | Planned | `remember` and `query` use only Anthropic for the main reasoning; OpenAI is used for embeddings only. Add OpenAI as a supported reasoning provider too. |
 
 ## Considering

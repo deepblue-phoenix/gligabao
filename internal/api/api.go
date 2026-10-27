@@ -6,6 +6,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/api/datasets"
 	"github.com/deepblue-phoenix/gligabao/internal/api/httputil"
+	"github.com/deepblue-phoenix/gligabao/internal/api/mcp"
 	"github.com/deepblue-phoenix/gligabao/internal/api/ontologies"
 	"github.com/deepblue-phoenix/gligabao/internal/api/query"
 	"github.com/deepblue-phoenix/gligabao/internal/api/remember"
@@ -30,7 +31,7 @@ func Register(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm me
 		opt(&o)
 	}
 	a := func(h http.HandlerFunc) http.Handler { return httputil.Authenticate(o.auth, h) } // routes of users: with WithAuth they need an API key
-	mux.Handle("POST /v1/gb/remember", a(remember.Handler(mgr, d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_core.WithGeoResolver(o.geo), memory_image.WithImageDir(d.ImageDir))))
+	mux.Handle("POST /v1/gb/remember", a(rememberHandler(mgr, d, llm, emb, jv, ws, providers, o)))
 	mux.Handle("POST /v1/gb/query", a(query.Handler(d.Relational, llm)))
 	mux.Handle("POST /v1/gb/datasets", a(datasets.Create(d.Relational)))
 	mux.Handle("GET /v1/gb/datasets", a(datasets.List(d.Relational)))
@@ -41,6 +42,23 @@ func Register(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm me
 	mux.Handle("GET /v1/gb/timeseries/{id}", a(timeseries.Get(d.Relational)))
 	mux.Handle("POST /v1/gb/ontologies", a(ontologies.Load(d.Relational, o.ontologyDirs)))
 	mux.Handle("PUT /v1/gb/ontologies/{name}", a(ontologies.Update(d.Relational, o.ontologyDirs)))
+}
+
+// rememberHandler is the handler of POST /v1/gb/remember (Register and RegisterMCP use the same one).
+func rememberHandler(mgr *memory_remember.Manager, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, o options) http.HandlerFunc {
+	return remember.Handler(mgr, d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_core.WithGeoResolver(o.geo), memory_image.WithImageDir(d.ImageDir))
+}
+
+// RegisterMCP mounts the MCP endpoint (POST /v1/gb/mcp, see package mcp) with the tools remember and query. They run the same handlers
+// as POST /v1/gb/remember and POST /v1/gb/query, so the arguments are the same as those of Register (mgr, d, llm, ...) and the same
+// options apply (WithGeoResolver). There is no authentication: the WithAuth option is not applied, a caller sets the user_id itself.
+// version is what the server reports to MCP clients.
+func RegisterMCP(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, version string, opts ...Option) {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
+	mcp.Register(mux, rememberHandler(mgr, d, llm, emb, jv, ws, providers, o), query.Handler(d.Relational, llm), version)
 }
 
 type options struct {

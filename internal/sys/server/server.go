@@ -137,6 +137,9 @@ type Options struct {
 	AdminExtensions []admin.Extension
 	// AdminUIenable registers the admin UI handlers (served at /v1/gb/admin/ from the assets embedded in the binary).
 	AdminUIenable bool
+	// MCPEnable registers the MCP endpoint (/v1/gb/mcp) with the tools remember and query (see package api/mcp). Off by default.
+	// It is not covered by Auth.
+	MCPEnable bool
 }
 
 //---------------------------------------------------------------------------------------------
@@ -208,12 +211,12 @@ const EvalDBName = "eval"
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary; adminExts are the registered admin UI extensions
 // (already validated; may be nil), mounted with it.
 func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
-	return newMux(ctx, true, nil, nil, d, llm, emb, jv, ws, providers, hooks, dirs, ontologyDirs, sc, eval, trainingMode, adminUI, adminExts, extraAdminDBs...)
+	return newMux(ctx, true, nil, nil, false, d, llm, emb, jv, ws, providers, hooks, dirs, ontologyDirs, sc, eval, trainingMode, adminUI, adminExts, extraAdminDBs...)
 }
 
 // newMux is NewHandler; standalone is false when the routes are mounted on a host's mux (see Mount), where "/", "/health" and
 // "/version" belong to the host, so they are not registered: an unknown path under /v1/gb/ is a plain 404.
-func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, geoResolver geo.Resolver, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
+func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, geoResolver geo.Resolver, mcpEnable bool, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	if standalone {
 		mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
@@ -231,6 +234,9 @@ func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, g
 	// The remember manager runs every remember pipeline run, one at a time, until ctx is done.
 	mgr := memory_remember.NewManager(ctx, d.Relational, llm)
 	api.Register(mux, mgr, d, llm, emb, jv, ws, providers, api.WithOntologyDirs(ontologyDirs), api.WithAuth(auth), api.WithGeoResolver(geoResolver))
+	if mcpEnable {
+		api.RegisterMCP(mux, mgr, d, llm, emb, jv, ws, providers, buildinfo.Library().Version, api.WithGeoResolver(geoResolver))
+	}
 	if eval {
 		api.RegisterEval(mux, mgr, d, llm, emb, jv, ws, providers, api.WithGeoResolver(geoResolver))
 	}
@@ -575,6 +581,15 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 		log.WithField("trajectory_dir", memory_core.TrajectoryDir).Info("ATIF trajectories are stored here")
 	}
 
+	switch {
+	case opts.MCPEnable && opts.Auth != nil:
+		log.Warn("MCP is enabled: the MCP endpoint (/v1/gb/mcp, tools remember and query) has no authentication and is NOT covered by the Auth hook; callers choose the user_id themselves")
+	case opts.MCPEnable:
+		log.Warn("MCP is enabled: the MCP endpoint (/v1/gb/mcp, tools remember and query) has no authentication; callers choose the user_id themselves")
+	default:
+		log.Info("MCP is not active: the MCP endpoint is not registered (enable with mcp = true or --mcp)")
+	}
+
 	if opts.AdminUIenable && adminui.Available() {
 		adminPath := adminURL(opts.Addr)
 		if opts.Addr == "" { // mounted on a host's mux: the host's address is not known here
@@ -702,7 +717,7 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 	// The remember manager stops when everything is released, i.e. after the graceful shutdown has given the runs in progress their time.
 	mgrCtx, stopMgr := context.WithCancel(ctx)
 	cleanups = append(cleanups, stopMgr)
-	return newMux(mgrCtx, standalone, opts.Auth, geoResolver, database, llm, emb, jv, ws, providers, hooks, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, extra...), closeAll, nil
+	return newMux(mgrCtx, standalone, opts.Auth, geoResolver, opts.MCPEnable, database, llm, emb, jv, ws, providers, hooks, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, extra...), closeAll, nil
 }
 
 // newJev builds the Jev client from the options.

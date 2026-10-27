@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.111.0] - 2026-10-27
+
+### Added
+- MCP (Model Context Protocol) support: with `mcp = true` in the config (or `serve --mcp`) the server serves `remember` and `query` as MCP tools at `/v1/gb/mcp` (streamable HTTP, stateless, JSON answers), built on [`modelcontextprotocol/go-sdk`](https://github.com/modelcontextprotocol/go-sdk) v1.6.1. Each tool runs the handler of the matching REST endpoint in process, so validation, monitoring events and results are the same; an error status of the endpoint becomes a tool error (`isError`). `remember` takes `user_id`, `text`, `dataset`, `kind`, `session_id` and `reference_time` (no image, `models`, `reasoning`, `web_search` or `timeseries` yet); `query` takes `user_id`, `query`, `dataset`, `session_id` and `reasoning`.
+- New config key `mcp` (default `false`, so nothing changes unless it is turned on) and flag `serve --mcp`; `ServeOptions` follows `Config.MCP`.
+- There is no authentication yet: callers choose the `user_id`, and the `Auth` hook does not cover the endpoint (a warning is logged at startup when MCP is on, and another if `Auth` is set as well). `MountOptions.Wrap` does cover it.
+- Docs: [docs/mcp.md](docs/mcp.md); README, [docs/identity.md](docs/identity.md), [docs/hooks.md](docs/hooks.md) and the roadmap mention it.
+
 ## [0.110.1] - 2026-10-27
 
 ### Changed

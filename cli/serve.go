@@ -14,7 +14,7 @@ func newServe(c *CLI, o Options) *cobra.Command {
 		datasetDirs, evalDirs       []string
 		ontologyDirs                []string
 		eval, training, adminUI     bool
-		geoOn                       bool
+		geoOn, mcpOn                bool
 	)
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -34,6 +34,9 @@ func newServe(c *CLI, o Options) *cobra.Command {
 			}
 			if cmd.Flags().Changed("geo") {
 				cfg.Geo = geoOn
+			}
+			if cmd.Flags().Changed("mcp") {
+				cfg.MCP = mcpOn
 			}
 			opts := gligabao.ServeOptions{
 				DBPath:                dbPath,
@@ -69,6 +72,7 @@ func newServe(c *CLI, o Options) *cobra.Command {
 	f.BoolVar(&eval, "eval", false, "register the eval endpoints that return ATIF trajectories (config: eval)")
 	f.BoolVar(&training, "training", false, "register the training endpoints under /v1/gb/training/ (config: training)")
 	f.BoolVar(&geoOn, "geo", false, "make remember find the places among the entities and store their coordinates, using OpenStreetMap's Nominatim (config: geo)")
+	f.BoolVar(&mcpOn, "mcp", false, "serve remember and query as MCP tools at /v1/gb/mcp (streamable HTTP, no authentication) (config: mcp)")
 	f.BoolVar(&adminUI, "admin-ui", false, "serve the admin UI at /v1/gb/admin/ (config: admin_ui)")
 	return cmd
 }
