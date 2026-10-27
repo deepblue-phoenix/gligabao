@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.117.2] - 2026-10-28
+
+### Changed
+- The memory dataset logic (`CreateDataset`, `ListDatasets`, `DeleteDataset`, `ErrDatasetExists`, `Dataset`, the vector indexes and `VectorDataset`, `EntityDataset`, `EdgeDataset`, `ChunkDataset`, `SummaryDataset`) moved from `internal/memory/memory_core` to the new package `internal/memory/memory_dataset`. No change in behaviour or API. The docs refer to the new names.
+
 ## [0.117.1] - 2026-10-27
 
 ### Changed

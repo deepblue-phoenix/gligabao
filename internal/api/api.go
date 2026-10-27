@@ -21,7 +21,7 @@ import (
 
 // Register mounts the API routes on mux. mgr is the remember manager, the one goroutine that runs the remember pipeline (shared with
 // RegisterEval, so that all remember runs are serialized together); it must have been made with the same d and llm. llm may be nil, in which case LLM-backed routes return 503.
-// d holds all databases; its vector store has one vector dataset per dataset and index (memory_core.VectorDataset). emb may be nil,
+// d holds all databases; its vector store has one vector dataset per dataset and index (memory_dataset.VectorDataset). emb may be nil,
 // in which case remember does not embed the entities it stores. jv may be nil (Jev not configured), in which case
 // remember skips the steps that run on Jev. ws may be nil (no Anthropic API key), in which case a remember request that asks for
 // web_search returns 503. Images are stored as files in d.ImageDir.

@@ -20,14 +20,14 @@ The vector store's unit of isolation is the **dataset**, the same abstraction as
 
 An empty dataset name is the backend's default one (chromem: a collection named `_default`; Pinecone: the default namespace). gligabao itself never uses it.
 
-A gligabao dataset keeps its vectors in one vector dataset per purpose (an index), named `dataset-<dataset id>-<index>` (`memory_core.VectorDataset`), so the name says what the vectors are of:
+A gligabao dataset keeps its vectors in one vector dataset per purpose (an index), named `dataset-<dataset id>-<index>` (`memory_dataset.VectorDataset`), so the name says what the vectors are of:
 
 | Index | Vector dataset | Vector ID | Metadata | Embedded text |
 |---|---|---|---|---|
-| entities | `dataset-<id>-entities` (`memory_core.EntityDataset`) | `entity-<entity id>` | `kind` = `entity`, `entity_id`, `name`, `type` | `Name (type): description` (the description is left out if the entity has none) |
-| edges | `dataset-<id>-edges` (`memory_core.EdgeDataset`) | `edge-<edge id>` | `kind` = `edge`, `edge_id`, `source`, `target`, `relation` | the edge's description, e.g. `Alice works at Acme.` (or `source relation target.` if it has none) |
-| chunks | `dataset-<id>-chunks` (`memory_core.ChunkDataset`) | `chunk-<chunk artifact id>` | `kind` = `chunk`, `artifact_id`, `parent_id`, `index` | the chunk's text (only for a text that was [chunked](chunking.md)) |
-| summaries | `dataset-<id>-summaries` (`memory_core.SummaryDataset`) | `summary-<summary artifact id>` | `kind` = `summary`, `artifact_id`, `chunk_id`, `parent_id`, `index` | the summary of a chunk (only for a text that was [chunked](chunking.md#chunk-summaries)) |
+| entities | `dataset-<id>-entities` (`memory_dataset.EntityDataset`) | `entity-<entity id>` | `kind` = `entity`, `entity_id`, `name`, `type` | `Name (type): description` (the description is left out if the entity has none) |
+| edges | `dataset-<id>-edges` (`memory_dataset.EdgeDataset`) | `edge-<edge id>` | `kind` = `edge`, `edge_id`, `source`, `target`, `relation` | the edge's description, e.g. `Alice works at Acme.` (or `source relation target.` if it has none) |
+| chunks | `dataset-<id>-chunks` (`memory_dataset.ChunkDataset`) | `chunk-<chunk artifact id>` | `kind` = `chunk`, `artifact_id`, `parent_id`, `index` | the chunk's text (only for a text that was [chunked](chunking.md)) |
+| summaries | `dataset-<id>-summaries` (`memory_dataset.SummaryDataset`) | `summary-<summary artifact id>` | `kind` = `summary`, `artifact_id`, `chunk_id`, `parent_id`, `index` | the summary of a chunk (only for a text that was [chunked](chunking.md#chunk-summaries)) |
 
 The IDs are the row IDs of `gb_entities` and `gb_edges` (and, for chunks and summaries, of the chunk's or summary's `gb_artifacts` row) in that dataset, so a match is resolved to its row with the ID in the metadata. The metadata holds only what never changes; the validity of a fact (`valid_at`, `invalid_at`, ...) changes when it is superseded, so it is read from the database, not from the vector.
 

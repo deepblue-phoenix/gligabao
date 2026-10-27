@@ -17,6 +17,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_dataset"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
 
@@ -180,7 +181,7 @@ func testRememberChunksLongText(t *testing.T, d *sql.DB) {
 	if res.EmbeddedChunks != n {
 		t.Errorf("embedded %d chunks, want %d", res.EmbeddedChunks, n)
 	}
-	got, err := vs.Query(ctx, memory_core.ChunkDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 100})
+	got, err := vs.Query(ctx, memory_dataset.ChunkDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 100})
 	if err != nil || len(got) != n {
 		t.Fatalf("chunk vectors = %d, %v; want %d", len(got), err, n)
 	}
@@ -194,7 +195,7 @@ func testRememberChunksLongText(t *testing.T, d *sql.DB) {
 	if res.EmbeddedSummaries != n {
 		t.Errorf("embedded %d summaries, want %d", res.EmbeddedSummaries, n)
 	}
-	gotS, err := vs.Query(ctx, memory_core.SummaryDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 100})
+	gotS, err := vs.Query(ctx, memory_dataset.SummaryDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 100})
 	if err != nil || len(gotS) != n {
 		t.Fatalf("summary vectors = %d, %v; want %d", len(gotS), err, n)
 	}
@@ -210,7 +211,7 @@ func testRememberChunksLongText(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 	for _, ix := range st.Indexes {
-		if (ix.Index == memory_core.IndexChunks || ix.Index == memory_core.IndexSummaries) && (ix.Expected != n || ix.Count != n) {
+		if (ix.Index == memory_dataset.IndexChunks || ix.Index == memory_dataset.IndexSummaries) && (ix.Expected != n || ix.Count != n) {
 			t.Errorf("%s index stats = %+v", ix.Index, ix)
 		}
 	}
@@ -243,7 +244,7 @@ func testRememberShortTextIsNotChunked(t *testing.T, d *sql.DB) {
 	if c, _ := graph.DatasetCounts(ctx, d, dsID); res.Chunks != nil || res.EmbeddedChunks != 0 || c.Artifacts != 1 || c.Chunks != 0 || c.Summaries != 0 {
 		t.Errorf("chunks = %v, counts = %+v", res.Chunks, c)
 	}
-	if got, _ := vs.Query(ctx, memory_core.ChunkDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 10}); len(got) != 0 {
+	if got, _ := vs.Query(ctx, memory_dataset.ChunkDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 10}); len(got) != 0 {
 		t.Errorf("%d chunk vectors for a short text", len(got))
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_dataset"
 )
 
 // WithVectors makes Remember embed the entities, edges and chunks it stores and write the embeddings to store, into the
@@ -49,7 +50,7 @@ func SummaryVectorID(artifactID int64) string {
 
 // IndexStats is the state of one vector index of a dataset.
 type IndexStats struct {
-	Index memory_core.VectorIndex `json:"index"`
+	Index memory_dataset.VectorIndex `json:"index"`
 	// VectorDataset is the dataset's name in the vector store.
 	VectorDataset string `json:"vector_dataset"`
 	// Expected is the number of rows (entities, edges, chunk artifacts) that should have a vector in this index.
@@ -89,21 +90,21 @@ func VectorStats(ctx context.Context, d *sql.DB, vectors vector.Store, userID, n
 	if err != nil {
 		return nil, err
 	}
-	for _, idx := range memory_core.VectorIndexes {
-		ds := memory_core.VectorDataset(id, idx)
+	for _, idx := range memory_dataset.VectorIndexes {
+		ds := memory_dataset.VectorDataset(id, idx)
 		st, err := statter.Stats(ctx, ds)
 		if err != nil {
 			return nil, fmt.Errorf("memory: stats of vector dataset %s: %w", ds, err)
 		}
 		var expected int
 		switch idx {
-		case memory_core.IndexEntities:
+		case memory_dataset.IndexEntities:
 			expected = counts.Entities
-		case memory_core.IndexEdges:
+		case memory_dataset.IndexEdges:
 			expected = counts.Edges
-		case memory_core.IndexChunks:
+		case memory_dataset.IndexChunks:
 			expected = counts.Chunks
-		case memory_core.IndexSummaries:
+		case memory_dataset.IndexSummaries:
 			expected = counts.Summaries
 		}
 		out.Backend = st.Backend

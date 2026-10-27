@@ -17,6 +17,7 @@ import (
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_dataset"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	log "github.com/sirupsen/logrus"
 )
@@ -179,7 +180,7 @@ func Graph(d *sql.DB) http.HandlerFunc {
 }
 
 // DeleteDatasetOf serves DELETE /admin/api/datasets?db=<name>&user_id=...&dataset=... for one of dbs (the first
-// without db): a soft delete of the dataset (see memory_core.DeleteDataset).
+// without db): a soft delete of the dataset (see memory_dataset.DeleteDataset).
 func DeleteDatasetOf(dbs []Named) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -198,7 +199,7 @@ func DeleteDatasetOf(dbs []Named) http.HandlerFunc {
 				return
 			}
 			defer release()
-			err = memory_core.DeleteDataset(r.Context(), n.DB, vectors, q.Get("user_id"), q.Get("dataset"))
+			err = memory_dataset.DeleteDataset(r.Context(), n.DB, vectors, q.Get("user_id"), q.Get("dataset"))
 			switch {
 			case errors.Is(err, memory_core.ErrInvalidUser):
 				httputil.Error(w, http.StatusBadRequest, err.Error())

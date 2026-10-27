@@ -77,13 +77,13 @@ Every chunk's text is embedded as a whole and written to a **dedicated vector co
 
 | Index | Vector dataset | Vector ID | Metadata | Embedded text |
 | ----- | -------------- | --------- | -------- | ------------- |
-| chunks | `dataset-<id>-chunks` (`memory_core.ChunkDataset`) | `chunk-<chunk artifact id>` | `kind` = `chunk`, `artifact_id`, `parent_id`, `index` | the chunk's text |
+| chunks | `dataset-<id>-chunks` (`memory_dataset.ChunkDataset`) | `chunk-<chunk artifact id>` | `kind` = `chunk`, `artifact_id`, `parent_id`, `index` | the chunk's text |
 
 The chunk's **summary** is embedded into a further index, in the same request:
 
 | Index | Vector dataset | Vector ID | Metadata | Embedded text |
 | ----- | -------------- | --------- | -------- | ------------- |
-| summaries | `dataset-<id>-summaries` (`memory_core.SummaryDataset`) | `summary-<summary artifact id>` | `kind` = `summary`, `artifact_id` (the summary's), `chunk_id` (the chunk's), `parent_id` (the document's), `index` (the chunk's) | the summary's text |
+| summaries | `dataset-<id>-summaries` (`memory_dataset.SummaryDataset`) | `summary-<summary artifact id>` | `kind` = `summary`, `artifact_id` (the summary's), `chunk_id` (the chunk's), `parent_id` (the document's), `index` (the chunk's) | the summary's text |
 
 The chunk's embedding and its summary's go in the same embeddings request as the entities and edges that the chunk yields, so a chunk still costs one request. It uses the same model and dimensions as the other indexes, so all vectors share one space. Like the others it needs an OpenAI key (without one chunks are still made, extracted and stored, but not embedded), is computed before the chunk's transaction commits and written right after it, and is removed with the dataset. `VectorStats` (the admin UI's **View vec db**) lists the chunk and summary indexes with the number of chunk and summary artifacts each should hold. The vectors do not affect `query` yet.
 
