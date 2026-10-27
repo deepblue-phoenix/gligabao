@@ -4,7 +4,7 @@ Some entities are places: a city, a country, a region, a landmark. `remember` fi
 graph knows where things are. The code is the package `internal/geo` (the resolvers) and `memory_remember/remember_geo.go` (the
 stage of the pipeline); the data is the table `gb_entity_geo`.
 
-`query` finds the places a question mentions with the same switch, but does not use them yet: see [In `query`](#in-query) and the [roadmap](roadmap/ROADMAP.md).
+`query` uses it too, with the same switch: when the request asks for it, it finds the geo entities near the places of a question and gives them to the LLM that answers, within a radius you can set, and stores the places of the question it resolves (see [In `query`](#in-query)).
 
 ## Turning it on
 
@@ -29,7 +29,7 @@ PostGIS extension.
 
 ## The geo index
 
-When geo is on, every row of `gb_entity_geo` is also in the geo index of the database, so that the proximity queries planned for
+When geo is on, every row of `gb_entity_geo` is also in the geo index of the database, so that the proximity queries of
 `query` ("what is within 50 km of Paris") can fetch the nearby entities without scanning the table. The index is created at
 startup **only when geo is on** (`geo = true`, `--geo` or a `GeoResolver`; Go: `db.Config.Geo`, `graph.EnableGeoIndex`); with geo
 off nothing is created.
@@ -83,7 +83,22 @@ An [eval trajectory](evals/knowledge.md) of a call with a geo resolver has, afte
 
 With geo on (the same switch as for `remember`), `query` makes one more LLM call, separate from the one that answers: the `detect_geo` stage reads the question (only the question, not the graph) and lists the places it mentions, each with the `text` as written, its `kind` (`country`, `region`, `city` or `place`) and the `query` a geocoder should be asked ("Paris, France"). It runs after the graph was retrieved, and not at all if the dataset is empty (the fixed "no information" answer is given without any LLM call). Entities of the graph are not involved.
 
-For now the places are only extracted: they are not used for retrieval or for the answer, the resolver is not asked for their coordinates, and they are not in the response. They are in the [eval trajectory](evals/knowledge.md) (a `detect_geo` step after the retrieval) and in `QueryResult.Geo` for Go callers. An LLM that names something that is not in the question is ignored, at most 10 places are kept, and a failure of the stage is logged and recorded in the trajectory but never fails the query.
+An LLM that names something that is not in the question is ignored, at most 10 places are kept, and a failure of the stage is logged and recorded in the trajectory but never fails the query.
+
+### Nearby entities
+
+The search for nearby entities is **off by default**: the places are found (above), but nothing else happens, and the geo resolver is not asked, unless the request turns it on with `geo_nearby: true` or by setting `geo_radius_km` ([query request](query.md#request); setting a radius with `geo_nearby: false` is a `400`, and so is asking for it on a server without geo). The user decides when nearby entities are involved. Then the proximity step (`memory_query/query_geo_nearby.go`) gives the answering LLM the geo entities that lie near the places of the question:
+
+1. **Anchors** (at most 5), the places the search is centered on: first the entities that matched the question and have coordinates in `gb_entity_geo`; then the places the LLM found in the question that are not the name of one of those. For such a place, an entity of the dataset with that name that has coordinates is used as it is (no resolver call); otherwise the geo resolver is asked, and a place it does not know is skipped.
+2. **Storing the places of the question.** A place the resolver finds is stored, in one transaction, so that it is in the database for the next question (and for the nearby searches of later questions, which only look at stored entities): if the dataset has an entity with that name whose type can be a place (anything but `person`, `concept`, `product` or `event`), it gets the coordinates; otherwise a new entity of the type `place` is made with them (the name as the question writes it, `kind` and `query` from the LLM, the rest from the resolver, as `remember` stores it). The next question with the same place finds it in the database and does not ask the resolver again. This is the one write of `query`, and only happens with the nearby search on; an entity made this way has no artifact (no text it came from) and no description. A failure to store is logged and recorded, and the place is still used as an anchor.
+3. **Nearby**: for each anchor, `graph.NearbyEntityGeo` returns the geo entities of the dataset within the radius (the 20 nearest per anchor, at most 30 in all; an entity near several anchors is listed once, with the nearest). The anchors that are entities are left out.
+4. **Context**: the nearby entities and the edges around them (at most 50, with the entities at their other end) are added to the graph the LLM reads, so it can cite them as evidence, and a `<nearby radius_km="50">` section says how far each is from which anchor (`[entity 7] Versailles is 17.9 km from Paris`). Without anchors, or when nothing is near, there is no `<nearby>` section.
+
+The result has `nearby` (omitted when the search was off or there was no anchor): `{"radius_km": 50, "anchors": [{"name": "Lyon", "entity_id": 9, "stored": true, "latitude": ..., "longitude": ...}], "nearby": [{"entity_id": 7, "name": "Villeurbanne", "type": "place", "latitude": ..., "longitude": ..., "distance_km": 3.4, "anchor": "Lyon"}]}` (`stored` is only there for a place stored by this call). The trajectory has a `nearby_geo` step. A failure of the step (the resolver, the database) is logged and recorded, and never fails the query.
+
+**The radius** is 50 km by default. The server's default is `geo_radius_km` in `gligabao.toml` (it does not turn the search on; Go: `server.Options.GeoRadiusKm`, `api.WithGeoRadius`, `memory_core.WithGeoRadius`); a request overrides it with `geo_radius_km`. It must be greater than 0 and at most 20015 km (half the circumference of the Earth; `400` otherwise). Go callers of `memory_query.Query` turn the search on with `memory_core.WithGeoNearby(true)`.
+
+**How it is searched.** The index prefilters (SQLite: the R*Tree, or the index on latitude and longitude when geo was never on for the database; PostgreSQL: PostGIS `ST_DWithin` on the GiST index, or a latitude/longitude box without it), and the candidates are refined with the haversine distance on a sphere, so the result is the same with or without an index. The box handles the antimeridian (a search near 180° also finds places at -179°) and the poles. Distances are straight lines (great circle), not travel distances.
 
 Like the answering call, it is recorded as an inference (type `query`, stage `detect_geo`). Its model is chosen with `models` in the [query request](query.md#request); its reasoning level with `reasoning` (the string form of `reasoning` is the `query` stage only, so use the object form: `{"detect_geo": "low"}`); a stage left out runs without thinking.
 

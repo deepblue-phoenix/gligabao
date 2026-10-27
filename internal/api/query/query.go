@@ -36,6 +36,14 @@ type queryRequest struct {
 	// Models (optional) picks the LLM model of each stage of the query ("query": the one that answers; "detect_geo": the one that
 	// finds the places in the question, only when the server has geo on); a stage left out uses the default model.
 	Models map[string]string `json:"models"`
+	// GeoNearby (optional) turns on the search for the geo entities near the places of the question, which are given to the LLM as
+	// context. Off by default: the user asks for it. It needs the server to have geo on (400 otherwise). The places of the question
+	// that the geo resolver finds are stored as entities with coordinates.
+	GeoNearby *bool `json:"geo_nearby"`
+	// GeoRadiusKm (optional) is the radius, in kilometers, of that search. Giving it turns the search on (same as geo_nearby: true;
+	// with geo_nearby: false it is a 400). It overrides the default of the server (config geo_radius_km, 50 km unless set); it must
+	// be greater than 0 and at most memory_core.MaxGeoRadiusKm.
+	GeoRadiusKm *float64 `json:"geo_radius_km"`
 }
 
 // parseReasoning reads the reasoning field of the request: absent or null (the defaults), a string (the level of the answering
@@ -62,7 +70,7 @@ func parseReasoning(raw json.RawMessage) (memory_core.Reasoning, error) {
 //---------------------------------------------------------------------------------------------
 
 // Handler serves POST /v1/gb/query. opts apply to every call; with memory_core.WithGeoResolver the places the question mentions are
-// found too.
+// found; the geo entities near them are given to the LLM only when the request asks (geo_nearby, geo_radius_km; memory_core.WithGeoRadius sets the default radius).
 func Handler(d *sql.DB, llm memory_core.LLM, opts ...memory_core.Option) http.HandlerFunc {
 	return handler(d, llm, false, opts)
 }
@@ -108,9 +116,27 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, opts []memory_core.Optio
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		callOpts := append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models), memory_core.WithReasoning(reasoning))
+		if req.GeoRadiusKm != nil && req.GeoNearby != nil && !*req.GeoNearby {
+			httputil.Error(w, http.StatusBadRequest, "geo_radius_km turns the nearby search on, but geo_nearby is false")
+			return
+		}
+		if nearby := (req.GeoNearby != nil && *req.GeoNearby) || req.GeoRadiusKm != nil; nearby {
+			if memory_core.NewCallOptions(opts).GeoResolver == nil {
+				httputil.Error(w, http.StatusBadRequest, "the nearby search needs geo: it is not enabled on this server (geo = true in the config)")
+				return
+			}
+			callOpts = append(callOpts, memory_core.WithGeoNearby(true))
+		}
+		if req.GeoRadiusKm != nil { // a later option wins over the default radius of the server
+			if err := memory_core.ValidateGeoRadius(*req.GeoRadiusKm); err != nil {
+				httputil.Error(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			callOpts = append(callOpts, memory_core.WithGeoRadius(*req.GeoRadiusKm))
+		}
 		start := time.Now()
-		res, err := memory_query.Query(r.Context(), d, llm, req.UserID, req.Dataset, req.Query,
-			append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models), memory_core.WithReasoning(reasoning))...)
+		res, err := memory_query.Query(r.Context(), d, llm, req.UserID, req.Dataset, req.Query, callOpts...)
 		if err != nil {
 			monitoring.EmitSystemEvent(r.Context(), "query.failed", monitoring.Event{
 				"user_id":     req.UserID,
@@ -121,7 +147,7 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, opts []memory_core.Optio
 				"error":       err.Error(),
 			})
 		}
-		if errors.Is(err, memory_core.ErrInvalidDataset) || errors.Is(err, memory_core.ErrInvalidUser) {
+		if errors.Is(err, memory_core.ErrInvalidDataset) || errors.Is(err, memory_core.ErrInvalidUser) || errors.Is(err, memory_core.ErrInvalidGeoRadius) {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}

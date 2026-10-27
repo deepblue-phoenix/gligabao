@@ -53,9 +53,12 @@ type QueryResult struct {
 	SessionID string   `json:"session_id,omitempty"`
 	Answer    string   `json:"answer"`
 	Evidence  Evidence `json:"evidence"`
-	// Geo are the places the question mentions; only set when the call has a geo resolver (WithGeoResolver). Nothing uses them
-	// yet, and they are not part of the JSON response.
+	// Geo are the places the question mentions; only set when the call has a geo resolver (WithGeoResolver). They are not part of
+	// the JSON response (see Nearby).
 	Geo []QueryPlace `json:"-"`
+	// Nearby is the proximity search of the call (see query_geo_nearby.go): the places it was centered on, the radius and the geo
+	// entities found within it, which the LLM was given as context. Only set when there was a place to search around.
+	Nearby *GeoContext `json:"nearby,omitempty"`
 	// TrajectoryID and Trajectory are the ATIF trajectory of this call (also stored in TrajectoryDir); only set when
 	// the call was made with WithEval.
 	TrajectoryID string           `json:"trajectory_id,omitempty"`
@@ -92,6 +95,10 @@ func Query(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset,
 	}
 
 	co := memory_core.NewCallOptions(opts)
+	radiusKm, err := geoRadius(co)
+	if err != nil {
+		return nil, err
+	}
 	sessionID, err := memory_core.ResolveSessionID(co.SessionID)
 	if err != nil {
 		return nil, err
@@ -126,8 +133,10 @@ func Query(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset,
 	// the reasoning level the call sets for it (WithModels, WithReasoning), or the default ones.
 	rec := tr.Wrap(memory_core.WithRecording(llm, d, CallQuery))
 
-	// The places the question mentions (only with a geo resolver). Nothing uses them yet.
+	// The places the question mentions (only with a geo resolver), and the geo entities near them and near the entities that
+	// matched the question, which the answer gets as context.
 	places := detectGeo(ctx, co, rec, tr, userID, dataset, query)
+	nearby := nearbyGeo(ctx, d, co, tr, userID, dataset, dsID, rc, places, radiusKm)
 
 	// The answer is thought through with the reasoning level none unless the call sets another (WithReasoning with
 	// memory_core.StageQuery); the inference records it.
@@ -135,7 +144,7 @@ func Query(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset,
 	if err != nil {
 		return nil, err
 	}
-	return &QueryResult{SessionID: sessionID, Answer: out.Answer, Evidence: getEvidence(rc.Graph, out), Geo: places}, nil
+	return &QueryResult{SessionID: sessionID, Answer: out.Answer, Evidence: getEvidence(rc.Graph, out), Geo: places, Nearby: nearby}, nil
 }
 
 // detectGeo is the geo step of Query (see query_geo.go): it returns the places the question mentions, nil if the call has no geo
@@ -155,7 +164,7 @@ func detectGeo(ctx context.Context, co memory_core.CallOptions, rec memory_core.
 	if found == nil {
 		found = []QueryPlace{}
 	}
-	tr.Tool("The LLM found the places the question mentions (cities, countries, regions, landmarks, ...). They are not used yet.", "detect_geo",
+	tr.Tool("The LLM found the places the question mentions (cities, countries, regions, landmarks, ...).", "detect_geo",
 		map[string]any{"question": question}, map[string]any{"places": found})
 	return places
 }
@@ -168,6 +177,8 @@ type queryContext struct {
 	Now      time.Time
 	Graph    *graphContext
 	Question string
+	// Nearby is the geo entities near the places of the question (nil: none, or the call has no geo resolver).
+	Nearby *GeoContext
 }
 
 // assembleContext builds the queryContext for query: it retrieves the subgraph of dataset dsID around the
@@ -182,8 +193,12 @@ func assembleContext(ctx context.Context, d *sql.DB, dsID int64, query string) (
 
 // render returns the user message sent to the LLM.
 func (c *queryContext) render() string {
+	nearby := ""
+	if c.Nearby != nil && len(c.Nearby.Nearby) > 0 {
+		nearby = fmt.Sprintf("<nearby radius_km=\"%g\">\n%s</nearby>\n\n", c.Nearby.RadiusKm, c.Nearby.render())
+	}
 	return "<current_time>\n" + relational.FormatTime(c.Now) + "\n</current_time>\n\n" +
-		"<graph>\n" + c.Graph.render() + "</graph>\n\n" +
+		"<graph>\n" + c.Graph.render() + "</graph>\n\n" + nearby +
 		"<question>\n" + c.Question + "\n</question>"
 }
 
@@ -233,6 +248,9 @@ func parseQuery(s string) (*queryOutput, error) {
 type graphContext struct {
 	entities map[int64]EvidenceEntity
 	edges    map[int64]EvidenceEdge
+	// matched are the entities that matched the question (the seeds of the retrieval); empty when none did and the most
+	// recent entities were used instead.
+	matched []int64
 }
 
 func (g *graphContext) render() string {
@@ -300,6 +318,7 @@ func retrieve(ctx context.Context, d *sql.DB, dsID int64, query string) (*graphC
 	if err != nil {
 		return nil, err
 	}
+	g.matched = seeds
 	if len(seeds) == 0 {
 		if seeds, err = graph.FallbackSeedEntities(ctx, d, dsID, maxFallbackSeed); err != nil {
 			return nil, err

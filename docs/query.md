@@ -18,6 +18,8 @@ content-type: application/json
 
 - `reasoning` (optional): the reasoning (thinking) level of the LLM calls: `none`, `low`, `medium` or `high` (case-insensitive). Either a string, the level of the call that writes the answer, or an object with a level for each stage: `{"query": "medium", "detect_geo": "low"}` (`detect_geo` is the call that finds the places the question mentions, only when the server has [geo](geo.md#in-query) on; ignored otherwise). A stage left out runs with **`none`** (no thinking, so no thinking tokens are paid for). `400` for an unknown level, a stage that is not one of these (the stages of `remember` are rejected too) or a value that is neither a string nor an object. Each call is recorded as an [inference](inferences.md) (`gb_inferences`, type `query`, stage `query` or `detect_geo`) with the level it ran with, its tokens and its cost.
 
+- `geo_nearby` (optional): `true` turns on the search for the [geo entities near the places of the question](geo.md#nearby-entities), which are given to the LLM as context. **Off by default**: the user asks for it. It needs the server to have [geo](geo.md#in-query) on (`400` otherwise). With it, the places of the question that the geo resolver finds are also stored (as entities with coordinates), so that later questions find them in the database.
+- `geo_radius_km` (optional): a number of kilometers, the radius of that search. Giving it turns the search on (the same as `geo_nearby: true`; `400` with `geo_nearby: false`). It overrides the server's default (`geo_radius_km` in the config, 50 km unless set). `400` unless it is greater than 0 and at most 20015.
 - `models` (optional): an object that picks the LLM model of each stage of the query: `query` (the call that writes the answer) and `detect_geo` (the call that finds the places the question mentions, only when the server has [geo](geo.md#in-query) on; ignored otherwise). A stage left out uses the default model. `400` for another stage (the stages of `remember` are rejected too) or a malformed model name. The model of each call is recorded with its [inference](inferences.md). Its twin `reasoning` takes the same two stages.
 
 ## Response
@@ -73,7 +75,7 @@ There are no embeddings; retrieval is keyword-based SQL over `gb_entities`.
 
 If the graph has no entities at all, the endpoint returns a fixed answer ("I don't have any information in memory to answer that.") with empty evidence, without calling the LLM.
 
-With [geo](geo.md#in-query) on, a second LLM call (stage `detect_geo`) lists the places the question mentions. It is only extraction for now: it changes neither the retrieval nor the answer.
+With [geo](geo.md#in-query) on, a second LLM call (stage `detect_geo`) lists the places the question mentions. Only when the request sets `geo_nearby` or `geo_radius_km`, the places, and the entities that matched the question and are places, are used to look up the geo entities within the radius of them, which are added to the context of the answer, and the response has `nearby` (see [Nearby entities](geo.md#nearby-entities)); the places of the question that are resolved are stored too.
 
 ### 2. Ask the LLM
 

@@ -92,6 +92,10 @@ type CallOptions struct {
 	// GeoResolver is what finds the coordinates of the entities that are places, set by WithGeoResolver; nil (the default)
 	// means Remember does not look at places at all, and Query does not look for the places a question mentions.
 	GeoResolver geo.Resolver
+	// GeoNearby turns the proximity search of Query on, set by WithGeoNearby; false (the default) leaves it off.
+	GeoNearby bool
+	// GeoRadiusKm is the radius of the proximity search of Query, set by WithGeoRadius; 0 means DefaultGeoRadiusKm.
+	GeoRadiusKm float64
 
 	// RememberRunID is the run log row (gb_remember_runs) Remember adopts instead of creating one, set by
 	// WithRememberRunID; 0 means Remember creates its own. The remember manager sets it: it creates the row when a
@@ -140,8 +144,9 @@ func WithJev(c Classifier) Option { return func(o *CallOptions) { o.Jev = c } }
 // WithGeoResolver makes Remember find the places among the entities it extracts (an LLM decides which are a city, a
 // country, a region or any other place) and ask r for their coordinates, which are stored in gb_entity_geo (see
 // package geo). A nil r (the default) leaves it off. Like the web search it runs after the text is stored, and its
-// failure never fails the call. It is the one switch of geo: Query also finds the places a question mentions when it is set (it
-// does not use r yet).
+// failure never fails the call. It is the one switch of geo: Query also finds the places a question mentions when it is set, asks r
+// for the coordinates of those that are not entities of the dataset (and stores them), and gives the geo entities near them to the
+// LLM that answers, but only when the call asks for it (see WithGeoNearby and WithGeoRadius).
 func WithGeoResolver(r geo.Resolver) Option { return func(o *CallOptions) { o.GeoResolver = r } }
 
 // WithWebSearcher makes web search available to Remember: ws runs the searches of the calls that ask for them (see

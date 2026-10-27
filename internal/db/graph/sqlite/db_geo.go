@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph/model"
 	rsqlite "github.com/deepblue-phoenix/gligabao/internal/db/relational/sqlite"
+	"github.com/deepblue-phoenix/gligabao/internal/geo"
 )
 
 // The geo metadata of entities (gb_entity_geo, see db_schema.go).
@@ -140,4 +142,57 @@ func scanGeo(r scanner, withEntity bool, extra ...any) (*model.EntityGeo, error)
 		g.UpdatedAt = *t
 	}
 	return &g, nil
+}
+
+// geoBoxMargin widens the bounding box (degrees) so that the 32-bit floats of the R*Tree never lose a point at its edge; the
+// candidates are refined with the exact distance by the caller.
+const geoBoxMargin = 1e-3
+
+// EntityGeoWithin returns the geo entities of the dataset in the bounding box of the circle of radiusKm around (lat, lon) (so a
+// superset of those within the radius: the caller refines with the distance), with their entity's name and type. It asks the
+// R*Tree when the geo index exists (EnableGeoIndex), else the index on (latitude, longitude).
+func EntityGeoWithin(ctx context.Context, d *sql.DB, dsID int64, lat, lon, radiusKm float64) ([]model.EntityGeo, error) {
+	box := geo.BoundingBox(lat, lon, radiusKm)
+	var has int
+	err := d.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'gb_entity_geo_rtree'`).Scan(&has)
+	if err != nil {
+		return nil, fmt.Errorf("look for the geo index: %w", err)
+	}
+	var minLat, maxLat, minLon, maxLon string
+	if has > 0 {
+		minLat, maxLat, minLon, maxLon = "min_lat", "max_lat", "min_lon", "max_lon"
+	} else {
+		minLat, maxLat, minLon, maxLon = "g.latitude", "g.latitude", "g.longitude", "g.longitude"
+	}
+	args := []any{dsID, box.MinLat - geoBoxMargin, box.MaxLat + geoBoxMargin}
+	var lonConds []string
+	for _, r := range box.Lon {
+		lonConds = append(lonConds, fmt.Sprintf("(%s >= ? AND %s <= ?)", minLon, maxLon))
+		args = append(args, r.Min-geoBoxMargin, r.Max+geoBoxMargin)
+	}
+	inBox := fmt.Sprintf("%s >= ? AND %s <= ? AND (%s)", minLat, maxLat, strings.Join(lonConds, " OR "))
+	var q string
+	if has > 0 {
+		q = `g.entity_id IN (SELECT entity_id FROM gb_entity_geo_rtree WHERE ` + inBox + `)`
+	} else {
+		q = inBox
+	}
+	rows, err := d.QueryContext(ctx, `
+		SELECT `+geoColumns+`, e.name, e.type
+		FROM gb_entity_geo g
+		JOIN gb_entities e ON e.id = g.entity_id
+		WHERE e.dataset_id = ? AND `+q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("entity geo within %v km: %w", radiusKm, err)
+	}
+	defer rows.Close()
+	var out []model.EntityGeo
+	for rows.Next() {
+		g, err := scanGeo(rows, true)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *g)
+	}
+	return out, rows.Err()
 }

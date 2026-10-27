@@ -58,7 +58,7 @@ type noResolver struct{}
 
 func (noResolver) Name() string { return "none" }
 func (noResolver) Resolve(context.Context, geo.Query) (*geo.Place, error) {
-	panic("query must not call the resolver yet")
+	return nil, geo.ErrNotFound
 }
 
 func TestQueryGeo(t *testing.T) { dbtest.Run(t, testQueryGeo) }
@@ -88,7 +88,7 @@ func testQueryGeo(t *testing.T, d *sql.DB) {
 		t.Error("places were looked for without a geo resolver")
 	}
 
-	// With one: a separate LLM call, on the model asked for; the answer call has its own model; the resolver is not asked.
+	// With one: a separate LLM call, on the model asked for; the answer call has its own model.
 	llm.reqs = nil
 	h := Handler(d, llm, memory_core.WithGeoResolver(noResolver{}))
 	rec := post(h, `{"user_id":"u1","query":"Is Paris bigger than the Alps?","models":{"detect_geo":"geo-model","query":"answer-model"}}`)

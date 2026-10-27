@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph/model"
+	"github.com/deepblue-phoenix/gligabao/internal/geo"
 )
 
 // The geo metadata of entities (gb_entity_geo, see sqlite/db_schema.go).
@@ -133,4 +135,58 @@ func scanGeo(r scanner, withEntity bool, extra ...any) (*model.EntityGeo, error)
 	}
 	g.CreatedAt, g.UpdatedAt = g.CreatedAt.UTC(), g.UpdatedAt.UTC()
 	return &g, nil
+}
+
+// geoBoxMargin widens the bounding box (degrees) of the query without PostGIS, for rounding.
+const geoBoxMargin = 1e-6
+
+// EntityGeoWithin returns the geo entities of the dataset near (lat, lon), with their entity's name and type: those within
+// radiusKm when PostGIS indexes them (ST_DWithin on the GiST index, see EnableGeoIndex), else those in the bounding box of the
+// circle (the index on latitude and longitude), a superset: the caller refines with the distance.
+func EntityGeoWithin(ctx context.Context, d *sql.DB, dsID int64, lat, lon, radiusKm float64) ([]model.EntityGeo, error) {
+	// the schema of the extension, if the geo column that EnableGeoIndex adds exists
+	var ns sql.NullString
+	err := d.QueryRowContext(ctx, `
+		SELECT quote_ident(n.nspname)
+		FROM pg_extension x
+		JOIN pg_namespace n ON n.oid = x.extnamespace
+		WHERE x.extname = 'postgis'
+			AND EXISTS (SELECT 1 FROM information_schema.columns
+				WHERE table_schema = current_schema() AND table_name = 'gb_entity_geo' AND column_name = 'geo')`).Scan(&ns)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("look for the geo index: %w", err)
+	}
+	var where string
+	args := []any{dsID}
+	if ns.Valid {
+		where = fmt.Sprintf(`%[1]s.ST_DWithin(g.geo, %[1]s.ST_SetSRID(%[1]s.ST_MakePoint($2, $3), 4326)::%[1]s.geography, $4)`, ns.String)
+		args = append(args, lon, lat, radiusKm*1000)
+	} else {
+		box := geo.BoundingBox(lat, lon, radiusKm)
+		args = append(args, box.MinLat-geoBoxMargin, box.MaxLat+geoBoxMargin)
+		var lonConds []string
+		for _, r := range box.Lon {
+			lonConds = append(lonConds, fmt.Sprintf("(g.longitude BETWEEN $%d AND $%d)", len(args)+1, len(args)+2))
+			args = append(args, r.Min-geoBoxMargin, r.Max+geoBoxMargin)
+		}
+		where = "g.latitude BETWEEN $2 AND $3 AND (" + strings.Join(lonConds, " OR ") + ")"
+	}
+	rows, err := d.QueryContext(ctx, `
+		SELECT `+geoColumns+`, e.name, e.type
+		FROM gb_entity_geo g
+		JOIN gb_entities e ON e.id = g.entity_id
+		WHERE e.dataset_id = $1 AND `+where, args...)
+	if err != nil {
+		return nil, fmt.Errorf("entity geo within %v km: %w", radiusKm, err)
+	}
+	defer rows.Close()
+	var out []model.EntityGeo
+	for rows.Next() {
+		g, err := scanGeo(rows, true)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *g)
+	}
+	return out, rows.Err()
 }

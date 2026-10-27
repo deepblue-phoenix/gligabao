@@ -38,12 +38,14 @@ type RememberInput struct {
 
 // QueryInput is the input of the query tool: the body of POST /v1/gb/query.
 type QueryInput struct {
-	UserID    string            `json:"user_id" jsonschema:"the user that owns the dataset"`
-	Query     string            `json:"query" jsonschema:"the question to answer from the knowledge graph"`
-	Dataset   string            `json:"dataset,omitempty" jsonschema:"the dataset to search (default main)"`
-	SessionID string            `json:"session_id,omitempty" jsonschema:"a label for the user/agent session the call belongs to"`
-	Reasoning string            `json:"reasoning,omitempty" jsonschema:"reasoning level of the answering LLM call: none (default), low, medium or high"`
-	Models    map[string]string `json:"models,omitempty" jsonschema:"the model of each stage of the query: query (the answer), detect_geo (the places in the question, when geo is on); default: the server's"`
+	UserID      string            `json:"user_id" jsonschema:"the user that owns the dataset"`
+	Query       string            `json:"query" jsonschema:"the question to answer from the knowledge graph"`
+	Dataset     string            `json:"dataset,omitempty" jsonschema:"the dataset to search (default main)"`
+	SessionID   string            `json:"session_id,omitempty" jsonschema:"a label for the user/agent session the call belongs to"`
+	Reasoning   string            `json:"reasoning,omitempty" jsonschema:"reasoning level of the answering LLM call: none (default), low, medium or high"`
+	Models      map[string]string `json:"models,omitempty" jsonschema:"the model of each stage of the query: query (the answer), detect_geo (the places in the question, when geo is on); default: the server's"`
+	GeoNearby   *bool             `json:"geo_nearby,omitempty" jsonschema:"set true to give the geo entities near the places of the question as context (off by default; needs geo on in the server); places of the question that are found are stored"`
+	GeoRadiusKm *float64          `json:"geo_radius_km,omitempty" jsonschema:"radius in km of that nearby search (default: the server's, 50); setting it turns the search on"`
 }
 
 // New returns the handler of the MCP endpoint. rememberH and queryH are the handlers of POST /v1/gb/remember and

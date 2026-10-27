@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/deepblue-phoenix/gligabao/internal/chunk"
+	"github.com/deepblue-phoenix/gligabao/internal/geo"
 )
 
 // FileName is the default config file name.
@@ -47,6 +49,9 @@ const DefaultEmbeddingDimensions = 1536
 
 // DefaultPort is used when the config does not set a port.
 const DefaultPort = 7878
+
+// DefaultGeoRadiusKm is the default of geo_radius_km: the radius, in kilometers, of the proximity search of query.
+const DefaultGeoRadiusKm = 50.0
 
 //---------------------------------------------------------------------------------------------
 
@@ -101,6 +106,10 @@ type Config struct {
 	// its own resolver, ServeOptions.GeoResolver, which turns it on too). Default false: it costs one more LLM call per text and
 	// sends the names of places to the geocoder. `serve --geo` turns it on.
 	Geo bool `toml:"geo"`
+	// GeoRadiusKm is the default radius, in kilometers, within which query looks for the geo entities near the places of a question
+	// (the entities that match it and the places it mentions) and gives them to the LLM as context; a request can override it with
+	// geo_radius_km. It does not turn that search on: a request has to ask for it (geo_nearby, geo_radius_km). Only used with geo on. Default DefaultGeoRadiusKm (50); at most 20015 (half the circumference of the Earth).
+	GeoRadiusKm float64 `toml:"geo_radius_km"`
 	// MCP registers the MCP (Model Context Protocol) endpoint, POST /v1/gb/mcp (streamable HTTP), which exposes remember and query as
 	// MCP tools. It has no authentication yet. Default false; `serve --mcp` turns it on.
 	MCP bool `toml:"mcp"`
@@ -171,6 +180,7 @@ func Default() *Config {
 		EmbeddingDimensions: DefaultEmbeddingDimensions,
 		ChunkSize:           chunk.DefaultSize,
 		ChunkOverlapPercent: chunk.DefaultOverlapPercent,
+		GeoRadiusKm:         DefaultGeoRadiusKm,
 		PostgresDSN:         os.Getenv(EnvPostgresDSN),
 		AnthropicKey:        os.Getenv(EnvAnthropicKey),
 		OpenAIKey:           os.Getenv(EnvOpenAIKey),
@@ -214,6 +224,9 @@ func (c *Config) Validate() error {
 	}
 	if c.EmbeddingDimensions < 1 {
 		return fmt.Errorf("config: embedding_dimensions %d must be positive", c.EmbeddingDimensions)
+	}
+	if c.GeoRadiusKm != 0 && (math.IsNaN(c.GeoRadiusKm) || c.GeoRadiusKm < 0 || c.GeoRadiusKm > geo.MaxDistanceKm) {
+		return fmt.Errorf("config: geo_radius_km %v must be greater than 0 and at most %v", c.GeoRadiusKm, geo.MaxDistanceKm)
 	}
 	if err := c.Chunking().Validate(); err != nil {
 		return fmt.Errorf("config: chunk_size / chunk_overlap_percent: %w", err)

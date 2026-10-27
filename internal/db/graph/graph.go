@@ -10,12 +10,15 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
+	"sort"
 	"sync/atomic"
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph/model"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph/postgres"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph/sqlite"
+	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 )
 
@@ -66,6 +69,7 @@ type (
 	EntityGeo                    = model.EntityGeo
 	ConnectedGeo                 = model.ConnectedGeo
 	GeoStats                     = model.GeoStats
+	NearbyGeo                    = model.NearbyGeo
 )
 
 // Series anchor types and sources (see model.NewSeriesAnchor, model.NewSeries).
@@ -297,6 +301,55 @@ func ListEntityGeo(ctx context.Context, d *sql.DB, dsID int64) ([]EntityGeo, err
 		return postgres.ListEntityGeo(ctx, d, dsID)
 	}
 	return nil, unsupported()
+}
+
+// NearbyEntityGeo returns the geo entities of the dataset that lie within radiusKm of the point (lat, lon), nearest first, at most
+// limit (limit <= 0: all), without those of the entities in exclude. The geo index prefilters them (the R*Tree of SQLite, the GiST
+// index of PostGIS); without one (geo was never on for the database) the coordinates index is used, and the result is the same.
+// It is exact: the candidates of the index are refined with the haversine distance, and the antimeridian and the poles are handled.
+func NearbyEntityGeo(ctx context.Context, d *sql.DB, dsID int64, lat, lon, radiusKm float64, limit int, exclude ...int64) ([]NearbyGeo, error) {
+	if math.IsNaN(lat) || math.IsNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180 {
+		return nil, fmt.Errorf("nearby entity geo: invalid coordinates (%v, %v)", lat, lon)
+	}
+	if !(radiusKm > 0) || math.IsInf(radiusKm, 0) {
+		return nil, fmt.Errorf("nearby entity geo: invalid radius %v km", radiusKm)
+	}
+	var cands []EntityGeo
+	var err error
+	switch backend() {
+	case config.DBBackendSQLite:
+		cands, err = sqlite.EntityGeoWithin(ctx, d, dsID, lat, lon, radiusKm)
+	case config.DBBackendPostgres:
+		cands, err = postgres.EntityGeoWithin(ctx, d, dsID, lat, lon, radiusKm)
+	default:
+		return nil, unsupported()
+	}
+	if err != nil {
+		return nil, err
+	}
+	skip := make(map[int64]bool, len(exclude))
+	for _, id := range exclude {
+		skip[id] = true
+	}
+	var out []NearbyGeo
+	for _, c := range cands {
+		if skip[c.EntityID] {
+			continue
+		}
+		if dist := geo.DistanceKm(lat, lon, c.Latitude, c.Longitude); dist <= radiusKm {
+			out = append(out, NearbyGeo{EntityGeo: c, DistanceKm: dist})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].DistanceKm != out[j].DistanceKm {
+			return out[i].DistanceKm < out[j].DistanceKm
+		}
+		return out[i].EntityID < out[j].EntityID
+	})
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
 }
 
 // GeoStatistics returns how many entities of the live datasets have geo metadata, and the limit most connected of them (by

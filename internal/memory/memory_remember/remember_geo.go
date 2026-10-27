@@ -47,7 +47,7 @@ const (
 )
 
 // notGeoTypes are the entity types that are never a place, so that the LLM is not asked about them.
-var notGeoTypes = map[string]bool{"person": true, "concept": true, "product": true, "event": true}
+var notGeoTypes = geo.NotPlaceTypes
 
 const detectGeoSystemPrompt = `You decide which entities of a knowledge base are geographic places, so that their coordinates can be looked up.
 

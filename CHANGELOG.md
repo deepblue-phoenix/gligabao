@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.117.0] - 2026-10-27
+
+### Added
+- `query` can give the LLM that answers the geo entities that lie near the places of the question. **It is off by default**: the request asks for it with `geo_nearby: true`, or by setting `geo_radius_km` (which turns it on by itself; `geo_nearby: false` with a radius is a `400`). It needs geo on in the server (`400` otherwise). The `query` MCP tool has both arguments. Go: `memory_core.WithGeoNearby`.
+- The places are the entities that matched the question and have coordinates, and the places the `detect_geo` stage finds in the question. For each, the geo index finds the geo entities of the dataset within a radius (SQLite: the R*Tree; PostgreSQL: PostGIS `ST_DWithin` on the GiST index; both fall back to the latitude/longitude index when there is none), the nearest 20 per place and 30 in all. They and the edges around them are added to the graph the LLM reads, with a `<nearby>` section that gives each one's distance from the place. The response has a new `nearby` field (the radius, the places searched around and the entities found; omitted when there was no place) and the trajectory a `nearby_geo` step. The step never fails the query.
+- **Places of the question are stored.** A place of the question that is not an entity with coordinates is looked up with the geo resolver, and one it finds is stored: as the coordinates (`gb_entity_geo`) of the entity of that name if the dataset has one (not a person, concept, product or event), else as a new entity of the type `place`. The next question with the same place finds it in the database (no resolver call), and it can show up as a nearby entity in later searches, not only places that `remember` stored. This is the one write of `query`; it happens only with the nearby search on, and a failure only means the place is not stored. The anchor in `nearby.anchors` has `"stored": true` for a place stored by this call.
+- The radius is 50 km by default. `geo_radius_km` in `gligabao.toml` sets the server's default (it does not turn the search on; Go: `server.Options.GeoRadiusKm`, `api.WithGeoRadius`, `memory_core.WithGeoRadius`), and `geo_radius_km` in the request overrides it for one call. It must be greater than 0 and at most 20015 km (`400` otherwise).
+- Go: `graph.NearbyEntityGeo` (proximity query, exact: bounding box from the index refined with the haversine distance, antimeridian and poles handled), `geo.DistanceKm`, `geo.BoundingBox` and `geo.NotPlaceTypes`.
+
+### Changed
+- With geo on and the nearby search asked for, `query` may call the geo resolver (for the places of the question that are not entities with coordinates), not only `remember`.
+
 ## [0.116.0] - 2026-10-30
 
 ### Added

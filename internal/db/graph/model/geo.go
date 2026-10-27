@@ -73,3 +73,10 @@ type GeoStats struct {
 	// Top are the most connected geo entities, most connected first.
 	Top []ConnectedGeo
 }
+
+// NearbyGeo is a geo entity found by a proximity query (graph.NearbyEntityGeo), with its distance from the point asked about.
+type NearbyGeo struct {
+	EntityGeo
+	// DistanceKm is the great-circle distance from the point, in kilometers.
+	DistanceKm float64
+}

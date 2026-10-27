@@ -32,7 +32,7 @@ func Register(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm me
 	}
 	a := func(h http.HandlerFunc) http.Handler { return httputil.Authenticate(o.auth, h) } // routes of users: with WithAuth they need an API key
 	mux.Handle("POST /v1/gb/remember", a(rememberHandler(mgr, d, llm, emb, jv, ws, providers, o)))
-	mux.Handle("POST /v1/gb/query", a(query.Handler(d.Relational, llm, memory_core.WithGeoResolver(o.geo))))
+	mux.Handle("POST /v1/gb/query", a(query.Handler(d.Relational, llm, memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm))))
 	mux.Handle("POST /v1/gb/datasets", a(datasets.Create(d.Relational)))
 	mux.Handle("GET /v1/gb/datasets", a(datasets.List(d.Relational)))
 	mux.Handle("DELETE /v1/gb/datasets/{name}", a(datasets.Delete(d.Relational, d.Vector)))
@@ -58,13 +58,14 @@ func RegisterMCP(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm
 	for _, opt := range opts {
 		opt(&o)
 	}
-	mcp.Register(mux, rememberHandler(mgr, d, llm, emb, jv, ws, providers, o), query.Handler(d.Relational, llm, memory_core.WithGeoResolver(o.geo)), version)
+	mcp.Register(mux, rememberHandler(mgr, d, llm, emb, jv, ws, providers, o), query.Handler(d.Relational, llm, memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm)), version)
 }
 
 type options struct {
 	ontologyDirs []string
 	auth         httputil.Authenticator
 	geo          geo.Resolver
+	geoRadiusKm  float64
 }
 
 // Option configures Register.
@@ -76,9 +77,13 @@ type Option func(*options)
 func WithAuth(auth httputil.Authenticator) Option { return func(o *options) { o.auth = auth } }
 
 // WithGeoResolver makes remember (Register and RegisterEval) find the places among the entities it extracts and store their
-// coordinates (see package geo and memory_remember's resolve_geo stage), and query find the places the question mentions (it does
-// not use them yet). Without it (or with nil) neither looks at places.
+// coordinates (see package geo and memory_remember's resolve_geo stage), and query find the places the question mentions and give the
+// geo entities near them to the LLM that answers. Without it (or with nil) neither looks at places.
 func WithGeoResolver(r geo.Resolver) Option { return func(o *options) { o.geo = r } }
+
+// WithGeoRadius sets the default radius, in kilometers, of the proximity search of query (a request can override it with
+// geo_radius_km); 0 (the default) means memory_core.DefaultGeoRadiusKm.
+func WithGeoRadius(km float64) Option { return func(o *options) { o.geoRadiusKm = km } }
 
 // WithOntologyDirs sets the directories ontology documents can be loaded from by file name (POST and PUT /v1/gb/ontologies with
 // "file"), searched in order. Without them only the "content" form works.
@@ -92,5 +97,5 @@ func RegisterEval(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, ll
 		opt(&o)
 	}
 	mux.HandleFunc("POST /v1/gb/eval/remember", remember.EvalHandler(mgr, d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_core.WithGeoResolver(o.geo), memory_image.WithImageDir(d.ImageDir)))
-	mux.HandleFunc("POST /v1/gb/eval/query", query.EvalHandler(d.Relational, llm, memory_core.WithGeoResolver(o.geo)))
+	mux.HandleFunc("POST /v1/gb/eval/query", query.EvalHandler(d.Relational, llm, memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm)))
 }

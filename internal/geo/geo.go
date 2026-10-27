@@ -41,6 +41,10 @@ func NormKind(kind string) string {
 	return ""
 }
 
+// NotPlaceTypes are the entity types that are never a place ("person", "concept", "product", "event"): remember does not ask the
+// LLM about them, and query does not attach coordinates to an entity of one of them.
+var NotPlaceTypes = map[string]bool{"person": true, "concept": true, "product": true, "event": true}
+
 // ErrNotFound means the resolver knows no place for the query. It is an answer, not a failure of the resolver.
 var ErrNotFound = errors.New("geo: place not found")
 
