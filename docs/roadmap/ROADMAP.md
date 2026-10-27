@@ -21,6 +21,7 @@ changelog and remove it from here after a release or two).
 | Web search for image requests | Planned | `web_search` is rejected (`400`) together with `image`, since the image pipeline extracts no entities yet. Depends on grounding image extractions. See [web-search.md](../web-search.md). |
 | MCP: authentication and more tools | Planned | MCP (`/v1/gb/mcp`, off by default) exposes only `remember` (text only) and `query`, with no authentication and outside the `Auth` hook. Missing: auth, the image/models/web_search/timeseries options of `remember`, the other endpoints as tools, resources and prompts. See [mcp.md](../mcp.md). |
 | OpenAI as a main reasoning provider | Planned | `remember` and `query` use only Anthropic for the main reasoning; OpenAI is used for embeddings only. Add OpenAI as a supported reasoning provider too. |
+| Export and import a whole dataset as one package | Planned | No way today to move or archive a dataset as a unit. Export the graph DB, the relational DB and the embedding vectors into a single dedicated gzip'ed file, with a manifest inside that holds the package format version. The file can be sent, archived, and imported by other gligabao instances (which check the format version). |
 
 ## Considering
 
