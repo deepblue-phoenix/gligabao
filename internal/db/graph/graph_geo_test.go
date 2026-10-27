@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -97,5 +98,117 @@ func testGeoStatistics(t *testing.T, d *sql.DB) {
 	check(err)
 	if st.Entities != before.Entities || st.AllEntities != before.AllEntities {
 		t.Errorf("after delete: %d/%d, before %d/%d", st.Entities, st.AllEntities, before.Entities, before.AllEntities)
+	}
+}
+
+// TestGeoIndex checks that a geo entity is in the geo index of the database (the R*Tree of SQLite, the PostGIS column of
+// PostgreSQL, when the extension is enabled) once it is stored, that moving it moves it in the index, and that deleting its
+// entity removes it.
+func TestGeoIndex(t *testing.T) { dbtest.Run(t, testGeoIndex) }
+
+func testGeoIndex(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	postgres := strings.HasSuffix(t.Name(), "/postgres")
+	hasIndex := func() bool { // the R*Tree table (SQLite) or the geo column (PostgreSQL) exists
+		var n int
+		if postgres {
+			check(d.QueryRowContext(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema = current_schema()
+				AND table_name = 'gb_entity_geo' AND column_name = 'geo'`).Scan(&n))
+		} else {
+			check(d.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE name = 'gb_entity_geo_rtree'`).Scan(&n))
+		}
+		return n > 0
+	}
+	if postgres {
+		var n int
+		if err := d.QueryRow(`SELECT count(*) FROM pg_extension WHERE extname = 'postgis'`).Scan(&n); err != nil || n == 0 {
+			t.Skip("PostGIS is not enabled in the test database")
+		}
+	}
+	// Geo off (Open alone): no geo index, and the places are stored all the same.
+	if hasIndex() {
+		t.Fatal("the geo index exists although geo was not turned on")
+	}
+	user := fmt.Sprintf("geoidx-%d", time.Now().UnixNano())
+	dsID, err := relational.EnsureDataset(ctx, d, user, "proj")
+	check(err)
+	now := relational.Now()
+	{
+		tx, err := graph.Begin(ctx, d)
+		check(err)
+		off, err := tx.UpsertEntity(ctx, dsID, graph.Entity{Name: "Before", Type: "place"}, "before")
+		check(err)
+		check(tx.UpsertEntityGeo(ctx, graph.NewEntityGeo{EntityID: off, Kind: "city", Latitude: 1, Longitude: 2, Provider: "stub", Now: now}))
+		check(tx.Commit())
+	}
+	ok, err := graph.EnableGeoIndex(ctx, d)
+	check(err)
+	if !ok || !hasIndex() {
+		t.Fatalf("EnableGeoIndex: ok=%v, index=%v", ok, hasIndex())
+	}
+	if ok, err := graph.EnableGeoIndex(ctx, d); err != nil || !ok { // idempotent
+		t.Fatalf("EnableGeoIndex again: %v, %v", ok, err)
+	}
+	if !postgres { // no backfill on SQLite: the place stored while geo was off is not indexed
+		var n int
+		check(d.QueryRowContext(ctx, `SELECT count(*) FROM gb_entity_geo_rtree`).Scan(&n))
+		if n != 0 {
+			t.Fatalf("rtree rows after enabling = %d, want 0 (no backfill)", n)
+		}
+	}
+	// inBox counts the indexed entities within the box (lat/lon, in degrees) around a point.
+	inBox := func(id int64, lat, lon, deg float64) int {
+		t.Helper()
+		var n int
+		if postgres {
+			check(d.QueryRowContext(ctx, `SELECT count(*) FROM gb_entity_geo WHERE entity_id = $1
+				AND ST_DWithin(geo, ST_SetSRID(ST_MakePoint($3, $2), 4326)::geography, $4)`, id, lat, lon, deg*111000).Scan(&n))
+		} else {
+			check(d.QueryRowContext(ctx, `SELECT count(*) FROM gb_entity_geo_rtree WHERE entity_id = ?
+				AND min_lat >= ? AND max_lat <= ? AND min_lon >= ? AND max_lon <= ?`, id, lat-deg, lat+deg, lon-deg, lon+deg).Scan(&n))
+		}
+		return n
+	}
+
+	var id int64
+	put := func(lat, lon float64) {
+		t.Helper()
+		tx, err := graph.Begin(ctx, d)
+		check(err)
+		defer tx.Rollback()
+		if id == 0 {
+			id, err = tx.UpsertEntity(ctx, dsID, graph.Entity{Name: "Paris", Type: "place"}, "paris")
+			check(err)
+		}
+		check(tx.UpsertEntityGeo(ctx, graph.NewEntityGeo{EntityID: id, Kind: "city", Latitude: lat, Longitude: lon, Provider: "stub", Now: now}))
+		check(tx.Commit())
+	}
+	put(48.85, 2.35)
+	if inBox(id, 48.85, 2.35, 0.1) != 1 || inBox(id, 41.9, 12.5, 0.1) != 0 {
+		t.Fatal("a stored place is not in the geo index")
+	}
+	put(41.9, 12.5) // the upsert of the same entity moves it
+	if inBox(id, 48.85, 2.35, 0.1) != 0 || inBox(id, 41.9, 12.5, 0.1) != 1 {
+		t.Fatal("a moved place is not moved in the geo index")
+	}
+
+	if !postgres {
+		var n int
+		check(d.QueryRowContext(ctx, `SELECT count(*) FROM gb_entity_geo_rtree`).Scan(&n))
+		if n != 1 { // only the place stored after geo was turned on
+			t.Fatalf("rtree rows = %d, want 1", n)
+		}
+		_, err = d.ExecContext(ctx, `DELETE FROM gb_entities WHERE id = ?`, id) // cascades to gb_entity_geo
+		check(err)
+		check(d.QueryRowContext(ctx, `SELECT count(*) FROM gb_entity_geo_rtree`).Scan(&n))
+		if n != 0 {
+			t.Fatalf("rtree rows after the entity was deleted = %d, want 0", n)
+		}
 	}
 }

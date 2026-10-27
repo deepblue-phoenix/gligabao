@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.116.0] - 2026-10-30
+
+### Added
+- Geo entities are geo indexed when `remember` stores them, ready for the proximity queries planned for `query`. SQLite: the R*Tree table `gb_entity_geo_rtree`, kept in step with `gb_entity_geo` by triggers (store, move, and removal with the entity). PostgreSQL: when PostGIS is enabled, the generated column `gb_entity_geo.geo` (`geography(Point, 4326)`) with the GiST index `idx_gb_entity_geo_gist`. The index is created at startup only when geo is on (`geo = true`, `--geo` or a `GeoResolver`; Go: `db.Config.Geo`, `graph.EnableGeoIndex`), never with geo off. There is no backfill: places stored before the index existed are not indexed on SQLite. On PostgreSQL without PostGIS startup logs a warning and the places are stored without an index (restart with geo on after `CREATE EXTENSION postgis`). The `-geo` flag of the knowledge evals does the same. See [docs/geo.md](docs/geo.md#the-geo-index).
+
 ## [0.115.0] - 2026-10-29
 
 ### Added

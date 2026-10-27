@@ -24,7 +24,27 @@ SQLite needs the R*Tree module (compiled into the gligabao binary, so always on)
 (`CREATE EXTENSION postgis` in the database; the badge says if PostGIS is installed on the server but not enabled).
 The badge is a live probe by `GET /v1/gb/admin/api/geo-index[?db=<name>]`:
 `{"backend":"sqlite","enabled":true,"index":"rtree","version":"3.53.4"}` (`available` and `detail` explain a disabled state).
-It only reports; gligabao does not create the index or enable the extension itself yet.
+The probe only reports. gligabao creates and fills the index itself (see [The geo index](#the-geo-index)), but never enables the
+PostGIS extension.
+
+## The geo index
+
+When geo is on, every row of `gb_entity_geo` is also in the geo index of the database, so that the proximity queries planned for
+`query` ("what is within 50 km of Paris") can fetch the nearby entities without scanning the table. The index is created at
+startup **only when geo is on** (`geo = true`, `--geo` or a `GeoResolver`; Go: `db.Config.Geo`, `graph.EnableGeoIndex`); with geo
+off nothing is created.
+
+- **SQLite**: the R*Tree table `gb_entity_geo_rtree(entity_id, min_lat, max_lat, min_lon, max_lon)`, one point (min = max) per geo
+  entity. Triggers on `gb_entity_geo` keep it in step: a place stored by `remember`, a place moved by a later upsert, and a place
+  removed with its entity (the cascade) are all reflected. Query it for a bounding box first, then compute exact distances.
+- **PostgreSQL**: when PostGIS is enabled in the database (`CREATE EXTENSION postgis`), `gb_entity_geo` gets the generated column
+  `geo geography(Point, 4326)` (always the point of `latitude`/`longitude`) with the GiST index `idx_gb_entity_geo_gist`; query it
+  with `ST_DWithin(geo, ST_MakePoint(lon, lat)::geography, meters)`. Without PostGIS startup logs a warning and creates neither;
+  the places are stored all the same. After enabling the extension, restart with geo on.
+
+There is no backfill: entities stored while geo was off have no place in `gb_entity_geo` (they are not looked up) and so are not
+indexed; finding and indexing them would be a pipeline of its own. (On PostgreSQL the generated column does cover rows that
+already existed in `gb_entity_geo`, because adding it cannot skip them; on SQLite those rows stay out of the R*Tree.)
 
 ## The geo view of the admin UI
 
@@ -49,7 +69,7 @@ errors are logged, recorded in the trajectory and run log, and returned in `geo`
    what to ask the resolver: the name plus what disambiguates it (`"Paris, France"`). It prefers precision: an entity it is
    not sure is a place is left out ("Bank of America" and "Paris Hilton" are not places).
 3. **Resolve**: the geo resolver is asked for each place found (at most 25), one at a time. "Not found" is not a failure.
-4. **Store**: one transaction writes the rows of `gb_entity_geo`.
+4. **Store**: one transaction writes the rows of `gb_entity_geo`, which are then in the geo index too ([The geo index](#the-geo-index)).
 
 `detect_geo` takes a model (`models`) and a reasoning level (`reasoning`) like the other LLM stages
 ([remember.md](remember.md#choosing-the-model-of-each-stage)). In the run log the stage is `resolve_geo` and holds the

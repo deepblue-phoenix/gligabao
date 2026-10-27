@@ -263,6 +263,20 @@ func ListSeriesAnchors(ctx context.Context, d *sql.DB, seriesID int64) ([]Series
 //---------------------------------------------------------------------------------------------
 // Geo metadata of entities (writes go through Tx.UpsertEntityGeo; see package internal/geo)
 
+// EnableGeoIndex creates the geo index of the geo entities (gb_entity_geo): the R*Tree of SQLite, the PostGIS column and GiST index
+// of PostgreSQL. It is not part of Open: only a server with geo on calls it (see db.Config.Geo). The result says whether the index
+// exists: false for PostgreSQL without the PostGIS extension enabled in the database (never an error then). The places stored
+// before the index existed are not indexed on SQLite (no backfill); on PostgreSQL the generated column covers them.
+func EnableGeoIndex(ctx context.Context, d *sql.DB) (bool, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.EnableGeoIndex(d)
+	case config.DBBackendPostgres:
+		return postgres.EnableGeoIndex(ctx, d)
+	}
+	return false, unsupported()
+}
+
 // GetEntityGeo returns the geo metadata of an entity. It returns ErrNotFound if the entity has none.
 func GetEntityGeo(ctx context.Context, d *sql.DB, entityID int64) (*EntityGeo, error) {
 	switch backend() {

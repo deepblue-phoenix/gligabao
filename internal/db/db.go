@@ -24,6 +24,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits"
+
+	log "github.com/sirupsen/logrus"
 )
 
 //---------------------------------------------------------------------------------------------
@@ -34,6 +36,10 @@ type Config struct {
 	// Backend is the relational (and, for now, graph) database type: config.DBBackendSQLite (default if empty) or
 	// config.DBBackendPostgres.
 	Backend string
+	// Geo creates the geo index of the geo entities (the R*Tree of SQLite, the PostGIS index of PostgreSQL) when the database is
+	// opened: set it when geo is on (graph.EnableGeoIndex). Without it the index is not created, and nothing indexes the
+	// places stored then; turning geo on later does not index the places stored before (SQLite).
+	Geo bool
 	// SQLitePath is the SQLite database file (sqlite backend). Default: DefaultSQLitePath.
 	SQLitePath string
 	// PostgresDSN is the PostgreSQL connection URL (postgres backend).
@@ -159,6 +165,17 @@ func Open(cfg Config) (*DB, error) {
 		return nil, err
 	}
 	d.Graph = rel
+	if cfg.Geo {
+		ok, err := graph.EnableGeoIndex(context.Background(), rel)
+		if err != nil {
+			rel.Close()
+			return nil, err
+		}
+		if !ok {
+			log.WithField("backend", cfg.Backend).Warn("geo is on but the database has no geo index: the PostGIS extension is not enabled " +
+				"(run CREATE EXTENSION postgis, then restart); the places are stored, but proximity queries cannot use an index")
+		}
+	}
 	// The training tables come before the evals': the eval tables reference the trained models.
 	if err := trainingdb.Open(cfg.Backend, rel); err != nil {
 		rel.Close()

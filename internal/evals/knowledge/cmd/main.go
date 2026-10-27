@@ -116,7 +116,7 @@ func mainErr() error {
 		emb = e
 	}
 
-	database, err := db.Open(db.Config{SQLitePath: *evalDBPath})
+	database, err := db.Open(db.Config{SQLitePath: *evalDBPath, Geo: *geoFlag})
 	if err != nil {
 		return err
 	}

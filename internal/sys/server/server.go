@@ -546,6 +546,7 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 	}
 	log.WithFields(fields).Info("starting gligabao")
 	opts.DB.Models = ai.SupportedModels(ai.NewPriceTable(opts.Prices)) // the models gligabao supports are stored on startup
+	opts.DB.Geo = opts.GeoResolver != nil || opts.Geo // the geo index is only created when geo is on
 	database, err := db.Open(opts.DB)
 	if err != nil {
 		return nil, nil, err
