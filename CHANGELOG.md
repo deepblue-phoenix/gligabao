@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.119.1] - 2026-10-28
+
+### Changed
+- Roadmap: added the planned async `remember` (`remember_job`): an `async` flag that returns a job ID right away, runs the pipeline in the background with per-stage status, and a REST/MCP endpoint to read the job status.
+
 ## [0.119.0] - 2026-10-28
 
 ### Added

@@ -22,6 +22,7 @@ changelog and remove it from here after a release or two).
 | MCP: authentication and more tools | Planned | MCP (`/v1/gb/mcp`, off by default) exposes only `remember` (text only) and `query`, with no authentication and outside the `Auth` hook. Missing: auth, the image/models/web_search/timeseries options of `remember`, the other endpoints as tools, resources and prompts. See [mcp.md](../mcp.md). |
 | OpenAI as a main reasoning provider | Planned | `remember` and `query` use only Anthropic for the main reasoning; OpenAI is used for embeddings only. Add OpenAI as a supported reasoning provider too. |
 | Export and import a whole dataset as one package | Planned | No way today to move or archive a dataset as a unit. Export the graph DB, the relational DB and the embedding vectors into a single dedicated gzip'ed file, with a manifest inside that holds the package format version. The file can be sent, archived, and imported by other gligabao instances (which check the format version). |
+| Async `remember` (`remember_job`) | Planned | `remember` always blocks until the whole pipeline is done. Add an `async` flag to the request: when true, `remember` returns right away with a job ID, and the pipeline runs in a goroutine tied to that job. The job type is `remember_job`; its status is updated as each pipeline stage proceeds. A new endpoint, on both REST and MCP, returns the status of a job by ID. |
 
 ## Considering
 
