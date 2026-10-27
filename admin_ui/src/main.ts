@@ -91,6 +91,31 @@ async function checkSidecarHealth(): Promise<void> {
   }
 }
 
+// Indicator of the geo index of the database: R*Tree (sqlite) or PostGIS (postgres) is what proximity queries need
+// (api/geo-index probes the database).
+async function checkGeoIndex(): Promise<void> {
+  const badge = $("geo-index");
+  try {
+    const res = await fetch("api/geo-index");
+    if (!res.ok) throw new Error(String(res.status));
+    const g = (await res.json()) as { enabled: boolean; index?: string; version?: string; detail?: string };
+    const name = g.index === "postgis" ? "PostGIS" : "R*Tree";
+    if (g.enabled) {
+      badge.textContent = `geo index: ${g.index ?? "on"}`;
+      badge.className = "badge badge-ok";
+      badge.title = `${name}${g.version ? " " + g.version : ""} is available: geo queries (proximity) can use a spatial index.`;
+    } else {
+      badge.textContent = "geo index: off";
+      badge.className = "badge badge-error";
+      badge.title = `${name} is not enabled: no geo queries (proximity). ${g.detail ?? ""}`.trim();
+    }
+  } catch {
+    badge.textContent = "geo index: unknown";
+    badge.className = "badge badge-unknown";
+    badge.title = "Could not ask the server.";
+  }
+}
+
 // Shows the running version and a link to its GitHub commit in the lower right corner.
 async function showVersion(): Promise<void> {
   try {
@@ -344,7 +369,9 @@ void (async () => {
   void loadAll(false);
   void checkHealth();
   void checkSidecarHealth();
+  void checkGeoIndex();
   void showVersion();
   setInterval(() => void checkHealth(), 15000);
   setInterval(() => void checkSidecarHealth(), 15000);
+  setInterval(() => void checkGeoIndex(), 60000);
 })();

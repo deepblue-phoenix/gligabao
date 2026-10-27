@@ -16,6 +16,16 @@ places to a geocoder.
 - A program that embeds gligabao sets `ServeOptions.GeoResolver` (any `gligabao.GeoResolver`); that turns geo on by itself.
   For Go code that builds the call itself: `memory_core.WithGeoResolver(r)`, and `api.WithGeoResolver(r)` for `api.Register`.
 
+## Geo index in the admin UI
+
+The top bar of the admin UI has a `geo index` badge: green (`geo index: rtree` or `geo index: postgis`) when the database can index
+coordinates, red (`geo index: off`) when it cannot; hover for the version or the reason. Geo queries (proximity) need it:
+SQLite needs the R*Tree module (compiled into the gligabao binary, so always on), PostgreSQL needs the PostGIS extension
+(`CREATE EXTENSION postgis` in the database; the badge says if PostGIS is installed on the server but not enabled).
+The badge is a live probe by `GET /v1/gb/admin/api/geo-index[?db=<name>]`:
+`{"backend":"sqlite","enabled":true,"index":"rtree","version":"3.53.4"}` (`available` and `detail` explain a disabled state).
+It only reports; gligabao does not create the index or enable the extension itself yet.
+
 ## What the stage does
 
 `resolve_geo` runs after the text (every chunk, for a long text) is stored and before the web search. It never fails the call:

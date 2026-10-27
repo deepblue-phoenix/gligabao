@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.113.0] - 2026-10-28
+
+### Added
+- The admin UI shows whether the database has a geo index, as a `geo index` badge in the top bar: R*Tree for SQLite, PostGIS for PostgreSQL. Geo queries (proximity) need it. SQLite always has R*Tree (it is compiled into gligabao); for PostgreSQL the badge is red until `CREATE EXTENSION postgis` has been run in the database, and its tooltip says if PostGIS is installed on the server but not enabled. New endpoint `GET /v1/gb/admin/api/geo-index[?db=<name>]` (a live probe; Go: `admin.GeoIndexOf`, `admin.CheckGeoIndex`). It only reports: nothing creates the index or enables the extension, and nothing uses it yet.
+
 ## [0.112.0] - 2026-10-27
 
 ### Added
