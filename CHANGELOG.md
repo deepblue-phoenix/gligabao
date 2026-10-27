@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.111.1] - 2026-10-27
+
+### Changed
+- Docs: the README describes gligabao as a self-hosted MCP/HTTP server (it said HTTP service) and points at the MCP section.
+
 ## [0.111.0] - 2026-10-27
 
 ### Added
