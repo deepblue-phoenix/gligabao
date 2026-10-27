@@ -861,3 +861,12 @@ tr.removing {
 // Longer names than the built-in views have: the label wraps instead of overflowing the button.
 .view-btn.ext-view-btn { padding: 0 0.5rem; font-size: 0.78rem; line-height: 1.1; overflow: hidden; span { min-width: 0; overflow-wrap: anywhere; text-align: left; } }
 .ext-errors { margin: 1rem 0 0; text-align: center; font-size: 0.85rem; }
+
+// --- Geo view and map modal (geo.ts) ---
+#geo { margin-top: 0; @include tint-card($tint-green); }
+.geo-db { margin-top: 0.75rem; h3 { margin: 0 0 0.25rem; font-size: 0.95rem; } .stats { flex-wrap: wrap; dd { font-size: 1.3rem; } } }
+.geo-body { display: flex; flex: 1; min-height: 0; }
+#geo-map-box { flex: 1; min-width: 0; background: $bg; }
+iframe.geo-map { display: block; width: 100%; height: 100%; border: 0; }
+#geo-info { width: 18rem; flex: none; overflow: auto; padding: 0.5rem 1rem 1rem; border-left: 1px solid $border; }
+.geo-links { margin: 0.75rem 0 0; }

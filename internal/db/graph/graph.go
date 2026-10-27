@@ -64,6 +64,8 @@ type (
 	SeriesAnchor                 = model.SeriesAnchor
 	NewEntityGeo                 = model.NewEntityGeo
 	EntityGeo                    = model.EntityGeo
+	ConnectedGeo                 = model.ConnectedGeo
+	GeoStats                     = model.GeoStats
 )
 
 // Series anchor types and sources (see model.NewSeriesAnchor, model.NewSeries).
@@ -279,6 +281,18 @@ func ListEntityGeo(ctx context.Context, d *sql.DB, dsID int64) ([]EntityGeo, err
 		return sqlite.ListEntityGeo(ctx, d, dsID)
 	case config.DBBackendPostgres:
 		return postgres.ListEntityGeo(ctx, d, dsID)
+	}
+	return nil, unsupported()
+}
+
+// GeoStatistics returns how many entities of the live datasets have geo metadata, and the limit most connected of them (by
+// live edges), most connected first.
+func GeoStatistics(ctx context.Context, d *sql.DB, limit int) (*GeoStats, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.GeoStats(ctx, d, limit)
+	case config.DBBackendPostgres:
+		return postgres.GeoStats(ctx, d, limit)
 	}
 	return nil, unsupported()
 }

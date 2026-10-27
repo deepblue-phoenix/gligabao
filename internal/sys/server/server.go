@@ -332,6 +332,7 @@ func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, sc coretraining.Side
 	mux.HandleFunc("GET /v1/gb/admin/api/web-searches/dataset", admin.WebSearchDatasetOf(dbs))
 	mux.HandleFunc("DELETE /v1/gb/admin/api/datasets", admin.DeleteDatasetOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/geo-index", admin.GeoIndexOf(dbs))
+	mux.HandleFunc("GET /v1/gb/admin/api/geo", admin.GeoOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/sidecar/status", admin.SidecarStatusOf(sc != nil, sidecarPing))
 	mux.HandleFunc("GET /v1/gb/admin/api/sidecar/backends", admin.SidecarBackendsOf(sidecarBackends))
 	// A backend's long-running actions (e.g. deploy the Modal app): start, cancel, state with log, live log (SSE).

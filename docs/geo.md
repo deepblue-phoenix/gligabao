@@ -26,6 +26,17 @@ The badge is a live probe by `GET /v1/gb/admin/api/geo-index[?db=<name>]`:
 `{"backend":"sqlite","enabled":true,"index":"rtree","version":"3.53.4"}` (`available` and `detail` explain a disabled state).
 It only reports; gligabao does not create the index or enable the extension itself yet.
 
+## The geo view of the admin UI
+
+The `geo` view of the admin UI shows, per database, how many entities are geo entities (have a row in `gb_entity_geo`, in live
+datasets) out of all entities, and a table of the 100 most connected ones. The connections of an entity are its live (not
+expired) edges, as source or as target (a self-loop counts once). Click an entity to open a modal with its place on an
+[OpenStreetMap](https://www.openstreetmap.org) map (the embedded map of openstreetmap.org, so the browser needs internet access):
+the bounding box of the place, or a small area around its coordinates, with a marker, and the details of the place and a link to
+the full map. It is read by `GET /v1/gb/admin/api/geo[?db=<name>]`:
+`{"entities":12,"all_entities":340,"top":[{"entity_id":7,"name":"Paris","connections":9,"kind":"city","latitude":48.85,...}]}`
+(Go: `admin.GeoOf`, `graph.GeoStatistics`).
+
 ## What the stage does
 
 `resolve_geo` runs after the text (every chunk, for a long text) is stored and before the web search. It never fails the call:

@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.114.0] - 2026-10-29
+
+### Added
+- The admin UI has a `geo` view: how many entities are geo entities (have coordinates) out of all entities, per database, and a table of the 100 most connected geo entities (by live facts, as source or target). Clicking an entity opens a modal with its place on an OpenStreetMap map (the embedded map of openstreetmap.org: the browser needs internet access), with the details of the place and a link to the full map. New endpoint `GET /v1/gb/admin/api/geo[?db=<name>]` (Go: `admin.GeoOf`, `graph.GeoStatistics`).
+
 ## [0.113.0] - 2026-10-28
 
 ### Added

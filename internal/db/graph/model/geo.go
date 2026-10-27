@@ -54,3 +54,22 @@ type EntityGeo struct {
 	EntityName string
 	EntityType string
 }
+
+// ConnectedGeo is a geo entity with the dataset it is in and how connected it is.
+type ConnectedGeo struct {
+	EntityGeo
+	// UserID and Dataset name the dataset of the entity.
+	UserID  string
+	Dataset string
+	// Connections is the number of live (not expired) edges that have the entity as source or target.
+	Connections int
+}
+
+// GeoStats summarizes the geo entities of a database (those of live datasets).
+type GeoStats struct {
+	// Entities is the number of entities with geo metadata (a row in gb_entity_geo); AllEntities the number of entities.
+	Entities    int
+	AllEntities int
+	// Top are the most connected geo entities, most connected first.
+	Top []ConnectedGeo
+}

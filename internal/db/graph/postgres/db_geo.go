@@ -78,8 +78,45 @@ func ListEntityGeo(ctx context.Context, d *sql.DB, dsID int64) ([]model.EntityGe
 	return out, rows.Err()
 }
 
-// scanGeo reads a row of geoColumns, followed by the entity's name and type if withEntity.
-func scanGeo(r scanner, withEntity bool) (*model.EntityGeo, error) {
+// GeoStats counts the geo entities of the live datasets and lists the limit most connected ones: the connections of an entity
+// are its live (not expired) edges, as source or as target (a self-loop counts once).
+func GeoStats(ctx context.Context, d *sql.DB, limit int) (*model.GeoStats, error) {
+	var st model.GeoStats
+	err := d.QueryRowContext(ctx, `
+		SELECT COUNT(*), COUNT(g.entity_id)
+		FROM gb_entities e
+		JOIN gb_datasets ds ON ds.id = e.dataset_id AND NOT ds.deleted
+		LEFT JOIN gb_entity_geo g ON g.entity_id = e.id`).Scan(&st.AllEntities, &st.Entities)
+	if err != nil {
+		return nil, fmt.Errorf("count geo entities: %w", err)
+	}
+	rows, err := d.QueryContext(ctx, `
+		SELECT `+geoColumns+`, e.name, e.type, ds.user_id, ds.name,
+			(SELECT COUNT(*) FROM gb_edges x WHERE x.source_id = e.id AND x.expired_at IS NULL)
+			+ (SELECT COUNT(*) FROM gb_edges x WHERE x.target_id = e.id AND x.source_id <> e.id AND x.expired_at IS NULL) AS connections
+		FROM gb_entity_geo g
+		JOIN gb_entities e ON e.id = g.entity_id
+		JOIN gb_datasets ds ON ds.id = e.dataset_id AND NOT ds.deleted
+		ORDER BY connections DESC, g.entity_id
+		LIMIT $1`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list connected geo entities: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var c model.ConnectedGeo
+		g, err := scanGeo(rows, true, &c.UserID, &c.Dataset, &c.Connections)
+		if err != nil {
+			return nil, err
+		}
+		c.EntityGeo = *g
+		st.Top = append(st.Top, c)
+	}
+	return &st, rows.Err()
+}
+
+// scanGeo reads a row of geoColumns, followed by the entity's name and type if withEntity, then the extra columns.
+func scanGeo(r scanner, withEntity bool, extra ...any) (*model.EntityGeo, error) {
 	var g model.EntityGeo
 	var s, w, n, e sql.NullFloat64
 	dest := []any{&g.EntityID, &g.Kind, &g.Query, &g.Latitude, &g.Longitude, &g.DisplayName, &g.Country, &g.CountryCode, &g.Region,
@@ -87,6 +124,7 @@ func scanGeo(r scanner, withEntity bool) (*model.EntityGeo, error) {
 	if withEntity {
 		dest = append(dest, &g.EntityName, &g.EntityType)
 	}
+	dest = append(dest, extra...)
 	if err := r.Scan(dest...); err != nil {
 		return nil, err
 	}

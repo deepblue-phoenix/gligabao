@@ -2,6 +2,7 @@
 
 import { initEvals } from "./evals.js";
 import { loadExtensions } from "./extensions.js";
+import { initGeo } from "./geo.js";
 import { initGraphModal, showGraph } from "./graph.js";
 import { initHistoryModal } from "./history.js";
 import { initImageOverlay } from "./image.js";
@@ -366,6 +367,7 @@ void (async () => {
   initImageOverlay();
   initImageStats();
   initWebSearch();
+  initGeo();
   void loadAll(false);
   void checkHealth();
   void checkSidecarHealth();
