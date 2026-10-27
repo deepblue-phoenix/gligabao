@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.119.2] - 2026-10-28
+
+### Changed
+- Roadmap: added the planned Python SDK `Start()` in `gligabao-server`: it launches the Go server from Python with named args and returns a server object, which the `gligabao` package can take instead of the host string.
+
 ## [0.119.1] - 2026-10-28
 
 ### Changed
