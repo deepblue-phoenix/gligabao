@@ -17,6 +17,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // CallQuery is the type of the inferences of Query, stored in gb_inferences.type.
@@ -51,6 +53,9 @@ type QueryResult struct {
 	SessionID string   `json:"session_id,omitempty"`
 	Answer    string   `json:"answer"`
 	Evidence  Evidence `json:"evidence"`
+	// Geo are the places the question mentions; only set when the call has a geo resolver (WithGeoResolver). Nothing uses them
+	// yet, and they are not part of the JSON response.
+	Geo []QueryPlace `json:"-"`
 	// TrajectoryID and Trajectory are the ATIF trajectory of this call (also stored in TrajectoryDir); only set when
 	// the call was made with WithEval.
 	TrajectoryID string           `json:"trajectory_id,omitempty"`
@@ -67,7 +72,7 @@ type QueryResult struct {
 // the same one the trajectories of the session's Remember calls have). The session does not influence retrieval or
 // the answer: Query is the same function of the graph and the query with or without it.
 //
-// The LLM call is recorded as an inference (gb_inferences) with the reasoning level medium by default (see
+// The LLM call is recorded as an inference (gb_inferences) with the reasoning level none by default (see
 // memory_core.DefaultQueryReasoning).
 //
 // Only with WithEval is the call recorded as an ATIF trajectory (stored as JSON in TrajectoryDir and returned in
@@ -117,13 +122,42 @@ func Query(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset,
 		}, nil
 	}
 
-	// The answer is thought through with the reasoning level medium unless the call sets another (WithReasoning with
+	// Every LLM call of the query is recorded as an inference (and a step of the trajectory); each stage runs on the model and
+	// the reasoning level the call sets for it (WithModels, WithReasoning), or the default ones.
+	rec := tr.Wrap(memory_core.WithRecording(llm, d, CallQuery))
+
+	// The places the question mentions (only with a geo resolver). Nothing uses them yet.
+	places := detectGeo(ctx, co, rec, tr, userID, dataset, query)
+
+	// The answer is thought through with the reasoning level none unless the call sets another (WithReasoning with
 	// memory_core.StageQuery); the inference records it.
-	out, err := queryLLM(ctx, co.ModelLLM(tr.Wrap(memory_core.WithRecording(llm, d, CallQuery)), memory_core.StageQuery), rc)
+	out, err := queryLLM(ctx, co.ModelLLM(rec, memory_core.StageQuery), rc)
 	if err != nil {
 		return nil, err
 	}
-	return &QueryResult{SessionID: sessionID, Answer: out.Answer, Evidence: getEvidence(rc.Graph, out)}, nil
+	return &QueryResult{SessionID: sessionID, Answer: out.Answer, Evidence: getEvidence(rc.Graph, out), Geo: places}, nil
+}
+
+// detectGeo is the geo step of Query (see query_geo.go): it returns the places the question mentions, nil if the call has no geo
+// resolver or the question mentions none. It never fails the call.
+func detectGeo(ctx context.Context, co memory_core.CallOptions, rec memory_core.LLM, tr *memory_core.Trace, userID, dataset, question string) []QueryPlace {
+	if co.GeoResolver == nil {
+		return nil
+	}
+	places, err := detectPlaces(ctx, co.ModelLLM(rec, memory_core.StageDetectGeo), question)
+	fields := log.Fields{"stage": memory_core.StageDetectGeo, "user_id": userID, "dataset": dataset}
+	if err != nil {
+		log.WithError(err).WithFields(fields).Warn("query: detecting the places in the question failed")
+		tr.Tool("The LLM could not find the places the question mentions.", "detect_geo", map[string]any{"question": question}, map[string]any{"error": err.Error()})
+		return nil
+	}
+	found := places
+	if found == nil {
+		found = []QueryPlace{}
+	}
+	tr.Tool("The LLM found the places the question mentions (cities, countries, regions, landmarks, ...). They are not used yet.", "detect_geo",
+		map[string]any{"question": question}, map[string]any{"places": found})
+	return places
 }
 
 //---------------------------------------------------------------------------------------------

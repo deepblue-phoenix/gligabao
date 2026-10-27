@@ -25,9 +25,10 @@ type Executor struct {
 	WebSearch memory_core.WebSearcher
 	// EvalsDirs are the directories the TextFiles of the cases are relative to, searched in order (default DefaultEvalDir).
 	EvalsDirs []string
-	// Models is the default LLM model of each stage of remember; a case's own models win over it. Reasoning is the reasoning
-	// level of each stage, and of the query with the key "query"; a case's own win over it (see ParseReasoning).
-	Models    memory_core.Models
+	// Models is the default LLM model of each stage of remember, and of the query with the key "query"; a case's own models win
+	// over it (see ParseModels). Reasoning is the reasoning level of each stage, and of the query with the key "query"; a case's own
+	// win over it (see ParseReasoning). "detect_geo" is a stage of both and applies to both.
+	Models    map[string]string
 	Reasoning map[string]string
 	// TrajectoryDir is where the server stored the ATIF trajectories (memory_core.TrajectoryDir); the case runs reference the files.
 	TrajectoryDir string

@@ -16,7 +16,9 @@ content-type: application/json
 - `dataset` (optional): name of the [dataset](datasets.md) to search. Defaults to `main`. Only that user's dataset graph is used. `404` if it does not exist.
 - `session_id` (optional): the user/agent session the call belongs to, a string you choose (at most 128 bytes, no control characters; `400` otherwise). Use the same one as in the `remember` calls of that session, to connect the query to the artifacts (and their entities and facts) of the same session, see [sessions.md](sessions.md). It is echoed in the response and recorded in the call's trajectory and monitoring event. It does **not** change retrieval or the answer.
 
-- `reasoning` (optional): the reasoning (thinking) level of the LLM call that writes the answer: `none`, `low`, `medium` or `high` (case-insensitive). Defaults to **`none`** (no thinking, so no thinking tokens are paid for). `400` for an unknown level. The call is recorded as a [inference](inferences.md) (`gb_inferences`, type `query`, stage `query`) with the level it ran with, its tokens and its cost.
+- `reasoning` (optional): the reasoning (thinking) level of the LLM calls: `none`, `low`, `medium` or `high` (case-insensitive). Either a string, the level of the call that writes the answer, or an object with a level for each stage: `{"query": "medium", "detect_geo": "low"}` (`detect_geo` is the call that finds the places the question mentions, only when the server has [geo](geo.md#in-query) on; ignored otherwise). A stage left out runs with **`none`** (no thinking, so no thinking tokens are paid for). `400` for an unknown level, a stage that is not one of these (the stages of `remember` are rejected too) or a value that is neither a string nor an object. Each call is recorded as an [inference](inferences.md) (`gb_inferences`, type `query`, stage `query` or `detect_geo`) with the level it ran with, its tokens and its cost.
+
+- `models` (optional): an object that picks the LLM model of each stage of the query: `query` (the call that writes the answer) and `detect_geo` (the call that finds the places the question mentions, only when the server has [geo](geo.md#in-query) on; ignored otherwise). A stage left out uses the default model. `400` for another stage (the stages of `remember` are rejected too) or a malformed model name. The model of each call is recorded with its [inference](inferences.md). Its twin `reasoning` takes the same two stages.
 
 ## Response
 
@@ -70,6 +72,8 @@ There are no embeddings; retrieval is keyword-based SQL over `gb_entities`.
 5. The context is expanded one hop: every edge where a seed is the source or target is added (newest first, capped at **100**), together with the entity at the other end.
 
 If the graph has no entities at all, the endpoint returns a fixed answer ("I don't have any information in memory to answer that.") with empty evidence, without calling the LLM.
+
+With [geo](geo.md#in-query) on, a second LLM call (stage `detect_geo`) lists the places the question mentions. It is only extraction for now: it changes neither the retrieval nor the answer.
 
 ### 2. Ask the LLM
 

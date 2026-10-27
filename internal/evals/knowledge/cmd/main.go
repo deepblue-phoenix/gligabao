@@ -58,7 +58,7 @@ func mainErr() error {
 	experiment := flag.String("experiment", "default", `name of the experiment this run belongs to (created if new); "" runs the evals on their own`)
 	experimentDesc := flag.String("experiment-desc", "", "description of the experiment, used when it is created")
 	evalDBPath := flag.String("db", "build/gligabao-eval.db", "SQLite file of the eval database: the datasets of the cases, the evals and their runs (never reset; show it with ./run_server_local.sh)")
-	modelsFlag := flag.String("models", "", `LLM model per remember stage, e.g. "extract_graph=claude-sonnet-4-5,resolve_edges=claude-haiku-5-5" (stages: `+strings.Join(memory_core.Stages, ", ")+`); a stage left out uses the default model; a case's "models" win`)
+	modelsFlag := flag.String("models", "", `LLM model per stage, e.g. "extract_graph=claude-sonnet-4-5,query=claude-haiku-5-5" (stages: `+strings.Join(knowledge.ModelStages(), ", ")+`; query is the call that answers the question, and detect_geo applies to remember and query); a stage left out uses the default model; a case's "models" win`)
 	reasoningFlag := flag.String("reasoning", "", `reasoning level per stage, e.g. "extract_graph=low,query=medium" (stages: `+strings.Join(knowledge.ReasoningStages(), ", ")+`; levels: `+strings.Join(ai.ReasoningLevels, ", ")+`); a stage left out uses the server default (none); a case's "reasoning" wins`)
 	flag.Parse()
 
@@ -80,7 +80,7 @@ func mainErr() error {
 	if err != nil {
 		return err
 	}
-	models, err := memory_core.ParseModels(*modelsFlag)
+	models, err := knowledge.ParseModels(*modelsFlag)
 	if err != nil {
 		return fmt.Errorf("-models: %w", err)
 	}

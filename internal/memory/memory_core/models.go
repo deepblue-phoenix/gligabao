@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
@@ -30,7 +31,8 @@ const (
 	// timeseries.fetch, see docs/timeseries.md): the LLM reads the providers' descriptions.
 	StageResolveSeries = "resolve_series"
 	// StageDetectGeo is the decision of which entities of a text are places (a city, a country, a region, a landmark, ...), and
-	// what to ask the geo resolver for each (only when a geo resolver is registered, see WithGeoResolver).
+	// what to ask the geo resolver for each (only when a geo resolver is registered, see WithGeoResolver). Query has it too: the
+	// LLM call that finds the places a question mentions.
 	StageDetectGeo = "detect_geo"
 )
 
@@ -50,11 +52,21 @@ type Models map[string]string
 // dropped (it means the default). It returns ErrInvalidModels for an unknown stage, or a model name that is too long or
 // has whitespace or control characters. A nil or empty m gives nil. Whether the provider knows the model is not checked
 // here: an unknown one makes the LLM call fail.
-func ResolveModels(m map[string]string) (Models, error) {
+func ResolveModels(m map[string]string) (Models, error) { return resolveModels(m, Stages) }
+
+// QueryStages lists the stages of Query that take a model: the one that answers (StageQuery) and the detection of the places
+// in the question (StageDetectGeo, only when the call has a geo resolver, see WithGeoResolver).
+var QueryStages = []string{StageDetectGeo, StageQuery}
+
+// ResolveQueryModels is ResolveModels for Query: the stages are those of QueryStages. A stage of remember that Query does not
+// run is rejected, so that a typo is not silently ignored.
+func ResolveQueryModels(m map[string]string) (Models, error) { return resolveModels(m, QueryStages) }
+
+func resolveModels(m map[string]string, stages []string) (Models, error) {
 	var out Models
 	for stage, model := range m {
-		if !validStage(stage) {
-			return nil, fmt.Errorf("%w: unknown stage %q (stages: %s)", ErrInvalidModels, stage, strings.Join(Stages, ", "))
+		if !slices.Contains(stages, stage) {
+			return nil, fmt.Errorf("%w: unknown stage %q (stages: %s)", ErrInvalidModels, stage, strings.Join(stages, ", "))
 		}
 		model = strings.TrimSpace(model)
 		if model == "" {
@@ -74,15 +86,6 @@ func ResolveModels(m map[string]string) (Models, error) {
 		out[stage] = model
 	}
 	return out, nil
-}
-
-func validStage(s string) bool {
-	for _, k := range Stages {
-		if s == k {
-			return true
-		}
-	}
-	return false
 }
 
 // Merge returns the models of m with those of over on top: a stage over names replaces m's. Neither is changed.
@@ -129,7 +132,8 @@ func ParseModels(s string) (Models, error) {
 	return ResolveModels(m)
 }
 
-// WithModels sets the model of each LLM stage of Remember and RememberImage (see the Stage constants; web_search is the model of the web search). A stage that is
+// WithModels sets the model of each LLM stage of Remember, RememberImage and Query (see the Stage constants; web_search is the model of the web search; Query takes
+// StageQuery and StageDetectGeo). A stage that is
 // not in m, or whose model is empty, uses the default model. Validate m with ResolveModels first.
 func WithModels(m Models) Option { return func(o *CallOptions) { o.Models = m } }
 
@@ -172,8 +176,8 @@ func StageOf(ctx context.Context) string {
 
 //---------------------------------------------------------------------------------------------
 
-// StageQuery is the LLM call of Query that answers the question. It is not a stage of remember (so it is not in Stages,
-// and takes no model), but it has a reasoning level of its own.
+// StageQuery is the LLM call of Query that answers the question. It is not a stage of remember (so it is not in Stages), but
+// it takes a model (see QueryStages) and has a reasoning level of its own.
 const StageQuery = "query"
 
 // ReasoningStages lists the stages that take a reasoning level: the LLM stages of remember (see Stages) but the web
@@ -213,14 +217,24 @@ type Reasoning map[string]string
 // request can be explicit about it. It returns ErrInvalidReasoning for a stage that takes no reasoning level or an unknown level. A nil or
 // empty m gives nil.
 func ResolveReasoning(m map[string]string) (Reasoning, error) {
+	return resolveReasoning(m, ReasoningStages)
+}
+
+// QueryReasoningStages lists the stages of Query that take a reasoning level: the one that answers (StageQuery) and the
+// detection of the places in the question (StageDetectGeo, only with a geo resolver). They are the QueryStages.
+var QueryReasoningStages = []string{StageDetectGeo, StageQuery}
+
+// ResolveQueryReasoningStages is ResolveReasoning for Query: m maps the stages of QueryReasoningStages to their levels. A stage of
+// remember that Query does not run is rejected.
+func ResolveQueryReasoningStages(m map[string]string) (Reasoning, error) {
+	return resolveReasoning(m, QueryReasoningStages)
+}
+
+func resolveReasoning(m map[string]string, stages []string) (Reasoning, error) {
 	var out Reasoning
 	for stage, level := range m {
-		ok := false
-		for _, s := range ReasoningStages {
-			ok = ok || s == stage
-		}
-		if !ok {
-			return nil, fmt.Errorf("%w: unknown stage %q (stages with a reasoning level: %s)", ErrInvalidReasoning, stage, strings.Join(ReasoningStages, ", "))
+		if !slices.Contains(stages, stage) {
+			return nil, fmt.Errorf("%w: unknown stage %q (stages with a reasoning level: %s)", ErrInvalidReasoning, stage, strings.Join(stages, ", "))
 		}
 		l, err := resolveLevel(stage, level)
 		if err != nil {
@@ -237,8 +251,9 @@ func ResolveReasoning(m map[string]string) (Reasoning, error) {
 	return out, nil
 }
 
-// ResolveQueryReasoning validates the reasoning level of Query and returns it as a Reasoning for WithReasoning. An
-// empty level means the default (DefaultQueryReasoning) and gives nil.
+// ResolveQueryReasoning validates the reasoning level of the answering call of Query (StageQuery) and returns it as a Reasoning for
+// WithReasoning. An empty level means the default (DefaultQueryReasoning) and gives nil. ResolveQueryReasoningStages takes a
+// level per stage.
 func ResolveQueryReasoning(level string) (Reasoning, error) {
 	l, err := resolveLevel(StageQuery, level)
 	if err != nil || l == "" {

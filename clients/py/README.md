@@ -21,7 +21,7 @@ print(res["artifact_id"], res["edges"])
 `query` answers a question from the graph and returns the evidence (entities and edges) behind the answer:
 
 ```python
-res = gb.query("Where does Alice work?")  # optional: dataset, session_id, reasoning ("none", "low", "medium", "high")
+res = gb.query("Where does Alice work?")  # optional: dataset, session_id, reasoning ("none", "low", "medium", "high", or a dict per stage), models ({"query": ..., "detect_geo": ...})
 print(res["answer"])
 print([(e["source"], e["relation"], e["target"]) for e in res["evidence"]["edges"]])
 ```

@@ -205,7 +205,8 @@ type KnowledgeExpectSeries struct {
 type KnowledgeParams struct {
 	// ChunkSize overrides the chunk size (in tokens); 0 keeps the default.
 	ChunkSize int `json:"chunk_size,omitempty"`
-	// Models picks the LLM model of the stages of remember ("extract_graph", "resolve_edges", "extract_image").
+	// Models picks the LLM model of the stages of remember ("extract_graph", "resolve_edges", "extract_image") and of the query
+	// ("query": the call that answers; "detect_geo" is a stage of both).
 	Models map[string]string `json:"models,omitempty"`
 	// Reasoning picks the reasoning level ("none", "low", "medium", "high") of each LLM stage ("extract_graph",
 	// "summarize_chunk", "resolve_edges", "resolve_series", "detect_geo", "extract_image", "query").

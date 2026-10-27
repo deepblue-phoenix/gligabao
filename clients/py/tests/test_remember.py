@@ -178,7 +178,7 @@ def test_query():
     srv = _serve(200, {"answer": "Acme.", "evidence": {"entities": [], "edges": []}}, seen)
     try:
         res = Client(f"http://127.0.0.1:{srv.server_port}").query(
-            "Where does Alice work?", dataset="d", session_id="s1", reasoning="low"
+            "Where does Alice work?", dataset="d", session_id="s1", reasoning="low", models={"detect_geo": "m"}
         )
     finally:
         srv.shutdown()
@@ -188,6 +188,7 @@ def test_query():
         "dataset": "d",
         "session_id": "s1",
         "reasoning": "low",
+        "models": {"detect_geo": "m"},
     }
     assert res["answer"] == "Acme."
 

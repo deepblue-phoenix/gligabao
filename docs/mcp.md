@@ -47,7 +47,8 @@ Answers a question from the graph, like [`POST /v1/gb/query`](query.md).
 | `query` | required | the question |
 | `dataset` | optional | the dataset to search (default `main`) |
 | `session_id` | optional | a label for the user/agent session |
-| `reasoning` | optional | `none` (default), `low`, `medium` or `high` |
+| `reasoning` | optional | `none` (default), `low`, `medium` or `high` for the answering call, or an object with a level per stage: `{"query": "low", "detect_geo": "none"}` |
+| `models` | optional | the model of each stage: `{"query": "...", "detect_geo": "..."}` |
 
 ### Results
 

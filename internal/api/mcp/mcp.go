@@ -38,11 +38,12 @@ type RememberInput struct {
 
 // QueryInput is the input of the query tool: the body of POST /v1/gb/query.
 type QueryInput struct {
-	UserID    string `json:"user_id" jsonschema:"the user that owns the dataset"`
-	Query     string `json:"query" jsonschema:"the question to answer from the knowledge graph"`
-	Dataset   string `json:"dataset,omitempty" jsonschema:"the dataset to search (default main)"`
-	SessionID string `json:"session_id,omitempty" jsonschema:"a label for the user/agent session the call belongs to"`
-	Reasoning string `json:"reasoning,omitempty" jsonschema:"reasoning level of the answering LLM call: none (default), low, medium or high"`
+	UserID    string            `json:"user_id" jsonschema:"the user that owns the dataset"`
+	Query     string            `json:"query" jsonschema:"the question to answer from the knowledge graph"`
+	Dataset   string            `json:"dataset,omitempty" jsonschema:"the dataset to search (default main)"`
+	SessionID string            `json:"session_id,omitempty" jsonschema:"a label for the user/agent session the call belongs to"`
+	Reasoning string            `json:"reasoning,omitempty" jsonschema:"reasoning level of the answering LLM call: none (default), low, medium or high"`
+	Models    map[string]string `json:"models,omitempty" jsonschema:"the model of each stage of the query: query (the answer), detect_geo (the places in the question, when geo is on); default: the server's"`
 }
 
 // New returns the handler of the MCP endpoint. rememberH and queryH are the handlers of POST /v1/gb/remember and

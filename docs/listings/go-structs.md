@@ -230,6 +230,7 @@
 | `internal/memory/memory_ontology.term`                    | is the object of an RDF triple: an IRI, blank node or literal.                                                         |
 | `internal/memory/memory_ontology.triple`                  | is an RDF subject-predicate-object statement.                                                                          |
 | `internal/memory/memory_query.Evidence`                  | lists the entities and edges an answer is based on.                                                                    |
+| `internal/memory/memory_query.QueryPlace`               | is a place the question of a query mentions (text, kind, query for a geo resolver).                                   |
 | `internal/memory/memory_query.QueryResult`              | is the answer to a query together with its supporting evidence.                                                        |
 | `internal/memory/memory_query.graphContext`              | is the subgraph handed to the query LLM.                                                                              |
 | `internal/memory/memory_query.queryContext`             | is everything the query LLM is given: the memory, the current time and the question.                                  |

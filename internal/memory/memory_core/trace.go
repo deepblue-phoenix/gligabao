@@ -90,7 +90,7 @@ type CallOptions struct {
 	SeriesObservations bool
 
 	// GeoResolver is what finds the coordinates of the entities that are places, set by WithGeoResolver; nil (the default)
-	// means Remember does not look at places at all.
+	// means Remember does not look at places at all, and Query does not look for the places a question mentions.
 	GeoResolver geo.Resolver
 
 	// RememberRunID is the run log row (gb_remember_runs) Remember adopts instead of creating one, set by
@@ -140,7 +140,8 @@ func WithJev(c Classifier) Option { return func(o *CallOptions) { o.Jev = c } }
 // WithGeoResolver makes Remember find the places among the entities it extracts (an LLM decides which are a city, a
 // country, a region or any other place) and ask r for their coordinates, which are stored in gb_entity_geo (see
 // package geo). A nil r (the default) leaves it off. Like the web search it runs after the text is stored, and its
-// failure never fails the call.
+// failure never fails the call. It is the one switch of geo: Query also finds the places a question mentions when it is set (it
+// does not use r yet).
 func WithGeoResolver(r geo.Resolver) Option { return func(o *CallOptions) { o.GeoResolver = r } }
 
 // WithWebSearcher makes web search available to Remember: ws runs the searches of the calls that ask for them (see

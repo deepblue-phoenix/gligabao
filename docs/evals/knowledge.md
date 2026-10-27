@@ -90,6 +90,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 | remember | `store_geo` | (only when a place was found) the number of places stored in `gb_entity_geo` |
 | remember | `select_web_search_entities` | (only with [`web_search`](../web-search.md)) the key entities that were picked to search the web for |
 | remember | `web_search` | (only with `web_search`, one per entity) the web search: the entity, the query issued, the briefing, the queries the model sent to the search engine, the sources and `search_errors`; `model_name`, `metrics` (tokens and cost, search fee included) and `latency_ms` in the extra. An error here is recorded but not fatal |
+| query | `detect_geo` | (only with a geo resolver, and when the graph is not empty) the places the LLM found in the question, each with `text`, `kind` and `query`; or the `error` if it failed (the LLM call itself is the usual `system`, `user`, `agent` steps). It comes after `retrieve_graph` |
 | query | `retrieve_graph` | the subgraph handed to the LLM, as rendered in its prompt |
 
 ### Remember
@@ -143,21 +144,21 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 
 ### Models
 
-An eval case can vary the model of each LLM stage of `remember` (`extract_graph`, `summarize_chunk`, `resolve_edges`, `web_search`, `extract_image`; see [remember.md](../remember.md#choosing-the-model-of-each-stage)), to compare models stage by stage. The runner passes them as `models` in every `remember` request of a case, from two places that are combined stage by stage:
+An eval case can vary the model of each LLM stage of `remember` (`extract_graph`, `summarize_chunk`, `resolve_edges`, `web_search`, `extract_image`; see [remember.md](../remember.md#choosing-the-model-of-each-stage)) and of the query (`query`, the call that answers the question), to compare models stage by stage. `detect_geo` is a stage of both pipelines (the entities of a text, the places of a question) and one setting applies to both. The runner passes the stages of `remember` as `models` in every `remember` request of a case and `query` and `detect_geo` as `models` of its query request. The settings come from two places that are combined stage by stage:
 
-1. `-models extract_graph=<model>,resolve_edges=<model>` on the command line: the defaults of the whole run (and recorded in the experiment run's `params.models`);
-2. `"models": {"extract_graph": "<model>"}` in a case of an eval: that case only; a stage named here wins over `-models`.
+1. `-models extract_graph=<model>,query=<model>` on the command line: the defaults of the whole run (and recorded in the experiment run's `params.models`);
+2. `"models": {"extract_graph": "<model>", "query": "<model>"}` in a case of an eval: that case only; a stage named here wins over `-models`.
 
-A stage named by neither uses the default model. The query's LLM call is not affected. The model of each LLM step is in the trajectory (`model_name`), the requested `models` are in `extra.input.models`, and the entities and edges a case stores carry the `extract_graph` model as their `model_id`, so the graph of a run shows which model produced it. A runner invocation is a run of an experiment, so comparing models means running the eval once per setting under the same experiment (for instance `-experiment extract-models -models extract_graph=claude-sonnet-4-5`).
+A stage named by neither uses the default model. The model of each LLM step is in the trajectory (`model_name`), the requested `models` are in `extra.input.models`, and the entities and edges a case stores carry the `extract_graph` model as their `model_id`, so the graph of a run shows which model produced it. A runner invocation is a run of an experiment, so comparing models means running the eval once per setting under the same experiment (for instance `-experiment extract-models -models extract_graph=claude-sonnet-4-5`, or `-experiment answer-models -models query=claude-sonnet-4-5` to vary the model that answers). The in-process server of the evals has no geo resolver, so `detect_geo` is accepted but has no effect on a run.
 
 ### Reasoning levels
 
-An eval case can also vary the reasoning (thinking) level of each LLM stage, to see how it affects the results (see [remember.md](../remember.md#reasoning)). The stages are `extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series`, `detect_geo` and `extract_image` for `remember`, and `query` for the LLM call that answers the question. The levels come from two places that are combined stage by stage:
+An eval case can also vary the reasoning (thinking) level of each LLM stage, to see how it affects the results (see [remember.md](../remember.md#reasoning)). The stages are `extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series`, `detect_geo` and `extract_image` for `remember`, and `query` for the LLM call that answers the question (`detect_geo` is a stage of the query too, and its level applies to both). The levels come from two places that are combined stage by stage:
 
 1. `-reasoning extract_graph=low,query=medium` on the command line: the defaults of the whole run (recorded in the experiment run's `params.reasoning`);
 2. `"reasoning": {"extract_graph": "low", "query": "medium"}` in a case of an eval: that case only; a stage named here wins over `-reasoning`, as for models (a case controls its own parameters).
 
-The runner sends the `remember` stages as `reasoning` in every `remember` request of the case and `query` as `reasoning` of its query request. A stage named by neither runs with the server's default, which is `none` (no thinking). **Every case of the evals sets all of them explicitly to `none`**, so a run never depends on that default and is the baseline to compare against (a test checks it). So with the shipped evals `-reasoning` changes nothing until the stage is removed from the cases (or the cases are edited, e.g. a copy of the evals passed with `-evals`): the level a comparison varies is the one the case sets.
+The runner sends the `remember` stages as `reasoning` in every `remember` request of the case, and `query` and `detect_geo` as the per-stage `reasoning` of its query request. A stage named by neither runs with the server's default, which is `none` (no thinking). **Every case of the evals sets all of them explicitly to `none`**, so a run never depends on that default and is the baseline to compare against (a test checks it). So with the shipped evals `-reasoning` changes nothing until the stage is removed from the cases (or the cases are edited, e.g. a copy of the evals passed with `-evals`): the level a comparison varies is the one the case sets.
 
 Each LLM call is a [inference](../inferences.md) with the level it ran with, its tokens (thinking tokens count as output) and its cost, so a comparison can look at both the pass rate and what the thinking cost, per stage.
 

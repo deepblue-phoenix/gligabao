@@ -129,3 +129,42 @@ func TestModelLLMReasoningAndStage(t *testing.T) {
 type llmFunc func(ctx context.Context, r ai.Request) (*ai.Response, error)
 
 func (f llmFunc) Complete(ctx context.Context, r ai.Request) (*ai.Response, error) { return f(ctx, r) }
+
+func TestResolveQueryModels(t *testing.T) {
+	m, err := ResolveQueryModels(map[string]string{StageQuery: " a ", StageDetectGeo: "b"})
+	if err != nil || m[StageQuery] != "a" || m[StageDetectGeo] != "b" {
+		t.Errorf("got %v, %v", m, err)
+	}
+	if m, err := ResolveQueryModels(nil); err != nil || m != nil {
+		t.Errorf("nil: %v, %v", m, err)
+	}
+	// The stages of remember that Query does not run are rejected, as are unknown ones.
+	for _, stage := range []string{StageExtractGraph, StageWebSearch, "nope"} {
+		if _, err := ResolveQueryModels(map[string]string{stage: "x"}); !errors.Is(err, ErrInvalidModels) {
+			t.Errorf("%s: %v", stage, err)
+		}
+	}
+	// And Remember does not take the answering stage.
+	if _, err := ResolveModels(map[string]string{StageQuery: "x"}); !errors.Is(err, ErrInvalidModels) {
+		t.Errorf("remember with the query stage: %v", err)
+	}
+}
+
+func TestResolveQueryReasoningStages(t *testing.T) {
+	r, err := ResolveQueryReasoningStages(map[string]string{StageQuery: " High", StageDetectGeo: "low", "": ""})
+	if err == nil {
+		t.Fatalf("an empty stage name was accepted: %v", r)
+	}
+	r, err = ResolveQueryReasoningStages(map[string]string{StageQuery: " High", StageDetectGeo: "none"})
+	if err != nil || r.Level(StageQuery) != "high" || r.Level(StageDetectGeo) != "none" {
+		t.Errorf("got %v, %v", r, err)
+	}
+	if r, err := ResolveQueryReasoningStages(map[string]string{StageQuery: ""}); err != nil || r != nil {
+		t.Errorf("empty level: %v, %v", r, err)
+	}
+	for _, m := range []map[string]string{{StageExtractGraph: "low"}, {StageQuery: "max"}} {
+		if _, err := ResolveQueryReasoningStages(m); !errors.Is(err, ErrInvalidReasoning) {
+			t.Errorf("%v: %v", m, err)
+		}
+	}
+}

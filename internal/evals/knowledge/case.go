@@ -79,11 +79,10 @@ func (x *Executor) runCase(ctx context.Context, name string, in core.KnowledgeCa
 	out = &outcome{}
 	database := x.DB
 
-	caseModels, err := memory_core.ResolveModels(in.Models)
+	models, queryModels, err := mergeModels(x.Models, in.Models)
 	if err != nil {
 		return out, fmt.Errorf("models: %w", err)
 	}
-	models := x.Models.Merge(caseModels)
 	rememberReasoning, queryReasoning, err := mergeReasoning(x.Reasoning, in.Reasoning)
 	if err != nil {
 		return out, fmt.Errorf("reasoning: %w", err)
@@ -242,7 +241,10 @@ func (x *Executor) runCase(ctx context.Context, name string, in core.KnowledgeCa
 		Trajectory *atif.Trajectory `json:"trajectory"`
 	}
 	queryBody := map[string]any{"user_id": EvalUser, "query": input.Query, "dataset": dataset}
-	if queryReasoning != "" {
+	if len(queryModels) > 0 {
+		queryBody["models"] = queryModels
+	}
+	if len(queryReasoning) > 0 {
 		queryBody["reasoning"] = queryReasoning
 	}
 	if err := post(ctx, srv.URL+"/v1/gb/eval/query", queryBody, &rec); err != nil {

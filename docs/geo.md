@@ -4,7 +4,7 @@ Some entities are places: a city, a country, a region, a landmark. `remember` fi
 graph knows where things are. The code is the package `internal/geo` (the resolvers) and `memory_remember/remember_geo.go` (the
 stage of the pipeline); the data is the table `gb_entity_geo`.
 
-For now geo is part of `remember` only: `query` does not use it yet (see the [roadmap](roadmap/ROADMAP.md)).
+`query` finds the places a question mentions with the same switch, but does not use them yet: see [In `query`](#in-query) and the [roadmap](roadmap/ROADMAP.md).
 
 ## Turning it on
 
@@ -37,6 +37,14 @@ errors are logged, recorded in the trajectory and run log, and returned in `geo`
 ## In the trajectory
 
 An [eval trajectory](evals/knowledge.md) of a call with a geo resolver has, after the steps of the text itself, a `select_geo_entities` step (the candidates), the `detect_geo` LLM call and a `detect_geo` step (the places it found, with `kind` and `query`), one `resolve_geo` step per place (found or not, the coordinates, `latency_ms`), and a `store_geo` step (how many places were stored). When there are no candidates, the stage stops after `select_geo_entities`.
+
+## In `query`
+
+With geo on (the same switch as for `remember`), `query` makes one more LLM call, separate from the one that answers: the `detect_geo` stage reads the question (only the question, not the graph) and lists the places it mentions, each with the `text` as written, its `kind` (`country`, `region`, `city` or `place`) and the `query` a geocoder should be asked ("Paris, France"). It runs after the graph was retrieved, and not at all if the dataset is empty (the fixed "no information" answer is given without any LLM call). Entities of the graph are not involved.
+
+For now the places are only extracted: they are not used for retrieval or for the answer, the resolver is not asked for their coordinates, and they are not in the response. They are in the [eval trajectory](evals/knowledge.md) (a `detect_geo` step after the retrieval) and in `QueryResult.Geo` for Go callers. An LLM that names something that is not in the question is ignored, at most 10 places are kept, and a failure of the stage is logged and recorded in the trajectory but never fails the query.
+
+Like the answering call, it is recorded as an inference (type `query`, stage `detect_geo`). Its model is chosen with `models` in the [query request](query.md#request); its reasoning level with `reasoning` (the string form of `reasoning` is the `query` stage only, so use the object form: `{"detect_geo": "low"}`); a stage left out runs without thinking.
 
 ## The result
 

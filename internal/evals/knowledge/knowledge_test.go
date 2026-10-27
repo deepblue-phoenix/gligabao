@@ -29,11 +29,13 @@ type scriptedLLM struct {
 	answer string
 	mu     sync.Mutex
 	levels []string // the Reasoning of each request, in order
+	models []string // the Model of each request, in order
 }
 
 func (l *scriptedLLM) Complete(_ context.Context, req ai.Request) (*ai.Response, error) {
 	l.mu.Lock()
 	l.levels = append(l.levels, req.Reasoning)
+	l.models = append(l.models, req.Model)
 	l.mu.Unlock()
 	out := `{"entities":[{"name":"Alice","type":"person"}],"edges":[]}`
 	if len(req.Messages) > 0 && strings.Contains(req.Messages[len(req.Messages)-1].Content, "<graph>") {
@@ -265,6 +267,46 @@ func TestCaseReasoning(t *testing.T) {
 	}
 	if got, run := levels(kcase("r4", "Alice is here.", "Who?", "alice"), nil); run.Counts.Passed != 1 || fmt.Sprint(got) != "[none none]" {
 		t.Errorf("default levels: %v %+v", got, run.Counts)
+	}
+}
+
+// TestCaseModels checks that the runner's models are the model of each stage of remember and of the query, and that a case's own
+// win, stage by stage.
+func TestCaseModels(t *testing.T) {
+	defaults, err := knowledge.ParseModels("extract_graph=ex, query=ans")
+	if err != nil || defaults["extract_graph"] != "ex" || defaults["query"] != "ans" {
+		t.Fatalf("%v, %v", defaults, err)
+	}
+	for _, bad := range []string{"bogus=x", "extract_graph", "query=a b"} {
+		if _, err := knowledge.ParseModels(bad); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+	if m, err := knowledge.ParseModels("detect_geo=g, web_search=w"); err != nil || len(m) != 2 { // a stage of both pipelines, and a remember one
+		t.Errorf("%v, %v", m, err)
+	}
+	if m, err := knowledge.ParseModels(""); m != nil || err != nil {
+		t.Errorf("empty: %v, %v", m, err)
+	}
+
+	e := newEnv(t, "Alice.")
+	models := func(c core.KnowledgeCase, m map[string]string) []string {
+		e.llm.models, e.x.Models = nil, m
+		if run, _ := e.run(knowledge.Eval{Name: "m", Cases: []core.KnowledgeCase{c}}); run.Counts.Passed != 1 {
+			t.Fatalf("%s: %+v", c.Name, run.Counts)
+		}
+		return e.llm.models
+	}
+	if got := models(kcase("m1", "Alice is here.", "Who?", "alice"), defaults); fmt.Sprint(got) != "[ex ans]" { // extract, then answer
+		t.Errorf("run models: %v", got)
+	}
+	over := kcase("m2", "Alice is here.", "Who?", "alice")
+	over.Models = map[string]string{"query": "mine"}
+	if got := models(over, defaults); fmt.Sprint(got) != "[ex mine]" {
+		t.Errorf("case models: %v", got)
+	}
+	if got := models(kcase("m3", "Alice is here.", "Who?", "alice"), nil); fmt.Sprint(got) != "[ ]" {
+		t.Errorf("default models: %q", got)
 	}
 }
 

@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.112.0] - 2026-10-27
+
+### Added
+- With geo on (`geo = true`, `serve --geo`, or a `GeoResolver`: the same switch as for `remember`), `query` finds the places the question mentions. It is one more LLM call, separate from the one that answers (the `detect_geo` stage, on the question alone), made after the graph is retrieved and not at all for an empty dataset. For now the places are only extracted, not used: retrieval and the answer do not change, the geo resolver is not asked, and they are not in the response. They are in the eval trajectory (a `detect_geo` step) and in `memory_query.QueryResult.Geo` for Go callers. A failure of the step never fails the query.
+- `query` takes `models` (also a `models` argument of the MCP tool and of the Python client's `query`): the model of each stage, `query` (the answer) and `detect_geo`. A stage left out uses the default model. Any other stage, including those of `remember`, is `400`. Go: `memory_core.ResolveQueryModels`, `memory_core.QueryStages`; the options are the same `WithModels`.
+- `reasoning` of `query` takes a level per stage, an object like that of `remember`: `{"query": "medium", "detect_geo": "low"}`. The string form (the level of the answering call) still works. A stage left out runs with `none`; another stage is `400`. The MCP tool and the Python client's `query` take both forms. Go: `memory_core.ResolveQueryReasoningStages`, `memory_core.QueryReasoningStages`.
+- The calls of `query` that find the places are recorded as inferences of type `query`, stage `detect_geo`.
+- The knowledge eval runner sets models and reasoning for the query pipeline too. `-models` and a case's `"models"` take `query` (the answering call) next to the stages of `remember` (`knowledge.ParseModels`, `knowledge.ModelStages`), and are sent as `models` of the query request; the query's reasoning is sent as a per-stage object (`query` and `detect_geo`). `detect_geo` is a stage of both pipelines, so one setting applies to both; the in-process server of the evals has no geo resolver, so it has no effect there yet. Cases and the shipped evals need no change.
+
+### Changed
+- Docs: `docs/geo.md`, `docs/query.md`, `docs/mcp.md`, `docs/evals/knowledge.md` and the roadmap describe the above. `query.Handler` and `query.EvalHandler` take options (`memory_core.Option`), as `api.Register` passes `WithGeoResolver` to them.
+
 ## [0.111.1] - 2026-10-27
 
 ### Changed

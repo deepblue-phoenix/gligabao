@@ -144,13 +144,16 @@ class Client:
         query: str,
         dataset: str | None = None,
         session_id: str | None = None,
-        reasoning: str | None = None,
+        reasoning: str | dict[str, str] | None = None,
+        models: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Answer a question from the knowledge graph (POST /v1/gb/query).
 
         `dataset` defaults to "main" on the server (404 if it does not exist). `session_id` is a label for
         one user/agent run, echoed in the response; it does not change the answer. `reasoning` is the thinking
-        level of the LLM call that writes the answer: "none" (the server default), "low", "medium" or "high".
+        level ("none" (the server default), "low", "medium" or "high") of the LLM call that writes the answer, or
+        a dict with a level per stage ("query", "detect_geo"). `models` picks the model of each stage ("query": the answer; "detect_geo": the
+        places in the question, when the server has geo on); a stage left out uses the server's default.
 
         Returns the decoded JSON response: `answer`, and `evidence` with the `entities` and `edges` it used
         (session_id too, if one was given).
@@ -162,6 +165,8 @@ class Client:
             body["session_id"] = session_id
         if reasoning is not None:
             body["reasoning"] = reasoning
+        if models:
+            body["models"] = models
         return self._request("POST", "/v1/gb/query", body)
 
     def attach_timeseries(
