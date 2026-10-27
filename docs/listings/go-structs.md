@@ -87,10 +87,10 @@
 | `internal/api/admin.webSearchStats`                       | is the answer of the web search statistics endpoint.                                                                   |
 | `internal/api/datasets.createRequest`                     | is the request body for creating a dataset.                                                                            |
 | `internal/api/ontologies.loadRequest`                     | is the request body for loading an ontology.                                                                           |
-| `internal/query.queryRequest`                       | is the request body for a query call.                                                                                 |
-| `internal/remember.fetchRequest`                      | is the timeseries fetch part of a remember request.                                                                    |
-| `internal/remember.rememberRequest`                   | is the request body for a remember call.                                                                               |
-| `internal/remember.timeseriesRequest`                 | is the timeseries part of a remember request.                                                                          |
+| `internal/api/query.queryRequest`                       | is the request body for a query call.                                                                                 |
+| `internal/api/remember.fetchRequest`                      | is the timeseries fetch part of a remember request.                                                                    |
+| `internal/api/remember.rememberRequest`                   | is the request body for a remember call.                                                                               |
+| `internal/api/remember.timeseriesRequest`                 | is the timeseries part of a remember request.                                                                          |
 | `internal/timeseries.anchorView`                      | is the API view of a series anchor.                                                                                    |
 | `internal/timeseries.attachRequest`                   | is the request body for attaching a series to a dataset.                                                               |
 | `internal/timeseries.seriesView`                      | is the API view of a series and its point count.                                                                       |

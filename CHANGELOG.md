@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.117.3] - 2026-10-28
+
+### Changed
+- `internal/remember` and `internal/query` moved back into `internal/api` (`internal/api/remember`, `internal/api/query`): they are part of the API. This undoes that part of 0.117.1; `internal/sys/httputil` stays. No change in behaviour or API. The docs point at the paths.
+
 ## [0.117.2] - 2026-10-28
 
 ### Changed

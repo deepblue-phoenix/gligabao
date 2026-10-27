@@ -59,7 +59,7 @@ Errors are returned as `{"error": "..."}`:
 
 ## How it works
 
-The code is in `internal/memory/query.go` (logic) and `internal/query/query.go` (HTTP handler).
+The code is in `internal/memory/query.go` (logic) and `internal/api/query/query.go` (HTTP handler).
 
 ### 1. Retrieve a subgraph
 
