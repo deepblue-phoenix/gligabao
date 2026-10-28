@@ -16,6 +16,22 @@ interface Response { counts: Counts; stages: string[]; runs: Run[]; total: numbe
 interface Filter { status?: string; dataset?: string }
 
 const PAGE = 100;
+
+// What each stage of the pipeline does, for the "?" button of the stages table (see docs/remember.md#how-it-works).
+const STAGE_HELP: Record<string, string> = {
+  classify_complexity: "Asks Jev (a small fast model) whether the text is simple, medium or complex, i.e. how many entities it will probably yield. Advisory only: the result is logged, a failure never fails the run. Only runs when a Jev API key is configured.",
+  chunk_text: "Splits a long text into chunks that the later stages process one after the other. A text that fits in one chunk is not split.",
+  extract_graph: "The LLM reads the text (or a chunk) and returns the entities (name, type, description) and the edges, i.e. facts relating two entities, with the time each is valid. The raw answer is kept in the outputs, so a malformed one can be inspected.",
+  summarize_chunk: "The LLM writes a short summary (2 to 4 sentences) of each chunk of a chunked text. The summary is stored and embedded so it can be searched. Not used for a text that is a single chunk.",
+  load_candidates: "Looks up the facts already stored in the dataset that the new facts might repeat or contradict (stored live edges touching the same entities, found by name and by vector similarity). Embeds the endpoints of the new facts.",
+  resolve_edges: "Compares the new edges with the candidate facts: exact repeats are detected without the LLM; the LLM flags the remaining duplicates (merged into the stored fact) and contradictions (the old fact is closed). Skipped when there is nothing to compare with.",
+  store: "Writes everything in one transaction: the raw text as an artifact, the entities, the edges (merged or closed as decided), the session links, and the embeddings of entities, facts and chunks. If anything before the commit fails, nothing is stored.",
+  store_series: "Stores the timeseries the caller supplied with the text and anchors them to the artifact and to the entities and edges their selectors match. Only runs when the request has a timeseries.",
+  resolve_geo: "Finds which entities of the text are places (via the LLM) and asks the geo resolver (OpenStreetMap Nominatim by default) for their coordinates. Runs after the text is stored; a failure does not fail the run. Only runs when geo is turned on.",
+  web_search: "Searches the web for the key entities of the text and remembers the results as web_search artifacts with their own entities and edges. Runs after the text is stored; a failure does not fail the run. Only runs when the request asks for web_search.",
+  fetch_series: "The LLM decides which timeseries provider can supply a series for which entity of the text, the providers are called, and the series are stored and anchored to the entity. Runs after the text is stored; a failure does not fail the run. Only runs with timeseries.fetch.",
+  observe_series: "Generates a short text from the statistics of each series stored in this run, extracts a graph from it and stores it as a series_observation artifact. Runs last; a failure does not fail the run. Only runs with timeseries.observations.",
+};
 const STATUSES = ["started", "succeeded", "failed"] as const;
 
 function el<T extends HTMLElement>(id: string): T {
@@ -89,7 +105,7 @@ function makePanel(name: string): { box: HTMLElement; panel: Panel } {
 // debugging). They are fetched when the button is clicked, for that stage only, not before.
 function stagesTable(name: string, run: Run, order: string[]): HTMLTableElement {
   const table = node("table", "compact");
-  headRow(table, [["Stage", false], ["Status", false], ["Started", false], ["Duration", true], ["Inferences", false], ["Error", false], ["Output", false]]);
+  headRow(table, [["Stage", false], ["Status", false], ["Started", false], ["Duration", true], ["Inferences", false], ["Error", false], ["Output", false], ["", false]]);
   const body = table.createTBody();
     // The stages the server knows, in pipeline order; then any it did not list.
   const names = [...order, ...Object.keys(run.stages).filter((s) => !order.includes(s))].filter((s) => run.stages[s]);
@@ -107,6 +123,19 @@ function stagesTable(name: string, run: Run, order: string[]): HTMLTableElement 
     err.className = s.error ? "error" : "";
     err.textContent = s.error ?? "";
     const cell = tr.insertCell();
+    const help = tr.insertCell();
+    help.className = "help-cell";
+    const text = STAGE_HELP[stage];
+    if (text) {
+      const q = help.appendChild(node("button", "help-btn", "?"));
+      q.type = "button";
+      q.title = `About ${stage}`;
+      q.setAttribute("aria-label", `About ${stage}`);
+      q.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        toggleTip(q, stage, text);
+      });
+    }
     if (s.status === "not_started") continue; // it never ran: nothing to show
     const btn = cell.appendChild(node("button", "small", "Outputs"));
     btn.type = "button";
@@ -116,6 +145,30 @@ function stagesTable(name: string, run: Run, order: string[]): HTMLTableElement 
     });
   }
   return table;
+}
+
+// The tooltip of a "?" button: one floating box, shown under the button; clicking the button again, anywhere else, Esc or
+// scrolling closes it.
+let tip: { box: HTMLElement; anchor: HTMLElement } | null = null;
+
+function closeTip(): void {
+  tip?.box.remove();
+  tip = null;
+}
+
+function toggleTip(anchor: HTMLElement, title: string, text: string): void {
+  const same = tip?.anchor === anchor;
+  closeTip();
+  if (same) return;
+  const box = document.body.appendChild(node("div", "stage-tip"));
+  box.setAttribute("role", "tooltip");
+  box.append(node("strong", "", title), node("p", "", text));
+  const r = anchor.getBoundingClientRect();
+  const w = Math.min(box.offsetWidth, window.innerWidth - 16);
+  box.style.left = `${Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8))}px`;
+  const below = r.bottom + 6;
+  box.style.top = `${below + box.offsetHeight > window.innerHeight ? Math.max(8, r.top - 6 - box.offsetHeight) : below}px`;
+  tip = { box, anchor };
 }
 
 // JSON as DOM nodes (never as HTML), pretty-printed with 2 spaces: keys yellow (.json-key), values green (.json-val).
@@ -318,6 +371,9 @@ async function load(): Promise<void> {
 }
 
 export function initRememberRuns(): void {
+  document.addEventListener("click", (e) => { if (tip && !tip.box.contains(e.target as Node)) closeTip(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeTip(); });
+  window.addEventListener("scroll", closeTip, true);
   const modal = el<HTMLDialogElement>("rr-outputs-modal");
   el("rr-outputs-close").addEventListener("click", () => modal.close());
   el("remember_runs-refresh").addEventListener("click", () => void load());

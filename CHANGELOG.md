@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.123.0] - 2026-10-29
+
+### Added
+- Admin UI, remember runs view: the stages table has a new narrow last column, without a title, with a **?** button for each stage. Clicking it opens a tooltip that describes what the stage does (click it again, click elsewhere or press Esc to close it).
+
 ## [0.122.3] - 2026-10-29
 
 ### Removed
