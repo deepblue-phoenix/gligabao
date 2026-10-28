@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/ansi"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
 	"github.com/deepblue-phoenix/gligabao/internal/geo"
@@ -40,6 +41,8 @@ type Executor struct {
 	Verbose bool
 	// Out is where the progress goes: PASS and FAIL for each case (nil discards).
 	Out io.Writer
+	// Colors colours the PASS and FAIL lines (green, red; the "answer:" label yellow). The zero value does not colour.
+	Colors ansi.Palette
 }
 
 func (x *Executor) out() io.Writer {
@@ -158,11 +161,12 @@ func (x *Executor) executeCase(ctx, dbCtx context.Context, rec *runner.EvalRecor
 
 	switch {
 	case err != nil:
-		fmt.Fprintf(x.out(), "FAIL %s: %v\n", c.Name, err)
+		fmt.Fprintln(x.out(), x.Colors.Red(fmt.Sprintf("FAIL %s: %v", c.Name, err)))
 	case len(problems) > 0:
-		fmt.Fprintf(x.out(), "FAIL %s:\n     %s\n     answer: %s\n", c.Name, strings.Join(problems, "\n     "), out.Answer)
+		fmt.Fprintln(x.out(), x.Colors.Red(fmt.Sprintf("FAIL %s:\n     %s\n     %s %s",
+			c.Name, strings.Join(problems, "\n     "), x.Colors.Yellow("answer:"), out.Answer)))
 	default:
-		fmt.Fprintf(x.out(), "PASS %s: %s\n", c.Name, out.Answer)
+		fmt.Fprintln(x.out(), x.Colors.Green(fmt.Sprintf("PASS %s: %s", c.Name, out.Answer)))
 	}
 	return nil
 }

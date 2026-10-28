@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.122.1] - 2026-10-29
+
+### Changed
+- The eval runners (`./run_evals.sh`, also the one of `gligabao_int`) colour their output when it goes to a terminal: passed cases green, failed cases red, eval names and the `answer:` label yellow, and the passed/failed totals green/red. `NO_COLOR` turns the colours off, `FORCE_COLOR` turns them on when the output is piped.
+
 ## [0.122.0] - 2026-10-29
 
 ### Added

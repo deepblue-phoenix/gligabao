@@ -32,6 +32,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/ansi"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/evalfile"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/knowledge"
@@ -162,9 +163,10 @@ func mainErr() error {
 	if *geoFlag {
 		geoResolver = geo.Default()
 	}
+	colors := ansi.New(os.Stdout)
 	x := &knowledge.Executor{
 		DB: database, LLM: llm, Embedder: emb, WebSearch: llm, Geo: geoResolver, EvalsDirs: evalsDirs, Models: models, Reasoning: reasoning,
-		TrajectoryDir: *atifDir, Verbose: *verbose, Out: os.Stdout,
+		TrajectoryDir: *atifDir, Verbose: *verbose, Out: os.Stdout, Colors: colors,
 	}
 	var counts core.Counts
 	var runErr error
@@ -173,7 +175,7 @@ func mainErr() error {
 		if xr != nil {
 			opts.ExperimentRunID = &xr.Run().ID
 		}
-		fmt.Printf("--- eval %s (%d cases)\n", def.Name, len(def.Cases))
+		fmt.Printf("--- eval %s (%d cases)\n", colors.Yellow(def.Name), len(def.Cases))
 		run, err := r.RunEval(ctx, def, x, opts)
 		if run != nil {
 			counts.Passed += run.Counts.Passed
@@ -195,7 +197,8 @@ func mainErr() error {
 	}
 
 	failed := counts.Failed + counts.Errored + counts.Cancelled + counts.Pending
-	fmt.Printf("---\npassed: %d, failed: %d\n", counts.Passed, failed)
+	fmt.Printf("---\n%s, %s\n", colors.Green(fmt.Sprintf("passed: %d", counts.Passed)),
+		colors.Verdict(failed == 0, fmt.Sprintf("failed: %d", failed)))
 	if xr != nil {
 		if err := xr.Finish(ctx, runErr); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: %v\n", err)
@@ -215,10 +218,7 @@ func mainErr() error {
 
 // printEvals prints the evals with their cases, as a table.
 func printEvals(w *os.File, evals []knowledge.Eval) {
-	bold, dim, reset := "", "", ""
-	if st, err := w.Stat(); err == nil && st.Mode()&os.ModeCharDevice != 0 && os.Getenv("NO_COLOR") == "" {
-		bold, dim, reset = "\033[1m", "\033[2m", "\033[0m"
-	}
+	colors := ansi.New(w)
 	width := 0
 	for _, e := range evals {
 		width = max(width, len(e.Name))
@@ -232,6 +232,6 @@ func printEvals(w *os.File, evals []knowledge.Eval) {
 		if len(names) == 1 {
 			noun = "case "
 		}
-		fmt.Fprintf(w, "  %s%-*s%s  %s%2d %s%s  %s\n", bold, width, e.Name, reset, dim, len(names), noun, reset, strings.Join(names, ", "))
+		fmt.Fprintf(w, "  %s  %s  %s\n", colors.Yellow(fmt.Sprintf("%-*s", width, e.Name)), colors.Dim(fmt.Sprintf("%2d %s", len(names), noun)), strings.Join(names, ", "))
 	}
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/ansi"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/evalfile"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
@@ -159,7 +160,8 @@ func mainErr() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("model %d %q (%s): eval %s, %d cases\n", tm.ID, tm.Name, tm.ModelSize, name, len(def.Cases))
+	colors := ansi.New(os.Stdout)
+	fmt.Printf("model %d %q (%s): eval %s, %d cases\n", tm.ID, tm.Name, tm.ModelSize, colors.Yellow(name), len(def.Cases))
 
 	failed := 0
 	x := &training.Executor{
@@ -174,12 +176,14 @@ func mainErr() error {
 					verdict = strings.ToUpper(string(training.BandOf(*res.Score)))
 					detail = fmt.Sprintf("score %d: %s", *res.Score, res.Reason)
 				}
-				if res.Score == nil || *res.Score < core.TrainingPassScore {
+				ok := res.Score != nil && *res.Score >= core.TrainingPassScore
+				if !ok {
 					failed++
 				}
-				fmt.Printf("%-9s %s/%s  %s\n", verdict, name, c.Name, detail)
+				fmt.Println(colors.Verdict(ok, fmt.Sprintf("%-9s %s/%s  %s", verdict, colors.Yellow(name), c.Name, detail)))
 				if *verbose {
-					fmt.Printf("    question:  %s\n    expected:  %s\n    answer:    %s\n", res.Instruction, res.Reference, res.Response)
+					fmt.Println(colors.Verdict(ok, fmt.Sprintf("    question:  %s\n    expected:  %s\n    %s    %s",
+						res.Instruction, res.Reference, colors.Yellow("answer:"), res.Response)))
 				}
 			}
 		},
@@ -206,8 +210,11 @@ func mainErr() error {
 	if m.NumJudged > 0 {
 		mean = float64(m.ScoreSum) / float64(m.NumJudged)
 	}
-	fmt.Printf("---\ncorrect: %d, partial: %d, incorrect: %d, errored: %d; mean score %.2f / %d; judge cost $%.6f\n",
-		m.NumCorrect, m.NumPartial, m.NumIncorrect, run.Counts.Errored, mean, training.MaxScore, m.JudgeCostUSD)
+	fmt.Printf("---\n%s, partial: %d, %s, %s; mean score %.2f / %d; judge cost $%.6f\n",
+		colors.Green(fmt.Sprintf("correct: %d", m.NumCorrect)), m.NumPartial,
+		colors.Verdict(m.NumIncorrect == 0, fmt.Sprintf("incorrect: %d", m.NumIncorrect)),
+		colors.Verdict(run.Counts.Errored == 0, fmt.Sprintf("errored: %d", run.Counts.Errored)),
+		mean, training.MaxScore, m.JudgeCostUSD)
 	if failed > 0 {
 		os.Exit(1)
 	}
@@ -244,11 +251,12 @@ func trainingNames(evals []training.Eval) []string {
 
 // printEvals prints the evals with their cases, as a table.
 func printEvals(w *os.File, evals []training.Eval) {
+	colors := ansi.New(w)
 	for _, e := range evals {
 		var names []string
 		for _, c := range e.Cases {
 			names = append(names, c.Name)
 		}
-		fmt.Fprintf(w, "  %s  %d cases  %s\n", e.Name, len(names), strings.Join(names, ", "))
+		fmt.Fprintf(w, "  %s  %d cases  %s\n", colors.Yellow(e.Name), len(names), strings.Join(names, ", "))
 	}
 }
