@@ -1,7 +1,7 @@
 # gligabao
 <img width="800" height="447" alt="image" src="https://github.com/user-attachments/assets/a4cf6b9f-2bdb-4c16-8ed4-558eca33e4a7" />
 
-Minimal memory system for AI.
+Minimal Knowledge engine for AI.
 
 gligabao is a small, self-hosted MCP/HTTP server that gives an AI application long-term memory: use it over its HTTP API, or as an [MCP](#mcp) server for Claude, Claude Code and other MCP clients. You send it free-form text, and it turns that text into a knowledge graph. Later you ask it questions in natural language and it answers from what it stored, citing the facts it used.
 
