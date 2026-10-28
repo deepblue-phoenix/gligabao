@@ -1,6 +1,6 @@
 package memory_remember
 
-// Geo for Remember (see package internal/geo). It is a stage that runs when the call has a geo resolver
+// Geo for Remember (see package internal/memory/memory_geo). It is a stage that runs when the call has a geo resolver
 // (memory_core.WithGeoResolver), right after the text (or every chunk of a long text) has been stored and before the web
 // search:
 //
@@ -29,8 +29,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
-	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -47,7 +47,7 @@ const (
 )
 
 // notGeoTypes are the entity types that are never a place, so that the LLM is not asked about them.
-var notGeoTypes = geo.NotPlaceTypes
+var notGeoTypes = memory_geo.NotPlaceTypes
 
 const detectGeoSystemPrompt = `You decide which entities of a knowledge base are geographic places, so that their coordinates can be looked up.
 
@@ -152,9 +152,9 @@ func parseGeoPlaces(text string, cands []*keyEntity) ([]geoPlace, error) {
 			continue // the LLM named something that was not offered
 		}
 		seen[p.Entity] = true
-		kind := geo.NormKind(p.Kind)
+		kind := memory_geo.NormKind(p.Kind)
 		if kind == "" {
-			kind = geo.KindPlace
+			kind = memory_geo.KindPlace
 		}
 		q := strings.Join(strings.Fields(p.Query), " ")
 		if q == "" {
@@ -261,10 +261,10 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 		r := GeoResult{Entity: p.Entity.Name, EntityType: p.Entity.Type, EntityID: p.ID, Kind: p.Kind, Query: p.Query}
 		args := map[string]any{"entity": p.Entity.Name, "type": p.Entity.Type, "kind": p.Kind, "query": p.Query, "resolver": resolver.Name()}
 		started := time.Now()
-		place, err := callGeoResolver(ctx, resolver, geo.Query{Text: p.Query, Kind: p.Kind})
+		place, err := callGeoResolver(ctx, resolver, memory_geo.Query{Text: p.Query, Kind: p.Kind})
 		timing := memory_core.ToolTiming{Provider: resolver.Name(), Started: started, Latency: time.Since(started)}
 		switch {
-		case errors.Is(err, geo.ErrNotFound):
+		case errors.Is(err, memory_geo.ErrNotFound):
 			log.WithFields(fields).WithField("entity", p.Entity.Name).Info("remember: the geo resolver does not know the place")
 			j.tr.TimedTool("The geo resolver does not know the place.", "resolve_geo", args, map[string]any{"found": false}, timing)
 			j.run.Output(StageResolveGeo, "resolve_geo", p.Entity.Name, map[string]any{"request": args, "found": false})
@@ -328,7 +328,7 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 }
 
 // callGeoResolver runs the resolver with a timeout; a panic in it (the code of the embedding program) is an error, not a crash.
-func callGeoResolver(ctx context.Context, r geo.Resolver, q geo.Query) (p *geo.Place, err error) {
+func callGeoResolver(ctx context.Context, r memory_geo.Resolver, q memory_geo.Query) (p *memory_geo.Place, err error) {
 	ctx, cancel := context.WithTimeout(ctx, geoResolveTimeout)
 	defer cancel()
 	defer func() {

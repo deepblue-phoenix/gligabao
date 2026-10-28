@@ -17,9 +17,9 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/knowledge"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
-	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 )
 
 // testEvalsDir is the directory of the evals of the repository (relative to this package).
@@ -253,9 +253,9 @@ func TestRunsAreIsolatedAndKept(t *testing.T) {
 // TestExpectGeo runs a case with expect_geo against an executor with a geo resolver: the places the LLM finds are stored with the
 // resolver's coordinates, and the check passes or fails on them. Without a resolver the case errors.
 func TestExpectGeo(t *testing.T) {
-	paris := func(lat, lon float64) geo.Resolver {
-		return geo.Func{ResolverName: "fake", Fn: func(_ context.Context, q geo.Query) (*geo.Place, error) {
-			return &geo.Place{Latitude: lat, Longitude: lon, Kind: geo.KindCity, DisplayName: "Paris, France", Country: "France", CountryCode: "fr", Provider: "fake"}, nil
+	paris := func(lat, lon float64) memory_geo.Resolver {
+		return memory_geo.Func{ResolverName: "fake", Fn: func(_ context.Context, q memory_geo.Query) (*memory_geo.Place, error) {
+			return &memory_geo.Place{Latitude: lat, Longitude: lon, Kind: memory_geo.KindCity, DisplayName: "Paris, France", Country: "France", CountryCode: "fr", Provider: "fake"}, nil
 		}}
 	}
 	f := func(v float64) *float64 { return &v }
@@ -264,7 +264,7 @@ func TestExpectGeo(t *testing.T) {
 		{Entity: "paris", Kind: "city", CountryCode: "FR", Latitude: f(48.86), Longitude: f(2.35), RadiusKm: 30},
 		{Entity: "Alice"}, // a person: not stored as a place
 	}
-	run := func(r geo.Resolver) (*core.EvalRun, *env) {
+	run := func(r memory_geo.Resolver) (*core.EvalRun, *env) {
 		e := newEnv(t, "Paris.")
 		e.x.LLM, e.x.Geo = &geoLLM{scriptedLLM{answer: "Paris."}}, r
 		run, _ := e.run(knowledge.Eval{Name: "g", Cases: []core.KnowledgeCase{c}})

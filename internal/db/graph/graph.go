@@ -18,7 +18,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph/model"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph/postgres"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph/sqlite"
-	"github.com/deepblue-phoenix/gligabao/internal/geo"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 )
 
@@ -265,7 +265,7 @@ func ListSeriesAnchors(ctx context.Context, d *sql.DB, seriesID int64) ([]Series
 }
 
 //---------------------------------------------------------------------------------------------
-// Geo metadata of entities (writes go through Tx.UpsertEntityGeo; see package internal/geo)
+// Geo metadata of entities (writes go through Tx.UpsertEntityGeo; see package internal/memory/memory_geo)
 
 // EnableGeoIndex creates the geo index of the geo entities (gb_entity_geo): the R*Tree of SQLite, the PostGIS column and GiST index
 // of PostgreSQL. It is not part of Open: only a server with geo on calls it (see db.Config.Geo). The result says whether the index
@@ -336,7 +336,7 @@ func NearbyEntityGeo(ctx context.Context, d *sql.DB, dsID int64, lat, lon, radiu
 		if skip[c.EntityID] {
 			continue
 		}
-		if dist := geo.DistanceKm(lat, lon, c.Latitude, c.Longitude); dist <= radiusKm {
+		if dist := memory_geo.DistanceKm(lat, lon, c.Latitude, c.Longitude); dist <= radiusKm {
 			out = append(out, NearbyGeo{EntityGeo: c, DistanceKm: dist})
 		}
 	}

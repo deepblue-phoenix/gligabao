@@ -9,14 +9,14 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/ontologies"
 	"github.com/deepblue-phoenix/gligabao/internal/api/query"
 	"github.com/deepblue-phoenix/gligabao/internal/api/remember"
+	"github.com/deepblue-phoenix/gligabao/internal/api/timeseries"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
-	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_image"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
-	"github.com/deepblue-phoenix/gligabao/internal/timeseries"
 )
 
 // Register mounts the API routes on mux. mgr is the remember manager, the one goroutine that runs the remember pipeline (shared with
@@ -65,7 +65,7 @@ func RegisterMCP(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm
 type options struct {
 	ontologyDirs []string
 	auth         httputil.Authenticator
-	geo          geo.Resolver
+	geo          memory_geo.Resolver
 	geoRadiusKm  float64
 }
 
@@ -78,9 +78,9 @@ type Option func(*options)
 func WithAuth(auth httputil.Authenticator) Option { return func(o *options) { o.auth = auth } }
 
 // WithGeoResolver makes remember (Register and RegisterEval) find the places among the entities it extracts and store their
-// coordinates (see package geo and memory_remember's resolve_geo stage), and query find the places the question mentions and give the
+// coordinates (see package memory_geo and memory_remember's resolve_geo stage), and query find the places the question mentions and give the
 // geo entities near them to the LLM that answers. Without it (or with nil) neither looks at places.
-func WithGeoResolver(r geo.Resolver) Option { return func(o *options) { o.geo = r } }
+func WithGeoResolver(r memory_geo.Resolver) Option { return func(o *options) { o.geo = r } }
 
 // WithGeoRadius sets the default radius, in kilometers, of the proximity search of query (a request can override it with
 // geo_radius_km); 0 (the default) means memory_core.DefaultGeoRadiusKm.

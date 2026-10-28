@@ -1,4 +1,4 @@
-package geo
+package memory_geo
 
 import (
 	"context"

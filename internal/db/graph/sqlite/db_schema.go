@@ -266,7 +266,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_series_anchors_entity ON gb_series_anch
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_series_anchors_edge ON gb_series_anchors(series_id, edge_id) WHERE edge_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_gb_series_dataset ON gb_series(dataset_id);
 
--- The geo metadata of the entities that are places (see internal/geo): ONE ROW PER GEO ENTITY, keyed by the entity's ID, so
+-- The geo metadata of the entities that are places (see internal/memory/memory_geo): ONE ROW PER GEO ENTITY, keyed by the entity's ID, so
 -- an entity has at most one row and deleting the entity deletes it. Remember fills it after the entities of a text are
 -- stored: an LLM decides which are places, and a geo resolver gives their coordinates. Entities that are not places, and
 -- places the resolver could not find, have no row.

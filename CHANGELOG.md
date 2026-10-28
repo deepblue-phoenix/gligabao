@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.123.1] - 2026-10-29
+
+### Changed
+- The geo resolvers package moved from `internal/geo` to `internal/memory/memory_geo` (package name `memory_geo`). No change in behaviour or API.
+- The timeseries endpoints package moved back from `internal/timeseries` to `internal/api/timeseries`, next to the other endpoint packages. No change in behaviour or API.
+
 ## [0.123.0] - 2026-10-29
 
 ### Added

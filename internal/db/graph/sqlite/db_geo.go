@@ -9,7 +9,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph/model"
 	rsqlite "github.com/deepblue-phoenix/gligabao/internal/db/relational/sqlite"
-	"github.com/deepblue-phoenix/gligabao/internal/geo"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 )
 
 // The geo metadata of entities (gb_entity_geo, see db_schema.go).
@@ -152,7 +152,7 @@ const geoBoxMargin = 1e-3
 // superset of those within the radius: the caller refines with the distance), with their entity's name and type. It asks the
 // R*Tree when the geo index exists (EnableGeoIndex), else the index on (latitude, longitude).
 func EntityGeoWithin(ctx context.Context, d *sql.DB, dsID int64, lat, lon, radiusKm float64) ([]model.EntityGeo, error) {
-	box := geo.BoundingBox(lat, lon, radiusKm)
+	box := memory_geo.BoundingBox(lat, lon, radiusKm)
 	var has int
 	err := d.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'gb_entity_geo_rtree'`).Scan(&has)
 	if err != nil {

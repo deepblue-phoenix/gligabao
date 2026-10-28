@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph/model"
-	"github.com/deepblue-phoenix/gligabao/internal/geo"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 )
 
 // The geo metadata of entities (gb_entity_geo, see sqlite/db_schema.go).
@@ -162,7 +162,7 @@ func EntityGeoWithin(ctx context.Context, d *sql.DB, dsID int64, lat, lon, radiu
 		where = fmt.Sprintf(`%[1]s.ST_DWithin(g.geo, %[1]s.ST_SetSRID(%[1]s.ST_MakePoint($2, $3), 4326)::%[1]s.geography, $4)`, ns.String)
 		args = append(args, lon, lat, radiusKm*1000)
 	} else {
-		box := geo.BoundingBox(lat, lon, radiusKm)
+		box := memory_geo.BoundingBox(lat, lon, radiusKm)
 		args = append(args, box.MinLat-geoBoxMargin, box.MaxLat+geoBoxMargin)
 		var lonConds []string
 		for _, r := range box.Lon {

@@ -5,7 +5,7 @@
 // A Resolver is the one thing a geo source has to implement; Nominatim (OpenStreetMap) is the default one, Cached wraps
 // any resolver with a cache, and an embedding program can register its own (gligabao.ServeOptions.GeoResolver). The package
 // depends on nothing else of gligabao.
-package geo
+package memory_geo
 
 import (
 	"context"

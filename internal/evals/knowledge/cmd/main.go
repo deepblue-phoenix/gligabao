@@ -37,8 +37,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/evals/evalfile"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/knowledge"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
-	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 )
 
@@ -159,9 +159,9 @@ func mainErr() error {
 		}
 	}
 
-	var geoResolver geo.Resolver
+	var geoResolver memory_geo.Resolver
 	if *geoFlag {
-		geoResolver = geo.Default()
+		geoResolver = memory_geo.Default()
 	}
 	colors := ansi.New(os.Stdout)
 	x := &knowledge.Executor{

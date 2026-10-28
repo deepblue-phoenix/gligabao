@@ -14,8 +14,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
-	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
 
@@ -29,12 +29,12 @@ const geoLLM = `{"entities":[
 // stubResolver answers from a table and counts what it was asked.
 type stubResolver struct {
 	mu    sync.Mutex
-	asked []geo.Query
+	asked []memory_geo.Query
 	fail  bool
 }
 
 func (s *stubResolver) Name() string { return "stub" }
-func (s *stubResolver) Resolve(_ context.Context, q geo.Query) (*geo.Place, error) {
+func (s *stubResolver) Resolve(_ context.Context, q memory_geo.Query) (*memory_geo.Place, error) {
 	s.mu.Lock()
 	s.asked = append(s.asked, q)
 	s.mu.Unlock()
@@ -43,10 +43,10 @@ func (s *stubResolver) Resolve(_ context.Context, q geo.Query) (*geo.Place, erro
 	}
 	switch q.Text {
 	case "Paris, France":
-		return &geo.Place{Latitude: 48.8566, Longitude: 2.3522, DisplayName: "Paris, Île-de-France, France", Country: "France", CountryCode: "fr",
+		return &memory_geo.Place{Latitude: 48.8566, Longitude: 2.3522, DisplayName: "Paris, Île-de-France, France", Country: "France", CountryCode: "fr",
 			Region: "Île-de-France", Type: "city", BBox: &[4]float64{48.8, 2.2, 48.9, 2.5}, Importance: 0.9, Provider: "stub", Ref: "relation/7444"}, nil
 	}
-	return nil, geo.ErrNotFound
+	return nil, memory_geo.ErrNotFound
 }
 
 func TestRememberGeo(t *testing.T) { dbtest.Run(t, testRememberGeo) }

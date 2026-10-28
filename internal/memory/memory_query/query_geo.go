@@ -1,6 +1,6 @@
 package memory_query
 
-// Geo for Query (see package internal/geo): finds the places a question mentions ("Where does Alice live in Paris?" mentions
+// Geo for Query (see package internal/memory/memory_geo): finds the places a question mentions ("Where does Alice live in Paris?" mentions
 // Paris). It runs when the call has a geo resolver (memory_core.WithGeoResolver, the same switch as for Remember), with one LLM
 // call of its own (the detect_geo stage, which takes a model like the other stages: see memory_core.QueryStages).
 //
@@ -16,8 +16,8 @@ import (
 	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 )
 
 const (
@@ -81,9 +81,9 @@ func parseQueryPlaces(out, question string) ([]QueryPlace, error) {
 			continue
 		}
 		seen[key] = true
-		kind := geo.NormKind(p.Kind)
+		kind := memory_geo.NormKind(p.Kind)
 		if kind == "" {
-			kind = geo.KindPlace
+			kind = memory_geo.KindPlace
 		}
 		query := strings.Join(strings.Fields(p.Query), " ")
 		if query == "" || len(query) > maxQueryPlaceLen {

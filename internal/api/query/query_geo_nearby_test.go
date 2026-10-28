@@ -14,8 +14,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
-	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 )
 
 // mapResolver knows a few places by the query it is asked for, and records the queries.
@@ -26,15 +26,15 @@ type mapResolver struct {
 }
 
 func (m *mapResolver) Name() string { return "map" }
-func (m *mapResolver) Resolve(_ context.Context, q geo.Query) (*geo.Place, error) {
+func (m *mapResolver) Resolve(_ context.Context, q memory_geo.Query) (*memory_geo.Place, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.asked = append(m.asked, q.Text)
 	c, ok := m.places[q.Text]
 	if !ok {
-		return nil, geo.ErrNotFound
+		return nil, memory_geo.ErrNotFound
 	}
-	return &geo.Place{Latitude: c[0], Longitude: c[1], DisplayName: q.Text, Provider: "map"}, nil
+	return &memory_geo.Place{Latitude: c[0], Longitude: c[1], DisplayName: q.Text, Provider: "map"}, nil
 }
 
 // TestQueryGeoNearby checks the proximity step of query: it is off unless the request asks (geo_nearby, geo_radius_km); then the geo

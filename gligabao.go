@@ -17,8 +17,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
-	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
@@ -75,16 +75,16 @@ type SystemEvent = monitoring.Event
 
 // GeoResolver turns the name of a place into its coordinates (see ServeOptions.GeoResolver). Resolve returns the best place for the
 // query, or GeoNotFound if it knows none; any other error means the resolver failed.
-type GeoResolver = geo.Resolver
+type GeoResolver = memory_geo.Resolver
 
 // GeoQuery is what a GeoResolver is asked for, and GeoPlace what it answers.
 type (
-	GeoQuery = geo.Query
-	GeoPlace = geo.Place
+	GeoQuery = memory_geo.Query
+	GeoPlace = memory_geo.Place
 )
 
 // GeoNotFound is the error of a GeoResolver that knows no place for the query.
-var GeoNotFound = geo.ErrNotFound
+var GeoNotFound = memory_geo.ErrNotFound
 
 // TimeseriesProvider is a source of timeseries that remember can fetch from (see ServeOptions.TimeseriesProviders and
 // docs/timeseries.md). Description says in natural language when the provider applies, so an LLM can decide which

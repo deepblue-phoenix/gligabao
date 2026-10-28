@@ -1,7 +1,7 @@
 # Geo
 
 Some entities are places: a city, a country, a region, a landmark. `remember` finds them and stores their coordinates, so the
-graph knows where things are. The code is the package `internal/geo` (the resolvers) and `memory_remember/remember_geo.go` (the
+graph knows where things are. The code is the package `internal/memory/memory_geo` (the resolvers) and `memory_remember/remember_geo.go` (the
 stage of the pipeline); the data is the table `gb_entity_geo`.
 
 `query` uses it too, with the same switch: when the request asks for it, it finds the geo entities near the places of a question and gives them to the LLM that answers, within a radius you can set, and stores the places of the question it resolves (see [In `query`](#in-query)).
@@ -151,10 +151,10 @@ Go: `graph.GetEntityGeo`, `graph.ListEntityGeo`, and `Tx.UpsertEntityGeo` / `Tx.
 ```go
 type Resolver interface {
 	Name() string
-	Resolve(ctx context.Context, q geo.Query) (*geo.Place, error) // geo.ErrNotFound if it knows no such place
+	Resolve(ctx context.Context, q memory_geo.Query) (*memory_geo.Place, error) // memory_geo.ErrNotFound if it knows no such place
 }
 ```
 
-`geo.Cached(r)` adds a cache, `geo.NewNominatim(geo.NominatimOptions{BaseURL: ..., MinInterval: -1})` points at your own Nominatim
-instance, and `geo.Func` adapts a function. A resolver must be safe for concurrent use and return coordinates in range
+`memory_geo.Cached(r)` adds a cache, `memory_geo.NewNominatim(memory_geo.NominatimOptions{BaseURL: ..., MinInterval: -1})` points at your own Nominatim
+instance, and `memory_geo.Func` adapts a function. A resolver must be safe for concurrent use and return coordinates in range
 (`Place.Validate`), or the answer is treated as a failure.

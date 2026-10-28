@@ -30,8 +30,8 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
-	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -91,7 +91,7 @@ func geoRadius(co memory_core.CallOptions) (float64, error) {
 // findAnchors returns the places to center the search on, at most maxGeoAnchors: first the matched entities with coordinates,
 // then the places of the question: those the dataset has as an entity with coordinates, and for the others the resolver is asked
 // and what it finds is stored (storePlace). Errors only shorten the list.
-func findAnchors(ctx context.Context, d *sql.DB, dsID int64, r geo.Resolver, matched []int64, names map[int64]string, places []QueryPlace) (anchors []GeoAnchor, errs []string) {
+func findAnchors(ctx context.Context, d *sql.DB, dsID int64, r memory_geo.Resolver, matched []int64, names map[int64]string, places []QueryPlace) (anchors []GeoAnchor, errs []string) {
 	known := map[string]bool{}
 	for _, id := range matched {
 		if len(anchors) == maxGeoAnchors {
@@ -125,12 +125,12 @@ func findAnchors(ctx context.Context, d *sql.DB, dsID int64, r geo.Resolver, mat
 			continue
 		}
 		rctx, cancel := context.WithTimeout(ctx, geoResolveTimeout)
-		pl, err := r.Resolve(rctx, geo.Query{Text: p.Query, Kind: p.Kind})
+		pl, err := r.Resolve(rctx, memory_geo.Query{Text: p.Query, Kind: p.Kind})
 		cancel()
 		if err == nil {
 			err = pl.Validate()
 		}
-		if errors.Is(err, geo.ErrNotFound) {
+		if errors.Is(err, memory_geo.ErrNotFound) {
 			continue
 		}
 		if err != nil {
@@ -163,7 +163,7 @@ func storedPlace(ctx context.Context, d *sql.DB, dsID int64, text string) (int64
 	if err != nil {
 		return 0, nil, err
 	}
-	if e, err := tx.GetEntity(ctx, dsID, id); err != nil || geo.NotPlaceTypes[e.Type] {
+	if e, err := tx.GetEntity(ctx, dsID, id); err != nil || memory_geo.NotPlaceTypes[e.Type] {
 		return 0, nil, err // an entity of that name that is not a place ("Paris", a person)
 	}
 	g, err := tx.GetEntityGeo(ctx, id)
@@ -179,7 +179,7 @@ func storedPlace(ctx context.Context, d *sql.DB, dsID int64, text string) (int64
 // storePlace stores a place of the question that the resolver found, in one transaction: the entity named p.Text (the one of the
 // dataset if it has one of a type that can be a place, else a new entity of the type "place") and its coordinates. It returns the
 // entity's ID.
-func storePlace(ctx context.Context, d *sql.DB, dsID int64, r geo.Resolver, p QueryPlace, pl *geo.Place) (int64, error) {
+func storePlace(ctx context.Context, d *sql.DB, dsID int64, r memory_geo.Resolver, p QueryPlace, pl *memory_geo.Place) (int64, error) {
 	tx, err := graph.Begin(ctx, d)
 	if err != nil {
 		return 0, err
@@ -188,7 +188,7 @@ func storePlace(ctx context.Context, d *sql.DB, dsID int64, r geo.Resolver, p Qu
 	key := memory_core.Key(p.Text)
 	id, err := tx.FindEntityID(ctx, dsID, key)
 	if err == nil {
-		if e, gerr := tx.GetEntity(ctx, dsID, id); gerr != nil || geo.NotPlaceTypes[e.Type] {
+		if e, gerr := tx.GetEntity(ctx, dsID, id); gerr != nil || memory_geo.NotPlaceTypes[e.Type] {
 			id, err = 0, graph.ErrNotFound // an entity of that name that is not a place ("Paris", a person): a new one is made
 		}
 	}

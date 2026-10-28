@@ -13,8 +13,8 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
-	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_query"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
@@ -57,8 +57,8 @@ func (f *geoStubLLM) requestOf(s string) *ai.Request {
 type noResolver struct{}
 
 func (noResolver) Name() string { return "none" }
-func (noResolver) Resolve(context.Context, geo.Query) (*geo.Place, error) {
-	return nil, geo.ErrNotFound
+func (noResolver) Resolve(context.Context, memory_geo.Query) (*memory_geo.Place, error) {
+	return nil, memory_geo.ErrNotFound
 }
 
 func TestQueryGeo(t *testing.T) { dbtest.Run(t, testQueryGeo) }

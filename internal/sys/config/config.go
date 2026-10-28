@@ -14,7 +14,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/deepblue-phoenix/gligabao/internal/chunk"
-	"github.com/deepblue-phoenix/gligabao/internal/geo"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 )
 
 // FileName is the default config file name.
@@ -225,8 +225,8 @@ func (c *Config) Validate() error {
 	if c.EmbeddingDimensions < 1 {
 		return fmt.Errorf("config: embedding_dimensions %d must be positive", c.EmbeddingDimensions)
 	}
-	if c.GeoRadiusKm != 0 && (math.IsNaN(c.GeoRadiusKm) || c.GeoRadiusKm < 0 || c.GeoRadiusKm > geo.MaxDistanceKm) {
-		return fmt.Errorf("config: geo_radius_km %v must be greater than 0 and at most %v", c.GeoRadiusKm, geo.MaxDistanceKm)
+	if c.GeoRadiusKm != 0 && (math.IsNaN(c.GeoRadiusKm) || c.GeoRadiusKm < 0 || c.GeoRadiusKm > memory_geo.MaxDistanceKm) {
+		return fmt.Errorf("config: geo_radius_km %v must be greater than 0 and at most %v", c.GeoRadiusKm, memory_geo.MaxDistanceKm)
 	}
 	if err := c.Chunking().Validate(); err != nil {
 		return fmt.Errorf("config: chunk_size / chunk_overlap_percent: %w", err)

@@ -4,7 +4,7 @@ gligabao can store **timeseries** (a value over time, such as a price) and **anc
 
 A series is supplied by the caller, in a `remember` request or with the standalone endpoint, or **fetched** by gligabao from a [provider](#providers) that the program embedding it registered. A series can also be turned into text that goes through the normal extraction, so it yields facts in the graph: the [`series_observation` artifact](#observations). Embedding series and using them in `query` are not implemented yet: see [timeseries-design.md](timeseries-design.md) for the plan.
 
-Code: `internal/memory/memory_core/series.go` (the request types and their validation), `internal/memory/memory_timeseries/` (storing, anchoring, stats), `internal/memory/memory_remember/remember_series.go`, `remember_seriesfetch.go` and `remember_observations.go` (the parts in `remember`), `internal/memory/memory_timeseries/observation.go` (the text of an observation), `internal/timeseries/` (the endpoints), `internal/db/graph/{sqlite,postgres}/db_series.go` (SQL).
+Code: `internal/memory/memory_core/series.go` (the request types and their validation), `internal/memory/memory_timeseries/` (storing, anchoring, stats), `internal/memory/memory_remember/remember_series.go`, `remember_seriesfetch.go` and `remember_observations.go` (the parts in `remember`), `internal/memory/memory_timeseries/observation.go` (the text of an observation), `internal/api/timeseries/` (the endpoints), `internal/db/graph/{sqlite,postgres}/db_series.go` (SQL).
 
 ## A series
 

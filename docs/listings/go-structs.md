@@ -91,9 +91,9 @@
 | `internal/api/remember.fetchRequest`                      | is the timeseries fetch part of a remember request.                                                                    |
 | `internal/api/remember.rememberRequest`                   | is the request body for a remember call.                                                                               |
 | `internal/api/remember.timeseriesRequest`                 | is the timeseries part of a remember request.                                                                          |
-| `internal/timeseries.anchorView`                      | is the API view of a series anchor.                                                                                    |
-| `internal/timeseries.attachRequest`                   | is the request body for attaching a series to a dataset.                                                               |
-| `internal/timeseries.seriesView`                      | is the API view of a series and its point count.                                                                       |
+| `internal/api/timeseries.anchorView`                      | is the API view of a series anchor.                                                                                    |
+| `internal/api/timeseries.attachRequest`                   | is the request body for attaching a series to a dataset.                                                               |
+| `internal/api/timeseries.seriesView`                      | is the API view of a series and its point count.                                                                       |
 | `internal/api/training.EvalManager`                       | starts trained-model evals in the background, one at a time per model.                                                 |
 | `internal/api/training.runManager`                        | provides the shared endpoints for the runs of one kind (an eval).                                                |
 
@@ -184,14 +184,14 @@
 
 | Struct                                                    | Description                                                                                                            |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `internal/geo.Func`                                       | adapts a function to a Resolver.                                                                                       |
-| `internal/geo.NominatimOptions`                           | configures the Nominatim resolver.                                                                                     |
-| `internal/geo.Place`                                      | is a place a Resolver found.                                                                                           |
-| `internal/geo.Query`                                      | is what a Resolver is asked for.                                                                                       |
-| `internal/geo.cacheEntry`                                 | is a cached answer of a Resolver.                                                                                      |
-| `internal/geo.cached`                                     | is a Resolver that remembers the answers of another one.                                                               |
-| `internal/geo.nominatim`                                  | is the Resolver of OpenStreetMap's Nominatim.                                                                          |
-| `internal/geo.nominatimResult`                            | is one element of Nominatim's search answer.                                                                           |
+| `internal/memory/memory_geo.Func`                         | adapts a function to a Resolver.                                                                                       |
+| `internal/memory/memory_geo.NominatimOptions`             | configures the Nominatim resolver.                                                                                     |
+| `internal/memory/memory_geo.Place`                        | is a place a Resolver found.                                                                                           |
+| `internal/memory/memory_geo.Query`                        | is what a Resolver is asked for.                                                                                       |
+| `internal/memory/memory_geo.cacheEntry`                   | is a cached answer of a Resolver.                                                                                      |
+| `internal/memory/memory_geo.cached`                       | is a Resolver that remembers the answers of another one.                                                               |
+| `internal/memory/memory_geo.nominatim`                    | is the Resolver of OpenStreetMap's Nominatim.                                                                          |
+| `internal/memory/memory_geo.nominatimResult`              | is one element of Nominatim's search answer.                                                                           |
 
 >>> MEMORY
 

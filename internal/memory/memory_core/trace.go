@@ -12,7 +12,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
-	"github.com/deepblue-phoenix/gligabao/internal/geo"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/jev"
 
 	log "github.com/sirupsen/logrus"
@@ -91,7 +91,7 @@ type CallOptions struct {
 
 	// GeoResolver is what finds the coordinates of the entities that are places, set by WithGeoResolver; nil (the default)
 	// means Remember does not look at places at all, and Query does not look for the places a question mentions.
-	GeoResolver geo.Resolver
+	GeoResolver memory_geo.Resolver
 	// GeoNearby turns the proximity search of Query on, set by WithGeoNearby; false (the default) leaves it off.
 	GeoNearby bool
 	// GeoRadiusKm is the radius of the proximity search of Query, set by WithGeoRadius; 0 means DefaultGeoRadiusKm.
@@ -143,11 +143,11 @@ func WithJev(c Classifier) Option { return func(o *CallOptions) { o.Jev = c } }
 
 // WithGeoResolver makes Remember find the places among the entities it extracts (an LLM decides which are a city, a
 // country, a region or any other place) and ask r for their coordinates, which are stored in gb_entity_geo (see
-// package geo). A nil r (the default) leaves it off. Like the web search it runs after the text is stored, and its
+// package memory_geo). A nil r (the default) leaves it off. Like the web search it runs after the text is stored, and its
 // failure never fails the call. It is the one switch of geo: Query also finds the places a question mentions when it is set, asks r
 // for the coordinates of those that are not entities of the dataset (and stores them), and gives the geo entities near them to the
 // LLM that answers, but only when the call asks for it (see WithGeoNearby and WithGeoRadius).
-func WithGeoResolver(r geo.Resolver) Option { return func(o *CallOptions) { o.GeoResolver = r } }
+func WithGeoResolver(r memory_geo.Resolver) Option { return func(o *CallOptions) { o.GeoResolver = r } }
 
 // WithWebSearcher makes web search available to Remember: ws runs the searches of the calls that ask for them (see
 // WithWebSearch). It does not turn web search on by itself. A nil ws (no Anthropic API key) leaves it unavailable.

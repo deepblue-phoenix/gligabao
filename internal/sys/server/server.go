@@ -30,8 +30,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
 	evalstraining "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	evalsapi "github.com/deepblue-phoenix/gligabao/internal/evals/training/api"
-	"github.com/deepblue-phoenix/gligabao/internal/geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
@@ -121,9 +121,9 @@ type Options struct {
 	// TimeseriesProviders are the sources of timeseries that remember can fetch from (see docs/timeseries.md). Each has a
 	// natural-language description of when it applies, and a callback that does the fetching. Validated at startup.
 	TimeseriesProviders []memory_core.SeriesProvider
-	// GeoResolver finds the coordinates of the places remember extracts as entities (see package geo). Nil: the Nominatim resolver
+	// GeoResolver finds the coordinates of the places remember extracts as entities (see package memory_geo). Nil: the Nominatim resolver
 	// of OpenStreetMap if Geo is true, else remember does not look at places.
-	GeoResolver geo.Resolver
+	GeoResolver memory_geo.Resolver
 	// Geo turns the geo stage of remember on (with GeoResolver, or Nominatim if there is none); a GeoResolver turns it on by itself.
 	Geo bool
 	// GeoRadiusKm is the default radius, in kilometers, within which query looks for the geo entities near the places of a question
@@ -210,17 +210,17 @@ const EvalDBName = "eval"
 // llm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities.
 // jv may be nil, in which case remember skips the steps that run on Jev. ws may be nil, in which case web search is not available
 // (a remember request with web_search returns 503); it is the Anthropic web search tool, so it is only set with an Anthropic API key.
-// geoResolver turns geo on (remember and query find the places of a text, see package geo); nil: geo is off.
+// geoResolver turns geo on (remember and query find the places of a text, see package memory_geo); nil: geo is off.
 // providers are the registered timeseries providers (already validated; may be nil: a remember request that fetches series then returns 503). hooks are the registered hooks of the training API (already validated; the zero value has none): the trained model deployers (with none a deployment request answers 400) and the inference hooks of trained models. dirs are the directories of the training endpoints (all fields must be set when trainingMode is true; see coretraining.Dirs.WithDefaults). ontologyDirs are the directories ontology files are loaded from by name (may be nil). sc starts the training jobs (/v1/gb/training/) on the sidecar, lists its datasets and follows the jobs' progress (may be nil: the endpoints then return 503). The eval endpoints are registered only if eval is true, the training endpoints (/v1/gb/training/) only if trainingMode is true,
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary; adminExts are the registered admin UI extensions
 // (already validated; may be nil), mounted with it.
-func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, geoResolver geo.Resolver, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
+func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, geoResolver memory_geo.Resolver, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
 	return newMux(ctx, true, nil, geoResolver, 0, false, d, llm, emb, jv, ws, providers, hooks, dirs, ontologyDirs, sc, eval, trainingMode, adminUI, adminExts, extraAdminDBs...)
 }
 
 // newMux is NewHandler; standalone is false when the routes are mounted on a host's mux (see Mount), where "/", "/health" and
 // "/version" belong to the host, so they are not registered: an unknown path under /v1/gb/ is a plain 404.
-func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, geoResolver geo.Resolver, geoRadiusKm float64, mcpEnable bool, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
+func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, geoResolver memory_geo.Resolver, geoRadiusKm float64, mcpEnable bool, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	if standalone {
 		mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
@@ -620,12 +620,12 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 		log.WithField("provider", p.Name).Info("timeseries provider registered: remember can fetch series from it when asked (timeseries.fetch)")
 	}
 
-	var geoResolver geo.Resolver
+	var geoResolver memory_geo.Resolver
 	switch {
 	case opts.GeoResolver != nil:
 		geoResolver = opts.GeoResolver
 	case opts.Geo:
-		geoResolver = geo.Default()
+		geoResolver = memory_geo.Default()
 	}
 	if geoResolver != nil {
 		log.WithField("resolver", geoResolver.Name()).Info("geo is active: remember finds the places among the entities of a text and stores their coordinates")

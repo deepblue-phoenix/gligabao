@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-// The geo metadata of entities (see package internal/geo): an entity that is a place (a city, a country, a region, a
+// The geo metadata of entities (see package internal/memory/memory_geo): an entity that is a place (a city, a country, a region, a
 // landmark, ...) has the coordinates the geo resolver found for it. They are kept apart from gb_entities, in
 // gb_entity_geo: one row per geo entity, keyed by the entity's ID.
 

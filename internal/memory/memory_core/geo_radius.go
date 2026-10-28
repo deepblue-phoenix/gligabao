@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/deepblue-phoenix/gligabao/internal/geo"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 )
 
@@ -14,7 +14,7 @@ const (
 	// question when nothing else is set (config geo_radius_km, the geo_radius_km of the request).
 	DefaultGeoRadiusKm = config.DefaultGeoRadiusKm
 	// MaxGeoRadiusKm is the largest radius that can be set: half the circumference of the Earth (which finds every place).
-	MaxGeoRadiusKm = geo.MaxDistanceKm
+	MaxGeoRadiusKm = memory_geo.MaxDistanceKm
 )
 
 // ErrInvalidGeoRadius means a geo radius is not a number between 0 (exclusive) and MaxGeoRadiusKm.
