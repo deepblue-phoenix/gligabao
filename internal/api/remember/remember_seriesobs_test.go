@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
@@ -172,7 +172,7 @@ func testRememberSeriesObservationsLongText(t *testing.T, d *sql.DB) {
 		return &ai.Response{Text: out, StopReason: "end_turn", Model: "fake-model"}, nil
 	})
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm, memory_core.WithChunking(chunk.Config{Size: 40, OverlapPercent: 20})))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm, memory_core.WithChunking(memory_chunk.Config{Size: 40, OverlapPercent: 20})))
 	var paras []string
 	for i := 0; i < 8; i++ {
 		paras = append(paras, "Apple walked along the river and talked about the weather and its plans for the summer holidays.")

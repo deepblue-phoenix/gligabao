@@ -13,7 +13,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/deepblue-phoenix/gligabao/internal/chunk"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 )
 
@@ -178,8 +178,8 @@ func Default() *Config {
 		DBBackend:           DBBackendSQLite,
 		VectorStore:         VectorStoreChromem,
 		EmbeddingDimensions: DefaultEmbeddingDimensions,
-		ChunkSize:           chunk.DefaultSize,
-		ChunkOverlapPercent: chunk.DefaultOverlapPercent,
+		ChunkSize:           memory_chunk.DefaultSize,
+		ChunkOverlapPercent: memory_chunk.DefaultOverlapPercent,
 		GeoRadiusKm:         DefaultGeoRadiusKm,
 		PostgresDSN:         os.Getenv(EnvPostgresDSN),
 		AnthropicKey:        os.Getenv(EnvAnthropicKey),
@@ -194,8 +194,8 @@ func Default() *Config {
 }
 
 // Chunking returns the chunking settings (chunk_size, chunk_overlap_percent).
-func (c *Config) Chunking() chunk.Config {
-	return chunk.Config{Size: c.ChunkSize, OverlapPercent: c.ChunkOverlapPercent}
+func (c *Config) Chunking() memory_chunk.Config {
+	return memory_chunk.Config{Size: c.ChunkSize, OverlapPercent: c.ChunkOverlapPercent}
 }
 
 // Addr returns the HTTP listen address derived from the port (e.g. ":7878").

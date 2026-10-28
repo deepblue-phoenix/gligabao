@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
@@ -281,7 +281,7 @@ func TestRememberWebSearchChunks(t *testing.T) { dbtest.Run(t, testRememberWebSe
 func testRememberWebSearchChunks(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	h := testHandler(t, d, webLLM{`{"entities":[{"name":"Alice","type":"person"},{"name":"Acme","type":"organization"}],"edges":[{"source":"Alice","target":"Acme","relation":"works_at"}]}`},
-		memory_core.WithWebSearcher(&fakeSearcher{}), memory_core.WithChunking(chunk.Config{Size: 40, OverlapPercent: 20}))
+		memory_core.WithWebSearcher(&fakeSearcher{}), memory_core.WithChunking(memory_chunk.Config{Size: 40, OverlapPercent: 20}))
 	var paras []string
 	for i := 0; i < 8; i++ {
 		paras = append(paras, "Alice walked along the river and talked about the weather and her plans for the summer holidays.")

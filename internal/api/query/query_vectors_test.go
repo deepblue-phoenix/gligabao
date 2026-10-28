@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_query"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
@@ -136,7 +136,7 @@ func testQueryPassages(t *testing.T, d *sql.DB) {
 		ps = append(ps, fmt.Sprintf("Person%d works at Acme and enjoys long walks in the park on weekends.", i))
 	}
 	res, err := memory_remember.Remember(ctx, d, llm, "u1", "", "", strings.Join(ps, "\n\n"), time.Time{}, vec,
-		memory_core.WithChunking(chunk.Config{Size: 64, OverlapPercent: 40}))
+		memory_core.WithChunking(memory_chunk.Config{Size: 64, OverlapPercent: 40}))
 	if err != nil {
 		t.Fatal(err)
 	}

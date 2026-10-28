@@ -2,7 +2,7 @@
 
 A text that is larger than one chunk is a document: `POST /v1/gb/remember` does not extract it in one piece, it cuts it into overlapping chunks and processes each chunk on its own. This page describes how the text is cut, what is stored, and how it is embedded. The request and response are in [remember.md](remember.md). Each chunk is also [summarized](#chunk-summaries), and the summary is stored and embedded as an artifact of its own.
 
-Code: `internal/chunk` (the chunker), `internal/memory/memory_remember/remember_chunks.go` (the pipeline).
+Code: `internal/memory/memory_chunk` (the chunker), `internal/memory/memory_remember/remember_chunks.go` (the pipeline).
 
 ## When a text is chunked
 
@@ -13,13 +13,13 @@ Code: `internal/chunk` (the chunker), `internal/memory/memory_remember/remember_
 | `chunk_size` | `1024` | The largest chunk **in tokens**, overlap included; also the threshold above. Between 32 and 8000 (every chunk is embedded as a whole, and the OpenAI embedding models take at most 8191 tokens). |
 | `chunk_overlap_percent` | `20` | How much of a chunk repeats the end of the previous one, as a percentage of `chunk_size`. `0` turns the overlap off; at most `50`. |
 
-Out-of-range values fail config validation at startup. In Go the same settings are `memory_core.WithChunking(chunk.Config{Size, OverlapPercent, Tokenizer})` per call, and `gligabao.Config.ChunkSize` / `ChunkOverlapPercent` for the server.
+Out-of-range values fail config validation at startup. In Go the same settings are `memory_core.WithChunking(memory_chunk.Config{Size, OverlapPercent, Tokenizer})` per call, and `gligabao.Config.ChunkSize` / `ChunkOverlapPercent` for the server.
 
 ## Token-based sizing
 
-Sizes are token counts, not characters. gligabao has no tokenizer vocabulary, so the default `chunk.Estimator` estimates the tokens of a BPE tokenizer (such as the one of the `text-embedding-3` models) with a few rules: a run of ASCII letters costs 1 token per 4 letters, a run of digits 1 per 3, a CJK character 1, any other symbol 1, whitespace nothing. It is on purpose a little conservative (on English prose it over-counts by 10-20%), so a chunk sized by it stays below the real limit of the embedding model. To size chunks by a model's exact tokens, implement `chunk.Tokenizer` (a single `Count(text) int`, roughly additive over whitespace-separated words) and set `Config.Tokenizer`; the server uses the estimator.
+Sizes are token counts, not characters. gligabao has no tokenizer vocabulary, so the default `memory_chunk.Estimator` estimates the tokens of a BPE tokenizer (such as the one of the `text-embedding-3` models) with a few rules: a run of ASCII letters costs 1 token per 4 letters, a run of digits 1 per 3, a CJK character 1, any other symbol 1, whitespace nothing. It is on purpose a little conservative (on English prose it over-counts by 10-20%), so a chunk sized by it stays below the real limit of the embedding model. To size chunks by a model's exact tokens, implement `memory_chunk.Tokenizer` (a single `Count(text) int`, roughly additive over whitespace-separated words) and set `Config.Tokenizer`; the server uses the estimator.
 
-## How the text is cut (`chunk.Split`)
+## How the text is cut (`memory_chunk.Split`)
 
 1. **Paragraphs.** The text is split on blank lines. A paragraph is the unit of meaning the chunker tries to keep whole.
 2. **Oversized paragraphs.** A paragraph that is larger than a chunk is split into sentences (after `.`, `!`, `?`, `…`, or a CJK full stop, and at line breaks, so lists split by line). A sentence that is still larger is packed word by word, and a single word that is larger (a blob of base64, say) is cut into pieces. After this step every unit fits one chunk and starts and ends at the best boundary available.

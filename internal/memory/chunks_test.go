@@ -10,12 +10,12 @@ import (
 	"testing"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_dataset"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
@@ -70,7 +70,7 @@ func testRememberChunksLongText(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := chunk.Config{Size: 64, OverlapPercent: 40} // 25 tokens: one paragraph is repeated
+	cfg := memory_chunk.Config{Size: 64, OverlapPercent: 40} // 25 tokens: one paragraph is repeated
 	text := document(12)
 	llm := &personLLM{}
 	res, err := memory_remember.Remember(ctx, d, llm, "u1", "docs", "", text, relational.Now(),
@@ -236,7 +236,7 @@ func testRememberShortTextIsNotChunked(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	vs, _ := vector.NewChromem(":memory:", 2)
 	res, err := memory_remember.Remember(ctx, d, &personLLM{}, "u1", "docs", "", document(2), relational.Now(),
-		memory.WithVectors(vs, &fakeEmbedder{}), memory_core.WithChunking(chunk.Config{Size: 512, OverlapPercent: 20}))
+		memory.WithVectors(vs, &fakeEmbedder{}), memory_core.WithChunking(memory_chunk.Config{Size: 512, OverlapPercent: 20}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +257,7 @@ func testRememberChunkExtractionFailureStoresNothing(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	llm := &personLLM{failOn: 3}
 	_, err := memory_remember.Remember(ctx, d, llm, "u1", "docs", "", document(12), relational.Now(),
-		memory_core.WithChunking(chunk.Config{Size: 64, OverlapPercent: 20}))
+		memory_core.WithChunking(memory_chunk.Config{Size: 64, OverlapPercent: 20}))
 	if err == nil || !strings.Contains(err.Error(), "chunk 2 of") {
 		t.Fatalf("err = %v", err)
 	}
@@ -272,7 +272,7 @@ func TestRememberInvalidChunking(t *testing.T) { dbtest.Run(t, testRememberInval
 
 func testRememberInvalidChunking(t *testing.T, d *sql.DB) {
 	_, err := memory_remember.Remember(context.Background(), d, &personLLM{}, "u1", "docs", "", "x", relational.Now(),
-		memory_core.WithChunking(chunk.Config{Size: 5}))
+		memory_core.WithChunking(memory_chunk.Config{Size: 5}))
 	if err == nil {
 		t.Error("want an error for a chunk size below the minimum")
 	}

@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
-	"github.com/deepblue-phoenix/gligabao/internal/chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/server"
 	"github.com/deepblue-phoenix/gligabao/internal/training"
@@ -91,7 +91,7 @@ func (x *Executor) runCase(ctx context.Context, name string, in core.KnowledgeCa
 	if in.ChunkSize != 0 {
 		// The handlers read the chunking settings from the DB they are given: use a copy with the case's size.
 		cp := *database
-		cp.Chunking = chunk.Config{Size: in.ChunkSize, OverlapPercent: chunk.DefaultOverlapPercent}
+		cp.Chunking = memory_chunk.Config{Size: in.ChunkSize, OverlapPercent: memory_chunk.DefaultOverlapPercent}
 		if err := cp.Chunking.Validate(); err != nil {
 			return out, fmt.Errorf("chunk_size: %w", err)
 		}

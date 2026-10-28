@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
@@ -182,7 +182,7 @@ func TestRememberSeriesLongText(t *testing.T) { dbtest.Run(t, testRememberSeries
 
 func testRememberSeriesLongText(t *testing.T, d *sql.DB) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, fakeLLM{seriesLLM}, memory_core.WithChunking(chunk.Config{Size: 40, OverlapPercent: 20})))
+	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, fakeLLM{seriesLLM}, memory_core.WithChunking(memory_chunk.Config{Size: 40, OverlapPercent: 20})))
 	var paras []string
 	for i := 0; i < 8; i++ {
 		paras = append(paras, "Apple walked along the river and talked about the weather and its plans for the summer holidays.")

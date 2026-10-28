@@ -101,12 +101,12 @@
 
 | Struct                                                    | Description                                                                                                            |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `internal/chunk.Chunk`                                    | is one piece of a text with its token count and offsets.                                                               |
-| `internal/chunk.Config`                                   | sets how a text is chunked (size, overlap and tokenizer).                                                              |
-| `internal/chunk.Estimator`                                | is the default pure-Go tokenizer that estimates BPE token counts.                                                      |
-| `internal/chunk.span`                                     | is a byte range of the text.                                                                                           |
-| `internal/chunk.splitter`                                 | holds the state while splitting a text into chunks.                                                                    |
-| `internal/chunk.unit`                                     | is a trimmed span of text that fits within one chunk.                                                                  |
+| `internal/memory/memory_chunk.Chunk`                      | is one piece of a text with its token count and offsets.                                                               |
+| `internal/memory/memory_chunk.Config`                     | sets how a text is chunked (size, overlap and tokenizer).                                                              |
+| `internal/memory/memory_chunk.Estimator`                  | is the default pure-Go tokenizer that estimates BPE token counts.                                                      |
+| `internal/memory/memory_chunk.span`                       | is a byte range of the text.                                                                                           |
+| `internal/memory/memory_chunk.splitter`                   | holds the state while splitting a text into chunks.                                                                    |
+| `internal/memory/memory_chunk.unit`                       | is a trimmed span of text that fits within one chunk.                                                                  |
 
 >>> DB
 

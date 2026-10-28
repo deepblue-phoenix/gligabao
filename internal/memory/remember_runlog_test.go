@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
@@ -170,7 +170,7 @@ func TestRememberRunLogOutputs(t *testing.T) { dbtest.Run(t, testRememberRunLogO
 // comparison and the storage; for a chunked text the ones of each chunk, labeled; and a failed stage files what it has.
 func testRememberRunLogOutputs(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
-	opts := []memory_core.Option{memory_core.WithChunking(chunk.Config{Size: 64, OverlapPercent: 40})}
+	opts := []memory_core.Option{memory_core.WithChunking(memory_chunk.Config{Size: 64, OverlapPercent: 40})}
 	// The second call has a candidate (Acme's fact of the first), so the facts are compared.
 	for _, text := range []string{"Person2 works at Acme.", "Person1 works at Acme."} {
 		if _, err := memory_remember.Remember(ctx, d, &personLLM{}, "u1", "work", "", text, relational.Now(), opts...); err != nil {
@@ -247,7 +247,7 @@ func TestRememberRunLogChunks(t *testing.T) { dbtest.Run(t, testRememberRunLogCh
 // A chunked text: a stage that runs for each chunk spans them and lists the inference of each.
 func testRememberRunLogChunks(t *testing.T, d *sql.DB) {
 	res, err := memory_remember.Remember(context.Background(), d, &personLLM{}, "u1", "docs", "", document(8), relational.Now(),
-		memory_core.WithChunking(chunk.Config{Size: 64, OverlapPercent: 40}))
+		memory_core.WithChunking(memory_chunk.Config{Size: 64, OverlapPercent: 40}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +297,7 @@ func testRememberRunLogFailure(t *testing.T, d *sql.DB) {
 
 	// The failure of a later stage, on the second chunk: the first is stored, the run and its stage say which failed.
 	_, err = memory_remember.Remember(context.Background(), d, &personLLM{failOn: 3}, "u1", "docs", "", document(8), relational.Now(),
-		memory_core.WithChunking(chunk.Config{Size: 64, OverlapPercent: 40}))
+		memory_core.WithChunking(memory_chunk.Config{Size: 64, OverlapPercent: 40}))
 	if err == nil {
 		t.Fatal("Remember of the document did not fail")
 	}
@@ -321,7 +321,7 @@ func testRememberRunLogSeries(t *testing.T, d *sql.DB) {
 	for i, text := range []string{"Person1 works at Acme.", document(8)} {
 		user := fmt.Sprintf("u%d", i)
 		if _, err := memory_remember.Remember(ctx, d, &personLLM{}, user, "work", "", text, relational.Now(),
-			memory_core.WithSeries(series), memory_core.WithSeriesObservations(true), memory_core.WithChunking(chunk.Config{Size: 64, OverlapPercent: 40})); err != nil {
+			memory_core.WithSeries(series), memory_core.WithSeriesObservations(true), memory_core.WithChunking(memory_chunk.Config{Size: 64, OverlapPercent: 40})); err != nil {
 			t.Fatal(err)
 		}
 		runs, _, err := relational.ListRememberRuns(ctx, d, relational.RememberRunFilter{UserID: user}, 10, 0)

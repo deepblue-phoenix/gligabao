@@ -10,8 +10,8 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
-	"github.com/deepblue-phoenix/gligabao/internal/chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/jev"
 
@@ -62,9 +62,9 @@ type CallOptions struct {
 
 	Trace *Trace // set by Remember for the Store it calls; nil otherwise
 
-	// Chunking says when and how Remember splits a long text into chunks (see package chunk): a text of more than
+	// Chunking says when and how Remember splits a long text into chunks (see package memory_chunk): a text of more than
 	// Chunking.Size tokens is. The default is chunk.DefaultConfig().
-	Chunking chunk.Config
+	Chunking memory_chunk.Config
 
 	// SessionID is the user/agent session the call belongs to ("" for none), set by WithSessionID. Remember and
 	// RememberImage attach it to what they store; Query only records it (it never changes the answer).
@@ -105,7 +105,7 @@ type CallOptions struct {
 
 // NewCallOptions applies opts on top of the defaults.
 func NewCallOptions(opts []Option) CallOptions {
-	o := CallOptions{Dir: TrajectoryDir, Chunking: chunk.DefaultConfig()}
+	o := CallOptions{Dir: TrajectoryDir, Chunking: memory_chunk.DefaultConfig()}
 	for _, f := range opts {
 		f(&o)
 	}
@@ -135,7 +135,7 @@ func WithSeries(s []SeriesSpec) Option { return func(o *CallOptions) { o.Series 
 
 // WithChunking sets the chunk size (in tokens) and overlap that Remember uses for a text larger than one chunk. See
 // chunk.Config; an invalid one makes Remember fail. The default is chunk.DefaultConfig().
-func WithChunking(c chunk.Config) Option { return func(o *CallOptions) { o.Chunking = c } }
+func WithChunking(c memory_chunk.Config) Option { return func(o *CallOptions) { o.Chunking = c } }
 
 // WithJev enables the steps of Remember that run on Jev (the complexity classification of the incoming text). A nil c
 // (Jev not configured) disables them. Jev is not a per-stage model: it is not part of Models.

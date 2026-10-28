@@ -2,7 +2,7 @@
 //
 // It is what `remember` uses on a text larger than one chunk (see docs/chunking.md). The package has no
 // dependencies on the rest of gligabao.
-package chunk
+package memory_chunk
 
 import (
 	"errors"

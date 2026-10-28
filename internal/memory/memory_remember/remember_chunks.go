@@ -1,7 +1,7 @@
 package memory_remember
 
 // Remember for a text larger than one chunk (see docs/chunking.md): the text is stored as an artifact, split into
-// overlapping chunks (package chunk) that are artifacts too, its children, and each chunk goes through the same
+// overlapping chunks (package memory_chunk) that are artifacts too, its children, and each chunk goes through the same
 // steps as a short text.
 
 import (
@@ -10,17 +10,17 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
 // chunkPart says that a text stored by store is a chunk of a longer one.
 type chunkPart struct {
-	ParentID int64       // the artifact that holds the whole text
-	Chunk    chunk.Chunk // the chunk, with its position in the text
-	Count    int         // the number of chunks of the text
+	ParentID int64              // the artifact that holds the whole text
+	Chunk    memory_chunk.Chunk // the chunk, with its position in the text
+	Count    int                // the number of chunks of the text
 	// Summary is the summary of the chunk, stored as its child in the same transaction; nil if it has none.
 	Summary *chunkSummary
 }
@@ -47,9 +47,9 @@ func (p *chunkPart) label() string {
 // ArtifactID is the parent's, Entities, Edges and InvalidatedEdges are those of the chunks together, and Chunks lists
 // them. Step 4 cannot be one transaction (a chunk's candidates are read from the database), so if it fails the chunks
 // stored so far (each of them complete) and the parent stay; the call returns an error naming the chunk.
-func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Config) (*Result, error) {
+func (j *job) rememberDocument(ctx context.Context, text string, cfg memory_chunk.Config) (*Result, error) {
 	j.run.Start(StageChunkText)
-	chunks, err := chunk.Split(text, cfg)
+	chunks, err := memory_chunk.Split(text, cfg)
 	j.run.Done(err, StageChunkText)
 	if err != nil {
 		return nil, fmt.Errorf("memory: chunk text: %w", err)
@@ -197,7 +197,7 @@ func newMerger(doc *Result) *merger {
 // add merges the Result of chunk c. Its entities are added once per (name, type). An edge stated by several chunks
 // (a repeat is merged into the stored edge, so it has one ID) appears once, in its latest stored state, since a later
 // chunk may have closed it. extracted* are what the chunk's extraction listed.
-func (m *merger) add(r *Result, c chunk.Chunk, extractedEntities, extractedEdges int) {
+func (m *merger) add(r *Result, c memory_chunk.Chunk, extractedEntities, extractedEdges int) {
 	d := m.doc
 	for _, e := range r.Entities {
 		if k := memory_core.Key(e.Name) + "\x00" + e.Type; !m.entities[k] {

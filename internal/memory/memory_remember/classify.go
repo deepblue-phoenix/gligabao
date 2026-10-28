@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/jev"
 
@@ -27,7 +27,7 @@ func (j *job) classifyComplexity(ctx context.Context, text string) {
 		return
 	}
 	j.run.Start(StageClassifyComplexity)
-	tokens := chunk.EstimateTokens(text)
+	tokens := memory_chunk.EstimateTokens(text)
 	args := map[string]any{"text_chars": len(text), "text_tokens": tokens}
 	fields := log.Fields{"stage": StageClassifyComplexity, "user_id": j.userID, "dataset": j.dataset, "text_chars": len(text), "text_tokens": tokens}
 
