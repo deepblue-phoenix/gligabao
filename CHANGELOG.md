@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.122.3] - 2026-10-29
+
+### Removed
+- Admin UI, remember runs view: the **Only this dataset** button under the stages of an opened run.
+
 ## [0.122.2] - 2026-10-29
 
 ### Changed

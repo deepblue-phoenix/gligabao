@@ -177,24 +177,16 @@ async function loadOutputs(name: string, run: Run, stage: string): Promise<Stage
   return ((await res.json()) as { outputs: StageOutput[] }).outputs;
 }
 
-function detailCell(run: Run, order: string[], p: Panel, name: string): HTMLElement {
+function detailCell(run: Run, order: string[], name: string): HTMLElement {
   const box = node("div");
   if (run.error) box.appendChild(node("p", "error", run.error));
   const props = box.appendChild(node("dl", "props"));
   const prop = (k: string, v: string): void => { props.append(node("dt", "", k), node("dd", "", v)); };
   prop("Finished", run.finished_at ? fmtTime(run.finished_at) : "—");
-  const dsBtn = node("button", "small", "Only this dataset");
-  dsBtn.type = "button";
-  dsBtn.addEventListener("click", () => {
-    p.filter.dataset = run.dataset;
-    p.offset = 0;
-    void loadDatabase(name);
-  });
   box.appendChild(stagesTable(name, run, order));
   const params = box.appendChild(node("details"));
   params.appendChild(node("summary", "", "Parameters"));
   params.appendChild(node("pre", "ts-def", JSON.stringify(run.params ?? {}, null, 2)));
-  box.appendChild(dsBtn);
   return box;
 }
 
@@ -262,7 +254,7 @@ function render(name: string, p: Panel, data: Response): void {
     const cell = detail.insertCell();
     cell.colSpan = tr.cells.length;
     tr.addEventListener("click", () => {
-      if (!cell.firstChild) cell.appendChild(detailCell(r, data.stages, p, name));
+      if (!cell.firstChild) cell.appendChild(detailCell(r, data.stages, name));
       detail.hidden = !detail.hidden;
       tr.classList.toggle("selected", !detail.hidden);
     });
