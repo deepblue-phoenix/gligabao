@@ -1,6 +1,6 @@
 // The "remember runs" view (see docs/remember.md#run-log): per database, how many runs of the remember pipeline are in
 // each status and the list of the runs, newest first. Clicking a status tile filters the list by it; clicking a run shows
-// its parameters and how each stage went (status, error, time, inferences) and a button for each stage that ran, which loads (only then) and shows what the
+// its parameters and how each stage went (status, error, time, inferences) and a button for each stage that ran, which loads (only then) and opens a modal with what the
 // stage produced (its outputs, kept for debugging: see docs/remember.md#stage-outputs).
 
 interface Stage {
@@ -85,14 +85,13 @@ function makePanel(name: string): { box: HTMLElement; panel: Panel } {
   return { box, panel: { filter: {}, offset: 0, status, stats, filterBar, table, body, pager } };
 }
 
-// The table of the stages of a run. Its last column has a button that shows what the stage produced (its outputs, kept for
+// The table of the stages of a run. Its last column has a button that opens a modal with what the stage produced (its outputs, kept for
 // debugging). They are fetched when the button is clicked, for that stage only, not before.
 function stagesTable(name: string, run: Run, order: string[]): HTMLTableElement {
   const table = node("table", "compact");
   headRow(table, [["Stage", false], ["Status", false], ["Started", false], ["Duration", true], ["Inferences", false], ["Error", false], ["Output", false]]);
   const body = table.createTBody();
-  const cols = table.rows[0].cells.length;
-  // The stages the server knows, in pipeline order; then any it did not list.
+    // The stages the server knows, in pipeline order; then any it did not list.
   const names = [...order, ...Object.keys(run.stages).filter((s) => !order.includes(s))].filter((s) => run.stages[s]);
   for (const stage of names) {
     const s = run.stages[stage];
@@ -109,42 +108,66 @@ function stagesTable(name: string, run: Run, order: string[]): HTMLTableElement 
     err.textContent = s.error ?? "";
     const cell = tr.insertCell();
     if (s.status === "not_started") continue; // it never ran: nothing to show
-    const row = body.insertRow();
-    row.hidden = true;
-    const box = row.insertCell();
-    box.colSpan = cols;
     const btn = cell.appendChild(node("button", "small", "Outputs"));
     btn.type = "button";
-    let loaded = false;
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      row.hidden = !row.hidden;
-      if (row.hidden || loaded) return;
-      loaded = true; // fetched once, when first opened
-      box.className = "muted";
-      box.textContent = "Loading…";
-      loadOutputs(name, run, stage).then((outputs) => showOutputs(box, outputs), (e: unknown) => {
-        loaded = false; // opened again, it tries again
-        box.className = "error";
-        box.textContent = `Failed to load the outputs: ${errText(e)}`;
-      });
+      openOutputs(name, run, stage);
     });
   }
   return table;
 }
 
+// JSON as DOM nodes (never as HTML), pretty-printed with 2 spaces: keys yellow (.json-key), values green (.json-val).
+function jsonNodes(v: unknown, indent = ""): Node[] {
+  const val = (text: string): Node => node("span", "json-val", text);
+  if (v === null || v === undefined) return [val("null")];
+  if (typeof v !== "object") return [val(JSON.stringify(v) ?? String(v))];
+  const inner = indent + "  ";
+  const isArr = Array.isArray(v);
+  const entries: [string | null, unknown][] = isArr ? (v as unknown[]).map((x) => [null, x]) : Object.entries(v as Record<string, unknown>);
+  const [open, close] = isArr ? ["[", "]"] : ["{", "}"];
+  if (entries.length === 0) return [document.createTextNode(open + close)];
+  const out: Node[] = [document.createTextNode(open + "\n")];
+  entries.forEach(([k, x], i) => {
+    out.push(document.createTextNode(inner));
+    if (k !== null) out.push(node("span", "json-key", JSON.stringify(k)), document.createTextNode(": "));
+    out.push(...jsonNodes(x, inner));
+    out.push(document.createTextNode((i < entries.length - 1 ? "," : "") + "\n"));
+  });
+  out.push(document.createTextNode(indent + close));
+  return out;
+}
+
+// Opens the modal on the outputs of `stage` of `run`; they are fetched each time it is opened.
+function openOutputs(name: string, run: Run, stage: string): void {
+  const modal = el<HTMLDialogElement>("rr-outputs-modal");
+  const box = el("rr-outputs-body");
+  el("rr-outputs-title").textContent = `Run ${run.id} · ${stage} outputs`;
+  box.className = "modal-body muted";
+  box.textContent = "Loading…";
+  if (!modal.open) modal.showModal();
+  loadOutputs(name, run, stage).then((outputs) => {
+    if (modal.open && el("rr-outputs-title").textContent === `Run ${run.id} · ${stage} outputs`) showOutputs(box, outputs);
+  }, (e: unknown) => {
+    box.className = "modal-body error";
+    box.textContent = `Failed to load the outputs: ${errText(e)}`;
+  });
+}
+
 function showOutputs(box: HTMLElement, outputs: StageOutput[]): void {
   box.replaceChildren();
   if (outputs.length === 0) {
-    box.className = "muted";
+    box.className = "modal-body muted";
     box.textContent = "No outputs.";
     return;
   }
-  box.className = "";
+  box.className = "modal-body";
   for (const o of outputs) {
     const d = box.appendChild(node("details"));
+    d.open = true;
     d.appendChild(node("summary", "", o.label ? `${o.name} · ${o.label}` : o.name));
-    d.appendChild(node("pre", "ts-def", JSON.stringify(o.output, null, 2)));
+    d.appendChild(node("pre", "ts-def json-view")).append(...jsonNodes(o.output));
   }
 }
 
@@ -303,6 +326,8 @@ async function load(): Promise<void> {
 }
 
 export function initRememberRuns(): void {
+  const modal = el<HTMLDialogElement>("rr-outputs-modal");
+  el("rr-outputs-close").addEventListener("click", () => modal.close());
   el("remember_runs-refresh").addEventListener("click", () => void load());
   void load();
 }

@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.122.2] - 2026-10-29
+
+### Changed
+- Admin UI, remember runs view: the **Outputs** button of a stage now opens the outputs in a modal instead of inline under the stage row, and the JSON is colour coded (keys yellow, values green). While the modal is open the rest of the admin panel does not scroll.
+
 ## [0.122.1] - 2026-10-29
 
 ### Changed
