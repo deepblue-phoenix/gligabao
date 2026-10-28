@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.120.1] - 2026-10-28
+
+### Changed
+- Docs: the query trajectory in docs/evals/knowledge.md now lists the `search_vectors` step (the embedding of the question and what the indexes returned) before `retrieve_graph`, which now also holds the passages; docs/artifacts.md no longer says `query` never uses artifact text (the best chunks of long texts are given to the LLM as passages); the Query sections of the README describe the similarity retrieval, the passages and that superseded facts are not retrieved.
+
 ## [0.120.0] - 2026-10-28
 
 ### Added

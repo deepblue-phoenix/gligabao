@@ -91,7 +91,8 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 | remember | `select_web_search_entities` | (only with [`web_search`](../web-search.md)) the key entities that were picked to search the web for |
 | remember | `web_search` | (only with `web_search`, one per entity) the web search: the entity, the query issued, the briefing, the queries the model sent to the search engine, the sources and `search_errors`; `model_name`, `metrics` (tokens and cost, search fee included) and `latency_ms` in the extra. An error here is recorded but not fatal |
 | query | `detect_geo` | (only with a geo resolver, and when the graph is not empty) the places the LLM found in the question, each with `text`, `kind` and `query`; or the `error` if it failed (the LLM call itself is the usual `system`, `user`, `agent` steps). It comes after `retrieve_graph` |
-| query | `retrieve_graph` | the subgraph handed to the LLM, as rendered in its prompt |
+| query | `search_vectors` | the embedding request of the question and what the four vector indexes returned for it (`entities`, `edges`, `chunks`, `summaries`: the row `id` and the cosine `score` of each match, best first), with `model_name` and `metrics` (tokens, cost), so the embedding cost counts in `final_metrics`. It comes first: the matches become seeds, facts and passages of the next step (see [query.md](../query.md#2-retrieve-by-similarity-and-passages)) |
+| query | `retrieve_graph` | the context handed to the LLM, as rendered in its prompt: the subgraph (entities and live facts) followed by the passages, if any |
 
 ### Remember
 
@@ -108,8 +109,9 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 ### Query
 
 1. `user`: the query.
-2. tool `retrieve_graph`.
-3. LLM call: the answer (`system`, `user`, `agent`). If nothing was retrieved there is no LLM call; the last step is a plain `agent` step with the fixed "I don't have any information" answer.
+2. tool `search_vectors`.
+3. tool `retrieve_graph`.
+4. LLM call: the answer (`system`, `user`, `agent`). If nothing was retrieved (no entity, fact or passage) there is no LLM call; the last step is a plain `agent` step with the fixed "I don't have any information" answer.
 
 ### Example (query, shortened)
 
@@ -121,19 +123,25 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
   "agent": {"name": "gligabao-query", "version": "0.1"},
   "steps": [
     {"step_id": 1, "timestamp": "2025-01-31T09:00:01Z", "source": "user", "message": "Where does Alice work?"},
-    {"step_id": 2, "timestamp": "2025-01-31T09:00:01Z", "source": "agent",
-     "message": "Retrieved the subgraph around the entities matching the query.",
-     "tool_calls": [{"tool_call_id": "call_2", "function_name": "retrieve_graph",
+    {"step_id": 2, "timestamp": "2025-01-31T09:00:01Z", "source": "agent", "model_name": "text-embedding-3-small",
+     "message": "Embedded the question and searched the entity, edge, chunk and summary indexes with it.",
+     "tool_calls": [{"tool_call_id": "call_2", "function_name": "search_vectors",
+                     "arguments": {"question": "Where does Alice work?"}}],
+     "observation": {"results": [{"source_call_id": "call_2", "content": "{\"entities\":[{\"id\":1,\"score\":0.78}],\"edges\":[{\"id\":1,\"score\":0.83}],\"chunks\":null,\"summaries\":null,\"input_tokens\":5}"}]},
+     "metrics": {"prompt_tokens": 5, "cost_usd": 0.0000001}},
+    {"step_id": 3, "timestamp": "2025-01-31T09:00:01Z", "source": "agent",
+     "message": "Retrieved the subgraph around the entities matching the query, and the passages close to it.",
+     "tool_calls": [{"tool_call_id": "call_3", "function_name": "retrieve_graph",
                      "arguments": {"user_id": "u1", "dataset": "main", "query": "Where does Alice work?"}}],
-     "observation": {"results": [{"source_call_id": "call_2", "content": "[entity 1] Alice (person)\n..."}]}},
-    {"step_id": 3, "timestamp": "2025-01-31T09:00:01Z", "source": "system", "message": "..."},
-    {"step_id": 4, "timestamp": "2025-01-31T09:00:01Z", "source": "user", "message": "<graph>...</graph>"},
-    {"step_id": 5, "timestamp": "2025-01-31T09:00:03Z", "source": "agent", "model_name": "claude-haiku-5-5",
+     "observation": {"results": [{"source_call_id": "call_3", "content": "[entity 1] Alice (person)\n..."}]}},
+    {"step_id": 4, "timestamp": "2025-01-31T09:00:01Z", "source": "system", "message": "..."},
+    {"step_id": 5, "timestamp": "2025-01-31T09:00:01Z", "source": "user", "message": "<graph>...</graph>"},
+    {"step_id": 6, "timestamp": "2025-01-31T09:00:03Z", "source": "agent", "model_name": "claude-haiku-5-5",
      "message": "{\"answer\": \"Alice works at Acme.\", ...}",
      "metrics": {"prompt_tokens": 412, "completion_tokens": 38, "cost_usd": 0.00006},
      "extra": {"provider": "anthropic", "stop_reason": "end_turn"}}
   ],
-  "final_metrics": {"total_prompt_tokens": 412, "total_completion_tokens": 38, "total_cost_usd": 0.00006, "total_steps": 5},
+  "final_metrics": {"total_prompt_tokens": 417, "total_completion_tokens": 38, "total_cost_usd": 0.0000601, "total_steps": 6},
   "extra": {"input": {"user_id": "u1", "dataset": "main"}}
 }
 ```

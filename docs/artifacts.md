@@ -97,6 +97,6 @@ An artifact carries the `session_id` of the `remember` call that created it, whi
 ## Limitations
 
 - There is no endpoint to read, list or delete artifacts yet. The raw text can only be read from the database.
-- `query` does not use artifact text: it answers from the graph only.
+- `query` answers from the graph, plus the text of the best few chunks of [long texts](chunking.md) that are close to the question (the passages, see [query.md](query.md#2-retrieve-by-similarity-and-passages)); the text of every other artifact is not sent to the LLM.
 - The `gb_edge_artifacts` and `gb_entity_artifacts` links, and the session links (`gb_entity_sessions`, `gb_edge_sessions`), are stored but not exposed by the API yet.
 - Artifacts are not embedded, except chunks: `remember` embeds the entities and edges extracted from an artifact, and the text of each chunk of a long text (see [chunking.md](chunking.md) and [vectors.md](vectors.md)); the text of an artifact that is not chunked is not embedded.

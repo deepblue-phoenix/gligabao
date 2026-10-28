@@ -8,7 +8,7 @@ gligabao is a small, self-hosted MCP/HTTP server that gives an AI application lo
 ## How it works
 
 - **Remember**: an LLM reads the text and extracts *entities* (people, organizations, places, ...) and *edges* (relations such as `works_at` between two entities). Entities are deduplicated, and each edge and entity is anchored to the artifact (the original text) it was inferred from. Following [Graphiti](https://github.com/getzep/graphiti), each text is stored as a timestamped *artifact*, of kind *episode* (Graphiti-style, anchored in time) or *knowledge* (the default, not strictly episodic), and every edge is a bi-temporal fact that records when it was true.
-- **Query**: the query is used to find relevant entities in the graph, the surrounding subgraph is expanded by one hop, and an LLM answers using only that context. The response includes the evidence (entities and edges) behind the answer.
+- **Query**: the query is used to find relevant entities in the graph, by keywords and by the similarity of their embeddings; the surrounding subgraph of live facts is expanded by one hop, the chunks of long texts that are close to the question are added as passages, and an LLM answers using only that context. The response includes the evidence (entities, edges and passages) behind the answer.
 - **Storage**: SQLite (a single file, the default) or PostgreSQL; see [Database](#database).
 
 ## API
@@ -85,12 +85,12 @@ When a new fact contradicts a stored one, the older fact is closed (`invalid_at`
 
 `POST /v1/gb/query` with `{"user_id": "u1", "query": "Where does Alice work?"}` answers from the graph and returns the evidence it used.
 
-1. **Retrieve**: the query is split into terms (stopwords and very short words are dropped). Entities are scored by keyword match against names (including whole-name matches such as "New York") and descriptions. The top 10 become *seeds*; if nothing matches, the 25 most recently updated entities are used so vague questions still work.
-2. **Expand**: every edge touching a seed is added (newest first, up to 100) along with the entity at its other end, giving a one-hop subgraph.
-3. **Answer**: the subgraph is rendered as text with IDs and sent to the LLM with the question. The model is told to answer only from the graph and to return JSON with the `answer` plus the IDs of the entities and edges it used.
-4. **Verify evidence**: cited IDs are checked against the subgraph that was actually sent, so hallucinated IDs are dropped. The endpoints of every cited edge are included, and each edge carries its `artifact_id` so a fact can be traced to the original text.
+1. **Retrieve**: the query is split into terms (stopwords and very short words are dropped). Entities are scored by keyword match against names (including whole-name matches such as "New York") and descriptions. The top 10 become *seeds*. The question is also embedded and searched in the entity, edge, chunk and summary vector indexes (cosine similarity of at least 0.75): similar entities join the seeds, similar facts are added with their entities, and the chunks of long texts that are close to the question become *passages*. If there are no seeds and no similar facts, the 25 most recently updated entities are used so vague questions still work.
+2. **Expand**: every live edge touching a seed is added (newest first, up to 100) along with the entity at its other end, giving a one-hop subgraph. A fact that newer knowledge superseded is never retrieved.
+3. **Answer**: the subgraph and the passages (the best three with the text of the chunk) are rendered as text with IDs and sent to the LLM with the question. The model is told to answer only from them and to return JSON with the `answer` plus the IDs of the entities, edges and passages it used.
+4. **Verify evidence**: cited IDs are checked against what was actually sent, so hallucinated IDs are dropped. The endpoints of every cited edge are included, and each edge carries its `artifact_id` so a fact can be traced to the original text.
 
-If the graph is empty, a fixed "I don't have any information" answer is returned without calling the LLM. If the graph lacks the needed information, the answer says so. Details: [docs/query.md](docs/query.md).
+If there is nothing to answer from (no entity, fact or passage), a fixed "I don't have any information" answer is returned without calling the LLM. If the graph lacks the needed information, the answer says so. Details: [docs/query.md](docs/query.md).
 
 ## Graph export
 
