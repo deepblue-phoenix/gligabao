@@ -44,7 +44,7 @@ func testQuery(t *testing.T, d *sql.DB) {
 		`{"answer":"Nothing relevant.","entities":[],"edges":[]}`,
 	}}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/query", Handler(d, llm))
+	mux.HandleFunc("POST /v1/gb/query", Handler(d, llm, withVectors(t)))
 
 	if _, err := memory_remember.Remember(context.Background(), d, llm, "u1", "", "", "x", time.Time{}); err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func testQueryEmptyGraph(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/query", Handler(d, &recordingLLM{})) // must not call the LLM
+	mux.HandleFunc("POST /v1/gb/query", Handler(d, &recordingLLM{}, withVectors(t))) // must not call the LLM
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/query", strings.NewReader(`{"user_id":"u1","query":"hi"}`)))
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"edges":[]`) {
@@ -127,8 +127,8 @@ func testQuerySession(t *testing.T, d *sql.DB) {
 	memory_core.TrajectoryDir = t.TempDir()
 	t.Cleanup(func() { memory_core.TrajectoryDir = prev })
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/query", Handler(d, llm))
-	mux.HandleFunc("POST /v1/gb/eval/query", EvalHandler(d, llm))
+	mux.HandleFunc("POST /v1/gb/query", Handler(d, llm, withVectors(t)))
+	mux.HandleFunc("POST /v1/gb/eval/query", EvalHandler(d, llm, withVectors(t)))
 	post := func(path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest("POST", path, strings.NewReader(body)))
@@ -178,7 +178,7 @@ func testQueryInference(t *testing.T, d *sql.DB) {
 		`{"answer":"Alice.","entities":[1],"edges":[]}`,
 	}}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/gb/query", Handler(d, llm))
+	mux.HandleFunc("POST /v1/gb/query", Handler(d, llm, withVectors(t)))
 	if _, err := memory_remember.Remember(context.Background(), d, llm, "u1", "", "", "x", time.Time{}); err != nil {
 		t.Fatal(err)
 	}

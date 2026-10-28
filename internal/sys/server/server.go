@@ -672,11 +672,10 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 		log.Info("web search is available: remember searches the web for the key entities of a text when asked (web_search)")
 	}
 
-	var emb memory_core.Embedder
-	if e, err := ai.NewEmbedder(opts.OpenAIKey, ai.WithEmbedPrices(ai.NewPriceTable(opts.Prices)), ai.WithEmbedDimensions(database.EmbeddingDimensions)); err != nil {
-		log.WithError(err).Warn("embedder unavailable; /v1/gb/remember will not embed entities")
-	} else {
-		emb = e
+	// The embedder is required: remember embeds what it stores with it and query embeds the question (similarity retrieval).
+	emb, err := ai.NewEmbedder(opts.OpenAIKey, ai.WithEmbedPrices(ai.NewPriceTable(opts.Prices)), ai.WithEmbedDimensions(database.EmbeddingDimensions))
+	if err != nil {
+		return nil, nil, fmt.Errorf("embedder: %w (set openai_api_key or OPENAI_API_KEY)", err)
 	}
 
 	// Jev only runs when its API key is supplied.

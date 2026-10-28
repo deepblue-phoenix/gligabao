@@ -34,14 +34,14 @@ func testTrajectories(t *testing.T, d *sql.DB) {
 		t.Fatalf("without eval: %d files stored", len(files))
 	}
 	llm.outs = append([]string{ex}, llm.outs...) // the eval Remember below needs its own extraction
-	rem, err = memory_remember.Remember(ctx, d, llm, "u1", "", "", "Alice works at Acme", time.Time{}, memory_core.WithTrajectoryDir(dir), memory_core.WithEval())
+	rem, err = memory_remember.Remember(ctx, d, llm, "u1", "", "", "Alice works at Acme", time.Time{}, withVectors(t), memory_core.WithTrajectoryDir(dir), memory_core.WithEval())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rem.Trajectory == nil || rem.TrajectoryID != rem.Trajectory.TrajectoryID {
 		t.Fatalf("with eval: %+v", rem)
 	}
-	rec, err := memory_query.Query(ctx, d, llm, "u1", "", "Where does Alice work?", memory_core.WithTrajectoryDir(dir), memory_core.WithEval())
+	rec, err := memory_query.Query(ctx, d, llm, "u1", "", "Where does Alice work?", withVectors(t), memory_core.WithTrajectoryDir(dir), memory_core.WithEval())
 	if err != nil {
 		t.Fatal(err)
 	}

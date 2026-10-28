@@ -21,8 +21,8 @@ import (
 
 // Register mounts the API routes on mux. mgr is the remember manager, the one goroutine that runs the remember pipeline (shared with
 // RegisterEval, so that all remember runs are serialized together); it must have been made with the same d and llm. llm may be nil, in which case LLM-backed routes return 503.
-// d holds all databases; its vector store has one vector dataset per dataset and index (memory_dataset.VectorDataset). emb may be nil,
-// in which case remember does not embed the entities it stores. jv may be nil (Jev not configured), in which case
+// d holds all databases; its vector store has one vector dataset per dataset and index (memory_dataset.VectorDataset). emb is what remember embeds with and what query
+// embeds the question with: it must not be nil (a query with a nil emb panics). jv may be nil (Jev not configured), in which case
 // remember skips the steps that run on Jev. ws may be nil (no Anthropic API key), in which case a remember request that asks for
 // web_search returns 503. Images are stored as files in d.ImageDir.
 func Register(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, opts ...Option) {
@@ -32,7 +32,7 @@ func Register(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm me
 	}
 	a := func(h http.HandlerFunc) http.Handler { return httputil.Authenticate(o.auth, h) } // routes of users: with WithAuth they need an API key
 	mux.Handle("POST /v1/gb/remember", a(rememberHandler(mgr, d, llm, emb, jv, ws, providers, o)))
-	mux.Handle("POST /v1/gb/query", a(query.Handler(d.Relational, llm, memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm))))
+	mux.Handle("POST /v1/gb/query", a(query.Handler(d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm))))
 	mux.Handle("GET /v1/gb/geo/nearby", a(query.NearbyHandler(d.Relational, memory_core.WithGeoRadius(o.geoRadiusKm))))
 	mux.Handle("POST /v1/gb/datasets", a(datasets.Create(d.Relational)))
 	mux.Handle("GET /v1/gb/datasets", a(datasets.List(d.Relational)))
@@ -59,7 +59,7 @@ func RegisterMCP(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm
 	for _, opt := range opts {
 		opt(&o)
 	}
-	mcp.Register(mux, rememberHandler(mgr, d, llm, emb, jv, ws, providers, o), query.Handler(d.Relational, llm, memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm)), version)
+	mcp.Register(mux, rememberHandler(mgr, d, llm, emb, jv, ws, providers, o), query.Handler(d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm)), version)
 }
 
 type options struct {
@@ -98,5 +98,5 @@ func RegisterEval(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, ll
 		opt(&o)
 	}
 	mux.HandleFunc("POST /v1/gb/eval/remember", remember.EvalHandler(mgr, d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_core.WithGeoResolver(o.geo), memory_image.WithImageDir(d.ImageDir)))
-	mux.HandleFunc("POST /v1/gb/eval/query", query.EvalHandler(d.Relational, llm, memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm)))
+	mux.HandleFunc("POST /v1/gb/eval/query", query.EvalHandler(d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm)))
 }

@@ -5,6 +5,20 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.120.0] - 2026-10-28
+
+### Added
+- `query` now reads the embeddings `remember` writes. It embeds the question once and searches the four vector indexes of the dataset: similar entities are added to the seeds of the subgraph (next to the keyword matches), similar facts are added directly with their endpoints (so the `relation` and `description` of an edge are searched now), and the chunks and summaries of long texts that are close to the question become *passages*. See docs/query.md and docs/vectors.md.
+- Passages: the best 3 are given to the LLM with the text of the chunk (and its summary, if found), and up to 5 more with their summary only, in a new `<passages>` section of the prompt. The LLM cites the ones it used (`"passages": [ids]`) and the response has them in `evidence.passages` (`artifact_id`, `parent_id`, `index`, `summary`, `text`); the list is always an array.
+- The embedding request of a query is recorded as an inference (type `query`, stage `embed`) and as the `search_vectors` step of the trajectory.
+- `graph.EdgesByID` and `graph.ArtifactsByID` (SQLite and PostgreSQL).
+
+### Changed
+- The embedder (`OPENAI_API_KEY` / `openai_api_key`) and the vector store are now required: the server and the knowledge eval runner do not start without the key (they used to start and skip the vectors), and `memory_query.Query` needs `memory.WithVectors`. Vector retrieval is always on; there is no request field for it.
+- A query that finds no entity, fact or passage still answers without calling the LLM; with only passages it now calls it.
+- The similarity threshold is a cosine of 0.75 for every index (the value `remember` uses to tell that two names are the same entity); it and the numbers of matches taken are a first guess, not yet tuned with the evals (see the roadmap).
+- `query` no longer puts expired facts (superseded ones, with an `expired_at`) in the context, however they are found (`graph.EdgesAround` and `graph.EdgesByID` return live edges only); facts that ended without being superseded (`invalid_at` only) are still given, with it. The prompt no longer mentions superseded edges.
+
 ## [0.119.2] - 2026-10-28
 
 ### Changed

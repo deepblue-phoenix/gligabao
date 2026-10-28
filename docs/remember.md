@@ -70,7 +70,7 @@ content-type: application/json
 - `geo`: only when the server has a [geo resolver](geo.md#turning-it-on): one item per entity of the text the LLM judged to be a place (`entity`, `entity_type`, `entity_id`, `kind`, `query`, `resolved`, `latitude`, `longitude`, `display_name`, `country`, `country_code`, `region`, `provider`, and an `error` if the resolver or the storage failed). See [geo.md](geo.md#the-result).
 - `web_searches`: only with `web_search`: one item per key entity that was searched for (`entity`, `query`, `parent_artifact_id`, the `web_search` `artifact_id`, the `sources`, and the `entities` and `edges` the result yielded; `entities` and `edges` above stay those of the text). See [web-search.md](web-search.md#response).
 - `chunks`, `embedded_chunks`, `embedded_summaries`: only for a text that was [chunked](chunking.md). `artifact_id` is then the parent artifact (the whole text), `chunks` lists the chunk artifacts (`artifact_id`, `index`, `tokens`, `overlap_tokens`, `start_offset`, `end_offset`, `entities`, `edges`, and the `summary` of the chunk: `{"artifact_id", "text", "model", "reasoning", "inference_id"}`, the [summary artifact](chunking.md#chunk-summaries) with the inference, i.e. the model and reasoning level, that wrote it), `entities`, `edges` and `invalidated_edges` are those of all the chunks, `embedded_chunks` counts the chunk vectors written and `embedded_summaries` the summary vectors.
-- `embedded_entities` and `embedded_edges` are the number of vectors written to the dataset's entity and edge indexes (see [Embed](#how-it-works)). Both are omitted when nothing was embedded (no `OPENAI_API_KEY`). `embedded_entities` counts the entities the text mentions, including those that already existed, and `embedded_edges` the facts it states, including repeated ones; they can be more than the number of new rows.
+- `embedded_entities` and `embedded_edges` are the number of vectors written to the dataset's entity and edge indexes (see [Embed](#how-it-works)). Both are omitted when nothing was embedded. `embedded_entities` counts the entities the text mentions, including those that already existed, and `embedded_edges` the facts it states, including repeated ones; they can be more than the number of new rows.
 
 Errors are returned as `{"error": "..."}`:
 
@@ -281,7 +281,7 @@ Existing database files are not migrated when the schema changes: delete the fil
 - `ANTHROPIC_API_KEY`: required for this endpoint. If missing, the server still starts and the endpoint returns 503.
 - `chunk_size` (default 1024 tokens) and `chunk_overlap_percent` (default 20): when and how a long text is chunked, see [chunking.md](chunking.md).
 - Web search (`web_search`) is available exactly when `ANTHROPIC_API_KEY` is set; there is no other setting. See [web-search.md](web-search.md).
-- `OPENAI_API_KEY` (or `openai_api_key` in `gligabao.toml`): used to embed entities, edges, chunks and chunk summaries. Optional: without it the endpoint works and stores the graph, but no vectors, and the server logs a warning at startup.
+- `OPENAI_API_KEY` (or `openai_api_key` in `gligabao.toml`): used to embed entities, edges, chunks and chunk summaries. Required (also for `query`, which embeds the question): the server does not start without it.
 - `embedding_dimensions` (default 1536) is the size of the embeddings; `vector_store` selects where they go (`chromem`, or `pinecone`). See [vectors.md](vectors.md).
 - `gligabao serve --db <path>` selects the SQLite file (default `build/gligabao.db`).
 
@@ -289,7 +289,7 @@ Existing database files are not migrated when the schema changes: delete the fil
 
 ```sh
 export ANTHROPIC_API_KEY=...
-export OPENAI_API_KEY=...    # optional: embeds the entities and edges
+export OPENAI_API_KEY=...    # required: embeds the entities and edges (and the question of a query)
 ./run_build.sh
 ./build/gligabao serve &
 curl -s localhost:7878/v1/gb/remember \

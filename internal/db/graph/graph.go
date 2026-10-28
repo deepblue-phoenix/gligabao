@@ -413,13 +413,38 @@ func MatchEntities(ctx context.Context, d *sql.DB, dsID int64, queryKey string, 
 	return nil, unsupported()
 }
 
-// EdgesAround returns the edges of the dataset that start or end at one of the entity IDs, newest first.
+// EdgesAround returns the live edges of the dataset (those that are not expired: newer knowledge has not superseded them) that
+// start or end at one of the entity IDs, newest first.
 func EdgesAround(ctx context.Context, d *sql.DB, dsID int64, entityIDs []int64, limit int) ([]EvidenceEdge, error) {
 	switch backend() {
 	case config.DBBackendSQLite:
 		return sqlite.EdgesAround(ctx, d, dsID, entityIDs, limit)
 	case config.DBBackendPostgres:
 		return postgres.EdgesAround(ctx, d, dsID, entityIDs, limit)
+	}
+	return nil, unsupported()
+}
+
+// EdgesByID returns the live edges of the dataset (those that are not expired) with the given IDs, by ID, like EdgesAround.
+// IDs that are not live edges of the dataset are left out.
+func EdgesByID(ctx context.Context, d *sql.DB, dsID int64, ids []int64) ([]EvidenceEdge, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.EdgesByID(ctx, d, dsID, ids)
+	case config.DBBackendPostgres:
+		return postgres.EdgesByID(ctx, d, dsID, ids)
+	}
+	return nil, unsupported()
+}
+
+// ArtifactsByID returns the artifacts of the dataset with the given IDs, by ID. IDs that are not artifacts of the dataset
+// are left out.
+func ArtifactsByID(ctx context.Context, d *sql.DB, dsID int64, ids []int64) ([]Artifact, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ArtifactsByID(ctx, d, dsID, ids)
+	case config.DBBackendPostgres:
+		return postgres.ArtifactsByID(ctx, d, dsID, ids)
 	}
 	return nil, unsupported()
 }

@@ -66,7 +66,7 @@ Example: "Alice works at Acme" (artifact at 2023-01-01), then "Alice started wor
 
 ## Query
 
-`query` sends every retrieved edge to the LLM with its `valid_at` and `invalid_at` (and a "superseded" marker) plus the current time. The model is told that edges without `invalid_at` are still true, so "Where does Alice work now?" is answered from the Globex edge, while history questions can use the closed Acme edge. Evidence edges carry the temporal fields too.
+`query` sends every retrieved edge to the LLM with its `valid_at` and `invalid_at` plus the current time, but only live ones: an edge that newer knowledge superseded (it has an `expired_at`, as the closed Acme edge of the example above) is never retrieved, so "Where does Alice work now?" is answered from the Globex edge and a question about the past can no longer be answered from the superseded Acme edge. An edge that has an `invalid_at` but no `expired_at` (a fact that is known to have ended) is still sent, and can answer history questions. The model is told that edges without `invalid_at` are still true. Details: [query.md](query.md#facts-over-time-and-history). Evidence edges carry the temporal fields too.
 
 ## Errors and cost
 

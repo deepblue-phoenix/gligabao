@@ -125,8 +125,11 @@ func scenario(t *testing.T, d *sql.DB) {
 	}
 	around, err := graph.EdgesAround(ctx, d, dsID, []int64{alice}, 10)
 	check(err)
-	if len(around) != 1 || around[0].SourceID != alice || around[0].TargetID != acme || around[0].ArtifactID == nil || *around[0].ArtifactID != artID || around[0].ExpiredAt == nil {
-		t.Fatalf("EdgesAround: %+v", around)
+	if len(around) != 0 { // e1 was expired above: retrieval returns live facts only
+		t.Fatalf("EdgesAround returned an expired edge: %+v", around)
+	}
+	if byID, err := graph.EdgesByID(ctx, d, dsID, []int64{e1}); err != nil || len(byID) != 0 {
+		t.Fatalf("EdgesByID returned an expired edge: %+v, %v", byID, err)
 	}
 	ents, err := graph.EntitiesByID(ctx, d, []int64{alice, acme})
 	check(err)

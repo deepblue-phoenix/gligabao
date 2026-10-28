@@ -81,7 +81,7 @@ func testQueryGeo(t *testing.T, d *sql.DB) {
 
 	// Without a geo resolver the question is not looked at.
 	llm.reqs = nil
-	if rec := post(Handler(d, llm), body); rec.Code != 200 {
+	if rec := post(Handler(d, llm, withVectors(t)), body); rec.Code != 200 {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body)
 	}
 	if llm.requestOf("places that a question mentions") != nil {
@@ -90,7 +90,7 @@ func testQueryGeo(t *testing.T, d *sql.DB) {
 
 	// With one: a separate LLM call, on the model asked for; the answer call has its own model.
 	llm.reqs = nil
-	h := Handler(d, llm, memory_core.WithGeoResolver(noResolver{}))
+	h := Handler(d, llm, withVectors(t), memory_core.WithGeoResolver(noResolver{}))
 	rec := post(h, `{"user_id":"u1","query":"Is Paris bigger than the Alps?","models":{"detect_geo":"geo-model","query":"answer-model"}}`)
 	if rec.Code != 200 {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body)
@@ -119,13 +119,13 @@ func testQueryGeo(t *testing.T, d *sql.DB) {
 		rows.Scan(&s)
 		stages = append(stages, s)
 	}
-	if strings.Join(stages, ",") != "query,detect_geo,query" { // the 1st query had no geo
+	if strings.Join(stages, ",") != "embed,query,embed,detect_geo,query" { // the 1st query had no geo; every query embeds the question first
 		t.Errorf("recorded stages = %v", stages)
 	}
 
 	// The places themselves (the Go result and the trajectory).
 	res, err := memory_query.Query(context.Background(), d, llm, "u1", "", "Is Paris bigger than the Alps?",
-		memory_core.WithGeoResolver(noResolver{}), memory_core.WithEval(), memory_core.WithTrajectoryDir(t.TempDir()))
+		withVectors(t), memory_core.WithGeoResolver(noResolver{}), memory_core.WithEval(), memory_core.WithTrajectoryDir(t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func testQueryGeo(t *testing.T, d *sql.DB) {
 
 	// A failure of the detection does not fail the query.
 	llm.failGeo = true
-	res, err = memory_query.Query(context.Background(), d, llm, "u1", "", "Is Paris bigger than the Alps?", memory_core.WithGeoResolver(noResolver{}))
+	res, err = memory_query.Query(context.Background(), d, llm, "u1", "", "Is Paris bigger than the Alps?", withVectors(t), memory_core.WithGeoResolver(noResolver{}))
 	if err != nil || res.Answer != "Paris." || len(res.Geo) != 0 {
 		t.Errorf("failing detection: %+v, %v", res, err)
 	}

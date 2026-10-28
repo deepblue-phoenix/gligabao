@@ -1,7 +1,7 @@
 # Runs the gligabao server and its Python sidecar on one private network.
 #
 #   export ANTHROPIC_API_KEY=...     # required for remember/query
-#   export OPENAI_API_KEY=...        # optional: embeddings (without it no vectors are stored)
+#   export OPENAI_API_KEY=...        # required: embeddings (remember embeds what it stores, query the question)
 #   docker compose up --build
 #
 # Server:  http://127.0.0.1:7878   (GET /health)

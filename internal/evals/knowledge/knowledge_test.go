@@ -45,6 +45,19 @@ func (l *scriptedLLM) Complete(_ context.Context, req ai.Request) (*ai.Response,
 	return &ai.Response{Text: out, StopReason: "end_turn", Provider: ai.ProviderAnthropic, Model: "m", InputTokens: 10, OutputTokens: 5, CostUSD: 0.01}, nil
 }
 
+// fakeEmbedder embeds every text as the first unit vector of dims dimensions (the size of the vector store of the database), with
+// no tokens and no cost. The server of a case needs an embedder: remember embeds what it stores and query the question.
+type fakeEmbedder struct{ dims int }
+
+func (f fakeEmbedder) EmbedBatchUsage(_ context.Context, texts []string) ([][]float32, *ai.EmbedUsage, error) {
+	out := make([][]float32, len(texts))
+	for i := range out {
+		out[i] = make([]float32, f.dims)
+		out[i][0] = 1
+	}
+	return out, &ai.EmbedUsage{Provider: ai.ProviderOpenAI, Model: "test-embed"}, nil
+}
+
 // geoLLM is scriptedLLM for a text about Alice living in Paris: it extracts both and says that Paris is a city.
 type geoLLM struct{ scriptedLLM }
 
@@ -91,7 +104,7 @@ func newEnv(t *testing.T, answer string) *env {
 		t.Fatal(err)
 	}
 	e := &env{t: t, db: database, r: runner.New(database.Relational, store), atif: atif, llm: &scriptedLLM{answer: answer}}
-	e.x = &knowledge.Executor{DB: database, LLM: e.llm, TrajectoryDir: atif, Out: &e.output}
+	e.x = &knowledge.Executor{DB: database, LLM: e.llm, Embedder: fakeEmbedder{dims: database.EmbeddingDimensions}, TrajectoryDir: atif, Out: &e.output}
 	return e
 }
 

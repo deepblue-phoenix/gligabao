@@ -1,6 +1,6 @@
 # Vector storage
 
-Embeddings live in a vector store (`internal/db/vector`), selected with `vector_store` in `gligabao.toml`. It is separate from the main database (`db_backend`) and isolates vectors by dataset (see [Datasets](#datasets)). The `Store` interface has `Upsert`, `Query`, `Delete` and `DeleteAll`; `remember` writes entity, edge and chunk embeddings to it (see [What `remember` writes](#what-remember-writes)); `query` does not read it yet.
+Embeddings live in a vector store (`internal/db/vector`), selected with `vector_store` in `gligabao.toml`. It is separate from the main database (`db_backend`) and isolates vectors by dataset (see [Datasets](#datasets)). The `Store` interface has `Upsert`, `Query`, `Delete` and `DeleteAll`; `remember` writes entity, edge, chunk and summary embeddings to it (see [What `remember` writes](#what-remember-writes)); `query` searches all four indexes with the embedding of the question (see [What `query` reads](#what-query-reads)).
 
 | `vector_store` | Backend | Needs |
 |---|---|---|
@@ -66,9 +66,19 @@ All the texts of one call (for a chunked text: of one chunk) are embedded in a s
 
 - The embeddings are computed before the database transaction commits: if embedding fails, nothing is stored and the request fails.
 - The vectors are written right after the commit (the database and the vector store cannot share a transaction). If that write fails, the request fails with the relational data already saved; the vectors of those entities and edges are written again the next time they are mentioned.
-- Embedding needs `openai_api_key` (or `OPENAI_API_KEY`). Without it the server still starts, logs a warning, and `remember` stores no vectors.
+- Embedding needs `openai_api_key` (or `OPENAI_API_KEY`). It is required: without it the server does not start (it is also what `query` embeds the question with).
 - The tokens and cost of each embedding request are stored as an inference in `gb_inferences` (type `remember`, stage `embed`, with the embedding model, reasoning `none` and `output_tokens` 0), next to the LLM calls.
-- The vectors have no effect yet on what `query` returns: it does not read them.
+- Besides the search for [candidate facts](remember.md) that `remember` makes with the entity index, the vectors are what `query` searches (see below).
+
+## What `query` reads
+
+[`query`](query.md) embeds the question (one request, recorded as an inference of type `query`, stage `embed`) and searches the four indexes of the dataset with it:
+
+- the entity index gives seeds of the subgraph, next to the ones found by keywords;
+- the edge index gives facts, with their endpoints;
+- the chunk and summary indexes give the passages (chunks of long texts) whose text, or whose summary, is close to the question: the best are given to the LLM with the chunk's text.
+
+Matches under a cosine similarity of 0.75 are dropped, and so are the edges that are expired (superseded): a vector outlives the validity of its edge. The row of a match is read from its vector ID (`entity-<id>`, ...) and from the database, never from the vector's metadata; a vector whose row is gone is dropped. See [query.md](query.md#2-retrieve-by-similarity-and-passages).
 
 If you change `embedding_dimensions`, or the embedding model, the stored vectors are no longer comparable with new ones (the chromem store rejects the new dimension outright); there is no re-embedding yet.
 

@@ -91,7 +91,7 @@ func testQueryGeoNearby(t *testing.T, d *sql.DB) {
 		return rec, user
 	}
 	const q = `"query":"What is near Paris and Lyon?"`
-	h := Handler(d, llm, memory_core.WithGeoResolver(resolver))
+	h := Handler(d, llm, withVectors(t), memory_core.WithGeoResolver(resolver))
 	entityNamed := func(name string) (id int64, g *graph.EntityGeo) {
 		t.Helper()
 		tx, err := graph.Begin(ctx, d)
@@ -191,7 +191,7 @@ func testQueryGeoNearby(t *testing.T, d *sql.DB) {
 	}
 
 	// The server's default radius (it does not turn the search on), which the request overrides.
-	h10 := Handler(d, llm, memory_core.WithGeoResolver(resolver), memory_core.WithGeoRadius(10))
+	h10 := Handler(d, llm, withVectors(t), memory_core.WithGeoResolver(resolver), memory_core.WithGeoRadius(10))
 	if _, user = post(h10, `{"user_id":"u2",`+q+`}`); strings.Contains(user, "<nearby") {
 		t.Errorf("a server radius turned the search on:\n%s", user)
 	}
@@ -247,11 +247,11 @@ func testQueryGeoNearby(t *testing.T, d *sql.DB) {
 
 	// Without a geo resolver the server cannot do it: a request that asks for it is a 400, one that does not is as before.
 	for _, body := range []string{`,"geo_nearby":true`, `,"geo_radius_km":200`} {
-		if rec, _ := post(Handler(d, llm), `{"user_id":"u2",`+q+body+`}`); rec.Code != 400 {
+		if rec, _ := post(Handler(d, llm, withVectors(t)), `{"user_id":"u2",`+q+body+`}`); rec.Code != 400 {
 			t.Errorf("no geo on the server, %s: status %d", body, rec.Code)
 		}
 	}
-	if rec, user := post(Handler(d, llm), `{"user_id":"u2",`+q+`}`); rec.Code != 200 || strings.Contains(user, "<nearby") {
+	if rec, user := post(Handler(d, llm, withVectors(t)), `{"user_id":"u2",`+q+`}`); rec.Code != 200 || strings.Contains(user, "<nearby") {
 		t.Errorf("no geo on the server: %d\n%s", rec.Code, user)
 	}
 }

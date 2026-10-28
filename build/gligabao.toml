@@ -4,7 +4,7 @@ port = 7878
 # API keys default to the ANTHROPIC_API_KEY / OPENAI_API_KEY / PINECONE_API_KEY environment variables;
 # a value set here overrides the environment.
 # anthropic_api_key = ""
-# openai_api_key = ""   # used by remember to embed entities and edges; without it no vectors are stored
+# openai_api_key = ""   # required: remember embeds what it stores with it, and query embeds the question; the server does not start without it
 
 # Main database backend: "sqlite" (default; the file is set with `serve --db`) or "postgres".
 db_backend = "sqlite"

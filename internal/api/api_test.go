@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 )
@@ -22,7 +21,8 @@ func testLLMCallsRecorded(t *testing.T, d *sql.DB) {
 		`{"answer":"Alice.","entities":[1],"edges":[]}`,
 	}}
 	mux := http.NewServeMux()
-	Register(mux, mgrFor(t, &db.DB{Relational: d, Graph: d}, llm), &db.DB{Relational: d, Graph: d}, llm, nil, nil, nil, nil)
+	database := withVectors(t, d)
+	Register(mux, mgrFor(t, database, llm), database, llm, fakeEmbedder{}, nil, nil, nil)
 	for _, c := range [][2]string{{"/v1/gb/remember", `{"user_id":"u1","text":"Alice"}`}, {"/v1/gb/query", `{"user_id":"u1","query":"Alice?"}`}} { // order matters: query needs the graph
 		path, body := c[0], c[1]
 		rec := httptest.NewRecorder()
@@ -35,8 +35,9 @@ func testLLMCallsRecorded(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// remember makes 1 LLM call when there is nothing stored to compare against, query makes 1.
-	want := relational.InferenceStat{Inferences: 1, InputTokens: 10, OutputTokens: 5, CostUSD: 0.01}
+	// remember makes 1 LLM call when there is nothing stored to compare against, query makes 1; each also makes an embedding
+	// request (of no tokens and no cost here).
+	want := relational.InferenceStat{Inferences: 2, InputTokens: 10, OutputTokens: 5, CostUSD: 0.01}
 	if len(got) != 2 || got["remember"] != want || got["query"] != want {
 		t.Fatalf("got %v", got)
 	}

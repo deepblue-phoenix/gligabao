@@ -44,7 +44,7 @@ func testDatasets(t *testing.T, d *sql.DB) {
 	mux := http.NewServeMux()
 	vectors, err := vector.NewChromem(":memory:", 2)
 	must0(t, err)
-	Register(mux, mgrFor(t, &db.DB{Relational: d, Graph: d, Vector: vectors}, echoLLM{}), &db.DB{Relational: d, Graph: d, Vector: vectors}, echoLLM{}, nil, nil, nil, nil)
+	Register(mux, mgrFor(t, &db.DB{Relational: d, Graph: d, Vector: vectors}, echoLLM{}), &db.DB{Relational: d, Graph: d, Vector: vectors}, echoLLM{}, fakeEmbedder{}, nil, nil, nil)
 
 	do := func(method, path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
@@ -181,7 +181,13 @@ func testDatasets(t *testing.T, d *sql.DB) {
 		t.Helper()
 		got, err := vectors.Query(ctx, memory_dataset.EntityDataset(dsID), []float32{1, 0}, vector.QueryOptions{})
 		must(err)
-		return len(got)
+		n := 0
+		for _, m := range got {
+			if m.ID == "v" { // remember and query embed with fakeEmbedder too, so the index holds more than "v"
+				n++
+			}
+		}
+		return n
 	}
 	if vectorCount(ds.ID) != 1 || vectorCount(dataset("u1", "ds2").ID) != 1 || memory_dataset.EntityDataset(ds.ID) == memory_dataset.EntityDataset(dataset("u1", "ds2").ID) {
 		t.Fatal("datasets do not have separate vector datasets")

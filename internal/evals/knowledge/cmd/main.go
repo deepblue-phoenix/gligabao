@@ -107,13 +107,11 @@ func mainErr() error {
 	if err != nil {
 		return err
 	}
-	// remember embeds the entities and edges it stores into the eval database's vector store (see docs/vectors.md); without an
-	// embedder it stores none, so say so. emb stays a nil interface then.
-	var emb memory_core.Embedder
-	if e, err := ai.NewEmbedder(os.Getenv(config.EnvOpenAIKey), ai.WithEmbedDimensions(config.DefaultEmbeddingDimensions)); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: no embedder (%v): entities and edges will NOT be vector indexed\n", err)
-	} else {
-		emb = e
+	// remember embeds what it stores into the eval database's vector store (see docs/vectors.md) and query embeds the question
+	// to search it: the embedder is required.
+	emb, err := ai.NewEmbedder(os.Getenv(config.EnvOpenAIKey), ai.WithEmbedDimensions(config.DefaultEmbeddingDimensions))
+	if err != nil {
+		return fmt.Errorf("OPENAI_API_KEY must be set to run evals: %w", err)
 	}
 
 	database, err := db.Open(db.Config{SQLitePath: *evalDBPath, Geo: *geoFlag})

@@ -39,10 +39,11 @@ type EvidenceEntity = graph.EvidenceEntity
 // EvidenceEdge is a graph edge cited by an answer, with the bi-temporal validity of the fact (see temporal.go).
 type EvidenceEdge = graph.EvidenceEdge
 
-// Evidence lists the entities and edges the answer is based on.
+// Evidence lists the entities, edges and passages the answer is based on.
 type Evidence struct {
-	Entities []EvidenceEntity `json:"entities"`
-	Edges    []EvidenceEdge   `json:"edges"`
+	Entities []EvidenceEntity  `json:"entities"`
+	Edges    []EvidenceEdge    `json:"edges"`
+	Passages []EvidencePassage `json:"passages"`
 }
 
 // QueryResult is the answer to a query together with its supporting evidence.
@@ -113,19 +114,19 @@ func Query(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset,
 	tr.User(query)
 	tr.Input(map[string]any{"user_id": userID, "dataset": dataset, "session_id": sessionID})
 
-	rc, err := assembleContext(ctx, d, dsID, query)
+	rc, err := assembleContext(ctx, d, co, tr, dsID, query)
 	if err != nil {
 		return nil, fmt.Errorf("retrieve context: %w", err)
 	}
-	tr.Tool("Retrieved the subgraph around the entities matching the query.", "retrieve_graph",
-		map[string]any{"user_id": userID, "dataset": dataset, "query": query}, rc.Graph.render())
-	if len(rc.Graph.entities) == 0 {
+	tr.Tool("Retrieved the subgraph around the entities matching the query, and the passages close to it.", "retrieve_graph",
+		map[string]any{"user_id": userID, "dataset": dataset, "query": query}, rc.Graph.render()+renderPassages(rc.Graph.passages))
+	if len(rc.Graph.entities) == 0 && len(rc.Graph.passages) == 0 {
 		const none = "I don't have any information in memory to answer that."
 		tr.Agent(none)
 		return &QueryResult{
 			SessionID: sessionID,
 			Answer:    none,
-			Evidence:  Evidence{Entities: []EvidenceEntity{}, Edges: []EvidenceEdge{}},
+			Evidence:  Evidence{Entities: []EvidenceEntity{}, Edges: []EvidenceEdge{}, Passages: []EvidencePassage{}},
 		}, nil
 	}
 
@@ -182,9 +183,9 @@ type queryContext struct {
 }
 
 // assembleContext builds the queryContext for query: it retrieves the subgraph of dataset dsID around the
-// entities matching the query and stamps it with the current time.
-func assembleContext(ctx context.Context, d *sql.DB, dsID int64, query string) (*queryContext, error) {
-	g, err := retrieve(ctx, d, dsID, query)
+// entities matching the query, and the passages close to it, and stamps it with the current time.
+func assembleContext(ctx context.Context, d *sql.DB, co memory_core.CallOptions, tr *memory_core.Trace, dsID int64, query string) (*queryContext, error) {
+	g, err := retrieve(ctx, d, co, tr, dsID, query)
 	if err != nil {
 		return nil, err
 	}
@@ -197,8 +198,12 @@ func (c *queryContext) render() string {
 	if c.Nearby != nil && len(c.Nearby.Nearby) > 0 {
 		nearby = fmt.Sprintf("<nearby radius_km=\"%g\">\n%s</nearby>\n\n", c.Nearby.RadiusKm, c.Nearby.render())
 	}
+	passages := ""
+	if len(c.Graph.passages) > 0 {
+		passages = "<passages>\n" + renderPassages(c.Graph.passages) + "</passages>\n\n"
+	}
 	return "<current_time>\n" + relational.FormatTime(c.Now) + "\n</current_time>\n\n" +
-		"<graph>\n" + c.Graph.render() + "</graph>\n\n" + nearby +
+		"<graph>\n" + c.Graph.render() + "</graph>\n\n" + passages + nearby +
 		"<question>\n" + c.Question + "\n</question>"
 }
 
@@ -224,6 +229,7 @@ type queryOutput struct {
 	Answer   string  `json:"answer"`
 	Entities []int64 `json:"entities"`
 	Edges    []int64 `json:"edges"`
+	Passages []int64 `json:"passages"`
 }
 
 func parseQuery(s string) (*queryOutput, error) {
@@ -248,9 +254,11 @@ func parseQuery(s string) (*queryOutput, error) {
 type graphContext struct {
 	entities map[int64]EvidenceEntity
 	edges    map[int64]EvidenceEdge
-	// matched are the entities that matched the question (the seeds of the retrieval); empty when none did and the most
-	// recent entities were used instead.
+	// matched are the entities that matched the question, by its words or by similarity (the seeds of the retrieval); empty
+	// when none did and the most recent entities were used instead.
 	matched []int64
+	// passages are the chunks of long texts that are close to the question (see query_vectors.go).
+	passages []EvidencePassage
 }
 
 func (g *graphContext) render() string {
@@ -272,7 +280,7 @@ func (g *graphContext) render() string {
 // getEvidence returns the entities and edges the LLM cited in o, keeping only cited IDs that were present in the
 // context. Endpoints of cited edges are included as cited entities.
 func getEvidence(g *graphContext, o *queryOutput) Evidence {
-	ev := Evidence{Entities: []EvidenceEntity{}, Edges: []EvidenceEdge{}}
+	ev := Evidence{Entities: []EvidenceEntity{}, Edges: []EvidenceEdge{}, Passages: []EvidencePassage{}}
 	ents := map[int64]bool{}
 	for _, id := range o.Entities {
 		if _, ok := g.entities[id]; ok {
@@ -290,6 +298,15 @@ func getEvidence(g *graphContext, o *queryOutput) Evidence {
 		ents[e.SourceID], ents[e.TargetID] = true, true
 	}
 	sort.Slice(ev.Edges, func(i, j int) bool { return ev.Edges[i].ID < ev.Edges[j].ID })
+	cited := map[int64]bool{}
+	for _, id := range o.Passages {
+		cited[id] = true
+	}
+	for _, p := range g.passages {
+		if cited[p.ArtifactID] {
+			ev.Passages = append(ev.Passages, p)
+		}
+	}
 	for _, id := range sortedKeys(g.entities) {
 		if ents[id] {
 			ev.Entities = append(ev.Entities, g.entities[id])
@@ -309,34 +326,53 @@ func sortedKeys[V any](m map[int64]V) []int64 {
 
 //---------------------------------------------------------------------------------------------
 
-// retrieve finds entities matching the query text, then adds the edges touching them and the entities
-// at the other end. If no entity matches, the most recently updated entities are used instead.
-func retrieve(ctx context.Context, d *sql.DB, dsID int64, query string) (*graphContext, error) {
+// retrieve finds the seeds of the subgraph: the entities that match the words of the query and those whose embedding is
+// close to the question (see query_vectors.go), and adds the edges touching them and the entities at the other end. The
+// facts whose embedding is close to the question are added too, with their endpoints. If there is no seed and no such fact,
+// the most recently updated entities are used instead. The passages close to the question are loaded as well.
+func retrieve(ctx context.Context, d *sql.DB, co memory_core.CallOptions, tr *memory_core.Trace, dsID int64, query string) (*graphContext, error) {
 	g := &graphContext{entities: map[int64]EvidenceEntity{}, edges: map[int64]EvidenceEdge{}}
 
-	seeds, err := graph.MatchEntities(ctx, d, dsID, memory_core.Key(query), tokenize(query), maxSeedEntities)
+	hits, err := searchVectors(ctx, d, co, tr, dsID, query)
 	if err != nil {
 		return nil, err
 	}
-	g.matched = seeds
-	if len(seeds) == 0 {
+	if g.passages, err = loadPassages(ctx, d, dsID, hits); err != nil {
+		return nil, err
+	}
+
+	keyword, err := graph.MatchEntities(ctx, d, dsID, memory_core.Key(query), tokenize(query), maxSeedEntities)
+	if err != nil {
+		return nil, err
+	}
+	seeds := union(keyword, hits.entities)
+	var hitEdges []EvidenceEdge
+	if len(hits.edges) > 0 {
+		if hitEdges, err = graph.EdgesByID(ctx, d, dsID, hits.edges); err != nil {
+			return nil, err
+		}
+	}
+	matched := len(seeds) > 0
+	if !matched && len(hitEdges) == 0 {
 		if seeds, err = graph.FallbackSeedEntities(ctx, d, dsID, maxFallbackSeed); err != nil {
 			return nil, err
 		}
 	}
-	if len(seeds) == 0 {
+	if len(seeds) == 0 && len(hitEdges) == 0 {
 		return g, nil
 	}
 
-	edges, err := graph.EdgesAround(ctx, d, dsID, seeds, maxContextEdges)
-	if err != nil {
-		return nil, err
+	var edges []EvidenceEdge
+	if len(seeds) > 0 {
+		if edges, err = graph.EdgesAround(ctx, d, dsID, seeds, maxContextEdges); err != nil {
+			return nil, err
+		}
 	}
 	ids := map[int64]bool{}
 	for _, id := range seeds {
 		ids[id] = true
 	}
-	for _, e := range edges {
+	for _, e := range append(edges, hitEdges...) {
 		g.edges[e.ID] = e
 		ids[e.SourceID], ids[e.TargetID] = true, true
 	}
@@ -352,7 +388,29 @@ func retrieve(ctx context.Context, d *sql.DB, dsID int64, query string) (*graphC
 	for _, e := range ents {
 		g.entities[e.ID] = e
 	}
+	if matched {
+		for _, id := range seeds {
+			if _, ok := g.entities[id]; ok { // a vector can outlive its entity
+				g.matched = append(g.matched, id)
+			}
+		}
+	}
 	return g, nil
+}
+
+// union returns the IDs of a followed by those of b that are not in a, in order.
+func union(a, b []int64) []int64 {
+	seen := make(map[int64]bool, len(a)+len(b))
+	out := make([]int64, 0, len(a)+len(b))
+	for _, l := range [][]int64{a, b} {
+		for _, id := range l {
+			if !seen[id] {
+				seen[id] = true
+				out = append(out, id)
+			}
+		}
+	}
+	return out
 }
 
 var stopwords = map[string]bool{}

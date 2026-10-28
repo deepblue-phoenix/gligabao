@@ -18,7 +18,7 @@ res = gb.remember("Alice works at Acme and lives in Paris.", kind="episode")  # 
 print(res["artifact_id"], res["edges"])
 ```
 
-`query` answers a question from the graph and returns the evidence (entities and edges) behind the answer:
+`query` answers a question from the graph and returns the evidence (entities, edges and passages of long texts) behind the answer:
 
 ```python
 res = gb.query("Where does Alice work?")  # optional: dataset, session_id, reasoning ("none", "low", "medium", "high", or a dict per stage), models ({"query": ..., "detect_geo": ...})

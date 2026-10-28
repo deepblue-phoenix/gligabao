@@ -155,7 +155,7 @@ class Client:
         a dict with a level per stage ("query", "detect_geo"). `models` picks the model of each stage ("query": the answer; "detect_geo": the
         places in the question, when the server has geo on); a stage left out uses the server's default.
 
-        Returns the decoded JSON response: `answer`, and `evidence` with the `entities` and `edges` it used
+        Returns the decoded JSON response: `answer`, and `evidence` with the `entities`, `edges` and `passages` it used
         (session_id too, if one was given).
         """
         body: dict[str, Any] = {"query": query}

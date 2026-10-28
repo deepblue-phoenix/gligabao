@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
-	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 )
 
@@ -22,11 +21,11 @@ func testEvalEndpoints(t *testing.T, d *sql.DB) {
 		`{"answer":"Alice.","entities":[1],"edges":[]}`,
 		`{"answer":"Alice.","entities":[1],"edges":[]}`,
 	}}
-	database := &db.DB{Relational: d, Graph: d}
+	database := withVectors(t, d)
 	plain, eval := http.NewServeMux(), http.NewServeMux()
-	Register(plain, mgrFor(t, database, llm), database, llm, nil, nil, nil, nil)
-	Register(eval, mgrFor(t, database, llm), database, llm, nil, nil, nil, nil)
-	RegisterEval(eval, mgrFor(t, database, llm), database, llm, nil, nil, nil, nil)
+	Register(plain, mgrFor(t, database, llm), database, llm, fakeEmbedder{}, nil, nil, nil)
+	Register(eval, mgrFor(t, database, llm), database, llm, fakeEmbedder{}, nil, nil, nil)
+	RegisterEval(eval, mgrFor(t, database, llm), database, llm, fakeEmbedder{}, nil, nil, nil)
 
 	do := func(mux *http.ServeMux, path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()

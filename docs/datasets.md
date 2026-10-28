@@ -24,7 +24,7 @@ They are keyed by the id, not the name, so:
 - a name reused after a delete is a new dataset with a new id, and so new, empty vector datasets;
 - no setup is needed on create: a vector dataset appears with the first vector stored in it, and a dataset without vectors has none.
 
-`remember` writes both indexes, see [vectors.md](vectors.md#what-remember-writes) for what is embedded and how a failure is handled. `query` does not read vectors yet.
+`remember` writes both indexes, see [vectors.md](vectors.md#what-remember-writes) for what is embedded and how a failure is handled. `query` searches them with the embedding of the question, see [vectors.md](vectors.md#what-query-reads).
 
 ## Soft delete
 

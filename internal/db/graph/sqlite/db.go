@@ -168,25 +168,49 @@ func MatchEntities(ctx context.Context, d *sql.DB, dsID int64, queryKey string, 
 	return scanIDs(rows)
 }
 
-// EdgesAround returns the edges of the dataset that start or end at one of the entity IDs, newest first.
+// evidenceEdgeColumns and evidenceEdgeFrom are the columns and the joins of the queries that return EvidenceEdges.
+const evidenceEdgeColumns = `
+			e.id, e.source_id, e.target_id, s.name, t.name, e.relation, e.description, e.artifact_id,
+			e.valid_at, e.invalid_at, e.created_at, e.expired_at, COALESCE(e.model_id, '')`
+
+const evidenceEdgeFrom = `
+		FROM gb_edges e
+		JOIN gb_entities s ON s.id = e.source_id
+		JOIN gb_entities t ON t.id = e.target_id`
+
+// EdgesAround returns the live edges (not expired, i.e. not superseded) of the dataset that start or end at one of the entity IDs, newest first.
 func EdgesAround(ctx context.Context, d *sql.DB, dsID int64, entityIDs []int64, limit int) ([]model.EvidenceEdge, error) {
 	ph, ids := placeholders(entityIDs)
 	args := append(append([]any{dsID}, ids...), ids...)
 	args = append(args, limit)
 	rows, err := d.QueryContext(ctx, `
-		SELECT
-			e.id, e.source_id, e.target_id, s.name, t.name, e.relation, e.description, e.artifact_id,
-			e.valid_at, e.invalid_at, e.created_at, e.expired_at, COALESCE(e.model_id, '')
-		FROM gb_edges e
-		JOIN gb_entities s ON s.id = e.source_id
-		JOIN gb_entities t ON t.id = e.target_id
+		SELECT`+evidenceEdgeColumns+evidenceEdgeFrom+`
 		WHERE e.dataset_id = ?
+			AND e.expired_at IS NULL
 			AND (e.source_id IN (`+ph+`) OR e.target_id IN (`+ph+`))
 		ORDER BY e.id DESC
 		LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
+	return scanEvidenceEdges(rows)
+}
+
+// EdgesByID returns the live edges (not expired, i.e. not superseded) of the dataset with the given IDs, by ID. IDs that are not
+// live edges of the dataset are left out.
+func EdgesByID(ctx context.Context, d *sql.DB, dsID int64, ids []int64) ([]model.EvidenceEdge, error) {
+	ph, args := placeholders(ids)
+	rows, err := d.QueryContext(ctx, `
+		SELECT`+evidenceEdgeColumns+evidenceEdgeFrom+`
+		WHERE e.dataset_id = ? AND e.expired_at IS NULL AND e.id IN (`+ph+`)
+		ORDER BY e.id`, append([]any{dsID}, args...)...)
+	if err != nil {
+		return nil, err
+	}
+	return scanEvidenceEdges(rows)
+}
+
+func scanEvidenceEdges(rows *sql.Rows) ([]model.EvidenceEdge, error) {
 	defer rows.Close()
 	var out []model.EvidenceEdge
 	for rows.Next() {
@@ -270,18 +294,39 @@ func DatasetCounts(ctx context.Context, d *sql.DB, dsID int64) (model.Counts, er
 	return c, err
 }
 
+const artifactColumns = `
+		a.id, a.dataset_id, a.kind, a.text, COALESCE(a.session_id, ''), a.valid_at, a.created_at,
+			COALESCE(a.parent_id, 0), COALESCE(a.chunk_index, 0), COALESCE(a.start_offset, 0), COALESCE(a.end_offset, 0), COALESCE(a.tokens, 0), COALESCE(a.query, ''), COALESCE(a.series_id, 0),
+			COALESCE(a.inference_id, 0)`
+
 // ListArtifacts returns the artifacts of the dataset by ID.
 func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.Artifact, error) {
 	rows, err := d.QueryContext(ctx, `
-		SELECT a.id, a.dataset_id, a.kind, a.text, COALESCE(a.session_id, ''), a.valid_at, a.created_at,
-			COALESCE(a.parent_id, 0), COALESCE(a.chunk_index, 0), COALESCE(a.start_offset, 0), COALESCE(a.end_offset, 0), COALESCE(a.tokens, 0), COALESCE(a.query, ''), COALESCE(a.series_id, 0),
-			COALESCE(a.inference_id, 0)
+		SELECT`+artifactColumns+`
 		FROM gb_artifacts a
 		WHERE a.dataset_id = ?
 		ORDER BY a.id`, dsID)
 	if err != nil {
 		return nil, err
 	}
+	return scanArtifacts(rows)
+}
+
+// ArtifactsByID returns the artifacts of the dataset with the given IDs, by ID. IDs that are not artifacts of the dataset are left out.
+func ArtifactsByID(ctx context.Context, d *sql.DB, dsID int64, ids []int64) ([]model.Artifact, error) {
+	ph, args := placeholders(ids)
+	rows, err := d.QueryContext(ctx, `
+		SELECT`+artifactColumns+`
+		FROM gb_artifacts a
+		WHERE a.dataset_id = ? AND a.id IN (`+ph+`)
+		ORDER BY a.id`, append([]any{dsID}, args...)...)
+	if err != nil {
+		return nil, err
+	}
+	return scanArtifacts(rows)
+}
+
+func scanArtifacts(rows *sql.Rows) ([]model.Artifact, error) {
 	defer rows.Close()
 	var out []model.Artifact
 	for rows.Next() {

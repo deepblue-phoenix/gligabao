@@ -105,4 +105,4 @@ For a chunked text the response is that of the document (see [remember.md](remem
 - The extractor sees one chunk at a time: a fact that needs two distant paragraphs, or a pronoun whose antecedent is in an earlier chunk beyond the overlap, is not resolved.
 - The token count is an estimate (above); a custom `Tokenizer` is only available from Go.
 - A summary sees one chunk, so it cannot use context from elsewhere in the document; a failed summary fails the request. Chunk summaries are not extracted into the graph.
-- `query` does not read chunks, summaries or their vectors yet.
+- `query` reads the chunk and summary vectors to find passages close to a question (see [query.md](query.md#2-retrieve-by-similarity-and-passages)); it does not follow a passage to the entities and facts extracted from it.
