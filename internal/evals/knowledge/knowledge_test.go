@@ -499,3 +499,31 @@ func TestTextFileErrors(t *testing.T) {
 		t.Fatalf("a text_file that exists: %v", err)
 	}
 }
+
+// TestTextAsList checks that the "text" of a remember entry is a string or a list of strings (joined with a space), and that
+// anything else is refused.
+func TestTextAsList(t *testing.T) {
+	dir := t.TempDir()
+	load := func(text string) ([]knowledge.Eval, error) {
+		body := `{"name":"s","cases":[{"name":"a","remember":[{"text":` + text + `,"reference_time":"2024-01-01T00:00:00Z"}]}]}`
+		if err := os.WriteFile(filepath.Join(dir, "s.json"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return knowledge.LoadEvals(dir)
+	}
+	for text, want := range map[string]string{`"one two"`: "one two", `["one", "two", "three"]`: "one two three", `[]`: "", `["only"]`: "only"} {
+		evals, err := load(text)
+		if err != nil {
+			t.Fatalf("%s: %v", text, err)
+		}
+		m := evals[0].Cases[0].Remember[0]
+		if m.Text != want || m.ReferenceTime != "2024-01-01T00:00:00Z" {
+			t.Errorf("%s: got %+v, want text %q", text, m, want)
+		}
+	}
+	for _, text := range []string{`5`, `[1]`, `{"a":1}`} {
+		if _, err := load(text); err == nil {
+			t.Errorf("%s accepted", text)
+		}
+	}
+}

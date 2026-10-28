@@ -1,7 +1,10 @@
 package core
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -151,6 +154,8 @@ type KnowledgeInput struct {
 type KnowledgeArtifact struct {
 	// Kind is the artifact kind ("knowledge" or "episode"); empty uses the server default.
 	Kind string `json:"kind,omitempty"`
+	// Text is the text. In an eval file it is a string, or a list of strings (lines for the human reader of a long text), which
+	// are joined with a single space (see UnmarshalJSON); it is always a string once loaded.
 	Text string `json:"text,omitempty"`
 	// TextFile, instead of Text, names a file (relative to the evals directory, e.g. "corpus/doc.txt") holding the text.
 	TextFile string `json:"text_file,omitempty"`
@@ -160,6 +165,35 @@ type KnowledgeArtifact struct {
 	WebSearch bool `json:"web_search,omitempty"`
 	// Timeseries is the "timeseries" of the remember request, passed as is.
 	Timeseries json.RawMessage `json:"timeseries,omitempty"`
+}
+
+// UnmarshalJSON reads a KnowledgeArtifact, where "text" is a string or a list of strings; the list is joined with a single space
+// ("a", "b" is "a b"), so a long text can be written on several lines in the file.
+func (a *KnowledgeArtifact) UnmarshalJSON(b []byte) error {
+	type plain KnowledgeArtifact // no methods, so no recursion
+	aux := struct {
+		*plain
+		Text json.RawMessage `json:"text"`
+	}{plain: (*plain)(a)}
+	if err := json.Unmarshal(b, &aux); err != nil {
+		return err
+	}
+	a.Text = ""
+	raw := bytes.TrimSpace(aux.Text)
+	switch {
+	case len(raw) == 0 || string(raw) == "null":
+	case raw[0] == '[':
+		var lines []string
+		if err := json.Unmarshal(raw, &lines); err != nil {
+			return fmt.Errorf("remember text: %w", err)
+		}
+		a.Text = strings.Join(lines, " ")
+	default:
+		if err := json.Unmarshal(raw, &a.Text); err != nil {
+			return fmt.Errorf("remember text must be a string or a list of strings: %w", err)
+		}
+	}
+	return nil
 }
 
 // KnowledgeExpected is the Expected of a knowledge case: what a correct outcome is. A check is on only if its field is set.
