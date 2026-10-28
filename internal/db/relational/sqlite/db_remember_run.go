@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/model"
 )
@@ -46,7 +47,28 @@ CREATE TABLE IF NOT EXISTS gb_remember_runs (
 CREATE INDEX IF NOT EXISTS idx_gb_remember_runs_dataset ON gb_remember_runs(user_id, dataset);
 CREATE INDEX IF NOT EXISTS idx_gb_remember_runs_status ON gb_remember_runs(status);
 `)
+	fmt.Fprintf(&b, `
+CREATE TABLE IF NOT EXISTS gb_remember_run_stage_outputs (
+	id         INTEGER PRIMARY KEY AUTOINCREMENT,
+	run_id     INTEGER NOT NULL REFERENCES gb_remember_runs(id) ON DELETE CASCADE,
+	stage      TEXT NOT NULL CHECK (stage IN (%s)),
+	name       TEXT NOT NULL,
+	label      TEXT NOT NULL DEFAULT '',
+	output     TEXT NOT NULL,
+	created_at DATETIME NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gb_remember_run_stage_outputs_run ON gb_remember_run_stage_outputs(run_id, stage);
+CREATE INDEX IF NOT EXISTS idx_gb_remember_run_stage_outputs_created ON gb_remember_run_stage_outputs(created_at);
+`, "'"+strings.Join(stageNames(), "', '")+"'")
 	return b.String()
+}
+
+func stageNames() []string {
+	names := make([]string, len(model.RememberStages))
+	for i, st := range model.RememberStages {
+		names[i] = st.Name
+	}
+	return names
 }
 
 // rememberRunColumns are the columns of a run but its ID, in the order of rememberRunValues and rememberRunScan.
@@ -200,4 +222,52 @@ func ListRememberRuns(ctx context.Context, d *sql.DB, f model.RememberRunFilter,
 		out = append(out, *r)
 	}
 	return out, total, rows.Err()
+}
+
+//---------------------------------------------------------------------------------------------
+// Stage outputs (gb_remember_run_stage_outputs)
+
+// InsertRememberStageOutput stores an output of a stage of a run (o.ID is ignored) and returns its ID.
+func InsertRememberStageOutput(ctx context.Context, d *sql.DB, o model.RememberStageOutput) (int64, error) {
+	res, err := d.ExecContext(ctx, `INSERT INTO gb_remember_run_stage_outputs (run_id, stage, name, label, output, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		o.RunID, o.Stage, o.Name, o.Label, string(o.Output), FormatTime(o.CreatedAt))
+	if err != nil {
+		return 0, fmt.Errorf("insert remember stage output: %w", err)
+	}
+	return res.LastInsertId()
+}
+
+// ListRememberStageOutputs returns the outputs of the run, in the order they were made; only those of the stage if it is not "".
+func ListRememberStageOutputs(ctx context.Context, d *sql.DB, runID int64, stage string) ([]model.RememberStageOutput, error) {
+	rows, err := d.QueryContext(ctx, `SELECT id, run_id, stage, name, label, output, created_at FROM gb_remember_run_stage_outputs WHERE run_id = ? AND (? = '' OR stage = ?) ORDER BY id`, runID, stage, stage)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.RememberStageOutput{}
+	for rows.Next() {
+		var o model.RememberStageOutput
+		var output, created string
+		if err := rows.Scan(&o.ID, &o.RunID, &o.Stage, &o.Name, &o.Label, &output, &created); err != nil {
+			return nil, err
+		}
+		o.Output, o.CreatedAt = []byte(output), parseStoredTime(created)
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
+// DeleteRememberStageOutputs deletes the outputs made before the time (all of them if it is zero) and returns how many.
+func DeleteRememberStageOutputs(ctx context.Context, d *sql.DB, before time.Time) (int64, error) {
+	var res sql.Result
+	var err error
+	if before.IsZero() {
+		res, err = d.ExecContext(ctx, `DELETE FROM gb_remember_run_stage_outputs`)
+	} else {
+		res, err = d.ExecContext(ctx, `DELETE FROM gb_remember_run_stage_outputs WHERE created_at < ?`, FormatTime(before))
+	}
+	if err != nil {
+		return 0, fmt.Errorf("delete remember stage outputs: %w", err)
+	}
+	return res.RowsAffected()
 }

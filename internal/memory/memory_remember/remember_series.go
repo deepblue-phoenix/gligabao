@@ -40,5 +40,6 @@ func (j *job) traceSeries(artifactID int64, series []memory_timeseries.Result) {
 		"they name no anchor; entity and edge selectors are resolved against what was just stored).", "store_timeseries",
 		map[string]any{"user_id": j.userID, "dataset": j.dataset, "artifact_id": artifactID, "series": len(series)},
 		map[string]any{"series": series})
+	j.run.Output(StageStoreSeries, "store_series", "", map[string]any{"artifact_id": artifactID, "series": series})
 	j.noteSuppliedSeries(artifactID, series)
 }

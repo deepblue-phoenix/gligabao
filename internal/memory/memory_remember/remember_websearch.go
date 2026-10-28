@@ -206,6 +206,7 @@ func (j *job) webSearch(ctx context.Context) (out []WebSearchResult) {
 		fmt.Sprint(maxWebSearchEntities)+".", "select_web_search_entities",
 		map[string]any{"entities_extracted": len(all), "max": maxWebSearchEntities},
 		map[string]any{"entities": names})
+	j.run.Output(memory_core.StageWebSearch, "select_web_search_entities", "", map[string]any{"entities_extracted": len(all), "entities": names})
 	if len(picks) == 0 {
 		return nil
 	}
@@ -269,6 +270,7 @@ func (j *job) storeWebSearch(ctx context.Context, p *keyEntity, ws webSearched) 
 	if ws.err != nil {
 		j.tr.TimedTool("The web search for the entity failed.", memory_core.StageWebSearch, args, map[string]any{"error": ws.err.Error()},
 			memory_core.ToolTiming{Provider: ai.ProviderAnthropic, Started: ws.started, Latency: ws.latency})
+		j.run.Output(memory_core.StageWebSearch, "web_search", p.Name, map[string]any{"request": args, "error": ws.err.Error()})
 		return fail("search", ws.err)
 	}
 	resp := ws.resp
@@ -284,9 +286,10 @@ func (j *job) storeWebSearch(ctx context.Context, p *keyEntity, ws webSearched) 
 	briefing := strings.TrimSpace(resp.Text)
 	found := briefing != "" && !strings.HasPrefix(briefing, noWebResults)
 	fields["searches"], fields["sources"], fields["cost_usd"], fields["found"] = resp.Searches, len(resp.Sources), resp.CostUSD, found
+	searched := map[string]any{"found": found, "briefing": briefing, "searches": resp.Queries, "sources": resp.Sources, "search_errors": resp.SearchErrors, "billed_searches": resp.Searches}
+	j.run.Output(memory_core.StageWebSearch, "web_search", p.Name, map[string]any{"request": args, "model": resp.Model, "cost_usd": resp.CostUSD, "result": searched})
 	j.tr.TimedTool("Searched the web with Anthropic's web search tool for the latest world events about the entity.",
-		memory_core.StageWebSearch, args,
-		map[string]any{"found": found, "briefing": briefing, "searches": resp.Queries, "sources": resp.Sources, "search_errors": resp.SearchErrors, "billed_searches": resp.Searches},
+		memory_core.StageWebSearch, args, searched,
 		memory_core.ToolTiming{Model: resp.Model, Provider: resp.Provider, Started: ws.started, Latency: ws.latency,
 			PromptTokens: resp.InputTokens, CompletionTokens: resp.OutputTokens, CostUSD: resp.CostUSD})
 	if !found {
@@ -305,6 +308,7 @@ func (j *job) storeWebSearch(ctx context.Context, p *keyEntity, ws webSearched) 
 	// The graph is extracted from the briefing alone; the artifact keeps the sources next to it.
 	ex, err := Extract(ctx, wj.co.ModelLLM(wj.llm, memory_core.StageExtractGraph), briefing, wj.ref)
 	wj.run.AddInference(memory_core.StageExtractGraph, ex.RunID())
+	wj.outputExtraction(wj.stepLabel(nil), ex)
 	if err != nil {
 		return fail("extract", err)
 	}

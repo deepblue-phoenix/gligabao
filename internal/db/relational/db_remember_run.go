@@ -3,6 +3,7 @@ package relational
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/postgres"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/sqlite"
@@ -57,4 +58,47 @@ func ListRememberRuns(ctx context.Context, d *sql.DB, f RememberRunFilter, limit
 		return postgres.ListRememberRuns(ctx, d, f, limit, offset)
 	}
 	return nil, 0, unsupported()
+}
+
+//---------------------------------------------------------------------------------------------
+// Stage outputs (the gb_remember_run_stage_outputs table: what the stages of a run produced, for debugging; see
+// model.RememberStageOutput)
+
+// AddRememberStageOutput stores an output of a stage of a run (o.ID is ignored; o.CreatedAt defaults to now) and returns its
+// ID. Call it outside any open transaction.
+func AddRememberStageOutput(ctx context.Context, d *sql.DB, o RememberStageOutput) (int64, error) {
+	if o.CreatedAt.IsZero() {
+		o.CreatedAt = Now()
+	}
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.InsertRememberStageOutput(ctx, d, o)
+	case config.DBBackendPostgres:
+		return postgres.InsertRememberStageOutput(ctx, d, o)
+	}
+	return 0, unsupported()
+}
+
+// ListRememberStageOutputs returns the outputs of the run, in the order they were made (none if it has none, or no such run);
+// only those of the stage if it is not "".
+func ListRememberStageOutputs(ctx context.Context, d *sql.DB, runID int64, stage string) ([]RememberStageOutput, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListRememberStageOutputs(ctx, d, runID, stage)
+	case config.DBBackendPostgres:
+		return postgres.ListRememberStageOutputs(ctx, d, runID, stage)
+	}
+	return nil, unsupported()
+}
+
+// DeleteRememberStageOutputs deletes the outputs made before the time (all of them if it is zero), whatever their run, and
+// returns how many. The runs are left alone: this is the garbage collection of the outputs.
+func DeleteRememberStageOutputs(ctx context.Context, d *sql.DB, before time.Time) (int64, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.DeleteRememberStageOutputs(ctx, d, before)
+	case config.DBBackendPostgres:
+		return postgres.DeleteRememberStageOutputs(ctx, d, before)
+	}
+	return 0, unsupported()
 }

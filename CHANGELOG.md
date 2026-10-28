@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.122.0] - 2026-10-29
+
+### Added
+- Stage outputs of the remember pipeline, for debugging: every stage now files what it produced in a new table, `gb_remember_run_stage_outputs` (one row per output: `run_id`, `stage`, `name`, `label`, `output` JSON, `created_at`), as it takes each step. That includes the entities and facts the LLM extracted together with its raw answer (so a malformed answer is visible), the candidate facts and how each was found, what `resolve_edges` decided, the summaries, the places the geo resolver returned, the web searches and what the timeseries providers returned. A failed step files what it has. The table is separate from `gb_remember_runs` so it can be cleared or garbage collected on its own; deleting a run deletes its outputs, and an output over 64 KiB is replaced by a stub. See docs/remember.md#stage-outputs.
+- Admin UI: in the remember runs view, each stage of an opened run that ran has an **Outputs** button; clicking it fetches (only then) and shows the outputs of that stage as collapsible JSON. Backed by `GET /v1/gb/admin/api/remember-run-outputs?run_id=<id>[&stage=<name>]`.
+- `relational.AddRememberStageOutput`, `ListRememberStageOutputs` (of a run, or of one stage of it) and `DeleteRememberStageOutputs` (delete those made before a time, or all), for SQLite and PostgreSQL.
+
 ## [0.121.0] - 2026-10-28
 
 ### Added

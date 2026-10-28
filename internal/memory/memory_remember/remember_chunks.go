@@ -62,6 +62,7 @@ func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Confi
 		"extracted, stored and embedded on its own.", "chunk_text",
 		map[string]any{"text_chars": len(text), "chunk_size": cfg.Size, "overlap_percent": cfg.OverlapPercent},
 		map[string]any{"chunks": len(chunks), "details": summary})
+	j.run.Output(StageChunkText, "chunk_text", "", map[string]any{"chunks": len(chunks), "details": summary})
 
 	//--------------------------------------
 	// EXTRACT every chunk
@@ -73,6 +74,7 @@ func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Confi
 		ex, err := Extract(ctx, j.co.ModelLLM(j.llm, memory_core.StageExtractGraph), c.Text, j.ref)
 		j.run.Done(err, memory_core.StageExtractGraph)
 		j.run.AddInference(memory_core.StageExtractGraph, ex.RunID())
+		j.outputExtraction(j.stepLabel(part), ex)
 		if err != nil {
 			return nil, fmt.Errorf("memory: extract chunk %d of %d: %w", i+1, len(chunks), err)
 		}
@@ -86,6 +88,10 @@ func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Confi
 		sum, err := summarizeChunk(ctx, j.co.ModelLLM(j.llm, memory_core.StageSummarizeChunk), c.Text)
 		j.run.Done(err, memory_core.StageSummarizeChunk)
 		j.run.AddInference(memory_core.StageSummarizeChunk, sum.RunID())
+		if sum != nil {
+			j.run.Output(memory_core.StageSummarizeChunk, "summarize_chunk", j.stepLabel(part),
+				map[string]any{"summary": sum.Text, "model": sum.Model, "reasoning": sum.Reasoning, "inference_id": sum.InferenceID, "raw": sum.Raw})
+		}
 		if err != nil {
 			return nil, fmt.Errorf("memory: summarize chunk %d of %d: %w", i+1, len(chunks), err)
 		}
@@ -110,6 +116,7 @@ func (j *job) rememberDocument(ctx context.Context, text string, cfg chunk.Confi
 	j.run.Artifact(parentID)
 	j.tr.Tool("Stored the whole text as the parent artifact of the chunks.", "store_parent_artifact",
 		map[string]any{"user_id": j.userID, "dataset": j.dataset, "kind": j.kind}, map[string]any{"artifact_id": parentID, "chunks": len(chunks)})
+	j.run.Output(StageStore, "store_parent_artifact", "", map[string]any{"artifact_id": parentID, "chunks": len(chunks)})
 
 	doc := &Result{
 		UserID: j.userID, Dataset: j.dataset, Kind: j.kind, ArtifactID: parentID, SessionID: sessionID,

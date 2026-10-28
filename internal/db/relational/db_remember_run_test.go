@@ -3,6 +3,7 @@ package relational_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -106,5 +107,81 @@ func rememberRunsScenario(t *testing.T, d *sql.DB) {
 	bad.Stages[relational.RememberStageStore] = relational.RememberStage{Status: "done"}
 	if _, err := relational.CreateRememberRun(ctx, d, bad); err == nil {
 		t.Fatal("an unknown stage status was stored")
+	}
+}
+
+func TestRememberStageOutputs(t *testing.T) { dbtest.Run(t, rememberStageOutputsScenario) }
+
+func rememberStageOutputsScenario(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	user := fmt.Sprintf("u-%d", time.Now().UnixNano())
+	now := relational.Now()
+	newRun := func() int64 {
+		id, err := relational.CreateRememberRun(ctx, d, relational.NewRememberRun(user, "main", "knowledge", nil, now))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	a, b := newRun(), newRun()
+	add := func(run int64, stage, name, label, output string, at time.Time) {
+		t.Helper()
+		if id, err := relational.AddRememberStageOutput(ctx, d, relational.RememberStageOutput{RunID: run, Stage: stage, Name: name, Label: label,
+			Output: json.RawMessage(output), CreatedAt: at}); err != nil || id == 0 {
+			t.Fatalf("AddRememberStageOutput: %d, %v", id, err)
+		}
+	}
+	old := now.Add(-48 * time.Hour)
+	add(a, relational.RememberStageExtractGraph, "extract_graph", "chunk 1 of 2", `{"entities":[{"name":"Acme"}]}`, old)
+	add(a, relational.RememberStageExtractGraph, "extract_graph", "chunk 2 of 2", `{"entities":[]}`, now)
+	add(a, relational.RememberStageStore, "store", "", `{"artifact_id":7}`, now)
+	add(b, relational.RememberStageResolveGeo, "detect_geo", "", `{"places":[]}`, now)
+
+	// They come back in the order they were made, with their run, stage, name, label and JSON.
+	got, err := relational.ListRememberStageOutputs(ctx, d, a, "")
+	if err != nil || len(got) != 3 {
+		t.Fatalf("ListRememberStageOutputs: %+v, %v", got, err)
+	}
+	if got[0].RunID != a || got[0].Stage != "extract_graph" || got[0].Name != "extract_graph" || got[0].Label != "chunk 1 of 2" ||
+		got[1].Label != "chunk 2 of 2" || got[2].Stage != "store" || got[2].Label != "" || got[0].ID >= got[1].ID || got[1].ID >= got[2].ID {
+		t.Fatalf("outputs: %+v", got)
+	}
+	var out struct{ Entities []struct{ Name string } }
+	if err := json.Unmarshal(got[0].Output, &out); err != nil || len(out.Entities) != 1 || out.Entities[0].Name != "Acme" {
+		t.Fatalf("output %s: %v", got[0].Output, err)
+	}
+	if !got[0].CreatedAt.Equal(old) {
+		t.Fatalf("created_at %v, want %v", got[0].CreatedAt, old)
+	}
+	if only, err := relational.ListRememberStageOutputs(ctx, d, a, relational.RememberStageStore); err != nil || len(only) != 1 || only[0].Name != "store" {
+		t.Fatalf("outputs of the store stage: %+v, %v", only, err)
+	}
+	if none, err := relational.ListRememberStageOutputs(ctx, d, 999999, ""); err != nil || none == nil || len(none) != 0 {
+		t.Fatalf("outputs of no run: %v, %v", none, err)
+	}
+
+	// The database refuses an output of an unknown stage, or of a run that does not exist.
+	if _, err := relational.AddRememberStageOutput(ctx, d, relational.RememberStageOutput{RunID: a, Stage: "nope", Name: "x", Output: json.RawMessage(`{}`)}); err == nil {
+		t.Fatal("an output of an unknown stage was stored")
+	}
+	if _, err := relational.AddRememberStageOutput(ctx, d, relational.RememberStageOutput{RunID: 999999, Stage: "store", Name: "x", Output: json.RawMessage(`{}`)}); err == nil {
+		t.Fatal("an output of an unknown run was stored")
+	}
+
+	// Garbage collection: by age, leaving the runs alone.
+	if _, err := relational.DeleteRememberStageOutputs(ctx, d, now.Add(-24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = relational.ListRememberStageOutputs(ctx, d, a, ""); len(got) != 2 || got[0].Label != "chunk 2 of 2" {
+		t.Fatalf("after deleting the old ones: %+v", got)
+	}
+	if n, err := relational.DeleteRememberStageOutputs(ctx, d, time.Time{}); err != nil || n < 3 {
+		t.Fatalf("deleting all: %d, %v", n, err)
+	}
+	if got, _ = relational.ListRememberStageOutputs(ctx, d, b, ""); len(got) != 0 {
+		t.Fatalf("after deleting all: %+v", got)
+	}
+	if _, err := relational.GetRememberRun(ctx, d, a); err != nil {
+		t.Fatalf("the run is gone: %v", err)
 	}
 }

@@ -53,9 +53,11 @@ func (j *job) classifyComplexity(ctx context.Context, text string) {
 	}
 	fields["complexity"], fields["confidence"], fields["truncated"], fields["model"] = cl.Complexity, cl.Confidence, cl.Truncated, cl.Model
 	log.WithFields(fields).Info("jev: remember text complexity")
+	classified := map[string]any{"complexity": cl.Complexity, "confidence": cl.Confidence, "probabilities": cl.Probabilities, "truncated": cl.Truncated}
+	j.run.Output(StageClassifyComplexity, "classify_complexity", "", map[string]any{"model": cl.Model, "result": classified,
+		"text_chars": len(text), "text_tokens": tokens, "latency_ms": call.Latency.Milliseconds()})
 	j.tr.TimedTool("Jev (system 1) classified the text as simple, medium or complex in the number of entities it will yield, "+
-		"to predict the compute per entity and edge.", StageClassifyComplexity, args,
-		map[string]any{"complexity": cl.Complexity, "confidence": cl.Confidence, "probabilities": cl.Probabilities, "truncated": cl.Truncated},
+		"to predict the compute per entity and edge.", StageClassifyComplexity, args, classified,
 		memory_core.ToolTiming{Model: cl.Model, Provider: jev.Provider, Started: call.Started, Latency: call.Latency,
 			PromptTokens: cl.InputTokens, CompletionTokens: cl.OutputTokens})
 }

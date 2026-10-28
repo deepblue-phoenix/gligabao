@@ -240,11 +240,46 @@ SELECT id, web_search_error FROM gb_remember_runs WHERE web_search_status = 'fai
 
 From Go: `relational.GetRememberRun`, `ListRememberRuns` (filter by user, dataset and status). Writing is done by the pipeline: `startRunLog` returns a `*runLog` whose methods (`Start`, `Done`, `AddInference`, `Artifact`, `Finish`) do nothing on `nil` and never fail the call; a row that cannot be written is logged. The pipeline reports each inference explicitly, with the ID that recording it returned: `j.run.AddInference(stage, id)`.
 
+## Stage outputs
+
+The run log says *how* each stage went; the **stage outputs** keep *what it produced*, for debugging: the entities and facts the LLM extracted (with its raw answer, which is what says why a malformed one could not be parsed), the candidate facts that were found, what was decided about them, the places a geo resolver returned, and so on. They are in a table of their own, `gb_remember_run_stage_outputs`, so they can be cleared or garbage collected without touching the run log. Nothing else reads them.
+
+| Column | |
+| ------ | - |
+| `id` | outputs of a run are listed in the order of `id`, which is the order they were made |
+| `run_id` | → `gb_remember_runs` (deleting a run deletes its outputs) |
+| `stage` | the stage of the run it belongs to (one of the [stages](#run-log)) |
+| `name` | the step that made it, see below; a stage has several |
+| `label` | what it is about when the step ran more than once: `chunk 2 of 5`, `web search for "Berlin"`, an entity or a series key; `''` if not |
+| `output` | JSON, whose shape depends on `name`. One over 64 KiB is replaced by `{"truncated": true, "bytes": n, "preview": "..."}` |
+| `created_at` | when it was made |
+
+Every stage that has something to say files one output for each step it takes, as it takes it (so a run in progress can be watched), and a step that fails files what it has. A stage that produces nothing (`not_started`) has none, and neither does one with nothing to show for itself. The `web_search`, `fetch_series` and `observe_series` stages also hold the outputs of the steps of the texts they store (the extraction of a briefing, its `load_candidates`, ...), exactly as they hold their inferences; the `name` and the `label` tell them apart.
+
+| Stage | `name` (and `label`) | Output |
+| ----- | -------------------- | ------ |
+| `classify_complexity` | `classify_complexity` | `model`, `result` (`complexity`, `confidence`, `probabilities`, `truncated`), `text_chars`, `text_tokens`, `latency_ms` |
+| `chunk_text` | `chunk_text` | `chunks` and `details` (index, tokens, overlap and byte range of each) |
+| `extract_graph` | `extract_graph` (a chunk) | `model`, `entities`, `edges` (the new facts), `raw` (the LLM's answer) |
+| `summarize_chunk` | `summarize_chunk` (a chunk) | `summary`, `model`, `reasoning`, `inference_id`, `raw` |
+| `load_candidates` | `load_candidates` (a chunk) | `new_edges` (how many), `by_name` (`names`, `facts`), `by_similarity` (`searched`, `matches`, `facts`, `error`), `candidates` (the merge, each with how it was found) |
+| `resolve_edges` | `resolve_edges` (a chunk) | `new_edges` (the facts; the numbers below are their positions), `duplicates` and `contradictions` (`new`, `existing` ID), `llm_called`, `raw` |
+| `store` | `store` (a chunk), `store_parent_artifact` | what was stored: `artifact_id`, counts of entities, edges, invalidated edges and embeddings |
+| `store_series` | `store_series` | `artifact_id`, `series` (the stored series with their stats) |
+| `resolve_geo` | `select_geo_entities`, `detect_geo`, `resolve_geo` (an entity), `store_geo` | the entities offered; the places the LLM picked (and `raw`); what the resolver answered for each (`request`, `found`, `place` or `error`); how many were stored |
+| `web_search` | `select_web_search_entities`, `web_search` (an entity) | the entities picked; each search (`request`, `model`, `cost_usd`, `result`: `found`, `briefing`, `searches`, `sources`, ...) |
+| `fetch_series` | `select_series_entities`, `resolve_series_providers`, `fetch_timeseries` (an entity) | the entities offered; the provider chosen for each (and `raw`); what each provider returned and what was stored |
+| `observe_series` | `observe_series` (a series) | the points and the observation text |
+
+`Within` views file the steps of a stored briefing or observation in the stage of the enrichment: `extract_graph`, `load_candidates`, `resolve_edges` and `store` there have the label `web search for "..."` or `observation of series "..."`.
+
+They are written by `runLog.Output(stage, name, label, v)` (like the rest of the log it never fails the call; a write that fails is logged), and built in `internal/memory/memory_remember/stage_outputs.go` and next to the step that makes them. To read them: `relational.ListRememberStageOutputs(ctx, d, runID, stage)` (`""` for all the stages) (the admin UI does, see below). To clear them: `relational.DeleteRememberStageOutputs(ctx, d, before)` deletes those made before the time (all of them if it is zero) and leaves the runs alone, or just `DELETE FROM gb_remember_run_stage_outputs WHERE created_at < ...`.
+
 ## Admin UI
 
-With the [admin UI](../README.md) enabled, the **remember runs** view shows, for each database, how many runs there are in each status and the list of the runs, newest first (100 per page). Clicking a status filters the list by it (click again, or **Clear filter**, to remove it); the counts are never filtered. Clicking a run opens its parameters and a table of its stages (status, start, duration, inference IDs, error). A run whose call succeeded but that has a failed stage is flagged.
+With the [admin UI](../README.md) enabled, the **remember runs** view shows, for each database, how many runs there are in each status and the list of the runs, newest first (100 per page). Clicking a status filters the list by it (click again, or **Clear filter**, to remove it); the counts are never filtered. Clicking a run opens its parameters and a table of its stages (status, start, duration, inference IDs, error, and, for a stage that ran, an **Outputs** button). Clicking it fetches the [outputs](#stage-outputs) of that stage, and nothing is fetched before: they are shown each as a collapsible JSON. A run whose call succeeded but that has a failed stage is flagged.
 
-The JSON behind it is `GET /v1/gb/admin/api/remember-runs?db=<name>[&status=][&dataset=][&user_id=][&limit=][&offset=]` (`status` is `started`, `succeeded` or `failed`; `limit` defaults to 100, at most 500): `counts` (`total`, `started`, `succeeded`, `failed`), `stages` (the stage names in pipeline order), and `runs` (as in the [run log](#run-log), with `stages` keyed by name) with `total`, `limit`, `offset` for the filters given.
+The JSON behind it is `GET /v1/gb/admin/api/remember-runs?db=<name>[&status=][&dataset=][&user_id=][&limit=][&offset=]` (`status` is `started`, `succeeded` or `failed`; `limit` defaults to 100, at most 500): `counts` (`total`, `started`, `succeeded`, `failed`), `stages` (the stage names in pipeline order), and `runs` (as in the [run log](#run-log), with `stages` keyed by name) with `total`, `limit`, `offset` for the filters given. The [stage outputs](#stage-outputs) of one run (they would make the list heavy, so the view asks for the outputs of a stage when the user opens them) are `GET /v1/gb/admin/api/remember-run-outputs?run_id=<id>[&stage=<name>][&db=<name>]` (without `stage`, those of all the stages): `run_id`, `stage` and `outputs` (each as in the table above, with `output` as JSON, in the order they were made; empty for a run that has none, 404 for an unknown run).
 
 ## Schema
 
@@ -263,6 +298,7 @@ All tables are prefixed with `gb_` (see `internal/db/relational/{sqlite,postgres
 | `gb_entity_geo` | The coordinates of the entities that are places (see [geo.md](geo.md#the-table)) |
 | `gb_series`, `gb_series_points`, `gb_series_anchors` | The [timeseries](timeseries.md) and what they are anchored to (`gb_artifacts.series_id` links a [series observation](timeseries.md#observations) to its series) |
 | `gb_remember_runs` | One row per call: its `status`, and for each stage a status, error, start and end time and inferences. See [Run log](#run-log) |
+| `gb_remember_run_stage_outputs` | What the stages of a run produced, for debugging: one row per output (`run_id` → `gb_remember_runs`, `stage`, `name`, `label`, `output` JSON, `created_at`). See [Stage outputs](#stage-outputs) |
 
 Foreign keys are enabled on every connection. Deleting an entity cascades to its edges and its `gb_entity_artifacts` links, and deleting an edge removes its `gb_edge_artifacts` links; deleting an artifact sets `artifact_id` to NULL on its edges and removes its `gb_edge_artifacts` and `gb_entity_artifacts` links. Deleting an entity or an edge also removes its `gb_entity_sessions` or `gb_edge_sessions` links; deleting an artifact leaves them (they record that the session discovered the entity or fact, not which artifact did).
 

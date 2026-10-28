@@ -175,11 +175,13 @@ func (j *job) observe(ctx context.Context, o observable) SeriesObservationResult
 	text := memory_timeseries.ObservationText(o.Observed, points)
 	if text == "" {
 		j.tr.Tool("The series has no points in the window, so there is nothing to observe.", "observe_series", args, map[string]any{"points": 0})
+		j.run.Output(StageObserveSeries, "observe_series", o.Observed.Key, map[string]any{"request": args, "points": 0})
 		return out
 	}
 	out.Text = text
-	j.tr.Tool("Generated the observation text from the stats of the series' points in the window (no LLM).", "observe_series", args,
-		map[string]any{"points": len(points), "text": text})
+	observed := map[string]any{"points": len(points), "text": text}
+	j.tr.Tool("Generated the observation text from the stats of the series' points in the window (no LLM).", "observe_series", args, observed)
+	j.run.Output(StageObserveSeries, "observe_series", o.Observed.Key, map[string]any{"request": args, "result": observed})
 
 	//--------------------------------------
 	// THE OBSERVATION IS A TEXT LIKE ANY OTHER: a job of its own that stores a "series_observation" artifact. It is as of
@@ -192,6 +194,7 @@ func (j *job) observe(ctx context.Context, o observable) SeriesObservationResult
 
 	ex, err := Extract(ctx, oj.co.ModelLLM(oj.llm, memory_core.StageExtractGraph), text, oj.ref)
 	oj.run.AddInference(memory_core.StageExtractGraph, ex.RunID())
+	oj.outputExtraction(oj.stepLabel(nil), ex)
 	if err != nil {
 		return fail("extract", err)
 	}

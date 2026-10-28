@@ -20,17 +20,18 @@ import (
 
 // Types shared with the backends (see package model).
 type (
-	Dataset           = model.Dataset
-	Model             = model.Model
-	Inference         = model.Inference
-	InferenceStat     = model.InferenceStat
-	InferenceFilter   = model.InferenceFilter
-	InferenceGroup    = model.InferenceGroup
-	Ontology          = model.Ontology
-	RememberRun       = model.RememberRun
-	RememberStage     = model.RememberStage
-	RememberStageDef  = model.RememberStageDef
-	RememberRunFilter = model.RememberRunFilter
+	Dataset             = model.Dataset
+	Model               = model.Model
+	Inference           = model.Inference
+	InferenceStat       = model.InferenceStat
+	InferenceFilter     = model.InferenceFilter
+	InferenceGroup      = model.InferenceGroup
+	Ontology            = model.Ontology
+	RememberRun         = model.RememberRun
+	RememberStage       = model.RememberStage
+	RememberStageDef    = model.RememberStageDef
+	RememberRunFilter   = model.RememberRunFilter
+	RememberStageOutput = model.RememberStageOutput
 )
 
 // Statuses of a remember run and of its stages, and the stages (see model.RememberStages and gb_remember_runs).

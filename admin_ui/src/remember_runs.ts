@@ -1,6 +1,7 @@
 // The "remember runs" view (see docs/remember.md#run-log): per database, how many runs of the remember pipeline are in
 // each status and the list of the runs, newest first. Clicking a status tile filters the list by it; clicking a run shows
-// its parameters and how each stage went (status, error, time, inferences).
+// its parameters and how each stage went (status, error, time, inferences) and a button for each stage that ran, which loads (only then) and shows what the
+// stage produced (its outputs, kept for debugging: see docs/remember.md#stage-outputs).
 
 interface Stage {
   status: string; error: string | null; started_at: string | null; finished_at: string | null; inference_ids: number[];
@@ -9,6 +10,7 @@ interface Run {
   id: number; user_id: string; dataset: string; kind: string; params: Record<string, unknown>; artifact_id: number | null;
   status: string; error: string | null; started_at: string; finished_at: string | null; stages: Record<string, Stage>;
 }
+interface StageOutput { id: number; run_id: number; stage: string; name: string; label: string; output: unknown; created_at: string }
 interface Counts { total: number; started: number; succeeded: number; failed: number }
 interface Response { counts: Counts; stages: string[]; runs: Run[]; total: number; limit: number; offset: number }
 interface Filter { status?: string; dataset?: string }
@@ -83,16 +85,19 @@ function makePanel(name: string): { box: HTMLElement; panel: Panel } {
   return { box, panel: { filter: {}, offset: 0, status, stats, filterBar, table, body, pager } };
 }
 
-function stagesTable(run: Run, order: string[]): HTMLTableElement {
+// The table of the stages of a run. Its last column has a button that shows what the stage produced (its outputs, kept for
+// debugging). They are fetched when the button is clicked, for that stage only, not before.
+function stagesTable(name: string, run: Run, order: string[]): HTMLTableElement {
   const table = node("table", "compact");
-  headRow(table, [["Stage", false], ["Status", false], ["Started", false], ["Duration", true], ["Inferences", false], ["Error", false]]);
+  headRow(table, [["Stage", false], ["Status", false], ["Started", false], ["Duration", true], ["Inferences", false], ["Error", false], ["Output", false]]);
   const body = table.createTBody();
+  const cols = table.rows[0].cells.length;
   // The stages the server knows, in pipeline order; then any it did not list.
   const names = [...order, ...Object.keys(run.stages).filter((s) => !order.includes(s))].filter((s) => run.stages[s]);
-  for (const name of names) {
-    const s = run.stages[name];
+  for (const stage of names) {
+    const s = run.stages[stage];
     const tr = body.insertRow();
-    tr.insertCell().textContent = name;
+    tr.insertCell().textContent = stage;
     tr.insertCell().appendChild(statusBadge(s.status));
     tr.insertCell().textContent = fmtTime(s.started_at);
     const dur = tr.insertCell();
@@ -102,8 +107,51 @@ function stagesTable(run: Run, order: string[]): HTMLTableElement {
     const err = tr.insertCell();
     err.className = s.error ? "error" : "";
     err.textContent = s.error ?? "";
+    const cell = tr.insertCell();
+    if (s.status === "not_started") continue; // it never ran: nothing to show
+    const row = body.insertRow();
+    row.hidden = true;
+    const box = row.insertCell();
+    box.colSpan = cols;
+    const btn = cell.appendChild(node("button", "small", "Outputs"));
+    btn.type = "button";
+    let loaded = false;
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      row.hidden = !row.hidden;
+      if (row.hidden || loaded) return;
+      loaded = true; // fetched once, when first opened
+      box.className = "muted";
+      box.textContent = "Loading…";
+      loadOutputs(name, run, stage).then((outputs) => showOutputs(box, outputs), (e: unknown) => {
+        loaded = false; // opened again, it tries again
+        box.className = "error";
+        box.textContent = `Failed to load the outputs: ${errText(e)}`;
+      });
+    });
   }
   return table;
+}
+
+function showOutputs(box: HTMLElement, outputs: StageOutput[]): void {
+  box.replaceChildren();
+  if (outputs.length === 0) {
+    box.className = "muted";
+    box.textContent = "No outputs.";
+    return;
+  }
+  box.className = "";
+  for (const o of outputs) {
+    const d = box.appendChild(node("details"));
+    d.appendChild(node("summary", "", o.label ? `${o.name} · ${o.label}` : o.name));
+    d.appendChild(node("pre", "ts-def", JSON.stringify(o.output, null, 2)));
+  }
+}
+
+async function loadOutputs(name: string, run: Run, stage: string): Promise<StageOutput[]> {
+  const res = await fetch(`api/remember-run-outputs?${new URLSearchParams({ db: name, run_id: String(run.id), stage })}`);
+  if (!res.ok) throw new Error(`${res.status}: ${(await res.text()).trim()}`);
+  return ((await res.json()) as { outputs: StageOutput[] }).outputs;
 }
 
 function detailCell(run: Run, order: string[], p: Panel, name: string): HTMLElement {
@@ -119,7 +167,7 @@ function detailCell(run: Run, order: string[], p: Panel, name: string): HTMLElem
     p.offset = 0;
     void loadDatabase(name);
   });
-  box.appendChild(stagesTable(run, order));
+  box.appendChild(stagesTable(name, run, order));
   const params = box.appendChild(node("details"));
   params.appendChild(node("summary", "", "Parameters"));
   params.appendChild(node("pre", "ts-def", JSON.stringify(run.params ?? {}, null, 2)));

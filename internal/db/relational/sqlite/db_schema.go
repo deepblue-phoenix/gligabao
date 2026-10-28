@@ -112,6 +112,18 @@ CREATE INDEX IF NOT EXISTS idx_gb_inferences_model ON gb_inferences(model_id);
 --   <stage>_inference_ids  only for the stages that run a model: JSON array of the IDs (gb_inferences) of the runs the stage
 --                        made, in order. A list, because a stage makes one run per chunk (and an embedding request is a run).
 -- All the DATETIME columns follow the convention of db_time.go.
+--
+-- Stage outputs: gb_remember_run_stage_outputs holds what the stages of a run produced, FOR DEBUGGING, in a table of its own so
+-- that it can be cleared or garbage collected (DELETE ... WHERE created_at < ...) without touching the run log. Deleting a run
+-- deletes its outputs. One row for each output of a step of a stage (a stage has many: a step runs again for each chunk of a
+-- text, for each entity searched for, ...), in order of id.
+--   run_id      the run (gb_remember_runs)
+--   stage       the stage of the run it belongs to (model.RememberStages). The web_search, fetch_series and observe_series stages
+--               hold the outputs of the steps of the texts they store too, as for their inferences
+--   name        the step that made it: extract_graph, resolve_edges, detect_geo, ... (see docs/remember.md#stage-outputs)
+--   label       what it is about when the step ran more than once ('chunk 2 of 5', 'web search for "Berlin"'); '' if not
+--   output      JSON, whose shape depends on name; an output over 64 KiB is replaced by {"truncated": true, "bytes": n, "preview": ...}
+--   created_at  when it was made
 `
 
 // initSchema applies the database schema.

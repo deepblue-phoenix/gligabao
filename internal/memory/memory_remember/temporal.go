@@ -40,6 +40,8 @@ type EdgePlan struct {
 	Contradictions []Contradiction
 	// InferenceID is the inference (gb_inferences) of the LLM call that compared the facts; 0 if there was none.
 	InferenceID int64
+	// Raw is the text the LLM answered, kept for the stage outputs (see runLog.Output); "" if it was not asked.
+	Raw string
 }
 
 // RunID is the inference of the comparison (0 for none, and for a nil plan).
@@ -105,7 +107,7 @@ func resolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []Edge)
 	if err != nil {
 		return nil, err
 	}
-	failed := &EdgePlan{InferenceID: resp.InferenceID}
+	failed := &EdgePlan{InferenceID: resp.InferenceID, Raw: resp.Text}
 	if resp.StopReason == "max_tokens" {
 		return failed, errors.New("memory: LLM resolve output truncated")
 	}
@@ -113,7 +115,7 @@ func resolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []Edge)
 	if err != nil {
 		return failed, err
 	}
-	plan.InferenceID = resp.InferenceID
+	plan.InferenceID, plan.Raw = resp.InferenceID, resp.Text
 	type pair struct {
 		New      int   `json:"new"`
 		Existing int64 `json:"existing"`

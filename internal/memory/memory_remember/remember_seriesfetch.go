@@ -215,6 +215,8 @@ func (j *job) fetchSeries(ctx context.Context) (out []SeriesFetchResult) {
 		map[string]any{"entities_extracted": len(all), "max": maxSeriesCandidates, "providers": f.Providers,
 			"from": relational.FormatTime(from), "to": relational.FormatTime(to)},
 		map[string]any{"entities": names})
+	j.run.Output(StageFetchSeries, "select_series_entities", "", map[string]any{"entities_extracted": len(all), "entities": names,
+		"providers": f.Providers, "from": relational.FormatTime(from), "to": relational.FormatTime(to)})
 	if len(cands) == 0 || len(providers) == 0 {
 		return nil
 	}
@@ -228,7 +230,8 @@ func (j *job) fetchSeries(ctx context.Context) (out []SeriesFetchResult) {
 		MaxTokens: 2048,
 	})
 	var picks []seriesAssignment
-	if err == nil {
+	answered := err == nil // the LLM call itself worked
+	if answered {
 		j.run.AddInference(StageFetchSeries, resp.InferenceID)
 	}
 	if err == nil && resp.StopReason == "max_tokens" {
@@ -236,6 +239,13 @@ func (j *job) fetchSeries(ctx context.Context) (out []SeriesFetchResult) {
 	}
 	if err == nil {
 		picks, err = parseSeriesAssignments(resp.Text, cands, providers)
+	}
+	if answered {
+		out := map[string]any{"assignments": seriesAssignmentsOutput(picks), "raw": resp.Text}
+		if err != nil {
+			out["error"] = err.Error()
+		}
+		j.run.Output(StageFetchSeries, "resolve_series_providers", "", out)
 	}
 	if err != nil {
 		log.WithError(err).WithFields(fields).Warn("remember: resolving timeseries providers failed")
@@ -311,6 +321,7 @@ func (j *job) storeFetchedSeries(ctx context.Context, p seriesAssignment, sf ser
 		out.Error = "fetch: " + sf.err.Error()
 		log.WithError(sf.err).WithFields(fields).Warn("remember: timeseries fetch failed")
 		j.tr.TimedTool("The timeseries provider failed.", "fetch_timeseries", args, map[string]any{"error": out.Error}, timing)
+		j.run.Output(StageFetchSeries, "fetch_timeseries", p.Entity.Name, map[string]any{"request": args, "error": out.Error})
 		return out
 	}
 
@@ -356,6 +367,7 @@ func (j *job) storeFetchedSeries(ctx context.Context, p seriesAssignment, sf ser
 	if len(specs) == 0 {
 		log.WithFields(fields).Info("remember: timeseries provider returned no series for the entity")
 		j.tr.TimedTool("The timeseries provider returned no series in the period.", "fetch_timeseries", args, returned, timing)
+		j.run.Output(StageFetchSeries, "fetch_timeseries", p.Entity.Name, map[string]any{"request": args, "result": returned})
 		return out
 	}
 
@@ -365,6 +377,7 @@ func (j *job) storeFetchedSeries(ctx context.Context, p seriesAssignment, sf ser
 		log.WithError(err).WithFields(fields).Warn("remember: storing fetched timeseries failed")
 		j.tr.TimedTool("The timeseries provider returned series but storing them failed.", "fetch_timeseries", args,
 			map[string]any{"returned": len(sf.data), "error": err.Error()}, timing)
+		j.run.Output(StageFetchSeries, "fetch_timeseries", p.Entity.Name, map[string]any{"request": args, "result": returned, "error": err.Error()})
 		return out
 	}
 	out.Series = res
@@ -378,6 +391,7 @@ func (j *job) storeFetchedSeries(ctx context.Context, p seriesAssignment, sf ser
 	fields["series"] = len(res)
 	log.WithFields(fields).Info("remember: timeseries fetched and stored")
 	returned["series"] = res
+	j.run.Output(StageFetchSeries, "fetch_timeseries", p.Entity.Name, map[string]any{"request": args, "result": returned})
 	j.tr.TimedTool("Fetched timeseries from the provider (clipped to the period) and stored them, with their stats, anchored to "+
 		"the entity and to the artifact it came from.", "fetch_timeseries", args, returned, timing)
 	return out
@@ -400,4 +414,13 @@ func (j *job) storeSeriesSpecs(ctx context.Context, specs []memory_core.SeriesSp
 		return nil, err
 	}
 	return res, tx.Commit()
+}
+
+// seriesAssignmentsOutput is how the assignments the LLM made are filed in the run log (see runLog.Output).
+func seriesAssignmentsOutput(picks []seriesAssignment) []map[string]any {
+	out := make([]map[string]any, 0, len(picks))
+	for _, p := range picks {
+		out = append(out, map[string]any{"entity": p.Entity.Name, "provider": p.Provider.Name, "query": p.Query, "reason": p.Reason})
+	}
+	return out
 }

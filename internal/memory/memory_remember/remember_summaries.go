@@ -28,6 +28,8 @@ type chunkSummary struct {
 	InferenceID int64
 	// Reasoning is the reasoning level it ran with: "none", "low", "medium" or "high".
 	Reasoning string
+	// Raw is the text the LLM answered, kept for the stage outputs (see runLog.Output); "" if it did not answer.
+	Raw string
 }
 
 // RunID is the inference of the summary (0 for none, and for a nil s).
@@ -64,12 +66,12 @@ func summarizeChunk(ctx context.Context, llm memory_core.LLM, text string) (*chu
 		return nil, err
 	}
 	if resp.StopReason == "max_tokens" {
-		return &chunkSummary{InferenceID: resp.InferenceID}, errors.New("memory: LLM summary truncated")
+		return &chunkSummary{InferenceID: resp.InferenceID, Raw: resp.Text}, errors.New("memory: LLM summary truncated")
 	}
 	s := strings.TrimSpace(resp.Text)
 	if s == "" {
-		return &chunkSummary{InferenceID: resp.InferenceID}, errors.New("memory: LLM returned an empty summary")
+		return &chunkSummary{InferenceID: resp.InferenceID, Raw: resp.Text}, errors.New("memory: LLM returned an empty summary")
 	}
 	level, _ := ai.NormalizeReasoning(resp.Reasoning)
-	return &chunkSummary{Text: s, Provider: resp.Provider, Model: resp.Model, InferenceID: resp.InferenceID, Reasoning: level}, nil
+	return &chunkSummary{Text: s, Provider: resp.Provider, Model: resp.Model, InferenceID: resp.InferenceID, Reasoning: level, Raw: resp.Text}, nil
 }

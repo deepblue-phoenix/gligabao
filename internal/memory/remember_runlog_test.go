@@ -3,6 +3,7 @@ package memory_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -146,6 +147,101 @@ func testRememberRunLogText(t *testing.T, d *sql.DB) {
 	}
 }
 
+// outputsOf returns the stage outputs of the run by stage and name.
+func outputsOf(t *testing.T, d *sql.DB, run *relational.RememberRun) map[string][]relational.RememberStageOutput {
+	t.Helper()
+	all, err := relational.ListRememberStageOutputs(context.Background(), d, run.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string][]relational.RememberStageOutput{}
+	for _, o := range all {
+		if !json.Valid(o.Output) {
+			t.Errorf("output %d (%s) is not JSON: %s", o.ID, o.Name, o.Output)
+		}
+		out[o.Stage+"/"+o.Name] = append(out[o.Stage+"/"+o.Name], o)
+	}
+	return out
+}
+
+func TestRememberRunLogOutputs(t *testing.T) { dbtest.Run(t, testRememberRunLogOutputs) }
+
+// The stages file what they produced, for debugging: the extraction with the raw answer of the LLM, the candidates, the
+// comparison and the storage; for a chunked text the ones of each chunk, labeled; and a failed stage files what it has.
+func testRememberRunLogOutputs(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	opts := []memory_core.Option{memory_core.WithChunking(chunk.Config{Size: 64, OverlapPercent: 40})}
+	// The second call has a candidate (Acme's fact of the first), so the facts are compared.
+	for _, text := range []string{"Person2 works at Acme.", "Person1 works at Acme."} {
+		if _, err := memory_remember.Remember(ctx, d, &personLLM{}, "u1", "work", "", text, relational.Now(), opts...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runs, _, err := relational.ListRememberRuns(ctx, d, relational.RememberRunFilter{}, 10, 0)
+	if err != nil || len(runs) != 2 {
+		t.Fatal(runs, err)
+	}
+	outs := outputsOf(t, d, &runs[0])
+	for _, k := range []string{"extract_graph/extract_graph", "load_candidates/load_candidates", "resolve_edges/resolve_edges", "store/store"} {
+		if len(outs[k]) != 1 || outs[k][0].Label != "" {
+			t.Errorf("%s: %+v", k, outs[k])
+		}
+	}
+	var ex struct {
+		Entities []struct{ Name string }
+		Edges    []any
+		Raw      string
+	}
+	if err := json.Unmarshal(outs["extract_graph/extract_graph"][0].Output, &ex); err != nil || len(ex.Entities) == 0 || len(ex.Edges) == 0 || ex.Raw == "" {
+		t.Errorf("extract_graph output %s: %v", outs["extract_graph/extract_graph"][0].Output, err)
+	}
+	var st struct {
+		ArtifactID int64 `json:"artifact_id"`
+	}
+	if err := json.Unmarshal(outs["store/store"][0].Output, &st); err != nil || runs[0].ArtifactID == nil || st.ArtifactID != *runs[0].ArtifactID {
+		t.Errorf("store output %s, run artifact %v", outs["store/store"][0].Output, runs[0].ArtifactID)
+	}
+	if got := outputsOf(t, d, &runs[1]); len(got["extract_graph/extract_graph"]) != 1 || len(got["resolve_edges/resolve_edges"]) != 1 {
+		t.Errorf("first call: %v", got)
+	}
+	if len(outs) != 4 {
+		t.Errorf("a text that is one chunk has outputs %v", outs)
+	}
+
+	// A chunked text: one of each per chunk, with the chunk as the label, and the chunking itself.
+	res, err := memory_remember.Remember(ctx, d, &personLLM{}, "u2", "docs", "", document(8), relational.Now(), opts...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := len(res.Chunks)
+	docRuns, _, err := relational.ListRememberRuns(ctx, d, relational.RememberRunFilter{UserID: "u2"}, 10, 0)
+	if err != nil || len(docRuns) != 1 {
+		t.Fatal(docRuns, err)
+	}
+	outs = outputsOf(t, d, &docRuns[0])
+	for _, k := range []string{"extract_graph/extract_graph", "summarize_chunk/summarize_chunk", "load_candidates/load_candidates", "resolve_edges/resolve_edges", "store/store"} {
+		if len(outs[k]) != n || outs[k][0].Label != fmt.Sprintf("chunk 1 of %d", n) || outs[k][n-1].Label != fmt.Sprintf("chunk %d of %d", n, n) {
+			t.Errorf("%s: %d outputs, want %d: %+v", k, len(outs[k]), n, outs[k])
+		}
+	}
+	if len(outs["chunk_text/chunk_text"]) != 1 || len(outs["store/store_parent_artifact"]) != 1 {
+		t.Errorf("chunk_text or parent: %v", outs)
+	}
+
+	// A call that fails files the raw answer that could not be parsed.
+	if _, err := memory_remember.Remember(ctx, d, &badJSONLLM{}, "u3", "work", "", "Person1 works at Acme.", relational.Now()); err == nil {
+		t.Fatal("Remember did not fail")
+	}
+	failed, _, err := relational.ListRememberRuns(ctx, d, relational.RememberRunFilter{UserID: "u3"}, 10, 0)
+	if err != nil || len(failed) != 1 {
+		t.Fatal(failed, err)
+	}
+	fo := outputsOf(t, d, &failed[0])["extract_graph/extract_graph"]
+	if len(fo) != 1 || !strings.Contains(string(fo[0].Output), "this is not json") {
+		t.Errorf("failed extraction outputs: %+v", fo)
+	}
+}
+
 func TestRememberRunLogChunks(t *testing.T) { dbtest.Run(t, testRememberRunLogChunks) }
 
 // A chunked text: a stage that runs for each chunk spans them and lists the inference of each.
@@ -283,6 +379,19 @@ func testRememberRunLogWebSearch(t *testing.T, d *sql.DB) {
 	if len(runs["web_search"]) < len(res.WebSearches)*2 || len(runs["extract_graph"]) != 1 {
 		t.Errorf("web_search runs %d, extract_graph runs %d, %d searches", len(runs["web_search"]), len(runs["extract_graph"]), len(res.WebSearches))
 	}
+	// Its outputs: the entities picked, each search, and the steps of the briefings it stored (told apart by name and label).
+	outs := outputsOf(t, d, run)
+	for _, k := range []string{"web_search/select_web_search_entities", "web_search/web_search", "web_search/extract_graph", "web_search/store"} {
+		if len(outs[k]) == 0 {
+			t.Errorf("no output %s: %v", k, outs)
+		}
+	}
+	if o := outs["web_search/extract_graph"]; len(o) > 0 && !strings.HasPrefix(o[0].Label, "web search for ") {
+		t.Errorf("label of a briefing's extraction: %q", o[0].Label)
+	}
+	if len(outs["extract_graph/extract_graph"]) != 1 {
+		t.Errorf("the text's extraction: %v", outs["extract_graph/extract_graph"])
+	}
 	for _, r := range runs["web_search"] {
 		if r.Stage != memory_core.StageWebSearch && r.Stage != memory_core.StageExtractGraph && r.Stage != memory_core.StageResolveEdges {
 			t.Errorf("web_search holds %+v", r)
@@ -326,4 +435,11 @@ func TestRememberRunLogStages(t *testing.T) {
 			t.Errorf("stage %q is not the run log's %q", name, want)
 		}
 	}
+}
+
+// badJSONLLM answers with text that is not the JSON the extraction asks for.
+type badJSONLLM struct{}
+
+func (badJSONLLM) Complete(context.Context, ai.Request) (*ai.Response, error) {
+	return &ai.Response{StopReason: "end_turn", Model: "bad-model", Text: "this is not json"}, nil
 }

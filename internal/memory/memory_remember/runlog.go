@@ -15,6 +15,10 @@ package memory_remember
 //	j.run.Done(err, StageExtractGraph)                        // after it, with its error (nil if it had none)
 //	j.run.AddInference(StageExtractGraph, ex.RunID())          // the inference (gb_inferences) the stage made
 //
+// A stage also files what its steps produced, for debugging, in gb_remember_run_stage_outputs (see Output):
+//
+//	j.run.Output(StageExtractGraph, "extract_graph", "chunk 2 of 5", map[string]any{"entities": ex.Entities, ...})
+//
 // Every method is safe to call on a nil *runLog (it does nothing). Nothing here ever fails Remember: a row that cannot
 // be written is logged, and the call goes on. Every change is written as it happens, so a run that is in progress can be
 // watched, and one that dies leaves its last known state (status started).
@@ -27,7 +31,9 @@ package memory_remember
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -232,6 +238,46 @@ func (r *runLog) AddInference(stage string, id int64) {
 	st.InferenceIDs = append(st.InferenceIDs, id)
 	r.run.Stages[stage] = *st
 	r.save()
+}
+
+// maxStageOutputBytes is the largest output kept whole; a larger one is replaced by a stub (see Output).
+const maxStageOutputBytes = 64 << 10
+
+// Output files an output of a step of the stage, for debugging (gb_remember_run_stage_outputs): v, which is marshaled to JSON.
+// name is the step (extract_graph, resolve_edges, ...); label says what the output is about when the step runs more than
+// once (a chunk, an entity), "" if not. Outputs are kept in the order they are filed. Call it outside any open transaction,
+// after the step (a failed step files what it has: the raw LLM output that could not be parsed, ...).
+//
+// The stage is the one the output belongs to; in a view made by Within every output is filed in the view's stage, whatever
+// stage it names, and the name keeps what the step was. An output of more than maxStageOutputBytes is replaced by
+// {"truncated": true, "bytes": n, "preview": the start of it}. Like everything here it never fails Remember.
+func (r *runLog) Output(stage, name, label string, v any) {
+	if r == nil {
+		return
+	}
+	if r.into != "" {
+		stage = r.into
+	}
+	if _, ok := relational.RememberStageDefOf(stage); !ok {
+		log.WithField("stage", stage).Error("remember run log: unknown stage")
+		return
+	}
+	id := r.ID()
+	if id == 0 {
+		return
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		log.WithError(err).WithFields(log.Fields{"remember_run_id": id, "stage": stage, "name": name}).Error("remember run log: marshal output")
+		b, _ = json.Marshal(map[string]any{"error": "the output could not be marshaled: " + err.Error()})
+	}
+	if len(b) > maxStageOutputBytes {
+		b, _ = json.Marshal(map[string]any{"truncated": true, "bytes": len(b), "preview": strings.ToValidUTF8(string(b[:4096]), "")})
+	}
+	o := relational.RememberStageOutput{RunID: id, Stage: stage, Name: name, Label: label, Output: b}
+	if _, err := relational.AddRememberStageOutput(r.ctx, r.d, o); err != nil {
+		log.WithError(err).WithFields(log.Fields{"remember_run_id": id, "stage": stage, "name": name}).Error("remember run log: add output")
+	}
 }
 
 // Within returns a view of the log for the job that stores the texts of an enrichment stage (see the top of this file): its

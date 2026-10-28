@@ -203,6 +203,7 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 		"product or event), without the ones that already have geo metadata, at most "+fmt.Sprint(maxGeoCandidates)+".", "select_geo_entities",
 		map[string]any{"entities_extracted": len(all), "max": maxGeoCandidates, "resolver": resolver.Name()},
 		map[string]any{"entities": names})
+	j.run.Output(StageResolveGeo, "select_geo_entities", "", map[string]any{"entities_extracted": len(all), "entities": names})
 	if len(cands) == 0 {
 		return nil
 	}
@@ -215,7 +216,8 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 		MaxTokens: 2048,
 	})
 	var places []geoPlace
-	if err == nil {
+	answered := err == nil // the LLM call itself worked
+	if answered {
 		j.run.AddInference(StageResolveGeo, resp.InferenceID)
 	}
 	if err == nil && resp.StopReason == "max_tokens" {
@@ -223,6 +225,13 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 	}
 	if err == nil {
 		places, err = parseGeoPlaces(resp.Text, cands)
+	}
+	if answered {
+		out := map[string]any{"places": geoPlacesOutput(places), "raw": resp.Text}
+		if err != nil {
+			out["error"] = err.Error()
+		}
+		j.run.Output(StageResolveGeo, "detect_geo", "", out)
 	}
 	if err != nil {
 		log.WithError(err).WithFields(fields).Warn("remember: detecting the places among the entities failed")
@@ -258,10 +267,12 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 		case errors.Is(err, geo.ErrNotFound):
 			log.WithFields(fields).WithField("entity", p.Entity.Name).Info("remember: the geo resolver does not know the place")
 			j.tr.TimedTool("The geo resolver does not know the place.", "resolve_geo", args, map[string]any{"found": false}, timing)
+			j.run.Output(StageResolveGeo, "resolve_geo", p.Entity.Name, map[string]any{"request": args, "found": false})
 		case err != nil:
 			r.Error = "resolve: " + err.Error()
 			log.WithError(err).WithFields(fields).WithField("entity", p.Entity.Name).Warn("remember: the geo resolver failed")
 			j.tr.TimedTool("The geo resolver failed.", "resolve_geo", args, map[string]any{"error": r.Error}, timing)
+			j.run.Output(StageResolveGeo, "resolve_geo", p.Entity.Name, map[string]any{"request": args, "error": r.Error})
 		default:
 			r.Resolved, r.Latitude, r.Longitude, r.DisplayName = true, place.Latitude, place.Longitude, place.DisplayName
 			r.Country, r.CountryCode, r.Region, r.Provider = place.Country, place.CountryCode, place.Region, place.Provider
@@ -270,6 +281,9 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 			}
 			j.tr.TimedTool("The geo resolver found the place.", "resolve_geo", args, map[string]any{"found": true, "latitude": place.Latitude,
 				"longitude": place.Longitude, "display_name": place.DisplayName, "country": place.Country}, timing)
+			j.run.Output(StageResolveGeo, "resolve_geo", p.Entity.Name, map[string]any{"request": args, "found": true, "place": map[string]any{"latitude": place.Latitude, "longitude": place.Longitude,
+				"kind": place.Kind, "display_name": place.DisplayName, "country": place.Country, "country_code": place.CountryCode,
+				"region": place.Region, "type": place.Type, "bbox": place.BBox, "importance": place.Importance, "provider": r.Provider, "ref": place.Ref}})
 			if p.ID != 0 {
 				upserts = append(upserts, graph.NewEntityGeo{EntityID: p.ID, Kind: p.Kind, Query: p.Query, Latitude: place.Latitude,
 					Longitude: place.Longitude, DisplayName: place.DisplayName, Country: place.Country, CountryCode: place.CountryCode,
@@ -294,10 +308,12 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 				}
 			}
 			j.tr.Tool("Storing the geo metadata failed.", "store_geo", map[string]any{"places": len(upserts)}, map[string]any{"error": err.Error()})
+			j.run.Output(StageResolveGeo, "store_geo", "", map[string]any{"places": len(upserts), "error": err.Error()})
 			return results
 		}
 		j.tr.Tool("Stored the geo metadata (coordinates and where the place lies) of the places, keyed by their entities.", "store_geo",
 			map[string]any{"user_id": j.userID, "dataset": j.dataset, "places": len(upserts)}, map[string]any{"stored": len(upserts)})
+		j.run.Output(StageResolveGeo, "store_geo", "", map[string]any{"places": len(upserts), "stored": len(upserts)})
 	}
 	for i := range results { // a place whose entity could not be found has nothing to be stored against
 		if results[i].Resolved && results[i].EntityID == 0 {
@@ -379,4 +395,13 @@ func (j *job) storeGeo(ctx context.Context, geos []graph.NewEntityGeo) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// geoPlacesOutput is how the places the LLM picked are filed in the run log (see runLog.Output).
+func geoPlacesOutput(places []geoPlace) []map[string]any {
+	out := make([]map[string]any, 0, len(places))
+	for _, p := range places {
+		out = append(out, map[string]any{"entity": p.Entity.Name, "kind": p.Kind, "query": p.Query})
+	}
+	return out
 }

@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 //---------------------------------------------------------------------------------------------
 // Remember runs (gb_remember_runs, see sqlite/db_schema.go)
@@ -151,4 +154,28 @@ type RememberRunFilter struct {
 	UserID  string
 	Dataset string
 	Status  string // of the run as a whole
+}
+
+//---------------------------------------------------------------------------------------------
+// Stage outputs (gb_remember_run_stage_outputs, see sqlite/db_schema.go)
+
+// RememberStageOutput is one output of a stage of a remember run, kept for debugging: what a step of the stage produced (the
+// entities the LLM extracted, the candidate facts found, the places a resolver returned, ...). They are in a table of their
+// own so that they can be cleared or garbage collected without touching the run log.
+//
+// A stage has any number of them: one for each step it takes, and each step is taken again for each chunk of a text (or
+// each entity searched for, ...). The stages of the enrichment jobs (web_search, fetch_series, observe_series) hold the
+// outputs of the steps of the texts they store too, told apart by Name.
+type RememberStageOutput struct {
+	ID    int64  `json:"id"`
+	RunID int64  `json:"run_id"`
+	Stage string `json:"stage"`
+	// Name is the step that made the output (extract_graph, resolve_edges, detect_geo, ...): a stage can have several.
+	Name string `json:"name"`
+	// Label says what the output is about when the step ran more than once ("chunk 2 of 5", `web search for "Berlin"`); "" if
+	// it did not.
+	Label string `json:"label"`
+	// Output is the JSON the step produced. Its shape depends on Name.
+	Output    json.RawMessage `json:"output"`
+	CreatedAt time.Time       `json:"created_at"`
 }

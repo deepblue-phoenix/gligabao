@@ -44,6 +44,8 @@ type Extraction struct {
 	ModelID  string `json:"model_id,omitempty"`
 	// InferenceID is the inference (gb_inferences) of the LLM call that made the extraction; 0 if it could not be recorded.
 	InferenceID int64 `json:"-"`
+	// Raw is the text the LLM answered, kept for the stage outputs (see runLog.Output); "" if it did not answer.
+	Raw string `json:"-"`
 }
 
 // RunID is the inference of the extraction (0 for none, and for a nil ex).
@@ -76,14 +78,14 @@ func Extract(ctx context.Context, llm memory_core.LLM, text string, ref time.Tim
 		return nil, err
 	}
 	if resp.StopReason == "max_tokens" {
-		return &Extraction{InferenceID: resp.InferenceID}, errors.New("memory: LLM output truncated; text too large")
+		return &Extraction{InferenceID: resp.InferenceID, Raw: resp.Text}, errors.New("memory: LLM output truncated; text too large")
 	}
 	ex, err := parseExtraction(resp.Text, ref)
 	if err != nil {
-		return &Extraction{InferenceID: resp.InferenceID}, err
+		return &Extraction{InferenceID: resp.InferenceID, Raw: resp.Text}, err
 	}
 	ex.stampModel(resp.Provider, resp.Model)
-	ex.InferenceID = resp.InferenceID
+	ex.InferenceID, ex.Raw = resp.InferenceID, resp.Text
 	return ex, nil
 }
 
@@ -393,6 +395,7 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	ex, err := Extract(ctx, co.ModelLLM(llm, memory_core.StageExtractGraph), text, ref)
 	j.run.Done(err, memory_core.StageExtractGraph)
 	j.run.AddInference(memory_core.StageExtractGraph, ex.RunID())
+	j.outputExtraction("", ex)
 	if err != nil {
 		return nil, err
 	}
@@ -459,6 +462,7 @@ type job struct {
 func (j *job) resolveAndStore(ctx context.Context, text string, ex *Extraction, part *chunkPart) (*Result, error) {
 	d, tr, co, userID, dataset := j.d, j.tr, j.co, j.userID, j.dataset
 	label := part.label() + j.web.label() + j.obs.label()
+	step := j.stepLabel(part) // the label of the outputs in the run log
 
 	//--------------------------------------
 	// LOAD_CANDIDATES
@@ -500,10 +504,12 @@ func (j *job) resolveAndStore(ctx context.Context, text string, ex *Extraction, 
 		"candidates for duplicates and contradictions."+label, "load_candidates",
 		map[string]any{"user_id": userID, "dataset": dataset, "new_edges": len(ex.Edges), "by_name": len(cs.ByName), "by_similarity": len(cs.BySimilar)},
 		map[string]any{"candidates": len(cands), "facts": candidateFacts(cands, cs.Via)})
+	j.outputCandidates(step, ex, cs)
 	j.run.Start(memory_core.StageResolveEdges)
 	plan, err := resolveEdges(ctx, co.ModelLLM(j.llm, memory_core.StageResolveEdges), ex.Edges, cands)
 	j.run.Done(err, memory_core.StageResolveEdges)
 	j.run.AddInference(memory_core.StageResolveEdges, plan.RunID())
+	j.outputResolveEdges(step, ex, plan)
 	if err != nil {
 		return nil, err
 	}
@@ -525,9 +531,10 @@ func (j *job) resolveAndStore(ctx context.Context, text string, ex *Extraction, 
 	if j.obs != nil {
 		args["parent_id"], args["query"], args["series_id"] = j.obs.ParentID, j.obs.Query, j.obs.SeriesID
 	}
-	tr.Tool("Stored the artifact, entities and edges."+label, "store_artifact", args,
-		map[string]any{"artifact_id": res.ArtifactID, "entities": res.Entities, "edges": res.Edges, "invalidated_edges": res.InvalidatedEdges,
-			"embedded_entities": res.EmbeddedEntities, "embedded_edges": res.EmbeddedEdges, "embedded_chunks": res.EmbeddedChunks, "embedded_summaries": res.EmbeddedSummaries})
+	stored := map[string]any{"artifact_id": res.ArtifactID, "entities": res.Entities, "edges": res.Edges, "invalidated_edges": res.InvalidatedEdges,
+		"embedded_entities": res.EmbeddedEntities, "embedded_edges": res.EmbeddedEdges, "embedded_chunks": res.EmbeddedChunks, "embedded_summaries": res.EmbeddedSummaries}
+	tr.Tool("Stored the artifact, entities and edges."+label, "store_artifact", args, stored)
+	j.run.Output(StageStore, "store", step, stored)
 	j.traceSeries(res.ArtifactID, res.Series)
 	return res, nil
 }
