@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.125.0] - 2026-10-29
+
+### Added
+- Admin UI: a **query** view lists the runs of `query` (`GET /v1/gb/admin/api/query-runs`) like the **remember** view does for `remember`: the counts by status (click one to filter), the runs newest first, and for each the question, the session, the parameters and a table with the status, time, inferences and error of every stage, with a **?** button that describes it. A query run keeps no stage outputs, so it has no **Outputs** button. The view is `query_runs` for the slots of [admin extensions](docs/admin-extensions.md).
+- Docs: `docs/pipeline.md` describes the pipeline pattern that `remember` and `query` share: the list of stages, the policies and `Stop`/`Each`, what the runner tells the run log, how inferences are filed under their stage, the run log, and how to add a stage or an operation.
+
+### Changed
+- Admin UI: the code of the remember runs view (`remember_runs.ts`) is now `runs.ts`, shared by the remember and query views. No change in what the remember view shows.
+
 ## [0.124.0] - 2026-10-29
 
 ### Added

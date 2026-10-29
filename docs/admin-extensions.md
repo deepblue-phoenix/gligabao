@@ -147,7 +147,7 @@ The slots, v1:
 | `<view>.bottom` | the bottom of a built-in view | an empty `div` | `{}` |
 | `topbar` | next to the health badges in the top bar | a `span` (a flex row) | `{}` |
 
-`<view>` is one of `main`, `evals`, `timeseries`, `inferences`, `remember_runs`, `training` (the names of the nav buttons' `data-view`): `main.top`, `training.bottom`, and so on. Slots of the `<view>.top` / `.bottom` / `topbar` kind are drawn **once**, when the page starts. A slot nothing was added to is empty and invisible.
+`<view>` is one of `main`, `evals`, `timeseries`, `inferences`, `remember_runs`, `query_runs`, `training` (the names of the nav buttons' `data-view`): `main.top`, `training.bottom`, and so on. Slots of the `<view>.top` / `.bottom` / `topbar` kind are drawn **once**, when the page starts. A slot nothing was added to is empty and invisible.
 
 A slot function that throws is logged to the console and skipped; the other contributors still run.
 

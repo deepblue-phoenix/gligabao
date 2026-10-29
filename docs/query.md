@@ -148,6 +148,10 @@ and, for each of the stages `retrieve_graph`, `detect_geo`, `nearby_geo`, `query
 
 From Go: `relational.GetQueryRun`, `ListQueryRuns` (filter by user, dataset and status). The admin API serves them at `GET /v1/gb/admin/api/query-runs` (the counts by status, and the filtered, paged list; like `remember-runs`).
 
+The stages are declared and run like those of `remember`, as a list run by `memory_pipeline.Run` (`queryPipeline` in `memory_query/query.go`), see [pipeline.md](pipeline.md). `retrieve_graph` ends the pipeline with `memory_pipeline.Stop` when there is nothing to answer from, so the stages after it are `skipped`; `detect_geo` and `nearby_geo` are `Advisory`.
+
+In the admin UI the **query** view lists the runs like the **remember** one (the counts by status, the runs newest first, and for each its question, session, parameters and a table of its stages with a **?** button that describes each); a query run keeps no stage outputs, so there is no **Outputs** button. See [pipeline.md](pipeline.md#in-the-admin-ui).
+
 Existing database files are not migrated: a database created before 0.124.0 gets `gb_query_runs` when the server starts, but its `gb_remember_runs` does not accept the status `skipped`, so delete the file and the server recreates it.
 
 ### Facts over time and history

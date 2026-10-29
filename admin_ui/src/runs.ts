@@ -1,14 +1,19 @@
-// The "remember runs" view (see docs/remember.md#run-log): per database, how many runs of the remember pipeline are in
-// each status and the list of the runs, newest first. Clicking a status tile filters the list by it; clicking a run shows
-// its parameters and how each stage went (status, error, time, inferences) and a button for each stage that ran, which loads (only then) and opens a modal with what the
-// stage produced (its outputs, kept for debugging: see docs/remember.md#stage-outputs).
+// The "remember runs" and "query runs" views (see docs/remember.md#run-log, docs/query.md#run-log, docs/pipeline.md): both are
+// run logs of a pipeline, with the same shape, so one piece of code draws both, configured by a Kind. Per database, how many runs
+// are in each status and the list of the runs, newest first. Clicking a status tile filters the list by it; clicking a run shows
+// its parameters and how each stage went (status, error, time, inferences). For remember runs, each stage that ran has a button
+// that loads (only then) and opens a modal with what the stage produced (its outputs, kept for debugging: see
+// docs/remember.md#stage-outputs); query runs keep no outputs.
 
 interface Stage {
   status: string; error: string | null; started_at: string | null; finished_at: string | null; inference_ids: number[];
 }
 interface Run {
-  id: number; user_id: string; dataset: string; kind: string; params: Record<string, unknown>; artifact_id: number | null;
-  status: string; error: string | null; started_at: string; finished_at: string | null; stages: Record<string, Stage>;
+  id: number; user_id: string; dataset: string; params: Record<string, unknown>; status: string; error: string | null; started_at: string; finished_at: string | null; stages: Record<string, Stage>;
+  // remember runs
+  kind?: string; artifact_id?: number | null;
+  // query runs
+  question?: string; session_id?: string;
 }
 interface StageOutput { id: number; run_id: number; stage: string; name: string; label: string; output: unknown; created_at: string }
 interface Counts { total: number; started: number; succeeded: number; failed: number }
@@ -17,8 +22,17 @@ interface Filter { status?: string; dataset?: string }
 
 const PAGE = 100;
 
-// What each stage of the pipeline does, for the "?" button of the stages table (see docs/remember.md#how-it-works).
-const STAGE_HELP: Record<string, string> = {
+// What differs between the two logs.
+interface Kind {
+  id: string;          // "remember_runs" / "query_runs": the prefix of the ids of the view in index.html
+  label: string;       // "remember" / "query"
+  api: string;         // the endpoint of the list
+  help: Record<string, string>;
+  outputs: boolean;    // does it keep the outputs of its stages
+}
+
+// What each stage of the remember pipeline does, for the "?" button of the stages table (see docs/remember.md#how-it-works).
+const REMEMBER_HELP: Record<string, string> = {
   classify_complexity: "Asks Jev (a small fast model) whether the text is simple, medium or complex, i.e. how many entities it will probably yield. Advisory only: the result is logged, a failure never fails the run. Only runs when a Jev API key is configured.",
   chunk_text: "Splits a long text into chunks that the later stages process one after the other. A text that fits in one chunk is not split.",
   extract_graph: "The LLM reads the text (or a chunk) and returns the entities (name, type, description) and the edges, i.e. facts relating two entities, with the time each is valid. The raw answer is kept in the outputs, so a malformed one can be inspected.",
@@ -32,6 +46,19 @@ const STAGE_HELP: Record<string, string> = {
   fetch_series: "The LLM decides which timeseries provider can supply a series for which entity of the text, the providers are called, and the series are stored and anchored to the entity. Runs after the text is stored; a failure does not fail the run. Only runs with timeseries.fetch.",
   observe_series: "Generates a short text from the statistics of each series stored in this run, extracts a graph from it and stores it as a series_observation artifact. Runs last; a failure does not fail the run. Only runs with timeseries.observations.",
 };
+// The same for the stages of the query pipeline (see docs/query.md#how-it-works).
+const QUERY_HELP: Record<string, string> = {
+  retrieve_graph: "Embeds the question and finds the entities that match it (by keywords and by vector similarity), the facts around them and the text passages (chunks and their summaries) close to the question: the context the answer is made from. If nothing is found, the pipeline ends here with the fixed \"no information\" answer and the stages after it are skipped.",
+  detect_geo: "Asks the LLM which places the question mentions, and stores the ones the geo resolver finds. Advisory: a failure never fails the call. Only runs with a geo resolver.",
+  nearby_geo: "Finds the geo entities near the places of the question and near the entities that matched it, to give the answering LLM as context. Advisory: a failure never fails the call. Only runs with a geo resolver and when the request asks for the nearby search.",
+  query: "The LLM answers the question from the subgraph and the passages and says which entities, facts and passages it used; those it cites (checked against what was sent) are the evidence.",
+};
+
+const KINDS = {
+  remember: { id: "remember_runs", label: "remember", api: "api/remember-runs", help: REMEMBER_HELP, outputs: true },
+  query: { id: "query_runs", label: "query", api: "api/query-runs", help: QUERY_HELP, outputs: false },
+} satisfies Record<string, Kind>;
+
 const STATUSES = ["started", "succeeded", "failed"] as const;
 
 function el<T extends HTMLElement>(id: string): T {
@@ -84,9 +111,7 @@ interface Panel {
   pager: HTMLElement;
 }
 
-const panels = new Map<string, Panel>();
-
-function makePanel(name: string): { box: HTMLElement; panel: Panel } {
+function makePanel(k: Kind, name: string): { box: HTMLElement; panel: Panel } {
   const box = node("div", "mr-db");
   box.appendChild(node("h3", "", `${name} database`));
   const stats = box.appendChild(node("dl", "stats rr-stats"));
@@ -94,8 +119,9 @@ function makePanel(name: string): { box: HTMLElement; panel: Panel } {
   const filterBar = box.appendChild(node("div", "row mr-filter"));
   const table = box.appendChild(node("table", "clickable"));
   table.hidden = true;
-  headRow(table, [["ID", true], ["Started (UTC)", false], ["User", false], ["Dataset", false], ["Kind", false], ["Status", false],
-    ["Duration", true], ["Artifact", true]]);
+  headRow(table, k.outputs
+    ? [["ID", true], ["Started (UTC)", false], ["User", false], ["Dataset", false], ["Kind", false], ["Status", false], ["Duration", true], ["Artifact", true]]
+    : [["ID", true], ["Started (UTC)", false], ["User", false], ["Dataset", false], ["Question", false], ["Status", false], ["Duration", true]]);
   const body = table.createTBody();
   const pager = box.appendChild(node("div", "row mr-pager"));
   return { box, panel: { filter: {}, offset: 0, status, stats, filterBar, table, body, pager } };
@@ -103,9 +129,9 @@ function makePanel(name: string): { box: HTMLElement; panel: Panel } {
 
 // The table of the stages of a run. Its last column has a button that opens a modal with what the stage produced (its outputs, kept for
 // debugging). They are fetched when the button is clicked, for that stage only, not before.
-function stagesTable(name: string, run: Run, order: string[]): HTMLTableElement {
+function stagesTable(k: Kind, name: string, run: Run, order: string[]): HTMLTableElement {
   const table = node("table", "compact");
-  headRow(table, [["Stage", false], ["Status", false], ["Started", false], ["Duration", true], ["Inferences", false], ["Error", false], ["Output", false], ["", false]]);
+  headRow(table, [["Stage", false], ["Status", false], ["Started", false], ["Duration", true], ["Inferences", false], ["Error", false], ...(k.outputs ? [["Output", false] as [string, boolean]] : []), ["", false]]);
   const body = table.createTBody();
     // The stages the server knows, in pipeline order; then any it did not list.
   const names = [...order, ...Object.keys(run.stages).filter((s) => !order.includes(s))].filter((s) => run.stages[s]);
@@ -122,10 +148,10 @@ function stagesTable(name: string, run: Run, order: string[]): HTMLTableElement 
     const err = tr.insertCell();
     err.className = s.error ? "error" : "";
     err.textContent = s.error ?? "";
-    const cell = tr.insertCell();
+    const cell = k.outputs ? tr.insertCell() : null;
     const help = tr.insertCell();
     help.className = "help-cell";
-    const text = STAGE_HELP[stage];
+    const text = k.help[stage];
     if (text) {
       const q = help.appendChild(node("button", "help-btn", "?"));
       q.type = "button";
@@ -136,7 +162,7 @@ function stagesTable(name: string, run: Run, order: string[]): HTMLTableElement 
         toggleTip(q, stage, text);
       });
     }
-    if (s.status === "not_started" || s.status === "skipped") continue; // it never ran: nothing to show
+    if (!cell || s.status === "not_started" || s.status === "skipped") continue; // no outputs kept, or it never ran: nothing to show
     const btn = cell.appendChild(node("button", "small", "Outputs"));
     btn.type = "button";
     btn.addEventListener("click", (ev) => {
@@ -230,20 +256,24 @@ async function loadOutputs(name: string, run: Run, stage: string): Promise<Stage
   return ((await res.json()) as { outputs: StageOutput[] }).outputs;
 }
 
-function detailCell(run: Run, order: string[], name: string): HTMLElement {
+function detailCell(k: Kind, run: Run, order: string[], name: string): HTMLElement {
   const box = node("div");
   if (run.error) box.appendChild(node("p", "error", run.error));
   const props = box.appendChild(node("dl", "props"));
   const prop = (k: string, v: string): void => { props.append(node("dt", "", k), node("dd", "", v)); };
   prop("Finished", run.finished_at ? fmtTime(run.finished_at) : "—");
-  box.appendChild(stagesTable(name, run, order));
+  if (run.question !== undefined) {
+    prop("Question", run.question);
+    prop("Session", run.session_id || "—");
+  }
+  box.appendChild(stagesTable(k, name, run, order));
   const params = box.appendChild(node("details"));
   params.appendChild(node("summary", "", "Parameters"));
   params.appendChild(node("pre", "ts-def", JSON.stringify(run.params ?? {}, null, 2)));
   return box;
 }
 
-function render(name: string, p: Panel, data: Response): void {
+function render(k: Kind, name: string, p: Panel, data: Response, reload: (name: string) => Promise<void>): void {
   const tile = (label: string, value: number, status?: string): HTMLElement => {
     const d = node("div");
     d.append(node("dt", "", label), node("dd", "", fmtInt(value)));
@@ -255,7 +285,7 @@ function render(name: string, p: Panel, data: Response): void {
         if (p.filter.status === status) delete p.filter.status;
         else p.filter.status = status;
         p.offset = 0;
-        void loadDatabase(name);
+        void reload(name);
       });
     }
     return d;
@@ -271,7 +301,7 @@ function render(name: string, p: Panel, data: Response): void {
     clear.addEventListener("click", () => {
       p.filter = {};
       p.offset = 0;
-      void loadDatabase(name);
+      void reload(name);
     });
   }
 
@@ -284,7 +314,13 @@ function render(name: string, p: Panel, data: Response): void {
     tr.insertCell().textContent = fmtTime(r.started_at);
     tr.insertCell().textContent = r.user_id;
     tr.insertCell().textContent = r.dataset;
-    tr.insertCell().textContent = r.kind;
+    if (k.outputs) tr.insertCell().textContent = r.kind ?? "";
+    else {
+      const q = tr.insertCell();
+      const text = r.question ?? "";
+      q.textContent = text.length > 100 ? `${text.slice(0, 100)}…` : text;
+      q.title = text;
+    }
     const st = tr.insertCell();
     st.appendChild(statusBadge(r.status));
     // A stage that failed without failing the call (web search, ...) is worth a flag.
@@ -297,9 +333,11 @@ function render(name: string, p: Panel, data: Response): void {
     const dur = tr.insertCell();
     dur.className = "num";
     dur.textContent = fmtDuration(r.started_at, r.finished_at);
-    const art = tr.insertCell();
-    art.className = "num";
-    art.textContent = r.artifact_id == null ? "" : String(r.artifact_id);
+    if (k.outputs) {
+      const art = tr.insertCell();
+      art.className = "num";
+      art.textContent = r.artifact_id == null ? "" : String(r.artifact_id);
+    }
 
     const detail = p.body.insertRow();
     detail.hidden = true;
@@ -307,14 +345,14 @@ function render(name: string, p: Panel, data: Response): void {
     const cell = detail.insertCell();
     cell.colSpan = tr.cells.length;
     tr.addEventListener("click", () => {
-      if (!cell.firstChild) cell.appendChild(detailCell(r, data.stages, name));
+      if (!cell.firstChild) cell.appendChild(detailCell(k, r, data.stages, name));
       detail.hidden = !detail.hidden;
       tr.classList.toggle("selected", !detail.hidden);
     });
   }
   p.table.hidden = data.runs.length === 0;
   p.status.className = "muted";
-  p.status.textContent = data.total === 0 ? "No remember runs." :
+  p.status.textContent = data.total === 0 ? `No ${k.label} runs.` :
     `Showing ${data.offset + 1}–${data.offset + data.runs.length} of ${fmtInt(data.total)} runs.`;
 
   p.pager.replaceChildren();
@@ -324,7 +362,7 @@ function render(name: string, p: Panel, data: Response): void {
     b.disabled = !enabled;
     b.addEventListener("click", () => {
       p.offset = offset;
-      void loadDatabase(name);
+      void reload(name);
     });
   };
   if (data.total > data.limit) {
@@ -333,41 +371,53 @@ function render(name: string, p: Panel, data: Response): void {
   }
 }
 
-async function loadDatabase(name: string): Promise<void> {
-  const p = panels.get(name);
-  if (!p) return;
-  p.status.className = "muted";
-  p.status.textContent = "Loading…";
-  const params = new URLSearchParams({ db: name, limit: String(PAGE), offset: String(p.offset) });
-  for (const [k, v] of Object.entries(p.filter)) if (v) params.set(k, v);
-  try {
-    const res = await fetch(`api/remember-runs?${params}`);
-    if (!res.ok) throw new Error(`${res.status}: ${(await res.text()).trim()}`);
-    render(name, p, (await res.json()) as Response);
-  } catch (err) {
-    p.status.className = "error";
-    p.status.textContent = `Failed to load remember runs: ${errText(err)}`;
-  }
-}
+// One view (remember or query runs): the panels of its databases.
+function createView(k: Kind): { load: () => Promise<void> } {
+  const panels = new Map<string, Panel>();
 
-async function load(): Promise<void> {
-  const root = el("remember_runs-content");
-  if (panels.size === 0) {
+  async function loadDatabase(name: string): Promise<void> {
+    const p = panels.get(name);
+    if (!p) return;
+    p.status.className = "muted";
+    p.status.textContent = "Loading…";
+    const params = new URLSearchParams({ db: name, limit: String(PAGE), offset: String(p.offset) });
+    for (const [key, v] of Object.entries(p.filter)) if (v) params.set(key, v);
     try {
-      const res = await fetch("api/databases");
-      if (!res.ok) throw new Error(`${res.status}`);
-      const names = ((await res.json()) as { databases: string[] }).databases;
-      for (const name of names) {
-        const { box, panel } = makePanel(name);
-        panels.set(name, panel);
-        root.appendChild(box);
-      }
+      const res = await fetch(`${k.api}?${params}`);
+      if (!res.ok) throw new Error(`${res.status}: ${(await res.text()).trim()}`);
+      render(k, name, p, (await res.json()) as Response, loadDatabase);
     } catch (err) {
-      root.textContent = `Failed to list databases: ${errText(err)}`;
-      return;
+      p.status.className = "error";
+      p.status.textContent = `Failed to load ${k.label} runs: ${errText(err)}`;
     }
   }
-  await Promise.all([...panels.keys()].map((n) => loadDatabase(n)));
+
+  async function load(): Promise<void> {
+    const root = el(`${k.id}-content`);
+    if (panels.size === 0) {
+      try {
+        const res = await fetch("api/databases");
+        if (!res.ok) throw new Error(`${res.status}`);
+        const names = ((await res.json()) as { databases: string[] }).databases;
+        for (const name of names) {
+          const { box, panel } = makePanel(k, name);
+          panels.set(name, panel);
+          root.appendChild(box);
+        }
+      } catch (err) {
+        root.textContent = `Failed to list databases: ${errText(err)}`;
+        return;
+      }
+    }
+    await Promise.all([...panels.keys()].map((n) => loadDatabase(n)));
+  }
+  return { load };
+}
+
+function initView(k: Kind): void {
+  const v = createView(k);
+  el(`${k.id}-refresh`).addEventListener("click", () => void v.load());
+  void v.load();
 }
 
 export function initRememberRuns(): void {
@@ -376,6 +426,9 @@ export function initRememberRuns(): void {
   window.addEventListener("scroll", closeTip, true);
   const modal = el<HTMLDialogElement>("rr-outputs-modal");
   el("rr-outputs-close").addEventListener("click", () => modal.close());
-  el("remember_runs-refresh").addEventListener("click", () => void load());
-  void load();
+  initView(KINDS.remember);
+}
+
+export function initQueryRuns(): void {
+  initView(KINDS.query);
 }

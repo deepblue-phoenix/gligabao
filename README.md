@@ -15,9 +15,9 @@ gligabao is a small, self-hosted MCP/HTTP server that gives an AI application lo
 
 | Endpoint | Purpose | Docs |
 | -------- | ------- | ---- |
-| `POST /v1/gb/remember` | Extract a temporal knowledge graph from text and store it; or, with `image`, read an image (OCR and theme) and store the extraction | [docs/remember.md](docs/remember.md), [docs/artifacts.md](docs/artifacts.md), [docs/temporal.md](docs/temporal.md), [docs/images.md](docs/images.md), [docs/chunking.md](docs/chunking.md), [docs/web-search.md](docs/web-search.md), [docs/geo.md](docs/geo.md) |
+| `POST /v1/gb/remember` | Extract a temporal knowledge graph from text and store it; or, with `image`, read an image (OCR and theme) and store the extraction | [docs/remember.md](docs/remember.md), [docs/artifacts.md](docs/artifacts.md), [docs/temporal.md](docs/temporal.md), [docs/images.md](docs/images.md), [docs/chunking.md](docs/chunking.md), [docs/web-search.md](docs/web-search.md), [docs/geo.md](docs/geo.md), [docs/pipeline.md](docs/pipeline.md) |
 | `POST /v1/gb/timeseries`, `GET /v1/gb/timeseries`, `GET /v1/gb/timeseries/{id}` | Store timeseries in a dataset and anchor them to artifacts, entities and facts; list and read them. A `remember` request can also supply them, fetch them from the providers, or derive `series_observation` artifacts from them (`timeseries`) | [docs/timeseries.md](docs/timeseries.md) |
-| `POST /v1/gb/query` | Answer a question from the graph, with evidence | [docs/query.md](docs/query.md) |
+| `POST /v1/gb/query` | Answer a question from the graph, with evidence | [docs/query.md](docs/query.md), [docs/pipeline.md](docs/pipeline.md) |
 | `POST /v1/gb/datasets`, `GET /v1/gb/datasets?user_id=`, `DELETE /v1/gb/datasets/{name}?user_id=` | Create, list and (soft) delete datasets | [docs/datasets.md](docs/datasets.md) |
 | `GET /v1/gb/datasets/{name}/graph?user_id=` | Export a dataset's whole graph as JSON | [docs/graph.md](docs/graph.md) |
 | `POST /v1/gb/ontologies`, `PUT /v1/gb/ontologies/{name}` | Load an OWL ontology (RDF/XML) under a name, or update the one stored under it (merge or replace) | [docs/ontologies.md](docs/ontologies.md) |
