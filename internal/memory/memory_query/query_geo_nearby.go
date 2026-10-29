@@ -294,13 +294,11 @@ func addToGraph(ctx context.Context, d *sql.DB, dsID int64, g *graphContext, nea
 	return nil
 }
 
-// nearbyGeo is the proximity step of Query (see the top of this file): it returns what it found, nil if the call has no geo
-// resolver, did not ask for the search (co.GeoNearby) or there is no place to search around, and adds the nearby entities to rc.Graph.
-// It never fails the call.
-func nearbyGeo(ctx context.Context, d *sql.DB, co memory_core.CallOptions, tr *memory_core.Trace, userID, dataset string, dsID int64, rc *queryContext, places []QueryPlace, radiusKm float64) *GeoContext {
-	if co.GeoResolver == nil || !co.GeoNearby {
-		return nil
-	}
+// nearbyGeo is the proximity step of Query (see the top of this file): it returns what it found, nil if there is no place to
+// search around, and adds the nearby entities to rc.Graph. What went wrong (a place that could not be looked up, ...) only
+// shortens the result: it is logged, and returned as the error, which Query records on the stage but otherwise ignores. The call
+// must have a geo resolver and ask for the search (co.GeoNearby).
+func nearbyGeo(ctx context.Context, d *sql.DB, co memory_core.CallOptions, tr *memory_core.Trace, userID, dataset string, dsID int64, rc *queryContext, places []QueryPlace, radiusKm float64) (*GeoContext, error) {
 	fields := log.Fields{"stage": "nearby_geo", "user_id": userID, "dataset": dataset}
 	names := make(map[int64]string, len(rc.Graph.matched))
 	for _, id := range rc.Graph.matched {
@@ -321,8 +319,12 @@ func nearbyGeo(ctx context.Context, d *sql.DB, co memory_core.CallOptions, tr *m
 	for _, e := range errs {
 		log.WithFields(fields).Warn("query: proximity search: " + e)
 	}
+	var failed error
+	if len(errs) > 0 {
+		failed = errors.New(strings.Join(errs, "; "))
+	}
 	if len(anchors) == 0 && len(errs) == 0 {
-		return nil // nothing in the question is a place with coordinates: not worth a step in the trajectory
+		return nil, nil // nothing in the question is a place with coordinates: not worth a step in the trajectory
 	}
 	if anchors == nil {
 		anchors = []GeoAnchor{}
@@ -338,7 +340,7 @@ func nearbyGeo(ctx context.Context, d *sql.DB, co memory_core.CallOptions, tr *m
 	tr.Tool("Looked up the geo entities near the places of the question, to give the LLM as context.", "nearby_geo",
 		map[string]any{"user_id": userID, "dataset": dataset, "radius_km": radiusKm}, out)
 	rc.Nearby = gc
-	return gc
+	return gc, failed
 }
 
 // render returns the <nearby> section of the user message: how far each nearby entity is from the place it is near.

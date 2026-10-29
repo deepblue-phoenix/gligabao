@@ -2,7 +2,7 @@
 
 A text that is larger than one chunk is a document: `POST /v1/gb/remember` does not extract it in one piece, it cuts it into overlapping chunks and processes each chunk on its own. This page describes how the text is cut, what is stored, and how it is embedded. The request and response are in [remember.md](remember.md). Each chunk is also [summarized](#chunk-summaries), and the summary is stored and embedded as an artifact of its own.
 
-Code: `internal/memory/memory_chunk` (the chunker), `internal/memory/memory_remember/remember_chunks.go` (the pipeline).
+Code: `internal/memory/memory_chunk` (the chunker), `internal/memory/memory_remember/remember_pipeline.go` (the pipeline, with the document stages) and `remember_chunks.go` (the chunk results).
 
 ## When a text is chunked
 

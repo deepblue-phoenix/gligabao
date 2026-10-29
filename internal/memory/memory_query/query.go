@@ -17,6 +17,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_pipeline"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -42,6 +43,9 @@ type QueryResult struct {
 	// Nearby is the proximity search of the call (see query_geo_nearby.go): the places it was centered on, the radius and the geo
 	// entities found within it, which the LLM was given as context. Only set when there was a place to search around.
 	Nearby *GeoContext `json:"nearby,omitempty"`
+	// QueryRunID is the run log of this call: its row in gb_query_runs, which holds how each stage of the pipeline went (see
+	// runlog.go).
+	QueryRunID int64 `json:"query_run_id,omitempty"`
 	// TrajectoryID and Trajectory are the ATIF trajectory of this call (also stored in TrajectoryDir); only set when
 	// the call was made with WithEval.
 	TrajectoryID string           `json:"trajectory_id,omitempty"`
@@ -142,81 +146,128 @@ func Query(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset,
 	tr.User(query)
 	tr.Input(map[string]any{"user_id": userID, "dataset": dataset, "session_id": sessionID})
 
-	j := &job{d: d, llm: llm, tr: tr, co: co, userID: userID, dataset: dataset, dsID: dsID, sessionID: sessionID, radiusKm: radiusKm}
-	return j.pipeline(ctx, query)
+	params := map[string]any{}
+	if len(co.Models) > 0 {
+		params["models"] = co.Models
+	}
+	if len(co.Reasoning) > 0 {
+		params["reasoning"] = co.Reasoning
+	}
+	if co.GeoResolver != nil && co.GeoNearby {
+		params["geo_nearby"], params["geo_radius_km"] = true, radiusKm
+	}
+	run := startRunLog(ctx, d, userID, dataset, query, sessionID, params)
+	defer func() {
+		run.Finish(err)
+		if res != nil {
+			res.QueryRunID = run.ID()
+		}
+	}()
+
+	j := &job{d: d, llm: tr.Wrap(memory_core.WithRecording(llm, d, CallQuery)), tr: tr, run: run, co: co, userID: userID, dataset: dataset,
+		dsID: dsID, sessionID: sessionID, radiusKm: radiusKm, query: query}
+	if err := memory_pipeline.Run(ctx, queryPipeline, j, run); err != nil {
+		return nil, err
+	}
+	return j.result, nil
 }
 
-// job is the state of one Query call, after its setup (validation, options, trace).
+//---------------------------------------------------------------------------------------------
+
+// job is the state of one Query call, after its setup (validation, options, trace): what the stages of the pipeline share.
 type job struct {
-	d         *sql.DB
-	llm       memory_core.LLM // the caller's, not yet recording
+	d *sql.DB
+	// llm records every call as an inference (and a step of the trajectory); each stage runs it on the model and the reasoning
+	// level the call sets for it (WithModels, WithReasoning), or the default ones (see CallOptions.ModelLLM).
+	llm       memory_core.LLM
 	tr        *memory_core.Trace
+	run       *runLog
 	co        memory_core.CallOptions
 	userID    string
 	dataset   string // already resolved
 	dsID      int64
 	sessionID string
 	radiusKm  float64 // the radius of the proximity search (see geoRadius)
+	query     string
+
+	// What the stages leave for the next ones.
+	rc     *queryContext // retrieve_graph
+	places []QueryPlace  // detect_geo
+	result *QueryResult  // query (or retrieve_graph, if there is nothing to answer from)
 }
 
-// pipeline sequences the stages of a Query call on the job j: it retrieves the subgraph around the entities matching the
-// query and the passages close to it (assembleContext); with no result it answers that it knows nothing, with no LLM call;
-// otherwise it detects the places of the question and the geo entities near them (only with a geo resolver), and asks the
-// LLM to answer from that context (queryLLM), whose citations become the evidence (getEvidence). Query does the setup and
-// calls it.
-func (j *job) pipeline(ctx context.Context, query string) (*QueryResult, error) {
-	d, co, tr, userID, dataset, dsID, sessionID := j.d, j.co, j.tr, j.userID, j.dataset, j.dsID, j.sessionID
+// queryPipeline is the stages of Query, in order (see relational.QueryStages and memory_pipeline). Query does the setup
+// (validation, options, trace, run log) and runs it.
+var queryPipeline = []memory_pipeline.Step[job]{
+	// The subgraph around the entities matching the question, and the passages close to it. With nothing to answer from the
+	// pipeline ends here (memory_pipeline.Stop), and the stages after it are skipped.
+	memory_pipeline.Stage[job]{Name: relational.QueryStageRetrieveGraph, Run: (*job).retrieveGraph},
+	// The places the question mentions (only with a geo resolver).
+	memory_pipeline.Stage[job]{Name: relational.QueryStageDetectGeo, Policy: memory_pipeline.Advisory, Enabled: (*job).hasGeo, Run: (*job).detectGeo},
+	// The geo entities near those places and near the entities that matched the question, which the answer gets as context.
+	memory_pipeline.Stage[job]{Name: relational.QueryStageNearbyGeo, Policy: memory_pipeline.Advisory, Enabled: (*job).hasNearbyGeo, Run: (*job).nearbyGeo},
+	// The LLM answers from what was retrieved; the entities, edges and passages it cites are the evidence.
+	memory_pipeline.Stage[job]{Name: relational.QueryStageQuery, Run: (*job).answer},
+}
 
-	//--------------------------------------
-	// RETRIEVE
-	rc, err := assembleContext(ctx, d, co, tr, dsID, query)
+// retrieveGraph is the retrieve_graph stage: it builds the queryContext (see assembleContext).
+func (j *job) retrieveGraph(ctx context.Context) error {
+	rc, err := assembleContext(ctx, j.d, j.co, j.tr, j.dsID, j.query)
 	if err != nil {
-		return nil, fmt.Errorf("retrieve context: %w", err)
+		return fmt.Errorf("retrieve context: %w", err)
 	}
-	tr.Tool("Retrieved the subgraph around the entities matching the query, and the passages close to it.", "retrieve_graph",
-		map[string]any{"user_id": userID, "dataset": dataset, "query": query}, rc.Graph.render()+renderPassages(rc.Graph.passages))
+	j.rc = rc
+	j.tr.Tool("Retrieved the subgraph around the entities matching the query, and the passages close to it.", "retrieve_graph",
+		map[string]any{"user_id": j.userID, "dataset": j.dataset, "query": j.query}, rc.Graph.render()+renderPassages(rc.Graph.passages))
 	if len(rc.Graph.entities) == 0 && len(rc.Graph.passages) == 0 {
 		const none = "I don't have any information in memory to answer that."
-		tr.Agent(none)
-		return &QueryResult{
-			SessionID: sessionID,
+		j.tr.Agent(none)
+		j.result = &QueryResult{
+			SessionID: j.sessionID,
 			Answer:    none,
 			Evidence:  Evidence{Entities: []EvidenceEntity{}, Edges: []EvidenceEdge{}, Passages: []EvidencePassage{}},
-		}, nil
+		}
+		return memory_pipeline.Stop
 	}
-
-	// Every LLM call of the query is recorded as an inference (and a step of the trajectory); each stage runs on the model and
-	// the reasoning level the call sets for it (WithModels, WithReasoning), or the default ones.
-	rec := tr.Wrap(memory_core.WithRecording(j.llm, d, CallQuery))
-
-	//--------------------------------------
-	// DETECT_GEO and NEARBY_GEO (only with a geo resolver): the places the question mentions, and the geo entities near them
-	// and near the entities that matched the question, which the answer gets as context.
-	places := detectGeo(ctx, co, rec, tr, userID, dataset, query)
-	nearby := nearbyGeo(ctx, d, co, tr, userID, dataset, dsID, rc, places, j.radiusKm)
-
-	//--------------------------------------
-	// ANSWER: thought through with the reasoning level none unless the call sets another (WithReasoning with
-	// memory_core.StageQuery); the inference records it.
-	out, err := queryLLM(ctx, co.ModelLLM(rec, memory_core.StageQuery), rc)
-	if err != nil {
-		return nil, err
-	}
-	return &QueryResult{SessionID: sessionID, Answer: out.Answer, Evidence: getEvidence(rc.Graph, out), Geo: places, Nearby: nearby}, nil
+	return nil
 }
 
-// detectGeo is the geo step of Query (see query_geo.go): it returns the places the question mentions, nil if the call has no geo
-// resolver or the question mentions none. It never fails the call.
-func detectGeo(ctx context.Context, co memory_core.CallOptions, rec memory_core.LLM, tr *memory_core.Trace, userID, dataset, question string) []QueryPlace {
-	if co.GeoResolver == nil {
-		return nil
+func (j *job) hasGeo() bool { return j.co.GeoResolver != nil }
+
+// detectGeo is the detect_geo stage (see query_geo.go).
+func (j *job) detectGeo(ctx context.Context) (err error) {
+	j.places, err = detectGeo(ctx, j.co, j.llm, j.tr, j.userID, j.dataset, j.query)
+	return err
+}
+
+func (j *job) hasNearbyGeo() bool { return j.co.GeoResolver != nil && j.co.GeoNearby }
+
+// nearbyGeo is the nearby_geo stage (see query_geo_nearby.go): it leaves what it found in j.rc.Nearby, which the LLM is given.
+func (j *job) nearbyGeo(ctx context.Context) error {
+	_, err := nearbyGeo(ctx, j.d, j.co, j.tr, j.userID, j.dataset, j.dsID, j.rc, j.places, j.radiusKm)
+	return err
+}
+
+// answer is the query stage: the LLM call that writes the answer, thought through with the reasoning level none unless the call
+// sets another (WithReasoning with memory_core.StageQuery); the inference records it.
+func (j *job) answer(ctx context.Context) error {
+	out, err := queryLLM(ctx, j.co.ModelLLM(j.llm, memory_core.StageQuery), j.rc)
+	if err != nil {
+		return err
 	}
+	j.result = &QueryResult{SessionID: j.sessionID, Answer: out.Answer, Evidence: getEvidence(j.rc.Graph, out), Geo: j.places, Nearby: j.rc.Nearby}
+	return nil
+}
+
+// detectGeo is the geo step of Query (see query_geo.go): it returns the places the question mentions, nil if the question mentions
+// none. A failure (logged, and recorded in the trajectory) is returned with no places; Query goes on without them.
+func detectGeo(ctx context.Context, co memory_core.CallOptions, rec memory_core.LLM, tr *memory_core.Trace, userID, dataset, question string) ([]QueryPlace, error) {
 	places, err := detectPlaces(ctx, co.ModelLLM(rec, memory_core.StageDetectGeo), question)
 	fields := log.Fields{"stage": memory_core.StageDetectGeo, "user_id": userID, "dataset": dataset}
 	if err != nil {
 		log.WithError(err).WithFields(fields).Warn("query: detecting the places in the question failed")
 		tr.Tool("The LLM could not find the places the question mentions.", "detect_geo", map[string]any{"question": question}, map[string]any{"error": err.Error()})
-		return nil
+		return nil, err
 	}
 	found := places
 	if found == nil {
@@ -224,7 +275,7 @@ func detectGeo(ctx context.Context, co memory_core.CallOptions, rec memory_core.
 	}
 	tr.Tool("The LLM found the places the question mentions (cities, countries, regions, landmarks, ...).", "detect_geo",
 		map[string]any{"question": question}, map[string]any{"places": found})
-	return places
+	return places, nil
 }
 
 //---------------------------------------------------------------------------------------------

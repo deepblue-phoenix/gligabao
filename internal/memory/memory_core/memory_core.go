@@ -87,8 +87,32 @@ func (r *recordingLLM) Complete(ctx context.Context, req ai.Request) (*ai.Respon
 
 // RecordRun stores one invocation of a model (see relational.RecordInference) and returns the ID of its run. It is what
 // the calls that do not go through WithRecording (embeddings, web searches, Jev) use.
+//
+// If ctx carries an inference sink (see WithInferenceSink) the ID of a run that was recorded is passed to it, which is how the
+// pipeline stage that made the call learns of its inference.
 func RecordRun(ctx context.Context, d *sql.DB, run relational.Inference) (int64, error) {
-	return relational.RecordInference(ctx, d, run)
+	id, err := relational.RecordInference(ctx, d, run)
+	if err == nil {
+		NoteInference(ctx, id)
+	}
+	return id, err
+}
+
+// NoteInference passes the ID of a recorded inference to the inference sink of ctx (see WithInferenceSink), if it has one. 0, a
+// run that could not be recorded, is ignored.
+func NoteInference(ctx context.Context, id int64) {
+	if sink, _ := ctx.Value(inferenceSinkKey{}).(func(int64)); sink != nil && id != 0 {
+		sink(id)
+	}
+}
+
+type inferenceSinkKey struct{}
+
+// WithInferenceSink returns ctx that makes RecordRun pass the ID of every inference it records to sink, replacing the sink of
+// ctx if it had one. The pipeline runner (package memory_pipeline) sets it for each stage, so that the run log of the call
+// files the inferences under the stage that made them. sink may be called from several goroutines.
+func WithInferenceSink(ctx context.Context, sink func(id int64)) context.Context {
+	return context.WithValue(ctx, inferenceSinkKey{}, sink)
 }
 
 //---------------------------------------------------------------------------------------------

@@ -130,15 +130,10 @@ func (j *job) noteSuppliedSeries(artifactID int64, results []memory_timeseries.R
 	j.noteObservable(artifactID, results, subjects, windows)
 }
 
-// observeSeries is the last stage of Remember: it makes an observation artifact of each series the call stored (see the
-// top of this file). It returns one result per series observed; nil if the call makes none or stored no series. It never
-// fails the call.
+// observeSeries is the observe_series stage of Remember (see observeSeriesStage): it makes an observation artifact of each
+// series the call stored (see the top of this file). It returns one result per series observed. It never fails the call. The
+// call makes observations and stored series.
 func (j *job) observeSeries(ctx context.Context) (out []SeriesObservationResult) {
-	if !j.co.SeriesObservations || len(j.observables) == 0 {
-		return nil
-	}
-	j.run.Start(StageObserveSeries)
-	defer func() { j.run.Done(resultsError(out), StageObserveSeries) }()
 	obs := j.observables
 	if len(obs) > maxSeriesObservations {
 		obs = obs[:maxSeriesObservations]
@@ -193,7 +188,6 @@ func (j *job) observe(ctx context.Context, o observable) SeriesObservationResult
 	oj.kind, oj.ref = graph.ArtifactSeriesObservation, last
 
 	ex, err := Extract(ctx, oj.co.ModelLLM(oj.llm, memory_core.StageExtractGraph), text, oj.ref)
-	oj.run.AddInference(memory_core.StageExtractGraph, ex.RunID())
 	oj.outputExtraction(oj.stepLabel(nil), ex)
 	if err != nil {
 		return fail("extract", err)
@@ -201,7 +195,7 @@ func (j *job) observe(ctx context.Context, o observable) SeriesObservationResult
 	oj.tr.Tool("The LLM extracted these entities and edges (new facts) from the series observation, before any stored fact is considered."+oj.obs.label(),
 		"extract_graph", map[string]any{"text_chars": len(text)},
 		map[string]any{"entities": ex.Entities, "edges": candidateFacts(ex.Edges, nil)})
-	res, err := oj.resolveAndStore(ctx, text, ex, nil)
+	res, err := oj.reconcile(ctx, text, ex)
 	if err != nil {
 		return fail("store", err)
 	}

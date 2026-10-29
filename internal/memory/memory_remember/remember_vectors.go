@@ -82,7 +82,7 @@ const (
 // run is told of the embedding request. It returns the texts that were embedded (empty if no search was made: no vectors configured, or no endpoints) and
 // the usage of the embedding request, which is already recorded as spent. It is only a hint for choosing candidate
 // facts: the caller treats an error as "no matches".
-func findSimilarEntities(ctx context.Context, d *sql.DB, run *runLog, o memory_core.CallOptions, dsID int64, ex *Extraction) (found []similarEntity, texts []string, usage *ai.EmbedUsage, err error) {
+func findSimilarEntities(ctx context.Context, d *sql.DB, o memory_core.CallOptions, dsID int64, ex *Extraction) (found []similarEntity, texts []string, usage *ai.EmbedUsage, err error) {
 	if o.Vectors == nil || o.Embedder == nil {
 		return nil, nil, nil, nil
 	}
@@ -115,7 +115,7 @@ func findSimilarEntities(ctx context.Context, d *sql.DB, run *runLog, o memory_c
 	}
 
 	embs, usage, err := o.Embedder.EmbedBatchUsage(ctx, texts)
-	run.AddInference(StageLoadCandidates, recordEmbedUsage(ctx, d, usage)) // no transaction is open here
+	recordEmbedUsage(ctx, d, usage) // no transaction is open here
 	if err != nil {
 		return nil, texts, usage, fmt.Errorf("memory: embed entities to search: %w", err)
 	}

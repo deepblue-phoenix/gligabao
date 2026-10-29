@@ -170,16 +170,11 @@ func parseGeoPlaces(text string, cands []*keyEntity) ([]geoPlace, error) {
 
 //---------------------------------------------------------------------------------------------
 
-// resolveGeo is the stage of Remember that finds the places among the entities and stores their coordinates (see the top of
-// this file). It returns one result per entity the LLM judged to be a place (and that was not looked up before); nil if the
-// call has no geo resolver or there was nothing to decide. It never fails the call.
+// resolveGeo is the resolve_geo stage of Remember (see geoStage) that finds the places among the entities and stores their
+// coordinates (see the top of this file). It returns one result per entity the LLM judged to be a place (and that was not
+// looked up before); nil if there was nothing to decide. It never fails the call. The call has a geo resolver.
 func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 	resolver := j.co.GeoResolver
-	if resolver == nil {
-		return nil
-	}
-	j.run.Start(StageResolveGeo)
-	defer func() { j.run.Done(resultsError(out), StageResolveGeo) }()
 	fields := log.Fields{"stage": memory_core.StageDetectGeo, "user_id": j.userID, "dataset": j.dataset, "resolver": resolver.Name()}
 
 	all := make([]*keyEntity, 0, len(j.keyOrder))
@@ -217,9 +212,6 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 	})
 	var places []geoPlace
 	answered := err == nil // the LLM call itself worked
-	if answered {
-		j.run.AddInference(StageResolveGeo, resp.InferenceID)
-	}
 	if err == nil && resp.StopReason == "max_tokens" {
 		err = errors.New("LLM output truncated")
 	}

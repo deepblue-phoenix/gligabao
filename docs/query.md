@@ -40,11 +40,13 @@ content-type: application/json
        "relation": "works_at", "artifact_id": 1, "valid_at": "2025-01-31T09:00:00Z", "created_at": "2025-01-31T09:00:05Z"}
     ],
     "passages": []
-  }
+  },
+  "query_run_id": 31
 }
 ```
 
 - `session_id`: the session of the request; omitted if it had none.
+- `query_run_id`: the [run log](#run-log) of the call (`gb_query_runs.id`).
 - `answer`: the LLM's reply, based only on the retrieved graph context. If the graph lacks the information, the answer says so.
 - `evidence.entities`: entities used for the answer. `id` is the `gb_entities` row ID.
 - `evidence.edges`: edges used for the answer. `id` is the `gb_edges` row ID, `source_id`/`target_id` point at entities, and `artifact_id` (omitted if unset) is the `gb_artifacts` row the edge was inferred from (its artifact). This links each fact back to the original text. `valid_at`, `invalid_at`, `created_at` and `expired_at` (the last two omitted when null) are the fact's bi-temporal fields, see [temporal.md](temporal.md).
@@ -61,7 +63,7 @@ Errors are returned as `{"error": "..."}`:
 
 ## How it works
 
-The code is in `internal/memory/query.go` (logic) and `internal/api/query/query.go` (HTTP handler).
+The code is in `internal/memory/memory_query/query.go` (logic) and `internal/api/query/query.go` (HTTP handler). The call is a pipeline of four stages, `queryPipeline` in `query.go`: `retrieve_graph` (steps 1 and 2 below), `detect_geo` and `nearby_geo` (only with [geo](geo.md#in-query)) and `query` (the LLM call of step 3), run by the same runner as the [`remember`](remember.md#how-the-pipeline-is-declared) pipeline. With nothing to answer from, `retrieve_graph` ends the pipeline (`memory_pipeline.Stop`): the answer says so, with no LLM call, and the other stages are `skipped`.
 
 Retrieval has two sources that are added together: keywords (SQL over `gb_entities`) and similarity (the [vector indexes](vectors.md) that `remember` fills). There is no switch for either: both always run, and the embedder and the vector store are required (the server does not start without `OPENAI_API_KEY`).
 
@@ -130,6 +132,23 @@ The cited IDs are validated against the subgraph that was actually sent:
 - A cited passage is the chunk that was in the context, with its summary and text as they were given.
 - The source and target entities of every cited edge are added to `evidence.entities`, so each cited edge can be read without looking up its endpoints.
 - Results are ordered by ID.
+
+### Run log
+
+Every call is recorded in `gb_query_runs`: **one row per execution of the pipeline, the authoritative record of how it was executed**, the same kind of record as the [run log of `remember`](remember.md#run-log) (`internal/memory/memory_query/runlog.go`). The row is written when the call starts and updated at every step, and a row that stays `started` belongs to a process that died. A request that is rejected before the pipeline starts (a `400`, an unknown dataset) has no row.
+
+| Column | |
+| ------ | - |
+| `id`, `user_id`, `dataset` (the name), `question` | the call |
+| `params` | JSON: how it was made (models and reasoning per stage, the options of the geo search); `session_id` is a column of its own (`''` if there was none) |
+| `status`, `error` | **the call as a whole**: `started`, then `succeeded` if `query` returned an answer or `failed` (with `error`) if it returned an error |
+| `started_at`, `finished_at` | of the call |
+
+and, for each of the stages `retrieve_graph`, `detect_geo`, `nearby_geo`, `query` (`relational.QueryStages`), the columns `<stage>_status`, `<stage>_error`, `<stage>_started_at` and `<stage>_finished_at`, and for the stages that run a model (`retrieve_graph`, which embeds the question, `detect_geo` and `query`) `<stage>_inference_ids`: the `gb_inferences` IDs of what the stage ran. The statuses are those of `remember`: `not_started`, `started`, `succeeded`, `failed` and `skipped` (the call does not use the stage: no geo resolver, no proximity search, or the pipeline ended before it). `detect_geo` and `nearby_geo` never fail the call, so they can be `failed` in a run that is `succeeded`.
+
+From Go: `relational.GetQueryRun`, `ListQueryRuns` (filter by user, dataset and status). The admin API serves them at `GET /v1/gb/admin/api/query-runs` (the counts by status, and the filtered, paged list; like `remember-runs`).
+
+Existing database files are not migrated: a database created before 0.124.0 gets `gb_query_runs` when the server starts, but its `gb_remember_runs` does not accept the status `skipped`, so delete the file and the server recreates it.
 
 ### Facts over time and history
 

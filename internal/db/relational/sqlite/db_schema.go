@@ -98,14 +98,14 @@ CREATE INDEX IF NOT EXISTS idx_gb_inferences_model ON gb_inferences(model_id);
 --                which optional stages were asked for)
 --   artifact_id  the artifact the text was stored as (the parent, for a chunked text); NULL until it is stored
 --   status       of the call as a whole, so that it can be checked without looking at the stages: 'started', then
---                'succeeded' if the call returned a result or 'failed' if it returned an error ('not_started' exists for
+--                'succeeded' if the call returned a result or 'failed' if it returned an error ('not_started' and 'skipped' exist for
 --                the stages). A row that stays 'started' belongs to a process that died. The stages that never fail the
 --                call (resolve_geo, web_search, fetch_series, observe_series, classify_complexity) can be 'failed' in a 'succeeded' run.
 --   error        why the call failed; NULL if it did not
 --   started_at, finished_at  of the call
 -- and, for each stage of the pipeline (model.RememberStages: classify_complexity, chunk_text, extract_graph,
 -- summarize_chunk, load_candidates, resolve_edges, store, store_series, resolve_geo, web_search, fetch_series, observe_series):
---   <stage>_status       'not_started' (not reached, or not used by the call), 'started', 'succeeded' or 'failed'
+--   <stage>_status       'not_started' (not reached), 'started', 'succeeded', 'failed' or 'skipped' (not used by the call)
 --   <stage>_error        why the stage failed; NULL if it did not
 --   <stage>_started_at, <stage>_finished_at   when the stage began and when it last ended (a stage that runs for each chunk
 --                        of a text spans all the chunks)
@@ -124,11 +124,25 @@ CREATE INDEX IF NOT EXISTS idx_gb_inferences_model ON gb_inferences(model_id);
 --   label       what it is about when the step ran more than once ('chunk 2 of 5', 'web search for "Berlin"'); '' if not
 --   output      JSON, whose shape depends on name; an output over 64 KiB is replaced by {"truncated": true, "bytes": n, "preview": ...}
 --   created_at  when it was made
+
+-- Query runs: ONE ROW PER EXECUTION OF THE QUERY PIPELINE, the same kind of record as gb_remember_runs, for Query (see
+-- internal/memory/memory_query/runlog.go; the table is created by queryRunsSchema in db_query_run.go).
+--   user_id, dataset (the name), question  what was asked
+--   params       JSON object: how the call was made (session, models and reasoning per stage, the options of the geo search)
+--   session_id   the session of the call ('' if it had none)
+--   status       of the call as a whole: 'started', then 'succeeded' if the call returned an answer or 'failed' if it returned an
+--                error. A row that stays 'started' belongs to a process that died. The stages that never fail the call
+--                (detect_geo, nearby_geo) can be 'failed' in a 'succeeded' run.
+--   error        why the call failed; NULL if it did not
+--   started_at, finished_at  of the call
+-- and, for each stage of the pipeline (model.QueryStages: retrieve_graph, detect_geo, nearby_geo, query), the columns of the stages
+-- of gb_remember_runs (<stage>_status, <stage>_error, <stage>_started_at, <stage>_finished_at and, for the stages that run a
+-- model, <stage>_inference_ids), with the same statuses. A stage the call does not use is 'skipped'.
 `
 
 // initSchema applies the database schema.
 func initSchema(d *sql.DB) error {
-	if _, err := d.Exec(schema + rememberRunsSchema()); err != nil {
+	if _, err := d.Exec(schema + rememberRunsSchema() + queryRunsSchema()); err != nil {
 		return fmt.Errorf("init schema: %w", err)
 	}
 	return nil

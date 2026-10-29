@@ -5,15 +5,16 @@ package memory_remember
 // pipeline, the error of a stage that failed, when each stage began and ended, and the inferences (gb_inferences) each
 // stage made.
 //
-// The pipeline reports to it in single calls, and everything else happens here:
+// The pipeline (see rememberPipeline, and memory_pipeline) reports to it around every stage, and the stage itself has nothing to
+// do with it but to file its outputs:
 //
 //	run := startRunLog(ctx, d, 0, userID, dataset, kind, params) // a row, status started
 //	defer func() { run.Finish(err) }()                        // status succeeded or failed (and the stages left open)
 //
-//	j.run.Start(StageExtractGraph)                            // before a stage
-//	ex, err := Extract(...)
-//	j.run.Done(err, StageExtractGraph)                        // after it, with its error (nil if it had none)
-//	j.run.AddInference(StageExtractGraph, ex.RunID())          // the inference (gb_inferences) the stage made
+//	run.Start(StageExtractGraph)                              // before a stage
+//	run.Done(err, StageExtractGraph)                          // after it, with its error (nil if it had none)
+//	run.Skip(StageWebSearch)                                  // a stage the call does not use
+//	run.AddInference(StageExtractGraph, id)                   // the inference (gb_inferences) the stage made
 //
 // A stage also files what its steps produced, for debugging, in gb_remember_run_stage_outputs (see Output):
 //
@@ -141,6 +142,24 @@ func (r *runLog) Start(stages ...string) {
 			if st.StartedAt == nil {
 				st.StartedAt = &now
 			}
+			r.run.Stages[name] = *st
+		}
+	}
+	r.save()
+}
+
+// Skip marks the stages as skipped: the call does not use them (see relational.RememberSkipped). A stage that has begun is left
+// as it is, whatever it did (the storage of the series is done by store when the text is a single chunk). Call it when the
+// pipeline passes the stage.
+func (r *runLog) Skip(stages ...string) {
+	if r == nil || r.into != "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, name := range stages {
+		if st := r.stage(name); st != nil && st.Status == relational.RememberNotStarted {
+			st.Status = relational.RememberSkipped
 			r.run.Stages[name] = *st
 		}
 	}
@@ -290,16 +309,6 @@ func (r *runLog) Within(stage string) *runLog {
 }
 
 //---------------------------------------------------------------------------------------------
-
-// storeStages are the stages that one call of store runs: the storage of the text, and with it that of the series the
-// caller supplied when store stores them in the same transaction (a text that is a single chunk; for a chunked text they
-// are stored after the chunks, see rememberDocument).
-func (j *job) storeStages(part *chunkPart) []string {
-	if part == nil && j.web == nil && j.obs == nil && len(j.co.Series) > 0 {
-		return []string{StageStore, StageStoreSeries}
-	}
-	return []string{StageStore}
-}
 
 // resultError is a result of an enrichment stage, which carries its error as text ("" if it had none).
 type resultError interface{ errText() string }

@@ -81,7 +81,7 @@ func initSchema(ctx context.Context, d *sql.DB) error {
 		return fmt.Errorf("init schema: lock: %w", err)
 	}
 	defer conn.ExecContext(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1)`, int64(lockID))
-	if _, err := conn.ExecContext(ctx, schema+rememberRunsSchema()); err != nil {
+	if _, err := conn.ExecContext(ctx, schema+rememberRunsSchema()+queryRunsSchema()); err != nil {
 		return fmt.Errorf("init schema: %w", err)
 	}
 	return nil

@@ -83,6 +83,15 @@ func rememberRunsScenario(t *testing.T, d *sql.DB) {
 		t.Fatalf("missing run: %v", err)
 	}
 
+	// A stage the call does not use is stored as skipped.
+	got.Stages[relational.RememberStageWebSearch] = relational.RememberStage{Status: relational.RememberSkipped, InferenceIDs: []int64{}}
+	if err := relational.SaveRememberRun(ctx, d, *got); err != nil {
+		t.Fatal(err)
+	}
+	if back, err = relational.GetRememberRun(ctx, d, id); err != nil || back.Stages[relational.RememberStageWebSearch].Status != relational.RememberSkipped {
+		t.Fatalf("a skipped stage: %+v, %v", back, err)
+	}
+
 	// Listing, newest first, filtered on the run's status.
 	ok := relational.NewRememberRun(user, "main", "episode", nil, now)
 	ok.Status = relational.RememberSucceeded

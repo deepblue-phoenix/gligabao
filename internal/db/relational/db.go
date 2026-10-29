@@ -32,6 +32,10 @@ type (
 	RememberStageDef    = model.RememberStageDef
 	RememberRunFilter   = model.RememberRunFilter
 	RememberStageOutput = model.RememberStageOutput
+	QueryRun            = model.QueryRun
+	QueryStage          = model.QueryStage
+	QueryStageDef       = model.QueryStageDef
+	QueryRunFilter      = model.QueryRunFilter
 )
 
 // Statuses of a remember run and of its stages, and the stages (see model.RememberStages and gb_remember_runs).
@@ -40,6 +44,7 @@ const (
 	RememberStarted    = model.RememberStarted
 	RememberSucceeded  = model.RememberSucceeded
 	RememberFailed     = model.RememberFailed
+	RememberSkipped    = model.RememberSkipped
 
 	RememberStageClassifyComplexity = model.RememberStageClassifyComplexity
 	RememberStageChunkText          = model.RememberStageChunkText
@@ -63,6 +68,20 @@ var RememberStageDefOf = model.RememberStageDefOf
 
 // NewRememberRun returns a run that has just started, with all its stages not started.
 var NewRememberRun = model.NewRememberRun
+
+// The stages of the query pipeline (see model.QueryStages and gb_query_runs).
+const (
+	QueryStageRetrieveGraph = model.QueryStageRetrieveGraph
+	QueryStageDetectGeo     = model.QueryStageDetectGeo
+	QueryStageNearbyGeo     = model.QueryStageNearbyGeo
+	QueryStageQuery         = model.QueryStageQuery
+)
+
+// QueryStages lists the stages of the query pipeline, in order.
+var QueryStages = model.QueryStages
+
+// NewQueryRun returns a query run that has just started, with all its stages not started.
+var NewQueryRun = model.NewQueryRun
 
 // Errors returned by the functions below.
 var (

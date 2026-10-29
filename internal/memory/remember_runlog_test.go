@@ -127,7 +127,12 @@ func testRememberRunLogText(t *testing.T, d *sql.DB) {
 			t.Errorf("stage %s = %+v", name, st)
 		}
 	}
-	if got := stageNames(run, relational.RememberNotStarted); len(got) != len(relational.RememberStages)-len(want) {
+	// The stages the call does not use are skipped: nothing is left as not started in a run that succeeded.
+	wantSkipped := []string{"chunk_text", "classify_complexity", "fetch_series", "observe_series", "resolve_geo", "store_series", "summarize_chunk", "web_search"}
+	if got := stageNames(run, relational.RememberSkipped); strings.Join(got, ",") != strings.Join(wantSkipped, ",") {
+		t.Errorf("skipped stages = %v, want %v", got, wantSkipped)
+	}
+	if got := stageNames(run, relational.RememberNotStarted); len(got) != 0 {
 		t.Errorf("not started stages = %v", got)
 	}
 	checkInferences(t, d, &runs[1], run)
@@ -274,7 +279,8 @@ func testRememberRunLogChunks(t *testing.T, d *sql.DB) {
 
 func TestRememberRunLogFailure(t *testing.T) { dbtest.Run(t, testRememberRunLogFailure) }
 
-// A call that fails: the run and the stage that failed say why, and the stages that were never reached are not started.
+// A call that fails: the run and the stage that failed say why, the stages it passed that the call does not use are skipped, and the
+// stages that were never reached are not started.
 func testRememberRunLogFailure(t *testing.T, d *sql.DB) {
 	_, err := memory_remember.Remember(context.Background(), d, &personLLM{failOn: 1}, "u1", "work", "", "Person1 works at Acme.", relational.Now())
 	if err == nil {
@@ -291,7 +297,11 @@ func testRememberRunLogFailure(t *testing.T, d *sql.DB) {
 	if got := stageNames(run, relational.RememberFailed); len(got) != 1 {
 		t.Errorf("failed stages = %v", got)
 	}
-	if got := stageNames(run, relational.RememberNotStarted); len(got) != len(relational.RememberStages)-1 {
+	// The stages it passed that the call does not use are skipped; those it never reached are not started.
+	if got := stageNames(run, relational.RememberSkipped); strings.Join(got, ",") != "chunk_text,classify_complexity" {
+		t.Errorf("skipped stages = %v", got)
+	}
+	if got := stageNames(run, relational.RememberNotStarted); len(got) != len(relational.RememberStages)-3 {
 		t.Errorf("not started stages = %v", got)
 	}
 

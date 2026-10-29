@@ -136,7 +136,7 @@ function stagesTable(name: string, run: Run, order: string[]): HTMLTableElement 
         toggleTip(q, stage, text);
       });
     }
-    if (s.status === "not_started") continue; // it never ran: nothing to show
+    if (s.status === "not_started" || s.status === "skipped") continue; // it never ran: nothing to show
     const btn = cell.appendChild(node("button", "small", "Outputs"));
     btn.type = "button";
     btn.addEventListener("click", (ev) => {

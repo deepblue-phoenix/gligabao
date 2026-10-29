@@ -44,4 +44,4 @@ This table replaces `gb_llm_calls` (tokens and cost per call, without the model'
 
 ## Which stage of a remember call made a run
 
-The [run log](remember.md#run-log) of a `remember` call (`gb_remember_runs`) lists, for each stage of the pipeline, the IDs of the inferences the stage made (`<stage>_inference_ids`).
+The [run log](remember.md#run-log) of a `remember` call (`gb_remember_runs`) lists, for each stage of the pipeline, the IDs of the inferences the stage made (`<stage>_inference_ids`); so does the [run log of a `query` call](query.md#run-log) (`gb_query_runs`).

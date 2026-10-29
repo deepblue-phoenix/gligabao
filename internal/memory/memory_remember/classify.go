@@ -16,17 +16,14 @@ import (
 // incoming text. Unlike the LLM stages of memory_core.Stages it takes no model: it always runs on Jev.
 const StageClassifyComplexity = "classify_complexity"
 
-// classifyComplexity is the first stage of Remember: Jev, the system 1 model, judges whether the text is simple, medium
+// classifyComplexity is the classify_complexity stage of Remember, the first: Jev, the system 1 model, judges whether the text is simple, medium
 // or complex in the number of entities it will yield, a prediction of the compute the later stages will need per entity
 // and edge. For now the result is only logged (and recorded in the trajectory, with the latency of the call).
 //
-// It runs only if Jev is configured (memory_core.WithJev). It is advisory: a failure is logged and recorded, and never
-// fails Remember.
-func (j *job) classifyComplexity(ctx context.Context, text string) {
-	if j.co.Jev == nil {
-		return
-	}
-	j.run.Start(StageClassifyComplexity)
+// It runs only if Jev is configured (memory_core.WithJev). It is advisory: a failure is logged, recorded in the trajectory and
+// returned for the run log, and never fails Remember.
+func (j *job) classifyComplexity(ctx context.Context) error {
+	text := j.text
 	tokens := memory_chunk.EstimateTokens(text)
 	args := map[string]any{"text_chars": len(text), "text_tokens": tokens}
 	fields := log.Fields{"stage": StageClassifyComplexity, "user_id": j.userID, "dataset": j.dataset, "text_chars": len(text), "text_tokens": tokens}
@@ -38,18 +35,15 @@ func (j *job) classifyComplexity(ctx context.Context, text string) {
 	if err == nil {
 		run.Model, run.InputTokens, run.OutputTokens = cl.Model, cl.InputTokens, cl.OutputTokens
 	}
-	id, rerr := memory_core.RecordRun(context.WithoutCancel(ctx), j.d, run)
-	j.run.AddInference(StageClassifyComplexity, id)
-	if rerr != nil {
+	if _, rerr := memory_core.RecordRun(context.WithoutCancel(ctx), j.d, run); rerr != nil {
 		log.WithError(rerr).WithFields(fields).Error("record jev inference")
 	}
-	j.run.Done(err, StageClassifyComplexity)
 	if err != nil {
 		log.WithError(err).WithFields(fields).Warn("jev: classify complexity failed")
 		j.tr.TimedTool("Jev (system 1) was asked to classify the text as simple, medium or complex in the number of entities it will yield; the call failed.",
 			StageClassifyComplexity, args, map[string]any{"error": err.Error()},
 			memory_core.ToolTiming{Provider: jev.Provider, Started: call.Started, Latency: call.Latency})
-		return
+		return err
 	}
 	fields["complexity"], fields["confidence"], fields["truncated"], fields["model"] = cl.Complexity, cl.Confidence, cl.Truncated, cl.Model
 	log.WithFields(fields).Info("jev: remember text complexity")
@@ -60,4 +54,5 @@ func (j *job) classifyComplexity(ctx context.Context, text string) {
 		"to predict the compute per entity and edge.", StageClassifyComplexity, args, classified,
 		memory_core.ToolTiming{Model: cl.Model, Provider: jev.Provider, Started: call.Started, Latency: call.Latency,
 			PromptTokens: cl.InputTokens, CompletionTokens: cl.OutputTokens})
+	return nil
 }

@@ -29,7 +29,7 @@ o := <-outcome                                           // block until the run 
 
 ## Queued runs
 
-Between `Submit` and the start of the run the row is already in the table, with status `started` and every stage `not_started` (the schema has no status for a queued run, and adding one would break existing databases). When the run begins the row is overwritten with its parameters and start time. A run that never starts (cancelled in the queue, or the manager closing) is marked `failed` with the reason.
+Between `Submit` and the start of the run the row is already in the table, with status `started` and every stage `not_started` (the schema has no status for a queued run; a stage is `skipped` only once the pipeline has passed it). When the run begins the row is overwritten with its parameters and start time. A run that never starts (cancelled in the queue, or the manager closing) is marked `failed` with the reason.
 
 ## The queue
 

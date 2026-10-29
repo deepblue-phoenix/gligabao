@@ -182,7 +182,7 @@ const (
 //     which finds aliases the names do not (see findSimilarEntities).
 //
 // A dataset that does not exist yet has none.
-func loadCandidates(ctx context.Context, d *sql.DB, run *runLog, o memory_core.CallOptions, userID, dataset string, ex *Extraction) (*candidates, error) {
+func loadCandidates(ctx context.Context, d *sql.DB, o memory_core.CallOptions, userID, dataset string, ex *Extraction) (*candidates, error) {
 	out := &candidates{Via: map[int64]string{}}
 	dsID, err := relational.DatasetID(ctx, d, userID, dataset)
 	if errors.Is(err, relational.ErrNotFound) {
@@ -208,7 +208,7 @@ func loadCandidates(ctx context.Context, d *sql.DB, run *runLog, o memory_core.C
 	}
 	out.ByName = byName
 
-	out.Similar, out.SearchTexts, out.SearchUsage, out.SearchErr = findSimilarEntities(ctx, d, run, o, dsID, ex)
+	out.Similar, out.SearchTexts, out.SearchUsage, out.SearchErr = findSimilarEntities(ctx, d, o, dsID, ex)
 	if out.SearchErr != nil {
 		log.WithError(out.SearchErr).Warn("similar entity search failed; candidates are matched by name only")
 	}

@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.124.0] - 2026-10-29
+
+### Added
+- Query run log: every `query` call is recorded in the new table `gb_query_runs`, one row per execution, like `gb_remember_runs` is for `remember`: the question, how the call was made, its status and error, and for each stage of the pipeline (`retrieve_graph`, `detect_geo`, `nearby_geo`, `query`) its status, error, start and end times and the IDs of the inferences it made. The response has the new field `query_run_id`. A request that is rejected before the pipeline starts (a `400`, an unknown dataset) has no row. See `docs/query.md#run-log`.
+- Admin API: `GET /v1/gb/admin/api/query-runs` lists the query runs, with the counts by status, like `remember-runs`.
+- Run logs: a stage that a call does not use (no web search was asked for, the text is not a document, there is no geo resolver, a query with nothing to answer from, ...) is now recorded as `skipped`, a new stage status next to `not_started`, `started`, `succeeded` and `failed`. A run that succeeded no longer has stages left `not_started`; `not_started` now means that the pipeline never reached the stage.
+
+### Changed
+- The stages of `remember` and `query` are now declared as a list (`rememberPipeline` in `memory_remember/remember_pipeline.go`, `queryPipeline` in `memory_query/query.go`) and run by the new package `internal/memory/memory_pipeline`, which tells the run log when each stage starts, ends (with its error) or is skipped, and files the inferences of each stage by itself (`memory_core.WithInferenceSink`), instead of every stage doing it. A stage that never fails the call is `Advisory`. The behaviour of `remember` and `query` does not change; in the run log of `remember`, the error of `chunk_text` now includes the `memory: chunk text:` prefix, and the `store` stage of a document also covers the check of its session ID.
+- Admin UI, remember runs view: a `skipped` stage has no **Outputs** button.
+- Schema: `gb_remember_runs` accepts the status `skipped` for its stages, and `gb_query_runs` is new. There is no migration: an existing database has to be recreated.
+
 ## [0.123.2] - 2026-10-29
 
 ### Changed

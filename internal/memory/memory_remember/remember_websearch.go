@@ -184,15 +184,10 @@ func webSearchQuery(e Entity) string {
 	return fmt.Sprintf("latest world events and news about %s (%s)", e.Name, e.Type)
 }
 
-// webSearch is the last stage of Remember: it searches the web for the key entities of the call and stores what it
-// finds (see the top of this file). It returns one result per entity searched for; nil if the call does not search the
-// web or has nothing to search for. It never fails the call.
+// webSearch is the web_search stage of Remember (see webSearchStage): it searches the web for the key entities of the call and
+// stores what it finds (see the top of this file). It returns one result per entity searched for; nil if there is nothing to
+// search for. It never fails the call. The call searches the web.
 func (j *job) webSearch(ctx context.Context) (out []WebSearchResult) {
-	if !j.co.WebSearch {
-		return nil
-	}
-	j.run.Start(memory_core.StageWebSearch)
-	defer func() { j.run.Done(resultsError(out), memory_core.StageWebSearch) }()
 	all := make([]*keyEntity, 0, len(j.keyOrder))
 	for _, k := range j.keyOrder {
 		all = append(all, j.keyEntities[k])
@@ -275,10 +270,9 @@ func (j *job) storeWebSearch(ctx context.Context, p *keyEntity, ws webSearched) 
 	}
 	resp := ws.resp
 	// Detached from ctx so a cancelled request still records money that was spent.
-	runID, err := memory_core.RecordRun(context.WithoutCancel(ctx), j.d, relational.Inference{Type: CallRemember, Stage: memory_core.StageWebSearch,
+	_, err := memory_core.RecordRun(context.WithoutCancel(ctx), j.d, relational.Inference{Type: CallRemember, Stage: memory_core.StageWebSearch,
 		Model: resp.Model, Provider: resp.Provider, Kind: ai.KindOf(resp.Model), Reasoning: ai.ReasoningNone,
 		InputTokens: resp.InputTokens, OutputTokens: resp.OutputTokens, CostUSD: resp.CostUSD})
-	j.run.AddInference(memory_core.StageWebSearch, runID)
 	if err != nil {
 		log.WithError(err).WithFields(fields).Error("record web search call")
 	}
@@ -307,7 +301,6 @@ func (j *job) storeWebSearch(ctx context.Context, p *keyEntity, ws webSearched) 
 
 	// The graph is extracted from the briefing alone; the artifact keeps the sources next to it.
 	ex, err := Extract(ctx, wj.co.ModelLLM(wj.llm, memory_core.StageExtractGraph), briefing, wj.ref)
-	wj.run.AddInference(memory_core.StageExtractGraph, ex.RunID())
 	wj.outputExtraction(wj.stepLabel(nil), ex)
 	if err != nil {
 		return fail("extract", err)
@@ -315,7 +308,7 @@ func (j *job) storeWebSearch(ctx context.Context, p *keyEntity, ws webSearched) 
 	wj.tr.Tool("The LLM extracted these entities and edges (new facts) from the web search result, before any stored fact is considered."+wj.web.label(),
 		"extract_graph", map[string]any{"text_chars": len(briefing)},
 		map[string]any{"entities": ex.Entities, "edges": candidateFacts(ex.Edges, nil)})
-	res, err := wj.resolveAndStore(ctx, webSearchArtifactText(briefing, resp.Sources), ex, nil)
+	res, err := wj.reconcile(ctx, webSearchArtifactText(briefing, resp.Sources), ex)
 	if err != nil {
 		return fail("store", err)
 	}

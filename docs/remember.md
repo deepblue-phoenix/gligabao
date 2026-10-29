@@ -85,7 +85,7 @@ Errors are returned as `{"error": "..."}`:
 
 This is the pipeline for a text that fits one chunk. A longer text runs the same steps on each of its chunks, one after the other; see [chunking.md](chunking.md).
 
-All steps use the LLM from `internal/ai` (Anthropic Messages API, default model `claude-haiku-5-5`, unless the request picks another one for a stage: see [Choosing the model of each stage](#choosing-the-model-of-each-stage)). Code is in `internal/memory`.
+All steps use the LLM from `internal/ai` (Anthropic Messages API, default model `claude-haiku-5-5`, unless the request picks another one for a stage: see [Choosing the model of each stage](#choosing-the-model-of-each-stage)). Code is in `internal/memory`. The steps are the stages of the [pipeline](#how-the-pipeline-is-declared), a list in `memory_remember/remember_pipeline.go` that `Remember` runs.
 
 0. **Classify complexity** (`classifyComplexity`, 1 call to Jev, only if a Jev API key is configured: `jev_api_key` / `JEV_API_KEY`): Jev, TypeSafe's system 1 model (package `internal/sys/jev`, `POST /v1/systemone`), answers one `choice` question: is the text `simple` (up to 5 entities), `medium` (6 to 20) or `complex` (more than 20) in the number of entities it will yield? This predicts how much compute the later steps need per entity and edge. The answer's `confidence` (0 to 1) and the class probabilities are kept. For now the result is only logged (`jev: remember text complexity`: `complexity`, `confidence`, `latency_ms`). It is advisory (a failure is logged and the request goes on), it always runs on Jev (it is not in `models`), and it sees at most the first 32 KiB of the text. In an eval [trajectory](evals/knowledge.md) it is the `classify_complexity` step, whose extra has `latency_ms` and `started_at`.
 1. **Extract the graph** (`Extract`, 1 LLM call, max 4096 output tokens): given the reference time and the text, the model is asked to return only JSON of the form:
@@ -208,7 +208,7 @@ Text is not remembered by the HTTP handler: one goroutine, the **remember manage
 
 ## Run log
 
-Every call is recorded in `gb_remember_runs`: **one row per execution of the pipeline, the authoritative record of how it was executed.** The row is written when the call starts and updated at every step, so a call in progress can be watched, and a row that stays `started` belongs to a process that died. (A request that is rejected before the pipeline starts, a `400`, has no row; one that the manager queued has its row from then on, and a queued run that never runs is `failed`.) It is kept by `internal/memory/memory_remember/runlog.go`; the pipeline only reports `Start` and `Done` for its stages.
+Every call is recorded in `gb_remember_runs`: **one row per execution of the pipeline, the authoritative record of how it was executed.** The row is written when the call starts and updated at every step, so a call in progress can be watched, and a row that stays `started` belongs to a process that died. (A request that is rejected before the pipeline starts, a `400`, has no row; one that the manager queued has its row from then on, and a queued run that never runs is `failed`.) It is kept by `internal/memory/memory_remember/runlog.go`; the [pipeline runner](#how-the-pipeline-is-declared) reports every stage to it, the stages themselves do not.
 
 | Column | |
 | ------ | - |
@@ -222,15 +222,15 @@ and, for **each stage** (`<stage>_` prefix):
 
 | Column | |
 | ------ | - |
-| `<stage>_status` | `not_started` (not reached, or not used by this call), `started`, `succeeded` or `failed` (constants `relational.RememberNotStarted`, `RememberStarted`, `RememberSucceeded`, `RememberFailed`) |
+| `<stage>_status` | `not_started` (the pipeline has not reached it: an earlier stage failed, or the run is still on its way), `started`, `succeeded`, `failed` or `skipped` (the call does not use it: no web search was asked for, the text is not a document, there is no geo resolver, ...) (constants `relational.RememberNotStarted`, `RememberStarted`, `RememberSucceeded`, `RememberFailed`, `RememberSkipped`) |
 | `<stage>_error` | why the stage failed; `NULL` if it did not |
 | `<stage>_started_at`, `<stage>_finished_at` | when the stage began and when it last ended; a stage that runs for each chunk spans all the chunks |
 | `<stage>_inference_ids` | only for the stages that run a model: JSON array of the `gb_inferences` IDs of what the stage ran, in order. A list, because a stage runs a model once per chunk |
 
-The stages, in order: `classify_complexity` (Jev), `chunk_text`, `extract_graph`, `summarize_chunk`, `load_candidates`, `resolve_edges`, `store`, `store_series`, `resolve_geo`, `web_search`, `fetch_series`, `observe_series` (`relational.RememberStages` lists them; the ones that run a model are marked there). A stage the call does not use stays `not_started`.
+The stages, in order: `classify_complexity` (Jev), `chunk_text`, `extract_graph`, `summarize_chunk`, `load_candidates`, `resolve_edges`, `store`, `store_series`, `resolve_geo`, `web_search`, `fetch_series`, `observe_series` (`relational.RememberStages` lists them; the ones that run a model are marked there). A stage the call does not use is `skipped`, so a run that succeeded has no stage left `not_started`.
 
-- `load_candidates` and `store` hold the embedding requests they made (`embed` runs); `fetch_series` holds the `resolve_series` run and `resolve_geo` the `detect_geo` run; `web_search`, `fetch_series` and `observe_series` hold **all** the inferences of their work, including the extraction, fact comparison and embeddings of the briefings and observations they store (their job gets `j.run.Within(stage)`, a view of the log that files every run in that stage and leaves the stages of the text itself alone). So every `remember` inference is in exactly one stage of one run log.
-- When a stage fails, the call fails with the same error, and the stages after it stay `not_started`. The stages that never fail the call (`classify_complexity`, `resolve_geo`, `web_search`, `fetch_series`, `observe_series`) can be `failed` in a run that is `succeeded`: check the stage for them.
+- `load_candidates` and `store` hold the embedding requests they made (`embed` runs); `fetch_series` holds the `resolve_series` run and `resolve_geo` the `detect_geo` run; `web_search`, `fetch_series` and `observe_series` hold **all** the inferences of their work, including the extraction, fact comparison and embeddings of the briefings and observations they store (their job gets `j.run.Within(stage)`, a view of the log that files every run in that stage and leaves the stages of the text itself alone). So every `remember` inference is in exactly one stage of one run log. The stage that made an inference learns of it by itself, see [below](#how-the-pipeline-is-declared).
+- When a stage fails, the call fails with the same error, and the stages after it stay `not_started` (those before it that the call does not use are `skipped`). The stages that never fail the call (`classify_complexity`, `resolve_geo`, `web_search`, `fetch_series`, `observe_series`) can be `failed` in a run that is `succeeded`: check the stage for them.
 - A text that is a single chunk stores the series it came with in the same transaction as the text, so `store_series` has the times of `store`.
 
 ```sql
@@ -238,7 +238,15 @@ SELECT id, dataset, error FROM gb_remember_runs WHERE status = 'failed';
 SELECT id, web_search_error FROM gb_remember_runs WHERE web_search_status = 'failed';
 ```
 
-From Go: `relational.GetRememberRun`, `ListRememberRuns` (filter by user, dataset and status). Writing is done by the pipeline: `startRunLog` returns a `*runLog` whose methods (`Start`, `Done`, `AddInference`, `Artifact`, `Finish`) do nothing on `nil` and never fail the call; a row that cannot be written is logged. The pipeline reports each inference explicitly, with the ID that recording it returned: `j.run.AddInference(stage, id)`.
+From Go: `relational.GetRememberRun`, `ListRememberRuns` (filter by user, dataset and status). Writing is done by the pipeline runner: `startRunLog` returns a `*runLog` whose methods (`Start`, `Done`, `Skip`, `AddInference`, `Artifact`, `Finish`) do nothing on `nil` and never fail the call; a row that cannot be written is logged. A stage only files its [outputs](#stage-outputs), with `j.run.Output`.
+
+### How the pipeline is declared
+
+The stages of a call are a value, `rememberPipeline` in `internal/memory/memory_remember/remember_pipeline.go`, a list that reads top to bottom as the pipeline does. `Remember` validates the request, sets up the trace and the run log, and runs it with `memory_pipeline.Run` (package `internal/memory/memory_pipeline`, shared with [`query`](query.md#run-log)). Each stage is a `memory_pipeline.Stage`: its name (the one of the run log), a policy (`Fatal`: its error ends the call; `Advisory`: the error is recorded on the stage and the call goes on, which is how `classify_complexity`, `resolve_geo`, `web_search`, `fetch_series` and `observe_series` never fail it), an `Enabled` function (a stage that is not enabled is `skipped`) and the method of the job that does the work. A `memory_pipeline.Each` runs its stages for every chunk of a document, one chunk to the end before the next. The stages share what they make through the `job`.
+
+For every stage the runner tells the run log when it starts and ends (with its error) and when it is skipped, and the stage never does: it cannot be left open, forgotten or named wrong. It does the same for the inferences: the context a stage runs with carries a sink (`memory_core.WithInferenceSink`) that `memory_core.RecordRun` passes the ID of every inference to, so the inference of every LLM call, embedding request or web search the stage makes is filed under it with no call to the log. A test checks that the stages of the pipeline are those of `relational.RememberStages`.
+
+The stages that reconcile a text with the stored facts and store it (`load_candidates`, `resolve_edges`, `store`) are a list of their own, `reconcileSteps`, that the pipeline runs for the text, or for each chunk, and that the `web_search` and `observe_series` stages run for the texts they make. A document runs `store` twice, for its parent artifact and then for each chunk, and a text of one chunk stores its series with `store` (`store_series` starts and ends with it).
 
 ## Stage outputs
 
@@ -310,7 +318,7 @@ Foreign keys are enabled on every connection. Deleting an entity cascades to its
 
 The vectors are not in these tables: they live in the vector store, isolated per dataset, one vector dataset per index (see [vectors.md](vectors.md#datasets)). They are keyed by the `id` of the entity or edge row.
 
-Existing database files are not migrated when the schema changes: delete the file and the server recreates it.
+Existing database files are not migrated when the schema changes: delete the file and the server recreates it. (Since 0.124.0 `gb_remember_runs` accepts the status `skipped` for a stage, which a database created before it does not: recreate it. `gb_query_runs`, the [run log of `query`](query.md#run-log), was added then.)
 
 ## Configuration
 

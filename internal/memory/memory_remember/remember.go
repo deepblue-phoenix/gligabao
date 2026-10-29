@@ -18,6 +18,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_pipeline"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_timeseries"
 )
 
@@ -150,6 +151,21 @@ type job struct {
 	// by normalized name, and keyOrder their names in the order they were extracted.
 	keyEntities map[string]*keyEntity
 	keyOrder    []string
+
+	// What the stages of the pipeline share (see remember_pipeline.go). text is the text of the call, and chunked says that it is
+	// a document; the stages after chunk_text read its chunks (chunks), and keep what each makes of them (exs, sums), indexed
+	// like them (a text of one chunk has one item). i is the current item, u the text that the reconcile stages are on.
+	text     string
+	cc       memory_chunk.Config
+	chunked  bool
+	chunks   []memory_chunk.Chunk
+	exs      []*Extraction
+	sums     []*chunkSummary
+	i        int
+	parentID int64 // the parent artifact of a document
+	u        *unit
+	merge    *merger // accumulates the Results of the chunks into res
+	res      *Result // what Remember returns: the result of the text, or of the document
 }
 
 // CallRemember is the type of the LLM calls of Remember, stored in gb_inferences.type.
@@ -303,7 +319,7 @@ func ResolveKind(kind string) (string, error) {
 // A text of more than the chunk size (WithChunking; 1024 tokens by default) is a document: it is stored as an
 // artifact, split into overlapping chunks that are artifacts too (its children), and each chunk is extracted,
 // reconciled, stored and embedded on its own, and summarized: the summary is a chunk_summary artifact, a child of the
-// chunk, with its own embedding (see rememberDocument and docs/chunking.md).
+// chunk, with its own embedding (see rememberPipeline and docs/chunking.md).
 //
 // With WithWebSearch(true) (and a searcher, WithWebSearcher; ErrWebSearchUnavailable without one) the key entities of the
 // text are then searched for on the web, and the results are stored as artifacts of their own (kind web_search) and
@@ -408,145 +424,12 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 		}
 	}()
 
-	j := &job{d: d, llm: llm, tr: tr, run: run, co: co, opts: opts, userID: userID, dataset: dataset, kind: kind, ref: ref, now: now}
-
-	return j.pipeline(ctx, text, cc, chunked)
-}
-
-// pipeline sequences the stages of a Remember call on the job j: the text is either a document (chunked: each chunk goes
-// through the stages on its own, see rememberDocument) or a single text, which is extracted, reconciled with the stored
-// facts and stored (resolveAndStore); then the optional enrichment stages run (geo, web search, series fetch and
-// observations), after the text is stored, so that they never fail the call. Remember does the setup (validation, trace,
-// run log) and calls it.
-func (j *job) pipeline(ctx context.Context, text string, cc memory_chunk.Config, chunked bool) (*Result, error) {
-	//--------------------------------------
-	// CLASSIFY_COMPLEXITY (Jev; only if configured)
-	j.classifyComplexity(ctx, text)
-
-	if chunked {
-		return j.rememberDocument(ctx, text, cc)
-	}
-
-	//--------------------------------------
-	// EXTRACT
-	j.run.Start(memory_core.StageExtractGraph)
-	ex, err := Extract(ctx, j.co.ModelLLM(j.llm, memory_core.StageExtractGraph), text, j.ref)
-	j.run.Done(err, memory_core.StageExtractGraph)
-	j.run.AddInference(memory_core.StageExtractGraph, ex.RunID())
-	j.outputExtraction("", ex)
-	if err != nil {
+	j := &job{d: d, llm: llm, tr: tr, run: run, co: co, opts: opts, userID: userID, dataset: dataset, kind: kind, ref: ref, now: now,
+		text: text, cc: cc, chunked: chunked}
+	if err := memory_pipeline.Run(ctx, rememberPipeline, j, run); err != nil {
 		return nil, err
 	}
-
-	j.tr.Tool("The LLM extracted these entities and edges (new facts) from the text, before any stored fact is considered.",
-		"extract_graph", map[string]any{"text_chars": len(text)},
-		map[string]any{"entities": ex.Entities, "edges": candidateFacts(ex.Edges, nil)})
-
-	res, err := j.resolveAndStore(ctx, text, ex, nil)
-	if err != nil {
-		return nil, err
-	}
-	j.run.Artifact(res.ArtifactID)
-
-	//--------------------------------------
-	// RESOLVE_GEO (only with a geo resolver): the places among the entities, after the text is stored, so that it never fails the call
-	res.Geo = j.resolveGeo(ctx)
-
-	//--------------------------------------
-	// WEB_SEARCH (only with WithWebSearch): after the text is stored, so that it never fails the call
-	res.WebSearches = j.webSearch(ctx)
-
-	//--------------------------------------
-	// FETCH_SERIES (only with WithSeriesFetch): after the text is stored, so that it never fails the call
-	res.SeriesFetches = j.fetchSeries(ctx)
-
-	//--------------------------------------
-	// OBSERVE_SERIES (only with WithSeriesObservations): an artifact for each series stored above
-	res.SeriesObservations = j.observeSeries(ctx)
-	return res, nil
-}
-
-// resolveAndStore reconciles the new facts of ex (extracted from text) with the stored ones and stores the text as an
-// artifact, with its entities, edges and (with vectors) embeddings. part says the text is a chunk of a longer one; nil
-// for an artifact that is not a chunk.
-func (j *job) resolveAndStore(ctx context.Context, text string, ex *Extraction, part *chunkPart) (*Result, error) {
-	d, tr, co, userID, dataset := j.d, j.tr, j.co, j.userID, j.dataset
-	label := part.label() + j.web.label() + j.obs.label()
-	step := j.stepLabel(part) // the label of the outputs in the run log
-
-	//--------------------------------------
-	// LOAD_CANDIDATES
-
-	// Candidates are facts (edges) ALREADY STORED in this user's dataset that the new facts in ex.Edges might repeat or
-	// contradict. A candidate is any stored edge that
-	//   - belongs to the same user and dataset (nothing is shared across datasets),
-	//   - is still live (expired_at IS NULL: not already superseded by a newer fact),
-	//   - touches at least one entity (as source or target) that is an endpoint of a new edge, found in two ways that
-	//     are merged by edge ID: by exact normalized name, and (with WithVectors) by similarity of the entity's
-	//     embedding, which finds aliases ("Alicia" for a stored "Alice Smith"); see findSimilarEntities,
-	// newest first, capped at maxCandidates (50). E.g. the new fact "Alice lives in Berlin" has Alice and Berlin as
-	// endpoints, so every live fact about Alice or Berlin is a candidate, such as "Alice lives in Paris".
-	// A dataset that does not exist yet (first Remember) has none.
-	//
-	// They are the only stored facts resolveEdges looks at: exact repeats (same endpoints and relation) are merged in
-	// Go, and the rest are shown to the LLM, which flags semantic duplicates and contradictions; the contradicted
-	// ones are invalidated (not deleted) by Store. Without candidates there is no LLM resolution call.
-	// For the chunks of a long text this runs after the previous chunk was stored, so a chunk is also compared with
-	// the facts of the chunks before it.
-	j.run.Start(StageLoadCandidates)
-	cs, err := loadCandidates(ctx, d, j.run, co, userID, dataset, ex)
-	j.run.Done(err, StageLoadCandidates)
-	if err != nil {
-		return nil, err
-	}
-	cands := cs.Edges
-
-	// Three steps in the trajectory: each lookup with what it found alone, then the merge.
-	tr.Tool("Looked up the live stored facts touching an entity whose normalized name is an endpoint of a new fact "+
-		"(newest first, at most 50): the candidates found by exact name."+label, "find_candidates_by_name",
-		map[string]any{"user_id": userID, "dataset": dataset, "names": cs.Names},
-		map[string]any{"candidates": len(cs.ByName), "facts": candidateFacts(cs.ByName, nil)})
-
-	//--------------------------------------
-
-	traceSearchEntities(tr, cs.SearchTexts, cs.Similar, candidateFacts(cs.BySimilar, nil), cs.SearchUsage, cs.SearchErr)
-	tr.Tool("Merged the two lookups by edge ID (newest first, at most 50); the new facts are checked against these "+
-		"candidates for duplicates and contradictions."+label, "load_candidates",
-		map[string]any{"user_id": userID, "dataset": dataset, "new_edges": len(ex.Edges), "by_name": len(cs.ByName), "by_similarity": len(cs.BySimilar)},
-		map[string]any{"candidates": len(cands), "facts": candidateFacts(cands, cs.Via)})
-	j.outputCandidates(step, ex, cs)
-	j.run.Start(memory_core.StageResolveEdges)
-	plan, err := resolveEdges(ctx, co.ModelLLM(j.llm, memory_core.StageResolveEdges), ex.Edges, cands)
-	j.run.Done(err, memory_core.StageResolveEdges)
-	j.run.AddInference(memory_core.StageResolveEdges, plan.RunID())
-	j.outputResolveEdges(step, ex, plan)
-	if err != nil {
-		return nil, err
-	}
-	stores := j.storeStages(part)
-	j.run.Start(stores...)
-	res, err := store(ctx, d, j.run, userID, dataset, j.kind, text, j.ref, j.now, ex, plan, part, j.web, j.obs, append(j.opts[:len(j.opts):len(j.opts)], memory_core.WithTrace(tr))...)
-	j.run.Done(err, stores...)
-	if err != nil {
-		return nil, err
-	}
-	j.noteKeyEntities(ex, res.ArtifactID)
-	args := map[string]any{"user_id": userID, "dataset": dataset, "kind": j.kind}
-	if part != nil {
-		args["parent_id"], args["chunk_index"] = part.ParentID, part.Chunk.Index
-	}
-	if j.web != nil {
-		args["parent_id"], args["query"] = j.web.ParentID, j.web.Query
-	}
-	if j.obs != nil {
-		args["parent_id"], args["query"], args["series_id"] = j.obs.ParentID, j.obs.Query, j.obs.SeriesID
-	}
-	stored := map[string]any{"artifact_id": res.ArtifactID, "entities": res.Entities, "edges": res.Edges, "invalidated_edges": res.InvalidatedEdges,
-		"embedded_entities": res.EmbeddedEntities, "embedded_edges": res.EmbeddedEdges, "embedded_chunks": res.EmbeddedChunks, "embedded_summaries": res.EmbeddedSummaries}
-	tr.Tool("Stored the artifact, entities and edges."+label, "store_artifact", args, stored)
-	j.run.Output(StageStore, "store", step, stored)
-	j.traceSeries(res.ArtifactID, res.Series)
-	return res, nil
+	return j.res, nil
 }
 
 // candidateFacts summarizes edges for the trajectory; via, if not nil, says how each (by ID) was found.
@@ -575,16 +458,16 @@ func candidateFacts(edges []Edge, via map[int64]string) []map[string]any {
 // nothing; the vectors are written right after the commit, so a vector store failure returns an error after the
 // relational data is saved (the vectors are written again the next time the entity or fact is mentioned).
 func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan, opts ...memory_core.Option) (*Result, error) {
-	return store(ctx, d, nil, userID, dataset, kind, text, ref, now, ex, plan, nil, nil, nil, opts...)
+	return store(ctx, d, userID, dataset, kind, text, ref, now, ex, plan, nil, nil, nil, opts...)
 }
 
-// store is Store; run, if not nil, is told of the embedding request (an inference of the store stage). part, if not nil, says the text is a chunk of a longer one: it is then stored as a child artifact
+// store is Store. part, if not nil, says the text is a chunk of a longer one: it is then stored as a child artifact
 // of part.ParentID, and its text is embedded into the chunk index together with the entities and edges. web, if not
 // nil, says the text is the result of a web search: it is then stored as an artifact of kind web_search that saves the
 // query and is a child of web.ParentID (kind is ignored). obs, if not nil, says the text is the observation of a series:
 // it is then stored as an artifact of kind series_observation that records the series and is a child of obs.ParentID
 // (kind is ignored). part, web and obs are never more than one set.
-func store(ctx context.Context, d *sql.DB, run *runLog, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan, part *chunkPart, web *webPart, obs *observationPart, opts ...memory_core.Option) (*Result, error) {
+func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan, part *chunkPart, web *webPart, obs *observationPart, opts ...memory_core.Option) (*Result, error) {
 	co := memory_core.NewCallOptions(opts)
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
@@ -617,7 +500,7 @@ func store(ctx context.Context, d *sql.DB, run *runLog, userID, dataset, kind, t
 	}
 	// Registered before the transaction's Rollback, so it runs after the transaction is finished (see prepareVectors).
 	var embedUsage *ai.EmbedUsage
-	defer func() { run.AddInference(StageStore, recordEmbedUsage(ctx, d, embedUsage)) }()
+	defer func() { recordEmbedUsage(ctx, d, embedUsage) }()
 	tx, err := graph.Begin(ctx, d)
 	if err != nil {
 		return nil, err
@@ -734,7 +617,7 @@ func store(ctx context.Context, d *sql.DB, run *runLog, userID, dataset, kind, t
 
 	// The timeseries the caller supplied are stored in this transaction, so a series that cannot be anchored stores
 	// nothing. Only for the artifact the caller sent: not for a chunk (the series go to the parent, see
-	// rememberDocument) and not for the result of a web search.
+	// storeDocumentSeries) and not for the result of a web search.
 	if part == nil && web == nil && obs == nil && len(co.Series) > 0 {
 		out.Series, err = memory_timeseries.Store(ctx, tx, dsID, artID, now, co.Series)
 		if err != nil {

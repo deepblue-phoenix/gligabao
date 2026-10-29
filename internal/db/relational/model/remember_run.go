@@ -10,8 +10,8 @@ import (
 
 // Statuses of a remember run as a whole and of each of its stages.
 const (
-	// RememberNotStarted is the status of a stage that has not begun, because the pipeline has not reached it or because
-	// the call does not use it (no web search was asked for, ...).
+	// RememberNotStarted is the status of a stage that has not begun because the pipeline has not reached it (an earlier
+	// stage failed, or the run is still on its way). A stage that the call does not use is RememberSkipped.
 	RememberNotStarted = "not_started"
 	// RememberStarted is the status of a run, or a stage, that is executing now. A run that is left in it, after the process
 	// is gone, died without finishing.
@@ -21,10 +21,15 @@ const (
 	// RememberFailed is the status of a run, or a stage, that ended with an error (see RememberRun.Error and
 	// RememberStage.Error).
 	RememberFailed = "failed"
+	// RememberSkipped is the status of a stage that the call does not use (no web search was asked for, the text is not a
+	// document, there is no geo resolver, ...) or that was left out because an earlier stage ended the pipeline early. It is
+	// set when the pipeline passes the stage, so a run that is still on its way has its later stages not_started. Only a
+	// stage has it, never a run.
+	RememberSkipped = "skipped"
 )
 
 // RememberStatuses lists the statuses.
-var RememberStatuses = []string{RememberNotStarted, RememberStarted, RememberSucceeded, RememberFailed}
+var RememberStatuses = []string{RememberNotStarted, RememberStarted, RememberSucceeded, RememberFailed, RememberSkipped}
 
 // The stages of the remember pipeline, in pipeline order (RememberStages). Each is a column group of gb_remember_runs.
 // The names of the stages that run a model are those of gb_inferences.stage (see memory_core.Stages).
@@ -102,7 +107,7 @@ const (
 
 // RememberStage is how one stage of a remember run went.
 type RememberStage struct {
-	// Status is RememberNotStarted, RememberStarted, RememberSucceeded or RememberFailed.
+	// Status is RememberNotStarted, RememberStarted, RememberSucceeded, RememberFailed or RememberSkipped.
 	Status string `json:"status"`
 	// Error is why the stage failed; nil (null) if it did not.
 	Error *string `json:"error"`
