@@ -42,19 +42,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// The stages of the remember pipeline (see relational.RememberStages) that are not LLM stages of memory_core. The LLM stages
-// are named by memory_core (StageExtractGraph, StageSummarizeChunk, StageResolveEdges, StageWebSearch), and
-// StageClassifyComplexity is in classify.go.
-const (
-	StageChunkText      = relational.RememberStageChunkText
-	StageLoadCandidates = relational.RememberStageLoadCandidates
-	StageStore          = relational.RememberStageStore
-	StageStoreSeries    = relational.RememberStageStoreSeries
-	StageFetchSeries    = relational.RememberStageFetchSeries
-	StageResolveGeo     = relational.RememberStageResolveGeo
-	StageObserveSeries  = relational.RememberStageObserveSeries
-)
-
 // runLog is the log of one Remember call. See the top of this file.
 type runLog struct {
 	*runState
@@ -72,6 +59,19 @@ type runState struct {
 	mu  sync.Mutex // guards run, and serializes the writes so that the last state wins
 	run relational.RememberRun
 }
+
+// The stages of the remember pipeline (see relational.RememberStages) that are not LLM stages of memory_core. The LLM stages
+// are named by memory_core (StageExtractGraph, StageSummarizeChunk, StageResolveEdges, StageWebSearch), and
+// StageClassifyComplexity is in classify.go.
+const (
+	StageChunkText      = relational.RememberStageChunkText
+	StageLoadCandidates = relational.RememberStageLoadCandidates
+	StageStore          = relational.RememberStageStore
+	StageStoreSeries    = relational.RememberStageStoreSeries
+	StageFetchSeries    = relational.RememberStageFetchSeries
+	StageResolveGeo     = relational.RememberStageResolveGeo
+	StageObserveSeries  = relational.RememberStageObserveSeries
+)
 
 // startRunLog records the start of a Remember call (status started, all the stages not started) and returns its log.
 // params is how the call was made. If the row cannot be written the log is kept in memory only (and the error logged).

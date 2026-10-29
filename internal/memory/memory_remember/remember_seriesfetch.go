@@ -37,32 +37,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const (
-	// maxSeriesCandidates is how many entities the LLM is shown, and maxSeriesFetches how many (entity, provider) fetches
-	// one call makes, however many the LLM proposes: a provider call can cost money and time.
-	maxSeriesCandidates = 20
-	maxSeriesFetches    = 10
-	// seriesFetchTimeout bounds each Fetch callback.
-	seriesFetchTimeout = 60 * time.Second
-)
-
-const resolveSeriesSystemPrompt = `You decide which timeseries providers should be used to fetch data for entities of a knowledge base.
-
-<providers> lists the providers. Each has a name, a description of what it offers and WHEN it should be used, and a query_format that says how to identify an entity to it. <entities> lists the entities, as "[n] name | type | description". <reference_time> is the date of the text the entities come from.
-
-Return ONLY a JSON object (no prose, no markdown fences) of this shape:
-{"assignments": [{"entity": 0, "provider": "prices", "query": "AAPL", "reason": "Apple Inc. is a public company"}]}
-
-Rules:
-- Assign a provider to an entity only if the provider's description clearly covers that entity. Prefer precision to recall: when unsure that the provider has data for the entity, or that the entity is the one meant (ambiguous names), leave it out. Most entities need no provider; an empty list is a normal answer.
-- Judge the entity as of <reference_time> (e.g. a company that was not yet public then has no stock price series).
-- "query" is what the provider needs to identify the entity, following its query_format (for example a ticker symbol). If the query_format is missing, use the entity's full name. Never invent an identifier you are not sure of: leave the entity out instead.
-- One entity can be assigned to several providers (one assignment each); one provider can serve several entities.
-- "entity" is the number n from <entities>; "provider" is a name from <providers>. Use only those.
-- "reason" is one short sentence.`
-
-//---------------------------------------------------------------------------------------------
-
 // SeriesFetchResult is the outcome of fetching series from one provider for one entity of a Remember call.
 type SeriesFetchResult struct {
 	// Entity and EntityType are the entity the series were fetched for; ParentArtifactID is the artifact it came from
@@ -98,6 +72,32 @@ type seriesFetched struct {
 	started time.Time
 	latency time.Duration
 }
+
+const (
+	// maxSeriesCandidates is how many entities the LLM is shown, and maxSeriesFetches how many (entity, provider) fetches
+	// one call makes, however many the LLM proposes: a provider call can cost money and time.
+	maxSeriesCandidates = 20
+	maxSeriesFetches    = 10
+	// seriesFetchTimeout bounds each Fetch callback.
+	seriesFetchTimeout = 60 * time.Second
+)
+
+const resolveSeriesSystemPrompt = `You decide which timeseries providers should be used to fetch data for entities of a knowledge base.
+
+<providers> lists the providers. Each has a name, a description of what it offers and WHEN it should be used, and a query_format that says how to identify an entity to it. <entities> lists the entities, as "[n] name | type | description". <reference_time> is the date of the text the entities come from.
+
+Return ONLY a JSON object (no prose, no markdown fences) of this shape:
+{"assignments": [{"entity": 0, "provider": "prices", "query": "AAPL", "reason": "Apple Inc. is a public company"}]}
+
+Rules:
+- Assign a provider to an entity only if the provider's description clearly covers that entity. Prefer precision to recall: when unsure that the provider has data for the entity, or that the entity is the one meant (ambiguous names), leave it out. Most entities need no provider; an empty list is a normal answer.
+- Judge the entity as of <reference_time> (e.g. a company that was not yet public then has no stock price series).
+- "query" is what the provider needs to identify the entity, following its query_format (for example a ticker symbol). If the query_format is missing, use the entity's full name. Never invent an identifier you are not sure of: leave the entity out instead.
+- One entity can be assigned to several providers (one assignment each); one provider can serve several entities.
+- "entity" is the number n from <entities>; "provider" is a name from <providers>. Use only those.
+- "reason" is one short sentence.`
+
+//---------------------------------------------------------------------------------------------
 
 // pickSeriesCandidates returns the entities to offer the providers: the ones in the most facts first (the entities the
 // text is about; the order of extraction breaks ties), at most max.

@@ -30,10 +30,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const (
-	maxCandidates = 50 // existing edges shown to the LLM for dedup / contradiction checks
-)
-
 // EdgePlan is the outcome of comparing new edges against existing ones.
 type EdgePlan struct {
 	Duplicates     map[int]int64 // index of new edge -> id of the existing edge it repeats
@@ -44,18 +40,39 @@ type EdgePlan struct {
 	Raw string
 }
 
+// Contradiction says that the existing edge can't hold together with the new edge.
+type Contradiction struct {
+	New      int
+	Existing int64
+}
+
+// candidates are the stored facts a Remember call compares its new facts with, and how they were found.
+type candidates struct {
+	// Edges are the merged candidates; ByName and BySimilar are what each lookup found before merging (an edge found by
+	// both is in both), and Names are the endpoint names (normalized) that the name lookup searched.
+	Edges, ByName, BySimilar []Edge
+	Names                    []string
+	// Via says how each edge (by ID) was found: viaName, viaSimilar or both.
+	Via map[int64]string
+	// Similar are the stored entities found by similarity (see findSimilarEntities); SearchTexts are the texts that were
+	// embedded for that (empty: no search was made); SearchUsage is the embedding request's usage and SearchErr why the
+	// search failed (a failed search is not an error of the call: the candidates are then those of the exact names).
+	Similar     []similarEntity
+	SearchTexts []string
+	SearchUsage *ai.EmbedUsage
+	SearchErr   error
+}
+
+const (
+	maxCandidates = 50 // existing edges shown to the LLM for dedup / contradiction checks
+)
+
 // RunID is the inference of the comparison (0 for none, and for a nil plan).
 func (p *EdgePlan) RunID() int64 {
 	if p == nil {
 		return 0
 	}
 	return p.InferenceID
-}
-
-// Contradiction says that the existing edge can't hold together with the new edge.
-type Contradiction struct {
-	New      int
-	Existing int64
 }
 
 //---------------------------------------------------------------------------------------------
@@ -151,23 +168,6 @@ func resolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []Edge)
 }
 
 //---------------------------------------------------------------------------------------------
-
-// candidates are the stored facts a Remember call compares its new facts with, and how they were found.
-type candidates struct {
-	// Edges are the merged candidates; ByName and BySimilar are what each lookup found before merging (an edge found by
-	// both is in both), and Names are the endpoint names (normalized) that the name lookup searched.
-	Edges, ByName, BySimilar []Edge
-	Names                    []string
-	// Via says how each edge (by ID) was found: viaName, viaSimilar or both.
-	Via map[int64]string
-	// Similar are the stored entities found by similarity (see findSimilarEntities); SearchTexts are the texts that were
-	// embedded for that (empty: no search was made); SearchUsage is the embedding request's usage and SearchErr why the
-	// search failed (a failed search is not an error of the call: the candidates are then those of the exact names).
-	Similar     []similarEntity
-	SearchTexts []string
-	SearchUsage *ai.EmbedUsage
-	SearchErr   error
-}
 
 const (
 	viaName    = "name"

@@ -31,14 +31,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const (
-	// maxSeriesObservations is the most observations one Remember call makes, however many series it stores: each one is
-	// an extraction call (and, when there are stored facts to compare, a resolution call).
-	maxSeriesObservations = 10
-	// maxObservationPoints bounds the points read back for an observation (the most a series can carry in a request).
-	maxObservationPoints = memory_core.MaxSeriesPoints
-)
-
 // observationPart says that the text stored by store is the observation of a series, and not text the caller sent: it is
 // stored as an artifact of kind "series_observation" that records the series and hangs off the artifact that anchors it.
 type observationPart struct {
@@ -50,14 +42,6 @@ type observationPart struct {
 	Query string
 	// Label is only used to label the trajectory steps.
 	Label string
-}
-
-// label is appended to the messages of the trajectory steps of an observation; "" for any other text (or nil).
-func (o *observationPart) label() string {
-	if o == nil {
-		return ""
-	}
-	return fmt.Sprintf(" (observation of series %q)", o.Label)
 }
 
 // observable is a series the call stored, that an observation may be made of.
@@ -92,6 +76,22 @@ type SeriesObservationResult struct {
 	InvalidatedEdges []int64  `json:"invalidated_edges,omitempty"`
 	// Error says why nothing was stored; "" if all went well.
 	Error string `json:"error,omitempty"`
+}
+
+const (
+	// maxSeriesObservations is the most observations one Remember call makes, however many series it stores: each one is
+	// an extraction call (and, when there are stored facts to compare, a resolution call).
+	maxSeriesObservations = 10
+	// maxObservationPoints bounds the points read back for an observation (the most a series can carry in a request).
+	maxObservationPoints = memory_core.MaxSeriesPoints
+)
+
+// label is appended to the messages of the trajectory steps of an observation; "" for any other text (or nil).
+func (o *observationPart) label() string {
+	if o == nil {
+		return ""
+	}
+	return fmt.Sprintf(" (observation of series %q)", o.Label)
 }
 
 // noteObservable records series the call stored as candidates for an observation, if the call makes them. results are the

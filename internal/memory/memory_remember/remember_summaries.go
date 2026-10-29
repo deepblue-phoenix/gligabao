@@ -15,9 +15,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
-// summaryMaxTokens is the largest summary (the thinking budget, if any, comes on top of it).
-const summaryMaxTokens = 512
-
 // chunkSummary is the summary of a chunk, before it is stored.
 type chunkSummary struct {
 	Text string
@@ -32,14 +29,6 @@ type chunkSummary struct {
 	Raw string
 }
 
-// RunID is the inference of the summary (0 for none, and for a nil s).
-func (s *chunkSummary) RunID() int64 {
-	if s == nil {
-		return 0
-	}
-	return s.InferenceID
-}
-
 // SummaryResult is the summary of a chunk as stored: an artifact of its own (a child of the chunk).
 type SummaryResult struct {
 	ArtifactID int64  `json:"artifact_id"`
@@ -50,6 +39,17 @@ type SummaryResult struct {
 	Model       string `json:"model"`
 	Reasoning   string `json:"reasoning"`
 	InferenceID int64  `json:"inference_id,omitempty"`
+}
+
+// summaryMaxTokens is the largest summary (the thinking budget, if any, comes on top of it).
+const summaryMaxTokens = 512
+
+// RunID is the inference of the summary (0 for none, and for a nil s).
+func (s *chunkSummary) RunID() int64 {
+	if s == nil {
+		return 0
+	}
+	return s.InferenceID
 }
 
 // summarizeChunk asks the LLM for a short summary of text, a chunk of a longer one. llm must be the one of the

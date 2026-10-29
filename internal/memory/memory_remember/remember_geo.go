@@ -35,6 +35,37 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// GeoResult is the outcome of the geo lookup for one entity of a Remember call that the LLM judged to be a place.
+type GeoResult struct {
+	// Entity and EntityType are the entity; EntityID is its ID in gb_entities (0 if it could not be found).
+	Entity     string `json:"entity"`
+	EntityType string `json:"entity_type,omitempty"`
+	EntityID   int64  `json:"entity_id,omitempty"`
+	// Kind is what the place is ("country", "region", "city" or "place") and Query what the resolver was asked for.
+	Kind  string `json:"kind,omitempty"`
+	Query string `json:"query,omitempty"`
+	// Resolved says the resolver found the place and its geo metadata is stored (in gb_entity_geo): the fields below are then set.
+	Resolved    bool    `json:"resolved"`
+	Latitude    float64 `json:"latitude,omitempty"`
+	Longitude   float64 `json:"longitude,omitempty"`
+	DisplayName string  `json:"display_name,omitempty"`
+	Country     string  `json:"country,omitempty"`
+	CountryCode string  `json:"country_code,omitempty"`
+	Region      string  `json:"region,omitempty"`
+	Provider    string  `json:"provider,omitempty"`
+	// Error says why nothing was stored: the resolver failed or the storage did. "" if all went well, and also if the resolver
+	// simply does not know the place (Resolved is false then).
+	Error string `json:"error,omitempty"`
+}
+
+// geoPlace is the LLM's decision that an entity is a place.
+type geoPlace struct {
+	Entity *keyEntity
+	ID     int64 // the entity's ID in gb_entities
+	Kind   string
+	Query  string
+}
+
 const (
 	// maxGeoCandidates is how many entities the LLM is shown, and maxGeoResolves how many places one call asks the resolver
 	// for, however many the LLM finds: a resolver is slow, and rate-limited if it is a public one.
@@ -66,38 +97,7 @@ Rules:
 
 //---------------------------------------------------------------------------------------------
 
-// GeoResult is the outcome of the geo lookup for one entity of a Remember call that the LLM judged to be a place.
-type GeoResult struct {
-	// Entity and EntityType are the entity; EntityID is its ID in gb_entities (0 if it could not be found).
-	Entity     string `json:"entity"`
-	EntityType string `json:"entity_type,omitempty"`
-	EntityID   int64  `json:"entity_id,omitempty"`
-	// Kind is what the place is ("country", "region", "city" or "place") and Query what the resolver was asked for.
-	Kind  string `json:"kind,omitempty"`
-	Query string `json:"query,omitempty"`
-	// Resolved says the resolver found the place and its geo metadata is stored (in gb_entity_geo): the fields below are then set.
-	Resolved    bool    `json:"resolved"`
-	Latitude    float64 `json:"latitude,omitempty"`
-	Longitude   float64 `json:"longitude,omitempty"`
-	DisplayName string  `json:"display_name,omitempty"`
-	Country     string  `json:"country,omitempty"`
-	CountryCode string  `json:"country_code,omitempty"`
-	Region      string  `json:"region,omitempty"`
-	Provider    string  `json:"provider,omitempty"`
-	// Error says why nothing was stored: the resolver failed or the storage did. "" if all went well, and also if the resolver
-	// simply does not know the place (Resolved is false then).
-	Error string `json:"error,omitempty"`
-}
-
 func (r GeoResult) errText() string { return r.Error }
-
-// geoPlace is the LLM's decision that an entity is a place.
-type geoPlace struct {
-	Entity *keyEntity
-	ID     int64 // the entity's ID in gb_entities
-	Kind   string
-	Query  string
-}
 
 // pickGeoCandidates returns the entities that may be a place, in order of extraction, at most max.
 func pickGeoCandidates(all []*keyEntity, max int) []*keyEntity {

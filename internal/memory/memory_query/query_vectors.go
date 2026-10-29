@@ -19,34 +19,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Retrieval by similarity: the question is embedded once and searched in the four vector indexes that remember fills
-// (see docs/vectors.md). What it finds is added to what the keyword retrieval of retrieve finds:
-//
-//   - the entity index gives more seeds of the subgraph (entities the question names in other words);
-//   - the edge index gives facts directly, with their endpoints, even if no entity of theirs matched;
-//   - the chunk and summary indexes give passages: the text of the chunks of long documents that the question is close to.
-//
-// The vector store and the embedder are required: a failure of either fails the query. The scores are a first guess, to
-// be tuned with the evals. Only live facts are retrieved (see graph.EdgesAround): a vector can outlive the validity of its edge.
-const (
-	vectorEntityTopK  = 10 // entities taken from the entity index
-	vectorEdgeTopK    = 10 // facts taken from the edge index
-	vectorPassageTopK = 5  // matches taken from each of the chunk and the summary index
-
-	// The lowest cosine similarity of a match to count, per index: the same as remember asks of two names to be the same
-	// entity (similarEntityMinScore). A question is not phrased like what it asks for, so this may turn out too strict for
-	// some indexes: tune it per index with the evals.
-	minEntityScore  = 0.75
-	minEdgeScore    = 0.75
-	minPassageScore = 0.75
-
-	maxPassageChunks    = 3 // passages that are given with the text of the chunk (the most expensive part of the context)
-	maxPassageSummaries = 5 // further passages that are given with their summary only
-)
-
-// StageEmbed is the stage of the inference of the embedding request of query (see gb_inferences.stage).
-const StageEmbed = "embed"
-
 // EvidencePassage is a passage of a long text, a chunk of it, that was given to the LLM and that an answer cites.
 type EvidencePassage struct {
 	// ArtifactID is the gb_artifacts row of the chunk; ParentID the one of the whole text it is a chunk of, and Index the
@@ -76,6 +48,34 @@ type vectorHit struct {
 	ID    int64   `json:"id"`
 	Score float32 `json:"score"`
 }
+
+// Retrieval by similarity: the question is embedded once and searched in the four vector indexes that remember fills
+// (see docs/vectors.md). What it finds is added to what the keyword retrieval of retrieve finds:
+//
+//   - the entity index gives more seeds of the subgraph (entities the question names in other words);
+//   - the edge index gives facts directly, with their endpoints, even if no entity of theirs matched;
+//   - the chunk and summary indexes give passages: the text of the chunks of long documents that the question is close to.
+//
+// The vector store and the embedder are required: a failure of either fails the query. The scores are a first guess, to
+// be tuned with the evals. Only live facts are retrieved (see graph.EdgesAround): a vector can outlive the validity of its edge.
+const (
+	vectorEntityTopK  = 10 // entities taken from the entity index
+	vectorEdgeTopK    = 10 // facts taken from the edge index
+	vectorPassageTopK = 5  // matches taken from each of the chunk and the summary index
+
+	// The lowest cosine similarity of a match to count, per index: the same as remember asks of two names to be the same
+	// entity (similarEntityMinScore). A question is not phrased like what it asks for, so this may turn out too strict for
+	// some indexes: tune it per index with the evals.
+	minEntityScore  = 0.75
+	minEdgeScore    = 0.75
+	minPassageScore = 0.75
+
+	maxPassageChunks    = 3 // passages that are given with the text of the chunk (the most expensive part of the context)
+	maxPassageSummaries = 5 // further passages that are given with their summary only
+)
+
+// StageEmbed is the stage of the inference of the embedding request of query (see gb_inferences.stage).
+const StageEmbed = "embed"
 
 // searchVectors embeds the question and searches the indexes of dataset dsID with it. The embedding request is recorded as
 // an inference and as a step of the trajectory.

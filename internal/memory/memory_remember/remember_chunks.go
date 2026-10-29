@@ -25,6 +25,14 @@ type chunkPart struct {
 	Summary *chunkSummary
 }
 
+// merger accumulates the Results of the chunks of a text into the Result of the text.
+type merger struct {
+	doc      *Result
+	entities map[string]bool // normalized name + type
+	edgeAt   map[int64]int   // edge ID -> index in doc.Edges
+	inval    map[int64]bool
+}
+
 // label is appended to the messages of the trajectory steps of a chunk; "" for a text that is not a chunk (or nil).
 func (p *chunkPart) label() string {
 	if p == nil {
@@ -180,14 +188,6 @@ func storeParent(ctx context.Context, d *sql.DB, userID, dataset, kind, text, se
 		return 0, err
 	}
 	return id, tx.Commit()
-}
-
-// merger accumulates the Results of the chunks of a text into the Result of the text.
-type merger struct {
-	doc      *Result
-	entities map[string]bool // normalized name + type
-	edgeAt   map[int64]int   // edge ID -> index in doc.Edges
-	inval    map[int64]bool
 }
 
 func newMerger(doc *Result) *merger {

@@ -38,6 +38,62 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// webPart says that the text stored by store is the result of a web search, and not text the caller sent: it is stored as
+// an artifact of kind "web_search" that records the query and hangs off the artifact the searched entity came from.
+type webPart struct {
+	// ParentID is the artifact from which the searched entity came.
+	ParentID int64
+	// Query is the web search query that was issued.
+	Query string
+	// Entity is the name of the entity that was searched for (only used to label the trajectory).
+	Entity string
+}
+
+// keyEntity is an entity of the call that may be searched for.
+type keyEntity struct {
+	Entity
+	// ArtifactID is the artifact from which the entity came: the first one (in order) in which it was extracted. For a
+	// long text that is a chunk, not the parent.
+	ArtifactID int64
+	// Edges is how many facts of the call the entity is an endpoint of (summed over the chunks of a long text).
+	Edges int
+}
+
+// WebSearchResult is the web search made for one key entity of a Remember call.
+type WebSearchResult struct {
+	// Entity and EntityType are the key entity that was searched for; Query is the web search query that was issued
+	// for it (also saved on the artifact).
+	Entity     string `json:"entity"`
+	EntityType string `json:"entity_type"`
+	Query      string `json:"query"`
+	// ParentArtifactID is the artifact from which the entity came (a chunk, for a long text): the parent of the
+	// web_search artifact.
+	ParentArtifactID int64 `json:"parent_artifact_id"`
+	// ArtifactID is the web_search artifact that holds the result; 0 if nothing was stored (the search found nothing, or
+	// failed: see Error).
+	ArtifactID int64 `json:"artifact_id,omitempty"`
+	// Searches are the queries the model sent to the search engine; Sources the pages its answer is based on.
+	Searches []string       `json:"searches,omitempty"`
+	Sources  []ai.WebSource `json:"sources,omitempty"`
+	// Entities, Edges and InvalidatedEdges are what the result's text yielded, as for the artifact of a text (Result):
+	// the entities discovered on the web are stored like any other.
+	Entities         []Entity `json:"entities,omitempty"`
+	Edges            []Edge   `json:"edges,omitempty"`
+	InvalidatedEdges []int64  `json:"invalidated_edges,omitempty"`
+	// CostUSD is the cost of the search itself (tokens and the fee per search), not of extracting its result.
+	CostUSD float64 `json:"cost_usd,omitempty"`
+	// Error says why nothing was stored for the entity; "" if all went well, or if the search simply found nothing.
+	Error string `json:"error,omitempty"`
+}
+
+// webSearched is the outcome of the call to the search tool for one entity.
+type webSearched struct {
+	resp    *ai.WebSearchResponse
+	err     error
+	started time.Time
+	latency time.Duration
+}
+
 const (
 	// maxWebSearchEntities is the most entities one Remember call searches the web for, however many it extracts: every
 	// search costs money (a fee per search plus the tokens) and time.
@@ -64,33 +120,12 @@ If you find nothing relevant and recent, return exactly: ` + noWebResults
 
 //---------------------------------------------------------------------------------------------
 
-// webPart says that the text stored by store is the result of a web search, and not text the caller sent: it is stored as
-// an artifact of kind "web_search" that records the query and hangs off the artifact the searched entity came from.
-type webPart struct {
-	// ParentID is the artifact from which the searched entity came.
-	ParentID int64
-	// Query is the web search query that was issued.
-	Query string
-	// Entity is the name of the entity that was searched for (only used to label the trajectory).
-	Entity string
-}
-
 // label is appended to the messages of the trajectory steps of a web search result; "" for any other text (or nil).
 func (w *webPart) label() string {
 	if w == nil {
 		return ""
 	}
 	return fmt.Sprintf(" (web search for %q)", w.Entity)
-}
-
-// keyEntity is an entity of the call that may be searched for.
-type keyEntity struct {
-	Entity
-	// ArtifactID is the artifact from which the entity came: the first one (in order) in which it was extracted. For a
-	// long text that is a chunk, not the parent.
-	ArtifactID int64
-	// Edges is how many facts of the call the entity is an endpoint of (summed over the chunks of a long text).
-	Edges int
 }
 
 // noteKeyEntities records the entities of ex, the extraction of the artifact artifactID, as candidates for the web
@@ -147,41 +182,6 @@ func pickKeyEntities(all []*keyEntity, max int) []*keyEntity {
 // webSearchQuery is the query issued for an entity.
 func webSearchQuery(e Entity) string {
 	return fmt.Sprintf("latest world events and news about %s (%s)", e.Name, e.Type)
-}
-
-// WebSearchResult is the web search made for one key entity of a Remember call.
-type WebSearchResult struct {
-	// Entity and EntityType are the key entity that was searched for; Query is the web search query that was issued
-	// for it (also saved on the artifact).
-	Entity     string `json:"entity"`
-	EntityType string `json:"entity_type"`
-	Query      string `json:"query"`
-	// ParentArtifactID is the artifact from which the entity came (a chunk, for a long text): the parent of the
-	// web_search artifact.
-	ParentArtifactID int64 `json:"parent_artifact_id"`
-	// ArtifactID is the web_search artifact that holds the result; 0 if nothing was stored (the search found nothing, or
-	// failed: see Error).
-	ArtifactID int64 `json:"artifact_id,omitempty"`
-	// Searches are the queries the model sent to the search engine; Sources the pages its answer is based on.
-	Searches []string       `json:"searches,omitempty"`
-	Sources  []ai.WebSource `json:"sources,omitempty"`
-	// Entities, Edges and InvalidatedEdges are what the result's text yielded, as for the artifact of a text (Result):
-	// the entities discovered on the web are stored like any other.
-	Entities         []Entity `json:"entities,omitempty"`
-	Edges            []Edge   `json:"edges,omitempty"`
-	InvalidatedEdges []int64  `json:"invalidated_edges,omitempty"`
-	// CostUSD is the cost of the search itself (tokens and the fee per search), not of extracting its result.
-	CostUSD float64 `json:"cost_usd,omitempty"`
-	// Error says why nothing was stored for the entity; "" if all went well, or if the search simply found nothing.
-	Error string `json:"error,omitempty"`
-}
-
-// webSearched is the outcome of the call to the search tool for one entity.
-type webSearched struct {
-	resp    *ai.WebSearchResponse
-	err     error
-	started time.Time
-	latency time.Duration
 }
 
 // webSearch is the last stage of Remember: it searches the web for the key entities of the call and stores what it

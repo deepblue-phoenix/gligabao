@@ -21,24 +21,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// CallQuery is the type of the inferences of Query, stored in gb_inferences.type.
-const CallQuery = "query"
-
-const (
-	maxQueryTokens  = 12
-	maxSeedEntities = 10  // entities matched directly by the query
-	maxContextEdges = 100 // edges (1 hop around the seeds) given to the LLM
-	maxFallbackSeed = 25  // most recent entities used when nothing matches the query
-)
-
-//---------------------------------------------------------------------------------------------
-
-// EvidenceEntity is a graph entity cited by an answer.
-type EvidenceEntity = graph.EvidenceEntity
-
-// EvidenceEdge is a graph edge cited by an answer, with the bi-temporal validity of the fact (see temporal.go).
-type EvidenceEdge = graph.EvidenceEdge
-
 // Evidence lists the entities, edges and passages the answer is based on.
 type Evidence struct {
 	Entities []EvidenceEntity  `json:"entities"`
@@ -65,6 +47,52 @@ type QueryResult struct {
 	TrajectoryID string           `json:"trajectory_id,omitempty"`
 	Trajectory   *atif.Trajectory `json:"trajectory,omitempty"`
 }
+
+// queryContext is everything the query LLM is given to answer a question: the memory (the retrieved subgraph),
+// the current time (to interpret the validity of temporal facts) and the question itself.
+type queryContext struct {
+	Now      time.Time
+	Graph    *graphContext
+	Question string
+	// Nearby is the geo entities near the places of the question (nil: none, or the call has no geo resolver).
+	Nearby *GeoContext
+}
+
+type queryOutput struct {
+	Answer   string  `json:"answer"`
+	Entities []int64 `json:"entities"`
+	Edges    []int64 `json:"edges"`
+	Passages []int64 `json:"passages"`
+}
+
+// graphContext is the subgraph handed to the LLM.
+type graphContext struct {
+	entities map[int64]EvidenceEntity
+	edges    map[int64]EvidenceEdge
+	// matched are the entities that matched the question, by its words or by similarity (the seeds of the retrieval); empty
+	// when none did and the most recent entities were used instead.
+	matched []int64
+	// passages are the chunks of long texts that are close to the question (see query_vectors.go).
+	passages []EvidencePassage
+}
+
+// CallQuery is the type of the inferences of Query, stored in gb_inferences.type.
+const CallQuery = "query"
+
+const (
+	maxQueryTokens  = 12
+	maxSeedEntities = 10  // entities matched directly by the query
+	maxContextEdges = 100 // edges (1 hop around the seeds) given to the LLM
+	maxFallbackSeed = 25  // most recent entities used when nothing matches the query
+)
+
+//---------------------------------------------------------------------------------------------
+
+// EvidenceEntity is a graph entity cited by an answer.
+type EvidenceEntity = graph.EvidenceEntity
+
+// EvidenceEdge is a graph edge cited by an answer, with the bi-temporal validity of the fact (see temporal.go).
+type EvidenceEdge = graph.EvidenceEdge
 
 //---------------------------------------------------------------------------------------------
 
@@ -172,16 +200,6 @@ func detectGeo(ctx context.Context, co memory_core.CallOptions, rec memory_core.
 
 //---------------------------------------------------------------------------------------------
 
-// queryContext is everything the query LLM is given to answer a question: the memory (the retrieved subgraph),
-// the current time (to interpret the validity of temporal facts) and the question itself.
-type queryContext struct {
-	Now      time.Time
-	Graph    *graphContext
-	Question string
-	// Nearby is the geo entities near the places of the question (nil: none, or the call has no geo resolver).
-	Nearby *GeoContext
-}
-
 // assembleContext builds the queryContext for query: it retrieves the subgraph of dataset dsID around the
 // entities matching the query, and the passages close to it, and stamps it with the current time.
 func assembleContext(ctx context.Context, d *sql.DB, co memory_core.CallOptions, tr *memory_core.Trace, dsID int64, query string) (*queryContext, error) {
@@ -225,13 +243,6 @@ func queryLLM(ctx context.Context, llm memory_core.LLM, rc *queryContext) (*quer
 
 //---------------------------------------------------------------------------------------------
 
-type queryOutput struct {
-	Answer   string  `json:"answer"`
-	Entities []int64 `json:"entities"`
-	Edges    []int64 `json:"edges"`
-	Passages []int64 `json:"passages"`
-}
-
 func parseQuery(s string) (*queryOutput, error) {
 	start, end := strings.Index(s, "{"), strings.LastIndex(s, "}")
 	if start < 0 || end < start {
@@ -249,17 +260,6 @@ func parseQuery(s string) (*queryOutput, error) {
 }
 
 //---------------------------------------------------------------------------------------------
-
-// graphContext is the subgraph handed to the LLM.
-type graphContext struct {
-	entities map[int64]EvidenceEntity
-	edges    map[int64]EvidenceEdge
-	// matched are the entities that matched the question, by its words or by similarity (the seeds of the retrieval); empty
-	// when none did and the most recent entities were used instead.
-	matched []int64
-	// passages are the chunks of long texts that are close to the question (see query_vectors.go).
-	passages []EvidencePassage
-}
 
 func (g *graphContext) render() string {
 	var sb strings.Builder

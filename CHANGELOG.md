@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.123.2] - 2026-10-29
+
+### Changed
+- Code layout: in `internal/memory/memory_remember` and `internal/memory/memory_query`, the struct types are now declared at the top of their files. No change in behaviour or API.
+
 ## [0.123.1] - 2026-10-29
 
 ### Changed

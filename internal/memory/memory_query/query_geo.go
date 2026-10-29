@@ -20,13 +20,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 )
 
-const (
-	// maxQueryPlaces bounds how many places are kept, however many the LLM finds.
-	maxQueryPlaces = 10
-	// maxQueryPlaceLen bounds the text and the query of a place (bytes).
-	maxQueryPlaceLen = 200
-)
-
 // QueryPlace is a place the question mentions.
 type QueryPlace struct {
 	// Text is the place as the question writes it ("Paris", "the Alps").
@@ -37,6 +30,13 @@ type QueryPlace struct {
 	// ("Paris, Texas"). It is Text if there is nothing to add.
 	Query string `json:"query"`
 }
+
+const (
+	// maxQueryPlaces bounds how many places are kept, however many the LLM finds.
+	maxQueryPlaces = 10
+	// maxQueryPlaceLen bounds the text and the query of a place (bytes).
+	maxQueryPlaceLen = 200
+)
 
 const detectQueryGeoSystemPrompt = `You find the places that a question mentions, so that they can be looked up later. You do not answer the question.
 

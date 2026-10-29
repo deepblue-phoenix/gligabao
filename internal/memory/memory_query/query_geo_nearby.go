@@ -36,16 +36,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const (
-	maxGeoAnchors      = 5  // places the search is centered on
-	maxNearbyPerAnchor = 20 // nearest geo entities taken around each anchor
-	maxNearbyEntities  = 30 // geo entities given to the LLM, however many anchors there are
-	maxNearbyEdges     = 50 // edges around the nearby entities given to the LLM
-	geoResolveTimeout  = 10 * time.Second
-	// geoEntityType is the type of the entities that are made for the places of a question.
-	geoEntityType = "place"
-)
-
 // GeoAnchor is a place the proximity search was centered on.
 type GeoAnchor struct {
 	// Name is the name of the entity, or the place as the question writes it.
@@ -79,6 +69,16 @@ type GeoContext struct {
 	Anchors  []GeoAnchor    `json:"anchors"`
 	Nearby   []NearbyEntity `json:"nearby"`
 }
+
+const (
+	maxGeoAnchors      = 5  // places the search is centered on
+	maxNearbyPerAnchor = 20 // nearest geo entities taken around each anchor
+	maxNearbyEntities  = 30 // geo entities given to the LLM, however many anchors there are
+	maxNearbyEdges     = 50 // edges around the nearby entities given to the LLM
+	geoResolveTimeout  = 10 * time.Second
+	// geoEntityType is the type of the entities that are made for the places of a question.
+	geoEntityType = "place"
+)
 
 // geoRadius returns the radius the call sets, or the default.
 func geoRadius(co memory_core.CallOptions) (float64, error) {

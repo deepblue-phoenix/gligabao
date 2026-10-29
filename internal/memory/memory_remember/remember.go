@@ -20,18 +20,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_timeseries"
 )
 
-// CallRemember is the type of the LLM calls of Remember, stored in gb_inferences.type.
-const CallRemember = "remember"
-
-//---------------------------------------------------------------------------------------------
-
-// Entity is a thing mentioned in the text (person, place, project, concept, ...).
-type Entity = graph.Entity
-
-// Edge is a fact relating two entities (referenced by name), with its bi-temporal validity.
-// Description is the fact as a sentence, e.g. "Alice works at Acme."
-type Edge = graph.Edge
-
 // Extraction is the structured result of processing a block of text.
 type Extraction struct {
 	Entities []Entity `json:"entities"`
@@ -47,6 +35,133 @@ type Extraction struct {
 	// Raw is the text the LLM answered, kept for the stage outputs (see runLog.Output); "" if it did not answer.
 	Raw string `json:"-"`
 }
+
+// Result summarizes what was stored by Remember.
+type Result struct {
+	UserID     string `json:"user_id"`
+	Dataset    string `json:"dataset"`
+	Kind       string `json:"kind"` // artifact kind: "knowledge" or "episode"
+	ArtifactID int64  `json:"artifact_id"`
+	// SessionID is the session the artifact was attached to (WithSessionID); omitted if there was none.
+	SessionID string    `json:"session_id,omitempty"`
+	ValidAt   time.Time `json:"valid_at"`   // event time of the artifact
+	CreatedAt time.Time `json:"created_at"` // ingestion time of the artifact
+
+	//--------------------------------------
+	Entities         []Entity `json:"entities"`
+	Edges            []Edge   `json:"edges"`             // the facts from this text in their stored state
+	InvalidatedEdges []int64  `json:"invalidated_edges"` // IDs of edges closed because of this artifact
+
+	//--------------------------------------
+
+	// EmbeddedEntities and EmbeddedEdges are the number of entity and edge embeddings written to the dataset's
+	// entity and edge indexes (0 unless the call was made with WithVectors).
+	EmbeddedEntities int `json:"embedded_entities,omitempty"`
+	EmbeddedEdges    int `json:"embedded_edges,omitempty"`
+	// EmbeddedChunks is the number of chunk embeddings written to the dataset's chunk index (only for a chunked text).
+	EmbeddedChunks int `json:"embedded_chunks,omitempty"`
+	// EmbeddedSummaries is the number of chunk summary embeddings written to the dataset's summary index (only for a
+	// chunked text).
+	EmbeddedSummaries int `json:"embedded_summaries,omitempty"`
+
+	// Chunks are the chunks of a text that was larger than one chunk, in order; empty for a text that was not
+	// chunked. Then ArtifactID is the parent artifact (the whole text), the chunks are its children, and Entities,
+	// Edges and InvalidatedEdges are those of all the chunks together.
+	Chunks []ChunkResult `json:"chunks,omitempty"`
+
+	// WebSearches are the web searches made for the key entities of the text (only with WithWebSearch): one per
+	// entity searched for, in the order of the search, each with the web_search artifact it stored. Their entities and
+	// edges are not in Entities and Edges above, which are those of the text itself. See docs/web-search.md.
+	WebSearches []WebSearchResult `json:"web_searches,omitempty"`
+
+	// Series are the timeseries the caller supplied (WithSeries), as stored and anchored; omitted when there were none.
+	// For a chunked text they are anchored to the parent artifact. See docs/timeseries.md.
+	Series []memory_timeseries.Result `json:"series,omitempty"`
+
+	// SeriesFetches are the series fetched from the timeseries providers (only with WithSeriesFetch): one per
+	// (entity, provider) the LLM chose, in order, each with the series it stored. See remember_seriesfetch.go.
+	SeriesFetches []SeriesFetchResult `json:"series_fetches,omitempty"`
+
+	// SeriesObservations are the series_observation artifacts derived from the series the call stored (only with
+	// WithSeriesObservations): one per series, in order, each with the artifact it stored. See remember_observations.go.
+	SeriesObservations []SeriesObservationResult `json:"series_observations,omitempty"`
+
+	// Geo are the entities of the text that the LLM judged to be places, with what the geo resolver found for each (only
+	// when the call has a geo resolver, WithGeoResolver): one per entity, in the order of extraction. The coordinates are
+	// stored in gb_entity_geo. See remember_geo.go.
+	Geo []GeoResult `json:"geo,omitempty"`
+
+	// summary is the summary stored with a chunk (see ChunkResult.Summary); nil for anything else.
+	summary *SummaryResult
+
+	// RememberRunID is the run log of this call: its row in gb_remember_runs, which holds how each stage of the pipeline went
+	// (see runlog.go).
+	RememberRunID int64 `json:"remember_run_id,omitempty"`
+
+	// TRAJECTORY
+	// TrajectoryID and Trajectory are the ATIF trajectory of this call (also stored in TrajectoryDir); only set when
+	// the call was made with WithEval.
+	TrajectoryID string           `json:"trajectory_id,omitempty"`
+	Trajectory   *atif.Trajectory `json:"trajectory,omitempty"`
+}
+
+// ChunkResult is one chunk of a chunked text, an artifact of its own (a child of Result.ArtifactID).
+type ChunkResult struct {
+	ArtifactID int64 `json:"artifact_id"`
+	Index      int   `json:"index"`
+	Tokens     int   `json:"tokens"`
+	// OverlapTokens is how much of the start of the chunk repeats the end of the previous one.
+	OverlapTokens int `json:"overlap_tokens"`
+	// StartOffset and EndOffset are the byte range of the chunk in the text.
+	StartOffset int `json:"start_offset"`
+	EndOffset   int `json:"end_offset"`
+	// Entities and Edges are how many the chunk mentions and states (before merging with the other chunks).
+	Entities int `json:"entities"`
+	Edges    int `json:"edges"`
+	// Summary is the summary of the chunk: an artifact of its own, a child of the chunk, with the inference (model and
+	// reasoning level) that wrote it. Always set for a chunk of a text remembered by Remember.
+	Summary *SummaryResult `json:"summary,omitempty"`
+}
+
+// job is what one Remember call shares between the steps it runs on each text it extracts (the text itself, or each of
+// the chunks of a long one).
+type job struct {
+	d   *sql.DB
+	llm memory_core.LLM // already recording and tracing
+	tr  *memory_core.Trace
+	// run is the run log of the call (see runlog.go). It is nil in the jobs that store the texts the enrichment stages make (a
+	// web search result, a series observation): they are part of those stages, not of the stages of the text itself.
+	run    *runLog
+	co     memory_core.CallOptions
+	opts   []memory_core.Option
+	userID string
+	// dataset, kind: already resolved.
+	dataset, kind string
+	ref, now      time.Time
+
+	// web is set on the job that stores the result of a web search (see storeWebSearch); nil for a text the caller sent.
+	web *webPart
+	// obs is set on the job that stores the observation of a series (see observe); nil for a text the caller sent.
+	obs *observationPart
+	// observables are the series the call stored that an observation may be made of (see noteObservable).
+	observables []observable
+	// keyEntities are the entities of the texts stored so far that the web search may pick from (see noteKeyEntities),
+	// by normalized name, and keyOrder their names in the order they were extracted.
+	keyEntities map[string]*keyEntity
+	keyOrder    []string
+}
+
+// CallRemember is the type of the LLM calls of Remember, stored in gb_inferences.type.
+const CallRemember = "remember"
+
+//---------------------------------------------------------------------------------------------
+
+// Entity is a thing mentioned in the text (person, place, project, concept, ...).
+type Entity = graph.Entity
+
+// Edge is a fact relating two entities (referenced by name), with its bi-temporal validity.
+// Description is the fact as a sentence, e.g. "Alice works at Acme."
+type Edge = graph.Edge
 
 // RunID is the inference of the extraction (0 for none, and for a nil ex).
 func (ex *Extraction) RunID() int64 {
@@ -175,93 +290,6 @@ func ResolveKind(kind string) (string, error) {
 }
 
 //---------------------------------------------------------------------------------------------
-
-// Result summarizes what was stored by Remember.
-type Result struct {
-	UserID     string `json:"user_id"`
-	Dataset    string `json:"dataset"`
-	Kind       string `json:"kind"` // artifact kind: "knowledge" or "episode"
-	ArtifactID int64  `json:"artifact_id"`
-	// SessionID is the session the artifact was attached to (WithSessionID); omitted if there was none.
-	SessionID string    `json:"session_id,omitempty"`
-	ValidAt   time.Time `json:"valid_at"`   // event time of the artifact
-	CreatedAt time.Time `json:"created_at"` // ingestion time of the artifact
-
-	//--------------------------------------
-	Entities         []Entity `json:"entities"`
-	Edges            []Edge   `json:"edges"`             // the facts from this text in their stored state
-	InvalidatedEdges []int64  `json:"invalidated_edges"` // IDs of edges closed because of this artifact
-
-	//--------------------------------------
-
-	// EmbeddedEntities and EmbeddedEdges are the number of entity and edge embeddings written to the dataset's
-	// entity and edge indexes (0 unless the call was made with WithVectors).
-	EmbeddedEntities int `json:"embedded_entities,omitempty"`
-	EmbeddedEdges    int `json:"embedded_edges,omitempty"`
-	// EmbeddedChunks is the number of chunk embeddings written to the dataset's chunk index (only for a chunked text).
-	EmbeddedChunks int `json:"embedded_chunks,omitempty"`
-	// EmbeddedSummaries is the number of chunk summary embeddings written to the dataset's summary index (only for a
-	// chunked text).
-	EmbeddedSummaries int `json:"embedded_summaries,omitempty"`
-
-	// Chunks are the chunks of a text that was larger than one chunk, in order; empty for a text that was not
-	// chunked. Then ArtifactID is the parent artifact (the whole text), the chunks are its children, and Entities,
-	// Edges and InvalidatedEdges are those of all the chunks together.
-	Chunks []ChunkResult `json:"chunks,omitempty"`
-
-	// WebSearches are the web searches made for the key entities of the text (only with WithWebSearch): one per
-	// entity searched for, in the order of the search, each with the web_search artifact it stored. Their entities and
-	// edges are not in Entities and Edges above, which are those of the text itself. See docs/web-search.md.
-	WebSearches []WebSearchResult `json:"web_searches,omitempty"`
-
-	// Series are the timeseries the caller supplied (WithSeries), as stored and anchored; omitted when there were none.
-	// For a chunked text they are anchored to the parent artifact. See docs/timeseries.md.
-	Series []memory_timeseries.Result `json:"series,omitempty"`
-
-	// SeriesFetches are the series fetched from the timeseries providers (only with WithSeriesFetch): one per
-	// (entity, provider) the LLM chose, in order, each with the series it stored. See remember_seriesfetch.go.
-	SeriesFetches []SeriesFetchResult `json:"series_fetches,omitempty"`
-
-	// SeriesObservations are the series_observation artifacts derived from the series the call stored (only with
-	// WithSeriesObservations): one per series, in order, each with the artifact it stored. See remember_observations.go.
-	SeriesObservations []SeriesObservationResult `json:"series_observations,omitempty"`
-
-	// Geo are the entities of the text that the LLM judged to be places, with what the geo resolver found for each (only
-	// when the call has a geo resolver, WithGeoResolver): one per entity, in the order of extraction. The coordinates are
-	// stored in gb_entity_geo. See remember_geo.go.
-	Geo []GeoResult `json:"geo,omitempty"`
-
-	// summary is the summary stored with a chunk (see ChunkResult.Summary); nil for anything else.
-	summary *SummaryResult
-
-	// RememberRunID is the run log of this call: its row in gb_remember_runs, which holds how each stage of the pipeline went
-	// (see runlog.go).
-	RememberRunID int64 `json:"remember_run_id,omitempty"`
-
-	// TRAJECTORY
-	// TrajectoryID and Trajectory are the ATIF trajectory of this call (also stored in TrajectoryDir); only set when
-	// the call was made with WithEval.
-	TrajectoryID string           `json:"trajectory_id,omitempty"`
-	Trajectory   *atif.Trajectory `json:"trajectory,omitempty"`
-}
-
-// ChunkResult is one chunk of a chunked text, an artifact of its own (a child of Result.ArtifactID).
-type ChunkResult struct {
-	ArtifactID int64 `json:"artifact_id"`
-	Index      int   `json:"index"`
-	Tokens     int   `json:"tokens"`
-	// OverlapTokens is how much of the start of the chunk repeats the end of the previous one.
-	OverlapTokens int `json:"overlap_tokens"`
-	// StartOffset and EndOffset are the byte range of the chunk in the text.
-	StartOffset int `json:"start_offset"`
-	EndOffset   int `json:"end_offset"`
-	// Entities and Edges are how many the chunk mentions and states (before merging with the other chunks).
-	Entities int `json:"entities"`
-	Edges    int `json:"edges"`
-	// Summary is the summary of the chunk: an artifact of its own, a child of the chunk, with the inference (model and
-	// reasoning level) that wrote it. Always set for a chunk of a text remembered by Remember.
-	Summary *SummaryResult `json:"summary,omitempty"`
-}
 
 // Remember extracts entities and temporal edges from text and stores them (with the raw text as an artifact of the
 // given kind; empty means DefaultKind, i.e. knowledge) in one transaction, inside userID's named dataset (empty
@@ -426,34 +454,6 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	// OBSERVE_SERIES (only with WithSeriesObservations): an artifact for each series stored above
 	res.SeriesObservations = j.observeSeries(ctx)
 	return res, nil
-}
-
-// job is what one Remember call shares between the steps it runs on each text it extracts (the text itself, or each of
-// the chunks of a long one).
-type job struct {
-	d   *sql.DB
-	llm memory_core.LLM // already recording and tracing
-	tr  *memory_core.Trace
-	// run is the run log of the call (see runlog.go). It is nil in the jobs that store the texts the enrichment stages make (a
-	// web search result, a series observation): they are part of those stages, not of the stages of the text itself.
-	run    *runLog
-	co     memory_core.CallOptions
-	opts   []memory_core.Option
-	userID string
-	// dataset, kind: already resolved.
-	dataset, kind string
-	ref, now      time.Time
-
-	// web is set on the job that stores the result of a web search (see storeWebSearch); nil for a text the caller sent.
-	web *webPart
-	// obs is set on the job that stores the observation of a series (see observe); nil for a text the caller sent.
-	obs *observationPart
-	// observables are the series the call stored that an observation may be made of (see noteObservable).
-	observables []observable
-	// keyEntities are the entities of the texts stored so far that the web search may pick from (see noteKeyEntities),
-	// by normalized name, and keyOrder their names in the order they were extracted.
-	keyEntities map[string]*keyEntity
-	keyOrder    []string
 }
 
 // resolveAndStore reconciles the new facts of ex (extracted from text) with the stored ones and stores the text as an

@@ -32,13 +32,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// ErrManagerClosed is returned by Submit (and recorded as the error of the requests still queued) once the context of the
-// manager is done.
-var ErrManagerClosed = errors.New("memory: remember manager is closed")
-
-// queueSize is how many run IDs wait in the default queue before Submit blocks.
-const queueSize = 256
-
 // Request asks the manager for one run of Remember. See Remember for the fields.
 type Request struct {
 	UserID, Dataset, Kind, Text string
@@ -62,9 +55,6 @@ type Outcome struct {
 	Err    error
 }
 
-// OK says the run succeeded.
-func (o Outcome) OK() bool { return o.Err == nil }
-
 // QueueHooks are the two operations of the queue of the manager. The default is a Go channel; an embedder that has a queue
 // system of its own (Redis, SQS, ...) supplies these callbacks instead (WithQueue). The queue carries only the ID of the run
 // (its row in gb_remember_runs), not the request: the request (its context, options and channels cannot be serialized)
@@ -78,6 +68,36 @@ type QueueHooks struct {
 	// error while ctx is not done is logged and Dequeue is tried again after a second.
 	Dequeue func(ctx context.Context) (runID int64, err error)
 }
+
+// Manager is the goroutine that runs the remember pipeline. See the top of this file.
+type Manager struct {
+	d   *sql.DB
+	llm memory_core.LLM
+	ctx context.Context
+
+	queue QueueHooks
+
+	mu      sync.Mutex        // guards pending and closed
+	pending map[int64]*queued // the requests that are queued, by run ID
+	closed  bool
+	done    chan struct{} // closed when the goroutine has returned
+}
+
+type queued struct {
+	Request
+	ctx   context.Context
+	runID int64
+}
+
+// ErrManagerClosed is returned by Submit (and recorded as the error of the requests still queued) once the context of the
+// manager is done.
+var ErrManagerClosed = errors.New("memory: remember manager is closed")
+
+// queueSize is how many run IDs wait in the default queue before Submit blocks.
+const queueSize = 256
+
+// OK says the run succeeded.
+func (o Outcome) OK() bool { return o.Err == nil }
 
 // chanQueue is the default queue: a Go channel.
 func chanQueue() QueueHooks {
@@ -113,26 +133,6 @@ func WithQueue(h QueueHooks) ManagerOption {
 		}
 		m.queue = h
 	}
-}
-
-// Manager is the goroutine that runs the remember pipeline. See the top of this file.
-type Manager struct {
-	d   *sql.DB
-	llm memory_core.LLM
-	ctx context.Context
-
-	queue QueueHooks
-
-	mu      sync.Mutex        // guards pending and closed
-	pending map[int64]*queued // the requests that are queued, by run ID
-	closed  bool
-	done    chan struct{} // closed when the goroutine has returned
-}
-
-type queued struct {
-	Request
-	ctx   context.Context
-	runID int64
 }
 
 // NewManager starts the manager's goroutine. d and llm are what every run uses (as the arguments of Remember). It runs

@@ -17,6 +17,39 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// similarEntity is a stored entity found by similarity for an endpoint of a new fact.
+type similarEntity struct {
+	endpoint string // the name the new fact uses
+	name     string // the stored entity's name
+	typ      string
+	score    float32
+}
+
+// pendingVectors are the embeddings of a Store call, computed before its transaction commits and written after it.
+type pendingVectors struct {
+	store vector.Store
+	// byDataset are the vectors to write, per vector store dataset (index).
+	byDataset map[string][]vector.Vector
+	entities  int
+	edges     int
+	chunks    int
+	summaries int
+}
+
+// chunkVector is the chunk whose text prepareVectors embeds next to the entities and edges of a Store call.
+type chunkVector struct {
+	artifactID, parentID int64
+	index                int
+	text                 string
+}
+
+// summaryVector is the summary of a chunk whose text prepareVectors embeds next to the chunk's.
+type summaryVector struct {
+	artifactID, chunkID, parentID int64
+	index                         int
+	text                          string
+}
+
 // entityText is the text that is embedded for an entity.
 func entityText(e *graph.EvidenceEntity) string { return entityLabel(e.Name, e.Type, e.Description) }
 
@@ -40,14 +73,6 @@ const (
 	// name. A first guess: tune it with the evals.
 	similarEntityMinScore = 0.75
 )
-
-// similarEntity is a stored entity found by similarity for an endpoint of a new fact.
-type similarEntity struct {
-	endpoint string // the name the new fact uses
-	name     string // the stored entity's name
-	typ      string
-	score    float32
-}
 
 // findSimilarEntities looks for stored entities of dataset dsID that may be the endpoints of the new edges of ex under
 // another name (aliases, spelling): each endpoint is embedded (like an entity is, see entityText) and searched in the
@@ -117,31 +142,6 @@ func findSimilarEntities(ctx context.Context, d *sql.DB, run *runLog, o memory_c
 }
 
 //---------------------------------------------------------------------------------------------
-
-// pendingVectors are the embeddings of a Store call, computed before its transaction commits and written after it.
-type pendingVectors struct {
-	store vector.Store
-	// byDataset are the vectors to write, per vector store dataset (index).
-	byDataset map[string][]vector.Vector
-	entities  int
-	edges     int
-	chunks    int
-	summaries int
-}
-
-// chunkVector is the chunk whose text prepareVectors embeds next to the entities and edges of a Store call.
-type chunkVector struct {
-	artifactID, parentID int64
-	index                int
-	text                 string
-}
-
-// summaryVector is the summary of a chunk whose text prepareVectors embeds next to the chunk's.
-type summaryVector struct {
-	artifactID, chunkID, parentID int64
-	index                         int
-	text                          string
-}
 
 // prepareVectors embeds the entities (IDs, in order, without duplicates; read as stored through tx), the edges and,
 // if the stored artifact is a chunk, the chunk's text (chunk, else nil) and its summary (summary, else nil) of dataset dsID in
