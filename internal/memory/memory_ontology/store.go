@@ -1,9 +1,9 @@
-package memory
+package memory_ontology
 
 // Ontologies describe the concepts (classes) of a domain and the relationships between them. Loading one parses
 // the document, records its metadata in the relational database (gb_ontologies: name, owner, hash, counts) and
 // stores the ontology itself, classes as nodes and relationships as edges, in the graph database
-// (gb_onto_classes, gb_onto_edges). A loaded ontology can later be updated by name: merged with a new document, or replaced by it (see UpdateOntology). Ontologies are owned by a user and named; names are unique per user. They are
+// (gb_onto_classes, gb_onto_edges). A loaded ontology can later be updated by name: merged with a new document, or replaced by it (see Update). Ontologies are owned by a user and named; names are unique per user. They are
 // separate from datasets and do not (yet) take part in remember or query.
 
 import (
@@ -21,77 +21,76 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
-	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_ontology"
 
 	log "github.com/sirupsen/logrus"
 )
 
 var (
-	ErrInvalidOntologyName = errors.New("invalid ontology name")
-	ErrInvalidOntology     = errors.New("invalid ontology")
-	ErrOntologyExists      = errors.New("ontology already exists")
-	ErrOntologyNotFound    = errors.New("ontology not found")
+	ErrInvalidName = errors.New("invalid ontology name")
+	ErrInvalid     = errors.New("invalid ontology")
+	ErrExists      = errors.New("ontology already exists")
+	ErrNotFound    = errors.New("ontology not found")
 )
 
-// OntologyFormatRDFXML is the only supported serialization: OWL in RDF/XML.
-const OntologyFormatRDFXML = "rdfxml"
+// FormatRDFXML is the only supported serialization: OWL in RDF/XML.
+const FormatRDFXML = "rdfxml"
 
-// MaxOntologyBytes is the maximum size of an ontology document.
-const MaxOntologyBytes = 8 << 20
+// MaxBytes is the maximum size of an ontology document.
+const MaxBytes = 8 << 20
 
-// Ontology is the metadata of a loaded ontology.
-type Ontology = relational.Ontology
+// Meta is the metadata of a stored ontology (as opposed to Ontology, the parsed document).
+type Meta = relational.Ontology
 
-var ontologyNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+var nameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
-// ResolveOntologyName trims name and checks it: required, 1-64 characters of letters, digits, '.', '_' or '-',
+// ResolveName trims name and checks it: required, 1-64 characters of letters, digits, '.', '_' or '-',
 // starting with a letter or digit.
-func ResolveOntologyName(name string) (string, error) {
+func ResolveName(name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return "", fmt.Errorf("%w: name is required", ErrInvalidOntologyName)
+		return "", fmt.Errorf("%w: name is required", ErrInvalidName)
 	}
-	if !ontologyNameRe.MatchString(name) {
-		return "", fmt.Errorf("%w: name must be 1-64 characters of letters, digits, '.', '_' or '-', starting with a letter or digit", ErrInvalidOntologyName)
+	if !nameRe.MatchString(name) {
+		return "", fmt.Errorf("%w: name must be 1-64 characters of letters, digits, '.', '_' or '-', starting with a letter or digit", ErrInvalidName)
 	}
 	return name, nil
 }
 
 //---------------------------------------------------------------------------------------------
 
-// preparedOntology is a parsed ontology ready to be stored.
-type preparedOntology struct {
-	meta    Ontology // everything but the ID, the owner, the name and the timestamps
+// prepared is a parsed ontology ready to be stored.
+type prepared struct {
+	meta    Meta // everything but the ID, the owner, the name and the timestamps
 	classes []graph.OntologyClass
 	edges   []graph.OntologyEdge
 }
 
-// prepareOntology validates the inputs and parses the document. If description is empty, the ontology's own
+// prepare validates the inputs and parses the document. If description is empty, the ontology's own
 // rdfs:comment is used.
-func prepareOntology(userID, name, description string, content []byte) (userIDOut, nameOut string, p *preparedOntology, err error) {
+func prepare(userID, name, description string, content []byte) (userIDOut, nameOut string, p *prepared, err error) {
 	if userID, err = memory_core.ResolveUserID(userID); err != nil {
 		return
 	}
-	if name, err = ResolveOntologyName(name); err != nil {
+	if name, err = ResolveName(name); err != nil {
 		return
 	}
-	if len(content) > MaxOntologyBytes {
-		err = fmt.Errorf("%w: larger than %d bytes", ErrInvalidOntology, MaxOntologyBytes)
+	if len(content) > MaxBytes {
+		err = fmt.Errorf("%w: larger than %d bytes", ErrInvalid, MaxBytes)
 		return
 	}
-	o, perr := memory_ontology.Parse(bytes.NewReader(content))
+	o, perr := Parse(bytes.NewReader(content))
 	if perr != nil {
-		err = fmt.Errorf("%w: %v", ErrInvalidOntology, perr)
+		err = fmt.Errorf("%w: %v", ErrInvalid, perr)
 		return
 	}
 	if description = strings.TrimSpace(description); description == "" {
 		description = o.Comment
 	}
 	sum := sha256.Sum256(content)
-	p = &preparedOntology{
-		meta: Ontology{
+	p = &prepared{
+		meta: Meta{
 			Description: description, IRI: o.IRI, Title: o.Title,
-			Format: OntologyFormatRDFXML, SizeBytes: len(content), SHA256: hex.EncodeToString(sum[:]),
+			Format: FormatRDFXML, SizeBytes: len(content), SHA256: hex.EncodeToString(sum[:]),
 			Classes: len(o.Classes), Properties: o.Properties(), Edges: len(o.Edges),
 		},
 		classes: make([]graph.OntologyClass, len(o.Classes)),
@@ -107,20 +106,20 @@ func prepareOntology(userID, name, description string, content []byte) (userIDOu
 	return userID, name, p, nil
 }
 
-// LoadOntology parses an OWL ontology in RDF/XML and stores it for userID under name. The metadata goes to the
+// Load parses an OWL ontology in RDF/XML and stores it for userID under name. The metadata goes to the
 // relational database and the classes and relationships to the graph database. If description is empty, the
-// ontology's own rdfs:comment is used. It returns ErrOntologyExists if the user already has an ontology with that
-// name, and ErrInvalidOntology (wrapped) if the document cannot be parsed or defines no class. Nothing is kept
+// ontology's own rdfs:comment is used. It returns ErrExists if the user already has an ontology with that
+// name, and ErrInvalid (wrapped) if the document cannot be parsed or defines no class. Nothing is kept
 // when loading fails.
-func LoadOntology(ctx context.Context, d *sql.DB, userID, name, description string, content []byte) (*Ontology, error) {
-	userID, name, p, err := prepareOntology(userID, name, description, content)
+func Load(ctx context.Context, d *sql.DB, userID, name, description string, content []byte) (*Meta, error) {
+	userID, name, p, err := prepare(userID, name, description, content)
 	if err != nil {
 		return nil, err
 	}
 	p.meta.UserID, p.meta.Name = userID, name
 	meta, err := relational.CreateOntology(ctx, d, p.meta)
 	if errors.Is(err, relational.ErrExists) {
-		return nil, ErrOntologyExists
+		return nil, ErrExists
 	}
 	if err != nil {
 		return nil, err
@@ -135,8 +134,8 @@ func LoadOntology(ctx context.Context, d *sql.DB, userID, name, description stri
 	return meta, nil
 }
 
-// UpdateOntology changes the ontology stored for userID under name with the one in content. It returns
-// ErrOntologyNotFound if there is no such ontology (an update never creates one), and ErrInvalidOntology
+// Update changes the ontology stored for userID under name with the one in content. It returns
+// ErrNotFound if there is no such ontology (an update never creates one), and ErrInvalid
 // (wrapped) if the document cannot be parsed or defines no class. The ontology keeps its ID, owner, name and
 // creation time. There are two modes.
 //
@@ -167,14 +166,14 @@ func LoadOntology(ctx context.Context, d *sql.DB, userID, name, description stri
 // kept from the stored ontology, whereas a replace drops them. An explicit description in the request always wins.
 //
 // If the update fails, the stored ontology is left as it was.
-func UpdateOntology(ctx context.Context, d *sql.DB, userID, name, description string, content []byte, replace bool) (*Ontology, error) {
-	userID, name, p, err := prepareOntology(userID, name, description, content)
+func Update(ctx context.Context, d *sql.DB, userID, name, description string, content []byte, replace bool) (*Meta, error) {
+	userID, name, p, err := prepare(userID, name, description, content)
 	if err != nil {
 		return nil, err
 	}
 	old, err := relational.GetOntology(ctx, d, userID, name)
 	if errors.Is(err, relational.ErrNotFound) {
-		return nil, ErrOntologyNotFound
+		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
@@ -198,7 +197,7 @@ func UpdateOntology(ctx context.Context, d *sql.DB, userID, name, description st
 	}
 	meta, err := relational.UpdateOntology(ctx, d, p.meta)
 	if errors.Is(err, relational.ErrNotFound) {
-		return nil, ErrOntologyNotFound
+		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
@@ -230,8 +229,8 @@ func UpdateOntology(ctx context.Context, d *sql.DB, userID, name, description st
 	return meta, nil
 }
 
-// ListOntologies returns userID's ontologies, oldest first.
-func ListOntologies(ctx context.Context, d *sql.DB, userID string) ([]Ontology, error) {
+// List returns userID's ontologies, oldest first.
+func List(ctx context.Context, d *sql.DB, userID string) ([]Meta, error) {
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
 		return nil, err

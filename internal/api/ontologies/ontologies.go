@@ -12,13 +12,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_ontology"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	log "github.com/sirupsen/logrus"
 )
 
-const maxBodyBytes = memory.MaxOntologyBytes + 64<<10 // the document is JSON-escaped, leave room for it and the other fields
+const maxBodyBytes = memory_ontology.MaxBytes + 64<<10 // the document is JSON-escaped, leave room for it and the other fields
 
 type loadRequest struct {
 	UserID      string `json:"user_id"`
@@ -41,7 +41,7 @@ func Load(d *sql.DB, dirs []string) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		o, err := memory.LoadOntology(r.Context(), d, req.UserID, req.Name, req.Description, []byte(req.Content))
+		o, err := memory_ontology.Load(r.Context(), d, req.UserID, req.Name, req.Description, []byte(req.Content))
 		if err != nil {
 			fail(w, "load", err)
 			return
@@ -53,14 +53,14 @@ func Load(d *sql.DB, dirs []string) http.HandlerFunc {
 // Update serves PUT /v1/gb/ontologies/{name}. The name comes from the path. By default the document in "content"
 // is merged into the ontology stored under that name: new classes and edges are added and ones that exist already
 // are overwritten, nothing is deleted. With "replace": true the document replaces the stored ontology entirely.
-// The merge rules are documented on memory.UpdateOntology.
+// The merge rules are documented on memory_ontology.Update.
 func Update(d *sql.DB, dirs []string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		req, ok := decode(w, r, dirs)
 		if !ok {
 			return
 		}
-		o, err := memory.UpdateOntology(r.Context(), d, req.UserID, r.PathValue("name"), req.Description, []byte(req.Content), req.Replace)
+		o, err := memory_ontology.Update(r.Context(), d, req.UserID, r.PathValue("name"), req.Description, []byte(req.Content), req.Replace)
 		if err != nil {
 			fail(w, "update", err)
 			return
@@ -77,7 +77,7 @@ func decode(w http.ResponseWriter, r *http.Request, dirs []string) (loadRequest,
 		httputil.Error(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 		return req, false
 	}
-	if req.Format != "" && req.Format != memory.OntologyFormatRDFXML {
+	if req.Format != "" && req.Format != memory_ontology.FormatRDFXML {
 		httputil.Error(w, http.StatusBadRequest, `unsupported format: only "rdfxml" is supported`)
 		return req, false
 	}
@@ -129,14 +129,14 @@ func readFile(dirs []string, name string) ([]byte, error) {
 	return nil, errFileNotFound
 }
 
-// readDocument reads a regular file, at most memory.MaxOntologyBytes of it; a bigger one is an invalid ontology.
+// readDocument reads a regular file, at most memory_ontology.MaxBytes of it; a bigger one is an invalid ontology.
 func readDocument(f *os.File) ([]byte, error) {
 	if st, err := f.Stat(); err != nil {
 		return nil, err
 	} else if !st.Mode().IsRegular() {
 		return nil, errFileNotFound
 	}
-	doc, err := io.ReadAll(io.LimitReader(f, memory.MaxOntologyBytes+1))
+	doc, err := io.ReadAll(io.LimitReader(f, memory_ontology.MaxBytes+1))
 	if err != nil {
 		return nil, err
 	}
@@ -145,14 +145,14 @@ func readDocument(f *os.File) ([]byte, error) {
 
 func fail(w http.ResponseWriter, op string, err error) {
 	switch {
-	case errors.Is(err, memory.ErrInvalidOntologyName), errors.Is(err, memory_core.ErrInvalidUser), errors.Is(err, memory.ErrInvalidOntology),
+	case errors.Is(err, memory_ontology.ErrInvalidName), errors.Is(err, memory_core.ErrInvalidUser), errors.Is(err, memory_ontology.ErrInvalid),
 		errors.Is(err, errNoDirs), errors.Is(err, errBadFileName):
 		httputil.Error(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, errFileNotFound):
 		httputil.Error(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, memory.ErrOntologyExists):
+	case errors.Is(err, memory_ontology.ErrExists):
 		httputil.Error(w, http.StatusConflict, "ontology already exists")
-	case errors.Is(err, memory.ErrOntologyNotFound):
+	case errors.Is(err, memory_ontology.ErrNotFound):
 		httputil.Error(w, http.StatusNotFound, "ontology not found")
 	default:
 		log.WithError(err).WithField("op", op).Error("ontology request failed")
