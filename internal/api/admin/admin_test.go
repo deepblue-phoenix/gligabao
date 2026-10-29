@@ -30,13 +30,19 @@ func TestOverview(t *testing.T) { dbtest.Run(t, testOverview) }
 func testOverview(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	for _, c := range []struct{ user, name string }{{"alice", "a"}, {"bob", "b"}} {
+		//------------------
+		// MEMORY DATASET
 		if _, err := memory_dataset.CreateDataset(ctx, d, c.user, c.name, "", nil); err != nil {
 			t.Fatal(err)
 		}
+		//------------------
 	}
+	//------------------
+	// MEMORY DATASET
 	if err := memory_dataset.DeleteDataset(ctx, d, nil, "bob", "b"); err != nil {
 		t.Fatal(err)
 	}
+	//------------------
 
 	get := func(url string) (out struct {
 		Datasets []struct {
@@ -75,9 +81,12 @@ func testOverview(t *testing.T, d *sql.DB) {
 func TestGraph(t *testing.T) { dbtest.Run(t, testGraph) }
 
 func testGraph(t *testing.T, d *sql.DB) {
+	//------------------
+	// MEMORY DATASET
 	if _, err := memory_dataset.CreateDataset(context.Background(), d, "alice", "a", "", nil); err != nil {
 		t.Fatal(err)
 	}
+	//------------------
 	get := func(url string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
 		admin.Graph(d)(w, httptest.NewRequest(http.MethodGet, url, nil))
@@ -103,9 +112,12 @@ func TestDeleteDataset(t *testing.T) { dbtest.Run(t, testDeleteDataset) }
 
 func testDeleteDataset(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
+	//------------------
+	// MEMORY DATASET
 	if _, err := memory_dataset.CreateDataset(ctx, d, "alice", "a", "", nil); err != nil {
 		t.Fatal(err)
 	}
+	//------------------
 	del := func(url string) int {
 		w := httptest.NewRecorder()
 		admin.DeleteDatasetOf([]admin.Named{{Name: "standard", DB: d}})(w, httptest.NewRequest(http.MethodDelete, url, nil))
@@ -120,11 +132,17 @@ func testDeleteDataset(t *testing.T, d *sql.DB) {
 	if c := del("/admin/api/datasets?db=nope&user_id=alice&dataset=a"); c != http.StatusNotFound {
 		t.Fatalf("unknown db: %d", c)
 	}
+	//------------------
+	// MEMORY DATASET
 	live, err := memory_dataset.ListDatasets(ctx, d, "alice", false)
+	//------------------
 	if err != nil || len(live) != 0 {
 		t.Fatalf("live: %v %v", live, err)
 	}
+	//------------------
+	// MEMORY DATASET
 	all, err := memory_dataset.ListDatasets(ctx, d, "alice", true)
+	//------------------
 	if err != nil || len(all) != 1 || !all[0].Deleted {
 		t.Fatalf("all: %v %v", all, err)
 	}
@@ -135,7 +153,10 @@ func TestVectors(t *testing.T) { dbtest.Run(t, testVectors) }
 
 func testVectors(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
+	//------------------
+	// MEMORY DATASET
 	ds, err := memory_dataset.CreateDataset(ctx, d, "alice", "a", "", nil)
+	//------------------
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,9 +164,12 @@ func testVectors(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	//------------------
+	// MEMORY DATASET
 	if err := store.Upsert(ctx, memory_dataset.EntityDataset(ds.ID), []vector.Vector{{ID: "entity-1", Values: []float32{1, 0}}}); err != nil {
 		t.Fatal(err)
 	}
+	//------------------
 	h := admin.VectorsOf([]admin.Named{{Name: "standard", DB: d, Vectors: store}})
 	get := func(url string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
@@ -167,9 +191,12 @@ func testVectors(t *testing.T, d *sql.DB) {
 	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
+	//------------------
+	// MEMORY DATASET
 	if out.Backend != "chromem" || len(out.Indexes) != len(memory_dataset.VectorIndexes) || out.Indexes[0].Index != "entities" || out.Indexes[0].Count != 1 || out.Indexes[1].Count != 0 || out.Indexes[0].Dims != 2 {
 		t.Fatalf("%s", w.Body)
 	}
+	//------------------
 	if w := get("/admin/api/vectors?user_id=alice&dataset=nope"); w.Code != http.StatusNotFound {
 		t.Fatalf("unknown dataset: %d", w.Code)
 	}
@@ -184,9 +211,15 @@ func TestVectorsAll(t *testing.T) { dbtest.Run(t, testVectorsAll) }
 
 func testVectorsAll(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
+	//------------------
+	// MEMORY DATASET
 	var first *memory_dataset.Dataset
+	//------------------
 	for i, u := range []string{"alice", "bob"} {
+		//------------------
+		// MEMORY DATASET
 		ds, err := memory_dataset.CreateDataset(ctx, d, u, "main", "", nil)
+		//------------------
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -194,20 +227,29 @@ func testVectorsAll(t *testing.T, d *sql.DB) {
 			first = ds
 		}
 	}
+	//------------------
+	// MEMORY DATASET
 	gone, err := memory_dataset.CreateDataset(ctx, d, "alice", "gone", "", nil)
+	//------------------
 	if err != nil {
 		t.Fatal(err)
 	}
+	//------------------
+	// MEMORY DATASET
 	if err := memory_dataset.DeleteDataset(ctx, d, nil, "alice", gone.Name); err != nil {
 		t.Fatal(err)
 	}
+	//------------------
 	store, err := vector.NewChromem(filepath.Join(t.TempDir(), "v"), 2)
 	if err != nil {
 		t.Fatal(err)
 	}
+	//------------------
+	// MEMORY DATASET
 	if err := store.Upsert(ctx, memory_dataset.EntityDataset(first.ID), []vector.Vector{{ID: "entity-1", Values: []float32{1, 0}}}); err != nil {
 		t.Fatal(err)
 	}
+	//------------------
 	h := admin.VectorsAllOf([]admin.Named{{Name: "standard", DB: d, Vectors: store}})
 	w := httptest.NewRecorder()
 	h(w, httptest.NewRequest(http.MethodGet, "/admin/api/vectors/all", nil))
@@ -234,10 +276,13 @@ func testVectorsAll(t *testing.T, d *sql.DB) {
 		t.Fatalf("%s", w.Body)
 	}
 	a := out.Datasets[0]
+	//------------------
+	// MEMORY DATASET
 	if a.Backend != "chromem" || len(a.Indexes) != len(memory_dataset.VectorIndexes) || a.Indexes[0].Count != 1 || a.Indexes[0].DiskBytes <= 0 ||
 		a.Indexes[0].LastWrite == "" || a.Indexes[1].Count != 0 || a.Indexes[1].LastWrite != "" {
 		t.Fatalf("%s", w.Body)
 	}
+	//------------------
 	w = httptest.NewRecorder()
 	h(w, httptest.NewRequest(http.MethodGet, "/admin/api/vectors/all?db=nope", nil))
 	if w.Code != http.StatusNotFound {
@@ -251,7 +296,10 @@ func TestVectorsOpenOnDemand(t *testing.T) { dbtest.Run(t, testVectorsOpenOnDema
 
 func testVectorsOpenOnDemand(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
+	//------------------
+	// MEMORY DATASET
 	ds, err := memory_dataset.CreateDataset(ctx, d, "alice", "a", "", nil)
+	//------------------
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,9 +323,12 @@ func testVectorsOpenOnDemand(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	//------------------
+	// MEMORY DATASET
 	if err := other.Upsert(ctx, memory_dataset.EntityDataset(ds.ID), []vector.Vector{{ID: "entity-1", Values: []float32{1, 0}}}); err != nil {
 		t.Fatal(err)
 	}
+	//------------------
 	if n := count(); n != 1 {
 		t.Fatalf("after: %d", n)
 	}
@@ -386,7 +437,10 @@ func TestTimeseries(t *testing.T) { dbtest.Run(t, testTimeseries) }
 func testTimeseries(t *testing.T, d *sql.DB) {
 	ctx := context.Background()
 	for _, u := range []string{"alice", "bob"} {
+		//------------------
+		// MEMORY DATASET
 		ds, err := memory_dataset.CreateDataset(ctx, d, u, "main", "", nil)
+		//------------------
 		if err != nil {
 			t.Fatal(err)
 		}

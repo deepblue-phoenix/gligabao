@@ -51,7 +51,10 @@ func SummaryVectorID(artifactID int64) string {
 
 // IndexStats is the state of one vector index of a dataset.
 type IndexStats struct {
+	//------------------
+	// MEMORY DATASET
 	Index memory_dataset.VectorIndex `json:"index"`
+	//------------------
 	// VectorDataset is the dataset's name in the vector store.
 	VectorDataset string `json:"vector_dataset"`
 	// Expected is the number of rows (entities, edges, chunk artifacts) that should have a vector in this index.
@@ -121,6 +124,8 @@ func datasetVectorStats(ctx context.Context, d *sql.DB, vectors vector.Store, id
 	if err != nil {
 		return nil, err
 	}
+	//------------------
+	// MEMORY DATASET
 	for _, idx := range memory_dataset.VectorIndexes {
 		ds := memory_dataset.VectorDataset(id, idx)
 		st, err := statter.Stats(ctx, ds)
@@ -141,5 +146,6 @@ func datasetVectorStats(ctx context.Context, d *sql.DB, vectors vector.Store, id
 		out.Backend = st.Backend
 		out.Indexes = append(out.Indexes, IndexStats{Index: idx, VectorDataset: ds, Expected: expected, Stats: st})
 	}
+	//------------------
 	return out, nil
 }

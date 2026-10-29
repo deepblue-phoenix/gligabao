@@ -181,7 +181,10 @@ func testRememberChunksLongText(t *testing.T, d *sql.DB) {
 	if res.EmbeddedChunks != n {
 		t.Errorf("embedded %d chunks, want %d", res.EmbeddedChunks, n)
 	}
+	//------------------
+	// MEMORY DATASET
 	got, err := vs.Query(ctx, memory_dataset.ChunkDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 100})
+	//------------------
 	if err != nil || len(got) != n {
 		t.Fatalf("chunk vectors = %d, %v; want %d", len(got), err, n)
 	}
@@ -195,7 +198,10 @@ func testRememberChunksLongText(t *testing.T, d *sql.DB) {
 	if res.EmbeddedSummaries != n {
 		t.Errorf("embedded %d summaries, want %d", res.EmbeddedSummaries, n)
 	}
+	//------------------
+	// MEMORY DATASET
 	gotS, err := vs.Query(ctx, memory_dataset.SummaryDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 100})
+	//------------------
 	if err != nil || len(gotS) != n {
 		t.Fatalf("summary vectors = %d, %v; want %d", len(gotS), err, n)
 	}
@@ -211,9 +217,12 @@ func testRememberChunksLongText(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 	for _, ix := range st.Indexes {
+		//------------------
+		// MEMORY DATASET
 		if (ix.Index == memory_dataset.IndexChunks || ix.Index == memory_dataset.IndexSummaries) && (ix.Expected != n || ix.Count != n) {
 			t.Errorf("%s index stats = %+v", ix.Index, ix)
 		}
+		//------------------
 	}
 
 	// The trajectory shows the split, one extraction per chunk, and a store step per chunk.
@@ -244,9 +253,12 @@ func testRememberShortTextIsNotChunked(t *testing.T, d *sql.DB) {
 	if c, _ := graph.DatasetCounts(ctx, d, dsID); res.Chunks != nil || res.EmbeddedChunks != 0 || c.Artifacts != 1 || c.Chunks != 0 || c.Summaries != 0 {
 		t.Errorf("chunks = %v, counts = %+v", res.Chunks, c)
 	}
+	//------------------
+	// MEMORY DATASET
 	if got, _ := vs.Query(ctx, memory_dataset.ChunkDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 10}); len(got) != 0 {
 		t.Errorf("%d chunk vectors for a short text", len(got))
 	}
+	//------------------
 }
 
 func TestRememberChunkExtractionFailureStoresNothing(t *testing.T) {

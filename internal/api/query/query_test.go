@@ -93,9 +93,12 @@ func testQuery(t *testing.T, d *sql.DB) {
 func TestQueryEmptyGraph(t *testing.T) { dbtest.Run(t, testQueryEmptyGraph) }
 
 func testQueryEmptyGraph(t *testing.T, d *sql.DB) {
+	//------------------
+	// MEMORY DATASET
 	if _, err := memory_dataset.CreateDataset(context.Background(), d, "u1", "main", "", nil); err != nil {
 		t.Fatal(err)
 	}
+	//------------------
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/gb/query", Handler(d, &recordingLLM{}, withVectors(t))) // must not call the LLM
 	rec := httptest.NewRecorder()

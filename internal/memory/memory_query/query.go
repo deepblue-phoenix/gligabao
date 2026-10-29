@@ -166,9 +166,12 @@ func Query(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset,
 
 	j := &job{d: d, llm: tr.Wrap(memory_core.WithRecording(llm, d, CallQuery)), tr: tr, run: run, co: co, userID: userID, dataset: dataset,
 		dsID: dsID, sessionID: sessionID, radiusKm: radiusKm, query: query}
+	//------------------
+	// MEMORY PIPELINE
 	if err := memory_pipeline.Run(ctx, queryPipeline, j, run); err != nil {
 		return nil, err
 	}
+	//------------------
 	return j.result, nil
 }
 
@@ -196,6 +199,9 @@ type job struct {
 	result *QueryResult  // query (or retrieve_graph, if there is nothing to answer from)
 }
 
+//------------------
+// MEMORY PIPELINE
+
 // queryPipeline is the stages of Query, in order (see relational.QueryStages and memory_pipeline). Query does the setup
 // (validation, options, trace, run log) and runs it.
 var queryPipeline = []memory_pipeline.Step[job]{
@@ -209,6 +215,8 @@ var queryPipeline = []memory_pipeline.Step[job]{
 	// The LLM answers from what was retrieved; the entities, edges and passages it cites are the evidence.
 	memory_pipeline.Stage[job]{Name: relational.QueryStageQuery, Run: (*job).answer},
 }
+
+//------------------
 
 // retrieveGraph is the retrieve_graph stage: it builds the queryContext (see assembleContext).
 func (j *job) retrieveGraph(ctx context.Context) error {
@@ -227,7 +235,10 @@ func (j *job) retrieveGraph(ctx context.Context) error {
 			Answer:    none,
 			Evidence:  Evidence{Entities: []EvidenceEntity{}, Edges: []EvidenceEdge{}, Passages: []EvidencePassage{}},
 		}
+		//------------------
+		// MEMORY PIPELINE
 		return memory_pipeline.Stop
+		//------------------
 	}
 	return nil
 }

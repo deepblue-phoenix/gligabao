@@ -61,7 +61,10 @@ func testRememberEmbedsEntities(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	//------------------
+	// MEMORY DATASET
 	got, err := vs.Query(ctx, memory_dataset.EntityDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 10})
+	//------------------
 	if err != nil || len(got) != 3 {
 		t.Fatalf("matches = %v, %v", got, err)
 	}
@@ -71,11 +74,14 @@ func testRememberEmbedsEntities(t *testing.T, d *sql.DB) {
 		}
 	}
 	// The edges are in an index of their own, not mixed with the entities.
+	//------------------
+	// MEMORY DATASET
 	if memory_dataset.EntityDataset(dsID) == memory_dataset.EdgeDataset(dsID) || !strings.HasSuffix(memory_dataset.EntityDataset(dsID), "-entities") ||
 		!strings.HasSuffix(memory_dataset.EdgeDataset(dsID), "-edges") {
 		t.Errorf("vector datasets: %q, %q", memory_dataset.EntityDataset(dsID), memory_dataset.EdgeDataset(dsID))
 	}
 	edgeMatches, err := vs.Query(ctx, memory_dataset.EdgeDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 10})
+	//------------------
 	if err != nil || len(edgeMatches) != 2 {
 		t.Fatalf("edge matches = %v, %v", edgeMatches, err)
 	}
@@ -89,19 +95,25 @@ func testRememberEmbedsEntities(t *testing.T, d *sql.DB) {
 	if _, err := memory_remember.Remember(ctx, d, extractLLM{}, "u1", "work", "", "again", relational.Now(), opt); err != nil {
 		t.Fatal(err)
 	}
+	//------------------
+	// MEMORY DATASET
 	if got, _ := vs.Query(ctx, memory_dataset.EntityDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 10}); len(got) != 3 {
 		t.Errorf("after second remember: %d vectors, want 3", len(got))
 	}
 	if got, _ := vs.Query(ctx, memory_dataset.EdgeDataset(dsID), []float32{1, 1}, vector.QueryOptions{TopK: 10}); len(got) != 2 {
 		t.Errorf("after second remember: %d edge vectors, want 2 (the repeated facts are the same edges)", len(got))
 	}
+	//------------------
 	if _, err := memory_remember.Remember(ctx, d, extractLLM{}, "u1", "other", "", "x", relational.Now(), opt); err != nil {
 		t.Fatal(err)
 	}
 	otherID, _ := relational.DatasetID(ctx, d, "u1", "other")
+	//------------------
+	// MEMORY DATASET
 	if got, _ := vs.Query(ctx, memory_dataset.EntityDataset(otherID), []float32{1, 1}, vector.QueryOptions{TopK: 10}); len(got) != 3 {
 		t.Errorf("other dataset: %d vectors, want 3", len(got))
 	}
+	//------------------
 
 	// Without WithVectors nothing is embedded.
 	n := len(emb.texts)

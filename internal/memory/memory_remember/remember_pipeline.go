@@ -21,6 +21,9 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_pipeline"
 )
 
+//------------------
+// MEMORY PIPELINE
+
 // The names of the stages are those of the run log (relational.RememberStages, in this order; TestPipelineStagesAreTheRunLogs
 // checks it).
 var rememberPipeline = []memory_pipeline.Step[job]{
@@ -60,6 +63,8 @@ var reconcileSteps = []memory_pipeline.Step[job]{
 	memory_pipeline.Stage[job]{Name: StageStore, Also: (*job).alsoStoresSeries, Run: (*job).storeStage},
 }
 
+//------------------
+
 // unit is a text that goes through the reconcile stages, with what they make of it: the text of the call, a chunk of it, or a
 // text of an enrichment stage.
 type unit struct {
@@ -78,9 +83,12 @@ type unit struct {
 // (see runLog.Within).
 func (j *job) reconcile(ctx context.Context, text string, ex *Extraction) (*Result, error) {
 	j.u = &unit{text: text, ex: ex}
+	//------------------
+	// MEMORY PIPELINE
 	if err := memory_pipeline.Run(ctx, reconcileSteps, j, j.run); err != nil {
 		return nil, err
 	}
+	//------------------
 	return j.u.res, nil
 }
 

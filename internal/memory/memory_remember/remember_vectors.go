@@ -124,7 +124,10 @@ func findSimilarEntities(ctx context.Context, d *sql.DB, o memory_core.CallOptio
 	}
 	got := map[string]bool{}
 	for i, ep := range endpoints {
+		//------------------
+		// MEMORY DATASET
 		ms, err := o.Vectors.Query(ctx, memory_dataset.EntityDataset(dsID), embs[i], vector.QueryOptions{TopK: similarEntityTopK})
+		//------------------
 		if err != nil {
 			return found, texts, usage, fmt.Errorf("memory: search similar entities: %w", err)
 		}
@@ -186,7 +189,10 @@ func prepareVectors(ctx context.Context, tx graph.Tx, o memory_core.CallOptions,
 
 	p := &pendingVectors{store: o.Vectors, byDataset: map[string][]vector.Vector{}, entities: len(ents), edges: len(edges)}
 	for i, e := range ents {
+		//------------------
+		// MEMORY DATASET
 		ns := memory_dataset.EntityDataset(dsID)
+		//------------------
 		p.byDataset[ns] = append(p.byDataset[ns], vector.Vector{
 			ID:     memory.EntityVectorID(e.ID),
 			Values: embs[i],
@@ -199,7 +205,10 @@ func prepareVectors(ctx context.Context, tx graph.Tx, o memory_core.CallOptions,
 		})
 	}
 	for i, e := range edges {
+		//------------------
+		// MEMORY DATASET
 		ns := memory_dataset.EdgeDataset(dsID)
+		//------------------
 		p.byDataset[ns] = append(p.byDataset[ns], vector.Vector{
 			ID:     memory.EdgeVectorID(e.ID),
 			Values: embs[len(ents)+i],
@@ -214,7 +223,10 @@ func prepareVectors(ctx context.Context, tx graph.Tx, o memory_core.CallOptions,
 		})
 	}
 	if chunk != nil {
+		//------------------
+		// MEMORY DATASET
 		ns := memory_dataset.ChunkDataset(dsID)
+		//------------------
 		p.chunks = 1
 		p.byDataset[ns] = append(p.byDataset[ns], vector.Vector{
 			ID:     memory.ChunkVectorID(chunk.artifactID),
@@ -232,7 +244,10 @@ func prepareVectors(ctx context.Context, tx graph.Tx, o memory_core.CallOptions,
 		if chunk != nil {
 			i++
 		}
+		//------------------
+		// MEMORY DATASET
 		ns := memory_dataset.SummaryDataset(dsID)
+		//------------------
 		p.summaries = 1
 		p.byDataset[ns] = append(p.byDataset[ns], vector.Vector{
 			ID:     memory.SummaryVectorID(summary.artifactID),

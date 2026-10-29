@@ -14,7 +14,10 @@ func TestPipelineStagesAreTheRunLogs(t *testing.T) {
 	for _, s := range relational.QueryStages {
 		want = append(want, s.Name)
 	}
+	//------------------
+	// MEMORY PIPELINE
 	if got := memory_pipeline.Names(queryPipeline); !reflect.DeepEqual(got, want) {
 		t.Errorf("queryPipeline = %v, want %v", got, want)
 	}
+	//------------------
 }

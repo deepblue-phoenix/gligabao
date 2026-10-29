@@ -199,7 +199,10 @@ func DeleteDatasetOf(dbs []Named) http.HandlerFunc {
 				return
 			}
 			defer release()
+			//------------------
+			// MEMORY DATASET
 			err = memory_dataset.DeleteDataset(r.Context(), n.DB, vectors, q.Get("user_id"), q.Get("dataset"))
+			//------------------
 			switch {
 			case errors.Is(err, memory_core.ErrInvalidUser):
 				httputil.Error(w, http.StatusBadRequest, err.Error())

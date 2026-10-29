@@ -426,9 +426,12 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 
 	j := &job{d: d, llm: llm, tr: tr, run: run, co: co, opts: opts, userID: userID, dataset: dataset, kind: kind, ref: ref, now: now,
 		text: text, cc: cc, chunked: chunked}
+	//------------------
+	// MEMORY PIPELINE
 	if err := memory_pipeline.Run(ctx, rememberPipeline, j, run); err != nil {
 		return nil, err
 	}
+	//------------------
 	return j.res, nil
 }
 

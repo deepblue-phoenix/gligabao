@@ -105,20 +105,29 @@ func searchVectors(ctx context.Context, d *sql.DB, co memory_core.CallOptions, t
 		sort.SliceStable(out, func(i, j int) bool { return out[i].Score > out[j].Score })
 		return out, nil
 	}
+	//------------------
+	// MEMORY DATASET
 	ents, err := search(memory_dataset.EntityDataset(dsID), vectorEntityTopK, minEntityScore, memory.VectorKindEntity)
+	//------------------
 	if err != nil {
 		return nil, err
 	}
+	//------------------
+	// MEMORY DATASET
 	edges, err := search(memory_dataset.EdgeDataset(dsID), vectorEdgeTopK, minEdgeScore, memory.VectorKindEdge)
+	//------------------
 	if err != nil {
 		return nil, err
 	}
+	//------------------
+	// MEMORY DATASET
 	if h.chunks, err = search(memory_dataset.ChunkDataset(dsID), vectorPassageTopK, minPassageScore, memory.VectorKindChunk); err != nil {
 		return nil, err
 	}
 	if h.summaries, err = search(memory_dataset.SummaryDataset(dsID), vectorPassageTopK, minPassageScore, memory.VectorKindSummary); err != nil {
 		return nil, err
 	}
+	//------------------
 	for _, e := range ents {
 		h.entities = append(h.entities, e.ID)
 	}

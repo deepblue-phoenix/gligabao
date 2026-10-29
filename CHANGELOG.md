@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.125.1] - 2026-10-29
+
+### Changed
+- Code navigation: every use of `memory_pipeline` and of `memory_dataset` in the code (including tests) is now wrapped in a block marked `//------------------` / `// MEMORY PIPELINE` or `// MEMORY DATASET`, so the uses can be found at a glance (`rg "MEMORY PIPELINE"`). The rule for new code is in `internal/memory/AGENTS.md`. Comments only; no change in behaviour.
+
 ## [0.125.0] - 2026-10-29
 
 ### Added

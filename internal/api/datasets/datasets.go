@@ -34,6 +34,8 @@ func Create(d *sql.DB) http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 			return
 		}
+		//------------------
+		// MEMORY DATASET
 		ds, err := memory_dataset.CreateDataset(r.Context(), d, req.UserID, req.Name, req.Description, req.Tags)
 		switch {
 		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory_core.ErrInvalidUser):
@@ -46,6 +48,7 @@ func Create(d *sql.DB) http.HandlerFunc {
 		default:
 			httputil.WriteJSON(w, http.StatusCreated, ds)
 		}
+		//------------------
 	}
 }
 
@@ -53,7 +56,10 @@ func Create(d *sql.DB) http.HandlerFunc {
 func List(d *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
+		//------------------
+		// MEMORY DATASET
 		list, err := memory_dataset.ListDatasets(r.Context(), d, q.Get("user_id"), q.Get("include_deleted") == "true")
+		//------------------
 		if errors.Is(err, memory_core.ErrInvalidUser) {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
@@ -71,7 +77,10 @@ func List(d *sql.DB) http.HandlerFunc {
 // The dataset's vectors (one vector store dataset per index, memory_dataset.VectorDataset) are removed from vectors, which may be nil.
 func Delete(d *sql.DB, vectors vector.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		//------------------
+		// MEMORY DATASET
 		err := memory_dataset.DeleteDataset(r.Context(), d, vectors, r.URL.Query().Get("user_id"), r.PathValue("name"))
+		//------------------
 		switch {
 		case errors.Is(err, memory_core.ErrInvalidUser):
 			httputil.Error(w, http.StatusBadRequest, err.Error())

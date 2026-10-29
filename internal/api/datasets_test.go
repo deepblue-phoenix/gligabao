@@ -175,11 +175,17 @@ func testDatasets(t *testing.T, d *sql.DB) {
 
 	// Each dataset has its own vector dataset, keyed by dataset ID.
 	for _, name := range []string{"ds1", "ds2"} {
+		//------------------
+		// MEMORY DATASET
 		must(vectors.Upsert(ctx, memory_dataset.EntityDataset(dataset("u1", name).ID), []vector.Vector{{ID: "v", Values: []float32{1, 0}}}))
+		//------------------
 	}
 	vectorCount := func(dsID int64) int {
 		t.Helper()
+		//------------------
+		// MEMORY DATASET
 		got, err := vectors.Query(ctx, memory_dataset.EntityDataset(dsID), []float32{1, 0}, vector.QueryOptions{})
+		//------------------
 		must(err)
 		n := 0
 		for _, m := range got {
@@ -189,9 +195,12 @@ func testDatasets(t *testing.T, d *sql.DB) {
 		}
 		return n
 	}
+	//------------------
+	// MEMORY DATASET
 	if vectorCount(ds.ID) != 1 || vectorCount(dataset("u1", "ds2").ID) != 1 || memory_dataset.EntityDataset(ds.ID) == memory_dataset.EntityDataset(dataset("u1", "ds2").ID) {
 		t.Fatal("datasets do not have separate vector datasets")
 	}
+	//------------------
 
 	// Soft delete: the row stays with deleted = 1, but the dataset is gone for remember/query/list.
 	want(do("DELETE", "/v1/gb/datasets/ds1?user_id=u1", ""), 204)

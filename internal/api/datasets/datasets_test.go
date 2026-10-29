@@ -131,7 +131,10 @@ func testDatasetLifecycle(t *testing.T, d *sql.DB) {
 	if g := exportGraph(); len(g.Entities) != 0 || len(g.Edges) != 0 {
 		t.Errorf("new dataset graph = %+v, want empty", g)
 	}
+	//------------------
+	// MEMORY DATASET
 	ns := memory_dataset.EntityDataset(id)
+	//------------------
 	if _, ok := collections()[ns]; ok {
 		t.Fatalf("vector collection %q exists before any vector was stored", ns)
 	}
@@ -168,7 +171,10 @@ func testDatasetLifecycle(t *testing.T, d *sql.DB) {
 		{ID: "alice", Values: []float32{1, 0, 0}, Metadata: map[string]any{"kind": "entity"}},
 		{ID: "acme", Values: []float32{0, 1, 0}, Metadata: map[string]any{"kind": "entity"}},
 	}))
+	//------------------
+	// MEMORY DATASET
 	edgeNS := memory_dataset.EdgeDataset(id) // a second index of the same dataset
+	//------------------
 	must(vectors.Upsert(ctx, edgeNS, []vector.Vector{{ID: "works_at", Values: []float32{1, 1, 0}, Metadata: map[string]any{"kind": "edge"}}}))
 	got, err := vectors.Query(ctx, ns, []float32{1, 0.1, 0}, vector.QueryOptions{})
 	must(err)
@@ -237,7 +243,10 @@ func testDatasetLifecycle(t *testing.T, d *sql.DB) {
 	if g := exportGraph(); len(g.Entities) != 0 || len(g.Edges) != 0 {
 		t.Errorf("recreated dataset graph = %+v, want empty", g)
 	}
+	//------------------
+	// MEMORY DATASET
 	if _, ok := collections()[memory_dataset.EntityDataset(again.ID)]; ok {
 		t.Error("recreated dataset already has a vector collection")
 	}
+	//------------------
 }

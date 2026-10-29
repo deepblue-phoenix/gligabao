@@ -79,6 +79,9 @@ func (r *runLog) stage(name string) *relational.QueryStage {
 	return &st
 }
 
+//------------------
+// MEMORY PIPELINE
+
 // Start marks the stages as started now.
 func (r *runLog) Start(stages ...string) {
 	if r == nil {
@@ -132,6 +135,8 @@ func (r *runLog) Skip(stages ...string) {
 	r.save()
 }
 
+//------------------
+
 // end finishes st at now (see Done).
 func end(st *relational.QueryStage, err error, now time.Time) {
 	switch {
@@ -144,6 +149,9 @@ func end(st *relational.QueryStage, err error, now time.Time) {
 	}
 	st.FinishedAt = &now
 }
+
+//------------------
+// MEMORY PIPELINE
 
 // AddInference adds the inference with that ID (gb_inferences) to the stage that made it; 0 (a run that could not be recorded)
 // is ignored. The stage must be one that runs a model (relational.QueryStages).
@@ -165,6 +173,8 @@ func (r *runLog) AddInference(stage string, id int64) {
 	r.run.Stages[stage] = *st
 	r.save()
 }
+
+//------------------
 
 func runsModel(stage string) bool {
 	for _, s := range relational.QueryStages {

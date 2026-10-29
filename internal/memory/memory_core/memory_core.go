@@ -98,6 +98,9 @@ func RecordRun(ctx context.Context, d *sql.DB, run relational.Inference) (int64,
 	return id, err
 }
 
+//------------------
+// MEMORY PIPELINE
+
 // NoteInference passes the ID of a recorded inference to the inference sink of ctx (see WithInferenceSink), if it has one. 0, a
 // run that could not be recorded, is ignored.
 func NoteInference(ctx context.Context, id int64) {
@@ -114,6 +117,8 @@ type inferenceSinkKey struct{}
 func WithInferenceSink(ctx context.Context, sink func(id int64)) context.Context {
 	return context.WithValue(ctx, inferenceSinkKey{}, sink)
 }
+
+//------------------
 
 //---------------------------------------------------------------------------------------------
 

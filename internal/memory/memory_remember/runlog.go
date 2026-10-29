@@ -127,6 +127,9 @@ func (r *runLog) stage(name string) *relational.RememberStage {
 	return &st
 }
 
+//------------------
+// MEMORY PIPELINE
+
 // Start marks the stages as started now. A stage that is started again (it runs for each chunk of a text) keeps the start of
 // its first run. Call it before the stage.
 func (r *runLog) Start(stages ...string) {
@@ -184,6 +187,8 @@ func (r *runLog) Done(err error, stages ...string) {
 	r.save()
 }
 
+//------------------
+
 // end finishes st at now (see Done).
 func end(st *relational.RememberStage, err error, now time.Time) {
 	switch {
@@ -234,6 +239,9 @@ func (r *runLog) Finish(err error) {
 	r.save()
 }
 
+//------------------
+// MEMORY PIPELINE
+
 // AddInference adds the inference with that ID (gb_inferences) to the stage that made it. Call it wherever a model is run
 // (an LLM call, an embedding request, a web search), with the ID that recording it returned; 0 (a run that could not be
 // recorded) is ignored. The stage must be one that runs a model (relational.RememberStages).
@@ -258,6 +266,8 @@ func (r *runLog) AddInference(stage string, id int64) {
 	r.run.Stages[stage] = *st
 	r.save()
 }
+
+//------------------
 
 // maxStageOutputBytes is the largest output kept whole; a larger one is replaced by a stub (see Output).
 const maxStageOutputBytes = 64 << 10
