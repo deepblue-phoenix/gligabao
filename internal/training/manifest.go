@@ -142,7 +142,7 @@ func DiscoverDatasets(dirs ...string) ([]LocalDataset, []DatasetProblem) {
 			}
 			ds, err := ParseManifest(manifest)
 			if err == nil {
-				if st, serr := os.Stat(ds.Path); serr != nil || !st.Mode().IsRegular() {
+				if st, statErr := os.Stat(ds.Path); statErr != nil || !st.Mode().IsRegular() {
 					err = fmt.Errorf("the data file %s is missing", ds.Manifest.File)
 					if ds.Generator != "" {
 						err = fmt.Errorf("%w: run %s in the dataset's directory to create it", err, ds.Generator)

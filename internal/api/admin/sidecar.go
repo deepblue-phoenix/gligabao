@@ -98,7 +98,7 @@ func SidecarBackendProxy(open func(ctx context.Context, method, path, rawQuery s
 		for {
 			n, err := resp.Body.Read(buf)
 			if n > 0 {
-				if _, werr := w.Write(buf[:n]); werr != nil {
+				if _, writeErr := w.Write(buf[:n]); writeErr != nil {
 					return
 				}
 				_ = rc.Flush()

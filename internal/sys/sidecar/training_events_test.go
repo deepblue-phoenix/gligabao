@@ -58,8 +58,8 @@ func TestStreamTrainingJobEventsErrors(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(sseBody)) }))
 	defer srv.Close()
-	stop := errors.New("stop")
-	if err := New(srv.URL).StreamTrainingJobEvents(context.Background(), "j", 0, func(TrainingEvent) error { return stop }); !errors.Is(err, stop) {
+	stopErr := errors.New("stop")
+	if err := New(srv.URL).StreamTrainingJobEvents(context.Background(), "j", 0, func(TrainingEvent) error { return stopErr }); !errors.Is(err, stopErr) {
 		t.Fatalf("callback error: %v", err)
 	}
 

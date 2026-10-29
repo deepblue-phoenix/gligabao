@@ -263,15 +263,15 @@ func testDeployATrainedModel(t *testing.T, d *sql.DB) {
 	}
 	root := t.TempDir()
 	var got []core.DeployTrainedModelRequest
-	var failWith error
+	var failErr error
 	deployers := []core.TrainedModelDeployer{
 		{Name: "copy", Deploy: func(ctx context.Context, req core.DeployTrainedModelRequest) (core.DeployTrainedModelResult, error) {
 			got = append(got, req)
 			req.Update("copying the files")
 			req.Update("  ")                                           // blank: ignored
 			req.Update(strings.Repeat("x", 2*core.MaxDeployUpdateLen)) // too long: cut
-			if failWith != nil {
-				return core.DeployTrainedModelResult{}, failWith
+			if failErr != nil {
+				return core.DeployTrainedModelResult{}, failErr
 			}
 			if _, err := os.Stat(filepath.Join(req.Dir, "adapter_model.safetensors")); err != nil {
 				return core.DeployTrainedModelResult{}, err
@@ -347,7 +347,7 @@ func testDeployATrainedModel(t *testing.T, d *sql.DB) {
 	}
 
 	// the deployer failing, panicking, and the files not being fetchable: 502, recorded as failed
-	failWith = errors.New("upload refused")
+	failErr = errors.New("upload refused")
 	if rec := post(fetcher, "1", `{"deployer":"copy"}`); rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "upload refused") {
 		t.Fatalf("deployer error: %d %s", rec.Code, rec.Body)
 	}

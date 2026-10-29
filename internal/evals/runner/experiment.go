@@ -57,8 +57,8 @@ func (x *ExperimentRecorder) Finish(ctx context.Context, err error) error {
 	default:
 		x.run.Status, x.run.Error = core.StatusErrored, err.Error()
 	}
-	if uerr := x.r.Store.UpdateExperimentRun(context.WithoutCancel(ctx), x.r.DB, x.run); uerr != nil {
-		return fmt.Errorf("end the experiment run: %w", uerr)
+	if updateErr := x.r.Store.UpdateExperimentRun(context.WithoutCancel(ctx), x.r.DB, x.run); updateErr != nil {
+		return fmt.Errorf("end the experiment run: %w", updateErr)
 	}
 	return nil
 }

@@ -188,7 +188,7 @@ func storePlace(ctx context.Context, d *sql.DB, dsID int64, r memory_geo.Resolve
 	key := memory_core.Key(p.Text)
 	id, err := tx.FindEntityID(ctx, dsID, key)
 	if err == nil {
-		if e, gerr := tx.GetEntity(ctx, dsID, id); gerr != nil || memory_geo.NotPlaceTypes[e.Type] {
+		if e, getErr := tx.GetEntity(ctx, dsID, id); getErr != nil || memory_geo.NotPlaceTypes[e.Type] {
 			id, err = 0, graph.ErrNotFound // an entity of that name that is not a place ("Paris", a person): a new one is made
 		}
 	}
@@ -319,9 +319,9 @@ func nearbyGeo(ctx context.Context, d *sql.DB, co memory_core.CallOptions, tr *m
 	for _, e := range errs {
 		log.WithFields(fields).Warn("query: proximity search: " + e)
 	}
-	var failed error
+	var failedErr error
 	if len(errs) > 0 {
-		failed = errors.New(strings.Join(errs, "; "))
+		failedErr = errors.New(strings.Join(errs, "; "))
 	}
 	if len(anchors) == 0 && len(errs) == 0 {
 		return nil, nil // nothing in the question is a place with coordinates: not worth a step in the trajectory
@@ -340,7 +340,7 @@ func nearbyGeo(ctx context.Context, d *sql.DB, co memory_core.CallOptions, tr *m
 	tr.Tool("Looked up the geo entities near the places of the question, to give the LLM as context.", "nearby_geo",
 		map[string]any{"user_id": userID, "dataset": dataset, "radius_km": radiusKm}, out)
 	rc.Nearby = gc
-	return gc, failed
+	return gc, failedErr
 }
 
 // render returns the <nearby> section of the user message: how far each nearby entity is from the place it is near.

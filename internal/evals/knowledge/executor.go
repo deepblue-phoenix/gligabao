@@ -123,10 +123,10 @@ func (x *Executor) executeCase(ctx, dbCtx context.Context, rec *runner.EvalRecor
 		if i < len(out.ArtifactIDs) {
 			ids = out.ArtifactIDs[i]
 		}
-		ref, rerr := trajectoryRef(i, t, x.TrajectoryDir, ids)
-		if rerr != nil {
+		ref, refErr := trajectoryRef(i, t, x.TrajectoryDir, ids)
+		if refErr != nil {
 			if err == nil {
-				err = rerr
+				err = refErr
 			}
 			continue
 		}
@@ -155,8 +155,8 @@ func (x *Executor) executeCase(ctx, dbCtx context.Context, rec *runner.EvalRecor
 	default:
 		cr.Status, cr.Verdict = core.StatusCompleted, core.VerdictPass
 	}
-	if ferr := rec.FinishCase(dbCtx, cr, meta); ferr != nil {
-		return ferr
+	if finishErr := rec.FinishCase(dbCtx, cr, meta); finishErr != nil {
+		return finishErr
 	}
 
 	switch {

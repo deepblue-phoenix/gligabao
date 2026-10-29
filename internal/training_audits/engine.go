@@ -284,7 +284,7 @@ func judgeBatch(ctx context.Context, cfg Config, judge LLM, cases []core.AuditCa
 // cancelBatch ends a batch that ctx interrupted: it hands sink the cases of the batch that were reached (the ones not asked yet
 // stay pending and are not reported), the ones that had not failed already as cancelled, without a score, and the progress,
 // which has the judge's usage so far. It returns cause, the error that ends the run.
-func cancelBatch(ctx context.Context, cases []core.AuditCaseRun, p *Progress, sink Sink, cause error) error {
+func cancelBatch(ctx context.Context, cases []core.AuditCaseRun, p *Progress, sink Sink, causeErr error) error {
 	var reached []core.AuditCaseRun
 	for _, it := range cases {
 		switch it.Status {
@@ -302,5 +302,5 @@ func cancelBatch(ctx context.Context, cases []core.AuditCaseRun, p *Progress, si
 	if err := sink(context.WithoutCancel(ctx), reached, *p); err != nil {
 		return fmt.Errorf("storing the cases of the interrupted batch: %w", err) // not wrapping cause: this one is not a cancellation
 	}
-	return cause
+	return causeErr
 }

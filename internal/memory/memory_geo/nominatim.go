@@ -168,9 +168,9 @@ func (n *nominatim) Resolve(ctx context.Context, q Query) (*Place, error) {
 
 // place converts a result to a Place.
 func (r nominatimResult) place() (*Place, error) {
-	lat, err1 := strconv.ParseFloat(r.Lat, 64)
-	lon, err2 := strconv.ParseFloat(r.Lon, 64)
-	if err1 != nil || err2 != nil {
+	lat, latErr := strconv.ParseFloat(r.Lat, 64)
+	lon, lonErr := strconv.ParseFloat(r.Lon, 64)
+	if latErr != nil || lonErr != nil {
 		return nil, fmt.Errorf("geo: nominatim: bad coordinates %q, %q", r.Lat, r.Lon)
 	}
 	p := &Place{

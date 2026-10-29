@@ -78,9 +78,9 @@ func prepare(userID, name, description string, content []byte) (userIDOut, nameO
 		err = fmt.Errorf("%w: larger than %d bytes", ErrInvalid, MaxBytes)
 		return
 	}
-	o, perr := Parse(bytes.NewReader(content))
-	if perr != nil {
-		err = fmt.Errorf("%w: %v", ErrInvalid, perr)
+	o, parseErr := Parse(bytes.NewReader(content))
+	if parseErr != nil {
+		err = fmt.Errorf("%w: %v", ErrInvalid, parseErr)
 		return
 	}
 	if description = strings.TrimSpace(description); description == "" {
@@ -126,8 +126,8 @@ func Load(ctx context.Context, d *sql.DB, userID, name, description string, cont
 	}
 	if err := graph.LoadOntology(ctx, d, meta.ID, p.classes, p.edges); err != nil {
 		// The graph load is atomic; undo the metadata so that the name is free again.
-		if derr := relational.DeleteOntology(context.WithoutCancel(ctx), d, meta.ID); derr != nil {
-			log.WithError(derr).WithField("ontology", name).Error("load ontology: cleanup after failure")
+		if deleteErr := relational.DeleteOntology(context.WithoutCancel(ctx), d, meta.ID); deleteErr != nil {
+			log.WithError(deleteErr).WithField("ontology", name).Error("load ontology: cleanup after failure")
 		}
 		return nil, err
 	}
@@ -211,8 +211,8 @@ func Update(ctx context.Context, d *sql.DB, userID, name, description string, co
 		counts, err = graph.MergeOntology(ctx, d, old.ID, p.classes, p.edges)
 	}
 	if err != nil {
-		if _, rerr := relational.UpdateOntology(context.WithoutCancel(ctx), d, *old); rerr != nil {
-			log.WithError(rerr).WithField("ontology", name).Error("update ontology: restoring metadata after failure")
+		if _, updateErr := relational.UpdateOntology(context.WithoutCancel(ctx), d, *old); updateErr != nil {
+			log.WithError(updateErr).WithField("ontology", name).Error("update ontology: restoring metadata after failure")
 		}
 		return nil, err
 	}

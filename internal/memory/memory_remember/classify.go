@@ -35,8 +35,8 @@ func (j *job) classifyComplexity(ctx context.Context) error {
 	if err == nil {
 		run.Model, run.InputTokens, run.OutputTokens = cl.Model, cl.InputTokens, cl.OutputTokens
 	}
-	if _, rerr := memory_core.RecordRun(context.WithoutCancel(ctx), j.d, run); rerr != nil {
-		log.WithError(rerr).WithFields(fields).Error("record jev inference")
+	if _, recordErr := memory_core.RecordRun(context.WithoutCancel(ctx), j.d, run); recordErr != nil {
+		log.WithError(recordErr).WithFields(fields).Error("record jev inference")
 	}
 	if err != nil {
 		log.WithError(err).WithFields(fields).Warn("jev: classify complexity failed")

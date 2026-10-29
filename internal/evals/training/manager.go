@@ -304,18 +304,18 @@ func (m *Manager) run(ctx context.Context, r *runner.Runner, def *core.EvalDef, 
 	if ended != nil && ended.Status == core.StatusCancelled && m.ctx.Err() != nil {
 		// Stopped by the server shutting down, not by the user.
 		ended.Status, ended.Error = core.StatusErrored, "interrupted: the server shut down while the eval ran"
-		if uerr := m.Store.UpdateEvalRun(dbCtx, m.DB, ended); uerr != nil {
-			logf.WithError(uerr).Error("training evals: ending the eval failed")
+		if updateErr := m.Store.UpdateEvalRun(dbCtx, m.DB, ended); updateErr != nil {
+			logf.WithError(updateErr).Error("training evals: ending the eval failed")
 		}
 	}
 	if xr != nil {
 		if ended != nil {
-			if aerr := xr.Add(dbCtx, ended); aerr != nil {
-				logf.WithError(aerr).Error("training evals: updating the experiment run failed")
+			if addErr := xr.Add(dbCtx, ended); addErr != nil {
+				logf.WithError(addErr).Error("training evals: updating the experiment run failed")
 			}
 		}
-		if ferr := xr.Finish(dbCtx, err); ferr != nil {
-			logf.WithError(ferr).Error("training evals: ending the experiment run failed")
+		if finishErr := xr.Finish(dbCtx, err); finishErr != nil {
+			logf.WithError(finishErr).Error("training evals: ending the experiment run failed")
 		}
 	}
 	if ended == nil { // it was not recorded
@@ -342,8 +342,8 @@ func (m *Manager) runRecovering(ctx context.Context, r *runner.Runner, def *core
 		if cur := *run; cur != nil {
 			end := time.Now().UTC().Truncate(time.Second)
 			cur.Status, cur.Error, cur.FinishedAt = core.StatusErrored, err.Error(), &end
-			if uerr := m.Store.UpdateEvalRun(context.WithoutCancel(ctx), m.DB, cur); uerr != nil {
-				logf.WithError(uerr).Error("training evals: ending the eval failed")
+			if updateErr := m.Store.UpdateEvalRun(context.WithoutCancel(ctx), m.DB, cur); updateErr != nil {
+				logf.WithError(updateErr).Error("training evals: ending the eval failed")
 			}
 			ended = cur
 		}

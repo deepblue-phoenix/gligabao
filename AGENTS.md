@@ -23,6 +23,11 @@ Do not add an `[Unreleased]` section: the top entry must always match `VERSION`.
 
 A built binary reports the version via `gligabao --version`, `gligabao version` and `GET /version`.
 
+## Naming of errors
+
+A variable, argument or struct field of type `error` is named `err` or ends with `Err` (`parseErr`, `closeErr`, `causeErr`),
+never `e`, `perr`, `err1`, `boom`, etc. Package-level sentinel errors keep the Go prefix (`ErrNotFound`, `errBadName`).
+
 ## Roadmap
 
 Anything related to the project roadmap (planned features, plans, priorities, status, design notes for future work) lives in

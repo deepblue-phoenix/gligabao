@@ -41,16 +41,16 @@ func NearbyHandler(d *sql.DB, opts ...memory_core.Option) http.HandlerFunc {
 		)
 		switch {
 		case q.Get("entity_id") != "":
-			id, perr := strconv.ParseInt(q.Get("entity_id"), 10, 64)
-			if perr != nil || id <= 0 {
+			id, parseErr := strconv.ParseInt(q.Get("entity_id"), 10, 64)
+			if parseErr != nil || id <= 0 {
 				httputil.Error(w, http.StatusBadRequest, "entity_id must be a positive integer")
 				return
 			}
 			res, err = memory_query.NearbyEntityOf(r.Context(), d, q.Get("user_id"), q.Get("dataset"), id, callOpts...)
 		case q.Get("latitude") != "" || q.Get("longitude") != "":
-			lat, e1 := strconv.ParseFloat(strings.TrimSpace(q.Get("latitude")), 64)
-			lon, e2 := strconv.ParseFloat(strings.TrimSpace(q.Get("longitude")), 64)
-			if e1 != nil || e2 != nil {
+			lat, latErr := strconv.ParseFloat(strings.TrimSpace(q.Get("latitude")), 64)
+			lon, lonErr := strconv.ParseFloat(strings.TrimSpace(q.Get("longitude")), 64)
+			if latErr != nil || lonErr != nil {
 				httputil.Error(w, http.StatusBadRequest, "latitude and longitude must both be numbers")
 				return
 			}

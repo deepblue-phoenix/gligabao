@@ -185,8 +185,8 @@ func mainErr() error {
 			counts.Pending += run.Counts.Pending
 			counts.Total += run.Counts.Total
 			if xr != nil {
-				if aerr := xr.Add(context.WithoutCancel(ctx), run); aerr != nil {
-					fmt.Fprintf(os.Stderr, "warning: record eval %s in experiment %q: %v\n", def.Name, *experiment, aerr)
+				if addErr := xr.Add(context.WithoutCancel(ctx), run); addErr != nil {
+					fmt.Fprintf(os.Stderr, "warning: record eval %s in experiment %q: %v\n", def.Name, *experiment, addErr)
 				}
 			}
 		}

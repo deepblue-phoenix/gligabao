@@ -67,9 +67,9 @@ func TestRunTellsTheObserverOfEveryStage(t *testing.T) {
 }
 
 func TestFatalErrorEndsThePipelineAdvisoryDoesNot(t *testing.T) {
-	boom := errors.New("boom")
+	boomErr := errors.New("boom")
 	var ev events
-	adv := stage("adv", func(*state) error { return boom })
+	adv := stage("adv", func(*state) error { return boomErr })
 	adv.Policy = Advisory
 	s := &state{}
 	if err := Run(context.Background(), []Step[state]{adv, stage("b", nil)}, s, &ev); err != nil {
@@ -82,8 +82,8 @@ func TestFatalErrorEndsThePipelineAdvisoryDoesNot(t *testing.T) {
 
 	ev = events{}
 	s = &state{}
-	err := Run(context.Background(), []Step[state]{stage("a", func(*state) error { return boom }), stage("b", nil)}, s, &ev)
-	if !errors.Is(err, boom) {
+	err := Run(context.Background(), []Step[state]{stage("a", func(*state) error { return boomErr }), stage("b", nil)}, s, &ev)
+	if !errors.Is(err, boomErr) {
 		t.Fatalf("err = %v, want boom", err)
 	}
 	if want := []string{"start [a]", "fail [a]: boom"}; !reflect.DeepEqual(ev.log, want) {

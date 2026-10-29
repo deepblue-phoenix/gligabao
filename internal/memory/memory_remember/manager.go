@@ -325,9 +325,9 @@ func (m *Manager) finish(q *queued, res *Result, err error) {
 // for a run that never began, was cancelled in the queue, or panicked).
 func (m *Manager) fail(runID int64, err error) {
 	ctx := context.Background()
-	run, gerr := relational.GetRememberRun(ctx, m.d, runID)
-	if gerr != nil {
-		log.WithError(gerr).WithField("remember_run_id", runID).Error("remember manager: load run")
+	run, getErr := relational.GetRememberRun(ctx, m.d, runID)
+	if getErr != nil {
+		log.WithError(getErr).WithField("remember_run_id", runID).Error("remember manager: load run")
 		return
 	}
 	if run.Status != relational.RememberStarted {

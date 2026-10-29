@@ -192,8 +192,8 @@ func fetchFile(ctx context.Context, f ModelFileFetcher, modelPath string, file t
 	defer os.Remove(tmp.Name()) // a no-op once renamed
 	h := sha256.New()
 	n, err := f.DownloadModelFile(ctx, modelPath, file.Path, io.MultiWriter(tmp, h))
-	if cerr := tmp.Close(); err == nil {
-		err = cerr
+	if closeErr := tmp.Close(); err == nil {
+		err = closeErr
 	}
 	if err != nil {
 		return err
@@ -309,16 +309,16 @@ func DeployModel(ctx context.Context, db *sql.DB, f ModelFileFetcher, deployers 
 		liveDeployments.Delete(id)
 	}()
 	started := time.Now()
-	fail := func(msg string, cause error) error {
+	fail := func(msg string, causeErr error) error {
 		updates.add("Failed: " + msg)
-		l.WithError(cause).Error("training: model deploy failed")
+		l.WithError(causeErr).Error("training: model deploy failed")
 		ms := time.Since(started).Milliseconds()
 		if err := trainingdb.FinishTrainedModelDeployment(dbCtx, db, id, trainingdb.TrainedModelDeploymentFailed, "", "", msg, ms); err != nil {
 			l.WithError(err).Error("training: updating the deployment failed")
 		}
 		monitoring.EmitSystemEvent(dbCtx, "training.model_deploy.failed", monitoring.Event{
 			"model_id": tm.ID, "deploy_id": id, "deployer": exp.Name, "duration_ms": ms, "error": msg})
-		return &Error{KindUpstream, fmt.Sprintf("deploy %d failed: %s", id, msg), cause}
+		return &Error{KindUpstream, fmt.Sprintf("deploy %d failed: %s", id, msg), causeErr}
 	}
 
 	updates.add(fmt.Sprintf("Fetching the model's %d files from the sidecar", len(tm.Files)))

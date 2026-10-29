@@ -317,8 +317,8 @@ func RememberImage(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, 
 	})
 	if err != nil {
 		if created {
-			if rerr := removeFile(imageDir(co), path); rerr != nil {
-				log.WithError(rerr).WithField("path", path).Error("remove image file after failed insert")
+			if removeErr := removeFile(imageDir(co), path); removeErr != nil {
+				log.WithError(removeErr).WithField("path", path).Error("remove image file after failed insert")
 			}
 		}
 		return nil, err

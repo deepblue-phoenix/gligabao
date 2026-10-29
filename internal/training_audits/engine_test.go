@@ -224,10 +224,10 @@ func TestRunJudgeFailureAndGivingUp(t *testing.T) {
 }
 
 func TestRunStopsOnSinkError(t *testing.T) {
-	boom := errors.New("disk full")
+	boomErr := errors.New("disk full")
 	_, err := Run(context.Background(), Config{BatchSize: 2}, examples(6), echoGen(), &fakeJudge{},
-		func(context.Context, []core.AuditCaseRun, Progress) error { return boom })
-	if !errors.Is(err, boom) {
+		func(context.Context, []core.AuditCaseRun, Progress) error { return boomErr })
+	if !errors.Is(err, boomErr) {
 		t.Fatalf("err = %v", err)
 	}
 }

@@ -219,9 +219,9 @@ func withCaseDefID(m core.CaseDefMeta, id core.CaseDefID) core.CaseDefMeta {
 
 // sameJSON reports whether a and b have the same JSON (empty and nil values included: they are the same on disk).
 func sameJSON(a, b any) bool {
-	x, err1 := json.Marshal(a)
-	y, err2 := json.Marshal(b)
-	return err1 == nil && err2 == nil && string(x) == string(y)
+	x, xErr := json.Marshal(a)
+	y, yErr := json.Marshal(b)
+	return xErr == nil && yErr == nil && string(x) == string(y)
 }
 
 // EnsureExperiment returns the experiment def called name, creating it (with the description) if it does not exist. Its evals are
