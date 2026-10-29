@@ -142,6 +142,33 @@ func Query(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset,
 	tr.User(query)
 	tr.Input(map[string]any{"user_id": userID, "dataset": dataset, "session_id": sessionID})
 
+	j := &job{d: d, llm: llm, tr: tr, co: co, userID: userID, dataset: dataset, dsID: dsID, sessionID: sessionID, radiusKm: radiusKm}
+	return j.pipeline(ctx, query)
+}
+
+// job is the state of one Query call, after its setup (validation, options, trace).
+type job struct {
+	d         *sql.DB
+	llm       memory_core.LLM // the caller's, not yet recording
+	tr        *memory_core.Trace
+	co        memory_core.CallOptions
+	userID    string
+	dataset   string // already resolved
+	dsID      int64
+	sessionID string
+	radiusKm  float64 // the radius of the proximity search (see geoRadius)
+}
+
+// pipeline sequences the stages of a Query call on the job j: it retrieves the subgraph around the entities matching the
+// query and the passages close to it (assembleContext); with no result it answers that it knows nothing, with no LLM call;
+// otherwise it detects the places of the question and the geo entities near them (only with a geo resolver), and asks the
+// LLM to answer from that context (queryLLM), whose citations become the evidence (getEvidence). Query does the setup and
+// calls it.
+func (j *job) pipeline(ctx context.Context, query string) (*QueryResult, error) {
+	d, co, tr, userID, dataset, dsID, sessionID := j.d, j.co, j.tr, j.userID, j.dataset, j.dsID, j.sessionID
+
+	//--------------------------------------
+	// RETRIEVE
 	rc, err := assembleContext(ctx, d, co, tr, dsID, query)
 	if err != nil {
 		return nil, fmt.Errorf("retrieve context: %w", err)
@@ -160,14 +187,16 @@ func Query(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset,
 
 	// Every LLM call of the query is recorded as an inference (and a step of the trajectory); each stage runs on the model and
 	// the reasoning level the call sets for it (WithModels, WithReasoning), or the default ones.
-	rec := tr.Wrap(memory_core.WithRecording(llm, d, CallQuery))
+	rec := tr.Wrap(memory_core.WithRecording(j.llm, d, CallQuery))
 
-	// The places the question mentions (only with a geo resolver), and the geo entities near them and near the entities that
-	// matched the question, which the answer gets as context.
+	//--------------------------------------
+	// DETECT_GEO and NEARBY_GEO (only with a geo resolver): the places the question mentions, and the geo entities near them
+	// and near the entities that matched the question, which the answer gets as context.
 	places := detectGeo(ctx, co, rec, tr, userID, dataset, query)
-	nearby := nearbyGeo(ctx, d, co, tr, userID, dataset, dsID, rc, places, radiusKm)
+	nearby := nearbyGeo(ctx, d, co, tr, userID, dataset, dsID, rc, places, j.radiusKm)
 
-	// The answer is thought through with the reasoning level none unless the call sets another (WithReasoning with
+	//--------------------------------------
+	// ANSWER: thought through with the reasoning level none unless the call sets another (WithReasoning with
 	// memory_core.StageQuery); the inference records it.
 	out, err := queryLLM(ctx, co.ModelLLM(rec, memory_core.StageQuery), rc)
 	if err != nil {

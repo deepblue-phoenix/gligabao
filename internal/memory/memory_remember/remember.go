@@ -16,6 +16,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_timeseries"
 )
@@ -409,6 +410,15 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 
 	j := &job{d: d, llm: llm, tr: tr, run: run, co: co, opts: opts, userID: userID, dataset: dataset, kind: kind, ref: ref, now: now}
 
+	return j.pipeline(ctx, text, cc, chunked)
+}
+
+// pipeline sequences the stages of a Remember call on the job j: the text is either a document (chunked: each chunk goes
+// through the stages on its own, see rememberDocument) or a single text, which is extracted, reconciled with the stored
+// facts and stored (resolveAndStore); then the optional enrichment stages run (geo, web search, series fetch and
+// observations), after the text is stored, so that they never fail the call. Remember does the setup (validation, trace,
+// run log) and calls it.
+func (j *job) pipeline(ctx context.Context, text string, cc memory_chunk.Config, chunked bool) (*Result, error) {
 	//--------------------------------------
 	// CLASSIFY_COMPLEXITY (Jev; only if configured)
 	j.classifyComplexity(ctx, text)
@@ -420,7 +430,7 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	//--------------------------------------
 	// EXTRACT
 	j.run.Start(memory_core.StageExtractGraph)
-	ex, err := Extract(ctx, co.ModelLLM(llm, memory_core.StageExtractGraph), text, ref)
+	ex, err := Extract(ctx, j.co.ModelLLM(j.llm, memory_core.StageExtractGraph), text, j.ref)
 	j.run.Done(err, memory_core.StageExtractGraph)
 	j.run.AddInference(memory_core.StageExtractGraph, ex.RunID())
 	j.outputExtraction("", ex)
@@ -428,11 +438,11 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 		return nil, err
 	}
 
-	tr.Tool("The LLM extracted these entities and edges (new facts) from the text, before any stored fact is considered.",
+	j.tr.Tool("The LLM extracted these entities and edges (new facts) from the text, before any stored fact is considered.",
 		"extract_graph", map[string]any{"text_chars": len(text)},
 		map[string]any{"entities": ex.Entities, "edges": candidateFacts(ex.Edges, nil)})
 
-	res, err = j.resolveAndStore(ctx, text, ex, nil)
+	res, err := j.resolveAndStore(ctx, text, ex, nil)
 	if err != nil {
 		return nil, err
 	}
