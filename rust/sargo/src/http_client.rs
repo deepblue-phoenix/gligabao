@@ -12,12 +12,17 @@ use std::time::Duration;
 /// only reads them. The returned `Value` is newly created and owned by the caller.
 ///
 /// This is blocking: the calling thread waits until the provider answers (models can take a
-/// while, hence the long timeout). The server runs one thread per connection, so that is fine.
-pub fn post_json(url: &str, headers: &[(&str, &str)], body: &Value) -> Result<Value, RouterError> {
+/// while, hence the long timeout from the config). The server runs one thread per connection, so that is fine.
+pub fn post_json(
+    url: &str,
+    headers: &[(&str, &str)],
+    body: &Value,
+    timeout: Duration,
+) -> Result<Value, RouterError> {
     // `ureq` builder methods take `self` and return the changed request, hence the re-assignment.
     let mut request = ureq::post(url)
         .set("content-type", "application/json")
-        .timeout(Duration::from_secs(300));
+        .timeout(timeout);
     for &(name, value) in headers {
         request = request.set(name, value);
     }

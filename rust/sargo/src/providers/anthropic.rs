@@ -4,24 +4,29 @@
 //! direct serialization. The reply is converted back to our `InferenceResponse`.
 
 use crate::error::RouterError;
+use crate::config::{HttpClientConfig, ProviderConfig};
 use crate::http_client::post_json;
 use crate::json_util::{take_field, take_string};
 use super::Provider;
 use crate::types::{ContentBlock, InferenceRequest, InferenceResponse, Usage, DEFAULT_MAX_TOKENS};
 use serde_json::{json, Value};
+use std::time::Duration;
 
 pub struct AnthropicProvider {
     api_key: String,
     /// "https://api.anthropic.com" normally; overridable for tests or proxies.
     base_url: String,
+    /// How long to wait for the provider (from `[http_client]` in the config).
+    timeout: Duration,
 }
 
 impl AnthropicProvider {
     /// Takes `&str`s and stores owned copies, so the provider does not depend on where they came from.
-    pub fn new(api_key: &str, base_url: &str) -> AnthropicProvider {
+    pub fn new(api_key: &str, config: &ProviderConfig, http: &HttpClientConfig) -> AnthropicProvider {
         AnthropicProvider {
             api_key: api_key.to_string(),
-            base_url: base_url.trim_end_matches('/').to_string(),
+            base_url: config.base_url.trim_end_matches('/').to_string(),
+            timeout: Duration::from_secs(http.timeout_secs),
         }
     }
 }
@@ -38,7 +43,7 @@ impl Provider for AnthropicProvider {
             ("x-api-key", self.api_key.as_str()),
             ("anthropic-version", "2023-06-01"),
         ];
-        let reply = post_json(&url, &headers, &body)?;
+        let reply = post_json(&url, &headers, &body, self.timeout)?;
         parse_response(reply)
     }
 }

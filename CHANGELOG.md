@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.134.0] - 2026-11-02
+
+### Added
+- `rust/sargo` reads a `config.toml` (path from the first argument, `SARGO_CONFIG`, or `./config.toml`; built-in defaults if the default file is missing). It sets the listen address, the client read timeout, the maximum request body size, the provider call timeout, and for each provider its base URL and the name of the environment variable that holds its API key. Unknown keys are rejected.
+
+### Changed
+- `rust/sargo`: `SARGO_ADDR`, `ANTHROPIC_BASE_URL` and `OPENAI_BASE_URL` are no longer read; set them in `config.toml`. The API keys still come from the environment variables.
+
 ## [0.133.0] - 2026-11-02
 
 ### Added

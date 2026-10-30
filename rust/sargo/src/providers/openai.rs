@@ -7,6 +7,7 @@
 //! * a tool result is its own message with role "tool" (ours is a block inside a "user" message).
 
 use crate::error::RouterError;
+use crate::config::{HttpClientConfig, ProviderConfig};
 use crate::http_client::post_json;
 use crate::json_util::{take_field, take_string};
 use super::Provider;
@@ -14,18 +15,22 @@ use crate::types::{
     ContentBlock, InferenceRequest, InferenceResponse, Message, Usage, DEFAULT_MAX_TOKENS,
 };
 use serde_json::{json, Value};
+use std::time::Duration;
 
 pub struct OpenAiProvider {
     api_key: String,
     /// "https://api.openai.com" normally; any OpenAI-compatible server also works.
     base_url: String,
+    /// How long to wait for the provider (from `[http_client]` in the config).
+    timeout: Duration,
 }
 
 impl OpenAiProvider {
-    pub fn new(api_key: &str, base_url: &str) -> OpenAiProvider {
+    pub fn new(api_key: &str, config: &ProviderConfig, http: &HttpClientConfig) -> OpenAiProvider {
         OpenAiProvider {
             api_key: api_key.to_string(),
-            base_url: base_url.trim_end_matches('/').to_string(),
+            base_url: config.base_url.trim_end_matches('/').to_string(),
+            timeout: Duration::from_secs(http.timeout_secs),
         }
     }
 }
@@ -40,7 +45,7 @@ impl Provider for OpenAiProvider {
         let url = format!("{}/v1/chat/completions", self.base_url);
         let authorization = format!("Bearer {}", self.api_key);
         let headers = [("authorization", authorization.as_str())];
-        let reply = post_json(&url, &headers, &body)?;
+        let reply = post_json(&url, &headers, &body, self.timeout)?;
         parse_response(reply)
     }
 }

@@ -7,11 +7,18 @@ No streaming yet. The server is blocking, one thread per connection.
 ## Run
 
 ```sh
-ANTHROPIC_API_KEY=... OPENAI_API_KEY=... cargo run      # SARGO_ADDR defaults to 127.0.0.1:8080
+ANTHROPIC_API_KEY=... OPENAI_API_KEY=... cargo run      # reads ./config.toml (optional)
+cargo run -- path/to/config.toml                        # or SARGO_CONFIG=path/to/config.toml
 cargo test
 ```
 
-Optional: `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`, `SARGO_ADDR`.
+## Config
+
+`config.toml` (all keys optional, the shipped file lists the defaults): `[server]` address, read timeout and
+max body size; `[http_client]` provider timeout; `[providers.anthropic]` / `[providers.openai]` base URL and the
+name of the env var holding the API key (keys are never in the file). Unknown keys are rejected.
+It is loaded once in `main.rs` into the `Config` struct (`src/config.rs`) and passed by reference to the
+server and the providers. If no config path is given and `./config.toml` does not exist, defaults are used.
 
 ## API
 

@@ -22,13 +22,12 @@
 //! * Each connection's `TcpStream` is MOVED into its thread (`move` closure) and dropped, which
 //!   closes the socket, when the thread ends.
 
+use crate::config::ServerConfig;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread;
 use std::time::Duration;
 
-/// Refuse bodies larger than this (10 MB) so a bad client cannot make us allocate without limit.
-const MAX_BODY_BYTES: usize = 10 * 1024 * 1024;
 /// Refuse requests with more header lines than this.
 const MAX_HEADERS: usize = 100;
 
@@ -102,14 +101,21 @@ pub trait HttpServer {
 
 /// The standard-library implementation of `HttpServer`.
 pub struct StdHttpServer {
-    /// Address to listen on, like "127.0.0.1:8080".
+    /// Address to listen on, like "127.0.0.1:8431".
     address: String,
+    /// Seconds to wait for a client that stops sending.
+    read_timeout: Duration,
+    /// Refuse bodies larger than this, so a bad client cannot make us allocate without limit.
+    max_body_bytes: usize,
 }
 
 impl StdHttpServer {
-    pub fn new(address: &str) -> StdHttpServer {
+    /// Copies the few values it needs out of the borrowed config.
+    pub fn new(config: &ServerConfig) -> StdHttpServer {
         StdHttpServer {
-            address: address.to_string(),
+            address: config.address.clone(),
+            read_timeout: Duration::from_secs(config.read_timeout_secs),
+            max_body_bytes: config.max_body_bytes,
         }
     }
 }
@@ -121,6 +127,7 @@ impl HttpServer for StdHttpServer {
         println!("sargo listening on http://{}", self.address);
 
         // `thread::scope`: threads started with `scope.spawn` may borrow `handler` (see module docs).
+        let (read_timeout, max_body_bytes) = (self.read_timeout, self.max_body_bytes);
         thread::scope(|scope| {
             for incoming in listener.incoming() {
                 let stream = match incoming {
@@ -133,7 +140,7 @@ impl HttpServer for StdHttpServer {
                 // `move`: the closure takes ownership of `stream` (a connection belongs to exactly
                 // one thread) and copies `handler` (a shared reference is `Copy`, so this is free).
                 scope.spawn(move || {
-                    handle_connection(stream, handler);
+                    handle_connection(stream, handler, read_timeout, max_body_bytes);
                 });
             }
         });
@@ -143,11 +150,16 @@ impl HttpServer for StdHttpServer {
 
 /// Reads one request from the socket, calls the handler, writes the response, closes the socket.
 /// `stream` is owned here, so it is closed when this function returns.
-fn handle_connection(stream: TcpStream, handler: &dyn RequestHandler) {
+fn handle_connection(
+    stream: TcpStream,
+    handler: &dyn RequestHandler,
+    read_timeout: Duration,
+    max_body_bytes: usize,
+) {
     // Do not wait forever for a client that stops sending.
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
+    let _ = stream.set_read_timeout(Some(read_timeout));
 
-    let response = match read_request(&stream) {
+    let response = match read_request(&stream, max_body_bytes) {
         Ok(request) => handler.handle(&request),
         Err(message) => HttpResponse::text(400, &message),
     };
@@ -159,7 +171,7 @@ fn handle_connection(stream: TcpStream, handler: &dyn RequestHandler) {
 
 /// Parses one HTTP/1.1 request. `stream` is only borrowed: `&TcpStream` implements `Read`
 /// and `Write`, so reading and writing can both use a shared reference to the same socket.
-fn read_request(stream: &TcpStream) -> Result<HttpRequest, String> {
+fn read_request(stream: &TcpStream, max_body_bytes: usize) -> Result<HttpRequest, String> {
     // BufReader reads big chunks from the socket and hands them out line by line.
     // IMPORTANT: it may read ahead into the body, so the body below MUST be read through the
     // same `reader` (never directly from `stream`), or those bytes would be lost.
@@ -214,7 +226,7 @@ fn read_request(stream: &TcpStream) -> Result<HttpRequest, String> {
             .map_err(|_| "bad content-length".to_string())?,
         None => 0,
     };
-    if length > MAX_BODY_BYTES {
+    if length > max_body_bytes {
         return Err("request body too large".to_string());
     }
     // A zero-filled buffer of exactly the right size, which `read_exact` then fills in place.
