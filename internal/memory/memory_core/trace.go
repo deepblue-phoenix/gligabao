@@ -96,6 +96,8 @@ type CallOptions struct {
 	GeoNearby bool
 	// GeoRadiusKm is the radius of the proximity search of Query, set by WithGeoRadius; 0 means DefaultGeoRadiusKm.
 	GeoRadiusKm float64
+	// EvidenceOnly makes Query only retrieve, set by WithEvidenceOnly; false (the default) leaves the answer to the LLM.
+	EvidenceOnly bool
 
 	// RememberRunID is the run log row (gb_remember_runs) Remember adopts instead of creating one, set by
 	// WithRememberRunID; 0 means Remember creates its own. The remember manager sets it: it creates the row when a

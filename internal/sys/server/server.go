@@ -533,15 +533,16 @@ func register(mux *http.ServeMux, pattern string, handler http.Handler) (err err
 // listened on. On an error everything already set up is released.
 func prepare(ctx context.Context, opts Options, standalone bool) (handler http.Handler, closeAll func(), err error) {
 	var cleanups []func() // run in reverse order
-	closeAll = func() {
+	release := func() {
 		for i := len(cleanups) - 1; i >= 0; i-- {
 			cleanups[i]()
 		}
 		cleanups = nil
 	}
+	closeAll = release
 	defer func() {
-		if err != nil {
-			closeAll()
+		if err != nil { // the returns below set closeAll to nil, so release is what is called
+			release()
 			handler, closeAll = nil, nil
 		}
 	}()

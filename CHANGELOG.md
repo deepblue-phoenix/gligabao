@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.126.0] - 2026-10-30
+
+### Added
+- CLI commands that use the API, so an agent can use gligabao without HTTP calls: `gligabao remember`, `query`, `dataset ls|create|rm|graph`, `api METHOD PATH` (any other endpoint), `status` and `stop`. They send the same requests as the REST API and print the JSON response; errors are JSON on stderr, with exit codes (2 usage/400, 3 not found, 4 conflict, 5 not available, 1 other). The request can be given as flags or as the exact REST body (`--json`, `@file` or `-`). See `docs/cli.md`.
+- Local daemon: the commands talk to a `gligabao serve` that the first command starts in the background (on `127.0.0.1`, no authentication) if none answers on the port, and that later commands reuse. `--server URL` (or `GLIGABAO_URL`) targets another server instead. The default user of the CLI is `local_user` (`--user`, `GLIGABAO_USER`).
+- Stable data directory for the CLI: without a `gligabao.toml` in the current directory (or `--config`), the daemon uses `~/.gligabao` (`GLIGABAO_HOME`) for its config, database, log and pid file.
+- Retrieval-only `query`: `evidence_only: true` in the request (`gligabao query --evidence-only`) skips the LLM call that writes the answer; the response has an empty `answer` and, as evidence, everything that was retrieved. See `docs/query.md`.
+- `serve --host` and `host` in the config: the address to listen on (default: every interface, as before).
+
+### Fixed
+- The server panicked, instead of returning the error, when it failed to start after opening the databases (e.g. no `OPENAI_API_KEY`).
+
 ## [0.125.2] - 2026-10-29
 
 ### Changed

@@ -10,6 +10,7 @@ import (
 func newServe(c *CLI, o Options) *cobra.Command {
 	var (
 		dbPath, vectorDir, imageDir string
+		host                        string
 		evalDB, deployDir           string
 		datasetDirs, evalDirs       []string
 		ontologyDirs                []string
@@ -23,6 +24,9 @@ func newServe(c *CLI, o Options) *cobra.Command {
 			// Arguments are parsed by now: a runtime error is not a usage error, so do not print the help for it.
 			cmd.SilenceUsage = true
 			cfg := c.cfg
+			if cmd.Flags().Changed("host") {
+				cfg.Host = host
+			}
 			if cmd.Flags().Changed("eval") {
 				cfg.EvalModeEnable = eval
 			}
@@ -62,6 +66,7 @@ func newServe(c *CLI, o Options) *cobra.Command {
 	}
 	f := cmd.Flags()
 	f.StringVar(&dbPath, "db", gligabao.DefaultDBPath, "SQLite database file path")
+	f.StringVar(&host, "host", "", "address to listen on, e.g. 127.0.0.1 for this machine only (default: every interface) (config: host)")
 	f.StringVar(&vectorDir, "vector-dir", "", "chromem vector store directory (default: next to --db)")
 	f.StringVar(&imageDir, "image-dir", "", "directory of the image files stored by remember with an image (default: next to --db)")
 	f.StringArrayVar(&datasetDirs, "training-dataset-dir", nil, "training datasets directory: one subdirectory with a dataset.toml manifest per dataset; repeatable, searched in order, uploads go to the first (default: config datasets_training_dirs, else a datasets_training directory next to --db)")

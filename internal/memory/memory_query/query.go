@@ -153,6 +153,9 @@ func Query(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset,
 	if len(co.Reasoning) > 0 {
 		params["reasoning"] = co.Reasoning
 	}
+	if co.EvidenceOnly {
+		params["evidence_only"] = true
+	}
 	if co.GeoResolver != nil && co.GeoNearby {
 		params["geo_nearby"], params["geo_radius_km"] = true, radiusKm
 	}
@@ -172,6 +175,9 @@ func Query(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset,
 		return nil, err
 	}
 	//------------------
+	if j.result == nil && co.EvidenceOnly { // the query stage was skipped: what was retrieved is the result
+		j.result = &QueryResult{SessionID: sessionID, Evidence: j.rc.Graph.allEvidence(), Geo: j.places, Nearby: j.rc.Nearby}
+	}
 	return j.result, nil
 }
 
@@ -209,11 +215,12 @@ var queryPipeline = []memory_pipeline.Step[job]{
 	// pipeline ends here (memory_pipeline.Stop), and the stages after it are skipped.
 	memory_pipeline.Stage[job]{Name: relational.QueryStageRetrieveGraph, Run: (*job).retrieveGraph},
 	// The places the question mentions (only with a geo resolver).
-	memory_pipeline.Stage[job]{Name: relational.QueryStageDetectGeo, Policy: memory_pipeline.Advisory, Enabled: (*job).hasGeo, Run: (*job).detectGeo},
+	memory_pipeline.Stage[job]{Name: relational.QueryStageDetectGeo, Policy: memory_pipeline.Advisory, Enabled: (*job).needsDetectGeo, Run: (*job).detectGeo},
 	// The geo entities near those places and near the entities that matched the question, which the answer gets as context.
 	memory_pipeline.Stage[job]{Name: relational.QueryStageNearbyGeo, Policy: memory_pipeline.Advisory, Enabled: (*job).hasNearbyGeo, Run: (*job).nearbyGeo},
 	// The LLM answers from what was retrieved; the entities, edges and passages it cites are the evidence.
-	memory_pipeline.Stage[job]{Name: relational.QueryStageQuery, Run: (*job).answer},
+	// Skipped by a retrieval-only call (memory_core.WithEvidenceOnly).
+	memory_pipeline.Stage[job]{Name: relational.QueryStageQuery, Enabled: (*job).needsAnswer, Run: (*job).answer},
 }
 
 //------------------
@@ -244,6 +251,12 @@ func (j *job) retrieveGraph(ctx context.Context) error {
 }
 
 func (j *job) hasGeo() bool { return j.co.GeoResolver != nil }
+
+// needsDetectGeo: the places of the question are only looked for (an LLM call) if there is something to do with them; a retrieval-only
+// call has nothing but the proximity search.
+func (j *job) needsDetectGeo() bool { return j.hasGeo() && (!j.co.EvidenceOnly || j.co.GeoNearby) }
+
+func (j *job) needsAnswer() bool { return !j.co.EvidenceOnly }
 
 // detectGeo is the detect_geo stage (see query_geo.go).
 func (j *job) detectGeo(ctx context.Context) (err error) {
@@ -366,6 +379,19 @@ func (g *graphContext) render() string {
 		sb.WriteString(memory_core.FactFromEvidence(g.edges[id]).ContextLine() + "\n")
 	}
 	return sb.String()
+}
+
+// allEvidence is everything in the context as evidence, for a retrieval-only call (no LLM chose what it relied on).
+func (g *graphContext) allEvidence() Evidence {
+	ev := Evidence{Entities: []EvidenceEntity{}, Edges: []EvidenceEdge{}, Passages: []EvidencePassage{}}
+	for _, id := range sortedKeys(g.entities) {
+		ev.Entities = append(ev.Entities, g.entities[id])
+	}
+	for _, id := range sortedKeys(g.edges) {
+		ev.Edges = append(ev.Edges, g.edges[id])
+	}
+	ev.Passages = append(ev.Passages, g.passages...)
+	return ev
 }
 
 // getEvidence returns the entities and edges the LLM cited in o, keeping only cited IDs that were present in the

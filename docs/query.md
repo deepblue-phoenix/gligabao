@@ -22,6 +22,8 @@ content-type: application/json
 - `geo_radius_km` (optional): a number of kilometers, the radius of that search. Giving it turns the search on (the same as `geo_nearby: true`; `400` with `geo_nearby: false`). It overrides the server's default (`geo_radius_km` in the config, 50 km unless set). `400` unless it is greater than 0 and at most 20015.
 - `models` (optional): an object that picks the LLM model of each stage of the query: `query` (the call that writes the answer) and `detect_geo` (the call that finds the places the question mentions, only when the server has [geo](geo.md#in-query) on; ignored otherwise). A stage left out uses the default model. `400` for another stage (the stages of `remember` are rejected too) or a malformed model name. The model of each call is recorded with its [inference](inferences.md). Its twin `reasoning` takes the same two stages.
 
+- `evidence_only` (optional, default `false`): see [Retrieval only](#retrieval-only-evidence_only).
+
 ## Response
 
 `200 OK`:
@@ -132,6 +134,10 @@ The cited IDs are validated against the subgraph that was actually sent:
 - A cited passage is the chunk that was in the context, with its summary and text as they were given.
 - The source and target entities of every cited edge are added to `evidence.entities`, so each cited edge can be read without looking up its endpoints.
 - Results are ordered by ID.
+
+### Retrieval only (`evidence_only`)
+
+With `"evidence_only": true` the call only retrieves: steps 1 and 2 run as usual, but the LLM is not asked to write the answer (the `query` stage is skipped in the [run log](#run-log), so that call is neither made nor paid for). The response has an empty `answer`, and `evidence` holds **everything that was retrieved** (every entity, edge and passage of the context, not only what an LLM cited), so a caller with its own LLM can answer from it. The question is still embedded (one embedding call). With [geo](geo.md#in-query) on, the places of the question are only looked for (an LLM call) if the request also asks for the proximity search (`geo_nearby`, `geo_radius_km`), since nothing else uses them. The server still needs an LLM configured (`503` otherwise). The run is recorded with `evidence_only` in its parameters. The CLI flag is `gligabao query --evidence-only` ([cli.md](cli.md)).
 
 ### Run log
 

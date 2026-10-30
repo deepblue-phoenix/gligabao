@@ -41,6 +41,10 @@ type CLI struct {
 	// Serve is the `serve` command, with all of gligabao's flags.
 	Serve *cobra.Command
 	cfg   *gligabao.Config
+
+	// For the client commands (see commands.go).
+	flags      clientFlags
+	configPath string
 }
 
 // Config is the configuration loaded for the running command (nil before one runs, and for `version`).
@@ -55,8 +59,6 @@ func New(o Options) *CLI {
 		o.Short = "gligabao CLI"
 	}
 	c := &CLI{}
-	var configPath string
-
 	root := &cobra.Command{
 		Use:   o.Use,
 		Short: o.Short,
@@ -66,7 +68,7 @@ func New(o Options) *CLI {
 					return err
 				}
 			}
-			cfg, err := gligabao.LoadConfig(configPath)
+			cfg, err := gligabao.LoadConfig(c.configPath)
 			if err != nil {
 				// A missing file is fine only for the default path.
 				if errors.Is(err, fs.ErrNotExist) && !cmd.Flags().Changed("config") {
@@ -88,7 +90,13 @@ func New(o Options) *CLI {
 		root.Version = "-" // cobra only adds --version if Version is set; the template below prints the real one
 	}
 	root.SetVersionTemplate(versionString() + "\n")
-	root.PersistentFlags().StringVar(&configPath, "config", gligabao.DefaultConfigPath(), "path to TOML config file")
+	root.PersistentFlags().StringVar(&c.configPath, "config", gligabao.DefaultConfigPath(), "path to TOML config file")
+	defaultUser := os.Getenv(EnvUser)
+	if defaultUser == "" {
+		defaultUser = LocalUser
+	}
+	root.PersistentFlags().StringVar(&c.flags.server, "server", os.Getenv(EnvServer), "URL of the server the remember, query, dataset and api commands use, instead of the local daemon (env "+EnvServer+")")
+	root.PersistentFlags().StringVar(&c.flags.user, "user", defaultUser, "user_id of the client commands (env "+EnvUser+")")
 
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
@@ -105,13 +113,18 @@ func New(o Options) *CLI {
 	c.Root = root
 	c.Serve = newServe(c, o)
 	root.AddCommand(c.Serve)
+	c.addClientCommands(o)
 	return c
 }
 
-// Execute runs the root command and exits with status 1 on error.
+// Execute runs the root command and exits on error: with the exit code of the client commands (see client.go), which print the error as
+// JSON on stderr, or with status 1.
 func (c *CLI) Execute() {
-	if err := c.Root.Execute(); err != nil {
-		os.Exit(1)
+	if cmd, err := c.Root.ExecuteC(); err != nil {
+		if cmd != nil && cmd.SilenceErrors {
+			printError(os.Stderr, err)
+		}
+		os.Exit(codeOf(err))
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"math"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -61,7 +62,10 @@ const DefaultGeoRadiusKm = 50.0
 // environment variables; a key set in the TOML file overrides the environment value.
 // The Pinecone index host likewise defaults to PINECONE_INDEX_HOST, and the PostgreSQL connection string to POSTGRES_DSN.
 type Config struct {
-	Port         int    `toml:"port"`
+	Port int `toml:"port"`
+	// Host is the address the server listens on; empty (the default) is every interface. The CLI starts its local daemon on
+	// 127.0.0.1 (`serve --host 127.0.0.1`).
+	Host         string `toml:"host"`
 	AnthropicKey string `toml:"anthropic_api_key"`
 	OpenAIKey    string `toml:"openai_api_key"`
 	// JevKey is the TypeSafe API key of Jev, the system 1 model. Jev is only used when it is set.
@@ -198,9 +202,9 @@ func (c *Config) Chunking() memory_chunk.Config {
 	return memory_chunk.Config{Size: c.ChunkSize, OverlapPercent: c.ChunkOverlapPercent}
 }
 
-// Addr returns the HTTP listen address derived from the port (e.g. ":7878").
+// Addr returns the HTTP listen address derived from the host and the port (e.g. ":7878", or "127.0.0.1:7878" with a host).
 func (c *Config) Addr() string {
-	return ":" + strconv.Itoa(c.Port)
+	return net.JoinHostPort(c.Host, strconv.Itoa(c.Port))
 }
 
 // Validate checks that the config values are usable.

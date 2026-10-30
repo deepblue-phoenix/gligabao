@@ -222,3 +222,34 @@ func testQueryInference(t *testing.T, d *sql.DB) {
 		t.Errorf("remember runs with no reasoning = %d, %v", n, err)
 	}
 }
+
+func TestQueryEvidenceOnly(t *testing.T) { dbtest.Run(t, testQueryEvidenceOnly) }
+
+func testQueryEvidenceOnly(t *testing.T, d *sql.DB) {
+	ex := `{"entities":[{"name":"Alice","type":"person"},{"name":"Acme","type":"organization"}],
+	"edges":[{"source":"Alice","target":"Acme","relation":"works_at"}]}`
+	llm := &recordingLLM{outs: []string{ex}} // one call only: remember's; a second one (the answer) would panic
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/gb/query", Handler(d, llm, withVectors(t)))
+	if _, err := memory_remember.Remember(context.Background(), d, llm, "u1", "", "", "x", time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/query", strings.NewReader(`{"user_id":"u1","query":"Where does Alice work?","evidence_only":true}`)))
+	if rec.Code != 200 {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body)
+	}
+	var res memory_query.QueryResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.Answer != "" {
+		t.Errorf("answer = %q, want none", res.Answer)
+	}
+	if len(res.Evidence.Edges) != 1 || len(res.Evidence.Entities) != 2 {
+		t.Errorf("evidence = %+v, want the whole retrieved context", res.Evidence)
+	}
+	if len(llm.reqs) != 1 {
+		t.Errorf("%d LLM calls, want only remember's", len(llm.reqs))
+	}
+}

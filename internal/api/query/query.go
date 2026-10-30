@@ -44,6 +44,9 @@ type queryRequest struct {
 	// with geo_nearby: false it is a 400). It overrides the default of the server (config geo_radius_km, 50 km unless set); it must
 	// be greater than 0 and at most memory_core.MaxGeoRadiusKm.
 	GeoRadiusKm *float64 `json:"geo_radius_km"`
+	// EvidenceOnly (optional, default false) makes the call retrieval-only: no LLM writes the answer (the response has an empty
+	// answer), and the evidence is everything that was retrieved. See memory_core.WithEvidenceOnly.
+	EvidenceOnly bool `json:"evidence_only"`
 }
 
 // parseReasoning reads the reasoning field of the request: absent or null (the defaults), a string (the level of the answering
@@ -134,6 +137,9 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, opts []memory_core.Optio
 				return
 			}
 			callOpts = append(callOpts, memory_core.WithGeoRadius(*req.GeoRadiusKm))
+		}
+		if req.EvidenceOnly {
+			callOpts = append(callOpts, memory_core.WithEvidenceOnly(true))
 		}
 		start := time.Now()
 		res, err := memory_query.Query(r.Context(), d, llm, req.UserID, req.Dataset, req.Query, callOpts...)
