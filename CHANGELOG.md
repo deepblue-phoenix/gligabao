@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.133.0] - 2026-11-02
+
+### Added
+- `run_server_sargo.sh`: starts the compiled `rust/sargo` server (`rust/sargo/target/release/sargo`, built with `./run_build_rust.sh`). Extra arguments are passed to the binary.
+
 ## [0.132.0] - 2026-11-02
 
 ### Added
