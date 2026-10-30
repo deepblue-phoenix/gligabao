@@ -51,6 +51,21 @@ func Open(backend string, d *sql.DB) error {
 		if _, err := d.ExecContext(ctx, sqlite.Schema); err != nil {
 			return fmt.Errorf("agent research: init schema: %w", err)
 		}
+		for _, u := range sqlite.Upgrade {
+			var n int
+			if err := d.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('gb_agent_research_runs') WHERE name = ?`, u.Column).Scan(&n); err != nil {
+				return fmt.Errorf("agent research: upgrade schema: %w", err)
+			}
+			if n > 0 {
+				continue
+			}
+			if _, err := d.ExecContext(ctx, u.Statement); err != nil {
+				return fmt.Errorf("agent research: upgrade schema: %w", err)
+			}
+		}
+		if _, err := d.ExecContext(ctx, sqlite.SubagentIndexes); err != nil {
+			return fmt.Errorf("agent research: init schema: %w", err)
+		}
 		return nil
 	case config.DBBackendPostgres:
 		conn, err := d.Conn(ctx)
@@ -62,8 +77,10 @@ func Open(backend string, d *sql.DB) error {
 			return fmt.Errorf("agent research: init schema: lock: %w", err)
 		}
 		defer conn.ExecContext(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1)`, int64(postgresSchemaLock))
-		if _, err := conn.ExecContext(ctx, postgres.Schema); err != nil {
-			return fmt.Errorf("agent research: init schema: %w", err)
+		for _, stmts := range []string{postgres.Schema, postgres.Upgrade, postgres.SubagentIndexes} {
+			if _, err := conn.ExecContext(ctx, stmts); err != nil {
+				return fmt.Errorf("agent research: init schema: %w", err)
+			}
 		}
 		return nil
 	}

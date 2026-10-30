@@ -33,8 +33,12 @@ type Manager struct {
 	Client *ai.Client
 	// Ops is how the runs and states are stored and read.
 	Ops Ops
-	// MaxActivePerUser is how many agents of one user may work at once (DefaultMaxActivePerUser if 0).
+	// MaxActivePerUser is how many agents of one user may work at once (DefaultMaxActivePerUser if 0). The sub-agents that the agents
+	// spawn are not counted: they are bounded by MaxSubagentsPerAgent, MaxSubagentsPerTree and MaxSubagentDepth.
 	MaxActivePerUser int
+	// Messenger carries the messages between the sibling agents (NewChanMessenger, Go channels, if nil when the manager is made).
+	// Set it before starting any agent to swap the message system.
+	Messenger Messenger
 
 	ctx context.Context
 	mem *Memory // the knowledge base of the agents (nil: they have only the web tools); guarded by mu
@@ -48,7 +52,7 @@ type Manager struct {
 // with KindUnavailable). The agents stop when ctx is done. Runs that a restart interrupted (still running in the database) are marked
 // failed.
 func NewManager(ctx context.Context, d *sql.DB, ops Ops, client *ai.Client) *Manager {
-	m := &Manager{DB: d, Client: client, Ops: ops, ctx: ctx, active: map[string]int{}}
+	m := &Manager{DB: d, Client: client, Ops: ops, ctx: ctx, active: map[string]int{}, Messenger: NewChanMessenger()}
 	if k, err := ops.Store.FailActive(ctx, d, "interrupted: the server stopped while the agent worked"); err != nil {
 		log.WithError(err).Warn("agent research: could not mark interrupted runs as failed")
 	} else if k > 0 {
@@ -120,7 +124,7 @@ func (m *Manager) Start(ctx context.Context, userID string, opts Options) (*core
 	rec := *run // what the caller gets; the researcher owns run from here on
 
 	// Each agent gets a researcher (all of its state) and a goroutine of its own.
-	r := newResearcher(m, run, opts, mem)
+	r := newResearcher(m, run, opts, mem, nil)
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
@@ -149,6 +153,9 @@ func (m *Manager) Get(ctx context.Context, userID string, id int64) (*core.Run, 
 // List returns the runs of userID (of every user for ""), newest first, without their states. KindInvalid for bad options.
 func (m *Manager) List(ctx context.Context, userID string, opts ListOptions) ([]core.Run, error) {
 	f := core.RunFilter{UserID: userID}
+	if opts.ParentID != 0 {
+		f.ParentID = &opts.ParentID
+	}
 	switch {
 	case opts.Active && opts.Status != "":
 		return nil, invalidErr("give active or status, not both")

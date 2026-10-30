@@ -31,6 +31,8 @@ type researcher struct {
 	store  db.Store
 	logf   *log.Entry
 	client *ai.Client
+	mgr    *Manager // for the sub-agents and the messages
+	mem    *Memory  // the knowledge base of the agent (nil: none); its sub-agents get the same
 
 	// Its own.
 	run   *core.Run // the record of the run, as created
@@ -39,11 +41,26 @@ type researcher struct {
 	http  *http.Client // reads the pages of this agent only
 	cur   *core.State  // the state the run is in
 	total agent.Result // the totals of the agent so far
+
+	// Its place in the tree of agents of a research. A research started by a user is the root: no parent, depth 0.
+	parent *researcher
+	depth  int
+	tree   *tree
+	// runCtx is what the agent runs in: the context of the manager for a root, the kidCtx of the parent for a sub-agent, so that a
+	// sub-agent is cancelled when its parent ends. kidCtx is what its own sub-agents run in; kidCancel ends them.
+	runCtx    context.Context
+	kidCtx    context.Context
+	kidCancel context.CancelFunc
+	// kids are its sub-agents. self is itself as its siblings know it (nil for a root). out is how its run ended.
+	kids *family
+	self *member
+	out  outcome
 }
 
 // newResearcher makes the researcher of run (already recorded) with its own agent, observed by the researcher itself. mem is the
-// knowledge base the agent works with, in the dataset of opts (nil: none).
-func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory) *researcher {
+// knowledge base the agent works with, in the dataset of opts (nil: none). parent is the researcher that spawns it as a sub-agent
+// (nil for a research started by a user).
+func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent *researcher) *researcher {
 	r := &researcher{
 		ctx:    m.ctx,
 		dbCtx:  context.WithoutCancel(m.ctx),
@@ -54,13 +71,29 @@ func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory) *resear
 		run:    run,
 		opts:   opts,
 		http:   agent.NewHTTPClient(),
+		mgr:    m,
+		mem:    mem,
+		parent: parent,
+		tree:   &tree{},
+		runCtx: m.ctx,
+		kids:   &family{},
 	}
+	if parent != nil {
+		r.depth, r.tree, r.runCtx = parent.depth+1, parent.tree, parent.kidCtx
+		r.self = &member{id: run.ID, name: run.Name, done: make(chan struct{})}
+	}
+	r.kidCtx, r.kidCancel = context.WithCancel(r.runCtx)
 	var kb agent.Knowledge // a nil Memory must become a nil Knowledge
 	if mem != nil {
 		kb = &knowledge{mem: mem, userID: run.UserID, dataset: opts.Dataset, sessionID: fmt.Sprintf("research-%d", run.ID), ctx: r.ctx}
 	}
 	r.agent = agent.ResearchAgent(r.client, r.http, kb)
 	r.agent.Model, r.agent.MaxSteps = opts.Model, opts.MaxSteps
+	if parent != nil {
+		r.agent.System += agent.SubagentSystem(run.Name)
+	}
+	// An agent can spawn sub-agents unless it is at the deepest level, and a sub-agent has siblings to message.
+	agent.AddTeamTools(r.agent, team{r}, agent.TeamTools{Spawn: r.depth < MaxSubagentDepth, Messaging: parent != nil})
 	r.agent.Observer = agent.Observer{
 		BeforeModel: r.beforeModel,
 		AfterModel:  func(_ int, t agent.Result) { r.saveUsage(t) },
@@ -73,6 +106,7 @@ func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory) *resear
 // work is the goroutine of the agent: it runs the agent, records every state it enters and what it spends, and ends the run's record.
 // A failed write of the progress is logged and does not stop the agent: the research is worth more than its trace.
 func (r *researcher) work() {
+	defer r.end()
 	defer r.http.CloseIdleConnections()
 	r.logf.WithField("topic", truncate(r.run.Topic, 100)).Info("agent research: started")
 	defer func() {
@@ -82,13 +116,19 @@ func (r *researcher) work() {
 		}
 	}()
 
-	res, err := r.agent.Run(r.ctx, r.opts.Topic)
+	// Its sub-agents end with it, and the run is not finished before they are.
+	defer r.endKids()
+
+	res, err := r.agent.Run(r.runCtx, r.opts.Topic)
 	if res != nil {
 		r.total = *res
 	}
+	r.endKids()
 	switch {
 	case r.ctx.Err() != nil:
 		r.finish(core.StatusFailed, "", "interrupted: the server stopped while the agent worked")
+	case r.runCtx.Err() != nil:
+		r.finish(core.StatusFailed, "", "cancelled: the agent that spawned it ended")
 	case err != nil:
 		r.logf.WithError(err).Warn("agent research: the agent failed")
 		r.finish(core.StatusFailed, "", truncate(err.Error(), maxTextLen))
@@ -97,6 +137,22 @@ func (r *researcher) work() {
 	default:
 		r.finish(core.StatusCompleted, res.Answer, "")
 	}
+}
+
+// endKids cancels the sub-agents of the agent and waits until they have ended.
+func (r *researcher) endKids() {
+	r.kidCancel()
+	r.kids.waitAll()
+}
+
+// end is the last thing the agent does: its inbox goes away, and its parent, who may wait for it, learns how it ended.
+func (r *researcher) end() {
+	if r.self == nil {
+		return
+	}
+	r.mgr.Messenger.Close(r.run.ID)
+	r.self.out = r.out
+	close(r.self.done)
 }
 
 // tx runs fn in a transaction.
@@ -160,6 +216,7 @@ func (r *researcher) saveUsage(t agent.Result) {
 
 // finish ends the run's record: the final usage, the status, the report or the error, and the terminal state.
 func (r *researcher) finish(status core.Status, report, errText string) {
+	r.out = outcome{status: status, report: report, err: errText}
 	err := r.tx(func(q db.Execer) error {
 		if err := r.store.UpdateUsage(r.dbCtx, q, r.run.ID, usageOf(r.total)); err != nil {
 			return err
@@ -190,6 +247,30 @@ func toolState(name string, input json.RawMessage) (state, detail string) {
 		return core.StateReading, arg("url")
 	case "query":
 		return core.StateQuerying, arg("question")
+	case agent.ToolSpawnSubagent:
+		var m struct{ Name, Task string }
+		json.Unmarshal(input, &m)
+		return core.StateSpawning, m.Name + ": " + truncate(m.Task, 200)
+	case agent.ToolWaitSubagents:
+		var m struct{ Names []string }
+		json.Unmarshal(input, &m)
+		if len(m.Names) == 0 {
+			return core.StateWaiting, "all sub-agents"
+		}
+		return core.StateWaiting, strings.Join(m.Names, ", ")
+	case agent.ToolSendMessage:
+		var m struct{ To, Text string }
+		json.Unmarshal(input, &m)
+		return core.StateMessaging, m.To + ": " + truncate(m.Text, 200)
+	case agent.ToolReadMessages:
+		var m struct {
+			WaitSeconds int `json:"wait_seconds"`
+		}
+		json.Unmarshal(input, &m)
+		if m.WaitSeconds > 0 {
+			return core.StateWaiting, fmt.Sprintf("a message, up to %d s", min(m.WaitSeconds, 60))
+		}
+		return core.StateMessaging, "read the messages"
 	case "remember":
 		var m struct {
 			Text string `json:"text"`

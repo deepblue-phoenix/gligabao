@@ -80,9 +80,10 @@ func Start(m *agent_research.Manager) http.HandlerFunc {
 	}
 }
 
-// List serves GET /v1/gb/research?user_id=...[&active=true][&status=running|completed|failed][&limit=<n>]: {"runs": [...]}, the
+// List serves GET /v1/gb/research?user_id=...[&active=true][&status=running|completed|failed][&parent_id=<run id>][&limit=<n>]: {"runs": [...]}, the
 // agents of the user (core.Run, without their states), newest first, at most limit (default 50, at most 500). With active=true only
-// the agents that are working now; with status those with that status (not together with active).
+// the agents that are working now; with status those with that status (not together with active); with parent_id only the
+// sub-agents that the run with that id spawned. Sub-agents are agents like any other and are in the list (with parent_id and name set).
 func List(m *agent_research.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -98,6 +99,14 @@ func List(m *agent_research.Manager) http.HandlerFunc {
 				return
 			}
 			opts.Active = active
+		}
+		if s := q.Get("parent_id"); s != "" {
+			n, err := strconv.ParseInt(s, 10, 64)
+			if err != nil || n < 1 {
+				httputil.Error(w, http.StatusBadRequest, "parent_id must be a positive integer")
+				return
+			}
+			opts.ParentID = n
 		}
 		if s := q.Get("limit"); s != "" {
 			n, err := strconv.Atoi(s)

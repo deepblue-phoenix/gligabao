@@ -41,7 +41,7 @@ Every research agent is **isolated** from the others, so that one cannot slow do
 | Steps (`MaxSteps`) | 20 by default; the job lets the caller choose 1 to 40 (`max_steps`) |
 | Answer size (`MaxTokens`) | 8192 tokens per model call (so a report is at most that long) |
 | Model | the server's default model, or the `model` of the request. It runs the loop and writes the report |
-| Tools | `web_search` and `fetch_url`; with a knowledge base (the case when it runs as a job on the server), also `query` and `remember` |
+| Tools | `web_search` and `fetch_url`; with a knowledge base (the case when it runs as a job on the server), also `query` and `remember`; as a job, also `spawn_subagent` and `wait_subagents` (unless it is at the deepest level), and `send_message` and `read_messages` if it is itself a sub-agent (see [subagents.md](subagents.md)) |
 
 The system prompt tells it to: research the topic by searching the web several times with different queries; read the most relevant pages with `fetch_url`; check claims against more than one source; stop when it can answer well; and then write a report: **a short summary first, then the details, then the list of the source URLs used**, saying what it could not find out and never guessing. The user turn is the topic as given.
 
@@ -85,6 +85,10 @@ Input: `{"text": "...", "source": "...", "sync": false}`.
 The remember manager runs one run at a time, in order, so the snippets of all the users and agents wait in one queue: a `sync=true` call waits for the ones submitted before it, and text queued without `sync` may not be found by `query` yet when the agent asks. That is why blocking is the exception, not the rule: most snippets are only stored for later, and the agent should not wait for them.
 
 Without a knowledge base (an agent built with `agent.Research`, or a server with no LLM for the memory) the agent has neither tool, and the prompt does not mention them.
+
+## Sub-agents
+
+As a job, the agent can hand sub-tasks to other agents with `spawn_subagent` and `wait_subagents`, and a sub-agent can message its siblings with `send_message` and `read_messages`. The tools reach the job through `agent.Team` (four methods, `Spawn`, `Wait`, `Send`, `Receive`) and are added to the agent with `agent.AddTeamTools`. Everything about them (the tools, the limits, who can message whom, the message system, what a sub-agent costs) is in [subagents.md](subagents.md).
 
 ## What a run costs
 

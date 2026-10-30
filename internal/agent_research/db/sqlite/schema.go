@@ -7,7 +7,10 @@ package sqlite
 // statements are idempotent and in dependency order, so the whole schema can be executed in one call.
 const Schema = `
 -- core.Run: ONE ROW PER EXECUTION OF THE DEEP-RESEARCH AGENT on a topic (see internal/agent_research).
---   user_id, topic  who asked, and what the agent researches
+--   user_id, topic  who asked, and what the agent researches (for a sub-agent: the sub-task it was given)
+--   parent_id, name for a sub-agent, the run of the agent that spawned it and the name that agent gave it (unique among the
+--                   sub-agents of one parent); NULL and '' for a research started by a user. Deleting the parent deletes its
+--                   sub-agents.
 --   status          the lifecycle: 'running', then 'completed' (it ended with a report) or 'failed' (error says why). A row that
 --                   stays 'running' belongs to a process that died; the server marks those 'failed' when it starts.
 --   state           the state the run is in now: the state of its last row in gb_agent_research_states (core.State*)
@@ -20,6 +23,8 @@ const Schema = `
 CREATE TABLE IF NOT EXISTS gb_agent_research_runs (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
 	user_id       TEXT NOT NULL,
+	parent_id     INTEGER REFERENCES gb_agent_research_runs(id) ON DELETE CASCADE,
+	name          TEXT NOT NULL DEFAULT '',
 	topic         TEXT NOT NULL CHECK (topic <> ''),
 	status        TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'completed', 'failed')),
 	state         TEXT NOT NULL DEFAULT '',
@@ -61,4 +66,19 @@ CREATE TABLE IF NOT EXISTS gb_agent_research_states (
 	finished_at DATETIME,
 	UNIQUE (run_id, seq)
 );
+`
+
+// Upgrade is what a database made before sub-agents (0.129.0) lacks: the columns parent_id and name of gb_agent_research_runs.
+// SQLite has no ADD COLUMN IF NOT EXISTS, so each statement is run only if its column is missing (see the Open of package
+// agent_research).
+var Upgrade = []struct{ Column, Statement string }{
+	{"parent_id", `ALTER TABLE gb_agent_research_runs ADD COLUMN parent_id INTEGER REFERENCES gb_agent_research_runs(id) ON DELETE CASCADE`},
+	{"name", `ALTER TABLE gb_agent_research_runs ADD COLUMN name TEXT NOT NULL DEFAULT ''`},
+}
+
+// SubagentIndexes are the indexes on the columns of Upgrade, so that they are made after it: the sub-agents of a run, and the rule
+// that the name of a sub-agent is unique among those of its parent.
+const SubagentIndexes = `
+CREATE INDEX IF NOT EXISTS idx_gb_agent_research_runs_parent ON gb_agent_research_runs(parent_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_agent_research_runs_parent_name ON gb_agent_research_runs(parent_id, name) WHERE parent_id IS NOT NULL;
 `

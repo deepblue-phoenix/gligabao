@@ -40,6 +40,12 @@ const (
 	StateQuerying = "querying"
 	// StateRemembering: the remember tool is running; the detail says whether it waits (sync) or not, and the start of the text.
 	StateRemembering = "remembering"
+	// StateWaiting: the agent waits for its sub-agents to end (wait_subagents) or for a message of a sibling (read_messages with a wait).
+	StateWaiting = "waiting"
+	// StateSpawning: the spawn_subagent tool is running; the detail is the name of the sub-agent and its task.
+	StateSpawning = "spawning"
+	// StateMessaging: the send_message tool is running; the detail is the sibling it writes to.
+	StateMessaging = "messaging"
 	// StateUsingTool: any other tool is running; the detail is its name.
 	StateUsingTool = "using_tool"
 	// StateWritingReport: the last model call, the one that may not call tools, is running: its text is the report.
@@ -54,7 +60,11 @@ const (
 type Run struct {
 	ID     int64  `json:"id"`
 	UserID string `json:"user_id"`
-	// Topic is what the agent researches.
+	// ParentID is the run of the agent that spawned this one as a sub-agent (nil for a research started by a user). Name is what
+	// the parent called it; it is unique among the sub-agents of one parent, and "" for a research started by a user.
+	ParentID *int64 `json:"parent_id"`
+	Name     string `json:"name"`
+	// Topic is what the agent researches (for a sub-agent: the sub-task it was given).
 	Topic  string `json:"topic"`
 	Status Status `json:"status"`
 	// State is the state the run is in now: the State of its last record (one of the State constants).
@@ -104,4 +114,6 @@ type RunFilter struct {
 	UserID string
 	// Statuses are the statuses wanted (any of them); empty means all.
 	Statuses []Status
+	// ParentID, if not nil, keeps only the sub-agents of that run.
+	ParentID *int64
 }

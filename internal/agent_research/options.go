@@ -63,6 +63,8 @@ type ListOptions struct {
 	Active bool
 	// Status keeps only the runs with this status ("running", "completed" or "failed"); not together with Active.
 	Status string
+	// ParentID, if not 0, keeps only the sub-agents of that run.
+	ParentID int64
 	// Limit is the most runs returned, newest first; 0 means DefaultListLimit, and it is cut to MaxListLimit.
 	Limit int
 }

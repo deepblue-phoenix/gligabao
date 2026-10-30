@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.130.0] - 2026-11-02
+
+### Added
+- Research agents can spawn sub-agents (see `docs/subagents.md`). A new tool `spawn_subagent` (a `name` the agent chooses, a `task`, optional `max_steps`) starts another research agent in the background on a sub-task and returns at once; `wait_subagents` blocks until the sub-agents end and returns their reports. Sub-agents are tracked like every other agent: each is a run in `gb_agent_research_runs`, with its own states, usage and report, shown by the list and get endpoints. Limits: 5 sub-agents per agent, 10 per research, 2 levels deep; they do not count in the 3 researches a user may have working at once. When an agent ends, its sub-agents still working are cancelled.
+- Runs have a parent: new fields `parent_id` (the run that spawned it, `null` for a research a user started) and `name` (the name the parent gave it, unique among the sub-agents of a parent) in the run JSON and new columns of `gb_agent_research_runs` (added to existing databases when the server starts). `GET /v1/gb/research` takes `parent_id` to list the sub-agents of a run.
+- Sibling sub-agents (those with the same parent, not their children) can exchange messages with two tools: `send_message` (to a sibling, by name) and `read_messages` (with an optional wait). Messages travel in Go channels, behind the `Messenger` interface and the `SendMessage` function, so that another message system can be swapped in (`Manager.Messenger`).
+- New states in the history of a run: `spawning`, `waiting` and `messaging`.
+
 ## [0.129.0] - 2026-11-02
 
 ### Added

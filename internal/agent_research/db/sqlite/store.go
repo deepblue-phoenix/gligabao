@@ -75,11 +75,11 @@ func CreateRun(ctx context.Context, q db.Execer, r *core.Run) error {
 	r.CreatedAt = r.CreatedAt.UTC().Truncate(time.Millisecond)
 	var id int64
 	if err := q.QueryRowContext(ctx, `
-		INSERT INTO gb_agent_research_runs (user_id, topic, status, state, model, max_steps, steps, tool_calls, input_tokens,
+		INSERT INTO gb_agent_research_runs (user_id, parent_id, name, topic, status, state, model, max_steps, steps, tool_calls, input_tokens,
 			output_tokens, cost_usd, report, error, created_at, finished_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id`,
-		r.UserID, r.Topic, string(r.Status), r.State, r.Model, r.MaxSteps, r.Steps, r.ToolCalls, r.InputTokens, r.OutputTokens,
+		r.UserID, r.ParentID, r.Name, r.Topic, string(r.Status), r.State, r.Model, r.MaxSteps, r.Steps, r.ToolCalls, r.InputTokens, r.OutputTokens,
 		r.CostUSD, r.Report, r.Error, text(r.CreatedAt), textPtr(r.FinishedAt)).Scan(&id); err != nil {
 		return fmt.Errorf("create agent research run: %w", err)
 	}
@@ -210,18 +210,22 @@ func FailActive(ctx context.Context, q db.Execer, reason string) (int64, error) 
 	return n, nil
 }
 
-const runColumns = `id, user_id, topic, status, state, model, max_steps, steps, tool_calls, input_tokens, output_tokens, cost_usd,
+const runColumns = `id, user_id, parent_id, name, topic, status, state, model, max_steps, steps, tool_calls, input_tokens, output_tokens, cost_usd,
 	report, error, created_at, finished_at`
 
 func scanRun(s scanner) (*core.Run, error) {
 	var r core.Run
 	var status, created string
 	var finished sql.NullString
-	if err := s.Scan(&r.ID, &r.UserID, &r.Topic, &status, &r.State, &r.Model, &r.MaxSteps, &r.Steps, &r.ToolCalls, &r.InputTokens,
+	var parent sql.NullInt64
+	if err := s.Scan(&r.ID, &r.UserID, &parent, &r.Name, &r.Topic, &status, &r.State, &r.Model, &r.MaxSteps, &r.Steps, &r.ToolCalls, &r.InputTokens,
 		&r.OutputTokens, &r.CostUSD, &r.Report, &r.Error, &created, &finished); err != nil {
 		return nil, err
 	}
 	r.Status = core.Status(status)
+	if parent.Valid {
+		r.ParentID = &parent.Int64
+	}
 	var err error
 	if r.CreatedAt, err = parseTime(created); err != nil {
 		return nil, err
@@ -252,6 +256,10 @@ func ListRuns(ctx context.Context, q db.Execer, f core.RunFilter, limit int) ([]
 	if f.UserID != "" {
 		where = append(where, `user_id = ?`)
 		args = append(args, f.UserID)
+	}
+	if f.ParentID != nil {
+		where = append(where, `parent_id = ?`)
+		args = append(args, *f.ParentID)
 	}
 	if len(f.Statuses) > 0 {
 		marks := make([]string, len(f.Statuses))
