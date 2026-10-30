@@ -39,6 +39,43 @@ type Edge struct {
 	ModelID     string     `json:"model_id,omitempty"`   // ID of the model (gb_models) that inferred the fact
 }
 
+// Edge events: what a Remember call did to a fact (see EdgeEvent).
+const (
+	// EdgeCreated: the call stored the fact as a new edge.
+	EdgeCreated = "created"
+	// EdgeConfirmed: the call stated a fact that was already stored (an exact or semantic duplicate); nothing changed.
+	EdgeConfirmed = "confirmed"
+	// EdgeEnded: like EdgeConfirmed, but the text said the fact ended and the stored edge had no end yet: its invalid_at was set.
+	EdgeEnded = "ended"
+	// EdgeInvalidated: a stored fact contradicted by the call's new fact was closed (invalid_at and expired_at set).
+	EdgeInvalidated = "invalidated"
+	// EdgeSuperseded: the call's new fact was itself closed at once, because it is about an earlier time than a stored fact
+	// it contradicts (the information is older than what we already know).
+	EdgeSuperseded = "superseded"
+)
+
+// EdgeEvent says what one Remember call (the artifact ArtifactID) did to the temporal state of one fact: an append-only
+// log (gb_edge_events), written in the transaction that stores the artifact. valid_at never changes after an edge is
+// inserted, so the edge's valid_at plus InvalidAtBefore and InvalidAtAfter are its whole before and after, in event
+// time. In system time, the event is at CreatedAt, which is also the edge's expired_at when the event closed it
+// (EdgeInvalidated, EdgeSuperseded).
+type EdgeEvent struct {
+	ID         int64  `json:"id,omitempty"`
+	DatasetID  int64  `json:"dataset_id,omitempty"`
+	EdgeID     int64  `json:"edge_id"`
+	ArtifactID int64  `json:"artifact_id"` // 0 if the artifact was deleted
+	Event      string `json:"event"`       // one of the Edge* events
+	// InvalidAtBefore and InvalidAtAfter are the edge's invalid_at before and after the event; nil = open-ended (still true).
+	InvalidAtBefore *time.Time `json:"invalid_at_before,omitempty"`
+	InvalidAtAfter  *time.Time `json:"invalid_at_after,omitempty"`
+	// CausedByEdgeID is the other fact of the contradiction: the new one for EdgeInvalidated, the stored one for
+	// EdgeSuperseded. 0 for the other events (and if that edge was deleted).
+	CausedByEdgeID int64     `json:"caused_by_edge_id,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+	// Edge is the fact in its current state with the names of its endpoints; only set by the functions that read events.
+	Edge *Edge `json:"edge,omitempty"`
+}
+
 // EvidenceEntity is a graph entity cited by an answer.
 type EvidenceEntity struct {
 	ID          int64  `json:"id"`
@@ -322,6 +359,8 @@ type Tx interface {
 	GetEdge(ctx context.Context, dsID, id int64) (*Edge, error)
 	// InvalidateEdge sets the end of a fact (event time) and when we learned it (system time).
 	InvalidateEdge(ctx context.Context, id int64, invalidAt, expiredAt time.Time) error
+	// InsertEdgeEvent appends an event to the log of what Remember did to the facts (gb_edge_events).
+	InsertEdgeEvent(ctx context.Context, e EdgeEvent) error
 
 	// FindEntity returns the oldest entity of the dataset with the given nameKey and type.
 	FindEntity(ctx context.Context, dsID int64, nameKey, typ string) (int64, error)

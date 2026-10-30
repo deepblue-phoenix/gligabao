@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.141.0] - 2026-10-30
+
+### Added
+- Admin UI, remember runs: a **Temporal changes** button on every run that stored an artifact opens an SVG plot of what the call did to the facts on a time axis. Each fact is a row above the axis, with a solid line down to the axis where it was established (`valid_at`), a dotted line where it was invalidated (`invalid_at`), an arrow when it still stands, and a faint dashed bar for what was believed before the call; a table lists the events. The data is `GET /v1/gb/admin/api/remember-run-temporal?run_id=<id>[&db=<name>]`.
+- New table `gb_edge_events`, an append-only log written in the transaction of every `remember`: one row for each fact the call created, confirmed (stated again), ended (the text gave a stored fact its end), invalidated (closed by a contradicting new fact) or superseded (the new fact was itself closed because it is about an earlier time), with the fact's `invalid_at` before and after and the contradicting fact. It is created automatically in existing databases (no migration); calls made before have no events. See [docs/temporal.md](docs/temporal.md#what-a-call-did-to-the-facts).
+
 ## [0.140.1] - 2026-10-30
 
 ### Added

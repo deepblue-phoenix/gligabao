@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -127,6 +128,38 @@ func testRememberBiTemporal(t *testing.T, d *sql.DB) {
 	if n := len(edges(t, d)); n != 2 {
 		t.Errorf("edges = %d, want 2", n)
 	}
+
+	// The edge event log says what each call did to the facts: created; created and invalidated; the stored fact ended.
+	want := map[int64][]string{
+		r1.ArtifactID: {"1 created - -"},
+		r2.ArtifactID: {"2 created - -", "1 invalidated - 2024-06-01T00:00:00Z"},
+		r3.ArtifactID: {"2 ended - 2025-01-01T00:00:00Z"},
+	}
+	for art, w := range want {
+		if got := eventLines(t, d, art); strings.Join(got, "|") != strings.Join(w, "|") {
+			t.Errorf("events of artifact %d = %v, want %v", art, got, w)
+		}
+	}
+}
+
+// eventLines lists the edge events of an artifact as "<edge> <event> <invalid_at before> <invalid_at after>" ("-" for none).
+func eventLines(t *testing.T, d *sql.DB, artifactID int64) []string {
+	t.Helper()
+	evs, err := graph.ListEdgeEvents(context.Background(), d, artifactID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dash := func(p *time.Time) string {
+		if p == nil {
+			return "-"
+		}
+		return ts(p)
+	}
+	var out []string
+	for _, e := range evs {
+		out = append(out, strconv.FormatInt(e.EdgeID, 10)+" "+e.Event+" "+dash(e.InvalidAtBefore)+" "+dash(e.InvalidAtAfter))
+	}
+	return out
 }
 
 func TestRememberSupersedesOlderFact(t *testing.T) { dbtest.Run(t, testRememberSupersedesOlderFact) }
@@ -261,10 +294,16 @@ func testRememberOlderNewsIsSuperseded(t *testing.T, d *sql.DB) {
 	if e := edge(t, d, 1); e.InvalidAt != nil || e.ExpiredAt != nil {
 		t.Errorf("stored edge must be untouched: invalid_at=%v expired_at=%v", ts(e.InvalidAt), ts(e.ExpiredAt))
 	}
+	if got := eventLines(t, d, r2.ArtifactID); strings.Join(got, "|") != "2 created - -|2 superseded - 2024-01-01T00:00:00Z" {
+		t.Errorf("events of the older news = %v", got)
+	}
 
 	r3 := post(`{"user_id":"u1","text":"c"}`)
 	if len(r3.Edges) != 1 || r3.Edges[0].ID != 1 {
 		t.Errorf("repeat: %+v", r3.Edges)
+	}
+	if got := eventLines(t, d, r3.ArtifactID); strings.Join(got, "|") != "1 confirmed - -" {
+		t.Errorf("events of the repeat = %v", got)
 	}
 	if len(llm.outs) != 0 {
 		t.Errorf("unused LLM outputs: %d", len(llm.outs))

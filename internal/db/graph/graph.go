@@ -22,6 +22,15 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 )
 
+// Edge events (see model.EdgeEvent).
+const (
+	EdgeCreated     = model.EdgeCreated
+	EdgeConfirmed   = model.EdgeConfirmed
+	EdgeEnded       = model.EdgeEnded
+	EdgeInvalidated = model.EdgeInvalidated
+	EdgeSuperseded  = model.EdgeSuperseded
+)
+
 // Artifact kinds (see model.Artifact).
 const (
 	ArtifactEpisode   = model.ArtifactEpisode
@@ -41,6 +50,7 @@ type (
 	NewEdge                      = model.NewEdge
 	EntityArtifact               = model.EntityArtifact
 	EdgeArtifact                 = model.EdgeArtifact
+	EdgeEvent                    = model.EdgeEvent
 	EntitySession                = model.EntitySession
 	EdgeSession                  = model.EdgeSession
 	Artifact                     = model.Artifact
@@ -386,6 +396,19 @@ func ListEdges(ctx context.Context, d *sql.DB, userID, name string) ([]Edge, err
 		return sqlite.ListEdges(ctx, d, userID, name)
 	case config.DBBackendPostgres:
 		return postgres.ListEdges(ctx, d, userID, name)
+	}
+	return nil, unsupported()
+}
+
+// ListEdgeEvents returns the edge events (what Remember did to the facts, see model.EdgeEvent) of the artifact and of all
+// its descendants (the chunks of a long text, the web searches and observations made for it), oldest first, each with its
+// edge (current state, with the names of its endpoints). An artifact without events has none.
+func ListEdgeEvents(ctx context.Context, d *sql.DB, artifactID int64) ([]EdgeEvent, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListEdgeEvents(ctx, d, artifactID)
+	case config.DBBackendPostgres:
+		return postgres.ListEdgeEvents(ctx, d, artifactID)
 	}
 	return nil, unsupported()
 }

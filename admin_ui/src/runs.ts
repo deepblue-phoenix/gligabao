@@ -5,6 +5,8 @@
 // that loads (only then) and opens a modal with what the stage produced (its outputs, kept for debugging: see
 // docs/remember.md#stage-outputs); query runs keep no outputs.
 
+import { openTemporal } from "./temporal.js";
+
 interface Stage {
   status: string; error: string | null; started_at: string | null; finished_at: string | null; inference_ids: number[];
 }
@@ -265,6 +267,16 @@ function detailCell(k: Kind, run: Run, order: string[], name: string): HTMLEleme
   if (run.question !== undefined) {
     prop("Question", run.question);
     prop("Session", run.session_id || "—");
+  }
+  if (k.outputs && run.artifact_id != null) {
+    // What the run did to the facts over time (created, confirmed, ended, invalidated, superseded), as a plot; fetched when opened.
+    const t = box.appendChild(node("button", "small", "Temporal changes"));
+    t.type = "button";
+    t.title = "Plot what this run did to the facts on a time axis: established, invalidated, still true";
+    t.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      openTemporal(name, run.id);
+    });
   }
   box.appendChild(stagesTable(k, name, run, order));
   const params = box.appendChild(node("details"));

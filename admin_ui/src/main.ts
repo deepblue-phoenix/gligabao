@@ -9,6 +9,7 @@ import { initImageOverlay } from "./image.js";
 import { initImageStats } from "./imagestats.js";
 import { initInferences } from "./inferences.js";
 import { initQueryRuns, initRememberRuns } from "./runs.js";
+import { initTemporal } from "./temporal.js";
 import { initTimeseries } from "./timeseries.js";
 import { initTraining } from "./training.js";
 import { initTraceModal } from "./trace.js";
@@ -364,6 +365,7 @@ void (async () => {
   initTimeseries();
   initInferences();
   initRememberRuns();
+  initTemporal();
   initQueryRuns();
   initTraining();
   initImageOverlay();

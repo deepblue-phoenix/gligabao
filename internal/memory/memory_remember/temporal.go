@@ -10,7 +10,8 @@ package memory_remember
 //  1. loadCandidates + resolveEdges: stored live edges touching the same entities (by name, and by similarity when
 //     vectors are on) are compared with the new ones; exact repeats are found in Go, the LLM flags other duplicates and contradictions.
 //  2. storeEdges: duplicates are merged; for each contradiction the older fact is invalidated
-//     (InvalidAt = start of the newer one, ExpiredAt = now) instead of being deleted.
+//     (InvalidAt = start of the newer one, ExpiredAt = now) instead of being deleted. Everything it does to a fact is
+//     also appended to the edge event log (gb_edge_events, see graph.EdgeEvent), which the admin UI plots.
 
 import (
 	"context"
@@ -264,7 +265,8 @@ func mergeCandidates(byName, bySimilar []Edge, limit int, via map[int64]string) 
 // storeEdges writes edges inside tx according to plan and returns the resulting edges (new ones, or the
 // existing ones they duplicate) plus the IDs of edges that were invalidated. entityID maps an entity name to
 // its ID, creating the entity if needed. Every edge this artifact states, new or a duplicate of a stored one, is
-// linked to the artifact and, if sessionID is not empty, to its session.
+// linked to the artifact and, if sessionID is not empty, to its session. Each fact it creates, confirms, ends, invalidates
+// or supersedes gets an edge event (see graph.EdgeEvent) in the same transaction.
 func storeEdges(ctx context.Context, tx graph.Tx, dsID, artID int64, sessionID string, ref, now time.Time, edges []Edge, plan *EdgePlan,
 	entityID func(name string) (int64, error)) ([]Edge, []int64, error) {
 	if plan == nil {
@@ -287,7 +289,19 @@ func storeEdges(ctx context.Context, tx graph.Tx, dsID, artID int64, sessionID s
 	for i, e := range edges {
 		if existing, ok := plan.Duplicates[i]; ok {
 			// Same fact seen again: keep the stored edge, just record its end if the text says it ended.
+			stored, err := tx.GetEdge(ctx, dsID, existing)
+			if err != nil {
+				return nil, nil, err
+			}
 			if err := tx.MergeDuplicateEdge(ctx, dsID, existing, e.InvalidAt); err != nil {
+				return nil, nil, err
+			}
+			ev := graph.EdgeEvent{DatasetID: dsID, EdgeID: existing, ArtifactID: artID, Event: graph.EdgeConfirmed,
+				InvalidAtBefore: stored.InvalidAt, InvalidAtAfter: stored.InvalidAt, CreatedAt: now}
+			if stored.InvalidAt == nil && e.InvalidAt != nil {
+				ev.Event, ev.InvalidAtAfter = graph.EdgeEnded, e.InvalidAt
+			}
+			if err := tx.InsertEdgeEvent(ctx, ev); err != nil {
 				return nil, nil, err
 			}
 			// The stored edge keeps its own artifact_id (its creator); this artifact is recorded as another source.
@@ -326,6 +340,10 @@ func storeEdges(ctx context.Context, tx graph.Tx, dsID, artID int64, sessionID s
 		if err := link(id); err != nil {
 			return nil, nil, err
 		}
+		if err := tx.InsertEdgeEvent(ctx, graph.EdgeEvent{DatasetID: dsID, EdgeID: id, ArtifactID: artID, Event: graph.EdgeCreated,
+			InvalidAtAfter: e.InvalidAt, CreatedAt: now}); err != nil {
+			return nil, nil, err
+		}
 		ids[i] = id
 		batch[bk] = id
 		inOrder[id] = true
@@ -337,7 +355,7 @@ func storeEdges(ctx context.Context, tx graph.Tx, dsID, artID int64, sessionID s
 		if c.New < 0 || c.New >= len(edges) {
 			continue
 		}
-		inv, err := contradict(ctx, tx, dsID, ids[c.New], c.Existing, ref, now)
+		inv, err := contradict(ctx, tx, dsID, artID, ids[c.New], c.Existing, ref, now)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -357,8 +375,9 @@ func storeEdges(ctx context.Context, tx graph.Tx, dsID, artID int64, sessionID s
 
 // contradict applies Graphiti's invalidation rule to a new edge and an existing one that conflicts with it.
 // The fact that started earlier is the one that ended: it gets invalid_at = start of the later fact and
-// expired_at = now. Facts whose periods don't overlap are left alone. It returns the IDs invalidated.
-func contradict(ctx context.Context, tx graph.Tx, dsID, newID, oldID int64, ref, now time.Time) ([]int64, error) {
+// expired_at = now. Facts whose periods don't overlap are left alone. It returns the IDs invalidated, and logs an edge
+// event (invalidated, or superseded when the new fact is the one closed) for the artifact artID.
+func contradict(ctx context.Context, tx graph.Tx, dsID, artID, newID, oldID int64, ref, now time.Time) ([]int64, error) {
 	if newID == oldID {
 		return nil, nil
 	}
@@ -389,13 +408,19 @@ func contradict(ctx context.Context, tx graph.Tx, dsID, newID, oldID int64, ref,
 		return nil, nil
 	}
 
-	loser, endsAt := oldID, newStart
+	loser, endsAt := old, newStart
+	ev := graph.EdgeEvent{DatasetID: dsID, ArtifactID: artID, Event: graph.EdgeInvalidated, CausedByEdgeID: newID, CreatedAt: now}
 	if old.ValidAt != nil && old.ValidAt.After(newStart) {
 		// The new information is about an earlier time than what we already know: the new fact is the one superseded.
-		loser, endsAt = newID, *old.ValidAt
+		loser, endsAt = nw, *old.ValidAt
+		ev.Event, ev.CausedByEdgeID = graph.EdgeSuperseded, oldID
 	}
-	if err := tx.InvalidateEdge(ctx, loser, endsAt, now); err != nil {
+	if err := tx.InvalidateEdge(ctx, loser.ID, endsAt, now); err != nil {
 		return nil, err
 	}
-	return []int64{loser}, nil
+	ev.EdgeID, ev.InvalidAtBefore, ev.InvalidAtAfter = loser.ID, loser.InvalidAt, &endsAt
+	if err := tx.InsertEdgeEvent(ctx, ev); err != nil {
+		return nil, err
+	}
+	return []int64{loser.ID}, nil
 }

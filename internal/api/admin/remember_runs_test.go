@@ -7,12 +7,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
+	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
 
 // TestRememberRuns checks the remember runs endpoint of the admin UI: the counts by status, and the filtered, paged list.
@@ -136,6 +140,94 @@ func testRememberRunOutputs(t *testing.T, d *sql.DB) {
 		t.Fatalf("run without outputs: %d %+v", c, got)
 	}
 	for url, want := range map[string]int{"/x": 400, "/x?run_id=abc": 400, "/x?run_id=0": 400, "/x?run_id=1&stage=nope": 400, "/x?run_id=99999999": 404, "/x?run_id=1&db=nope": 404} {
+		if c := get(url, nil); c != want {
+			t.Errorf("%s: %d, want %d", url, c, want)
+		}
+	}
+}
+
+// scriptedLLM answers the extraction with the next canned text and the comparison of facts with the contradiction of fact 1.
+type scriptedLLM struct{ extractions []string }
+
+func (s *scriptedLLM) Complete(_ context.Context, req ai.Request) (*ai.Response, error) {
+	out := `{"duplicates":[],"contradictions":[{"new":0,"existing":1}]}`
+	if !strings.HasPrefix(req.System, "You compare NEW facts") {
+		out, s.extractions = s.extractions[0], s.extractions[1:]
+	}
+	return &ai.Response{Text: out, StopReason: "end_turn", Model: "fake-model"}, nil
+}
+
+// TestRememberRunTemporal checks the temporal endpoint: what a run did to the facts (created, invalidated), with the artifact
+// reference time; a run that stored nothing; unknown runs.
+func TestRememberRunTemporal(t *testing.T) { dbtest.Run(t, testRememberRunTemporal) }
+
+func testRememberRunTemporal(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	fact := func(org string) string {
+		return `{"entities":[{"name":"Alice","type":"person"},{"name":"` + org + `","type":"organization"}],
+		"edges":[{"source":"Alice","target":"` + org + `","relation":"works_at","description":"Alice works at ` + org + `."}]}`
+	}
+	llm := &scriptedLLM{extractions: []string{fact("Acme"), fact("Globex")}}
+	ref1, ref2 := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC)
+	r1, err := memory_remember.Remember(ctx, d, llm, "u1", "main", "knowledge", "Alice works at Acme.", ref1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2, err := memory_remember.Remember(ctx, d, llm, "u1", "main", "knowledge", "Alice started working at Globex.", ref2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type response struct {
+		RunID      int64 `json:"run_id"`
+		ArtifactID int64 `json:"artifact_id"`
+		Artifacts  []struct {
+			ID      int64     `json:"id"`
+			Kind    string    `json:"kind"`
+			ValidAt time.Time `json:"valid_at"`
+		} `json:"artifacts"`
+		Events []graph.EdgeEvent `json:"events"`
+	}
+	h := admin.RememberRunTemporalOf([]admin.Named{{Name: "standard", DB: d}})
+	get := func(url string, out *response) int {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		h(rec, httptest.NewRequest("GET", url, nil))
+		if out != nil && rec.Code == 200 {
+			if err := json.Unmarshal(rec.Body.Bytes(), out); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return rec.Code
+	}
+
+	var first, second response
+	if c := get("/x?run_id="+strconv.FormatInt(r1.RememberRunID, 10), &first); c != 200 || first.ArtifactID != r1.ArtifactID ||
+		len(first.Events) != 1 || first.Events[0].Event != graph.EdgeCreated || first.Events[0].Edge == nil || first.Events[0].Edge.Target != "Acme" ||
+		len(first.Artifacts) != 1 || !first.Artifacts[0].ValidAt.Equal(ref1) {
+		t.Errorf("first run: %d %+v", c, first)
+	}
+	// The second run created the Globex fact and closed the Acme one at its start.
+	if c := get("/x?run_id="+strconv.FormatInt(r2.RememberRunID, 10), &second); c != 200 || len(second.Events) != 2 ||
+		second.Events[0].Event != graph.EdgeCreated || second.Events[0].Edge.Target != "Globex" {
+		t.Fatalf("second run: %d %+v", c, second)
+	}
+	inv := second.Events[1]
+	if inv.Event != graph.EdgeInvalidated || inv.Edge.Target != "Acme" || inv.InvalidAtBefore != nil || inv.InvalidAtAfter == nil || !inv.InvalidAtAfter.Equal(ref2) ||
+		inv.CausedByEdgeID != second.Events[0].EdgeID || inv.Edge.ExpiredAt == nil || !inv.CreatedAt.Equal(*inv.Edge.ExpiredAt) {
+		t.Errorf("invalidation: %+v", inv)
+	}
+
+	// A run that stored nothing has no events.
+	id, err := relational.CreateRememberRun(ctx, d, relational.NewRememberRun("u1", "main", "knowledge", nil, time.Now().UTC()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var none response
+	if c := get("/x?run_id="+strconv.FormatInt(id, 10), &none); c != 200 || none.ArtifactID != 0 || len(none.Events) != 0 || none.Events == nil {
+		t.Errorf("no artifact: %d %+v", c, none)
+	}
+	for url, want := range map[string]int{"/x": 400, "/x?run_id=a": 400, "/x?run_id=999999": 404, "/x?run_id=1&db=nope": 404} {
 		if c := get(url, nil); c != want {
 			t.Errorf("%s: %d, want %d", url, c, want)
 		}

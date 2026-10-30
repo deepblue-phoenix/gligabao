@@ -118,6 +118,28 @@ CREATE TABLE IF NOT EXISTS gb_edge_artifacts (
 	PRIMARY KEY (edge_id, artifact_id)
 );
 
+-- What each Remember call did to the temporal state of the facts: an APPEND-ONLY LOG, one row per fact a call touched, written in
+-- the transaction that stores the artifact. gb_edges only holds the final state of a fact; this keeps the steps, so the
+-- admin UI can show how one call changed the knowledge base over time (and the history of one fact can be read).
+--   event              created (new fact), confirmed (a stored fact stated again, nothing changed), ended (same, and the text gave
+--                      the stored fact its end), invalidated (a stored fact closed by a new contradicting one), superseded (the new
+--                      fact was closed at once: it is about an earlier time than a stored one)
+--   invalid_at_before / invalid_at_after   the fact's invalid_at around the event (NULL = open-ended). valid_at never changes
+--                      after insert, so gb_edges.valid_at with these two is the whole before/after of the fact in event time
+--   caused_by_edge_id  the other fact of the contradiction (invalidated: the new one; superseded: the stored one)
+--   created_at         system time of the call: also the edge's expired_at for invalidated and superseded
+CREATE TABLE IF NOT EXISTS gb_edge_events (
+	id                INTEGER PRIMARY KEY AUTOINCREMENT,
+	dataset_id        INTEGER NOT NULL REFERENCES gb_datasets(id),
+	edge_id           INTEGER NOT NULL REFERENCES gb_edges(id) ON DELETE CASCADE,
+	artifact_id       INTEGER REFERENCES gb_artifacts(id) ON DELETE SET NULL,
+	event             TEXT NOT NULL,
+	invalid_at_before DATETIME,
+	invalid_at_after  DATETIME,
+	caused_by_edge_id INTEGER REFERENCES gb_edges(id) ON DELETE SET NULL,
+	created_at        DATETIME NOT NULL
+);
+
 -- Which artifacts an entity was inferred from (many-to-many).
 --
 -- Why a link table rather than an artifact_id column on gb_entities: an entity is not owned by one artifact.
@@ -343,6 +365,8 @@ CREATE INDEX IF NOT EXISTS idx_gb_edges_source ON gb_edges(source_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_target ON gb_edges(target_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_artifact ON gb_edges(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edge_artifacts_artifact ON gb_edge_artifacts(artifact_id);
+CREATE INDEX IF NOT EXISTS idx_gb_edge_events_artifact ON gb_edge_events(artifact_id);
+CREATE INDEX IF NOT EXISTS idx_gb_edge_events_edge ON gb_edge_events(edge_id);
 CREATE INDEX IF NOT EXISTS idx_gb_entity_artifacts_artifact ON gb_entity_artifacts(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_gb_artifacts_session ON gb_artifacts(dataset_id, session_id);
 CREATE INDEX IF NOT EXISTS idx_gb_image_artifacts_session ON gb_image_artifacts(dataset_id, session_id);

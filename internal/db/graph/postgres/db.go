@@ -335,6 +335,45 @@ func scanArtifacts(rows *sql.Rows) ([]model.Artifact, error) {
 	return out, rows.Err()
 }
 
+// ListEdgeEvents returns the edge events of the artifact and of its descendants (the artifacts that hang off it through
+// parent_id, at any depth), oldest first, each with its edge.
+func ListEdgeEvents(ctx context.Context, d *sql.DB, artifactID int64) ([]model.EdgeEvent, error) {
+	rows, err := d.QueryContext(ctx, `
+		WITH RECURSIVE tree(id) AS (
+			SELECT id FROM gb_artifacts WHERE id = $1
+			UNION
+			SELECT a.id FROM gb_artifacts a JOIN tree ON a.parent_id = tree.id
+		)
+		SELECT ev.id, ev.dataset_id, ev.edge_id, COALESCE(ev.artifact_id, 0), ev.event, ev.invalid_at_before, ev.invalid_at_after,
+			COALESCE(ev.caused_by_edge_id, 0), ev.created_at, `+edgeColumns+`
+		FROM gb_edge_events ev
+		JOIN gb_edges e ON e.id = ev.edge_id
+		JOIN gb_entities s ON s.id = e.source_id
+		JOIN gb_entities t ON t.id = e.target_id
+		WHERE ev.artifact_id IN (SELECT id FROM tree)
+		ORDER BY ev.id`, artifactID)
+	if err != nil {
+		return nil, fmt.Errorf("list edge events: %w", err)
+	}
+	defer rows.Close()
+	out := []model.EdgeEvent{}
+	for rows.Next() {
+		var ev model.EdgeEvent
+		var e model.Edge
+		var before, after, valid, invalid, ecreated, expired sql.NullTime
+		var created time.Time
+		if err := rows.Scan(&ev.ID, &ev.DatasetID, &ev.EdgeID, &ev.ArtifactID, &ev.Event, &before, &after, &ev.CausedByEdgeID, &created,
+			&e.ID, &e.Source, &e.Target, &e.Relation, &e.Description, &valid, &invalid, &ecreated, &expired, &e.ModelID); err != nil {
+			return nil, err
+		}
+		ev.InvalidAtBefore, ev.InvalidAtAfter, ev.CreatedAt = utc(before), utc(after), created.UTC()
+		e.ValidAt, e.InvalidAt, e.CreatedAt, e.ExpiredAt = utc(valid), utc(invalid), utc(ecreated), utc(expired)
+		ev.Edge = &e
+		out = append(out, ev)
+	}
+	return out, rows.Err()
+}
+
 // ListEdgeArtifacts returns the edge-to-artifact links of the dataset, by edge ID then artifact ID.
 func ListEdgeArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.EdgeArtifact, error) {
 	rows, err := d.QueryContext(ctx, `
@@ -706,6 +745,23 @@ func (t *Tx) MergeDuplicateEdge(ctx context.Context, dsID, id int64, invalidAt *
 		WHERE id = $2 AND dataset_id = $3`,
 		invalid, id, dsID); err != nil {
 		return fmt.Errorf("merge duplicate edge: %w", err)
+	}
+	return nil
+}
+
+func (t *Tx) InsertEdgeEvent(ctx context.Context, e model.EdgeEvent) error {
+	var before, after any
+	if e.InvalidAtBefore != nil {
+		before = e.InvalidAtBefore.UTC()
+	}
+	if e.InvalidAtAfter != nil {
+		after = e.InvalidAtAfter.UTC()
+	}
+	if _, err := t.tx.ExecContext(ctx, `
+		INSERT INTO gb_edge_events (dataset_id, edge_id, artifact_id, event, invalid_at_before, invalid_at_after, caused_by_edge_id, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		e.DatasetID, e.EdgeID, nullIfZero(e.ArtifactID), e.Event, before, after, nullIfZero(e.CausedByEdgeID), e.CreatedAt.UTC()); err != nil {
+		return fmt.Errorf("insert edge event: %w", err)
 	}
 	return nil
 }

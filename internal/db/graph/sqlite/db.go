@@ -370,6 +370,47 @@ func ListEdgeArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.Edge
 	return out, rows.Err()
 }
 
+// ListEdgeEvents returns the edge events of the artifact and of its descendants (the artifacts that hang off it through
+// parent_id, at any depth), oldest first, each with its edge.
+func ListEdgeEvents(ctx context.Context, d *sql.DB, artifactID int64) ([]model.EdgeEvent, error) {
+	rows, err := d.QueryContext(ctx, `
+		WITH RECURSIVE tree(id) AS (
+			SELECT id FROM gb_artifacts WHERE id = ?
+			UNION
+			SELECT a.id FROM gb_artifacts a JOIN tree ON a.parent_id = tree.id
+		)
+		SELECT ev.id, ev.dataset_id, ev.edge_id, COALESCE(ev.artifact_id, 0), ev.event, ev.invalid_at_before, ev.invalid_at_after,
+			COALESCE(ev.caused_by_edge_id, 0), ev.created_at, `+edgeColumns+`
+		FROM gb_edge_events ev
+		JOIN gb_edges e ON e.id = ev.edge_id
+		JOIN gb_entities s ON s.id = e.source_id
+		JOIN gb_entities t ON t.id = e.target_id
+		WHERE ev.artifact_id IN (SELECT id FROM tree)
+		ORDER BY ev.id`, artifactID)
+	if err != nil {
+		return nil, fmt.Errorf("list edge events: %w", err)
+	}
+	defer rows.Close()
+	out := []model.EdgeEvent{}
+	for rows.Next() {
+		var ev model.EdgeEvent
+		var e model.Edge
+		var before, after, created, valid, invalid, ecreated, expired sql.NullString
+		if err := rows.Scan(&ev.ID, &ev.DatasetID, &ev.EdgeID, &ev.ArtifactID, &ev.Event, &before, &after, &ev.CausedByEdgeID, &created,
+			&e.ID, &e.Source, &e.Target, &e.Relation, &e.Description, &valid, &invalid, &ecreated, &expired, &e.ModelID); err != nil {
+			return nil, err
+		}
+		ev.InvalidAtBefore, ev.InvalidAtAfter = rsqlite.ParseTime(before.String), rsqlite.ParseTime(after.String)
+		if c := rsqlite.ParseTime(created.String); c != nil {
+			ev.CreatedAt = *c
+		}
+		e.ValidAt, e.InvalidAt, e.CreatedAt, e.ExpiredAt = rsqlite.ParseTime(valid.String), rsqlite.ParseTime(invalid.String), rsqlite.ParseTime(ecreated.String), rsqlite.ParseTime(expired.String)
+		ev.Edge = &e
+		out = append(out, ev)
+	}
+	return out, rows.Err()
+}
+
 // ListEntityArtifacts returns the entity-to-artifact links of the dataset, by entity ID then artifact ID.
 func ListEntityArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]model.EntityArtifact, error) {
 	rows, err := d.QueryContext(ctx, `
@@ -699,6 +740,17 @@ func (t *Tx) MergeDuplicateEdge(ctx context.Context, dsID, id int64, invalidAt *
 		WHERE id = ? AND dataset_id = ?`,
 		rsqlite.FormatTimePtr(invalidAt), id, dsID); err != nil {
 		return fmt.Errorf("merge duplicate edge: %w", err)
+	}
+	return nil
+}
+
+func (t *Tx) InsertEdgeEvent(ctx context.Context, e model.EdgeEvent) error {
+	if _, err := t.tx.ExecContext(ctx, `
+		INSERT INTO gb_edge_events (dataset_id, edge_id, artifact_id, event, invalid_at_before, invalid_at_after, caused_by_edge_id, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.DatasetID, e.EdgeID, nullIfZero(e.ArtifactID), e.Event, rsqlite.FormatTimePtr(e.InvalidAtBefore), rsqlite.FormatTimePtr(e.InvalidAtAfter),
+		nullIfZero(e.CausedByEdgeID), rsqlite.FormatTime(e.CreatedAt)); err != nil {
+		return fmt.Errorf("insert edge event: %w", err)
 	}
 	return nil
 }

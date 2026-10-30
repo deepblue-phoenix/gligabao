@@ -346,6 +346,7 @@ func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, geoRadiusKm float64,
 	mux.HandleFunc("GET /v1/gb/admin/api/inferences", admin.InferencesOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/remember-runs", admin.RememberRunsOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/remember-run-outputs", admin.RememberRunOutputsOf(dbs))
+	mux.HandleFunc("GET /v1/gb/admin/api/remember-run-temporal", admin.RememberRunTemporalOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/query-runs", admin.QueryRunsOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/web-searches", admin.WebSearchStatsOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/web-searches/dataset", admin.WebSearchDatasetOf(dbs))

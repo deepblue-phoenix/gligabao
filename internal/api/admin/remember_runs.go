@@ -2,13 +2,16 @@ package admin
 
 // Remember runs in the admin UI (see docs/remember.md#run-log): the run log of the remember pipeline (gb_remember_runs),
 // how many runs ended in each status, and the list of the runs (newest first, filterable) with the state of each stage.
-// The outputs of the stages of one run (for debugging) are a separate endpoint, RememberRunOutputsOf.
+// The outputs of the stages of one run (for debugging) are a separate endpoint, RememberRunOutputsOf, and so is what the run did to
+// the temporal state of the facts, RememberRunTemporalOf.
 
 import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
+	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	log "github.com/sirupsen/logrus"
@@ -151,5 +154,86 @@ func RememberRunOutputsOf(dbs []Named) http.HandlerFunc {
 			return
 		}
 		httputil.WriteJSON(w, http.StatusOK, rememberRunOutputsResponse{RunID: id, Stage: stage, Outputs: outputs})
+	}
+}
+
+// rememberRunTemporalArtifact is an artifact the temporal events of a run belong to: the run's own, and those of its chunks and of
+// the web searches and series observations made for it. ValidAt is its event time (the reference time of the text).
+type rememberRunTemporalArtifact struct {
+	ID        int64     `json:"id"`
+	ParentID  int64     `json:"parent_id,omitempty"`
+	Kind      string    `json:"kind"`
+	ValidAt   time.Time `json:"valid_at"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type rememberRunTemporalResponse struct {
+	RunID int64 `json:"run_id"`
+	// ArtifactID is the artifact the run stored; 0 if it did not get as far as storing one.
+	ArtifactID int64 `json:"artifact_id"`
+	// Artifacts are the artifacts that have events, by ID.
+	Artifacts []rememberRunTemporalArtifact `json:"artifacts"`
+	// Events are what the run did to the facts (see graph.EdgeEvent, gb_edge_events), oldest first, each with its fact in its
+	// current state. Empty for a run that changed no fact, or that ran before the log existed.
+	Events []graph.EdgeEvent `json:"events"`
+}
+
+// RememberRunTemporalOf serves GET /admin/api/remember-run-temporal?run_id=<id>[&db=<name>] for one of dbs (the first without db):
+// what one remember run did to the temporal state of the facts (gb_edge_events: facts created, confirmed, ended, invalidated or
+// superseded), for the chunks of a long text and the enrichment artifacts too, plus the artifacts the events belong to (their
+// reference time). An unknown run is 404.
+func RememberRunTemporalOf(dbs []Named) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		n, ok := pick(dbs, q.Get("db"))
+		if !ok {
+			httputil.Error(w, http.StatusNotFound, "unknown database")
+			return
+		}
+		id, err := strconv.ParseInt(q.Get("run_id"), 10, 64)
+		if err != nil || id < 1 {
+			httputil.Error(w, http.StatusBadRequest, "invalid run_id")
+			return
+		}
+		ctx := r.Context()
+		run, err := relational.GetRememberRun(ctx, n.DB, id)
+		if err != nil {
+			if errors.Is(err, relational.ErrNotFound) {
+				httputil.Error(w, http.StatusNotFound, "unknown remember run")
+				return
+			}
+			log.WithError(err).Error("admin: remember run failed")
+			httputil.Error(w, http.StatusInternalServerError, "failed to read the remember run")
+			return
+		}
+		out := rememberRunTemporalResponse{RunID: id, Artifacts: []rememberRunTemporalArtifact{}, Events: []graph.EdgeEvent{}}
+		if run.ArtifactID != nil {
+			out.ArtifactID = *run.ArtifactID
+			if out.Events, err = graph.ListEdgeEvents(ctx, n.DB, out.ArtifactID); err != nil {
+				log.WithError(err).Error("admin: remember run temporal events failed")
+				httputil.Error(w, http.StatusInternalServerError, "failed to read the temporal events")
+				return
+			}
+		}
+		if len(out.Events) > 0 {
+			var ids []int64
+			seen := map[int64]bool{}
+			for _, e := range out.Events {
+				if e.ArtifactID != 0 && !seen[e.ArtifactID] {
+					seen[e.ArtifactID] = true
+					ids = append(ids, e.ArtifactID)
+				}
+			}
+			arts, err := graph.ArtifactsByID(ctx, n.DB, out.Events[0].DatasetID, ids)
+			if err != nil {
+				log.WithError(err).Error("admin: remember run temporal artifacts failed")
+				httputil.Error(w, http.StatusInternalServerError, "failed to read the temporal events")
+				return
+			}
+			for _, a := range arts {
+				out.Artifacts = append(out.Artifacts, rememberRunTemporalArtifact{ID: a.ID, ParentID: a.ParentID, Kind: a.Kind, ValidAt: a.ValidAt, CreatedAt: a.CreatedAt})
+			}
+		}
+		httputil.WriteJSON(w, http.StatusOK, out)
 	}
 }

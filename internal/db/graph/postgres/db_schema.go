@@ -120,6 +120,19 @@ CREATE TABLE IF NOT EXISTS gb_edge_sessions (
 	PRIMARY KEY (edge_id, session_id)
 );
 
+-- What each Remember call did to the temporal state of the facts (see sqlite/db_schema.go for what the columns mean).
+CREATE TABLE IF NOT EXISTS gb_edge_events (
+	id                BIGSERIAL PRIMARY KEY,
+	dataset_id        BIGINT NOT NULL REFERENCES gb_datasets(id),
+	edge_id           BIGINT NOT NULL REFERENCES gb_edges(id) ON DELETE CASCADE,
+	artifact_id       BIGINT REFERENCES gb_artifacts(id) ON DELETE SET NULL,
+	event             TEXT NOT NULL,
+	invalid_at_before TIMESTAMPTZ,
+	invalid_at_after  TIMESTAMPTZ,
+	caused_by_edge_id BIGINT REFERENCES gb_edges(id) ON DELETE SET NULL,
+	created_at        TIMESTAMPTZ NOT NULL
+);
+
 -- The image pipeline (see sqlite/db_schema.go for what the columns mean).
 CREATE TABLE IF NOT EXISTS gb_image_artifacts (
 	id         BIGSERIAL PRIMARY KEY,
@@ -244,6 +257,8 @@ CREATE INDEX IF NOT EXISTS idx_gb_edges_artifact ON gb_edges(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edge_artifacts_artifact ON gb_edge_artifacts(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_gb_entity_artifacts_artifact ON gb_entity_artifacts(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_gb_artifacts_session ON gb_artifacts(dataset_id, session_id);
+CREATE INDEX IF NOT EXISTS idx_gb_edge_events_artifact ON gb_edge_events(artifact_id);
+CREATE INDEX IF NOT EXISTS idx_gb_edge_events_edge ON gb_edge_events(edge_id);
 CREATE INDEX IF NOT EXISTS idx_gb_image_artifacts_session ON gb_image_artifacts(dataset_id, session_id);
 CREATE INDEX IF NOT EXISTS idx_gb_entity_sessions_session ON gb_entity_sessions(session_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edge_sessions_session ON gb_edge_sessions(session_id);`

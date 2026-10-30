@@ -848,6 +848,41 @@ html:has(#rr-outputs-modal[open]) { overflow: hidden; }   // the page behind the
 #rr-outputs-modal { overscroll-behavior: contain; }
 #rr-outputs-modal details { margin-bottom: 0.6rem; }
 #rr-outputs-modal .ts-def { max-height: none; background: $bg; }
+// --- Remember runs: temporal changes modal (temporal.ts) ---
+$tp-created: $ok;
+$tp-confirmed: $accent;
+$tp-ended: #d29922;
+$tp-invalidated: $err;
+$tp-superseded: #a371f7;
+#tp-modal[open] { width: min(96vw, 64rem); height: 88vh; }
+html:has(#tp-modal[open]) { overflow: hidden; }
+#tp-modal { overscroll-behavior: contain; }
+.tp-c-created { color: $tp-created; }
+.tp-c-confirmed { color: $tp-confirmed; }
+.tp-c-ended { color: $tp-ended; }
+.tp-c-invalidated { color: $tp-invalidated; }
+.tp-c-superseded { color: $tp-superseded; }
+.tp-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; align-items: center; margin: 0.3rem 0 0.6rem; font-size: 0.8rem; }
+.tp-key { display: inline-flex; align-items: center; gap: 0.35rem; cursor: help; i { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: currentColor; } }
+.tp-plot {
+  display: block; margin-bottom: 1rem; background: $bg; border: 1px solid $border; border-radius: 6px; font-size: 11px;
+  .tp-axis { color: $muted; }
+  .tp-axis-label { fill: $muted; font-size: 10px; }
+  .tp-refs { color: $muted; line { stroke: currentColor; stroke-dasharray: 5 4; opacity: 0.5; } text { fill: currentColor; font-size: 10px; } }
+  .tp-fact {
+    .tp-drop { stroke: currentColor; stroke-width: 1.5; opacity: 0.6; }
+    .tp-dotted { stroke-dasharray: 1.5 4; stroke-linecap: round; stroke-width: 2.2; opacity: 1; }
+    .tp-bar { stroke: currentColor; stroke-width: 3.5; stroke-linecap: round; }
+    .tp-start { fill: currentColor; }
+    .tp-stop { fill: $bg; stroke: currentColor; stroke-width: 2; }
+    .tp-arrow { fill: currentColor; }
+    .tp-ghost { stroke: currentColor; stroke-width: 3; stroke-dasharray: 6 5; opacity: 0.35; }
+    .tp-ghost-arrow { fill: none; stroke: currentColor; stroke-width: 2; opacity: 0.35; }
+    .tp-label { fill: $text; }
+    &:hover .tp-bar { stroke-width: 5; }
+  }
+}
+.tp-events td:nth-child(2) { overflow-wrap: anywhere; }
 .json-key { color: #e3b341; }
 .json-val { color: $ok; }
 
