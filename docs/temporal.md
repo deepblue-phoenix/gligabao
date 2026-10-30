@@ -2,7 +2,7 @@
 
 gligabao follows the bi-temporal model of [Graphiti](https://github.com/getzep/graphiti).
 
-Code: `internal/memory/memory.go` (`Extract`, `Remember`, `Store`), `internal/memory/temporal.go` (reconciliation), `internal/db/graph/{sqlite,postgres}/db_schema.go` (tables).
+Code: `internal/memory/memory.go` (`Extract`, `Remember`, `Store`), `internal/memory/temporal.go` (reconciliation), `internal/db/graph/{sqlite,postgres}/db_schema.go` (tables). What a call did to each fact is logged in [edge-events.md](edge-events.md).
 
 ## Artifacts
 
@@ -66,20 +66,7 @@ Example: "Alice works at Acme" (artifact at 2023-01-01), then "Alice started wor
 
 ## What a call did to the facts
 
-`gb_edges` only holds the final state of a fact. To see how one `remember` call changed it, `storeEdges` also appends to the **edge event log**, `gb_edge_events`, in the same transaction, one row for each fact the call touched:
-
-| Column | Meaning |
-| ------ | ------- |
-| `edge_id` | The fact (`gb_edges`) |
-| `artifact_id` | The artifact whose `remember` did it (a chunk, a web search or an observation has its own) |
-| `event` | `created`: stored as a new fact. `confirmed`: a stored fact stated again (exact or semantic duplicate), nothing changed. `ended`: same, and the text gave the stored fact its end, so its `invalid_at` was set. `invalidated`: a stored fact closed by a new contradicting fact (`invalid_at` and `expired_at` set). `superseded`: the new fact was itself closed at once, because it is about an earlier time than a stored fact it contradicts |
-| `invalid_at_before`, `invalid_at_after` | The fact's `invalid_at` around the event; `NULL` is open-ended. `valid_at` never changes after the insert, so the edge's `valid_at` with these two is its whole before and after in event time |
-| `caused_by_edge_id` | The other fact of the contradiction: the new one for `invalidated`, the stored one for `superseded` |
-| `created_at` | System time of the call; it is also the edge's `expired_at` for `invalidated` and `superseded` |
-
-A fact can have two events in one call (`created`, then `superseded`). Deleting the edge deletes its events; deleting the artifact keeps them with `artifact_id` `NULL`. The table is created automatically in an existing database; calls made before it existed have no events. Only facts have a validity: entities have no `valid_at` or `invalid_at`, so nothing about them is logged.
-
-Read with `graph.ListEdgeEvents(ctx, d, artifactID)`: the events of the artifact and of everything below it through `parent_id` (the chunks of a long text, its web searches and series observations), oldest first, each with its fact (current state, endpoint names). The admin UI plots them: see [remember.md](remember.md#admin-ui).
+`gb_edges` only holds the final state of a fact. To see how one `remember` call changed it, `storeEdges` also appends to the **edge event log**, `gb_edge_events`, in the same transaction: one row for each fact the call created, confirmed, ended, invalidated or superseded, with the fact's `invalid_at` before and after. The table, the events and how to read them are in [edge-events.md](edge-events.md); the admin UI plots them ([remember.md](remember.md#admin-ui)).
 
 ## Query
 

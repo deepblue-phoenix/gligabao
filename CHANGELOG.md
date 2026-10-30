@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.141.1] - 2026-10-30
+
+### Changed
+- New doc [docs/edge-events.md](docs/edge-events.md): the edge event log `gb_edge_events` (columns, the five events and when each is written, an example, how to read it, limitations). The section of [docs/temporal.md](docs/temporal.md) about it is now a short pointer to it, and [docs/remember.md](docs/remember.md) and the README link to it.
+
 ## [0.141.0] - 2026-10-30
 
 ### Added
