@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.140.1] - 2026-10-30
+
+### Added
+- New knowledge eval `temporal` (`build/evals_knowledge/temporal.json`, 20 cases) for temporal reasoning and state changes. Entities (`Entity A`, `Entity B`, ...) and actions (Σ-link, Ω-lease, Ψ-seal, ...) are symbols written as plain prose. The cases cover facts that end, expire by date or duration, end on an event, are superseded, renewed, restated, corrected, only announced or reported late, and relative dates; each asks a question as of an explicit date. See [docs/evals/knowledge.md](docs/evals/knowledge.md#the-temporal-eval).
+
 ## [0.140.0] - 2026-10-30
 
 ### Fixed
