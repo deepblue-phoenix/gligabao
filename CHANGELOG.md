@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.142.1] - 2026-10-31
+
+### Changed
+- Knowledge eval `temporal`: the made-up symbolic relations (Σ-link, Ω-lease, Ψ-seal, Ψ-pass, Λ-grant, Λ-charter, Θ-permit, Ξ-mandate, Δ-token, Φ-guild/council/board) are now everyday words (partnership, lease, suspension, access badge, sublicense, master license, permit, mandate, baton, guild/council/board), so the eval texts are easier to read when debugging. Six cases were renamed (`temporal_partnership_swap`, `temporal_lease_expiry`, `temporal_baton_relay`, `temporal_suspension_lifted_reimposed`, `temporal_badge_regranted`, `temporal_partner_crosswise_swap`) and the one-word answer `SEALED` is now `SUSPENDED`. See [docs/evals/knowledge.md](docs/evals/knowledge.md#the-temporal-eval).
+
 ## [0.142.0] - 2026-10-30
 
 ### Added

@@ -1,15 +1,15 @@
 {
   "name": "temporal",
-  "description": "Temporal reasoning over symbolic entities (Entity A, B, ...) and symbolic actions (Σ-link, Ω-lease, Ψ-seal, ...) written as plain prose: facts that start, end, expire, are renewed, replaced, corrected or only announced, with questions asked as of a given date.",
+  "description": "Temporal reasoning over abstract entities (Entity A, B, ...) and everyday relations (partnership, lease, suspension, baton, access badge, sublicense, permit, mandate, council, guild, board) written as plain prose: facts that start, end, expire, are renewed, replaced, corrected or only announced, with questions asked as of a given date.",
   "cases": [
     {
-      "name": "temporal_sigma_swap",
+      "name": "temporal_partnership_swap",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["A Σ-link joins exactly two entities, and an entity can be in only one Σ-link at a time.", "On 10 January 2024, Entity A formed a Σ-link with Entity B."], "reference_time": "2024-01-10T00:00:00Z"},
-        {"kind": "episode", "text": ["A Σ-link joins exactly two entities, and an entity can be in only one Σ-link at a time.", "On 20 February 2024, Entity A formed a Σ-link with Entity C."], "reference_time": "2024-02-20T00:00:00Z"}
+        {"kind": "episode", "text": ["A partnership joins exactly two entities, and an entity can be in only one partnership at a time.", "On 10 January 2024, Entity A formed a partnership with Entity B."], "reference_time": "2024-01-10T00:00:00Z"},
+        {"kind": "episode", "text": ["A partnership joins exactly two entities, and an entity can be in only one partnership at a time.", "On 20 February 2024, Entity A formed a partnership with Entity C."], "reference_time": "2024-02-20T00:00:00Z"}
       ],
-      "query": "As of 1 March 2024, with which entity is Entity A Σ-linked? Answer with the entity's label only.",
+      "query": "As of 1 March 2024, with which entity is Entity A in a partnership? Answer with the entity's label only.",
       "expect_contains": ["Entity C"],
       "expect_edges": [
         {"source": "Entity A", "target": "Entity B", "valid_at": "2024-01-10T00:00:00Z", "invalid_at": "2024-02-20T00:00:00Z", "ended": true, "superseded": true},
@@ -17,10 +17,10 @@
       ]
     },
     {
-      "name": "temporal_omega_lease_expiry",
+      "name": "temporal_lease_expiry",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["An Ω-lease gives one entity temporary use of another, and it ends when its term runs out.", "On 1 March 2024, Entity A took an Ω-lease on Entity B with a term of two weeks.", "On 8 March 2024, Entity C took an Ω-lease on Entity D with a term of one month."], "reference_time": "2024-03-08T00:00:00Z"}
+        {"kind": "episode", "text": ["A lease gives one entity temporary use of another, and it ends when its term runs out.", "On 1 March 2024, Entity A took a lease on Entity B with a term of two weeks.", "On 8 March 2024, Entity C took a lease on Entity D with a term of one month."], "reference_time": "2024-03-08T00:00:00Z"}
       ],
       "query": "As of 20 March 2024, which lessee still had a lease in force, Entity A or Entity C? Answer with the entity's label only.",
       "expect_contains": ["Entity C"],
@@ -30,32 +30,32 @@
       ]
     },
     {
-      "name": "temporal_delta_token_relay",
+      "name": "temporal_baton_relay",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["The Δ-token can be held by only one entity at a time.", "On 1 April 2024, Entity A held the Δ-token, and on 9 April 2024 Entity A handed it to Entity B."], "reference_time": "2024-04-09T00:00:00Z"},
-        {"kind": "episode", "text": ["The Δ-token can be held by only one entity at a time.", "On 15 April 2024, Entity B handed the Δ-token to Entity C."], "reference_time": "2024-04-15T00:00:00Z"},
-        {"kind": "episode", "text": ["The Δ-token can be held by only one entity at a time.", "On 22 April 2024, Entity C handed the Δ-token back to Entity A. Entity D never held the Δ-token and only watched the relay."], "reference_time": "2024-04-22T00:00:00Z"}
+        {"kind": "episode", "text": ["The baton can be held by only one entity at a time.", "On 1 April 2024, Entity A held the baton, and on 9 April 2024 Entity A handed it to Entity B."], "reference_time": "2024-04-09T00:00:00Z"},
+        {"kind": "episode", "text": ["The baton can be held by only one entity at a time.", "On 15 April 2024, Entity B handed the baton to Entity C."], "reference_time": "2024-04-15T00:00:00Z"},
+        {"kind": "episode", "text": ["The baton can be held by only one entity at a time.", "On 22 April 2024, Entity C handed the baton back to Entity A. Entity D never held the baton and only watched the relay."], "reference_time": "2024-04-22T00:00:00Z"}
       ],
-      "query": "As of 30 April 2024, which entity held the Δ-token? Answer with the entity's label only.",
+      "query": "As of 30 April 2024, which entity held the baton? Answer with the entity's label only.",
       "expect_contains": ["Entity A"]
     },
     {
-      "name": "temporal_seal_lifted_resealed",
+      "name": "temporal_suspension_lifted_reimposed",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["A Ψ-seal stops an entity from acting for as long as it stays in place.", "Entity A put a Ψ-seal on Entity B on 5 May 2024. Entity C lifted that Ψ-seal on 12 May 2024.", "On 19 May 2024, Entity A put a Ψ-seal on Entity B again."], "reference_time": "2024-05-25T00:00:00Z"}
+        {"kind": "episode", "text": ["A suspension stops an entity from acting for as long as it stays in place.", "Entity A put a suspension on Entity B on 5 May 2024. Entity C lifted that suspension on 12 May 2024.", "On 19 May 2024, Entity A put a suspension on Entity B again."], "reference_time": "2024-05-25T00:00:00Z"}
       ],
-      "query": "As of 15 May 2024, was Entity B free to act? Answer FREE or SEALED.",
+      "query": "As of 15 May 2024, was Entity B free to act? Answer FREE or SUSPENDED.",
       "expect_contains": ["FREE"]
     },
     {
       "name": "temporal_chair_succession",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["Entity Q is a Φ-council with a single chair. Entity A chaired Entity Q from 1 January 2023."], "reference_time": "2023-01-01T00:00:00Z"},
-        {"kind": "episode", "text": ["Entity Q is a Φ-council with a single chair. Entity B took over as chair of Entity Q on 1 September 2023, replacing Entity A."], "reference_time": "2023-09-01T00:00:00Z"},
-        {"kind": "episode", "text": ["Entity Q is a Φ-council with a single chair. Entity C became the chair of Entity Q on 1 June 2024, and Entity B stepped down the same day."], "reference_time": "2024-06-01T00:00:00Z"}
+        {"kind": "episode", "text": ["Entity Q is a council with a single chair. Entity A chaired Entity Q from 1 January 2023."], "reference_time": "2023-01-01T00:00:00Z"},
+        {"kind": "episode", "text": ["Entity Q is a council with a single chair. Entity B took over as chair of Entity Q on 1 September 2023, replacing Entity A."], "reference_time": "2023-09-01T00:00:00Z"},
+        {"kind": "episode", "text": ["Entity Q is a council with a single chair. Entity C became the chair of Entity Q on 1 June 2024, and Entity B stepped down the same day."], "reference_time": "2024-06-01T00:00:00Z"}
       ],
       "query": "As of 1 July 2024, who chairs Entity Q? Answer with the entity's label only.",
       "expect_contains": ["Entity C"],
@@ -69,10 +69,10 @@
       "name": "temporal_backfilled_history",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["A Σ-link joins exactly two entities, and an entity can be in only one Σ-link at a time.", "Entity A has been Σ-linked to Entity B since 1 June 2024."], "reference_time": "2024-06-01T00:00:00Z"},
-        {"kind": "episode", "text": ["A Σ-link joins exactly two entities, and an entity can be in only one Σ-link at a time.", "Entity A was Σ-linked to Entity C from 1 March 2024 until 1 June 2024."], "reference_time": "2024-06-20T00:00:00Z"}
+        {"kind": "episode", "text": ["A partnership joins exactly two entities, and an entity can be in only one partnership at a time.", "Entity A has been in a partnership with Entity B since 1 June 2024."], "reference_time": "2024-06-01T00:00:00Z"},
+        {"kind": "episode", "text": ["A partnership joins exactly two entities, and an entity can be in only one partnership at a time.", "Entity A was in a partnership with Entity C from 1 March 2024 until 1 June 2024."], "reference_time": "2024-06-20T00:00:00Z"}
       ],
-      "query": "As of 15 April 2024, with which entity was Entity A Σ-linked? Answer with the entity's label only.",
+      "query": "As of 15 April 2024, with which entity was Entity A in a partnership? Answer with the entity's label only.",
       "expect_contains": ["Entity C"],
       "expect_edges": [
         {"source": "Entity A", "target": "Entity B", "valid_at": "2024-06-01T00:00:00Z", "ended": false},
@@ -83,11 +83,11 @@
       "name": "temporal_restated_then_ended",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["A Σ-link joins exactly two entities, and an entity can be in only one Σ-link at a time.", "On 5 January 2024, Entity A formed a Σ-link with Entity B."], "reference_time": "2024-01-05T00:00:00Z"},
-        {"kind": "episode", "text": ["A Σ-link joins exactly two entities, and an entity can be in only one Σ-link at a time.", "Entity A is Σ-linked to Entity B, as it has been since January 2024."], "reference_time": "2024-03-01T00:00:00Z"},
-        {"kind": "episode", "text": ["A Σ-link joins exactly two entities, and an entity can be in only one Σ-link at a time.", "Entity A and Entity B dissolved their Σ-link on 15 March 2024."], "reference_time": "2024-04-01T00:00:00Z"}
+        {"kind": "episode", "text": ["A partnership joins exactly two entities, and an entity can be in only one partnership at a time.", "On 5 January 2024, Entity A formed a partnership with Entity B."], "reference_time": "2024-01-05T00:00:00Z"},
+        {"kind": "episode", "text": ["A partnership joins exactly two entities, and an entity can be in only one partnership at a time.", "Entity A is in a partnership with Entity B, as it has been since January 2024."], "reference_time": "2024-03-01T00:00:00Z"},
+        {"kind": "episode", "text": ["A partnership joins exactly two entities, and an entity can be in only one partnership at a time.", "Entity A and Entity B dissolved their partnership on 15 March 2024."], "reference_time": "2024-04-01T00:00:00Z"}
       ],
-      "query": "As of 20 March 2024, was the Σ-link between Entity A and Entity B ACTIVE or DISSOLVED?",
+      "query": "As of 20 March 2024, was the partnership between Entity A and Entity B ACTIVE or DISSOLVED?",
       "expect_contains": ["DISSOLVED"],
       "expect_edges": [
         {"source": "Entity A", "target": "Entity B", "valid_at": "2024-01-05T00:00:00Z", "invalid_at": "2024-03-15T00:00:00Z", "ended": true}
@@ -97,18 +97,18 @@
       "name": "temporal_derived_expiry",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["A Λ-grant is valid only while the entity that issued it holds a Λ-charter.", "On 1 February 2024, Entity A issued Λ-grants to Entity B and to Entity C, and Entity A held a Λ-charter then.", "On 1 April 2024, Entity D, who holds a Λ-charter, issued a Λ-grant to Entity E.", "Entity A's Λ-charter was revoked on 1 July 2024."], "reference_time": "2024-07-15T00:00:00Z"}
+        {"kind": "episode", "text": ["A sublicense is valid only while the entity that issued it holds a master license.", "On 1 February 2024, Entity A issued sublicenses to Entity B and to Entity C, and Entity A held a master license then.", "On 1 April 2024, Entity D, who holds a master license, issued a sublicense to Entity E.", "Entity A's master license was revoked on 1 July 2024."], "reference_time": "2024-07-15T00:00:00Z"}
       ],
-      "query": "As of 1 August 2024, which entities held a valid Λ-grant? List their labels, then end the answer with COUNT=<number>.",
+      "query": "As of 1 August 2024, which entities held a valid sublicense? List their labels, then end the answer with COUNT=<number>.",
       "expect_contains": ["Entity E", "COUNT=1"]
     },
     {
       "name": "temporal_permit_windows",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["A Θ-permit counts only inside its stated window: not before it opens, not once it has closed.", "On 1 March 2024, Entity A issued a Θ-permit to Entity B, effective from 1 April 2024 until 1 July 2024.", "On the same day, Entity A issued a Θ-permit to Entity C, effective from 1 March 2024 until 15 March 2024.", "Also on the same day, Entity A issued a Θ-permit to Entity D, effective from 15 March 2024 until 1 June 2024."], "reference_time": "2024-03-01T00:00:00Z"}
+        {"kind": "episode", "text": ["A permit counts only inside its stated window: not before it opens, not once it has closed.", "On 1 March 2024, Entity A issued a permit to Entity B, effective from 1 April 2024 until 1 July 2024.", "On the same day, Entity A issued a permit to Entity C, effective from 1 March 2024 until 15 March 2024.", "Also on the same day, Entity A issued a permit to Entity D, effective from 15 March 2024 until 1 June 2024."], "reference_time": "2024-03-01T00:00:00Z"}
       ],
-      "query": "As of 20 March 2024, which entities held an effective Θ-permit from Entity A? List their labels, then end the answer with COUNT=<number>.",
+      "query": "As of 20 March 2024, which entities held an effective permit from Entity A? List their labels, then end the answer with COUNT=<number>.",
       "expect_contains": ["Entity D", "COUNT=1"],
       "expect_edges": [
         {"source": "Entity A", "target": "Entity B", "valid_at": "2024-04-01T00:00:00Z", "invalid_at": "2024-07-01T00:00:00Z", "ended": true},
@@ -120,20 +120,20 @@
       "name": "temporal_lease_extended",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["An Ω-lease gives one entity temporary use of another, and it ends when its term runs out.", "Entity A took an Ω-lease on Entity B from 1 February 2024 until 1 March 2024."], "reference_time": "2024-02-01T00:00:00Z"},
-        {"kind": "episode", "text": ["An Ω-lease gives one entity temporary use of another, and it ends when its term runs out.", "On 25 February 2024, the term of the Ω-lease of Entity A on Entity B was extended until 1 May 2024."], "reference_time": "2024-02-25T00:00:00Z"}
+        {"kind": "episode", "text": ["A lease gives one entity temporary use of another, and it ends when its term runs out.", "Entity A took a lease on Entity B from 1 February 2024 until 1 March 2024."], "reference_time": "2024-02-01T00:00:00Z"},
+        {"kind": "episode", "text": ["A lease gives one entity temporary use of another, and it ends when its term runs out.", "On 25 February 2024, the term of the lease of Entity A on Entity B was extended until 1 May 2024."], "reference_time": "2024-02-25T00:00:00Z"}
       ],
-      "query": "As of 10 April 2024, was the Ω-lease of Entity A on Entity B ACTIVE or LAPSED?",
+      "query": "As of 10 April 2024, was the lease of Entity A on Entity B ACTIVE or LAPSED?",
       "expect_contains": ["ACTIVE"]
     },
     {
       "name": "temporal_correction",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["A Σ-link joins exactly two entities, and an entity can be in only one Σ-link at a time.", "On 1 March 2024, Entity A formed a Σ-link with Entity B."], "reference_time": "2024-03-01T00:00:00Z"},
-        {"kind": "episode", "text": ["A Σ-link joins exactly two entities, and an entity can be in only one Σ-link at a time.", "Correction: the Σ-link formed on 1 March 2024 was between Entity A and Entity C, not Entity B. Entity A and Entity B were never Σ-linked."], "reference_time": "2024-03-10T00:00:00Z"}
+        {"kind": "episode", "text": ["A partnership joins exactly two entities, and an entity can be in only one partnership at a time.", "On 1 March 2024, Entity A formed a partnership with Entity B."], "reference_time": "2024-03-01T00:00:00Z"},
+        {"kind": "episode", "text": ["A partnership joins exactly two entities, and an entity can be in only one partnership at a time.", "Correction: the partnership formed on 1 March 2024 was between Entity A and Entity C, not Entity B. Entity A and Entity B were never partners."], "reference_time": "2024-03-10T00:00:00Z"}
       ],
-      "query": "As of 15 March 2024, with which entity is Entity A Σ-linked? Answer with the entity's label only.",
+      "query": "As of 15 March 2024, with which entity is Entity A in a partnership? Answer with the entity's label only.",
       "expect_contains": ["Entity C"],
       "expect_edges": [
         {"source": "Entity A", "target": "Entity B", "ended": true, "superseded": true},
@@ -141,12 +141,12 @@
       ]
     },
     {
-      "name": "temporal_partner_swap",
+      "name": "temporal_partner_crosswise_swap",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["A Σ-link joins exactly two entities, and an entity can be in only one Σ-link at a time.", "Since 1 January 2024, Entity A had been Σ-linked to Entity C and Entity B to Entity D.", "On 1 June 2024, both links were dissolved and, in the same hour, Entity A formed a Σ-link with Entity D, while Entity B formed one with Entity C."], "reference_time": "2024-06-02T00:00:00Z"}
+        {"kind": "episode", "text": ["A partnership joins exactly two entities, and an entity can be in only one partnership at a time.", "Since 1 January 2024, Entity A had been in a partnership with Entity C and Entity B with Entity D.", "On 1 June 2024, both partnerships were dissolved and, in the same hour, Entity A formed a partnership with Entity D, while Entity B formed one with Entity C."], "reference_time": "2024-06-02T00:00:00Z"}
       ],
-      "query": "As of 1 July 2024, with which entity is Entity B Σ-linked? Answer with the entity's label only.",
+      "query": "As of 1 July 2024, with which entity is Entity B in a partnership? Answer with the entity's label only.",
       "expect_contains": ["Entity C"],
       "expect_edges": [
         {"source": "Entity A", "target": "Entity C", "valid_at": "2024-01-01T00:00:00Z", "invalid_at": "2024-06-01T00:00:00Z", "ended": true},
@@ -159,9 +159,9 @@
       "name": "temporal_mandate_until_event",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["A Ξ-mandate lasts until the entity that is named as its closer declares Ξ-completion.", "Entity A received a Ξ-mandate over Entity B on 1 April 2024, and Entity C is its closer.", "Entity C declared Ξ-completion on 20 April 2024."], "reference_time": "2024-04-25T00:00:00Z"}
+        {"kind": "episode", "text": ["A mandate lasts until the entity that is named as its closer declares completion.", "Entity A received a mandate over Entity B on 1 April 2024, and Entity C is its closer.", "Entity C declared completion on 20 April 2024."], "reference_time": "2024-04-25T00:00:00Z"}
       ],
-      "query": "As of 1 May 2024, was the Ξ-mandate of Entity A over Entity B ACTIVE or CONCLUDED?",
+      "query": "As of 1 May 2024, was the mandate of Entity A over Entity B ACTIVE or CONCLUDED?",
       "expect_contains": ["CONCLUDED"],
       "expect_edges": [
         {"source": "Entity A", "target": "Entity B", "valid_at": "2024-04-01T00:00:00Z", "invalid_at": "2024-04-20T00:00:00Z", "ended": true}
@@ -171,32 +171,32 @@
       "name": "temporal_announced_change",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["A Σ-link joins exactly two entities, and an entity can be in only one Σ-link at a time.", "Entity A has been Σ-linked to Entity B since 1 February 2024.", "On 1 May 2024, Entity A announced that it will form a Σ-link with Entity C on 1 September 2024, but until then the Σ-link with Entity B stays in place."], "reference_time": "2024-05-01T00:00:00Z"}
+        {"kind": "episode", "text": ["A partnership joins exactly two entities, and an entity can be in only one partnership at a time.", "Entity A has been in a partnership with Entity B since 1 February 2024.", "On 1 May 2024, Entity A announced that it will form a partnership with Entity C on 1 September 2024, but until then the partnership with Entity B stays in place."], "reference_time": "2024-05-01T00:00:00Z"}
       ],
-      "query": "As of 15 June 2024, with which entity is Entity A Σ-linked? Answer with the entity's label only.",
+      "query": "As of 15 June 2024, with which entity is Entity A in a partnership? Answer with the entity's label only.",
       "expect_contains": ["Entity B"],
       "expect_edges": [
         {"source": "Entity A", "target": "Entity B", "valid_at": "2024-02-01T00:00:00Z", "ended": false}
       ]
     },
     {
-      "name": "temporal_pass_regranted",
+      "name": "temporal_badge_regranted",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["A Ψ-pass lets an entity enter, and it counts only from the day it is granted until the day it is revoked.", "Entity A granted Entity B a Ψ-pass on 15 January 2024."], "reference_time": "2024-01-15T00:00:00Z"},
-        {"kind": "episode", "text": ["A Ψ-pass lets an entity enter, and it counts only from the day it is granted until the day it is revoked.", "Entity A revoked the Ψ-pass of Entity B on 10 February 2024."], "reference_time": "2024-02-10T00:00:00Z"},
-        {"kind": "episode", "text": ["A Ψ-pass lets an entity enter, and it counts only from the day it is granted until the day it is revoked.", "Entity A granted Entity B a new Ψ-pass on 5 March 2024."], "reference_time": "2024-03-05T00:00:00Z"}
+        {"kind": "episode", "text": ["An access badge lets an entity enter, and it counts only from the day it is granted until the day it is revoked.", "Entity A granted Entity B an access badge on 15 January 2024."], "reference_time": "2024-01-15T00:00:00Z"},
+        {"kind": "episode", "text": ["An access badge lets an entity enter, and it counts only from the day it is granted until the day it is revoked.", "Entity A revoked the access badge of Entity B on 10 February 2024."], "reference_time": "2024-02-10T00:00:00Z"},
+        {"kind": "episode", "text": ["An access badge lets an entity enter, and it counts only from the day it is granted until the day it is revoked.", "Entity A granted Entity B a new access badge on 5 March 2024."], "reference_time": "2024-03-05T00:00:00Z"}
       ],
-      "query": "As of 20 February 2024, did Entity B HOLD or LACK a valid Ψ-pass from Entity A?",
+      "query": "As of 20 February 2024, did Entity B HOLD or LACK a valid access badge from Entity A?",
       "expect_contains": ["LACK"]
     },
     {
       "name": "temporal_relative_dates",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["This report is dated 10 May 2024. A Σ-link joins exactly two entities, and an entity can be in only one Σ-link at a time.", "Entity A formed a Σ-link with Entity B two weeks ago.", "Entity C formed a Σ-link with Entity D the day before yesterday.", "Entity E and Entity F, who formed a Σ-link in March 2024, dissolved it three days ago."], "reference_time": "2024-05-10T00:00:00Z"}
+        {"kind": "episode", "text": ["This report is dated 10 May 2024. A partnership joins exactly two entities, and an entity can be in only one partnership at a time.", "Entity A formed a partnership with Entity B two weeks ago.", "Entity C formed a partnership with Entity D the day before yesterday.", "Entity E and Entity F, who formed a partnership in March 2024, dissolved it three days ago."], "reference_time": "2024-05-10T00:00:00Z"}
       ],
-      "query": "Which Σ-link was formed most recently: the one of Entity A, of Entity C or of Entity E? Answer with the entity's label only.",
+      "query": "Which partnership was formed most recently: the one of Entity A, of Entity C or of Entity E? Answer with the entity's label only.",
       "expect_contains": ["Entity C"],
       "expect_edges": [
         {"source": "Entity A", "target": "Entity B", "valid_at": "2024-04-26T00:00:00Z", "ended": false},
@@ -208,7 +208,7 @@
       "name": "temporal_guild_membership",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["A Φ-guild has members, who join and leave it.", "Entity A joined Entity Q on 1 January 2024 and left it on 15 February 2024.", "Entity B joined Entity Q on 1 February 2024 and is still a member.", "Entity C joined Entity Q on 1 March 2024 and left it on 15 April 2024.", "Entity D joined Entity Q on 1 April 2024 and is still a member."], "reference_time": "2024-06-01T00:00:00Z"}
+        {"kind": "episode", "text": ["A guild has members, who join and leave it.", "Entity A joined Entity Q on 1 January 2024 and left it on 15 February 2024.", "Entity B joined Entity Q on 1 February 2024 and is still a member.", "Entity C joined Entity Q on 1 March 2024 and left it on 15 April 2024.", "Entity D joined Entity Q on 1 April 2024 and is still a member."], "reference_time": "2024-06-01T00:00:00Z"}
       ],
       "query": "As of 20 April 2024, which entities were members of Entity Q? List their labels, then end the answer with COUNT=<number>.",
       "expect_contains": ["Entity B", "Entity D", "COUNT=2"],
@@ -223,11 +223,11 @@
       "name": "temporal_board_replacements",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["The Φ-board of Entity Q has two seats. On 1 January 2024, Entity A and Entity B took the two seats of Entity Q."], "reference_time": "2024-01-01T00:00:00Z"},
-        {"kind": "episode", "text": ["The Φ-board of Entity Q has two seats. On 1 March 2024, Entity C took the seat of Entity A on Entity Q."], "reference_time": "2024-03-01T00:00:00Z"},
-        {"kind": "episode", "text": ["The Φ-board of Entity Q has two seats. On 1 May 2024, Entity D took the seat of Entity B on Entity Q."], "reference_time": "2024-05-01T00:00:00Z"}
+        {"kind": "episode", "text": ["The board of Entity Q has two seats. On 1 January 2024, Entity A and Entity B took the two seats of Entity Q."], "reference_time": "2024-01-01T00:00:00Z"},
+        {"kind": "episode", "text": ["The board of Entity Q has two seats. On 1 March 2024, Entity C took the seat of Entity A on Entity Q."], "reference_time": "2024-03-01T00:00:00Z"},
+        {"kind": "episode", "text": ["The board of Entity Q has two seats. On 1 May 2024, Entity D took the seat of Entity B on Entity Q."], "reference_time": "2024-05-01T00:00:00Z"}
       ],
-      "query": "As of 10 May 2024, which entities sat on the Φ-board of Entity Q? List their labels, then end the answer with COUNT=<number>.",
+      "query": "As of 10 May 2024, which entities sat on the board of Entity Q? List their labels, then end the answer with COUNT=<number>.",
       "expect_contains": ["Entity C", "Entity D", "COUNT=2"],
       "expect_edges": [
         {"source": "Entity A", "target": "Entity Q", "valid_at": "2024-01-01T00:00:00Z", "invalid_at": "2024-03-01T00:00:00Z", "ended": true},
@@ -240,7 +240,7 @@
       "name": "temporal_lease_overlap_boundary",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["An Ω-lease gives one entity temporary use of another, and it ends when its term runs out.", "Entity A held an Ω-lease on Entity B from 1 February 2024 until 1 April 2024.", "Entity C held an Ω-lease on Entity D from 1 March 2024 until 1 May 2024.", "Entity E held an Ω-lease on Entity F from 1 April 2024 until 1 June 2024."], "reference_time": "2024-06-15T00:00:00Z"}
+        {"kind": "episode", "text": ["A lease gives one entity temporary use of another, and it ends when its term runs out.", "Entity A held a lease on Entity B from 1 February 2024 until 1 April 2024.", "Entity C held a lease on Entity D from 1 March 2024 until 1 May 2024.", "Entity E held a lease on Entity F from 1 April 2024 until 1 June 2024."], "reference_time": "2024-06-15T00:00:00Z"}
       ],
       "query": "Which lease overlapped in time with the lease of Entity A, the one of Entity C or the one of Entity E? A lease that starts on the day another ends does not overlap it. Answer with the entity's label only.",
       "expect_contains": ["Entity C"],
@@ -254,12 +254,12 @@
       "name": "temporal_mixed_state_chain",
       "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
-        {"kind": "episode", "text": ["A Σ-link joins exactly two entities, and an entity can be in only one Σ-link at a time.", "An Ω-lease gives one entity temporary use of another, and it ends when its term runs out.", "A Ψ-seal stops an entity from acting for as long as it stays in place.", "On 1 January 2024, Entity A formed a Σ-link with Entity B.", "On 1 January 2024, Entity C took an Ω-lease on Entity D until 1 April 2024.", "On 1 January 2024, Entity E put a Ψ-seal on Entity F."], "reference_time": "2024-01-01T00:00:00Z"},
-        {"kind": "episode", "text": ["A Σ-link joins exactly two entities, and an entity can be in only one Σ-link at a time.", "On 15 February 2024, Entity A broke its Σ-link with Entity B and formed a Σ-link with Entity G."], "reference_time": "2024-02-15T00:00:00Z"},
-        {"kind": "episode", "text": ["A Ψ-seal stops an entity from acting for as long as it stays in place.", "Entity E lifted the Ψ-seal on Entity F on 10 March 2024."], "reference_time": "2024-03-10T00:00:00Z"},
-        {"kind": "episode", "text": ["An Ω-lease gives one entity temporary use of another, and it ends when its term runs out.", "On 20 March 2024, the Ω-lease of Entity C on Entity D was renewed until 1 July 2024."], "reference_time": "2024-03-20T00:00:00Z"}
+        {"kind": "episode", "text": ["A partnership joins exactly two entities, and an entity can be in only one partnership at a time.", "A lease gives one entity temporary use of another, and it ends when its term runs out.", "A suspension stops an entity from acting for as long as it stays in place.", "On 1 January 2024, Entity A formed a partnership with Entity B.", "On 1 January 2024, Entity C took a lease on Entity D until 1 April 2024.", "On 1 January 2024, Entity E put a suspension on Entity F."], "reference_time": "2024-01-01T00:00:00Z"},
+        {"kind": "episode", "text": ["A partnership joins exactly two entities, and an entity can be in only one partnership at a time.", "On 15 February 2024, Entity A broke its partnership with Entity B and formed a partnership with Entity G."], "reference_time": "2024-02-15T00:00:00Z"},
+        {"kind": "episode", "text": ["A suspension stops an entity from acting for as long as it stays in place.", "Entity E lifted the suspension on Entity F on 10 March 2024."], "reference_time": "2024-03-10T00:00:00Z"},
+        {"kind": "episode", "text": ["A lease gives one entity temporary use of another, and it ends when its term runs out.", "On 20 March 2024, the lease of Entity C on Entity D was renewed until 1 July 2024."], "reference_time": "2024-03-20T00:00:00Z"}
       ],
-      "query": "As of 1 May 2024, which of these were in force: the Σ-link of Entity A, the Ω-lease of Entity C, the Ψ-seal of Entity E? Name the entities that were the subject of each one in force, then end the answer with COUNT=<number>.",
+      "query": "As of 1 May 2024, which of these were in force: the partnership of Entity A, the lease of Entity C, the suspension of Entity E? Name the entities that were the subject of each one in force, then end the answer with COUNT=<number>.",
       "expect_contains": ["Entity A", "Entity C", "COUNT=2"],
       "expect_edges": [
         {"source": "Entity A", "target": "Entity B", "valid_at": "2024-01-01T00:00:00Z", "invalid_at": "2024-02-15T00:00:00Z", "ended": true},

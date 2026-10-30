@@ -160,34 +160,34 @@ The in-process server has geo on: the runner gives it a geo resolver, Nominatim 
 
 ### The `temporal` eval
 
-`build/evals_knowledge/temporal.json` has twenty cases about temporal reasoning and state changes. The entities are symbols (`Entity A`, `Entity B`, ...) and the actions are symbols too (a Σ-link, an Ω-lease, a Ψ-seal, a Ψ-pass, a Λ-grant, a Θ-permit, a Ξ-mandate, the Δ-token, a Φ-guild or Φ-board), but the texts are ordinary prose, so the extractor and the answerer have no world knowledge to lean on: all they can use is what the text says and the dates. The rules of an action (for instance that a Σ-link is exclusive, or that a Λ-grant is valid only while its issuer holds a Λ-charter) are stated in the text itself, as a sentence of the prose.
+`build/evals_knowledge/temporal.json` has twenty cases about temporal reasoning and state changes. The entities are abstract (`Entity A`, `Entity B`, ...) and the relations are everyday ones (a partnership, a lease, a suspension, a baton, an access badge, a sublicense, a permit, a mandate, a council, a guild or a board), written as ordinary prose, so a failing case is easy to read and reason about when debugging. The rules of a relation (for instance that a partnership is exclusive, or that a sublicense is valid only while its issuer holds a master license) are stated in the text itself, as a sentence of the prose, so the extractor and the answerer can rely on what the text says and the dates rather than on world knowledge.
 
-The cases cover facts that start, end on a stated date, expire after a duration, end when an event happens, are superseded by a later exclusive fact, are renewed or extended, are restated, corrected or only announced, are reported late about an earlier time, or are given in relative dates ("two weeks ago"). Each case remembers one to four texts (each with its `reference_time`) and asks one question "as of" an explicit date, so the answer does not depend on today's date. Because the answer is checked with `expect_contains` (a case-insensitive substring), a question asks for a label (`Entity C`), for a one-word state that no other state contains (`FREE` or `SEALED`, `ACTIVE` or `LAPSED`), or for the labels followed by `COUNT=<number>`, so a wrong set fails on the count. `expect_edges` checks the dates the extraction stored (`valid_at`, `invalid_at`, `ended`, and `superseded` where a later text closes the fact without saying so).
+The cases cover facts that start, end on a stated date, expire after a duration, end when an event happens, are superseded by a later exclusive fact, are renewed or extended, are restated, corrected or only announced, are reported late about an earlier time, or are given in relative dates ("two weeks ago"). Each case remembers one to four texts (each with its `reference_time`) and asks one question "as of" an explicit date, so the answer does not depend on today's date. Because the answer is checked with `expect_contains` (a case-insensitive substring), a question asks for a label (`Entity C`), for a one-word state that no other state contains (`FREE` or `SUSPENDED`, `ACTIVE` or `LAPSED`), or for the labels followed by `COUNT=<number>`, so a wrong set fails on the count. `expect_edges` checks the dates the extraction stored (`valid_at`, `invalid_at`, `ended`, and `superseded` where a later text closes the fact without saying so).
 
-Since superseded facts are not retrieved by `query` ([temporal-edge-cases.md](../temporal-edge-cases.md#5-what-query-sees)), a question about a past date is only asked where the fact at that date ended in its own text; questions about a fact that a later text replaced ask about the state after the change. Two cases (`temporal_lease_extended`, `temporal_pass_regranted`) have several facts between the same two entities and so check only the answer.
+Since superseded facts are not retrieved by `query` ([temporal-edge-cases.md](../temporal-edge-cases.md#5-what-query-sees)), a question about a past date is only asked where the fact at that date ended in its own text; questions about a fact that a later text replaced ask about the state after the change. Two cases (`temporal_lease_extended`, `temporal_badge_regranted`) have several facts between the same two entities and so check only the answer.
 
 | case | what it tests |
 |---|---|
-| `temporal_sigma_swap` | An exclusive Σ-link is taken over by a new partner in a later text: the old link must be superseded without the text ever saying that it ended. |
-| `temporal_omega_lease_expiry` | Two leases whose terms are given as durations: the end dates must be computed, and one has run out at the question date while the other has not. |
-| `temporal_delta_token_relay` | The Δ-token is handed over several times across three texts, one hand-over being part of the first text: the last event wins. |
-| `temporal_seal_lifted_resealed` | A Ψ-seal is placed, lifted and placed again, all in one text; the question date falls in the gap between the lift and the second seal. |
+| `temporal_partnership_swap` | An exclusive partnership is taken over by a new partner in a later text: the old partnership must be superseded without the text ever saying that it ended. |
+| `temporal_lease_expiry` | Two leases whose terms are given as durations: the end dates must be computed, and one has run out at the question date while the other has not. |
+| `temporal_baton_relay` | The baton is handed over several times across three texts, one hand-over being part of the first text: the last event wins. |
+| `temporal_suspension_lifted_reimposed` | A suspension is imposed, lifted and imposed again, all in one text; the question date falls in the gap between the lifting and the second suspension. |
 | `temporal_chair_succession` | A one-seat role changes hands twice across three texts; each handover ends the previous holder at its date. |
-| `temporal_backfilled_history` | A later text reports an older link: it must be stored as ended history and must not close the link that is current. |
+| `temporal_backfilled_history` | A later text reports an older partnership: it must be stored as ended history and must not close the partnership that is current. |
 | `temporal_restated_then_ended` | A fact is restated by a later text (which must not move its start) and a third text then says that it ended earlier than that text. |
-| `temporal_derived_expiry` | A grant ends not by date but because its issuer's charter was revoked, which the reader has to infer from the rule in the text. |
+| `temporal_derived_expiry` | A sublicense ends not by date but because its issuer's master license was revoked, which the reader has to infer from the rule in the text. |
 | `temporal_permit_windows` | Three permits with windows: one not yet open, one already closed and one open at the question date; the start of a fact may lie after the text. |
 | `temporal_lease_extended` | A lease with a stated end is extended by a later text: at the question date the original term would have run out but the extension has not. |
 | `temporal_correction` | A later text corrects the earlier one: the earlier fact was never true, and the corrected one holds from the original date. |
-| `temporal_partner_swap` | Two Σ-links are dissolved and re-formed crosswise at one instant: four facts change in a single text. |
+| `temporal_partner_crosswise_swap` | Two partnerships are dissolved and re-formed crosswise at one instant: four facts change in a single text. |
 | `temporal_mandate_until_event` | A mandate has no date of its own: it ends when an event happens, and the event is told in the same text. |
 | `temporal_announced_change` | A change that is only announced for the future must not end the present fact; the question date is before the announced date. |
-| `temporal_pass_regranted` | A Ψ-pass is granted, revoked and granted anew in three texts about the same two entities; the question date falls between the revocation and the new grant. |
-| `temporal_relative_dates` | Dates given only relative to the date of the report; the reader must resolve them and then compare which link is newest. |
+| `temporal_badge_regranted` | An access badge is granted, revoked and granted anew in three texts about the same two entities; the question date falls between the revocation and the new grant. |
+| `temporal_relative_dates` | Dates given only relative to the date of the report; the reader must resolve them and then compare which partnership is newest. |
 | `temporal_guild_membership` | Members join and leave a guild over six months in one text, told in the order of the entities rather than of time; the question is a headcount at a date. |
 | `temporal_board_replacements` | A board with two seats is renewed over three texts, each seat replaced by a different entity, so that nobody from the first text is still seated. |
 | `temporal_lease_overlap_boundary` | Three consecutive leases, one starting on the day the previous one ends: the question is about which overlapped in time (touching at an end date is not overlapping). |
-| `temporal_mixed_state_chain` | Four texts that mix an exclusive link broken and replaced, a seal that is lifted and a lease that is renewed; the question counts what is still in force. |
+| `temporal_mixed_state_chain` | Four texts that mix an exclusive partnership broken and replaced, a suspension that is lifted and a lease that is renewed; the question counts what is still in force. |
 
 ### Models
 
