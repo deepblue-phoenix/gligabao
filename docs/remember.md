@@ -95,7 +95,7 @@ All steps use the LLM from `internal/ai` (Anthropic Messages API, default model 
      "edges": [{"source": "...", "target": "...", "relation": "...", "description": "...", "valid_at": "...", "invalid_at": "..."}]
    }
    ```
-   Code fences or surrounding prose around the JSON are tolerated. An edge without `valid_at` gets the reference time.
+   Code fences or surrounding prose around the JSON are tolerated. An edge without `valid_at` gets the reference time. If an edge ends before its `valid_at`, its `valid_at` is moved back to `invalid_at` (the end is kept, see [temporal.md](temporal.md)).
 1b. **Summarize the chunk** (`summarizeChunk`, 1 LLM call, max 512 output tokens; only for a chunk of a [chunked](chunking.md) text, right after the chunk's extraction, before anything is stored): the model writes a two-to-four sentence summary of the chunk. It runs on its own [model and reasoning level](#choosing-the-model-of-each-stage) (`summarize_chunk`). The summary, with the [inference](inferences.md) that wrote it (the model as the API reports it, and the level), is stored in step 3 and embedded in step 4. The graph is not extracted from the summary. See [chunking.md](chunking.md#chunk-summaries).
 2. **Resolve edges** (`resolveEdges`, 1 LLM call only if needed): new edges are compared with the [candidate facts](#candidate-facts-load_candidates): stored live edges that touch the same entities. Exact repeats are detected without the LLM; the model flags remaining duplicates and contradictions.
 3. **Store** (`Store`): everything is written in a single transaction:

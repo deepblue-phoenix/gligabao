@@ -28,7 +28,7 @@ Each edge also has `artifact_id`, the artifact it was extracted from. Every arti
 
 All timestamps are RFC 3339 UTC strings (`2006-01-02T15:04:05Z`).
 
-`valid_at` is always set: it is the date the text states, or the artifact's `valid_at` when the text gives none ("Alice works at Acme", "Alice started working at Globex"). `invalid_at` is only set when the text says the fact ended ("Alice left Acme in June 2024"). Partial dates use their earliest instant (a month becomes the 1st, a year becomes 1 January). Unparseable dates count as missing, and an `invalid_at` that is not after `valid_at` is discarded.
+`valid_at` is always set: it is the date the text states, or the artifact's `valid_at` when the text gives none ("Alice works at Acme", "Alice started working at Globex"). `invalid_at` is only set when the text says the fact ended ("Alice left Acme in June 2024"). Partial dates use their earliest instant (a month becomes the 1st, a year becomes 1 January). Unparseable dates count as missing. If the text gives an end but the start is not before it (for example a start defaulted to the reference time, which is later), the end is kept and `valid_at` is set equal to `invalid_at`: an empty span meaning "start unknown, ended then". The special cases (ended facts, moves, planned changes, duplicates, earlier information) are listed in [temporal-edge-cases.md](temporal-edge-cases.md).
 
 There is no uniqueness on (source, target, relation): a fact can end and later become true again, which is a new row.
 
@@ -72,6 +72,10 @@ Example: "Alice works at Acme" (artifact at 2023-01-01), then "Alice started wor
 
 - Any failing LLM step (extraction, resolve) returns `502` and stores nothing.
 - `remember` makes 1 LLM call, or 2 when there are stored facts to compare against.
+
+## Edge cases
+
+The date rules for special cases (a fact with an end but no start, moves and replacements, planned changes, ended versus superseded facts, what `query` sees) are in one place: [temporal-edge-cases.md](temporal-edge-cases.md).
 
 ## Limitations
 

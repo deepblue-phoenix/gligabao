@@ -220,8 +220,11 @@ type KnowledgeExpectEdge struct {
 	// ValidAt and InvalidAt are RFC 3339; empty is not checked.
 	ValidAt   string `json:"valid_at,omitempty"`
 	InvalidAt string `json:"invalid_at,omitempty"`
-	// Ended says whether the fact must have an invalid_at.
+	// Ended says whether the fact must have an invalid_at (the text said it ended, or a later fact closed it).
 	Ended bool `json:"ended"`
+	// Superseded says that the fact must also have an expired_at: a later fact contradicted it and closed it. That
+	// needs a second remember; a fact that only ended in its own text (Ended) has no expired_at.
+	Superseded bool `json:"superseded,omitempty"`
 }
 
 // KnowledgeExpectSeries is a stored series to check, identified by Key and Field ("value" if empty).

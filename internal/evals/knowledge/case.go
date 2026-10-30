@@ -201,8 +201,8 @@ func (x *Executor) runCase(ctx context.Context, name string, in core.KnowledgeCa
 		}
 		check(want.Ended == (found.InvalidAt != nil), fmt.Sprintf("%s: ended = %v", desc, want.Ended),
 			fmt.Sprintf("%s: ended = %v, want %v", desc, found.InvalidAt != nil, want.Ended))
-		if want.Ended {
-			check(found.ExpiredAt != nil, desc+": ended and expired_at is set", desc+": ended but expired_at is not set")
+		if want.Superseded {
+			check(found.ExpiredAt != nil, desc+": superseded and expired_at is set", desc+": superseded but expired_at is not set")
 		}
 	}
 

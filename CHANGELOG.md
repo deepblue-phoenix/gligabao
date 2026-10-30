@@ -5,6 +5,16 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.140.0] - 2026-10-30
+
+### Fixed
+- `remember` no longer loses the end of a fact when the extracted `invalid_at` is not after its `valid_at`. Before, such an end was silently discarded (for instance "moved from Wiesbaden to Darmstadt" stored the Wiesbaden fact as still true, and "Alice left Acme in June 2024" with no stated start lost its end because the start defaulted to the later reference time). Now the end is kept and `valid_at` is moved back to `invalid_at`.
+
+### Changed
+- Eval `expect_edges`: `"ended": true` now only requires the edge to have an `invalid_at`. It used to also require an `expired_at`, which is set only when a later text supersedes the fact, so a case with a single text could never pass (every fact that ends in its own text has no `expired_at`). The new `"superseded": true` requires the `expired_at` (the `job_change` case of `build/evals_knowledge/basic.json` uses it).
+- New doc [docs/temporal-edge-cases.md](docs/temporal-edge-cases.md): the temporal special cases of `remember` and `query` in one place.
+- The extraction prompt now says that a move, replacement or departure ends the old fact at that date, that a merely planned future change does not, and that a fact with a stated end but no start gets `valid_at` equal to `invalid_at`.
+
 ## [0.139.0] - 2026-10-30
 
 ### Changed

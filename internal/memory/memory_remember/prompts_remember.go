@@ -22,6 +22,7 @@ Rules:
 - "valid_at" is the ISO 8601 UTC datetime (e.g. 2023-03-01T00:00:00Z) at which the fact became true. If the text does not say when it started (including present-tense statements such as "Alice works at Acme", or "Alice started working at Globex" with no date), use <reference_time>.
 - Resolve relative expressions ("yesterday", "last year", "two weeks ago") against <reference_time>. For a date with partial precision use its earliest instant (a month -> the 1st at 00:00:00Z, a year -> 1 January).
 - "invalid_at" is the datetime at which the fact stopped being true, only if the text says it ended ("Alice left Acme in June 2024" -> edge Alice works_at Acme with invalid_at 2024-06-01T00:00:00Z). Otherwise null.
+- A move, replacement or departure ends the old fact: "X moved its office from A to B" gives an edge X located_in B (valid_at = the move date) and an edge X located_in A with invalid_at = the move date. A fact that is only planned for the future has not ended yet. If the text says a fact ended but not when it started, set "valid_at" equal to "invalid_at" (not <reference_time>).
 - Only include facts stated or clearly implied by the text. If there is nothing to extract, return {"entities": [], "edges": []}.`
 
 // Summary of a chunk of a long text (Summarize).

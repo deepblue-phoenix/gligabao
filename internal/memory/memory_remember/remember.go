@@ -278,12 +278,21 @@ func parseExtraction(s string, ref time.Time) (*Extraction, error) {
 			v := ref.UTC()
 			e.ValidAt = &v
 		}
-		if e.InvalidAt != nil && !e.InvalidAt.After(*e.ValidAt) { // inconsistent stop time
-			e.InvalidAt = nil
-		}
+		fixSpan(&e)
 		ex.Edges = append(ex.Edges, e)
 	}
 	return ex, nil
+}
+
+// fixSpan makes the event-time span of an extracted edge consistent. The text said the fact ended (InvalidAt), which is
+// more reliable than a start the model defaulted or guessed, so the end is kept and the start is moved back to it when it
+// is later ("Alice left Acme in June 2024" with no start: ValidAt would be the reference time, after the end). The span is
+// then empty (ValidAt == InvalidAt): the start is unknown and the fact ended at that instant. ValidAt must be set.
+func fixSpan(e *Edge) {
+	if e.InvalidAt != nil && e.InvalidAt.Before(*e.ValidAt) {
+		v := *e.InvalidAt
+		e.ValidAt = &v
+	}
 }
 
 //---------------------------------------------------------------------------------------------

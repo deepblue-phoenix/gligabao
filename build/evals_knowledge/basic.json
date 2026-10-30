@@ -24,7 +24,7 @@
       "query": "Where does Alice work now?",
       "expect_contains": ["Globex"],
       "expect_edges": [
-        {"source": "Alice", "target": "Acme", "valid_at": "2023-01-01T00:00:00Z", "invalid_at": "2024-03-01T00:00:00Z", "ended": true},
+        {"source": "Alice", "target": "Acme", "valid_at": "2023-01-01T00:00:00Z", "invalid_at": "2024-03-01T00:00:00Z", "ended": true, "superseded": true},
         {"source": "Alice", "target": "Globex", "valid_at": "2024-03-01T00:00:00Z", "ended": false},
         {"source": "Alice", "target": "Paris", "ended": false}
       ]
