@@ -4,11 +4,13 @@ package api
 import (
 	"net/http"
 
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/api/datasets"
 	"github.com/deepblue-phoenix/gligabao/internal/api/mcp"
 	"github.com/deepblue-phoenix/gligabao/internal/api/ontologies"
 	"github.com/deepblue-phoenix/gligabao/internal/api/query"
 	"github.com/deepblue-phoenix/gligabao/internal/api/remember"
+	"github.com/deepblue-phoenix/gligabao/internal/api/research"
 	"github.com/deepblue-phoenix/gligabao/internal/api/timeseries"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
@@ -43,6 +45,11 @@ func Register(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm me
 	mux.Handle("GET /v1/gb/timeseries/{id}", a(timeseries.Get(d.Relational)))
 	mux.Handle("POST /v1/gb/ontologies", a(ontologies.Load(d.Relational, o.ontologyDirs)))
 	mux.Handle("PUT /v1/gb/ontologies/{name}", a(ontologies.Update(d.Relational, o.ontologyDirs)))
+	if o.research != nil {
+		mux.Handle("POST /v1/gb/research", a(research.Start(o.research)))
+		mux.Handle("GET /v1/gb/research", a(research.List(o.research)))
+		mux.Handle("GET /v1/gb/research/{id}", a(research.Get(o.research)))
+	}
 }
 
 // rememberHandler is the handler of POST /v1/gb/remember (Register and RegisterMCP use the same one).
@@ -50,7 +57,7 @@ func rememberHandler(mgr *memory_remember.Manager, d *db.DB, llm memory_core.LLM
 	return remember.Handler(mgr, d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_core.WithGeoResolver(o.geo), memory_image.WithImageDir(d.ImageDir))
 }
 
-// RegisterMCP mounts the MCP endpoint (POST /v1/gb/mcp, see package mcp) with the tools remember and query. They run the same handlers
+// RegisterMCP mounts the MCP endpoint (POST /v1/gb/mcp, see package mcp) with the tools remember and query (and, with WithResearch, those of the research agents). They run the same handlers
 // as POST /v1/gb/remember and POST /v1/gb/query, so the arguments are the same as those of Register (mgr, d, llm, ...) and the same
 // options apply (WithGeoResolver). There is no authentication: the WithAuth option is not applied, a caller sets the user_id itself.
 // version is what the server reports to MCP clients.
@@ -59,7 +66,11 @@ func RegisterMCP(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm
 	for _, opt := range opts {
 		opt(&o)
 	}
-	mcp.Register(mux, rememberHandler(mgr, d, llm, emb, jv, ws, providers, o), query.Handler(d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm)), version)
+	var mcpOpts []mcp.Option
+	if o.research != nil {
+		mcpOpts = append(mcpOpts, mcp.WithResearch(research.Start(o.research), research.List(o.research), research.Get(o.research)))
+	}
+	mcp.Register(mux, rememberHandler(mgr, d, llm, emb, jv, ws, providers, o), query.Handler(d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm)), version, mcpOpts...)
 }
 
 type options struct {
@@ -67,6 +78,7 @@ type options struct {
 	auth         httputil.Authenticator
 	geo          memory_geo.Resolver
 	geoRadiusKm  float64
+	research     *agent_research.Manager
 }
 
 // Option configures Register.
@@ -85,6 +97,11 @@ func WithGeoResolver(r memory_geo.Resolver) Option { return func(o *options) { o
 // WithGeoRadius sets the default radius, in kilometers, of the proximity search of query (a request can override it with
 // geo_radius_km); 0 (the default) means memory_core.DefaultGeoRadiusKm.
 func WithGeoRadius(km float64) Option { return func(o *options) { o.geoRadiusKm = km } }
+
+// WithResearch adds the routes of the research agents to Register (POST and GET /v1/gb/research, GET /v1/gb/research/{id}, under the
+// same WithAuth as the other routes of users) and their tools to RegisterMCP (research_start, research_list, research_get): m starts
+// the agents and reads their runs. Without it (or with nil) neither has them.
+func WithResearch(m *agent_research.Manager) Option { return func(o *options) { o.research = m } }
 
 // WithOntologyDirs sets the directories ontology documents can be loaded from by file name (POST and PUT /v1/gb/ontologies with
 // "file"), searched in order. Without them only the "content" form works.

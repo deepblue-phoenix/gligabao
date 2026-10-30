@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -102,4 +103,56 @@ func TestFetchURLTool(t *testing.T) {
 	if _, err := tool.Run(context.Background(), json.RawMessage(`{"url":"file:///etc/passwd"}`)); err == nil {
 		t.Fatal("expected error for non-http url")
 	}
+}
+
+func TestObserverSeesTheStepsAndToolsOfARun(t *testing.T) {
+	client, _ := fakeAPI(t,
+		`{"model":"m","content":[{"type":"tool_use","id":"t1","name":"echo","input":{"query":"hi"}}],"usage":{"input_tokens":1,"output_tokens":2}}`,
+		`{"model":"m","content":[{"type":"tool_use","id":"t2","name":"echo","input":{}}],"usage":{"input_tokens":1,"output_tokens":1}}`,
+		`{"model":"m","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":3,"output_tokens":4}}`,
+	)
+	echo := Tool{Name: "echo", Schema: objectSchema("query", "q"), Run: func(ctx context.Context, input json.RawMessage) (string, error) {
+		// What the tool spends itself (a model call of its own) is added to the run.
+		ReportUsage(ctx, 100, 10, 0.5)
+		q, err := stringArg(input, "query")
+		return "echo:" + q, err
+	}}
+	var events []string
+	var lastTotal Result
+	a := &Agent{Client: client, Tools: []Tool{echo}, MaxSteps: 3, Observer: Observer{
+		BeforeModel: func(step int, final bool) { events = append(events, fmt.Sprintf("model %d final=%v", step, final)) },
+		AfterModel: func(step int, total Result) {
+			events = append(events, fmt.Sprintf("modeled %d steps=%d", step, total.Steps))
+		},
+		BeforeTool: func(step int, name string, input json.RawMessage) {
+			events = append(events, fmt.Sprintf("tool %d %s %s", step, name, input))
+		},
+		AfterTool: func(step int, name, output string, isErr bool, total Result) {
+			events = append(events, fmt.Sprintf("tooled %d %s %q err=%v", step, name, output, isErr))
+			lastTotal = total
+		},
+	}}
+	res, err := a.Run(context.Background(), "go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"model 1 final=false", "modeled 1 steps=1", `tool 1 echo {"query":"hi"}`, `tooled 1 echo "echo:hi" err=false`,
+		"model 2 final=false", "modeled 2 steps=2", "tool 2 echo {}", `tooled 2 echo "missing \"query\"" err=true`,
+		"model 3 final=true", "modeled 3 steps=3",
+	}
+	if strings.Join(events, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("events:\n%s", strings.Join(events, "\n"))
+	}
+	// 1+1+3 tokens in, and 100 twice for the tools; the cost is only that of the tools here.
+	if res.InputTokens != 205 || res.OutputTokens != 27 || res.CostUSD != 1.0 || res.ToolCalls != 2 {
+		t.Fatalf("result: %+v", res)
+	}
+	if lastTotal.InputTokens != 202 || lastTotal.CostUSD != 1.0 {
+		t.Fatalf("total seen by the observer: %+v", lastTotal)
+	}
+}
+
+func TestReportUsageOutsideARunDoesNothing(t *testing.T) {
+	ReportUsage(context.Background(), 1, 1, 1) // no panic
 }

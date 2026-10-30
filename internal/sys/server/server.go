@@ -19,6 +19,7 @@ import (
 	"time"
 
 	adminui "github.com/deepblue-phoenix/gligabao/admin_ui"
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
@@ -215,12 +216,12 @@ const EvalDBName = "eval"
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary; adminExts are the registered admin UI extensions
 // (already validated; may be nil), mounted with it.
 func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, geoResolver memory_geo.Resolver, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
-	return newMux(ctx, true, nil, geoResolver, 0, false, d, llm, emb, jv, ws, providers, hooks, dirs, ontologyDirs, sc, eval, trainingMode, adminUI, adminExts, extraAdminDBs...)
+	return newMux(ctx, true, nil, geoResolver, 0, false, newResearch(ctx, d, llm), d, llm, emb, jv, ws, providers, hooks, dirs, ontologyDirs, sc, eval, trainingMode, adminUI, adminExts, extraAdminDBs...)
 }
 
 // newMux is NewHandler; standalone is false when the routes are mounted on a host's mux (see Mount), where "/", "/health" and
 // "/version" belong to the host, so they are not registered: an unknown path under /v1/gb/ is a plain 404.
-func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, geoResolver memory_geo.Resolver, geoRadiusKm float64, mcpEnable bool, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
+func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, geoResolver memory_geo.Resolver, geoRadiusKm float64, mcpEnable bool, research *agent_research.Manager, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	if standalone {
 		mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
@@ -237,9 +238,9 @@ func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, g
 	}
 	// The remember manager runs every remember pipeline run, one at a time, until ctx is done.
 	mgr := memory_remember.NewManager(ctx, d.Relational, llm)
-	api.Register(mux, mgr, d, llm, emb, jv, ws, providers, api.WithOntologyDirs(ontologyDirs), api.WithAuth(auth), api.WithGeoResolver(geoResolver), api.WithGeoRadius(geoRadiusKm))
+	api.Register(mux, mgr, d, llm, emb, jv, ws, providers, api.WithOntologyDirs(ontologyDirs), api.WithAuth(auth), api.WithGeoResolver(geoResolver), api.WithGeoRadius(geoRadiusKm), api.WithResearch(research))
 	if mcpEnable {
-		api.RegisterMCP(mux, mgr, d, llm, emb, jv, ws, providers, buildinfo.Library().Version, api.WithGeoResolver(geoResolver), api.WithGeoRadius(geoRadiusKm))
+		api.RegisterMCP(mux, mgr, d, llm, emb, jv, ws, providers, buildinfo.Library().Version, api.WithGeoResolver(geoResolver), api.WithGeoRadius(geoRadiusKm), api.WithResearch(research))
 	}
 	if eval {
 		api.RegisterEval(mux, mgr, d, llm, emb, jv, ws, providers, api.WithGeoResolver(geoResolver), api.WithGeoRadius(geoRadiusKm))
@@ -252,6 +253,17 @@ func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, g
 		registerAdminUI(mux, dbs, geoRadiusKm, sc, adminExts)
 	}
 	return mux
+}
+
+// newResearch makes the manager of the research agents (POST /v1/gb/research), which runs them until ctx is done. They need the Anthropic
+// client: with any other llm (or none) starting a research answers 503.
+func newResearch(ctx context.Context, d *db.DB, llm memory_core.LLM) *agent_research.Manager {
+	ops, err := agent_research.OpsFor(d.Backend)
+	if err != nil {
+		log.WithError(err).Fatal("agent research")
+	}
+	client, _ := llm.(*ai.Client)
+	return agent_research.NewManager(ctx, d.Relational, ops, client)
 }
 
 // versionHandler reports the version (and git commit) of gligabao and, if registered, of the embedding program.
@@ -727,8 +739,10 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 
 	// The remember manager stops when everything is released, i.e. after the graceful shutdown has given the runs in progress their time.
 	mgrCtx, stopMgr := context.WithCancel(ctx)
-	cleanups = append(cleanups, stopMgr)
-	return newMux(mgrCtx, standalone, opts.Auth, geoResolver, opts.GeoRadiusKm, opts.MCPEnable, database, llm, emb, jv, ws, providers, hooks, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, extra...), closeAll, nil
+	// The research agents are stopped with it, and given the time to write the end of their runs before the databases close.
+	research := newResearch(mgrCtx, database, llm)
+	cleanups = append(cleanups, func() { stopMgr(); research.Wait() })
+	return newMux(mgrCtx, standalone, opts.Auth, geoResolver, opts.GeoRadiusKm, opts.MCPEnable, research, database, llm, emb, jv, ws, providers, hooks, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, extra...), closeAll, nil
 }
 
 // newJev builds the Jev client from the options.

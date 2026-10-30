@@ -65,6 +65,7 @@ func webSearchTool(client *ai.Client) Tool {
 			if err != nil {
 				return "", err
 			}
+			ReportUsage(ctx, r.InputTokens, r.OutputTokens, r.CostUSD)
 			var sb strings.Builder
 			sb.WriteString(r.Text)
 			sb.WriteString("\n\nSources:")

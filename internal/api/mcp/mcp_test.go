@@ -138,3 +138,78 @@ func TestMissingRequiredArgumentIsRejected(t *testing.T) {
 		t.Fatal("the handler ran for an invalid input")
 	}
 }
+
+func TestResearchToolsForwardToTheHandlers(t *testing.T) {
+	var startBody map[string]any
+	var listQuery, getQuery, getID string
+	mux := http.NewServeMux()
+	Register(mux, nil, nil, "1", WithResearch(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			b, _ := io.ReadAll(r.Body)
+			json.Unmarshal(b, &startBody)
+			httputil.WriteJSON(w, http.StatusAccepted, map[string]any{"id": 5, "status": "running"})
+		}),
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			listQuery = r.Method + " " + r.URL.Query().Encode()
+			httputil.WriteJSON(w, http.StatusOK, map[string]any{"runs": []any{}})
+		}),
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			getQuery, getID = r.Method+" "+r.URL.Query().Encode(), r.PathValue("id")
+			httputil.Error(w, http.StatusNotFound, "research not found")
+		}),
+	))
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	cs, err := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "0"}, nil).Connect(t.Context(),
+		&sdk.StreamableClientTransport{Endpoint: srv.URL + Path, DisableStandaloneSSE: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cs.Close()
+
+	tools, err := cs.ListTools(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, tool := range tools.Tools {
+		names = append(names, tool.Name)
+	}
+	if len(names) != 5 || !strings.Contains(strings.Join(names, ","), ToolResearchStart) {
+		t.Fatalf("tools: %v", names)
+	}
+
+	res, err := cs.CallTool(t.Context(), &sdk.CallToolParams{Name: ToolResearchStart, Arguments: map[string]any{"user_id": "u1", "topic": "t", "max_steps": 7}})
+	if err != nil || res.IsError {
+		t.Fatalf("start: %v %+v", err, res)
+	}
+	if startBody["user_id"] != "u1" || startBody["topic"] != "t" || startBody["max_steps"] != 7.0 {
+		t.Fatalf("start body: %v", startBody)
+	}
+	if _, ok := startBody["model"]; ok {
+		t.Fatalf("unset field sent: %v", startBody)
+	}
+	if sc, _ := res.StructuredContent.(map[string]any); sc["id"] != 5.0 {
+		t.Fatalf("structured: %#v", res.StructuredContent)
+	}
+
+	if res, err = cs.CallTool(t.Context(), &sdk.CallToolParams{Name: ToolResearchList, Arguments: map[string]any{"user_id": "u1", "active": true, "limit": 3}}); err != nil || res.IsError {
+		t.Fatalf("list: %v %+v", err, res)
+	}
+	if listQuery != "GET active=true&limit=3&user_id=u1" {
+		t.Fatalf("list query: %q", listQuery)
+	}
+	// An explicit active=false is sent, and nothing else is.
+	cs.CallTool(t.Context(), &sdk.CallToolParams{Name: ToolResearchList, Arguments: map[string]any{"user_id": "u1", "active": false}})
+	if listQuery != "GET active=false&user_id=u1" {
+		t.Fatalf("list query: %q", listQuery)
+	}
+
+	res, err = cs.CallTool(t.Context(), &sdk.CallToolParams{Name: ToolResearchGet, Arguments: map[string]any{"user_id": "u1", "id": 5}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if getQuery != "GET user_id=u1" || getID != "5" || !res.IsError || !strings.Contains(text(t, res), "research not found") {
+		t.Fatalf("get: %q id %q result %+v", getQuery, getID, res)
+	}
+}

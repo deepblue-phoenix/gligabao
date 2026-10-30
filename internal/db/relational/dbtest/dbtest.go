@@ -1,4 +1,4 @@
-// Package dbtest runs tests against every available database backend (relational, graph, training and eval tables).
+// Package dbtest runs tests against every available database backend (relational, graph, training, eval and agent research tables).
 //
 // SQLite is always used (a fresh database file per test). PostgreSQL is used too when the environment variable
 // POSTGRES_TEST_DSN names a database (e.g. postgres://postgres:pw@127.0.0.1:5432/gb?sslmode=disable); each test
@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
@@ -65,6 +66,10 @@ func OpenSQLite(t *testing.T) *sql.DB {
 		d.Close()
 		t.Fatal(err)
 	}
+	if err := agent_research.Open(config.DBBackendSQLite, d); err != nil {
+		d.Close()
+		t.Fatal(err)
+	}
 	t.Cleanup(func() { d.Close() })
 	return d
 }
@@ -86,7 +91,9 @@ func OpenPostgres(t *testing.T, dsn string) *sql.DB {
 	if err == nil {
 		if err = graph.Open(config.DBBackendPostgres, d); err == nil {
 			if err = trainingdb.Open(config.DBBackendPostgres, d); err == nil {
-				err = evals.Open(config.DBBackendPostgres, d)
+				if err = evals.Open(config.DBBackendPostgres, d); err == nil {
+					err = agent_research.Open(config.DBBackendPostgres, d)
+				}
 			}
 		}
 		if err != nil {

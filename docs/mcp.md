@@ -20,7 +20,7 @@ For a client that takes a JSON config:
 
 ## Tools
 
-Only these two tools are exposed for now. Each runs the handler of the matching REST endpoint in process, so validation, limits, errors, monitoring events (`remember.completed`, `query.completed`, ...) and results are those of the endpoint; see its page for the details of every field.
+`remember` and `query`, and the three tools of the [research agents](#research-agents). Each runs the handler of the matching REST endpoint in process, so validation, limits, errors, monitoring events (`remember.completed`, `query.completed`, ...) and results are those of the endpoint; see its page for the details of every field.
 
 ### `remember`
 
@@ -50,10 +50,20 @@ Answers a question from the graph, like [`POST /v1/gb/query`](query.md).
 | `reasoning` | optional | `none` (default), `low`, `medium` or `high` for the answering call, or an object with a level per stage: `{"query": "low", "detect_geo": "none"}` |
 | `models` | optional | the model of each stage: `{"query": "...", "detect_geo": "..."}` |
 
+### Research agents
+
+Three tools run the handlers of the [research agent](research.md) endpoints: `research_start` is [`POST /v1/gb/research`](research.md#post-v1gbresearch), `research_list` is `GET /v1/gb/research` and `research_get` is `GET /v1/gb/research/{id}`. A research runs in the background and costs money (model calls and web searches): start it, then read it with `research_get` until its `status` is `completed` (the `report` is in it, with every `state` the agent went through) or `failed`.
+
+| Tool | Arguments |
+| ---- | --------- |
+| `research_start` | `user_id` (required), `topic` (required), `max_steps` (optional, default 20, at most 40), `model` (optional) |
+| `research_list` | `user_id` (required), `active` (optional: only the agents working now), `status` (optional: `running`, `completed` or `failed`), `limit` (optional) |
+| `research_get` | `user_id` (required), `id` (required: the id `research_start` returned) |
+
 ### Results
 
 On success the result is the JSON response of the endpoint, both as the tool's structured content and as text. If the endpoint answers with an error status (invalid argument `400`, dataset not found `404`, no LLM key `503`, failed LLM call `502`, ...) the result is a tool error (`isError: true`) whose text is the endpoint's message and status, so that the model can see what went wrong and correct the call. Arguments that do not match the tool's input schema (a missing `user_id` or `text`) are rejected by the MCP layer before the handler runs.
 
 ## Not included yet
 
-Authentication, the other endpoints (datasets, timeseries, ontologies) as tools, MCP resources and prompts. See the [roadmap](roadmap/ROADMAP.md).
+Authentication, the other endpoints (datasets, timeseries, ontologies) as tools, cancelling a research, MCP resources and prompts. See the [roadmap](roadmap/ROADMAP.md).

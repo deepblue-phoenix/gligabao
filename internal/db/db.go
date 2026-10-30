@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
@@ -186,6 +187,10 @@ func Open(cfg Config) (*DB, error) {
 		return nil, err
 	}
 	if err := training_audits.Open(cfg.Backend, rel); err != nil {
+		rel.Close()
+		return nil, err
+	}
+	if err := agent_research.Open(cfg.Backend, rel); err != nil {
 		rel.Close()
 		return nil, err
 	}

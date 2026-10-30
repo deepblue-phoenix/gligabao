@@ -21,13 +21,14 @@ gligabao is a small, self-hosted MCP/HTTP server that gives an AI application lo
 | `POST /v1/gb/datasets`, `GET /v1/gb/datasets?user_id=`, `DELETE /v1/gb/datasets/{name}?user_id=` | Create, list and (soft) delete datasets | [docs/datasets.md](docs/datasets.md) |
 | `GET /v1/gb/datasets/{name}/graph?user_id=` | Export a dataset's whole graph as JSON | [docs/graph.md](docs/graph.md) |
 | `POST /v1/gb/ontologies`, `PUT /v1/gb/ontologies/{name}` | Load an OWL ontology (RDF/XML) under a name, or update the one stored under it (merge or replace) | [docs/ontologies.md](docs/ontologies.md) |
+| `POST /v1/gb/research`, `GET /v1/gb/research`, `GET /v1/gb/research/{id}` | Start a deep-research agent on a topic (it searches the web and reads pages in the background and ends with a report), list the agents (the active ones only, if asked), and read one with the states it went through; also `research_start`, `research_list` and `research_get` over MCP and `gligabao research` | [docs/research.md](docs/research.md) |
 | `/v1/gb/mcp` | [MCP](https://modelcontextprotocol.io) server (streamable HTTP) with `remember` and `query` as tools; off by default (`mcp = true` / `serve --mcp`), no authentication | [docs/mcp.md](docs/mcp.md) |
 | `GET /health` | Health check | |
 | `GET /version` | Version (and git commit) of the running binary | [Versioning](#versioning) |
 
 ## CLI
 
-Besides `serve` and `version`, the `gligabao` binary has commands that use the API, so an agent can use gligabao without HTTP calls: `remember`, `query` (with `--evidence-only` to only retrieve), `dataset ls|create|rm|graph`, `api` (any other endpoint), `status` and `stop`. They talk to a **local daemon** (`serve` on `127.0.0.1`, without authentication), started in the background by the first command if none is running, with `local_user` as the default user; `--server URL` targets another server. Without a `gligabao.toml` in the current directory the daemon keeps its config, database and log in `~/.gligabao`. Output is JSON on stdout, errors are JSON on stderr, and the exit codes say what failed. Details: [docs/cli.md](docs/cli.md).
+Besides `serve` and `version`, the `gligabao` binary has commands that use the API, so an agent can use gligabao without HTTP calls: `remember`, `query` (with `--evidence-only` to only retrieve), `dataset ls|create|rm|graph`, `research start|ls|get` (deep-research agents), `api` (any other endpoint), `status` and `stop`. They talk to a **local daemon** (`serve` on `127.0.0.1`, without authentication), started in the background by the first command if none is running, with `local_user` as the default user; `--server URL` targets another server. Without a `gligabao.toml` in the current directory the daemon keeps its config, database and log in `~/.gligabao`. Output is JSON on stdout, errors are JSON on stderr, and the exit codes say what failed. Details: [docs/cli.md](docs/cli.md).
 
 ## Datasets
 
@@ -133,7 +134,7 @@ Configuration is read from `build/gligabao.toml` (override with `--config`). It 
 
 ### MCP
 
-With `serve --mcp` (or `mcp = true` in the config; default `false`) the server also serves `remember` and `query` as tools of an MCP (Model Context Protocol) server at `/v1/gb/mcp` (streamable HTTP, built on [`modelcontextprotocol/go-sdk`](https://github.com/modelcontextprotocol/go-sdk)), so MCP clients such as Claude Desktop or Claude Code can use gligabao as a memory: `claude mcp add --transport http gligabao http://localhost:7878/v1/gb/mcp`. The tools run the same handlers as the REST endpoints. There is **no authentication** yet (callers choose the `user_id`, and the `Auth` hook does not cover this endpoint), so enable it only on a trusted network. Details: [docs/mcp.md](docs/mcp.md).
+With `serve --mcp` (or `mcp = true` in the config; default `false`) the server also serves `remember` and `query` (and the three tools of the [research agents](docs/research.md)) as tools of an MCP (Model Context Protocol) server at `/v1/gb/mcp` (streamable HTTP, built on [`modelcontextprotocol/go-sdk`](https://github.com/modelcontextprotocol/go-sdk)), so MCP clients such as Claude Desktop or Claude Code can use gligabao as a memory: `claude mcp add --transport http gligabao http://localhost:7878/v1/gb/mcp`. The tools run the same handlers as the REST endpoints. There is **no authentication** yet (callers choose the `user_id`, and the `Auth` hook does not cover this endpoint), so enable it only on a trusted network. Details: [docs/mcp.md](docs/mcp.md).
 
 ### Eval mode
 

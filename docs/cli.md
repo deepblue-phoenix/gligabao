@@ -28,6 +28,9 @@ gligabao remember [TEXT | -] [-f FILE] [-d DATASET] [--kind episode] [--at TIME]
 gligabao query QUESTION [-d DATASET] [--session S] [--evidence-only] [--geo-nearby] [--geo-radius KM]
                   [--model STAGE=NAME] [--reasoning STAGE=LEVEL] [--raw] [--json BODY]
 gligabao dataset ls | create NAME [--description D] [--tag T] | rm NAME | graph NAME
+gligabao research start TOPIC [--max-steps N] [--model M] [--wait [--raw]] [--json BODY]
+gligabao research ls [--active] [--status running|completed|failed] [--limit N]
+gligabao research get ID [--raw]
 gligabao api METHOD PATH [JSON | @file | -]      # any other endpoint (timeseries, ontologies, ...)
 gligabao status                                  # the target, and whether it runs
 gligabao stop                                    # stop the local daemon
@@ -38,6 +41,7 @@ Global flags: `--user` (env `GLIGABAO_USER`, default `local_user`: the `user_id`
 - `remember` takes the text as an argument, from `--file`, or from stdin with `-`; `--image` remembers an image instead. The flags map to the request fields (`--at` is `reference_time`, `--series` is `timeseries.series`, `--model` and `--reasoning` are `models` and `reasoning`, repeatable as `STAGE=VALUE`).
 - `--json` (on `remember` and `query`) is the whole request body as JSON text, `@file` or `-` (stdin), so the exact REST body can be passed and a new request field never needs a new flag. The flags that are given override its fields; `user_id` defaults to `--user` only if the body has none.
 - `query --evidence-only` is a retrieval-only call, see [query.md](query.md#retrieval-only-evidence_only). `query --raw` prints just the answer, as text.
+- `research` starts and follows [research agents](research.md): `start` prints the run right away (the agent goes on in the background, it costs money), `--wait` waits for it to end and prints the finished run (exit code 1 if it failed; `--raw` prints only the report), `ls --active` lists the agents that are working, and `get ID` shows a run with every state it went through (`--raw`: only the report).
 - `api` sends the request as it is (it adds no `user_id`), for what has no command.
 
 ## Output and exit codes

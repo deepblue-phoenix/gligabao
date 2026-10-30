@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.128.0] - 2026-11-01
+
+### Added
+- Research agents: the deep-research agent can now be started on a topic and followed while it works. It runs in the background (a user can have 3 working at once), and every run is stored in the database (`gb_agent_research_runs`: the topic, the status `running`/`completed`/`failed`, the state it is in, the steps, tokens and cost so far, and the report or the error). Each time the agent moves from one state to the next (`starting`, `thinking`, `searching` a query, `reading` a URL, `writing_report`, then `completed` or `failed`) a row is inserted in a second table, `gb_agent_research_states`, with what it was about, its error if the work failed (a page that cannot be read is a failed state, not a failed run) and when it began and ended, so the progress can be tracked in detail. Runs that a restart interrupted are marked `failed`. See `docs/research.md`.
+- REST: `POST /v1/gb/research` (starts an agent: `topic`, optional `max_steps` and `model`; answers `202` with the run), `GET /v1/gb/research` (lists the user's agents, newest first; `active=true` for the ones working now, or `status=`) and `GET /v1/gb/research/{id}` (a run with all its states, and the report once completed). They are user routes, under the `Auth` hook like `remember` and `query`; a user cannot read another user's run.
+- MCP: the tools `research_start`, `research_list` and `research_get` (with the other tools, so with `mcp = true`).
+- CLI: `gligabao research start TOPIC` (`--max-steps`, `--model`, `--wait` to wait for the end and print the finished run, `--raw` for only the report), `research ls` (`--active`, `--status`, `--limit`) and `research get ID` (`--raw`).
+- `agent.Observer`, set on an `agent.Agent`, is told before and after every model call and every tool run, and `agent.ReportUsage` lets a tool that calls a model add its tokens and cost to the run.
+
+### Fixed
+- The cost and tokens of the web searches of the deep-research agent (`agent.Research`) were not counted in its result; now they are.
+
 ## [0.127.0] - 2026-10-31
 
 ### Added

@@ -31,7 +31,7 @@ Output and exit codes:
 
 // addClientCommands adds the commands that use the API.
 func (c *CLI) addClientCommands(o Options) {
-	cmds := []*cobra.Command{c.rememberCmd(), c.queryCmd(), c.datasetCmd(), c.apiCmd(), c.statusCmd(), c.stopCmd()}
+	cmds := []*cobra.Command{c.rememberCmd(), c.queryCmd(), c.datasetCmd(), c.researchCmd(), c.apiCmd(), c.statusCmd(), c.stopCmd()}
 	for _, cmd := range cmds {
 		cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 			// The arguments are parsed by now: an error from here on is not a usage error, so the help is not printed for it.
