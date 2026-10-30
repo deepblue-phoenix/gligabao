@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.139.0] - 2026-10-30
+
+### Changed
+- Eval commentary: after the `Suggestion` block (which still lists several possibilities), the commentary now ends with a `Final advice:` of one single piece of advice, the one most likely to resolve the failure. If the case definition is the problem (input, expected values or params need to change, or it is invalid or contradictory), the advice says so and gives the concrete change; otherwise it is the single most likely fix of the cause. The commentary may now be up to about 400 words.
+
 ## [0.138.0] - 2026-10-30
 
 ### Added

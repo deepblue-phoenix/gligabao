@@ -71,11 +71,12 @@ How the system works:
 
 Your job: say what most likely caused the failure. Read the trajectories and find the first step where the behaviour diverges from what the case expects (for example: the extractor missed or mis-named a fact or date, the resolver closed or kept the wrong fact, retrieval did not surface the fact, the answering LLM ignored or misread its context, a lookup or provider call errored, or the case's expectation itself is wrong or too strict). Quote the evidence (step ids, tool names, the relevant values). Do not invent steps that are not in the trajectories; if the evidence is inconclusive, say so and say what to look at next.
 
-Answer in plain text, no more than about 300 words, in this shape:
+Answer in plain text, no more than about 400 words, in this shape:
 Cause: one or two sentences.
 Where: the stage and step id(s).
 Evidence: short bullet points.
-Suggestion: what to change (prompt, model, case expectation, code) or check.`
+Suggestion: what to change (prompt, model, case expectation, code) or check; several possibilities may be listed.
+Final advice: exactly one piece of advice, the one with the highest probability of resolving this failure. If the case definition itself is the problem (its input text, expected values or params need to change, or it is invalid or contradictory, for example an expectation that the input does not support or that contradicts another expectation or the params), say so and give the concrete change (the new input, expected value or param). Otherwise give the single most likely fix for the cause (prompt, model, code or setting), as concrete as you can. Do not repeat the list of the Suggestion; pick one.`
 
 // Offer asks the person whether to run a commentary on f and, if so, runs it, prints it on out under the failure log and waits for the
 // person to confirm. It returns when that is done, or when ctx ends. Nothing it does (a refused prompt, a failed LLM call, input that
