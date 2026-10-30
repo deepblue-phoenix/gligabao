@@ -13,11 +13,9 @@
 //! A request body is borrowed as `&[u8]`, parsed into an owned `InferenceRequest`, then lent
 //! (`&`) to the provider. Nothing is cloned on the way.
 
-use crate::anthropic::AnthropicProvider;
 use crate::error::RouterError;
 use crate::http_server::{HttpRequest, HttpResponse, RequestHandler};
-use crate::openai::OpenAiProvider;
-use crate::provider::Provider;
+use crate::providers::{AnthropicProvider, OpenAiProvider, Provider};
 use crate::types::{InferenceRequest, InferenceResponse};
 use serde_json::json;
 

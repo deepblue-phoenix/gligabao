@@ -57,4 +57,4 @@ Errors: `{"error": "..."}` with 400 (bad request), 502 (provider failed), 503 (p
 
 - HTTP server: implement `HttpServer` (`src/http_server.rs`), change one line in `main.rs`.
 - HTTP client: only `src/http_client.rs` calls out.
-- New provider: implement `Provider` in a new file, add a field and a match arm in `src/router.rs`.
+- New provider: implement `Provider` in a new file in `src/providers/` (and register it in `providers/mod.rs`), add a field and a match arm in `src/router.rs`.

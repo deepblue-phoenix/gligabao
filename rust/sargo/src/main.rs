@@ -5,24 +5,22 @@
 //!   http_server.rs  HTTP server (std only) behind the `HttpServer` trait  <- swap the server here
 //!   http_client.rs  outgoing HTTP calls to the providers                  <- swap the client here
 //!   router.rs       request -> provider -> reply
-//!   provider.rs     the `Provider` trait
-//!   anthropic.rs / openai.rs   one provider each (format translation, tool calling)
+//!   providers/      the providers
+//!     mod.rs          the `Provider` trait
+//!     anthropic.rs, openai.rs   one provider each (format translation, tool calling)
 //!   types.rs        the neutral request/response structs
 //!   json_util.rs, error.rs     small helpers
 
-mod anthropic;
 mod error;
 mod http_client;
 mod http_server;
 mod json_util;
-mod openai;
-mod provider;
+mod providers;
 mod router;
 mod types;
 
-use anthropic::AnthropicProvider;
 use http_server::{HttpServer, StdHttpServer};
-use openai::OpenAiProvider;
+use providers::{AnthropicProvider, OpenAiProvider};
 use router::Router;
 use std::env;
 

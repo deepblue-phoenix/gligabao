@@ -9,7 +9,7 @@
 use crate::error::RouterError;
 use crate::http_client::post_json;
 use crate::json_util::{take_field, take_string};
-use crate::provider::Provider;
+use super::Provider;
 use crate::types::{
     ContentBlock, InferenceRequest, InferenceResponse, Message, Usage, DEFAULT_MAX_TOKENS,
 };
