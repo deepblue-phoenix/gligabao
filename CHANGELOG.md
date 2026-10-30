@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.143.1] - 2026-10-31
+
+### Changed
+- `rust/sargo` is now a library as well as the `sargo` binary: its modules moved to a new `src/lib.rs` (all `pub mod`), and `src/main.rs` only does the start-up using `sargo::...`. Behaviour and the binary are unchanged; other Rust crates can now depend on `sargo` with a path dependency instead of including its files.
+
 ## [0.143.0] - 2026-10-31
 
 ### Changed

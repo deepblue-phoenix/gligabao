@@ -1,30 +1,9 @@
-//! sargo: a small model request router. See `router.rs` for the endpoints and README.md for usage.
-//!
-//! Layout:
-//!   main.rs         start-up: load the config, build the router, start the server
-//!   config.rs       config.toml -> `Config` struct, passed to the parts that need it
-//!   http_server.rs  HTTP server (std only) behind the `HttpServer` trait  <- swap the server here
-//!   http_client.rs  outgoing HTTP calls to the providers                  <- swap the client here
-//!   router.rs       request -> provider -> reply
-//!   providers/      the providers
-//!     mod.rs          the `Provider` trait
-//!     anthropic.rs, openai.rs   one provider each (format translation, tool calling)
-//!   types.rs        the neutral request/response structs
-//!   json_util.rs, error.rs     small helpers
+//! The `sargo` binary: start-up only. Everything else is in the library (`lib.rs`).
 
-mod config;
-mod error;
-mod http_client;
-mod http_server;
-mod json_util;
-mod providers;
-mod router;
-mod types;
-
-use config::Config;
-use http_server::{HttpServer, StdHttpServer};
-use providers::{AnthropicProvider, OpenAiProvider};
-use router::Router;
+use sargo::config::Config;
+use sargo::http_server::{HttpServer, StdHttpServer};
+use sargo::providers::{AnthropicProvider, OpenAiProvider};
+use sargo::router::Router;
 
 fn main() {
     // The config is loaded once and then only borrowed (`&config`, `&config.server`, ...).

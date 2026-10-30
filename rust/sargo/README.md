@@ -4,6 +4,10 @@ A small model request router. A caller POSTs one provider-neutral inference requ
 to Anthropic or OpenAI and returns the reply in the same neutral shape. Tool calling is supported.
 No streaming yet. The server is blocking, one thread per connection.
 
+## Library and binary
+
+The package is both: `src/lib.rs` exposes the modules (`config`, `router`, `providers`, ...) and `src/main.rs` is the `sargo` binary, which only does the start-up. Other crates can depend on it (`sargo = { path = "..." }`) and build their own `main`.
+
 ## Run
 
 ```sh
@@ -17,7 +21,7 @@ cargo test
 `config.toml` (all keys optional, the shipped file lists the defaults): `[server]` address, read timeout and
 max body size; `[http_client]` provider timeout; `[providers.anthropic]` / `[providers.openai]` base URL and the
 name of the env var holding the API key (keys are never in the file). Unknown keys are rejected.
-It is loaded once in `main.rs` into the `Config` struct (`src/config.rs`) and passed by reference to the
+It is loaded once in `src/main.rs` into the `Config` struct (`src/config.rs`) and passed by reference to the
 server and the providers. If no config path is given and `./config.toml` does not exist, defaults are used.
 
 ## API
@@ -69,6 +73,6 @@ before sending. A unit test in `src/types.rs` checks that the schema's property 
 
 ## Swapping parts
 
-- HTTP server: implement `HttpServer` (`src/http_server.rs`), change one line in `main.rs`.
+- HTTP server: implement `HttpServer` (`src/http_server.rs`), change one line in `src/main.rs`.
 - HTTP client: only `src/http_client.rs` calls out.
 - New provider: implement `Provider` in a new file in `src/providers/` (and register it in `providers/mod.rs`), add a field and a match arm in `src/router.rs`.
