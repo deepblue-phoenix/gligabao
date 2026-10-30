@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.143.0] - 2026-10-31
+
+### Changed
+- The knowledge eval runner no longer puts every run without `-experiment` in a shared experiment called `default`. Without the flag, a run that picks one eval with `-eval` makes (or reuses) an experiment named after that eval, and any other run gets an experiment named with its start time (`YYYY-MM-DD_HH-MM-SS`), so it is unique. `-experiment NAME` still names it, and `-experiment ""` still runs without an experiment. See [docs/evals/experiments.md](docs/evals/experiments.md#runner).
+- The training eval runner (`internal/evals/training/cmd`) is now a run of an experiment too: it has `-experiment` and `-experiment-desc`, and without `-experiment` the experiment is named with the start time. `-experiment ""` runs the eval on its own. (Evals started through the API still are in an experiment only when the request names one.)
+
 ## [0.142.2] - 2026-10-31
 
 ### Added

@@ -56,7 +56,7 @@ A case that errors does not stop the run: it is an `errored` case run and the ru
 ./run_evals.sh [-experiment name] [-experiment-desc text] [-v] [case-name ...]
 ```
 
-`-experiment` (default `default`) names the experiment; it is created on first use and later runs with the same name are further runs of it (`-experiment ""` runs the evals on their own, with no experiment run). The runner records into the eval database (`-db`, default `build/gligabao-eval.db`), which it never resets; the datasets of a case run are named `<case>_run<eval run id>`. It prints the status and cost of the run at the end.
+`-experiment` names the experiment; it is created on first use and later runs with the same name are further runs of it (`-experiment ""` runs the evals on their own, with no experiment run). Without `-experiment`, a run that picks one eval with `-eval` is named after that eval (it is targeted), and any other run (all the evals) is named with its start time (`YYYY-MM-DD_HH-MM-SS`), so it is unique. The runner records into the eval database (`-db`, default `build/gligabao-eval.db`), which it never resets; the datasets of a case run are named `<case>_run<eval run id>`. It prints the status and cost of the run at the end.
 
 ## From Go
 

@@ -19,8 +19,9 @@
 // "Run commentary on this failure? [y/N]"; on y the failure and the case's ATIF trajectories are sent to an LLM (-commentary-model,
 // default claude-sonnet-5-5), whose diagnosis is printed under the failure log, and the run waits for Enter before going on.
 //
-// Every eval is an eval run, and every invocation is a run of an experiment (-experiment, default "default"; -experiment "" runs
-// the evals on their own, without one), all stored in the eval database. The exit status is 1 if any case did not pass.
+// Every eval is an eval run, and every invocation is a run of an experiment (-experiment; -experiment "" runs the evals on their own,
+// without one), all stored in the eval database. Without -experiment the experiment is named after the eval when -eval picks one
+// (a targeted run), else with the timestamp of the start (so it is unique); see runner.ExperimentName. The exit status is 1 if any case did not pass.
 package main
 
 import (
@@ -32,6 +33,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
@@ -61,7 +63,7 @@ func mainErr() error {
 	eval := flag.String("eval", "", "run only the cases of this eval (its name as set in the JSON file; see -list-evals)")
 	listEvals := flag.Bool("list-evals", false, "print the available evals and their cases, then exit")
 	atifDir := flag.String("atif", "", `store every ATIF trajectory as JSON in this directory (default: "atif" next to the -db file)`)
-	experiment := flag.String("experiment", "default", `name of the experiment this run belongs to (created if new); "" runs the evals on their own`)
+	experiment := flag.String("experiment", "", `name of the experiment this run belongs to (created if new); "" runs the evals on their own; if not given: the name of the eval when -eval picks one, else the start time`)
 	experimentDesc := flag.String("experiment-desc", "", "description of the experiment, used when it is created")
 	evalDBPath := flag.String("db", "build/gligabao-eval.db", "SQLite file of the eval database: the datasets of the cases, the evals and their runs (never reset; show it with ./run_server_local.sh)")
 	modelsFlag := flag.String("models", "", `LLM model per stage, e.g. "extract_graph=claude-sonnet-4-5,query=claude-haiku-5-5" (stages: `+strings.Join(knowledge.ModelStages(), ", ")+`; query is the call that answers the question, and detect_geo applies to remember and query); a stage left out uses the default model; a case's "models" win`)
@@ -160,6 +162,9 @@ func mainErr() error {
 		params["reasoning"] = reasoning
 	}
 	params["geo"] = *geoFlag
+	experimentSet := false
+	flag.Visit(func(f *flag.Flag) { experimentSet = experimentSet || f.Name == "experiment" })
+	*experiment = runner.ExperimentName(experimentSet, *experiment, *eval, time.Now())
 	var xr *runner.ExperimentRecorder
 	var xdef *core.ExperimentDef
 	if *experiment != "" {

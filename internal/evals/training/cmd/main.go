@@ -6,6 +6,8 @@
 // Usage: go run ./internal/evals/training/cmd -model ID [-v] [-config file] [-evals dir ...] [-eval name] [case-name ...]   (requires ANTHROPIC_API_KEY and a running sidecar)
 // Without -eval the eval is the one named like the model's training dataset.
 // -list-evals prints the available evals and exits; -list-models prints the trained models of the database and exits.
+// Every invocation is a run of an experiment: -experiment names it (created if new; -experiment "" runs the eval on its own), and without
+// the flag it is named with the start time, so it is unique (see runner.ExperimentName).
 // The exit status is 1 if any case is not correct (score below core.TrainingPassScore) or errored.
 package main
 
@@ -59,6 +61,8 @@ func mainErr() error {
 	judgeModel := flag.String("judge-model", "", "the judge's LLM model (default: the LLM's default)")
 	maxTokens := flag.Int("max-tokens", 1024, "max tokens of the model's answers")
 	temperature := flag.Float64("temperature", 0.1, "temperature of the model's answers")
+	experiment := flag.String("experiment", "", `name of the experiment this run belongs to (created if new); "" runs the eval on its own; if not given: the start time`)
+	experimentDesc := flag.String("experiment-desc", "", "description of the experiment, used when it is created")
 	flag.Parse()
 
 	configSet := false
@@ -195,10 +199,34 @@ func mainErr() error {
 	if len(flag.Args()) > 0 {
 		params["cases"] = flag.Args()
 	}
-	run, err := r.RunEval(memory_core.WithStage(ctx, training.StageJudge), def, x, runner.EvalOptions{
-		Params: params,
-		Meta:   &core.TrainingEvalRunMeta{TrainedModelID: tm.ID},
-	})
+	// The run is a run of an experiment: the one named by -experiment, else one named with the start time (unique).
+	experimentSet := false
+	flag.Visit(func(f *flag.Flag) { experimentSet = experimentSet || f.Name == "experiment" })
+	*experiment = runner.ExperimentName(experimentSet, *experiment, "", time.Now())
+	opts := runner.EvalOptions{Params: params, Meta: &core.TrainingEvalRunMeta{TrainedModelID: tm.ID}}
+	var xr *runner.ExperimentRecorder
+	if *experiment != "" {
+		xdef, err := r.EnsureExperiment(ctx, *experiment, *experimentDesc, []core.EvalDefID{def.ID})
+		if err != nil {
+			return err
+		}
+		if xr, err = r.StartExperimentRun(ctx, xdef, params); err != nil {
+			return fmt.Errorf("start experiment: %w", err)
+		}
+		opts.ExperimentRunID = &xr.Run().ID
+		fmt.Printf("experiment %s\n", colors.Yellow(xdef.Name))
+	}
+	run, err := r.RunEval(memory_core.WithStage(ctx, training.StageJudge), def, x, opts)
+	if xr != nil {
+		if run != nil {
+			if addErr := xr.Add(context.WithoutCancel(ctx), run); addErr != nil {
+				fmt.Fprintf(os.Stderr, "warning: record the eval in experiment %q: %v\n", *experiment, addErr)
+			}
+		}
+		if finishErr := xr.Finish(ctx, err); finishErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: %v\n", finishErr)
+		}
+	}
 	if run != nil {
 		fmt.Printf("stored as eval run #%d (%s)\n", run.ID, run.Status)
 	}

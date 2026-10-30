@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
@@ -226,5 +227,24 @@ func TestRunEval(t *testing.T) {
 	}
 	if n := count(t, r, `SELECT COUNT(*) FROM gb_eval_runs WHERE experiment_run_id IS NULL AND status IN ('errored', 'cancelled')`); n != 2 {
 		t.Errorf("stored runs that ended badly: %d", n)
+	}
+}
+
+func TestExperimentName(t *testing.T) {
+	now := time.Date(2026, 10, 31, 15, 4, 5, 0, time.UTC)
+	for _, c := range []struct {
+		name        string
+		set         bool
+		given, eval string
+		want        string
+	}{
+		{"given", true, "mine", "temporal", "mine"},
+		{"given empty: no experiment", true, "", "temporal", ""},
+		{"one eval", false, "", "temporal", "temporal"},
+		{"no eval: timestamp", false, "", "", "2026-10-31_15-04-05"},
+	} {
+		if got := runner.ExperimentName(c.set, c.given, c.eval, now); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
 	}
 }

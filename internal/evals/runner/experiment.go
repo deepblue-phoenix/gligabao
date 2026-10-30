@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 )
@@ -61,4 +62,18 @@ func (x *ExperimentRecorder) Finish(ctx context.Context, err error) error {
 		return fmt.Errorf("end the experiment run: %w", updateErr)
 	}
 	return nil
+}
+
+// ExperimentName is the name of the experiment of a run started from a command line. A name that was given (set, even if empty: no
+// experiment) is kept. Otherwise a run that picks one eval (eval is its name) is named after it, since it is targeted, and any other
+// run (eval is empty: all the evals, or several) gets the timestamp of its start (now), so that it is unique and not a shared name.
+func ExperimentName(set bool, given, eval string, now time.Time) string {
+	switch {
+	case set:
+		return given
+	case eval != "":
+		return eval
+	default:
+		return now.Format("2006-01-02_15-04-05")
+	}
 }
