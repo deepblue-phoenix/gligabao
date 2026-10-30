@@ -323,6 +323,21 @@
 | `internal/memory/memory_timeseries.Result`                | is one stored series.                                                                                                  |
 | `internal/memory/memory_timeseries.Stats`                 | summarizes the points of a series, computed in Go and stored as JSON.                                                  |
 
+>>> SARGO
+
+| Struct                                                    | Description                                                                                                            |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `internal/sargo.APIError`                                 | is an error reply from the sargo server, with its HTTP status and message.                                             |
+| `internal/sargo.Client`                                   | talks to one sargo server (the model request router in rust/sargo); safe for concurrent use.                           |
+| `internal/sargo.ContentBlock`                             | is a piece of a message: text, a tool call of the model or the result of a tool.                                       |
+| `internal/sargo.ErrorResponse`                            | is the body of every error reply of sargo.                                                                             |
+| `internal/sargo.HealthResponse`                           | is the reply of GET /health of sargo.                                                                                  |
+| `internal/sargo.Message`                                  | is one turn of the conversation sent to sargo (role and content blocks).                                               |
+| `internal/sargo.Request`                                  | is one provider-neutral model inference sent to sargo (POST /v1/infer).                                                |
+| `internal/sargo.Response`                                 | is the reply of sargo to an inference: the answer blocks, the stop reason and the usage.                               |
+| `internal/sargo.Tool`                                     | is a tool the model may call: its name, description and input schema.                                                  |
+| `internal/sargo.Usage`                                    | is the token usage (input and output) of a sargo call.                                                                 |
+
 >>> SYS
 
 | Struct                                                    | Description                                                                                                            |
