@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.137.0] - 2026-11-02
+
+### Added
+- `internal/sargo`: a Go client package for the `rust/sargo` server (`New`, `Client.Infer` for `POST /v1/infer`, `Client.Health`). Its request and reply types follow `rust/sargo/inference.schema.json`; requests are checked against the schema's rules before they are sent, and server errors come back as `*sargo.APIError` (`Retryable()` is true for 502). Tests check the JSON the client produces against the schema file. It is not used anywhere yet.
+
 ## [0.136.0] - 2026-11-02
 
 ### Added
