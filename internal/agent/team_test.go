@@ -11,8 +11,8 @@ import (
 
 type fakeTeam struct{ calls []string }
 
-func (f *fakeTeam) Spawn(_ context.Context, name, task string, maxSteps int) (string, error) {
-	f.calls = append(f.calls, fmt.Sprintf("spawn %s|%s|%d", name, task, maxSteps))
+func (f *fakeTeam) Spawn(_ context.Context, name, reason, task string, maxSteps int) (string, error) {
+	f.calls = append(f.calls, fmt.Sprintf("spawn %s|%s|%s|%d", name, reason, task, maxSteps))
 	return "ok", nil
 }
 func (f *fakeTeam) Wait(_ context.Context, names []string) (string, error) {
@@ -21,6 +21,10 @@ func (f *fakeTeam) Wait(_ context.Context, names []string) (string, error) {
 }
 func (f *fakeTeam) Send(_ context.Context, to, text string) (string, error) {
 	f.calls = append(f.calls, "send "+to+"|"+text)
+	return "ok", nil
+}
+func (f *fakeTeam) Siblings(_ context.Context) (string, error) {
+	f.calls = append(f.calls, "siblings")
 	return "ok", nil
 }
 func (f *fakeTeam) Receive(_ context.Context, wait time.Duration) (string, error) {
@@ -45,8 +49,8 @@ func TestAddTeamTools(t *testing.T) {
 	}{
 		{TeamTools{}, ""},
 		{TeamTools{Spawn: true}, ",spawn_subagent,wait_subagents"},
-		{TeamTools{Messaging: true}, ",send_message,read_messages"},
-		{TeamTools{Spawn: true, Messaging: true}, ",spawn_subagent,wait_subagents,send_message,read_messages"},
+		{TeamTools{Messaging: true}, ",list_siblings,send_message,read_messages"},
+		{TeamTools{Spawn: true, Messaging: true}, ",spawn_subagent,wait_subagents,list_siblings,send_message,read_messages"},
 	} {
 		a := ResearchAgent(nil, nil, nil)
 		AddTeamTools(a, &fakeTeam{}, c.tools)
@@ -72,7 +76,8 @@ func TestTeamToolsCheckTheirInput(t *testing.T) {
 		return err
 	}
 	for name, bad := range map[string][]string{
-		ToolSpawnSubagent: {`{}`, `{"name":"a b","task":"x"}`, `{"name":"a","task":" "}`, `{"name":"a","task":"x","max_steps":99}`, `nope`},
+		ToolSpawnSubagent: {`{}`, `{"name":"a b","reason":"r","task":"x"}`, `{"name":"a","reason":"r","task":" "}`, `{"name":"a","task":"x"}`, `{"name":"a","reason":" ","task":"x"}`,
+			`{"name":"a","reason":"` + strings.Repeat("r", subagentReasonChars+1) + `","task":"x"}`, `{"name":"a","reason":"r","task":"x","max_steps":99}`, `nope`},
 		ToolSendMessage:   {`{"to":"a"}`, `{"text":"x"}`, `{"to":"a","text":"` + strings.Repeat("x", maxMessageChars+1) + `"}`},
 	} {
 		for _, in := range bad {
@@ -85,7 +90,8 @@ func TestTeamToolsCheckTheirInput(t *testing.T) {
 		t.Fatalf("bad input reached the team: %v", ft.calls)
 	}
 	for _, c := range [][2]string{
-		{ToolSpawnSubagent, `{"name":"a-1","task":"do it","max_steps":7}`},
+		{ToolSpawnSubagent, `{"name":"a-1","reason":"covers Asia","task":"do it","max_steps":7}`},
+		{ToolListSiblings, `{}`},
 		{ToolWaitSubagents, `{"names":["a","b"]}`},
 		{ToolSendMessage, `{"to":"b","text":"hi"}`},
 		{ToolReadMessages, `{"wait_seconds":600}`},
@@ -97,7 +103,7 @@ func TestTeamToolsCheckTheirInput(t *testing.T) {
 	if err := run(ToolWaitSubagents, `{}`); err != nil {
 		t.Fatal(err)
 	}
-	want := "spawn a-1|do it|7;wait a,b;send b|hi;receive 1m0s;wait "
+	want := "spawn a-1|covers Asia|do it|7;siblings;wait a,b;send b|hi;receive 1m0s;wait "
 	if got := strings.Join(ft.calls, ";"); got != want {
 		t.Errorf("calls: %s", got)
 	}

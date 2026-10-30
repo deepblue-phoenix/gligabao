@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS gb_agent_research_runs (
 	user_id       TEXT NOT NULL,
 	parent_id     BIGINT REFERENCES gb_agent_research_runs(id) ON DELETE CASCADE,
 	name          TEXT NOT NULL DEFAULT '',
+	reason        TEXT NOT NULL DEFAULT '',
 	topic         TEXT NOT NULL CHECK (topic <> ''),
 	status        TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'completed', 'failed')),
 	state         TEXT NOT NULL DEFAULT '',
@@ -45,10 +46,11 @@ CREATE TABLE IF NOT EXISTS gb_agent_research_states (
 );
 `
 
-// Upgrade is what a database made before sub-agents (0.129.0) lacks: the columns parent_id and name of gb_agent_research_runs.
+// Upgrade is what a database made before sub-agents (0.129.0) lacks: the columns parent_id, name and reason of gb_agent_research_runs.
 const Upgrade = `
 ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS parent_id BIGINT REFERENCES gb_agent_research_runs(id) ON DELETE CASCADE;
 ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
+ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT '';
 `
 
 // SubagentIndexes are the indexes on the columns of Upgrade, so that they are made after it (see the sqlite package).

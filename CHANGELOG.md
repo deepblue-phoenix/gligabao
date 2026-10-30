@@ -5,6 +5,17 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.131.0] - 2026-11-02
+
+### Added
+- A sub-agent has a **reason**: `spawn_subagent` now requires a `reason` (one sentence, at most 300 characters) saying why the sub-agent has to exist. It is stored with the run (new field `reason` in the run JSON, new column `reason` of `gb_agent_research_runs`, added to existing databases when the server starts), shown in the `spawning` state, and told to the sub-agent in its own prompt.
+- New tool `list_siblings` for sub-agents: it lists the siblings the agent can message, each with its name, its reason and whether it is still working or has ended, so that the agent decides on the spot whether someone can help it. The prompt of a sub-agent tells it that it may message its siblings if it helps, and when it is worth it.
+
+### Changed
+- The prompts of the research agents are now in their own Markdown files, embedded in the binary: `internal/agent/prompts/` (`research.md`, `knowledge.md`, `spawn.md`, `subagent.md`, `messaging.md`, `web_search.md`), instead of strings in the Go code.
+- The prompt of a research agent that can spawn sub-agents is rewritten: it says that the default is **not** to spawn, that the agent must decide first whether spawning is really warranted (independent parts, each needing research of its own, too much for its own steps), and how to spawn if it is (a reason for each, as few as possible, narrow non-overlapping tasks, all in one step, then wait and combine).
+- `agent.Team.Spawn` takes the reason, and the interface has a new method `Siblings`. `agent.SubagentSystem` is replaced by `prompts.Subagent(name, reason)`.
+
 ## [0.130.0] - 2026-11-02
 
 ### Added

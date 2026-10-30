@@ -10,25 +10,11 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/deepblue-phoenix/gligabao/internal/agent/prompts"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 )
 
 const (
-	researchSystem = `You are a deep-research assistant. Answer the user's question by researching the web.
-Search several times with different queries, read the most relevant pages with fetch_url, and check claims against
-more than one source. Stop when you can answer well. Then write a report: a short summary first, then the details,
-and a list of the source URLs you used. State what you could not find out; never guess.`
-
-	// researchKnowledgeSystem is added to the prompt when the agent has a knowledge base (the tools remember and query).
-	researchKnowledgeSystem = `
-
-You also work with an internal knowledge base, through two tools. Use query, besides web_search and fetch_url, to check what
-the knowledge base knows already before you search the web for it, and to check what you found against it. While you search and
-read, call remember on the important parts (facts, figures, dates, quotes, each with its context, as short self-contained snippets;
-never whole pages) and give the URL as its source. Remember calls do not block by default (sync=false): the text is queued and you
-go on. Use sync=true only when you need the text absorbed before you go on, for example to query for it right away. Text that is
-still queued may not be found by query yet.`
-
 	// maxPageChars is how much of a page the model gets.
 	maxPageChars = 15000
 	// maxPageBytes is how much of a page is downloaded.
@@ -67,13 +53,13 @@ func ResearchAgent(client *ai.Client, httpClient *http.Client, kb Knowledge) *Ag
 	}
 	a := &Agent{
 		Client:    client,
-		System:    researchSystem,
+		System:    prompts.Research,
 		Tools:     []Tool{webSearchTool(client), fetchURLTool(httpClient)},
 		MaxTokens: 8192,
 		MaxSteps:  20,
 	}
 	if kb != nil {
-		a.System += researchKnowledgeSystem
+		a.System = prompts.Join(a.System, prompts.Knowledge)
 		a.Tools = append(a.Tools, queryTool(kb), rememberTool(kb))
 	}
 	return a
@@ -90,7 +76,7 @@ func webSearchTool(client *ai.Client) Tool {
 				return "", err
 			}
 			r, err := client.WebSearch(ctx, ai.WebSearchRequest{
-				System:    "Search the web for the query. Report what you found in at most 300 words, with the facts and dates.",
+				System:    prompts.WebSearch,
 				Prompt:    query,
 				MaxTokens: 1024,
 				MaxUses:   2,

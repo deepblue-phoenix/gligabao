@@ -35,13 +35,24 @@ type outcome struct {
 	err    string
 }
 
-// member is a sub-agent as its parent and its siblings know it. Only id and name are read before the sub-agent has ended; out is
-// written before done is closed, and read after.
+// member is a sub-agent as its parent and its siblings know it. Only id, name and reason (which never change) are read before the
+// sub-agent has ended; out is written before done is closed, and read after.
 type member struct {
-	id   int64
-	name string
-	done chan struct{}
-	out  outcome
+	id     int64
+	name   string
+	reason string
+	done   chan struct{}
+	out    outcome
+}
+
+// ended reports whether the sub-agent has ended.
+func (m *member) ended() bool {
+	select {
+	case <-m.done:
+		return true
+	default:
+		return false
+	}
 }
 
 // family is the sub-agents of one parent, in the order they were spawned. The siblings of an agent are the other members of the family
@@ -114,7 +125,7 @@ type team struct{ r *researcher }
 var _ agent.Team = team{}
 
 // Spawn starts a sub-agent of the agent.
-func (t team) Spawn(_ context.Context, name, task string, maxSteps int) (string, error) {
+func (t team) Spawn(_ context.Context, name, reason, task string, maxSteps int) (string, error) {
 	r := t.r
 	if r.depth >= MaxSubagentDepth {
 		return "", fmt.Errorf("you cannot spawn sub-agents: sub-agents go at most %d levels deep", MaxSubagentDepth)
@@ -122,7 +133,7 @@ func (t team) Spawn(_ context.Context, name, task string, maxSteps int) (string,
 	if maxSteps == 0 {
 		maxSteps = DefaultSubagentMaxSteps
 	}
-	child, err := r.mgr.spawn(r, name, task, maxSteps)
+	child, err := r.mgr.spawn(r, name, reason, task, maxSteps)
 	if err != nil {
 		return "", err
 	}
@@ -196,6 +207,35 @@ func (t team) Send(ctx context.Context, to, text string) (string, error) {
 	return fmt.Sprintf("sent to %q", to), nil
 }
 
+// Siblings lists the other sub-agents of the parent of the agent, with their reasons and whether they still work: the agents it can
+// message, and no others.
+func (t team) Siblings(_ context.Context) (string, error) {
+	r := t.r
+	if r.parent == nil {
+		return "", errors.New("you have no siblings: only sub-agents have them")
+	}
+	var sb strings.Builder
+	n := 0
+	for _, m := range r.parent.kids.all() {
+		if m.id == r.run.ID {
+			continue
+		}
+		status := "working"
+		if m.ended() {
+			status = "ended"
+			if m.out.status == core.StatusFailed {
+				status = "ended, failed"
+			}
+		}
+		fmt.Fprintf(&sb, "- %s [%s]: %s\n", m.name, status, m.reason)
+		n++
+	}
+	if n == 0 {
+		return "You have no siblings now (your parent may still spawn some).", nil
+	}
+	return fmt.Sprintf("Your siblings, the sub-agents you can message (%d):\n%s", n, strings.TrimRight(sb.String(), "\n")), nil
+}
+
 // Receive returns the messages that were sent to the agent.
 func (t team) Receive(ctx context.Context, wait time.Duration) (string, error) {
 	msgs, err := t.r.mgr.Messenger.Receive(ctx, t.r.run.ID, wait)
@@ -224,10 +264,12 @@ func orNone(s string) string {
 
 // spawn records a sub-agent of parent (a run with parent_id and name) and starts it in the background, on its own goroutine like
 // every agent. It is called on the goroutine of parent, by its tool. Errors are shown to the model of the parent.
-func (m *Manager) spawn(parent *researcher, name, task string, maxSteps int) (*researcher, error) {
+func (m *Manager) spawn(parent *researcher, name, reason, task string, maxSteps int) (*researcher, error) {
 	switch {
 	case !agent.ValidSubagentName(name):
 		return nil, errors.New("name must be 1 to 40 letters, digits, - or _")
+	case strings.TrimSpace(reason) == "":
+		return nil, errors.New("reason is empty: say why this sub-agent has to exist")
 	case strings.TrimSpace(task) == "":
 		return nil, errors.New("task is empty")
 	case maxSteps < 1 || maxSteps > MaxMaxSteps:
@@ -258,7 +300,7 @@ func (m *Manager) spawn(parent *researcher, name, task string, maxSteps int) (*r
 
 	parentID := parent.run.ID
 	run := &core.Run{
-		UserID: parent.run.UserID, ParentID: &parentID, Name: name, Topic: strings.TrimSpace(task),
+		UserID: parent.run.UserID, ParentID: &parentID, Name: name, Reason: strings.TrimSpace(reason), Topic: strings.TrimSpace(task),
 		Status: core.StatusRunning, State: core.StateStarting, Model: parent.opts.Model, MaxSteps: maxSteps,
 	}
 	dbCtx := context.WithoutCancel(m.ctx)

@@ -85,7 +85,7 @@ func final(text string) string {
 }
 
 func spawn(name, task string) [2]string {
-	return [2]string{"spawn_subagent", `{"name":"` + name + `","task":"` + task + `"}`}
+	return [2]string{"spawn_subagent", `{"name":"` + name + `","reason":"reason of ` + name + `","task":"` + task + `"}`}
 }
 
 func (f *teamFake) body(key string, i int) string {
@@ -105,11 +105,11 @@ func testSubagents(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	ctx := context.Background()
 	fake := newTeamFake(map[string][]string{
 		"root": {
-			call(spawn("alpha", "find the history"), spawn("beta", "find the market")),
+			call(spawn("beta", "find the market"), spawn("alpha", "find the history")), // beta first: it is a sibling when alpha starts
 			call([2]string{"wait_subagents", `{}`}),
 			final("combined report"),
 		},
-		"alpha": {call([2]string{"send_message", `{"to":"beta","text":"market is huge"}`}), final("alpha report")},
+		"alpha": {call([2]string{"list_siblings", `{}`}), call([2]string{"send_message", `{"to":"beta","text":"market is huge"}`}), final("alpha report")},
 		"beta":  {call([2]string{"read_messages", `{"wait_seconds":5}`}), final("beta report")},
 	})
 	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
@@ -133,7 +133,7 @@ func testSubagents(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	if got := stateNames(root.States); got != "starting,thinking,spawning,spawning,thinking,waiting,thinking,completed" {
 		t.Fatalf("root states: %s", got)
 	}
-	if s := root.States[2]; s.Detail != "alpha: find the history" {
+	if s := root.States[2]; s.Detail != "beta: reason of beta" {
 		t.Errorf("spawning: %+v", s)
 	}
 
@@ -149,6 +149,9 @@ func testSubagents(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 			t.Errorf("sub-agent: %+v", s)
 		}
 	}
+	if byName["alpha"].Reason != "reason of alpha" || byName["beta"].Reason != "reason of beta" {
+		t.Errorf("the reasons were not stored: %+v", byName)
+	}
 	if byName["alpha"].Topic != "find the history" || byName["alpha"].Report != "alpha report" || byName["beta"].Report != "beta report" {
 		t.Errorf("sub-agents: %+v", byName)
 	}
@@ -161,6 +164,13 @@ func testSubagents(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 		t.Errorf("beta states: %s", got)
 	}
 
+	// A sub-agent learns who its siblings are and why they exist (and is not listed itself), and is told its own reason.
+	if b := fake.body("alpha", 1); !strings.Contains(b, "beta [working]: reason of beta") || strings.Contains(b, "alpha [") {
+		t.Errorf("alpha did not get its siblings: %s", b)
+	}
+	if b := fake.body("alpha", 0); !strings.Contains(b, `"name":"list_siblings"`) || !strings.Contains(b, "reason of alpha") {
+		t.Errorf("alpha: tools or reason in the prompt: %s", b)
+	}
 	// The message of alpha reached beta; the parent got the reports of both.
 	if b := fake.body("beta", 1); !strings.Contains(b, "From alpha") || !strings.Contains(b, "market is huge") {
 		t.Errorf("beta did not get the message: %s", b)
@@ -228,7 +238,7 @@ func TestSpawnRejects(t *testing.T) { runOnBackends(t, testSpawnRejects) }
 func testSpawnRejects(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	ctx := context.Background()
 	var calls [][2]string
-	calls = append(calls, spawn("dup", "one"), spawn("dup", "two"), spawn("bad name!", "x"), spawn("empty", " "))
+	calls = append(calls, spawn("dup", "one"), spawn("dup", "two"), spawn("bad name!", "x"), spawn("empty", " "), [2]string{"spawn_subagent", `{"name":"noreason","task":"x"}`})
 	for i := 0; i < agent_research.MaxSubagentsPerAgent; i++ { // dup took one place: the last of these is over the limit
 		calls = append(calls, spawn("n"+string(rune('a'+i)), "task"))
 	}
@@ -241,7 +251,7 @@ func testSpawnRejects(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	m.Wait()
 
 	b := fake.body("root", 1)
-	for _, want := range []string{"called \\\"dup\\\" already", "name must be 1 to 40", "missing \\\"task\\\"", "the most one agent may have"} {
+	for _, want := range []string{"called \\\"dup\\\" already", "name must be 1 to 40", "missing \\\"task\\\"", "missing \\\"reason\\\"", "the most one agent may have"} {
 		if !strings.Contains(b, want) {
 			t.Errorf("%q missing in %s", want, b)
 		}

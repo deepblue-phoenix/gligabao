@@ -2,7 +2,7 @@
 
 The deep-research agent is the part of gligabao that does the research: given a topic, it searches the web, reads pages, checks claims against more than one source and writes a report. This page is about **the agent itself**: its loop, its prompt, its tools (two web tools, and two more for the internal knowledge base), its limits and what it costs. How it is run as a background job (runs, states stored in the database, REST, MCP, CLI) is in [research.md](research.md).
 
-Code: `internal/agent/agent.go` (the generic loop), `internal/agent/research.go` (the research agent: prompt and tools), `internal/agent/knowledge.go` (the `remember` and `query` tools), `internal/agent_research/memory.go` (how they reach the knowledge base), `internal/ai/websearch.go` (the web search call), `internal/agent_research/manager.go` (starts the jobs) and `internal/agent_research/researcher.go` (the state and goroutine of each agent).
+Code: `internal/agent/agent.go` (the generic loop), `internal/agent/research.go` (the research agent and its tools), `internal/agent/prompts/` (all the prompts, one Markdown file each, embedded in the binary: see [subagents.md](subagents.md#prompts)), `internal/agent/knowledge.go` (the `remember` and `query` tools), `internal/agent_research/memory.go` (how they reach the knowledge base), `internal/ai/websearch.go` (the web search call), `internal/agent_research/manager.go` (starts the jobs) and `internal/agent_research/researcher.go` (the state and goroutine of each agent).
 
 It needs an Anthropic API key (`ANTHROPIC_API_KEY`, or `anthropic_api_key` in `gligabao.toml`); without it a research cannot be started (`503`).
 
@@ -41,9 +41,9 @@ Every research agent is **isolated** from the others, so that one cannot slow do
 | Steps (`MaxSteps`) | 20 by default; the job lets the caller choose 1 to 40 (`max_steps`) |
 | Answer size (`MaxTokens`) | 8192 tokens per model call (so a report is at most that long) |
 | Model | the server's default model, or the `model` of the request. It runs the loop and writes the report |
-| Tools | `web_search` and `fetch_url`; with a knowledge base (the case when it runs as a job on the server), also `query` and `remember`; as a job, also `spawn_subagent` and `wait_subagents` (unless it is at the deepest level), and `send_message` and `read_messages` if it is itself a sub-agent (see [subagents.md](subagents.md)) |
+| Tools | `web_search` and `fetch_url`; with a knowledge base (the case when it runs as a job on the server), also `query` and `remember`; as a job, also `spawn_subagent` and `wait_subagents` (unless it is at the deepest level), and `list_siblings`, `send_message` and `read_messages` if it is itself a sub-agent (see [subagents.md](subagents.md)) |
 
-The system prompt tells it to: research the topic by searching the web several times with different queries; read the most relevant pages with `fetch_url`; check claims against more than one source; stop when it can answer well; and then write a report: **a short summary first, then the details, then the list of the source URLs used**, saying what it could not find out and never guessing. The user turn is the topic as given.
+The system prompts live in Markdown files in `internal/agent/prompts/` (embedded in the binary; the parts and who gets them are in [subagents.md](subagents.md#prompts)). The base prompt tells it to: research the topic by searching the web several times with different queries; read the most relevant pages with `fetch_url`; check claims against more than one source; stop when it can answer well; and then write a report: **a short summary first, then the details, then the list of the source URLs used**, saying what it could not find out and never guessing. The user turn is the topic as given.
 
 When the agent has a knowledge base, the prompt adds how to use it: `query` it, besides the web search and the page reads, to check what is known already before searching the web for it and to check what was found against it; and, while searching and reading, `remember` the important parts (short self-contained snippets with their context, never whole pages) with the URL as the source. It is told that `remember` does not block by default and that it must use `sync=true` only when it needs the text absorbed before it goes on.
 
@@ -88,7 +88,7 @@ Without a knowledge base (an agent built with `agent.Research`, or a server with
 
 ## Sub-agents
 
-As a job, the agent can hand sub-tasks to other agents with `spawn_subagent` and `wait_subagents`, and a sub-agent can message its siblings with `send_message` and `read_messages`. The tools reach the job through `agent.Team` (four methods, `Spawn`, `Wait`, `Send`, `Receive`) and are added to the agent with `agent.AddTeamTools`. Everything about them (the tools, the limits, who can message whom, the message system, what a sub-agent costs) is in [subagents.md](subagents.md).
+As a job, the agent can hand sub-tasks to other agents with `spawn_subagent` and `wait_subagents`, and a sub-agent can list its siblings and their reasons with `list_siblings` and message them with `send_message` and `read_messages`. Every spawn carries a reason, and the prompt of the agent that can spawn says it should do so only when really warranted. The tools reach the job through `agent.Team` (five methods, `Spawn`, `Wait`, `Siblings`, `Send`, `Receive`) and are added to the agent with `agent.AddTeamTools`. Everything about them (the tools, the limits, who can message whom, the message system, what a sub-agent costs) is in [subagents.md](subagents.md).
 
 ## What a run costs
 

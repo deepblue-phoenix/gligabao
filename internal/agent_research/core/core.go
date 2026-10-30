@@ -42,9 +42,9 @@ const (
 	StateRemembering = "remembering"
 	// StateWaiting: the agent waits for its sub-agents to end (wait_subagents) or for a message of a sibling (read_messages with a wait).
 	StateWaiting = "waiting"
-	// StateSpawning: the spawn_subagent tool is running; the detail is the name of the sub-agent and its task.
+	// StateSpawning: the spawn_subagent tool is running; the detail is the name of the sub-agent and its reason.
 	StateSpawning = "spawning"
-	// StateMessaging: the send_message tool is running; the detail is the sibling it writes to.
+	// StateMessaging: the send_message, read_messages (without a wait) or list_siblings tool is running; the detail is the sibling it writes to.
 	StateMessaging = "messaging"
 	// StateUsingTool: any other tool is running; the detail is its name.
 	StateUsingTool = "using_tool"
@@ -64,6 +64,9 @@ type Run struct {
 	// the parent called it; it is unique among the sub-agents of one parent, and "" for a research started by a user.
 	ParentID *int64 `json:"parent_id"`
 	Name     string `json:"name"`
+	// Reason is why the parent spawned it: the reason it submitted with spawn_subagent, which the siblings of the sub-agent can
+	// read. "" for a research started by a user.
+	Reason string `json:"reason"`
 	// Topic is what the agent researches (for a sub-agent: the sub-task it was given).
 	Topic  string `json:"topic"`
 	Status Status `json:"status"`

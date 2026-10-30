@@ -30,9 +30,9 @@ A **state** (`gb_agent_research_states`) is one stage of its work. A row is inse
 | `reading` | the `fetch_url` tool is running | the URL |
 | `querying` | the `query` tool is running (the knowledge base) | the question |
 | `remembering` | the `remember` tool is running | `async: ` or `sync: ` (whether the call waits), then the start of the text |
-| `spawning` | the `spawn_subagent` tool is running ([sub-agents](subagents.md)) | the name of the sub-agent and its task |
+| `spawning` | the `spawn_subagent` tool is running ([sub-agents](subagents.md)) | the name of the sub-agent and its reason |
 | `waiting` | the agent waits for its sub-agents (`wait_subagents`) or for a message (`read_messages` with `wait_seconds`) | the sub-agents, or `a message, up to N s` |
-| `messaging` | `send_message` or `read_messages` (without waiting) is running | the sibling written to, and the start of the text |
+| `messaging` | `send_message`, `list_siblings` or `read_messages` (without waiting) is running | the sibling written to, and the start of the text |
 | `using_tool` | any other tool is running | its name |
 | `writing_report` | the last model call, the one that may not use tools, is running: its text is the report | `step 20 of 20, the last: ...` |
 | `completed` / `failed` | the run ended (a terminal state, recorded too, so the states are the whole history) | |
@@ -77,7 +77,7 @@ Lists the agents of the user, newest first, without their states: `{"runs": [...
 - `parent_id=<run id>`: only the [sub-agents](subagents.md) that run spawned.
 - `limit`: at most this many (default 50, at most 500).
 
-Sub-agents are runs like any other and are in the list too, with `parent_id` and `name` set (both are `null`/`""` for a research a user started).
+Sub-agents are runs like any other and are in the list too, with `parent_id`, `name` and `reason` set (`null`/`""` for a research a user started).
 
 ### `GET /v1/gb/research/{id}?user_id=...`
 
@@ -118,13 +118,13 @@ The tools are on whenever the server has an LLM for the memory (the same conditi
 
 ## Sub-agents
 
-A research agent can spawn **sub-agents**, other research agents that take sub-tasks (`spawn_subagent`, `wait_subagents`), and sibling sub-agents can message each other (`send_message`, `read_messages`). A sub-agent is a run like any other: it has its own states, usage and report, and a `parent_id` and a `name` (both `null`/`""` for a research a user started); `GET /v1/gb/research?parent_id=` lists the sub-agents of a run. They are bounded (5 per agent, 10 per research, 2 levels deep) and are cancelled when their parent ends. All of it, the tools, the limits, who can message whom and the replaceable message system, is in [subagents.md](subagents.md).
+A research agent can spawn **sub-agents**, other research agents that take sub-tasks (`spawn_subagent`, `wait_subagents`), and sibling sub-agents can see each other and their reasons (`list_siblings`) and message each other (`send_message`, `read_messages`). Every sub-agent is spawned with a reason. A sub-agent is a run like any other: it has its own states, usage and report, and a `parent_id`, a `name` and a `reason` (`null`/`""` for a research a user started); `GET /v1/gb/research?parent_id=` lists the sub-agents of a run. They are bounded (5 per agent, 10 per research, 2 levels deep) and are cancelled when their parent ends. All of it, the tools, the limits, who can message whom and the replaceable message system, is in [subagents.md](subagents.md).
 
 ## How it works
 
 - `internal/agent`: the loop and the research agent ([deep-research-agent.md](deep-research-agent.md)). It has an `Observer` (before and after each model call and each tool run) that the manager uses to record the states, and `ReportUsage`, with which a tool that calls a model (the web search) adds its tokens and cost to the run.
 - `internal/agent_research`: the `Manager` makes a `researcher` for each agent, the struct that holds all of its state (see [isolation](deep-research-agent.md#isolation)), and starts it in a goroutine of its own (at most 3 working at once per user); the manager creates the run and its first state in one transaction, and the researcher enters a state in a transaction at each event (end the previous state, insert the new one, set the run's `state`), writes the usage after every model call and tool run, and ends the run (its status, report or error, and the terminal state) in a transaction. A failed write of the progress is logged and does not stop the agent. Storage is in `agent_research/db/sqlite` and `agent_research/db/postgres` (each with its schema); the types are in `agent_research/core`.
-- `internal/agent_research/team.go` and `messages.go`, `internal/agent/team.go`: the sub-agents and their messages (see [subagents.md](subagents.md)).
+- `internal/agent_research/team.go` and `messages.go`, `internal/agent/team.go`: the sub-agents and their messages; the prompts are in `internal/agent/prompts/` (see [subagents.md](subagents.md)).
 - `internal/agent_research/memory.go`: `Memory` (the remember manager, the database, the LLM and the options of the remember and query endpoints), which `api.Register` gives the manager (`Manager.UseMemory`); each agent gets its own view of it (`knowledge`: its user, dataset and session) that implements `agent.Knowledge`, the interface behind the tools `remember` and `query` (`internal/agent/knowledge.go`). Without a `Memory` the agents only have the web tools.
 - `internal/api/research`: the REST handlers; `internal/api/mcp` and `cli` call them (the MCP tools in process, the CLI over HTTP).
 - When the server stops, the agents are cancelled and their runs are ended as `failed` ("interrupted") before the databases close.

@@ -7,38 +7,40 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/deepblue-phoenix/gligabao/internal/agent/prompts"
 )
 
 // Names of the tools of a team of agents (see AddTeamTools).
 const (
-	ToolSpawnSubagent = "spawn_subagent"
-	ToolWaitSubagents = "wait_subagents"
-	ToolSendMessage   = "send_message"
-	ToolReadMessages  = "read_messages"
-	maxMessageChars   = 10000
-	maxReadWait       = 60 * time.Second
-	maxSubagentSteps  = 40
-	subagentNameChars = 40
-	subagentTaskChars = 2000
-	teamSpawnSystem   = `
-
-You can split the research into sub-tasks and give them to sub-agents: spawn_subagent starts one in the background (it gets a name you choose and a self-contained task, and it can search, read and use the knowledge base like you) and returns at once, so you can start several and go on with your own work. Give each sub-agent a narrow task that does not overlap with the others, and say what you want back. Then call wait_subagents to get their reports (it blocks until they end), check them against each other and write your own report from them. Sub-agents cost as much as you do: use them only for a topic that is broad enough, not for a simple question.`
-	teamMessagingSystem = `
-
-You work next to sibling sub-agents (the ones spawned by the same agent as you). send_message sends a short text to a sibling by name and returns at once; read_messages gives you what siblings sent you (with wait_seconds it waits for one). Use it to hand over a finding another sibling needs or to avoid researching the same thing twice, not for chatter. You can only message your siblings, nobody else.`
+	ToolSpawnSubagent   = "spawn_subagent"
+	ToolWaitSubagents   = "wait_subagents"
+	ToolSendMessage     = "send_message"
+	ToolReadMessages    = "read_messages"
+	ToolListSiblings    = "list_siblings"
+	maxMessageChars     = 10000
+	maxReadWait         = 60 * time.Second
+	maxSubagentSteps    = 40
+	subagentNameChars   = 40
+	subagentTaskChars   = 2000
+	subagentReasonChars = 300
 )
 
 // Team is how an agent works with other agents: it starts sub-agents and exchanges messages with its siblings. The agent only
 // sees the tools; the implementation (agent_research) decides what a sub-agent is, who the siblings are and how a message travels.
 // One Team is the view of one agent.
 type Team interface {
-	// Spawn starts a sub-agent called name on the task, in the background, and returns at once with a text for the model. maxSteps
-	// is the most model calls it may make (0: the default). The name is unique among the sub-agents of the caller.
-	Spawn(ctx context.Context, name, task string, maxSteps int) (string, error)
+	// Spawn starts a sub-agent called name on the task, in the background, and returns at once with a text for the model. reason is
+	// why the sub-agent has to exist: its siblings can read it (Siblings). maxSteps is the most model calls it may make (0: the
+	// default). The name is unique among the sub-agents of the caller.
+	Spawn(ctx context.Context, name, reason, task string, maxSteps int) (string, error)
 	// Wait blocks until the named sub-agents (all of them if names is empty) have ended, and returns their reports.
 	Wait(ctx context.Context, names []string) (string, error)
 	// Send sends text to the sibling called to (a sub-agent of the same parent as the caller).
 	Send(ctx context.Context, to, text string) (string, error)
+	// Siblings lists the siblings of the caller (the other sub-agents of its parent) with the reason each was spawned for and
+	// whether it still works, as a text for the model.
+	Siblings(ctx context.Context) (string, error)
 	// Receive returns the messages the caller has received and not read yet; if there are none and wait is positive, it waits up to
 	// that long for one.
 	Receive(ctx context.Context, wait time.Duration) (string, error)
@@ -55,51 +57,50 @@ type TeamTools struct {
 // AddTeamTools gives a the tools of t that tools asks for, and the part of the prompt that says how to use them.
 func AddTeamTools(a *Agent, t Team, tools TeamTools) {
 	if tools.Spawn {
-		a.System += teamSpawnSystem
+		a.System = prompts.Join(a.System, prompts.Spawn)
 		a.Tools = append(a.Tools, spawnTool(t), waitTool(t))
 	}
 	if tools.Messaging {
-		a.System += teamMessagingSystem
-		a.Tools = append(a.Tools, sendTool(t), readTool(t))
+		a.System = prompts.Join(a.System, prompts.Messaging)
+		a.Tools = append(a.Tools, listSiblingsTool(t), sendTool(t), readTool(t))
 	}
-}
-
-// SubagentSystem is the part of the prompt of a sub-agent: who it is and that its answer goes to the agent that spawned it.
-func SubagentSystem(name string) string {
-	return fmt.Sprintf(`
-
-You are a sub-agent named %q, spawned by another research agent to do one sub-task: the user turn is that task. Do only that task. Your final answer is not shown to a person but returned to the agent that spawned you, who will combine it with the work of others: make it a compact report with the facts, the figures and the source URLs, and say what you could not find out.`, name)
 }
 
 func spawnTool(t Team) Tool {
 	return Tool{
 		Name: ToolSpawnSubagent,
 		Description: "Start a sub-agent on a sub-task, in the background. It researches like you and its final report is given to you by wait_subagents. " +
-			"Returns at once, so you can start several sub-agents and go on. Each one costs model calls and searches.",
+			"Returns at once, so you can start several sub-agents and go on. Each one costs as much as a full agent: spawn one only with a good reason.",
 		Schema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"name":      map[string]any{"type": "string", "description": "A short name for the sub-agent (letters, digits, - and _; at most 40), unique among your sub-agents. Siblings use it to message each other."},
+				"reason":    map[string]any{"type": "string", "description": "Why this sub-agent has to exist: one sentence on what it covers that you cannot cover cheaply yourself (at most 300 characters). Its siblings can read it."},
 				"task":      map[string]any{"type": "string", "description": "The sub-task: self-contained (the sub-agent knows nothing of your conversation), narrow, with what you want back."},
 				"max_steps": map[string]any{"type": "integer", "description": "The most model calls the sub-agent makes (optional, default 10, at most 40)."},
 			},
-			"required": []string{"name", "task"},
+			"required": []string{"name", "reason", "task"},
 		},
 		Run: func(ctx context.Context, input json.RawMessage) (string, error) {
 			var in struct {
 				Name     string `json:"name"`
+				Reason   string `json:"reason"`
 				Task     string `json:"task"`
 				MaxSteps int    `json:"max_steps"`
 			}
 			if err := json.Unmarshal(input, &in); err != nil {
 				return "", fmt.Errorf("bad input: %w", err)
 			}
-			in.Name, in.Task = strings.TrimSpace(in.Name), strings.TrimSpace(in.Task)
+			in.Name, in.Reason, in.Task = strings.TrimSpace(in.Name), strings.TrimSpace(in.Reason), strings.TrimSpace(in.Task)
 			switch {
 			case in.Name == "":
 				return "", errors.New(`missing "name"`)
 			case !ValidSubagentName(in.Name):
 				return "", fmt.Errorf("name must be 1 to %d letters, digits, - or _", subagentNameChars)
+			case in.Reason == "":
+				return "", errors.New(`missing "reason": say why this sub-agent has to exist`)
+			case len([]rune(in.Reason)) > subagentReasonChars:
+				return "", fmt.Errorf("reason is too long (at most %d characters)", subagentReasonChars)
 			case in.Task == "":
 				return "", errors.New(`missing "task"`)
 			case len([]rune(in.Task)) > subagentTaskChars:
@@ -107,7 +108,7 @@ func spawnTool(t Team) Tool {
 			case in.MaxSteps < 0 || in.MaxSteps > maxSubagentSteps:
 				return "", fmt.Errorf("max_steps must be between 1 and %d", maxSubagentSteps)
 			}
-			return t.Spawn(ctx, in.Name, in.Task, in.MaxSteps)
+			return t.Spawn(ctx, in.Name, in.Reason, in.Task, in.MaxSteps)
 		},
 	}
 }
@@ -140,7 +141,7 @@ func sendTool(t Team) Tool {
 	return Tool{
 		Name: ToolSendMessage,
 		Description: "Send a short message to a sibling sub-agent (one spawned by the same agent as you), by name. Returns at once; the sibling reads it with read_messages. " +
-			"You cannot message anyone else.",
+			"See list_siblings for who they are. You cannot message anyone else.",
 		Schema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -167,6 +168,18 @@ func sendTool(t Team) Tool {
 				return "", fmt.Errorf("text is too long (at most %d characters)", maxMessageChars)
 			}
 			return t.Send(ctx, in.To, in.Text)
+		},
+	}
+}
+
+func listSiblingsTool(t Team) Tool {
+	return Tool{
+		Name: ToolListSiblings,
+		Description: "List your siblings, the sub-agents you can message (spawned by the same agent as you): for each, its name, the reason it exists " +
+			"and whether it is still working. Use it to decide whether someone can help you or needs something from you. The list changes as siblings are spawned and end.",
+		Schema: map[string]any{"type": "object", "properties": map[string]any{}},
+		Run: func(ctx context.Context, _ json.RawMessage) (string, error) {
+			return t.Siblings(ctx)
 		},
 	}
 }

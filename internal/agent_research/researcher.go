@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/prompts"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
@@ -80,7 +81,7 @@ func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent 
 	}
 	if parent != nil {
 		r.depth, r.tree, r.runCtx = parent.depth+1, parent.tree, parent.kidCtx
-		r.self = &member{id: run.ID, name: run.Name, done: make(chan struct{})}
+		r.self = &member{id: run.ID, name: run.Name, reason: run.Reason, done: make(chan struct{})}
 	}
 	r.kidCtx, r.kidCancel = context.WithCancel(r.runCtx)
 	var kb agent.Knowledge // a nil Memory must become a nil Knowledge
@@ -90,7 +91,7 @@ func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent 
 	r.agent = agent.ResearchAgent(r.client, r.http, kb)
 	r.agent.Model, r.agent.MaxSteps = opts.Model, opts.MaxSteps
 	if parent != nil {
-		r.agent.System += agent.SubagentSystem(run.Name)
+		r.agent.System = prompts.Join(r.agent.System, prompts.Subagent(run.Name, run.Reason))
 	}
 	// An agent can spawn sub-agents unless it is at the deepest level, and a sub-agent has siblings to message.
 	agent.AddTeamTools(r.agent, team{r}, agent.TeamTools{Spawn: r.depth < MaxSubagentDepth, Messaging: parent != nil})
@@ -248,9 +249,9 @@ func toolState(name string, input json.RawMessage) (state, detail string) {
 	case "query":
 		return core.StateQuerying, arg("question")
 	case agent.ToolSpawnSubagent:
-		var m struct{ Name, Task string }
+		var m struct{ Name, Reason string }
 		json.Unmarshal(input, &m)
-		return core.StateSpawning, m.Name + ": " + truncate(m.Task, 200)
+		return core.StateSpawning, m.Name + ": " + truncate(m.Reason, 200)
 	case agent.ToolWaitSubagents:
 		var m struct{ Names []string }
 		json.Unmarshal(input, &m)
@@ -262,6 +263,8 @@ func toolState(name string, input json.RawMessage) (state, detail string) {
 		var m struct{ To, Text string }
 		json.Unmarshal(input, &m)
 		return core.StateMessaging, m.To + ": " + truncate(m.Text, 200)
+	case agent.ToolListSiblings:
+		return core.StateMessaging, "list the siblings"
 	case agent.ToolReadMessages:
 		var m struct {
 			WaitSeconds int `json:"wait_seconds"`
