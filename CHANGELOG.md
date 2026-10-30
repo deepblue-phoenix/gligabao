@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.127.0] - 2026-10-31
+
+### Added
+- A very simple deep-research agent in Go (`internal/agent`): a plain tool-calling loop with no agent framework. `agent.Research(ctx, client, question)` lets the model search the web (Anthropic's web search tool) and read pages (`fetch_url`) over several steps, and returns a report with its sources, the token counts and the cost. The last step cannot call tools, so a run always ends with an answer. It is a Go package only for now: no API endpoint or CLI command uses it yet.
+- `ai.Client.Raw`: sends a Messages API payload as it is (tools, tool results) and returns the content blocks, tokens and cost.
+
 ## [0.126.0] - 2026-10-30
 
 ### Added
