@@ -24,7 +24,7 @@ func (s Status) Active() bool { return s == StatusRunning }
 
 // The states of a run: what the agent is doing. A run enters them one after the other (State.Seq), and each is recorded in
 // gb_agent_research_states when it is entered. A run is recorded in StateStarting, then the agent alternates between StateThinking, where it waits for the model to decide
-// what to do next, and the states of the tools the model chose (StateSearching, StateReading, StateUsingTool); the step of the
+// what to do next, and the states of the tools the model chose (StateSearching, StateReading, StateQuerying, StateRemembering, StateUsingTool); the step of the
 // last model call, which may not use tools, is StateWritingReport. A run ends in StateCompleted or StateFailed, which are
 // recorded too, so that the states are the whole history.
 const (
@@ -36,6 +36,10 @@ const (
 	StateSearching = "searching"
 	// StateReading: the fetch_url tool is running; the detail is the URL.
 	StateReading = "reading"
+	// StateQuerying: the query tool is running; the detail is the question asked of the knowledge base.
+	StateQuerying = "querying"
+	// StateRemembering: the remember tool is running; the detail says whether it waits (sync) or not, and the start of the text.
+	StateRemembering = "remembering"
 	// StateUsingTool: any other tool is running; the detail is its name.
 	StateUsingTool = "using_tool"
 	// StateWritingReport: the last model call, the one that may not call tools, is running: its text is the report.

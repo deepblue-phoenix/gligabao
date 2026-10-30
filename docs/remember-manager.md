@@ -4,6 +4,8 @@
 
 Every run of the [remember](remember.md) text pipeline is executed by **one goroutine, the remember manager**. The HTTP handlers (`POST /v1/gb/remember`, `POST /v1/gb/eval/remember`), and anything else that wants text remembered, do not call `memory_remember.Remember`: they send the manager a request. For now the manager **serializes** the runs: it takes the next request only when the previous run is over, so two runs never write at the same time.
 
+The [research agents](research.md#the-knowledge-base) are senders too: their `remember` tool submits snippets of what they find, and either waits for the outcome (`sync=true`) or only queues them and goes on (the default; the request then has no outcome channel and a context that outlives the tool call).
+
 Images (`image` in the request) are a different pipeline, have no run log, and are still remembered in the handler.
 
 ## Requests

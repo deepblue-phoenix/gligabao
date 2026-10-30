@@ -3,6 +3,8 @@ package agent_research
 import (
 	"strings"
 	"unicode/utf8"
+
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
 // Limits of Options.
@@ -25,12 +27,20 @@ type Options struct {
 	MaxSteps int `json:"max_steps,omitempty"`
 	// Model is the model the agent runs on; it must support Anthropic's web search tool. Empty is the server's default model.
 	Model string `json:"model,omitempty"`
+	// Dataset is the dataset of the user's knowledge base the agent queries and remembers into, when the server gives the agents one
+	// (default "main"). It is created by the first remember if it does not exist. It is not stored with the run.
+	Dataset string `json:"dataset,omitempty"`
 }
 
 // resolve checks the options and returns them with the defaults filled in.
 func (o Options) resolve() (Options, error) {
 	o.Topic = strings.TrimSpace(o.Topic)
 	o.Model = strings.TrimSpace(o.Model)
+	dataset, err := memory_core.ResolveDatasetName(o.Dataset)
+	if err != nil {
+		return o, invalidErr(err.Error())
+	}
+	o.Dataset = dataset
 	switch {
 	case o.Topic == "":
 		return o, invalidErr("topic is required")

@@ -19,6 +19,16 @@ Search several times with different queries, read the most relevant pages with f
 more than one source. Stop when you can answer well. Then write a report: a short summary first, then the details,
 and a list of the source URLs you used. State what you could not find out; never guess.`
 
+	// researchKnowledgeSystem is added to the prompt when the agent has a knowledge base (the tools remember and query).
+	researchKnowledgeSystem = `
+
+You also work with an internal knowledge base, through two tools. Use query, besides web_search and fetch_url, to check what
+the knowledge base knows already before you search the web for it, and to check what you found against it. While you search and
+read, call remember on the important parts (facts, figures, dates, quotes, each with its context, as short self-contained snippets;
+never whole pages) and give the URL as its source. Remember calls do not block by default (sync=false): the text is queued and you
+go on. Use sync=true only when you need the text absorbed before you go on, for example to query for it right away. Text that is
+still queued may not be found by query yet.`
+
 	// maxPageChars is how much of a page the model gets.
 	maxPageChars = 15000
 	// maxPageBytes is how much of a page is downloaded.
@@ -26,7 +36,7 @@ and a list of the source URLs you used. State what you could not find out; never
 )
 
 // Research runs a deep-research agent on the question and returns its report. The agent has two tools: web_search
-// (Anthropic's web search) and fetch_url. The model must support the web search tool. Use ResearchAgent to change
+// (Anthropic's web search) and fetch_url (no knowledge base: see ResearchAgent). The model must support the web search tool. Use ResearchAgent to change
 // the model or the limits.
 func Research(ctx context.Context, client *ai.Client, question string) (*Result, error) {
 	if strings.TrimSpace(question) == "" {
@@ -34,7 +44,7 @@ func Research(ctx context.Context, client *ai.Client, question string) (*Result,
 	}
 	httpClient := NewHTTPClient()
 	defer httpClient.CloseIdleConnections()
-	return ResearchAgent(client, httpClient).Run(ctx, question)
+	return ResearchAgent(client, httpClient, nil).Run(ctx, question)
 }
 
 // NewHTTPClient returns an HTTP client of its own for the page reads of one agent: its own transport (so its own connections and
@@ -48,18 +58,25 @@ func NewHTTPClient() *http.Client {
 }
 
 // ResearchAgent returns the deep-research agent, with up to 20 steps (model calls). httpClient reads the pages (fetch_url): give each
-// agent its own (NewHTTPClient) for full isolation; nil makes one for this agent (without anyone to close it).
-func ResearchAgent(client *ai.Client, httpClient *http.Client) *Agent {
+// agent its own (NewHTTPClient) for full isolation; nil makes one for this agent (without anyone to close it). kb is the knowledge
+// base the agent works with: it gets the tools remember and query, and the part of the prompt that says how to use them; with nil
+// (as in Research) it has only web_search and fetch_url.
+func ResearchAgent(client *ai.Client, httpClient *http.Client, kb Knowledge) *Agent {
 	if httpClient == nil {
 		httpClient = NewHTTPClient()
 	}
-	return &Agent{
+	a := &Agent{
 		Client:    client,
 		System:    researchSystem,
 		Tools:     []Tool{webSearchTool(client), fetchURLTool(httpClient)},
 		MaxTokens: 8192,
 		MaxSteps:  20,
 	}
+	if kb != nil {
+		a.System += researchKnowledgeSystem
+		a.Tools = append(a.Tools, queryTool(kb), rememberTool(kb))
+	}
+	return a
 }
 
 func webSearchTool(client *ai.Client) Tool {

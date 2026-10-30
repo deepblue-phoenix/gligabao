@@ -241,6 +241,11 @@ func (l *loop) run(ctx context.Context) (*Result, error) {
 
 // runTool runs one tool call; failures (unknown tool, tool error) become the text the model reads.
 func runTool(ctx context.Context, tools map[string]Tool, name string, input json.RawMessage) (out string, isErr bool) {
+	defer func() {
+		if p := recover(); p != nil { // a tool that panics must not take the whole run down
+			out, isErr = fmt.Sprintf("tool %s failed: %v", name, p), true
+		}
+	}()
 	t, ok := tools[name]
 	if !ok {
 		return "unknown tool " + name, true

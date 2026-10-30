@@ -34,7 +34,7 @@ func Register(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm me
 	}
 	a := func(h http.HandlerFunc) http.Handler { return httputil.Authenticate(o.auth, h) } // routes of users: with WithAuth they need an API key
 	mux.Handle("POST /v1/gb/remember", a(rememberHandler(mgr, d, llm, emb, jv, ws, providers, o)))
-	mux.Handle("POST /v1/gb/query", a(query.Handler(d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm))))
+	mux.Handle("POST /v1/gb/query", a(query.Handler(d.Relational, llm, queryOptions(d, emb, o)...)))
 	mux.Handle("GET /v1/gb/geo/nearby", a(query.NearbyHandler(d.Relational, memory_core.WithGeoRadius(o.geoRadiusKm))))
 	mux.Handle("POST /v1/gb/datasets", a(datasets.Create(d.Relational)))
 	mux.Handle("GET /v1/gb/datasets", a(datasets.List(d.Relational)))
@@ -46,6 +46,7 @@ func Register(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm me
 	mux.Handle("POST /v1/gb/ontologies", a(ontologies.Load(d.Relational, o.ontologyDirs)))
 	mux.Handle("PUT /v1/gb/ontologies/{name}", a(ontologies.Update(d.Relational, o.ontologyDirs)))
 	if o.research != nil {
+		o.research.UseMemory(researchMemory(mgr, d, llm, emb, jv, ws, providers, o))
 		mux.Handle("POST /v1/gb/research", a(research.Start(o.research)))
 		mux.Handle("GET /v1/gb/research", a(research.List(o.research)))
 		mux.Handle("GET /v1/gb/research/{id}", a(research.Get(o.research)))
@@ -54,7 +55,26 @@ func Register(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm me
 
 // rememberHandler is the handler of POST /v1/gb/remember (Register and RegisterMCP use the same one).
 func rememberHandler(mgr *memory_remember.Manager, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, o options) http.HandlerFunc {
-	return remember.Handler(mgr, d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_core.WithGeoResolver(o.geo), memory_image.WithImageDir(d.ImageDir))
+	return remember.Handler(mgr, d.Relational, llm, rememberOptions(d, emb, jv, ws, providers, o)...)
+}
+
+// rememberOptions are the options of every remember call of the API (and of the research agents).
+func rememberOptions(d *db.DB, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, o options) []memory_core.Option {
+	return []memory_core.Option{memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_core.WithGeoResolver(o.geo), memory_image.WithImageDir(d.ImageDir)}
+}
+
+// queryOptions are the options of every query call of the API (and of the research agents).
+func queryOptions(d *db.DB, emb memory_core.Embedder, o options) []memory_core.Option {
+	return []memory_core.Option{memory.WithVectors(d.Vector, emb), memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm)}
+}
+
+// researchMemory is the knowledge base the research agents work with: the remember manager and the query pipeline, with the same
+// options as the remember and query endpoints. With no LLM the agents cannot run anyway, and get none.
+func researchMemory(mgr *memory_remember.Manager, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, o options) *agent_research.Memory {
+	if llm == nil || mgr == nil {
+		return nil
+	}
+	return &agent_research.Memory{Remember: mgr, DB: d.Relational, LLM: llm, RememberOpts: rememberOptions(d, emb, jv, ws, providers, o), QueryOpts: queryOptions(d, emb, o)}
 }
 
 // RegisterMCP mounts the MCP endpoint (POST /v1/gb/mcp, see package mcp) with the tools remember and query (and, with WithResearch, those of the research agents). They run the same handlers
@@ -68,9 +88,10 @@ func RegisterMCP(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm
 	}
 	var mcpOpts []mcp.Option
 	if o.research != nil {
+		o.research.UseMemory(researchMemory(mgr, d, llm, emb, jv, ws, providers, o))
 		mcpOpts = append(mcpOpts, mcp.WithResearch(research.Start(o.research), research.List(o.research), research.Get(o.research)))
 	}
-	mcp.Register(mux, rememberHandler(mgr, d, llm, emb, jv, ws, providers, o), query.Handler(d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm)), version, mcpOpts...)
+	mcp.Register(mux, rememberHandler(mgr, d, llm, emb, jv, ws, providers, o), query.Handler(d.Relational, llm, queryOptions(d, emb, o)...), version, mcpOpts...)
 }
 
 type options struct {

@@ -27,6 +27,8 @@ type fakeAnthropic struct {
 	gate chan struct{}
 	// status, if not 0, is the HTTP status of every call of the agent (with an error body).
 	status int
+	// bodies are the request bodies of the calls of the agent, in order.
+	bodies []string
 }
 
 const (
@@ -49,6 +51,7 @@ func (f *fakeAnthropic) start(t *testing.T) *ai.Client {
 		}
 		f.mu.Lock()
 		f.calls++
+		f.bodies = append(f.bodies, string(b))
 		n, gate, status := f.calls, f.gate, f.status
 		f.mu.Unlock()
 		if gate != nil && n == 1 {

@@ -37,6 +37,7 @@ type Manager struct {
 	MaxActivePerUser int
 
 	ctx context.Context
+	mem *Memory // the knowledge base of the agents (nil: they have only the web tools); guarded by mu
 
 	mu     sync.Mutex
 	active map[string]int // running agents by user
@@ -54,6 +55,14 @@ func NewManager(ctx context.Context, d *sql.DB, ops Ops, client *ai.Client) *Man
 		log.Infof("agent research: %d run(s) were interrupted by a restart and marked failed", k)
 	}
 	return m
+}
+
+// UseMemory gives the agents started from now on the internal knowledge base: the tools remember and query, besides web_search and
+// fetch_url. With nil (the default) they have no knowledge base. Agents already working are not changed.
+func (m *Manager) UseMemory(mem *Memory) {
+	m.mu.Lock()
+	m.mem = mem
+	m.mu.Unlock()
 }
 
 // Wait blocks until the running agents have ended (after the manager's context is done, or for tests).
@@ -84,6 +93,7 @@ func (m *Manager) Start(ctx context.Context, userID string, opts Options) (*core
 		return nil, conflictErr(fmt.Sprintf("you have %d research agents working already: wait for one to end", limit))
 	}
 	m.active[userID]++
+	mem := m.mem
 	m.mu.Unlock()
 	release := func() {
 		m.mu.Lock()
@@ -110,7 +120,7 @@ func (m *Manager) Start(ctx context.Context, userID string, opts Options) (*core
 	rec := *run // what the caller gets; the researcher owns run from here on
 
 	// Each agent gets a researcher (all of its state) and a goroutine of its own.
-	r := newResearcher(m, run, opts)
+	r := newResearcher(m, run, opts, mem)
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()

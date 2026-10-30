@@ -42,7 +42,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_agent_research_runs_status ON gb_agent_researc
 -- but for its end). Deleting the run deletes its states.
 --   run_id       the run (gb_agent_research_runs)
 --   seq          1, 2, 3, ... in the order the states were entered (unique within the run)
---   state        what the agent was doing: 'thinking', 'searching', 'reading', 'using_tool', 'writing_report', 'completed' or
+--   state        what the agent was doing: 'thinking', 'searching', 'reading', 'querying', 'remembering', 'using_tool', 'writing_report', 'completed' or
 --                'failed' (core.State*); not constrained, so that an agent with other tools can have its own
 --   step         the model call the agent was on (from 1; 0 for the state a run starts in or ends in)
 --   detail       what the state is about: the query searched, the URL read, the tool used, 'step 3 of 20'

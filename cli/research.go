@@ -32,6 +32,7 @@ func (c *CLI) researchStartCmd() *cobra.Command {
 		jsonBody string
 		maxSteps int
 		model    string
+		dataset  string
 		wait     bool
 		raw      bool
 	)
@@ -74,6 +75,9 @@ run (with its report). The topic is the argument, or stdin if the argument is "-
 			}
 			if cmd.Flags().Changed("model") {
 				b.set("model", model)
+			}
+			if cmd.Flags().Changed("dataset") {
+				b.set("dataset", dataset)
 			}
 			cl, err := c.client(cmd)
 			if err != nil {
@@ -126,6 +130,7 @@ run (with its report). The topic is the argument, or stdin if the argument is "-
 	f.StringVar(&jsonBody, "json", "", `the request body as JSON ('{"topic": "..."}', @file, or - for stdin); the flags below override its fields`)
 	f.IntVar(&maxSteps, "max-steps", 0, "the most model calls the agent makes (default 20, at most 40); more research more, and cost more")
 	f.StringVar(&model, "model", "", "the model the agent runs on (must support web search; default: the server's)")
+	f.StringVarP(&dataset, "dataset", "d", "", `the dataset of your knowledge base the agent queries and remembers into (default "main")`)
 	f.BoolVar(&wait, "wait", false, "wait until the agent ends, and print the finished run (exit code 1 if it failed)")
 	f.BoolVar(&raw, "raw", false, "with --wait: print only the report, as text")
 	return cmd

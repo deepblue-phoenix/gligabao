@@ -61,6 +61,7 @@ type ResearchStartInput struct {
 	Topic    string `json:"topic" jsonschema:"what to research: a question, or a subject to write a report on (at most 2000 characters)"`
 	MaxSteps int    `json:"max_steps,omitempty" jsonschema:"the most model calls the agent makes, the last of which writes the report (default 20, at most 40); more steps research more and cost more"`
 	Model    string `json:"model,omitempty" jsonschema:"the model the agent runs on, one that supports Anthropic's web search tool (default: the server's)"`
+	Dataset  string `json:"dataset,omitempty" jsonschema:"the dataset of the user's knowledge base the agent queries and remembers into (default main)"`
 }
 
 // ResearchListInput is the input of the research_list tool: the query of GET /v1/gb/research.

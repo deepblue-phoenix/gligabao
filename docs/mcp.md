@@ -56,7 +56,7 @@ Three tools run the handlers of the [research agent](research.md) endpoints: `re
 
 | Tool | Arguments |
 | ---- | --------- |
-| `research_start` | `user_id` (required), `topic` (required), `max_steps` (optional, default 20, at most 40), `model` (optional) |
+| `research_start` | `user_id` (required), `topic` (required), `max_steps` (optional, default 20, at most 40), `model` (optional), `dataset` (optional: the dataset of the knowledge base the agent queries and remembers into, default `main`) |
 | `research_list` | `user_id` (required), `active` (optional: only the agents working now), `status` (optional: `running`, `completed` or `failed`), `limit` (optional) |
 | `research_get` | `user_id` (required), `id` (required: the id `research_start` returned) |
 

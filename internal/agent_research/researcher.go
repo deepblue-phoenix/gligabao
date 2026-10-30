@@ -41,8 +41,9 @@ type researcher struct {
 	total agent.Result // the totals of the agent so far
 }
 
-// newResearcher makes the researcher of run (already recorded) with its own agent, observed by the researcher itself.
-func newResearcher(m *Manager, run *core.Run, opts Options) *researcher {
+// newResearcher makes the researcher of run (already recorded) with its own agent, observed by the researcher itself. mem is the
+// knowledge base the agent works with, in the dataset of opts (nil: none).
+func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory) *researcher {
 	r := &researcher{
 		ctx:    m.ctx,
 		dbCtx:  context.WithoutCancel(m.ctx),
@@ -54,7 +55,11 @@ func newResearcher(m *Manager, run *core.Run, opts Options) *researcher {
 		opts:   opts,
 		http:   agent.NewHTTPClient(),
 	}
-	r.agent = agent.ResearchAgent(r.client, r.http)
+	var kb agent.Knowledge // a nil Memory must become a nil Knowledge
+	if mem != nil {
+		kb = &knowledge{mem: mem, userID: run.UserID, dataset: opts.Dataset, sessionID: fmt.Sprintf("research-%d", run.ID), ctx: r.ctx}
+	}
+	r.agent = agent.ResearchAgent(r.client, r.http, kb)
 	r.agent.Model, r.agent.MaxSteps = opts.Model, opts.MaxSteps
 	r.agent.Observer = agent.Observer{
 		BeforeModel: r.beforeModel,
@@ -183,6 +188,19 @@ func toolState(name string, input json.RawMessage) (state, detail string) {
 		return core.StateSearching, arg("query")
 	case "fetch_url":
 		return core.StateReading, arg("url")
+	case "query":
+		return core.StateQuerying, arg("question")
+	case "remember":
+		var m struct {
+			Text string `json:"text"`
+			Sync bool   `json:"sync"`
+		}
+		json.Unmarshal(input, &m)
+		mode := "async"
+		if m.Sync {
+			mode = "sync"
+		}
+		return core.StateRemembering, mode + ": " + truncate(m.Text, 200)
 	}
 	return core.StateUsingTool, name
 }

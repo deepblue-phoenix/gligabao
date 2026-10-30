@@ -5,6 +5,19 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.129.0] - 2026-11-02
+
+### Added
+- Research agents now work with the internal knowledge base. They have two new tools: `remember`, with which the agent submits the important snippets it finds while it searches the web and reads pages (with their URL as the source), and `query`, with which it asks the knowledge base what it knows already, besides web searches and page reads. The prompt tells the agent to use both.
+- `remember` of the research agent takes a `sync` flag that toggles blocking. By default (`sync=false`) it only queues the text in the remember manager and returns at once, so the agent goes on without waiting for the text to be absorbed; with `sync=true` it waits until the text is in the knowledge base (for example to query for it right away) and returns what was stored.
+- New option `dataset` of a research (`POST /v1/gb/research`, `research_start`, `gligabao research start -d`; default `main`): the dataset of the user's knowledge base the agent queries and remembers into. It is not stored with the run.
+- Two new states in the history of a run: `querying` (detail: the question) and `remembering` (detail: `async`/`sync` and the start of the text).
+
+### Changed
+- `agent.ResearchAgent` takes the knowledge base (`agent.Knowledge`, may be `nil`) as a third argument. `agent_research.Manager.UseMemory` gives the agents the knowledge base; `api.Register` and `api.RegisterMCP` do it when research is enabled. Without it the agents have only the web tools, as before.
+- A tool of the agent that panics no longer takes the run down: the model gets the error like any other failed tool.
+- The cost of the LLM calls of `remember` and `query` is not part of the `cost_usd` of the run (they are recorded as inferences).
+
 ## [0.128.1] - 2026-11-02
 
 ### Changed
