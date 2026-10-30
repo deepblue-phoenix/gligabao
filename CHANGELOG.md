@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.135.0] - 2026-11-02
+
+### Added
+- `rust/sargo/inference.schema.json`: a JSON Schema (draft 2020-12) of the sargo inference interface for client authors. The root is the `POST /v1/infer` request; `$defs` also holds the reply, error and health bodies, and `x-endpoints` maps each endpoint to its schemas. A unit test keeps its property names in step with the Rust structs.
+
 ## [0.134.0] - 2026-11-02
 
 ### Added

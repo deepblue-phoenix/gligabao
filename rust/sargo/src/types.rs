@@ -108,3 +108,70 @@ pub struct Usage {
     pub input_tokens: u32,
     pub output_tokens: u32,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// `inference.schema.json` is the contract for clients; keep it in step with these structs.
+    fn schema() -> Value {
+        serde_json::from_str(include_str!("../inference.schema.json")).expect("schema is valid JSON")
+    }
+
+    fn property_names(schema: &Value, def: &str) -> Vec<String> {
+        let mut names: Vec<String> = schema["$defs"][def]["properties"]
+            .as_object()
+            .unwrap_or_else(|| panic!("{} has no properties", def))
+            .keys()
+            .cloned()
+            .collect();
+        names.sort();
+        names
+    }
+
+    fn keys(value: &Value) -> Vec<String> {
+        let mut names: Vec<String> = value.as_object().unwrap().keys().cloned().collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn schema_matches_response_shape() {
+        let schema = schema();
+        let response = InferenceResponse {
+            provider: "anthropic".into(),
+            model: "m".into(),
+            content: vec![
+                ContentBlock::Text { text: "t".into() },
+                ContentBlock::ToolUse { id: "1".into(), name: "n".into(), input: json!({}) },
+            ],
+            stop_reason: "tool_use".into(),
+            usage: Usage { input_tokens: 1, output_tokens: 2 },
+        };
+        let value = serde_json::to_value(&response).unwrap();
+        assert_eq!(keys(&value), property_names(&schema, "InferenceResponse"));
+        assert_eq!(keys(&value["usage"]), property_names(&schema, "Usage"));
+        assert_eq!(keys(&value["content"][0]), property_names(&schema, "ContentBlockText"));
+        assert_eq!(keys(&value["content"][1]), property_names(&schema, "ContentBlockToolUse"));
+    }
+
+    #[test]
+    fn schema_matches_request_shape() {
+        let schema = schema();
+        let tool_result = serde_json::to_value(ContentBlock::ToolResult {
+            tool_use_id: "1".into(),
+            content: "c".into(),
+            is_error: false,
+        })
+        .unwrap();
+        assert_eq!(keys(&tool_result), property_names(&schema, "ContentBlockToolResult"));
+        assert_eq!(
+            property_names(&schema, "InferenceRequest"),
+            ["max_tokens", "messages", "model", "provider", "system", "temperature", "tools"]
+        );
+        assert_eq!(property_names(&schema, "Message"), ["content", "role"]);
+        assert_eq!(property_names(&schema, "Tool"), ["description", "input_schema", "name"]);
+        assert_eq!(schema["$defs"]["InferenceRequest"]["properties"]["max_tokens"]["default"], DEFAULT_MAX_TOKENS);
+    }
+}

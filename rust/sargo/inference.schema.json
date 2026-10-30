@@ -1,0 +1,270 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gligabao.local/sargo/inference.schema.json",
+  "title": "sargo inference interface",
+  "description": "JSON Schema of the sargo HTTP API. The root schema is the request body of POST /v1/infer. The other bodies are in $defs: 200 reply of POST /v1/infer = InferenceResponse; any error reply (400, 404, 500, 502, 503) = ErrorResponse; 200 reply of GET /health = HealthResponse. Clients should validate their request against the root (or #/$defs/InferenceRequest) before sending, and may validate replies against #/$defs/InferenceResponse. sargo is stateless: the caller sends the whole conversation on every request and runs the tool-calling loop itself (see InferenceResponse.stop_reason and ContentBlockToolResult).",
+  "$ref": "#/$defs/InferenceRequest",
+
+  "x-endpoints": [
+    {
+      "method": "POST",
+      "path": "/v1/infer",
+      "request": "#/$defs/InferenceRequest",
+      "request_content_type": "application/json (Content-Length body required, chunked is not supported)",
+      "responses": {
+        "200": "#/$defs/InferenceResponse",
+        "400": "#/$defs/ErrorResponse (invalid request JSON or unknown provider)",
+        "502": "#/$defs/ErrorResponse (the model provider failed or answered garbage)",
+        "503": "#/$defs/ErrorResponse (the provider has no API key configured)"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "responses": {
+        "200": "#/$defs/HealthResponse"
+      }
+    }
+  ],
+
+  "$defs": {
+    "InferenceRequest": {
+      "title": "InferenceRequest",
+      "description": "One model inference. Provider-neutral: the caller never writes Anthropic or OpenAI JSON.",
+      "type": "object",
+      "required": ["provider", "model", "messages"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "description": "Which provider to forward to.",
+          "enum": ["anthropic", "openai"]
+        },
+        "model": {
+          "description": "The provider's own model name, passed through untouched (e.g. \"claude-sonnet-4-5\", \"gpt-4o\").",
+          "type": "string",
+          "minLength": 1
+        },
+        "system": {
+          "description": "Optional system prompt. Omit or null for none.",
+          "type": ["string", "null"]
+        },
+        "messages": {
+          "description": "The conversation so far, oldest first. It should start with a user message and the roles should alternate.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/Message" }
+        },
+        "tools": {
+          "description": "Tools the model may call. Omit for no tools.",
+          "type": "array",
+          "default": [],
+          "items": { "$ref": "#/$defs/Tool" }
+        },
+        "max_tokens": {
+          "description": "Max tokens to generate. Omit or null for the default (1024).",
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 4294967295,
+          "default": 1024
+        },
+        "temperature": {
+          "description": "Sampling temperature. Omit or null for the provider's default. The valid range is the provider's (Anthropic 0 to 1, OpenAI 0 to 2); out of range values are rejected by the provider with a 502.",
+          "type": ["number", "null"],
+          "minimum": 0
+        }
+      }
+    },
+
+    "Message": {
+      "title": "Message",
+      "description": "One turn of the conversation. Tool results are sent in a \"user\" message; the model's tool calls come back in an \"assistant\" message.",
+      "type": "object",
+      "required": ["role", "content"],
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": ["user", "assistant"]
+        },
+        "content": {
+          "description": "Content blocks. A plain string is NOT accepted: wrap it as [{\"type\":\"text\",\"text\":\"...\"}].",
+          "type": "array",
+          "items": { "$ref": "#/$defs/ContentBlock" }
+        }
+      }
+    },
+
+    "ContentBlock": {
+      "title": "ContentBlock",
+      "description": "A piece of a message, discriminated by its \"type\" field.",
+      "oneOf": [
+        { "$ref": "#/$defs/ContentBlockText" },
+        { "$ref": "#/$defs/ContentBlockToolUse" },
+        { "$ref": "#/$defs/ContentBlockToolResult" }
+      ],
+      "discriminator": { "propertyName": "type" }
+    },
+
+    "ContentBlockText": {
+      "title": "ContentBlockText",
+      "description": "Plain text.",
+      "type": "object",
+      "required": ["type", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "text" },
+        "text": { "type": "string" }
+      }
+    },
+
+    "ContentBlockToolUse": {
+      "title": "ContentBlockToolUse",
+      "description": "The model asks the caller to run a tool. Appears in replies. To answer it, send it back unchanged inside an \"assistant\" message, followed by a \"user\" message with a ContentBlockToolResult whose tool_use_id equals this id.",
+      "type": "object",
+      "required": ["type", "id", "name", "input"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "tool_use" },
+        "id": {
+          "description": "Id of this tool call, chosen by the provider.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of one of the tools given in the request.",
+          "type": "string"
+        },
+        "input": {
+          "description": "The tool arguments, free-form JSON that follows the tool's input_schema.",
+          "type": "object"
+        }
+      }
+    },
+
+    "ContentBlockToolResult": {
+      "title": "ContentBlockToolResult",
+      "description": "The caller's answer to a tool_use block. Send one per tool call, all in a single \"user\" message.",
+      "type": "object",
+      "required": ["type", "tool_use_id", "content"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "tool_result" },
+        "tool_use_id": {
+          "description": "Must equal the id of the tool_use block it answers.",
+          "type": "string"
+        },
+        "content": {
+          "description": "The tool's output as text (or the error text if is_error is true).",
+          "type": "string"
+        },
+        "is_error": {
+          "description": "True if the tool failed.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+
+    "Tool": {
+      "title": "Tool",
+      "description": "A tool the model may call.",
+      "type": "object",
+      "required": ["name", "input_schema"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Tool name. Providers require letters, digits, underscore and hyphen, max 64 characters.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_-]+$"
+        },
+        "description": {
+          "description": "What the tool does; helps the model decide when to call it.",
+          "type": "string",
+          "default": ""
+        },
+        "input_schema": {
+          "description": "JSON Schema of the tool's arguments. Must be an object schema.",
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": { "const": "object" },
+            "properties": { "type": "object" },
+            "required": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "InferenceResponse": {
+      "title": "InferenceResponse",
+      "description": "The 200 reply of POST /v1/infer. Same shape for every provider.",
+      "type": "object",
+      "required": ["provider", "model", "content", "stop_reason", "usage"],
+      "properties": {
+        "provider": {
+          "description": "The provider that answered.",
+          "enum": ["anthropic", "openai"]
+        },
+        "model": {
+          "description": "The model name the provider reports (may be more specific than the one requested).",
+          "type": "string"
+        },
+        "content": {
+          "description": "The model's answer: text blocks and/or tool_use blocks. If stop_reason is \"tool_use\", run each tool_use block and continue as described in ContentBlockToolUse.",
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/ContentBlockText" },
+              { "$ref": "#/$defs/ContentBlockToolUse" }
+            ],
+            "discriminator": { "propertyName": "type" }
+          }
+        },
+        "stop_reason": {
+          "description": "Why the model stopped, normalised across providers: \"end_turn\" (finished), \"tool_use\" (wants tools run, send the results and call again), \"max_tokens\" (cut off). Any other string is the provider's raw value, so clients must tolerate unknown values.",
+          "anyOf": [
+            { "enum": ["end_turn", "tool_use", "max_tokens"] },
+            { "type": "string" }
+          ]
+        },
+        "usage": { "$ref": "#/$defs/Usage" }
+      }
+    },
+
+    "Usage": {
+      "title": "Usage",
+      "type": "object",
+      "required": ["input_tokens", "output_tokens"],
+      "properties": {
+        "input_tokens": { "type": "integer", "minimum": 0 },
+        "output_tokens": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "ErrorResponse": {
+      "title": "ErrorResponse",
+      "description": "Body of every error reply. The HTTP status tells the kind: 400 the request is bad (fix it, do not retry as is), 404 unknown path or method, 500 internal error, 502 the provider failed (may be retried), 503 the provider is not configured in sargo.",
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "description": "Human readable message.",
+          "type": "string"
+        }
+      }
+    },
+
+    "HealthResponse": {
+      "title": "HealthResponse",
+      "description": "The 200 reply of GET /health.",
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "const": "ok" }
+      }
+    }
+  }
+}

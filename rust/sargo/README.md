@@ -60,6 +60,13 @@ per tool call (add `"is_error": true` if the tool failed). Repeat until `stop_re
 
 Errors: `{"error": "..."}` with 400 (bad request), 502 (provider failed), 503 (provider not configured).
 
+## JSON Schema
+
+`inference.schema.json` (JSON Schema draft 2020-12) describes the whole API for clients: the root schema is the
+`POST /v1/infer` request body; `$defs` holds `InferenceResponse`, `ErrorResponse` and `HealthResponse`, and the
+top-level `x-endpoints` lists each endpoint with its request and reply schemas. Validate requests against it
+before sending. A unit test in `src/types.rs` checks that the schema's property names match the Rust structs.
+
 ## Swapping parts
 
 - HTTP server: implement `HttpServer` (`src/http_server.rs`), change one line in `main.rs`.
