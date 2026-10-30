@@ -49,12 +49,16 @@ var Stop = errors.New("pipeline: stop")
 // Observer is what Run tells of the stages: the run log of the call. Every stage is named as in the log. The calls of one
 // Run are made by the goroutine that called it, except AddInference, which may come from any of the goroutines of a stage.
 type Observer interface {
+
 	// Start says that the stages began now. A stage that starts again (it is run for each chunk) keeps its first start.
 	Start(stages ...string)
+	
 	// Done says that the stages ended now, failed with err if it is not nil.
 	Done(err error, stages ...string)
+	
 	// Skip says that the stages are not used by this call. A stage that has begun is left as it is.
 	Skip(stages ...string)
+	
 	// AddInference says that the inference (gb_inferences) with that ID was made by the stage.
 	AddInference(stage string, id int64)
 }
