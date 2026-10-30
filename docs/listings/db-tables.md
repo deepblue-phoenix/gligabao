@@ -158,3 +158,24 @@ Tables of the evals (`internal/evals`, see its `README.md`; applied by `internal
 ### Where each table is defined
 
 All of them are in `internal/evals/db/sqlite/schema.go` (SQLite) and `internal/evals/db/postgres/schema.go` (Postgres).
+
+## AGENT_RESEARCH
+
+Tables of the research agents (`internal/agent_research`, see `docs/research.md`; applied by `internal/db.Open`).
+
+- `gb_agent_research_runs`
+- `gb_agent_research_states`
+
+### What each table is about
+
+| Table                          | Description                                                                                                                                      |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `gb_agent_research_runs`   | one row per research agent started on a topic, with its status, the state it is in, steps, tokens and cost so far, and the report or the error. |
+| `gb_agent_research_states` | one row per state the agent went through while working (starting, thinking, searching, reading, ...), append-only, with its detail, error and times. |
+
+### Where each table is defined
+
+| Table                          | SQLite                                          | Postgres                                          |
+| ------------------------------ | ----------------------------------------------- | ------------------------------------------------- |
+| `gb_agent_research_runs`   | `internal/agent_research/db/sqlite/schema.go`   | `internal/agent_research/db/postgres/schema.go`   |
+| `gb_agent_research_states` | `internal/agent_research/db/sqlite/schema.go`   | `internal/agent_research/db/postgres/schema.go`   |

@@ -12,6 +12,34 @@
 | `gligabao.ServeOptions`                                   | holds the serve settings that are not part of the Config file, such as paths and embedder-supplied providers.          |
 | `monitoring.Hooks`                                        | holds the optional callbacks an embedding program supplies to observe system events.                                   |
 
+>>> AGENT
+
+| Struct                                                    | Description                                                                                                            |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `internal/agent.Agent`                                    | is a model with tools and a system prompt, and the limits of its loop.                                                 |
+| `internal/agent.Observer`                                 | receives the progress of a Run: the optional functions called before and after every model call and tool run.          |
+| `internal/agent.Result`                                   | is the outcome of a Run: the answer, the steps, tool calls, tokens and cost.                                           |
+| `internal/agent.Tool`                                     | is something the model can call: its name, description, input schema and function.                                     |
+| `internal/agent.loop`                                     | is the whole state of one Run: its settings, the conversation and the totals, shared with no other Run.                |
+| `internal/agent.usage`                                    | is what the tools of a step spent on their own (the model calls they make).                                            |
+| `internal/agent.usageKey`                                 | is the context key of the usage a tool reports.                                                                        |
+
+>>> AGENT_RESEARCH
+
+| Struct                                                    | Description                                                                                                            |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `internal/agent_research.Error`                           | is a failure of a research operation, with the HTTP status it maps to.                                                 |
+| `internal/agent_research.ListOptions`                     | selects the runs List returns (active only, a status, a limit).                                                        |
+| `internal/agent_research.Manager`                         | starts research agents in the background, and lists and reads their runs.                                              |
+| `internal/agent_research.Ops`                             | is what the Manager needs of the database: the functions that store and read the runs and their states.                |
+| `internal/agent_research.Options`                         | is what a research is started with (topic, max steps, model): the body of POST /v1/gb/research.                        |
+| `internal/agent_research.researcher`                      | holds all the state of one research agent, used only by the goroutine of that agent.                                   |
+| `internal/agent_research/core.Run`                        | is one execution of the research agent on a topic.                                                                     |
+| `internal/agent_research/core.RunFilter`                  | selects runs; an empty field matches all.                                                                              |
+| `internal/agent_research/core.State`                      | is one stage of the work of a run, as the agent entered it.                                                            |
+| `internal/agent_research/db.Store`                        | is the functions of a backend as a value, so either backend can be given to the code that runs the agents.             |
+| `internal/agent_research/db.Usage`                        | is what a run has spent so far: its progress counters.                                                                 |
+
 >>> AI
 
 | Struct                                                    | Description                                                                                                            |
@@ -24,6 +52,7 @@
 | `internal/ai.ModelInfo`                                   | describes a model (name, provider, kind) that gligabao actively supports.                                              |
 | `internal/ai.Price`                                       | holds a model's price in USD per 1M tokens, including cache and long-context rates.                                    |
 | `internal/ai.PriceTable`                                  | looks up model prices by the longest key that prefixes a response model name.                                          |
+| `internal/ai.RawResponse`                                 | is the response to a Raw call: the content blocks as the API sent them (so they can go back to the model unchanged), the tokens and the cost. |
 | `internal/ai.Request`                                     | describes a single LLM call, with zero values falling back to client defaults.                                         |
 | `internal/ai.Response`                                    | is the result of an LLM call with its text, model, token usage and cost.                                               |
 | `internal/ai.Usage`                                       | is the token usage (input, output, cache write and cache read) of one call.                                            |
@@ -86,11 +115,19 @@
 | `internal/api/admin.webDataset`                           | is a dataset with web searches as listed in the web search stats.                                                      |
 | `internal/api/admin.webSearchStats`                       | is the answer of the web search statistics endpoint.                                                                   |
 | `internal/api/datasets.createRequest`                     | is the request body for creating a dataset.                                                                            |
+| `internal/api/mcp.QueryInput`                             | is the input of the query tool: the body of POST /v1/gb/query.                                                         |
+| `internal/api/mcp.RememberInput`                          | is the input of the remember tool: the text-only subset of the body of POST /v1/gb/remember.                           |
+| `internal/api/mcp.ResearchGetInput`                       | is the input of the research_get tool: the parameters of GET /v1/gb/research/{id}.                                     |
+| `internal/api/mcp.ResearchListInput`                      | is the input of the research_list tool: the query of GET /v1/gb/research.                                              |
+| `internal/api/mcp.ResearchStartInput`                     | is the input of the research_start tool: the body of POST /v1/gb/research.                                             |
+| `internal/api/mcp.options`                                | holds the handlers of the research tools of the MCP server, if any.                                                    |
+| `internal/api/mcp.recorder`                               | is an http.ResponseWriter that keeps the response in memory.                                                           |
 | `internal/api/ontologies.loadRequest`                     | is the request body for loading an ontology.                                                                           |
 | `internal/api/query.queryRequest`                       | is the request body for a query call.                                                                                 |
 | `internal/api/remember.fetchRequest`                      | is the timeseries fetch part of a remember request.                                                                    |
 | `internal/api/remember.rememberRequest`                   | is the request body for a remember call.                                                                               |
 | `internal/api/remember.timeseriesRequest`                 | is the timeseries part of a remember request.                                                                          |
+| `internal/api/research.startRequest`                      | is the request body for starting a research agent.                                                                     |
 | `internal/api/timeseries.anchorView`                      | is the API view of a series anchor.                                                                                    |
 | `internal/api/timeseries.attachRequest`                   | is the request body for attaching a series to a dataset.                                                               |
 | `internal/api/timeseries.seriesView`                      | is the API view of a series and its point count.                                                                       |
