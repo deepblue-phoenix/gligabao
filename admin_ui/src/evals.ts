@@ -3,6 +3,7 @@
 
 import { showGraphAt } from "./graph.js";
 import { showCaseHistory } from "./history.js";
+import { openTemporalAt } from "./temporal.js";
 import { showTrace } from "./trace.js";
 import { showWebSearches, totalsLine, type WebSearch, type WebSearchTotals } from "./websearch.js";
 
@@ -325,6 +326,16 @@ function caseRecord(run: Run, e: CaseRun, experiment: string, web?: EvalWebSearc
       void showGraphAt(`${e.eval}/${e.name} (run #${run.id})`, `api/evals/case_runs/${e.id}/graph`);
     });
     out.push(gbtn);
+    // What the remember calls of the case did to the facts over time (created, confirmed, ended, invalidated, superseded).
+    out.push(h("h4", undefined, "Temporal changes"));
+    const tbtn = h("button", "small", "View temporal changes");
+    tbtn.type = "button";
+    tbtn.title = "Plot what the remember calls of this case did to the facts on a time axis: established, invalidated, still true";
+    tbtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      openTemporalAt(`${e.eval}/${e.name} (run #${run.id}) · temporal changes`, `api/evals/case_runs/${e.id}/temporal`);
+    });
+    out.push(tbtn);
   } else {
     out.push(h("p", "muted", "No dataset recorded."));
   }

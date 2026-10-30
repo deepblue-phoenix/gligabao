@@ -18,7 +18,8 @@ interface EdgeEvent {
   invalid_at_before?: string; invalid_at_after?: string; caused_by_edge_id?: number; created_at: string; edge?: Edge;
 }
 interface Artifact { id: number; parent_id?: number; kind: string; valid_at: string; created_at: string }
-interface Response { run_id: number; artifact_id: number; artifacts: Artifact[]; events: EdgeEvent[] }
+// The response of a remember run (run_id, artifact_id) or of an eval case run (case_run_id, artifact_ids); only these two are used.
+interface Response { artifacts: Artifact[]; events: EdgeEvent[] }
 
 // Events, from the strongest (what the fact is drawn as) to the weakest.
 const EVENTS = ["superseded", "invalidated", "ended", "created", "confirmed"] as const;
@@ -132,7 +133,7 @@ function plot(facts: Fact[], artifacts: Artifact[]): SVGSVGElement {
   const y0 = top + facts.length * rowH;           // the x-axis
   const H = y0 + axisH;
   const svg = d3.create("svg").attr("viewBox", [0, 0, W, H]).attr("width", "100%").attr("class", "tp-plot").attr("role", "img")
-    .attr("aria-label", "Temporal changes of the facts of a remember run");
+    .attr("aria-label", "Temporal changes of the facts");
 
   // Reference times of the texts.
   const refG = svg.append("g").attr("class", "tp-refs");
@@ -216,7 +217,7 @@ function show(box: HTMLElement, data: Response): void {
   const facts = factsOf(data.events);
   if (facts.length === 0) {
     box.className = "modal-body muted";
-    box.textContent = "This run did not create or change any fact (or it ran before the temporal events were recorded).";
+    box.textContent = "No fact was created or changed (or it ran before the temporal events were recorded).";
     return;
   }
   box.className = "modal-body";
@@ -228,16 +229,16 @@ function show(box: HTMLElement, data: Response): void {
   box.appendChild(eventsTable(data.events));
 }
 
-// Opens the modal on what run `runId` of database `db` did to the facts; fetched each time it is opened.
-export function openTemporal(db: string, runId: number): void {
+// Opens the modal with the temporal changes fetched from `url` (api/remember-run-temporal or api/evals/case_runs/{id}/temporal),
+// under `title`; fetched each time it is opened.
+export function openTemporalAt(title: string, url: string): void {
   const modal = el<HTMLDialogElement>("tp-modal");
   const box = el("tp-body");
-  const title = `Run ${runId} · temporal changes`;
   el("tp-title").textContent = title;
   box.className = "modal-body muted";
   box.textContent = "Loading…";
   if (!modal.open) modal.showModal();
-  fetch(`api/remember-run-temporal?${new URLSearchParams({ db, run_id: String(runId) })}`).then(async (res) => {
+  fetch(url).then(async (res) => {
     if (!res.ok) throw new Error(`${res.status}: ${(await res.text()).trim()}`);
     const data = (await res.json()) as Response;
     if (modal.open && el("tp-title").textContent === title) show(box, data);
@@ -245,6 +246,11 @@ export function openTemporal(db: string, runId: number): void {
     box.className = "modal-body error";
     box.textContent = `Failed to load the temporal changes: ${errText(err)}`;
   });
+}
+
+// Opens the modal on what run `runId` of database `db` did to the facts.
+export function openTemporal(db: string, runId: number): void {
+  openTemporalAt(`Run ${runId} · temporal changes`, `api/remember-run-temporal?${new URLSearchParams({ db, run_id: String(runId) })}`);
 }
 
 export function initTemporal(): void {

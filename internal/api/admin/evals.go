@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -548,6 +549,61 @@ func EvalCaseRunGraph(d *sql.DB, s evalsdb.Store) http.HandlerFunc {
 			return
 		}
 		httputil.WriteJSON(w, http.StatusOK, g)
+	}
+}
+
+// evalCaseTemporalResponse is the temporal state changes of one case run (same events and artifacts as
+// rememberRunTemporalResponse, for all the remember calls of the case together).
+type evalCaseTemporalResponse struct {
+	CaseRunID int64 `json:"case_run_id"`
+	// ArtifactIDs are the artifacts the remember calls of the case stored, in call order.
+	ArtifactIDs []int64                       `json:"artifact_ids"`
+	Artifacts   []rememberRunTemporalArtifact `json:"artifacts"`
+	// Events are what the remember calls of the case did to the facts, oldest first, each with its fact in its current state.
+	Events []graph.EdgeEvent `json:"events"`
+}
+
+// EvalCaseRunTemporal serves GET /admin/api/evals/case_runs/{id}/temporal: what the remember calls of the case did to the
+// temporal state of the facts (gb_edge_events of the artifacts the trajectories of kind remember stored, and of their chunks and
+// enrichments), read from the dataset the case ran in, with the reference times of the texts. Same events as the temporal view of a
+// remember run (RememberRunTemporalOf). A case without a dataset, or an unknown case run, is 404.
+func EvalCaseRunTemporal(d *sql.DB, s evalsdb.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		ctx := r.Context()
+		c, err := s.GetCaseRun(ctx, d, core.CaseRunID(id))
+		if err == nil && (c.Type != core.TypeKnowledge || knowledgeMeta(c).DatasetID == nil) {
+			err = evalsdb.ErrNotFound
+		}
+		if err != nil {
+			evalFail(w, err, "temporal changes")
+			return
+		}
+		out := evalCaseTemporalResponse{CaseRunID: id, ArtifactIDs: []int64{}, Artifacts: []rememberRunTemporalArtifact{}, Events: []graph.EdgeEvent{}}
+		for _, t := range knowledgeMeta(c).Trajectories {
+			if t.Kind != "remember" {
+				continue
+			}
+			for _, aid := range t.ArtifactIDs {
+				events, err := graph.ListEdgeEvents(ctx, d, aid)
+				if err != nil {
+					evalFail(w, err, "temporal changes")
+					return
+				}
+				out.ArtifactIDs = append(out.ArtifactIDs, aid)
+				out.Events = append(out.Events, events...)
+			}
+		}
+		// The trees of the artifacts do not overlap; the events of all the calls are in the order they were made.
+		slices.SortFunc(out.Events, func(a, b graph.EdgeEvent) int { return cmp.Compare(a.ID, b.ID) })
+		if out.Artifacts, err = temporalArtifacts(ctx, d, out.Events); err != nil {
+			evalFail(w, err, "temporal changes")
+			return
+		}
+		httputil.WriteJSON(w, http.StatusOK, out)
 	}
 }
 

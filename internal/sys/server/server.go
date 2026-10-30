@@ -381,6 +381,7 @@ func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, geoRadiusKm float64,
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}", admin.EvalRun(e.DB, *e.EvalStore))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}/web-searches", admin.EvalRunWebSearches(e.DB, *e.EvalStore, e.TrajectoryDir))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/graph", admin.EvalCaseRunGraph(e.DB, *e.EvalStore))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/temporal", admin.EvalCaseRunTemporal(e.DB, *e.EvalStore))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/trajectories/{id}", admin.EvalTrajectory(e.DB, *e.EvalStore, e.TrajectoryDir))
 		break
 	}

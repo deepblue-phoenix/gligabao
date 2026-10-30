@@ -1,16 +1,21 @@
 package admin_test
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
+	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
 
 // TestEvals checks the admin eval endpoints: experiment counts, run details and trajectory files.
@@ -109,5 +114,89 @@ func testEvals(t *testing.T, d *sql.DB) {
 	// Only recorded trajectories are served, never arbitrary files.
 	if c := get(admin.EvalTrajectory(d, store, dir), "/x/{id}", "..%2Fetc%2Fpasswd", nil); c != http.StatusNotFound {
 		t.Fatalf("unrecorded trajectory: %d", c)
+	}
+}
+
+// TestEvalCaseRunTemporal checks the temporal endpoint of a case run: the events of all its remember calls together (oldest first),
+// with the reference times; a query call is left out; a case without a dataset and unknown case runs are 404.
+func TestEvalCaseRunTemporal(t *testing.T) { dbtest.Run(t, testEvalCaseRunTemporal) }
+
+func testEvalCaseRunTemporal(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	fact := func(org string) string {
+		return `{"entities":[{"name":"Alice","type":"person"},{"name":"` + org + `","type":"organization"}],
+		"edges":[{"source":"Alice","target":"` + org + `","relation":"works_at","description":"Alice works at ` + org + `."}]}`
+	}
+	llm := &scriptedLLM{extractions: []string{fact("Acme"), fact("Globex")}}
+	ref1, ref2 := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC)
+	r1, err := memory_remember.Remember(ctx, d, llm, "u1", "main", "knowledge", "Alice works at Acme.", ref1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2, err := memory_remember.Remember(ctx, d, llm, "u1", "main", "knowledge", "Alice started working at Globex.", ref2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dsID, err := relational.DatasetID(ctx, d, "u1", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	traj := func(agent string) *atif.Trajectory {
+		b := atif.NewBuilder(atif.Agent{Name: agent, Version: "0.1"})
+		b.User("x")
+		tr := b.Build()
+		if _, err := atif.WriteFile(dir, tr); err != nil {
+			t.Fatal(err)
+		}
+		return tr
+	}
+	// Two remember calls, then a query whose source artifact must not count as one.
+	rec := recordCaseArtifacts(t, d, "temporal", "s", "a", dsID, dir, [][]int64{{r1.ArtifactID}, {r2.ArtifactID}, {r1.ArtifactID}},
+		traj("gligabao-remember"), traj("gligabao-remember"), traj("gligabao-query"))
+	none := recordCase(t, d, "temporal-none", "s", "b", 0, dir)
+	store := storeOf(t, d)
+
+	h := admin.EvalCaseRunTemporal(d, store)
+	get := func(id string, out any) int {
+		t.Helper()
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /x/{id}", h)
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/x/"+id, nil))
+		if out != nil && w.Code == http.StatusOK {
+			if err := json.Unmarshal(w.Body.Bytes(), out); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return w.Code
+	}
+	var got struct {
+		CaseRunID   int64   `json:"case_run_id"`
+		ArtifactIDs []int64 `json:"artifact_ids"`
+		Artifacts   []struct {
+			ID      int64     `json:"id"`
+			ValidAt time.Time `json:"valid_at"`
+		} `json:"artifacts"`
+		Events []graph.EdgeEvent `json:"events"`
+	}
+	if c := get(strconv.FormatInt(int64(rec.CaseRunID), 10), &got); c != 200 || got.CaseRunID != int64(rec.CaseRunID) ||
+		len(got.ArtifactIDs) != 2 || got.ArtifactIDs[0] != r1.ArtifactID || got.ArtifactIDs[1] != r2.ArtifactID ||
+		len(got.Events) != 3 || len(got.Artifacts) != 2 {
+		t.Fatalf("case run: %d %+v", c, got)
+	}
+	// Acme created, Globex created, Acme invalidated by it; oldest first.
+	if got.Events[0].Event != graph.EdgeCreated || got.Events[0].Edge.Target != "Acme" || got.Events[1].Event != graph.EdgeCreated ||
+		got.Events[1].Edge.Target != "Globex" || got.Events[2].Event != graph.EdgeInvalidated || got.Events[2].Edge.Target != "Acme" {
+		t.Errorf("events: %+v", got.Events)
+	}
+	if got.Artifacts[0].ID != r1.ArtifactID || !got.Artifacts[0].ValidAt.Equal(ref1) || !got.Artifacts[1].ValidAt.Equal(ref2) {
+		t.Errorf("artifacts: %+v", got.Artifacts)
+	}
+
+	for id, want := range map[string]int{strconv.FormatInt(int64(none.CaseRunID), 10): 404, "999999": 404, "abc": 400} {
+		if c := get(id, nil); c != want {
+			t.Errorf("%s: %d, want %d", id, c, want)
+		}
 	}
 }

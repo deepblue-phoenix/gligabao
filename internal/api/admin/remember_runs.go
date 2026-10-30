@@ -6,6 +6,8 @@ package admin
 // the temporal state of the facts, RememberRunTemporalOf.
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"net/http"
 	"strconv"
@@ -215,25 +217,35 @@ func RememberRunTemporalOf(dbs []Named) http.HandlerFunc {
 				return
 			}
 		}
-		if len(out.Events) > 0 {
-			var ids []int64
-			seen := map[int64]bool{}
-			for _, e := range out.Events {
-				if e.ArtifactID != 0 && !seen[e.ArtifactID] {
-					seen[e.ArtifactID] = true
-					ids = append(ids, e.ArtifactID)
-				}
-			}
-			arts, err := graph.ArtifactsByID(ctx, n.DB, out.Events[0].DatasetID, ids)
-			if err != nil {
-				log.WithError(err).Error("admin: remember run temporal artifacts failed")
-				httputil.Error(w, http.StatusInternalServerError, "failed to read the temporal events")
-				return
-			}
-			for _, a := range arts {
-				out.Artifacts = append(out.Artifacts, rememberRunTemporalArtifact{ID: a.ID, ParentID: a.ParentID, Kind: a.Kind, ValidAt: a.ValidAt, CreatedAt: a.CreatedAt})
-			}
+		if out.Artifacts, err = temporalArtifacts(ctx, n.DB, out.Events); err != nil {
+			log.WithError(err).Error("admin: remember run temporal artifacts failed")
+			httputil.Error(w, http.StatusInternalServerError, "failed to read the temporal events")
+			return
 		}
 		httputil.WriteJSON(w, http.StatusOK, out)
 	}
+}
+
+// temporalArtifacts returns the artifacts the events belong to (in the dataset of the events), by ID; empty for no events.
+func temporalArtifacts(ctx context.Context, d *sql.DB, events []graph.EdgeEvent) ([]rememberRunTemporalArtifact, error) {
+	out := []rememberRunTemporalArtifact{}
+	if len(events) == 0 {
+		return out, nil
+	}
+	var ids []int64
+	seen := map[int64]bool{}
+	for _, e := range events {
+		if e.ArtifactID != 0 && !seen[e.ArtifactID] {
+			seen[e.ArtifactID] = true
+			ids = append(ids, e.ArtifactID)
+		}
+	}
+	arts, err := graph.ArtifactsByID(ctx, d, events[0].DatasetID, ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, a := range arts {
+		out = append(out, rememberRunTemporalArtifact{ID: a.ID, ParentID: a.ParentID, Kind: a.Kind, ValidAt: a.ValidAt, CreatedAt: a.CreatedAt})
+	}
+	return out, nil
 }

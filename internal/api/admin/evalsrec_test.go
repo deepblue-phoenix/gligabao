@@ -50,6 +50,12 @@ type recorded struct {
 // trajectories trajs (stored in dir) as its calls and the dataset datasetID (0: none) as its graph.
 func recordCase(t *testing.T, d *sql.DB, experiment, eval, name string, datasetID int64, dir string, trajs ...*atif.Trajectory) recorded {
 	t.Helper()
+	return recordCaseArtifacts(t, d, experiment, eval, name, datasetID, dir, nil, trajs...)
+}
+
+// recordCaseArtifacts is recordCase with the artifacts of the trajectories: artifactIDs[i] are those of trajs[i].
+func recordCaseArtifacts(t *testing.T, d *sql.DB, experiment, eval, name string, datasetID int64, dir string, artifactIDs [][]int64, trajs ...*atif.Trajectory) recorded {
+	t.Helper()
 	ctx := context.Background()
 	r := runner.New(d, storeOf(t, d))
 	def, err := r.SyncEval(ctx, runner.EvalSpec{Name: eval, Type: core.TypeKnowledge, Cases: []runner.CaseSpec{{Name: name, Meta: &core.KnowledgeCaseDefMeta{}}}})
@@ -77,8 +83,12 @@ func recordCase(t *testing.T, d *sql.DB, experiment, eval, name string, datasetI
 		}
 		for i, tr := range trajs {
 			meta.Steps += len(tr.Steps)
-			meta.Trajectories = append(meta.Trajectories, core.KnowledgeTrajectory{Seq: i, Kind: strings.TrimPrefix(tr.Agent.Name, "gligabao-"),
-				TrajectoryID: tr.TrajectoryID, AgentName: tr.Agent.Name, Steps: len(tr.Steps), Path: filepath.Join(dir, tr.TrajectoryID+".json")})
+			kt := core.KnowledgeTrajectory{Seq: i, Kind: strings.TrimPrefix(tr.Agent.Name, "gligabao-"),
+				TrajectoryID: tr.TrajectoryID, AgentName: tr.Agent.Name, Steps: len(tr.Steps), Path: filepath.Join(dir, tr.TrajectoryID+".json")}
+			if i < len(artifactIDs) {
+				kt.ArtifactIDs = artifactIDs[i]
+			}
+			meta.Trajectories = append(meta.Trajectories, kt)
 		}
 		cr.Status, cr.Verdict = core.StatusCompleted, core.VerdictPass
 		out.CaseRunID = cr.ID

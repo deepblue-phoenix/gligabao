@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.142.0] - 2026-10-30
+
+### Added
+- Admin UI, evals: an opened case now has a **View temporal changes** button (next to **View graph**), the same plot as the **Temporal changes** of a remember run: what the remember calls of the case did to the facts over event time (created, confirmed, ended, invalidated, superseded), with the reference times of the texts and the table of events. The data is the new `GET /v1/gb/admin/api/evals/case_runs/<built-in function id>/temporal`: `case_run_id`, `artifact_ids` (those the remember calls of the case stored), `artifacts` and `events` (as in the remember run endpoint, for all the calls of the case together, oldest first); 404 for a case without a dataset.
+
 ## [0.141.2] - 2026-10-30
 
 ### Changed
