@@ -19,6 +19,7 @@
 | `internal/agent.Agent`                                    | is a model with tools and a system prompt, and the limits of its loop.                                                 |
 | `internal/agent.Observer`                                 | receives the progress of a Run: the optional functions called before and after every model call and tool run.          |
 | `internal/agent.Result`                                   | is the outcome of a Run: the answer, the steps, tool calls, tokens and cost.                                           |
+| `internal/agent.TeamTools`                                | says which tools of a team an agent gets (spawn, messaging).                                                           |
 | `internal/agent.Tool`                                     | is something the model can call: its name, description, input schema and function.                                     |
 | `internal/agent.loop`                                     | is the whole state of one Run: its settings, the conversation and the totals, shared with no other Run.                |
 | `internal/agent.usage`                                    | is what the tools of a step spent on their own (the model calls they make).                                            |
@@ -29,11 +30,20 @@
 | Struct                                                    | Description                                                                                                            |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `internal/agent_research.Error`                           | is a failure of a research operation, with the HTTP status it maps to.                                                 |
-| `internal/agent_research.ListOptions`                     | selects the runs List returns (active only, a status, a limit).                                                        |
+| `internal/agent_research.ListOptions`                     | selects the runs List returns (active only, a status, a parent, a limit).                                                        |
 | `internal/agent_research.Manager`                         | starts research agents in the background, and lists and reads their runs.                                              |
+| `internal/agent_research.Memory`                          | is what the agents need for their knowledge base: the remember manager, the database, the LLM and the options of remember and query. |
+| `internal/agent_research.Message`                         | is a text one agent sends to another (sender, receiver, text, time).                                                   |
 | `internal/agent_research.Ops`                             | is what the Manager needs of the database: the functions that store and read the runs and their states.                |
-| `internal/agent_research.Options`                         | is what a research is started with (topic, max steps, model): the body of POST /v1/gb/research.                        |
+| `internal/agent_research.Options`                         | is what a research is started with (topic, max steps, model, dataset): the body of POST /v1/gb/research.                        |
+| `internal/agent_research.chanMessenger`                   | is the Messenger of Go channels: the inbox of an agent is a buffered channel of messages.                              |
+| `internal/agent_research.family`                          | is the sub-agents of one parent, in the order they were spawned; the siblings of an agent are found in it.             |
+| `internal/agent_research.knowledge`                       | is the knowledge base of one research run: the user's dataset, with the session of the run.                            |
+| `internal/agent_research.member`                          | is a sub-agent as its parent and its siblings know it (id, name, how it ended).                                        |
+| `internal/agent_research.outcome`                         | is how a run ended (status, report, error).                                                                            |
 | `internal/agent_research.researcher`                      | holds all the state of one research agent, used only by the goroutine of that agent.                                   |
+| `internal/agent_research.team`                            | is the view of one agent of its sub-agents and messages (agent.Team).                                                  |
+| `internal/agent_research.tree`                            | counts the sub-agents spawned in the whole of one research.                                                            |
 | `internal/agent_research/core.Run`                        | is one execution of the research agent on a topic.                                                                     |
 | `internal/agent_research/core.RunFilter`                  | selects runs; an empty field matches all.                                                                              |
 | `internal/agent_research/core.State`                      | is one stage of the work of a run, as the agent entered it.                                                            |
