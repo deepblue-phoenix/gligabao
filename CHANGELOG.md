@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.136.0] - 2026-11-02
+
+### Added
+- `run_build_rust.sh --static`: builds a fully static `rust/sargo` binary (musl libc, libraries embedded) at `rust/sargo/target/<arch>-unknown-linux-musl/release/sargo`. It needs `musl-tools` (`musl-gcc`) on Ubuntu.
+- `run_build_rust.sh -h` / `--help` prints the usage; unknown options are rejected.
+
 ## [0.135.0] - 2026-11-02
 
 ### Added
