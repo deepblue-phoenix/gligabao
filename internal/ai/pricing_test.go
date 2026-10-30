@@ -32,6 +32,22 @@ func TestHaiku55Tiers(t *testing.T) {
 	}
 }
 
+func TestModels55And51Prices(t *testing.T) {
+	pt := NewPriceTable(nil)
+	// 1M of each kind of token: input + output + cache write + cache read.
+	for model, want := range map[string]float64{
+		"claude-fable-5-1":           10 + 50 + 12.5 + 0.25,
+		"claude-opus-5-5":            4 + 20 + 5 + 0.2,
+		"claude-sonnet-5-5":          2 + 10 + 2.5 + 0.1,
+		"claude-sonnet-5-5-20260101": 2 + 10 + 2.5 + 0.1, // dated name: prefix match
+	} {
+		u := Usage{InputTokens: 1e6, OutputTokens: 1e6, CacheWriteTokens: 1e6, CacheReadTokens: 1e6}
+		if c, ok := pt.Cost(model, u); !ok || !near(c, want) {
+			t.Errorf("%s: %v %v, want %v", model, c, ok, want)
+		}
+	}
+}
+
 func near(a, b float64) bool { return a-b < 1e-9 && b-a < 1e-9 }
 
 func TestSupportedModels(t *testing.T) {

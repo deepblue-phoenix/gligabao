@@ -527,3 +527,96 @@ func TestTextAsList(t *testing.T) {
 		}
 	}
 }
+
+// commentaryLLM records the requests it gets and answers with a fixed commentary.
+type commentaryLLM struct {
+	mu   sync.Mutex
+	reqs []ai.Request
+}
+
+func (l *commentaryLLM) Complete(_ context.Context, req ai.Request) (*ai.Response, error) {
+	l.mu.Lock()
+	l.reqs = append(l.reqs, req)
+	l.mu.Unlock()
+	return &ai.Response{Text: "Cause: the extractor missed Bob.", Model: req.Model, InputTokens: 1000, OutputTokens: 200, CostUSD: 0.002}, nil
+}
+
+// TestCommentary checks the eval commentary: it is offered only for a case that fails, nothing is sent to the LLM unless the
+// person says yes, and the commentary (made of the failure and the trajectories) is printed under the failure log before the
+// person's confirmation is waited for.
+func TestCommentary(t *testing.T) {
+	failing := kcase("fails", "Alice is here.", "Who?", "bob")
+	passing := kcase("passes", "Alice is here.", "Who?", "alice")
+	errored := kcase("errors", "Alice is here.", "Who?", "alice")
+	errored.Reasoning = map[string]string{"nope": "low"}
+	ev := knowledge.Eval{Name: "s", Cases: []core.KnowledgeCase{passing, failing, errored}}
+
+	t.Run("yes", func(t *testing.T) {
+		e := newEnv(t, "Alice")
+		cl := &commentaryLLM{}
+		// Failing case: y, then Enter after the commentary; the errored case: "x" (not an answer), n.
+		e.x.Commentary = &knowledge.Commentary{LLM: cl, In: strings.NewReader("y\n\nx\nn\n")}
+		e.run(ev)
+		if len(cl.reqs) != 1 {
+			t.Fatalf("LLM calls: %d, want 1 (only the failing case, answered y)", len(cl.reqs))
+		}
+		req := cl.reqs[0]
+		if req.Model != "claude-sonnet-5-5" {
+			t.Errorf("model: %q", req.Model)
+		}
+		prompt := req.Messages[0].Content
+		for _, want := range []string{"Eval case: fails", `answer does not contain "bob"`, "ATIF trajectory 2 of 2", "gligabao-query", "Alice is here."} {
+			if !strings.Contains(prompt, want) {
+				t.Errorf("prompt lacks %q:\n%s", want, prompt)
+			}
+		}
+		out := e.output.String()
+		fail := strings.Index(out, "FAIL fails")
+		prompted := strings.Index(out, "Run commentary on this failure? [y/N]")
+		text := strings.Index(out, "Cause: the extractor missed Bob.")
+		enter := strings.Index(out, "Press Enter to continue")
+		if !(fail >= 0 && fail < prompted && prompted < text && text < enter) {
+			t.Errorf("order in output (fail, prompt, text, enter) = %d, %d, %d, %d:\n%s", fail, prompted, text, enter, out)
+		}
+		if want := "tokens: 1000 in, 200 out; cost $0.002000; commentary total this run: $0.002000 (1)"; !strings.Contains(out, want) {
+			t.Errorf("no cost line %q in: %s", want, out)
+		}
+		if n, usd := e.x.Commentary.Total(); n != 1 || usd != 0.002 {
+			t.Errorf("total: %d, %v", n, usd)
+		}
+		if strings.Count(out, "Run commentary on this failure?") != 3 || !strings.Contains(out, "please answer y or n") {
+			t.Errorf("prompts: %s", out)
+		}
+		if strings.Contains(out, "PASS passes") && strings.Index(out, "PASS passes") > prompted {
+			t.Errorf("the passing case ran after the prompt of the failing one: %s", out)
+		}
+	})
+
+	t.Run("no", func(t *testing.T) {
+		e := newEnv(t, "Alice")
+		cl := &commentaryLLM{}
+		e.x.Commentary = &knowledge.Commentary{LLM: cl, In: strings.NewReader("n\n\n")}
+		e.run(ev)
+		if len(cl.reqs) != 0 || strings.Contains(e.output.String(), "Press Enter") {
+			t.Errorf("declined: %d LLM calls, output: %s", len(cl.reqs), e.output.String())
+		}
+	})
+
+	t.Run("off", func(t *testing.T) {
+		e := newEnv(t, "Alice")
+		e.run(ev)
+		if strings.Contains(e.output.String(), "commentary") {
+			t.Errorf("commentary is off but the output mentions it: %s", e.output.String())
+		}
+	})
+
+	t.Run("input ends", func(t *testing.T) {
+		e := newEnv(t, "Alice")
+		cl := &commentaryLLM{}
+		e.x.Commentary = &knowledge.Commentary{LLM: cl, In: strings.NewReader("")}
+		e.run(ev) // EOF counts as no, and the run goes on
+		if len(cl.reqs) != 0 {
+			t.Errorf("LLM calls: %d", len(cl.reqs))
+		}
+	})
+}

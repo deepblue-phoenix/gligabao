@@ -39,6 +39,9 @@ type Executor struct {
 	TrajectoryDir string
 	// Verbose prints the input and output of every LLM call and what was stored, to Out.
 	Verbose bool
+	// Commentary, if set, offers a commentary by an LLM on every case that fails (see Commentary): it asks the person at the
+	// terminal and blocks until they answer, so leave it nil for runs that nobody watches.
+	Commentary *Commentary
 	// Out is where the progress goes: PASS and FAIL for each case (nil discards).
 	Out io.Writer
 	// Colors colours the PASS and FAIL lines (green, red; the "answer:" label yellow). The zero value does not colour.
@@ -167,6 +170,13 @@ func (x *Executor) executeCase(ctx, dbCtx context.Context, rec *runner.EvalRecor
 			c.Name, strings.Join(problems, "\n     "), x.Colors.Yellow("answer:"), out.Answer)))
 	default:
 		fmt.Fprintln(x.out(), x.Colors.Green(fmt.Sprintf("PASS %s: %s", c.Name, out.Answer)))
+	}
+	// A case that failed or errored (not one that was cancelled) can have a commentary, printed under its failure log.
+	if x.Commentary != nil && ctx.Err() == nil && (err != nil || len(problems) > 0) {
+		x.Commentary.Offer(ctx, x.out(), x.Colors, commentaryFailure{
+			Case: c.Name, Def: *m, Input: input, RunModels: x.Models, RunReasoning: x.Reasoning,
+			Problems: problems, Passed: passed, Answer: out.Answer, Err: err, Trajectories: out.Trajectories,
+		})
 	}
 	return nil
 }

@@ -33,6 +33,10 @@ type Price struct {
 func DefaultPrices() map[string]Price {
 	return map[string]Price{
 		// Anthropic
+		// Fable 5.1, Opus 5.5 and Sonnet 5.5: CacheWrite is the 5-minute cache write price (the 1-hour one is not modelled).
+		"claude-fable-5-1":  {Input: 10, Output: 50, CacheWrite: 12.5, CacheRead: 0.25},
+		"claude-opus-5-5":   {Input: 4, Output: 20, CacheWrite: 5, CacheRead: 0.2},
+		"claude-sonnet-5-5": {Input: 2, Output: 10, CacheWrite: 2.5, CacheRead: 0.1},
 		"claude-opus-4-5":   {Input: 5, Output: 25, CacheWrite: 6.25, CacheRead: 0.5},
 		"claude-opus-4-1":   {Input: 15, Output: 75, CacheWrite: 18.75, CacheRead: 1.5},
 		"claude-opus-4":     {Input: 15, Output: 75, CacheWrite: 18.75, CacheRead: 1.5},

@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.138.0] - 2026-10-30
+
+### Added
+- Eval commentary for the knowledge eval runner (`go run ./internal/evals/knowledge/cmd`, `./run_evals.sh`): with `-commentary`, a case that fails or errors asks `Run commentary on this failure? [y/N]`. On `y`, the failure (failed checks, error, answer, the case's expectations) and the ATIF trajectories of the case are sent to an LLM, which says what most likely caused the failure. The commentary is printed under the failure log, and the run waits for Enter before the next case, so it can be read. It is off by default and needs a terminal on stdin (the runner refuses to start with `-commentary` otherwise), so automated runs are never held up.
+- Under each commentary the runner prints its tokens, its cost and the running total of the commentaries of the run, and the run summary ends with that total.
+- Prices for `claude-sonnet-5-5` ($2 in / $10 out per 1M tokens), `claude-opus-5-5` ($4 / $20) and `claude-fable-5-1` ($10 / $50) in the built-in price table and in `build/gligabao.toml` (cache writes are priced at the 5-minute rate; the 1-hour rate is not modelled).
+- `-commentary-model` sets the model that writes the commentary (default `claude-sonnet-5-5`).
+
 ## [0.137.0] - 2026-11-02
 
 ### Added

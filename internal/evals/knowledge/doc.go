@@ -8,6 +8,6 @@
 // the graphs of all of them are kept in the database that the Executor is given (the eval database, never reset).
 //
 // Files: files.go (reading the evals of build/evals_knowledge), executor.go (Executor, which runs the cases and records them),
-// case.go (running one case), checks.go (the checks of what was stored), reasoning.go (the -reasoning setting), post.go,
+// case.go (running one case), commentary.go (the LLM commentary on failed cases), checks.go (the checks of what was stored), reasoning.go (the -reasoning setting), post.go,
 // verbose.go (the printing of the LLM calls).
 package knowledge

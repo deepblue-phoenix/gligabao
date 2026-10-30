@@ -15,6 +15,10 @@
 // With -atif dir, the trajectories are stored there as JSON (default: an "atif" directory next to the -db file, since the case runs
 // reference them).
 //
+// With -commentary (for a person at a terminal; off by default, so automated runs never wait for input), a case that fails prompts
+// "Run commentary on this failure? [y/N]"; on y the failure and the case's ATIF trajectories are sent to an LLM (-commentary-model,
+// default claude-sonnet-5-5), whose diagnosis is printed under the failure log, and the run waits for Enter before going on.
+//
 // Every eval is an eval run, and every invocation is a run of an experiment (-experiment, default "default"; -experiment "" runs
 // the evals on their own, without one), all stored in the eval database. The exit status is 1 if any case did not pass.
 package main
@@ -63,6 +67,8 @@ func mainErr() error {
 	modelsFlag := flag.String("models", "", `LLM model per stage, e.g. "extract_graph=claude-sonnet-4-5,query=claude-haiku-5-5" (stages: `+strings.Join(knowledge.ModelStages(), ", ")+`; query is the call that answers the question, and detect_geo applies to remember and query); a stage left out uses the default model; a case's "models" win`)
 	reasoningFlag := flag.String("reasoning", "", `reasoning level per stage, e.g. "extract_graph=low,query=medium" (stages: `+strings.Join(knowledge.ReasoningStages(), ", ")+`; levels: `+strings.Join(ai.ReasoningLevels, ", ")+`); a stage left out uses the server default (none); a case's "reasoning" wins`)
 	geoFlag := flag.Bool("geo", true, "turn geo on in the eval server: remember stores the coordinates of the places it finds, looked up in Nominatim (OpenStreetMap; needs internet, costs one more LLM call per text) and query finds the places of the question; -geo=false turns it off")
+	commentary := flag.Bool("commentary", false, "eval commentary, for interactive runs: when a case fails, ask whether to have an LLM diagnose it from the failure and the ATIF trajectories, print the diagnosis under the failure log and wait for Enter (needs a terminal on stdin)")
+	commentaryModel := flag.String("commentary-model", knowledge.DefaultCommentaryModel, "the model that writes the commentary (-commentary)")
 	flag.Parse()
 
 	configSet := false
@@ -99,6 +105,12 @@ func mainErr() error {
 		*atifDir = filepath.Join(filepath.Dir(*evalDBPath), "atif")
 	}
 	memory_core.TrajectoryDir = *atifDir
+
+	if *commentary {
+		if st, err := os.Stdin.Stat(); err != nil || st.Mode()&os.ModeCharDevice == 0 {
+			return errors.New("-commentary asks questions and needs a terminal on stdin; do not use it in automated runs")
+		}
+	}
 
 	key := os.Getenv("ANTHROPIC_API_KEY")
 	if key == "" {
@@ -168,6 +180,9 @@ func mainErr() error {
 		DB: database, LLM: llm, Embedder: emb, WebSearch: llm, Geo: geoResolver, EvalsDirs: evalsDirs, Models: models, Reasoning: reasoning,
 		TrajectoryDir: *atifDir, Verbose: *verbose, Out: os.Stdout, Colors: colors,
 	}
+	if *commentary {
+		x.Commentary = &knowledge.Commentary{LLM: llm, Model: *commentaryModel, In: os.Stdin}
+	}
 	var counts core.Counts
 	var runErr error
 	for _, def := range defs {
@@ -199,6 +214,11 @@ func mainErr() error {
 	failed := counts.Failed + counts.Errored + counts.Cancelled + counts.Pending
 	fmt.Printf("---\n%s, %s\n", colors.Green(fmt.Sprintf("passed: %d", counts.Passed)),
 		colors.Verdict(failed == 0, fmt.Sprintf("failed: %d", failed)))
+	if x.Commentary != nil {
+		if n, usd := x.Commentary.Total(); n > 0 {
+			fmt.Printf("commentary: %d, cost $%.6f (not included in the run's cost)\n", n, usd)
+		}
+	}
 	if xr != nil {
 		if err := xr.Finish(ctx, runErr); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: %v\n", err)
