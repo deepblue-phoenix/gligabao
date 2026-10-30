@@ -3,7 +3,7 @@
 
 Minimal Knowledge engine for AI.
 
-gligabao is a small, self-hosted MCP/HTTP server that gives an AI application long-term memory: use it over its HTTP API, or as an [MCP](#mcp) server for Claude, Claude Code and other MCP clients. You send it free-form text, and it turns that text into a knowledge graph. Later you ask it questions in natural language and it answers from what it stored, citing the facts it used.
+gligabao is a small, self-hosted MCP/HTTP/CLI server that gives an AI application long-term memory: use it over its HTTP API, or as an [MCP](#mcp) server for Claude, Claude Code and other MCP clients. You send it free-form text, and it turns that text into a knowledge graph. Later you ask it questions in natural language and it answers from what it stored, citing the facts it used.
 
 ## How it works
 
