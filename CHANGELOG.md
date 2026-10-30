@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.142.2] - 2026-10-31
+
+### Added
+- Manifest `build/evals_knowledge/temporal.md` for the `temporal` knowledge eval: name, creation date, summary and the eval dataset generation skill (how the dataset was generated, the rules of its cases, how to add or regenerate cases). `AGENTS.md` now requires such a manifest next to every eval file of `build/evals_knowledge/`.
+
 ## [0.142.1] - 2026-10-31
 
 ### Changed

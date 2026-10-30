@@ -28,6 +28,20 @@ A built binary reports the version via `gligabao --version`, `gligabao version` 
 A variable, argument or struct field of type `error` is named `err` or ends with `Err` (`parseErr`, `closeErr`, `causeErr`),
 never `e`, `perr`, `err1`, `boom`, etc. Package-level sentinel errors keep the Go prefix (`ErrNotFound`, `errBadName`).
 
+## Manifest of every knowledge eval
+
+Every eval file in `build/evals_knowledge/` (`<name>.json`) must have a manifest next to it, `build/evals_knowledge/<name>.md`
+(the loaders only read `*.json`, so the manifest is ignored by them). The manifest explains how the eval was generated, so that more
+generations (new cases, a variant, a regeneration) are as reproducible as possible. Create it with every new synthetic eval, and update
+it when the eval changes (new cases, new rules). Use `build/evals_knowledge/temporal.md` as the template.
+
+It has these headers, in this order:
+
+- `# Manifest: <name>`, then the standard fields as a list: **Name** (the eval and its file), **Creation date** (`YYYY-MM-DD`, with the commit if known), **Summary** (what the eval covers, in a few lines).
+- `## Eval dataset generation skill` (the main section): the goal, how it was generated (who/what generated it, the prompts or process, the rules every case follows, naming), the format, how to add or regenerate cases, and the known limits.
+
+Only `temporal` has a manifest for now; add the others when they are next touched (do not backfill them without being asked).
+
 ## Roadmap
 
 Anything related to the project roadmap (planned features, plans, priorities, status, design notes for future work) lives in
