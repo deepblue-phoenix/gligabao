@@ -32,15 +32,31 @@ func Research(ctx context.Context, client *ai.Client, question string) (*Result,
 	if strings.TrimSpace(question) == "" {
 		return nil, errors.New("agent: empty question")
 	}
-	return ResearchAgent(client).Run(ctx, question)
+	httpClient := NewHTTPClient()
+	defer httpClient.CloseIdleConnections()
+	return ResearchAgent(client, httpClient).Run(ctx, question)
 }
 
-// ResearchAgent returns the deep-research agent, with up to 20 steps (model calls).
-func ResearchAgent(client *ai.Client) *Agent {
+// NewHTTPClient returns an HTTP client of its own for the page reads of one agent: its own transport (so its own connections and
+// settings, shared with no other agent) and no cookie jar. Close its idle connections (CloseIdleConnections) when the agent is done.
+func NewHTTPClient() *http.Client {
+	var transport http.RoundTripper = http.DefaultTransport
+	if t, ok := http.DefaultTransport.(*http.Transport); ok {
+		transport = t.Clone()
+	}
+	return &http.Client{Transport: transport}
+}
+
+// ResearchAgent returns the deep-research agent, with up to 20 steps (model calls). httpClient reads the pages (fetch_url): give each
+// agent its own (NewHTTPClient) for full isolation; nil makes one for this agent (without anyone to close it).
+func ResearchAgent(client *ai.Client, httpClient *http.Client) *Agent {
+	if httpClient == nil {
+		httpClient = NewHTTPClient()
+	}
 	return &Agent{
 		Client:    client,
 		System:    researchSystem,
-		Tools:     []Tool{webSearchTool(client), fetchURLTool(http.DefaultClient)},
+		Tools:     []Tool{webSearchTool(client), fetchURLTool(httpClient)},
 		MaxTokens: 8192,
 		MaxSteps:  20,
 	}

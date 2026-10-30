@@ -108,54 +108,89 @@ type Result struct {
 }
 
 // Run gives the prompt to the model and loops until it answers without calling a tool.
+//
+// Every Run is isolated: all that changes while it works (the conversation, the totals, what the tools spent) lives in a loop made
+// for this call alone, and the Agent is only read (its settings are copied when the run starts). So Runs, even of the same Agent
+// value, share nothing, and can go on at the same time on their own goroutines.
 func (a *Agent) Run(ctx context.Context, prompt string) (*Result, error) {
-	maxSteps := a.MaxSteps
-	if maxSteps <= 0 {
-		maxSteps = defaultMaxSteps
+	return newLoop(a, prompt).run(ctx)
+}
+
+// loop is the whole state of one Run: the settings it was started with, the conversation and the totals. Nothing in it is shared
+// with any other Run.
+type loop struct {
+	// Settings, fixed when the loop is made.
+	client    *ai.Client
+	system    string
+	model     string
+	maxSteps  int
+	maxTokens int
+	obs       Observer
+	tools     map[string]Tool
+	specs     []any
+
+	// What changes while it runs.
+	spent    usage // what the tools of the current step spent on their own
+	messages []any
+	res      Result
+}
+
+// newLoop makes the state of a Run of a, with the defaults filled in.
+func newLoop(a *Agent, prompt string) *loop {
+	l := &loop{
+		client:    a.Client,
+		system:    a.System,
+		model:     a.Model,
+		maxSteps:  a.MaxSteps,
+		maxTokens: a.MaxTokens,
+		obs:       a.Observer,
+		tools:     map[string]Tool{},
+		messages:  []any{map[string]any{"role": "user", "content": prompt}},
 	}
-	maxTokens := a.MaxTokens
-	if maxTokens <= 0 {
-		maxTokens = defaultMaxTokens
+	if l.maxSteps <= 0 {
+		l.maxSteps = defaultMaxSteps
 	}
-	tools := map[string]Tool{}
-	var specs []any
+	if l.maxTokens <= 0 {
+		l.maxTokens = defaultMaxTokens
+	}
 	for _, t := range a.Tools {
-		tools[t.Name] = t
-		specs = append(specs, map[string]any{"name": t.Name, "description": t.Description, "input_schema": t.Schema})
+		l.tools[t.Name] = t
+		l.specs = append(l.specs, map[string]any{"name": t.Name, "description": t.Description, "input_schema": t.Schema})
 	}
+	return l
+}
 
-	spent := &usage{}
-	ctx = context.WithValue(ctx, usageKey{}, spent)
-	obs := a.Observer
-
-	messages := []any{map[string]any{"role": "user", "content": prompt}}
-	res := &Result{}
-	for res.Steps < maxSteps {
+// run is the loop itself.
+func (l *loop) run(ctx context.Context) (*Result, error) {
+	ctx = context.WithValue(ctx, usageKey{}, &l.spent)
+	obs := l.obs
+	res := &l.res
+	for res.Steps < l.maxSteps {
 		res.Steps++
 		if obs.BeforeModel != nil {
-			obs.BeforeModel(res.Steps, res.Steps == maxSteps)
+			obs.BeforeModel(res.Steps, res.Steps == l.maxSteps)
 		}
-		payload := map[string]any{"max_tokens": maxTokens, "messages": messages}
-		if a.Model != "" {
-			payload["model"] = a.Model
+		payload := map[string]any{"max_tokens": l.maxTokens, "messages": l.messages}
+		if l.model != "" {
+			payload["model"] = l.model
 		}
-		if a.System != "" {
-			payload["system"] = a.System
+		if l.system != "" {
+			payload["system"] = l.system
 		}
-		if len(specs) > 0 {
-			payload["tools"] = specs
-			if res.Steps == maxSteps {
+		if len(l.specs) > 0 {
+			payload["tools"] = l.specs
+			if res.Steps == l.maxSteps {
 				payload["tool_choice"] = map[string]any{"type": "none"}
 			}
 		}
-		resp, err := a.Client.Raw(ctx, payload)
+		resp, err := l.client.Raw(ctx, payload)
 		if err != nil {
 			return res, err
 		}
 		res.InputTokens += resp.InputTokens
 		res.OutputTokens += resp.OutputTokens
 		res.CostUSD += resp.CostUSD
-		messages = append(messages, map[string]any{"role": "assistant", "content": resp.Content})
+		l.messages = append(l.messages, map[string]any{"role": "assistant", "content": resp.Content})
 		if obs.AfterModel != nil {
 			obs.AfterModel(res.Steps, *res)
 		}
@@ -182,8 +217,8 @@ func (a *Agent) Run(ctx context.Context, prompt string) (*Result, error) {
 				if obs.BeforeTool != nil {
 					obs.BeforeTool(res.Steps, b.Name, b.Input)
 				}
-				out, isErr := runTool(ctx, tools, b.Name, b.Input)
-				in, outTokens, cost := spent.drain()
+				out, isErr := runTool(ctx, l.tools, b.Name, b.Input)
+				in, outTokens, cost := l.spent.drain()
 				res.InputTokens += in
 				res.OutputTokens += outTokens
 				res.CostUSD += cost
@@ -199,7 +234,7 @@ func (a *Agent) Run(ctx context.Context, prompt string) (*Result, error) {
 		if len(results) == 0 {
 			return res, nil
 		}
-		messages = append(messages, map[string]any{"role": "user", "content": results})
+		l.messages = append(l.messages, map[string]any{"role": "user", "content": results})
 	}
 	return res, nil
 }

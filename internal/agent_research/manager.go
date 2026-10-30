@@ -7,14 +7,10 @@ package agent_research
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
-	"unicode/utf8"
 
-	"github.com/deepblue-phoenix/gligabao/internal/agent"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
@@ -111,13 +107,15 @@ func (m *Manager) Start(ctx context.Context, userID string, opts Options) (*core
 		log.WithError(err).WithField("user_id", userID).Error("agent research: recording the run failed")
 		return nil, internalErr("failed to record the research", err)
 	}
-	rec := *run // what the caller gets, before the goroutine works on run
+	rec := *run // what the caller gets; the researcher owns run from here on
 
+	// Each agent gets a researcher (all of its state) and a goroutine of its own.
+	r := newResearcher(m, run, opts)
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
 		defer release()
-		m.run(run, opts)
+		r.work()
 	}()
 	return &rec, nil
 }
@@ -183,126 +181,4 @@ func (m *Manager) tx(ctx context.Context, fn func(q db.Execer) error) error {
 		return err
 	}
 	return tx.Commit()
-}
-
-// run is the goroutine of an agent: it runs the agent, records every state it enters and what it spends, and ends the run's record.
-// A failed write of the progress is logged and does not stop the agent: the research is worth more than its trace.
-func (m *Manager) run(run *core.Run, opts Options) {
-	dbCtx := context.WithoutCancel(m.ctx) // the writes must outlive the cancelled agent
-	logf := log.WithFields(log.Fields{"run_id": run.ID, "user_id": run.UserID})
-	logf.WithField("topic", truncate(run.Topic, 100)).Info("agent research: started")
-
-	finish := func(status core.Status, report, errText string, total agent.Result) {
-		err := m.tx(dbCtx, func(q db.Execer) error {
-			if err := m.Ops.Store.UpdateUsage(dbCtx, q, run.ID, usageOf(total)); err != nil {
-				return err
-			}
-			_, err := m.Ops.Store.FinishRun(dbCtx, q, run.ID, status, report, errText)
-			return err
-		})
-		if err != nil {
-			logf.WithError(err).Error("agent research: ending the run failed")
-		}
-		logf.WithField("status", status).Info("agent research: ended")
-	}
-	var total agent.Result
-	defer func() {
-		if r := recover(); r != nil {
-			logf.Errorf("agent research: the agent panicked: %v", r)
-			finish(core.StatusFailed, "", fmt.Sprintf("internal error: %v", r), total)
-		}
-	}()
-
-	var cur *core.State // the state the run is in
-	enter := func(state string, step int, detail string) {
-		detail = truncate(detail, maxTextLen)
-		err := m.tx(dbCtx, func(q db.Execer) (err error) {
-			cur, err = m.Ops.Store.EnterState(dbCtx, q, run.ID, state, step, detail)
-			return err
-		})
-		if err != nil {
-			logf.WithError(err).WithField("state", state).Warn("agent research: recording the state failed")
-		}
-	}
-	saveUsage := func(t agent.Result) {
-		total = t
-		if err := m.Ops.Store.UpdateUsage(dbCtx, m.DB, run.ID, usageOf(t)); err != nil {
-			logf.WithError(err).Warn("agent research: recording the usage failed")
-		}
-	}
-
-	a := agent.ResearchAgent(m.Client)
-	a.Model, a.MaxSteps = opts.Model, opts.MaxSteps
-	a.Observer = agent.Observer{
-		BeforeModel: func(step int, final bool) {
-			if final {
-				enter(core.StateWritingReport, step, fmt.Sprintf("step %d of %d, the last: no tools, the answer is the report", step, opts.MaxSteps))
-				return
-			}
-			enter(core.StateThinking, step, fmt.Sprintf("step %d of %d", step, opts.MaxSteps))
-		},
-		AfterModel: func(_ int, t agent.Result) { saveUsage(t) },
-		BeforeTool: func(step int, name string, input json.RawMessage) {
-			state, detail := toolState(name, input)
-			enter(state, step, detail)
-		},
-		AfterTool: func(_ int, _, output string, isErr bool, t agent.Result) {
-			errText := ""
-			if isErr {
-				errText = truncate(output, maxTextLen)
-			}
-			if cur != nil {
-				if err := m.Ops.Store.CloseState(dbCtx, m.DB, cur.ID, errText); err != nil {
-					logf.WithError(err).Warn("agent research: ending the state failed")
-				}
-			}
-			saveUsage(t)
-		},
-	}
-	res, err := a.Run(m.ctx, opts.Topic)
-	if res != nil {
-		total = *res
-	}
-	switch {
-	case m.ctx.Err() != nil:
-		finish(core.StatusFailed, "", "interrupted: the server stopped while the agent worked", total)
-	case err != nil:
-		logf.WithError(err).Warn("agent research: the agent failed")
-		finish(core.StatusFailed, "", truncate(err.Error(), maxTextLen), total)
-	case strings.TrimSpace(res.Answer) == "":
-		finish(core.StatusFailed, "", "the agent ended without a report", total)
-	default:
-		finish(core.StatusCompleted, res.Answer, "", total)
-	}
-}
-
-// toolState is the state the agent enters when it runs the tool name with input, and its detail.
-func toolState(name string, input json.RawMessage) (state, detail string) {
-	arg := func(key string) string {
-		var m map[string]any
-		if json.Unmarshal(input, &m) != nil {
-			return ""
-		}
-		s, _ := m[key].(string)
-		return s
-	}
-	switch name {
-	case "web_search":
-		return core.StateSearching, arg("query")
-	case "fetch_url":
-		return core.StateReading, arg("url")
-	}
-	return core.StateUsingTool, name
-}
-
-func usageOf(r agent.Result) db.Usage {
-	return db.Usage{Steps: r.Steps, ToolCalls: r.ToolCalls, InputTokens: r.InputTokens, OutputTokens: r.OutputTokens, CostUSD: r.CostUSD}
-}
-
-// truncate cuts s to n characters.
-func truncate(s string, n int) string {
-	if utf8.RuneCountInString(s) <= n {
-		return s
-	}
-	return string([]rune(s)[:n])
 }

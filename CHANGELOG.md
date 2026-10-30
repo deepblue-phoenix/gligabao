@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.128.1] - 2026-11-02
+
+### Changed
+- Research agents: each agent now keeps everything it is and everything that changes while it works in one struct of its own (the agent loop with its conversation and totals, the state it is in, the page reader), and runs on its own goroutine. Agents share only the database and LLM clients. Each one also has its own HTTP client for `fetch_url` (own transport and connections), closed when it ends. No change to the API, CLI or stored data. `agent.ResearchAgent` takes the HTTP client as a second argument (`agent.NewHTTPClient()` makes one; `nil` makes one too).
+
 ## [0.128.0] - 2026-11-01
 
 ### Added

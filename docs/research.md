@@ -1,6 +1,6 @@
 # Research agents
 
-A **research agent** is a deep-research agent (`internal/agent`: a plain tool-calling loop, no framework) that works on a topic in the background: over many steps it searches the web (Anthropic's web search tool) and reads pages (`fetch_url`), checks claims against more than one source, and ends with a report. gligabao runs it as a job: you start it, it returns at once with a run, and you follow what it does until it ends.
+A **research agent** is a deep-research agent (a plain tool-calling loop, no framework; how it works is in [deep-research-agent.md](deep-research-agent.md)) that works on a topic in the background: over many steps it searches the web (Anthropic's web search tool) and reads pages (`fetch_url`), checks claims against more than one source, and ends with a report. gligabao runs it as a job: you start it, it returns at once with a run, and you follow what it does until it ends.
 
 Every run is stored in the relational database, and so is **every state the agent goes through while it works** (searching a query, reading a page, waiting for the model, ...), so its progress can be followed in detail, and kept afterwards.
 
@@ -100,8 +100,8 @@ gligabao research get ID [--raw]
 
 ## How it works
 
-- `internal/agent`: the loop. It has an `Observer` (before and after each model call and each tool run) that the manager uses to record the states, and `ReportUsage`, with which a tool that calls a model (the web search) adds its tokens and cost to the run.
-- `internal/agent_research`: the `Manager` starts an agent in a goroutine (at most 3 working at once per user), creates the run and its first state in one transaction, enters a state in a transaction at each event (end the previous state, insert the new one, set the run's `state`), writes the usage after every model call and tool run, and ends the run (its status, report or error, and the terminal state) in a transaction. A failed write of the progress is logged and does not stop the agent. Storage is in `agent_research/db/sqlite` and `agent_research/db/postgres` (each with its schema); the types are in `agent_research/core`.
+- `internal/agent`: the loop and the research agent ([deep-research-agent.md](deep-research-agent.md)). It has an `Observer` (before and after each model call and each tool run) that the manager uses to record the states, and `ReportUsage`, with which a tool that calls a model (the web search) adds its tokens and cost to the run.
+- `internal/agent_research`: the `Manager` makes a `researcher` for each agent, the struct that holds all of its state (see [isolation](deep-research-agent.md#isolation)), and starts it in a goroutine of its own (at most 3 working at once per user); the manager creates the run and its first state in one transaction, and the researcher enters a state in a transaction at each event (end the previous state, insert the new one, set the run's `state`), writes the usage after every model call and tool run, and ends the run (its status, report or error, and the terminal state) in a transaction. A failed write of the progress is logged and does not stop the agent. Storage is in `agent_research/db/sqlite` and `agent_research/db/postgres` (each with its schema); the types are in `agent_research/core`.
 - `internal/api/research`: the REST handlers; `internal/api/mcp` and `cli` call them (the MCP tools in process, the CLI over HTTP).
 - When the server stops, the agents are cancelled and their runs are ended as `failed` ("interrupted") before the databases close.
 

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
@@ -155,4 +156,63 @@ func TestObserverSeesTheStepsAndToolsOfARun(t *testing.T) {
 
 func TestReportUsageOutsideARunDoesNothing(t *testing.T) {
 	ReportUsage(context.Background(), 1, 1, 1) // no panic
+}
+
+// Runs of one Agent value at the same time share nothing: each keeps its own conversation and totals.
+func TestConcurrentRunsOfOneAgentAreIsolated(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		// The first call of a run (one message) asks for the tool; the second (it carries the tool result) answers with it.
+		if !strings.Contains(string(b), "tool_result") {
+			name := "a"
+			if strings.Contains(string(b), `"content":"prompt-b"`) {
+				name = "b"
+			}
+			fmt.Fprintf(w, `{"model":"m","content":[{"type":"tool_use","id":"t","name":"echo","input":{"query":%q}}],"usage":{"input_tokens":1,"output_tokens":1}}`, name)
+			return
+		}
+		i := strings.Index(string(b), "echo:")
+		fmt.Fprintf(w, `{"model":"m","content":[{"type":"text","text":%q}],"usage":{"input_tokens":1,"output_tokens":1}}`, string(b)[i:i+6])
+	}))
+	t.Cleanup(srv.Close)
+	client, err := ai.New("k", ai.WithBaseURL(srv.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	echo := Tool{Name: "echo", Description: "echo", Schema: objectSchema("query", "q"),
+		Run: func(ctx context.Context, input json.RawMessage) (string, error) {
+			q, err := stringArg(input, "query")
+			ReportUsage(ctx, 100, 100, 1)
+			return "echo:" + q, err
+		}}
+	a := &Agent{Client: client, Tools: []Tool{echo}}
+
+	type out struct {
+		res *Result
+		err error
+	}
+	results := make([]out, 20)
+	var wg sync.WaitGroup
+	for i := range results {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			p := "prompt-a"
+			if i%2 == 1 {
+				p = "prompt-b"
+			}
+			results[i].res, results[i].err = a.Run(context.Background(), p)
+		}()
+	}
+	wg.Wait()
+	for i, o := range results {
+		want := "echo:a"
+		if i%2 == 1 {
+			want = "echo:b"
+		}
+		if o.err != nil || o.res.Answer != want || o.res.Steps != 2 || o.res.ToolCalls != 1 ||
+			o.res.InputTokens != 102 || o.res.OutputTokens != 102 || o.res.CostUSD != 1 {
+			t.Fatalf("run %d is not isolated: %+v, %v", i, o.res, o.err)
+		}
+	}
 }
