@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.132.0] - 2026-11-02
+
+### Added
+- New Rust project `rust/sargo`: a small model request router. It has an HTTP server (standard library only, behind an `HttpServer` trait so it can be swapped), takes a provider-neutral inference request on `POST /v1/infer`, forwards it to Anthropic or OpenAI, and returns the reply in the same neutral format. Tool calling is supported (`tool_use` and `tool_result` blocks; the caller runs the tool loop). No streaming yet.
+
+### Changed
+- `run_build_rust.sh` prints how to install Rust on Ubuntu when `cargo` is not found.
+
 ## [0.131.0] - 2026-11-02
 
 ### Added

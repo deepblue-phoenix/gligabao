@@ -2,3 +2,13 @@
 name = "sargo"
 version = "0.1.0"
 edition = "2021"
+
+# Only three dependencies, on purpose:
+# - serde / serde_json: JSON (de)serialization of our structs and of the provider payloads.
+# - ureq: a tiny *blocking* HTTP client with TLS, needed to call the provider APIs over https
+#   (the Rust standard library has no HTTP client and no TLS).
+# The HTTP *server* uses only the standard library (see src/http_server.rs).
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = "2"
