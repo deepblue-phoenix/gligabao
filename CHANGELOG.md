@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.150.0] - 2026-11-04
+
+### Added
+- Admin UI, **Evals** view: when a case has been re-run, its case modal shows a **Re-runs** table above the LLM commentary, one row per re-run (including re-runs of re-runs): the model used for the **remember** pipeline and for the **query** (*as it ran* when that pipeline kept its models) and the final pass or fail (the status instead while it has none: running, errored, cancelled). **Open** opens the re-run as a case of its own. The section is not shown when there are none.
+- `GET /v1/gb/admin/api/evals/case_runs/{id}/debug` also returns `reruns`: the re-runs of the case run (and of those re-runs), oldest first, each `{case_run_id, of, remember_model, query_model, status, verdict, cost_usd}`; empty when there are none (or when the case run is not in an experiment run).
+
 ## [0.149.0] - 2026-10-31
 
 ### Added

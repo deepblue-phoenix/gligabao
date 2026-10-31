@@ -73,6 +73,50 @@ func rerunOf(p core.Params) *rerunView {
 	return &rerunView{Of: of, RememberModel: rememberModel, QueryModel: queryModel}
 }
 
+// rerunListItem is one rerun in the list of the reruns of a case run: the case run it made, the case run it repeated, the models it
+// was given (empty: the stages kept the models they had) and how it ended (the verdict is absent until it has one).
+type rerunListItem struct {
+	CaseRunID     int64        `json:"case_run_id"`
+	Of            int64        `json:"of"`
+	RememberModel string       `json:"remember_model,omitempty"`
+	QueryModel    string       `json:"query_model,omitempty"`
+	Status        core.Status  `json:"status"`
+	Verdict       core.Verdict `json:"verdict,omitempty"`
+	CostUSD       float64      `json:"cost_usd"`
+}
+
+// rerunsOf lists the reruns of case run id, whose eval run is er: the case runs that repeated it, and those that repeated those (they
+// are all the same case), oldest first. A rerun is an eval run of its own, with the one case, in the experiment run of the case run it
+// repeats, so they are found among the eval runs of that experiment run; a case run that is in none has no reruns to list. Never nil.
+func rerunsOf(ctx context.Context, d *sql.DB, s evalsdb.Store, er *core.EvalRun, id core.CaseRunID) ([]rerunListItem, error) {
+	out := []rerunListItem{}
+	if er.ExperimentRunID == nil {
+		return out, nil
+	}
+	evalRuns, err := s.ListEvalRunsOfExperimentRun(ctx, d, *er.ExperimentRunID)
+	if err != nil {
+		return nil, err
+	}
+	family := map[int64]bool{int64(id): true}
+	// Oldest first, and a rerun is always younger than what it repeats, so one pass sees every link of a chain.
+	for i := range evalRuns {
+		rv := rerunOf(evalRuns[i].Params)
+		if rv == nil || !family[rv.Of] {
+			continue
+		}
+		cases, err := s.ListCaseRuns(ctx, d, evalRuns[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range cases {
+			family[int64(c.ID)] = true
+			out = append(out, rerunListItem{CaseRunID: int64(c.ID), Of: rv.Of, RememberModel: rv.RememberModel, QueryModel: rv.QueryModel,
+				Status: c.Status, Verdict: c.Verdict, CostUSD: c.CostUSD})
+		}
+	}
+	return out, nil
+}
+
 // rerunInfo is what the debug view tells about the reruns the server can make (nil: none).
 func rerunInfo(rr EvalRerunner) *evalRerunInfo {
 	if rr == nil {

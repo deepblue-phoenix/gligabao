@@ -56,6 +56,9 @@ type evalCaseDebugResponse struct {
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
 	// Rerun is set when the case run is itself a rerun: the case run it repeated and the models it was given.
 	Rerun *rerunView `json:"rerun,omitempty"`
+	// Reruns are the reruns of this case run (and of those reruns), oldest first, each with the models it was given and how it ended;
+	// empty when there are none.
+	Reruns []rerunListItem `json:"reruns"`
 	// RerunOptions is what a rerun of this case run can pick from (the models of the price table); absent when the server cannot rerun.
 	RerunOptions *evalRerunInfo `json:"rerun_options,omitempty"`
 }
@@ -134,6 +137,10 @@ func EvalCaseRunDebug(d *sql.DB, s evalsdb.Store, llm memory_core.LLM, rr EvalRe
 			if dm, ok := def.Meta.(*core.KnowledgeCaseDefMeta); ok && dm != nil {
 				out.Expected, out.Params = &dm.KnowledgeExpected, &dm.KnowledgeParams
 			}
+		}
+		if out.Reruns, err = rerunsOf(ctx, d, s, er, c.ID); err != nil {
+			evalFail(w, err, "reruns")
+			return
 		}
 		if out.Commentaries, err = s.ListCaseCommentaries(ctx, d, c.ID); err != nil {
 			evalFail(w, err, "commentaries")

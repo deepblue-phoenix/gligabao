@@ -26,6 +26,10 @@ interface Trajectory {
 interface Artifact { id: number; kind: string; text: string; valid_at: string; created_at: string }
 // Says of a case run that it is a rerun with other models (empty model: the stages kept the models they had).
 interface RerunInfo { of: number; remember_model?: string; query_model?: string }
+// One rerun in the list of the reruns of a case run: the case run it made, what it repeated, the models and how it ended.
+interface RerunItem {
+  case_run_id: number; of: number; remember_model?: string; query_model?: string; status: Status; verdict?: Verdict; cost_usd: number;
+}
 // The outcome of one case of an eval in one run.
 interface CaseRun {
   id: number; eval: string; name: string; status: Status; verdict?: Verdict; score?: number; answer?: string; problems?: string[]; passed_checks?: string[]; dataset_id?: number; error?: string;
@@ -47,6 +51,8 @@ interface CaseDebug {
   cost_usd: number; started_at: string; finished_at?: string;
   // Set when this case run is itself a rerun; rerun_options when the server can rerun the case (the models a rerun can pick).
   rerun?: RerunInfo; rerun_options?: { models: string[] };
+  // The reruns of this case run (and of those reruns), oldest first.
+  reruns?: RerunItem[];
 }
 // What POST api/evals/case_runs/{id}/rerun answers: the new case run, already recorded (running).
 interface RerunStarted { case_run_id: number; eval_run_id: number; experiment_run_id?: number }
@@ -530,7 +536,7 @@ function caseLeft(d: CaseDebug, run: Run, e: CaseRun): HTMLElement[] {
 // The right pane: the way to rerun the case with other models, and the commentaries on the case (newest first) with, for a case that
 // failed, the way to ask for another.
 function caseRight(d: CaseDebug, run: Run, experiment: string): HTMLElement[] {
-  const out: HTMLElement[] = [...rerunSection(d, run, experiment), h("h3", undefined, "LLM commentary and recommendation")];
+  const out: HTMLElement[] = [...rerunSection(d, run, experiment), ...rerunList(d, run, experiment), h("h3", undefined, "LLM commentary and recommendation")];
   const list = h("div");
   const render = (items: CaseCommentary[]): void => {
     if (items.length === 0) {
@@ -641,6 +647,31 @@ function rerunSection(d: CaseDebug, run: Run, experiment: string): HTMLElement[]
   });
   out.push(form, msg);
   return out;
+}
+
+// The reruns this case run already has (and those of its reruns), one row each: the models of the remember pipeline and of the query
+// ("as it ran": the pipeline kept its models) and the final pass or fail (the status while it has no verdict: running, errored...).
+// Nothing when there are none. A rerun that is in the run's list opens as a case of its own.
+function rerunList(d: CaseDebug, run: Run, experiment: string): HTMLElement[] {
+  const reruns = d.reruns ?? [];
+  if (reruns.length === 0) return [];
+  const { table: tbl, body } = table([["Case run", false], ["Remember model", false], ["Query model", false], ["Result", false], ["", false]]);
+  for (const r of reruns) {
+    const tr = body.insertRow();
+    tr.insertCell().textContent = `#${r.case_run_id}`;
+    tr.insertCell().textContent = r.remember_model || "as it ran";
+    tr.insertCell().textContent = r.query_model || "as it ran";
+    tr.insertCell().append(r.verdict ? verdictBadge(r.verdict) : statusBadge(r.status));
+    const cell = tr.insertCell();
+    const e = (run.case_runs ?? []).find((c) => c.id === r.case_run_id);
+    if (e) {
+      const btn = h("button", "small", "Open");
+      btn.type = "button";
+      btn.addEventListener("click", () => void showCase(run, e, experiment));
+      cell.append(btn);
+    }
+  }
+  return [h("h3", undefined, `Re-runs (${reruns.length})`), tbl];
 }
 
 const RERUN_POLL_MS = 3000;
