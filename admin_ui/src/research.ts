@@ -1,4 +1,5 @@
-// The "research" view (see docs/research.md#admin-ui): the deep-research agents. How many work now, the active agents (each with a
+// The "research" view (see docs/research.md#admin-ui): the deep-research agents. A green "start agent" button (a modal for the task), a
+// block on the right of the screen for each working agent (green or red by its health), how many work now, the active agents (each with a
 // stop button), the agents that ended (completed, failed or stopped), and for each agent, in a modal, its sub-agents, states and
 // report, the error it failed with, and its provenance: what it put in the knowledge base (artifacts, entities, facts).
 
@@ -203,18 +204,20 @@ async function load(): Promise<void> {
     ticks = [];
     fill(active, act.runs, "No agent is working now.", at);
     fill(ended, fin.runs, "No agent has ended yet.", at);
+    await updateDock(act.runs);
     const more = el<HTMLButtonElement>("research-more");
     more.hidden = fin.runs.length >= fin.total || fin.runs.length < finishedLimit;
     el("research-ended-count").textContent = `${fin.runs.length} of ${fin.total}`;
   } catch (err) {
     status.className = "error";
     status.textContent = `Failed to load the research agents: ${errText(err)}`;
+    renderDock(true);
   }
 }
 
 function tickTimes(): void {
   const now = Date.now();
-  for (const t of ticks) t.cell.textContent = durationText(t.baseMS + (now - t.at));
+  for (const t of [...ticks, ...dockTicks]) t.cell.textContent = durationText(t.baseMS + (now - t.at));
 }
 
 function isViewShown(): boolean {
@@ -511,6 +514,96 @@ function provenanceGraph(p: Provenance) {
   };
 }
 
+// ----- starting an agent
+
+async function startAgent(): Promise<void> {
+  const topic = el<HTMLTextAreaElement>("research-start-topic");
+  const err = el("research-start-error");
+  const submit = el<HTMLButtonElement>("research-start-submit");
+  const text = topic.value.trim();
+  if (!text) {
+    err.textContent = "Describe the research task first.";
+    err.hidden = false;
+    topic.focus();
+    return;
+  }
+  submit.disabled = true;
+  err.hidden = true;
+  try {
+    const a = await getJSON<Agent>("api/research", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic: text }) });
+    el<HTMLDialogElement>("research-start-modal").close();
+    topic.value = "";
+    dock.set(a.id, a);
+    renderDock(false);
+    await load();
+  } catch (e) {
+    err.textContent = `Failed to start the agent: ${errText(e)}`;
+    err.hidden = false;
+  } finally {
+    submit.disabled = false;
+  }
+}
+
+// ----- the dock: a block on the right of the screen for each agent that works (and for each that ended while it was shown, until it is
+// dismissed). Its background is green while the agent is healthy (working or completed) and red when it failed, was stopped, or the server
+// cannot be reached.
+
+const dock = new Map<number, Agent>();
+const dockTicks: Tick[] = [];
+
+function isHealthy(a: Agent): boolean {
+  return a.status === "running" || a.status === "completed";
+}
+
+function renderDock(unreachable: boolean): void {
+  const box = el("research-dock");
+  box.replaceChildren();
+  dockTicks.length = 0;
+  box.hidden = dock.size === 0;
+  const at = Date.now();
+  for (const a of dock.values()) {
+    const bad = unreachable && a.status === "running" || !isHealthy(a);
+    const b = box.appendChild(node("div", `rs-agent ${bad ? "rs-bad" : "rs-ok"}`));
+    b.title = `${a.topic}\n\nClick for the details of the agent`;
+    b.tabIndex = 0;
+    b.setAttribute("role", "button");
+    b.appendChild(node("div", "rs-agent-title", `Agent #${a.id} · ${unreachable && a.status === "running" ? "no connection" : a.status === "running" ? a.state : a.status}`));
+    b.appendChild(node("div", "rs-agent-topic", a.topic));
+    const info = b.appendChild(node("div", "rs-agent-info"));
+    const dur = info.appendChild(node("span", "", durationText(a.duration_ms)));
+    info.append(` · step ${a.steps}/${a.max_steps}`);
+    if (a.status === "running") dockTicks.push({ cell: dur, baseMS: a.duration_ms, at });
+    b.addEventListener("click", () => void showDetail(a.id));
+    b.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void showDetail(a.id); } });
+    if (a.status !== "running") {
+      const x = b.appendChild(button("×", "Dismiss", "rs-agent-x", () => { dock.delete(a.id); renderDock(unreachable); }));
+      x.addEventListener("click", (e) => e.stopPropagation());
+    }
+  }
+}
+
+// updateDock shows the agents that work now (the researches, not their sub-agents) and looks up the ones that were shown and are not
+// working any more, to show how they ended.
+async function updateDock(running: Agent[]): Promise<void> {
+  const now = new Set<number>();
+  for (const a of running) {
+    if (a.parent_id !== null) continue;
+    now.add(a.id);
+    dock.set(a.id, a);
+  }
+  renderDock(false);
+  const gone = [...dock.values()].filter((a) => a.status === "running" && !now.has(a.id));
+  if (gone.length === 0) return;
+  await Promise.all(gone.map(async (a) => {
+    try {
+      dock.set(a.id, await getJSON<Agent>(`api/research/${a.id}`));
+    } catch {
+      // keep it as it was: the next refresh looks again
+    }
+  }));
+  renderDock(false);
+}
+
 // ----- the view
 
 function schedule(): void {
@@ -542,6 +635,16 @@ export function initResearch(): void {
   more.hidden = true;
 
   el("research-refresh").addEventListener("click", () => void load());
+  const startModal = el<HTMLDialogElement>("research-start-modal");
+  el("research-start").addEventListener("click", () => {
+    el("research-start-error").hidden = true;
+    startModal.showModal();
+    el("research-start-topic").focus();
+  });
+  el("research-start-close").addEventListener("click", () => startModal.close());
+  el("research-start-cancel").addEventListener("click", () => startModal.close());
+  el("research-start-submit").addEventListener("click", () => void startAgent());
+  el("research-start-topic").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void startAgent(); });
   el("research-detail-close").addEventListener("click", () => el<HTMLDialogElement>("research-modal").close());
   el("research-error-close").addEventListener("click", () => el<HTMLDialogElement>("research-error-modal").close());
   el("research-prov-close").addEventListener("click", () => el<HTMLDialogElement>("research-prov-modal").close());

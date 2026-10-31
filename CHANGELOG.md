@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.146.0] - 2026-11-02
+
+### Added
+- Admin UI, **Research** view: a green **start agent** button that starts a deep-research agent. It opens a modal with a tall text box for the task (at most 2000 characters; Ctrl+Enter submits); the agent is started as the user `admin`.
+- A block on the right of the screen (fixed, so it stays while the page scrolls) for every research agent that works, with its state, topic, running time and steps. It is green while the agent is healthy (working or completed) and red when it failed, was stopped, or the server cannot be reached. An agent that ends while its block is shown keeps the block (with its final status) until it is dismissed; clicking a block opens the agent's details.
+- New admin endpoint `POST /v1/gb/admin/api/research` with `{"topic": "", "user_id": "admin", "max_steps": 20, "model": "", "dataset": ""}` (only `topic` is required): starts an agent like `POST /v1/gb/research` and answers `202` with the agent (`400`, `409` and `503` as there).
+
 ## [0.145.0] - 2026-11-01
 
 ### Added

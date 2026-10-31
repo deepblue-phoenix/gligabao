@@ -217,3 +217,25 @@ func testResearchAdmin(t *testing.T, d *sql.DB) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+// TestResearchStart checks the start endpoint of the admin UI: it refuses a bad body, and without an LLM (no Anthropic key) it answers 503.
+func TestResearchStart(t *testing.T) {
+	dbtest.Run(t, func(t *testing.T, d *sql.DB) {
+		ops := agent_research.SQLiteOps
+		if strings.HasSuffix(t.Name(), "postgres") {
+			ops = agent_research.PostgresOps
+		}
+		h := admin.ResearchStartOf(agent_research.NewManager(context.Background(), d, ops, nil))
+		for body, want := range map[string]int{
+			`{"topic": "x"`:                          http.StatusBadRequest,
+			`{"topic": "x", "user_id": "a\u0001"}`:   http.StatusBadRequest,
+			`{"topic": "what is the tallest tree?"}`: http.StatusServiceUnavailable,
+		} {
+			rec := httptest.NewRecorder()
+			h(rec, httptest.NewRequest("POST", "/x", strings.NewReader(body)))
+			if rec.Code != want {
+				t.Errorf("%s: %d, want %d: %s", body, rec.Code, want, rec.Body)
+			}
+		}
+	})
+}

@@ -981,3 +981,26 @@ html:has(#tp-modal[open]) { overflow: hidden; }
 .rs-states { margin-top: 1rem; summary { cursor: pointer; font-weight: 600; margin-bottom: 0.4rem; } }
 .rs-open, .rs-graph-btn { margin-top: 0.75rem; }
 #research-error-modal .rs-info dd { font-size: 0.95rem; }
+
+// Starting a research agent: the green button, the modal with the task, and the dock of the working agents on the right of the screen.
+button.start-agent {
+  display: inline-flex; align-items: center; gap: 0.4rem; background: $ok; color: #04130a; padding: 0.55rem 1.2rem; font-size: 1rem;
+  svg { display: block; }
+  &:disabled { opacity: 0.6; cursor: default; filter: none; }
+}
+#research .row.between { gap: 0.75rem; h2 { margin-right: auto; } }
+.rs-start-modal { width: min(94vw, 40rem); }
+.rs-start-topic { display: block; margin-top: 0.5rem; min-height: 50vh; resize: vertical; }
+.rs-dock {
+  position: fixed; top: 5rem; right: 1rem; z-index: 50; display: flex; flex-direction: column; gap: 0.6rem; width: 15rem; max-height: calc(100vh - 6rem); overflow-y: auto;
+  &[hidden] { display: none; }
+}
+.rs-agent {
+  position: relative; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid transparent; color: #fff; cursor: pointer; font-size: 0.8rem; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  &.rs-ok { background: #1f6f33; border-color: $ok; }
+  &.rs-bad { background: #8f2a25; border-color: $err; }
+  .rs-agent-title { font-weight: 600; padding-right: 1.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rs-agent-topic { margin-top: 0.15rem; opacity: 0.85; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+  .rs-agent-info { margin-top: 0.3rem; opacity: 0.9; font-variant-numeric: tabular-nums; }
+  .rs-agent-x { position: absolute; top: 0.2rem; right: 0.3rem; padding: 0 0.35rem; background: transparent; color: #fff; font-size: 1rem; line-height: 1.2; &:hover { filter: none; background: rgba(255, 255, 255, 0.2); } }
+}

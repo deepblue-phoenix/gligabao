@@ -350,9 +350,10 @@ func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, geoRadiusKm float64,
 	mux.HandleFunc("GET /v1/gb/admin/api/query-runs", admin.QueryRunsOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/web-searches", admin.WebSearchStatsOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/web-searches/dataset", admin.WebSearchDatasetOf(dbs))
-	// The research agents of the standard database: the list, one agent, stopping an active one, and what an agent put in the knowledge base.
+	// The research agents of the standard database: the list, starting one, one agent, stopping an active one, and what an agent put in the knowledge base.
 	if research != nil {
 		mux.HandleFunc("GET /v1/gb/admin/api/research", admin.ResearchListOf(research))
+		mux.HandleFunc("POST /v1/gb/admin/api/research", admin.ResearchStartOf(research))
 		mux.HandleFunc("GET /v1/gb/admin/api/research/{id}", admin.ResearchGetOf(research))
 		mux.HandleFunc("POST /v1/gb/admin/api/research/{id}/stop", admin.ResearchStopOf(research))
 		mux.HandleFunc("GET /v1/gb/admin/api/research/{id}/provenance", admin.ResearchProvenanceOf(research))

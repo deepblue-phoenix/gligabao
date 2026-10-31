@@ -7,6 +7,7 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	log "github.com/sirupsen/logrus"
 )
@@ -26,6 +28,10 @@ const (
 	researchMaxLimit     = agent_research.MaxListLimit
 	// researchStoppedBy is what the runs stopped from the admin UI say.
 	researchStoppedBy = "the admin UI"
+	// researchDefaultUser is the user of the research agents started from the admin UI when the request names none.
+	researchDefaultUser = "admin"
+	// researchStartMaxBody is the most bytes of the body of a start request.
+	researchStartMaxBody = 64 << 10
 	// provenanceTextRunes is how much of the text of an artifact the provenance returns.
 	provenanceTextRunes = 600
 )
@@ -238,6 +244,43 @@ func ResearchGetOf(m *agent_research.Manager) http.HandlerFunc {
 			out.Parent = &agents[n]
 		}
 		httputil.WriteJSON(w, http.StatusOK, out)
+	}
+}
+
+// ResearchStartOf serves POST /admin/api/research with the JSON body {"topic": "", "user_id": "", "max_steps": 20, "model": "", "dataset": ""}
+// (agent_research.Options and the user; only topic is required, user_id is "admin" by default): it starts a deep-research agent, see
+// agent_research.Manager.Start, and answers 202 with the agent (status "running", state "starting"). 400 for a bad body or options,
+// 409 when the user has too many agents working, 503 without an Anthropic API key.
+func ResearchStartOf(m *agent_research.Manager) http.HandlerFunc {
+	type request struct {
+		UserID string `json:"user_id"`
+		agent_research.Options
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req request
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, researchStartMaxBody)).Decode(&req); err != nil {
+			httputil.Error(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+			return
+		}
+		if strings.TrimSpace(req.UserID) == "" {
+			req.UserID = researchDefaultUser
+		}
+		userID, err := memory_core.ResolveUserID(req.UserID)
+		if err != nil {
+			httputil.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		run, err := m.Start(r.Context(), userID, req.Options)
+		if err != nil {
+			researchFail(w, err, "start the research agent")
+			return
+		}
+		agents, err := researchAgents(r.Context(), m, []core.Run{*run})
+		if err != nil {
+			researchFail(w, err, "start the research agent")
+			return
+		}
+		httputil.WriteJSON(w, http.StatusAccepted, agents[0])
 	}
 }
 
