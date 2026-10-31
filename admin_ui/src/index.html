@@ -322,6 +322,19 @@
       <div id="run-content" class="modal-body"></div>
     </dialog>
 
+    <dialog id="case-modal" class="modal">
+      <div class="modal-head">
+        <h2 id="case-title">Case</h2>
+        <span id="case-status" class="muted"></span>
+        <span id="case-actions" class="case-actions"></span>
+        <button type="button" id="case-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="case-body">
+        <section id="case-left" class="case-pane"></section>
+        <section id="case-right" class="case-pane"></section>
+      </div>
+    </dialog>
+
     <dialog id="trace-modal" class="modal">
       <div class="modal-head">
         <h2 id="trace-title">Trace</h2>

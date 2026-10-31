@@ -142,6 +142,23 @@ type KnowledgeTrajectory struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// CaseCommentary is an LLM commentary on a failed case run (table gb_case_run_commentaries): what the cause of the failure probably
+// is and what to change, written from the case, its checks and its ATIF trajectories (package evals/commentary). A case run can
+// have several (asking again adds one); the newest is the current one. The admin UI makes and shows them.
+type CaseCommentary struct {
+	ID        int64     `json:"id"`
+	CaseRunID CaseRunID `json:"case_run_id"`
+	// Model is the model that wrote it.
+	Model string `json:"model"`
+	// Text is the commentary, with its recommendation.
+	Text         string `json:"text"`
+	InputTokens  int    `json:"input_tokens"`
+	OutputTokens int    `json:"output_tokens"`
+	// CostUSD is what it cost (0 for a model without a known price). It is not part of the cost of the case run.
+	CostUSD   float64   `json:"cost_usd"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // KnowledgeInput is the Input of a knowledge case: what is given to the system under test.
 type KnowledgeInput struct {
 	// Remember are the texts to remember, in order.

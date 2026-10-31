@@ -191,6 +191,25 @@ func Run(t *testing.T, d *sql.DB, s db.Store) {
 		t.Fatalf("GetCaseRun of a missing one: %v", err)
 	}
 
+	// Commentaries on a case run: newest first, none for a case run without, and a missing case run is not found.
+	failed := caseRuns[0][1].ID
+	if cs, err := s.ListCaseCommentaries(ctx, d, failed); err != nil || cs == nil || len(cs) != 0 {
+		t.Fatalf("commentaries of a case run without: %v %v", cs, err)
+	}
+	first := &core.CaseCommentary{CaseRunID: failed, Model: "m1", Text: "first", InputTokens: 10, OutputTokens: 5, CostUSD: 0.001, CreatedAt: start}
+	must(t, s.CreateCaseCommentary(ctx, d, first))
+	second := &core.CaseCommentary{CaseRunID: failed, Model: "m2", Text: "second\nline"}
+	must(t, s.CreateCaseCommentary(ctx, d, second))
+	cs, err := s.ListCaseCommentaries(ctx, d, failed)
+	must(t, err)
+	if first.ID == 0 || second.ID <= first.ID || len(cs) != 2 || cs[0].ID != second.ID || cs[0].Text != "second\nline" || cs[0].CreatedAt.IsZero() ||
+		cs[1].Model != "m1" || cs[1].InputTokens != 10 || cs[1].OutputTokens != 5 || cs[1].CostUSD != 0.001 || !cs[1].CreatedAt.Equal(start) || cs[1].CaseRunID != failed {
+		t.Fatalf("commentaries: %+v", cs)
+	}
+	if err := s.CreateCaseCommentary(ctx, d, &core.CaseCommentary{CaseRunID: 999, Model: "m", Text: "t"}); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("commentary of a missing case run: %v", err)
+	}
+
 	// Trajectories by ID.
 	ref, err := s.FindKnowledgeTrajectory(ctx, d, "tr-b1-1")
 	if err != nil || ref.CaseRunID != caseRuns[1][1].ID || ref.Kind != "query" || ref.AgentName != "gligabao-query" {

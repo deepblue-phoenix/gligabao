@@ -48,6 +48,8 @@ var Store = db.Store{
 	FindKnowledgeTrajectory:     reads.FindKnowledgeTrajectory,
 	ListCaseHistory:             reads.ListCaseHistory,
 	FailRunning:                 reads.FailRunning,
+	CreateCaseCommentary:        reads.CreateCaseCommentary,
+	ListCaseCommentaries:        reads.ListCaseCommentaries,
 }
 
 // The update functions rewrite one record, found by its ID, with the fields that can change after it is created (what they are

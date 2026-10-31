@@ -284,4 +284,18 @@ CREATE TABLE IF NOT EXISTS gb_case_runs_meta_training (
 	duration_ms   BIGINT NOT NULL DEFAULT 0,
 	FOREIGN KEY (case_run_id, type) REFERENCES gb_case_runs(id, type) ON DELETE CASCADE
 );
+
+-- core.CaseCommentary: the LLM commentaries on a failed case run (several if it was asked again; the newest counts). text is the
+-- commentary with its recommendation; the cost is not part of the case run's cost. Deleting the case run deletes them.
+CREATE TABLE IF NOT EXISTS gb_case_run_commentaries (
+	id            BIGSERIAL PRIMARY KEY,
+	case_run_id   BIGINT NOT NULL REFERENCES gb_case_runs(id) ON DELETE CASCADE,
+	model         TEXT NOT NULL,
+	text          TEXT NOT NULL,
+	input_tokens  BIGINT NOT NULL DEFAULT 0,
+	output_tokens BIGINT NOT NULL DEFAULT 0,
+	cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
+	created_at    TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gb_case_run_commentaries_case_run ON gb_case_run_commentaries(case_run_id);
 `

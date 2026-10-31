@@ -250,7 +250,7 @@ func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, g
 		registerTraining(ctx, mux, d.Backend, d.Relational, dirs, hooks, sc, llm)
 	}
 	if adminUI {
-		registerAdminUI(mux, dbs, geoRadiusKm, sc, adminExts)
+		registerAdminUI(mux, dbs, geoRadiusKm, sc, adminExts, llm)
 	}
 	return mux
 }
@@ -330,7 +330,7 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, t
 
 // registerAdminUI serves the embedded admin UI assets under /v1/gb/admin/. It is a no-op (with a warning) if the
 // assets were not built into the binary (see admin_ui/ and run_build.sh).
-func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, geoRadiusKm float64, sc coretraining.Sidecar, exts []admin.Extension) {
+func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, geoRadiusKm float64, sc coretraining.Sidecar, exts []admin.Extension, llm memory_core.LLM) {
 	if !adminui.Available() {
 		log.Warn("admin_ui is enabled but the web assets are not embedded in this binary; build with ./run_build.sh (admin UI build enabled)")
 		return
@@ -382,6 +382,9 @@ func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, geoRadiusKm float64,
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/runs/{id}/web-searches", admin.EvalRunWebSearches(e.DB, *e.EvalStore, e.TrajectoryDir))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/graph", admin.EvalCaseRunGraph(e.DB, *e.EvalStore))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/temporal", admin.EvalCaseRunTemporal(e.DB, *e.EvalStore))
+		// The debug view of a failed case: its checks, and the LLM commentary on it (made on request with llm; nil: none can be made).
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/debug", admin.EvalCaseRunDebug(e.DB, *e.EvalStore, llm))
+		mux.HandleFunc("POST /v1/gb/admin/api/evals/case_runs/{id}/commentary", admin.EvalCaseRunCommentary(e.DB, *e.EvalStore, e.TrajectoryDir, llm))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/trajectories/{id}", admin.EvalTrajectory(e.DB, *e.EvalStore, e.TrajectoryDir))
 		break
 	}

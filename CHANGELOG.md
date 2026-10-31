@@ -5,6 +5,17 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.144.0] - 2026-11-01
+
+### Added
+- Admin UI, **Evals** view: a failed or errored case can be sent to the LLM for a commentary, as the runner's `-commentary` does but without a terminal. Each case has a new button (**Debug & commentary**, or **Case details** for a case that passed) that opens a case modal: on the left the checks that failed and the ones that held, the error and the answer, what the case was given and what its definition expects, and its traces; on the right the LLM's commentary and recommendation (**Ask LLM for commentary**, with the model to use, `claude-sonnet-5-5` by default; **Ask again** adds another). The head of the modal has **Knowledge graph** and **Temporal plot** buttons for the case's dataset, so all the context of a failure and the advice on it are in one place.
+- New endpoints `GET /v1/gb/admin/api/evals/case_runs/{id}/debug` (the checks, input, expectations and commentaries of a case run) and `POST /v1/gb/admin/api/evals/case_runs/{id}/commentary` (makes, stores and returns a commentary; it needs the server's LLM, so it answers `503` without an Anthropic API key).
+- New table `gb_case_run_commentaries` (SQLite and Postgres; created when the eval database is opened, so existing ones need no migration) keeps the commentaries with their model, tokens and cost; the cost is not part of the case's or the run's cost.
+- Roadmap: the feature's entry, in `docs/roadmap/ROADMAP.md`.
+
+### Changed
+- The prompt and the LLM call of the eval commentary moved from `internal/evals/knowledge` to a new package `internal/evals/commentary`, shared by the runner and the admin UI. The runner's `-commentary` behaves as before.
+
 ## [0.143.4] - 2026-10-31
 
 ### Changed

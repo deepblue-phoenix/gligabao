@@ -30,6 +30,18 @@ interface CaseRun {
 }
 // The web searches the remember calls of one result (case) made (see websearch.ts), read from its trajectories.
 interface EvalWebSearches { case_run_id: number; totals: WebSearchTotals; searches: WebSearch[] }
+// An LLM commentary on a failed case run (core.CaseCommentary).
+interface CaseCommentary {
+  id: number; model: string; text: string; input_tokens: number; output_tokens: number; cost_usd: number; created_at: string;
+}
+// What GET api/evals/case_runs/{id}/debug returns: everything about one case run in one place.
+interface CaseDebug {
+  case_run_id: number; eval: string; name: string; status: Status; verdict?: Verdict; error?: string; answer?: string;
+  problems: string[]; passed_checks: string[];
+  input: { remember?: { kind?: string; text?: string; text_file?: string }[]; query?: string };
+  expected?: Record<string, unknown>; params?: Record<string, unknown>; dataset_id?: number;
+  commentable: boolean; commentary_enabled: boolean; default_model: string; commentaries: CaseCommentary[];
+}
 interface ExperimentRow {
   id: number; name: string; description?: string; created_at: string;
   runs: number; cases: number; runs_by_status: Partial<Record<Status, number>>; cost_usd: number; last_run?: Run;
@@ -301,6 +313,15 @@ function caseRecord(run: Run, e: CaseRun, experiment: string, web?: EvalWebSearc
       ["started", `${fmtTime(e.started_at)} UTC`], ["answer", e.answer], ["error", e.error],
     ]),
   ];
+  // Everything about the case (checks, graph, temporal plot, traces) next to the LLM's commentary on its failure.
+  const cbtn = h("button", "small", e.verdict === "fail" || e.status === "errored" ? "Debug & commentary" : "Case details");
+  cbtn.type = "button";
+  cbtn.title = "Open the checks that failed and held, the graph and temporal plot of the case, and the LLM's commentary on a failure";
+  cbtn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    void showCase(run, e);
+  });
+  out.push(cbtn);
   const passed = e.passed_checks ?? [];
   const failed = e.problems ?? [];
   if (passed.length || failed.length) {
@@ -388,6 +409,163 @@ function caseRecord(run: Run, e: CaseRun, experiment: string, web?: EvalWebSearc
   return out;
 }
 
+//---------------------------------------------------------------------------------------------
+
+// Opens the case modal of one case run: on the left the checks that failed and the ones that held (and the case as it ran), on the
+// right the LLM's commentary and recommendation, which can be asked for when the case failed. The header has the buttons of the
+// knowledge graph and the temporal plot the case built, so the failure can be debugged against everything it ran on.
+async function showCase(run: Run, e: CaseRun): Promise<void> {
+  const modal = $<HTMLDialogElement>("case-modal");
+  const status = $("case-status");
+  const actions = $("case-actions");
+  const left = $("case-left");
+  const right = $("case-right");
+  const title = `${e.eval}/${e.name} (run #${run.id})`;
+  $("case-title").textContent = title;
+  status.className = "muted";
+  status.textContent = "Loading…";
+  actions.replaceChildren();
+  left.replaceChildren();
+  right.replaceChildren();
+  if (!modal.open) modal.showModal();
+  try {
+    const d = await getJSON<CaseDebug>(`api/evals/case_runs/${e.id}/debug`);
+    if (!modal.open) return; // closed while loading
+    status.replaceChildren(statusBadge(d.status), " ", verdictBadge(d.verdict));
+    if (d.dataset_id != null) {
+      const gbtn = h("button", "small", "Knowledge graph");
+      gbtn.type = "button";
+      gbtn.title = "The knowledge graph this case built";
+      gbtn.addEventListener("click", () => void showGraphAt(title, `api/evals/case_runs/${e.id}/graph`));
+      const tbtn = h("button", "small", "Temporal plot");
+      tbtn.type = "button";
+      tbtn.title = "What the remember calls of this case did to the facts over time";
+      tbtn.addEventListener("click", () => openTemporalAt(`${title} · temporal changes`, `api/evals/case_runs/${e.id}/temporal`));
+      actions.append(gbtn, tbtn);
+    }
+    left.append(...caseLeft(d, run, e));
+    right.append(...caseRight(d));
+  } catch (err) {
+    status.className = "error";
+    status.textContent = `Failed to load the case: ${errText(err)}`;
+  }
+}
+
+// The left pane: the failure, the checks that failed and the ones that held, the case as it ran and as it is defined, the traces.
+function caseLeft(d: CaseDebug, run: Run, e: CaseRun): HTMLElement[] {
+  const out: HTMLElement[] = [h("h3", undefined, `Checks (${d.problems.length} failed, ${d.passed_checks.length} held)`)];
+  if (d.error) out.push(h("p", "error", `The case could not run to the end: ${d.error}`));
+  const checks = (cls: "pass" | "fail", list: string[]): HTMLElement => {
+    const ul = h("ul", "checks");
+    for (const c of list) ul.append(h("li", cls, c));
+    return ul;
+  };
+  out.push(h("h4", undefined, `Failed (${d.problems.length})`));
+  out.push(d.problems.length ? checks("fail", d.problems) : h("p", "muted", d.error ? "No check ran." : "None failed."));
+  out.push(h("h4", undefined, `Held (${d.passed_checks.length})`));
+  out.push(d.passed_checks.length ? checks("pass", d.passed_checks) : h("p", "muted", "None held."));
+  if (d.answer) out.push(h("h4", undefined, "Answer given"), h("pre", undefined, d.answer));
+
+  const input = d.input ?? {};
+  const given = h("details");
+  given.append(h("summary", undefined, "What the case was given (as it ran)"));
+  if (input.query) given.append(h("h4", undefined, "Question"), h("pre", undefined, input.query));
+  (input.remember ?? []).forEach((r, i) => {
+    given.append(h("h4", undefined, `Remembered text ${i + 1}${r.kind ? ` (${r.kind})` : ""}${r.text_file ? ` from ${r.text_file}` : ""}`), h("pre", undefined, r.text ?? ""));
+  });
+  out.push(given);
+  const asserted = h("details");
+  asserted.append(h("summary", undefined, "What the case expects (its definition now) and its settings"));
+  asserted.append(h("pre", undefined, JSON.stringify({ expected: d.expected ?? null, params: d.params ?? null }, null, 2)));
+  out.push(asserted);
+
+  const trajs = e.trajectories ?? [];
+  if (trajs.length) {
+    out.push(h("h4", undefined, "ATIF traces"));
+    const ul = h("ul", "traces");
+    for (const t of trajs) {
+      const li = h("li");
+      const btn = h("button", "small", "View trace");
+      btn.type = "button";
+      btn.addEventListener("click", () => void showTrace(t.trajectory_id, `${e.eval}/${e.name} · #${t.seq} ${t.kind} (run #${run.id})`));
+      li.append(btn, " ", h("strong", undefined, `#${t.seq} ${t.kind}`), h("span", "muted", ` ${t.steps} step${t.steps === 1 ? "" : "s"}`));
+      ul.append(li);
+    }
+    out.push(ul);
+  }
+  return out;
+}
+
+// The right pane: the commentaries on the case (newest first) and, for a case that failed, the way to ask for another.
+function caseRight(d: CaseDebug): HTMLElement[] {
+  const out: HTMLElement[] = [h("h3", undefined, "LLM commentary and recommendation")];
+  const list = h("div");
+  const render = (items: CaseCommentary[]): void => {
+    if (items.length === 0) {
+      list.replaceChildren(h("p", "muted", d.commentable ? "No commentary yet. Ask the LLM to diagnose this failure." : "This case did not fail, so there is nothing to comment on."));
+      return;
+    }
+    list.replaceChildren(...items.map((c, i) => commentaryBlock(c, i > 0)));
+  };
+  render(d.commentaries);
+  if (d.commentable) {
+    const model = h("input");
+    model.type = "text";
+    model.value = d.default_model;
+    model.title = "The model that writes the commentary";
+    const msg = h("p", "muted");
+    const btn = h("button", undefined, d.commentaries.length ? "Ask again" : "Ask LLM for commentary");
+    btn.type = "button";
+    btn.disabled = !d.commentary_enabled;
+    if (!d.commentary_enabled) msg.textContent = "The server has no LLM (the Anthropic API key is missing), so a commentary cannot be made.";
+    btn.addEventListener("click", () => {
+      btn.disabled = true;
+      msg.className = "muted";
+      msg.textContent = "Asking the LLM… (this takes a while)";
+      fetch(`api/evals/case_runs/${d.case_run_id}/commentary`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: model.value.trim() }),
+      }).then(async (res) => {
+        if (!res.ok) {
+          let text = (await res.text()).trim();
+          try { text = (JSON.parse(text) as { error?: string }).error ?? text; } catch { /* not JSON: show it as it is */ }
+          throw new Error(`${res.status}: ${text}`);
+        }
+        const c = (await res.json()) as CaseCommentary;
+        d.commentaries = [c, ...d.commentaries];
+        render(d.commentaries);
+        btn.textContent = "Ask again";
+        msg.textContent = "";
+      }).catch((err: unknown) => {
+        msg.className = "error";
+        msg.textContent = `The commentary failed: ${errText(err)}`;
+      }).finally(() => { btn.disabled = false; });
+    });
+    const ask = h("div", "commentary-ask");
+    ask.append(model, btn);
+    out.push(ask, msg);
+  }
+  out.push(list);
+  return out;
+}
+
+const commentaryLabel = /^(Cause|Where|Evidence|Suggestion|Final advice):/;
+
+// One commentary: who wrote it, when, what it cost, and its text with the labels (Cause, Where, ...) in bold.
+function commentaryBlock(c: CaseCommentary, old: boolean): HTMLElement {
+  const box = h("div");
+  const cost = c.cost_usd > 0 ? `$${c.cost_usd.toFixed(4)}` : "cost unknown";
+  box.append(h("p", "muted", `${c.model} · ${fmtTime(c.created_at)} UTC · ${c.input_tokens} in, ${c.output_tokens} out · ${cost}`));
+  const body = h("div", old ? "commentary old" : "commentary");
+  c.text.split("\n").forEach((line, i, all) => {
+    const m = commentaryLabel.exec(line);
+    if (m) body.append(h("span", "commentary-label", m[0]), line.slice(m[0].length));
+    else body.append(line);
+    if (i < all.length - 1) body.append("\n");
+  });
+  box.append(body);
+  return box;
+}
+
 // The artifacts of one trajectory: for a remember call the input artifact the caller gave, for a query the artifacts
 // the answer was sourced from (the provenance of its evidence).
 function artifactsPanel(t: Trajectory): HTMLElement {
@@ -414,6 +592,9 @@ export function initEvals(): void {
   const modal = $<HTMLDialogElement>("run-modal");
   $("run-close").addEventListener("click", () => modal.close());
   modal.addEventListener("click", (e) => { if (e.target === modal) modal.close(); });
+  const caseModal = $<HTMLDialogElement>("case-modal");
+  $("case-close").addEventListener("click", () => caseModal.close());
+  caseModal.addEventListener("click", (e) => { if (e.target === caseModal) caseModal.close(); });
   $("evals-refresh").addEventListener("click", () => {
     void loadOverview();
     if (selectedExperiment !== undefined) void loadExperiment(selectedExperiment);

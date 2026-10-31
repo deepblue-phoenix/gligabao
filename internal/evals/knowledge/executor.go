@@ -8,6 +8,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/ansi"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/commentary"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
@@ -173,7 +174,7 @@ func (x *Executor) executeCase(ctx, dbCtx context.Context, rec *runner.EvalRecor
 	}
 	// A case that failed or errored (not one that was cancelled) can have a commentary, printed under its failure log.
 	if x.Commentary != nil && ctx.Err() == nil && (err != nil || len(problems) > 0) {
-		x.Commentary.Offer(ctx, x.out(), x.Colors, commentaryFailure{
+		x.Commentary.Offer(ctx, x.out(), x.Colors, commentary.Failure{
 			Case: c.Name, Def: *m, Input: input, RunModels: x.Models, RunReasoning: x.Reasoning,
 			Problems: problems, Passed: passed, Answer: out.Answer, Err: err, Trajectories: out.Trajectories,
 		})

@@ -68,6 +68,10 @@ type Store struct {
 	FindKnowledgeTrajectory     func(ctx context.Context, q Execer, trajectoryID string) (*TrajectoryRef, error)
 	ListCaseHistory             func(ctx context.Context, q Execer, defID core.ExperimentDefID, eval, name string) ([]CaseHistoryEntry, error)
 	FailRunning                 func(ctx context.Context, q Execer, typ core.Type, reason string, at time.Time) (int64, error)
+
+	// Commentaries on failed case runs (see core.CaseCommentary).
+	CreateCaseCommentary func(ctx context.Context, q Execer, c *core.CaseCommentary) error
+	ListCaseCommentaries func(ctx context.Context, q Execer, caseRunID core.CaseRunID) ([]core.CaseCommentary, error)
 }
 
 // JSON marshals v as the text of a JSON column. A nil value (nil slice, nil map, nil pointer) is empty, which is the text the

@@ -465,6 +465,40 @@ code { font-size: 0.8rem; color: $muted; }
 #trace-canvas .graph-legend { top: auto; bottom: 0.5rem; }
 #run-modal[open] { height: fit-content; min-height: 20rem; max-height: 88vh; }
 
+// --- Eval case debug / commentary modal (evals.ts showCase) ---
+// The checks and the case on the left, the LLM's commentary on the right, side by side.
+.case-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.case-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  @media (max-width: 800px) { grid-template-columns: minmax(0, 1fr); }
+}
+.case-pane {
+  min-height: 0;
+  overflow: auto;
+  padding: 0.3rem 1rem 1rem;
+  &:first-child { border-right: 1px solid $border; }
+  h3 { margin: 0.8rem 0 0.3rem; font-size: 0.9rem; }
+  ul.checks { margin-bottom: 0.4rem; }
+  pre { margin: 0.3rem 0; padding: 0.5rem; max-height: 18rem; overflow: auto; background: $bg; border: 1px solid $border; border-radius: 4px; font-size: 0.8rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+  details { margin: 0.5rem 0; summary { cursor: pointer; color: $muted; font-size: 0.85rem; } }
+}
+.commentary {
+  margin: 0.3rem 0 0.6rem;
+  padding: 0.6rem 0.8rem;
+  background: $bg;
+  border: 1px solid $border;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+  .commentary-label { font-weight: 600; color: $accent; }
+  &.old { opacity: 0.75; }
+}
+.commentary-ask { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; input { flex: 1 1 12rem; min-width: 0; } }
+
 // --- Eval history plot ---
 #history-modal[open] { height: 90vh; }
 #history-canvas {

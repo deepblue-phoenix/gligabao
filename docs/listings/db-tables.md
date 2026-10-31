@@ -134,6 +134,7 @@ Tables of the evals (`internal/evals`, see its `README.md`; applied by `internal
 - `gb_case_runs`
 - `gb_case_runs_meta_knowledge`
 - `gb_case_runs_meta_knowledge_trajectories`
+- `gb_case_run_commentaries`
 - `gb_case_runs_meta_training`
 
 ### What each table is about
@@ -153,6 +154,7 @@ Tables of the evals (`internal/evals`, see its `README.md`; applied by `internal
 | `gb_case_runs`                            | one row per execution of a case in an eval run: status (lifecycle), verdict (pass or fail), score, cost and times.                |
 | `gb_case_runs_meta_knowledge`             | what a knowledge case run was given, its answer, the checks that held and failed, and the dataset its graph is in.               |
 | `gb_case_runs_meta_knowledge_trajectories` | the ATIF trajectories of a knowledge case run (remember calls, then the query), by reference.                                    |
+| `gb_case_run_commentaries`                | the LLM commentaries on a failed case run, written on request from the admin UI (several if asked again).                        |
 | `gb_case_runs_meta_training`              | the question, the expected answer, the model's answer and the judge's score and reason of a training case run.                    |
 
 ### Where each table is defined

@@ -689,3 +689,47 @@ func (r Reads) FailRunning(ctx context.Context, q Execer, typ core.Type, reason 
 	}
 	return n, nil
 }
+
+//---------------------------------------------------------------------------------------------
+// Commentaries
+
+// CreateCaseCommentary inserts c into gb_case_run_commentaries and sets its ID and CreatedAt (now, unless set). The statement is the
+// same for both backends, so it is here with the reads. It returns ErrNotFound if the case run does not exist.
+func (r Reads) CreateCaseCommentary(ctx context.Context, q Execer, c *core.CaseCommentary) error {
+	if c.CreatedAt.IsZero() {
+		c.CreatedAt = time.Now()
+	}
+	c.CreatedAt = c.CreatedAt.UTC().Truncate(time.Second)
+	var exists int
+	if err := r.queryRow(ctx, q, `SELECT 1 FROM gb_case_runs WHERE id = ?`, int64(c.CaseRunID)).Scan(&exists); err != nil {
+		return notFound(err, fmt.Sprintf("case run %d", c.CaseRunID))
+	}
+	if err := r.queryRow(ctx, q, `
+		INSERT INTO gb_case_run_commentaries (case_run_id, model, text, input_tokens, output_tokens, cost_usd, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		RETURNING id`,
+		int64(c.CaseRunID), c.Model, c.Text, c.InputTokens, c.OutputTokens, c.CostUSD, r.d.Time(c.CreatedAt)).Scan(&c.ID); err != nil {
+		return fmt.Errorf("create commentary of case run %d: %w", c.CaseRunID, err)
+	}
+	return nil
+}
+
+// ListCaseCommentaries returns the commentaries of a case run, newest first (empty, not nil, if it has none).
+func (r Reads) ListCaseCommentaries(ctx context.Context, q Execer, caseRunID core.CaseRunID) ([]core.CaseCommentary, error) {
+	rows, err := r.query(ctx, q, `
+		SELECT id, model, text, input_tokens, output_tokens, cost_usd, created_at FROM gb_case_run_commentaries
+		WHERE case_run_id = ? ORDER BY id DESC`, int64(caseRunID))
+	if err != nil {
+		return nil, fmt.Errorf("list commentaries of case run %d: %w", caseRunID, err)
+	}
+	defer rows.Close()
+	out := []core.CaseCommentary{}
+	for rows.Next() {
+		c := core.CaseCommentary{CaseRunID: caseRunID}
+		if err := rows.Scan(&c.ID, &c.Model, &c.Text, &c.InputTokens, &c.OutputTokens, &c.CostUSD, timeScan{&c.CreatedAt}); err != nil {
+			return nil, fmt.Errorf("list commentaries of case run %d: %w", caseRunID, err)
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
