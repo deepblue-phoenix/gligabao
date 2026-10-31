@@ -12,7 +12,18 @@ const (
 	// pipeline and of the query ("" or missing: the stages kept the models they had).
 	ParamRememberModel = "remember_model"
 	ParamQueryModel    = "query_model"
+	// ParamRememberReasoning and ParamQueryReasoning are the Params keys with the reasoning (thinking) level the rerun used for every
+	// LLM stage of the remember pipeline and of the query ("" or missing: the stages kept the levels they had).
+	ParamRememberReasoning = "remember_reasoning"
+	ParamQueryReasoning    = "query_reasoning"
 )
+
+// RerunOptions is what a rerun changes: one model and one reasoning level for every LLM stage of the remember pipeline, and the same for
+// the query. An empty field leaves that setting as the case run had it.
+type RerunOptions struct {
+	RememberModel, QueryModel         string
+	RememberReasoning, QueryReasoning string
+}
 
 var (
 	// ErrRerunBusy means a rerun is already running (one runs at a time).

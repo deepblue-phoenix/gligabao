@@ -645,6 +645,26 @@ func TestPipelineModels(t *testing.T) {
 	}
 }
 
+// TestPipelineReasoning checks that one level per pipeline becomes the level of every stage of that pipeline that thinks, that "none"
+// is a level of its own, and that an empty one leaves its pipeline alone.
+func TestPipelineReasoning(t *testing.T) {
+	rem, q, err := knowledge.PipelineReasoning("high", "")
+	if err != nil || len(q) != 0 || rem["extract_graph"] != "high" || rem["resolve_edges"] != "high" || rem["detect_geo"] != "high" ||
+		rem["extract_image"] != "" || rem["query"] != "" {
+		t.Errorf("remember only: %v, %v, %v", rem, q, err)
+	}
+	rem, q, err = knowledge.PipelineReasoning("", " None ")
+	if err != nil || len(rem) != 0 || q["query"] != "none" || q["detect_geo"] != "none" || len(q) != 2 {
+		t.Errorf("query only: %v, %v, %v", rem, q, err)
+	}
+	if rem, q, err = knowledge.PipelineReasoning("", ""); rem != nil || q != nil || err != nil {
+		t.Errorf("none: %v, %v, %v", rem, q, err)
+	}
+	if _, _, err = knowledge.PipelineReasoning("extreme", ""); !errors.Is(err, memory_core.ErrInvalidReasoning) {
+		t.Errorf("an unknown level: %v", err)
+	}
+}
+
 // TestRerunner checks the rerun of a failed case with other models: it is a run of its own in the experiment run of the case run
 // (which then counts it and its cost), made from the same input, with the chosen model for every stage of each pipeline over the
 // models the run had; and what cannot be rerun is refused.
@@ -685,7 +705,7 @@ func TestRerunner(t *testing.T) {
 
 	// While the experiment run is going, nothing is added to it.
 	rr := newRerunner(&scriptedLLM{answer: "Bob."})
-	if _, err := rr.Rerun(ctx, orig.ID, "claude-opus-5-5", ""); !errors.Is(err, core.ErrRerunRefused) {
+	if _, err := rr.Rerun(ctx, orig.ID, core.RerunOptions{RememberModel: "claude-opus-5-5"}); !errors.Is(err, core.ErrRerunRefused) {
 		t.Errorf("rerun in a running experiment run: %v", err)
 	}
 	if err := xr.Add(ctx, run); err != nil {
@@ -695,21 +715,23 @@ func TestRerunner(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, bad := range []struct {
-		id       core.CaseRunID
-		rem, qry string
-		want     error
+		id   core.CaseRunID
+		opts core.RerunOptions
+		want error
 	}{
-		{999999, "", "", evalsdb.ErrNotFound},
-		{orig.ID, "a b", "", memory_core.ErrInvalidModels},
+		{999999, core.RerunOptions{}, evalsdb.ErrNotFound},
+		{orig.ID, core.RerunOptions{RememberModel: "a b"}, memory_core.ErrInvalidModels},
+		{orig.ID, core.RerunOptions{QueryReasoning: "extreme"}, memory_core.ErrInvalidReasoning},
 	} {
-		if _, err := rr.Rerun(ctx, bad.id, bad.rem, bad.qry); !errors.Is(err, bad.want) {
+		if _, err := rr.Rerun(ctx, bad.id, bad.opts); !errors.Is(err, bad.want) {
 			t.Errorf("rerun %+v: %v, want %v", bad, err, bad.want)
 		}
 	}
 
 	llm := &scriptedLLM{answer: "Bob."}
 	rr = newRerunner(llm)
-	id, err := rr.Rerun(ctx, orig.ID, "claude-opus-5-5", "claude-sonnet-5-5")
+	id, err := rr.Rerun(ctx, orig.ID, core.RerunOptions{
+		RememberModel: "claude-opus-5-5", QueryModel: "claude-sonnet-5-5", RememberReasoning: "High", QueryReasoning: "low"})
 	if err != nil || id == 0 || id == orig.ID {
 		t.Fatalf("rerun: %v, %v", id, err)
 	}
@@ -732,13 +754,17 @@ func TestRerunner(t *testing.T) {
 	if rer.ExperimentRunID == nil || *rer.ExperimentRunID != xr.Run().ID || rer.Status != core.StatusCompleted || rer.Counts.Total != 1 || rer.Counts.Passed != 1 {
 		t.Errorf("the rerun's eval run: %+v", rer)
 	}
-	if rer.Params[core.ParamRerunOf] != float64(orig.ID) || rer.Params[core.ParamRememberModel] != "claude-opus-5-5" || rer.Params[core.ParamQueryModel] != "claude-sonnet-5-5" {
+	if rer.Params[core.ParamRerunOf] != float64(orig.ID) || rer.Params[core.ParamRememberModel] != "claude-opus-5-5" || rer.Params[core.ParamQueryModel] != "claude-sonnet-5-5" ||
+		rer.Params[core.ParamRememberReasoning] != "high" || rer.Params[core.ParamQueryReasoning] != "low" {
 		t.Errorf("the rerun's params: %v", rer.Params)
 	}
 	// Every remember stage that ran got the remember model over the run's own base model; the query got the query model (its detection
 	// of the places of the question, then its answer).
 	if fmt.Sprint(llm.models) != "[claude-opus-5-5 claude-sonnet-5-5 claude-sonnet-5-5]" {
 		t.Errorf("models of the rerun's calls: %v", llm.models)
+	}
+	if fmt.Sprint(llm.levels) != "[high low low]" {
+		t.Errorf("reasoning levels of the rerun's calls: %v", llm.levels)
 	}
 	xrun, err := e.r.Store.GetExperimentRun(ctx, e.r.DB, xr.Run().ID)
 	if err != nil {
@@ -758,7 +784,7 @@ func TestRerunner(t *testing.T) {
 	// With neither model given the stages keep the models of the run; and a rerun of a rerun repeats the same case.
 	llm2 := &scriptedLLM{answer: "Bob."}
 	rr = newRerunner(llm2)
-	id2, err := rr.Rerun(ctx, id, "", "")
+	id2, err := rr.Rerun(ctx, id, core.RerunOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

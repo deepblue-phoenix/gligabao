@@ -51,6 +51,32 @@ func mergeReasoning(flag, caseLevels map[string]string) (remember, query memory_
 	return splitReasoning(merged)
 }
 
+// PipelineReasoning returns the reasoning of a rerun that picks one level for the whole remember pipeline and one for the query (an
+// empty one leaves its pipeline as it is): the level of every LLM stage of the pipeline that takes one. Like PipelineModels, remember's
+// stages are memory_core.ReasoningStages but extract_image (which the cases never run) and the query's are
+// memory_core.QueryReasoningStages. "none" is a level of its own (no thinking, whatever the case or the run asked for). The levels are
+// validated like those of ResolveReasoning.
+func PipelineReasoning(rememberLevel, queryLevel string) (remember, query memory_core.Reasoning, err error) {
+	rem, q := map[string]string{}, map[string]string{}
+	if rememberLevel = strings.TrimSpace(rememberLevel); rememberLevel != "" {
+		for _, stage := range memory_core.ReasoningStages {
+			if stage != memory_core.StageExtractImage {
+				rem[stage] = rememberLevel
+			}
+		}
+	}
+	if queryLevel = strings.TrimSpace(queryLevel); queryLevel != "" {
+		for _, stage := range memory_core.QueryReasoningStages {
+			q[stage] = queryLevel
+		}
+	}
+	if remember, err = memory_core.ResolveReasoning(rem); err != nil {
+		return nil, nil, err
+	}
+	query, err = memory_core.ResolveQueryReasoningStages(q)
+	return remember, query, err
+}
+
 // ParseReasoning parses the -reasoning flag, "extract_graph=low,query=medium", and validates it. An empty s gives nil.
 func ParseReasoning(s string) (map[string]string, error) {
 	m := map[string]string{}

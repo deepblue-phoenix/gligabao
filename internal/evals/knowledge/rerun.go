@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
@@ -31,7 +32,8 @@ import (
 //
 // The case is run again,
 // from the input it was given the first time, with another model for every LLM stage of the remember pipeline and/or of the query
-// (see PipelineModels); everything else (the other models and reasoning levels the run had, the checks and settings of the case)
+// (see PipelineModels) and/or another reasoning level for them (see PipelineReasoning); everything else (the other models and
+// reasoning levels the run had, the checks and settings of the case)
 // stays. The rerun is recorded like any run: as an EvalRun of its own with that one case, in the experiment run that owns the case
 // run it repeats (whose counts and cost then include it), so it is listed with the experiment's runs. Its Params say what it is
 // (core.ParamRerunOf and its siblings). One rerun runs at a time.
@@ -84,10 +86,14 @@ func (r *Rerunner) release() {
 
 // Rerun implements admin.EvalRerunner. It starts the rerun of case run src, which goes on in the background, and returns the ID of the
 // new case run as soon as it is recorded (running); follow it through the eval database. The errors are ErrNotFound (no such case
-// run), core.ErrRerunRefused (it cannot be rerun, the error says why), core.ErrRerunBusy, memory_core.ErrInvalidModels, or a failure
-// of the database.
-func (r *Rerunner) Rerun(ctx context.Context, src core.CaseRunID, rememberModel, queryModel string) (core.CaseRunID, error) {
-	rememberModels, queryModels, err := PipelineModels(rememberModel, queryModel)
+// run), core.ErrRerunRefused (it cannot be rerun, the error says why), core.ErrRerunBusy, memory_core.ErrInvalidModels,
+// memory_core.ErrInvalidReasoning, or a failure of the database.
+func (r *Rerunner) Rerun(ctx context.Context, src core.CaseRunID, opts core.RerunOptions) (core.CaseRunID, error) {
+	rememberModels, queryModels, err := PipelineModels(opts.RememberModel, opts.QueryModel)
+	if err != nil {
+		return 0, err
+	}
+	rememberReasoning, queryReasoning, err := PipelineReasoning(opts.RememberReasoning, opts.QueryReasoning)
 	if err != nil {
 		return 0, err
 	}
@@ -128,8 +134,10 @@ func (r *Rerunner) Rerun(ctx context.Context, src core.CaseRunID, rememberModel,
 	}
 	params["cases"] = []string{p.def.Cases[0].Name}
 	params[core.ParamRerunOf] = int64(src)
-	setOrDelete(params, core.ParamRememberModel, rememberModel)
-	setOrDelete(params, core.ParamQueryModel, queryModel)
+	setOrDelete(params, core.ParamRememberModel, opts.RememberModel)
+	setOrDelete(params, core.ParamQueryModel, opts.QueryModel)
+	setOrDelete(params, core.ParamRememberReasoning, strings.ToLower(strings.TrimSpace(opts.RememberReasoning)))
+	setOrDelete(params, core.ParamQueryReasoning, strings.ToLower(strings.TrimSpace(opts.QueryReasoning)))
 
 	var geo memory_geo.Resolver
 	if on, ok := params["geo"].(bool); !ok || on {
@@ -142,6 +150,7 @@ func (r *Rerunner) Rerun(ctx context.Context, src core.CaseRunID, rememberModel,
 		DB: database, LLM: r.env.LLM, Embedder: r.env.Embedder, WebSearch: r.env.WebSearch, Geo: geo,
 		Models: stringMap(params["models"]), Reasoning: stringMap(params["reasoning"]),
 		RememberModels: rememberModels, QueryModels: queryModels,
+		RememberReasoning: rememberReasoning, QueryReasoning: queryReasoning,
 		TrajectoryDir: memory_core.TrajectoryDir,
 		OnCaseStart: func(cr *core.CaseRun) {
 			select {

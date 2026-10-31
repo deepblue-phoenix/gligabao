@@ -19,7 +19,7 @@ import (
 )
 
 // The rerun of a case (the button of the case modal of the evals view, admin_ui/src/evals.ts): the case is run again with another model
-// for the remember pipeline and/or for the query, and recorded as a run in the experiment run that owns the case run (see
+// and/or reasoning (thinking) level for the remember pipeline and/or for the query, and recorded as a run in the experiment run that owns the case run (see
 // evals/knowledge.Rerunner, which does it). It runs in the background: the endpoint answers when the new case run is recorded, and the
 // UI follows it through GET case_runs/{id}/debug, which says of a case run that is a rerun what it repeats and with which models.
 
@@ -33,25 +33,29 @@ import (
 type EvalRerunner interface {
 	// Models are the LLM models a rerun can use: the ones of the price table.
 	Models() []ai.ModelInfo
-	// Rerun starts the rerun of a case run with the given model for every LLM stage of the remember pipeline and of the query ("" keeps
-	// the models as they were). It returns the new case run, already recorded (running), while the rerun goes on in the background. Its
+	// Rerun starts the rerun of a case run with the given model and reasoning level for every LLM stage of the remember pipeline and of
+	// the query (opts; an empty one keeps that setting as it was). It returns the new case run, already recorded (running), while the rerun goes on in the background. Its
 	// errors: evalsdb.ErrNotFound (unknown case run), core.ErrRerunRefused (it cannot be rerun), core.ErrRerunBusy (one is running),
-	// memory_core.ErrInvalidModels (a model name is malformed).
-	Rerun(ctx context.Context, caseRun core.CaseRunID, rememberModel, queryModel string) (core.CaseRunID, error)
+	// memory_core.ErrInvalidModels (a model name is malformed), memory_core.ErrInvalidReasoning (a level is unknown).
+	Rerun(ctx context.Context, caseRun core.CaseRunID, opts core.RerunOptions) (core.CaseRunID, error)
 }
 
 // evalRerunInfo is the part of the debug view about reruns: what can be picked.
 type evalRerunInfo struct {
 	// Models are the names of the models a rerun can use, sorted.
 	Models []string `json:"models"`
+	// Reasoning are the reasoning (thinking) levels a rerun can use, from none to the most (ai.ReasoningLevels).
+	Reasoning []string `json:"reasoning"`
 }
 
-// rerunView says of a case run that it is a rerun: the case run it repeated and the models it was given (empty: the stages kept
-// the models they had).
+// rerunView says of a case run that it is a rerun: the case run it repeated and the models and reasoning levels it was given (empty:
+// the stages kept the ones they had).
 type rerunView struct {
-	Of            int64  `json:"of"`
-	RememberModel string `json:"remember_model,omitempty"`
-	QueryModel    string `json:"query_model,omitempty"`
+	Of                int64  `json:"of"`
+	RememberModel     string `json:"remember_model,omitempty"`
+	QueryModel        string `json:"query_model,omitempty"`
+	RememberReasoning string `json:"remember_reasoning,omitempty"`
+	QueryReasoning    string `json:"query_reasoning,omitempty"`
 }
 
 // rerunOf reads, from the params of the eval run of a case run, whether it is a rerun; nil if it is not.
@@ -70,19 +74,23 @@ func rerunOf(p core.Params) *rerunView {
 	}
 	rememberModel, _ := p[core.ParamRememberModel].(string)
 	queryModel, _ := p[core.ParamQueryModel].(string)
-	return &rerunView{Of: of, RememberModel: rememberModel, QueryModel: queryModel}
+	rememberReasoning, _ := p[core.ParamRememberReasoning].(string)
+	queryReasoning, _ := p[core.ParamQueryReasoning].(string)
+	return &rerunView{Of: of, RememberModel: rememberModel, QueryModel: queryModel, RememberReasoning: rememberReasoning, QueryReasoning: queryReasoning}
 }
 
 // rerunListItem is one rerun in the list of the reruns of a case run: the case run it made, the case run it repeated, the models it
-// was given (empty: the stages kept the models they had) and how it ended (the verdict is absent until it has one).
+// was given (empty: the stages kept the models and levels they had) and how it ended (the verdict is absent until it has one).
 type rerunListItem struct {
-	CaseRunID     int64        `json:"case_run_id"`
-	Of            int64        `json:"of"`
-	RememberModel string       `json:"remember_model,omitempty"`
-	QueryModel    string       `json:"query_model,omitempty"`
-	Status        core.Status  `json:"status"`
-	Verdict       core.Verdict `json:"verdict,omitempty"`
-	CostUSD       float64      `json:"cost_usd"`
+	CaseRunID         int64        `json:"case_run_id"`
+	Of                int64        `json:"of"`
+	RememberModel     string       `json:"remember_model,omitempty"`
+	QueryModel        string       `json:"query_model,omitempty"`
+	RememberReasoning string       `json:"remember_reasoning,omitempty"`
+	QueryReasoning    string       `json:"query_reasoning,omitempty"`
+	Status            core.Status  `json:"status"`
+	Verdict           core.Verdict `json:"verdict,omitempty"`
+	CostUSD           float64      `json:"cost_usd"`
 }
 
 // rerunsOf lists the reruns of case run id, whose eval run is er: the case runs that repeated it, and those that repeated those (they
@@ -111,7 +119,7 @@ func rerunsOf(ctx context.Context, d *sql.DB, s evalsdb.Store, er *core.EvalRun,
 		for _, c := range cases {
 			family[int64(c.ID)] = true
 			out = append(out, rerunListItem{CaseRunID: int64(c.ID), Of: rv.Of, RememberModel: rv.RememberModel, QueryModel: rv.QueryModel,
-				Status: c.Status, Verdict: c.Verdict, CostUSD: c.CostUSD})
+				RememberReasoning: rv.RememberReasoning, QueryReasoning: rv.QueryReasoning, Status: c.Status, Verdict: c.Verdict, CostUSD: c.CostUSD})
 		}
 	}
 	return out, nil
@@ -122,7 +130,7 @@ func rerunInfo(rr EvalRerunner) *evalRerunInfo {
 	if rr == nil {
 		return nil
 	}
-	info := &evalRerunInfo{Models: []string{}}
+	info := &evalRerunInfo{Models: []string{}, Reasoning: slices.Clone(ai.ReasoningLevels)}
 	for _, m := range rr.Models() {
 		info.Models = append(info.Models, m.Name)
 	}
@@ -136,6 +144,10 @@ type rerunRequest struct {
 	// the detection of places). Each must be a model of the price table; empty keeps the models the case run had.
 	RememberModel string `json:"remember_model,omitempty"`
 	QueryModel    string `json:"query_model,omitempty"`
+	// RememberReasoning and QueryReasoning are the same for the reasoning (thinking) level, "none", "low", "medium" or "high" (see
+	// ai.ReasoningLevels); empty keeps the levels the case run had. "none" is a choice of its own: no thinking.
+	RememberReasoning string `json:"remember_reasoning,omitempty"`
+	QueryReasoning    string `json:"query_reasoning,omitempty"`
 }
 
 // rerunStarted is the answer of POST /admin/api/evals/case_runs/{id}/rerun.
@@ -148,10 +160,11 @@ type rerunStarted struct {
 }
 
 // EvalCaseRunRerun serves POST /admin/api/evals/case_runs/{id}/rerun: it runs the case of a case run that has ended again, with the
-// models of the body ({"remember_model": "..", "query_model": ".."}, each one of the models of the price table, either may be left out),
+// models of the body ({"remember_model": "..", "query_model": "..", "remember_reasoning": "..", "query_reasoning": ".."}, each model one of
+// the models of the price table and each level one of ai.ReasoningLevels, any of them may be left out),
 // as a new eval run in the experiment run of that case run, so the rerun is listed with the experiment's. It answers 202 with the new
 // case run (rerunStarted) once it is recorded; the rerun goes on in the background and takes as long as the case does. Answers: 404 for
-// an unknown or non-knowledge case run, 400 for a model that is not in the price table, 409 for a case run that cannot be rerun (it has
+// an unknown or non-knowledge case run, 400 for a model that is not in the price table or an unknown level, 409 for a case run that cannot be rerun (it has
 // not ended, its experiment run is still running, its case is gone) or when another rerun is in progress, 503 when the server cannot
 // rerun (no LLM, or no eval database to write to).
 func EvalCaseRunRerun(d *sql.DB, s evalsdb.Store, rr EvalRerunner) http.HandlerFunc {
@@ -182,12 +195,20 @@ func EvalCaseRunRerun(d *sql.DB, s evalsdb.Store, rr EvalRerunner) http.HandlerF
 				return
 			}
 		}
+		req.RememberReasoning, req.QueryReasoning = strings.TrimSpace(req.RememberReasoning), strings.TrimSpace(req.QueryReasoning)
+		for _, l := range []struct{ what, level string }{{"remember_reasoning", req.RememberReasoning}, {"query_reasoning", req.QueryReasoning}} {
+			if _, valid := ai.NormalizeReasoning(l.level); !valid {
+				httputil.Error(w, http.StatusBadRequest, l.what+" "+l.level+" is not a reasoning level (levels: "+strings.Join(ai.ReasoningLevels, ", ")+")")
+				return
+			}
+		}
 		ctx := r.Context()
 		if _, err := knowledgeCaseRunOf(ctx, d, s, id); err != nil {
 			evalFail(w, err, "case run")
 			return
 		}
-		newID, err := rr.Rerun(ctx, core.CaseRunID(id), req.RememberModel, req.QueryModel)
+		newID, err := rr.Rerun(ctx, core.CaseRunID(id), core.RerunOptions{
+			RememberModel: req.RememberModel, QueryModel: req.QueryModel, RememberReasoning: req.RememberReasoning, QueryReasoning: req.QueryReasoning})
 		switch {
 		case errors.Is(err, evalsdb.ErrNotFound):
 			httputil.Error(w, http.StatusNotFound, "case run not found")
@@ -195,7 +216,7 @@ func EvalCaseRunRerun(d *sql.DB, s evalsdb.Store, rr EvalRerunner) http.HandlerF
 		case errors.Is(err, core.ErrRerunRefused), errors.Is(err, core.ErrRerunBusy):
 			httputil.Error(w, http.StatusConflict, err.Error())
 			return
-		case errors.Is(err, memory_core.ErrInvalidModels):
+		case errors.Is(err, memory_core.ErrInvalidModels), errors.Is(err, memory_core.ErrInvalidReasoning):
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		case err != nil:

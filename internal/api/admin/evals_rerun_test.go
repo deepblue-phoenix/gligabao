@@ -30,8 +30,8 @@ func (f *fakeRerunner) Models() []ai.ModelInfo {
 	return []ai.ModelInfo{{Name: "zeta-model", Kind: ai.KindLLM}, {Name: "alpha-model", Kind: ai.KindLLM}}
 }
 
-func (f *fakeRerunner) Rerun(_ context.Context, id core.CaseRunID, rememberModel, queryModel string) (core.CaseRunID, error) {
-	f.calls = append(f.calls, fmt.Sprintf("%d %q %q", id, rememberModel, queryModel))
+func (f *fakeRerunner) Rerun(_ context.Context, id core.CaseRunID, opts core.RerunOptions) (core.CaseRunID, error) {
+	f.calls = append(f.calls, fmt.Sprintf("%d %q %q %q %q", id, opts.RememberModel, opts.QueryModel, opts.RememberReasoning, opts.QueryReasoning))
 	return f.reply, f.err
 }
 
@@ -81,15 +81,15 @@ func testEvalCaseRunRerun(t *testing.T, d *sql.DB) {
 		EvalRunID       int64  `json:"eval_run_id"`
 		ExperimentRunID *int64 `json:"experiment_run_id"`
 	}
-	if c, body := call(post(rr), "POST", id(orig), `{"remember_model":"alpha-model","query_model":" zeta-model "}`, &started); c != 202 ||
+	if c, body := call(post(rr), "POST", id(orig), `{"remember_model":"alpha-model","query_model":" zeta-model ","remember_reasoning":"low","query_reasoning":" High "}`, &started); c != 202 ||
 		started.CaseRunID != int64(again.CaseRunID) || started.EvalRunID != int64(er.ID) || started.ExperimentRunID == nil || *started.ExperimentRunID != int64(again.RunID) {
 		t.Fatalf("rerun: %d %s", c, body)
 	}
-	if len(rr.calls) != 1 || rr.calls[0] != fmt.Sprintf("%d %q %q", orig.CaseRunID, "alpha-model", "zeta-model") {
+	if len(rr.calls) != 1 || rr.calls[0] != fmt.Sprintf("%d %q %q %q %q", orig.CaseRunID, "alpha-model", "zeta-model", "low", "High") {
 		t.Fatalf("calls: %v", rr.calls)
 	}
 	// No body: the models stay as they were.
-	if c, body := call(post(rr), "POST", id(orig), "", nil); c != 202 || rr.calls[1] != fmt.Sprintf("%d %q %q", orig.CaseRunID, "", "") {
+	if c, body := call(post(rr), "POST", id(orig), "", nil); c != 202 || rr.calls[1] != fmt.Sprintf("%d %q %q %q %q", orig.CaseRunID, "", "", "", "") {
 		t.Fatalf("rerun without a body: %d %s %v", c, body, rr.calls)
 	}
 
@@ -103,6 +103,9 @@ func testEvalCaseRunRerun(t *testing.T, d *sql.DB) {
 	}{
 		{"model not in the price table", post(rr), id(orig), `{"remember_model":"gpt-9"}`, 400},
 		{"query model not in the price table", post(rr), id(orig), `{"query_model":"alpha"}`, 400},
+		{"unknown remember level", post(rr), id(orig), `{"remember_reasoning":"extreme"}`, 400},
+		{"unknown query level", post(rr), id(orig), `{"query_reasoning":"max"}`, 400},
+		{"bad levels by the rerunner", post(&fakeRerunner{err: fmt.Errorf("%w: x", memory_core.ErrInvalidReasoning)}), id(orig), "", 400},
 		{"bad body", post(rr), id(orig), "{", 400},
 		{"bad id", post(rr), "abc", "", 400},
 		{"missing", post(rr), "999999", "", 404},
@@ -129,12 +132,14 @@ func testEvalCaseRunRerun(t *testing.T, d *sql.DB) {
 			QueryModel    string `json:"query_model"`
 		} `json:"rerun"`
 		RerunOptions *struct {
-			Models []string `json:"models"`
+			Models    []string `json:"models"`
+			Reasoning []string `json:"reasoning"`
 		} `json:"rerun_options"`
 	}
 	var dbg debug
 	debugOf := func(rr admin.EvalRerunner) http.HandlerFunc { return admin.EvalCaseRunDebug(d, store, nil, rr) }
-	if c, body := call(debugOf(rr), "GET", id(orig), "", &dbg); c != 200 || dbg.Rerun != nil || dbg.RerunOptions == nil || fmt.Sprint(dbg.RerunOptions.Models) != "[alpha-model zeta-model]" {
+	if c, body := call(debugOf(rr), "GET", id(orig), "", &dbg); c != 200 || dbg.Rerun != nil || dbg.RerunOptions == nil || fmt.Sprint(dbg.RerunOptions.Models) != "[alpha-model zeta-model]" ||
+		fmt.Sprint(dbg.RerunOptions.Reasoning) != "[none low medium high]" {
 		t.Fatalf("debug of the original: %d %s", c, body)
 	}
 	dbg = debug{}

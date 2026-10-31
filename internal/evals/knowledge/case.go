@@ -88,6 +88,7 @@ func (x *Executor) runCase(ctx context.Context, name string, in core.KnowledgeCa
 	if err != nil {
 		return out, fmt.Errorf("reasoning: %w", err)
 	}
+	rememberReasoning, queryReasoning = rememberReasoning.Merge(x.RememberReasoning), queryReasoning.Merge(x.QueryReasoning)
 
 	if in.ChunkSize != 0 {
 		// The handlers read the chunking settings from the DB they are given: use a copy with the case's size.

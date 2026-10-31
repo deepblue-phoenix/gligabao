@@ -40,6 +40,9 @@ type Executor struct {
 	// (see PipelineModels) that is to try the case with other models. QueryModels is for the query request (the "query" and
 	// "detect_geo" stages), RememberModels for every remember request.
 	RememberModels, QueryModels memory_core.Models
+	// RememberReasoning and QueryReasoning are the same for the reasoning levels of a rerun (see PipelineReasoning): they win over the
+	// levels of the run and of the case.
+	RememberReasoning, QueryReasoning memory_core.Reasoning
 	// OnCaseStart, if set, is called with each case run once it is recorded as running, before the case executes. The run is the one
 	// the executor goes on to change: read it in the callback, do not keep it.
 	OnCaseStart func(cr *core.CaseRun)

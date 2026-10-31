@@ -24,11 +24,12 @@ interface Trajectory {
   artifacts?: Artifact[];
 }
 interface Artifact { id: number; kind: string; text: string; valid_at: string; created_at: string }
-// Says of a case run that it is a rerun with other models (empty model: the stages kept the models they had).
-interface RerunInfo { of: number; remember_model?: string; query_model?: string }
-// One rerun in the list of the reruns of a case run: the case run it made, what it repeated, the models and how it ended.
+// Says of a case run that it is a rerun with other models and/or thinking levels (empty: the stages kept the ones they had).
+interface RerunInfo { of: number; remember_model?: string; query_model?: string; remember_reasoning?: string; query_reasoning?: string }
+// One rerun in the list of the reruns of a case run: the case run it made, what it repeated, the models, the thinking levels and how it ended.
 interface RerunItem {
-  case_run_id: number; of: number; remember_model?: string; query_model?: string; status: Status; verdict?: Verdict; cost_usd: number;
+  case_run_id: number; of: number; remember_model?: string; query_model?: string; remember_reasoning?: string; query_reasoning?: string;
+  status: Status; verdict?: Verdict; cost_usd: number;
 }
 // The outcome of one case of an eval in one run.
 interface CaseRun {
@@ -50,7 +51,7 @@ interface CaseDebug {
   commentable: boolean; commentary_enabled: boolean; default_model: string; commentaries: CaseCommentary[];
   cost_usd: number; started_at: string; finished_at?: string;
   // Set when this case run is itself a rerun; rerun_options when the server can rerun the case (the models a rerun can pick).
-  rerun?: RerunInfo; rerun_options?: { models: string[] };
+  rerun?: RerunInfo; rerun_options?: { models: string[]; reasoning: string[] };
   // The reruns of this case run (and of those reruns), oldest first.
   reruns?: RerunItem[];
 }
@@ -588,31 +589,41 @@ function caseRight(d: CaseDebug, run: Run, experiment: string): HTMLElement[] {
 
 //---------------------------------------------------------------------------------------------
 
-// " (remember opus, query sonnet)" for the models of a rerun, "" if it kept them all.
-function rerunModels(r: RerunInfo): string {
-  const parts = [r.remember_model ? `remember ${r.remember_model}` : "", r.query_model ? `query ${r.query_model}` : ""].filter(Boolean);
-  return parts.length ? ` (${parts.join(", ")})` : "";
+// "opus, thinking high" for the model and the thinking level a rerun gave a pipeline; "" if it kept both.
+function pipelineSetting(model?: string, reasoning?: string): string {
+  return [model ?? "", reasoning ? `thinking ${reasoning}` : ""].filter(Boolean).join(", ");
 }
 
-// A select of the models of the price table; "" is the first option: the stages keep the models they had.
-function modelSelect(models: string[], title: string): HTMLSelectElement {
+// " (remember opus, thinking high; query sonnet)" for what a rerun changed, "" if it kept everything.
+function rerunModels(r: RerunInfo): string {
+  const parts = [["remember", pipelineSetting(r.remember_model, r.remember_reasoning)], ["query", pipelineSetting(r.query_model, r.query_reasoning)]]
+    .filter(([, s]) => s).map(([what, s]) => `${what} ${s}`);
+  return parts.length ? ` (${parts.join("; ")})` : "";
+}
+
+// A select of the given values (the models of the price table, or the thinking levels); "" is the first option: the stages keep what they had.
+function optionSelect(values: string[], title: string): HTMLSelectElement {
   const sel = h("select");
   sel.title = title;
   sel.append(new Option("as it ran", ""));
-  for (const m of models) sel.append(new Option(m, m));
+  for (const v of values) sel.append(new Option(v, v));
   return sel;
 }
 
-// The rerun of the case with a model of the price table for the remember pipeline and/or for the query, to see whether a more
-// powerful model gets it right. One model per pipeline is enough: the server uses it for every LLM stage of that pipeline. The rerun is a
+// The rerun of the case with a model of the price table and/or a thinking level for the remember pipeline and/or for the query, to see
+// whether a more powerful model (or more thinking) gets it right. One model and one level per pipeline is enough: the server uses them
+// for every LLM stage of that pipeline. The rerun is a
 // new run in the experiment run that owns this case run; its results open in the rerun modal. Nothing for a case that has not ended, or
 // when the server cannot rerun (no LLM).
 function rerunSection(d: CaseDebug, run: Run, experiment: string): HTMLElement[] {
   if (!d.rerun_options || !(["completed", "errored", "cancelled"] as Status[]).includes(d.status)) return [];
-  const out: HTMLElement[] = [h("h3", undefined, "Re-run this case with another model")];
-  out.push(h("p", "muted", "Runs the case again from the same input, as a new run of this experiment run. The model picked for a pipeline is used for all of its LLM stages; “as it ran” leaves that pipeline's models as they were. It costs LLM calls."));
-  const remember = modelSelect(d.rerun_options.models, "The model of every LLM stage of the remember pipeline");
-  const query = modelSelect(d.rerun_options.models, "The model of the query (its answering call and the detection of places)");
+  const out: HTMLElement[] = [h("h3", undefined, "Re-run this case with another model or thinking level")];
+  out.push(h("p", "muted", "Runs the case again from the same input, as a new run of this experiment run. The model and the thinking level picked for a pipeline are used for all of its LLM stages; “as it ran” leaves that setting as it was. It costs LLM calls."));
+  const remember = optionSelect(d.rerun_options.models, "The model of every LLM stage of the remember pipeline");
+  const query = optionSelect(d.rerun_options.models, "The model of the query (its answering call and the detection of places)");
+  const levels = d.rerun_options.reasoning ?? [];
+  const rememberThinking = optionSelect(levels, "The thinking level of every LLM stage of the remember pipeline");
+  const queryThinking = optionSelect(levels, "The thinking level of the query (its answering call and the detection of places)");
   const form = h("div", "rerun-form");
   const field = (label: string, sel: HTMLSelectElement): HTMLElement => {
     const l = h("label", undefined, label);
@@ -622,14 +633,16 @@ function rerunSection(d: CaseDebug, run: Run, experiment: string): HTMLElement[]
   const btn = h("button", undefined, "Re-run case");
   btn.type = "button";
   const msg = h("p", "muted");
-  form.append(field("Remember model", remember), field("Query model", query), btn);
+  form.append(field("Remember model", remember), field("Remember thinking", rememberThinking), field("Query model", query), field("Query thinking", queryThinking), btn);
   btn.addEventListener("click", () => {
     btn.disabled = true;
     msg.className = "muted";
     msg.textContent = "Starting the rerun…";
     fetch(`api/evals/case_runs/${d.case_run_id}/rerun`, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ remember_model: remember.value, query_model: query.value }),
+      body: JSON.stringify({
+        remember_model: remember.value, query_model: query.value, remember_reasoning: rememberThinking.value, query_reasoning: queryThinking.value,
+      }),
     }).then(async (res) => {
       if (!res.ok) {
         let text = (await res.text()).trim();
@@ -639,7 +652,10 @@ function rerunSection(d: CaseDebug, run: Run, experiment: string): HTMLElement[]
       const started = (await res.json()) as RerunStarted;
       msg.textContent = `Started: case run #${started.case_run_id}.`;
       void showRun(started.experiment_run_id ?? run.id, experiment); // the run behind lists the new case run
-      void showRerun(started, d, run, experiment, { of: d.case_run_id, remember_model: remember.value, query_model: query.value });
+      void showRerun(started, d, run, experiment, {
+        of: d.case_run_id, remember_model: remember.value, query_model: query.value,
+        remember_reasoning: rememberThinking.value, query_reasoning: queryThinking.value,
+      });
     }).catch((err: unknown) => {
       msg.className = "error";
       msg.textContent = `The rerun could not be started: ${errText(err)}`;
@@ -649,18 +665,18 @@ function rerunSection(d: CaseDebug, run: Run, experiment: string): HTMLElement[]
   return out;
 }
 
-// The reruns this case run already has (and those of its reruns), one row each: the models of the remember pipeline and of the query
-// ("as it ran": the pipeline kept its models) and the final pass or fail (the status while it has no verdict: running, errored...).
+// The reruns this case run already has (and those of its reruns), one row each: the models and thinking levels of the remember pipeline
+// and of the query ("as it ran": the pipeline kept its settings) and the final pass or fail (the status while it has no verdict: running, errored...).
 // Nothing when there are none. A rerun that is in the run's list opens as a case of its own.
 function rerunList(d: CaseDebug, run: Run, experiment: string): HTMLElement[] {
   const reruns = d.reruns ?? [];
   if (reruns.length === 0) return [];
-  const { table: tbl, body } = table([["Case run", false], ["Remember model", false], ["Query model", false], ["Result", false], ["", false]]);
+  const { table: tbl, body } = table([["Case run", false], ["Remember", false], ["Query", false], ["Result", false], ["", false]]);
   for (const r of reruns) {
     const tr = body.insertRow();
     tr.insertCell().textContent = `#${r.case_run_id}`;
-    tr.insertCell().textContent = r.remember_model || "as it ran";
-    tr.insertCell().textContent = r.query_model || "as it ran";
+    tr.insertCell().textContent = pipelineSetting(r.remember_model, r.remember_reasoning) || "as it ran";
+    tr.insertCell().textContent = pipelineSetting(r.query_model, r.query_reasoning) || "as it ran";
     tr.insertCell().append(r.verdict ? verdictBadge(r.verdict) : statusBadge(r.status));
     const cell = tr.insertCell();
     const e = (run.case_runs ?? []).find((c) => c.id === r.case_run_id);
@@ -751,21 +767,21 @@ async function showRerun(started: RerunStarted, orig: CaseDebug, run: Run, exper
 
 // The case run that was rerun next to its rerun: the models, how each ended, what it cost.
 function rerunComparison(orig: CaseDebug, re: CaseDebug, reID: number, info: RerunInfo): HTMLElement {
-  const { table: tbl, body } = table([["", false], ["Case run", false], ["Remember model", false], ["Query model", false], ["Status", false], ["Verdict", false], ["Cost", true], ["Duration", true]]);
+  const { table: tbl, body } = table([["", false], ["Case run", false], ["Remember", false], ["Query", false], ["Status", false], ["Verdict", false], ["Cost", true], ["Duration", true]]);
   const asRan = "as it ran";
-  const row = (label: string, id: number, remember: string | undefined, query: string | undefined, d: CaseDebug): void => {
+  const row = (label: string, id: number, r: RerunInfo | undefined, d: CaseDebug): void => {
     const tr = body.insertRow();
     tr.insertCell().textContent = label;
     tr.insertCell().textContent = `#${id}`;
-    tr.insertCell().textContent = remember || asRan;
-    tr.insertCell().textContent = query || asRan;
+    tr.insertCell().textContent = pipelineSetting(r?.remember_model, r?.remember_reasoning) || asRan;
+    tr.insertCell().textContent = pipelineSetting(r?.query_model, r?.query_reasoning) || asRan;
     tr.insertCell().append(statusBadge(d.status));
     tr.insertCell().append(verdictBadge(d.verdict));
     numCell(tr, fmtCost(d.cost_usd));
     numCell(tr, fmtDuration(d.started_at, d.finished_at));
   };
-  row("Original", orig.case_run_id, orig.rerun?.remember_model, orig.rerun?.query_model, orig);
-  row("Rerun", reID, info.remember_model, info.query_model, re);
+  row("Original", orig.case_run_id, orig.rerun, orig);
+  row("Rerun", reID, info, re);
   return tbl;
 }
 

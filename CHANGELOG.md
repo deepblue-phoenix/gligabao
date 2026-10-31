@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.151.0] - 2026-11-01
+
+### Added
+- Admin UI, **Evals** view: the **Re-run this case** section of the case modal now also lets you pick the **thinking** (reasoning) level, `none`, `low`, `medium` or `high`, for the **remember** pipeline and for the **query**, next to their models (*as it ran* keeps the levels the case run had). As with models, one level per pipeline is used for every LLM stage of it, and it wins over the `reasoning` of the case and of the run. `none` is a choice of its own (no thinking). The Re-runs table, the rerun modal and the rerun's tag show the thinking level next to the model.
+- `POST /v1/gb/admin/api/evals/case_runs/{id}/rerun` also takes `remember_reasoning` and `query_reasoning` (each optional; `400` for an unknown level). The rerun's eval run `params` have `remember_reasoning` and `query_reasoning`; `GET .../case_runs/{id}/debug` returns them in `rerun` and in each item of `reruns`, and `rerun_options` has `reasoning`, the levels that can be picked.
+
 ## [0.150.0] - 2026-11-04
 
 ### Added

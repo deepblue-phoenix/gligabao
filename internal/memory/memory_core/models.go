@@ -278,6 +278,21 @@ func resolveLevel(stage, level string) (string, error) {
 // runs with its default level (DefaultReasoning). Validate r with ResolveReasoning (or ResolveQueryReasoning) first.
 func WithReasoning(r Reasoning) Option { return func(o *CallOptions) { o.Reasoning = r } }
 
+// Merge returns the levels of r with those of over on top: a stage over names replaces r's. Neither is changed.
+func (r Reasoning) Merge(over Reasoning) Reasoning {
+	if len(r) == 0 && len(over) == 0 {
+		return nil
+	}
+	out := Reasoning{}
+	for k, v := range r {
+		out[k] = v
+	}
+	for k, v := range over {
+		out[k] = v
+	}
+	return out
+}
+
 // Level is the reasoning level a stage runs with, as it is recorded: the one set for it, or its default
 // (DefaultReasoning).
 func (r Reasoning) Level(stage string) string {
