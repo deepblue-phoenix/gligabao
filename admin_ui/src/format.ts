@@ -23,3 +23,25 @@ export function ageText(iso: string): string {
   if (mins < 43200) return plural(Math.floor(mins / 1440), "day");
   return plural(Math.floor(mins / 43200), "month");
 }
+
+// "5 mins ago" / "3 hours ago" / "12 days ago" / "2 months ago" for a number of milliseconds (a month is 30 days).
+export function agoText(ms: number): string {
+  const mins = Math.max(0, Math.floor(ms / 60000));
+  const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"} ago`;
+  if (mins < 1) return "just now";
+  if (mins < 60) return plural(mins, "min");
+  if (mins < 1440) return plural(Math.floor(mins / 60), "hour");
+  if (mins < 43200) return plural(Math.floor(mins / 1440), "day");
+  return plural(Math.floor(mins / 43200), "month");
+}
+
+// "42s" / "5m 03s" / "3h 12m" / "2d 4h" for a duration in milliseconds.
+export function durationText(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${String(m % 60).padStart(2, "0")}m`;
+  return `${Math.floor(h / 24)}d ${h % 24}h`;
+}

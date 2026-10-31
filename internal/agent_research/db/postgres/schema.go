@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS gb_agent_research_runs (
 	name          TEXT NOT NULL DEFAULT '',
 	reason        TEXT NOT NULL DEFAULT '',
 	topic         TEXT NOT NULL CHECK (topic <> ''),
-	status        TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'completed', 'failed')),
+	status        TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'completed', 'failed', 'stopped')),
 	state         TEXT NOT NULL DEFAULT '',
 	model         TEXT NOT NULL DEFAULT '',
 	max_steps     BIGINT NOT NULL DEFAULT 0,
@@ -57,4 +57,11 @@ ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL
 const SubagentIndexes = `
 CREATE INDEX IF NOT EXISTS idx_gb_agent_research_runs_parent ON gb_agent_research_runs(parent_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_agent_research_runs_parent_name ON gb_agent_research_runs(parent_id, name) WHERE parent_id IS NOT NULL;
+`
+
+// StatusMigration is what a database made before the status 'stopped' (0.145.0) lacks: its CHECK on gb_agent_research_runs.status does not
+// allow it. The constraint (named by Postgres after the table and column) is replaced; it is run at every start, like the rest.
+const StatusMigration = `
+ALTER TABLE gb_agent_research_runs DROP CONSTRAINT IF EXISTS gb_agent_research_runs_status_check;
+ALTER TABLE gb_agent_research_runs ADD CONSTRAINT gb_agent_research_runs_status_check CHECK (status IN ('running', 'completed', 'failed', 'stopped'));
 `

@@ -31,6 +31,13 @@ type Memory struct {
 	RememberOpts, QueryOpts []memory_core.Option
 }
 
+// SessionPrefix starts the session ID of the remember and query calls of an agent; SessionID is the whole of it.
+const SessionPrefix = "research-"
+
+// SessionID is the session of the calls the agent of run runID makes: everything it remembers (the artifacts, entities and facts) and
+// every query it asks carries it, so that what an agent contributed can be told (see the provenance of the admin UI).
+func SessionID(runID int64) string { return fmt.Sprintf("%s%d", SessionPrefix, runID) }
+
 // knowledge is the Knowledge of one research run: the knowledge base of the user, in one dataset. Remembered text and queries carry
 // the session "research-<run id>", so that what a run stored and asked can be told in the run logs.
 type knowledge struct {

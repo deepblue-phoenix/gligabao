@@ -959,3 +959,25 @@ html:has(#tp-modal[open]) { overflow: hidden; }
 .geo-radius { display: flex; gap: 0.5rem; align-items: center; input { width: 6rem; } }
 .geo-near-list { list-style: none; margin: 0.4rem 0 0; padding: 0; li { padding: 0.2rem 0.3rem; cursor: pointer; border-radius: 4px; &:hover { background: rgba(127, 127, 127, 0.15); } } }
 #geo-info { width: 18rem; flex: none; overflow: auto; padding: 0.5rem 1rem 1rem; border-left: 1px solid $border; }
+
+// Research agents view
+#research { margin-top: 0; }
+.rs-section { margin-top: 1rem; h3 { margin: 0 0 0.4rem; font-size: 1rem; } }
+.rs-ended-head { align-items: center; gap: 0.75rem; h3 { margin: 0; } }
+.rs-table { td, th { vertical-align: top; } td.rs-actions { white-space: nowrap; button + button { margin-left: 0.3rem; } } }
+.rs-table td.rs-wrap { max-width: 36rem; overflow-wrap: anywhere; }
+.rs-topic { color: $accent; text-decoration: none; overflow-wrap: anywhere; &:hover { text-decoration: underline; } }
+.rs-sub { font-size: 0.8rem; }
+.rs-state { font-size: 0.8rem; }
+.rs-running dd { color: $accent; }
+.rs-info { flex-wrap: wrap; gap: 0.5rem 1.5rem; dd { font-size: 1.05rem; } }
+.rs-detail, .rs-prov { h4 { margin: 1rem 0 0.25rem; font-size: 0.9rem; color: $muted; } }
+.rs-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rs-error, .rs-report {
+  margin: 0; padding: 0.5rem 0.75rem; background: $bg; border: 1px solid $border; border-radius: 6px;
+  white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24rem; overflow: auto; font-size: 0.85rem;
+}
+.rs-error { color: $err; }
+.rs-states { margin-top: 1rem; summary { cursor: pointer; font-weight: 600; margin-bottom: 0.4rem; } }
+.rs-open, .rs-graph-btn { margin-top: 0.75rem; }
+#research-error-modal .rs-info dd { font-size: 0.95rem; }

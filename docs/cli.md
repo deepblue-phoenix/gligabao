@@ -29,7 +29,7 @@ gligabao query QUESTION [-d DATASET] [--session S] [--evidence-only] [--geo-near
                   [--model STAGE=NAME] [--reasoning STAGE=LEVEL] [--raw] [--json BODY]
 gligabao dataset ls | create NAME [--description D] [--tag T] | rm NAME | graph NAME
 gligabao research start TOPIC [--max-steps N] [--model M] [-d DATASET] [--wait [--raw]] [--json BODY]
-gligabao research ls [--active] [--status running|completed|failed] [--limit N]
+gligabao research ls [--active] [--status running|completed|failed|stopped] [--limit N]
 gligabao research get ID [--raw]
 gligabao api METHOD PATH [JSON | @file | -]      # any other endpoint (timeseries, ontologies, ...)
 gligabao status                                  # the target, and whether it runs

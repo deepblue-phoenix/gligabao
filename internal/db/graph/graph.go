@@ -53,6 +53,8 @@ type (
 	EdgeEvent                    = model.EdgeEvent
 	EntitySession                = model.EntitySession
 	EdgeSession                  = model.EdgeSession
+	SessionEntity                = model.SessionEntity
+	SessionEdge                  = model.SessionEdge
 	Artifact                     = model.Artifact
 	NewChunkArtifact             = model.NewChunkArtifact
 	NewChunkSummaryArtifact      = model.NewChunkSummaryArtifact
@@ -574,6 +576,52 @@ func ListGraphEdges(ctx context.Context, d *sql.DB, dsID int64) ([]EvidenceEdge,
 		return sqlite.ListGraphEdges(ctx, d, dsID)
 	case config.DBBackendPostgres:
 		return postgres.ListGraphEdges(ctx, d, dsID)
+	}
+	return nil, unsupported()
+}
+
+// ListArtifactsBySessions returns the artifacts, of any dataset, that carry one of the session IDs, by ID: what the sessions
+// remembered (the provenance of a session). Empty for no sessions.
+func ListArtifactsBySessions(ctx context.Context, d *sql.DB, sessionIDs []string) ([]Artifact, error) {
+	if len(sessionIDs) == 0 {
+		return nil, nil
+	}
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListArtifactsBySessions(ctx, d, sessionIDs)
+	case config.DBBackendPostgres:
+		return postgres.ListArtifactsBySessions(ctx, d, sessionIDs)
+	}
+	return nil, unsupported()
+}
+
+// ListEntitiesBySessions returns the entities, of any dataset, that were discovered in one of the sessions (gb_entity_sessions),
+// by ID, each with the sessions it was discovered in (of those asked for). An entity is also listed when the session only
+// mentioned it again after another session created it. Empty for no sessions.
+func ListEntitiesBySessions(ctx context.Context, d *sql.DB, sessionIDs []string) ([]SessionEntity, error) {
+	if len(sessionIDs) == 0 {
+		return nil, nil
+	}
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListEntitiesBySessions(ctx, d, sessionIDs)
+	case config.DBBackendPostgres:
+		return postgres.ListEntitiesBySessions(ctx, d, sessionIDs)
+	}
+	return nil, unsupported()
+}
+
+// ListEdgesBySessions returns the edges (facts), of any dataset and expired ones included, that were discovered in one of the
+// sessions (gb_edge_sessions), by ID, each with the sessions it was discovered in (of those asked for). Empty for no sessions.
+func ListEdgesBySessions(ctx context.Context, d *sql.DB, sessionIDs []string) ([]SessionEdge, error) {
+	if len(sessionIDs) == 0 {
+		return nil, nil
+	}
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListEdgesBySessions(ctx, d, sessionIDs)
+	case config.DBBackendPostgres:
+		return postgres.ListEdgesBySessions(ctx, d, sessionIDs)
 	}
 	return nil, unsupported()
 }

@@ -5,6 +5,20 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.145.0] - 2026-11-01
+
+### Added
+- Admin UI, **Research** view (new button in the nav): how many [research agents](docs/research.md) work now, the active agents with a **Stop** button each, and the agents that ended (completed, failed or stopped, filterable). Every row shows the agent's number of sub-agents, its running time (it ticks while the agent works) and how long ago it started (minutes, hours, days or months). The list refreshes itself every few seconds while the view is open.
+- Each agent has a **Details** modal: whether it spawned sub-agents (with their reason, status and a link to open or stop each), its parent, its states, and its report. A failed agent has a red **failed** button in its row that opens the error it failed with and the state it failed in.
+- Agent provenance: the **Knowledge** button of an agent (or of the details modal) lists what it put in the knowledge base, whichever dataset it went to: the artifacts it stored (texts, chunks, web search results), the entities and the facts (edges) it discovered, and whether it created a fact or only restated one. It can include its sub-agents' (each item says which agent it comes from), open the graph of the dataset, or draw a graph of just what the agent contributed. It is read from the agent's session `research-<run id>`, which the `remember` tool already attached to everything it stores.
+- Stopping an agent: a new status `stopped` (with the terminal state `stopped`; `error` says who stopped it). Stopping interrupts the model call or tool of the agent at once, writes no report, and stops its sub-agents too; stopping a sub-agent leaves its parent working (its `wait_subagents` is told it did not finish). The server has no public route for it yet: it is `POST /v1/gb/admin/api/research/{id}/stop`, in the admin UI only.
+- New admin endpoints `GET /v1/gb/admin/api/research` (counts by status, and the agents with `status=running|completed|failed|stopped|finished`, `user_id`, `roots_only`, `limit`), `GET /v1/gb/admin/api/research/{id}` (an agent with its states, report, parent and sub-agents), `POST /v1/gb/admin/api/research/{id}/stop` and `GET /v1/gb/admin/api/research/{id}/provenance[?include_subagents=true]`.
+- `GET /v1/gb/research?status=stopped` is accepted, like the `research_list` tool and `gligabao research ls --status stopped`.
+
+### Changed
+- `gb_agent_research_runs.status` allows `stopped` (SQLite: the table is rebuilt once when the database is opened, keeping the runs, the states and the IDs; Postgres: the CHECK is replaced). No manual migration.
+- New store functions: `CountRuns` and `ChildCounts` (research), and `ListArtifactsBySessions`, `ListEntitiesBySessions` and `ListEdgesBySessions` (graph; they read what a session stored, in any dataset).
+
 ## [0.144.0] - 2026-11-01
 
 ### Added

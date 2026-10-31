@@ -17,6 +17,7 @@ A **run** (`gb_agent_research_runs`) is one execution of the agent on a topic. I
 | `running` | the agent is working (an **active** agent) |
 | `completed` | it ended with a report (`report`) |
 | `failed` | it could not finish: a model call failed, or the server stopped (`error` says why) |
+| `stopped` | somebody stopped it before it ended (from the [admin UI](#admin-ui)); `error` says who, and there is no report |
 
 A run left `running` by a process that died is marked `failed` ("interrupted") when the server starts again.
 
@@ -35,7 +36,7 @@ A **state** (`gb_agent_research_states`) is one stage of its work. A row is inse
 | `messaging` | `send_message`, `list_siblings` or `read_messages` (without waiting) is running | the sibling written to, and the start of the text |
 | `using_tool` | any other tool is running | its name |
 | `writing_report` | the last model call, the one that may not use tools, is running: its text is the report | `step 20 of 20, the last: ...` |
-| `completed` / `failed` | the run ended (a terminal state, recorded too, so the states are the whole history) | |
+| `completed` / `failed` / `stopped` | the run ended (a terminal state, recorded too, so the states are the whole history) | |
 
 The agent goes `starting`, then `thinking`, `searching`/`reading`/`querying`/`remembering` and `thinking` again, as many times as it needs, and ends: `thinking`, `completed` when the model answers before the last step; or `writing_report`, `completed` when it uses all its steps (the last step cannot call tools, so a run always ends with a report). A model that does not use tools in the first step goes `starting`, `thinking`, `completed`.
 
@@ -73,7 +74,7 @@ Answers `202` with the run (`status` `running`, `state` `starting`); the agent g
 Lists the agents of the user, newest first, without their states: `{"runs": [...]}`.
 
 - `active=true`: only the agents that are working now (`status` `running`).
-- `status=running|completed|failed`: only the runs with that status (not together with `active`).
+- `status=running|completed|failed|stopped`: only the runs with that status (not together with `active`).
 - `parent_id=<run id>`: only the [sub-agents](subagents.md) that run spawned.
 - `limit`: at most this many (default 50, at most 500).
 
@@ -107,6 +108,24 @@ gligabao research get ID [--raw]
 
 `start` prints the run right away; with `--wait` it waits for the agent to end and prints the finished run (exit code 1 if it failed), and `--raw` prints only the report. `get --raw` prints only the report. See [cli.md](cli.md).
 
+## Admin UI
+
+The **research** view of the [admin UI](../README.md#admin-ui) shows the agents of the standard database, any user's:
+
+- the number of agents working now, and of the ones that completed, failed or were stopped;
+- **active agents**, each with a **Stop** button (it asks to confirm);
+- **stopped and finished agents** (all, or only the completed, failed or stopped ones);
+- for every agent, in its row: the number of **children** (sub-agents it spawned), its **running time** (from its start to its end, or to now while it works) and **how long ago** it started (minutes, hours, days or months);
+- a **Details** modal per agent: whether it spawned sub-agents (each with its reason and status, to open or stop), its parent, its report and its states;
+- for an agent that **failed**, a red **failed** button in its row that opens the error it failed with and the state it failed in;
+- a **Knowledge** button per agent: its **provenance**, see below.
+
+**Stopping.** `Manager.Stop` cancels the context of the agent, so its model call or tool is interrupted; its run ends as `stopped` (error `stopped by the admin UI`, no report) and so do its sub-agents (error `stopped: the agent that spawned it (run N) was stopped by ...`). Stopping a sub-agent leaves its parent working: the parent is told, by `wait_subagents`, that it did not finish. An agent that has ended cannot be stopped (`409`). Text the agent queued with `remember` is not tied to the run, so it is still absorbed. There is no user route for it yet, only the admin one.
+
+**Provenance.** Everything the `remember` tool stores carries the session `research-<run id>` (`agent_research.SessionID`), and the graph records it on the artifacts (`gb_artifacts.session_id`), on every entity that session discovered (`gb_entity_sessions`) and on every fact (`gb_edge_sessions`), also when the entity or fact was stored before and the agent only found it again. The provenance of an agent is what those tables hold for its session, in any dataset (the run does not store its dataset): the artifacts (texts, chunks, web search results), the entities and the facts, each with the datasets they are in, and, for facts, whether an artifact of the agent created it (`created`) or the agent restated it. With `include_subagents` the sessions of its sub-agents are included and each item says which agent it comes from. The modal can open the graph of a dataset, or draw a graph of only what the agent contributed. The queries the agent asked (`query`) carry the same session in the query run log (`gb_query_runs`).
+
+Endpoints (admin routes, under `/v1/gb/admin/api/`, not tied to a user): `GET research[?status=running|completed|failed|stopped|finished][&user_id=][&roots_only=true][&limit=]` (the counts of all the agents by status and the agents that match, each with `children`, `duration_ms`, `age_ms` and `has_report`, without their reports), `GET research/{id}` (the agent with its report, states, parent and sub-agents), `POST research/{id}/stop` and `GET research/{id}/provenance[?include_subagents=true]` (`datasets`, `artifacts`, `entities` and `edges`). They are mounted with the admin UI (`internal/api/admin/research.go`), and only read or stop the agents of the server's own database.
+
 ## The knowledge base
 
 Besides the web, the agent works with the user's internal knowledge base (the graph memory of [remember](remember.md) and [query](query.md)), through two more tools (details in [deep-research-agent.md](deep-research-agent.md#tool-query)):
@@ -131,4 +150,4 @@ A research agent can spawn **sub-agents**, other research agents that take sub-t
 
 ## Not included yet
 
-Cancelling a run by the user, messages between agents that are not siblings (a parent and its sub-agents, cousins), storing the messages, a stream of its states (poll `GET /v1/gb/research/{id}`), storing the report itself in a dataset, waiting for the queued snippets before a run ends, counting the cost of `remember` and `query` in the run's cost, recording the agent's model calls in `gb_inferences`, a view in the admin UI, and a cap on the cost of a run. See the [roadmap](roadmap/ROADMAP.md).
+Cancelling a run by a user (only the admin UI can stop one), messages between agents that are not siblings (a parent and its sub-agents, cousins), storing the messages, a stream of its states (poll `GET /v1/gb/research/{id}`), storing the report itself in a dataset, waiting for the queued snippets before a run ends, counting the cost of `remember` and `query` in the run's cost, recording the agent's model calls in `gb_inferences`, and a cap on the cost of a run. See the [roadmap](roadmap/ROADMAP.md).

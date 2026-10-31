@@ -61,10 +61,14 @@ func (o Options) resolve() (Options, error) {
 type ListOptions struct {
 	// Active keeps only the runs that are still working (core.Status.Active).
 	Active bool
-	// Status keeps only the runs with this status ("running", "completed" or "failed"); not together with Active.
+	// Finished keeps only the runs that have ended (completed, failed or stopped); not together with Active or Status.
+	Finished bool
+	// Status keeps only the runs with this status ("running", "completed", "failed" or "stopped"); not together with Active.
 	Status string
 	// ParentID, if not 0, keeps only the sub-agents of that run.
 	ParentID int64
+	// RootsOnly keeps only the researches a user started, not the sub-agents.
+	RootsOnly bool
 	// Limit is the most runs returned, newest first; 0 means DefaultListLimit, and it is cut to MaxListLimit.
 	Limit int
 }

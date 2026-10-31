@@ -259,6 +259,20 @@ type EdgeSession struct {
 	SessionID string
 }
 
+// SessionEntity is an entity together with the dataset it is in and the sessions (of those asked for) it was discovered in.
+type SessionEntity struct {
+	EvidenceEntity
+	DatasetID int64
+	Sessions  []string
+}
+
+// SessionEdge is an edge (a fact) together with the dataset it is in and the sessions (of those asked for) it was discovered in.
+type SessionEdge struct {
+	EvidenceEdge
+	DatasetID int64
+	Sessions  []string
+}
+
 // Counts is the number of rows of each kind a dataset holds.
 type Counts struct {
 	// Artifacts are all the artifact rows, chunks and chunk summaries included; Chunks is how many of them are chunks of

@@ -146,7 +146,7 @@ With `serve --training` (or `training = true` in the config; default `false`) th
 
 ### Admin UI
 
-`admin_ui/` holds a small admin panel (TypeScript, SCSS, HTML). `./run_build.sh` builds it (needs node/npm) and embeds `admin_ui/dist` into the binary with `go:embed`; pass `--no-admin-ui` (or `BUILD_ADMIN_UI=false`) to skip it. With `admin_ui = true` in the config (or `serve --admin-ui`; default `false`) the server serves it at `/v1/gb/admin/`. If the assets were not embedded, the server logs a warning and does not register the handlers.
+`admin_ui/` holds a small admin panel (TypeScript, SCSS, HTML). `./run_build.sh` builds it (needs node/npm) and embeds `admin_ui/dist` into the binary with `go:embed`; pass `--no-admin-ui` (or `BUILD_ADMIN_UI=false`) to skip it. With `admin_ui = true` in the config (or `serve --admin-ui`; default `false`) the server serves it at `/v1/gb/admin/`. Its **research** view lists the [research agents](docs/research.md#admin-ui): how many work now, a stop button for each active one, the ones that ended, their sub-agents, the errors of the failed ones and what each put in the knowledge base. If the assets were not embedded, the server logs a warning and does not register the handlers.
 
 A program that embeds gligabao can extend the admin UI with its own views (a button in the nav on the left) and with buttons, modals and blocks inside the existing views, with plain JavaScript and no build step: `ServeOptions.AdminExtensions`, see [docs/admin-extensions.md](docs/admin-extensions.md).
 

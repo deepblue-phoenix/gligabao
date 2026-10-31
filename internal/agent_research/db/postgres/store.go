@@ -23,6 +23,8 @@ var Store = db.Store{
 	GetRun:      GetRun,
 	ListRuns:    ListRuns,
 	ListStates:  ListStates,
+	CountRuns:   CountRuns,
+	ChildCounts: ChildCounts,
 }
 
 // now is the current time in the precision of the storage: UTC, milliseconds (a state lasts from a few milliseconds to a minute;
@@ -129,7 +131,7 @@ func UpdateUsage(ctx context.Context, q db.Execer, runID int64, u db.Usage) erro
 	return nil
 }
 
-// FinishRun ends a running run: its status (completed or failed), report and error, and its finished_at (now); it ends the state the
+// FinishRun ends a running run: its status (completed, failed or stopped), report and error, and its finished_at (now); it ends the state the
 // run is in (with the error, if it has none of its own) and adds the terminal state (completed or failed, with the error). It
 // returns false, and writes nothing, if the run was finished already; db.ErrNotFound if there is no such run. Run it in a
 // transaction to make the writes one.
@@ -232,18 +234,20 @@ func GetRun(ctx context.Context, q db.Execer, id int64) (*core.Run, error) {
 	return r, nil
 }
 
-// ListRuns returns the runs that match f, newest first, at most limit of them (all for limit <= 0), without their States.
-func ListRuns(ctx context.Context, q db.Execer, f core.RunFilter, limit int) ([]core.Run, error) {
-	query := `SELECT ` + runColumns + ` FROM gb_agent_research_runs`
-	var where []string
+// where is the WHERE clause (with its leading space; "" for no condition) and arguments of a filter.
+func where(f core.RunFilter) (string, []any) {
+	var conds []string
 	var args []any
 	if f.UserID != "" {
 		args = append(args, f.UserID)
-		where = append(where, fmt.Sprintf(`user_id = $%d`, len(args)))
+		conds = append(conds, fmt.Sprintf(`user_id = $%d`, len(args)))
 	}
 	if f.ParentID != nil {
 		args = append(args, *f.ParentID)
-		where = append(where, fmt.Sprintf(`parent_id = $%d`, len(args)))
+		conds = append(conds, fmt.Sprintf(`parent_id = $%d`, len(args)))
+	}
+	if f.RootsOnly {
+		conds = append(conds, `parent_id IS NULL`)
 	}
 	if len(f.Statuses) > 0 {
 		marks := make([]string, len(f.Statuses))
@@ -251,12 +255,53 @@ func ListRuns(ctx context.Context, q db.Execer, f core.RunFilter, limit int) ([]
 			args = append(args, string(st))
 			marks[i] = fmt.Sprintf("$%d", len(args))
 		}
-		where = append(where, `status IN (`+strings.Join(marks, ", ")+`)`)
+		conds = append(conds, `status IN (`+strings.Join(marks, ", ")+`)`)
 	}
-	if len(where) > 0 {
-		query += ` WHERE ` + strings.Join(where, ` AND `)
+	if len(conds) == 0 {
+		return "", nil
 	}
-	query += ` ORDER BY id DESC`
+	return ` WHERE ` + strings.Join(conds, ` AND `), args
+}
+
+// CountRuns returns the number of runs that match f.
+func CountRuns(ctx context.Context, q db.Execer, f core.RunFilter) (int, error) {
+	w, args := where(f)
+	var n int
+	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM gb_agent_research_runs`+w, args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count agent research runs: %w", err)
+	}
+	return n, nil
+}
+
+// ChildCounts returns the number of sub-agents of each of the runs ids (runs with none are left out of the map).
+func ChildCounts(ctx context.Context, q db.Execer, ids []int64) (map[int64]int, error) {
+	out := map[int64]int{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := q.QueryContext(ctx, `SELECT parent_id, COUNT(*) FROM gb_agent_research_runs WHERE parent_id = ANY($1) GROUP BY parent_id`, ids)
+	if err != nil {
+		return nil, fmt.Errorf("count the sub-agents of agent research runs: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var n int
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, fmt.Errorf("count the sub-agents of agent research runs: %w", err)
+		}
+		out[id] = n
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("count the sub-agents of agent research runs: %w", err)
+	}
+	return out, nil
+}
+
+// ListRuns returns the runs that match f, newest first, at most limit of them (all for limit <= 0), without their States.
+func ListRuns(ctx context.Context, q db.Execer, f core.RunFilter, limit int) ([]core.Run, error) {
+	w, args := where(f)
+	query := `SELECT ` + runColumns + ` FROM gb_agent_research_runs` + w + ` ORDER BY id DESC`
 	if limit > 0 {
 		args = append(args, limit)
 		query += fmt.Sprintf(` LIMIT $%d`, len(args))

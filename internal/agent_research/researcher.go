@@ -52,6 +52,10 @@ type researcher struct {
 	runCtx    context.Context
 	kidCtx    context.Context
 	kidCancel context.CancelFunc
+	// stop ends runCtx (and so the agent and its sub-agents) with the cause *stopCause (Manager.Stop). done is closed when the
+	// goroutine of the agent has ended its run.
+	stop context.CancelCauseFunc
+	done chan struct{}
 	// kids are its sub-agents. self is itself as its siblings know it (nil for a root). out is how its run ended.
 	kids *family
 	self *member
@@ -76,17 +80,22 @@ func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent 
 		mem:    mem,
 		parent: parent,
 		tree:   &tree{},
-		runCtx: m.ctx,
 		kids:   &family{},
+		done:   make(chan struct{}),
 	}
+	parentCtx := m.ctx
 	if parent != nil {
-		r.depth, r.tree, r.runCtx = parent.depth+1, parent.tree, parent.kidCtx
+		parentCtx = parent.kidCtx
+	}
+	r.runCtx, r.stop = context.WithCancelCause(parentCtx)
+	if parent != nil {
+		r.depth, r.tree = parent.depth+1, parent.tree
 		r.self = &member{id: run.ID, name: run.Name, reason: run.Reason, done: make(chan struct{})}
 	}
 	r.kidCtx, r.kidCancel = context.WithCancel(r.runCtx)
 	var kb agent.Knowledge // a nil Memory must become a nil Knowledge
 	if mem != nil {
-		kb = &knowledge{mem: mem, userID: run.UserID, dataset: opts.Dataset, sessionID: fmt.Sprintf("research-%d", run.ID), ctx: r.ctx}
+		kb = &knowledge{mem: mem, userID: run.UserID, dataset: opts.Dataset, sessionID: SessionID(run.ID), ctx: r.ctx}
 	}
 	r.agent = agent.ResearchAgent(r.client, r.http, kb)
 	r.agent.Model, r.agent.MaxSteps = opts.Model, opts.MaxSteps
@@ -107,6 +116,8 @@ func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent 
 // work is the goroutine of the agent: it runs the agent, records every state it enters and what it spends, and ends the run's record.
 // A failed write of the progress is logged and does not stop the agent: the research is worth more than its trace.
 func (r *researcher) work() {
+	defer close(r.done)
+	defer r.stop(nil)
 	defer r.end()
 	defer r.http.CloseIdleConnections()
 	r.logf.WithField("topic", truncate(r.run.Topic, 100)).Info("agent research: started")
@@ -128,6 +139,8 @@ func (r *researcher) work() {
 	switch {
 	case r.ctx.Err() != nil:
 		r.finish(core.StatusFailed, "", "interrupted: the server stopped while the agent worked")
+	case stopCauseOf(r.runCtx) != nil:
+		r.finish(core.StatusStopped, "", stopCauseOf(r.runCtx).text(r.run.ID))
 	case r.runCtx.Err() != nil:
 		r.finish(core.StatusFailed, "", "cancelled: the agent that spawned it ended")
 	case err != nil:

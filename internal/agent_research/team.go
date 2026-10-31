@@ -321,11 +321,13 @@ func (m *Manager) spawn(parent *researcher, name, reason, task string, maxSteps 
 		log.WithError(err).WithField("run_id", run.ID).Error("agent research: opening the inbox failed")
 	}
 	kids.members = append(kids.members, child.self)
+	m.track(child)
 	ok = true
 
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
+		defer m.untrack(child)
 		child.work()
 	}()
 	return child, nil

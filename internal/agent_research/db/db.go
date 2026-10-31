@@ -32,6 +32,10 @@ type Store struct {
 	GetRun      func(ctx context.Context, q Execer, id int64) (*core.Run, error)
 	ListRuns    func(ctx context.Context, q Execer, f core.RunFilter, limit int) ([]core.Run, error)
 	ListStates  func(ctx context.Context, q Execer, runID int64) ([]core.State, error)
+	// CountRuns is the number of runs that match the filter (like ListRuns, without the limit).
+	CountRuns func(ctx context.Context, q Execer, f core.RunFilter) (int, error)
+	// ChildCounts is, for each of the runs ids, the number of sub-agents it spawned (the runs whose parent_id it is); a run with none is not in the map.
+	ChildCounts func(ctx context.Context, q Execer, ids []int64) (map[int64]int, error)
 }
 
 // Usage is what a run has spent so far: the progress counters of a run.

@@ -250,7 +250,7 @@ func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, g
 		registerTraining(ctx, mux, d.Backend, d.Relational, dirs, hooks, sc, llm)
 	}
 	if adminUI {
-		registerAdminUI(mux, dbs, geoRadiusKm, sc, adminExts, llm)
+		registerAdminUI(mux, dbs, geoRadiusKm, sc, adminExts, llm, research)
 	}
 	return mux
 }
@@ -330,7 +330,7 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, t
 
 // registerAdminUI serves the embedded admin UI assets under /v1/gb/admin/. It is a no-op (with a warning) if the
 // assets were not built into the binary (see admin_ui/ and run_build.sh).
-func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, geoRadiusKm float64, sc coretraining.Sidecar, exts []admin.Extension, llm memory_core.LLM) {
+func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, geoRadiusKm float64, sc coretraining.Sidecar, exts []admin.Extension, llm memory_core.LLM, research *agent_research.Manager) {
 	if !adminui.Available() {
 		log.Warn("admin_ui is enabled but the web assets are not embedded in this binary; build with ./run_build.sh (admin UI build enabled)")
 		return
@@ -350,6 +350,13 @@ func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, geoRadiusKm float64,
 	mux.HandleFunc("GET /v1/gb/admin/api/query-runs", admin.QueryRunsOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/web-searches", admin.WebSearchStatsOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/web-searches/dataset", admin.WebSearchDatasetOf(dbs))
+	// The research agents of the standard database: the list, one agent, stopping an active one, and what an agent put in the knowledge base.
+	if research != nil {
+		mux.HandleFunc("GET /v1/gb/admin/api/research", admin.ResearchListOf(research))
+		mux.HandleFunc("GET /v1/gb/admin/api/research/{id}", admin.ResearchGetOf(research))
+		mux.HandleFunc("POST /v1/gb/admin/api/research/{id}/stop", admin.ResearchStopOf(research))
+		mux.HandleFunc("GET /v1/gb/admin/api/research/{id}/provenance", admin.ResearchProvenanceOf(research))
+	}
 	mux.HandleFunc("DELETE /v1/gb/admin/api/datasets", admin.DeleteDatasetOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/geo-index", admin.GeoIndexOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/geo", admin.GeoOf(dbs))

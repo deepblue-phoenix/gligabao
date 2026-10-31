@@ -14,10 +14,12 @@ const (
 	StatusCompleted Status = "completed"
 	// StatusFailed: the agent could not finish (a model call failed, or the server stopped). Run.Error says why.
 	StatusFailed Status = "failed"
+	// StatusStopped: somebody stopped the agent (Manager.Stop, from the admin UI) before it ended. Run.Error says by whom; there is no report.
+	StatusStopped Status = "stopped"
 )
 
 // Statuses lists the statuses.
-var Statuses = []Status{StatusRunning, StatusCompleted, StatusFailed}
+var Statuses = []Status{StatusRunning, StatusCompleted, StatusFailed, StatusStopped}
 
 // Active reports whether a run with this status is still working.
 func (s Status) Active() bool { return s == StatusRunning }
@@ -26,7 +28,7 @@ func (s Status) Active() bool { return s == StatusRunning }
 // gb_agent_research_states when it is entered. A run is recorded in StateStarting, then the agent alternates between StateThinking, where it waits for the model to decide
 // what to do next, and the states of the tools the model chose (StateSearching, StateReading, StateQuerying, StateRemembering, StateUsingTool); the step of the
 // last model call, which may not use tools, is StateWritingReport. A run ends in StateCompleted or StateFailed, which are
-// recorded too, so that the states are the whole history.
+// recorded too, so that the states are the whole history; a run that is stopped ends in StateStopped.
 const (
 	// StateStarting: the run is recorded and the agent has not made its first model call yet.
 	StateStarting = "starting"
@@ -54,6 +56,8 @@ const (
 	StateCompleted = "completed"
 	// StateFailed: the run ended with an error.
 	StateFailed = "failed"
+	// StateStopped: the run was stopped before it ended.
+	StateStopped = "stopped"
 )
 
 // Run is one execution of the research agent on a topic.
@@ -82,7 +86,8 @@ type Run struct {
 	InputTokens  int     `json:"input_tokens"`
 	OutputTokens int     `json:"output_tokens"`
 	CostUSD      float64 `json:"cost_usd"`
-	// Report is the answer of the agent, written when the run completes ("" until then). Error is why a failed run failed.
+	// Report is the answer of the agent, written when the run completes ("" until then). Error is why a failed run failed, or who
+	// stopped a stopped one.
 	Report string `json:"report"`
 	Error  string `json:"error"`
 	// CreatedAt is when the run was started; FinishedAt when it ended (nil while it is active).
@@ -119,4 +124,6 @@ type RunFilter struct {
 	Statuses []Status
 	// ParentID, if not nil, keeps only the sub-agents of that run.
 	ParentID *int64
+	// RootsOnly keeps only the researches a user started (the runs without a parent).
+	RootsOnly bool
 }

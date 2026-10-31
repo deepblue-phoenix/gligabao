@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
@@ -44,7 +45,8 @@ type Manager struct {
 	mem *Memory // the knowledge base of the agents (nil: they have only the web tools); guarded by mu
 
 	mu     sync.Mutex
-	active map[string]int // running agents by user
+	active map[string]int        // running agents by user
+	runs   map[int64]*researcher // the agents that are working, by run ID, to stop them (sub-agents too)
 	wg     sync.WaitGroup
 }
 
@@ -52,7 +54,7 @@ type Manager struct {
 // with KindUnavailable). The agents stop when ctx is done. Runs that a restart interrupted (still running in the database) are marked
 // failed.
 func NewManager(ctx context.Context, d *sql.DB, ops Ops, client *ai.Client) *Manager {
-	m := &Manager{DB: d, Client: client, Ops: ops, ctx: ctx, active: map[string]int{}, Messenger: NewChanMessenger()}
+	m := &Manager{DB: d, Client: client, Ops: ops, ctx: ctx, active: map[string]int{}, runs: map[int64]*researcher{}, Messenger: NewChanMessenger()}
 	if k, err := ops.Store.FailActive(ctx, d, "interrupted: the server stopped while the agent worked"); err != nil {
 		log.WithError(err).Warn("agent research: could not mark interrupted runs as failed")
 	} else if k > 0 {
@@ -125,13 +127,88 @@ func (m *Manager) Start(ctx context.Context, userID string, opts Options) (*core
 
 	// Each agent gets a researcher (all of its state) and a goroutine of its own.
 	r := newResearcher(m, run, opts, mem, nil)
+	m.track(r)
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
 		defer release()
+		defer m.untrack(r)
 		r.work()
 	}()
 	return &rec, nil
+}
+
+// track and untrack keep the registry of the agents that are working (see Stop).
+func (m *Manager) track(r *researcher) {
+	m.mu.Lock()
+	m.runs[r.run.ID] = r
+	m.mu.Unlock()
+}
+
+func (m *Manager) untrack(r *researcher) {
+	m.mu.Lock()
+	delete(m.runs, r.run.ID)
+	m.mu.Unlock()
+}
+
+// stopWait is how long Stop waits for the agent to end its run.
+const stopWait = 10 * time.Second
+
+// Stop stops the agent of run id: its context is cancelled, so its model call or tool is interrupted, and so are its sub-agents,
+// which end the same way. Its run ends as StatusStopped, with error saying by (who asked, "the admin UI" say), and no report. Stop
+// returns when the run has ended (or after a few seconds, when the run may still be ending), with the run as it is then. userID is
+// the owner ("" matches every owner, for internal use: the admin UI). KindNotFound if there is no such run, KindConflict if it
+// has ended already.
+func (m *Manager) Stop(ctx context.Context, userID string, id int64, by string) (*core.Run, error) {
+	m.mu.Lock()
+	r := m.runs[id]
+	m.mu.Unlock()
+	if r == nil {
+		run, err := m.Get(ctx, userID, id) // not found, or not the owner's
+		if err != nil {
+			return nil, err
+		}
+		return nil, conflictErr(fmt.Sprintf("research %d is not working (its status is %s)", run.ID, run.Status))
+	}
+	if userID != "" && r.run.UserID != userID {
+		return nil, notFoundErr("research not found")
+	}
+	r.stop(&stopCause{runID: id, by: by})
+	select {
+	case <-r.done:
+	case <-time.After(stopWait):
+	case <-ctx.Done():
+	}
+	run, err := m.Ops.Store.GetRun(context.WithoutCancel(ctx), m.DB, id)
+	if err != nil {
+		return nil, internalErr("failed to read the research", err)
+	}
+	return run, nil
+}
+
+// stopCause is the cause of the cancelled context of an agent that Stop stopped. The sub-agents of the agent see it too.
+type stopCause struct {
+	runID int64  // the run that was stopped
+	by    string // who asked
+}
+
+func (c *stopCause) Error() string { return fmt.Sprintf("research %d stopped by %s", c.runID, c.by) }
+
+// text is the error recorded with the stopped run id: who stopped it, or that its parent was stopped.
+func (c *stopCause) text(id int64) string {
+	if c.runID == id {
+		return "stopped by " + c.by
+	}
+	return fmt.Sprintf("stopped: the agent that spawned it (run %d) was stopped by %s", c.runID, c.by)
+}
+
+// stopCauseOf is the stopCause that ended ctx, or nil if it was not ended by Stop.
+func stopCauseOf(ctx context.Context) *stopCause {
+	var c *stopCause
+	if errors.As(context.Cause(ctx), &c) {
+		return c
+	}
+	return nil
 }
 
 // Get returns run id with its states. userID is its owner: the run of another user is not found, as if it did not exist ("" matches
@@ -152,13 +229,19 @@ func (m *Manager) Get(ctx context.Context, userID string, id int64) (*core.Run, 
 
 // List returns the runs of userID (of every user for ""), newest first, without their states. KindInvalid for bad options.
 func (m *Manager) List(ctx context.Context, userID string, opts ListOptions) ([]core.Run, error) {
-	f := core.RunFilter{UserID: userID}
+	f := core.RunFilter{UserID: userID, RootsOnly: opts.RootsOnly}
 	if opts.ParentID != 0 {
 		f.ParentID = &opts.ParentID
 	}
 	switch {
-	case opts.Active && opts.Status != "":
-		return nil, invalidErr("give active or status, not both")
+	case (opts.Active && opts.Status != "") || (opts.Finished && (opts.Active || opts.Status != "")):
+		return nil, invalidErr("give active, finished or status, not more than one")
+	case opts.Finished:
+		for _, s := range core.Statuses {
+			if !s.Active() {
+				f.Statuses = append(f.Statuses, s)
+			}
+		}
 	case opts.Active:
 		for _, s := range core.Statuses {
 			if s.Active() {
@@ -171,7 +254,7 @@ func (m *Manager) List(ctx context.Context, userID string, opts ListOptions) ([]
 			known = known || string(s) == opts.Status
 		}
 		if !known {
-			return nil, invalidErr("status must be running, completed or failed")
+			return nil, invalidErr("status must be running, completed, failed or stopped")
 		}
 		f.Statuses = []core.Status{core.Status(opts.Status)}
 	}
@@ -185,6 +268,28 @@ func (m *Manager) List(ctx context.Context, userID string, opts ListOptions) ([]
 		return nil, internalErr("failed to list the researches", err)
 	}
 	return runs, nil
+}
+
+// Counts returns how many runs of userID (of every user for "") each status has, sub-agents included; every status is in the map.
+func (m *Manager) Counts(ctx context.Context, userID string) (map[core.Status]int, error) {
+	out := make(map[core.Status]int, len(core.Statuses))
+	for _, s := range core.Statuses {
+		n, err := m.Ops.Store.CountRuns(ctx, m.DB, core.RunFilter{UserID: userID, Statuses: []core.Status{s}})
+		if err != nil {
+			return nil, internalErr("failed to count the researches", err)
+		}
+		out[s] = n
+	}
+	return out, nil
+}
+
+// ChildCounts returns, for each of the runs ids, how many sub-agents it spawned (a run with none is not in the map).
+func (m *Manager) ChildCounts(ctx context.Context, ids []int64) (map[int64]int, error) {
+	n, err := m.Ops.Store.ChildCounts(ctx, m.DB, ids)
+	if err != nil {
+		return nil, internalErr("failed to count the sub-agents", err)
+	}
+	return n, nil
 }
 
 // tx runs fn in a transaction.

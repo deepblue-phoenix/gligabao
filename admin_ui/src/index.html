@@ -28,6 +28,7 @@
           <button type="button" class="view-btn" data-view="remember_runs" aria-pressed="false"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6l1 1 2-2M3 12l1 1 2-2M3 18l1 1 2-2"/></svg>remember</button>
           <button type="button" class="view-btn" data-view="query_runs" aria-pressed="false"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>query</button>
           <button type="button" class="view-btn" data-view="inferences" aria-pressed="false"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg>inferences</button>
+          <button type="button" class="view-btn" data-view="research" aria-pressed="false"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><path d="M12 7.5v4M12 11.5l-5.5 5.5M12 11.5l5.5 5.5"/></svg>research</button>
           <button type="button" class="view-btn" data-view="evals" aria-pressed="false"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6l-5.5 9.5A1.5 1.5 0 0 0 5.8 21h12.4a1.5 1.5 0 0 0 1.3-2.5L14 9V3"/><path d="M7.5 15h9"/></svg>evals</button>
           <button type="button" class="view-btn" data-view="timeseries" aria-pressed="false"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>timeseries</button>
           <button type="button" class="view-btn" data-view="training" aria-pressed="false"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 8c3 0 3 7 6 7s3-4 7-4"/></svg>training</button>
@@ -58,6 +59,19 @@
             </div>
             <p id="websearch-card-status" class="muted"></p>
             <div id="websearch-card-content"></div>
+          </section>
+        </div>
+
+        <div id="view-research" class="view" data-view="research" hidden>
+          <section id="research" class="card">
+            <div class="row between">
+              <h2>Research agents</h2>
+              <button type="button" id="research-refresh" class="icon refresh" title="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg></button>
+            </div>
+            <p class="muted">The deep-research agents of the standard database, any user's. The list refreshes itself every few seconds while this view is open.</p>
+            <dl id="research-stats" class="stats"></dl>
+            <p id="research-status" class="muted"></p>
+            <div id="research-content"></div>
           </section>
         </div>
 
@@ -506,6 +520,32 @@
         <div id="geo-map-box"></div>
         <aside id="geo-info"></aside>
       </div>
+    </dialog>
+
+    <dialog id="research-modal" class="modal">
+      <div class="modal-head">
+        <h2 id="research-title">Agent</h2>
+        <span id="research-actions" class="case-actions"></span>
+        <button type="button" id="research-detail-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div id="research-body" class="modal-body"></div>
+    </dialog>
+
+    <dialog id="research-error-modal" class="modal modal-small">
+      <div class="modal-head">
+        <h2 id="research-error-title">Agent failed</h2>
+        <button type="button" id="research-error-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div id="research-error-body" class="modal-body"></div>
+    </dialog>
+
+    <dialog id="research-prov-modal" class="modal">
+      <div class="modal-head">
+        <h2 id="research-prov-title">Agent knowledge</h2>
+        <label class="muted"><input type="checkbox" id="research-prov-kids" /> include sub-agents</label>
+        <button type="button" id="research-prov-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div id="research-prov-body" class="modal-body"></div>
     </dialog>
 
     <dialog id="graph-modal" class="modal">
