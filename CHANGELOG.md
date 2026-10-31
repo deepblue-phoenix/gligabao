@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.146.1] - 2026-11-02
+
+### Fixed
+- Admin UI, **Research** view: the details modal of a working agent redraws itself every few seconds, which closed the **States** section and scrolled the modal back to the top. It now stays open and keeps its scroll position.
+
 ## [0.146.0] - 2026-11-02
 
 ### Added

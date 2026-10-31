@@ -255,6 +255,8 @@ async function showError(id: number): Promise<void> {
 
 // ----- the details of an agent
 
+let renderedID = 0; // the agent whose details the modal shows
+
 async function showDetail(id: number): Promise<void> {
   const modal = el<HTMLDialogElement>("research-modal");
   const body = el("research-body");
@@ -280,7 +282,15 @@ async function showDetail(id: number): Promise<void> {
   actions.append(node("span", `badge ${STATUS_CLASS[d.status]}`, d.status));
   actions.append(button("Knowledge", "What this agent put in the knowledge base", "small", () => void showProvenance(d.id, d.children > 0)));
   if (d.status === "running") actions.append(button("Stop", "Stop this agent", "small danger", () => void stopAgent(d)));
-  body.replaceChildren(renderDetail(d));
+  // A refresh redraws the whole body: keep what the user opened and where they scrolled.
+  const same = renderedID === id;
+  const wasOpen = same && (body.querySelector<HTMLDetailsElement>("details.rs-states")?.open ?? false);
+  const scroll = same ? body.scrollTop : 0;
+  renderedID = id;
+  const fresh = renderDetail(d);
+  fresh.querySelector<HTMLDetailsElement>("details.rs-states")!.open = wasOpen;
+  body.replaceChildren(fresh);
+  body.scrollTop = scroll;
 }
 
 function renderDetail(d: Detail): HTMLElement {
@@ -648,7 +658,7 @@ export function initResearch(): void {
   el("research-detail-close").addEventListener("click", () => el<HTMLDialogElement>("research-modal").close());
   el("research-error-close").addEventListener("click", () => el<HTMLDialogElement>("research-error-modal").close());
   el("research-prov-close").addEventListener("click", () => el<HTMLDialogElement>("research-prov-modal").close());
-  el<HTMLDialogElement>("research-modal").addEventListener("close", () => { currentID = 0; });
+  el<HTMLDialogElement>("research-modal").addEventListener("close", () => { currentID = 0; renderedID = 0; });
   schedule();
   // The list refreshes itself while the view is shown (and the agents work): on show, then every few seconds.
   onViewShown("research", () => void load());
