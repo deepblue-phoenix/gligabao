@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.143.3] - 2026-10-31
+
+### Changed
+- Docs: `docs/evals/experiments.md` describes the **View temporal changes** button of an eval case in the admin UI and its endpoint `GET /case_runs/{id}/temporal`; `docs/evals/knowledge.md` mentions the manifest of the `temporal` eval and that every knowledge eval is to have one.
+
 ## [0.143.2] - 2026-10-31
 
 ### Fixed
