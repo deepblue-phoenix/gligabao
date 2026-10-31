@@ -757,6 +757,17 @@ tr.removing {
 .rr-stats { flex-wrap: wrap; dd { font-size: 1.3rem; } }
 .rr-tile { cursor: pointer; padding: 0.2rem 0.6rem; border-radius: 6px; &:hover { background: rgba($accent, 0.08); } &.selected { background: rgba($accent, 0.16); } }
 
+// Bookmarks: the star button (on an eval case, a remember run, a query run) and the bookmarks view
+button.bookmark-btn {
+  transition: background-color 0.3s ease, color 0.3s ease, transform 0.3s ease;
+  &.on { background: $ok; color: #000; }
+  &.pop { animation: bookmark-pop 0.35s ease; }
+}
+@keyframes bookmark-pop { 0% { transform: scale(1); } 40% { transform: scale(1.15); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { button.bookmark-btn { transition: none; &.pop { animation: none; } } }
+#bookmarks { margin-top: 0; td:last-child { width: 1%; text-align: right; } button.icon.danger { padding: 0.3rem 0.45rem; } }
+.bm-filter { align-items: center; gap: 0.4rem; margin: 0.75rem 0; flex-wrap: wrap; button.small + button.small { margin-left: 0; } button.selected { background: rgba($accent, 0.3); } }
+
 // Main view: each card has its own tint.
 #databases > .card:nth-child(odd) { @include tint-card($tint-blue); }
 #databases > .card:nth-child(even) { @include tint-card($tint-green); }

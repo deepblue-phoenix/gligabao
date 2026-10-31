@@ -5,6 +5,7 @@
 // that loads (only then) and opens a modal with what the stage produced (its outputs, kept for debugging: see
 // docs/remember.md#stage-outputs); query runs keep no outputs.
 
+import { bookmarkButton, registerBookmarkOpener, type Bookmark } from "./bookmarks.js";
 import { openTemporal } from "./temporal.js";
 
 interface Stage {
@@ -258,8 +259,24 @@ async function loadOutputs(name: string, run: Run, stage: string): Promise<Stage
   return ((await res.json()) as { outputs: StageOutput[] }).outputs;
 }
 
+// The bookmark button of a run (the star): the run is told apart by its kind, its database and its ID.
+function runBookmark(k: Kind, name: string, run: Run): HTMLButtonElement {
+  const remember = k.outputs;
+  const text = run.question ?? "";
+  return bookmarkButton({
+    id: `${remember ? "remember_run" : "query_run"}:${name}:${run.id}`,
+    kind: remember ? "remember_run" : "query_run",
+    title: `${remember ? "Remember" : "Query"} run #${run.id}`,
+    detail: remember
+      ? [name, run.user_id, run.dataset, run.kind].filter(Boolean).join(" · ")
+      : [name, run.user_id, run.dataset, text.length > 80 ? `${text.slice(0, 80)}…` : text].filter(Boolean).join(" · "),
+    ref: { db: name, run_id: run.id },
+  });
+}
+
 function detailCell(k: Kind, run: Run, order: string[], name: string): HTMLElement {
   const box = node("div");
+  box.appendChild(runBookmark(k, name, run));
   if (run.error) box.appendChild(node("p", "error", run.error));
   const props = box.appendChild(node("dl", "props"));
   const prop = (k: string, v: string): void => { props.append(node("dt", "", k), node("dd", "", v)); };
@@ -283,6 +300,27 @@ function detailCell(k: Kind, run: Run, order: string[], name: string): HTMLEleme
   params.appendChild(node("summary", "", "Parameters"));
   params.appendChild(node("pre", "ts-def", JSON.stringify(run.params ?? {}, null, 2)));
   return box;
+}
+
+// Opens the modal on one run, fetched by its ID (the run is shown as in the list, expanded), e.g. a bookmarked one.
+async function openRun(k: Kind, name: string, runID: number): Promise<void> {
+  const res = await fetch(`${k.api.replace(/s$/, "")}?${new URLSearchParams({ db: name, run_id: String(runID) })}`);
+  if (!res.ok) throw new Error(`${res.status}: ${(await res.text()).trim()}`);
+  const { stages, run } = (await res.json()) as { stages: string[]; run: Run };
+  const modal = el<HTMLDialogElement>("run-detail-modal");
+  el("run-detail-title").textContent = `${k.label} run #${run.id} · ${name} database`;
+  const actions = el("run-detail-actions");
+  actions.replaceChildren(statusBadge(run.status));
+  const body = el("run-detail-body");
+  const props = node("dl", "props");
+  const prop = (key: string, v: string): void => { props.append(node("dt", "", key), node("dd", "", v)); };
+  prop("Started (UTC)", fmtTime(run.started_at));
+  prop("User", run.user_id);
+  prop("Dataset", run.dataset);
+  if (run.kind) prop("Kind", run.kind);
+  if (run.artifact_id != null) prop("Artifact", String(run.artifact_id));
+  body.replaceChildren(props, detailCell(k, run, stages, name));
+  if (!modal.open) modal.showModal();
 }
 
 function render(k: Kind, name: string, p: Panel, data: Response, reload: (name: string) => Promise<void>): void {
@@ -439,6 +477,17 @@ export function initRememberRuns(): void {
   const modal = el<HTMLDialogElement>("rr-outputs-modal");
   el("rr-outputs-close").addEventListener("click", () => modal.close());
   initView(KINDS.remember);
+  initRunDetail();
+}
+
+// The modal that shows one run on its own, and the opening of bookmarked runs.
+function initRunDetail(): void {
+  const modal = el<HTMLDialogElement>("run-detail-modal");
+  el("run-detail-close").addEventListener("click", () => modal.close());
+  modal.addEventListener("click", (e) => { if (e.target === modal) modal.close(); });
+  const opener = (k: Kind) => (b: Bookmark): Promise<void> => openRun(k, String(b.ref.db), Number(b.ref.run_id));
+  registerBookmarkOpener("remember_run", opener(KINDS.remember));
+  registerBookmarkOpener("query_run", opener(KINDS.query));
 }
 
 export function initQueryRuns(): void {

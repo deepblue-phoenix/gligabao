@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.148.0] - 2026-11-03
+
+### Added
+- Admin UI, **bookmarks**: a **☆ Bookmark** button on an eval case (in the run's case details and in the case modal), on a remember run and on a query run (in the run's details). Once bookmarked the button turns green with black text (★ Bookmarked), with a short fade and a small pop; press it again to remove the bookmark.
+- Admin UI, new **bookmarks** view: lists everything bookmarked (filter by type: eval case, remember run, query run), newest first. Click a bookmark to go straight to it: an eval case opens its case modal on top of its run, a run opens in its own modal; the trash icon at the end of a row removes it. Bookmarks are kept in the browser (localStorage), not on the server.
+- New admin endpoints `GET /v1/gb/admin/api/remember-run?run_id=<id>[&db=<name>]` and `GET /v1/gb/admin/api/query-run?run_id=<id>[&db=<name>]`: one run (`run`, as an item of the list) with the stage names in order (`stages`); `404` for an unknown run.
+
 ## [0.147.0] - 2026-11-02
 
 ### Added

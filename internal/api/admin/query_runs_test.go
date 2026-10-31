@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -78,6 +79,41 @@ func testQueryRuns(t *testing.T, d *sql.DB) {
 	}
 	for url, want := range map[string]int{"/x?limit=0": 400, "/x?limit=a": 400, "/x?offset=-1": 400, "/x?status=zz": 400, "/x?db=nope": http.StatusNotFound} {
 		if c := get(url); c != want {
+			t.Errorf("%s: %d, want %d", url, c, want)
+		}
+	}
+}
+
+// TestQueryRunOf checks the endpoint that serves one query run (the admin UI opens a bookmarked run with it).
+func TestQueryRunOf(t *testing.T) { dbtest.Run(t, testQueryRunOf) }
+
+func testQueryRunOf(t *testing.T, d *sql.DB) {
+	h := admin.QueryRunOf([]admin.Named{{Name: "standard", DB: d}})
+	id, err := relational.CreateQueryRun(context.Background(), d, relational.NewQueryRun("u", "zz_one", "q?", "", map[string]any{"k": "v"}, time.Now().UTC()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	type response struct {
+		Stages []string            `json:"stages"`
+		Run    relational.QueryRun `json:"run"`
+	}
+	get := func(url string) (int, response) {
+		var out response
+		rec := httptest.NewRecorder()
+		h(rec, httptest.NewRequest("GET", url, nil))
+		if rec.Code == 200 {
+			if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return rec.Code, out
+	}
+	c, out := get("/x?run_id=" + strconv.FormatInt(id, 10))
+	if c != 200 || out.Run.ID != id || out.Run.Question != "q?" || len(out.Stages) != len(relational.QueryStages) || len(out.Run.Stages) != len(out.Stages) {
+		t.Errorf("run: %d %+v", c, out)
+	}
+	for url, want := range map[string]int{"/x": 400, "/x?run_id=a": 400, "/x?run_id=0": 400, "/x?run_id=999999999": 404, "/x?run_id=1&db=nope": 404} {
+		if c, _ := get(url); c != want {
 			t.Errorf("%s: %d, want %d", url, c, want)
 		}
 	}

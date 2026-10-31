@@ -1,6 +1,7 @@
 // Evals block of the admin UI: experiments (counts + listing), their runs, a run's results with their records, and
 // the ATIF trajectories of each case (opened as a flow graph by trace.ts). Talks to /admin/api/evals/*.
 
+import { bookmarkButton, registerBookmarkOpener, type Bookmark } from "./bookmarks.js";
 import { showGraphAt } from "./graph.js";
 import { showCaseHistory } from "./history.js";
 import { openTemporalAt } from "./temporal.js";
@@ -319,9 +320,9 @@ function caseRecord(run: Run, e: CaseRun, experiment: string, web?: EvalWebSearc
   cbtn.title = "Open the checks that failed and held, the graph and temporal plot of the case, and the LLM's commentary on a failure";
   cbtn.addEventListener("click", (ev) => {
     ev.stopPropagation();
-    void showCase(run, e);
+    void showCase(run, e, experiment);
   });
-  out.push(cbtn);
+  out.push(cbtn, caseBookmark(run, e, experiment));
   const passed = e.passed_checks ?? [];
   const failed = e.problems ?? [];
   if (passed.length || failed.length) {
@@ -414,7 +415,7 @@ function caseRecord(run: Run, e: CaseRun, experiment: string, web?: EvalWebSearc
 // Opens the case modal of one case run: on the left the checks that failed and the ones that held (and the case as it ran), on the
 // right the LLM's commentary and recommendation, which can be asked for when the case failed. The header has the buttons of the
 // knowledge graph and the temporal plot the case built, so the failure can be debugged against everything it ran on.
-async function showCase(run: Run, e: CaseRun): Promise<void> {
+async function showCase(run: Run, e: CaseRun, experiment: string): Promise<void> {
   const modal = $<HTMLDialogElement>("case-modal");
   const status = $("case-status");
   const actions = $("case-actions");
@@ -424,7 +425,7 @@ async function showCase(run: Run, e: CaseRun): Promise<void> {
   $("case-title").textContent = title;
   status.className = "muted";
   status.textContent = "Loading…";
-  actions.replaceChildren();
+  actions.replaceChildren(caseBookmark(run, e, experiment));
   left.replaceChildren();
   right.replaceChildren();
   if (!modal.open) modal.showModal();
@@ -449,6 +450,27 @@ async function showCase(run: Run, e: CaseRun): Promise<void> {
     status.className = "error";
     status.textContent = `Failed to load the case: ${errText(err)}`;
   }
+}
+
+// The bookmark button of one case run: what it opens again is the case modal of that run's result.
+function caseBookmark(run: Run, e: CaseRun, experiment: string): HTMLButtonElement {
+  return bookmarkButton({
+    id: `eval_case:${e.id}`,
+    kind: "eval_case",
+    title: `${e.eval}/${e.name}`,
+    detail: `${experiment} · run #${run.id}`,
+    ref: { case_run_id: e.id, run_id: run.id, experiment },
+  });
+}
+
+// Opens a bookmarked case: the run it is in (behind), and on top the case modal.
+async function openBookmarkedCase(b: Bookmark): Promise<void> {
+  const run = await getJSON<Run>(`api/evals/runs/${Number(b.ref.run_id)}`);
+  const e = (run.case_runs ?? []).find((c) => c.id === Number(b.ref.case_run_id));
+  if (!e) throw new Error("the case run is not in its run any more");
+  const experiment = String(b.ref.experiment);
+  void showRun(run.id, experiment);
+  await showCase(run, e, experiment);
 }
 
 // The left pane: the failure, the checks that failed and the ones that held, the case as it ran and as it is defined, the traces.
@@ -589,6 +611,7 @@ function artifactsPanel(t: Trajectory): HTMLElement {
 }
 
 export function initEvals(): void {
+  registerBookmarkOpener("eval_case", openBookmarkedCase);
   const modal = $<HTMLDialogElement>("run-modal");
   $("run-close").addEventListener("click", () => modal.close());
   modal.addEventListener("click", (e) => { if (e.target === modal) modal.close(); });

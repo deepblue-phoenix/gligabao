@@ -5,6 +5,7 @@ package admin
 // (remember_runs.go).
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -87,6 +88,46 @@ func QueryRunsOf(dbs []Named) http.HandlerFunc {
 			return
 		}
 		out.Runs, out.Total, out.Limit, out.Offset = runs, total, limit, offset
+		httputil.WriteJSON(w, http.StatusOK, out)
+	}
+}
+
+type queryRunResponse struct {
+	// Stages are the stages of the pipeline, in order (the keys of the run's stages).
+	Stages []string            `json:"stages"`
+	Run    relational.QueryRun `json:"run"`
+}
+
+// QueryRunOf serves GET /admin/api/query-run?run_id=<id>[&db=<name>] for one of dbs (the first without db): one query run, as an item
+// of the list of QueryRunsOf, with the stage names in order. The admin UI opens a bookmarked run with it, whatever page of the list
+// the run is on. An unknown run is 404.
+func QueryRunOf(dbs []Named) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		n, ok := pick(dbs, q.Get("db"))
+		if !ok {
+			httputil.Error(w, http.StatusNotFound, "unknown database")
+			return
+		}
+		id, err := strconv.ParseInt(q.Get("run_id"), 10, 64)
+		if err != nil || id < 1 {
+			httputil.Error(w, http.StatusBadRequest, "invalid run_id")
+			return
+		}
+		run, err := relational.GetQueryRun(r.Context(), n.DB, id)
+		if errors.Is(err, relational.ErrNotFound) {
+			httputil.Error(w, http.StatusNotFound, "unknown query run")
+			return
+		}
+		if err != nil {
+			log.WithError(err).Error("admin: query run failed")
+			httputil.Error(w, http.StatusInternalServerError, "failed to read the query run")
+			return
+		}
+		out := queryRunResponse{Stages: make([]string, 0, len(relational.QueryStages)), Run: *run}
+		for _, s := range relational.QueryStages {
+			out.Stages = append(out.Stages, s.Name)
+		}
 		httputil.WriteJSON(w, http.StatusOK, out)
 	}
 }

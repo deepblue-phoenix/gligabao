@@ -233,3 +233,40 @@ func testRememberRunTemporal(t *testing.T, d *sql.DB) {
 		}
 	}
 }
+
+// TestRememberRunOf checks the endpoint that serves one remember run (the admin UI opens a bookmarked run with it).
+func TestRememberRunOf(t *testing.T) { dbtest.Run(t, testRememberRunOf) }
+
+func testRememberRunOf(t *testing.T, d *sql.DB) {
+	h := admin.RememberRunOf([]admin.Named{{Name: "standard", DB: d}})
+	id, err := relational.CreateRememberRun(context.Background(), d, relational.NewRememberRun("u", "zz_one", "text", map[string]any{"k": "v"}, time.Now().UTC()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	get := func(url string) (int, struct {
+		Stages []string               `json:"stages"`
+		Run    relational.RememberRun `json:"run"`
+	}) {
+		var out struct {
+			Stages []string               `json:"stages"`
+			Run    relational.RememberRun `json:"run"`
+		}
+		rec := httptest.NewRecorder()
+		h(rec, httptest.NewRequest("GET", url, nil))
+		if rec.Code == 200 {
+			if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return rec.Code, out
+	}
+	c, out := get("/x?run_id=" + strconv.FormatInt(id, 10))
+	if c != 200 || out.Run.ID != id || out.Run.Dataset != "zz_one" || len(out.Stages) != len(relational.RememberStages) || len(out.Run.Stages) != len(out.Stages) {
+		t.Errorf("run: %d %+v", c, out)
+	}
+	for url, want := range map[string]int{"/x": 400, "/x?run_id=a": 400, "/x?run_id=0": 400, "/x?run_id=999999999": 404, "/x?run_id=1&db=nope": 404} {
+		if c, _ := get(url); c != want {
+			t.Errorf("%s: %d, want %d", url, c, want)
+		}
+	}
+}
