@@ -28,7 +28,7 @@ func checkCase(c *core.TrainingCase) error {
 }
 
 // LoadEvals reads the evals of the directories dirs, in order: an eval whose name was found in an earlier directory hides the same
-// name in a later one. Case names are unique over all of them.
+// name in a later one. Case names are unique within an eval.
 func LoadEvals(dirs ...string) ([]Eval, error) {
 	return evalfile.ReadDirs(dirs, caseName, checkCase)
 }

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/deepblue-phoenix/gligabao/internal/evals/evalfile"
@@ -43,10 +44,29 @@ func TestReadDirs(t *testing.T) {
 		t.Fatalf("evals = %+v", evals)
 	}
 
-	// A case name used by two evals of different directories is an error; so is a repeated eval name in one directory.
+	// A case name used by two evals (here of different directories) is fine, and a bare name that both have is ambiguous for Select.
 	writeEval(t, b, "three.json", `{"name":"three","cases":[{"name":"a1"}]}`)
-	if _, err := evalfile.ReadDirs([]string{a, b}, nameOf, nil); err == nil {
-		t.Error("duplicate case name over directories: expected an error")
+	evals, err = evalfile.ReadDirs([]string{a, b}, nameOf, nil)
+	if err != nil {
+		t.Fatalf("the same case name in two evals: %v", err)
+	}
+	if _, err := evalfile.Select(evals, nameOf, "", []string{"a1"}); err == nil || !strings.Contains(err.Error(), "ambiguous") {
+		t.Errorf("ambiguous bare name: %v", err)
+	}
+	sel, err := evalfile.Select(evals, nameOf, "three", []string{"a1"})
+	if err != nil || len(sel) != 1 || sel[0].Name != "three" || len(sel[0].Cases) != 1 {
+		t.Errorf("name with its eval: %+v %v", sel, err)
+	}
+	if sel, err = evalfile.Select(evals, nameOf, "", []string{"b2"}); err != nil || len(sel) != 1 || sel[0].Name != "two" {
+		t.Errorf("a name only one eval has: %+v %v", sel, err)
+	}
+	// A repeated case name in one eval and a repeated eval name in one directory are errors.
+	writeEval(t, b, "four.json", `{"name":"four","cases":[{"name":"x"},{"name":"x"}]}`)
+	if _, err := evalfile.ReadDirs([]string{b}, nameOf, nil); err == nil {
+		t.Error("duplicate case name in an eval: expected an error")
+	}
+	if err := os.Remove(filepath.Join(b, "four.json")); err != nil {
+		t.Fatal(err)
 	}
 	writeEval(t, a, "dup.json", `{"name":"one","cases":[{"name":"z"}]}`)
 	if _, err := evalfile.ReadDirs([]string{a}, nameOf, nil); err == nil {

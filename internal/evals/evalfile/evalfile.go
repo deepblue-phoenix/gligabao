@@ -31,18 +31,18 @@ type file struct {
 }
 
 // Read reads the evals of the directory dir (dir/*.json, ordered by file name). nameOf gives the name of a case, which must be
-// set and unique over all the evals, so that a case can be picked by its name alone. check, if not nil, validates a case (it is
+// set and unique within its eval (two evals may use the same case name; Select resolves a name given alone). check, if not nil, validates a case (it is
 // given the eval's file name for its message). The names of the evals must be set and unique too.
 func Read[C any](dir string, nameOf func(*C) string, check func(*C) error) ([]Eval[C], error) {
 	return ReadDirs([]string{dir}, nameOf, check)
 }
 
 // ReadDirs reads the evals of the directories dirs, in order (each as Read does). An eval whose name was found in an earlier
-// directory is hidden by it: it is skipped altogether, its cases included. Case names must be unique over all the evals read. An
+// directory is hidden by it: it is skipped altogether, its cases included. Case names must be unique within an eval only. An
 // eval's Dir is the directory it was read from.
 func ReadDirs[C any](dirs []string, nameOf func(*C) string, check func(*C) error) ([]Eval[C], error) {
 	var evals []Eval[C]
-	evalNames, caseNames := map[string]bool{}, map[string]bool{}
+	evalNames := map[string]bool{}
 	for _, dir := range dirs {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -73,6 +73,7 @@ func ReadDirs[C any](dirs []string, nameOf func(*C) string, check func(*C) error
 			}
 			evalNames[f.Name] = true
 			ev := Eval[C]{Dir: dir, File: e.Name(), Name: f.Name, Description: f.Description, Cases: []C{}}
+			caseNames := map[string]bool{} // the names of the cases of this eval
 			for i, raw := range f.Cases {
 				var c C
 				if err := json.Unmarshal(raw, &c); err != nil {
@@ -110,10 +111,24 @@ func Names[C any](evals []Eval[C]) []string {
 
 // Select returns the evals to run: the one called eval (all of them if eval is empty), with only the cases called by the names
 // in only (all of them if only is empty). An eval left without cases is dropped. An unknown eval or case name is an error, and
-// so is a case that is not in the eval asked for.
+// so is a case that is not in the eval asked for. Case names are unique within an eval only: a name that more than one eval has
+// is ambiguous when no eval is asked for, and is an error then (name the eval).
 func Select[C any](evals []Eval[C], nameOf func(*C) string, eval string, only []string) ([]Eval[C], error) {
 	if eval != "" && !slices.ContainsFunc(evals, func(e Eval[C]) bool { return e.Name == eval }) {
 		return nil, fmt.Errorf("unknown eval %q (available: %s)", eval, strings.Join(Names(evals), ", "))
+	}
+	if eval == "" {
+		for _, n := range only {
+			var owners []string
+			for _, e := range evals {
+				if slices.ContainsFunc(e.Cases, func(c C) bool { return nameOf(&c) == n }) {
+					owners = append(owners, e.Name)
+				}
+			}
+			if len(owners) > 1 {
+				return nil, fmt.Errorf("ambiguous case %q: it is in the evals %s (pick one with the eval name)", n, strings.Join(owners, ", "))
+			}
+		}
 	}
 	var out []Eval[C]
 	found := map[string]bool{}

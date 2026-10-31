@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.143.2] - 2026-10-31
+
+### Fixed
+- Two evals can now have a case with the same name (for example `temporal` and an eval with the same cases in another directory). Case names only have to be unique within their eval; before, loading the evals failed with `duplicate case name` (knowledge and training evals). A case named alone on the command line (`./run_evals.sh case-name`) that more than one eval has is rejected as ambiguous: add `-eval NAME` (`--eval`) to pick the eval.
+
 ## [0.143.1] - 2026-10-31
 
 ### Changed

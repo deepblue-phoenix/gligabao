@@ -21,7 +21,7 @@ type Eval = evalfile.Eval[core.KnowledgeCase]
 func caseName(c *core.KnowledgeCase) string { return c.Name }
 
 // LoadEvals reads the evals of the directories dirs, in order: an eval whose name was found in an earlier directory hides the same
-// name in a later one. Case names are unique over all of them. A text of a case is given by its Text, or by its TextFile (a file
+// name in a later one. Case names are unique within an eval. A text of a case is given by its Text, or by its TextFile (a file
 // of one of dirs, the first that has it, read when the case runs), not both, and the file must exist.
 func LoadEvals(dirs ...string) ([]Eval, error) {
 	return evalfile.ReadDirs(dirs, caseName, func(c *core.KnowledgeCase) error {

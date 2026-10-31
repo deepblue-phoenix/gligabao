@@ -17,7 +17,7 @@ The root package has `Open(backend, *sql.DB)`, which applies the schema (`intern
 
 ## How an eval runs
 
-1. The evals are read from their files (`build/evals_knowledge/*.json`, `build/evals_training/*.json`; `{name, description?, cases}`; case names are unique over all the evals).
+1. The evals are read from their files (`build/evals_knowledge/*.json`, `build/evals_training/*.json`; `{name, description?, cases}`; case names are unique within an eval; two evals may use the same one, and a name given alone on the command line that more than one eval has needs the eval named too).
 2. `runner.SyncEval` puts each one in the database: the eval def is created (or updated), and a case def with the metadata of its type for each case (created, rewritten if the file changed, ordered as the file). Cases that were dropped from a file stay in the database (they may have runs), after the others.
 3. `runner.RunEval` records an eval run (`running`) and gives an `EvalRecorder` to the executor of the type. The executor runs the cases and records each as a case run with its metadata; the eval run (its `Counts`, cost and metadata) is rewritten as the cases finish, so a run that is going shows its progress. The run ends `completed`, `errored` (the executor could not go on: the model or the judge is down) or `cancelled` (Ctrl-C). A case that fails is an `errored` case run and the run goes on.
 4. An experiment run (knowledge: `-experiment`; if not given, named after the eval picked with `-eval`, else with the start time) sums the counts and the cost of its eval runs.

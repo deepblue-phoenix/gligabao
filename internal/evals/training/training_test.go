@@ -231,8 +231,12 @@ func TestLoadEvals(t *testing.T) {
 	}
 
 	write("c.json", `{"name": "ev-c", "cases": [{"name": "c1", "instruction": "q", "output": "a"}]}`)
+	if got, err := training.LoadEvals(dir); err != nil || len(got) != 3 {
+		t.Errorf("the same case name in two evals: %+v %v", got, err)
+	}
+	write("c.json", `{"name": "ev-c", "cases": [{"name": "c1", "instruction": "q", "output": "a"}, {"name": "c1", "instruction": "q", "output": "a"}]}`)
 	if _, err := training.LoadEvals(dir); err == nil || !strings.Contains(err.Error(), "duplicate case name") {
-		t.Errorf("duplicate case name: %v", err)
+		t.Errorf("duplicate case name in an eval: %v", err)
 	}
 	write("c.json", `{"name": "ev-c", "cases": [{"name": "c9", "instruction": "q"}]}`)
 	if _, err := training.LoadEvals(dir); err == nil {

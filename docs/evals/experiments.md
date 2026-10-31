@@ -35,7 +35,7 @@ An *eval case* (a *case*) is one input/output combination, plus metadata, to be 
 
 Links between runs go from child to parent (`CaseRun.EvalRunID`, `EvalRun.ExperimentRunID`); a parent stores no list of its children. A def that has runs cannot be deleted (`ON DELETE RESTRICT`), so the history stays understandable; deleting a run deletes the runs under it and their metadata.
 
-Both types have **evals**: a case belongs to an eval, and a case name is unique within its eval (the runner also requires them to be unique over all the evals, so a case can be named on the command line). Knowledge evals are the files of `build/evals_knowledge/`. Training evals are the files of `build/evals_training/` (named after the training dataset their cases ask about); an *eval run* (one run of the eval against one trained model) has one case run per case.
+Both types have **evals**: a case belongs to an eval, and a case name is unique within its eval only (two evals may use the same name; a case named alone on the command line that more than one eval has is ambiguous, so name the eval too with `-eval`). Knowledge evals are the files of `build/evals_knowledge/`. Training evals are the files of `build/evals_training/` (named after the training dataset their cases ask about); an *eval run* (one run of the eval against one trained model) has one case run per case.
 
 The graph and the artifacts of a case are not copied into the run tables: they are read from the dataset the case ran in, via `dataset_id` and `artifact_ids`. Datasets are only ever soft-deleted, so they stay readable; if a dataset (or an artifact) is purged from the eval database, its case shows no graph (or no artifact).
 
