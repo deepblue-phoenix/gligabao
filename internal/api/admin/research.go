@@ -6,10 +6,12 @@ package admin
 // artifacts, entities and facts of its session "research-<run id>").
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -390,6 +392,26 @@ func researchRunOfSession(session string) int64 {
 	return id
 }
 
+// researchAgentSessions returns the agent with the session it stores under, and with includeSubagents its sub-agents too (all
+// generations, breadth first: the tree is at most 10 agents). An unknown agent is an error of Kind KindNotFound.
+func researchAgentSessions(ctx context.Context, m *agent_research.Manager, id int64, includeSubagents bool) ([]ProvenanceAgent, error) {
+	run, err := m.Get(ctx, "", id)
+	if err != nil {
+		return nil, err
+	}
+	agents := []ProvenanceAgent{{RunID: id, Name: run.Name, SessionID: agent_research.SessionID(id)}}
+	for i := 0; includeSubagents && i < len(agents); i++ {
+		kids, err := m.List(ctx, "", agent_research.ListOptions{ParentID: agents[i].RunID, Limit: agent_research.MaxListLimit})
+		if err != nil {
+			return nil, err
+		}
+		for j := len(kids) - 1; j >= 0; j-- {
+			agents = append(agents, ProvenanceAgent{RunID: kids[j].ID, Name: kids[j].Name, SessionID: agent_research.SessionID(kids[j].ID)})
+		}
+	}
+	return agents, nil
+}
+
 // ResearchProvenanceOf serves GET /admin/api/research/{id}/provenance[?include_subagents=true]: what the agent put in the knowledge
 // base, whichever dataset it went to: the artifacts it stored, the entities it discovered and the facts (edges), read from its session
 // "research-<run id>" (the remember tool attaches it to everything it stores). With include_subagents the sessions of its sub-agents
@@ -411,22 +433,12 @@ func ResearchProvenanceOf(m *agent_research.Manager) http.HandlerFunc {
 			out.IncludeSubagents = b
 		}
 		ctx := r.Context()
-		run, err := m.Get(ctx, "", id)
+		agents, err := researchAgentSessions(ctx, m, id, out.IncludeSubagents)
 		if err != nil {
 			researchFail(w, err, "read the research agent")
 			return
 		}
-		out.Agents = append(out.Agents, ProvenanceAgent{RunID: id, Name: run.Name, SessionID: agent_research.SessionID(id)})
-		for i := 0; out.IncludeSubagents && i < len(out.Agents); i++ { // breadth first: the tree is at most 10 agents
-			kids, err := m.List(ctx, "", agent_research.ListOptions{ParentID: out.Agents[i].RunID, Limit: agent_research.MaxListLimit})
-			if err != nil {
-				researchFail(w, err, "read the sub-agents")
-				return
-			}
-			for j := len(kids) - 1; j >= 0; j-- {
-				out.Agents = append(out.Agents, ProvenanceAgent{RunID: kids[j].ID, Name: kids[j].Name, SessionID: agent_research.SessionID(kids[j].ID)})
-			}
-		}
+		out.Agents = agents
 		sessions := make([]string, len(out.Agents))
 		for i, a := range out.Agents {
 			sessions[i] = a.SessionID
@@ -509,4 +521,79 @@ func runsOfSessions(sessions []string) []int64 {
 		}
 	}
 	return out
+}
+
+type researchTemporalResponse struct {
+	RunID            int64 `json:"run_id"`
+	IncludeSubagents bool  `json:"include_subagents"`
+	// Artifacts are the artifacts that have events, by ID.
+	Artifacts []rememberRunTemporalArtifact `json:"artifacts"`
+	// Events are what the agent's remember calls did to the facts, oldest first, each with its fact in its current state.
+	Events []graph.EdgeEvent `json:"events"`
+}
+
+// ResearchTemporalOf serves GET /admin/api/research/{id}/temporal[?include_subagents=true]: what the agent did to the temporal state of
+// the facts (gb_edge_events: facts created, confirmed, ended, invalidated or superseded), as the temporal view of a remember run
+// (RememberRunTemporalOf) gives it for one call: the events of the artifacts of the session "research-<run id>" (whichever dataset they
+// are in) and of their chunks and enrichments, with the reference times of the texts. With include_subagents the sessions of its
+// sub-agents are included too. An unknown agent is 404.
+func ResearchTemporalOf(m *agent_research.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		out := researchTemporalResponse{RunID: id, Artifacts: []rememberRunTemporalArtifact{}, Events: []graph.EdgeEvent{}}
+		if v := r.URL.Query().Get("include_subagents"); v != "" {
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				httputil.Error(w, http.StatusBadRequest, "include_subagents must be true or false")
+				return
+			}
+			out.IncludeSubagents = b
+		}
+		ctx := r.Context()
+		agents, err := researchAgentSessions(ctx, m, id, out.IncludeSubagents)
+		if err != nil {
+			researchFail(w, err, "read the research agent")
+			return
+		}
+		sessions := make([]string, len(agents))
+		for i, a := range agents {
+			sessions[i] = a.SessionID
+		}
+		fail := func(err error) {
+			log.WithError(err).WithField("run_id", id).Error("admin: research temporal failed")
+			httputil.Error(w, http.StatusInternalServerError, "failed to read the temporal events")
+		}
+		arts, err := graph.ListArtifactsBySessions(ctx, m.DB, sessions)
+		if err != nil {
+			fail(err)
+			return
+		}
+		// The events of an artifact include those of its descendants (chunks, enrichments), which are in the session too: ask for the
+		// roots only, so that no event is read twice.
+		inSession := map[int64]bool{}
+		for _, a := range arts {
+			inSession[a.ID] = true
+		}
+		for _, a := range arts {
+			if a.ParentID != 0 && inSession[a.ParentID] {
+				continue
+			}
+			events, err := graph.ListEdgeEvents(ctx, m.DB, a.ID)
+			if err != nil {
+				fail(err)
+				return
+			}
+			out.Events = append(out.Events, events...)
+		}
+		slices.SortFunc(out.Events, func(a, b graph.EdgeEvent) int { return cmp.Compare(a.ID, b.ID) })
+		out.Events = slices.CompactFunc(out.Events, func(a, b graph.EdgeEvent) bool { return a.ID == b.ID })
+		if out.Artifacts, err = temporalArtifacts(ctx, m.DB, out.Events); err != nil {
+			fail(err)
+			return
+		}
+		httputil.WriteJSON(w, http.StatusOK, out)
+	}
 }

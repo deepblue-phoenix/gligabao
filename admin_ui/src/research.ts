@@ -6,6 +6,7 @@
 import { confirmDialog } from "./dialogs.js";
 import { agoText, durationText } from "./format.js";
 import { showGraph, showGraphFrom } from "./graph.js";
+import { openTemporalAt } from "./temporal.js";
 import { onViewShown } from "./views.js";
 
 interface State { seq: number; state: string; step: number; detail: string; error: string; started_at: string; finished_at: string | null }
@@ -281,6 +282,9 @@ async function showDetail(id: number): Promise<void> {
   actions.replaceChildren();
   actions.append(node("span", `badge ${STATUS_CLASS[d.status]}`, d.status));
   actions.append(button("Knowledge", "What this agent put in the knowledge base", "small", () => void showProvenance(d.id, d.children > 0)));
+  actions.append(button("Temporal plot", "Plot what this agent did to the facts on a time axis: established, invalidated, still true", "small", () => {
+    openTemporalAt(`Agent #${d.id} · temporal changes`, `api/research/${d.id}/temporal?include_subagents=${d.children > 0}`);
+  }));
   if (d.status === "running") actions.append(button("Stop", "Stop this agent", "small danger", () => void stopAgent(d)));
   // A refresh redraws the whole body: keep what the user opened and where they scrolled.
   const same = renderedID === id;

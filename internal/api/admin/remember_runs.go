@@ -226,26 +226,31 @@ func RememberRunTemporalOf(dbs []Named) http.HandlerFunc {
 	}
 }
 
-// temporalArtifacts returns the artifacts the events belong to (in the dataset of the events), by ID; empty for no events.
+// temporalArtifacts returns the artifacts the events belong to, by ID (each in the dataset of its events, which may be several: a
+// research agent remembers into any); empty for no events.
 func temporalArtifacts(ctx context.Context, d *sql.DB, events []graph.EdgeEvent) ([]rememberRunTemporalArtifact, error) {
 	out := []rememberRunTemporalArtifact{}
-	if len(events) == 0 {
-		return out, nil
-	}
-	var ids []int64
+	var datasets []int64
+	ids := map[int64][]int64{}
 	seen := map[int64]bool{}
 	for _, e := range events {
-		if e.ArtifactID != 0 && !seen[e.ArtifactID] {
-			seen[e.ArtifactID] = true
-			ids = append(ids, e.ArtifactID)
+		if e.ArtifactID == 0 || seen[e.ArtifactID] {
+			continue
 		}
+		seen[e.ArtifactID] = true
+		if _, ok := ids[e.DatasetID]; !ok {
+			datasets = append(datasets, e.DatasetID)
+		}
+		ids[e.DatasetID] = append(ids[e.DatasetID], e.ArtifactID)
 	}
-	arts, err := graph.ArtifactsByID(ctx, d, events[0].DatasetID, ids)
-	if err != nil {
-		return nil, err
-	}
-	for _, a := range arts {
-		out = append(out, rememberRunTemporalArtifact{ID: a.ID, ParentID: a.ParentID, Kind: a.Kind, ValidAt: a.ValidAt, CreatedAt: a.CreatedAt})
+	for _, ds := range datasets {
+		arts, err := graph.ArtifactsByID(ctx, d, ds, ids[ds])
+		if err != nil {
+			return nil, err
+		}
+		for _, a := range arts {
+			out = append(out, rememberRunTemporalArtifact{ID: a.ID, ParentID: a.ParentID, Kind: a.Kind, ValidAt: a.ValidAt, CreatedAt: a.CreatedAt})
+		}
 	}
 	return out, nil
 }

@@ -55,6 +55,7 @@ func testResearchAdmin(t *testing.T, d *sql.DB) {
 		mux := http.NewServeMux()
 		mux.HandleFunc("GET /x/{id}", h)
 		mux.HandleFunc("GET /x/{id}/provenance", h)
+		mux.HandleFunc("GET /x/{id}/temporal", h)
 		mux.HandleFunc("POST /x/{id}/stop", h)
 		mux.HandleFunc("GET /x", h)
 		rec := httptest.NewRecorder()
@@ -169,6 +170,8 @@ func testResearchAdmin(t *testing.T, d *sql.DB) {
 	check(tx.LinkEdgeSession(ctx, e1, rs))
 	check(tx.LinkEdgeSession(ctx, e1, ks)) // the kid restated the fact of its parent
 	check(tx.LinkEdgeSession(ctx, e2, ks))
+	check(tx.InsertEdgeEvent(ctx, graph.EdgeEvent{DatasetID: main, EdgeID: e1, ArtifactID: a1, Event: graph.EdgeCreated, CreatedAt: now}))
+	check(tx.InsertEdgeEvent(ctx, graph.EdgeEvent{DatasetID: side, EdgeID: e2, ArtifactID: a2, Event: graph.EdgeCreated, CreatedAt: now}))
 	check(tx.Commit())
 
 	type prov struct {
@@ -207,6 +210,24 @@ func testResearchAdmin(t *testing.T, d *sql.DB) {
 	}
 	if c := do(admin.ResearchProvenanceOf(m), "GET", "/x/"+itoa(kid.ID)+"/provenance", &p); c != 200 || len(p.Artifacts) != 1 || p.Artifacts[0].DatasetID != side {
 		t.Errorf("kid provenance: %d %+v", c, p)
+	}
+
+	// Temporal: the events of the artifacts of the session, in any dataset; the sub-agents' only on request.
+	var tp struct {
+		Artifacts []struct {
+			ID int64 `json:"id"`
+		} `json:"artifacts"`
+		Events []graph.EdgeEvent `json:"events"`
+	}
+	if c := do(admin.ResearchTemporalOf(m), "GET", "/x/"+itoa(root.ID)+"/temporal", &tp); c != 200 || len(tp.Events) != 1 || len(tp.Artifacts) != 1 || tp.Artifacts[0].ID != a1 || tp.Events[0].Edge == nil || tp.Events[0].Edge.Source != "Alice" {
+		t.Errorf("temporal: %d %+v", c, tp)
+	}
+	tp.Events, tp.Artifacts = nil, nil
+	if c := do(admin.ResearchTemporalOf(m), "GET", "/x/"+itoa(root.ID)+"/temporal?include_subagents=true", &tp); c != 200 || len(tp.Events) != 2 || len(tp.Artifacts) != 2 {
+		t.Errorf("temporal with sub-agents: %d %+v", c, tp)
+	}
+	if c := do(admin.ResearchTemporalOf(m), "GET", "/x/999/temporal", nil); c != 404 {
+		t.Errorf("temporal of unknown: %d", c)
 	}
 	if c := do(admin.ResearchProvenanceOf(m), "GET", "/x/999/provenance", nil); c != 404 {
 		t.Errorf("provenance of unknown: %d", c)

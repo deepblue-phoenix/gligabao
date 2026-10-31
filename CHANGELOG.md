@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.147.0] - 2026-11-02
+
+### Added
+- Admin UI, **Research** view: the details modal of an agent has a **Temporal plot** button (next to **Knowledge**) that opens the same temporal plot as a remember run's: what the agent did to the facts over time (created, confirmed, ended, invalidated, superseded). It covers the whole session `research-<run id>`, in whichever dataset the agent remembered, and the sub-agents' sessions too when the agent has any.
+- New admin endpoint `GET /v1/gb/admin/api/research/{id}/temporal[?include_subagents=true]` (same `artifacts` and `events` as `GET /v1/gb/admin/api/remember-run-temporal`).
+
+### Changed
+- The artifacts of a temporal plot are looked up in the dataset of each event, so a plot can span several datasets.
+
 ## [0.146.1] - 2026-11-02
 
 ### Fixed
