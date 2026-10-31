@@ -1,6 +1,7 @@
 // gligabao admin UI: a health indicator, system totals, the datasets of all users and and, in their own views, the evals (evals.ts), timeseries (timeseries.ts), inferences (inferences.ts), remember runs and query runs (runs.ts), bookmarks of eval cases and runs (bookmarks.ts) and training (training.ts); extensions (extensions.ts) can add views and UI. Talks to the server's own HTTP API.
 
 import { initBookmarks } from "./bookmarks.js";
+import { initCaseModal } from "./case_modal.js";
 import { initEvals } from "./evals.js";
 import { loadExtensions } from "./extensions.js";
 import { initGeo } from "./geo.js";
@@ -363,6 +364,7 @@ void (async () => {
   initVectorsModal();
   initTraceModal();
   initHistoryModal();
+  initCaseModal();
   initEvals();
   initTimeseries();
   initInferences();

@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.151.1] - 2026-11-01
+
+### Fixed
+- Admin UI, **bookmarks** view: opening a bookmarked eval case now opens only the **case modal**, on top of the bookmarks view. Before, it also opened the run's modal behind it, so closing the case modal left you in the run (the evals view) instead of in the bookmarks view.
+
+### Changed
+- Admin UI: the case modal (and the rerun modal) is now independent of the evals view (`admin_ui/src/case_modal.ts`, shared types and helpers in `eval_common.ts`), so any view can open it and closing it leaves you where you were. A rerun still refreshes the run's modal, but only if that one is open.
+
 ## [0.151.0] - 2026-11-01
 
 ### Added
