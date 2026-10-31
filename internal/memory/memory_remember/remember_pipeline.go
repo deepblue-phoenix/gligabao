@@ -19,6 +19,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_pipeline"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_temporal"
 )
 
 //------------------
@@ -73,9 +74,9 @@ type unit struct {
 	// part says the text is a chunk of a longer one; nil if it is not.
 	part *chunkPart
 
-	cs   *candidates // load_candidates
-	plan *EdgePlan   // resolve_edges
-	res  *Result     // store
+	cs   *candidates               // load_candidates
+	plan *memory_temporal.EdgePlan // resolve_edges
+	res  *Result                   // store
 }
 
 // reconcile runs the reconcile stages on a text that an enrichment stage made (a web search result, a series observation), from
@@ -257,11 +258,11 @@ func (j *job) loadCandidatesStage(ctx context.Context) error {
 	//   - touches at least one entity (as source or target) that is an endpoint of a new edge, found in two ways that
 	//     are merged by edge ID: by exact normalized name, and (with WithVectors) by similarity of the entity's
 	//     embedding, which finds aliases ("Alicia" for a stored "Alice Smith"); see findSimilarEntities,
-	// newest first, capped at maxCandidates (50). E.g. the new fact "Alice lives in Berlin" has Alice and Berlin as
+	// newest first, capped at memory_temporal.MaxCandidates (50). E.g. the new fact "Alice lives in Berlin" has Alice and Berlin as
 	// endpoints, so every live fact about Alice or Berlin is a candidate, such as "Alice lives in Paris".
 	// A dataset that does not exist yet (first Remember) has none.
 	//
-	// They are the only stored facts resolveEdges looks at: exact repeats (same endpoints and relation) are merged in
+	// They are the only stored facts ResolveEdges looks at: exact repeats (same endpoints and relation) are merged in
 	// Go, and the rest are shown to the LLM, which flags semantic duplicates and contradictions; the contradicted
 	// ones are invalidated (not deleted) by Store. Without candidates there is no LLM resolution call.
 	// For the chunks of a long text this runs after the previous chunk was stored, so a chunk is also compared with
@@ -295,7 +296,7 @@ func (j *job) loadCandidatesStage(ctx context.Context) error {
 func (j *job) resolveEdgesStage(ctx context.Context) error {
 	u := j.u
 	_, step := j.labels()
-	plan, err := resolveEdges(ctx, j.co.ModelLLM(j.llm, memory_core.StageResolveEdges), u.ex.Edges, u.cs.Edges)
+	plan, err := memory_temporal.ResolveEdges(ctx, j.co.ModelLLM(j.llm, memory_core.StageResolveEdges), u.ex.Edges, u.cs.Edges)
 	j.outputResolveEdges(step, u.ex, plan)
 	if err != nil {
 		return j.chunkError(err)

@@ -13,9 +13,45 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_dataset"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_temporal"
 
 	log "github.com/sirupsen/logrus"
 )
+
+// candidates are the stored facts a Remember call compares its new facts with (see memory_temporal.Candidates), and what the
+// search for similar entities found while looking for them.
+type candidates struct {
+	*memory_temporal.Candidates
+	// Similar are the stored entities found by similarity (see findSimilarEntities); SearchTexts are the texts that were
+	// embedded for that (empty: no search was made); SearchUsage is the embedding request's usage and SearchErr why the
+	// search failed (a failed search is not an error of the call: the candidates are then those of the exact names).
+	Similar     []similarEntity
+	SearchTexts []string
+	SearchUsage *ai.EmbedUsage
+	SearchErr   error
+}
+
+// loadCandidates returns the candidates of the new edges of ex in the user's dataset: the lookup by name, and with WithVectors
+// the one by similarity of the entity embeddings, which finds aliases (see memory_temporal.LoadCandidates).
+func loadCandidates(ctx context.Context, d *sql.DB, o memory_core.CallOptions, userID, dataset string, ex *Extraction) (*candidates, error) {
+	out := &candidates{}
+	var err error
+	out.Candidates, err = memory_temporal.LoadCandidates(ctx, d, userID, dataset, ex.Edges, func(ctx context.Context, dsID int64) []string {
+		out.Similar, out.SearchTexts, out.SearchUsage, out.SearchErr = findSimilarEntities(ctx, d, o, dsID, ex)
+		if out.SearchErr != nil {
+			log.WithError(out.SearchErr).Warn("similar entity search failed; candidates are matched by name only")
+		}
+		names := make([]string, 0, len(out.Similar))
+		for _, s := range out.Similar {
+			names = append(names, s.name)
+		}
+		return names
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 // similarEntity is a stored entity found by similarity for an endpoint of a new fact.
 type similarEntity struct {

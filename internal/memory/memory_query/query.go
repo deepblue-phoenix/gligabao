@@ -95,7 +95,7 @@ const (
 // EvidenceEntity is a graph entity cited by an answer.
 type EvidenceEntity = graph.EvidenceEntity
 
-// EvidenceEdge is a graph edge cited by an answer, with the bi-temporal validity of the fact (see temporal.go).
+// EvidenceEdge is a graph edge cited by an answer, with the bi-temporal validity of the fact (see internal/memory/memory_temporal).
 type EvidenceEdge = graph.EvidenceEdge
 
 //---------------------------------------------------------------------------------------------

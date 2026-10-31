@@ -1,5 +1,5 @@
 // Package memory_remember is the remember pipeline of internal/memory: it turns free text into a bi-temporal
-// knowledge graph (modelled on Graphiti) with an LLM and stores it (see internal/db/graph). See temporal.go for how
+// knowledge graph (modelled on Graphiti) with an LLM and stores it (see internal/db/graph). See internal/memory/memory_temporal for how
 // facts are reconciled with what is already stored.
 package memory_remember
 
@@ -19,6 +19,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_pipeline"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_temporal"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_timeseries"
 )
 
@@ -274,25 +275,10 @@ func parseExtraction(s string, ref time.Time) (*Extraction, error) {
 		if e.Description == "" {
 			e.Description = memory_core.SynthStatement(e.Source, e.Relation, e.Target)
 		}
-		if e.ValidAt == nil { // a fact inherits the time of the artifact that states it
-			v := ref.UTC()
-			e.ValidAt = &v
-		}
-		fixSpan(&e)
+		memory_temporal.ApplyReference(&e, ref) // a fact without a start inherits the time of the artifact that states it
 		ex.Edges = append(ex.Edges, e)
 	}
 	return ex, nil
-}
-
-// fixSpan makes the event-time span of an extracted edge consistent. The text said the fact ended (InvalidAt), which is
-// more reliable than a start the model defaulted or guessed, so the end is kept and the start is moved back to it when it
-// is later ("Alice left Acme in June 2024" with no start: ValidAt would be the reference time, after the end). The span is
-// then empty (ValidAt == InvalidAt): the start is unknown and the fact ended at that instant. ValidAt must be set.
-func fixSpan(e *Edge) {
-	if e.InvalidAt != nil && e.InvalidAt.Before(*e.ValidAt) {
-		v := *e.InvalidAt
-		e.ValidAt = &v
-	}
 }
 
 //---------------------------------------------------------------------------------------------
@@ -455,7 +441,7 @@ func candidateFacts(edges []Edge, via map[int64]string) []map[string]any {
 
 // Store persists an artifact of the given kind (already resolved, see ResolveKind) and its extraction into userID's named dataset (created if missing). Entities are
 // deduplicated within the dataset by (normalized name, type); nothing is shared across datasets. Edges are
-// written according to plan (see EdgePlan); now is the system time stamped on them. Edges naming an unlisted
+// written according to plan (see memory_temporal.EdgePlan); now is the system time stamped on them. Edges naming an unlisted
 // entity create it with type "other".
 //
 // With WithSessionID the artifact carries the session ID, and the session is recorded against every entity the
@@ -469,7 +455,7 @@ func candidateFacts(edges []Edge, via map[int64]string) []map[string]any {
 // VectorDataset). The embedding is computed before the transaction commits, so an embedder failure stores
 // nothing; the vectors are written right after the commit, so a vector store failure returns an error after the
 // relational data is saved (the vectors are written again the next time the entity or fact is mentioned).
-func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan, opts ...memory_core.Option) (*Result, error) {
+func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *memory_temporal.EdgePlan, opts ...memory_core.Option) (*Result, error) {
 	return store(ctx, d, userID, dataset, kind, text, ref, now, ex, plan, nil, nil, nil, opts...)
 }
 
@@ -479,7 +465,7 @@ func Store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 // query and is a child of web.ParentID (kind is ignored). obs, if not nil, says the text is the observation of a series:
 // it is then stored as an artifact of kind series_observation that records the series and is a child of obs.ParentID
 // (kind is ignored). part, web and obs are never more than one set.
-func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *EdgePlan, part *chunkPart, web *webPart, obs *observationPart, opts ...memory_core.Option) (*Result, error) {
+func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, ref, now time.Time, ex *Extraction, plan *memory_temporal.EdgePlan, part *chunkPart, web *webPart, obs *observationPart, opts ...memory_core.Option) (*Result, error) {
 	co := memory_core.NewCallOptions(opts)
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
@@ -622,7 +608,7 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		ids[memory_core.Key(name)] = id
 		return id, nil
 	}
-	out.Edges, out.InvalidatedEdges, err = storeEdges(ctx, tx, dsID, artID, sessionID, ref, now, ex.Edges, plan, entityID)
+	out.Edges, out.InvalidatedEdges, err = memory_temporal.StoreEdges(ctx, tx, dsID, artID, sessionID, ref, now, ex.Edges, plan, entityID)
 	if err != nil {
 		return nil, err
 	}

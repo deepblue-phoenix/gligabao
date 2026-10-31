@@ -1,12 +1,16 @@
-package memory_remember
+package memory_temporal
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+)
 
 func TestMergeCandidates(t *testing.T) {
-	byName := []Edge{{ID: 9}, {ID: 5}, {ID: 2}}
-	bySimilar := []Edge{{ID: 7}, {ID: 5}, {ID: 1}}
+	byName := []graph.Edge{{ID: 9}, {ID: 5}, {ID: 2}}
+	bySimilar := []graph.Edge{{ID: 7}, {ID: 5}, {ID: 1}}
 	via := map[int64]string{}
-	got := mergeCandidates(byName, bySimilar, 5, via)
+	got := MergeCandidates(byName, bySimilar, 5, via)
 	var ids []int64
 	for _, e := range got {
 		ids = append(ids, e.ID)
@@ -20,10 +24,10 @@ func TestMergeCandidates(t *testing.T) {
 			t.Fatalf("ids = %v, want %v", ids, want)
 		}
 	}
-	if via[9] != viaName || via[7] != viaSimilar || via[5] != viaBoth {
+	if via[9] != ViaName || via[7] != ViaSimilar || via[5] != ViaBoth {
 		t.Errorf("via = %v", via)
 	}
-	if got := mergeCandidates(byName, bySimilar, 2, nil); len(got) != 2 || got[0].ID != 9 || got[1].ID != 7 {
+	if got := MergeCandidates(byName, bySimilar, 2, nil); len(got) != 2 || got[0].ID != 9 || got[1].ID != 7 {
 		t.Errorf("capped = %v", got)
 	}
 }

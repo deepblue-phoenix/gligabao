@@ -1,8 +1,10 @@
-package memory_remember
+package memory_temporal
 
 import (
 	"testing"
 	"time"
+
+	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 )
 
 func TestFixSpan(t *testing.T) {
@@ -26,8 +28,8 @@ func TestFixSpan(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			e := Edge{ValidAt: tc.valid, InvalidAt: tc.inval}
-			fixSpan(&e)
+			e := graph.Edge{ValidAt: tc.valid, InvalidAt: tc.inval}
+			FixSpan(&e)
 			if !e.ValidAt.Equal(*tc.wantValid) {
 				t.Errorf("ValidAt = %v, want %v", e.ValidAt, tc.wantValid)
 			}

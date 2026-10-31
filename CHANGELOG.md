@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.143.4] - 2026-10-31
+
+### Changed
+- Refactor, no change in behaviour: the temporal logic of `remember` moved from `internal/memory/memory_remember/temporal.go` and `remember.go` to a new package `internal/memory/memory_temporal`: `ResolveEdges` and `EdgePlan` (duplicates and contradictions, with the resolve prompt), `LoadCandidates` and `MergeCandidates` (the stored facts a call compares with; the search of aliases by similarity stays in `memory_remember` and is passed in as a function), `StoreEdges` (with the invalidation rule and the edge events) and `ApplyReference` / `FixSpan` (the validity span of an extracted edge). Their tests moved with them.
+
 ## [0.143.3] - 2026-10-31
 
 ### Changed

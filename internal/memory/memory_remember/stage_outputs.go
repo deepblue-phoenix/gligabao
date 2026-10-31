@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_temporal"
 )
 
 // stepLabel says what the text that a step runs on is (see runLog.Output): "chunk 2 of 5", `web search for "Berlin"`,
@@ -53,7 +54,7 @@ func (j *job) outputCandidates(label string, ex *Extraction, cs *candidates) {
 // outputResolveEdges files the output of the resolve_edges stage: the new facts (the numbers in the decisions are their
 // positions), what was decided, and what the LLM answered (nothing if it was not asked: no candidates, or all repeats). plan
 // is nil if the LLM call itself failed.
-func (j *job) outputResolveEdges(label string, ex *Extraction, plan *EdgePlan) {
+func (j *job) outputResolveEdges(label string, ex *Extraction, plan *memory_temporal.EdgePlan) {
 	out := map[string]any{"new_edges": candidateFacts(ex.Edges, nil)}
 	if plan != nil {
 		dups := make([]map[string]any, 0, len(plan.Duplicates))
