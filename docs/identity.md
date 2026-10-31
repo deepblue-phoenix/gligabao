@@ -1,6 +1,6 @@
 # Identity
 
-Every request to gligabao says which user it acts for, with a `user_id`. without the `Auth` hook gligabao does not authenticate users: `user_id` is an opaque string that the calling application supplies and is trusted to get right. Put gligabao behind your own auth layer and pass the authenticated user's ID.
+Every request to gligabao says which user it acts for, with a `user_id`. Without the `Auth` hook gligabao does not authenticate users: `user_id` is an opaque string that the calling application supplies and is trusted to get right. Put gligabao behind your own auth layer and pass the authenticated user's ID.
 
 ## With the `Auth` hook
 
