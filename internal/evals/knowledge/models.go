@@ -49,6 +49,32 @@ func mergeModels(flag, caseModels map[string]string) (remember, query memory_cor
 	return splitModels(merged)
 }
 
+// PipelineModels returns the models of a rerun that picks one model for the whole remember pipeline and one for the query (an empty
+// one leaves its pipeline as it is): the model of every LLM stage of the pipeline, so no stage has to be set one by one. Remember's
+// stages are memory_core.Stages (all but extract_image, which the cases never run); the query's are memory_core.QueryStages (the
+// call that answers and the detection of the places of the question). detect_geo is in both, and each pipeline gets its own model
+// for it. The names are validated like those of ResolveModels.
+func PipelineModels(rememberModel, queryModel string) (remember, query memory_core.Models, err error) {
+	rem, q := map[string]string{}, map[string]string{}
+	if rememberModel = strings.TrimSpace(rememberModel); rememberModel != "" {
+		for _, stage := range memory_core.Stages {
+			if stage != memory_core.StageExtractImage {
+				rem[stage] = rememberModel
+			}
+		}
+	}
+	if queryModel = strings.TrimSpace(queryModel); queryModel != "" {
+		for _, stage := range memory_core.QueryStages {
+			q[stage] = queryModel
+		}
+	}
+	if remember, err = memory_core.ResolveModels(rem); err != nil {
+		return nil, nil, err
+	}
+	query, err = memory_core.ResolveQueryModels(q)
+	return remember, query, err
+}
+
 // ParseModels parses the -models flag, "extract_graph=claude-sonnet-4-5,query=claude-haiku-5-5", and validates it. An empty s
 // gives nil.
 func ParseModels(s string) (memory_core.Models, error) {

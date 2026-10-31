@@ -17,6 +17,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
+	"github.com/deepblue-phoenix/gligabao/internal/evals/knowledge"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
@@ -341,8 +342,14 @@ func serverOptions(cfg *Config, opts ServeOptions) (serverOpts server.Options, r
 		TrainedModelInferenceHooks: opts.TrainedModelInferenceHooks,
 		AdminExtensions:            opts.AdminExtensions,
 
-		TrajectoryDir:      opts.TrajectoryDir,
-		EvalDBPath:         opts.EvalDBPath,
+		TrajectoryDir: opts.TrajectoryDir,
+		EvalDBPath:    opts.EvalDBPath,
+
+		// The reruns of eval cases of the admin UI. This line is the one place that plugs the implementation into the server: the server
+		// cannot import internal/evals/knowledge (which imports the server, to run each eval case behind an in-process one), so it takes
+		// this factory as an injected hook. See server.Options.EvalRerunner for the whole story of the import cycle it avoids.
+		EvalRerunner: knowledge.NewRerunner,
+
 		EvalModeEnable:     cfg.EvalModeEnable,
 		TrainingModeEnable: cfg.TrainingModeEnable,
 		AdminUIenable:      cfg.AdminUIenable,

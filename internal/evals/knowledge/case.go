@@ -83,6 +83,7 @@ func (x *Executor) runCase(ctx context.Context, name string, in core.KnowledgeCa
 	if err != nil {
 		return out, fmt.Errorf("models: %w", err)
 	}
+	models, queryModels = models.Merge(x.RememberModels), queryModels.Merge(x.QueryModels)
 	rememberReasoning, queryReasoning, err := mergeReasoning(x.Reasoning, in.Reasoning)
 	if err != nil {
 		return out, fmt.Errorf("reasoning: %w", err)

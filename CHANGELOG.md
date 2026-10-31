@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.149.0] - 2026-10-31
+
+### Added
+- Admin UI, **Evals** view: the case modal of a case that has ended has a **Re-run this case with another model** section above the LLM commentary. Pick a model for the **remember** pipeline and/or for the **query** from the LLM models of the price table (the built-in prices plus the `[prices]` of the config; *as it ran* keeps that pipeline's models) and press **Re-run case**. One model per pipeline is enough: it is used for every LLM stage of that pipeline (it wins over the case's own `models`), so stages are not set one by one. Everything else stays as the original run had it.
+- The rerun is recorded as a new eval run with that one case, in the experiment run that owns the case run: it is listed with the experiment's runs (tagged *rerun* in the run modal, with the models used), its case run is in the DB list of the experiment, and the experiment run's counts and cost include it. Its `params` say `rerun_of`, `remember_model` and `query_model`. It runs in the background on the server, from the input the case was given the first time.
+- A new **rerun modal** opens on top of the case modal and follows the rerun while it runs, then shows its result next to the case run it repeated (models, verdict, cost, duration), its checks, answer, traces, and the graph and temporal plot it built.
+- New admin endpoint `POST /v1/gb/admin/api/evals/case_runs/{id}/rerun` with `{"remember_model": "", "query_model": ""}` (each optional): `202` with the new `case_run_id`, `eval_run_id` and `experiment_run_id`; `400` for a model that is not in the price table, `404` for an unknown case run, `409` for a case run that cannot be rerun (it has not ended, its experiment run is still running, its case is gone) or when another rerun is in progress (one at a time), `503` when the server has no LLM.
+- `GET /v1/gb/admin/api/evals/case_runs/{id}/debug` also returns `cost_usd`, `started_at`, `finished_at`, `rerun` (when the case run is a rerun) and `rerun_options` (the models a rerun can pick); the case runs of `GET /v1/gb/admin/api/evals/runs/{id}` have `rerun` too.
+
 ## [0.148.0] - 2026-11-03
 
 ### Added

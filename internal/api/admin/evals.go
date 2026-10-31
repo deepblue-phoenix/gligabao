@@ -127,18 +127,20 @@ type caseRunView struct {
 	Eval string `json:"eval"`
 	Name string `json:"name"`
 	// Status is the lifecycle (did it run to the end), Verdict the judgement of a completed one (pass or fail; none otherwise).
-	Status       core.Status      `json:"status"`
-	Verdict      core.Verdict     `json:"verdict,omitempty"`
-	Score        *float64         `json:"score,omitempty"`
-	Answer       string           `json:"answer,omitempty"`
-	Problems     []string         `json:"problems"`
-	PassedChecks []string         `json:"passed_checks"`
-	Error        string           `json:"error,omitempty"`
-	Steps        int              `json:"steps"`
-	CostUSD      float64          `json:"cost_usd"`
-	StartedAt    time.Time        `json:"started_at"`
-	FinishedAt   time.Time        `json:"finished_at"`
-	DatasetID    *int64           `json:"dataset_id,omitempty"`
+	Status       core.Status  `json:"status"`
+	Verdict      core.Verdict `json:"verdict,omitempty"`
+	Score        *float64     `json:"score,omitempty"`
+	Answer       string       `json:"answer,omitempty"`
+	Problems     []string     `json:"problems"`
+	PassedChecks []string     `json:"passed_checks"`
+	Error        string       `json:"error,omitempty"`
+	Steps        int          `json:"steps"`
+	CostUSD      float64      `json:"cost_usd"`
+	StartedAt    time.Time    `json:"started_at"`
+	FinishedAt   time.Time    `json:"finished_at"`
+	DatasetID    *int64       `json:"dataset_id,omitempty"`
+	// Rerun is set when the case run is a rerun with other models (see EvalCaseRunRerun): the case run it repeated and the models.
+	Rerun        *rerunView       `json:"rerun,omitempty"`
 	Trajectories []trajectoryView `json:"trajectories,omitempty"`
 }
 
@@ -202,6 +204,8 @@ func viewOfCase(c *core.CaseRun, eval, name string) caseRunView {
 type knowledgeCaseRun struct {
 	Eval, Name string
 	Run        core.CaseRun
+	// EvalRunParams are the params of the eval run that holds the case run (they say whether it is a rerun).
+	EvalRunParams core.Params
 }
 
 // knowledgeCaseRuns returns the case runs of the knowledge evals of experiment run id, with their metadata and trajectories, in
@@ -233,7 +237,7 @@ func knowledgeCaseRuns(ctx context.Context, d *sql.DB, s evalsdb.Store, id core.
 			return nil, err
 		}
 		for _, c := range runs {
-			out = append(out, knowledgeCaseRun{Eval: def.Name, Name: names[c.DefID], Run: c})
+			out = append(out, knowledgeCaseRun{Eval: def.Name, Name: names[c.DefID], Run: c, EvalRunParams: er.Params})
 		}
 	}
 	return out, nil
@@ -489,6 +493,7 @@ func EvalRun(d *sql.DB, s evalsdb.Store) http.HandlerFunc {
 // viewWithTrajectories is the view of a case run with its trajectories and their artifacts.
 func viewWithTrajectories(ctx context.Context, d *sql.DB, c *knowledgeCaseRun) (caseRunView, error) {
 	v := viewOfCase(&c.Run, c.Eval, c.Name)
+	v.Rerun = rerunOf(c.EvalRunParams)
 	m := knowledgeMeta(&c.Run)
 	var all map[int64]graph.Artifact // the dataset's artifacts, loaded when a trajectory needs them
 	for _, t := range m.Trajectories {

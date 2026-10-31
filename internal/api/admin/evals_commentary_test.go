@@ -85,7 +85,7 @@ func testEvalCaseRunCommentary(t *testing.T, d *sql.DB) {
 	}
 	id := func(r recorded) string { return strconv.FormatInt(int64(r.CaseRunID), 10) }
 	llm := &commentLLM{}
-	debugOf := func(llm memory_core.LLM) http.HandlerFunc { return admin.EvalCaseRunDebug(d, store, llm) }
+	debugOf := func(llm memory_core.LLM) http.HandlerFunc { return admin.EvalCaseRunDebug(d, store, llm, nil) }
 
 	var dbg debug
 	if c := call(debugOf(llm), "GET", id(failed), "", &dbg); c != 200 || dbg.Eval != "s" || dbg.Name != "bad" || dbg.Verdict != "fail" || !dbg.Commentable ||

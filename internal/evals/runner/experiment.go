@@ -26,6 +26,17 @@ func (r *Runner) StartExperimentRun(ctx context.Context, def *core.ExperimentDef
 	return &ExperimentRecorder{r: r, run: run}, nil
 }
 
+// ResumeExperimentRun returns the recorder of an experiment run that is already stored (and has ended), to add eval runs to it later,
+// for example a rerun of a case. It does not change the run. The run's Counts are those stored, so add only eval runs that it does not
+// have yet.
+func (r *Runner) ResumeExperimentRun(ctx context.Context, id core.ExperimentRunID) (*ExperimentRecorder, error) {
+	run, err := r.Store.GetExperimentRun(ctx, r.DB, id)
+	if err != nil {
+		return nil, err
+	}
+	return &ExperimentRecorder{r: r, run: run}, nil
+}
+
 // Run is the experiment run being recorded.
 func (x *ExperimentRecorder) Run() *core.ExperimentRun { return x.run }
 

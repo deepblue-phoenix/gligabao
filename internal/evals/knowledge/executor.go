@@ -36,6 +36,13 @@ type Executor struct {
 	// win over it (see ParseReasoning). "detect_geo" is a stage of both and applies to both.
 	Models    map[string]string
 	Reasoning map[string]string
+	// RememberModels and QueryModels, if set, win over everything else, a case's own models included: they are the models of a rerun
+	// (see PipelineModels) that is to try the case with other models. QueryModels is for the query request (the "query" and
+	// "detect_geo" stages), RememberModels for every remember request.
+	RememberModels, QueryModels memory_core.Models
+	// OnCaseStart, if set, is called with each case run once it is recorded as running, before the case executes. The run is the one
+	// the executor goes on to change: read it in the callback, do not keep it.
+	OnCaseStart func(cr *core.CaseRun)
 	// TrajectoryDir is where the server stored the ATIF trajectories (memory_core.TrajectoryDir); the case runs reference the files.
 	TrajectoryDir string
 	// Verbose prints the input and output of every LLM call and what was stored, to Out.
@@ -83,6 +90,9 @@ func (x *Executor) executeCase(ctx, dbCtx context.Context, rec *runner.EvalRecor
 	cr, err := rec.StartCase(dbCtx, c)
 	if err != nil {
 		return err
+	}
+	if x.OnCaseStart != nil {
+		x.OnCaseStart(cr)
 	}
 	llm := x.LLM
 	if x.Verbose {

@@ -3,6 +3,7 @@ package knowledge_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,15 +12,18 @@ import (
 	"testing"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
+	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/knowledge"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/server"
 )
 
 // testEvalsDir is the directory of the evals of the repository (relative to this package).
@@ -619,4 +623,150 @@ func TestCommentary(t *testing.T) {
 			t.Errorf("LLM calls: %d", len(cl.reqs))
 		}
 	})
+}
+
+// TestPipelineModels checks that one model per pipeline becomes the model of every LLM stage of that pipeline, and that an empty
+// one leaves its pipeline alone.
+func TestPipelineModels(t *testing.T) {
+	rem, q, err := knowledge.PipelineModels("big", "")
+	if err != nil || len(q) != 0 || rem["extract_graph"] != "big" || rem["resolve_edges"] != "big" || rem["detect_geo"] != "big" || rem["web_search"] != "big" ||
+		rem["extract_image"] != "" || rem["query"] != "" {
+		t.Errorf("remember only: %v, %v, %v", rem, q, err)
+	}
+	rem, q, err = knowledge.PipelineModels("", " other ")
+	if err != nil || len(rem) != 0 || q["query"] != "other" || q["detect_geo"] != "other" || len(q) != 2 {
+		t.Errorf("query only: %v, %v, %v", rem, q, err)
+	}
+	if rem, q, err = knowledge.PipelineModels("", ""); rem != nil || q != nil || err != nil {
+		t.Errorf("none: %v, %v, %v", rem, q, err)
+	}
+	if _, _, err = knowledge.PipelineModels("a b", ""); err == nil {
+		t.Error("a model name with a space was accepted")
+	}
+}
+
+// TestRerunner checks the rerun of a failed case with other models: it is a run of its own in the experiment run of the case run
+// (which then counts it and its cost), made from the same input, with the chosen model for every stage of each pipeline over the
+// models the run had; and what cannot be rerun is refused.
+func TestRerunner(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t, "Alice.") // the original run answers Alice, so "bob" is not in the answer
+	e.x.Models = map[string]string{"extract_graph": "base-extract"}
+	ev := knowledge.Eval{Name: "rr", Cases: []core.KnowledgeCase{kcase("c1", "Alice is here.", "Who?", "bob")}}
+	def, err := e.r.SyncEval(ctx, knowledge.Spec(ev))
+	if err != nil {
+		t.Fatal(err)
+	}
+	xdef, err := e.r.EnsureExperiment(ctx, "rerun-exp", "", []core.EvalDefID{def.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	xr, err := e.r.StartExperimentRun(ctx, xdef, core.Params{"models": map[string]string{"extract_graph": "base-extract"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := e.r.RunEval(ctx, def, e.x, runner.EvalOptions{ExperimentRunID: &xr.Run().ID, Params: core.Params{"models": map[string]string{"extract_graph": "base-extract"}}, Meta: &core.KnowledgeEvalRunMeta{}})
+	if err != nil || run.Counts.Failed != 1 {
+		t.Fatalf("the original run: %v %+v", err, run)
+	}
+	cases, err := e.r.Store.ListCaseRuns(ctx, e.r.DB, run.ID)
+	if err != nil || len(cases) != 1 {
+		t.Fatalf("case runs: %v %v", cases, err)
+	}
+	orig := cases[0]
+	newRerunner := func(llm memory_core.LLM) admin.EvalRerunner {
+		return knowledge.NewRerunner(server.EvalRerunEnv{
+			Ctx: ctx, DBPath: e.db.SQLitePath, LLM: llm, Embedder: fakeEmbedder{dims: e.db.EmbeddingDimensions}, Prices: ai.NewPriceTable(nil),
+		})
+	}
+	if knowledge.NewRerunner(server.EvalRerunEnv{Ctx: ctx, DBPath: e.db.SQLitePath}) != nil {
+		t.Error("a rerunner without an LLM")
+	}
+
+	// While the experiment run is going, nothing is added to it.
+	rr := newRerunner(&scriptedLLM{answer: "Bob."})
+	if _, err := rr.Rerun(ctx, orig.ID, "claude-opus-5-5", ""); !errors.Is(err, core.ErrRerunRefused) {
+		t.Errorf("rerun in a running experiment run: %v", err)
+	}
+	if err := xr.Add(ctx, run); err != nil {
+		t.Fatal(err)
+	}
+	if err := xr.Finish(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []struct {
+		id       core.CaseRunID
+		rem, qry string
+		want     error
+	}{
+		{999999, "", "", evalsdb.ErrNotFound},
+		{orig.ID, "a b", "", memory_core.ErrInvalidModels},
+	} {
+		if _, err := rr.Rerun(ctx, bad.id, bad.rem, bad.qry); !errors.Is(err, bad.want) {
+			t.Errorf("rerun %+v: %v, want %v", bad, err, bad.want)
+		}
+	}
+
+	llm := &scriptedLLM{answer: "Bob."}
+	rr = newRerunner(llm)
+	id, err := rr.Rerun(ctx, orig.ID, "claude-opus-5-5", "claude-sonnet-5-5")
+	if err != nil || id == 0 || id == orig.ID {
+		t.Fatalf("rerun: %v, %v", id, err)
+	}
+	rr.(interface{ Wait() }).Wait()
+
+	re, err := e.r.Store.GetCaseRun(ctx, e.r.DB, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if re.Status != core.StatusCompleted || re.Verdict != core.VerdictPass || re.DefID != orig.DefID || re.EvalRunID == run.ID {
+		t.Errorf("the rerun's case run: %+v", re)
+	}
+	if m, ok := re.Meta.(*core.KnowledgeCaseRunMeta); !ok || m.Answer != "Bob." || len(m.Trajectories) != 2 || m.DatasetID == nil {
+		t.Errorf("the rerun's meta: %+v", re.Meta)
+	}
+	rer, err := e.r.Store.GetEvalRun(ctx, e.r.DB, re.EvalRunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rer.ExperimentRunID == nil || *rer.ExperimentRunID != xr.Run().ID || rer.Status != core.StatusCompleted || rer.Counts.Total != 1 || rer.Counts.Passed != 1 {
+		t.Errorf("the rerun's eval run: %+v", rer)
+	}
+	if rer.Params[core.ParamRerunOf] != float64(orig.ID) || rer.Params[core.ParamRememberModel] != "claude-opus-5-5" || rer.Params[core.ParamQueryModel] != "claude-sonnet-5-5" {
+		t.Errorf("the rerun's params: %v", rer.Params)
+	}
+	// Every remember stage that ran got the remember model over the run's own base model; the query got the query model (its detection
+	// of the places of the question, then its answer).
+	if fmt.Sprint(llm.models) != "[claude-opus-5-5 claude-sonnet-5-5 claude-sonnet-5-5]" {
+		t.Errorf("models of the rerun's calls: %v", llm.models)
+	}
+	xrun, err := e.r.Store.GetExperimentRun(ctx, e.r.DB, xr.Run().ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if xrun.Counts.Total != 2 || xrun.Counts.Passed != 1 || xrun.Counts.Failed != 1 || xrun.CostUSD <= run.CostUSD || xrun.Status != core.StatusCompleted {
+		t.Errorf("the experiment run after the rerun: %+v", xrun)
+	}
+	evalRuns, err := e.r.Store.ListEvalRunsOfExperimentRun(ctx, e.r.DB, xr.Run().ID)
+	if err != nil || len(evalRuns) != 2 {
+		t.Errorf("eval runs of the experiment run: %d, %v", len(evalRuns), err)
+	}
+	if o, err := e.r.Store.GetCaseRun(ctx, e.r.DB, orig.ID); err != nil || o.Verdict != core.VerdictFail {
+		t.Errorf("the original case run changed: %+v, %v", o, err)
+	}
+
+	// With neither model given the stages keep the models of the run; and a rerun of a rerun repeats the same case.
+	llm2 := &scriptedLLM{answer: "Bob."}
+	rr = newRerunner(llm2)
+	id2, err := rr.Rerun(ctx, id, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr.(interface{ Wait() }).Wait()
+	if fmt.Sprint(llm2.models) != "[base-extract  ]" {
+		t.Errorf("models of the second rerun: %v", llm2.models)
+	}
+	if re2, err := e.r.Store.GetCaseRun(ctx, e.r.DB, id2); err != nil || re2.Verdict != core.VerdictPass || re2.DefID != orig.DefID {
+		t.Errorf("rerun of a rerun: %+v, %v", re2, err)
+	}
 }

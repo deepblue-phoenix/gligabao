@@ -10,7 +10,7 @@ The evals system: the data model, its storage and the runners. It replaced the o
 | [`db`](db) | the schema and the functions that write and read the records, for SQLite (`db/sqlite`) and PostgreSQL (`db/postgres`); `db.Store` holds the functions of a backend as a value |
 | [`evalfile`](evalfile) | reading the evals from their JSON files |
 | [`runner`](runner) | what every type shares in running: `SyncEval` (puts an eval of the files in the database as defs), `EnsureExperiment`, and the recorders of the runs (`RunEval`, `EvalRecorder`, `ExperimentRecorder`) |
-| [`knowledge`](knowledge) | the executor of the knowledge evals, and its command (`knowledge/cmd`) |
+| [`knowledge`](knowledge) | the executor of the knowledge evals, its command (`knowledge/cmd`), and the rerun of a case with other models from the admin UI (`Rerunner`) |
 | [`training`](training) | the executor of the training evals (the engine and the judge), and its command (`training/cmd`) |
 
 The root package has `Open(backend, *sql.DB)`, which applies the schema (`internal/db.Open` calls it, so every database of the server and of the runners has the tables), and `StoreFor(backend)`.

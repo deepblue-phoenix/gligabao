@@ -50,6 +50,10 @@ type Named struct {
 	TrajectoryDir string
 	// EvalStore is how the evals recorded in DB are read (nil: DB has none to show); only used for the eval database.
 	EvalStore *evalsdb.Store
+	// EvalRerunner reruns the case runs recorded in DB with other models (nil: the server cannot, and the case modal has no rerun);
+	// only used for the eval database. It is an interface, filled by the server from the hook server.Options.EvalRerunner, because the
+	// implementation (evals/knowledge.Rerunner) cannot be imported here: it imports the server, which imports this package.
+	EvalRerunner EvalRerunner
 	// ImageDir is the directory of the image files of DB's image artifacts ("" = unknown: nothing is reported
 	// about the files on disk).
 	ImageDir string

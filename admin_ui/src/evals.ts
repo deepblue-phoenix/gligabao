@@ -24,10 +24,12 @@ interface Trajectory {
   artifacts?: Artifact[];
 }
 interface Artifact { id: number; kind: string; text: string; valid_at: string; created_at: string }
+// Says of a case run that it is a rerun with other models (empty model: the stages kept the models they had).
+interface RerunInfo { of: number; remember_model?: string; query_model?: string }
 // The outcome of one case of an eval in one run.
 interface CaseRun {
   id: number; eval: string; name: string; status: Status; verdict?: Verdict; score?: number; answer?: string; problems?: string[]; passed_checks?: string[]; dataset_id?: number; error?: string;
-  steps: number; cost_usd: number; started_at: string; finished_at: string; trajectories?: Trajectory[];
+  steps: number; cost_usd: number; started_at: string; finished_at: string; trajectories?: Trajectory[]; rerun?: RerunInfo;
 }
 // The web searches the remember calls of one result (case) made (see websearch.ts), read from its trajectories.
 interface EvalWebSearches { case_run_id: number; totals: WebSearchTotals; searches: WebSearch[] }
@@ -42,7 +44,12 @@ interface CaseDebug {
   input: { remember?: { kind?: string; text?: string; text_file?: string }[]; query?: string };
   expected?: Record<string, unknown>; params?: Record<string, unknown>; dataset_id?: number;
   commentable: boolean; commentary_enabled: boolean; default_model: string; commentaries: CaseCommentary[];
+  cost_usd: number; started_at: string; finished_at?: string;
+  // Set when this case run is itself a rerun; rerun_options when the server can rerun the case (the models a rerun can pick).
+  rerun?: RerunInfo; rerun_options?: { models: string[] };
 }
+// What POST api/evals/case_runs/{id}/rerun answers: the new case run, already recorded (running).
+interface RerunStarted { case_run_id: number; eval_run_id: number; experiment_run_id?: number }
 interface ExperimentRow {
   id: number; name: string; description?: string; created_at: string;
   runs: number; cases: number; runs_by_status: Partial<Record<Status, number>>; cost_usd: number; last_run?: Run;
@@ -278,7 +285,9 @@ async function showRun(runID: number, experiment: string): Promise<void> {
     for (const e of cases) {
       const tr = body.insertRow();
       tr.insertCell().textContent = e.eval;
-      tr.insertCell().textContent = e.name;
+      const nameCell = tr.insertCell();
+      nameCell.textContent = e.name;
+      if (e.rerun) nameCell.append(" ", h("span", "badge badge-active", "rerun"), h("span", "muted", ` of #${e.rerun.of}${rerunModels(e.rerun)}`));
       tr.insertCell().append(statusBadge(e.status));
       tr.insertCell().append(verdictBadge(e.verdict));
       numCell(tr, String(e.steps));
@@ -445,7 +454,7 @@ async function showCase(run: Run, e: CaseRun, experiment: string): Promise<void>
       actions.append(gbtn, tbtn);
     }
     left.append(...caseLeft(d, run, e));
-    right.append(...caseRight(d));
+    right.append(...caseRight(d, run, experiment));
   } catch (err) {
     status.className = "error";
     status.textContent = `Failed to load the case: ${errText(err)}`;
@@ -518,9 +527,10 @@ function caseLeft(d: CaseDebug, run: Run, e: CaseRun): HTMLElement[] {
   return out;
 }
 
-// The right pane: the commentaries on the case (newest first) and, for a case that failed, the way to ask for another.
-function caseRight(d: CaseDebug): HTMLElement[] {
-  const out: HTMLElement[] = [h("h3", undefined, "LLM commentary and recommendation")];
+// The right pane: the way to rerun the case with other models, and the commentaries on the case (newest first) with, for a case that
+// failed, the way to ask for another.
+function caseRight(d: CaseDebug, run: Run, experiment: string): HTMLElement[] {
+  const out: HTMLElement[] = [...rerunSection(d, run, experiment), h("h3", undefined, "LLM commentary and recommendation")];
   const list = h("div");
   const render = (items: CaseCommentary[]): void => {
     if (items.length === 0) {
@@ -568,6 +578,164 @@ function caseRight(d: CaseDebug): HTMLElement[] {
   }
   out.push(list);
   return out;
+}
+
+//---------------------------------------------------------------------------------------------
+
+// " (remember opus, query sonnet)" for the models of a rerun, "" if it kept them all.
+function rerunModels(r: RerunInfo): string {
+  const parts = [r.remember_model ? `remember ${r.remember_model}` : "", r.query_model ? `query ${r.query_model}` : ""].filter(Boolean);
+  return parts.length ? ` (${parts.join(", ")})` : "";
+}
+
+// A select of the models of the price table; "" is the first option: the stages keep the models they had.
+function modelSelect(models: string[], title: string): HTMLSelectElement {
+  const sel = h("select");
+  sel.title = title;
+  sel.append(new Option("as it ran", ""));
+  for (const m of models) sel.append(new Option(m, m));
+  return sel;
+}
+
+// The rerun of the case with a model of the price table for the remember pipeline and/or for the query, to see whether a more
+// powerful model gets it right. One model per pipeline is enough: the server uses it for every LLM stage of that pipeline. The rerun is a
+// new run in the experiment run that owns this case run; its results open in the rerun modal. Nothing for a case that has not ended, or
+// when the server cannot rerun (no LLM).
+function rerunSection(d: CaseDebug, run: Run, experiment: string): HTMLElement[] {
+  if (!d.rerun_options || !(["completed", "errored", "cancelled"] as Status[]).includes(d.status)) return [];
+  const out: HTMLElement[] = [h("h3", undefined, "Re-run this case with another model")];
+  out.push(h("p", "muted", "Runs the case again from the same input, as a new run of this experiment run. The model picked for a pipeline is used for all of its LLM stages; “as it ran” leaves that pipeline's models as they were. It costs LLM calls."));
+  const remember = modelSelect(d.rerun_options.models, "The model of every LLM stage of the remember pipeline");
+  const query = modelSelect(d.rerun_options.models, "The model of the query (its answering call and the detection of places)");
+  const form = h("div", "rerun-form");
+  const field = (label: string, sel: HTMLSelectElement): HTMLElement => {
+    const l = h("label", undefined, label);
+    l.append(sel);
+    return l;
+  };
+  const btn = h("button", undefined, "Re-run case");
+  btn.type = "button";
+  const msg = h("p", "muted");
+  form.append(field("Remember model", remember), field("Query model", query), btn);
+  btn.addEventListener("click", () => {
+    btn.disabled = true;
+    msg.className = "muted";
+    msg.textContent = "Starting the rerun…";
+    fetch(`api/evals/case_runs/${d.case_run_id}/rerun`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ remember_model: remember.value, query_model: query.value }),
+    }).then(async (res) => {
+      if (!res.ok) {
+        let text = (await res.text()).trim();
+        try { text = (JSON.parse(text) as { error?: string }).error ?? text; } catch { /* not JSON: show it as it is */ }
+        throw new Error(`${res.status}: ${text}`);
+      }
+      const started = (await res.json()) as RerunStarted;
+      msg.textContent = `Started: case run #${started.case_run_id}.`;
+      void showRun(started.experiment_run_id ?? run.id, experiment); // the run behind lists the new case run
+      void showRerun(started, d, run, experiment, { of: d.case_run_id, remember_model: remember.value, query_model: query.value });
+    }).catch((err: unknown) => {
+      msg.className = "error";
+      msg.textContent = `The rerun could not be started: ${errText(err)}`;
+    }).finally(() => { btn.disabled = false; });
+  });
+  out.push(form, msg);
+  return out;
+}
+
+const RERUN_POLL_MS = 3000;
+let rerunWatch = 0; // identifies the rerun the modal follows; a newer one, or closing the modal, stops the older poll
+
+// Opens the rerun modal on a rerun that was just started and follows it until it ends: the status while it runs, then its result next
+// to the case run it repeated (verdict, cost, models), its checks, the graph and temporal plot it built, and its traces. It is the
+// same case run the run's list has, so it can also be opened from there (with its commentary).
+async function showRerun(started: RerunStarted, orig: CaseDebug, run: Run, experiment: string, info: RerunInfo): Promise<void> {
+  const modal = $<HTMLDialogElement>("rerun-modal");
+  const status = $("rerun-status");
+  const actions = $("rerun-actions");
+  const content = $("rerun-content");
+  const watch = ++rerunWatch;
+  const title = `${orig.eval}/${orig.name} · rerun${rerunModels(info)} (case run #${started.case_run_id})`;
+  $("rerun-title").textContent = title;
+  actions.replaceChildren();
+  content.replaceChildren(h("p", "muted", "Starting…"));
+  status.className = "muted";
+  status.textContent = "";
+  if (!modal.open) modal.showModal();
+
+  const tick = async (): Promise<void> => {
+    if (watch !== rerunWatch || !modal.open) return;
+    let d: CaseDebug;
+    try {
+      d = await getJSON<CaseDebug>(`api/evals/case_runs/${started.case_run_id}/debug`);
+    } catch (err) {
+      if (watch !== rerunWatch) return;
+      status.className = "error";
+      status.textContent = `Failed to read the rerun: ${errText(err)}`;
+      return;
+    }
+    if (watch !== rerunWatch || !modal.open) return;
+    status.className = "muted";
+    status.replaceChildren(statusBadge(d.status), " ", verdictBadge(d.verdict));
+    if (d.status === "running" || d.status === "pending") {
+      const secs = Math.max(0, Math.round((Date.now() - new Date(d.started_at).getTime()) / 1000));
+      content.replaceChildren(
+        h("p", "muted", `Running for ${secs} s. The case remembers its texts and answers its question again with the chosen models; this takes about as long as the case did. The page can be closed: the result is recorded in the experiment run either way.`),
+        rerunComparison(orig, d, started.case_run_id, info),
+      );
+      window.setTimeout(() => void tick(), RERUN_POLL_MS);
+      return;
+    }
+    // Ended: the case run as the run lists it (with its traces), if the run can be read.
+    let cr: CaseRun = { id: d.case_run_id, eval: d.eval, name: d.name, status: d.status, steps: 0, cost_usd: d.cost_usd, started_at: d.started_at, finished_at: d.finished_at ?? "", trajectories: [] };
+    let xrun: Run = run;
+    if (started.experiment_run_id !== undefined) {
+      try {
+        xrun = await getJSON<Run>(`api/evals/runs/${started.experiment_run_id}`);
+        cr = (xrun.case_runs ?? []).find((c) => c.id === started.case_run_id) ?? cr;
+      } catch { /* shown without its traces */ }
+      void showRun(started.experiment_run_id, experiment); // the list behind now has its result
+    }
+    if (watch !== rerunWatch || !modal.open) return;
+    const btns: HTMLElement[] = [];
+    if (d.dataset_id != null) {
+      const gbtn = h("button", "small", "Knowledge graph");
+      gbtn.type = "button";
+      gbtn.addEventListener("click", () => void showGraphAt(title, `api/evals/case_runs/${d.case_run_id}/graph`));
+      const tbtn = h("button", "small", "Temporal plot");
+      tbtn.type = "button";
+      tbtn.addEventListener("click", () => openTemporalAt(`${title} · temporal changes`, `api/evals/case_runs/${d.case_run_id}/temporal`));
+      btns.push(gbtn, tbtn);
+    }
+    if (started.experiment_run_id !== undefined) btns.push(caseBookmark(xrun, cr, experiment));
+    actions.replaceChildren(...btns);
+    content.replaceChildren(
+      rerunComparison(orig, d, started.case_run_id, info),
+      h("p", "muted", "It is in the experiment run's list like any case: open it there for its commentary."),
+      ...caseLeft(d, xrun, cr),
+    );
+  };
+  await tick();
+}
+
+// The case run that was rerun next to its rerun: the models, how each ended, what it cost.
+function rerunComparison(orig: CaseDebug, re: CaseDebug, reID: number, info: RerunInfo): HTMLElement {
+  const { table: tbl, body } = table([["", false], ["Case run", false], ["Remember model", false], ["Query model", false], ["Status", false], ["Verdict", false], ["Cost", true], ["Duration", true]]);
+  const asRan = "as it ran";
+  const row = (label: string, id: number, remember: string | undefined, query: string | undefined, d: CaseDebug): void => {
+    const tr = body.insertRow();
+    tr.insertCell().textContent = label;
+    tr.insertCell().textContent = `#${id}`;
+    tr.insertCell().textContent = remember || asRan;
+    tr.insertCell().textContent = query || asRan;
+    tr.insertCell().append(statusBadge(d.status));
+    tr.insertCell().append(verdictBadge(d.verdict));
+    numCell(tr, fmtCost(d.cost_usd));
+    numCell(tr, fmtDuration(d.started_at, d.finished_at));
+  };
+  row("Original", orig.case_run_id, orig.rerun?.remember_model, orig.rerun?.query_model, orig);
+  row("Rerun", reID, info.remember_model, info.query_model, re);
+  return tbl;
 }
 
 const commentaryLabel = /^(Cause|Where|Evidence|Suggestion|Final advice):/;
@@ -618,6 +786,10 @@ export function initEvals(): void {
   const caseModal = $<HTMLDialogElement>("case-modal");
   $("case-close").addEventListener("click", () => caseModal.close());
   caseModal.addEventListener("click", (e) => { if (e.target === caseModal) caseModal.close(); });
+  const rerunModal = $<HTMLDialogElement>("rerun-modal");
+  rerunModal.addEventListener("close", () => { rerunWatch++; }); // stops following the rerun (it goes on on the server)
+  $("rerun-close").addEventListener("click", () => rerunModal.close());
+  rerunModal.addEventListener("click", (e) => { if (e.target === rerunModal) rerunModal.close(); });
   $("evals-refresh").addEventListener("click", () => {
     void loadOverview();
     if (selectedExperiment !== undefined) void loadExperiment(selectedExperiment);

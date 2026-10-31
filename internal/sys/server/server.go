@@ -115,6 +115,24 @@ type Options struct {
 	// ATIF files, from an "atif" directory next to it) from it. Opened for the admin UI only; ignored (with a warning)
 	// unless the main database is SQLite. Empty = not shown, and the Evals routes are not registered.
 	EvalDBPath string
+	// EvalRerunner is an INJECTED HOOK: a factory for the thing that reruns an eval case (the "Re-run this case with another model"
+	// button of the case modal of the admin UI's Evals view; see admin.EvalRerunner). Nil means the server cannot rerun: the button is
+	// not offered and the rerun endpoint answers 503.
+	//
+	// Why it is injected and not just called: it was added because of an IMPORT CYCLE. Running an eval case is the job of package
+	// internal/evals/knowledge (Executor, Rerunner), and that package runs every case behind an in-process server of this package
+	// (it calls NewHandler, to get the eval endpoints). So knowledge imports server, and the admin package, which server imports to
+	// serve the admin UI, cannot import knowledge either. Had the server (or admin) called knowledge.NewRerunner directly, the
+	// import graph would be server -> knowledge -> server, which Go forbids. The way out is to invert the dependency: this package
+	// and admin define what they need (this function type, EvalRerunEnv, and the interface admin.EvalRerunner), and a package above
+	// both, the root package (gligabao.go, serverOptions), which may import everything, plugs the implementation in:
+	// EvalRerunner: knowledge.NewRerunner. Nothing but that line knows which type does the work.
+	//
+	// prepare calls it once at startup, and only when the admin UI shows the eval database (EvalDBPath) and the server has an LLM, with
+	// the server's own clients (EvalRerunEnv). It returns the rerunner, or nil for none (for example if it finds the setup unusable).
+	// If the returned value also has a Wait() method, the server calls it on shutdown, after cancelling EvalRerunEnv.Ctx, so a rerun
+	// in progress can record how it ended before the databases close.
+	EvalRerunner func(EvalRerunEnv) admin.EvalRerunner
 	// Auth, if set, makes the user routes of the API (remember, query, datasets, timeseries, ontologies) require an API key
 	// ("Authorization: Bearer <key>"): it is called with the key and returns the ID of the user it belongs to, which the request then
 	// acts as; an error rejects the request (401). See docs/identity.md. Nil: the routes trust the user_id of the request.
@@ -201,6 +219,25 @@ func connectSidecar(ctx context.Context, url string) (coretraining.Sidecar, bool
 	}
 	log.WithField("url", url).Info("sidecar is active")
 	return c, true
+}
+
+// EvalRerunEnv is what the injected hook Options.EvalRerunner is given to build its rerunner with: the server's own clients (so a rerun
+// uses the same LLM, price table, embedder, web search and geo resolver as the server, configured once) and where the eval database is.
+// It exists so that the package that implements the rerunner (internal/evals/knowledge) can get these without the server importing
+// that package (see Options.EvalRerunner for the import cycle this avoids). It holds only plain values and the server's interfaces,
+// never types of the implementing package.
+type EvalRerunEnv struct {
+	// Ctx ends when the server shuts down: the reruns in progress stop with it.
+	Ctx context.Context
+	// DBPath is the SQLite file of the eval database (Options.EvalDBPath).
+	DBPath string
+	// LLM, Embedder and WebSearch are the server's; LLM is never nil. Geo is its geo resolver (nil: geo is off).
+	LLM       memory_core.LLM
+	Embedder  memory_core.Embedder
+	WebSearch memory_core.WebSearcher
+	Geo       memory_geo.Resolver
+	// Prices is the price table, whose models are the ones a rerun can pick.
+	Prices *ai.PriceTable
 }
 
 // EvalDBName is the name of the eval database in the admin UI (see Options.EvalDBPath). It holds the evaluation
@@ -394,8 +431,10 @@ func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, geoRadiusKm float64,
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/graph", admin.EvalCaseRunGraph(e.DB, *e.EvalStore))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/temporal", admin.EvalCaseRunTemporal(e.DB, *e.EvalStore))
 		// The debug view of a failed case: its checks, and the LLM commentary on it (made on request with llm; nil: none can be made).
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/debug", admin.EvalCaseRunDebug(e.DB, *e.EvalStore, llm))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/debug", admin.EvalCaseRunDebug(e.DB, *e.EvalStore, llm, e.EvalRerunner))
 		mux.HandleFunc("POST /v1/gb/admin/api/evals/case_runs/{id}/commentary", admin.EvalCaseRunCommentary(e.DB, *e.EvalStore, e.TrajectoryDir, llm))
+		// The rerun of a case with other models, recorded in the experiment run of the case run (e.EvalRerunner nil: the server cannot).
+		mux.HandleFunc("POST /v1/gb/admin/api/evals/case_runs/{id}/rerun", admin.EvalCaseRunRerun(e.DB, *e.EvalStore, e.EvalRerunner))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/trajectories/{id}", admin.EvalTrajectory(e.DB, *e.EvalStore, e.TrajectoryDir))
 		break
 	}
@@ -757,7 +796,34 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 	mgrCtx, stopMgr := context.WithCancel(ctx)
 	// The research agents are stopped with it, and given the time to write the end of their runs before the databases close.
 	research := newResearch(mgrCtx, database, llm)
-	cleanups = append(cleanups, func() { stopMgr(); research.Wait() })
+	// The reruns of eval cases (admin UI): this is where the injected hook Options.EvalRerunner is called (it is injected because the
+	// package that implements it imports this one, see its comment). The reruns need the LLM, so without one there are none. The eval
+	// database named EvalDBName is the only one that can have reruns; its Named gets the rerunner, and the routes (registerAdminUI)
+	// pick it from there. Reruns are given the time to record how they ended before the databases close, like the research agents:
+	// the cleanup below cancels mgrCtx (which the rerunner got as EvalRerunEnv.Ctx) and then waits for them, if it can be waited for.
+	var reruns interface{ Wait() }
+	if opts.EvalRerunner != nil && llm != nil {
+		for i := range extra {
+			if extra[i].Name != EvalDBName || extra[i].EvalStore == nil {
+				continue
+			}
+			rr := opts.EvalRerunner(EvalRerunEnv{Ctx: mgrCtx, DBPath: opts.EvalDBPath, LLM: llm, Embedder: emb, WebSearch: ws, Geo: geoResolver, Prices: ai.NewPriceTable(opts.Prices)})
+			if rr == nil {
+				break
+			}
+			extra[i].EvalRerunner = rr
+			reruns, _ = rr.(interface{ Wait() })
+			log.Info("eval reruns are available: the case modal of the Evals view can run a case again with other models")
+			break
+		}
+	}
+	cleanups = append(cleanups, func() {
+		stopMgr()
+		research.Wait()
+		if reruns != nil {
+			reruns.Wait()
+		}
+	})
 	return newMux(mgrCtx, standalone, opts.Auth, geoResolver, opts.GeoRadiusKm, opts.MCPEnable, research, database, llm, emb, jv, ws, providers, hooks, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, extra...), closeAll, nil
 }
 

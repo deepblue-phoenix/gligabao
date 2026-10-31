@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/commentary"
@@ -49,6 +50,14 @@ type evalCaseDebugResponse struct {
 	DefaultModel string `json:"default_model"`
 	// Commentaries are the commentaries made so far, newest first.
 	Commentaries []core.CaseCommentary `json:"commentaries"`
+	// CostUSD is what the case run cost, StartedAt and FinishedAt when it ran (FinishedAt is absent while it runs).
+	CostUSD    float64    `json:"cost_usd"`
+	StartedAt  time.Time  `json:"started_at"`
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	// Rerun is set when the case run is itself a rerun: the case run it repeated and the models it was given.
+	Rerun *rerunView `json:"rerun,omitempty"`
+	// RerunOptions is what a rerun of this case run can pick from (the models of the price table); absent when the server cannot rerun.
+	RerunOptions *evalRerunInfo `json:"rerun_options,omitempty"`
 }
 
 // commentable is whether a case run failed (a check did not hold) or errored: the cases a commentary is for.
@@ -65,35 +74,37 @@ func knowledgeCaseRunOf(ctx context.Context, d *sql.DB, s evalsdb.Store, id int6
 	return c, err
 }
 
-// caseDefOf returns the name of the eval of case run c and its case def (with its knowledge Meta); the def is nil if it is gone.
-func caseDefOf(ctx context.Context, d *sql.DB, s evalsdb.Store, c *core.CaseRun) (eval string, def *core.CaseDef, err error) {
-	er, err := s.GetEvalRun(ctx, d, c.EvalRunID)
+// caseDefOf returns the name of the eval of case run c, its case def (with its knowledge Meta; nil if it is gone) and the eval run
+// that holds the case run.
+func caseDefOf(ctx context.Context, d *sql.DB, s evalsdb.Store, c *core.CaseRun) (eval string, def *core.CaseDef, er *core.EvalRun, err error) {
+	er, err = s.GetEvalRun(ctx, d, c.EvalRunID)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	ed, err := s.GetEvalDef(ctx, d, er.DefID)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	full, err := s.GetEvalDefByName(ctx, d, ed.Name)
 	if errors.Is(err, evalsdb.ErrNotFound) {
-		return ed.Name, nil, nil
+		return ed.Name, nil, er, nil
 	}
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	for i := range full.Cases {
 		if full.Cases[i].ID == c.DefID {
-			return ed.Name, &full.Cases[i], nil
+			return ed.Name, &full.Cases[i], er, nil
 		}
 	}
-	return ed.Name, nil, nil
+	return ed.Name, nil, er, nil
 }
 
 // EvalCaseRunDebug serves GET /admin/api/evals/case_runs/{id}/debug: the checks of the case run (failed and held), its input, what
-// its def expects and the commentaries made on it, newest first. llm says whether a commentary can be asked for (nil: it cannot).
-// An unknown or non-knowledge case run is 404.
-func EvalCaseRunDebug(d *sql.DB, s evalsdb.Store, llm memory_core.LLM) http.HandlerFunc {
+// its def expects and the commentaries made on it, newest first. llm says whether a commentary can be asked for (nil: it cannot), rr
+// whether (and with which models) the case can be rerun (nil: it cannot). It also serves a case run that is still running (a rerun):
+// the checks are then empty. An unknown or non-knowledge case run is 404.
+func EvalCaseRunDebug(d *sql.DB, s evalsdb.Store, llm memory_core.LLM, rr EvalRerunner) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
@@ -105,7 +116,7 @@ func EvalCaseRunDebug(d *sql.DB, s evalsdb.Store, llm memory_core.LLM) http.Hand
 			evalFail(w, err, "case run")
 			return
 		}
-		eval, def, err := caseDefOf(ctx, d, s, c)
+		eval, def, er, err := caseDefOf(ctx, d, s, c)
 		if err != nil {
 			evalFail(w, err, "case run")
 			return
@@ -115,6 +126,8 @@ func EvalCaseRunDebug(d *sql.DB, s evalsdb.Store, llm memory_core.LLM) http.Hand
 			CaseRunID: id, Eval: eval, Status: c.Status, Verdict: c.Verdict, Error: c.Error, Answer: m.Answer,
 			Problems: orEmpty(m.Problems), PassedChecks: orEmpty(m.PassedChecks), Input: m.Input, DatasetID: m.DatasetID,
 			Commentable: commentable(c), CommentaryEnabled: llm != nil, DefaultModel: commentary.DefaultModel,
+			CostUSD: c.CostUSD, StartedAt: timeOr(c.StartedAt, c.CreatedAt), FinishedAt: c.FinishedAt, Rerun: rerunOf(er.Params),
+			RerunOptions: rerunInfo(rr),
 		}
 		if def != nil {
 			out.Name = def.Name
@@ -171,7 +184,7 @@ func EvalCaseRunCommentary(d *sql.DB, s evalsdb.Store, dir string, llm memory_co
 			httputil.Error(w, http.StatusBadRequest, "only a case run that failed or errored can be commented on")
 			return
 		}
-		eval, def, err := caseDefOf(ctx, d, s, c)
+		eval, def, _, err := caseDefOf(ctx, d, s, c)
 		if err != nil {
 			evalFail(w, err, "case run")
 			return

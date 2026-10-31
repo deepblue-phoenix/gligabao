@@ -7,7 +7,8 @@
 //	runner     what every Type of eval shares in running: putting the evals of the files in the DB as defs, recording experiment
 //	           runs, eval runs and case runs
 //	commentary the LLM commentary on a failed knowledge case (the prompt and the call; used by the runner and the admin UI)
-//	knowledge  the knowledge evals: remember some texts, then query (the executor of the Type "knowledge"), and its command
+//	knowledge  the knowledge evals: remember some texts, then query (the executor of the Type "knowledge"), its command, and the
+//	           rerun of a case with other models from the admin UI (Rerunner)
 //	training   the training evals: a trained model answers, an LLM judges (the executor of the Type "training"), and its command
 //
 // The root package has Open, which applies the schema to the database (internal/db does it when it opens one), and StoreFor, which

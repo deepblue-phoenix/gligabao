@@ -497,6 +497,13 @@ code { font-size: 0.8rem; color: $muted; }
   .commentary-label { font-weight: 600; color: $accent; }
   &.old { opacity: 0.75; }
 }
+// The rerun of a case with other models (evals.ts rerunSection) and its modal (showRerun).
+.rerun-form {
+  display: flex; gap: 0.6rem; align-items: flex-end; flex-wrap: wrap;
+  label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: $muted; select { min-width: 12rem; } }
+}
+#rerun-modal[open] { width: min(96vw, 64rem); height: 85vh; }
+#rerun-content table { margin: 0.4rem 0 0.8rem; }
 .commentary-ask { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; input { flex: 1 1 12rem; min-width: 0; } }
 
 // --- Eval history plot ---
