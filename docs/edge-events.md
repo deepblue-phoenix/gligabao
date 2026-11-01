@@ -4,7 +4,7 @@
 
 The model of the two timelines and the invalidation rule are in [temporal.md](temporal.md); this page is only about the log.
 
-Code: `storeEdges` and `contradict` in `internal/memory/memory_remember/temporal.go` (the writers), `model.EdgeEvent` in `internal/db/graph/model/model.go`, `InsertEdgeEvent` and `ListEdgeEvents` in `internal/db/graph/{sqlite,postgres}/db.go`, the endpoint in `internal/api/admin/remember_runs.go` (`RememberRunTemporalOf`).
+Code: `StoreEdges` and `contradict` in `internal/memory/memory_temporal/store.go` (the writers), `model.EdgeEvent` in `internal/db/graph/model/model.go`, `InsertEdgeEvent` and `ListEdgeEvents` in `internal/db/graph/{sqlite,postgres}/db.go`, the endpoint in `internal/api/admin/remember_runs.go` (`RememberRunTemporalOf`).
 
 ## The table
 

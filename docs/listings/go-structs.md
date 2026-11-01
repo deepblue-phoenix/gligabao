@@ -41,6 +41,7 @@
 | `internal/agent_research.knowledge`                       | is the knowledge base of one research run: the user's dataset, with the session of the run.                            |
 | `internal/agent_research.member`                          | is a sub-agent as its parent and its siblings know it (id, name, how it ended).                                        |
 | `internal/agent_research.outcome`                         | is how a run ended (status, report, error).                                                                            |
+| `internal/agent_research.stopCause`                       | is the cause of the cancelled context of an agent that Stop stopped; its sub-agents see it too.                        |
 | `internal/agent_research.researcher`                      | holds all the state of one research agent, used only by the goroutine of that agent.                                   |
 | `internal/agent_research.team`                            | is the view of one agent of its sub-agents and messages (agent.Team).                                                  |
 | `internal/agent_research.tree`                            | counts the sub-agents spawned in the whole of one research.                                                            |
@@ -55,9 +56,12 @@
 | Struct                                                    | Description                                                                                                            |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `internal/ai.Client`                                      | calls the Anthropic LLM API with the configured key, model and price table.                                            |
+| `internal/ai.APIError`                                    | is an error answer of the Anthropic API (status, type, message).                                                       |
 | `internal/ai.EmbedUsage`                                  | records the token usage and cost of an embeddings request.                                                             |
 | `internal/ai.Embedder`                                    | computes text embeddings using the OpenAI embeddings API.                                                              |
 | `internal/ai.Image`                                       | is an image (media type and data) attached to a Message.                                                               |
+| `internal/ai.outputConfig`                                | is the effort of the adaptive thinking of a request.                                                                   |
+| `internal/ai.thinkMode`                                   | is how a request asks for thinking: a token budget, adaptive thinking steered by an effort, or none.                   |
 | `internal/ai.Message`                                     | is a single conversation turn with a role, content and optional images.                                                |
 | `internal/ai.ModelInfo`                                   | describes a model (name, provider, kind) that gligabao actively supports.                                              |
 | `internal/ai.Price`                                       | holds a model's price in USD per 1M tokens, including cache and long-context rates.                                    |
@@ -101,7 +105,14 @@
 | `internal/api/admin.InferenceSums`                        | holds the totals (count, tokens, cost) of a set of inferences.                                                         |
 | `internal/api/admin.Latency`                              | summarizes the durations of web search calls (average, median and maximum).                                            |
 | `internal/api/admin.Named`                                | is a database shown in the admin UI under a name such as "standard" or "eval".                                         |
+| `internal/api/admin.ProvenanceAgent`                      | is an agent whose session is in the provenance of a research agent.                                                    |
+| `internal/api/admin.ProvenanceArtifact`                   | is an artifact that an agent's session stored (a text, a chunk, a web search result).                                  |
+| `internal/api/admin.ProvenanceDataset`                    | is a dataset that holds something an agent stored, with how much.                                                      |
+| `internal/api/admin.ProvenanceEdge`                       | is a fact that an agent's session discovered.                                                                          |
+| `internal/api/admin.ProvenanceEntity`                     | is an entity that an agent's session discovered.                                                                       |
 | `internal/api/admin.RememberRunCounts`                    | counts remember runs overall and per status.                                                                           |
+| `internal/api/admin.ResearchAgent`                        | is a research run as the admin UI shows it: the run and what is derived from it.                                       |
+| `internal/api/admin.ResearchCounts`                       | is how many research agents there are with each status; it is never filtered.                                          |
 | `internal/api/admin.WebEdge`                              | is a fact that a web search result yielded.                                                                            |
 | `internal/api/admin.WebEntity`                            | is an entity that a web search result yielded.                                                                         |
 | `internal/api/admin.WebSearch`                            | is one web search made by remember for a key entity of a text.                                                         |
@@ -109,7 +120,10 @@
 | `internal/api/admin.caseHistory`                          | is the progression of one eval case over the runs of an experiment.                                                    |
 | `internal/api/admin.casePoint`                            | is one plotted result of a case in its history, one dot per run.                                                       |
 | `internal/api/admin.caseRunWebSearches`                   | holds the web searches of one case result of a run.                                                                    |
+| `internal/api/admin.commentaryRequest`                    | is the optional body of the request for a commentary on a case run.                                                    |
 | `internal/api/admin.datasetView`                          | is a dataset with its counts as listed in the admin UI.                                                                |
+| `internal/api/admin.evalCaseDebugResponse`                | is the answer of the debug view of a case run: checks, input, expectations, commentaries and reruns.                   |
+| `internal/api/admin.evalRerunInfo`                        | is the part of the debug view about reruns: what can be picked.                                                        |
 | `internal/api/admin.evalOverview`                         | is the admin UI's eval overview with totals and experiments.                                                           |
 | `internal/api/admin.experimentDetail`                     | is an experiment with its runs for the admin detail view.                                                              |
 | `internal/api/admin.experimentView`                       | is an experiment with its counts as listed in the admin UI.                                                            |
@@ -118,7 +132,17 @@
 | `internal/api/admin.inferencesResponse`                   | is the admin API response listing inferences with breakdowns and pagination.                                           |
 | `internal/api/admin.lookup`                               | holds the entities, edges and artifacts that the anchors of one dataset point to.                                      |
 | `internal/api/admin.overview`                             | is the admin UI's overview of datasets and totals.                                                                     |
+| `internal/api/admin.queryRunResponse`                     | is the admin API response with one query run and its stage names.                                                      |
+| `internal/api/admin.rememberRunResponse`                  | is the admin API response with one remember run and its stage names.                                                   |
 | `internal/api/admin.rememberRunsResponse`                 | is the admin API response listing remember runs with counts and pagination.                                            |
+| `internal/api/admin.rerunListItem`                        | is one rerun in the list of the reruns of a case run.                                                                  |
+| `internal/api/admin.rerunRequest`                         | is the body of the request that reruns a case run with other models.                                                   |
+| `internal/api/admin.rerunStarted`                         | is the answer of the request that reruns a case run.                                                                   |
+| `internal/api/admin.rerunView`                            | says of a case run that it is a rerun: the case run it repeated and the models and levels it was given.                |
+| `internal/api/admin.researchGetResponse`                  | is the admin API response with one research agent, its states, parent and sub-agents.                                  |
+| `internal/api/admin.researchListResponse`                 | is the admin API response listing research agents with the counts by status.                                           |
+| `internal/api/admin.researchProvenanceResponse`           | is the admin API response with what a research agent put in the knowledge base.                                        |
+| `internal/api/admin.researchTemporalResponse`             | is the admin API response with the temporal changes of the session of a research agent.                                |
 | `internal/api/admin.tsAnchor`                             | is one anchor of a series with a label for its target.                                                                 |
 | `internal/api/admin.tsEntity`                             | is an entity a series belongs to and how it is related.                                                                |
 | `internal/api/admin.tsSeries`                             | is a series with its metadata, anchors and entities as shown in the admin UI.                                          |
@@ -193,6 +217,8 @@
 | `internal/db/graph/model.Series`                          | is a stored series without its points.                                                                                 |
 | `internal/db/graph/model.SeriesAnchor`                    | is a stored link between a series and its target.                                                                      |
 | `internal/db/graph/model.SeriesPoint`                     | is one value of a series at a time.                                                                                    |
+| `internal/db/graph/model.SessionEdge`                     | is an edge with its dataset and the sessions (of those asked for) it was discovered in.                                |
+| `internal/db/graph/model.SessionEntity`                   | is an entity with its dataset and the sessions (of those asked for) it was discovered in.                              |
 | `internal/db/graph/postgres.Tx`                           | is a PostgreSQL graph transaction implementing model.Tx.                                                               |
 | `internal/db/graph/sqlite.Tx`                             | is a SQLite graph transaction implementing model.Tx.                                                                   |
 | `internal/db/relational/model.Dataset`                    | describes a dataset.                                                                                                   |
@@ -283,8 +309,6 @@
 | `internal/memory/memory_query.queryContext`             | is everything the query LLM is given: the memory, the current time and the question.                                  |
 | `internal/memory/memory_query.queryOutput`              | is the structured answer the query LLM returns.                                                                       |
 | `internal/memory/memory_remember.ChunkResult`             | is the result for one chunk of a chunked text, itself an artifact.                                                     |
-| `internal/memory/memory_remember.Contradiction`           | says that an existing edge cannot hold together with a new edge.                                                       |
-| `internal/memory/memory_remember.EdgePlan`                | is the outcome of comparing new edges against existing ones.                                                           |
 | `internal/memory/memory_remember.Extraction`              | is the structured entities and edges extracted from a block of text.                                                   |
 | `internal/memory/memory_remember.Manager`                 | is the goroutine that runs queued remember pipeline requests.                                                          |
 | `internal/memory/memory_remember.Outcome`                 | is what a run of Remember returned, a result or an error.                                                              |
@@ -306,7 +330,6 @@
 | `internal/memory/memory_remember.merger`                  | accumulates the results of a text's chunks into the text's result.                                                     |
 | `internal/memory/memory_remember.observable`              | is a stored series that an observation may be made of.                                                                 |
 | `internal/memory/memory_remember.observationPart`         | says that a stored text is the observation of a series.                                                                |
-| `internal/memory/memory_remember.pair`                    | pairs a new edge with the existing edge it is compared to.                                                             |
 | `internal/memory/memory_remember.pendingVectors`          | holds embeddings computed before a transaction commits and written after it.                                           |
 | `internal/memory/memory_remember.queued`                  | is a queued remember run identified by its run ID and context.                                                         |
 | `internal/memory/memory_remember.runLog`                  | is the log of one Remember call.                                                                                       |
@@ -317,6 +340,10 @@
 | `internal/memory/memory_remember.summaryVector`           | is a chunk summary whose text is embedded next to its chunk's.                                                         |
 | `internal/memory/memory_remember.webPart`                 | says that a stored text is the result of a web search.                                                                 |
 | `internal/memory/memory_remember.webSearched`             | is the outcome of the search tool call for one entity.                                                                 |
+| `internal/memory/memory_temporal.Candidates`              | are the stored facts a Remember call compares its new facts with, and how they were found.                             |
+| `internal/memory/memory_temporal.Contradiction`           | says that an existing edge can't hold together with a new edge.                                                        |
+| `internal/memory/memory_temporal.EdgePlan`                | is the outcome of comparing new edges against existing ones.                                                           |
+| `internal/memory/memory_temporal.pair`                    | pairs a new edge with the existing edge it is compared to.                                                             |
 | `internal/memory/memory_timeseries.AnchorResult`          | is one stored series anchor.                                                                                           |
 | `internal/memory/memory_timeseries.Move`                  | is a change between two consecutive points of a series.                                                                |
 | `internal/memory/memory_timeseries.Observed`              | describes the series an observation is about.                                                                          |
@@ -352,6 +379,7 @@
 | `internal/sys/jev.Question`                               | is a typed question about the state sent to Jev.                                                                       |
 | `internal/sys/jev.Response`                               | is the result of a Jev evaluation.                                                                                     |
 | `internal/sys/server.Options`                             | configures the HTTP server.                                                                                            |
+| `internal/sys/server.EvalRerunEnv`                        | is what the server hands the eval rerunner: plain values and its interfaces, so the rerunner's package need not be imported. |
 | `internal/sys/sidecar.Client`                             | calls the training sidecar's HTTP API.                                                                                 |
 | `internal/sys/sidecar.HealthResponse`                     | is the body of the sidecar's health endpoint.                                                                          |
 | `internal/sys/sidecar.InferError`                         | is the error of a generation that failed on the sidecar.                                                               |

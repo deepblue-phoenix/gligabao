@@ -2,7 +2,7 @@
 
 The rules `remember` follows for the dates of facts, in one place. The model (event time and system time, the pipeline, the invalidation rule) is in [temporal.md](temporal.md); this page lists the special cases and what happens in each.
 
-Code: `Extract` and `fixSpan` in `internal/memory/memory_remember/remember.go`, the prompt in `prompts_remember.go` (`entitySystemPrompt`, `resolveSystemPrompt`), `resolveEdges`, `storeEdges` and `contradict` in `temporal.go`.
+Code: `Extract` in `internal/memory/memory_remember/remember.go` (the prompt in `prompts_remember.go`, `entitySystemPrompt`), and in `internal/memory/memory_temporal`: `FixSpan` and `ApplyReference` (`span.go`), `ResolveEdges` with the resolve prompt (`temporal.go`, `prompts.go`), `StoreEdges` and `contradict` (`store.go`).
 
 Terms: a fact is **live** while it has no `invalid_at` and no `expired_at`; it **ended** when it has an `invalid_at` (the text said so); it is **superseded** when it has an `expired_at` (a later fact closed it).
 
@@ -22,7 +22,7 @@ Terms: a fact is **live** while it has no `invalid_at` and no `expired_at`; it *
 | ---- | ------------ |
 | The text gives an end and a start before it ("Alice worked at Acme from 2020 until June 2024") | Both are stored as given: `2020-01-01 -> 2024-06-01`. |
 | The text gives an end and no start ("Alice left Acme in June 2024") | The prompt says `valid_at` = `invalid_at`. The result is an **empty span** (`valid_at` equals `invalid_at`): "start unknown, ended then". `valid_at` is `NOT NULL` in the database, so an unknown start can't be stored as null. |
-| The model sets a start after the end, usually the reference time it defaulted to (for example `valid_at` = 2024-09-10, `invalid_at` = 2024-06-01) | `fixSpan` keeps the end and moves `valid_at` back to `invalid_at` (the same empty span). The end is more reliable than a start the model defaulted. Before 0.140.0 the end was dropped and the fact was stored as still true. |
+| The model sets a start after the end, usually the reference time it defaulted to (for example `valid_at` = 2024-09-10, `invalid_at` = 2024-06-01) | `memory_temporal.FixSpan` keeps the end and moves `valid_at` back to `invalid_at` (the same empty span). The end is more reliable than a start the model defaulted. Before 0.140.0 the end was dropped and the fact was stored as still true. |
 | The model sets an end equal to the start | Kept as it is (an empty span). Before 0.140.0 it was dropped as "inconsistent". |
 
 An empty span is not an error. Reconciliation treats it like any ended fact: it never overlaps a later fact (see section 4), and `query` shows it as having stopped being true at that instant.

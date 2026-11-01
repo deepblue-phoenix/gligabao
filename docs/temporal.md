@@ -2,7 +2,7 @@
 
 gligabao follows the bi-temporal model of [Graphiti](https://github.com/getzep/graphiti).
 
-Code: `internal/memory/memory.go` (`Extract`, `Remember`, `Store`), `internal/memory/temporal.go` (reconciliation), `internal/db/graph/{sqlite,postgres}/db_schema.go` (tables). What a call did to each fact is logged in [edge-events.md](edge-events.md).
+Code: `internal/memory/memory_remember` (`Extract`, `Remember`, `Store`), `internal/memory/memory_temporal` (reconciliation: `ResolveEdges`, `LoadCandidates`, `StoreEdges`, `FixSpan`), `internal/db/graph/{sqlite,postgres}/db_schema.go` (tables). What a call did to each fact is logged in [edge-events.md](edge-events.md).
 
 ## Artifacts
 
@@ -37,8 +37,8 @@ There is no uniqueness on (source, target, relation): a fact can end and later b
 Run by `memory.Remember`:
 
 1. **Extract** (`Extract`, 1 LLM call): the model receives the reference time and the text and returns entities and edges with `description`, `valid_at` and `invalid_at`.
-2. **Find candidates** (`loadCandidates`): live (not expired) stored edges that touch at least one entity named in the new edges matched by normalized name and, when vectors are on, by similarity of the entity embeddings (aliases), merged by edge ID, newest first, at most 50. See [remember.md](remember.md#candidate-facts-load_candidates).
-3. **Resolve** (`resolveEdges`):
+2. **Find candidates** (`memory_temporal.LoadCandidates`): live (not expired) stored edges that touch at least one entity named in the new edges matched by normalized name and, when vectors are on, by similarity of the entity embeddings (aliases), merged by edge ID, newest first, at most 50. See [remember.md](remember.md#candidate-facts-load_candidates).
+3. **Resolve** (`memory_temporal.ResolveEdges`):
    - *Exact repeats* (same normalized source, target and relation as a candidate that has no `invalid_at`) are detected in Go, with no LLM call.
    - The rest are sent to a second LLM call together with the candidates. It returns `duplicates` (same fact, different wording) and `contradictions` (an existing fact can't be true at the same time as a new one). IDs and indexes that weren't in the prompt are dropped.
    - If there are no candidates or nothing is left after the exact-repeat check, this call is skipped.
@@ -66,7 +66,7 @@ Example: "Alice works at Acme" (artifact at 2023-01-01), then "Alice started wor
 
 ## What a call did to the facts
 
-`gb_edges` only holds the final state of a fact. To see how one `remember` call changed it, `storeEdges` also appends to the **edge event log**, `gb_edge_events`, in the same transaction: one row for each fact the call created, confirmed, ended, invalidated or superseded, with the fact's `invalid_at` before and after. The table, the events and how to read them are in [edge-events.md](edge-events.md); the admin UI plots them ([remember.md](remember.md#admin-ui)).
+`gb_edges` only holds the final state of a fact. To see how one `remember` call changed it, `memory_temporal.StoreEdges` also appends to the **edge event log**, `gb_edge_events`, in the same transaction: one row for each fact the call created, confirmed, ended, invalidated or superseded, with the fact's `invalid_at` before and after. The table, the events and how to read them are in [edge-events.md](edge-events.md); the admin UI plots them ([remember.md](remember.md#admin-ui)).
 
 ## Query
 

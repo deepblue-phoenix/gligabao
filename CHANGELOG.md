@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.153.1] - 2026-11-01
+
+### Changed
+- Docs: brought up to date with the admin UI and the refactor of 0.143.4 to 0.153.0. The research agents page (`docs/research.md`) describes the start button, the dock, the temporal plot and the new endpoints; `docs/evals/experiments.md` the re-runs table, the thinking levels of a re-run, the warnings and the new fields of the debug and re-run endpoints; `docs/pipeline.md` the bookmarks and the `remember-run` and `query-run` endpoints; `docs/remember.md` the retry of a model that refuses the thinking level and its warning; `docs/evals/knowledge.md` the cause in the `502` of the eval endpoints and the warnings of a trajectory. The temporal pages, `docs/pipeline.md` and `docs/listings/go-structs.md` name the new package `internal/memory/memory_temporal` and the new structs.
+
 ## [0.153.0] - 2026-11-01
 
 ### Added

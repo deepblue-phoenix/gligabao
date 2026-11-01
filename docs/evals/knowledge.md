@@ -26,7 +26,7 @@ Same request body and behavior as [`POST /v1/gb/remember`](../remember.md), incl
 
 Same request body and behavior as [`POST /v1/gb/query`](../query.md). The response is the usual query result (`answer`, `evidence`) plus `trajectory_id` and `trajectory`.
 
-Errors are the same as for the regular endpoints, and a failed call returns no trajectory (it is still stored, see below). Without eval mode both routes answer `404`/`405`.
+Errors are the same as for the regular endpoints, except that a `502` also puts the cause in its message (`failed to process text: <cause>`, `failed to answer query: <cause>`; the regular endpoints keep the generic message), which the runner records, without the JSON around it, as the reason the case errored (e.g. the provider's own error text). A failed call returns no trajectory (it is still stored, see below). Without eval mode both routes answer `404`/`405`.
 
 ## From Go
 
@@ -75,7 +75,7 @@ Package `internal/ai/atif` defines the types and a `Builder`; the schema version
 
 A step has `step_id` (from 1), `timestamp`, `source` (`system`, `user` or `agent`) and `message`. Agent steps may also have `model_name`, `metrics` (`prompt_tokens` including cache tokens, `completion_tokens`, `cost_usd`), `tool_calls` and an `observation` whose `source_call_id` points at the tool call.
 
-Every LLM call becomes up to three steps: a `system` step (the prompt; omitted if empty), a `user` step (the input message) and an `agent` step (the model's raw output, with `model_name`, `metrics` and `extra.provider` / `extra.stop_reason`). Work that is not an LLM call is an agent step with one tool call:
+Every LLM call becomes up to three steps: a `system` step (the prompt; omitted if empty), a `user` step (the input message) and an `agent` step (the model's raw output, with `model_name`, `metrics` and `extra.provider` / `extra.stop_reason`, and `extra.warning` when the provider made the call run differently from what was asked, e.g. a model that refuses the [thinking level](../remember.md#reasoning); the trajectory's `extra.warnings` lists such warnings once each). Work that is not an LLM call is an agent step with one tool call:
 
 | call | tool | what it records |
 |---|---|---|

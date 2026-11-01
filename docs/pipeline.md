@@ -90,13 +90,17 @@ Both run logs implement the `memory_pipeline.Observer` interface (`Start`, `Done
 - a `nil` log does nothing, and a row that cannot be written is logged: **the log never fails the call**;
 - the stages come from a table of definitions (`relational.RememberStages`, `relational.QueryStages`: the name, and whether the stage runs models). Tests check that the stages of each pipeline are exactly those of its table (`TestPipelineStagesAreTheRunLogs`), so the list and the schema cannot drift apart.
 
-The admin API serves both the same way: `GET /v1/gb/admin/api/remember-runs` and `GET /v1/gb/admin/api/query-runs` (counts by status, and the list, filtered and paged), and the [admin UI](#in-the-admin-ui) draws both with the same code.
+The admin API serves both the same way: `GET /v1/gb/admin/api/remember-runs` and `GET /v1/gb/admin/api/query-runs` (counts by status, and the list, filtered and paged), and one run each: `GET /v1/gb/admin/api/remember-run?run_id=<id>[&db=<name>]` and `GET /v1/gb/admin/api/query-run?run_id=<id>[&db=<name>]` (`run`, as an item of the list, and `stages`, the stage names in order; `404` for an unknown run). The [admin UI](#in-the-admin-ui) draws both with the same code.
 
 Existing database files are not migrated when the stages of a log change: delete the file and the server recreates it.
 
 ## In the admin UI
 
 The **remember** and **query** views (`admin_ui/src/runs.ts`) are the same view over the two logs: per database, how many runs are in each status (click a tile to filter by it), and the list of the runs, newest first. A run opens to its parameters (and, for a query, the question and the session) and a table with every stage: status, start, duration, inference IDs, error, and a **?** button that says what the stage does. For `remember` there is also an **Outputs** button per stage, which loads the [stage outputs](remember.md#stage-outputs); `query` keeps none. A run that succeeded but has a failed stage is flagged.
+
+### Bookmarks
+
+A **☆ Bookmark** button on an [eval case](evals/experiments.md#admin-ui) (in the run's case details and in the case modal), on a remember run and on a query run (in the run's details) bookmarks it; once bookmarked the button is green (★ Bookmarked), and pressing it again removes the bookmark. The **bookmarks** view lists everything bookmarked, newest first, filterable by type (eval case, remember run, query run). Each bookmark has a coloured type badge, the time it was saved (relative, *5 mins ago*, *3 days ago*; the exact UTC time is in the tooltip) and its title (a long one is cut; the whole title is in the tooltip). Clicking a bookmark goes straight to it: an eval case opens its case modal on top of the bookmarks view, a run opens in its own modal; the trash icon at the end of a row removes it. Bookmarks are kept in the browser (`localStorage`, `admin_ui/src/bookmarks.ts`), not on the server.
 
 ## Adding an operation or a stage
 
@@ -116,6 +120,7 @@ To add a whole **operation** with the same pattern: a package with its `job`, it
 | `internal/memory/memory_pipeline/pipeline.go` | `Stage`, `Each`, `Policy`, `Stop`, `Observer`, `Run`, `Names` |
 | `internal/memory/memory_core/memory_core.go` | `WithInferenceSink`, `RecordRun`, `NoteInference` |
 | `internal/memory/memory_remember/remember_pipeline.go`, `runlog.go` | the remember pipeline and its run log |
+| `internal/memory/memory_temporal/` | the temporal reconciliation of the reconcile stages (`ResolveEdges`, `LoadCandidates`, `StoreEdges`, `ApplyReference`) |
 | `internal/memory/memory_query/query.go`, `runlog.go` | the query pipeline and its run log |
 | `internal/db/relational/model/{remember_run,query_run}.go` | the run types and their stage definitions |
 | `internal/api/admin/{remember_runs,query_runs}.go` | the admin API |
