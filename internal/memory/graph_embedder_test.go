@@ -23,10 +23,14 @@ func testGraphEmbedderHook(t *testing.T, d *sql.DB) {
 	var mu sync.Mutex
 	var reqs []memory_core.GraphEmbedRequest
 	var fail, boom bool
+	index := ""
 	hook := memory_core.WithGraphEmbedder(func(_ context.Context, req memory_core.GraphEmbedRequest) ([]float32, error) {
 		mu.Lock()
 		defer mu.Unlock()
 		reqs = append(reqs, req)
+		if req.Index != index {
+			t.Errorf("the request has the index %q, want %q", req.Index, index)
+		}
 		if boom {
 			panic("hook bug")
 		}
@@ -62,6 +66,15 @@ func testGraphEmbedderHook(t *testing.T, d *sql.DB) {
 			t.Errorf("entity %+v is not a stored entity", e)
 		}
 	}
+
+	index = "small"
+	if _, err := memory_remember.Remember(ctx, d, &personLLM{}, "u1", "work", "episode", "Person4 works at Acme.", relational.Now(), vopt, hook, memory_core.WithGraphIndex(index)); err != nil {
+		t.Fatal(err)
+	}
+	if len(reqs) != 2 || reqs[1].Index != "small" {
+		t.Fatalf("a remember with an index: requests = %+v", reqs)
+	}
+	index = ""
 
 	reqs = nil
 	question := "Where does Person1 work?"

@@ -116,7 +116,7 @@ type Authenticator = httputil.Authenticator
 type GraphEmbedder = memory_core.GraphEmbedder
 
 // GraphEmbedRequest is the graph a GraphEmbedder is asked to embed: where it comes from (remember or query, the run and, for a remember, the
-// artifact), and its entities and edges.
+// artifact), the name of the graph embedding index the request asked for (graph_index; empty: none, the hook picks), and its entities and edges.
 type GraphEmbedRequest = memory_core.GraphEmbedRequest
 
 // GraphEntity is an entity of a GraphEmbedRequest.

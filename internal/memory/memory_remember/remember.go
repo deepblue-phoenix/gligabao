@@ -477,7 +477,7 @@ func (j *job) embedGraph(ctx context.Context) {
 		log.WithError(err).Warn("memory: loading the graph for the graph embedder hook failed; the hook is not called")
 		return
 	}
-	memory_core.EmbedGraph(ctx, j.co, memory_core.GraphEmbedRequest{Pipeline: memory_core.GraphEmbedRemember, UserID: j.userID, Dataset: j.dataset,
+	memory_core.EmbedGraph(ctx, j.co, memory_core.GraphEmbedRequest{Pipeline: memory_core.GraphEmbedRemember, Index: j.co.GraphIndex, UserID: j.userID, Dataset: j.dataset,
 		RunID: j.run.ID(), ArtifactID: j.res.ArtifactID, Entities: entities, Edges: edges})
 }
 

@@ -269,7 +269,7 @@ func (j *job) embedGraph(ctx context.Context, g *graphContext) {
 	if j.co.GraphEmbedder == nil {
 		return
 	}
-	req := memory_core.GraphEmbedRequest{Pipeline: memory_core.GraphEmbedQuery, UserID: j.userID, Dataset: j.dataset, RunID: j.run.ID(), Question: j.query}
+	req := memory_core.GraphEmbedRequest{Pipeline: memory_core.GraphEmbedQuery, Index: j.co.GraphIndex, UserID: j.userID, Dataset: j.dataset, RunID: j.run.ID(), Question: j.query}
 	for _, id := range sortedKeys(g.entities) {
 		req.Entities = append(req.Entities, g.entities[id])
 	}

@@ -44,6 +44,10 @@ type rememberRequest struct {
 	// SessionID (optional) is the user/agent session the call belongs to: it is attached to the artifact (text or
 	// image) and recorded against the entities and edges extracted from it. At most memory_core.MaxSessionIDLen bytes.
 	SessionID string `json:"session_id"`
+	// GraphIndex (optional) names the graph embedding index of the call: the graph embedder hook (ServeOptions.GraphEmbedder) gets it with
+	// the graph of the text, to know which index the embedding belongs to. 400 if it is malformed, or if the server has no graph embedder
+	// hook, or with an image (the image pipeline does not call the hook). See memory_core.WithGraphIndex.
+	GraphIndex string `json:"graph_index"`
 	// ReferenceTime (RFC 3339, optional) is when the text was written; relative dates in it ("yesterday") are
 	// resolved against it. Defaults to now.
 	ReferenceTime string `json:"reference_time"`
@@ -169,6 +173,11 @@ func handler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, eval 
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		graphIndex, err := resolveGraphIndex(req.GraphIndex, opts)
+		if err != nil {
+			httputil.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		models, err := memory_core.ResolveModels(req.Models)
 		if err != nil {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
@@ -198,7 +207,7 @@ func handler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, eval 
 		outcome := make(chan memory_remember.Outcome, 1)
 		runID, err := mgr.Submit(memory_remember.Request{
 			UserID: req.UserID, Dataset: req.Dataset, Kind: req.Kind, Text: req.Text, Ref: ref,
-			Opts: append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models), memory_core.WithReasoning(reasoning), memory_core.WithWebSearch(req.WebSearch), memory_core.WithSeries(series), memory_core.WithSeriesFetch(fetch), memory_core.WithSeriesObservations(observe)),
+			Opts: append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithGraphIndex(graphIndex), memory_core.WithModels(models), memory_core.WithReasoning(reasoning), memory_core.WithWebSearch(req.WebSearch), memory_core.WithSeries(series), memory_core.WithSeriesFetch(fetch), memory_core.WithSeriesObservations(observe)),
 			Ctx:  r.Context(), Outcome: outcome,
 		})
 		if err != nil {
@@ -294,6 +303,19 @@ func resolveTimeseries(t *timeseriesRequest, providers []memory_core.SeriesProvi
 	return series, f, t.Observations, err
 }
 
+// resolveGraphIndex validates the graph_index of a request: empty is none; a name needs the graph embedder hook (opts), which is what
+// gets it, so without one the request is refused instead of the name being silently dropped.
+func resolveGraphIndex(name string, opts []memory_core.Option) (string, error) {
+	name, err := memory_core.ResolveGraphIndex(name)
+	if err != nil {
+		return "", err
+	}
+	if name != "" && memory_core.NewCallOptions(opts).GraphEmbedder == nil {
+		return "", errors.New("graph_index needs the graph embedder hook: it is not set on this server")
+	}
+	return name, nil
+}
+
 // rememberImage serves a remember request that carries an image: the image pipeline.
 func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory_core.LLM, req rememberRequest, opts []memory_core.Option) {
 	if req.Text != "" || req.Kind != "" {
@@ -306,6 +328,10 @@ func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory
 	}
 	if req.Timeseries != nil {
 		httputil.Error(w, http.StatusBadRequest, "timeseries does not apply to an image")
+		return
+	}
+	if req.GraphIndex != "" {
+		httputil.Error(w, http.StatusBadRequest, "graph_index does not apply to an image")
 		return
 	}
 	data, err := base64.StdEncoding.DecodeString(strings.TrimSpace(req.Image))

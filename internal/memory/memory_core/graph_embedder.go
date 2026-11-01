@@ -2,7 +2,10 @@ package memory_core
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 
@@ -34,6 +37,10 @@ const (
 type GraphEmbedRequest struct {
 	// Pipeline says what the graph is: GraphEmbedRemember or GraphEmbedQuery.
 	Pipeline string
+	// Index is the name of the graph embedding index the call asked for (the graph_index of the request, WithGraphIndex): which index
+	// the embedding belongs to, e.g. the one of a model, a size bin or a tenant. It is validated (see ResolveGraphIndex). Empty means the
+	// call named none: the hook uses its own default (the graph engine's is "default").
+	Index string
 	// UserID and Dataset (already resolved) are where the call ran.
 	UserID, Dataset string
 	// RunID is the run log of the call (gb_remember_runs.id or gb_query_runs.id, by Pipeline); 0 if it could not be recorded.
@@ -49,6 +56,22 @@ type GraphEmbedRequest struct {
 	Edges    []graph.EvidenceEdge
 }
 
+// ErrInvalidGraphIndex means the name of a graph embedding index is malformed.
+var ErrInvalidGraphIndex = errors.New("invalid graph_index")
+
+var graphIndexRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+
+// ResolveGraphIndex trims the name of a graph embedding index and returns ErrInvalidGraphIndex if it is not 1-64 characters of letters,
+// digits, '.', '_' or '-', starting with a letter or digit (the names the graph engine accepts, so one can never be a path). An empty
+// name is valid and means "none given": the hook picks.
+func ResolveGraphIndex(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name != "" && !graphIndexRe.MatchString(name) {
+		return "", fmt.Errorf("%w: name must be 1-64 characters of letters, digits, '.', '_' or '-', starting with a letter or digit", ErrInvalidGraphIndex)
+	}
+	return name, nil
+}
+
 // GraphEmbedder embeds a graph. It returns the embedding of the whole graph, or an error. It must honour ctx and may be called
 // concurrently. It runs on the goroutine of the call (the remember manager's, or the request's for a query, whose answer waits for it),
 // so a slow model slows the call.
@@ -62,6 +85,11 @@ type GraphEmbedder func(ctx context.Context, req GraphEmbedRequest) ([]float32, 
 // IMPORTANT: the embeddings are NOT stored in the vector store yet; they must be (see the note at the top of graph_embedder.go).
 func WithGraphEmbedder(f GraphEmbedder) Option { return func(o *CallOptions) { o.GraphEmbedder = f } }
 
+// WithGraphIndex names the graph embedding index of the call: Remember and Query pass it to the graph embedder hook as
+// GraphEmbedRequest.Index, so the hook knows which index the graph's embedding belongs to (when embedding) or is searched in. It is
+// used as given: validate it with ResolveGraphIndex first. Empty (the default) names none. It has no effect without WithGraphEmbedder.
+func WithGraphIndex(name string) Option { return func(o *CallOptions) { o.GraphIndex = name } }
+
 // EmbedGraph calls the graph embedder of o, if it has one and the graph is not empty. Like the other advisory steps it never fails the
 // call: an error or a panic of the hook is logged and dropped.
 //
@@ -71,7 +99,7 @@ func EmbedGraph(ctx context.Context, o CallOptions, req GraphEmbedRequest) {
 	if o.GraphEmbedder == nil || len(req.Entities)+len(req.Edges) == 0 {
 		return
 	}
-	fields := log.Fields{"pipeline": req.Pipeline, "run_id": req.RunID, "entities": len(req.Entities), "edges": len(req.Edges)}
+	fields := log.Fields{"pipeline": req.Pipeline, "index": req.Index, "run_id": req.RunID, "entities": len(req.Entities), "edges": len(req.Edges)}
 	emb, err := callGraphEmbedder(ctx, o.GraphEmbedder, req)
 	if err != nil {
 		log.WithError(err).WithFields(fields).Warn("memory: the graph embedder hook failed; the call is not affected")

@@ -212,9 +212,18 @@ type GraphEmbedder = memory_core.GraphEmbedder // func(ctx context.Context, req 
 
 | Type | Fields |
 |---|---|
-| `gligabao.GraphEmbedRequest` | `Pipeline` (`gligabao.GraphEmbedRemember` or `gligabao.GraphEmbedQuery`), `UserID`, `Dataset`, `RunID` (`gb_remember_runs.id` or `gb_query_runs.id`, by `Pipeline`; 0 if it could not be recorded), `ArtifactID` (remember only: the artifact of the remembered text, the parent artifact of a document), `Question` (query only), `Entities` (`[]gligabao.GraphEntity`), `Edges` (`[]gligabao.GraphEdge`) |
+| `gligabao.GraphEmbedRequest` | `Pipeline` (`gligabao.GraphEmbedRemember` or `gligabao.GraphEmbedQuery`), `Index` (the name of the graph embedding index the call asked for, see below; empty if none), `UserID`, `Dataset`, `RunID` (`gb_remember_runs.id` or `gb_query_runs.id`, by `Pipeline`; 0 if it could not be recorded), `ArtifactID` (remember only: the artifact of the remembered text, the parent artifact of a document), `Question` (query only), `Entities` (`[]gligabao.GraphEntity`), `Edges` (`[]gligabao.GraphEdge`) |
 
 `GraphEntity` and `GraphEdge` are the stored entity and edge (with their IDs, the edge's endpoints and its bi-temporal validity), as `GET /v1/gb/datasets/{name}/graph` returns them.
+
+### The index name
+
+A `remember` and a `query` request can name the graph embedding index they are for, with the optional field **`graph_index`** (see [remember.md](remember.md), [query.md](query.md)); the hook gets it as `req.Index`, for the embedding it makes (remember) and for the search it does (query). It is how a hook that keeps several indexes (one per model, per size bin, per tenant, ...) knows which one: the graph engine of `baby_thinker` has named indexes (`-index NAME`) and its client passes `req.Index` there. gligabao only carries the name and does not interpret it.
+
+- The name is 1-64 letters, digits, `.`, `_` or `-`, starting with a letter or digit (the names the graph engine accepts, so it can never be a path); gligabao validates it (`400` otherwise) and trims it.
+- **Empty means "none given"**: the hook uses its own default (the engine's is `default`).
+- A request that names an index on a server **without** a graph embedder hook is a `400` (the name would be dropped silently otherwise), and so is one with an `image` (the image pipeline does not call the hook).
+- In Go, the option is `memory_core.WithGraphIndex(name)` (internal); the MCP tools do not carry it yet.
 
 ### When it is called
 
@@ -233,7 +242,7 @@ type GraphEmbedder = memory_core.GraphEmbedder // func(ctx context.Context, req 
 
 ### To do: storing the embeddings
 
-When the hook is completed, the embedding it returns must be written to the vector store (`CallOptions.Vectors`, the same store `remember` writes its other vectors to), into a vector dataset of the user's dataset for graph embeddings, keyed by `Pipeline` + `RunID` (and `ArtifactID` for a remember), so that a graph can be found by similarity. The places to do it are marked `IMPORTANT` in the code: `memory_core.EmbedGraph` (where the result is dropped), `memory_remember.job.embedGraph` and `memory_query.job.embedGraph`.
+When the hook is completed, the embedding it returns must be written to the vector store (`CallOptions.Vectors`, the same store `remember` writes its other vectors to), into a vector dataset of the user's dataset for graph embeddings, in the index named by `Index`, keyed by `Pipeline` + `RunID` (and `ArtifactID` for a remember), so that a graph can be found by similarity. The places to do it are marked `IMPORTANT` in the code: `memory_core.EmbedGraph` (where the result is dropped), `memory_remember.job.embedGraph` and `memory_query.job.embedGraph`.
 
 ## Trained model inference hooks
 

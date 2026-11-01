@@ -15,6 +15,7 @@ content-type: application/json
 - `user_id` (required): the user who owns the dataset. `400` if missing.
 - `dataset` (optional): name of the [dataset](datasets.md) to search. Defaults to `main`. Only that user's dataset graph is used. `404` if it does not exist.
 - `session_id` (optional): the user/agent session the call belongs to, a string you choose (at most 128 bytes, no control characters; `400` otherwise). Use the same one as in the `remember` calls of that session, to connect the query to the artifacts (and their entities and facts) of the same session, see [sessions.md](sessions.md). It is echoed in the response and recorded in the call's trajectory and monitoring event. It does **not** change retrieval or the answer.
+- `graph_index` (optional): the name of the [graph embedding index](hooks.md#graph-embedder) of the call: 1-64 letters, digits, `.`, `_` or `-`, starting with a letter or digit. It is handed to the graph embedder hook with the graph context of the question (`GraphEmbedRequest.Index`), so the hook knows which index to embed for or search. Omitted: the hook uses its default. `400` if it is malformed or the server has no graph embedder hook.
 
 - `reasoning` (optional): the reasoning (thinking) level of the LLM calls: `none`, `low`, `medium` or `high` (case-insensitive). Either a string, the level of the call that writes the answer, or an object with a level for each stage: `{"query": "medium", "detect_geo": "low"}` (`detect_geo` is the call that finds the places the question mentions, only when the server has [geo](geo.md#in-query) on; ignored otherwise). A stage left out runs with **`none`** (no thinking, so no thinking tokens are paid for). `400` for an unknown level, a stage that is not one of these (the stages of `remember` are rejected too) or a value that is neither a string nor an object. Each call is recorded as an [inference](inferences.md) (`gb_inferences`, type `query`, stage `query` or `detect_geo`) with the level it ran with, its tokens and its cost.
 
@@ -59,7 +60,7 @@ Errors are returned as `{"error": "..."}`:
 
 | Status | Meaning |
 | ------ | ------- |
-| 400 | Invalid JSON body, `query` is empty, or `session_id` is too long or has control characters |
+| 400 | Invalid JSON body, `query` is empty, `session_id` is too long or has control characters, or `graph_index` is malformed or given with no graph embedder hook on the server |
 | 502 | The LLM call failed, or its output could not be parsed, was empty or was truncated; or the question could not be embedded or the vector store could not be searched |
 | 503 | LLM not configured (`ANTHROPIC_API_KEY` is not set) |
 

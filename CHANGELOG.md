@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.158.0] - 2026-11-03
+
+### Added
+- **Index name for the graph embedder hook.** `remember` and `query` accept an optional `graph_index` field that names the graph embedding index the call is for; the [graph embedder hook](docs/hooks.md#the-index-name) gets it as `GraphEmbedRequest.Index`, so a hook that keeps several indexes (per model, size bin, tenant, ...) knows which one to embed into or search. It is 1-64 letters, digits, `.`, `_` or `-`, starting with a letter or digit; empty means none given and the hook picks its default. `400` if it is malformed, if the server has no graph embedder hook, or (remember) with an `image`. The MCP tools do not carry it yet.
+
 ## [0.157.0] - 2026-11-03
 
 ### Added

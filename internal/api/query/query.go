@@ -44,6 +44,10 @@ type queryRequest struct {
 	// with geo_nearby: false it is a 400). It overrides the default of the server (config geo_radius_km, 50 km unless set); it must
 	// be greater than 0 and at most memory_core.MaxGeoRadiusKm.
 	GeoRadiusKm *float64 `json:"geo_radius_km"`
+	// GraphIndex (optional) names the graph embedding index of the call: the graph embedder hook (ServeOptions.GraphEmbedder) gets it with the
+	// graph context of the question, to know which index to embed for or search. 400 if it is malformed or the server has no graph
+	// embedder hook. See memory_core.WithGraphIndex.
+	GraphIndex string `json:"graph_index"`
 	// EvidenceOnly (optional, default false) makes the call retrieval-only: no LLM writes the answer (the response has an empty
 	// answer), and the evidence is everything that was retrieved. See memory_core.WithEvidenceOnly.
 	EvidenceOnly bool `json:"evidence_only"`
@@ -119,7 +123,15 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, opts []memory_core.Optio
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		callOpts := append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models), memory_core.WithReasoning(reasoning))
+		graphIndex, err := memory_core.ResolveGraphIndex(req.GraphIndex)
+		if err == nil && graphIndex != "" && memory_core.NewCallOptions(opts).GraphEmbedder == nil {
+			err = errors.New("graph_index needs the graph embedder hook: it is not set on this server")
+		}
+		if err != nil {
+			httputil.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		callOpts := append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithGraphIndex(graphIndex), memory_core.WithModels(models), memory_core.WithReasoning(reasoning))
 		if req.GeoRadiusKm != nil && req.GeoNearby != nil && !*req.GeoNearby {
 			httputil.Error(w, http.StatusBadRequest, "geo_radius_km turns the nearby search on, but geo_nearby is false")
 			return
