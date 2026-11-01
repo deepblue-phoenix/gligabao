@@ -42,6 +42,8 @@ class Client:
         timeseries: list[dict[str, Any]] | None = None,
         fetch_timeseries: dict[str, Any] | bool | None = None,
         observe_timeseries: bool = False,
+        classify_graph: bool = False,
+        graph_classes: list[str] | None = None,
     ) -> dict[str, Any]:
         """Store `text`, or an `image`, in memory (POST /v1/gb/remember).
 
@@ -95,6 +97,13 @@ class Client:
         kind "series_observation" from each series stored (at most 10): a text generated from the series' stats
         and extracted into the graph like any text. The response lists them under "series_observations". It costs
         an extraction call each.
+
+        `classify_graph=True` (text only) has an LLM classify the graph of each artifact the call stores (the text,
+        or each chunk of a long text): it picks one to three classes, each stored as a record of the artifact's
+        classes together with the run (inference) of the call. The response lists them under "classes". It costs a
+        call per artifact; its model and reasoning level are the "classify_graph" stage of `models` and `reasoning`.
+        `graph_classes` (needs `classify_graph`) are the only classes the LLM may choose from (lowercase snake_case
+        names); without it the LLM chooses freely, reusing the classes the dataset already has.
         """
         if (text is None) == (image is None):
             raise ValueError("remember takes exactly one of text and image")
@@ -106,6 +115,8 @@ class Client:
                 raise ValueError("web_search does not apply to images")
             if timeseries or fetch_timeseries or observe_timeseries:
                 raise ValueError("timeseries does not apply to images")
+            if classify_graph or graph_classes:
+                raise ValueError("classify_graph does not apply to images")
             if not isinstance(image, (bytes, bytearray, memoryview)):
                 with open(image, "rb") as f:
                     image = f.read()
@@ -122,6 +133,12 @@ class Client:
             body["reasoning"] = reasoning
         if web_search:
             body["web_search"] = True
+        if graph_classes and not classify_graph:
+            raise ValueError("graph_classes needs classify_graph")
+        if classify_graph:
+            body["classify_graph"] = True
+            if graph_classes:
+                body["graph_classes"] = list(graph_classes)
         if timeseries or fetch_timeseries:
             ts: dict[str, Any] = {}
             if timeseries:

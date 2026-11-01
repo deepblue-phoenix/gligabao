@@ -141,6 +141,10 @@ type KnowledgeDataset = memory_core.KnowledgeDataset
 // ArtifactGraph is the graph that comes with one artifact of a KnowledgeDataset.
 type ArtifactGraph = memory_core.ArtifactGraph
 
+// ArtifactClass is one class an LLM gave to the graph of an artifact (ArtifactGraph.Classes): a record of gb_artifact_classes, with the run
+// (InferenceID) of the model call that gave it.
+type ArtifactClass = memory_core.ArtifactClass
+
 // TrainingDataset is what a ClassifyingTrainingHook returns: a KnowledgeDataset (all of it or a filtered subset) plus the class of each of its graphs.
 type TrainingDataset = memory_core.TrainingDataset
 

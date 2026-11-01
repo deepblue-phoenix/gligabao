@@ -58,6 +58,7 @@ type (
 	NewEdge                      = model.NewEdge
 	EntityArtifact               = model.EntityArtifact
 	EdgeArtifact                 = model.EdgeArtifact
+	ArtifactClass                = model.ArtifactClass
 	EdgeEvent                    = model.EdgeEvent
 	InContextEvent               = model.InContextEvent
 	InContextCount               = model.InContextCount
@@ -558,6 +559,44 @@ func ListArtifacts(ctx context.Context, d *sql.DB, dsID int64) ([]Artifact, erro
 		return sqlite.ListArtifacts(ctx, d, dsID)
 	case config.DBBackendPostgres:
 		return postgres.ListArtifacts(ctx, d, dsID)
+	}
+	return nil, unsupported()
+}
+
+// InsertArtifactClasses stores the classes an LLM gave to the graph of an artifact of the dataset (see model.ArtifactClass): one record
+// (row of gb_artifact_classes) for each, all with the run of the model call that gave them (inferenceID, 0 if unrecorded), stamped
+// createdAt. It returns the records, in the order of classes. classes must not be empty strings.
+func InsertArtifactClasses(ctx context.Context, d *sql.DB, dsID, artifactID, inferenceID int64, classes []string, createdAt time.Time) ([]ArtifactClass, error) {
+	if len(classes) == 0 {
+		return []ArtifactClass{}, nil
+	}
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.InsertArtifactClasses(ctx, d, dsID, artifactID, inferenceID, classes, createdAt)
+	case config.DBBackendPostgres:
+		return postgres.InsertArtifactClasses(ctx, d, dsID, artifactID, inferenceID, classes, createdAt)
+	}
+	return nil, unsupported()
+}
+
+// ListArtifactClasses returns the class records of the artifacts of the dataset, by artifact ID then record ID (the order they were made in).
+func ListArtifactClasses(ctx context.Context, d *sql.DB, dsID int64) ([]ArtifactClass, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListArtifactClasses(ctx, d, dsID)
+	case config.DBBackendPostgres:
+		return postgres.ListArtifactClasses(ctx, d, dsID)
+	}
+	return nil, unsupported()
+}
+
+// ClassNames returns the distinct class names used in the dataset, the most used first (then by name), at most limit.
+func ClassNames(ctx context.Context, d *sql.DB, dsID int64, limit int) ([]string, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ClassNames(ctx, d, dsID, limit)
+	case config.DBBackendPostgres:
+		return postgres.ClassNames(ctx, d, dsID, limit)
 	}
 	return nil, unsupported()
 }

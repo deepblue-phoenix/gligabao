@@ -277,6 +277,19 @@ type EntityArtifact struct {
 	EntityID, ArtifactID int64
 }
 
+// ArtifactClass is one class an LLM gave to the graph of an artifact (a row of gb_artifact_classes). An artifact has any number of them:
+// one call can give several classes, and each record keeps the run of the call that made it.
+type ArtifactClass struct {
+	ID         int64  `json:"id"`
+	DatasetID  int64  `json:"dataset_id"`
+	ArtifactID int64  `json:"artifact_id"`
+	Class      string `json:"class"`
+	// InferenceID is the run (gb_inferences) of the model call that gave the class: the run holds the model, the reasoning level, the
+	// tokens and the cost (see relational.GetInference). 0 if the run could not be recorded.
+	InferenceID int64     `json:"inference_id,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 // EdgeArtifact says that an edge (a fact) was inferred from an artifact: the one that created it, or one that
 // stated the same fact again.
 type EdgeArtifact struct {

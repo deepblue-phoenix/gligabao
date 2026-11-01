@@ -108,6 +108,11 @@ type CallOptions struct {
 	// GraphIndex is the name of the graph embedding index the call is for, set by WithGraphIndex; "" names none. The hook gets it.
 	GraphIndex string
 
+	// ClassifyGraph says Remember classifies the graph of each artifact it stores with an LLM (the classify_graph stage), set by
+	// WithClassifyGraph; GraphClasses, if not empty, are the only classes it may choose from (else it chooses freely).
+	ClassifyGraph bool
+	GraphClasses  []string
+
 	// RememberRunID is the run log row (gb_remember_runs) Remember adopts instead of creating one, set by
 	// WithRememberRunID; 0 means Remember creates its own. The remember manager sets it: it creates the row when a
 	// request is queued, so that the caller has the ID right away.

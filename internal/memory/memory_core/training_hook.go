@@ -24,7 +24,14 @@ type ArtifactGraph struct {
 	ArtifactID int64
 	Entities   []graph.EvidenceEntity
 	Edges      []graph.EvidenceEdge
+	// Classes are the classes an LLM gave to the graph when it was remembered (the classify_graph stage, see graph_classes.go): the records
+	// of gb_artifact_classes of the artifact, in the order they were made (by ID). Each says which model run gave it (InferenceID). Empty
+	// if the graph was not classified. They are what a hook is expected to train on: it picks the class of each graph from them.
+	Classes []ArtifactClass
 }
+
+// ArtifactClass is one class an LLM gave to the graph of an artifact (a record of gb_artifact_classes), with the run of the model call.
+type ArtifactClass = graph.ArtifactClass
 
 // KnowledgeDataset is what a dataset has stored: all its artifacts (of every kind: texts, chunks, web searches, ...) and the graphs that
 // come with them.

@@ -47,19 +47,23 @@ func LoadKnowledgeDataset(ctx context.Context, d *sql.DB, userID, name string) (
 	if err != nil {
 		return memory_core.KnowledgeDataset{}, err
 	}
+	classes, err := graph.ListArtifactClasses(ctx, d, dsID)
+	if err != nil {
+		return memory_core.KnowledgeDataset{}, err
+	}
 	if artifacts == nil {
 		artifacts = []graph.Artifact{}
 	}
 	return memory_core.KnowledgeDataset{
 		UserID: userID, Dataset: name, DatasetID: dsID,
 		Artifacts: artifacts,
-		Graphs:    artifactGraphs(artifacts, entities, edges, entityLinks, edgeLinks),
+		Graphs:    artifactGraphs(artifacts, entities, edges, entityLinks, edgeLinks, classes),
 	}, nil
 }
 
-// artifactGraphs groups the entities and edges by the artifacts they are linked to. The result has one graph per artifact that has
+// artifactGraphs groups the entities and edges by the artifacts they are linked to, and gives each graph the classes of its artifact. The result has one graph per artifact that has
 // at least one entity or edge, in the order of artifacts; the entities and edges of a graph are in the order they were given.
-func artifactGraphs(artifacts []graph.Artifact, entities []graph.EvidenceEntity, edges []graph.EvidenceEdge, entityLinks []graph.EntityArtifact, edgeLinks []graph.EdgeArtifact) []memory_core.ArtifactGraph {
+func artifactGraphs(artifacts []graph.Artifact, entities []graph.EvidenceEntity, edges []graph.EvidenceEdge, entityLinks []graph.EntityArtifact, edgeLinks []graph.EdgeArtifact, classes []graph.ArtifactClass) []memory_core.ArtifactGraph {
 	entityByID := make(map[int64]graph.EvidenceEntity, len(entities))
 	for _, e := range entities {
 		entityByID[e.ID] = e
@@ -76,9 +80,13 @@ func artifactGraphs(artifacts []graph.Artifact, entities []graph.EvidenceEntity,
 	for _, l := range edgeLinks {
 		edgeIDs[l.ArtifactID] = append(edgeIDs[l.ArtifactID], l.EdgeID)
 	}
+	classesOf := map[int64][]graph.ArtifactClass{} // artifact ID -> its classes, in order of ID
+	for _, c := range classes {
+		classesOf[c.ArtifactID] = append(classesOf[c.ArtifactID], c)
+	}
 	graphs := []memory_core.ArtifactGraph{}
 	for _, a := range artifacts {
-		g := memory_core.ArtifactGraph{ArtifactID: a.ID, Entities: []graph.EvidenceEntity{}, Edges: []graph.EvidenceEdge{}}
+		g := memory_core.ArtifactGraph{ArtifactID: a.ID, Entities: []graph.EvidenceEntity{}, Edges: []graph.EvidenceEdge{}, Classes: []graph.ArtifactClass{}}
 		for _, id := range entityIDs[a.ID] {
 			if e, ok := entityByID[id]; ok {
 				g.Entities = append(g.Entities, e)
@@ -90,6 +98,7 @@ func artifactGraphs(artifacts []graph.Artifact, entities []graph.EvidenceEntity,
 			}
 		}
 		if len(g.Entities)+len(g.Edges) > 0 {
+			g.Classes = append(g.Classes, classesOf[a.ID]...)
 			graphs = append(graphs, g)
 		}
 	}

@@ -63,6 +63,14 @@ type rememberRequest struct {
 	// text and remembers what it finds, as artifacts of kind "web_search" (see docs/web-search.md). Only available when
 	// the server has an Anthropic API key (else 503); not for an image (400).
 	WebSearch bool `json:"web_search"`
+	// ClassifyGraph (optional, default false) has an LLM classify the graph of each artifact the call stores (the text, or each chunk of a
+	// document): it picks one to three classes, and each is stored as a record of gb_artifact_classes that references the run (inference)
+	// of the call. It costs a call per artifact; the model and the reasoning level are those of the "classify_graph" stage. Not for an image
+	// (400). See docs/remember.md#graph-classes.
+	ClassifyGraph bool `json:"classify_graph"`
+	// GraphClasses (optional) are the only classes the LLM may choose from (at most memory_core.MaxGraphClasses, normalized to lowercase
+	// snake_case); without them it chooses freely, reusing the classes the dataset already has. Needs classify_graph (400 without).
+	GraphClasses []string `json:"graph_classes"`
 	// Timeseries (optional) supplies timeseries to store and anchor to what the text yields (see docs/timeseries.md).
 	// Not for an image (400).
 	Timeseries *timeseriesRequest `json:"timeseries"`
@@ -188,6 +196,11 @@ func handler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, eval 
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		graphClasses, err := resolveGraphClasses(req.ClassifyGraph, req.GraphClasses)
+		if err != nil {
+			httputil.Error(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		if req.WebSearch && memory_core.NewCallOptions(opts).WebSearcher == nil {
 			httputil.Error(w, http.StatusServiceUnavailable, memory_core.ErrWebSearchUnavailable.Error())
 			return
@@ -207,7 +220,7 @@ func handler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, eval 
 		outcome := make(chan memory_remember.Outcome, 1)
 		runID, err := mgr.Submit(memory_remember.Request{
 			UserID: req.UserID, Dataset: req.Dataset, Kind: req.Kind, Text: req.Text, Ref: ref,
-			Opts: append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithGraphIndex(graphIndex), memory_core.WithModels(models), memory_core.WithReasoning(reasoning), memory_core.WithWebSearch(req.WebSearch), memory_core.WithSeries(series), memory_core.WithSeriesFetch(fetch), memory_core.WithSeriesObservations(observe)),
+			Opts: append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithGraphIndex(graphIndex), memory_core.WithModels(models), memory_core.WithReasoning(reasoning), memory_core.WithWebSearch(req.WebSearch), memory_core.WithClassifyGraph(req.ClassifyGraph, graphClasses), memory_core.WithSeries(series), memory_core.WithSeriesFetch(fetch), memory_core.WithSeriesObservations(observe)),
 			Ctx:  r.Context(), Outcome: outcome,
 		})
 		if err != nil {
@@ -303,6 +316,14 @@ func resolveTimeseries(t *timeseriesRequest, providers []memory_core.SeriesProvi
 	return series, f, t.Observations, err
 }
 
+// resolveGraphClasses validates graph_classes of a request: they only make sense with classify_graph.
+func resolveGraphClasses(classify bool, classes []string) ([]string, error) {
+	if len(classes) > 0 && !classify {
+		return nil, errors.New("graph_classes needs classify_graph")
+	}
+	return memory_core.ResolveGraphClasses(classes)
+}
+
 // resolveGraphIndex validates the graph_index of a request: empty is none; a name needs the graph embedder hook (opts), which is what
 // gets it, so without one the request is refused instead of the name being silently dropped.
 func resolveGraphIndex(name string, opts []memory_core.Option) (string, error) {
@@ -332,6 +353,10 @@ func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory
 	}
 	if req.GraphIndex != "" {
 		httputil.Error(w, http.StatusBadRequest, "graph_index does not apply to an image")
+		return
+	}
+	if req.ClassifyGraph || len(req.GraphClasses) > 0 {
+		httputil.Error(w, http.StatusBadRequest, "classify_graph does not apply to an image")
 		return
 	}
 	data, err := base64.StdEncoding.DecodeString(strings.TrimSpace(req.Image))

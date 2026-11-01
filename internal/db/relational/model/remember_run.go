@@ -51,6 +51,8 @@ const (
 	RememberStageStore = "store"
 	// RememberStageStoreSeries is the storage of the timeseries the caller supplied.
 	RememberStageStoreSeries = "store_series"
+	// RememberStageClassifyGraph is the classification of the graph of each artifact the call stored (only with classify_graph).
+	RememberStageClassifyGraph = "classify_graph"
 	// RememberStageResolveGeo is the detection of the entities that are places and the lookup of their coordinates (it
 	// includes the detect_geo model call).
 	RememberStageResolveGeo = "resolve_geo"
@@ -80,6 +82,7 @@ var RememberStages = []RememberStageDef{
 	{RememberStageResolveEdges, true},
 	{RememberStageStore, true},
 	{RememberStageStoreSeries, false},
+	{RememberStageClassifyGraph, true},
 	{RememberStageResolveGeo, true},
 	{RememberStageWebSearch, true},
 	{RememberStageFetchSeries, true},

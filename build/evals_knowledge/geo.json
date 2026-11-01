@@ -4,7 +4,7 @@
   "cases": [
     {
       "name": "geo_city",
-      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
+      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "classify_graph": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
         {"kind": "episode", "text": "Alice lives in Paris, France.", "reference_time": "2024-06-01T00:00:00Z"}
       ],
@@ -19,7 +19,7 @@
     },
     {
       "name": "geo_city_country",
-      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
+      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "classify_graph": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
         {"kind": "episode", "text": "Bob was born in Toronto, Canada.", "reference_time": "2024-06-01T00:00:00Z"}
       ],
@@ -35,7 +35,7 @@
     },
     {
       "name": "geo_landmark",
-      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
+      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "classify_graph": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
         {"kind": "episode", "text": "The Eiffel Tower stands in Paris and was completed in 1889.", "reference_time": "2024-06-01T00:00:00Z"}
       ],
@@ -51,7 +51,7 @@
     },
     {
       "name": "geo_two_cities",
-      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
+      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "classify_graph": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
         {"kind": "episode", "text": "Erin flew from Berlin to Tokyo for a conference.", "reference_time": "2024-06-01T00:00:00Z"}
       ],
@@ -68,7 +68,7 @@
     },
     {
       "name": "geo_mountain",
-      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
+      "reasoning": {"extract_graph": "none", "summarize_chunk": "none", "resolve_edges": "none", "classify_graph": "none", "resolve_series": "none", "detect_geo": "none", "extract_image": "none", "query": "none"},
       "remember": [
         {"kind": "episode", "text": "Frank climbed Mount Fuji, the highest mountain in Japan, last summer.", "reference_time": "2024-06-01T00:00:00Z"}
       ],

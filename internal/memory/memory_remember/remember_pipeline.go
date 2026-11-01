@@ -9,7 +9,7 @@ package memory_remember
 // through extract_graph and summarize_chunk for every chunk first, since nothing is written until every chunk is extracted,
 // then its parent artifact is stored (the store stage), and then every chunk goes through load_candidates, resolve_edges and
 // store, one chunk to the end before the next, so that a chunk is also compared with the facts of the chunks before it.
-// The stages after those (store_series for a document, geo, web search, series fetch and observations) run once, for the text as
+// The stages after those (store_series for a document, classify_graph, geo, web search, series fetch and observations) run once, for the text as
 // a whole; none of them fails the call.
 
 import (
@@ -46,6 +46,9 @@ var rememberPipeline = []memory_pipeline.Step[job]{
 	// The series of a document are stored once the chunks, and so their entities, are (those of a text of one chunk are stored
 	// by its store stage, in the same transaction).
 	memory_pipeline.Stage[job]{Name: StageStoreSeries, Enabled: (*job).storesDocumentSeries, Run: (*job).storeDocumentSeries},
+
+	// The graph of each stored artifact is classified by an LLM, once the artifacts are stored. Advisory: they are stored either way.
+	memory_pipeline.Stage[job]{Name: memory_core.StageClassifyGraph, Policy: memory_pipeline.Advisory, Enabled: (*job).hasClassifyGraph, Run: (*job).classifyGraphStage},
 
 	// The enrichment stages run once the text is stored, on its key entities: none of them fails the call.
 	memory_pipeline.Stage[job]{Name: StageResolveGeo, Policy: memory_pipeline.Advisory, Enabled: (*job).hasGeo, Run: (*job).geoStage},
@@ -348,6 +351,7 @@ func (j *job) storeStage(ctx context.Context) error {
 	j.traceSeries(res.ArtifactID, res.Series)
 
 	if j.web == nil && j.obs == nil { // the text of the call, or a chunk of it: part of the graph the graph embedder hook gets
+		j.noteGraph(res)
 		if j.graphEntityIDs == nil {
 			j.graphEntityIDs = map[int64]bool{}
 		}

@@ -24,9 +24,12 @@ content-type: application/json
 
 - `models` (optional): an object that picks the LLM model of each LLM-invoking stage of the pipeline; see [Choosing the model of each stage](#choosing-the-model-of-each-stage). `400` for an unknown stage or a malformed model name.
 
-- `reasoning` (optional): an object that picks the reasoning (thinking) level (`none`, `low`, `medium` or `high`; case-insensitive) of the LLM stages: `extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series`, `detect_geo`, `extract_image`. A stage left out runs with **`none`**: no thinking, so no thinking tokens are paid for by default. See [Reasoning](#reasoning). `400` for another stage (`web_search` cannot think) or an unknown level.
+- `reasoning` (optional): an object that picks the reasoning (thinking) level (`none`, `low`, `medium` or `high`; case-insensitive) of the LLM stages: `extract_graph`, `summarize_chunk`, `resolve_edges`, `classify_graph`, `resolve_series`, `detect_geo`, `extract_image`. A stage left out runs with **`none`**: no thinking, so no thinking tokens are paid for by default. See [Reasoning](#reasoning). `400` for another stage (`web_search` cannot think) or an unknown level.
 
 - `web_search` (optional, default `false`): after the text is stored, search the web (with Anthropic's cloud-based web search tool) for the latest world events about its key entities, and remember what is found: each result becomes an artifact of its own, of kind `web_search`, which saves the query that was issued and hangs off the artifact the entity came from, and the entities and facts in it join the graph like any other. Only available with an Anthropic API key (`503` otherwise); `400` with `image`. See [web-search.md](web-search.md).
+
+- `classify_graph` (optional, default `false`): after the text is stored, an LLM classifies the graph of each artifact the call stored (the text, or each chunk of a [chunked](chunking.md) text) and the classes are stored: see [Graph classes](#graph-classes). It costs one LLM call per artifact that has a graph. `400` for an image.
+- `graph_classes` (optional; needs `classify_graph`, `400` without): the only classes the LLM may choose from, at most 50 names. A name is normalized to lowercase `snake_case` (`"Supply Chain"` is `supply_chain`); a name with no letter or digit is a `400`. Without it the LLM chooses freely, and is told the classes the dataset already uses, to reuse them.
 
 ## Response
 
@@ -113,6 +116,8 @@ All steps use the LLM from `internal/ai` (Anthropic Messages API, default model 
 
 4c. **Geo** (only when the server has a [geo resolver](geo.md#turning-it-on), `geo = true` or `serve --geo`): the entities of the text that may be places are sent to an LLM (the `detect_geo` stage), which says which are a city, a country, a region or a landmark; the geo resolver (OpenStreetMap's Nominatim by default) is asked for their coordinates, and they are stored in `gb_entity_geo`, keyed by the entity. Entities that already have geo metadata are not looked up again. It runs after the text was stored, so a failure in it never fails the request. See [geo.md](geo.md).
 
+4d. **Classify the graph** (`classify_graph` stage, only with `classify_graph`): once the text is stored, the graph of every artifact the call stored (the text, or each chunk of a chunked text; an artifact that yielded no entity and no fact has no graph, and the graphs of web search results and series observations are not classified) is shown to an LLM (1 call each, max 256 output tokens), which answers `{"classes": ["..."]}`: one to three classes that say what kind of graph it is. See [Graph classes](#graph-classes). It runs on its own [model and reasoning level](#choosing-the-model-of-each-stage) (`classify_graph`), and, like geo, its failure never fails the call.
+
 5. **Web search** (only with `web_search`, and only with an Anthropic API key): the key entities of the text are searched for on the web and the results are remembered as `web_search` artifacts, each with its query and its parent (the artifact the entity came from), and their own entities and edges. It runs after the text was stored, so a failure in it never fails the request. See [web-search.md](web-search.md).
 
 6. **Timeseries fetch** (only with `timeseries.fetch`, and only when the server has [timeseries providers](timeseries.md#providers)): an LLM decides from the providers' descriptions which provider fetches series for which entity of the text (only the entities of the text itself, not those a web search found), the providers' callbacks run, and the series are stored and anchored to the entity and the artifact it came from. It runs after the text was stored, so a failure in it never fails the request.
@@ -134,6 +139,7 @@ The LLM-invoking stages of the pipeline can each run on a different model, for i
 | `extract_graph` | 1, `Extract` (once per chunk of a long text) | the entities and edges the text yields |
 | `summarize_chunk` | 1b, `summarizeChunk` (once per chunk of a long text) | the summary of each chunk; its inference is referenced by the summary artifact (every LLM stage takes a [reasoning level](#reasoning)) |
 | `resolve_edges` | 2, `memory_temporal.ResolveEdges` (only when there are candidates to compare) | the duplicate / contradiction check |
+| `classify_graph` | 4d, [graph classes](#graph-classes) (only with `classify_graph`, once per artifact that has a graph) | the classes of the graph; its inference is referenced by each class record |
 | `web_search` | 5, [web search](web-search.md) (only with `web_search`) | the model that runs the web search tool (it must support it); the briefings are extracted on `extract_graph` |
 | `resolve_series` | 6, [timeseries fetch](timeseries.md#providers) (only with `timeseries.fetch`) | the LLM call that decides which timeseries provider is used for which entity |
 | `detect_geo` | 4c, [geo](geo.md) (only when the server has a geo resolver) | the LLM call that decides which entities are places, and what to ask the geo resolver for each |
@@ -151,7 +157,7 @@ The rules:
 
 ### Reasoning
 
-Every LLM stage runs with a reasoning (extended thinking) level, which the caller picks per request with `reasoning`, a map from a stage to `none`, `low`, `medium` or `high`. The stages that take one are `extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series`, `detect_geo` and `extract_image` (any other stage is a `400`; `web_search` and Jev do not think). **The default is `none`** (no thinking) for every stage, to avoid the cost; a request turns it on per stage:
+Every LLM stage runs with a reasoning (extended thinking) level, which the caller picks per request with `reasoning`, a map from a stage to `none`, `low`, `medium` or `high`. The stages that take one are `extract_graph`, `summarize_chunk`, `resolve_edges`, `classify_graph`, `resolve_series`, `detect_geo` and `extract_image` (any other stage is a `400`; `web_search` and Jev do not think). **The default is `none`** (no thinking) for every stage, to avoid the cost; a request turns it on per stage:
 
 ```json
 {"user_id": "u1", "text": "<a long text>", "models": {"summarize_chunk": "claude-haiku-5-5"}, "reasoning": {"summarize_chunk": "low", "resolve_edges": "medium"}}
@@ -203,6 +209,18 @@ Querying the edge index (`dataset-<id>-edges`) with the new facts' descriptions 
 - A new edge with the same source, target and relation as a stored edge that is still true is a duplicate and is not inserted again.
 - Sending the same text twice adds a second `gb_artifacts` row (linking the existing entities and edges to it, and to its session if it has one) but no duplicate entities or edges, and no duplicate vectors: the existing ones are overwritten.
 
+## Graph classes
+
+With `classify_graph`, the `classify_graph` stage gives the graph of each artifact one or more **classes**: an LLM is shown the entities and facts of the artifact (what is linked to it, see [artifacts.md](artifacts.md#provenance-links); a graph of more than 150 entities or 300 facts is cut) and answers `{"classes": ["..."]}` with one to three class names, the best first. A class names the kind of situation the graph describes as a whole (`corporate_ownership`, `supply_chain`, ...), not one of its entities. The names are normalized (lowercase `snake_case`, at most 64 characters, repeats dropped); with `graph_classes` the LLM can only choose among those, and a class it names that is not among them is dropped; without, it is told the (up to 30 most used) classes the dataset already has and asked to reuse one when it fits.
+
+Every class is a **record** of its own in `gb_artifact_classes` (`artifact_id`, `class`, `created_at`), so an artifact can have any number of classes: the several a call gives, and those of other calls. Each record references the **run** of the model call that gave it (`inference_id` → [`gb_inferences`](inferences.md)): the model as the API reported it, the reasoning level, the tokens and the cost, so how a class came about can be fetched later (`relational.GetInference`). The records of one call share its run. The stage is [advisory](#run-log): if a graph cannot be classified (the call fails, the answer names no usable class) nothing is stored for that artifact, the others are still classified, and the stage is `failed` in a run that `succeeded`. The response lists what was stored under `classes`, one entry per artifact that has a graph:
+
+```json
+{"classes": [{"artifact_id": 7, "classes": ["supply_chain", "logistics"], "inference_id": 41, "model": "claude-haiku-5-5", "reasoning": "none"}]}
+```
+
+(`error` is there instead of `classes` for an artifact that could not be classified.) The classes are what the [classifying training hook](hooks.md#classifying-training-hook) gets: `KnowledgeDataset.Graphs[i].Classes` has the records of each graph.
+
 ## Remember manager
 
 Text is not remembered by the HTTP handler: one goroutine, the **remember manager**, runs every remember pipeline run, one at a time, and the handler waits for its run. See [remember-manager.md](remember-manager.md).
@@ -228,7 +246,7 @@ and, for **each stage** (`<stage>_` prefix):
 | `<stage>_started_at`, `<stage>_finished_at` | when the stage began and when it last ended; a stage that runs for each chunk spans all the chunks |
 | `<stage>_inference_ids` | only for the stages that run a model: JSON array of the `gb_inferences` IDs of what the stage ran, in order. A list, because a stage runs a model once per chunk |
 
-The stages, in order: `classify_complexity` (Jev), `chunk_text`, `extract_graph`, `summarize_chunk`, `load_candidates`, `resolve_edges`, `store`, `store_series`, `resolve_geo`, `web_search`, `fetch_series`, `observe_series` (`relational.RememberStages` lists them; the ones that run a model are marked there). A stage the call does not use is `skipped`, so a run that succeeded has no stage left `not_started`.
+The stages, in order: `classify_complexity` (Jev), `chunk_text`, `extract_graph`, `summarize_chunk`, `load_candidates`, `resolve_edges`, `store`, `store_series`, `classify_graph`, `resolve_geo`, `web_search`, `fetch_series`, `observe_series` (`relational.RememberStages` lists them; the ones that run a model are marked there). A stage the call does not use is `skipped`, so a run that succeeded has no stage left `not_started`.
 
 - `load_candidates` and `store` hold the embedding requests they made (`embed` runs); `fetch_series` holds the `resolve_series` run and `resolve_geo` the `detect_geo` run; `web_search`, `fetch_series` and `observe_series` hold **all** the inferences of their work, including the extraction, fact comparison and embeddings of the briefings and observations they store (their job gets `j.run.Within(stage)`, a view of the log that files every run in that stage and leaves the stages of the text itself alone). So every `remember` inference is in exactly one stage of one run log. The stage that made an inference learns of it by itself, see [below](#how-the-pipeline-is-declared).
 - When a stage fails, the call fails with the same error, and the stages after it stay `not_started` (those before it that the call does not use are `skipped`). The stages that never fail the call (`classify_complexity`, `resolve_geo`, `web_search`, `fetch_series`, `observe_series`) can be `failed` in a run that is `succeeded`: check the stage for them.
@@ -275,6 +293,7 @@ Every stage that has something to say files one output for each step it takes, a
 | `resolve_edges` | `resolve_edges` (a chunk) | `new_edges` (the facts; the numbers below are their positions), `duplicates` and `contradictions` (`new`, `existing` ID), `llm_called`, `raw` |
 | `store` | `store` (a chunk), `store_parent_artifact` | what was stored: `artifact_id`, counts of entities, edges, invalidated edges and embeddings |
 | `store_series` | `store_series` | `artifact_id`, `series` (the stored series with their stats) |
+| `classify_graph` | `classify_graph` (an artifact; the label is the chunk of a chunked text) | `artifact_id`, `classes`, `model`, `reasoning`, `inference_id`, `raw` (the LLM's answer) |
 | `resolve_geo` | `select_geo_entities`, `detect_geo`, `resolve_geo` (an entity), `store_geo` | the entities offered; the places the LLM picked (and `raw`); what the resolver answered for each (`request`, `found`, `place` or `error`); how many were stored |
 | `web_search` | `select_web_search_entities`, `web_search` (an entity) | the entities picked; each search (`request`, `model`, `cost_usd`, `result`: `found`, `briefing`, `searches`, `sources`, ...) |
 | `fetch_series` | `select_series_entities`, `resolve_series_providers`, `fetch_timeseries` (an entity) | the entities offered; the provider chosen for each (and `raw`); what each provider returned and what was stored |
@@ -312,6 +331,7 @@ All tables are prefixed with `gb_` (see `internal/db/relational/{sqlite,postgres
 | `gb_edge_events` | What each call did to the temporal state of the facts, append-only: `edge_id` → `gb_edges`, `artifact_id` → `gb_artifacts`, `event` (`created`, `confirmed`, `ended`, `invalidated`, `superseded`), `invalid_at_before`, `invalid_at_after`, `caused_by_edge_id` → `gb_edges`, `created_at`. See [edge-events.md](edge-events.md) |
 | `gb_edge_artifacts` | `edge_id` → `gb_edges`, `artifact_id` → `gb_artifacts`; primary key (`edge_id`, `artifact_id`) |
 | `gb_entity_artifacts` | `entity_id` → `gb_entities`, `artifact_id` → `gb_artifacts`; primary key (`entity_id`, `artifact_id`) |
+| `gb_artifact_classes` | The classes an LLM gave to the graph of an artifact, one row per class: `id`, `dataset_id` → `gb_datasets`, `artifact_id` → `gb_artifacts` (deleting the artifact deletes them), `class` (non-empty), `inference_id` → `gb_inferences` (the model run that gave it; NULL if it could not be recorded), `created_at`. See [Graph classes](#graph-classes) |
 | `gb_entity_sessions` | `entity_id` → `gb_entities`, `session_id`; primary key (`entity_id`, `session_id`) |
 | `gb_edge_sessions` | `edge_id` → `gb_edges`, `session_id`; primary key (`edge_id`, `session_id`) |
 | `gb_graph_in_ctx_counters` | The in-context log: a row every time an entity or edge went into the context of an LLM call, so a node's or edge's count is its number of rows. `id`, `dataset_id` → `gb_datasets`, `kind` (`entity` or `edge`), `item_id` (the ID in `gb_entities` or `gb_edges`; no foreign key, as one column serves both), `pipeline` (`query` or `remember`: kept apart), `stage` (the stage that had it in its context: `query`, `resolve_edges`, `detect_geo`, `resolve_series`, `web_search`, or `evidence_only`), `run_id` (`gb_query_runs.id` or `gb_remember_runs.id` by pipeline, which says who started the call; NULL without a run log), `created_at`. `remember` logs the stored facts the `resolve_edges` prompt holds and the entities the `detect_geo`, `resolve_series` and `web_search` prompts hold; `query` logs everything in the graph its answering prompt holds, and, with `evidence_only` (no LLM call), what it returns |
@@ -330,7 +350,7 @@ Foreign keys are enabled on every connection. Deleting an entity cascades to its
 
 The vectors are not in these tables: they live in the vector store, isolated per dataset, one vector dataset per index (see [vectors.md](vectors.md#datasets)). They are keyed by the `id` of the entity or edge row.
 
-Existing database files are not migrated when the schema changes: delete the file and the server recreates it. (Since 0.124.0 `gb_remember_runs` accepts the status `skipped` for a stage, which a database created before it does not: recreate it. `gb_query_runs`, the [run log of `query`](query.md#run-log), was added then.)
+Existing database files are not migrated when the schema changes: delete the file and the server recreates it. (Since 0.160.0 `gb_remember_runs` has the columns of the `classify_graph` stage and `gb_remember_run_stage_outputs` accepts it, so a database made before has to be recreated; `gb_artifact_classes` is created in existing ones.) (Since 0.124.0 `gb_remember_runs` accepts the status `skipped` for a stage, which a database created before it does not: recreate it. `gb_query_runs`, the [run log of `query`](query.md#run-log), was added then.)
 
 ## Configuration
 

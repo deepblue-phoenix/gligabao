@@ -133,6 +133,16 @@ CREATE TABLE IF NOT EXISTS gb_edge_events (
 	created_at        TIMESTAMPTZ NOT NULL
 );
 
+-- The classes an LLM gave to the graph of an artifact (see sqlite/db_schema.go for what the columns mean).
+CREATE TABLE IF NOT EXISTS gb_artifact_classes (
+	id           BIGSERIAL PRIMARY KEY,
+	dataset_id   BIGINT NOT NULL REFERENCES gb_datasets(id),
+	artifact_id  BIGINT NOT NULL REFERENCES gb_artifacts(id) ON DELETE CASCADE,
+	class        TEXT NOT NULL CHECK (class <> ''),
+	inference_id BIGINT REFERENCES gb_inferences(id),
+	created_at   TIMESTAMPTZ NOT NULL
+);
+
 -- The image pipeline (see sqlite/db_schema.go for what the columns mean).
 CREATE TABLE IF NOT EXISTS gb_image_artifacts (
 	id         BIGSERIAL PRIMARY KEY,
@@ -271,6 +281,8 @@ CREATE INDEX IF NOT EXISTS idx_gb_edges_target ON gb_edges(target_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_artifact ON gb_edges(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edge_artifacts_artifact ON gb_edge_artifacts(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_gb_entity_artifacts_artifact ON gb_entity_artifacts(artifact_id);
+CREATE INDEX IF NOT EXISTS idx_gb_artifact_classes_artifact ON gb_artifact_classes(artifact_id);
+CREATE INDEX IF NOT EXISTS idx_gb_artifact_classes_dataset ON gb_artifact_classes(dataset_id, class);
 CREATE INDEX IF NOT EXISTS idx_gb_artifacts_session ON gb_artifacts(dataset_id, session_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edge_events_artifact ON gb_edge_events(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edge_events_edge ON gb_edge_events(edge_id);

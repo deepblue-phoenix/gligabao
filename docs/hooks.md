@@ -256,11 +256,11 @@ gligabao.Serve(ctx, cfg, gligabao.ServeOptions{
         td := gligabao.TrainingDataset{Classes: map[int64]string{}}
         td.UserID, td.Dataset, td.DatasetID = ds.UserID, ds.Dataset, ds.DatasetID
         for _, g := range ds.Graphs {
-            if len(g.Edges) < 2 {
-                continue // a filter: too small a graph is left out
+            if len(g.Edges) < 2 || len(g.Classes) == 0 {
+                continue // a filter: too small a graph, or one that was not classified, is left out
             }
             td.Graphs = append(td.Graphs, g)
-            td.Classes[g.ArtifactID] = myClassifier.Label(ctx, g)
+            td.Classes[g.ArtifactID] = g.Classes[0].Class // the first class an LLM gave the graph (see ArtifactGraph.Classes)
         }
         keep := map[int64]bool{}
         for _, g := range td.Graphs {
@@ -285,7 +285,8 @@ type ClassifyingTrainingHook = memory_core.ClassifyingTrainingHook // func(ctx c
 | Type | Fields |
 |---|---|
 | `gligabao.KnowledgeDataset` | `UserID`, `Dataset` (the resolved name), `DatasetID`, `Artifacts` (`[]gligabao.Artifact`: every artifact of the dataset, of every kind, by ID), `Graphs` (`[]gligabao.ArtifactGraph`: the graph of every artifact that has one, by artifact ID) |
-| `gligabao.ArtifactGraph` | `ArtifactID` (the artifact the graph is of; it identifies the graph), `Entities` (`[]gligabao.GraphEntity`), `Edges` (`[]gligabao.GraphEdge`) |
+| `gligabao.ArtifactGraph` | `ArtifactID` (the artifact the graph is of; it identifies the graph), `Entities` (`[]gligabao.GraphEntity`), `Edges` (`[]gligabao.GraphEdge`), `Classes` (`[]gligabao.ArtifactClass`: the classes an LLM gave to the graph when it was remembered with `classify_graph`, see [remember.md](remember.md#graph-classes); empty if it was not classified) |
+| `gligabao.ArtifactClass` | one record of `gb_artifact_classes`: `ID`, `DatasetID`, `ArtifactID`, `Class`, `InferenceID` (the model run that gave the class, see [inferences.md](inferences.md)), `CreatedAt` |
 | `gligabao.TrainingDataset` | the `KnowledgeDataset` embedded (what is kept of it: all, or a subset) and `Classes` (`map[int64]string`: the class of each graph in it, by the `ArtifactID` of the graph) |
 
 `TrainingDataset` is a superset of `KnowledgeDataset`: the knowledge dataset it wraps is the part of the dataset that is trained on, and `Classes` is what is added to it.

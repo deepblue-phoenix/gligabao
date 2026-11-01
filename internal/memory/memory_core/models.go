@@ -21,6 +21,9 @@ const (
 	StageSummarizeChunk = "summarize_chunk"
 	// StageResolveEdges is the comparison of the new edges with the stored ones (duplicates, contradictions).
 	StageResolveEdges = "resolve_edges"
+	// StageClassifyGraph is the classification of the graph of each artifact (only with the classify_graph flag of remember, see
+	// docs/remember.md#graph-classes): the LLM picks the classes of the graph, each stored as a record of gb_artifact_classes with its run.
+	StageClassifyGraph = "classify_graph"
 	// StageExtractImage is the reading of an image (the image pipeline).
 	StageExtractImage = "extract_image"
 	// StageWebSearch is the web search made for the key entities of a text (only with the web_search flag of remember,
@@ -37,7 +40,7 @@ const (
 )
 
 // Stages lists the stages that take a model, in pipeline order.
-var Stages = []string{StageExtractGraph, StageSummarizeChunk, StageResolveEdges, StageWebSearch, StageResolveSeries, StageDetectGeo, StageExtractImage}
+var Stages = []string{StageExtractGraph, StageSummarizeChunk, StageResolveEdges, StageClassifyGraph, StageWebSearch, StageResolveSeries, StageDetectGeo, StageExtractImage}
 
 // MaxModelLen is the maximum length of a model name in bytes.
 const MaxModelLen = 128
@@ -182,7 +185,7 @@ const StageQuery = "query"
 
 // ReasoningStages lists the stages that take a reasoning level: the LLM stages of remember (see Stages) but the web
 // search, which runs on Anthropic's web search tool without thinking (and Jev, which does not think either).
-var ReasoningStages = []string{StageExtractGraph, StageSummarizeChunk, StageResolveEdges, StageResolveSeries, StageDetectGeo, StageExtractImage}
+var ReasoningStages = []string{StageExtractGraph, StageSummarizeChunk, StageResolveEdges, StageClassifyGraph, StageResolveSeries, StageDetectGeo, StageExtractImage}
 
 // The reasoning level a stage runs with unless the call chooses another. It is none (no thinking) for both pipelines, so
 // that no thinking tokens are paid for by default; a call turns it on per stage (WithReasoning).

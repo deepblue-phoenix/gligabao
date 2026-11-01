@@ -140,6 +140,24 @@ CREATE TABLE IF NOT EXISTS gb_edge_events (
 	created_at        DATETIME NOT NULL
 );
 
+-- The classes an LLM gave to the graph of an artifact (the classify_graph stage of remember, see docs/remember.md). The graph of an
+-- artifact is what is linked to it (gb_entity_artifacts, gb_edge_artifacts). An artifact has any number of classes: one record each, so
+-- a call that gives two classes makes two records, and they are what the classifying training hook hands to the program that trains on them.
+--   class         the name of the class (non-empty)
+--   inference_id  the run (gb_inferences) of the model call that gave the class: the model, the reasoning level it ran with, its tokens and
+--                 its cost, so the configuration of the run can be fetched later. Several records of one call share it. NULL if the run
+--                 could not be recorded.
+--   created_at    when the class was stored
+-- Deleting the artifact deletes its classes.
+CREATE TABLE IF NOT EXISTS gb_artifact_classes (
+	id           INTEGER PRIMARY KEY AUTOINCREMENT,
+	dataset_id   INTEGER NOT NULL REFERENCES gb_datasets(id),
+	artifact_id  INTEGER NOT NULL REFERENCES gb_artifacts(id) ON DELETE CASCADE,
+	class        TEXT NOT NULL CHECK (class <> ''),
+	inference_id INTEGER REFERENCES gb_inferences(id),
+	created_at   DATETIME NOT NULL
+);
+
 -- Which artifacts an entity was inferred from (many-to-many).
 --
 -- Why a link table rather than an artifact_id column on gb_entities: an entity is not owned by one artifact.
@@ -393,6 +411,8 @@ CREATE INDEX IF NOT EXISTS idx_gb_edge_artifacts_artifact ON gb_edge_artifacts(a
 CREATE INDEX IF NOT EXISTS idx_gb_edge_events_artifact ON gb_edge_events(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edge_events_edge ON gb_edge_events(edge_id);
 CREATE INDEX IF NOT EXISTS idx_gb_entity_artifacts_artifact ON gb_entity_artifacts(artifact_id);
+CREATE INDEX IF NOT EXISTS idx_gb_artifact_classes_artifact ON gb_artifact_classes(artifact_id);
+CREATE INDEX IF NOT EXISTS idx_gb_artifact_classes_dataset ON gb_artifact_classes(dataset_id, class);
 CREATE INDEX IF NOT EXISTS idx_gb_artifacts_session ON gb_artifacts(dataset_id, session_id);
 CREATE INDEX IF NOT EXISTS idx_gb_image_artifacts_session ON gb_image_artifacts(dataset_id, session_id);
 CREATE INDEX IF NOT EXISTS idx_gb_entity_sessions_session ON gb_entity_sessions(session_id);

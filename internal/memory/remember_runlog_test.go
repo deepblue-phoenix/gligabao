@@ -128,7 +128,7 @@ func testRememberRunLogText(t *testing.T, d *sql.DB) {
 		}
 	}
 	// The stages the call does not use are skipped: nothing is left as not started in a run that succeeded.
-	wantSkipped := []string{"chunk_text", "classify_complexity", "fetch_series", "observe_series", "resolve_geo", "store_series", "summarize_chunk", "web_search"}
+	wantSkipped := []string{"chunk_text", "classify_complexity", "classify_graph", "fetch_series", "observe_series", "resolve_geo", "store_series", "summarize_chunk", "web_search"}
 	if got := stageNames(run, relational.RememberSkipped); strings.Join(got, ",") != strings.Join(wantSkipped, ",") {
 		t.Errorf("skipped stages = %v, want %v", got, wantSkipped)
 	}

@@ -54,6 +54,7 @@ const (
 	RememberStageResolveEdges       = model.RememberStageResolveEdges
 	RememberStageStore              = model.RememberStageStore
 	RememberStageStoreSeries        = model.RememberStageStoreSeries
+	RememberStageClassifyGraph      = model.RememberStageClassifyGraph
 	RememberStageWebSearch          = model.RememberStageWebSearch
 	RememberStageFetchSeries        = model.RememberStageFetchSeries
 	RememberStageResolveGeo         = model.RememberStageResolveGeo

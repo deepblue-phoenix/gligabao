@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.160.0] - 2026-11-03
+
+### Added
+- **Graph classes** (`classify_graph`): `remember` accepts `classify_graph` (default `false`), which has an LLM classify the graph of each artifact the call stores (the text, or each chunk of a chunked text) in a new `classify_graph` stage that runs once the text is stored. The LLM picks one to three classes (lowercase `snake_case`); `graph_classes` restricts the choice to a list of names (without it the LLM is told the classes the dataset already uses, to reuse them). The stage is advisory: a graph that cannot be classified does not fail the call. The response lists what was stored under `classes`. Also in the Python client (`classify_graph=`, `graph_classes=`). See [docs/remember.md](docs/remember.md#graph-classes).
+- **`gb_artifact_classes`**, a table of its own for the classes of artifacts (SQLite and Postgres): one record per class, so an artifact has any number of them, each referencing the run (`inference_id` → `gb_inferences`) of the model call that gave it, so the model, reasoning level, tokens and cost of the call can be fetched later. It is created in existing databases.
+- `classify_graph` takes a model (`models`) and a reasoning level (`reasoning`) like the other LLM stages, and has its own stage in the run log and in its outputs (admin UI help included).
+- **The classifying training hook gets the classes:** `ArtifactGraph.Classes` (`[]gligabao.ArtifactClass`) holds the class records of each graph, so the hook can train on the classes the LLM gave.
+
+### Changed
+- The knowledge evals (`build/evals_knowledge`) set the reasoning of `classify_graph` to `none` too, like every stage.
+- Schema: `gb_remember_runs` has the columns of the new stage and `gb_remember_run_stage_outputs` accepts it. There is no migration: an existing database has to be recreated.
+
 ## [0.159.0] - 2026-11-03
 
 ### Added

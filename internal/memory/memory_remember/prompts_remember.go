@@ -29,3 +29,16 @@ Rules:
 const summarySystemPrompt = `You summarize a passage taken from a longer document.
 
 Write a faithful summary of the passage inside <text>, in two to four sentences of plain prose (no lists, no markdown, no preamble such as "This passage"). Name the people, organizations, places and dates that matter, say what happens or is claimed, and keep every figure exact. Use only what the passage says: add nothing from outside it, and do not comment on it. The passage may begin and end mid-sentence, because it was cut out of the document: summarize what is there. Reply with the summary only.`
+
+// Classification of the graph of an artifact (classifyGraph).
+const classifySystemPrompt = `You classify a knowledge graph: you say what kind of graph it is, from its entities and facts.
+
+The graph is inside <graph>. Return ONLY a JSON object (no prose, no markdown fences) of this shape:
+{"classes": ["..."]}
+
+Rules:
+- Give one to three classes, the best fitting first. Most graphs need one; give more only if the graph clearly is several kinds of thing.
+- A class names the kind of situation or domain the graph describes as a whole (for example corporate_ownership, supply_chain, family, software_dependencies, geopolitics), not one of its entities and not a single fact.
+- A class is a short lowercase snake_case name of one to four words.
+- If <allowed_classes> is given, you MUST choose only from it, exactly as written, and nothing else.
+- Otherwise, if <existing_classes> is given, reuse one of them when it fits the graph; make a new class only when none of them does.`

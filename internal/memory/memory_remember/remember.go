@@ -92,6 +92,11 @@ type Result struct {
 	// WithSeriesObservations): one per series, in order, each with the artifact it stored. See remember_observations.go.
 	SeriesObservations []SeriesObservationResult `json:"series_observations,omitempty"`
 
+	// Classes are the classes the LLM gave to the graph of each artifact the call stored (the text, or each chunk of a document), one entry per
+	// artifact that has a graph, in order (only with WithClassifyGraph). Each class is a record of gb_artifact_classes that references the run
+	// of the model call. See remember_classes.go.
+	Classes []ClassResult `json:"classes,omitempty"`
+
 	// Geo are the entities of the text that the LLM judged to be places, with what the geo resolver found for each (only
 	// when the call has a geo resolver, WithGeoResolver): one per entity, in the order of extraction. The coordinates are
 	// stored in gb_entity_geo. See remember_geo.go.
@@ -157,6 +162,8 @@ type job struct {
 	observables []observable
 	// graphEntityIDs are the IDs of the entities the text of the call (and each of its chunks) mentions, for the graph embedder hook (see embedGraph).
 	graphEntityIDs map[int64]bool
+	// graphs are the graphs of the artifacts the call stored (the text, or each chunk of it), for the classify_graph stage (see noteGraph).
+	graphs []artifactGraph
 	// keyEntities are the entities of the texts stored so far that the web search may pick from (see noteKeyEntities),
 	// by normalized name, and keyOrder their names in the order they were extracted.
 	keyEntities map[string]*keyEntity
@@ -408,6 +415,12 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 	}
 	if co.WebSearch {
 		input["web_search"] = true
+	}
+	if co.ClassifyGraph {
+		input["classify_graph"] = true
+		if len(co.GraphClasses) > 0 {
+			input["graph_classes"] = co.GraphClasses
+		}
 	}
 	if len(series) > 0 {
 		input["timeseries"] = memory_core.SeriesSummary(series)
