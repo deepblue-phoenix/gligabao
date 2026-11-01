@@ -9,6 +9,8 @@
 - `gb_models`
 - `gb_inferences`
 - `gb_remember_runs`
+- `gb_remember_run_stage_outputs`
+- `gb_query_runs`
 - `gb_artifacts`
 - `gb_entities`
 - `gb_edges`
@@ -16,6 +18,9 @@
 - `gb_entity_artifacts`
 - `gb_entity_sessions`
 - `gb_edge_sessions`
+- `gb_edge_events`
+- `gb_artifact_classes`
+- `gb_graph_in_ctx_counters`
 - `gb_image_artifacts`
 - `gb_image_extractions`
 - `gb_image_text_blocks`
@@ -41,6 +46,8 @@
 | `gb_models`                   | the static list of AI models gligabao knows, referenced by entities, edges and inferences.                                                      |
 | `gb_inferences`               | one row per model invocation (LLM call, embedding, web search, Jev classification) with tokens, cost and reasoning level.                       |
 | `gb_remember_runs`            | one row per remember call, tracking its status and the status, times and errors of each pipeline stage.                                         |
+| `gb_remember_run_stage_outputs` | what each stage of a remember run produced (extracted entities and facts, candidates, decisions, raw LLM answers), one row per output, kept apart from the run log for debugging. |
+| `gb_query_runs`               | one row per query call, tracking its question, session, status and the status, times, errors and inferences of each pipeline stage. |
 | `gb_artifacts`                | ingested pieces of data (notes, episodes, chunks, web search results, series observations, chunk summaries), the provenance of the graph.       |
 | `gb_entities`                 | graph nodes extracted from artifacts, deduplicated per dataset by name and type.                                                                |
 | `gb_edges`                    | bi-temporal facts relating two entities, with event time (valid/invalid) and system time (created/expired).                                     |
@@ -48,6 +55,9 @@
 | `gb_entity_artifacts`         | many-to-many link of which artifacts an entity was inferred from.                                                                               |
 | `gb_entity_sessions`          | many-to-many link of which sessions an entity was discovered in.                                                                                |
 | `gb_edge_sessions`            | many-to-many link of which sessions an edge was discovered in.                                                                                  |
+| `gb_edge_events`              | append-only log of what each remember call did to the temporal state of a fact (created, confirmed, ended, invalidated, superseded), with its `invalid_at` before and after. |
+| `gb_artifact_classes`         | the classes an LLM gave to the graph of an artifact (`classify_graph` stage), one row per class, with the inference that gave it. |
+| `gb_graph_in_ctx_counters`    | the in-context log: one row every time an entity or edge went into the context of an LLM call (or was returned by a retrieval-only query), by pipeline, stage and run. |
 | `gb_image_artifacts`          | ingested images (media type, SHA-256, size, file path), kept apart from the graph; the bytes live on the file system.                           |
 | `gb_image_extractions`        | what an LLM read from an image (theme, title, text), with the raw output, tokens and cost.                                                      |
 | `gb_image_text_blocks`        | the text regions of an image extraction in reading order, each with a role (title, caption, label, ...).                                        |
@@ -61,7 +71,7 @@
 | `gb_training_job_events`      | the status and progress events (with loss) the sidecar reported for a training job, in order.                                                   |
 | `gb_trained_models`           | one row per completed training job, the saved weights (LoRA adapter) that inference, evals and audits run on.                                   |
 | `gb_trained_model_inferences` | one row per prompt run through a trained model, with response, status, tokens and cold-start timing.                                            |
-| `gb_trained_model_deployments`    | one row per deployment of a trained model through a deployer hook, with status, local directory, the deployer's ref and error.                     |
+| `gb_trained_model_deployments` | one row per deployment of a trained model through a deployer hook, with status, local directory, the deployer's ref and error.                     |
 | `gb_training_datasets`        | one row per JSONL training dataset the server has seen (file name, size, record count, digest, sync status with the sidecar).                   |
 
 ## Where each table is defined
@@ -73,6 +83,8 @@
 | `gb_models`                   | `internal/db/relational/sqlite/db_schema.go`       | `internal/db/relational/postgres/db_schema.go`       |
 | `gb_inferences`               | `internal/db/relational/sqlite/db_schema.go`       | `internal/db/relational/postgres/db_schema.go`       |
 | `gb_remember_runs`            | `internal/db/relational/sqlite/db_remember_run.go` | `internal/db/relational/postgres/db_remember_run.go` |
+| `gb_remember_run_stage_outputs` | `internal/db/relational/sqlite/db_remember_run.go` | `internal/db/relational/postgres/db_remember_run.go` |
+| `gb_query_runs`               | `internal/db/relational/sqlite/db_query_run.go`    | `internal/db/relational/postgres/db_query_run.go`    |
 | `gb_artifacts`                | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
 | `gb_entities`                 | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
 | `gb_edges`                    | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
@@ -80,6 +92,9 @@
 | `gb_entity_artifacts`         | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
 | `gb_entity_sessions`          | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
 | `gb_edge_sessions`            | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
+| `gb_edge_events`              | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
+| `gb_artifact_classes`         | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
+| `gb_graph_in_ctx_counters`    | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
 | `gb_image_artifacts`          | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
 | `gb_image_extractions`        | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
 | `gb_image_text_blocks`        | `internal/db/graph/sqlite/db_schema.go`            | `internal/db/graph/postgres/db_schema.go`            |
@@ -93,7 +108,7 @@
 | `gb_training_job_events`      | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
 | `gb_trained_models`           | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
 | `gb_trained_model_inferences` | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
-| `gb_trained_model_deployments`    | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
+| `gb_trained_model_deployments` | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
 | `gb_training_datasets`        | `internal/training/db/sqlite/db_schema.go`         | `internal/training/db/postgres/db_schema.go`         |
 
 ## TRAINING_AUDIT
