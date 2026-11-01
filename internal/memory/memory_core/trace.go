@@ -101,6 +101,11 @@ type CallOptions struct {
 	// EvidenceOnly makes Query only retrieve, set by WithEvidenceOnly; false (the default) leaves the answer to the LLM.
 	EvidenceOnly bool
 
+	// GraphEmbedder is the graph embedder hook, set by WithGraphEmbedder; nil (the default) leaves it off. Remember calls it once the graph
+	// of the text is fully constructed and Query once it has fetched the graph context of the question.
+	// IMPORTANT: the embeddings it returns are not stored yet, they must go to the vector store (see graph_embedder.go).
+	GraphEmbedder GraphEmbedder
+
 	// RememberRunID is the run log row (gb_remember_runs) Remember adopts instead of creating one, set by
 	// WithRememberRunID; 0 means Remember creates its own. The remember manager sets it: it creates the row when a
 	// request is queued, so that the caller has the ID right away.

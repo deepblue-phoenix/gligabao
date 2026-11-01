@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.157.0] - 2026-11-03
+
+### Added
+- **Graph embedder hook** (`ServeOptions.GraphEmbedder`): a callback that returns one embedding for a whole graph, meant to connect a custom model that embeds graphs (see [docs/hooks.md](docs/hooks.md#graph-embedder)). `remember` calls it once the graph of the text is fully constructed (with the entities and facts the text yielded, the IDs of the run and the artifact), and `query` calls it once the initial graph context of the question is fetched. An error or panic of the hook is logged and never fails the call; with no hook nothing changes.
+- **IMPORTANT: the embeddings are not stored yet.** For now gligabao only invokes the hook and discards the result. They must be stored in the vector store before anything can use them; the places to do it are marked in the code and listed in the docs.
+
 ## [0.156.0] - 2026-11-03
 
 ### Added

@@ -347,6 +347,15 @@ func (j *job) storeStage(ctx context.Context) error {
 	j.run.Output(StageStore, "store", step, stored)
 	j.traceSeries(res.ArtifactID, res.Series)
 
+	if j.web == nil && j.obs == nil { // the text of the call, or a chunk of it: part of the graph the graph embedder hook gets
+		if j.graphEntityIDs == nil {
+			j.graphEntityIDs = map[int64]bool{}
+		}
+		for _, id := range res.entityIDs {
+			j.graphEntityIDs[id] = true
+		}
+	}
+
 	switch {
 	case u.part != nil: // a chunk of a document: merged into its Result
 		j.merge.add(res, u.part.Chunk, len(u.ex.Entities), len(u.ex.Edges))

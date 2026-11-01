@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -21,6 +22,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_pipeline"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_temporal"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_timeseries"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // Extraction is the structured result of processing a block of text.
@@ -152,6 +155,8 @@ type job struct {
 	obs *observationPart
 	// observables are the series the call stored that an observation may be made of (see noteObservable).
 	observables []observable
+	// graphEntityIDs are the IDs of the entities the text of the call (and each of its chunks) mentions, for the graph embedder hook (see embedGraph).
+	graphEntityIDs map[int64]bool
 	// keyEntities are the entities of the texts stored so far that the web search may pick from (see noteKeyEntities),
 	// by normalized name, and keyOrder their names in the order they were extracted.
 	keyEntities map[string]*keyEntity
@@ -431,7 +436,49 @@ func Remember(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, datas
 		return nil, err
 	}
 	//------------------
+	j.embedGraph(ctx)
 	return j.res, nil
+}
+
+// embedGraph calls the graph embedder hook (memory_core.WithGraphEmbedder, if the call has one) once the pipeline has finished, i.e. the
+// graph of the text is fully constructed: stored, reconciled and enriched. It gives the hook what the text yielded (the entities that
+// it, and its facts, mention, and its facts, in their stored state; for a document those of all its chunks), not the whole dataset, and
+// not what the web search and series observation stages made of their own texts. The hook never fails the call.
+//
+// IMPORTANT: the embedding the hook returns is DISCARDED for now. It MUST be stored in the vector store (j.co.Vectors) once the hook
+// does real work; see memory_core.EmbedGraph and docs/hooks.md.
+func (j *job) embedGraph(ctx context.Context) {
+	if j.co.GraphEmbedder == nil || j.res == nil {
+		return
+	}
+	dsID, err := memory_core.DatasetID(ctx, j.d, j.userID, j.dataset)
+	if err != nil {
+		log.WithError(err).Warn("memory: loading the graph for the graph embedder hook failed; the hook is not called")
+		return
+	}
+	entityIDs := make([]int64, 0, len(j.graphEntityIDs))
+	for id := range j.graphEntityIDs {
+		entityIDs = append(entityIDs, id)
+	}
+	sort.Slice(entityIDs, func(a, b int) bool { return entityIDs[a] < entityIDs[b] })
+	edgeIDs := make([]int64, 0, len(j.res.Edges))
+	for _, e := range j.res.Edges {
+		if e.ID != 0 {
+			edgeIDs = append(edgeIDs, e.ID)
+		}
+	}
+	entities, err := graph.EntitiesByID(ctx, j.d, entityIDs)
+	if err != nil {
+		log.WithError(err).Warn("memory: loading the graph for the graph embedder hook failed; the hook is not called")
+		return
+	}
+	edges, err := graph.EdgesByID(ctx, j.d, dsID, edgeIDs)
+	if err != nil {
+		log.WithError(err).Warn("memory: loading the graph for the graph embedder hook failed; the hook is not called")
+		return
+	}
+	memory_core.EmbedGraph(ctx, j.co, memory_core.GraphEmbedRequest{Pipeline: memory_core.GraphEmbedRemember, UserID: j.userID, Dataset: j.dataset,
+		RunID: j.run.ID(), ArtifactID: j.res.ArtifactID, Entities: entities, Edges: edges})
 }
 
 // candidateFacts summarizes edges for the trajectory; via, if not nil, says how each (by ID) was found.

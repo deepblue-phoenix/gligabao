@@ -7,6 +7,7 @@ A program that embeds gligabao (see [Embedding in Go programs](../README.md#embe
 | [`Hooks.SystemEvent`](#system-events) | `ServeOptions.Hooks` | after every `remember`, `remember` of an image, `query` and timeseries request, successful or not | logging, metrics, shipping events to a monitoring service |
 | [`Auth`](#auth) | `ServeOptions.Auth` | at the start of every request to a user route (`remember`, `query`, datasets, timeseries, ontologies, research), with the API key of the request | authenticate the caller: map an API key to the user it belongs to |
 | [`TimeseriesProvider.Fetch`](#timeseries-providers) | `ServeOptions.TimeseriesProviders` | when a `remember` request asks to fetch timeseries | supply timeseries from your own data source |
+| [`GraphEmbedder`](#graph-embedder) | `ServeOptions.GraphEmbedder` | when a `remember` has fully constructed its graph, and when a `query` has fetched its graph context | get one embedding of a whole graph, e.g. from a custom model trained for graphs (**the result is not stored yet**) |
 | [`TrainedModelInferenceHook.Infer`](#trained-model-inference-hooks) | `ServeOptions.TrainedModelInferenceHooks` | when a trained model whose name the hook targets is prompted (admin UI prompt dialog, `POST /v1/gb/training/models/{id}/infer`) | run the prompts of a trained model on your own infrastructure or a provider, instead of the sidecar (Modal) |
 | [`TrainedModelDeployer.Deploy`](#trained-model-deployers) | `ServeOptions.TrainedModelDeployers` | when a request deploys a trained model (`POST /v1/gb/training/models/{id}/deployments`) | hand the weights of a trained model to somewhere else (an upload, a copy, a conversion, ...) |
 
@@ -186,6 +187,53 @@ gligabao.ServeOptions{
 | `gligabao.TimeseriesData` | `Key`, `Field`, `Name`, `Unit`, `Frequency`, `Points` (`[]TimeseriesPoint{TS, Value}`) |
 
 Contract, in short: `Fetch` is called concurrently, with a 60 s timeout per call, must honour `ctx`, may return no series and no error when it has nothing, and a panic in it is caught and reported as an error. The providers are validated when `Serve` starts and it returns the error for a malformed one. Full description, validation rules and the request side: [timeseries.md](timeseries.md#providers).
+
+## Graph embedder
+
+```go
+err := gligabao.Serve(ctx, cfg, gligabao.ServeOptions{
+    DBPath: "data/gligabao.db",
+    GraphEmbedder: func(ctx context.Context, req gligabao.GraphEmbedRequest) ([]float32, error) {
+        // req.Entities and req.Edges are the graph; call your model and return its embedding
+        return myModel.EmbedGraph(ctx, req.Entities, req.Edges)
+    },
+})
+```
+
+> **IMPORTANT: the embeddings are not stored yet.** For now gligabao calls the hook and **discards** the embedding it returns (it only logs its size at debug level). These embeddings **must be stored in the vector store**: until that is done nothing can be searched or retrieved by them, and the hook is only a place where the call happens. The hook is the first step; storing the embeddings (in a vector dataset of their own, keyed by pipeline, run and artifact, see below) is the next one and is not done.
+
+The hook turns a **graph as a whole** into one embedding. It is not the text embedding of the entities, edges and chunks that `remember` already writes to the vector store (those come from the OpenAI embedder); it is meant for a custom model that takes a graph.
+
+### Types
+
+```go
+type GraphEmbedder = memory_core.GraphEmbedder // func(ctx context.Context, req GraphEmbedRequest) ([]float32, error)
+```
+
+| Type | Fields |
+|---|---|
+| `gligabao.GraphEmbedRequest` | `Pipeline` (`gligabao.GraphEmbedRemember` or `gligabao.GraphEmbedQuery`), `UserID`, `Dataset`, `RunID` (`gb_remember_runs.id` or `gb_query_runs.id`, by `Pipeline`; 0 if it could not be recorded), `ArtifactID` (remember only: the artifact of the remembered text, the parent artifact of a document), `Question` (query only), `Entities` (`[]gligabao.GraphEntity`), `Edges` (`[]gligabao.GraphEdge`) |
+
+`GraphEntity` and `GraphEdge` are the stored entity and edge (with their IDs, the edge's endpoints and its bi-temporal validity), as `GET /v1/gb/datasets/{name}/graph` returns them.
+
+### When it is called
+
+- **`remember`**: once, when the call has finished, so the graph of the text is fully constructed (stored, reconciled with the facts already there and enriched by geo, web search and series). The graph is what the text yielded: the entities it and its facts mention and its facts, in their stored state (for a document, those of all its chunks). It is not the whole dataset, and not what the web search and series observation stages made of their own texts. A text that yielded nothing does not call it.
+- **`query`**: once, when the graph context of the question has been fetched (the `retrieve_graph` stage): the entities and edges around the ones that matched the question, the ones found by similarity, and the facts between them. This is the initial context: what the geo stages add afterwards is not in it, and the passages are not part of the graph. When there is nothing to answer from the hook is not called. A retrieval-only query (`evidence_only`) calls it too.
+- The hook is part of the options of every call of the regular endpoints, the `eval` variants, the MCP tools, the admin UI's query button and the research agents.
+
+### Behaviour
+
+- **Advisory.** An error or a panic of the hook is logged (warning) and dropped; it never fails the `remember` or the `query`.
+- **Synchronous.** It runs on the goroutine of the call: the remember manager's worker for a `remember` (the next queued remember waits for it), the request's for a `query` (the answer waits for it). A slow model slows them. Keep it fast.
+- **Concurrent.** Queries run concurrently, so the callback must be safe for concurrent use. `ctx` is the context of the call.
+- **Read-only request.** Do not modify `req.Entities` and `req.Edges`.
+- **Off by default.** With no `GraphEmbedder` nothing is called and nothing is loaded.
+- **No system event, no run log stage.** The hook is not a stage of the pipelines, so it does not appear in the run logs.
+
+### To do: storing the embeddings
+
+When the hook is completed, the embedding it returns must be written to the vector store (`CallOptions.Vectors`, the same store `remember` writes its other vectors to), into a vector dataset of the user's dataset for graph embeddings, keyed by `Pipeline` + `RunID` (and `ArtifactID` for a remember), so that a graph can be found by similarity. The places to do it are marked `IMPORTANT` in the code: `memory_core.EmbedGraph` (where the result is dropped), `memory_remember.job.embedGraph` and `memory_query.job.embedGraph`.
 
 ## Trained model inference hooks
 

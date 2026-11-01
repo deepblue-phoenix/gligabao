@@ -17,6 +17,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
+	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/knowledge"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
@@ -108,6 +109,27 @@ type TimeseriesPoint = memory_core.SeriesPoint
 // Authenticator is the auth hook (see ServeOptions.Auth and docs/hooks.md): it is called with the API key of a request and returns
 // the ID of the user the key belongs to, or an error to reject it.
 type Authenticator = httputil.Authenticator
+
+// GraphEmbedder is the graph embedding hook (see ServeOptions.GraphEmbedder and docs/hooks.md): it returns the embedding of a whole graph.
+//
+// IMPORTANT: gligabao does not store the embeddings yet; they must be stored in the vector store.
+type GraphEmbedder = memory_core.GraphEmbedder
+
+// GraphEmbedRequest is the graph a GraphEmbedder is asked to embed: where it comes from (remember or query, the run and, for a remember, the
+// artifact), and its entities and edges.
+type GraphEmbedRequest = memory_core.GraphEmbedRequest
+
+// GraphEntity is an entity of a GraphEmbedRequest.
+type GraphEntity = graph.EvidenceEntity
+
+// GraphEdge is an edge (a fact) of a GraphEmbedRequest.
+type GraphEdge = graph.EvidenceEdge
+
+// The pipelines a GraphEmbedRequest is from (GraphEmbedRequest.Pipeline).
+const (
+	GraphEmbedRemember = memory_core.GraphEmbedRemember
+	GraphEmbedQuery    = memory_core.GraphEmbedQuery
+)
 
 // TrainedModelDeployer is a named hook that deploys trained models (see ServeOptions.TrainedModelDeployers and
 // docs/hooks.md): gligabao fetches the weights of the model to a local directory and calls Deploy with it; what Deploy does
@@ -204,6 +226,11 @@ type ServeOptions struct {
 	// optional HTTP Handler, its own backend API. See docs/admin-extensions.md. Validated at startup: Serve returns the error if one
 	// is malformed.
 	AdminExtensions []AdminExtension
+	// GraphEmbedder is the graph embedding hook: if set, it is called with the graph of every remember once the graph is fully
+	// constructed, and with the graph context of every query once it is fetched, and returns an embedding of the graph (from, say, a
+	// custom model). For now gligabao only makes the call and DISCARDS the result. IMPORTANT: those embeddings MUST be stored in the
+	// vector store; that is not done yet. See docs/hooks.md.
+	GraphEmbedder GraphEmbedder
 	// Auth is the auth hook. If set, the user routes of the API (remember, query, datasets, timeseries, ontologies) require an API
 	// key, sent as "Authorization: Bearer <key>" (the Python client sends the one in GLIGABAO_API_KEY): Auth is called with it and
 	// returns the ID of the user the key belongs to, and the request acts as that user (a user_id the caller sent is replaced). A
@@ -333,6 +360,7 @@ func serverOptions(cfg *Config, opts ServeOptions) (serverOpts server.Options, r
 
 		Auth:                  opts.Auth,
 		GeoResolver:           opts.GeoResolver,
+		GraphEmbedder:         opts.GraphEmbedder,
 		Geo:                   cfg.Geo,
 		GeoRadiusKm:           cfg.GeoRadiusKm,
 		MCPEnable:             cfg.MCP,

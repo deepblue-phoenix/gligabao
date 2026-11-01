@@ -256,7 +256,27 @@ func (j *job) retrieveGraph(ctx context.Context) error {
 		return memory_pipeline.Stop
 		//------------------
 	}
+	j.embedGraph(ctx, rc.Graph)
 	return nil
+}
+
+// embedGraph calls the graph embedder hook (memory_core.WithGraphEmbedder, if the call has one) with the graph context that was just
+// fetched for the question: the one the answer is made from, before the geo stages add to it.
+//
+// IMPORTANT: the embedding the hook returns is DISCARDED for now. It MUST be stored in the vector store (j.co.Vectors) once the hook
+// does real work; see memory_core.EmbedGraph and docs/hooks.md.
+func (j *job) embedGraph(ctx context.Context, g *graphContext) {
+	if j.co.GraphEmbedder == nil {
+		return
+	}
+	req := memory_core.GraphEmbedRequest{Pipeline: memory_core.GraphEmbedQuery, UserID: j.userID, Dataset: j.dataset, RunID: j.run.ID(), Question: j.query}
+	for _, id := range sortedKeys(g.entities) {
+		req.Entities = append(req.Entities, g.entities[id])
+	}
+	for _, id := range sortedKeys(g.edges) {
+		req.Edges = append(req.Edges, g.edges[id])
+	}
+	memory_core.EmbedGraph(ctx, j.co, req)
 }
 
 func (j *job) hasGeo() bool { return j.co.GeoResolver != nil }

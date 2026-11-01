@@ -143,6 +143,10 @@ type Options struct {
 	// GeoResolver finds the coordinates of the places remember extracts as entities (see package memory_geo). Nil: the Nominatim resolver
 	// of OpenStreetMap if Geo is true, else remember does not look at places.
 	GeoResolver memory_geo.Resolver
+	// GraphEmbedder is the graph embedder hook (see memory_core.GraphEmbedder): called with the graph of every remember once it is fully
+	// constructed and with the graph context of every query once it is fetched. Nil: off. IMPORTANT: its embeddings are not stored in the
+	// vector store yet; they must be.
+	GraphEmbedder memory_core.GraphEmbedder
 	// Geo turns the geo stage of remember on (with GeoResolver, or Nominatim if there is none); a GeoResolver turns it on by itself.
 	Geo bool
 	// GeoRadiusKm is the default radius, in kilometers, within which query looks for the geo entities near the places of a question
@@ -253,12 +257,12 @@ const EvalDBName = "eval"
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary; adminExts are the registered admin UI extensions
 // (already validated; may be nil), mounted with it.
 func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, geoResolver memory_geo.Resolver, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
-	return newMux(ctx, true, nil, geoResolver, 0, false, newResearch(ctx, d, llm), d, llm, emb, jv, ws, providers, hooks, dirs, ontologyDirs, sc, eval, trainingMode, adminUI, adminExts, nil, extraAdminDBs...)
+	return newMux(ctx, true, nil, geoResolver, 0, nil, false, newResearch(ctx, d, llm), d, llm, emb, jv, ws, providers, hooks, dirs, ontologyDirs, sc, eval, trainingMode, adminUI, adminExts, nil, extraAdminDBs...)
 }
 
 // newMux is NewHandler; standalone is false when the routes are mounted on a host's mux (see Mount), where "/", "/health" and
 // "/version" belong to the host, so they are not registered: an unknown path under /v1/gb/ is a plain 404.
-func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, geoResolver memory_geo.Resolver, geoRadiusKm float64, mcpEnable bool, research *agent_research.Manager, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, prices *ai.PriceTable, extraAdminDBs ...admin.Named) http.Handler {
+func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, geoResolver memory_geo.Resolver, geoRadiusKm float64, graphEmbedder memory_core.GraphEmbedder, mcpEnable bool, research *agent_research.Manager, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, prices *ai.PriceTable, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	if standalone {
 		mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
@@ -275,19 +279,19 @@ func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, g
 	}
 	// The remember manager runs every remember pipeline run, one at a time, until ctx is done.
 	mgr := memory_remember.NewManager(ctx, d.Relational, llm)
-	api.Register(mux, mgr, d, llm, emb, jv, ws, providers, api.WithOntologyDirs(ontologyDirs), api.WithAuth(auth), api.WithGeoResolver(geoResolver), api.WithGeoRadius(geoRadiusKm), api.WithResearch(research))
+	api.Register(mux, mgr, d, llm, emb, jv, ws, providers, api.WithOntologyDirs(ontologyDirs), api.WithAuth(auth), api.WithGeoResolver(geoResolver), api.WithGeoRadius(geoRadiusKm), api.WithGraphEmbedder(graphEmbedder), api.WithResearch(research))
 	if mcpEnable {
-		api.RegisterMCP(mux, mgr, d, llm, emb, jv, ws, providers, buildinfo.Library().Version, api.WithGeoResolver(geoResolver), api.WithGeoRadius(geoRadiusKm), api.WithResearch(research))
+		api.RegisterMCP(mux, mgr, d, llm, emb, jv, ws, providers, buildinfo.Library().Version, api.WithGeoResolver(geoResolver), api.WithGeoRadius(geoRadiusKm), api.WithGraphEmbedder(graphEmbedder), api.WithResearch(research))
 	}
 	if eval {
-		api.RegisterEval(mux, mgr, d, llm, emb, jv, ws, providers, api.WithGeoResolver(geoResolver), api.WithGeoRadius(geoRadiusKm))
+		api.RegisterEval(mux, mgr, d, llm, emb, jv, ws, providers, api.WithGeoResolver(geoResolver), api.WithGeoRadius(geoRadiusKm), api.WithGraphEmbedder(graphEmbedder))
 	}
 	dbs := append([]admin.Named{{Name: "standard", DB: d.Relational, Vectors: d.Vector, ImageDir: d.ImageDir}}, extraAdminDBs...)
 	if trainingMode {
 		registerTraining(ctx, mux, d.Backend, d.Relational, dirs, hooks, sc, llm)
 	}
 	if adminUI {
-		registerAdminUI(mux, dbs, geoRadiusKm, sc, adminExts, llm, research, api.QueryHandler(d, llm, emb, api.WithGeoResolver(geoResolver), api.WithGeoRadius(geoRadiusKm)), prices)
+		registerAdminUI(mux, dbs, geoRadiusKm, sc, adminExts, llm, research, api.QueryHandler(d, llm, emb, api.WithGeoResolver(geoResolver), api.WithGeoRadius(geoRadiusKm), api.WithGraphEmbedder(graphEmbedder)), prices)
 	}
 	return mux
 }
@@ -827,7 +831,7 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 			reruns.Wait()
 		}
 	})
-	return newMux(mgrCtx, standalone, opts.Auth, geoResolver, opts.GeoRadiusKm, opts.MCPEnable, research, database, llm, emb, jv, ws, providers, hooks, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, ai.NewPriceTable(opts.Prices), extra...), closeAll, nil
+	return newMux(mgrCtx, standalone, opts.Auth, geoResolver, opts.GeoRadiusKm, opts.GraphEmbedder, opts.MCPEnable, research, database, llm, emb, jv, ws, providers, hooks, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, ai.NewPriceTable(opts.Prices), extra...), closeAll, nil
 }
 
 // newJev builds the Jev client from the options.

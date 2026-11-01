@@ -60,7 +60,7 @@ func rememberHandler(mgr *memory_remember.Manager, d *db.DB, llm memory_core.LLM
 
 // rememberOptions are the options of every remember call of the API (and of the research agents).
 func rememberOptions(d *db.DB, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, o options) []memory_core.Option {
-	return []memory_core.Option{memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_core.WithGeoResolver(o.geo), memory_image.WithImageDir(d.ImageDir)}
+	return []memory_core.Option{memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_core.WithGeoResolver(o.geo), memory_core.WithGraphEmbedder(o.graphEmbedder), memory_image.WithImageDir(d.ImageDir)}
 }
 
 // QueryHandler is the handler of POST /v1/gb/query, without the API key check that Register puts in front of it: the admin UI's query
@@ -75,7 +75,7 @@ func QueryHandler(d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, opts 
 
 // queryOptions are the options of every query call of the API (and of the research agents).
 func queryOptions(d *db.DB, emb memory_core.Embedder, o options) []memory_core.Option {
-	return []memory_core.Option{memory.WithVectors(d.Vector, emb), memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm)}
+	return []memory_core.Option{memory.WithVectors(d.Vector, emb), memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm), memory_core.WithGraphEmbedder(o.graphEmbedder)}
 }
 
 // researchMemory is the knowledge base the research agents work with: the remember manager and the query pipeline, with the same
@@ -105,11 +105,12 @@ func RegisterMCP(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm
 }
 
 type options struct {
-	ontologyDirs []string
-	auth         httputil.Authenticator
-	geo          memory_geo.Resolver
-	geoRadiusKm  float64
-	research     *agent_research.Manager
+	ontologyDirs  []string
+	auth          httputil.Authenticator
+	geo           memory_geo.Resolver
+	geoRadiusKm   float64
+	graphEmbedder memory_core.GraphEmbedder
+	research      *agent_research.Manager
 }
 
 // Option configures Register.
@@ -129,6 +130,14 @@ func WithGeoResolver(r memory_geo.Resolver) Option { return func(o *options) { o
 // geo_radius_km); 0 (the default) means memory_core.DefaultGeoRadiusKm.
 func WithGeoRadius(km float64) Option { return func(o *options) { o.geoRadiusKm = km } }
 
+// WithGraphEmbedder sets the graph embedder hook of remember (called once the graph of a text is fully constructed) and query (called once the
+// graph context of the question is fetched), in Register, RegisterMCP, RegisterEval and QueryHandler. Without it (or with nil) it is off.
+//
+// IMPORTANT: the embeddings the hook returns are NOT stored in the vector store yet; they must be (see memory_core.GraphEmbedder).
+func WithGraphEmbedder(f memory_core.GraphEmbedder) Option {
+	return func(o *options) { o.graphEmbedder = f }
+}
+
 // WithResearch adds the routes of the research agents to Register (POST and GET /v1/gb/research, GET /v1/gb/research/{id}, under the
 // same WithAuth as the other routes of users) and their tools to RegisterMCP (research_start, research_list, research_get): m starts
 // the agents and reads their runs. Without it (or with nil) neither has them.
@@ -145,6 +154,6 @@ func RegisterEval(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, ll
 	for _, opt := range opts {
 		opt(&o)
 	}
-	mux.HandleFunc("POST /v1/gb/eval/remember", remember.EvalHandler(mgr, d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_core.WithGeoResolver(o.geo), memory_image.WithImageDir(d.ImageDir)))
-	mux.HandleFunc("POST /v1/gb/eval/query", query.EvalHandler(d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm)))
+	mux.HandleFunc("POST /v1/gb/eval/remember", remember.EvalHandler(mgr, d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_core.WithGeoResolver(o.geo), memory_core.WithGraphEmbedder(o.graphEmbedder), memory_image.WithImageDir(d.ImageDir)))
+	mux.HandleFunc("POST /v1/gb/eval/query", query.EvalHandler(d.Relational, llm, memory.WithVectors(d.Vector, emb), memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm), memory_core.WithGraphEmbedder(o.graphEmbedder)))
 }
