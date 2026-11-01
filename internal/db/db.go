@@ -3,7 +3,11 @@
 // individual clients.
 //
 // The per-kind packages (internal/db/relational, internal/db/graph, internal/db/vector) hold the operations and the
-// backends (the eval tables, which live in the relational database, are managed by internal/evals); this package only opens them, keeps them together and closes them.
+// backends; this package only opens them, keeps them together and closes them.
+//
+// Open creates only the tables of the knowledge base (relational and graph). The tables of the other features that live in the
+// relational database (training, evals, training audits, research agent runs) are created by the Schemas of Config: package dbfull
+// opens a database with all of them (what the server uses), and a program that needs none (cmd/gligabao_agent) does not link them.
 package db
 
 import (
@@ -15,16 +19,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
-	"github.com/deepblue-phoenix/gligabao/internal/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
-	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
-	"github.com/deepblue-phoenix/gligabao/internal/training_audits"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -65,7 +65,15 @@ type Config struct {
 	// Default (nil): ai.SupportedModels(nil), i.e. the built-in price table; pass the models of the configured price
 	// table (ai.SupportedModels(ai.NewPriceTable(prices))) to include the models of its overrides.
 	Models []ai.ModelInfo
+
+	// Schemas create the tables of the features that are not part of the knowledge base (see Schema), in order, once the relational
+	// and graph schemas exist. See package dbfull for the full set. Default (nil): none.
+	Schemas []Schema
 }
+
+// Schema creates the tables of one feature in the relational database rel of the given backend (config.DBBackendSQLite or
+// config.DBBackendPostgres). It must be safe to run on every Open (create if not exists).
+type Schema func(backend string, rel *sql.DB) error
 
 // DefaultSQLitePath is used when Config.SQLitePath is empty.
 const DefaultSQLitePath = "build/gligabao.db"
@@ -177,22 +185,11 @@ func Open(cfg Config) (*DB, error) {
 				"(run CREATE EXTENSION postgis, then restart); the places are stored, but proximity queries cannot use an index")
 		}
 	}
-	// The training tables come before the evals': the eval tables reference the trained models.
-	if err := trainingdb.Open(cfg.Backend, rel); err != nil {
-		rel.Close()
-		return nil, err
-	}
-	if err := evals.Open(cfg.Backend, rel); err != nil {
-		rel.Close()
-		return nil, err
-	}
-	if err := training_audits.Open(cfg.Backend, rel); err != nil {
-		rel.Close()
-		return nil, err
-	}
-	if err := agent_research.Open(cfg.Backend, rel); err != nil {
-		rel.Close()
-		return nil, err
+	for _, schema := range cfg.Schemas {
+		if err := schema(cfg.Backend, rel); err != nil {
+			rel.Close()
+			return nil, err
+		}
 	}
 
 	models := cfg.Models

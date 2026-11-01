@@ -119,7 +119,7 @@ Tables of the training data audits (`internal/training_audits`, see `docs/traini
 
 ## EVALS
 
-Tables of the evals (`internal/evals`, see its `README.md`; applied by `internal/db.Open`).
+Tables of the evals (`internal/evals`, see its `README.md`; applied by `dbfull.Open` (`internal/db/dbfull`)).
 
 - `gb_eval_defs`
 - `gb_case_defs`
@@ -163,7 +163,7 @@ All of them are in `internal/evals/db/sqlite/schema.go` (SQLite) and `internal/e
 
 ## AGENT_RESEARCH
 
-Tables of the research agents (`internal/agent_research`, see `docs/research.md`; applied by `internal/db.Open`).
+Tables of the research agents (`internal/agent_research`, see `docs/research.md`; applied by `dbfull.Open` (`internal/db/dbfull`)).
 
 - `gb_agent_research_runs`
 - `gb_agent_research_states`

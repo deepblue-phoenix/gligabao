@@ -13,7 +13,7 @@ The evals system: the data model, its storage and the runners. It replaced the o
 | [`knowledge`](knowledge) | the executor of the knowledge evals, its command (`knowledge/cmd`), and the rerun of a case with other models from the admin UI (`Rerunner`) |
 | [`training`](training) | the executor of the training evals (the engine and the judge), and its command (`training/cmd`) |
 
-The root package has `Open(backend, *sql.DB)`, which applies the schema (`internal/db.Open` calls it, so every database of the server and of the runners has the tables), and `StoreFor(backend)`.
+The root package has `Open(backend, *sql.DB)`, which applies the schema (`internal/db/dbfull.Open` calls it, so every database of the server and of the runners has the tables; `internal/db.Open` alone creates only the knowledge base tables), and `StoreFor(backend)`.
 
 ## How an eval runs
 

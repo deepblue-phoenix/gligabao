@@ -50,11 +50,29 @@ type Manager struct {
 	wg     sync.WaitGroup
 }
 
+// ManagerOption customizes NewManager.
+type ManagerOption func(*managerOptions)
+
+type managerOptions struct{ keepActive bool }
+
+// KeepActiveRuns makes NewManager leave the runs that are marked running alone. By default the manager takes every such run for one
+// that a restart interrupted and marks it failed, which is right for the server (the only process that runs agents on its database)
+// but wrong for a process that shares the database with others that are working, like several runs of the standalone
+// cmd/gligabao_agent on one PostgreSQL database or next to a server: it would fail the runs of the others.
+func KeepActiveRuns() ManagerOption { return func(o *managerOptions) { o.keepActive = true } }
+
 // NewManager makes the manager of the research agents whose runs are kept in d. client runs the agents (may be nil: Start then fails
 // with KindUnavailable). The agents stop when ctx is done. Runs that a restart interrupted (still running in the database) are marked
-// failed.
-func NewManager(ctx context.Context, d *sql.DB, ops Ops, client *ai.Client) *Manager {
+// failed, unless KeepActiveRuns is given.
+func NewManager(ctx context.Context, d *sql.DB, ops Ops, client *ai.Client, opts ...ManagerOption) *Manager {
+	var o managerOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
 	m := &Manager{DB: d, Client: client, Ops: ops, ctx: ctx, active: map[string]int{}, runs: map[int64]*researcher{}, Messenger: NewChanMessenger()}
+	if o.keepActive {
+		return m
+	}
 	if k, err := ops.Store.FailActive(ctx, d, "interrupted: the server stopped while the agent worked"); err != nil {
 		log.WithError(err).Warn("agent research: could not mark interrupted runs as failed")
 	} else if k > 0 {

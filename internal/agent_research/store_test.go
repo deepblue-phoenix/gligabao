@@ -207,3 +207,24 @@ func testRollback(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 		t.Fatalf("states: %+v", states)
 	}
 }
+
+func TestKeepActiveRunsLeavesTheRunsOfOthersAlone(t *testing.T) { runOnBackends(t, testKeepActive) }
+
+// A manager marks the running runs as failed when it is made (they are those a restart interrupted), unless it is told that other
+// processes work on the database (the standalone binary), when a running run is somebody else's.
+func testKeepActive(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	run := &core.Run{UserID: "u1", Topic: "t", Status: core.StatusRunning, State: core.StateStarting}
+	if err := ops.Store.CreateRun(ctx, d, run); err != nil {
+		t.Fatal(err)
+	}
+	agent_research.NewManager(ctx, d, ops, nil, agent_research.KeepActiveRuns())
+	if got, _ := ops.Store.GetRun(ctx, d, run.ID); got.Status != core.StatusRunning {
+		t.Fatalf("with KeepActiveRuns the run is %s", got.Status)
+	}
+	agent_research.NewManager(ctx, d, ops, nil)
+	if got, _ := ops.Store.GetRun(ctx, d, run.ID); got.Status != core.StatusFailed {
+		t.Fatalf("by default the run is %s", got.Status)
+	}
+}

@@ -24,6 +24,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
+	"github.com/deepblue-phoenix/gligabao/internal/db/dbfull"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/ansi"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
@@ -87,7 +88,7 @@ func mainErr() error {
 		return errors.New("-max-tokens must be at least 1 and -temperature above 0 and at most 2")
 	}
 
-	database, err := db.Open(db.Config{SQLitePath: *dbPath})
+	database, err := dbfull.Open(db.Config{SQLitePath: *dbPath})
 	if err != nil {
 		return err
 	}

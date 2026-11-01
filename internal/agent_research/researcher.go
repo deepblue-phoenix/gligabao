@@ -95,7 +95,7 @@ func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent 
 	r.kidCtx, r.kidCancel = context.WithCancel(r.runCtx)
 	var kb agent.Knowledge // a nil Memory must become a nil Knowledge
 	if mem != nil {
-		kb = &knowledge{mem: mem, userID: run.UserID, dataset: opts.Dataset, sessionID: SessionID(run.ID), ctx: r.ctx}
+		kb = mem.Knowledge(r.ctx, run.UserID, opts.Dataset, SessionID(run.ID))
 	}
 	r.agent = agent.ResearchAgent(r.client, r.http, kb)
 	r.agent.Model, r.agent.MaxSteps = opts.Model, opts.MaxSteps

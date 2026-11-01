@@ -32,7 +32,7 @@
 | `internal/agent_research.Error`                           | is a failure of a research operation, with the HTTP status it maps to.                                                 |
 | `internal/agent_research.ListOptions`                     | selects the runs List returns (active only, a status, a parent, a limit).                                                        |
 | `internal/agent_research.Manager`                         | starts research agents in the background, and lists and reads their runs.                                              |
-| `internal/agent_research.Memory`                          | is what the agents need for their knowledge base: the remember manager, the database, the LLM and the options of remember and query. |
+| `internal/agent_memory.Memory`                            | (`agent_research.Memory` is an alias) is what the agents need for their knowledge base: the remember manager, the database, the LLM and the options of remember and query. |
 | `internal/agent_research.Message`                         | is a text one agent sends to another (sender, receiver, text, time).                                                   |
 | `internal/agent_research.Ops`                             | is what the Manager needs of the database: the functions that store and read the runs and their states.                |
 | `internal/agent_research.Options`                         | is what a research is started with (topic, max steps, model, dataset): the body of POST /v1/gb/research.                        |

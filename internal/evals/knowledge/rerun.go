@@ -10,6 +10,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
+	"github.com/deepblue-phoenix/gligabao/internal/db/dbfull"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
@@ -108,7 +109,7 @@ func (r *Rerunner) Rerun(ctx context.Context, src core.CaseRunID, opts core.Reru
 	}()
 
 	// Opened like the runner opens it, geo index included (the runner has geo on unless told not to), and closed when the rerun ends.
-	database, err := db.Open(db.Config{SQLitePath: r.env.DBPath, Geo: true, Models: ai.SupportedModels(r.env.Prices)})
+	database, err := dbfull.Open(db.Config{SQLitePath: r.env.DBPath, Geo: true, Models: ai.SupportedModels(r.env.Prices)})
 	if err != nil {
 		return 0, fmt.Errorf("open the eval database: %w", err)
 	}

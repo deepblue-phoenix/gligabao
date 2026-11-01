@@ -5,6 +5,17 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.163.0] - 2026-11-02
+
+### Added
+- **`gligabao_agent`, a second binary with the research agent, its sub-agents and the knowledge base, for Lambdas and other stripped-down places** (`cmd/gligabao_agent`), an additional deployment option. It has no server, HTTP API, admin UI, training or evals, but it runs what a research job of the server has, in process: the research manager (the agent with its sub-agents, every run and state recorded in `gb_agent_research_runs` and `gb_agent_research_states`) and the knowledge base (the databases are opened in process: a SQLite file with the chromem vector store next to it, or PostgreSQL/Pinecone with `--config`; the agents use them through `remember` and `query`). `ANTHROPIC_API_KEY=... OPENAI_API_KEY=... gligabao_agent "topic"` (or `-` for stdin) prints the report to stdout (the totals of the whole tree of agents and the logs go to stderr). Flags: `--max-steps`, `--model`, `--timeout`, `--json`, `--verbose` (follows the states of every agent), `--config`, `--db` (or `GLIGABAO_DB`), `--vector-dir`, `--user`, `--dataset`, `--version`. After the research it waits for the text the agents remembered without `sync`, so nothing queued is lost. A test (`TestMinimalDependencies`) keeps the server, API, training and evals out of the binary.
+- `./run_build.sh` now builds `build/gligabao_agent` next to `build/gligabao` (pure Go, stripped, with the version of `VERSION`).
+- Internal: `agent_research.NewManager` takes options; `agent_research.KeepActiveRuns()` makes it leave the running runs alone instead of marking them failed (the server keeps the default; the binary uses it because the running runs of a shared database are other processes').
+
+### Changed
+- Internal: `internal/db.Open` now creates only the tables of the knowledge base; the tables of training, evals, training audits and research runs are created by the new `Config.Schemas` hook, and `internal/db/dbfull.Open` (used by the server and the eval runners) adds all of them, so a server database has the same tables as before.
+- Internal: the knowledge base of the research agents (`Memory`, the `remember` and `query` tools' backend) moved from `internal/agent_research` to the new `internal/agent_memory` (`agent_research.Memory` is an alias); a `remember` call that does not wait is now tracked so it can be waited for (`Memory.Drain`). `config.Config.AIPrices` replaces the private conversion of the configured prices.
+
 ## [0.162.0] - 2026-11-01
 
 ### Changed

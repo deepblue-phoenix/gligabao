@@ -25,6 +25,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
+	"github.com/deepblue-phoenix/gligabao/internal/db/dbfull"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
@@ -632,7 +633,7 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 	log.WithFields(fields).Info("starting gligabao")
 	opts.DB.Models = ai.SupportedModels(ai.NewPriceTable(opts.Prices)) // the models gligabao supports are stored on startup
 	opts.DB.Geo = opts.GeoResolver != nil || opts.Geo                  // the geo index is only created when geo is on
-	database, err := db.Open(opts.DB)
+	database, err := dbfull.Open(opts.DB)
 	if err != nil {
 		return nil, nil, err
 	}

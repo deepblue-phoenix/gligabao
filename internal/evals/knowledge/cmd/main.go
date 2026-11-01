@@ -37,6 +37,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
+	"github.com/deepblue-phoenix/gligabao/internal/db/dbfull"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/ansi"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
@@ -129,7 +130,7 @@ func mainErr() error {
 		return fmt.Errorf("OPENAI_API_KEY must be set to run evals: %w", err)
 	}
 
-	database, err := db.Open(db.Config{SQLitePath: *evalDBPath, Geo: *geoFlag})
+	database, err := dbfull.Open(db.Config{SQLitePath: *evalDBPath, Geo: *geoFlag})
 	if err != nil {
 		return err
 	}

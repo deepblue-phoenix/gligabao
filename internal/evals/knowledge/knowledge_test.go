@@ -14,6 +14,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
+	"github.com/deepblue-phoenix/gligabao/internal/db/dbfull"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
@@ -98,7 +99,7 @@ func newEnv(t *testing.T, answer string) *env {
 	dir := t.TempDir()
 	atif := filepath.Join(dir, "atif")
 	memory_core.TrajectoryDir = atif
-	database, err := db.Open(db.Config{SQLitePath: filepath.Join(dir, "eval.db")})
+	database, err := dbfull.Open(db.Config{SQLitePath: filepath.Join(dir, "eval.db")})
 	if err != nil {
 		t.Fatal(err)
 	}
