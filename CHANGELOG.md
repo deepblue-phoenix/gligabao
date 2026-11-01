@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.161.0] - 2026-11-04
+
+### Added
+- **Go client** (`clients/go`, module `github.com/deepblue-phoenix/gligabao/clients/go`, standard library only): `Client.Remember` and `Client.Query` wrap `POST /v1/gb/remember` and `POST /v1/gb/query` with typed requests and responses, an optional API key (`Authorization: Bearer`) or user ID, `GLIGABAO_URL` / `GLIGABAO_API_KEY` / `GLIGABAO_USER` through `NewFromEnv`, and errors as `*gligabao.Error` with the HTTP status.
+
 ## [0.160.0] - 2026-11-03
 
 ### Added
