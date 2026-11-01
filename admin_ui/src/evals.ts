@@ -8,7 +8,7 @@ import {
 } from "./eval_common.js";
 import { showGraphAt } from "./graph.js";
 import { showCaseHistory } from "./history.js";
-import { openTemporalAt } from "./temporal.js";
+import { openTemporalCase } from "./temporal.js";
 import { showTrace } from "./trace.js";
 import { showWebSearches, totalsLine } from "./websearch.js";
 
@@ -231,7 +231,7 @@ function caseRecord(run: Run, e: CaseRun, experiment: string, web?: EvalWebSearc
     tbtn.title = "Plot what the remember calls of this case did to the facts on a time axis: established, invalidated, still true";
     tbtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      openTemporalAt(`${e.eval}/${e.name} (run #${run.id}) · temporal changes`, `api/evals/case_runs/${e.id}/temporal`);
+      openTemporalCase(`${e.eval}/${e.name} (run #${run.id}) · temporal changes`, e.id);
     });
     out.push(tbtn);
   } else {

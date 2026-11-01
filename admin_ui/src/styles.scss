@@ -909,7 +909,11 @@ $tp-confirmed: $accent;
 $tp-ended: #d29922;
 $tp-invalidated: $err;
 $tp-superseded: #a371f7;
+// The checks layer has its own colours, none of them is one of the fact colours above.
+$ck-held: #2dd4bf;
+$ck-failed: #ff4fa8;
 #tp-modal[open] { width: min(96vw, 64rem); height: 88vh; }
+#tp-modal.tp-wide[open] { width: 99vw; max-width: 99vw; height: 94vh; }
 html:has(#tp-modal[open]) { overflow: hidden; }
 #tp-modal { overscroll-behavior: contain; }
 .tp-c-created { color: $tp-created; }
@@ -919,11 +923,40 @@ html:has(#tp-modal[open]) { overflow: hidden; }
 .tp-c-superseded { color: $tp-superseded; }
 .tp-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; align-items: center; margin: 0.3rem 0 0.6rem; font-size: 0.8rem; }
 .tp-key { display: inline-flex; align-items: center; gap: 0.35rem; cursor: help; i { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: currentColor; } }
+.tp-ck-held { color: $ck-held; }
+.tp-ck-failed { color: $ck-failed; }
+.tp-ck-key b { display: inline-block; width: 1.3rem; height: 0.3rem; border-radius: 2px; background: currentColor; }
+.tp-ck-key i { border-radius: 2px; transform: rotate(45deg) scale(0.85); }
+.tp-stage { display: flex; align-items: stretch; gap: 0.5rem; }
+.tp-plotbox { flex: 1; min-width: 0; overflow-x: auto; }
+.tp-side { display: flex; align-items: flex-start; }
+.tp-layer-btn {
+  writing-mode: vertical-rl; display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.6rem 0.3rem; cursor: pointer; background: transparent; color: $muted; border: 1px solid $border;
+  &:hover { background: $surface; }
+  &.on { border-color: $ck-held; color: $ck-held; }
+}
+.tp-bar-below { display: flex; justify-content: flex-start; margin: 0 0 1rem; }
 .tp-plot {
   display: block; margin-bottom: 1rem; background: $bg; border: 1px solid $border; border-radius: 6px; font-size: 11px;
   .tp-axis { color: $muted; }
   .tp-axis-label { fill: $muted; font-size: 10px; }
   .tp-refs { color: $muted; line { stroke: currentColor; stroke-dasharray: 5 4; opacity: 0.5; } text { fill: currentColor; font-size: 10px; } }
+  &.tp-hide-ck .tp-checks { display: none; }
+  .tp-checks {
+    .tp-ck-band { fill: currentColor; opacity: 0.06; }
+    .tp-ck-track { stroke: currentColor; stroke-width: 2; opacity: 0.5; stroke-linecap: round; }
+    .tp-ck-gap { stroke: $ck-failed; stroke-width: 5; stroke-linecap: butt; opacity: 0.85; }
+    .tp-ck-tick { stroke: $ck-failed; stroke-width: 1.5; stroke-dasharray: 2 2; opacity: 0.9; }
+    .tp-ck-diamond { stroke: currentColor; stroke-width: 1.5; fill: currentColor; }
+    .tp-ck-none .tp-ck-diamond { fill: $bg; }
+    .tp-ck-glyph { fill: none; stroke: $bg; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .tp-ck-open { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .tp-ck-none { color: $muted; }
+    .tp-ck-text { fill: currentColor; font-size: 10px; }
+    .tp-ck-text, .tp-ck-name { paint-order: stroke; stroke: $bg; stroke-width: 3px; stroke-linejoin: round; }
+    .tp-ck-name { fill: currentColor; font-size: 11px; font-weight: 600; }
+    .tp-ck-lane:hover .tp-ck-track { opacity: 1; }
+  }
   .tp-fact {
     .tp-drop { stroke: currentColor; stroke-width: 1.5; opacity: 0.6; }
     .tp-dotted { stroke-dasharray: 1.5 4; stroke-linecap: round; stroke-width: 2.2; opacity: 1; }

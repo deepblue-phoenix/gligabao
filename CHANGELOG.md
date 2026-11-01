@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.153.0] - 2026-11-01
+
+### Added
+- Admin UI, **temporal plot**: an **Expand** button under the plot makes it wider (the modal takes the whole window and the plot scrolls sideways) and taller; **Collapse** brings it back.
+- Admin UI, **temporal plot of an eval case**: a **Checks layer**, shown or hidden with the button at the side of the plot. For each fact the case expects (`expect_edges`) a lane under the stored fact's row shows the expected span next to what was stored, with a teal diamond for each check that held and a magenta one for each that failed (`stored`, `valid_at`, `invalid_at`, `ended`, `superseded`), and a bold magenta stretch for the gap between the expected and the stored time. An expected fact that was never stored gets a row of its own. The colours are not the ones of the facts and the layer is drawn under them, so no dot or line is covered. The tooltip of a lane lists its checks.
+
 ## [0.152.1] - 2026-11-01
 
 ### Changed

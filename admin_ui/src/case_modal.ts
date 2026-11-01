@@ -8,7 +8,7 @@ import {
   type CaseCommentary, type CaseDebug, type CaseRun, type RerunInfo, type RerunStarted, type Run, type Status, type Trajectory,
 } from "./eval_common.js";
 import { showGraphAt } from "./graph.js";
-import { openTemporalAt } from "./temporal.js";
+import { openTemporalCase } from "./temporal.js";
 import { showTrace } from "./trace.js";
 
 // Called when a rerun changes a run (it was started, it ended), so a view that shows that run can draw it again. None if no view does.
@@ -45,7 +45,7 @@ export async function showCase(run: Run, e: CaseRun, experiment: string): Promis
       const tbtn = h("button", "small", "Temporal plot");
       tbtn.type = "button";
       tbtn.title = "What the remember calls of this case did to the facts over time";
-      tbtn.addEventListener("click", () => openTemporalAt(`${title} · temporal changes`, `api/evals/case_runs/${e.id}/temporal`));
+      tbtn.addEventListener("click", () => openTemporalCase(`${title} · temporal changes`, e.id));
       actions.append(gbtn, tbtn);
     }
     left.append(...caseLeft(d, run, e));
@@ -349,7 +349,7 @@ async function showRerun(started: RerunStarted, orig: CaseDebug, run: Run, exper
       gbtn.addEventListener("click", () => void showGraphAt(title, `api/evals/case_runs/${d.case_run_id}/graph`));
       const tbtn = h("button", "small", "Temporal plot");
       tbtn.type = "button";
-      tbtn.addEventListener("click", () => openTemporalAt(`${title} · temporal changes`, `api/evals/case_runs/${d.case_run_id}/temporal`));
+      tbtn.addEventListener("click", () => openTemporalCase(`${title} · temporal changes`, d.case_run_id));
       btns.push(gbtn, tbtn);
     }
     if (started.experiment_run_id !== undefined) btns.push(caseBookmark(xrun, cr, experiment));
