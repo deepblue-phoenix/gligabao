@@ -11,6 +11,7 @@ import { initHistoryModal } from "./history.js";
 import { initImageOverlay } from "./image.js";
 import { initImageStats } from "./imagestats.js";
 import { initInferences } from "./inferences.js";
+import { initQuery } from "./query_modal.js";
 import { initResearch } from "./research.js";
 import { initQueryRuns, initRememberRuns } from "./runs.js";
 import { initTemporal } from "./temporal.js";
@@ -387,6 +388,7 @@ void (async () => {
   initRememberRuns();
   initTemporal();
   initQueryRuns();
+  initQuery();
   initResearch();
   initTraining();
   initImageOverlay();

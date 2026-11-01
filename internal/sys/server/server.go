@@ -253,12 +253,12 @@ const EvalDBName = "eval"
 // the admin UI (/v1/gb/admin/) only if adminUI is true and its assets were built into the binary; adminExts are the registered admin UI extensions
 // (already validated; may be nil), mounted with it.
 func NewHandler(ctx context.Context, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, geoResolver memory_geo.Resolver, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
-	return newMux(ctx, true, nil, geoResolver, 0, false, newResearch(ctx, d, llm), d, llm, emb, jv, ws, providers, hooks, dirs, ontologyDirs, sc, eval, trainingMode, adminUI, adminExts, extraAdminDBs...)
+	return newMux(ctx, true, nil, geoResolver, 0, false, newResearch(ctx, d, llm), d, llm, emb, jv, ws, providers, hooks, dirs, ontologyDirs, sc, eval, trainingMode, adminUI, adminExts, nil, extraAdminDBs...)
 }
 
 // newMux is NewHandler; standalone is false when the routes are mounted on a host's mux (see Mount), where "/", "/health" and
 // "/version" belong to the host, so they are not registered: an unknown path under /v1/gb/ is a plain 404.
-func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, geoResolver memory_geo.Resolver, geoRadiusKm float64, mcpEnable bool, research *agent_research.Manager, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, extraAdminDBs ...admin.Named) http.Handler {
+func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, geoResolver memory_geo.Resolver, geoRadiusKm float64, mcpEnable bool, research *agent_research.Manager, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, hooks coretraining.Hooks, dirs coretraining.Dirs, ontologyDirs []string, sc coretraining.Sidecar, eval, trainingMode, adminUI bool, adminExts []admin.Extension, prices *ai.PriceTable, extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	if standalone {
 		mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
@@ -287,7 +287,7 @@ func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, g
 		registerTraining(ctx, mux, d.Backend, d.Relational, dirs, hooks, sc, llm)
 	}
 	if adminUI {
-		registerAdminUI(mux, dbs, geoRadiusKm, sc, adminExts, llm, research)
+		registerAdminUI(mux, dbs, geoRadiusKm, sc, adminExts, llm, research, api.QueryHandler(d, llm, emb, api.WithGeoResolver(geoResolver), api.WithGeoRadius(geoRadiusKm)), prices)
 	}
 	return mux
 }
@@ -367,7 +367,7 @@ func registerTraining(ctx context.Context, mux *http.ServeMux, backend string, t
 
 // registerAdminUI serves the embedded admin UI assets under /v1/gb/admin/. It is a no-op (with a warning) if the
 // assets were not built into the binary (see admin_ui/ and run_build.sh).
-func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, geoRadiusKm float64, sc coretraining.Sidecar, exts []admin.Extension, llm memory_core.LLM, research *agent_research.Manager) {
+func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, geoRadiusKm float64, sc coretraining.Sidecar, exts []admin.Extension, llm memory_core.LLM, research *agent_research.Manager, query http.HandlerFunc, prices *ai.PriceTable) {
 	if !adminui.Available() {
 		log.Warn("admin_ui is enabled but the web assets are not embedded in this binary; build with ./run_build.sh (admin UI build enabled)")
 		return
@@ -385,6 +385,9 @@ func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, geoRadiusKm float64,
 	mux.HandleFunc("GET /v1/gb/admin/api/remember-run", admin.RememberRunOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/remember-run-outputs", admin.RememberRunOutputsOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/remember-run-temporal", admin.RememberRunTemporalOf(dbs))
+	// The query button of the top bar: the models and thinking levels to pick, and the query itself (the body of POST /v1/gb/query, with no API key).
+	mux.HandleFunc("GET /v1/gb/admin/api/query-options", admin.QueryOptionsOf(ai.SupportedModels(prices)))
+	mux.HandleFunc("POST /v1/gb/admin/api/query", query) // 503 without an LLM, as the public one
 	mux.HandleFunc("GET /v1/gb/admin/api/query-runs", admin.QueryRunsOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/query-run", admin.QueryRunOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/web-searches", admin.WebSearchStatsOf(dbs))
@@ -824,7 +827,7 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 			reruns.Wait()
 		}
 	})
-	return newMux(mgrCtx, standalone, opts.Auth, geoResolver, opts.GeoRadiusKm, opts.MCPEnable, research, database, llm, emb, jv, ws, providers, hooks, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, extra...), closeAll, nil
+	return newMux(mgrCtx, standalone, opts.Auth, geoResolver, opts.GeoRadiusKm, opts.MCPEnable, research, database, llm, emb, jv, ws, providers, hooks, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, ai.NewPriceTable(opts.Prices), extra...), closeAll, nil
 }
 
 // newJev builds the Jev client from the options.

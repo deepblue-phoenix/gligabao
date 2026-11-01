@@ -95,6 +95,9 @@ const (
 	ReasoningHigh   = "high"
 )
 
+// DefaultModel is the LLM model the client uses when a call does not pick one.
+func DefaultModel() string { return defaultModel }
+
 // ReasoningLevels lists the valid reasoning levels, from none to the most.
 var ReasoningLevels = []string{ReasoningNone, ReasoningLow, ReasoningMedium, ReasoningHigh}
 

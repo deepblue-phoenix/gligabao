@@ -1076,3 +1076,27 @@ button.start-agent {
   .rs-agent-info { margin-top: 0.3rem; opacity: 0.9; font-variant-numeric: tabular-nums; }
   .rs-agent-x { position: absolute; top: 0.2rem; right: 0.3rem; padding: 0 0.35rem; background: transparent; color: #fff; font-size: 1rem; line-height: 1.2; &:hover { filter: none; background: rgba(255, 255, 255, 0.2); } }
 }
+
+// The query button of the top bar (any view) and its modal (query_modal.ts): a big question box, what to ask with, and the answer.
+button.query-btn {
+  display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1.6rem; font-size: 1.15rem; font-weight: 600;
+  svg { display: block; }
+  &:disabled { opacity: 0.6; cursor: default; filter: none; }
+}
+.query-modal { width: min(94vw, 52rem); height: fit-content; max-height: 92vh; }
+.query-text {
+  display: block; width: 100%; box-sizing: border-box; min-height: 9rem; resize: vertical; font: inherit; font-size: 1.05rem;
+  background: $bg; color: $text; border: 1px solid $border; border-radius: 6px; padding: 0.5rem 0.75rem; &:focus { outline: 1px solid $accent; }
+}
+.query-options {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem; margin-top: 0.75rem;
+  label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: $muted; select { min-width: 10rem; max-width: 18rem; } }
+  button { margin-left: auto; }
+}
+.query-result { margin-top: 0.5rem; }
+.query-meta { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: center; margin-bottom: 0.4rem; }
+.query-answer { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; padding: 0.75rem 1rem; background: $bg; border: 1px solid $border; border-radius: 6px; }
+button.link-btn {
+  padding: 0; background: none; border: none; color: $accent; font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer;
+  &:hover { filter: brightness(1.25); }
+}

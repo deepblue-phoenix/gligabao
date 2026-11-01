@@ -493,3 +493,8 @@ function initRunDetail(): void {
 export function initQueryRuns(): void {
   initView(KINDS.query);
 }
+
+// Opens the modal of query run runID of the database name (the "query run" details), e.g. from the query modal of the top bar.
+export function openQueryRun(name: string, runID: number): Promise<void> {
+  return openRun(KINDS.query, name, runID);
+}

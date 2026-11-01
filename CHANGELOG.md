@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.156.0] - 2026-11-03
+
+### Added
+- **Query button in the admin UI.** A big **query** button in the top bar, outside of any view, opens a modal to ask the knowledge base a question from any view: a large question box and pickers for the dataset (of the standard database, any user's), the model and the thinking level. The answer appears in the same modal, with the ID of the query run, which is a link that opens the details of that run. See [docs/query.md](docs/query.md#admin-ui).
+- Admin API: `POST /v1/gb/admin/api/query` (the same handler as `POST /v1/gb/query`, without the API key check) and `GET /v1/gb/admin/api/query-options` (the LLM models, the default model and the thinking levels).
+
 ## [0.155.0] - 2026-11-02
 
 ### Added

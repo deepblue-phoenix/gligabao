@@ -160,6 +160,10 @@ In the admin UI the **query** view lists the runs like the **remember** one (the
 
 Existing database files are not migrated: a database created before 0.124.0 gets `gb_query_runs` when the server starts, but its `gb_remember_runs` does not accept the status `skipped`, so delete the file and the server recreates it.
 
+### Admin UI
+
+The big **query** button in the top bar of the admin UI (outside of any view, so it is there in every view) opens a modal to ask the knowledge base a question. It has a large question box (Ctrl+Enter sends), and pickers for the **dataset** (the datasets of the standard database, of any user, as `user · name`), the **model** that writes the answer (the LLM models of the price table; the default is the server's default model) and the **thinking** level (`none` by default). The answer is shown in the same modal, with how much evidence it cites, and the **ID of the query run**, a link that opens the details of that run (the same modal as clicking the run in the **query** view: parameters and stages). Behind it are two admin API routes: `POST /v1/gb/admin/api/query`, the handler of `POST /v1/gb/query` (same body and answer, but with no API key check, like the rest of the admin API) and `GET /v1/gb/admin/api/query-options`, which lists the models, the default model and the thinking levels.
+
 ### Facts over time and history
 
 Facts are [bi-temporal](temporal.md): `valid_at` / `invalid_at` say when a fact was true in the world, and `expired_at` says when newer knowledge superseded it. `query` treats the two differently:

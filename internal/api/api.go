@@ -63,6 +63,16 @@ func rememberOptions(d *db.DB, emb memory_core.Embedder, jv memory_core.Classifi
 	return []memory_core.Option{memory.WithVectors(d.Vector, emb), memory_core.WithChunking(d.Chunking), memory_core.WithJev(jv), memory_core.WithWebSearcher(ws), memory_core.WithSeriesProviders(providers), memory_core.WithGeoResolver(o.geo), memory_image.WithImageDir(d.ImageDir)}
 }
 
+// QueryHandler is the handler of POST /v1/gb/query, without the API key check that Register puts in front of it: the admin UI's query
+// button (POST /v1/gb/admin/api/query) runs the same query with it. opts are WithGeoResolver and WithGeoRadius, as for Register.
+func QueryHandler(d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, opts ...Option) http.HandlerFunc {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
+	return query.Handler(d.Relational, llm, queryOptions(d, emb, o)...)
+}
+
 // queryOptions are the options of every query call of the API (and of the research agents).
 func queryOptions(d *db.DB, emb memory_core.Embedder, o options) []memory_core.Option {
 	return []memory_core.Option{memory.WithVectors(d.Vector, emb), memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm)}

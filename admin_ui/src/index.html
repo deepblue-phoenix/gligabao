@@ -13,6 +13,7 @@
   <body>
     <header class="topbar">
       <h1>gligabao <span class="muted">admin</span></h1>
+      <button type="button" id="query-open" class="query-btn" title="Ask the knowledge base a question"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>query</button>
       <span class="health-badges">
         <span id="health" class="badge badge-unknown">checking…</span>
         <span id="sidecar-health" class="badge badge-unknown">sidecar: checking…</span>
@@ -393,6 +394,27 @@
         <button type="button" id="history-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <div id="history-canvas"></div>
+    </dialog>
+
+    <dialog id="query-modal" class="modal query-modal">
+      <div class="modal-head">
+        <h2>Query the knowledge base</h2>
+        <button type="button" id="query-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <textarea id="query-text" class="query-text" maxlength="20000" placeholder="Ask a question… (Ctrl+Enter to send)"></textarea>
+        <div class="query-options">
+          <label>Dataset <select id="query-dataset"></select></label>
+          <label>Model <select id="query-model"></select></label>
+          <label>Thinking <select id="query-thinking"></select></label>
+          <button type="button" id="query-submit" class="query-btn">Ask</button>
+        </div>
+        <p id="query-status" class="muted"></p>
+        <div id="query-result" class="query-result" hidden>
+          <div class="query-meta"><span>Query run <button type="button" id="query-run-link" class="link-btn" title="Open the details of this query run"></button></span><span id="query-evidence" class="muted"></span></div>
+          <div id="query-answer" class="query-answer"></div>
+        </div>
+      </div>
     </dialog>
 
     <dialog id="run-detail-modal" class="modal">
