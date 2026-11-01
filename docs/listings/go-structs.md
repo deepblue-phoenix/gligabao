@@ -149,6 +149,8 @@
 | `internal/api/admin.webDataset`                           | is a dataset with web searches as listed in the web search stats.                                                      |
 | `internal/api/admin.webSearchStats`                       | is the answer of the web search statistics endpoint.                                                                   |
 | `internal/api/datasets.createRequest`                     | is the request body for creating a dataset.                                                                            |
+| `internal/api/datasets.trainingRequest`                   | is the request body for asking the classifying training hook for the training dataset of a dataset.                    |
+| `internal/api/datasets.trainingResponse`                  | is the summary of the training dataset the classifying training hook made.                                             |
 | `internal/api/mcp.QueryInput`                             | is the input of the query tool: the body of POST /v1/gb/query.                                                         |
 | `internal/api/mcp.RememberInput`                          | is the input of the remember tool: the text-only subset of the body of POST /v1/gb/remember.                           |
 | `internal/api/mcp.ResearchGetInput`                       | is the input of the research_get tool: the parameters of GET /v1/gb/research/{id}.                                     |
@@ -274,9 +276,11 @@
 | `internal/memory.GraphExport`                             | is a whole dataset graph with its entities and edges.                                                                  |
 | `internal/memory.IndexStats`                              | is the state of one vector index of a dataset.                                                                         |
 | `internal/memory.preparedOntology`                        | is a parsed ontology ready to be stored.                                                                               |
+| `internal/memory/memory_core.ArtifactGraph`               | is the graph that comes with one artifact of a knowledge dataset.                                                      |
 | `internal/memory/memory_core.CallOptions`                 | holds the settings of one memory call, from which each pipeline reads what it uses.                                    |
 | `internal/memory/memory_core.Fact`                        | is the memory layer's view of an edge: a statement with the time it held and its source.                               |
 | `internal/memory/memory_core.FetchEntity`                 | is the entity a series is fetched for.                                                                                 |
+| `internal/memory/memory_core.KnowledgeDataset`            | is the artifacts of a dataset and the graphs that come with them, as the classifying training hook gets them.          |
 | `internal/memory/memory_core.SeriesAnchor`                | says what a caller-supplied series is anchored to.                                                                     |
 | `internal/memory/memory_core.SeriesData`                  | is a series returned by a provider.                                                                                    |
 | `internal/memory/memory_core.SeriesEdge`                  | selects a fact by its endpoint names and relation.                                                                     |
@@ -287,6 +291,7 @@
 | `internal/memory/memory_core.SeriesProvider`              | is a registered source of timeseries.                                                                                  |
 | `internal/memory/memory_core.SeriesSpec`                  | is a timeseries the caller supplies with its points and anchors.                                                       |
 | `internal/memory/memory_core.ToolTiming`                  | records the model, timing and tokens of a traced step.                                                                 |
+| `internal/memory/memory_core.TrainingDataset`             | is a knowledge dataset (whole or a filtered subset) with the class of each of its graphs.                              |
 | `internal/memory/memory_core.Trace`                       | records one Remember, Query or image call as an ATIF trajectory.                                                      |
 | `internal/memory/memory_core.modelLLM`                    | wraps an LLM to use a stage's model and reasoning level.                                                               |
 | `internal/memory/memory_core.recordingLLM`                | wraps an LLM and stores an inference record for every successful call.                                                 |

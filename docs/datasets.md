@@ -41,3 +41,5 @@ The vectors are the exception: they are removed with the dataset (`DeleteAll` on
 `DELETE /v1/gb/datasets/{name}?user_id=u1`: soft-deletes the dataset and removes its vectors. `204`, or `404` if the user has no live dataset with that name.
 
 `GET /v1/gb/datasets/{name}/graph?user_id=u1`: exports the dataset's whole graph as JSON; see [graph.md](graph.md).
+
+`POST /v1/gb/datasets/{name}/training`: `{"user_id": "u1"}` hands the dataset (every artifact and the graph of each) to the classifying training hook and answers with a summary of the training dataset it made, a possibly filtered subset with the class of each graph. It only exists when the embedding program supplies the hook; see [hooks.md](hooks.md#classifying-training-hook).

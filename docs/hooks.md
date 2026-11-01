@@ -8,6 +8,7 @@ A program that embeds gligabao (see [Embedding in Go programs](../README.md#embe
 | [`Auth`](#auth) | `ServeOptions.Auth` | at the start of every request to a user route (`remember`, `query`, datasets, timeseries, ontologies, research), with the API key of the request | authenticate the caller: map an API key to the user it belongs to |
 | [`TimeseriesProvider.Fetch`](#timeseries-providers) | `ServeOptions.TimeseriesProviders` | when a `remember` request asks to fetch timeseries | supply timeseries from your own data source |
 | [`GraphEmbedder`](#graph-embedder) | `ServeOptions.GraphEmbedder` | when a `remember` has fully constructed its graph, and when a `query` has fetched its graph context | get one embedding of a whole graph, e.g. from a custom model trained for graphs (**the result is not stored yet**) |
+| [`ClassifyingTrainingHook`](#classifying-training-hook) | `ServeOptions.ClassifyingTrainingHook` | when a request asks for the training dataset of a dataset (`POST /v1/gb/datasets/{name}/training`) | turn a whole knowledge dataset (artifacts and their graphs) into the training dataset of a graph classifier: all of it or a filtered subset, with a class for each graph |
 | [`TrainedModelInferenceHook.Infer`](#trained-model-inference-hooks) | `ServeOptions.TrainedModelInferenceHooks` | when a trained model whose name the hook targets is prompted (admin UI prompt dialog, `POST /v1/gb/training/models/{id}/infer`) | run the prompts of a trained model on your own infrastructure or a provider, instead of the sidecar (Modal) |
 | [`TrainedModelDeployer.Deploy`](#trained-model-deployers) | `ServeOptions.TrainedModelDeployers` | when a request deploys a trained model (`POST /v1/gb/training/models/{id}/deployments`) | hand the weights of a trained model to somewhere else (an upload, a copy, a conversion, ...) |
 
@@ -243,6 +244,73 @@ A `remember` and a `query` request can name the graph embedding index they are f
 ### To do: storing the embeddings
 
 When the hook is completed, the embedding it returns must be written to the vector store (`CallOptions.Vectors`, the same store `remember` writes its other vectors to), into a vector dataset of the user's dataset for graph embeddings, in the index named by `Index`, keyed by `Pipeline` + `RunID` (and `ArtifactID` for a remember), so that a graph can be found by similarity. The places to do it are marked `IMPORTANT` in the code: `memory_core.EmbedGraph` (where the result is dropped), `memory_remember.job.embedGraph` and `memory_query.job.embedGraph`.
+
+## Classifying training hook
+
+A hook for training, next to the [graph embedder](#graph-embedder) (which is for embeddings). gligabao gives it a **whole dataset**, every artifact and the graph that comes with each, and it answers with the **training dataset** to train on: the dataset, or a filtered subset of it, plus the class of each of its graphs. For now it is a *classifying* hook (the training is of a classifier of graphs); other kinds of training will get hooks of their own.
+
+```go
+gligabao.Serve(ctx, cfg, gligabao.ServeOptions{
+    DBPath: "data/gligabao.db",
+    ClassifyingTrainingHook: func(ctx context.Context, ds gligabao.KnowledgeDataset) (gligabao.TrainingDataset, error) {
+        td := gligabao.TrainingDataset{Classes: map[int64]string{}}
+        td.UserID, td.Dataset, td.DatasetID = ds.UserID, ds.Dataset, ds.DatasetID
+        for _, g := range ds.Graphs {
+            if len(g.Edges) < 2 {
+                continue // a filter: too small a graph is left out
+            }
+            td.Graphs = append(td.Graphs, g)
+            td.Classes[g.ArtifactID] = myClassifier.Label(ctx, g)
+        }
+        keep := map[int64]bool{}
+        for _, g := range td.Graphs {
+            keep[g.ArtifactID] = true
+        }
+        for _, a := range ds.Artifacts {
+            if keep[a.ID] {
+                td.Artifacts = append(td.Artifacts, a)
+            }
+        }
+        return td, nil
+    },
+})
+```
+
+### Types
+
+```go
+type ClassifyingTrainingHook = memory_core.ClassifyingTrainingHook // func(ctx context.Context, ds KnowledgeDataset) (TrainingDataset, error)
+```
+
+| Type | Fields |
+|---|---|
+| `gligabao.KnowledgeDataset` | `UserID`, `Dataset` (the resolved name), `DatasetID`, `Artifacts` (`[]gligabao.Artifact`: every artifact of the dataset, of every kind, by ID), `Graphs` (`[]gligabao.ArtifactGraph`: the graph of every artifact that has one, by artifact ID) |
+| `gligabao.ArtifactGraph` | `ArtifactID` (the artifact the graph is of; it identifies the graph), `Entities` (`[]gligabao.GraphEntity`), `Edges` (`[]gligabao.GraphEdge`) |
+| `gligabao.TrainingDataset` | the `KnowledgeDataset` embedded (what is kept of it: all, or a subset) and `Classes` (`map[int64]string`: the class of each graph in it, by the `ArtifactID` of the graph) |
+
+`TrainingDataset` is a superset of `KnowledgeDataset`: the knowledge dataset it wraps is the part of the dataset that is trained on, and `Classes` is what is added to it.
+
+The graph of an artifact is what is linked to it (see [artifacts.md](artifacts.md#provenance-links)): the entities that mention it, the ones it created and the ones it found already stored, and the facts it stated, the ones it created and the ones whose duplicate it was merged into, in their stored state (expired facts included). An artifact that yielded nothing (no entity, no fact) has no graph. The graphs of two artifacts can share entities and facts.
+
+### Contract
+
+- **The hook may return a subset.** It does not have to return everything it got: the artifacts and graphs it leaves out are not trained on (a filter, a sample, a train/test split). A graph it keeps needs its artifact, and a class.
+- **It can only choose.** gligabao checks the result and rejects it, as a `502`, if it has an artifact or a graph (by artifact ID) that was not in the dataset or one twice, a graph whose artifact it does not keep, a graph without a class (or with a blank one), or a class for something that is not one of its graphs. The content of the artifacts and graphs is not compared: the IDs are the contract.
+- **Not advisory.** Unlike the graph embedder, the result is what the call is for: an error or a panic of the hook (and an invalid result) fails the request, with `502` and the message.
+- **Synchronous and concurrent.** It runs on the goroutine of the request, with the context of the request, and may be called concurrently (several requests, other datasets). The whole dataset is loaded in memory first: a large dataset means a large call.
+- **Read-only input.** Do not modify what it gets (`Artifacts`, `Graphs` and their slices).
+- **Off by default.** With no hook the route does not exist (`404`).
+
+### Endpoint
+
+`POST /v1/gb/datasets/{name}/training`, body `{"user_id": "u1"}` (under [`Auth`](#auth) like the other routes of users). It loads the dataset (`404` for one that does not exist), calls the hook and answers `200` with a summary of the training dataset it made:
+
+```json
+{"dataset": "main", "artifacts": 2, "artifacts_total": 5, "graphs": 2, "graphs_total": 4,
+ "classes": {"3": "employee", "5": "customer"}, "class_counts": {"employee": 1, "customer": 1}}
+```
+
+`artifacts` and `graphs` are how many the hook kept, `*_total` how many the dataset has, `classes` the class of each kept graph by artifact ID. **Nothing is stored yet**: gligabao only calls the hook and reports what it returned. The training itself, and keeping the training dataset, are the next steps.
 
 ## Trained model inference hooks
 

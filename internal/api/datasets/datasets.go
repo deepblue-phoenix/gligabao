@@ -119,3 +119,62 @@ func Graph(d *sql.DB) http.HandlerFunc {
 		}
 	}
 }
+
+type trainingRequest struct {
+	UserID string `json:"user_id"`
+}
+
+// trainingResponse is what POST /v1/gb/datasets/{name}/training answers: a summary of the training dataset the hook made (not its
+// artifacts and graphs, which the caller has in the graph export).
+type trainingResponse struct {
+	Dataset string `json:"dataset"`
+	// Artifacts and Graphs are how many the hook kept, ArtifactsTotal and GraphsTotal how many the dataset has.
+	Artifacts      int `json:"artifacts"`
+	ArtifactsTotal int `json:"artifacts_total"`
+	Graphs         int `json:"graphs"`
+	GraphsTotal    int `json:"graphs_total"`
+	// Classes is the class of each kept graph, by artifact ID; ClassCounts how many graphs each class has.
+	Classes     map[int64]string `json:"classes"`
+	ClassCounts map[string]int   `json:"class_counts"`
+}
+
+// Training serves POST /v1/gb/datasets/{name}/training: it hands the whole dataset (every artifact and the graph of each) to the
+// classifying training hook and answers with a summary of the training dataset it made, a possibly filtered subset with the class of
+// each graph. A failure of the hook, or a training dataset that is not valid, is a 502.
+func Training(d *sql.DB, hook memory_core.ClassifyingTrainingHook) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req trainingRequest
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes)).Decode(&req); err != nil {
+			httputil.Error(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+			return
+		}
+		ds, err := memory.LoadKnowledgeDataset(r.Context(), d, req.UserID, r.PathValue("name"))
+		if err == nil {
+			var td memory_core.TrainingDataset
+			td, err = memory_core.CallClassifyingTrainingHook(r.Context(), hook, ds)
+			if err == nil {
+				counts := map[string]int{}
+				for _, class := range td.Classes {
+					counts[class]++
+				}
+				httputil.WriteJSON(w, http.StatusOK, trainingResponse{
+					Dataset: td.Dataset, Artifacts: len(td.Artifacts), ArtifactsTotal: len(ds.Artifacts),
+					Graphs: len(td.Graphs), GraphsTotal: len(ds.Graphs), Classes: td.Classes, ClassCounts: counts,
+				})
+				return
+			}
+			log.WithError(err).WithFields(log.Fields{"user_id": req.UserID, "dataset": ds.Dataset}).Warn("classifying training hook failed")
+			httputil.Error(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		switch {
+		case errors.Is(err, memory_core.ErrInvalidUser):
+			httputil.Error(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory_core.ErrDatasetNotFound):
+			httputil.Error(w, http.StatusNotFound, "dataset not found")
+		default:
+			log.WithError(err).WithFields(log.Fields{"user_id": req.UserID, "dataset": r.PathValue("name")}).Error("load knowledge dataset failed")
+			httputil.Error(w, http.StatusInternalServerError, "failed to load the dataset")
+		}
+	}
+}

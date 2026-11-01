@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.159.0] - 2026-11-03
+
+### Added
+- **Classifying training hook** (`ServeOptions.ClassifyingTrainingHook`), a training hook next to the graph embedder (which is for embeddings). `POST /v1/gb/datasets/{name}/training` (body `{"user_id": ...}`) loads the whole dataset, every artifact and the graph that comes with each (its entities and facts), and passes it to the hook as a `KnowledgeDataset`. The hook returns a `TrainingDataset`, which wraps the knowledge dataset (all of it, or a filtered subset) and adds the class of each of its graphs. gligabao checks that the result only contains artifacts and graphs of the dataset and that every graph has a class, and answers with a summary (counts, the class of each graph, how many graphs per class). An error or panic of the hook, or an invalid result, is a `502`. The route exists only when the hook is set. See [docs/hooks.md](docs/hooks.md#classifying-training-hook).
+- **Nothing is stored yet:** gligabao only calls the hook and reports what it returned; training on the result, and keeping the training dataset, come next. For now this is the only kind of training hook.
+
 ## [0.158.0] - 2026-11-03
 
 ### Added

@@ -40,6 +40,9 @@ func Register(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm me
 	mux.Handle("GET /v1/gb/datasets", a(datasets.List(d.Relational)))
 	mux.Handle("DELETE /v1/gb/datasets/{name}", a(datasets.Delete(d.Relational, d.Vector)))
 	mux.Handle("GET /v1/gb/datasets/{name}/graph", a(datasets.Graph(d.Relational)))
+	if o.trainingHook != nil {
+		mux.Handle("POST /v1/gb/datasets/{name}/training", a(datasets.Training(d.Relational, o.trainingHook)))
+	}
 	mux.Handle("POST /v1/gb/timeseries", a(timeseries.Attach(d.Relational)))
 	mux.Handle("GET /v1/gb/timeseries", a(timeseries.List(d.Relational)))
 	mux.Handle("GET /v1/gb/timeseries/{id}", a(timeseries.Get(d.Relational)))
@@ -110,6 +113,7 @@ type options struct {
 	geo           memory_geo.Resolver
 	geoRadiusKm   float64
 	graphEmbedder memory_core.GraphEmbedder
+	trainingHook  memory_core.ClassifyingTrainingHook
 	research      *agent_research.Manager
 }
 
@@ -136,6 +140,13 @@ func WithGeoRadius(km float64) Option { return func(o *options) { o.geoRadiusKm 
 // IMPORTANT: the embeddings the hook returns are NOT stored in the vector store yet; they must be (see memory_core.GraphEmbedder).
 func WithGraphEmbedder(f memory_core.GraphEmbedder) Option {
 	return func(o *options) { o.graphEmbedder = f }
+}
+
+// WithClassifyingTrainingHook sets the classifying training hook, which Register serves as POST /v1/gb/datasets/{name}/training (under
+// WithAuth like the other routes of users): the whole dataset goes to it and it answers with a training dataset. Without it (or with nil)
+// the route is not mounted.
+func WithClassifyingTrainingHook(f memory_core.ClassifyingTrainingHook) Option {
+	return func(o *options) { o.trainingHook = f }
 }
 
 // WithResearch adds the routes of the research agents to Register (POST and GET /v1/gb/research, GET /v1/gb/research/{id}, under the

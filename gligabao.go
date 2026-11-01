@@ -131,6 +131,22 @@ const (
 	GraphEmbedQuery    = memory_core.GraphEmbedQuery
 )
 
+// ClassifyingTrainingHook is the classifying training hook (see ServeOptions.ClassifyingTrainingHook and docs/hooks.md): it gets a whole
+// knowledge dataset (every artifact and its graph) and returns the training dataset of a graph classifier, which may be a filtered subset.
+type ClassifyingTrainingHook = memory_core.ClassifyingTrainingHook
+
+// KnowledgeDataset is what a ClassifyingTrainingHook gets: the artifacts of a dataset and the graphs that come with them.
+type KnowledgeDataset = memory_core.KnowledgeDataset
+
+// ArtifactGraph is the graph that comes with one artifact of a KnowledgeDataset.
+type ArtifactGraph = memory_core.ArtifactGraph
+
+// TrainingDataset is what a ClassifyingTrainingHook returns: a KnowledgeDataset (all of it or a filtered subset) plus the class of each of its graphs.
+type TrainingDataset = memory_core.TrainingDataset
+
+// Artifact is an artifact of a KnowledgeDataset.
+type Artifact = graph.Artifact
+
 // TrainedModelDeployer is a named hook that deploys trained models (see ServeOptions.TrainedModelDeployers and
 // docs/hooks.md): gligabao fetches the weights of the model to a local directory and calls Deploy with it; what Deploy does
 // with the files (upload them to a third party, copy them, ...) is up to the embedding program.
@@ -231,6 +247,10 @@ type ServeOptions struct {
 	// custom model). For now gligabao only makes the call and DISCARDS the result. IMPORTANT: those embeddings MUST be stored in the
 	// vector store; that is not done yet. See docs/hooks.md.
 	GraphEmbedder GraphEmbedder
+	// ClassifyingTrainingHook is the classifying training hook: if set, POST /v1/gb/datasets/{name}/training hands it the whole
+	// dataset (every artifact and the graph of each) and it returns the training dataset of a graph classifier: all of the dataset or a
+	// filtered subset, with the class of each graph. See docs/hooks.md.
+	ClassifyingTrainingHook ClassifyingTrainingHook
 	// Auth is the auth hook. If set, the user routes of the API (remember, query, datasets, timeseries, ontologies) require an API
 	// key, sent as "Authorization: Bearer <key>" (the Python client sends the one in GLIGABAO_API_KEY): Auth is called with it and
 	// returns the ID of the user the key belongs to, and the request acts as that user (a user_id the caller sent is replaced). A
@@ -358,14 +378,15 @@ func serverOptions(cfg *Config, opts ServeOptions) (serverOpts server.Options, r
 		SidecarURL:   cfg.SidecarURL,
 		Prices:       aiPrices(cfg),
 
-		Auth:                  opts.Auth,
-		GeoResolver:           opts.GeoResolver,
-		GraphEmbedder:         opts.GraphEmbedder,
-		Geo:                   cfg.Geo,
-		GeoRadiusKm:           cfg.GeoRadiusKm,
-		MCPEnable:             cfg.MCP,
-		TimeseriesProviders:   opts.TimeseriesProviders,
-		TrainedModelDeployers: opts.TrainedModelDeployers,
+		Auth:                    opts.Auth,
+		GeoResolver:             opts.GeoResolver,
+		GraphEmbedder:           opts.GraphEmbedder,
+		ClassifyingTrainingHook: opts.ClassifyingTrainingHook,
+		Geo:                     cfg.Geo,
+		GeoRadiusKm:             cfg.GeoRadiusKm,
+		MCPEnable:               cfg.MCP,
+		TimeseriesProviders:     opts.TimeseriesProviders,
+		TrainedModelDeployers:   opts.TrainedModelDeployers,
 
 		TrainedModelInferenceHooks: opts.TrainedModelInferenceHooks,
 		AdminExtensions:            opts.AdminExtensions,
