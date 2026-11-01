@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.152.1] - 2026-11-01
+
+### Changed
+- Admin UI, **Bookmarks** view: the type badge of each bookmark has its own colour (eval case, remember run, query run), the **Saved** column shows a relative time (*5 mins ago*, *3 days ago*; the exact UTC time is in the tooltip), and a long bookmark title is cut with an ellipsis (the whole title is in the tooltip).
+
 ## [0.152.0] - 2026-11-01
 
 ### Added

@@ -112,6 +112,20 @@ const fmtTime = (iso: string): string => {
   return Number.isNaN(d.getTime()) ? iso : d.toISOString().replace("T", " ").slice(0, 19);
 };
 
+// "5 mins ago" / "3 hours ago" / "2 days ago" / "3 weeks ago" / "2 months ago" ("just now" under a minute; a month is 30 days).
+function savedAgo(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  const mins = Math.max(0, Math.floor((Date.now() - t) / 60000));
+  const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"} ago`;
+  if (mins < 1) return "just now";
+  if (mins < 60) return plural(mins, "min");
+  if (mins < 1440) return plural(Math.floor(mins / 60), "hour");
+  if (mins < 10080) return plural(Math.floor(mins / 1440), "day");
+  if (mins < 43200) return plural(Math.floor(mins / 10080), "week");
+  return plural(Math.floor(mins / 43200), "month");
+}
+
 const TRASH = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
 
 let filter: BookmarkKind | "" = "";
@@ -154,16 +168,21 @@ function render(): void {
   }
   const table = node("table", "clickable");
   const head = table.createTHead().insertRow();
-  for (const label of ["Type", "Bookmark", "Details", "Saved (UTC)", ""]) head.appendChild(node("th", "", label));
+  for (const label of ["Type", "Bookmark", "Details", "Saved", ""]) head.appendChild(node("th", "", label));
   const body = table.createTBody();
   for (const b of shown) {
     const tr = body.insertRow();
-    tr.insertCell().appendChild(node("span", "badge badge-active", KIND_LABELS[b.kind]));
-    tr.insertCell().textContent = b.title;
+    tr.insertCell().appendChild(node("span", `badge bm-${b.kind}`, KIND_LABELS[b.kind]));
+    const title = tr.insertCell();
+    title.className = "bm-title";
+    title.textContent = b.title;
+    title.title = b.title; // the whole text, when it is cut
     const detail = tr.insertCell();
     detail.className = "muted";
     detail.textContent = b.detail;
-    tr.insertCell().textContent = fmtTime(b.created_at);
+    const saved = tr.insertCell();
+    saved.textContent = savedAgo(b.created_at);
+    saved.title = `${fmtTime(b.created_at)} UTC`;
     const actions = tr.insertCell();
     const rm = actions.appendChild(node("button", "icon danger", ""));
     rm.type = "button";
