@@ -21,6 +21,9 @@ const (
 	EnvUser   = "GLIGABAO_USER"
 )
 
+// UserIDHeader is the request header that carries the user ID (WithUserID). The server only takes the user from it (or from the API key).
+const UserIDHeader = "gb-user-id"
+
 // DefaultBaseURL is the address of a local gligabao server.
 const DefaultBaseURL = "http://127.0.0.1:7878"
 
@@ -48,11 +51,12 @@ type Client struct {
 // Option configures a Client.
 type Option func(*Client)
 
-// WithAPIKey sends the key as "Authorization: Bearer <key>". A server with auth maps it to the user it belongs to
+// WithAPIKey sends the key as "Authorization: Bearer <key>". A server with the auth hook maps it to the user it belongs to
 // (and ignores any user ID sent).
 func WithAPIKey(key string) Option { return func(c *Client) { c.apiKey = strings.TrimSpace(key) } }
 
-// WithUserID sets the user_id sent with every call. Needed by a server without auth; ignored by one with auth.
+// WithUserID sets the user ID sent with every call, in the "gb-user-id" header. Needed by a server without the auth hook (it
+// answers 400 without it); ignored by one with the hook.
 func WithUserID(id string) Option { return func(c *Client) { c.userID = id } }
 
 // WithHTTPClient replaces the http.Client (default: no overall timeout, use the context of each call).
@@ -243,11 +247,7 @@ func toMap(v any) (map[string]any, error) {
 
 // post sends body as JSON and decodes the answer into out; it returns the raw answer.
 func (c *Client) post(ctx context.Context, path string, body map[string]any, out any) (json.RawMessage, error) {
-	if c.userID != "" {
-		if _, ok := body["user_id"]; !ok {
-			body["user_id"] = c.userID
-		}
-	}
+	delete(body, "user_id") // the server only takes the user from the header
 	b, err := json.Marshal(body)
 	if err != nil {
 		return nil, &Error{Message: "encode request: " + err.Error()}
@@ -258,6 +258,9 @@ func (c *Client) post(ctx context.Context, path string, body map[string]any, out
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	if c.userID != "" {
+		req.Header.Set(UserIDHeader, c.userID)
+	}
 	if c.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}

@@ -34,7 +34,9 @@ func TestMount(t *testing.T) {
 
 	get := func(path string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+		req := httptest.NewRequest("GET", path, nil)
+		req.Header.Set("gb-user-id", "u1")
+		mux.ServeHTTP(rec, req)
 		return rec
 	}
 	// the host keeps its own routes
@@ -48,7 +50,7 @@ func TestMount(t *testing.T) {
 		t.Fatalf("wrap ran for host routes: %d", wrapped)
 	}
 	// gligabao's are under /v1/gb/ and go through Wrap
-	if rec := get("/v1/gb/datasets?user_id=u1"); rec.Code != http.StatusOK {
+	if rec := get("/v1/gb/datasets"); rec.Code != http.StatusOK {
 		t.Fatalf("a gligabao route is not mounted: %d", rec.Code)
 	}
 	if rec := get("/v1/gb/nope"); rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "404") {

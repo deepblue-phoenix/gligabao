@@ -11,6 +11,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
 )
 
 func TestRememberModels(t *testing.T) { dbtest.Run(t, testRememberModels) }
@@ -39,7 +41,7 @@ func testRememberModels(t *testing.T, d *sql.DB) {
 	post := func(body string) int {
 		t.Helper()
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
 		return rec.Code
 	}
 

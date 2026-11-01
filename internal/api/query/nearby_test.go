@@ -14,6 +14,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_query"
+
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
 )
 
 // TestNearbyHandler checks GET /v1/gb/geo/nearby: the geo entities around a geo entity or a point, within the radius.
@@ -55,7 +57,7 @@ func testNearbyHandler(t *testing.T, d *sql.DB) {
 	get := func(params string) (int, memory_query.GeoContext) {
 		t.Helper()
 		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/gb/geo/nearby?user_id=u3&"+params, nil))
+		h.ServeHTTP(rec, httputiltest.NewRequest(http.MethodGet, "/v1/gb/geo/nearby?user_id=u3&"+params, nil))
 		var res memory_query.GeoContext
 		if rec.Code == 200 {
 			if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
@@ -94,7 +96,7 @@ func testNearbyHandler(t *testing.T, d *sql.DB) {
 	}
 	// the server's default radius
 	rec := httptest.NewRecorder()
-	NearbyHandler(d, memory_core.WithGeoRadius(5)).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x?user_id=u3&entity_id="+id, nil))
+	NearbyHandler(d, memory_core.WithGeoRadius(5)).ServeHTTP(rec, httputiltest.NewRequest(http.MethodGet, "/x?user_id=u3&entity_id="+id, nil))
 	var small memory_query.GeoContext
 	if err := json.Unmarshal(rec.Body.Bytes(), &small); err != nil || small.RadiusKm != 5 || len(small.Nearby) != 0 || small.Nearby == nil {
 		t.Fatalf("server radius: %s", rec.Body)

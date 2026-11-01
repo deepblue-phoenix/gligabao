@@ -16,6 +16,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
+
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
 )
 
 // recordingLLM returns canned outputs in order and records requests.
@@ -83,7 +85,7 @@ func testRememberBiTemporal(t *testing.T, d *sql.DB) {
 	post := func(body string) memory_remember.Result {
 		t.Helper()
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
 		if rec.Code != 200 {
 			t.Fatalf("status %d: %s", rec.Code, rec.Body)
 		}
@@ -181,7 +183,7 @@ func testRememberSupersedesOlderFact(t *testing.T, d *sql.DB) {
 		`{"user_id":"u1","text":"Alice started working at Globex.","reference_time":"2024-03-01T00:00:00Z"}`,
 	} {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
 		if rec.Code != 200 {
 			t.Fatalf("status %d: %s", rec.Code, rec.Body)
 		}
@@ -273,7 +275,7 @@ func testRememberOlderNewsIsSuperseded(t *testing.T, d *sql.DB) {
 	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm))
 	post := func(body string) memory_remember.Result {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
 		if rec.Code != 200 {
 			t.Fatalf("status %d: %s", rec.Code, rec.Body)
 		}
@@ -317,7 +319,7 @@ func TestRememberBadReferenceTime(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, nil, fakeLLM{}))
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"user_id":"u1","text":"x","reference_time":"yesterday"}`)))
+	mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"user_id":"u1","text":"x","reference_time":"yesterday"}`)))
 	if rec.Code != 400 {
 		t.Errorf("status = %d", rec.Code)
 	}

@@ -1,7 +1,7 @@
 // The query button of the top bar and its modal (see docs/query.md#admin-ui): asks the knowledge base a question from any view. A big
 // question box; pickers for the dataset (of the standard database, any user's), the model and the thinking level; the answer in the same
 // modal, and the ID of the query run, a link that opens the details of that run (the modal of the "query" view, runs.ts).
-// Calls POST api/query (the body of POST /v1/gb/query) and the lists of api/query-options and api/overview.
+// Calls POST api/query (the body of POST /v1/gb/query; the dataset owner goes in the gb-user-id header) and the lists of api/query-options and api/overview.
 
 import { openQueryRun } from "./runs.js";
 
@@ -82,7 +82,7 @@ async function ask(): Promise<void> {
     return;
   }
   const model = el<HTMLSelectElement>("query-model").value;
-  const body: Record<string, unknown> = { user_id: ds.user_id, dataset: ds.name, query: question, reasoning: el<HTMLSelectElement>("query-thinking").value };
+  const body: Record<string, unknown> = { dataset: ds.name, query: question, reasoning: el<HTMLSelectElement>("query-thinking").value };
   if (model) body.models = { query: model };
   lastDataset = `${ds.user_id} · ${ds.name}`;
 
@@ -91,7 +91,7 @@ async function ask(): Promise<void> {
   status.className = "muted";
   status.textContent = "Asking…";
   try {
-    const res = await fetch("api/query", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const res = await fetch("api/query", { method: "POST", headers: { "Content-Type": "application/json", "gb-user-id": ds.user_id }, body: JSON.stringify(body) });
     if (!res.ok) throw await failure(res);
     const a = (await res.json()) as Answer;
     status.textContent = "";

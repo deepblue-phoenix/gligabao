@@ -18,6 +18,8 @@ import (
 	"strings"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 )
 
 // Path is the route of the MCP endpoint.
@@ -78,6 +80,16 @@ type ResearchGetInput struct {
 	ID     int64  `json:"id" jsonschema:"the id research_start returned"`
 }
 
+func (in RememberInput) user() string      { return in.UserID }
+func (in QueryInput) user() string         { return in.UserID }
+func (in ResearchStartInput) user() string { return in.UserID }
+func (in ResearchListInput) user() string  { return in.UserID }
+func (in ResearchGetInput) user() string   { return in.UserID }
+
+// userOf is implemented by the inputs of the tools: the user the tool acts as, which is sent to the handler in its gb-user-id header
+// (the handlers take the user from there only, so the user_id of the input is not read by them).
+type userOf interface{ user() string }
+
 // Option configures New and Register.
 type Option func(*options)
 
@@ -123,7 +135,7 @@ func New(rememberH, queryH http.Handler, version string, opts ...Option) http.Ha
 			Description: "List the research agents of a user, newest first: their status, current state, steps and cost. With active set, only the ones that are working now.",
 			Annotations: &sdk.ToolAnnotations{Title: "List research agents", ReadOnlyHint: true, OpenWorldHint: boolPtr(false)},
 		}, forwardGet(o.researchList, func(in ResearchListInput) (url.Values, map[string]string) {
-			q := url.Values{"user_id": {in.UserID}}
+			q := url.Values{}
 			if in.Active != nil {
 				q.Set("active", strconv.FormatBool(*in.Active))
 			}
@@ -140,7 +152,7 @@ func New(rememberH, queryH http.Handler, version string, opts ...Option) http.Ha
 			Description: "Read a research agent: its status, current state, cost and, in order, every state it went through (searching, reading, thinking, ...) with what each was about (the query, the URL). The report is in it once the status is completed.",
 			Annotations: &sdk.ToolAnnotations{Title: "Get a research agent", ReadOnlyHint: true, OpenWorldHint: boolPtr(false)},
 		}, forwardGet(o.researchGet, func(in ResearchGetInput) (url.Values, map[string]string) {
-			return url.Values{"user_id": {in.UserID}}, map[string]string{"id": strconv.FormatInt(in.ID, 10)}
+			return url.Values{}, map[string]string{"id": strconv.FormatInt(in.ID, 10)}
 		}))
 	}
 
@@ -163,7 +175,7 @@ func boolPtr(b bool) *bool { return &b }
 
 // forward makes the tool handler that sends its input as the JSON body of a POST to h and returns h's answer: the JSON response as
 // the structured content (and as text), or, for a status of 400 and over, a tool error with the message of the response.
-func forward[In any](h http.Handler) sdk.ToolHandlerFor[In, any] {
+func forward[In userOf](h http.Handler) sdk.ToolHandlerFor[In, any] {
 	return func(ctx context.Context, _ *sdk.CallToolRequest, in In) (*sdk.CallToolResult, any, error) {
 		body, err := json.Marshal(in)
 		if err != nil {
@@ -174,19 +186,21 @@ func forward[In any](h http.Handler) sdk.ToolHandlerFor[In, any] {
 			return nil, nil, err
 		}
 		req.Header.Set("content-type", "application/json")
+		req.Header.Set(httputil.UserIDHeader, in.user())
 		return serve(h, req), nil, nil
 	}
 }
 
 // forwardGet makes the tool handler that sends a GET to h, with the query string and the path values (the {name}s of the route) that
 // params makes of its input, and returns h's answer like forward.
-func forwardGet[In any](h http.Handler, params func(In) (query url.Values, path map[string]string)) sdk.ToolHandlerFor[In, any] {
+func forwardGet[In userOf](h http.Handler, params func(In) (query url.Values, path map[string]string)) sdk.ToolHandlerFor[In, any] {
 	return func(ctx context.Context, _ *sdk.CallToolRequest, in In) (*sdk.CallToolResult, any, error) {
 		query, path := params(in)
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/?"+query.Encode(), nil)
 		if err != nil {
 			return nil, nil, err
 		}
+		req.Header.Set(httputil.UserIDHeader, in.user())
 		for k, v := range path {
 			req.SetPathValue(k, v)
 		}

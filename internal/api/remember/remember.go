@@ -29,8 +29,6 @@ const (
 )
 
 type rememberRequest struct {
-	// UserID owns the dataset. Required.
-	UserID string `json:"user_id"`
 	// Dataset is the dataset to store into (created if missing). Defaults to "main".
 	Dataset string `json:"dataset"`
 	// Text is the text to remember. Required unless Image is given.
@@ -164,7 +162,7 @@ func handler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, eval 
 				return
 			}
 		}
-		if _, err := memory_core.ResolveUserID(req.UserID); err != nil {
+		if _, err := memory_core.ResolveUserID(httputil.UserID(r)); err != nil {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -219,12 +217,12 @@ func handler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, eval 
 		// channel, which the manager sends the result to when the run is over.
 		outcome := make(chan memory_remember.Outcome, 1)
 		runID, err := mgr.Submit(memory_remember.Request{
-			UserID: req.UserID, Dataset: req.Dataset, Kind: req.Kind, Text: req.Text, Ref: ref,
+			UserID: httputil.UserID(r), Dataset: req.Dataset, Kind: req.Kind, Text: req.Text, Ref: ref,
 			Opts: append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithGraphIndex(graphIndex), memory_core.WithModels(models), memory_core.WithReasoning(reasoning), memory_core.WithWebSearch(req.WebSearch), memory_core.WithClassifyGraph(req.ClassifyGraph, graphClasses), memory_core.WithSeries(series), memory_core.WithSeriesFetch(fetch), memory_core.WithSeriesObservations(observe)),
 			Ctx:  r.Context(), Outcome: outcome,
 		})
 		if err != nil {
-			log.WithError(err).WithFields(log.Fields{"user_id": req.UserID, "dataset": req.Dataset}).Error("remember not queued")
+			log.WithError(err).WithFields(log.Fields{"user_id": httputil.UserID(r), "dataset": req.Dataset}).Error("remember not queued")
 			httputil.Error(w, http.StatusServiceUnavailable, "remember is not available")
 			return
 		}
@@ -236,13 +234,13 @@ func handler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, eval 
 		}
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
-				"user_id":         req.UserID,
+				"user_id":         httputil.UserID(r),
 				"dataset":         req.Dataset,
 				"session_id":      sessionID,
 				"remember_run_id": runID,
 			}).Error("remember failed")
 			monitoring.EmitSystemEvent(r.Context(), "remember.failed", monitoring.Event{
-				"user_id":         req.UserID,
+				"user_id":         httputil.UserID(r),
 				"dataset":         req.Dataset,
 				"session_id":      sessionID,
 				"remember_run_id": runID,
@@ -371,7 +369,7 @@ func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory
 			return
 		}
 	}
-	if _, err := memory_core.ResolveUserID(req.UserID); err != nil {
+	if _, err := memory_core.ResolveUserID(httputil.UserID(r)); err != nil {
 		httputil.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -399,16 +397,16 @@ func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory
 		return
 	}
 	start := time.Now()
-	res, err := memory_image.RememberImage(r.Context(), d, llm, req.UserID, req.Dataset, data, ref,
+	res, err := memory_image.RememberImage(r.Context(), d, llm, httputil.UserID(r), req.Dataset, data, ref,
 		append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithModels(models), memory_core.WithReasoning(reasoning))...)
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{
-			"user_id":    req.UserID,
+			"user_id":    httputil.UserID(r),
 			"dataset":    req.Dataset,
 			"session_id": sessionID,
 		}).Error("remember image failed")
 		monitoring.EmitSystemEvent(r.Context(), "remember_image.failed", monitoring.Event{
-			"user_id":     req.UserID,
+			"user_id":     httputil.UserID(r),
 			"dataset":     req.Dataset,
 			"session_id":  sessionID,
 			"image_bytes": len(data),

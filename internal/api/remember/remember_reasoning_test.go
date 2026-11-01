@@ -15,6 +15,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
+
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
 )
 
 // summaryLLM answers a summary request with a summary, and records the model and reasoning level of those requests.
@@ -39,7 +41,7 @@ func testRememberSummaryModelAndReasoning(t *testing.T, d *sql.DB) {
 	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm, memory_core.WithChunking(memory_chunk.Config{Size: 40, OverlapPercent: 20})))
 	post := func(body string) int {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
 		return rec.Code
 	}
 	text := strings.Repeat("Alice walked along the river and talked about the weather and her plans for the summer holidays.\n\n", 6)

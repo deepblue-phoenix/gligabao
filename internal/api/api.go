@@ -32,7 +32,7 @@ func Register(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm me
 	for _, opt := range opts {
 		opt(&o)
 	}
-	a := func(h http.HandlerFunc) http.Handler { return httputil.Authenticate(o.auth, h) } // routes of users: with WithAuth they need an API key
+	a := func(h http.HandlerFunc) http.Handler { return httputil.Authenticate(o.auth, h) } // routes of users: the user is the one of the gb-user-id header, or with WithAuth the one of the API key
 	mux.Handle("POST /v1/gb/remember", a(rememberHandler(mgr, d, llm, emb, jv, ws, providers, o)))
 	mux.Handle("POST /v1/gb/query", a(query.Handler(d.Relational, llm, queryOptions(d, emb, o)...)))
 	mux.Handle("GET /v1/gb/geo/nearby", a(query.NearbyHandler(d.Relational, memory_core.WithGeoRadius(o.geoRadiusKm))))
@@ -92,7 +92,7 @@ func researchMemory(mgr *memory_remember.Manager, d *db.DB, llm memory_core.LLM,
 
 // RegisterMCP mounts the MCP endpoint (POST /v1/gb/mcp, see package mcp) with the tools remember and query (and, with WithResearch, those of the research agents). They run the same handlers
 // as POST /v1/gb/remember and POST /v1/gb/query, so the arguments are the same as those of Register (mgr, d, llm, ...) and the same
-// options apply (WithGeoResolver). There is no authentication: the WithAuth option is not applied, a caller sets the user_id itself.
+// options apply (WithGeoResolver). There is no authentication: the WithAuth option is not applied, a caller sets the user itself (the user_id argument of the tools).
 // version is what the server reports to MCP clients.
 func RegisterMCP(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm memory_core.LLM, emb memory_core.Embedder, jv memory_core.Classifier, ws memory_core.WebSearcher, providers []memory_core.SeriesProvider, version string, opts ...Option) {
 	var o options
@@ -121,8 +121,9 @@ type options struct {
 type Option func(*options)
 
 // WithAuth makes every route of Register require an API key ("Authorization: Bearer <key>"): auth is called with it and returns
-// the ID of the user it belongs to, who the request then acts as (the user_id the caller sent is replaced). A request without a key,
-// or whose key auth rejects (any error), gets 401. Without it, routes trust the user_id of the request. The eval routes are not covered.
+// the ID of the user it belongs to, who the request then acts as. A request without a key, or whose key auth rejects (any error),
+// gets 401. Without it, routes act as the user of the "gb-user-id" header (400 without it). The user is never taken from the query
+// string or the body. The eval routes are not covered.
 func WithAuth(auth httputil.Authenticator) Option { return func(o *options) { o.auth = auth } }
 
 // WithGeoResolver makes remember (Register and RegisterEval) find the places among the entities it extracts and store their

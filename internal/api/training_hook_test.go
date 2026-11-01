@@ -60,7 +60,7 @@ func testClassifyingTrainingHook(t *testing.T, d *sql.DB) {
 	Register(mux, mgrFor(t, database, echoLLM{}), database, echoLLM{}, nil, nil, nil, nil, WithClassifyingTrainingHook(hook))
 	do := func(method, path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest(method, path, strings.NewReader(body)))
+		mux.ServeHTTP(rec, newReq(method, path, strings.NewReader(body)))
 		return rec
 	}
 	want := func(rec *httptest.ResponseRecorder, code int) {

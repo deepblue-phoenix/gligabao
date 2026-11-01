@@ -124,7 +124,7 @@ func (x *Executor) runCase(ctx context.Context, name string, in core.KnowledgeCa
 	var reported []rememberedChunk // the chunks the remember calls reported
 
 	for i, m := range input.Remember {
-		body := map[string]any{"user_id": EvalUser, "text": m.Text, "dataset": dataset}
+		body := map[string]any{"text": m.Text, "dataset": dataset}
 		if m.Kind != "" {
 			body["kind"] = m.Kind
 		}
@@ -255,7 +255,7 @@ func (x *Executor) runCase(ctx context.Context, name string, in core.KnowledgeCa
 		} `json:"evidence"`
 		Trajectory *atif.Trajectory `json:"trajectory"`
 	}
-	queryBody := map[string]any{"user_id": EvalUser, "query": input.Query, "dataset": dataset}
+	queryBody := map[string]any{"query": input.Query, "dataset": dataset}
 	if len(queryModels) > 0 {
 		queryBody["models"] = queryModels
 	}

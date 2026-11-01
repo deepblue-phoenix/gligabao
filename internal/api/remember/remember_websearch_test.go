@@ -20,6 +20,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
+
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
 )
 
 // webLLM answers the extraction of a text. The text of a web search briefing ("BRIEFING about X") yields X and a new
@@ -71,7 +73,7 @@ const webMain = `{"entities":[{"name":"Alice","type":"person"},{"name":"Acme","t
 func rememberPost(t *testing.T, h http.HandlerFunc, body string) (int, string) {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	h(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
+	h(rec, httputiltest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
 	return rec.Code, rec.Body.String()
 }
 

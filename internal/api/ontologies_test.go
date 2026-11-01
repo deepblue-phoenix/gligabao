@@ -33,7 +33,7 @@ func testOntologies(t *testing.T, d *sql.DB) {
 	post := func(v map[string]any) *httptest.ResponseRecorder {
 		body, _ := json.Marshal(v)
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/ontologies", strings.NewReader(string(body))))
+		mux.ServeHTTP(rec, newReq("POST", "/v1/gb/ontologies", strings.NewReader(string(body))))
 		return rec
 	}
 	want := func(rec *httptest.ResponseRecorder, code int) {
@@ -103,7 +103,9 @@ func testOntologies(t *testing.T, d *sql.DB) {
 		t.Fatalf("u2 ontologies: %+v", u2)
 	}
 	rec = httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/ontologies", strings.NewReader("not json")))
+	badReq := newReq("POST", "/v1/gb/ontologies", strings.NewReader("not json"))
+	badReq.Header.Set("gb-user-id", "u1")
+	mux.ServeHTTP(rec, badReq)
 	want(rec, http.StatusBadRequest)
 
 	// A failed graph load leaves nothing behind, and the name stays usable.
@@ -144,7 +146,7 @@ func testOntologyUpdate(t *testing.T, d *sql.DB) {
 	do := func(method, path string, v map[string]any) *httptest.ResponseRecorder {
 		body, _ := json.Marshal(v)
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest(method, path, strings.NewReader(string(body))))
+		mux.ServeHTTP(rec, newReq(method, path, strings.NewReader(string(body))))
 		return rec
 	}
 	want := func(rec *httptest.ResponseRecorder, code int) {
@@ -256,7 +258,7 @@ func testOntologyMerge(t *testing.T, d *sql.DB) {
 	do := func(method, path string, v map[string]any) *httptest.ResponseRecorder {
 		body, _ := json.Marshal(v)
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest(method, path, strings.NewReader(string(body))))
+		mux.ServeHTTP(rec, newReq(method, path, strings.NewReader(string(body))))
 		return rec
 	}
 	put := func(content string, extra map[string]any) relational.Ontology {
@@ -441,7 +443,7 @@ func testOntologyFile(t *testing.T, d *sql.DB) {
 		Register(mux, mgrFor(t, database, nil), database, nil, nil, nil, nil, nil, WithOntologyDirs(dirs))
 		body, _ := json.Marshal(v)
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest(method, path, strings.NewReader(string(body))))
+		mux.ServeHTTP(rec, newReq(method, path, strings.NewReader(string(body))))
 		return rec
 	}
 	dirs := []string{first, second}

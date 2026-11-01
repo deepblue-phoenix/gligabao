@@ -13,6 +13,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 )
 
 // Environment variables of the client commands.
@@ -113,6 +115,9 @@ func (c *apiClient) do(ctx context.Context, method, path string, query url.Value
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if c.user != "" {
+		req.Header.Set(httputil.UserIDHeader, c.user) // the only way the server takes the user
 	}
 	if c.key != "" {
 		req.Header.Set("Authorization", "Bearer "+c.key)

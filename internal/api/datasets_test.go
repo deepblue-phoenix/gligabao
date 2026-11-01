@@ -48,7 +48,7 @@ func testDatasets(t *testing.T, d *sql.DB) {
 
 	do := func(method, path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest(method, path, strings.NewReader(body)))
+		mux.ServeHTTP(rec, newReq(method, path, strings.NewReader(body)))
 		return rec
 	}
 	want := func(rec *httptest.ResponseRecorder, code int) {

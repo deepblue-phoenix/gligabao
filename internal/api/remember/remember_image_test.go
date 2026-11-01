@@ -23,6 +23,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_image"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
+
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
 )
 
 const imageJSON = `{"theme":"Plot","title":"Revenue","text_blocks":[
@@ -57,7 +59,7 @@ func testRememberImage(t *testing.T, d *sql.DB) {
 	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm, memory_image.WithImageDir(imgDir)))
 	post := func(body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
 		return rec
 	}
 
@@ -229,7 +231,7 @@ func testRememberImageLLMFailure(t *testing.T, d *sql.DB) {
 	imgDir := t.TempDir()
 	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm, memory_image.WithImageDir(imgDir)))
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember",
+	mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/remember",
 		strings.NewReader(`{"user_id":"u1","image":"`+base64.StdEncoding.EncodeToString(pngBytes(t))+`"}`)))
 	if rec.Code != 502 {
 		t.Fatalf("status %d, want 502: %s", rec.Code, rec.Body)
@@ -252,7 +254,7 @@ func TestRememberImageEval(t *testing.T) {
 		return &ai.Response{Text: imageJSON, StopReason: "end_turn", Model: "m"}, nil
 	})
 	rec := httptest.NewRecorder()
-	testEvalHandler(t, d, llm, memory_image.WithImageDir(t.TempDir())).ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/eval/remember",
+	testEvalHandler(t, d, llm, memory_image.WithImageDir(t.TempDir())).ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/eval/remember",
 		strings.NewReader(`{"user_id":"u1","image":"`+base64.StdEncoding.EncodeToString(pngBytes(t))+`"}`)))
 	if rec.Code != 200 {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body)
@@ -283,7 +285,7 @@ func testRememberImageSession(t *testing.T, d *sql.DB) {
 	post := func(body string) memory_image.ImageResult {
 		t.Helper()
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
 		if rec.Code != 200 {
 			t.Fatalf("status %d: %s", rec.Code, rec.Body)
 		}
@@ -312,7 +314,7 @@ func testRememberImageSession(t *testing.T, d *sql.DB) {
 	}
 
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"user_id":"u1","dataset":"imgs","image":"`+b64+`","session_id":"a\u0000b"}`)))
+	mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"user_id":"u1","dataset":"imgs","image":"`+b64+`","session_id":"a\u0000b"}`)))
 	if rec.Code != 400 {
 		t.Errorf("invalid session status = %d, want 400: %s", rec.Code, rec.Body)
 	}

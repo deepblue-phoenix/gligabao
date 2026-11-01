@@ -18,7 +18,7 @@ const (
 	maxModelLen = 100
 )
 
-// Options are what a research is started with. Its JSON is the body of POST /v1/gb/research (with user_id).
+// Options are what a research is started with. Its JSON is the body of POST /v1/gb/research (the user is the gb-user-id header).
 type Options struct {
 	// Topic is what to research; a question, or a subject for a report. Required.
 	Topic string `json:"topic"`

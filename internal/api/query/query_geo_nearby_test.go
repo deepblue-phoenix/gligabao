@@ -16,6 +16,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
+
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
 )
 
 // mapResolver knows a few places by the query it is asked for, and records the queries.
@@ -83,7 +85,7 @@ func testQueryGeoNearby(t *testing.T, d *sql.DB) {
 		t.Helper()
 		llm.reqs = nil
 		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/query", strings.NewReader(body)))
+		h.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/query", strings.NewReader(body)))
 		var user string
 		if r := llm.requestOf("ONLY a knowledge graph"); r != nil {
 			user = r.Messages[0].Content

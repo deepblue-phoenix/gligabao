@@ -16,7 +16,6 @@ import (
 const maxBodyBytes = 64 << 10 // 64 KiB
 
 type startRequest struct {
-	UserID string `json:"user_id"`
 	agent_research.Options
 }
 
@@ -41,7 +40,7 @@ func writeErr(w http.ResponseWriter, err error) {
 	httputil.Error(w, status, e.Msg)
 }
 
-// user resolves the user_id of a request, answering 400 itself if it is not valid.
+// user validates the user of a request (see httputil.UserID), answering 400 itself if it is not valid.
 func user(w http.ResponseWriter, userID string) (string, bool) {
 	userID, err := memory_core.ResolveUserID(userID)
 	if err != nil {
@@ -51,8 +50,8 @@ func user(w http.ResponseWriter, userID string) (string, bool) {
 	return userID, true
 }
 
-// Start serves POST /v1/gb/research with the JSON body {"user_id": "", "topic": "", "max_steps": 20, "model": ""}
-// (agent_research.Options and the user): it starts a deep-research agent on the topic and answers 202 with the run
+// Start serves POST /v1/gb/research with the JSON body {"topic": "", "max_steps": 20, "model": ""}
+// (agent_research.Options; the user is the gb-user-id header): it starts a deep-research agent on the topic and answers 202 with the run
 // (core.Run, status "running", state "starting"); the agent works in the background (see Get and List), searching the web and
 // reading pages, and ends with a report.
 //   - topic: what to research (required, at most 2000 characters)
@@ -67,7 +66,7 @@ func Start(m *agent_research.Manager) http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 			return
 		}
-		userID, ok := user(w, req.UserID)
+		userID, ok := user(w, httputil.UserID(r))
 		if !ok {
 			return
 		}
@@ -80,14 +79,14 @@ func Start(m *agent_research.Manager) http.HandlerFunc {
 	}
 }
 
-// List serves GET /v1/gb/research?user_id=...[&active=true][&status=running|completed|failed][&parent_id=<run id>][&limit=<n>]: {"runs": [...]}, the
+// List serves GET /v1/gb/research[?active=true][&status=running|completed|failed][&parent_id=<run id>][&limit=<n>]: {"runs": [...]}, the
 // agents of the user (core.Run, without their states), newest first, at most limit (default 50, at most 500). With active=true only
 // the agents that are working now; with status those with that status (not together with active); with parent_id only the
 // sub-agents that the run with that id spawned. Sub-agents are agents like any other and are in the list (with parent_id and name set).
 func List(m *agent_research.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
-		userID, ok := user(w, q.Get("user_id"))
+		userID, ok := user(w, httputil.UserID(r))
 		if !ok {
 			return
 		}
@@ -125,11 +124,11 @@ func List(m *agent_research.Manager) http.HandlerFunc {
 	}
 }
 
-// Get serves GET /v1/gb/research/{id}?user_id=...: the agent (core.Run) with its states, in the order it entered them, to follow what
+// Get serves GET /v1/gb/research/{id}: the agent (core.Run) with its states, in the order it entered them, to follow what
 // it does. The report is in it once the status is "completed". 404 for an unknown id, or the one of another user's agent.
 func Get(m *agent_research.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		userID, ok := user(w, r.URL.Query().Get("user_id"))
+		userID, ok := user(w, httputil.UserID(r))
 		if !ok {
 			return
 		}

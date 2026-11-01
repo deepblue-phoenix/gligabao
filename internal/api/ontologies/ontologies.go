@@ -21,7 +21,6 @@ import (
 const maxBodyBytes = memory_ontology.MaxBytes + 64<<10 // the document is JSON-escaped, leave room for it and the other fields
 
 type loadRequest struct {
-	UserID      string `json:"user_id"`
 	Name        string `json:"name"` // POST only; PUT takes the name from the path
 	Description string `json:"description"`
 	Format      string `json:"format"` // optional; only "rdfxml" is supported
@@ -34,14 +33,14 @@ type loadRequest struct {
 
 // Load serves POST /v1/gb/ontologies: parses the OWL/RDF-XML document in "content" (or in the file "file" of the ontology
 // directories dirs), stores its metadata in the relational database and the ontology itself in the graph database, under the given
-// name. The ontology belongs to the request's user_id.
+// name. The ontology belongs to the user of the request (the gb-user-id header).
 func Load(d *sql.DB, dirs []string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		req, ok := decode(w, r, dirs)
 		if !ok {
 			return
 		}
-		o, err := memory_ontology.Load(r.Context(), d, req.UserID, req.Name, req.Description, []byte(req.Content))
+		o, err := memory_ontology.Load(r.Context(), d, httputil.UserID(r), req.Name, req.Description, []byte(req.Content))
 		if err != nil {
 			fail(w, "load", err)
 			return
@@ -60,7 +59,7 @@ func Update(d *sql.DB, dirs []string) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		o, err := memory_ontology.Update(r.Context(), d, req.UserID, r.PathValue("name"), req.Description, []byte(req.Content), req.Replace)
+		o, err := memory_ontology.Update(r.Context(), d, httputil.UserID(r), r.PathValue("name"), req.Description, []byte(req.Content), req.Replace)
 		if err != nil {
 			fail(w, "update", err)
 			return

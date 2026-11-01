@@ -20,8 +20,6 @@ import (
 const maxQueryBytes = 64 << 10 // 64 KiB
 
 type queryRequest struct {
-	// UserID owns the dataset. Required.
-	UserID string `json:"user_id"`
 	// Dataset is the dataset to search. Defaults to "main".
 	Dataset string `json:"dataset"`
 	Query   string `json:"query"`
@@ -154,10 +152,10 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, opts []memory_core.Optio
 			callOpts = append(callOpts, memory_core.WithEvidenceOnly(true))
 		}
 		start := time.Now()
-		res, err := memory_query.Query(r.Context(), d, llm, req.UserID, req.Dataset, req.Query, callOpts...)
+		res, err := memory_query.Query(r.Context(), d, llm, httputil.UserID(r), req.Dataset, req.Query, callOpts...)
 		if err != nil {
 			monitoring.EmitSystemEvent(r.Context(), "query.failed", monitoring.Event{
-				"user_id":     req.UserID,
+				"user_id":     httputil.UserID(r),
 				"dataset":     req.Dataset,
 				"session_id":  sessionID,
 				"query_bytes": len(req.Query),
@@ -175,7 +173,7 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, opts []memory_core.Optio
 		}
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
-				"user_id":    req.UserID,
+				"user_id":    httputil.UserID(r),
 				"dataset":    req.Dataset,
 				"session_id": sessionID,
 			}).Error("query failed")
@@ -187,13 +185,13 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, opts []memory_core.Optio
 			return
 		}
 		log.WithFields(log.Fields{
-			"user_id":     req.UserID,
+			"user_id":     httputil.UserID(r),
 			"dataset":     req.Dataset,
 			"session_id":  sessionID,
 			"duration_ms": time.Since(start).Milliseconds(),
 		}).Debug("query completed")
 		monitoring.EmitSystemEvent(r.Context(), "query.completed", monitoring.Event{
-			"user_id":           req.UserID,
+			"user_id":           httputil.UserID(r),
 			"dataset":           req.Dataset,
 			"session_id":        sessionID,
 			"query_bytes":       len(req.Query),

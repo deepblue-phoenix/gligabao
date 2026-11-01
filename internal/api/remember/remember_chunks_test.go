@@ -14,6 +14,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
 )
 
 func TestRememberLongText(t *testing.T) { dbtest.Run(t, testRememberLongText) }
@@ -29,7 +31,7 @@ func testRememberLongText(t *testing.T, d *sql.DB) {
 	}
 	body, _ := json.Marshal(map[string]string{"user_id": "u1", "text": strings.Join(paras, "\n\n")})
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(string(body))))
+	mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(string(body))))
 	if rec.Code != 200 {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body)
 	}

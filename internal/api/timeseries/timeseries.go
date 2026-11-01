@@ -27,7 +27,6 @@ const (
 )
 
 type attachRequest struct {
-	UserID  string                   `json:"user_id"`
 	Dataset string                   `json:"dataset"`
 	Series  []memory_core.SeriesSpec `json:"series"`
 }
@@ -77,7 +76,7 @@ func Attach(d *sql.DB) http.HandlerFunc {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		dsID, name, ok := dataset(w, r, d, req.UserID, req.Dataset)
+		dsID, name, ok := dataset(w, r, d, httputil.UserID(r), req.Dataset)
 		if !ok {
 			return
 		}
@@ -88,17 +87,17 @@ func Attach(d *sql.DB) http.HandlerFunc {
 			httputil.Error(w, http.StatusUnprocessableEntity, err.Error())
 			return
 		case err != nil:
-			log.WithError(err).WithFields(log.Fields{"user_id": req.UserID, "dataset": name}).Error("attach timeseries failed")
+			log.WithError(err).WithFields(log.Fields{"user_id": httputil.UserID(r), "dataset": name}).Error("attach timeseries failed")
 			monitoring.EmitSystemEvent(r.Context(), "timeseries.failed", monitoring.Event{
-				"user_id": req.UserID, "dataset": name, "series": len(series), "duration_ms": time.Since(start).Milliseconds(), "error": err.Error(),
+				"user_id": httputil.UserID(r), "dataset": name, "series": len(series), "duration_ms": time.Since(start).Milliseconds(), "error": err.Error(),
 			})
 			httputil.Error(w, http.StatusInternalServerError, "failed to store timeseries")
 			return
 		}
 		monitoring.EmitSystemEvent(r.Context(), "timeseries.completed", monitoring.Event{
-			"user_id": req.UserID, "dataset": name, "series": len(res), "duration_ms": time.Since(start).Milliseconds(),
+			"user_id": httputil.UserID(r), "dataset": name, "series": len(res), "duration_ms": time.Since(start).Milliseconds(),
 		})
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"user_id": req.UserID, "dataset": name, "series": res})
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"user_id": httputil.UserID(r), "dataset": name, "series": res})
 	}
 }
 
@@ -143,12 +142,12 @@ func view(s graph.Series, anchors []graph.SeriesAnchor) seriesView {
 	return v
 }
 
-// List serves GET /v1/gb/timeseries?user_id=...&dataset=...: the series of the dataset, with their stats and anchors
+// List serves GET /v1/gb/timeseries?dataset=...: the series of the dataset, with their stats and anchors
 // but without points.
 func List(d *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
-		dsID, name, ok := dataset(w, r, d, q.Get("user_id"), q.Get("dataset"))
+		dsID, name, ok := dataset(w, r, d, httputil.UserID(r), q.Get("dataset"))
 		if !ok {
 			return
 		}
@@ -161,7 +160,7 @@ func List(d *sql.DB) http.HandlerFunc {
 			}
 		}
 		if err != nil {
-			log.WithError(err).WithFields(log.Fields{"user_id": q.Get("user_id"), "dataset": name}).Error("list timeseries failed")
+			log.WithError(err).WithFields(log.Fields{"user_id": httputil.UserID(r), "dataset": name}).Error("list timeseries failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to list timeseries")
 			return
 		}
@@ -169,7 +168,7 @@ func List(d *sql.DB) http.HandlerFunc {
 	}
 }
 
-// Get serves GET /v1/gb/timeseries/{id}?user_id=...&dataset=...&from=...&to=...&limit=...: one series with its anchors
+// Get serves GET /v1/gb/timeseries/{id}?dataset=...&from=...&to=...&limit=...: one series with its anchors
 // and its points between from and to (RFC 3339, both optional and inclusive), oldest first, at most limit (default
 // DefaultPointLimit, at most MaxPointLimit; truncated says there were more). With from or to it also has window_stats,
 // the stats of the points in the window.
@@ -200,7 +199,7 @@ func Get(d *sql.DB) http.HandlerFunc {
 				return
 			}
 		}
-		dsID, name, ok := dataset(w, r, d, q.Get("user_id"), q.Get("dataset"))
+		dsID, name, ok := dataset(w, r, d, httputil.UserID(r), q.Get("dataset"))
 		if !ok {
 			return
 		}
@@ -218,7 +217,7 @@ func Get(d *sql.DB) http.HandlerFunc {
 			pts, err = graph.SeriesPoints(r.Context(), d, id, from, to, limit+1) // one more tells whether it was cut
 		}
 		if err != nil {
-			log.WithError(err).WithFields(log.Fields{"user_id": q.Get("user_id"), "dataset": name, "series_id": id}).Error("get timeseries failed")
+			log.WithError(err).WithFields(log.Fields{"user_id": httputil.UserID(r), "dataset": name, "series_id": id}).Error("get timeseries failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to read timeseries")
 			return
 		}

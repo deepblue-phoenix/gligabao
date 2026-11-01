@@ -56,7 +56,6 @@ run (with its report). The topic is the argument, or stdin if the argument is "-
 				return err
 			}
 			b := &body{m: m}
-			b.default_("user_id", c.flags.user)
 			switch {
 			case len(args) == 1 && args[0] == "-":
 				text, err := io.ReadAll(cmd.InOrStdin())
@@ -91,8 +90,7 @@ run (with its report). The topic is the argument, or stdin if the argument is "-
 				return printResearch(cmd, out, raw)
 			}
 			var started struct {
-				ID     int64  `json:"id"`
-				UserID string `json:"user_id"`
+				ID int64 `json:"id"`
 			}
 			if err := json.Unmarshal(out, &started); err != nil || started.ID == 0 {
 				return fmt.Errorf("unexpected response of the server: %s", strings.TrimSpace(string(out)))
@@ -103,7 +101,7 @@ run (with its report). The topic is the argument, or stdin if the argument is "-
 					return cmd.Context().Err()
 				case <-time.After(researchPollInterval):
 				}
-				out, err = cl.call(cmd.Context(), "GET", "/v1/gb/research/"+strconv.FormatInt(started.ID, 10), url.Values{"user_id": {started.UserID}}, nil)
+				out, err = cl.call(cmd.Context(), "GET", "/v1/gb/research/"+strconv.FormatInt(started.ID, 10), nil, nil)
 				if err != nil {
 					return err
 				}
@@ -148,7 +146,7 @@ func (c *CLI) researchListCmd() *cobra.Command {
 		Long:  "List the research agents of the user, newest first, with their status, state, steps and cost. With --active, only those working now." + clientHelp,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			q := url.Values{"user_id": {c.flags.user}}
+			q := url.Values{}
 			if active {
 				q.Set("active", "true")
 			}
@@ -185,7 +183,7 @@ URL); the report is in it once the status is completed. With --raw only the repo
 			if err != nil {
 				return err
 			}
-			out, err := cl.call(cmd.Context(), "GET", "/v1/gb/research/"+args[0], url.Values{"user_id": {c.flags.user}}, nil)
+			out, err := cl.call(cmd.Context(), "GET", "/v1/gb/research/"+args[0], nil, nil)
 			if err != nil {
 				return err
 			}

@@ -98,6 +98,8 @@ func GeoNearbyOf(dbs []Named, radius float64) http.HandlerFunc {
 			if n.Name == name {
 				ctx, cancel := context.WithTimeout(r.Context(), geoStatsTimeout)
 				defer cancel()
+				// The admin API names the user it looks at in its own user_id parameter; the handler takes it from the header.
+				r.Header.Set(httputil.UserIDHeader, r.URL.Query().Get("user_id"))
 				query.NearbyHandler(n.DB, memory_core.WithGeoRadius(radius))(w, r.WithContext(ctx))
 				return
 			}

@@ -135,7 +135,7 @@ type Options struct {
 	EvalRerunner func(EvalRerunEnv) admin.EvalRerunner
 	// Auth, if set, makes the user routes of the API (remember, query, datasets, timeseries, ontologies) require an API key
 	// ("Authorization: Bearer <key>"): it is called with the key and returns the ID of the user it belongs to, which the request then
-	// acts as; an error rejects the request (401). See docs/identity.md. Nil: the routes trust the user_id of the request.
+	// acts as; an error rejects the request (401). See docs/identity.md. Nil: the routes act as the user in the "gb-user-id" header, trusted as is.
 	Auth httputil.Authenticator
 	// TimeseriesProviders are the sources of timeseries that remember can fetch from (see docs/timeseries.md). Each has a
 	// natural-language description of when it applies, and a callback that does the fetching. Validated at startup.

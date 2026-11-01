@@ -29,7 +29,7 @@ func testEvalEndpoints(t *testing.T, d *sql.DB) {
 
 	do := func(mux *http.ServeMux, path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest("POST", path, strings.NewReader(body)))
+		mux.ServeHTTP(rec, newReq("POST", path, strings.NewReader(body)))
 		return rec
 	}
 	type resp struct {

@@ -14,6 +14,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
+
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
 )
 
 type fakeLLM struct{ out string }
@@ -33,7 +35,7 @@ func testRemember(t *testing.T, d *sql.DB) {
 
 	for i := 0; i < 2; i++ { // second call must be idempotent for entities/edges
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"user_id":"u1","text":"Alice works at Acme and lives in Paris."}`)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"user_id":"u1","text":"Alice works at Acme and lives in Paris."}`)))
 		if rec.Code != 200 {
 			t.Fatalf("status %d: %s", rec.Code, rec.Body)
 		}
@@ -112,7 +114,7 @@ func testRemember(t *testing.T, d *sql.DB) {
 	}
 
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"user_id":"u1","text":"  "}`)))
+	mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"user_id":"u1","text":"  "}`)))
 	if rec.Code != 400 {
 		t.Errorf("empty text status = %d", rec.Code)
 	}
@@ -122,7 +124,7 @@ func TestRememberNoLLM(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, nil, nil))
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"user_id":"u1","text":"x"}`)))
+	mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"user_id":"u1","text":"x"}`)))
 	if rec.Code != 503 {
 		t.Errorf("status = %d", rec.Code)
 	}
@@ -136,7 +138,7 @@ func testRememberKind(t *testing.T, d *sql.DB) {
 	mux.HandleFunc("POST /v1/gb/remember", testHandler(t, d, llm))
 	post := func(body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
 		return rec
 	}
 

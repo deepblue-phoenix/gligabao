@@ -12,12 +12,12 @@ import (
 
 func TestRemember(t *testing.T) {
 	var got map[string]any
-	var auth string
+	var auth, user string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" || r.URL.Path != "/v1/gb/remember" {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
-		auth = r.Header.Get("Authorization")
+		auth, user = r.Header.Get("Authorization"), r.Header.Get("gb-user-id")
 		json.NewDecoder(r.Body).Decode(&got)
 		w.Write([]byte(`{"dataset":"main","kind":"episode","artifact_id":7,"valid_at":"2025-01-31T09:00:00Z",
 			"entities":[{"name":"Alice","type":"person"}],
@@ -41,7 +41,10 @@ func TestRemember(t *testing.T) {
 	if auth != "Bearer k1" {
 		t.Errorf("auth = %q", auth)
 	}
-	if got["user_id"] != "u1" || got["text"] != "Alice works at Acme." || got["kind"] != "episode" ||
+	if user != "u1" {
+		t.Errorf("gb-user-id = %q", user)
+	}
+	if _, ok := got["user_id"]; ok || got["text"] != "Alice works at Acme." || got["kind"] != "episode" ||
 		got["reference_time"] != "2025-01-31T09:00:00Z" || got["timeseries"] == nil {
 		t.Errorf("bad body: %v", got)
 	}
@@ -54,7 +57,9 @@ func TestRemember(t *testing.T) {
 
 func TestQuery(t *testing.T) {
 	var got map[string]any
+	var user string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user = r.Header.Get("gb-user-id")
 		json.NewDecoder(r.Body).Decode(&got)
 		w.Write([]byte(`{"answer":"Acme.","query_run_id":9,"evidence":{"entities":[{"id":1,"name":"Alice"}],
 			"edges":[{"id":1,"source_id":1,"target_id":2,"source":"Alice","target":"Acme","relation":"works_at","artifact_id":4,"valid_at":"2025-01-31T09:00:00Z"}],
@@ -70,7 +75,7 @@ func TestQuery(t *testing.T) {
 	if res.Answer != "Acme." || res.Evidence.Edges[0].SourceID != 1 || res.Evidence.Edges[0].Relation != "works_at" || res.Evidence.Edges[0].ArtifactID != 4 {
 		t.Errorf("bad response: %+v", res)
 	}
-	if got["user_id"] != "u1" || got["query"] != "Where does Alice work?" || got["reasoning"] == nil {
+	if _, ok := got["user_id"]; ok || user != "u1" || got["query"] != "Where does Alice work?" || got["reasoning"] == nil {
 		t.Errorf("bad body: %v", got)
 	}
 }

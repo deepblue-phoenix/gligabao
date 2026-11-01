@@ -13,6 +13,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_timeseries"
+
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
 )
 
 func TestTimeseries(t *testing.T) { dbtest.Run(t, testTimeseries) }
@@ -25,7 +27,7 @@ func testTimeseries(t *testing.T, d *sql.DB) {
 	mux.HandleFunc("GET /v1/gb/timeseries/{id}", Get(d))
 	do := func(method, url, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest(method, url, strings.NewReader(body)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest(method, url, strings.NewReader(body)))
 		return rec
 	}
 

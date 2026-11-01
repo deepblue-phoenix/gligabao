@@ -17,6 +17,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_query"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
+
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
 )
 
 // geoStubLLM answers by the system prompt: the extraction, the places of the question, the answer. It records the requests.
@@ -74,7 +76,7 @@ func testQueryGeo(t *testing.T, d *sql.DB) {
 	}
 	post := func(h http.HandlerFunc, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/query", strings.NewReader(body)))
+		h.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/query", strings.NewReader(body)))
 		return rec
 	}
 	body := `{"user_id":"u1","query":"Is Paris bigger than the Alps?"}`

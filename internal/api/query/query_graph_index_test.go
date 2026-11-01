@@ -12,6 +12,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
+
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
 )
 
 func TestQueryGraphIndex(t *testing.T) { dbtest.Run(t, testQueryGraphIndex) }
@@ -32,7 +34,7 @@ func testQueryGraphIndex(t *testing.T, d *sql.DB) {
 	})
 	post := func(h http.HandlerFunc, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/query", strings.NewReader(body)))
+		h.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/query", strings.NewReader(body)))
 		return rec
 	}
 	with := Handler(d, llm, withVectors(t), hook)

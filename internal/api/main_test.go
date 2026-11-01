@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"database/sql"
+	"io"
+	"net/http"
 	"os"
 	"testing"
 
@@ -11,6 +13,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
 )
 
 func TestMain(m *testing.M) {
@@ -49,4 +52,9 @@ func withVectors(t testing.TB, d *sql.DB) *db.DB {
 		t.Fatal(err)
 	}
 	return &db.DB{Relational: d, Graph: d, Vector: vs}
+}
+
+// newReq is httputiltest.NewRequest.
+func newReq(method, target string, body io.Reader) *http.Request {
+	return httputiltest.NewRequest(method, target, body)
 }

@@ -257,9 +257,10 @@ type ServeOptions struct {
 	ClassifyingTrainingHook ClassifyingTrainingHook
 	// Auth is the auth hook. If set, the user routes of the API (remember, query, datasets, timeseries, ontologies) require an API
 	// key, sent as "Authorization: Bearer <key>" (the Python client sends the one in GLIGABAO_API_KEY): Auth is called with it and
-	// returns the ID of the user the key belongs to, and the request acts as that user (a user_id the caller sent is replaced). A
-	// request without a key, or for which Auth returns an error (or an empty user), gets 401. If nil, those routes trust the
-	// user_id of the request, as before. It does not cover the admin UI, the training and eval endpoints (use MountOptions.Wrap).
+	// returns the ID of the user the key belongs to, and the request acts as that user. A request without a key, or for which
+	// Auth returns an error (or an empty user), gets 401. If nil, those routes act as the user in the "gb-user-id" header of the
+	// request, trusted as is (400 without it). The user is never taken from the query string or the body. It does not cover the
+	// admin UI, the training and eval endpoints (use MountOptions.Wrap).
 	Auth Authenticator
 	// Hooks are installed for the lifetime of Serve; every one is called for each event.
 	Hooks []Hooks

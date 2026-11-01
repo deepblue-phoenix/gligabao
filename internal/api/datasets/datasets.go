@@ -18,7 +18,6 @@ import (
 const maxBodyBytes = 64 << 10 // 64 KiB
 
 type createRequest struct {
-	UserID      string   `json:"user_id"`
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Tags        []string `json:"tags"`
@@ -36,14 +35,14 @@ func Create(d *sql.DB) http.HandlerFunc {
 		}
 		//------------------
 		// MEMORY DATASET
-		ds, err := memory_dataset.CreateDataset(r.Context(), d, req.UserID, req.Name, req.Description, req.Tags)
+		ds, err := memory_dataset.CreateDataset(r.Context(), d, httputil.UserID(r), req.Name, req.Description, req.Tags)
 		switch {
 		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory_core.ErrInvalidUser):
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 		case errors.Is(err, memory_dataset.ErrDatasetExists):
 			httputil.Error(w, http.StatusConflict, "dataset already exists")
 		case err != nil:
-			log.WithError(err).WithField("user_id", req.UserID).WithField("dataset", req.Name).Error("create dataset failed")
+			log.WithError(err).WithField("user_id", httputil.UserID(r)).WithField("dataset", req.Name).Error("create dataset failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to create dataset")
 		default:
 			httputil.WriteJSON(w, http.StatusCreated, ds)
@@ -52,20 +51,20 @@ func Create(d *sql.DB) http.HandlerFunc {
 	}
 }
 
-// List serves GET /v1/gb/datasets?user_id=... (&include_deleted=true also returns soft-deleted datasets).
+// List serves GET /v1/gb/datasets (?include_deleted=true also returns soft-deleted datasets).
 func List(d *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		//------------------
 		// MEMORY DATASET
-		list, err := memory_dataset.ListDatasets(r.Context(), d, q.Get("user_id"), q.Get("include_deleted") == "true")
+		list, err := memory_dataset.ListDatasets(r.Context(), d, httputil.UserID(r), q.Get("include_deleted") == "true")
 		//------------------
 		if errors.Is(err, memory_core.ErrInvalidUser) {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		if err != nil {
-			log.WithError(err).WithField("user_id", q.Get("user_id")).Error("list datasets failed")
+			log.WithError(err).WithField("user_id", httputil.UserID(r)).Error("list datasets failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to list datasets")
 			return
 		}
@@ -73,13 +72,13 @@ func List(d *sql.DB) http.HandlerFunc {
 	}
 }
 
-// Delete serves DELETE /v1/gb/datasets/{name}?user_id=...: a soft delete (the row is kept with deleted = true).
+// Delete serves DELETE /v1/gb/datasets/{name}: a soft delete (the row is kept with deleted = true).
 // The dataset's vectors (one vector store dataset per index, memory_dataset.VectorDataset) are removed from vectors, which may be nil.
 func Delete(d *sql.DB, vectors vector.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		//------------------
 		// MEMORY DATASET
-		err := memory_dataset.DeleteDataset(r.Context(), d, vectors, r.URL.Query().Get("user_id"), r.PathValue("name"))
+		err := memory_dataset.DeleteDataset(r.Context(), d, vectors, httputil.UserID(r), r.PathValue("name"))
 		//------------------
 		switch {
 		case errors.Is(err, memory_core.ErrInvalidUser):
@@ -88,7 +87,7 @@ func Delete(d *sql.DB, vectors vector.Store) http.HandlerFunc {
 			httputil.Error(w, http.StatusNotFound, "dataset not found")
 		case err != nil:
 			log.WithError(err).WithFields(log.Fields{
-				"user_id": r.URL.Query().Get("user_id"),
+				"user_id": httputil.UserID(r),
 				"dataset": r.PathValue("name"),
 			}).Error("delete dataset failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to delete dataset")
@@ -98,11 +97,11 @@ func Delete(d *sql.DB, vectors vector.Store) http.HandlerFunc {
 	}
 }
 
-// Graph serves GET /v1/gb/datasets/{name}/graph?user_id=...: the whole graph of the dataset as JSON
+// Graph serves GET /v1/gb/datasets/{name}/graph: the whole graph of the dataset as JSON
 // (entities and edges, expired edges included).
 func Graph(d *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		g, err := memory.ExportGraph(r.Context(), d, r.URL.Query().Get("user_id"), r.PathValue("name"))
+		g, err := memory.ExportGraph(r.Context(), d, httputil.UserID(r), r.PathValue("name"))
 		switch {
 		case errors.Is(err, memory_core.ErrInvalidUser):
 			httputil.Error(w, http.StatusBadRequest, err.Error())
@@ -110,7 +109,7 @@ func Graph(d *sql.DB) http.HandlerFunc {
 			httputil.Error(w, http.StatusNotFound, "dataset not found")
 		case err != nil:
 			log.WithError(err).WithFields(log.Fields{
-				"user_id": r.URL.Query().Get("user_id"),
+				"user_id": httputil.UserID(r),
 				"dataset": r.PathValue("name"),
 			}).Error("export graph failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to export graph")
@@ -118,10 +117,6 @@ func Graph(d *sql.DB) http.HandlerFunc {
 			httputil.WriteJSON(w, http.StatusOK, g)
 		}
 	}
-}
-
-type trainingRequest struct {
-	UserID string `json:"user_id"`
 }
 
 // trainingResponse is what POST /v1/gb/datasets/{name}/training answers: a summary of the training dataset the hook made (not its
@@ -143,12 +138,7 @@ type trainingResponse struct {
 // each graph. A failure of the hook, or a training dataset that is not valid, is a 502.
 func Training(d *sql.DB, hook memory_core.ClassifyingTrainingHook) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req trainingRequest
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes)).Decode(&req); err != nil {
-			httputil.Error(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
-			return
-		}
-		ds, err := memory.LoadKnowledgeDataset(r.Context(), d, req.UserID, r.PathValue("name"))
+		ds, err := memory.LoadKnowledgeDataset(r.Context(), d, httputil.UserID(r), r.PathValue("name"))
 		if err == nil {
 			var td memory_core.TrainingDataset
 			td, err = memory_core.CallClassifyingTrainingHook(r.Context(), hook, ds)
@@ -163,7 +153,7 @@ func Training(d *sql.DB, hook memory_core.ClassifyingTrainingHook) http.HandlerF
 				})
 				return
 			}
-			log.WithError(err).WithFields(log.Fields{"user_id": req.UserID, "dataset": ds.Dataset}).Warn("classifying training hook failed")
+			log.WithError(err).WithFields(log.Fields{"user_id": httputil.UserID(r), "dataset": ds.Dataset}).Warn("classifying training hook failed")
 			httputil.Error(w, http.StatusBadGateway, err.Error())
 			return
 		}
@@ -173,7 +163,7 @@ func Training(d *sql.DB, hook memory_core.ClassifyingTrainingHook) http.HandlerF
 		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory_core.ErrDatasetNotFound):
 			httputil.Error(w, http.StatusNotFound, "dataset not found")
 		default:
-			log.WithError(err).WithFields(log.Fields{"user_id": req.UserID, "dataset": r.PathValue("name")}).Error("load knowledge dataset failed")
+			log.WithError(err).WithFields(log.Fields{"user_id": httputil.UserID(r), "dataset": r.PathValue("name")}).Error("load knowledge dataset failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to load the dataset")
 		}
 	}

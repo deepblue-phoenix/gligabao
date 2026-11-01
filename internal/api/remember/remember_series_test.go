@@ -15,6 +15,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
+
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
 )
 
 const seriesLLM = `{"entities":[{"name":"Apple","type":"organization"}],"edges":[{"source":"Apple","target":"Earnings miss","relation":"reported"}]}`
@@ -22,7 +24,7 @@ const seriesLLM = `{"entities":[{"name":"Apple","type":"organization"}],"edges":
 func seriesPost(t *testing.T, mux *http.ServeMux, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
+	mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(body)))
 	return rec
 }
 

@@ -16,7 +16,7 @@ import (
 
 // NearbyHandler serves GET /v1/gb/geo/nearby (the admin UI serves the same handler under /v1/gb/admin/api/geo/nearby): the geo
 // entities near a stored geo entity or a point, selected by the same code as the proximity step of query (memory_query.NearbyEntityOf,
-// NearbyPoint). Parameters: user_id, dataset (default "main"), and either entity_id or latitude and longitude; radius_km (optional,
+// NearbyPoint). Parameters (the user is the gb-user-id header): dataset (default "main"), and either entity_id or latitude and longitude; radius_km (optional,
 // else the default radius of opts, memory_core.WithGeoRadius, else 50 km). The response is the `nearby` object of the query result.
 // It needs no LLM and no geo resolver, and writes nothing.
 func NearbyHandler(d *sql.DB, opts ...memory_core.Option) http.HandlerFunc {
@@ -46,7 +46,7 @@ func NearbyHandler(d *sql.DB, opts ...memory_core.Option) http.HandlerFunc {
 				httputil.Error(w, http.StatusBadRequest, "entity_id must be a positive integer")
 				return
 			}
-			res, err = memory_query.NearbyEntityOf(r.Context(), d, q.Get("user_id"), q.Get("dataset"), id, callOpts...)
+			res, err = memory_query.NearbyEntityOf(r.Context(), d, httputil.UserID(r), q.Get("dataset"), id, callOpts...)
 		case q.Get("latitude") != "" || q.Get("longitude") != "":
 			lat, latErr := strconv.ParseFloat(strings.TrimSpace(q.Get("latitude")), 64)
 			lon, lonErr := strconv.ParseFloat(strings.TrimSpace(q.Get("longitude")), 64)
@@ -54,7 +54,7 @@ func NearbyHandler(d *sql.DB, opts ...memory_core.Option) http.HandlerFunc {
 				httputil.Error(w, http.StatusBadRequest, "latitude and longitude must both be numbers")
 				return
 			}
-			res, err = memory_query.NearbyPoint(r.Context(), d, q.Get("user_id"), q.Get("dataset"), lat, lon, callOpts...)
+			res, err = memory_query.NearbyPoint(r.Context(), d, httputil.UserID(r), q.Get("dataset"), lat, lon, callOpts...)
 		default:
 			httputil.Error(w, http.StatusBadRequest, "entity_id, or latitude and longitude, is required")
 			return
@@ -68,7 +68,7 @@ func NearbyHandler(d *sql.DB, opts ...memory_core.Option) http.HandlerFunc {
 		case errors.Is(err, graph.ErrNotFound):
 			httputil.Error(w, http.StatusNotFound, "geo entity not found (no such entity in the dataset, or it has no coordinates)")
 		case err != nil:
-			log.WithError(err).WithFields(log.Fields{"user_id": q.Get("user_id"), "dataset": q.Get("dataset")}).Error("nearby geo entities failed")
+			log.WithError(err).WithFields(log.Fields{"user_id": httputil.UserID(r), "dataset": q.Get("dataset")}).Error("nearby geo entities failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to find the nearby geo entities")
 		default:
 			httputil.WriteJSON(w, http.StatusOK, res)

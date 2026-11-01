@@ -141,20 +141,21 @@ func TestMissingRequiredArgumentIsRejected(t *testing.T) {
 
 func TestResearchToolsForwardToTheHandlers(t *testing.T) {
 	var startBody map[string]any
-	var listQuery, getQuery, getID string
+	var startUser, listQuery, getQuery, getID string
 	mux := http.NewServeMux()
 	Register(mux, nil, nil, "1", WithResearch(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			b, _ := io.ReadAll(r.Body)
 			json.Unmarshal(b, &startBody)
+			startUser = r.Header.Get("gb-user-id")
 			httputil.WriteJSON(w, http.StatusAccepted, map[string]any{"id": 5, "status": "running"})
 		}),
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			listQuery = r.Method + " " + r.URL.Query().Encode()
+			listQuery = r.Method + " " + r.URL.Query().Encode() + " " + r.Header.Get("gb-user-id")
 			httputil.WriteJSON(w, http.StatusOK, map[string]any{"runs": []any{}})
 		}),
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			getQuery, getID = r.Method+" "+r.URL.Query().Encode(), r.PathValue("id")
+			getQuery, getID = r.Method+" "+r.URL.Query().Encode()+" "+r.Header.Get("gb-user-id"), r.PathValue("id")
 			httputil.Error(w, http.StatusNotFound, "research not found")
 		}),
 	))
@@ -183,7 +184,7 @@ func TestResearchToolsForwardToTheHandlers(t *testing.T) {
 	if err != nil || res.IsError {
 		t.Fatalf("start: %v %+v", err, res)
 	}
-	if startBody["user_id"] != "u1" || startBody["topic"] != "t" || startBody["max_steps"] != 7.0 {
+	if startUser != "u1" || startBody["topic"] != "t" || startBody["max_steps"] != 7.0 {
 		t.Fatalf("start body: %v", startBody)
 	}
 	if _, ok := startBody["model"]; ok {
@@ -196,12 +197,12 @@ func TestResearchToolsForwardToTheHandlers(t *testing.T) {
 	if res, err = cs.CallTool(t.Context(), &sdk.CallToolParams{Name: ToolResearchList, Arguments: map[string]any{"user_id": "u1", "active": true, "limit": 3}}); err != nil || res.IsError {
 		t.Fatalf("list: %v %+v", err, res)
 	}
-	if listQuery != "GET active=true&limit=3&user_id=u1" {
+	if listQuery != "GET active=true&limit=3 u1" {
 		t.Fatalf("list query: %q", listQuery)
 	}
 	// An explicit active=false is sent, and nothing else is.
 	cs.CallTool(t.Context(), &sdk.CallToolParams{Name: ToolResearchList, Arguments: map[string]any{"user_id": "u1", "active": false}})
-	if listQuery != "GET active=false&user_id=u1" {
+	if listQuery != "GET active=false u1" {
 		t.Fatalf("list query: %q", listQuery)
 	}
 
@@ -209,7 +210,7 @@ func TestResearchToolsForwardToTheHandlers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if getQuery != "GET user_id=u1" || getID != "5" || !res.IsError || !strings.Contains(text(t, res), "research not found") {
+	if getQuery != "GET  u1" || getID != "5" || !res.IsError || !strings.Contains(text(t, res), "research not found") {
 		t.Fatalf("get: %q id %q result %+v", getQuery, getID, res)
 	}
 }

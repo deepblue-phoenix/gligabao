@@ -27,7 +27,9 @@ func run(t *testing.T, h http.HandlerFunc, stdin string, args ...string) (string
 
 func TestRememberBody(t *testing.T) {
 	var got map[string]any
+	var user string
 	out, err := run(t, func(w http.ResponseWriter, r *http.Request) {
+		user = r.Header.Get("gb-user-id")
 		if r.Method != "POST" || r.URL.Path != "/v1/gb/remember" {
 			t.Errorf("%s %s", r.Method, r.URL)
 		}
@@ -40,7 +42,7 @@ func TestRememberBody(t *testing.T) {
 	if !strings.Contains(out, `"artifact_id": 1`) {
 		t.Errorf("out = %q", out)
 	}
-	if got["user_id"] != "local_user" || got["text"] != "Alice works at Acme." || got["dataset"] != "work" || got["kind"] != "episode" ||
+	if _, ok := got["user_id"]; ok || user != "local_user" || got["text"] != "Alice works at Acme." || got["dataset"] != "work" || got["kind"] != "episode" ||
 		got["session_id"] != "s1" || got["web_search"] != true {
 		t.Errorf("body = %v", got)
 	}
@@ -58,12 +60,12 @@ func TestRememberFromStdinAndJSON(t *testing.T) {
 	if _, err := run(t, h, "from stdin", "remember", "-"); err != nil || got["text"] != "from stdin" {
 		t.Errorf("stdin: %v %v", err, got)
 	}
-	// The flags override the fields of --json, and user_id is only the default.
+	// The flags override the fields of --json; the user goes in the header, not in the body.
 	got = nil
-	if _, err := run(t, h, "", "--user", "u9", "remember", "--json", `{"text":"t","user_id":"u1","dataset":"a"}`, "-d", "b"); err != nil {
+	if _, err := run(t, h, "", "--user", "u9", "remember", "--json", `{"text":"t","dataset":"a"}`, "-d", "b"); err != nil {
 		t.Fatal(err)
 	}
-	if got["user_id"] != "u1" || got["dataset"] != "b" || got["text"] != "t" {
+	if _, ok := got["user_id"]; ok || got["dataset"] != "b" || got["text"] != "t" {
 		t.Errorf("body = %v", got)
 	}
 	// A file.
@@ -114,7 +116,7 @@ func TestExitCodes(t *testing.T) {
 func TestDatasetRequests(t *testing.T) {
 	var seen []string
 	h := func(w http.ResponseWriter, r *http.Request) {
-		seen = append(seen, r.Method+" "+r.URL.RequestURI())
+		seen = append(seen, r.Method+" "+r.URL.RequestURI()+" "+r.Header.Get("gb-user-id"))
 		w.Write([]byte(`{}`))
 	}
 	for _, args := range [][]string{{"dataset", "ls"}, {"dataset", "rm", "w"}, {"dataset", "graph", "w"}} {
@@ -122,7 +124,7 @@ func TestDatasetRequests(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	want := "GET /v1/gb/datasets?user_id=local_user|DELETE /v1/gb/datasets/w?user_id=local_user|GET /v1/gb/datasets/w/graph?user_id=local_user"
+	want := "GET /v1/gb/datasets local_user|DELETE /v1/gb/datasets/w local_user|GET /v1/gb/datasets/w/graph local_user"
 	if strings.Join(seen, "|") != want {
 		t.Errorf("requests = %v", seen)
 	}

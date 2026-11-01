@@ -55,7 +55,7 @@ func testResearchRoutes(t *testing.T, d *sql.DB) {
 	mux := http.NewServeMux()
 	Register(mux, mgrFor(t, database, nil), database, nil, nil, nil, nil, nil, WithAuth(auth), WithResearch(m))
 	do := func(key, method, path, body string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req := newReq(method, path, strings.NewReader(body))
 		if key != "" {
 			req.Header.Set("Authorization", "Bearer "+key)
 		}
@@ -158,7 +158,7 @@ func TestResearchRoutesNeedTheManager(t *testing.T) {
 		mux := http.NewServeMux()
 		Register(mux, mgrFor(t, database, nil), database, nil, nil, nil, nil, nil)
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest("GET", "/v1/gb/research?user_id=u", nil))
+		mux.ServeHTTP(rec, newReq("GET", "/v1/gb/research?user_id=u", nil))
 		if rec.Code != 404 {
 			t.Fatalf("status %d", rec.Code)
 		}
@@ -175,8 +175,8 @@ func TestResearchNeedsAUserWithoutAuth(t *testing.T) {
 		Register(mux, mgrFor(t, database, nil), database, nil, nil, nil, nil, nil, WithResearch(researchManager(t, d)))
 		for method, path := range map[string]string{"GET": "/v1/gb/research", "POST": "/v1/gb/research"} {
 			rec := httptest.NewRecorder()
-			mux.ServeHTTP(rec, httptest.NewRequest(method, path, strings.NewReader(`{"topic":"t"}`)))
-			if rec.Code != 400 || !strings.Contains(rec.Body.String(), "user_id is required") {
+			mux.ServeHTTP(rec, newReq(method, path, strings.NewReader(`{"topic":"t"}`)))
+			if rec.Code != 400 || !strings.Contains(rec.Body.String(), "gb-user-id") {
 				t.Fatalf("%s: %d %s", method, rec.Code, rec.Body)
 			}
 		}

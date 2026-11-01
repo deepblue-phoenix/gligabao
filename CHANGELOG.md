@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.162.0] - 2026-11-01
+
+### Changed
+- **Breaking: the user comes from the `gb-user-id` header only.** The routes of users (remember, query, datasets, timeseries, ontologies, research, geo/nearby) no longer read `user_id` from the query string or the JSON body at all: the field is gone from the request bodies and anything sent there is ignored. With the `Auth` hook registered the API key is authenticated and the user is the one the hook returns (the header is set to it, whatever the caller sent). Without the hook the request acts as the user in `gb-user-id`, trusted as is; a request without the header gets 400. The `user_id` argument of the MCP tools is unchanged (the tool sends it to the handler as the header); the admin UI query button sends the dataset owner in the header, and the admin API keeps its own `user_id` filters.
+- The Go client (`clients/go`) sends the user ID (`WithUserID`, `GLIGABAO_USER`) in the `gb-user-id` header instead of the body (new constant `UserIDHeader`).
+- The CLI sends `--user` in the `gb-user-id` header instead of `user_id` in the body or query; a `user_id` in `--json` or in the path of `gligabao api` is ignored by the server.
+
 ## [0.161.0] - 2026-11-04
 
 ### Added

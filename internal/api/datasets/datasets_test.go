@@ -18,6 +18,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
 )
 
 const (
@@ -59,7 +61,7 @@ func testDatasetLifecycle(t *testing.T, d *sql.DB) {
 	do := func(method, path, body string, wantCode int) *httptest.ResponseRecorder {
 		t.Helper()
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest(method, path, strings.NewReader(body)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest(method, path, strings.NewReader(body)))
 		if rec.Code != wantCode {
 			t.Fatalf("%s %s: status %d, want %d: %s", method, path, rec.Code, wantCode, rec.Body)
 		}

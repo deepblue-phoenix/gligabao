@@ -29,7 +29,7 @@ func testAuth(t *testing.T, d *sql.DB) {
 	Register(mux, mgrFor(t, &db.DB{Relational: d, Graph: d}, nil), &db.DB{Relational: d, Graph: d}, nil, nil, nil, nil, nil, WithAuth(auth))
 
 	do := func(key, method, path, body string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req := newReq(method, path, strings.NewReader(body))
 		if key != "" {
 			req.Header.Set("Authorization", "Bearer "+key)
 		}
@@ -97,14 +97,45 @@ func testAuth(t *testing.T, d *sql.DB) {
 	}
 }
 
-func TestNoAuthTrustsUserID(t *testing.T) { dbtest.Run(t, testNoAuthTrustsUserID) }
+func TestNoAuthTakesTheUserFromTheHeader(t *testing.T) {
+	dbtest.Run(t, testNoAuthTakesTheUserFromTheHeader)
+}
 
-func testNoAuthTrustsUserID(t *testing.T, d *sql.DB) {
+func testNoAuthTakesTheUserFromTheHeader(t *testing.T, d *sql.DB) {
 	mux := http.NewServeMux()
 	Register(mux, mgrFor(t, &db.DB{Relational: d, Graph: d}, nil), &db.DB{Relational: d, Graph: d}, nil, nil, nil, nil, nil)
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/datasets", strings.NewReader(`{"user_id":"u1","name":"work"}`)))
+	do := func(user, method, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		if user != "" {
+			req.Header.Set("gb-user-id", user)
+		}
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec
+	}
+	// the header is the user, whatever the body says
+	rec := do("u1", "POST", "/v1/gb/datasets", `{"user_id":"mallory","name":"work"}`)
 	if rec.Code >= 300 {
 		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	var ds struct {
+		UserID string `json:"user_id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &ds); err != nil || ds.UserID != "u1" {
+		t.Fatalf("dataset user = %q (%v), want u1: %s", ds.UserID, err, rec.Body)
+	}
+	// the query string is not read either
+	if rec := do("u2", "GET", "/v1/gb/datasets?user_id=u1", ""); rec.Code != 200 || strings.Contains(rec.Body.String(), "work") {
+		t.Fatalf("u2 lists the datasets of u1: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do("u1", "GET", "/v1/gb/datasets", ""); rec.Code != 200 || !strings.Contains(rec.Body.String(), "work") {
+		t.Fatalf("u1 does not list its dataset: %d %s", rec.Code, rec.Body)
+	}
+	// without the header there is no user, even with a user_id in the body or the query string
+	if rec := do("", "POST", "/v1/gb/datasets", `{"user_id":"u1","name":"x"}`); rec.Code != 400 {
+		t.Fatalf("no header, body user_id: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do("", "GET", "/v1/gb/datasets?user_id=u1", ""); rec.Code != 400 {
+		t.Fatalf("no header, query user_id: %d %s", rec.Code, rec.Body)
 	}
 }

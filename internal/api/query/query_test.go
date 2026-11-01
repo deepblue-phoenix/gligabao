@@ -16,6 +16,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_dataset"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_query"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
+
+	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
 )
 
 // recordingLLM returns canned outputs in order and records requests.
@@ -52,7 +54,7 @@ func testQuery(t *testing.T, d *sql.DB) {
 
 	post := func(path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest("POST", path, strings.NewReader(body)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest("POST", path, strings.NewReader(body)))
 		return rec
 	}
 	rec := post("/v1/gb/query", `{"user_id":"u1","query":"Where does Alice work?"}`)
@@ -102,7 +104,7 @@ func testQueryEmptyGraph(t *testing.T, d *sql.DB) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/gb/query", Handler(d, &recordingLLM{}, withVectors(t))) // must not call the LLM
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/query", strings.NewReader(`{"user_id":"u1","query":"hi"}`)))
+	mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/query", strings.NewReader(`{"user_id":"u1","query":"hi"}`)))
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"edges":[]`) {
 		t.Errorf("%d %s", rec.Code, rec.Body)
 	}
@@ -112,7 +114,7 @@ func TestQueryNoLLM(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/gb/query", Handler(nil, nil))
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/query", strings.NewReader(`{"user_id":"u1","query":"x"}`)))
+	mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/query", strings.NewReader(`{"user_id":"u1","query":"x"}`)))
 	if rec.Code != 503 {
 		t.Errorf("status = %d", rec.Code)
 	}
@@ -134,7 +136,7 @@ func testQuerySession(t *testing.T, d *sql.DB) {
 	mux.HandleFunc("POST /v1/gb/eval/query", EvalHandler(d, llm, withVectors(t)))
 	post := func(path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest("POST", path, strings.NewReader(body)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest("POST", path, strings.NewReader(body)))
 		return rec
 	}
 
@@ -187,7 +189,7 @@ func testQueryInference(t *testing.T, d *sql.DB) {
 	}
 	post := func(body string) int {
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/query", strings.NewReader(body)))
+		mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/query", strings.NewReader(body)))
 		return rec.Code
 	}
 	if c := post(`{"user_id":"u1","query":"Alice?"}`); c != 200 {
@@ -235,7 +237,7 @@ func testQueryEvidenceOnly(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("POST", "/v1/gb/query", strings.NewReader(`{"user_id":"u1","query":"Where does Alice work?","evidence_only":true}`)))
+	mux.ServeHTTP(rec, httputiltest.NewRequest("POST", "/v1/gb/query", strings.NewReader(`{"user_id":"u1","query":"Where does Alice work?","evidence_only":true}`)))
 	if rec.Code != 200 {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body)
 	}

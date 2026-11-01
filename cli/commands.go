@@ -95,7 +95,6 @@ func (f *commonFlags) build(cmd *cobra.Command, c *CLI) (*body, error) {
 		return nil, err
 	}
 	b := &body{m: m}
-	b.default_("user_id", c.flags.user)
 	if cmd.Flags().Changed("dataset") {
 		b.set("dataset", f.dataset)
 	}
@@ -298,14 +297,12 @@ func (c *CLI) datasetCmd() *cobra.Command {
 		Short: "List, create, delete and export datasets",
 		Long:  "Datasets are the separate knowledge graphs of a user (docs/datasets.md)." + clientHelp,
 	}
-	user := func() url.Values { return url.Values{"user_id": {c.flags.user}} }
-
 	cmd.AddCommand(&cobra.Command{
 		Use:   "ls",
 		Short: "List the datasets of the user (GET /v1/gb/datasets)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.send(cmd, "GET", "/v1/gb/datasets", user(), nil)
+			return c.send(cmd, "GET", "/v1/gb/datasets", nil, nil)
 		},
 	})
 
@@ -316,7 +313,7 @@ func (c *CLI) datasetCmd() *cobra.Command {
 		Short: "Create a dataset (POST /v1/gb/datasets)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			b := map[string]any{"user_id": c.flags.user, "name": args[0]}
+			b := map[string]any{"name": args[0]}
 			if description != "" {
 				b["description"] = description
 			}
@@ -336,7 +333,7 @@ func (c *CLI) datasetCmd() *cobra.Command {
 		Short: "Delete a dataset (DELETE /v1/gb/datasets/{name})",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.send(cmd, "DELETE", "/v1/gb/datasets/"+url.PathEscape(args[0]), user(), nil)
+			return c.send(cmd, "DELETE", "/v1/gb/datasets/"+url.PathEscape(args[0]), nil, nil)
 		},
 	})
 	cmd.AddCommand(&cobra.Command{
@@ -344,7 +341,7 @@ func (c *CLI) datasetCmd() *cobra.Command {
 		Short: "Export the knowledge graph of a dataset (GET /v1/gb/datasets/{name}/graph)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return c.send(cmd, "GET", "/v1/gb/datasets/"+url.PathEscape(args[0])+"/graph", user(), nil)
+			return c.send(cmd, "GET", "/v1/gb/datasets/"+url.PathEscape(args[0])+"/graph", nil, nil)
 		},
 	})
 	return cmd
@@ -357,10 +354,10 @@ func (c *CLI) apiCmd() *cobra.Command {
 		Use:   "api METHOD PATH [JSON | -]",
 		Short: "Call any endpoint of the REST API",
 		Long: `Send a request to any endpoint (timeseries, ontologies, ...) and print the JSON response. The body is JSON text, @file, or - for
-stdin. The query string can be part of PATH. No user_id is added: send it yourself where the endpoint wants one.
+stdin. The query string can be part of PATH. The user (--user) is sent in the gb-user-id header, which is the only place the server takes it from.
 ` + clientHelp,
-		Example: `  gligabao api GET "/v1/gb/timeseries?user_id=local_user"
-  gligabao api POST /v1/gb/ontologies '{"user_id":"local_user","name":"x","file":"x.owl"}'`,
+		Example: `  gligabao api GET /v1/gb/timeseries
+  gligabao api POST /v1/gb/ontologies '{"name":"x","file":"x.owl"}'`,
 		Args: cobra.RangeArgs(2, 3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			method, path := strings.ToUpper(args[0]), args[1]

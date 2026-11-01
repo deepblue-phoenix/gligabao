@@ -11,7 +11,9 @@ import (
 
 func TestResearchStartBody(t *testing.T) {
 	var got map[string]any
+	var user string
 	out, err := run(t, func(w http.ResponseWriter, r *http.Request) {
+		user = r.Header.Get("gb-user-id")
 		if r.Method != "POST" || r.URL.Path != "/v1/gb/research" {
 			t.Errorf("%s %s", r.Method, r.URL)
 		}
@@ -25,7 +27,7 @@ func TestResearchStartBody(t *testing.T) {
 	if !strings.Contains(out, `"id": 4`) {
 		t.Errorf("out = %q", out)
 	}
-	if got["user_id"] != "u7" || got["topic"] != "solid state batteries" || got["max_steps"] != 9.0 || got["model"] != "claude-x" {
+	if _, ok := got["user_id"]; ok || user != "u7" || got["topic"] != "solid state batteries" || got["max_steps"] != 9.0 || got["model"] != "claude-x" {
 		t.Errorf("body = %v", got)
 	}
 }
@@ -41,10 +43,10 @@ func TestResearchStartFromStdinAndJSON(t *testing.T) {
 		t.Errorf("stdin: %v %v", err, got)
 	}
 	// Only the flags that were set are sent; the flags override --json.
-	if _, err := run(t, h, "", "research", "start", "--json", `{"topic":"a","max_steps":3,"user_id":"u1"}`, "--max-steps", "5"); err != nil {
+	if _, err := run(t, h, "", "research", "start", "--json", `{"topic":"a","max_steps":3}`, "--max-steps", "5"); err != nil {
 		t.Fatal(err)
 	}
-	if got["topic"] != "a" || got["max_steps"] != 5.0 || got["user_id"] != "u1" {
+	if got["topic"] != "a" || got["max_steps"] != 5.0 {
 		t.Errorf("body = %v", got)
 	}
 	if _, ok := got["model"]; ok {
@@ -72,7 +74,7 @@ func TestResearchStartWaits(t *testing.T) {
 		case r.Method == "POST":
 			w.WriteHeader(202)
 			io.WriteString(w, `{"id":12,"user_id":"local_user","status":"running"}`)
-		case r.URL.Path == "/v1/gb/research/12" && r.URL.Query().Get("user_id") == "local_user":
+		case r.URL.Path == "/v1/gb/research/12" && r.Header.Get("gb-user-id") == "local_user":
 			if polls++; polls < 3 {
 				io.WriteString(w, `{"id":12,"status":"running","report":""}`)
 				return
@@ -112,7 +114,7 @@ func TestResearchStartWaitFailed(t *testing.T) {
 func TestResearchListAndGet(t *testing.T) {
 	var seen []string
 	h := func(w http.ResponseWriter, r *http.Request) {
-		seen = append(seen, r.Method+" "+r.URL.RequestURI())
+		seen = append(seen, r.Method+" "+r.URL.RequestURI()+" "+r.Header.Get("gb-user-id"))
 		w.Write([]byte(`{"id":8,"status":"completed","report":"R"}`))
 	}
 	for _, args := range [][]string{{"research", "ls"}, {"research", "ls", "--active", "--limit", "5"}, {"research", "ls", "--status", "failed"}, {"research", "get", "8"}} {
@@ -124,8 +126,8 @@ func TestResearchListAndGet(t *testing.T) {
 	if err != nil || out != "R\n" {
 		t.Fatalf("raw: %q %v", out, err)
 	}
-	want := "GET /v1/gb/research?user_id=local_user|GET /v1/gb/research?active=true&limit=5&user_id=local_user|" +
-		"GET /v1/gb/research?status=failed&user_id=local_user|GET /v1/gb/research/8?user_id=local_user|GET /v1/gb/research/8?user_id=local_user"
+	want := "GET /v1/gb/research local_user|GET /v1/gb/research?active=true&limit=5 local_user|" +
+		"GET /v1/gb/research?status=failed local_user|GET /v1/gb/research/8 local_user|GET /v1/gb/research/8 local_user"
 	if strings.Join(seen, "|") != want {
 		t.Errorf("requests = %v", seen)
 	}

@@ -26,7 +26,7 @@ func testLLMCallsRecorded(t *testing.T, d *sql.DB) {
 	for _, c := range [][2]string{{"/v1/gb/remember", `{"user_id":"u1","text":"Alice"}`}, {"/v1/gb/query", `{"user_id":"u1","query":"Alice?"}`}} { // order matters: query needs the graph
 		path, body := c[0], c[1]
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, httptest.NewRequest("POST", path, strings.NewReader(body)))
+		mux.ServeHTTP(rec, newReq("POST", path, strings.NewReader(body)))
 		if rec.Code != 200 {
 			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
 		}
