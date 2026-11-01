@@ -252,6 +252,21 @@ CREATE INDEX IF NOT EXISTS idx_gb_artifacts_parent ON gb_artifacts(parent_id);
 CREATE INDEX IF NOT EXISTS idx_gb_entities_dataset ON gb_entities(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_dataset ON gb_edges(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_source ON gb_edges(source_id);
+-- The in-context log: a row every time an entity or an edge went into the context of an LLM call (see sqlite/db_schema.go).
+CREATE TABLE IF NOT EXISTS gb_graph_in_ctx_counters (
+	id         BIGSERIAL PRIMARY KEY,
+	dataset_id BIGINT NOT NULL REFERENCES gb_datasets(id),
+	kind       TEXT NOT NULL CHECK (kind IN ('entity', 'edge')),
+	item_id    BIGINT NOT NULL,
+	pipeline   TEXT NOT NULL CHECK (pipeline IN ('query', 'remember')),
+	stage      TEXT NOT NULL,
+	run_id     BIGINT,
+	created_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gb_graph_in_ctx_counters_item ON gb_graph_in_ctx_counters(kind, item_id, pipeline);
+CREATE INDEX IF NOT EXISTS idx_gb_graph_in_ctx_counters_dataset ON gb_graph_in_ctx_counters(dataset_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_gb_graph_in_ctx_counters_run ON gb_graph_in_ctx_counters(pipeline, run_id);
+
 CREATE INDEX IF NOT EXISTS idx_gb_edges_target ON gb_edges(target_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_artifact ON gb_edges(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edge_artifacts_artifact ON gb_edge_artifacts(artifact_id);

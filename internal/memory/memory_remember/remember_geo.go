@@ -205,6 +205,7 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 
 	//--------------------------------------
 	// DETECT: the LLM says which candidates are places, and what to ask the resolver
+	j.countKeyEntities(ctx, memory_core.StageDetectGeo, cands) // IN-CONTEXT COUNTERS: the prompt lists the entities
 	resp, err := j.co.ModelLLM(j.llm, memory_core.StageDetectGeo).Complete(ctx, ai.Request{
 		System:    detectGeoSystemPrompt,
 		Messages:  []ai.Message{{Role: ai.RoleUser, Content: detectGeoPrompt(cands)}},

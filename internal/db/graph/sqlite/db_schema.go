@@ -179,6 +179,31 @@ CREATE TABLE IF NOT EXISTS gb_edge_sessions (
 	PRIMARY KEY (edge_id, session_id)
 );
 
+-- The in-context log (see model.InContextEvent): a row EVERY TIME an entity or an edge went into the context of an LLM call, or was
+-- returned as the context of a retrieval-only query. It is written by graph.CountInContext at every place a pipeline puts stored
+-- entities or edges into an LLM prompt. How often an item came up is the number of its rows, and when, in which run and session is on
+-- each row, so the nodes and edges that contribute a lot to the reasoning can be told from those that hardly do.
+--   kind       'entity' or 'edge'; item_id is the ID in gb_entities or gb_edges (no foreign key: one column for both tables)
+--   pipeline   'query' (answering a question) or 'remember' (ingesting a text); they are never mixed
+--   stage      the stage of the pipeline that had the item in its context: query, resolve_edges, detect_geo, resolve_series,
+--              web_search, or evidence_only (a retrieval-only query returned it; no LLM call)
+--   run_id     the run of the pipeline: gb_query_runs.id or gb_remember_runs.id, by pipeline (no foreign key, for the same reason);
+--              NULL if the run has no log. The run says who started the call.
+-- dataset_id is that of the entity or edge, taken from its row when the event is written.
+CREATE TABLE IF NOT EXISTS gb_graph_in_ctx_counters (
+	id         INTEGER PRIMARY KEY AUTOINCREMENT,
+	dataset_id INTEGER NOT NULL REFERENCES gb_datasets(id),
+	kind       TEXT NOT NULL CHECK (kind IN ('entity', 'edge')),
+	item_id    INTEGER NOT NULL,
+	pipeline   TEXT NOT NULL CHECK (pipeline IN ('query', 'remember')),
+	stage      TEXT NOT NULL,
+	run_id     INTEGER,
+	created_at DATETIME NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gb_graph_in_ctx_counters_item ON gb_graph_in_ctx_counters(kind, item_id, pipeline);
+CREATE INDEX IF NOT EXISTS idx_gb_graph_in_ctx_counters_dataset ON gb_graph_in_ctx_counters(dataset_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_gb_graph_in_ctx_counters_run ON gb_graph_in_ctx_counters(pipeline, run_id);
+
 -- The image pipeline (see internal/memory/memory_image/image.go), kept apart from gb_artifacts and the graph.
 --
 -- An image artifact is an image ingested to be remembered. The table only tracks it: its media type, SHA-256 and

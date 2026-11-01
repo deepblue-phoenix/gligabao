@@ -57,6 +57,9 @@ type keyEntity struct {
 	ArtifactID int64
 	// Edges is how many facts of the call the entity is an endpoint of (summed over the chunks of a long text).
 	Edges int
+	// ID is the entity in gb_entities, once the text it came from is stored (see noteKeyEntityIDs); 0 before. The stages that put
+	// the entity into an LLM prompt count it with it (see countKeyEntities).
+	ID int64
 }
 
 // WebSearchResult is the web search made for one key entity of a Remember call.
@@ -163,6 +166,34 @@ func (j *job) noteKeyEntities(ex *Extraction, artifactID int64) {
 	}
 }
 
+// noteKeyEntityIDs sets the ID of the key entities that the text just stored mentions (ids: normalized name to entity ID, see
+// Result.entityIDs); the ID of an entity that is already known stays.
+func (j *job) noteKeyEntityIDs(ids map[string]int64) {
+	for k, id := range ids {
+		if e := j.keyEntities[k]; e != nil && e.ID == 0 {
+			e.ID = id
+		}
+	}
+}
+
+// inContext says where the entities of an LLM prompt of the stage are used, for the in-context counters (see
+// memory_core.CountInContext): this call's run.
+func (j *job) inContext(stage string) graph.InContextEvent {
+	return graph.InContextEvent{Pipeline: graph.PipelineRemember, Stage: stage, RunID: j.run.ID()}
+}
+
+// countKeyEntities is the in-context counter of the key entities es, for the stage whose LLM prompt holds them (see
+// memory_core.CountInContext); call it right before the call. An entity without an ID (not stored) is not counted.
+func (j *job) countKeyEntities(ctx context.Context, stage string, es []*keyEntity) {
+	var ids []int64
+	for _, e := range es {
+		if e.ID != 0 {
+			ids = append(ids, e.ID)
+		}
+	}
+	memory_core.CountInContext(ctx, j.d, j.inContext(stage), ids, nil)
+}
+
 // pickKeyEntities returns the entities to search the web for: those of a type that has world events (not a concept),
 // the ones in the most facts first (the entities the text is about; the order of extraction breaks ties), at most max.
 func pickKeyEntities(all []*keyEntity, max int) []*keyEntity {
@@ -205,6 +236,9 @@ func (j *job) webSearch(ctx context.Context) (out []WebSearchResult) {
 	if len(picks) == 0 {
 		return nil
 	}
+
+	// IN-CONTEXT COUNTERS: each search prompt holds its entity.
+	j.countKeyEntities(ctx, memory_core.StageWebSearch, picks)
 
 	// SEARCH, all entities at once: the calls are independent and slow.
 	done := make([]webSearched, len(picks))

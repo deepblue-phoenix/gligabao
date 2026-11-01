@@ -177,6 +177,8 @@ func Query(ctx context.Context, d *sql.DB, llm memory_core.LLM, userID, dataset,
 	//------------------
 	if j.result == nil && co.EvidenceOnly { // the query stage was skipped: what was retrieved is the result
 		j.result = &QueryResult{SessionID: sessionID, Evidence: j.rc.Graph.allEvidence(), Geo: j.places, Nearby: j.rc.Nearby}
+		// IN-CONTEXT COUNTERS: no LLM had it in a prompt, but it is returned to the caller as the context of the answer.
+		j.countInContext(ctx, memory_core.InContextEvidenceOnly, j.rc.Graph)
 	}
 	return j.result, nil
 }
@@ -203,6 +205,13 @@ type job struct {
 	rc     *queryContext // retrieve_graph
 	places []QueryPlace  // detect_geo
 	result *QueryResult  // query (or retrieve_graph, if there is nothing to answer from)
+}
+
+// countInContext is the in-context counter of the entities and edges of g, for the stage that gives them as context (see
+// memory_core.CountInContext): one event each, of this run.
+func (j *job) countInContext(ctx context.Context, stage string, g *graphContext) {
+	memory_core.CountInContext(ctx, j.d, graph.InContextEvent{Pipeline: graph.PipelineQuery, Stage: stage, RunID: j.run.ID()},
+		sortedKeys(g.entities), sortedKeys(g.edges))
 }
 
 //------------------
@@ -275,6 +284,8 @@ func (j *job) nearbyGeo(ctx context.Context) error {
 // answer is the query stage: the LLM call that writes the answer, thought through with the reasoning level none unless the call
 // sets another (WithReasoning with memory_core.StageQuery); the inference records it.
 func (j *job) answer(ctx context.Context) error {
+	// IN-CONTEXT COUNTERS: everything in the graph (the nearby geo entities too, see addToGraph) is in the prompt.
+	j.countInContext(ctx, memory_core.StageQuery, j.rc.Graph)
 	out, err := queryLLM(ctx, j.co.ModelLLM(j.llm, memory_core.StageQuery), j.rc)
 	if err != nil {
 		return err

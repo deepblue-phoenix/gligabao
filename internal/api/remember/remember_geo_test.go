@@ -139,6 +139,11 @@ func testRememberGeo(t *testing.T, d *sql.DB) {
 		t.Errorf("inference: %+v, %v", inf, err)
 	}
 
+	// Every entity the detect_geo prompt listed is counted once (the person was not listed).
+	if got := rememberEntityCounts(t, d, dsID); len(got) != 3 || got["Paris"] != 1 || got["Acme"] != 1 || got["Atlantis"] != 1 {
+		t.Errorf("remember entity counters = %v, want Paris, Acme and Atlantis once", got)
+	}
+
 	// Remembering it again does not look Paris up a second time; Atlantis has no metadata, so it is asked again.
 	rec = seriesPost(t, mux, body)
 	if rec.Code != 200 {
@@ -149,6 +154,9 @@ func testRememberGeo(t *testing.T, d *sql.DB) {
 	}
 	if all, _ = graph.ListEntityGeo(ctx, d, dsID); len(all) != 1 {
 		t.Errorf("stored geo after the second call: %d", len(all))
+	}
+	if got := rememberEntityCounts(t, d, dsID); got["Paris"] != 1 || got["Acme"] != 2 || got["Atlantis"] != 2 {
+		t.Errorf("remember entity counters after the second call = %v: Paris is not listed again, the others are", got)
 	}
 }
 

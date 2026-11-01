@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.154.0] - 2026-11-02
+
+### Added
+- **In-context log** of entities and edges, in the new table `gb_graph_in_ctx_counters` (created on start, on SQLite and PostgreSQL): a row **every time** an entity or an edge went into the context of an LLM call, so how often a node or edge came up is the number of its rows. Each row has the time (`created_at`), the `pipeline` (`query` or `remember`, kept apart so that the use of a node while answering a user is not mixed with its use while ingesting), the `stage` that had it in its context and the `run_id` of the run it was part of (`gb_query_runs.id` or `gb_remember_runs.id`, by pipeline), so each use can be traced to a run, and through it to who started the call. The rows show which nodes and edges contribute a lot to what the LLM reasons from, and which hardly do. Every place that puts stored entities or edges into a prompt logs them, right before the call:
+  - `query`, stage `query`: everything in the graph the answering LLM is given (the entities and edges around the matched ones, the ones found by similarity, and the geo entities near the places of the question).
+  - `query`, stage `evidence_only`: a retrieval-only call (`evidence_only`) calls no LLM, but the entities and edges it returns to the caller are logged too, as the context it hands over.
+  - `remember`: the stored facts the `resolve_edges` LLM compares the new ones with (only when it is called), and the entities that the `detect_geo`, `resolve_series` and `web_search` prompts hold; the stage is that of the prompt.
+  - An item is logged once per call, however many times it appears in the prompt. A failure to log is itself logged and never fails the call. Nothing shows the log yet (no API or admin UI view).
+
 ## [0.153.1] - 2026-11-01
 
 ### Changed

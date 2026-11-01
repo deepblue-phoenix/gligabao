@@ -22,6 +22,14 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 )
 
+// In-context counters (see model.InContextCounter).
+const (
+	CounterEntity    = model.CounterEntity
+	CounterEdge      = model.CounterEdge
+	PipelineQuery    = model.PipelineQuery
+	PipelineRemember = model.PipelineRemember
+)
+
 // Edge events (see model.EdgeEvent).
 const (
 	EdgeCreated     = model.EdgeCreated
@@ -51,6 +59,7 @@ type (
 	EntityArtifact               = model.EntityArtifact
 	EdgeArtifact                 = model.EdgeArtifact
 	EdgeEvent                    = model.EdgeEvent
+	InContextEvent               = model.InContextEvent
 	EntitySession                = model.EntitySession
 	EdgeSession                  = model.EdgeSession
 	SessionEntity                = model.SessionEntity
@@ -411,6 +420,35 @@ func ListEdgeEvents(ctx context.Context, d *sql.DB, artifactID int64) ([]EdgeEve
 		return sqlite.ListEdgeEvents(ctx, d, artifactID)
 	case config.DBBackendPostgres:
 		return postgres.ListEdgeEvents(ctx, d, artifactID)
+	}
+	return nil, unsupported()
+}
+
+// CountInContext records that every entity and edge given is in the context of the call that ev describes (ev.Pipeline, ev.Stage, ev.RunID;
+// the other fields are ignored): one row each in gb_graph_in_ctx_counters, stamped with the current time (see
+// model.InContextEvent). It is the one function the pipelines call, at each place they put stored entities or edges into a prompt, or return
+// them as the context of a retrieval-only query (see memory_core.CountInContext, which they use). Repeated IDs count once, and IDs that are
+// not in the database are skipped.
+func CountInContext(ctx context.Context, d *sql.DB, ev InContextEvent, entityIDs, edgeIDs []int64) error {
+	if ev.Pipeline != PipelineQuery && ev.Pipeline != PipelineRemember {
+		return fmt.Errorf("count in context: unknown pipeline %q", ev.Pipeline)
+	}
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.CountInContext(ctx, d, ev, entityIDs, edgeIDs)
+	case config.DBBackendPostgres:
+		return postgres.CountInContext(ctx, d, ev, entityIDs, edgeIDs)
+	}
+	return unsupported()
+}
+
+// ListInContextEvents returns the in-context events of the dataset, newest first.
+func ListInContextEvents(ctx context.Context, d *sql.DB, dsID int64) ([]InContextEvent, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.ListInContextEvents(ctx, d, dsID)
+	case config.DBBackendPostgres:
+		return postgres.ListInContextEvents(ctx, d, dsID)
 	}
 	return nil, unsupported()
 }

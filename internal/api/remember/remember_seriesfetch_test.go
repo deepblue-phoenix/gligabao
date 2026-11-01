@@ -118,6 +118,9 @@ func testRememberSeriesFetch(t *testing.T, d *sql.DB) {
 	}
 
 	dsID, _ := relational.DatasetID(ctx, d, "u1", relational.DefaultDataset)
+	if got := rememberEntityCounts(t, d, dsID); got["Apple"] != 1 {
+		t.Errorf("remember entity counters = %v: the entity the resolve_series prompt listed is counted once", got)
+	}
 	all, _ := graph.ListSeries(ctx, d, dsID)
 	if len(all) != 2 || all[0].Source != graph.SeriesFetched || all[0].Provider != "prices" || !strings.Contains(all[0].Definition, `"query":"AAPL"`) {
 		t.Fatalf("stored series: %+v", all)

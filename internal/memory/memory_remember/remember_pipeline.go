@@ -296,7 +296,11 @@ func (j *job) loadCandidatesStage(ctx context.Context) error {
 func (j *job) resolveEdgesStage(ctx context.Context) error {
 	u := j.u
 	_, step := j.labels()
-	plan, err := memory_temporal.ResolveEdges(ctx, j.co.ModelLLM(j.llm, memory_core.StageResolveEdges), u.ex.Edges, u.cs.Edges)
+	plan, err := memory_temporal.ResolveEdges(ctx, j.co.ModelLLM(j.llm, memory_core.StageResolveEdges), u.ex.Edges, u.cs.Edges,
+		// IN-CONTEXT COUNTERS: the stored facts the LLM compares the new ones with.
+		func(edgeIDs []int64) {
+			memory_core.CountInContext(ctx, j.d, j.inContext(memory_core.StageResolveEdges), nil, edgeIDs)
+		})
 	j.outputResolveEdges(step, u.ex, plan)
 	if err != nil {
 		return j.chunkError(err)
@@ -326,6 +330,7 @@ func (j *job) storeStage(ctx context.Context) error {
 	}
 	u.res = res
 	j.noteKeyEntities(u.ex, res.ArtifactID)
+	j.noteKeyEntityIDs(res.entityIDs)
 	args := map[string]any{"user_id": j.userID, "dataset": j.dataset, "kind": j.kind}
 	if u.part != nil {
 		args["parent_id"], args["chunk_index"] = u.part.ParentID, u.part.Chunk.Index

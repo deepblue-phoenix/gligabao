@@ -97,6 +97,10 @@ type Result struct {
 	// summary is the summary stored with a chunk (see ChunkResult.Summary); nil for anything else.
 	summary *SummaryResult
 
+	// entityIDs are the IDs of the entities the text mentions (the extraction's, and those its edges named), by normalized name; set
+	// by store, for the in-context counters of the stages that put those entities into an LLM prompt (see noteKeyEntityIDs).
+	entityIDs map[string]int64
+
 	// RememberRunID is the run log of this call: its row in gb_remember_runs, which holds how each stage of the pipeline went
 	// (see runlog.go).
 	RememberRunID int64 `json:"remember_run_id,omitempty"`
@@ -608,6 +612,7 @@ func store(ctx context.Context, d *sql.DB, userID, dataset, kind, text string, r
 		ids[memory_core.Key(name)] = id
 		return id, nil
 	}
+	out.entityIDs = ids
 	out.Edges, out.InvalidatedEdges, err = memory_temporal.StoreEdges(ctx, tx, dsID, artID, sessionID, ref, now, ex.Edges, plan, entityID)
 	if err != nil {
 		return nil, err

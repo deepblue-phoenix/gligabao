@@ -172,6 +172,26 @@ func testRememberWebSearch(t *testing.T, d *sql.DB) {
 	if es, _ := graph.ListEntitySessions(ctx, d, dsID); len(es) != len(ents) {
 		t.Errorf("entity sessions = %d, entities = %d", len(es), len(ents))
 	}
+	// Each search prompt holds its entity: the three searched for are counted once, the concept that was not searched for is not.
+	got := rememberEntityCounts(t, d, dsID)
+	for _, w := range res.WebSearches {
+		if got[w.Entity] != 1 {
+			t.Errorf("remember entity counter of %q = %d, want 1; all: %v", w.Entity, got[w.Entity], got)
+		}
+	}
+	if got["Innovation"] != 0 {
+		t.Errorf("a concept was counted: %v", got)
+	}
+	// Every event is of this run.
+	evs, err := graph.ListInContextEvents(ctx, d, dsID)
+	if err != nil || len(evs) == 0 {
+		t.Fatalf("events: %v, %v", evs, err)
+	}
+	for _, e := range evs {
+		if e.Pipeline != graph.PipelineRemember || e.RunID != res.RememberRunID || res.RememberRunID == 0 {
+			t.Errorf("event %+v, want run %d", e, res.RememberRunID)
+		}
+	}
 	// The search was billed: its call is recorded.
 	var n int
 	if err := d.QueryRowContext(ctx, `SELECT COUNT(*) FROM gb_inferences WHERE model_id = '`+relational.ModelID("fake-search-model")+`' AND stage = 'web_search' AND reasoning = 'none'`).Scan(&n); err != nil || n != 3 {

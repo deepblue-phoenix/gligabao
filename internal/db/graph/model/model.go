@@ -76,6 +76,35 @@ type EdgeEvent struct {
 	Edge *Edge `json:"edge,omitempty"`
 }
 
+// In-context counters (gb_graph_in_ctx_counters): a log with a row for every time an entity or an edge went into the context of an LLM
+// call, or was returned as the context of a retrieval-only query. A counter is the number of its rows; each row also says when, and in which
+// pipeline run. They show which nodes and edges contribute a lot to the reasoning, and which ones hardly do.
+const (
+	// CounterEntity and CounterEdge are the kinds of item an event is of.
+	CounterEntity = "entity"
+	CounterEdge   = "edge"
+	// PipelineQuery and PipelineRemember are the pipelines whose events are kept apart: answering a user, and ingesting.
+	PipelineQuery    = "query"
+	PipelineRemember = "remember"
+)
+
+// InContextEvent is one entity or edge (ItemID, by Kind) in the context of Pipeline at CreatedAt. The callers of CountInContext fill in
+// the fields that say where the items were used (Pipeline, Stage, RunID); the rest is set when the row is written.
+type InContextEvent struct {
+	ID        int64  `json:"id,omitempty"`
+	DatasetID int64  `json:"dataset_id,omitempty"`
+	Kind      string `json:"kind,omitempty"` // CounterEntity or CounterEdge
+	ItemID    int64  `json:"item_id,omitempty"`
+	Pipeline  string `json:"pipeline"` // PipelineQuery or PipelineRemember
+	// Stage is the stage of the pipeline that had the item in its context: the LLM stage (see memory_core.Stage*), or
+	// memory_core.InContextEvidenceOnly for a retrieval-only query.
+	Stage string `json:"stage"`
+	// RunID is the pipeline run the event is part of: gb_query_runs.id for PipelineQuery, gb_remember_runs.id for PipelineRemember; 0 if
+	// the run has no log (stored as NULL; there is no foreign key as one column serves both tables). The run says who started it.
+	RunID     int64     `json:"run_id,omitempty"`
+	CreatedAt time.Time `json:"created_at,omitempty"`
+}
+
 // EvidenceEntity is a graph entity cited by an answer.
 type EvidenceEntity struct {
 	ID          int64  `json:"id"`

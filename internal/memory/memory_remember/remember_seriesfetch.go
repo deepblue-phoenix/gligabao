@@ -219,6 +219,7 @@ func (j *job) fetchSeries(ctx context.Context) (out []SeriesFetchResult) {
 
 	//--------------------------------------
 	// RESOLVE: the LLM matches entities to providers by their descriptions
+	j.countKeyEntities(ctx, memory_core.StageResolveSeries, cands) // IN-CONTEXT COUNTERS: the prompt lists the entities
 	resp, err := j.co.ModelLLM(j.llm, memory_core.StageResolveSeries).Complete(ctx, ai.Request{
 		System:    resolveSeriesSystemPrompt,
 		Messages:  []ai.Message{{Role: ai.RoleUser, Content: resolveSeriesPrompt(cands, providers, j.ref)}},

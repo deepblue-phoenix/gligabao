@@ -55,7 +55,10 @@ func (p *EdgePlan) RunID() int64 {
 // ResolveEdges compares new edges with existing candidates. Exact repeats (same endpoints and relation as a
 // fact that is still true) are detected without the LLM; the LLM is only called for what remains. If the LLM answered but its
 // answer is no use, the error comes with a plan that is empty but for its InferenceID.
-func ResolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []graph.Edge) (*EdgePlan, error) {
+//
+// inContext, if not nil, is called right before the LLM call with the IDs of the stored edges (cands) that its prompt holds, so that
+// they can be counted (see memory_core.CountInContext); it is not called when there is no LLM call.
+func ResolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []graph.Edge, inContext func(edgeIDs []int64)) (*EdgePlan, error) {
 	plan := &EdgePlan{Duplicates: map[int]int64{}}
 
 	var rest []int // indices of new edges still undecided
@@ -84,13 +87,18 @@ func ResolveEdges(ctx context.Context, llm memory_core.LLM, edges, cands []graph
 	}
 	b.WriteString("</new_facts>\n\n<existing_facts>\n")
 	known := map[int64]bool{}
+	candIDs := make([]int64, 0, len(cands))
 	for _, c := range cands {
 		known[c.ID] = true
+		candIDs = append(candIDs, c.ID)
 		f := memory_core.FactFromEdge(c)
 		fmt.Fprintf(&b, "[%d] %s %s\n", c.ID, f.Statement, f.Span())
 	}
 	b.WriteString("</existing_facts>")
 
+	if inContext != nil {
+		inContext(candIDs)
+	}
 	resp, err := llm.Complete(ctx, ai.Request{
 		System:    resolveSystemPrompt,
 		Messages:  []ai.Message{{Role: ai.RoleUser, Content: b.String()}},
