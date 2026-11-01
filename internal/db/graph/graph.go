@@ -60,6 +60,7 @@ type (
 	EdgeArtifact                 = model.EdgeArtifact
 	EdgeEvent                    = model.EdgeEvent
 	InContextEvent               = model.InContextEvent
+	InContextCount               = model.InContextCount
 	EntitySession                = model.EntitySession
 	EdgeSession                  = model.EdgeSession
 	SessionEntity                = model.SessionEntity
@@ -449,6 +450,19 @@ func ListInContextEvents(ctx context.Context, d *sql.DB, dsID int64) ([]InContex
 		return sqlite.ListInContextEvents(ctx, d, dsID)
 	case config.DBBackendPostgres:
 		return postgres.ListInContextEvents(ctx, d, dsID)
+	}
+	return nil, unsupported()
+}
+
+// InContextCounts returns, for every entity and edge of the dataset that went into a context at least once, how many times it did, per
+// pipeline (the rows of gb_graph_in_ctx_counters, grouped; items without rows are not listed). Unlike ListInContextEvents it does not
+// load every row, so it is the one to use to show the usage of a whole dataset.
+func InContextCounts(ctx context.Context, d *sql.DB, dsID int64) ([]InContextCount, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.InContextCounts(ctx, d, dsID)
+	case config.DBBackendPostgres:
+		return postgres.InContextCounts(ctx, d, dsID)
 	}
 	return nil, unsupported()
 }

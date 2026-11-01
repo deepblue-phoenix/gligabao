@@ -6,6 +6,7 @@ import { initEvals } from "./evals.js";
 import { loadExtensions } from "./extensions.js";
 import { initGeo } from "./geo.js";
 import { initGraphModal, showGraph } from "./graph.js";
+import { initInContextModal, showInContext } from "./in_context.js";
 import { initHistoryModal } from "./history.js";
 import { initImageOverlay } from "./image.js";
 import { initImageStats } from "./imagestats.js";
@@ -234,6 +235,15 @@ async function loadOverview(name: string, s: ReturnType<typeof makeSection>, inc
         btn.innerHTML = GRAPH_ICON; // static markup, no server data
         btn.addEventListener("click", () => void showGraph(name, ds.user_id, ds.name));
 
+        const ctxBtn = graphCell.appendChild(document.createElement("button"));
+        ctxBtn.type = "button";
+        ctxBtn.className = "small";
+        ctxBtn.classList.add("icon");
+        ctxBtn.title = "In-context use of the entities and edges (histograms)";
+        ctxBtn.setAttribute("aria-label", `In-context use of dataset ${ds.name}`);
+        ctxBtn.innerHTML = HISTOGRAM_ICON; // static markup, no server data
+        ctxBtn.addEventListener("click", () => void showInContext(name, ds.user_id, ds.name));
+
         const vec = graphCell.appendChild(document.createElement("button"));
         vec.type = "button";
         vec.className = "small";
@@ -290,6 +300,11 @@ const ICON_ATTRS =
 const GRAPH_ICON =
   `<svg ${ICON_ATTRS}><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="12" cy="19" r="2.5"/>` +
   '<path d="M8.3 7l7.4.6"/><path d="M7.2 8.2l3.6 8.5"/><path d="M16.8 10.2l-3.6 6.5"/></svg>';
+
+// Bars of different heights: the histograms of the in-context use.
+const HISTOGRAM_ICON =
+  `<svg ${ICON_ATTRS}><path d="M4 20V4"/><path d="M4 20h16"/><rect x="7" y="12" width="3" height="8"/><rect x="12" y="7" width="3" height="13"/>` +
+  '<rect x="17" y="14" width="3" height="6"/></svg>';
 
 // A database cylinder with a scatter of points: the vector database.
 const VECTORS_ICON =
@@ -361,6 +376,7 @@ void (async () => {
   await loadExtensions();
   initViews();
   initGraphModal();
+  initInContextModal();
   initVectorsModal();
   initTraceModal();
   initHistoryModal();

@@ -75,3 +75,29 @@ func ListInContextEvents(ctx context.Context, d *sql.DB, dsID int64) ([]model.In
 	}
 	return out, rows.Err()
 }
+
+// InContextCounts returns how many times each entity and edge of the dataset went into a context, per pipeline (see
+// model.InContextCount); items that never did are not listed.
+func InContextCounts(ctx context.Context, d *sql.DB, dsID int64) ([]model.InContextCount, error) {
+	rows, err := d.QueryContext(ctx, `
+		SELECT kind, item_id,
+			COUNT(CASE WHEN pipeline = 'query' THEN 1 END),
+			COUNT(CASE WHEN pipeline = 'remember' THEN 1 END)
+		FROM gb_graph_in_ctx_counters
+		WHERE dataset_id = ?
+		GROUP BY kind, item_id
+		ORDER BY kind, item_id`, dsID)
+	if err != nil {
+		return nil, fmt.Errorf("count in-context events: %w", err)
+	}
+	defer rows.Close()
+	out := []model.InContextCount{}
+	for rows.Next() {
+		var c model.InContextCount
+		if err := rows.Scan(&c.Kind, &c.ItemID, &c.Query, &c.Remember); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}

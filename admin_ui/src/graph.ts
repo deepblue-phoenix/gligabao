@@ -1,5 +1,7 @@
 // Force-directed d3 view of a dataset's entity graph, shown in a modal. d3 is loaded as a global by index.html.
 
+import { countOf, fillModeSelect, showInContextOf, type InContext, type Mode, type Use } from "./in_context.js";
+
 declare const d3: typeof import("d3");
 
 // model_id is the ID of the model (see GraphData.models) that inferred the entity / fact (absent if unknown).
@@ -10,7 +12,8 @@ interface Edge {
   valid_at?: string; invalid_at?: string; created_at?: string; expired_at?: string;
 }
 export interface Model { id: string; name: string; provider?: string }
-export interface GraphData { dataset: string; entities: Entity[]; edges: Edge[]; models?: Model[] }
+// in_context (only in what the admin API answers) is how many times each entity / edge (by ID) went into the context of an LLM call.
+export interface GraphData { dataset: string; entities: Entity[]; edges: Edge[]; models?: Model[]; in_context?: InContext }
 
 // Name of the model with the given ID (the ID itself if the graph does not list it).
 let modelNames = new Map<string, string>();
@@ -28,10 +31,19 @@ function el<T extends HTMLElement>(id: string): T {
 }
 
 let stop: (() => void) | undefined;
+// Redraws the in-context numbers on the nodes and edges for the chosen pipelines (set by draw).
+let showCounts: ((mode: Mode) => void) | undefined;
+let shown: { title: string; data: GraphData } | undefined;
+
+const modeSelect = (): HTMLSelectElement => el<HTMLSelectElement>("graph-use");
 
 function clear(): void {
   stop?.();
   stop = undefined;
+  showCounts = undefined;
+  shown = undefined;
+  el("graph-use-box").hidden = true;
+  el("graph-histograms").hidden = true;
   el("graph-canvas").replaceChildren();
 }
 
@@ -74,6 +86,9 @@ export async function showGraphFrom(title: string, load: () => Promise<GraphData
     const models = [...new Set([...data.entities, ...data.edges].map((x) => modelName(x.model_id)).filter((m) => m))].sort();
     status.textContent = `${data.entities.length} entities, ${data.edges.length} edges` +
       (models.length ? ` · inferred by ${models.join(", ")}` : "");
+    shown = { title, data };
+    el("graph-use-box").hidden = !data.in_context;
+    el("graph-histograms").hidden = !data.in_context;
     draw(el("graph-canvas"), data);
   } catch (err) {
     status.className = "error";
@@ -103,7 +118,12 @@ function draw(container: HTMLElement, data: GraphData): void {
 
   const types = [...new Set(nodes.map((n) => n.type))].sort();
   const color = d3.scaleOrdinal<string, string>(d3.schemeTableau10).domain(types);
-  const radius = (n: Node): number => 4 + Math.min(10, Math.sqrt(n.degree) * 2);
+  // The in-context counts show as numbers over the nodes (which then are a bit bigger, to hold them) and edges.
+  const counted = !!data.in_context;
+  const radius = (n: Node): number => (counted ? 6 : 4) + Math.min(10, Math.sqrt(n.degree) * 2);
+  const nodeUse = (n: Node): Use | undefined => data.in_context?.entities[String(n.id)];
+  const edgeUse = (e: Edge): Use | undefined => data.in_context?.edges[String(e.id)];
+  const useText = (u: Use | undefined): string => `\nin an LLM context: ${(u?.query ?? 0) + (u?.remember ?? 0)} (query ${u?.query ?? 0}, remember ${u?.remember ?? 0})`;
 
   const svg = d3.create("svg").attr("viewBox", [0, 0, width, height]).attr("width", "100%").attr("height", "100%");
   const root = svg.append("g");
@@ -113,15 +133,25 @@ function draw(container: HTMLElement, data: GraphData): void {
 
   const link = root.append("g").attr("class", "graph-links").selectAll("line").data(links).join("line")
     .attr("class", (l) => (l.edge.expired_at ? "graph-link expired" : "graph-link"));
-  link.append("title").text((l) => `${l.edge.relation}${l.edge.description ? `: ${l.edge.description}` : ""}${l.edge.model_id ? `\nmodel: ${modelName(l.edge.model_id)}` : ""}`);
+  link.append("title").text((l) => `${l.edge.relation}${l.edge.description ? `: ${l.edge.description}` : ""}${l.edge.model_id ? `\nmodel: ${modelName(l.edge.model_id)}` : ""}${counted ? useText(edgeUse(l.edge)) : ""}`);
 
   const linkLabel = root.append("g").selectAll("text").data(links).join("text")
     .attr("class", "graph-label graph-edge-label").attr("text-anchor", "middle").text((l) => l.edge.relation);
+  const linkCount = linkLabel.append("tspan").attr("class", "graph-edge-count");
 
   const node = root.append("g").selectAll<SVGGElement, Node>("g").data(nodes).join("g").attr("class", "graph-node");
   node.append("circle").attr("r", radius).attr("fill", (n) => color(n.type));
+  const nodeCount = node.append("text").attr("class", "graph-count").attr("text-anchor", "middle").attr("dy", "0.35em");
   node.append("text").text((n) => n.name).attr("class", "graph-label").attr("dy", (n) => radius(n) + 7).attr("text-anchor", "middle");
-  node.append("title").text((n) => `${n.name} (${n.type})${n.description ? `\n${n.description}` : ""}${n.model_id ? `\nmodel: ${modelName(n.model_id)}` : ""}`);
+  node.append("title").text((n) => `${n.name} (${n.type})${n.description ? `\n${n.description}` : ""}${n.model_id ? `\nmodel: ${modelName(n.model_id)}` : ""}${counted ? useText(nodeUse(n)) : ""}`);
+
+  // The in-context numbers for the chosen pipelines; a zero shows nothing.
+  showCounts = (mode: Mode): void => {
+    if (!counted) return;
+    nodeCount.text((n) => { const c = countOf(nodeUse(n), mode); return c > 0 ? String(c) : ""; });
+    linkCount.text((l) => { const c = countOf(edgeUse(l.edge), mode); return c > 0 ? ` ×${c}` : ""; });
+  };
+  showCounts(modeSelect().value as Mode);
 
   // Details overlay of the clicked node; it follows the node while the layout moves or the view is zoomed.
   const overlay = document.createElement("div");
@@ -148,7 +178,7 @@ function draw(container: HTMLElement, data: GraphData): void {
     node.classed("selected", (d) => d === n);
     overlay.hidden = !n;
     if (n) {
-      overlay.replaceChildren(...describe(n, data.edges, byID));
+      overlay.replaceChildren(...describe(n, data.edges, byID, data.in_context));
       placeOverlay();
     }
   };
@@ -229,12 +259,14 @@ function fmtSpan(from: string | undefined, to: string | undefined): string | und
 
 // Builds the overlay content: the entity's parameters, then the temporal data of the facts (edges) it takes part in.
 // textContent only: never inject server data as HTML.
-function describe(n: Node, edges: Edge[], byID: Map<number, Node>): HTMLElement[] {
+function describe(n: Node, edges: Edge[], byID: Map<number, Node>, use?: InContext): HTMLElement[] {
   const h = document.createElement("h3");
   h.textContent = n.name;
 
   const params = document.createElement("dl");
-  for (const [k, v] of [["id", String(n.id)], ["type", n.type], ["description", n.description ?? ""], ["model", modelName(n.model_id)], ["connections", String(n.degree)]]) {
+  const u = use?.entities[String(n.id)];
+  const inCtx = use ? `${(u?.query ?? 0) + (u?.remember ?? 0)} (query ${u?.query ?? 0}, remember ${u?.remember ?? 0})` : "";
+  for (const [k, v] of [["id", String(n.id)], ["type", n.type], ["description", n.description ?? ""], ["model", modelName(n.model_id)], ["connections", String(n.degree)], ["in LLM context", inCtx]]) {
     if (!v) continue;
     params.appendChild(document.createElement("dt")).textContent = k;
     params.appendChild(document.createElement("dd")).textContent = v;
@@ -264,6 +296,11 @@ function describe(n: Node, edges: Edge[], byID: Map<number, Node>): HTMLElement[
       dl.appendChild(document.createElement("dt")).textContent = k as string;
       dl.appendChild(document.createElement("dd")).textContent = fmtTime(v);
     }
+    if (use) {
+      const eu = use.edges[String(e.id)];
+      dl.appendChild(document.createElement("dt")).textContent = "in LLM context";
+      dl.appendChild(document.createElement("dd")).textContent = `${(eu?.query ?? 0) + (eu?.remember ?? 0)} (query ${eu?.query ?? 0}, remember ${eu?.remember ?? 0})`;
+    }
     if (e.model_id) {
       dl.appendChild(document.createElement("dt")).textContent = "model";
       dl.appendChild(document.createElement("dd")).textContent = modelName(e.model_id);
@@ -275,6 +312,9 @@ function describe(n: Node, edges: Edge[], byID: Map<number, Node>): HTMLElement[
 export function initGraphModal(): void {
   const modal = el<HTMLDialogElement>("graph-modal");
   el("graph-close").addEventListener("click", () => modal.close());
+  fillModeSelect(modeSelect());
+  modeSelect().addEventListener("change", () => showCounts?.(modeSelect().value as Mode));
+  el("graph-histograms").addEventListener("click", () => { if (shown) showInContextOf(shown.title, shown.data); });
   modal.addEventListener("close", clear);
   // Click on the backdrop (the dialog element itself) closes it.
   modal.addEventListener("click", (e) => { if (e.target === modal) modal.close(); });

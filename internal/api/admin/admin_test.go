@@ -11,11 +11,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
+	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
@@ -499,5 +502,65 @@ func testTimeseries(t *testing.T, d *sql.DB) {
 	admin.TimeseriesOf(nil)(w, httptest.NewRequest(http.MethodGet, "/admin/api/timeseries?db=nope", nil))
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("unknown db: %d", w.Code)
+	}
+}
+
+// TestGraphInContext checks that the admin graph endpoint adds how many times each entity went into an LLM context, per pipeline, and
+// that an entity that never did is absent from the counts.
+func TestGraphInContext(t *testing.T) { dbtest.Run(t, testGraphInContext) }
+
+func testGraphInContext(t *testing.T, d *sql.DB) {
+	ctx := context.Background()
+	dsID, err := relational.EnsureDataset(ctx, d, "alice", "a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := graph.Begin(ctx, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	used, err := tx.UpsertEntity(ctx, dsID, graph.Entity{Name: "Alice", Type: "person"}, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	idle, err := tx.UpsertEntity(ctx, dsID, graph.Entity{Name: "Acme", Type: "org"}, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range []graph.InContextEvent{
+		{Pipeline: graph.PipelineQuery, Stage: "query"}, {Pipeline: graph.PipelineQuery, Stage: "query"},
+		{Pipeline: graph.PipelineRemember, Stage: "resolve_edges"},
+	} {
+		if err := graph.CountInContext(ctx, d, ev, []int64{used}, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w := httptest.NewRecorder()
+	admin.Graph(d)(w, httptest.NewRequest(http.MethodGet, "/admin/api/graph?user_id=alice&dataset=a", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	var g struct {
+		Entities  []struct{ ID int64 }
+		InContext struct {
+			Entities map[string]struct{ Query, Remember int } `json:"entities"`
+			Edges    map[string]struct{ Query, Remember int } `json:"edges"`
+		} `json:"in_context"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &g); err != nil {
+		t.Fatal(err)
+	}
+	if len(g.Entities) != 2 || g.InContext.Edges == nil {
+		t.Fatalf("graph: %s", w.Body)
+	}
+	if u := g.InContext.Entities[strconv.FormatInt(used, 10)]; u.Query != 2 || u.Remember != 1 {
+		t.Errorf("counts of the used entity = %+v, want query 2, remember 1", u)
+	}
+	if u, ok := g.InContext.Entities[strconv.FormatInt(idle, 10)]; ok {
+		t.Errorf("the idle entity has counts %+v", u)
 	}
 }

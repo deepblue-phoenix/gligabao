@@ -279,6 +279,24 @@ button.help-btn {
   i { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-right: 0.4rem; }
 }
 .graph-edge-label { fill: $accent; font-size: 5px; }
+.graph-edge-count { fill: $text; font-weight: 700; }
+.graph-count { font-size: 5.5px; font-weight: 700; fill: #fff; pointer-events: none; stroke: rgba(0, 0, 0, 0.55); stroke-width: 0.8px; paint-order: stroke; }
+.graph-use { display: flex; align-items: center; gap: 0.4rem; flex: none !important; &[hidden] { display: none; } }
+
+// In-context histograms modal.
+.ic-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 1.5rem; align-content: start; }
+.ic-section {
+  h3 { margin: 0.5rem 0 0.2rem; font-size: 0.95rem; }
+  h4 { margin: 0.8rem 0 0.2rem; font-size: 0.8rem; color: $muted; }
+  p { margin: 0 0 0.4rem; }
+  table.compact { width: auto; font-size: 0.8rem; th, td { padding: 0.15rem 0.8rem 0.15rem 0; } }
+}
+svg.hist {
+  max-width: 34rem;
+  color: $muted;
+  font-size: 10px;
+  .hist-axis { fill: $muted; font-size: 10px; }
+}
 
 .graph-node.selected circle { stroke: $text; stroke-width: 2.5; }
 

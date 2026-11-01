@@ -291,6 +291,13 @@ A run that stored an artifact also has a **Temporal changes** button. It opens a
 
 The JSON behind it is `GET /v1/gb/admin/api/remember-runs?db=<name>[&status=][&dataset=][&user_id=][&limit=][&offset=]` (`status` is `started`, `succeeded` or `failed`; `limit` defaults to 100, at most 500): `counts` (`total`, `started`, `succeeded`, `failed`), `stages` (the stage names in pipeline order), and `runs` (as in the [run log](#run-log), with `stages` keyed by name) with `total`, `limit`, `offset` for the filters given. The [stage outputs](#stage-outputs) of one run (they would make the list heavy, so the view asks for the outputs of a stage when the user opens them) are `GET /v1/gb/admin/api/remember-run-outputs?run_id=<id>[&stage=<name>][&db=<name>]` (without `stage`, those of all the stages): `run_id`, `stage` and `outputs` (each as in the table above, with `output` as JSON, in the order they were made; empty for a run that has none, 404 for an unknown run). What the run did to the facts is `GET /v1/gb/admin/api/remember-run-temporal?run_id=<id>[&db=<name>]`: `run_id`, `artifact_id` (0 if the run stored none), `artifacts` (those with events: `id`, `parent_id`, `kind`, `valid_at`, `created_at`) and `events` (as in [edge-events.md](edge-events.md#the-table), each with its `edge` in its current state; empty for a run that changed no fact, 404 for an unknown run).
 
+### In-context use
+
+The [in-context log](#schema) (`gb_graph_in_ctx_counters`) is shown in the admin UI in three places, all from `in_context` in the answer of `GET /v1/gb/admin/api/graph` (also in `GET /v1/gb/admin/api/evals/case_runs/{id}/graph`): `entities` and `edges`, each a map from the item's ID to `{"query": n, "remember": m}`, the number of times it went into the context of an LLM call in each pipeline (items that never did are absent; the counts are grouped in SQL by `graph.InContextCounts`).
+
+- **Graph view**: every node and edge has its count written over it (nothing for 0; an edge reads `relation ×N`), and the **in context** menu of the header picks the pipelines counted: all, `query` only or `remember` only. The tooltip and the details of a clicked node or fact give both counts.
+- **Histograms**: the bars button of a dataset of the main view, or the **histograms** button of the graph view, opens a modal with a d3 histogram of the counts per entity and then per edge (x: times in an LLM context, y: number of items; the bar of the items that never were is grey), the share that never were, and the ten most used items. The same menu picks the pipelines.
+
 ## Schema
 
 All tables are prefixed with `gb_` (see `internal/db/relational/{sqlite,postgres}/db_schema.go` for datasets and `internal/db/graph/{sqlite,postgres}/db_schema.go` for the graph tables).

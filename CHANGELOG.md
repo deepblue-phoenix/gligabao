@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.155.0] - 2026-11-02
+
+### Added
+- **In-context use in the admin UI.** The [in-context log](docs/remember.md#schema) (0.154.0) is now shown in three ways:
+  - The **knowledge graph** view (a dataset's graph, an eval case's graph) writes over every node and edge the number of times it went into the context of an LLM call (nothing for 0; edges as `relation ×N`; nodes are a bit bigger to hold the number). An **in context** menu in the header picks which pipelines are counted (all, `query` only or `remember` only), and the tooltip and the details of a clicked node or fact give both counts.
+  - A new **histograms** modal, opened by the new bars button on each dataset of the main view or by the **histograms** button of the graph view, draws a small d3 histogram of the counts per entity and then per edge (how many items were in a context 0, 1, 2, ... times; the bar of the ones that never were is grey), the share that never were, and the ten most used entities and edges with their `query` and `remember` counts.
+  - `GET /v1/gb/admin/api/graph` (and the eval case run's graph) now also answer with `in_context`: `entities` and `edges`, each a map from ID to `{query, remember}` (items that never were in a context are absent). The public `GET /v1/gb/datasets/{name}/graph` is unchanged.
+- `graph.InContextCounts` (SQLite and PostgreSQL): the counts per item and pipeline of a dataset, grouped in SQL, so a dataset's usage is shown without loading every row of the log.
+
 ## [0.154.0] - 2026-11-02
 
 ### Added

@@ -16,6 +16,8 @@ type GraphExport struct {
 	Edges    []graph.EvidenceEdge   `json:"edges"`
 	// Models are the models (gb_models) that inferred the entities and edges, which refer to them by model_id.
 	Models []relational.Model `json:"models"`
+	// DatasetID is the ID of the dataset (not in the JSON), for callers that add more data about it (the admin UI's in-context counts).
+	DatasetID int64 `json:"-"`
 }
 
 // ExportGraph returns the full graph of userID's live dataset called name (empty means the default dataset).
@@ -61,7 +63,7 @@ func exportGraph(ctx context.Context, d *sql.DB, dsID int64, name string) (*Grap
 	if err != nil {
 		return nil, err
 	}
-	return &GraphExport{Dataset: name, Entities: entities, Edges: edges, Models: models}, nil
+	return &GraphExport{Dataset: name, Entities: entities, Edges: edges, Models: models, DatasetID: dsID}, nil
 }
 
 // referencedModels returns the stored models that the entities and edges refer to, by name.

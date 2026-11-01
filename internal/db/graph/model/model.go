@@ -105,6 +105,15 @@ type InContextEvent struct {
 	CreatedAt time.Time `json:"created_at,omitempty"`
 }
 
+// InContextCount is how many times one entity or edge (ItemID, by Kind) went into a context, per pipeline (the number of its rows in
+// gb_graph_in_ctx_counters). Only items that have rows are listed by graph.InContextCounts.
+type InContextCount struct {
+	Kind     string `json:"kind"`
+	ItemID   int64  `json:"item_id"`
+	Query    int    `json:"query"`
+	Remember int    `json:"remember"`
+}
+
 // EvidenceEntity is a graph entity cited by an answer.
 type EvidenceEntity struct {
 	ID          int64  `json:"id"`

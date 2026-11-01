@@ -1,8 +1,10 @@
 package graph_test
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
+	"slices"
 	"testing"
 	"time"
 
@@ -109,5 +111,25 @@ func testInContextEvents(t *testing.T, d *sql.DB) {
 	}
 	if o, err := graph.ListInContextEvents(ctx, d, other); err != nil || len(o) != 1 || o[0].ItemID != bob {
 		t.Errorf("events of the other dataset: %+v, %v", o, err)
+	}
+
+	// The counts are the rows per item and pipeline; items without rows are not listed, nor those of the other dataset.
+	counts, err := graph.InContextCounts(ctx, d, dsID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCounts := []graph.InContextCount{
+		{Kind: graph.CounterEdge, ItemID: edge, Query: 1, Remember: 1},
+		{Kind: graph.CounterEntity, ItemID: alice, Query: 2},
+		{Kind: graph.CounterEntity, ItemID: acme, Query: 1},
+	}
+	slices.SortFunc(counts, func(a, b graph.InContextCount) int {
+		return cmp.Or(cmp.Compare(a.Kind, b.Kind), cmp.Compare(a.ItemID, b.ItemID))
+	})
+	slices.SortFunc(wantCounts, func(a, b graph.InContextCount) int {
+		return cmp.Or(cmp.Compare(a.Kind, b.Kind), cmp.Compare(a.ItemID, b.ItemID))
+	})
+	if !slices.Equal(counts, wantCounts) {
+		t.Errorf("counts = %+v, want %+v", counts, wantCounts)
 	}
 }

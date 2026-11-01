@@ -598,10 +598,24 @@
       <div id="research-prov-body" class="modal-body"></div>
     </dialog>
 
+    <dialog id="in-context-modal" class="modal">
+      <div class="modal-head">
+        <h2 id="in-context-title">In context</h2>
+        <span id="in-context-status" class="muted"></span>
+        <select id="in-context-mode" title="Which pipelines' uses to count"></select>
+        <button type="button" id="in-context-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div id="in-context-body" class="modal-body ic-body"></div>
+    </dialog>
+
     <dialog id="graph-modal" class="modal">
       <div class="modal-head">
         <h2 id="graph-title">Graph</h2>
         <span id="graph-status" class="muted"></span>
+        <label id="graph-use-box" class="muted graph-use" hidden title="The number over a node or edge: how many times it went into the context of an LLM call">in context:
+          <select id="graph-use"></select>
+        </label>
+        <button type="button" id="graph-histograms" class="small" title="Histograms of how many times the entities and edges were in an LLM context">histograms</button>
         <button type="button" id="graph-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <div id="graph-canvas"></div>

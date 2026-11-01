@@ -164,7 +164,8 @@ func GraphOf(dbs []Named) http.HandlerFunc {
 	}
 }
 
-// Graph serves GET /admin/api/graph?user_id=...&dataset=...: the entities and edges of the dataset.
+// Graph serves GET /admin/api/graph?user_id=...&dataset=...: the entities and edges of the dataset, and in_context: how many times each
+// went into the context of an LLM call, per pipeline (see graphView).
 func Graph(d *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -178,7 +179,13 @@ func Graph(d *sql.DB) http.HandlerFunc {
 			log.WithError(err).WithFields(log.Fields{"user_id": q.Get("user_id"), "dataset": q.Get("dataset")}).Error("admin: export graph failed")
 			httputil.Error(w, http.StatusInternalServerError, "failed to export graph")
 		default:
-			httputil.WriteJSON(w, http.StatusOK, g)
+			v, err := withInContext(r.Context(), d, g)
+			if err != nil {
+				log.WithError(err).WithFields(log.Fields{"user_id": q.Get("user_id"), "dataset": q.Get("dataset")}).Error("admin: in-context counts failed")
+				httputil.Error(w, http.StatusInternalServerError, "failed to count the in-context use")
+				return
+			}
+			httputil.WriteJSON(w, http.StatusOK, v)
 		}
 	}
 }

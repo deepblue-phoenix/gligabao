@@ -553,7 +553,12 @@ func EvalCaseRunGraph(d *sql.DB, s evalsdb.Store) http.HandlerFunc {
 			evalFail(w, err, "graph")
 			return
 		}
-		httputil.WriteJSON(w, http.StatusOK, g)
+		v, err := withInContext(ctx, d, g)
+		if err != nil {
+			evalFail(w, err, "graph")
+			return
+		}
+		httputil.WriteJSON(w, http.StatusOK, v)
 	}
 }
 
