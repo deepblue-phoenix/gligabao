@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -32,7 +33,10 @@ type evalCaseDebugResponse struct {
 	Status    core.Status  `json:"status"`
 	Verdict   core.Verdict `json:"verdict,omitempty"`
 	Error     string       `json:"error,omitempty"`
-	Answer    string       `json:"answer,omitempty"`
+	// Warnings are what the case run got through but the operator should know, taken from its trajectories: e.g. a model that does
+	// not take the thinking level the case asked for, so its calls ran without it (or with the provider's adaptive thinking).
+	Warnings []string `json:"warnings,omitempty"`
+	Answer   string   `json:"answer,omitempty"`
 	// Problems are the checks (assertions and conditions) that did not hold, PassedChecks the ones that did.
 	Problems     []string `json:"problems"`
 	PassedChecks []string `json:"passed_checks"`
@@ -105,9 +109,10 @@ func caseDefOf(ctx context.Context, d *sql.DB, s evalsdb.Store, c *core.CaseRun)
 
 // EvalCaseRunDebug serves GET /admin/api/evals/case_runs/{id}/debug: the checks of the case run (failed and held), its input, what
 // its def expects and the commentaries made on it, newest first. llm says whether a commentary can be asked for (nil: it cannot), rr
-// whether (and with which models) the case can be rerun (nil: it cannot). It also serves a case run that is still running (a rerun):
+// whether (and with which models) the case can be rerun (nil: it cannot). dir is the directory of the ATIF files (see EvalTrajectory), where
+// the warnings of the calls are read from. It also serves a case run that is still running (a rerun):
 // the checks are then empty. An unknown or non-knowledge case run is 404.
-func EvalCaseRunDebug(d *sql.DB, s evalsdb.Store, llm memory_core.LLM, rr EvalRerunner) http.HandlerFunc {
+func EvalCaseRunDebug(d *sql.DB, s evalsdb.Store, dir string, llm memory_core.LLM, rr EvalRerunner) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, ok := pathID(w, r)
 		if !ok {
@@ -132,6 +137,7 @@ func EvalCaseRunDebug(d *sql.DB, s evalsdb.Store, llm memory_core.LLM, rr EvalRe
 			CostUSD: c.CostUSD, StartedAt: timeOr(c.StartedAt, c.CreatedAt), FinishedAt: c.FinishedAt, Rerun: rerunOf(er.Params),
 			RerunOptions: rerunInfo(rr),
 		}
+		out.Warnings = trajectoryWarnings(m.Trajectories, dir)
 		if def != nil {
 			out.Name = def.Name
 			if dm, ok := def.Meta.(*core.KnowledgeCaseDefMeta); ok && dm != nil {
@@ -234,6 +240,21 @@ func EvalCaseRunCommentary(d *sql.DB, s evalsdb.Store, dir string, llm memory_co
 		}
 		httputil.WriteJSON(w, http.StatusOK, out)
 	}
+}
+
+// trajectoryWarnings are the warnings (the "warnings" of the extra) of the trajectories of a case run, each once, in call order. A
+// trajectory whose file cannot be read has none.
+func trajectoryWarnings(refs []core.KnowledgeTrajectory, dir string) []string {
+	var out []string
+	for _, t := range loadTrajectories(refs, dir) {
+		ws, _ := t.Extra["warnings"].([]any)
+		for _, w := range ws {
+			if msg, ok := w.(string); ok && !slices.Contains(out, msg) {
+				out = append(out, msg)
+			}
+		}
+	}
+	return out
 }
 
 // loadTrajectories reads the ATIF files of the trajectory references (see readTrajectoryFile); the ones that cannot be read or

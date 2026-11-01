@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
@@ -176,6 +178,25 @@ func WithTrajectoryDir(dir string) Option { return func(o *CallOptions) { o.Dir 
 type Trace struct {
 	b   *atif.Builder
 	dir string
+
+	mu       sync.Mutex
+	warnings []string
+}
+
+// Warn records something the operator should know about the call although it succeeded (e.g. a model that did not take the
+// thinking level asked for). The warnings are kept in the "warnings" of the trajectory's extra, once each. A nil Trace ignores it.
+func (t *Trace) Warn(msg string) {
+	if t == nil || msg == "" {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, w := range t.warnings {
+		if w == msg {
+			return
+		}
+	}
+	t.warnings = append(t.warnings, msg)
 }
 
 // StartTrace returns nil unless o asks for eval.
@@ -195,7 +216,7 @@ func (t *Trace) Wrap(llm LLM) LLM {
 	if t == nil {
 		return llm
 	}
-	return &tracingLLM{LLM: llm, b: t.b}
+	return &tracingLLM{LLM: llm, b: t.b, t: t}
 }
 
 func (t *Trace) User(message string) {
@@ -226,6 +247,11 @@ func (t *Trace) Finish(callErr error) *atif.Trajectory {
 	if callErr != nil {
 		t.b.SetNotes("failed: " + callErr.Error())
 	}
+	t.mu.Lock()
+	if len(t.warnings) > 0 {
+		t.b.SetExtra("warnings", slices.Clone(t.warnings))
+	}
+	t.mu.Unlock()
 	traj := t.b.Build()
 	if path, err := atif.WriteFile(t.dir, traj); err != nil {
 		log.WithError(err).WithField("trajectory_id", traj.TrajectoryID).Error("store ATIF trajectory")
@@ -317,6 +343,7 @@ func describeImages(images []ai.Image) string {
 type tracingLLM struct {
 	LLM
 	b *atif.Builder
+	t *Trace
 }
 
 func (l *tracingLLM) Complete(ctx context.Context, req ai.Request) (*ai.Response, error) {
@@ -334,11 +361,16 @@ func (l *tracingLLM) Complete(ctx context.Context, req ai.Request) (*ai.Response
 	if err != nil {
 		return nil, err
 	}
+	extra := map[string]any{"provider": resp.Provider, "stop_reason": resp.StopReason}
+	if resp.Warning != "" {
+		extra["warning"] = resp.Warning
+		l.t.Warn(resp.Warning)
+	}
 	l.b.Agent(atif.Step{
 		ModelName: resp.Model,
 		Message:   resp.Text,
 		Metrics:   &atif.Metrics{PromptTokens: resp.InputTokens, CompletionTokens: resp.OutputTokens, CostUSD: resp.CostUSD},
-		Extra:     map[string]any{"provider": resp.Provider, "stop_reason": resp.StopReason},
+		Extra:     extra,
 	})
 	return resp, nil
 }

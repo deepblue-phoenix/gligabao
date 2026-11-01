@@ -167,7 +167,11 @@ func handler(d *sql.DB, llm memory_core.LLM, eval bool, opts []memory_core.Optio
 				"dataset":    req.Dataset,
 				"session_id": sessionID,
 			}).Error("query failed")
-			httputil.Error(w, http.StatusBadGateway, "failed to answer query")
+			msg := "failed to answer query"
+			if eval { // the internal eval endpoint: the runner records the cause as the reason the case errored
+				msg += ": " + err.Error()
+			}
+			httputil.Error(w, http.StatusBadGateway, msg)
 			return
 		}
 		log.WithFields(log.Fields{

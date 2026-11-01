@@ -38,7 +38,7 @@ export interface CaseCommentary {
 }
 // What GET api/evals/case_runs/{id}/debug returns: everything about one case run in one place.
 export interface CaseDebug {
-  case_run_id: number; eval: string; name: string; status: Status; verdict?: Verdict; error?: string; answer?: string;
+  case_run_id: number; eval: string; name: string; status: Status; verdict?: Verdict; error?: string; warnings?: string[]; answer?: string;
   problems: string[]; passed_checks: string[];
   input: { remember?: { kind?: string; text?: string; text_file?: string }[]; query?: string };
   expected?: Record<string, unknown>; params?: Record<string, unknown>; dataset_id?: number;

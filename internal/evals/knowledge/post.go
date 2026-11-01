@@ -27,7 +27,14 @@ func post(ctx context.Context, url string, body, out any) error {
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+		msg := strings.TrimSpace(string(data))
+		var e struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal(data, &e) == nil && e.Error != "" {
+			msg = e.Error // the server's reason, without the JSON around it
+		}
+		return fmt.Errorf("status %d: %s", resp.StatusCode, msg)
 	}
 	return json.Unmarshal(data, out)
 }

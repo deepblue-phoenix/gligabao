@@ -79,6 +79,12 @@ async function openBookmarkedCase(b: Bookmark): Promise<void> {
 function caseLeft(d: CaseDebug, run: Run, e: CaseRun): HTMLElement[] {
   const out: HTMLElement[] = [h("h3", undefined, `Checks (${d.problems.length} failed, ${d.passed_checks.length} held)`)];
   if (d.error) out.push(h("p", "error", `The case could not run to the end: ${d.error}`));
+  // What went differently from the settings without failing the case (e.g. a model that does not take the thinking level asked for).
+  if (d.warnings?.length) {
+    const ul = h("ul", "case-warnings");
+    for (const w of d.warnings) ul.append(h("li", undefined, w));
+    out.push(h("h4", "case-warning-title", "Warnings"), ul);
+  }
   const checks = (cls: "pass" | "fail", list: string[]): HTMLElement => {
     const ul = h("ul", "checks");
     for (const c of list) ul.append(h("li", cls, c));
@@ -219,7 +225,13 @@ function rerunSection(d: CaseDebug, run: Run, experiment: string): HTMLElement[]
   const btn = h("button", undefined, "Re-run case");
   btn.type = "button";
   const msg = h("p", "muted");
-  form.append(field("Remember model", remember), field("Remember thinking", rememberThinking), field("Query model", query), field("Query thinking", queryThinking), btn);
+  // Per pipeline, the model and the thinking level go one under the other in a tight column.
+  const group = (...fields: HTMLElement[]): HTMLElement => {
+    const g = h("div", "rerun-group");
+    g.append(...fields);
+    return g;
+  };
+  form.append(group(field("Remember model", remember), field("Remember thinking", rememberThinking)), group(field("Query model", query), field("Query thinking", queryThinking)), btn);
   btn.addEventListener("click", () => {
     btn.disabled = true;
     msg.className = "muted";

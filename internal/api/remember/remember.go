@@ -107,6 +107,15 @@ func EvalHandler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, m
 	return handler(mgr, d, llm, true, mo)
 }
 
+// failureMessage is what a 502 says: the generic message, or in eval mode (the internal eval endpoints, whose caller is the eval runner)
+// also the cause, which is what the case run then records as the reason it errored (e.g. the provider's refusal of a request).
+func failureMessage(generic string, err error, eval bool) string {
+	if eval {
+		return generic + ": " + err.Error()
+	}
+	return generic
+}
+
 func handler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, eval bool, mo []memory_core.Option) http.HandlerFunc {
 	opts := append([]memory_core.Option(nil), mo...)
 	if eval {
@@ -219,7 +228,7 @@ func handler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, eval 
 				"duration_ms":     time.Since(start).Milliseconds(),
 				"error":           err.Error(),
 			})
-			httputil.Error(w, http.StatusBadGateway, "failed to process text")
+			httputil.Error(w, http.StatusBadGateway, failureMessage("failed to process text", err, eval))
 			return
 		}
 		log.WithFields(log.Fields{
@@ -355,7 +364,7 @@ func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory
 			"duration_ms": time.Since(start).Milliseconds(),
 			"error":       err.Error(),
 		})
-		httputil.Error(w, http.StatusBadGateway, "failed to process image")
+		httputil.Error(w, http.StatusBadGateway, failureMessage("failed to process image", err, memory_core.NewCallOptions(opts).Eval))
 		return
 	}
 	log.WithFields(log.Fields{

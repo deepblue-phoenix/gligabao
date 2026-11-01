@@ -88,7 +88,7 @@ func testEvalCaseRunDebugReruns(t *testing.T, d *sql.DB) {
 	reruns := func(id core.CaseRunID) []item {
 		t.Helper()
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /x/{id}", admin.EvalCaseRunDebug(d, store, nil, nil))
+		mux.HandleFunc("GET /x/{id}", admin.EvalCaseRunDebug(d, store, "", nil, nil))
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, httptest.NewRequest("GET", fmt.Sprintf("/x/%d", id), nil))
 		var out struct {

@@ -431,7 +431,7 @@ func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, geoRadiusKm float64,
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/graph", admin.EvalCaseRunGraph(e.DB, *e.EvalStore))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/temporal", admin.EvalCaseRunTemporal(e.DB, *e.EvalStore))
 		// The debug view of a failed case: its checks, and the LLM commentary on it (made on request with llm; nil: none can be made).
-		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/debug", admin.EvalCaseRunDebug(e.DB, *e.EvalStore, llm, e.EvalRerunner))
+		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/debug", admin.EvalCaseRunDebug(e.DB, *e.EvalStore, e.TrajectoryDir, llm, e.EvalRerunner))
 		mux.HandleFunc("POST /v1/gb/admin/api/evals/case_runs/{id}/commentary", admin.EvalCaseRunCommentary(e.DB, *e.EvalStore, e.TrajectoryDir, llm))
 		// The rerun of a case with other models, recorded in the experiment run of the case run (e.EvalRerunner nil: the server cannot).
 		mux.HandleFunc("POST /v1/gb/admin/api/evals/case_runs/{id}/rerun", admin.EvalCaseRunRerun(e.DB, *e.EvalStore, e.EvalRerunner))

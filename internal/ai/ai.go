@@ -11,7 +11,10 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 //---------------------------------------------------------------------------------------------
@@ -144,6 +147,10 @@ type Response struct {
 	// Reasoning is the reasoning level the call actually ran with (ReasoningNone if it did not reason, e.g. because the
 	// model does not support it). Empty from an LLM that does not report it.
 	Reasoning string
+	// Warning says what the provider made the call do differently from the request, in words for the operator: today, that
+	// the model does not take the thinking level asked for, so the call ran without thinking or with the provider's own
+	// kind of thinking (see Reasoning for the level it ran with). Empty when the call ran as asked.
+	Warning string
 	// InferenceID is the ID of the gb_inferences row that records this call. Set by memory_core.WithRecording, 0 if the
 	// call was not recorded.
 	InferenceID int64
@@ -159,7 +166,25 @@ type Client struct {
 	maxTokens  int
 	prices     *PriceTable
 	httpClient *http.Client
+
+	// thinkModes remembers, per model, the way of thinking that the provider accepted when it refused the budget (see
+	// thinkingFallback), so that the next calls to that model do not fail first. model (string) -> thinkMode.
+	thinkModes sync.Map
 }
+
+// thinkMode is how a request asks for thinking: a token budget (the Claude 3.7 to 4.5 way), the provider's adaptive thinking
+// steered by an effort (newer models, which refuse the budget), or not at all.
+type thinkMode struct {
+	kind string // thinkBudget, thinkAdaptive or thinkOff
+	// why is what the provider said when it refused the budget (empty for thinkBudget).
+	why string
+}
+
+const (
+	thinkBudget   = "budget"
+	thinkAdaptive = "adaptive"
+	thinkOff      = "off"
+)
 
 // Option configures a Client.
 type Option func(*Client)
@@ -214,28 +239,50 @@ func (c *Client) Complete(ctx context.Context, req Request) (*Response, error) {
 		maxTokens = c.maxTokens
 	}
 
-	ar0 := apiRequest{
-		Model:     model,
-		MaxTokens: maxTokens,
-		System:    req.System,
-		Messages:  req.Messages,
-	}
 	level, _ := NormalizeReasoning(req.Reasoning)
-	if b := ReasoningBudget(level); b > 0 && SupportsReasoning(model) {
-		// The budget is spent out of max_tokens, which must stay above it: it is added so the answer keeps its size.
-		ar0.MaxTokens = maxTokens + b
-		ar0.Thinking = &thinking{Type: "enabled", BudgetTokens: b}
-	} else {
-		level = ReasoningNone
-	}
-	body, err := json.Marshal(ar0)
-	if err != nil {
-		return nil, fmt.Errorf("ai: marshal request: %w", err)
+	budget := ReasoningBudget(level)
+	var warning string
+	mode := thinkMode{kind: thinkBudget}
+	switch {
+	case budget == 0:
+		level, mode.kind = ReasoningNone, thinkOff
+	case !SupportsReasoning(model):
+		warning = fmt.Sprintf("model %s does not support thinking: the thinking level %q was ignored and the call ran without thinking", model, level)
+		level, mode.kind = ReasoningNone, thinkOff
+	default:
+		if m, ok := c.thinkModes.Load(model); ok {
+			mode = m.(thinkMode)
+		}
 	}
 
-	data, err := c.post(ctx, body)
-	if err != nil {
-		return nil, err
+	var data []byte
+	for {
+		body, err := json.Marshal(c.apiRequestFor(model, maxTokens, req, level, budget, mode.kind))
+		if err != nil {
+			return nil, fmt.Errorf("ai: marshal request: %w", err)
+		}
+		var postErr error
+		if data, postErr = c.post(ctx, body); postErr == nil {
+			break
+		}
+		// The provider refuses the way of thinking asked for (e.g. "thinking.type.enabled is not supported for this model"):
+		// instead of failing the call, ask in the way it says it takes, or give up thinking, and say so in the response.
+		next, why := thinkingFallback(postErr, mode.kind)
+		if next == "" {
+			return nil, postErr
+		}
+		mode = thinkMode{kind: next, why: why}
+		c.thinkModes.Store(model, mode)
+		log.WithFields(log.Fields{"model": model, "reasoning": level, "thinking": next, "provider_said": why}).Warn("model refused the thinking request; retrying")
+	}
+	switch mode.kind {
+	case thinkAdaptive:
+		warning = fmt.Sprintf("model %s does not take a thinking budget: the thinking level %q ran as adaptive thinking with effort %q (provider said: %s)", model, level, effortOf(level), mode.why)
+	case thinkOff:
+		if budget > 0 && warning == "" {
+			warning = fmt.Sprintf("model %s does not support the thinking level %q: the call ran without thinking (provider said: %s)", model, level, mode.why)
+		}
+		level = ReasoningNone
 	}
 
 	var ar apiResponse
@@ -264,7 +311,64 @@ func (c *Client) Complete(ctx context.Context, req Request) (*Response, error) {
 		OutputTokens: u.OutputTokens,
 		CostUSD:      cost,
 		Reasoning:    level,
+		Warning:      warning,
 	}, nil
+}
+
+// apiRequestFor builds the Messages API request of a call that asks for thinking in the given way (see thinkMode). The thinking
+// budget is added to max_tokens, as thinking is spent out of it, so the answer keeps its size.
+func (c *Client) apiRequestFor(model string, maxTokens int, req Request, level string, budget int, kind string) apiRequest {
+	ar := apiRequest{Model: model, MaxTokens: maxTokens, System: req.System, Messages: req.Messages}
+	switch kind {
+	case thinkBudget:
+		ar.MaxTokens = maxTokens + budget
+		ar.Thinking = &thinking{Type: "enabled", BudgetTokens: budget}
+	case thinkAdaptive:
+		ar.MaxTokens = maxTokens + budget
+		ar.Thinking = &thinking{Type: "adaptive"}
+		ar.OutputConfig = &outputConfig{Effort: effortOf(level)}
+	}
+	return ar
+}
+
+// effortOf is the effort of Anthropic's adaptive thinking for a reasoning level ("low", "medium" or "high").
+func effortOf(level string) string {
+	if level == ReasoningMedium || level == ReasoningHigh {
+		return level
+	}
+	return ReasoningLow
+}
+
+// APIError is an error answer of the Anthropic API.
+type APIError struct {
+	Status  int
+	Type    string // e.g. "invalid_request_error"; empty if the body was not an API error
+	Message string
+}
+
+func (e *APIError) Error() string {
+	if e.Type == "" {
+		return fmt.Sprintf("ai: anthropic status %d: %s", e.Status, e.Message)
+	}
+	return fmt.Sprintf("ai: anthropic %d %s: %s", e.Status, e.Type, e.Message)
+}
+
+// thinkingFallback says how to retry a call that failed with err when it asked for thinking in the given way: the way to ask
+// next (thinkAdaptive when the provider says it takes that, thinkOff otherwise) and what the provider said, or "" if err is not a
+// refusal of the thinking request (or there is nothing left to try).
+func thinkingFallback(err error, kind string) (next, why string) {
+	var ae *APIError
+	if kind == thinkOff || !errors.As(err, &ae) || ae.Status != http.StatusBadRequest {
+		return "", ""
+	}
+	msg := strings.ToLower(ae.Message)
+	if !strings.Contains(msg, "thinking") || !(strings.Contains(msg, "not supported") || strings.Contains(msg, "adaptive")) {
+		return "", ""
+	}
+	if kind == thinkBudget && strings.Contains(msg, "thinking.type.adaptive") {
+		return thinkAdaptive, ae.Message
+	}
+	return thinkOff, ae.Message
 }
 
 // post sends a Messages API request body and returns the body of the 200 response; any other status is an error that
@@ -291,9 +395,9 @@ func (c *Client) post(ctx context.Context, body []byte) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		var e apiError
 		if json.Unmarshal(data, &e) == nil && e.Error.Message != "" {
-			return nil, fmt.Errorf("ai: anthropic %d %s: %s", resp.StatusCode, e.Error.Type, e.Error.Message)
+			return nil, &APIError{Status: resp.StatusCode, Type: e.Error.Type, Message: e.Error.Message}
 		}
-		return nil, fmt.Errorf("ai: anthropic status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+		return nil, &APIError{Status: resp.StatusCode, Message: strings.TrimSpace(string(data))}
 	}
 	return data, nil
 }
@@ -316,11 +420,17 @@ type apiRequest struct {
 	System    string    `json:"system,omitempty"`
 	Messages  []Message `json:"messages"`
 	Thinking  *thinking `json:"thinking,omitempty"`
+	// OutputConfig steers adaptive thinking (see thinkAdaptive).
+	OutputConfig *outputConfig `json:"output_config,omitempty"`
 }
 
 type thinking struct {
 	Type         string `json:"type"`
-	BudgetTokens int    `json:"budget_tokens"`
+	BudgetTokens int    `json:"budget_tokens,omitempty"`
+}
+
+type outputConfig struct {
+	Effort string `json:"effort"`
 }
 
 type contentBlock struct {

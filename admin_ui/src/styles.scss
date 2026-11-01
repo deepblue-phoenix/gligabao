@@ -500,6 +500,7 @@ code { font-size: 0.8rem; color: $muted; }
 // The rerun of a case with other models (evals.ts rerunSection) and its modal (showRerun).
 .rerun-form {
   display: flex; gap: 0.6rem; align-items: flex-end; flex-wrap: wrap;
+  .rerun-group { display: flex; flex-direction: column; gap: 0.3rem; }
   label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: $muted; select { min-width: 12rem; } }
 }
 #rerun-modal[open] { width: min(96vw, 64rem); height: 85vh; }
@@ -880,6 +881,8 @@ button.bookmark-btn {
 .tr-line.tr-status { color: $accent; }
 .tr-line.tr-log { color: $muted; font-style: italic; }
 .tr-line.error { color: $err; }
+.case-warning-title { color: #d29922; }
+.case-warnings { margin: 0.2rem 0 0.6rem; padding-left: 1.2rem; color: #d29922; font-size: 0.9rem; }
 .sidecar-warning { padding: 0.5rem 0.75rem; border: 1px solid $err; border-radius: 4px; }
 
 .backends { display: flex; align-items: baseline; gap: 0.5rem; margin: 0.5rem 0; font-size: 0.9em;

@@ -3,8 +3,10 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -204,5 +206,68 @@ func TestCompleteReasoningReported(t *testing.T) {
 		if _, thinks := got["thinking"]; thinks != (tc.want != ReasoningNone) {
 			t.Errorf("%+v: request = %v", tc, got)
 		}
+	}
+}
+
+// A model that refuses the thinking budget is not a failed call: with the "adaptive" hint the call is retried as adaptive thinking, without
+// it the call runs without thinking, and either way the response carries a warning and the next calls to the model do not fail first.
+func TestCompleteThinkingRefused(t *testing.T) {
+	for _, tc := range []struct {
+		name, message, wantType, wantReasoning string
+	}{
+		{"adaptive", `\"thinking.type.enabled\" is not supported for this model. Use \"thinking.type.adaptive\" and \"output_config.effort\" to control thinking behavior.`, "adaptive", ReasoningHigh},
+		{"off", `thinking is not supported for this model`, "", ReasoningNone},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls []map[string]any
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var got map[string]any
+				json.NewDecoder(r.Body).Decode(&got)
+				calls = append(calls, got)
+				th, _ := got["thinking"].(map[string]any)
+				if th["type"] == "enabled" || (tc.wantType == "" && th != nil) {
+					w.WriteHeader(http.StatusBadRequest)
+					w.Write([]byte(`{"type":"error","error":{"type":"invalid_request_error","message":"` + tc.message + `"}}`))
+					return
+				}
+				w.Write([]byte(`{"model":"m","stop_reason":"end_turn","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":1,"output_tokens":2}}`))
+			}))
+			defer srv.Close()
+			c, _ := New("k", WithBaseURL(srv.URL))
+			req := Request{Model: "claude-new", Messages: []Message{{Role: RoleUser, Content: "yo"}}, MaxTokens: 500, Reasoning: ReasoningHigh}
+			for i := 0; i < 2; i++ {
+				r, err := c.Complete(context.Background(), req)
+				if err != nil || r.Text != "hi" || r.Reasoning != tc.wantReasoning || !strings.Contains(r.Warning, "claude-new") {
+					t.Fatalf("call %d: got %+v, %v", i, r, err)
+				}
+			}
+			if len(calls) != 3 { // the first call is retried; the second one learns from it
+				t.Fatalf("%d requests, want 3", len(calls))
+			}
+			last := calls[2]
+			th, _ := last["thinking"].(map[string]any)
+			oc, _ := last["output_config"].(map[string]any)
+			if tc.wantType == "" && (th != nil || oc != nil || last["max_tokens"] != float64(500)) {
+				t.Errorf("request = %v", last)
+			}
+			if tc.wantType != "" && (th["type"] != "adaptive" || th["budget_tokens"] != nil || oc["effort"] != "high") {
+				t.Errorf("request = %v", last)
+			}
+		})
+	}
+}
+
+// Any other error is still an error, and a model that was asked for no thinking never gets the fallback.
+func TestCompleteOtherErrorsFail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"type":"error","error":{"type":"invalid_request_error","message":"max_tokens is too large"}}`))
+	}))
+	defer srv.Close()
+	c, _ := New("k", WithBaseURL(srv.URL))
+	_, err := c.Complete(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "yo"}}, Reasoning: ReasoningLow})
+	var ae *APIError
+	if !errors.As(err, &ae) || ae.Status != 400 || !strings.Contains(err.Error(), "ai: anthropic 400 invalid_request_error: max_tokens is too large") {
+		t.Fatalf("err = %v", err)
 	}
 }

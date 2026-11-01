@@ -43,6 +43,7 @@ func testEvalCaseRunCommentary(t *testing.T, d *sql.DB) {
 	dir := t.TempDir()
 	b := atif.NewBuilder(atif.Agent{Name: "gligabao-query", Version: "0.1"})
 	b.User("what is the marker in the trajectory?")
+	b.SetExtra("warnings", []string{"model m does not support the thinking level \"high\""})
 	traj := b.Build()
 	if _, err := atif.WriteFile(dir, traj); err != nil {
 		t.Fatal(err)
@@ -82,15 +83,19 @@ func testEvalCaseRunCommentary(t *testing.T, d *sql.DB) {
 		Commentable       bool
 		CommentaryEnabled bool `json:"commentary_enabled"`
 		Commentaries      []core.CaseCommentary
+		Warnings          []string
 	}
 	id := func(r recorded) string { return strconv.FormatInt(int64(r.CaseRunID), 10) }
 	llm := &commentLLM{}
-	debugOf := func(llm memory_core.LLM) http.HandlerFunc { return admin.EvalCaseRunDebug(d, store, llm, nil) }
+	debugOf := func(llm memory_core.LLM) http.HandlerFunc { return admin.EvalCaseRunDebug(d, store, dir, llm, nil) }
 
 	var dbg debug
 	if c := call(debugOf(llm), "GET", id(failed), "", &dbg); c != 200 || dbg.Eval != "s" || dbg.Name != "bad" || dbg.Verdict != "fail" || !dbg.Commentable ||
 		!dbg.CommentaryEnabled || len(dbg.PassedChecks) != 1 || dbg.Problems == nil || len(dbg.Commentaries) != 0 {
 		t.Fatalf("debug before: %d %+v", c, dbg)
+	}
+	if len(dbg.Warnings) != 1 || !strings.Contains(dbg.Warnings[0], "does not support the thinking level") {
+		t.Fatalf("warnings of the trajectories: %q", dbg.Warnings)
 	}
 	if c := call(debugOf(nil), "GET", id(failed), "", &dbg); c != 200 || dbg.CommentaryEnabled {
 		t.Fatalf("debug without an LLM: %d %+v", c, dbg)

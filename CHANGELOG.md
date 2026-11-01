@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.152.0] - 2026-11-01
+
+### Added
+- A model that refuses the **thinking level** a call asked for no longer fails the call. When Anthropic answers `400` that the thinking request is not supported (e.g. `"thinking.type.enabled" is not supported for this model. Use "thinking.type.adaptive" and "output_config.effort"...`), the call is retried the way the provider says it takes (adaptive thinking, with the level as its effort), or without thinking when it names none, and the model is remembered for the next calls. A Claude 3 / 3.5 model that is asked for thinking is also reported now, not only silently called without it. The inference records the level the call really ran with (`none` when thinking was dropped).
+- The response of such a call carries a **warning** (`ai.Response.Warning`), kept in the `warnings` of the call's ATIF trajectory (and in the `warning` of the step) and shown in the admin UI: the **case modal** of the Evals view has a **Warnings** section, and the trace of the call shows it in the step. `GET .../evals/case_runs/{id}/debug` returns `warnings`.
+
+### Fixed
+- Admin UI, **Evals** view: a case that errored because the LLM provider refused a request showed no reason (only a generic `failed to process text`). The eval endpoints (`/v1/gb/eval/remember`, `/v1/gb/eval/query`) now put the cause in their `502` message, and the runner records it without the JSON around it, so the case modal says why the case could not run to the end (e.g. the provider's own error text).
+
+### Changed
+- Admin UI, **Evals** view: in the **Re-run this case** section of the case modal, the model and the thinking level of a pipeline are now one under the other in a tight column, one column for **remember** and one for **query**, instead of four fields in a row.
+
 ## [0.151.1] - 2026-11-01
 
 ### Fixed

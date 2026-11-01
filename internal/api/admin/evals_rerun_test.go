@@ -137,7 +137,7 @@ func testEvalCaseRunRerun(t *testing.T, d *sql.DB) {
 		} `json:"rerun_options"`
 	}
 	var dbg debug
-	debugOf := func(rr admin.EvalRerunner) http.HandlerFunc { return admin.EvalCaseRunDebug(d, store, nil, rr) }
+	debugOf := func(rr admin.EvalRerunner) http.HandlerFunc { return admin.EvalCaseRunDebug(d, store, "", nil, rr) }
 	if c, body := call(debugOf(rr), "GET", id(orig), "", &dbg); c != 200 || dbg.Rerun != nil || dbg.RerunOptions == nil || fmt.Sprint(dbg.RerunOptions.Models) != "[alpha-model zeta-model]" ||
 		fmt.Sprint(dbg.RerunOptions.Reasoning) != "[none low medium high]" {
 		t.Fatalf("debug of the original: %d %s", c, body)
