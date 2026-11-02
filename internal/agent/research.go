@@ -53,6 +53,7 @@ func ResearchAgent(client *ai.Client, httpClient *http.Client, kb Knowledge) *Ag
 	}
 	a := &Agent{
 		Client:    client,
+		Name:      "gligabao-research",
 		System:    prompts.Research,
 		Tools:     []Tool{webSearchTool(client), fetchURLTool(httpClient)},
 		MaxTokens: 8192,

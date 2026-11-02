@@ -24,6 +24,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
@@ -66,6 +67,8 @@ type output struct {
 	InputTokens  int     `json:"input_tokens"`
 	OutputTokens int     `json:"output_tokens"`
 	CostUSD      float64 `json:"cost_usd"`
+	// Trajectory is the ATIF trajectory of the research, with the steps of all the sub-agents merged in; only with --atif.
+	Trajectory *atif.Trajectory `json:"trajectory,omitempty"`
 }
 
 // run is main without the process: it returns the exit code. The report goes to stdout; everything else (progress, cost, errors) to
@@ -78,6 +81,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		model       = fs.String("model", "", "model to run on; it must support Anthropic's web search tool (default: the built-in default)")
 		timeout     = fs.Duration("timeout", 0, "give up after this long, e.g. 10m (default: no limit)")
 		asJSON      = fs.Bool("json", false, "print the report and the totals as JSON instead of the plain report")
+		withATIF    = fs.Bool("atif", false, "add the ATIF trajectory of the research (the sub-agents' steps merged into it) to the --json output as \"trajectory\"")
+		atifDir     = fs.String("atif-dir", "", "store the ATIF trajectory of the research in this directory as <trajectory_id>.json")
 		verbose     = fs.Bool("verbose", false, "log every step and tool call to stderr")
 		showVersion = fs.Bool("version", false, "print the version and exit")
 		configPath  = fs.String("config", "", "gligabao.toml to read the settings from (API keys, db_backend, postgres_dsn, vector_store, ...); default: the environment only")
@@ -111,6 +116,10 @@ Flags:
 		return exitOK
 	}
 
+	if *withATIF && !*asJSON {
+		fmt.Fprintln(stderr, "gligabao_agent: --atif adds the trajectory to the --json output: use it with --json (or --atif-dir to store it in a file)")
+		return exitUsage
+	}
 	topic, err := readTopic(fs.Args(), stdin)
 	if err != nil {
 		fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
@@ -173,6 +182,10 @@ Flags:
 	if *verbose {
 		progress = stderr
 	}
+	var trajectory func() *atif.Trajectory
+	if *withATIF || *atifDir != "" {
+		trajectory = a.captureTrajectory()
+	}
 	out, err := a.runResearch(ctx, userID, agent_research.Options{Topic: topic, MaxSteps: *maxSteps, Model: *model, Dataset: datasetName}, progress)
 	if err != nil {
 		fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
@@ -180,6 +193,19 @@ Flags:
 	}
 	if out.DrainErr != nil {
 		fmt.Fprintf(stderr, "gligabao_agent: some text that was queued for the knowledge base was not absorbed: %v\n", out.DrainErr)
+	}
+	var traj *atif.Trajectory
+	if trajectory != nil {
+		// Also for a research that failed: that is when it is most wanted.
+		if traj = trajectory(); traj == nil {
+			fmt.Fprintln(stderr, "gligabao_agent: no ATIF trajectory was recorded")
+		} else if *atifDir != "" {
+			if path, err := atif.WriteFile(*atifDir, traj); err != nil {
+				fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
+			} else {
+				fmt.Fprintf(stderr, "ATIF trajectory: %s\n", path)
+			}
+		}
 	}
 	steps, toolCalls, in, outTokens, cost := out.totals()
 	fmt.Fprintf(stderr, "run %d, sub-agents: %d, steps: %d, tool calls: %d, tokens: %d in / %d out, cost: $%.4f\n", out.Root.ID, len(out.Kids), steps, toolCalls, in, outTokens, cost)
@@ -195,7 +221,7 @@ Flags:
 	if *asJSON {
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(output{out.Root.Report, out.Root.ID, len(out.Kids), steps, toolCalls, in, outTokens, cost}); err != nil {
+		if err := enc.Encode(output{out.Root.Report, out.Root.ID, len(out.Kids), steps, toolCalls, in, outTokens, cost, trajectoryIf(*withATIF, traj)}); err != nil {
 			fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
 			return exitError
 		}
@@ -203,6 +229,14 @@ Flags:
 	}
 	fmt.Fprintln(stdout, out.Root.Report)
 	return exitOK
+}
+
+// trajectoryIf is t if on, else nil (left out of the JSON).
+func trajectoryIf(on bool, t *atif.Trajectory) *atif.Trajectory {
+	if on {
+		return t
+	}
+	return nil
 }
 
 // loadConfig reads the settings: the file at path, or with no path the defaults, which take the API keys and the PostgreSQL

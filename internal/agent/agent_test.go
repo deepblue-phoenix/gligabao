@@ -7,11 +7,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 )
 
 // fakeAPI answers with the given responses, in order, and records the request bodies.
@@ -214,5 +217,96 @@ func TestConcurrentRunsOfOneAgentAreIsolated(t *testing.T) {
 			o.res.InputTokens != 102 || o.res.OutputTokens != 102 || o.res.CostUSD != 1 {
 			t.Fatalf("run %d is not isolated: %+v, %v", i, o.res, o.err)
 		}
+	}
+}
+
+func TestTrajectoryIsOffByDefault(t *testing.T) {
+	client, _ := fakeAPI(t, `{"model":"m","content":[{"type":"text","text":"done"}],"usage":{}}`)
+	res, err := (&Agent{Client: client}).Run(context.Background(), "go")
+	if err != nil || res.Trajectory != nil || res.TrajectoryPath != "" {
+		t.Fatalf("got %+v, %v", res, err)
+	}
+}
+
+func TestRunReturnsAndStoresTheTrajectory(t *testing.T) {
+	client, _ := fakeAPI(t,
+		`{"model":"m","stop_reason":"tool_use","content":[{"type":"text","text":"let me check"},{"type":"tool_use","id":"t1","name":"echo","input":{"query":"hi"}},{"type":"tool_use","id":"t2","name":"echo","input":{}}],"usage":{"input_tokens":1,"output_tokens":2}}`,
+		`{"model":"m","stop_reason":"end_turn","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":3,"output_tokens":4}}`,
+	)
+	echo := Tool{Name: "echo", Schema: objectSchema("query", "q"), Run: func(ctx context.Context, input json.RawMessage) (string, error) {
+		ReportUsage(ctx, 100, 10, 0.5)
+		q, err := stringArg(input, "query")
+		return "echo:" + q, err
+	}}
+	dir := filepath.Join(t.TempDir(), "atif")
+	a := &Agent{Client: client, System: "sys", Tools: []Tool{echo}, Name: "my-agent", SessionID: "sess-1", Trajectory: true, TrajectoryDir: dir}
+	res, err := a.Run(context.Background(), "go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := res.Trajectory
+	if tr == nil {
+		t.Fatal("no trajectory")
+	}
+	if tr.Agent.Name != "my-agent" || tr.Agent.ModelName != "m" || tr.SessionID != "sess-1" || tr.SchemaVersion != atif.SchemaVersion {
+		t.Fatalf("header: %+v", tr)
+	}
+	// system, user, the step with two tool calls, the final answer
+	if len(tr.Steps) != 4 {
+		t.Fatalf("steps: %+v", tr.Steps)
+	}
+	if tr.Steps[0].Source != atif.SourceSystem || tr.Steps[0].Message != "sys" || tr.Steps[1].Source != atif.SourceUser || tr.Steps[1].Message != "go" {
+		t.Fatalf("prompts: %+v", tr.Steps[:2])
+	}
+	s := tr.Steps[2]
+	if s.Message != "let me check" || s.Source != atif.SourceAgent || len(s.ToolCalls) != 2 || s.ToolCalls[0].ToolCallID != "t1" ||
+		s.ToolCalls[0].FunctionName != "echo" || s.ToolCalls[0].Arguments["query"] != "hi" {
+		t.Fatalf("tool step: %+v", s)
+	}
+	if got := s.Observation.Results; len(got) != 2 || got[0].SourceCallID != "t1" || got[0].Content != "echo:hi" || got[1].SourceCallID != "t2" {
+		t.Fatalf("observation: %+v", got)
+	}
+	if s.Metrics.PromptTokens != 1 || s.Metrics.CompletionTokens != 2 {
+		t.Fatalf("metrics: %+v", s.Metrics)
+	}
+	if failed, _ := s.Extra["failed_tool_calls"].([]string); len(failed) != 1 || failed[0] != "t2" {
+		t.Fatalf("extra: %+v", s.Extra)
+	}
+	if u, _ := s.Extra["tools_usage"].(map[string]any); u["input_tokens"] != 200 || u["cost_usd"] != 1.0 {
+		t.Fatalf("tools usage: %+v", s.Extra)
+	}
+	if tr.Steps[3].Message != "done" || tr.Steps[3].ToolCalls != nil {
+		t.Fatalf("last step: %+v", tr.Steps[3])
+	}
+	if tr.FinalMetrics.TotalPromptTokens != 4 || tr.FinalMetrics.TotalCompletionTokens != 6 {
+		t.Fatalf("final metrics: %+v", tr.FinalMetrics)
+	}
+	if r, _ := tr.Extra["result"].(map[string]any); r["input_tokens"] != res.InputTokens || r["answer"] != "done" {
+		t.Fatalf("result extra: %+v", tr.Extra)
+	}
+	if want := filepath.Join(dir, tr.TrajectoryID+".json"); res.TrajectoryPath != want {
+		t.Fatalf("path %q, want %q", res.TrajectoryPath, want)
+	}
+	if _, err := os.Stat(res.TrajectoryPath); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFailedRunStillHasATrajectory(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":{"type":"invalid_request_error","message":"nope"}}`))
+	}))
+	t.Cleanup(srv.Close)
+	client, err := ai.New("k", ai.WithBaseURL(srv.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := (&Agent{Client: client, Trajectory: true}).Run(context.Background(), "go")
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if res.Trajectory == nil || !strings.HasPrefix(res.Trajectory.Notes, "failed: ") || res.TrajectoryPath != "" {
+		t.Fatalf("trajectory: %+v", res)
 	}
 }

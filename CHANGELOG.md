@@ -5,6 +5,15 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.164.0] - 2026-11-02
+
+### Added
+- **The agent (`internal/agent`) can record a run as an ATIF trajectory**, set up like in `remember` / `query`: it is opt-in (`Agent.Trajectory`, off by default, nothing is recorded without it) and `Run` returns it in `Result.Trajectory`. It has the system prompt and the prompt, then one agent step per model call with its text, the tool calls it asked for (with the model's call IDs and arguments), their results, the model's tokens, cost and latency, and what the tools themselves spent (`tools_usage`, the failed calls in `failed_tool_calls`, the time of each in `tool_latency_ms`). The run's totals (the tools' spending included) and its answer are in the trajectory's `extra.result`. A run that fails also gets a trajectory (returned with the error, the error in its `notes`).
+- `Agent.TrajectoryDir` also stores the trajectory as `<trajectory_id>.json` there (`Result.TrajectoryPath`); empty (the default) only returns it, so a Lambda writes nothing. `Agent.Name` names the agent in it (`gligabao-research` for the research agent) and `Agent.SessionID` sets its session ID.
+- **The trajectories of a research's sub-agents are merged into the main agent's.** `agent_research.Manager.UseTrajectories(fn)` makes the agents of the researches started from then on record trajectories (off by default). When a research ends, `fn(runID, trajectory)` gets one trajectory, the main agent's, that holds the steps of every sub-agent, at every depth (each sub-agent's own sub-agents are merged into it first). The steps are in the order they started and numbered again, the final metrics are those of all of them, and each step says in its `extra` which agent took it (`agent`, `"main"` or the sub-agent's name; `run_id`, `parent_run_id`, `depth`). The trajectory's `extra.agents` lists the agents with their status, steps, tool calls, tokens and cost. It is also given for a research that failed or was stopped. The session ID is `research-<run id>`.
+- `gligabao_agent --atif` adds that trajectory to the `--json` output (`trajectory`), and `--atif-dir DIR` stores it as `<trajectory_id>.json`, also when the research failed. The server, its REST API and the MCP tools do not use it yet.
+- Internal: `atif.Trajectory.ComputeFinalMetrics`.
+
 ## [0.163.0] - 2026-11-02
 
 ### Added

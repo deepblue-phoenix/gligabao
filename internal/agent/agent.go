@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 )
 
 const (
@@ -43,6 +45,17 @@ type Agent struct {
 	MaxSteps int
 	// Observer is told about the progress of a Run, step by step; the zero value observes nothing.
 	Observer Observer
+
+	// Trajectory makes Run record the run as an ATIF trajectory (see package atif), returned in Result.Trajectory (also for a run that
+	// failed). Off by default: nothing is recorded.
+	Trajectory bool
+	// TrajectoryDir, with Trajectory, also stores the trajectory there as <trajectory_id>.json (Result.TrajectoryPath); empty means
+	// it is only returned.
+	TrajectoryDir string
+	// Name is the name of the agent in the trajectory; empty means "gligabao-agent".
+	Name string
+	// SessionID is the session ID of the trajectory, so that what one session did can be connected; empty means the trajectory's own ID.
+	SessionID string
 }
 
 // Observer receives the progress of a Run. Every field is optional. The functions are called on the goroutine that runs the agent,
@@ -105,6 +118,10 @@ type Result struct {
 	InputTokens  int
 	OutputTokens int
 	CostUSD      float64
+	// Trajectory is the ATIF trajectory of the run, when the Agent asked for one (Agent.Trajectory); nil otherwise.
+	Trajectory *atif.Trajectory
+	// TrajectoryPath is the file it was stored in (Agent.TrajectoryDir); empty when it was not stored.
+	TrajectoryPath string
 }
 
 // Run gives the prompt to the model and loops until it answers without calling a tool.
@@ -130,7 +147,8 @@ type loop struct {
 	specs     []any
 
 	// What changes while it runs.
-	spent    usage // what the tools of the current step spent on their own
+	trace    *tracer // nil unless a trajectory was asked for
+	spent    usage   // what the tools of the current step spent on their own
 	messages []any
 	res      Result
 }
@@ -157,11 +175,19 @@ func newLoop(a *Agent, prompt string) *loop {
 		l.tools[t.Name] = t
 		l.specs = append(l.specs, map[string]any{"name": t.Name, "description": t.Description, "input_schema": t.Schema})
 	}
+	l.trace = newTracer(a, prompt, l)
 	return l
 }
 
-// run is the loop itself.
+// run is the loop itself, and the trajectory of it, if there is one.
 func (l *loop) run(ctx context.Context) (*Result, error) {
+	res, err := l.steps(ctx)
+	l.trace.finish(res, err)
+	return res, err
+}
+
+// steps goes through the model calls and tool runs.
+func (l *loop) steps(ctx context.Context) (*Result, error) {
 	ctx = context.WithValue(ctx, usageKey{}, &l.spent)
 	obs := l.obs
 	res := &l.res
@@ -183,6 +209,7 @@ func (l *loop) run(ctx context.Context) (*Result, error) {
 				payload["tool_choice"] = map[string]any{"type": "none"}
 			}
 		}
+		started := time.Now()
 		resp, err := l.client.Raw(ctx, payload)
 		if err != nil {
 			return res, err
@@ -194,6 +221,8 @@ func (l *loop) run(ctx context.Context) (*Result, error) {
 		if obs.AfterModel != nil {
 			obs.AfterModel(res.Steps, *res)
 		}
+
+		rec := l.trace.beginStep(started, resp)
 
 		// Collect the text, and run the tools the model asked for.
 		var text strings.Builder
@@ -207,6 +236,7 @@ func (l *loop) run(ctx context.Context) (*Result, error) {
 				Input json.RawMessage `json:"input"`
 			}
 			if err := json.Unmarshal(raw, &b); err != nil {
+				l.trace.endStep(rec, text.String())
 				return res, fmt.Errorf("agent: decode content block: %w", err)
 			}
 			switch b.Type {
@@ -217,8 +247,11 @@ func (l *loop) run(ctx context.Context) (*Result, error) {
 				if obs.BeforeTool != nil {
 					obs.BeforeTool(res.Steps, b.Name, b.Input)
 				}
+				rec.call(b.ID, b.Name, b.Input)
+				toolStarted := time.Now()
 				out, isErr := runTool(ctx, l.tools, b.Name, b.Input)
 				in, outTokens, cost := l.spent.drain()
+				rec.result(b.ID, out, isErr, time.Since(toolStarted), in, outTokens, cost)
 				res.InputTokens += in
 				res.OutputTokens += outTokens
 				res.CostUSD += cost
@@ -231,6 +264,7 @@ func (l *loop) run(ctx context.Context) (*Result, error) {
 			}
 		}
 		res.Answer = strings.TrimSpace(text.String())
+		l.trace.endStep(rec, text.String())
 		if len(results) == 0 {
 			return res, nil
 		}

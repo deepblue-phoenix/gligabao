@@ -12,6 +12,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
+	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -43,6 +44,10 @@ type member struct {
 	reason string
 	done   chan struct{}
 	out    outcome
+	// traj is the trajectory of the sub-agent with those of its own sub-agents merged in, and agents the entries of all of them; set
+	// (with out) before done is closed, and only if trajectories are recorded.
+	traj   *atif.Trajectory
+	agents []agentInfo
 }
 
 // ended reports whether the sub-agent has ended.
@@ -317,6 +322,8 @@ func (m *Manager) spawn(parent *researcher, name, reason, task string, maxSteps 
 	}
 	opts := Options{Topic: run.Topic, MaxSteps: maxSteps, Model: run.Model, Dataset: parent.opts.Dataset}
 	child := newResearcher(m, run, opts, parent.mem, parent)
+	child.onTrajectory = parent.onTrajectory
+	child.recordTrajectory()
 	if err := m.Messenger.Open(run.ID); err != nil {
 		log.WithError(err).WithField("run_id", run.ID).Error("agent research: opening the inbox failed")
 	}

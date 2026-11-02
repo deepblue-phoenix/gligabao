@@ -43,6 +43,9 @@ type Manager struct {
 
 	ctx context.Context
 	mem *Memory // the knowledge base of the agents (nil: they have only the web tools); guarded by mu
+	// onTrajectory, when set (UseTrajectories), makes the agents record ATIF trajectories and gets the merged one of each research;
+	// guarded by mu.
+	onTrajectory TrajectoryFunc
 
 	mu     sync.Mutex
 	active map[string]int        // running agents by user
@@ -117,7 +120,7 @@ func (m *Manager) Start(ctx context.Context, userID string, opts Options) (*core
 		return nil, conflictErr(fmt.Sprintf("you have %d research agents working already: wait for one to end", limit))
 	}
 	m.active[userID]++
-	mem := m.mem
+	mem, onTrajectory := m.mem, m.onTrajectory
 	m.mu.Unlock()
 	release := func() {
 		m.mu.Lock()
@@ -145,6 +148,8 @@ func (m *Manager) Start(ctx context.Context, userID string, opts Options) (*core
 
 	// Each agent gets a researcher (all of its state) and a goroutine of its own.
 	r := newResearcher(m, run, opts, mem, nil)
+	r.onTrajectory = onTrajectory
+	r.recordTrajectory()
 	m.track(r)
 	m.wg.Add(1)
 	go func() {

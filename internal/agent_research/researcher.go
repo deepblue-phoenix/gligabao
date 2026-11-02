@@ -14,6 +14,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -60,6 +61,11 @@ type researcher struct {
 	kids *family
 	self *member
 	out  outcome
+	// onTrajectory is set when trajectories are recorded (Manager.UseTrajectories). traj and agents are what finishTrajectory made of
+	// the trajectory of the agent and its sub-agents.
+	onTrajectory TrajectoryFunc
+	traj         *atif.Trajectory
+	agents       []agentInfo
 }
 
 // newResearcher makes the researcher of run (already recorded) with its own agent, observed by the researcher itself. mem is the
@@ -151,6 +157,17 @@ func (r *researcher) work() {
 	default:
 		r.finish(core.StatusCompleted, res.Answer, "")
 	}
+	r.finishTrajectory(res)
+}
+
+// recordTrajectory makes the agent record its run as an ATIF trajectory, if the manager was asked to (r.onTrajectory is set). The
+// trajectories of an agent and its sub-agents are merged by finishTrajectory, so none is stored on its own.
+func (r *researcher) recordTrajectory() {
+	if r.onTrajectory == nil {
+		return
+	}
+	r.agent.Trajectory = true
+	r.agent.SessionID = SessionID(r.run.ID)
 }
 
 // endKids cancels the sub-agents of the agent and waits until they have ended.
@@ -166,6 +183,7 @@ func (r *researcher) end() {
 	}
 	r.mgr.Messenger.Close(r.run.ID)
 	r.self.out = r.out
+	r.self.traj, r.self.agents = r.traj, r.agents
 	close(r.self.done)
 }
 

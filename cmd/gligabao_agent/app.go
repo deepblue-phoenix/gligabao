@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent_memory"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
@@ -75,6 +77,23 @@ func (a *app) close() {
 	a.remember.Wait()
 	if err := a.database.Close(); err != nil {
 		log.WithError(err).Warn("closing the databases")
+	}
+}
+
+// captureTrajectory makes the agents of the researches started from now on record ATIF trajectories (the ones of the sub-agents merged
+// into the main agent's), and returns a function that gives the trajectory of the last research that ended (nil until one does).
+func (a *app) captureTrajectory() func() *atif.Trajectory {
+	var mu sync.Mutex
+	var got *atif.Trajectory
+	a.research.UseTrajectories(func(_ int64, t *atif.Trajectory) {
+		mu.Lock()
+		got = t
+		mu.Unlock()
+	})
+	return func() *atif.Trajectory {
+		mu.Lock()
+		defer mu.Unlock()
+		return got
 	}
 }
 

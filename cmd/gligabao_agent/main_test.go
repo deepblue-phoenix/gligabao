@@ -47,18 +47,19 @@ func TestUsageErrors(t *testing.T) {
 		args      []string
 		want      string
 	}{
-		"no topic":         {anthropic: "k", args: nil, want: "exactly one topic"},
-		"two topics":       {anthropic: "k", args: []string{"a", "b"}, want: "exactly one topic"},
-		"empty stdin":      {anthropic: "k", args: []string{"-"}, stdin: "  \n", want: "empty topic"},
-		"topic too long":   {anthropic: "k", args: []string{strings.Repeat("x", maxTopicChars+1)}, want: "too long"},
-		"steps too small":  {anthropic: "k", args: []string{"--max-steps", "0", "t"}, want: "--max-steps"},
-		"steps too big":    {anthropic: "k", args: []string{"--max-steps", "41", "t"}, want: "--max-steps"},
-		"bad user":         {anthropic: "k", args: []string{"--user", " ", "t"}, want: "user_id"},
-		"bad dataset":      {anthropic: "k", args: []string{"--dataset", "a b", "t"}, want: "dataset"},
-		"no anthropic key": {args: []string{"t"}, want: config.EnvAnthropicKey},
-		"no openai key":    {anthropic: "k", args: []string{"t"}, want: config.EnvOpenAIKey},
-		"bad flag":         {anthropic: "k", args: []string{"--nope", "t"}, want: "not defined"},
-		"missing config":   {anthropic: "k", args: []string{"--config", "/nonexistent/gligabao.toml", "t"}, want: "nonexistent"},
+		"no topic":          {anthropic: "k", args: nil, want: "exactly one topic"},
+		"two topics":        {anthropic: "k", args: []string{"a", "b"}, want: "exactly one topic"},
+		"empty stdin":       {anthropic: "k", args: []string{"-"}, stdin: "  \n", want: "empty topic"},
+		"topic too long":    {anthropic: "k", args: []string{strings.Repeat("x", maxTopicChars+1)}, want: "too long"},
+		"steps too small":   {anthropic: "k", args: []string{"--max-steps", "0", "t"}, want: "--max-steps"},
+		"steps too big":     {anthropic: "k", args: []string{"--max-steps", "41", "t"}, want: "--max-steps"},
+		"bad user":          {anthropic: "k", args: []string{"--user", " ", "t"}, want: "user_id"},
+		"bad dataset":       {anthropic: "k", args: []string{"--dataset", "a b", "t"}, want: "dataset"},
+		"no anthropic key":  {args: []string{"t"}, want: config.EnvAnthropicKey},
+		"no openai key":     {anthropic: "k", args: []string{"t"}, want: config.EnvOpenAIKey},
+		"atif without json": {anthropic: "k", args: []string{"--atif", "t"}, want: "--json"},
+		"bad flag":          {anthropic: "k", args: []string{"--nope", "t"}, want: "not defined"},
+		"missing config":    {anthropic: "k", args: []string{"--config", "/nonexistent/gligabao.toml", "t"}, want: "nonexistent"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			setKeys(t, tc.anthropic, tc.openai)
@@ -148,6 +149,7 @@ func TestResearchWithKnowledgeBaseAndSubagents(t *testing.T) {
 		t.Fatal(err)
 	}
 	var progress bytes.Buffer
+	trajectory := a.captureTrajectory()
 	out, err := a.runResearch(ctx, "u1", agent_research.Options{Topic: "ROOT TOPIC", MaxSteps: 6}, &progress)
 	if err != nil {
 		t.Fatal(err)
@@ -168,6 +170,19 @@ func TestResearchWithKnowledgeBaseAndSubagents(t *testing.T) {
 		if !strings.Contains(progress.String(), want) {
 			t.Errorf("progress lacks %q:\n%s", want, progress.String())
 		}
+	}
+	// The trajectory of the research has the steps of the sub-agent merged into the main agent's.
+	traj := trajectory()
+	if traj == nil {
+		t.Fatal("no trajectory")
+	}
+	perAgent := map[any]int{}
+	for _, st := range traj.Steps {
+		perAgent[st.Extra["agent"]]++
+	}
+	// system, user and 3 model calls for the main agent; system, user and 1 for the kid.
+	if perAgent["main"] != 5 || perAgent["kid"] != 3 || len(traj.Steps) != 8 {
+		t.Errorf("steps per agent: %v", perAgent)
 	}
 	// The remember run that did not wait has ended (not left started), and was done in the user's dataset.
 	runs, total, err := relational.ListRememberRuns(ctx, a.database.Relational, relational.RememberRunFilter{}, 10, 0)

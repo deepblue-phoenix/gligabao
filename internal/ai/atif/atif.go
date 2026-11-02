@@ -195,6 +195,12 @@ func (b *Builder) Build() *Trajectory {
 	defer b.mu.Unlock()
 	t := b.t
 	t.Steps = append([]Step(nil), b.t.Steps...)
+	t.ComputeFinalMetrics()
+	return &t
+}
+
+// ComputeFinalMetrics sets the final metrics from the steps (Build does it; call it again after changing the steps).
+func (t *Trajectory) ComputeFinalMetrics() {
 	fm := &FinalMetrics{TotalSteps: len(t.Steps)}
 	for _, s := range t.Steps {
 		if m := s.Metrics; m != nil {
@@ -205,7 +211,6 @@ func (b *Builder) Build() *Trajectory {
 		}
 	}
 	t.FinalMetrics = fm
-	return &t
 }
 
 //---------------------------------------------------------------------------------------------
