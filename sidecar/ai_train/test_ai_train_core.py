@@ -638,10 +638,13 @@ class ApiTest(unittest.TestCase):
             return "fc-1"
         self.agent_calls = []
 
-        def spawn_agent(topic, max_steps, model, ds, job_id):
+        self.agent_extra = []
+
+        def spawn_agent(topic, max_steps, model, ds, job_id, **extra):
             if self.spawn_error:
                 raise self.spawn_error
             self.agent_calls.append((topic, max_steps, model, ds, job_id))
+            self.agent_extra.append(extra)
             return "fc-agent"
         self.spawn_agent = spawn_agent
         api = create_api(
@@ -871,12 +874,23 @@ class ApiTest(unittest.TestCase):
         self.assertTrue(progress_events.valid_job_id(job["job_id"]))
         self.assertEqual(self.agent_calls, [("batteries", 7, "m", "d", job["job_id"])])
         self.assertEqual(self.log(job["job_id"]).meta()["call_id"], "fc-agent")  # for the watchdog
+        self.assertEqual(self.agent_extra[0], {"agent": "", "agent_bundle": "", "max_cost_usd": 0.0})
         r = self.client.post("/research/job_start", json={"topic": "t"})  # defaults
         self.assertEqual(self.agent_calls[-1][1:4], (20, "", ""))
 
+    def test_research_job_start_with_an_agent(self):
+        bundle = {"agent": "scout", "defs": [{"name": "scout"}]}
+        r = self.client.post("/research/job_start", json={"topic": "t", "agent": "scout", "agent_bundle": bundle, "max_cost_usd": 1.5})
+        self.assertEqual(r.status_code, 200, r.text)
+        extra = self.agent_extra[-1]
+        self.assertEqual((extra["agent"], extra["max_cost_usd"]), ("scout", 1.5))
+        self.assertEqual(json.loads(extra["agent_bundle"]), bundle)
+
     def test_research_job_start_validates(self):
         for body in ({}, {"topic": " "}, {"topic": 5}, {"topic": "t", "max_steps": 0}, {"topic": "t", "max_steps": 41},
-                     {"topic": "t", "max_steps": "9"}, {"topic": "t", "model": "a b"}, {"topic": "t", "dataset": "a b"}):
+                     {"topic": "t", "max_steps": "9"}, {"topic": "t", "model": "a b"}, {"topic": "t", "dataset": "a b"},
+                     {"topic": "t", "agent": "a b"}, {"topic": "t", "agent_bundle": "x"}, {"topic": "t", "max_cost_usd": -1},
+                     {"topic": "t", "max_cost_usd": "5"}, {"topic": "t", "max_cost_usd": True}):
             self.assertEqual(self.client.post("/research/job_start", json=body).status_code, 400, body)
         self.assertEqual(self.client.post("/research/job_start", content=b"[1]").status_code, 400)
         self.assertEqual(self.agent_calls, [])
@@ -1106,6 +1120,18 @@ class AgentRunTest(unittest.TestCase):
     def test_optional_flags_are_left_out(self):
         cmd = agent_run.build_command("/b", "/w", 5, "", "", 0)
         self.assertEqual(cmd, ["/b", "--json", "--events", "--max-steps", "5", "--db", "/w/gligabao.db", "-"])
+
+    def test_agent_flags(self):
+        cmd = agent_run.build_command("/b", "/w", 5, "", "", 0, "", "scout", "/w/agent_bundle.json", 2.5)
+        self.assertEqual(cmd, ["/b", "--json", "--events", "--max-steps", "5", "--db", "/w/gligabao.db", "--agent-bundle", "/w/agent_bundle.json",
+                               "--agent", "scout", "--max-cost-usd", "2.5", "-"])
+
+    def test_the_bundle_is_written_for_the_binary(self):
+        self.run_job(agent="scout", agent_bundle='{"agent":"scout","defs":[]}', max_cost_usd=3.0)
+        argv = json.loads(self.args_file.read_text())["argv"]
+        self.assertEqual(argv[argv.index("--agent") + 1], "scout")
+        self.assertEqual(argv[argv.index("--max-cost-usd") + 1], "3.0")
+        self.assertEqual(os.path.basename(argv[argv.index("--agent-bundle") + 1]), agent_run.BUNDLE_FILE)
 
     def test_failed(self):
         os.environ["FAKE_AGENT_MODE"] = "fail"

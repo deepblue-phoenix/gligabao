@@ -84,6 +84,15 @@ evals_knowledge_dirs = ["evals_knowledge"]
 # under the requesting user_id. Default if unset: none (only "content" works).
 ontology_dirs = ["ontology"]
 
+# Definitions of the research agents (docs/agent-defs.md): one TOML or JSON file per agent (prompt, skills, search and knowledge settings,
+# cost caps, sub-agent roles), read once at startup; a file that is not valid stops the server. Default if unset: "agent_defs" next to the
+# binary (it need not exist: only the built-in agent is then available). Relative to this file.
+agent_defs_dir = "agent_defs"
+
+# The most one research (all its agents together) may spend, in USD, whatever its agent definition and request say: they can only lower it.
+# When it is reached the agents write their reports and say so. 0 (default): no cap of the server.
+# research_max_cost_usd = 5.0
+
 # Model prices in USD per 1M tokens, used to compute the cost of each LLM call (stored with each inference in gb_inferences).
 # Keys are model-name prefixes: the longest matching prefix wins, so "claude-haiku-4-5" also matches
 # "claude-haiku-4-5-20251001". Entries here override the built-in prices or add new models.

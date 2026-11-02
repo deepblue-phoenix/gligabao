@@ -45,6 +45,10 @@ type Agent struct {
 	MaxSteps int
 	// Observer is told about the progress of a Run, step by step; the zero value observes nothing.
 	Observer Observer
+	// OutOfBudget, if set, is asked before each model call whether the run's budget is spent: it returns why ("" if not). When it
+	// says so, that call is the last, as if the steps had run out: the model is told, may not call tools, and its text is the answer
+	// (Result.OutOfBudget says why the run was cut short). The answer of a question that stays "" is never changed.
+	OutOfBudget func() string
 
 	// Trajectory makes Run record the run as an ATIF trajectory (see package atif), returned in Result.Trajectory (also for a run that
 	// failed). Off by default: nothing is recorded.
@@ -52,8 +56,9 @@ type Agent struct {
 	// TrajectoryDir, with Trajectory, also stores the trajectory there as <trajectory_id>.json (Result.TrajectoryPath); empty means
 	// it is only returned.
 	TrajectoryDir string
-	// Name is the name of the agent in the trajectory; empty means "gligabao-agent".
-	Name string
+	// Name is the name of the agent in the trajectory; empty means "gligabao-agent". Version is its version there; empty means "0.1".
+	Name    string
+	Version string
 	// SessionID is the session ID of the trajectory, so that what one session did can be connected; empty means the trajectory's own ID.
 	SessionID string
 }
@@ -118,6 +123,8 @@ type Result struct {
 	InputTokens  int
 	OutputTokens int
 	CostUSD      float64
+	// OutOfBudget is why the run was cut short by Agent.OutOfBudget ("" if it was not): the last call was made early, without tools.
+	OutOfBudget string
 	// Trajectory is the ATIF trajectory of the run, when the Agent asked for one (Agent.Trajectory); nil otherwise.
 	Trajectory *atif.Trajectory
 	// TrajectoryPath is the file it was stored in (Agent.TrajectoryDir); empty when it was not stored.
@@ -143,6 +150,7 @@ type loop struct {
 	maxSteps  int
 	maxTokens int
 	obs       Observer
+	budget    func() string
 	tools     map[string]Tool
 	specs     []any
 
@@ -162,6 +170,7 @@ func newLoop(a *Agent, prompt string) *loop {
 		maxSteps:  a.MaxSteps,
 		maxTokens: a.MaxTokens,
 		obs:       a.Observer,
+		budget:    a.OutOfBudget,
 		tools:     map[string]Tool{},
 		messages:  []any{map[string]any{"role": "user", "content": prompt}},
 	}
@@ -193,6 +202,14 @@ func (l *loop) steps(ctx context.Context) (*Result, error) {
 	res := &l.res
 	for res.Steps < l.maxSteps {
 		res.Steps++
+		if res.Steps < l.maxSteps && l.budget != nil {
+			if reason := l.budget(); reason != "" {
+				// The budget is spent: this call is the last, as if the steps had run out, and the model is told why.
+				l.maxSteps = res.Steps
+				res.OutOfBudget = reason
+				l.tellBudget(reason)
+			}
+		}
 		if obs.BeforeModel != nil {
 			obs.BeforeModel(res.Steps, res.Steps == l.maxSteps)
 		}
@@ -271,6 +288,19 @@ func (l *loop) steps(ctx context.Context) (*Result, error) {
 		l.messages = append(l.messages, map[string]any{"role": "user", "content": results})
 	}
 	return res, nil
+}
+
+// tellBudget adds to the user turn the model is about to answer (the results of its tools) that the budget is spent.
+func (l *loop) tellBudget(reason string) {
+	note := map[string]any{"type": "text", "text": "[Budget reached] " + reason + " This is your last turn: you cannot call tools any more. " +
+		"Write your final answer now, from what you have found so far, and say plainly what you could not cover."}
+	last, ok := l.messages[len(l.messages)-1].(map[string]any)
+	if !ok || last["role"] != "user" {
+		return
+	}
+	if blocks, ok := last["content"].([]any); ok {
+		last["content"] = append(blocks, note)
+	}
 }
 
 // runTool runs one tool call; failures (unknown tool, tool error) become the text the model reads.

@@ -312,3 +312,17 @@ func TestMCP(t *testing.T) {
 		t.Fatal("mcp = true was not read")
 	}
 }
+
+func TestAgentDefsAndResearchCostCap(t *testing.T) {
+	p := write(t, "agent_defs_dir = \"my_agents\"\nresearch_max_cost_usd = 7.5\n")
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AgentDefsDir != filepath.Join(filepath.Dir(p), "my_agents") || cfg.ResearchMaxCostUSD != 7.5 {
+		t.Errorf("got %q %v", cfg.AgentDefsDir, cfg.ResearchMaxCostUSD)
+	}
+	if _, err := Load(write(t, "research_max_cost_usd = -1\n")); err == nil {
+		t.Error("a negative cap is invalid")
+	}
+}

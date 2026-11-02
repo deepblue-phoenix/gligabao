@@ -12,9 +12,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/deepblue-phoenix/gligabao/internal/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -37,6 +39,9 @@ type Manager struct {
 	// MaxActivePerUser is how many agents of one user may work at once (DefaultMaxActivePerUser if 0). The sub-agents that the agents
 	// spawn are not counted: they are bounded by MaxSubagentsPerAgent, MaxSubagentsPerTree and MaxSubagentDepth.
 	MaxActivePerUser int
+	// MaxCostUSD is the most one research may spend, all its agents together, whatever the definition and the request say (0: no ceiling
+	// of the server). Set it before starting any agent.
+	MaxCostUSD float64
 	// Messenger carries the messages between the sibling agents (NewChanMessenger, Go channels, if nil when the manager is made).
 	// Set it before starting any agent to swap the message system.
 	Messenger Messenger
@@ -50,6 +55,8 @@ type Manager struct {
 	remote Remote
 	// importer loads what the agents of those researches hand back (nil: it is not imported); guarded by mu.
 	importer Importer
+	// defs are the agent definitions the researches can run (nil: only the built-in default); guarded by mu.
+	defs *agent_defs.Registry
 
 	mu      sync.Mutex
 	active  map[string]int        // running agents by user
@@ -97,6 +104,108 @@ func (m *Manager) UseMemory(mem *Memory) {
 	m.mu.Unlock()
 }
 
+// UseAgentDefs makes the definitions of reg the agents that a research can run (Options.Agent), and those that its agents spawn as
+// sub-agents (the roles of a definition). Researches already working are not changed. It checks that the datasets the definitions name
+// are valid, and returns the error of the first that is not. Without it only the built-in default agent is available.
+func (m *Manager) UseAgentDefs(reg *agent_defs.Registry) error {
+	for _, d := range reg.List() {
+		if d.Knowledge.Dataset == "" {
+			continue
+		}
+		if _, err := memory_core.ResolveDatasetName(d.Knowledge.Dataset); err != nil {
+			return fmt.Errorf("agent %q (%s): knowledge.dataset: %w", d.Name, d.Source, err)
+		}
+	}
+	m.mu.Lock()
+	m.defs = reg
+	m.mu.Unlock()
+	return nil
+}
+
+// builtinDefs is the registry of a manager that was given none.
+var builtinDefs = sync.OnceValue(agent_defs.BuiltinRegistry)
+
+// registry returns the definitions in use.
+func (m *Manager) registry() *agent_defs.Registry {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.defs == nil {
+		return builtinDefs()
+	}
+	return m.defs
+}
+
+// AgentInfo describes an agent definition that a research can run.
+type AgentInfo struct {
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+	// Hash is the SHA-256 of the definition's content; Source the file it was loaded from ("builtin" for the built-in agent).
+	Hash   string `json:"hash"`
+	Source string `json:"source"`
+	// Model, MaxSteps and the caps are the definition's settings; Subagents lists the roles it starts sub-agents for.
+	Model          string   `json:"model"`
+	MaxSteps       int      `json:"max_steps"`
+	MaxCostUSD     float64  `json:"max_cost_usd"`
+	MaxTreeCostUSD float64  `json:"max_tree_cost_usd"`
+	Knowledge      string   `json:"knowledge"`
+	Skills         []string `json:"skills"`
+	Subagents      []string `json:"subagents"`
+}
+
+// Agents lists the agent definitions, by name.
+func (m *Manager) Agents() []AgentInfo {
+	var out []AgentInfo
+	for _, d := range m.registry().List() {
+		info := AgentInfo{
+			Name: d.Name, Version: d.Version, Description: d.Description, Hash: d.Hash, Source: d.Source, Model: d.Model, MaxSteps: d.MaxSteps,
+			MaxCostUSD: d.Limits.MaxCostUSD, MaxTreeCostUSD: d.Limits.MaxTreeCostUSD, Knowledge: d.Knowledge.Access,
+			Skills: []string{}, Subagents: []string{},
+		}
+		for _, s := range d.Skills {
+			info.Skills = append(info.Skills, s.Name)
+		}
+		for _, r := range d.Spawn.Roles {
+			info.Subagents = append(info.Subagents, fmt.Sprintf("%s (%s, %s)", r.Name, r.Agent, r.Trigger))
+		}
+		out = append(out, info)
+	}
+	return out
+}
+
+// applyDef fills in what the definition decides for options that do not say: the model, the steps, the dataset, and the cap on the cost of
+// the whole research (the lowest of the request's, the definition's and the server's). KindInvalid for a dataset the definition locks.
+func (m *Manager) applyDef(opts Options, def *agent_defs.Def) (Options, error) {
+	opts.Agent = def.Name
+	if opts.Model == "" {
+		opts.Model = def.Model
+	}
+	if opts.MaxSteps == 0 {
+		opts.MaxSteps = def.MaxSteps
+	}
+	if k := def.Knowledge; k.Dataset != "" {
+		switch {
+		case k.DatasetLocked && opts.datasetGiven && opts.Dataset != k.Dataset:
+			return opts, invalidErr(fmt.Sprintf("the agent %q works in the dataset %q only", def.Name, k.Dataset))
+		case k.DatasetLocked || !opts.datasetGiven:
+			opts.Dataset = k.Dataset
+		}
+	}
+	opts.treeCostCap = lowestCap(def.Limits.MaxTreeCostUSD, opts.MaxCostUSD, m.MaxCostUSD)
+	return opts, nil
+}
+
+// lowestCap is the smallest of the caps that are set (positive); 0 if none is.
+func lowestCap(caps ...float64) float64 {
+	low := 0.0
+	for _, c := range caps {
+		if c > 0 && (low == 0 || c < low) {
+			low = c
+		}
+	}
+	return low
+}
+
 // Wait blocks until the running agents have ended (after the manager's context is done, or for tests).
 func (m *Manager) Wait() { m.wg.Wait() }
 
@@ -106,6 +215,13 @@ func (m *Manager) Wait() { m.wg.Wait() }
 func (m *Manager) Start(ctx context.Context, userID string, opts Options) (*core.Run, error) {
 	opts, err := opts.resolve()
 	if err != nil {
+		return nil, err
+	}
+	def, err := m.registry().Resolve(opts.Agent, opts.AgentVersion)
+	if err != nil {
+		return nil, invalidErr(err.Error())
+	}
+	if opts, err = m.applyDef(opts, def); err != nil {
 		return nil, err
 	}
 	m.mu.Lock()
@@ -142,10 +258,11 @@ func (m *Manager) Start(ctx context.Context, userID string, opts Options) (*core
 		m.mu.Unlock()
 	}
 	if opts.Runner == core.RunnerModal {
-		return m.startRemote(ctx, userID, opts, remote, release)
+		return m.startRemote(ctx, userID, opts, def, remote, release)
 	}
 
-	run := &core.Run{UserID: userID, Topic: opts.Topic, Status: core.StatusRunning, State: core.StateStarting, Model: opts.Model, MaxSteps: opts.MaxSteps}
+	run := &core.Run{UserID: userID, Topic: opts.Topic, Status: core.StatusRunning, State: core.StateStarting, Model: opts.Model, MaxSteps: opts.MaxSteps,
+		AgentName: def.Name, AgentVersion: def.Version, AgentHash: def.Hash}
 	dbCtx := context.WithoutCancel(ctx)
 	err = m.tx(dbCtx, func(q db.Execer) error {
 		if err := m.Ops.Store.CreateRun(dbCtx, q, run); err != nil {
@@ -162,7 +279,7 @@ func (m *Manager) Start(ctx context.Context, userID string, opts Options) (*core
 	rec := *run // what the caller gets; the researcher owns run from here on
 
 	// Each agent gets a researcher (all of its state) and a goroutine of its own.
-	r := newResearcher(m, run, opts, mem, nil)
+	r := newResearcher(m, run, opts, mem, nil, def)
 	r.onTrajectory = onTrajectory
 	r.recordTrajectory()
 	m.track(r)

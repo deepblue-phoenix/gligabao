@@ -37,6 +37,39 @@ type WebSearchRequest struct {
 	MaxTokens int
 	// MaxUses is the most searches the model may make; 0 means 3.
 	MaxUses int
+	// AllowedDomains restricts the searches to these sites, BlockedDomains keeps them off others (host names; a subdomain matches the
+	// host). Anthropic takes one of the two, not both. Empty means no restriction.
+	AllowedDomains []string
+	BlockedDomains []string
+	// Location, if not nil, is where the search is made from, so that the results are local (the tool's user_location).
+	Location *WebSearchLocation
+}
+
+// WebSearchLocation is the approximate place a web search is made from. Every field is optional; Country is an ISO 3166-1 alpha-2 code
+// and Timezone an IANA name.
+type WebSearchLocation struct {
+	Country, Region, City, Timezone string
+}
+
+// tool is the web search tool of the request.
+func (r WebSearchRequest) tool(maxUses int) map[string]any {
+	t := map[string]any{"type": webSearchToolType, "name": "web_search", "max_uses": maxUses}
+	if len(r.AllowedDomains) > 0 {
+		t["allowed_domains"] = r.AllowedDomains
+	}
+	if len(r.BlockedDomains) > 0 {
+		t["blocked_domains"] = r.BlockedDomains
+	}
+	if l := r.Location; l != nil {
+		loc := map[string]any{"type": "approximate"}
+		for k, v := range map[string]string{"country": l.Country, "region": l.Region, "city": l.City, "timezone": l.Timezone} {
+			if v != "" {
+				loc[k] = v
+			}
+		}
+		t["user_location"] = loc
+	}
+	return t
 }
 
 // WebSource is a web page that backs the answer of a WebSearch.
@@ -104,7 +137,7 @@ func (c *Client) WebSearch(ctx context.Context, req WebSearchRequest) (*WebSearc
 			"model":      model,
 			"max_tokens": maxTokens,
 			"messages":   messages,
-			"tools":      []any{map[string]any{"type": webSearchToolType, "name": "web_search", "max_uses": maxUses}},
+			"tools":      []any{req.tool(maxUses)},
 		}
 		if req.System != "" {
 			payload["system"] = req.System

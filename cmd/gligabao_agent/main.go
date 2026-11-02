@@ -23,6 +23,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/deepblue-phoenix/gligabao/internal/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
@@ -97,7 +98,11 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	fs := flag.NewFlagSet("gligabao_agent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var (
-		maxSteps    = fs.Int("max-steps", 20, fmt.Sprintf("most model calls, the last of which writes the report (1 to %d)", maxStepsLimit))
+		maxSteps    = fs.Int("max-steps", 0, fmt.Sprintf("most model calls, the last of which writes the report (1 to %d; default: the agent's, 20 for the default agent)", maxStepsLimit))
+		agentName   = fs.String("agent", "", "the agent definition to run (default: \"default\", the built-in research agent; with --agent-bundle, the agent the bundle is for)")
+		defsDir     = fs.String("agent-defs-dir", "", "directory the agent definitions (TOML or JSON files) are loaded from (default: "+agent_defs.DirName+" next to the binary; it need not exist)")
+		bundlePath  = fs.String("agent-bundle", "", "JSON file with the agent definitions to use instead of a directory (what a server sends to an agent that runs where it has no agent_defs directory, e.g. in Modal); not with --agent-defs-dir")
+		maxCost     = fs.Float64("max-cost-usd", 0, "cap on what the whole research may spend in USD, sub-agents included; it lowers the caps of the agent's definition (0: only those apply)")
 		model       = fs.String("model", "", "model to run on; it must support Anthropic's web search tool (default: the built-in default)")
 		timeout     = fs.Duration("timeout", 0, "give up after this long, e.g. 10m (default: no limit)")
 		asJSON      = fs.Bool("json", false, "print the report and the totals as JSON instead of the plain report")
@@ -117,7 +122,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		fmt.Fprintf(stderr, `Usage: gligabao_agent [flags] TOPIC | -
 
 Deep-research agent: searches the web, reads pages and prints a report on TOPIC (- reads it from stdin). It may spawn sub-agents
-for the parts of a broad topic. Each run costs money (model calls and web searches, sub-agents included).
+for the parts of a broad topic. --agent picks the agent definition (prompt, tools, search and knowledge settings, cost caps, sub-agents) from the
+agent_defs directory next to the binary (see docs/agent-defs.md). Each run costs money (model calls and web searches, sub-agents included).
 
 It works with the knowledge base (the memory of gligabao) in process, through its remember and query tools, and records every run
 and its states in the database, as the research jobs of the server do: the database is opened here (SQLite file, or PostgreSQL with
@@ -155,8 +161,25 @@ Flags:
 		fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
 		return exitUsage
 	}
-	if *maxSteps < 1 || *maxSteps > maxStepsLimit {
+	if *maxSteps < 0 || *maxSteps > maxStepsLimit {
 		fmt.Fprintf(stderr, "gligabao_agent: --max-steps must be between 1 and %d\n", maxStepsLimit)
+		return exitUsage
+	}
+	if *maxCost < 0 {
+		fmt.Fprintln(stderr, "gligabao_agent: --max-cost-usd must be 0 (no cap) or a positive number of USD")
+		return exitUsage
+	}
+	reg, bundleAgent, err := loadAgents(*bundlePath, *defsDir)
+	if err != nil {
+		fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
+		return exitUsage
+	}
+	agentToRun := *agentName
+	if agentToRun == "" {
+		agentToRun = bundleAgent
+	}
+	if _, err := reg.Resolve(agentToRun, ""); err != nil {
+		fmt.Fprintf(stderr, "gligabao_agent: --agent: %v\n", err)
 		return exitUsage
 	}
 	userID, err := memory_core.ResolveUserID(*user)
@@ -207,6 +230,10 @@ Flags:
 		return exitUsage
 	}
 	defer a.close()
+	if err := a.research.UseAgentDefs(reg); err != nil {
+		fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
+		return exitUsage
+	}
 
 	var onState func(stateEvent)
 	var onUsage func(totals)
@@ -220,7 +247,7 @@ Flags:
 	if *withATIF || *atifDir != "" || *exportPath != "" {
 		trajectory = a.captureTrajectory()
 	}
-	out, err := a.runResearch(ctx, userID, agent_research.Options{Topic: topic, MaxSteps: *maxSteps, Model: *model, Dataset: datasetName}, onState, onUsage)
+	out, err := a.runResearch(ctx, userID, agent_research.Options{Topic: topic, MaxSteps: *maxSteps, Model: *model, Dataset: datasetName, Agent: agentToRun, MaxCostUSD: *maxCost}, onState, onUsage)
 	if err != nil {
 		fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
 		return exitError
@@ -317,6 +344,22 @@ func trajectoryIf(on bool, t *atif.Trajectory) *atif.Trajectory {
 		return t
 	}
 	return nil
+}
+
+// loadAgents loads the agent definitions: from the bundle file, or from the directory (default: next to the binary; a directory that does not
+// exist leaves only the built-in default agent). It returns the registry and the agent the bundle is for ("" without a bundle).
+func loadAgents(bundlePath, dir string) (*agent_defs.Registry, string, error) {
+	switch {
+	case bundlePath != "" && dir != "":
+		return nil, "", errors.New("--agent-bundle and --agent-defs-dir both say where the agent definitions are: use one")
+	case bundlePath != "":
+		return agent_defs.LoadBundle(bundlePath)
+	}
+	if dir == "" {
+		dir = agent_defs.DefaultDir()
+	}
+	reg, err := agent_defs.Load(dir)
+	return reg, "", err
 }
 
 // loadConfig reads the settings: the file at path, or with no path the defaults, which take the API keys and the PostgreSQL

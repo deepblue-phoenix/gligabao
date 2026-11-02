@@ -8,7 +8,7 @@ Endpoints:
     GET  /training/job_progress?job_id=                          -> all the job's events so far, as {"progress": [...]}
     GET  /training/job_events?job_id=[&from=N]                   -> SSE stream of the job's progress events (see below)
     POST /training/job_cancel  {job_id}                          -> asks the job to stop (200 {job_id, status: "stopping"}); 404 unknown job, 409 already over
-    POST /research/job_start   {topic, max_steps?, model?, dataset?}  -> spawns the research agent (the gligabao_agent binary, see
+    POST /research/job_start   {topic, max_steps?, model?, dataset?, agent?, agent_bundle?, max_cost_usd?}  -> spawns the research agent (the gligabao_agent binary, see
                                        ai_train_core/agent_run.py), returns {job_id, provider_job_id, status}; 503 if the app was deployed
                                        without the binary
     GET  /research/job_events?job_id=[&from=N]                   -> SSE stream of the research job's events (same protocol as the training job's)
@@ -58,6 +58,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from api.models import TrainingDataset, TrainingJob
 from ai_train_core.dataset import store_dataset, valid_dataset_filename
+
+MAX_AGENT_BUNDLE_CHARS = 1 << 20   # the agent definitions (agent_defs.Bundle as JSON) a research job may carry
 from ai_train_core.model_families import model_sizes
 from ai_train_core.event_log import EventLog
 from ai_train_core.paths import DATA_DIR, EVAL_DATASET_PATH, EVAL_DIR
@@ -89,7 +91,7 @@ def create_api(
     reload_volumes: Callable[[list], None],
     event_kv,                                   # the key-value store of the event logs (Provider.event_kv)
     call_status: Callable[[str], object],       # (the provider's call id) -> CallStatus (Provider.call_status)
-    spawn_agent_job: Optional[Callable[..., str]] = None,   # (topic, max_steps, model, dataset, job_id) -> the provider's call id; None: no agent deployed
+    spawn_agent_job: Optional[Callable[..., str]] = None,   # (topic, max_steps, model, dataset, job_id, *, agent, agent_bundle, max_cost_usd) -> the provider's call id; None: no agent deployed
     poll_interval_s: float = 1.0,               # how often /training/job_events looks for new events
     max_stream_s: float = 300.0,                # how long one /training/job_events response lasts at most
     watchdog_s: float = 15.0,                   # how often an idle stream checks that the job's call is still alive
@@ -304,6 +306,20 @@ def create_api(
             return JSONResponse({"error": "model is not a valid model name"}, status_code=400)
         if not isinstance(dataset, str) or len(dataset) > 100 or any(c.isspace() for c in dataset):
             return JSONResponse({"error": "dataset is not a valid dataset name"}, status_code=400)
+        agent = data.get("agent") or ""
+        bundle = data.get("agent_bundle")
+        max_cost_usd = data.get("max_cost_usd")
+        if max_cost_usd is None:
+            max_cost_usd = 0.0
+        if not isinstance(agent, str) or len(agent) > 40 or any(c.isspace() for c in agent):
+            return JSONResponse({"error": "agent is not a valid agent name"}, status_code=400)
+        if bundle is not None and not isinstance(bundle, dict):
+            return JSONResponse({"error": "agent_bundle must be a JSON object (the agent definitions)"}, status_code=400)
+        bundle_json = json.dumps(bundle, separators=(",", ":")) if bundle else ""
+        if len(bundle_json) > MAX_AGENT_BUNDLE_CHARS:
+            return JSONResponse({"error": "agent_bundle is too big"}, status_code=400)
+        if isinstance(max_cost_usd, bool) or not isinstance(max_cost_usd, (int, float)) or not 0 <= max_cost_usd < 1e6:
+            return JSONResponse({"error": "max_cost_usd must be a number of USD, 0 for no cap"}, status_code=400)
         if spawn_agent_job is None:
             return JSONResponse({"error": "this Modal app has no research agent: build the gligabao_agent binary for Linux "
                                           "(./run_build.sh makes build/gligabao_agent_linux_amd64) and deploy the app again"},
@@ -313,7 +329,9 @@ def create_api(
         meta = {"created": time.time(), "kind": "research"}
         await run_in_threadpool(events.set_meta, meta)  # the job exists (cancel, events) before its container does
         try:
-            provider_job_id = await run_in_threadpool(spawn_agent_job, topic.strip(), max_steps, model, dataset, job_id)
+            provider_job_id = await run_in_threadpool(
+                lambda: spawn_agent_job(topic.strip(), max_steps, model, dataset, job_id,
+                                        agent=agent, agent_bundle=bundle_json, max_cost_usd=float(max_cost_usd)))
         except Exception as e:
             try:
                 await run_in_threadpool(write_status, events, "failed", error=f"the job could not be started: {e!r}"[:2000])

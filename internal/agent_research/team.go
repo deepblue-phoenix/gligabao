@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent"
+	"github.com/deepblue-phoenix/gligabao/internal/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
@@ -21,12 +22,14 @@ import (
 const (
 	// MaxSubagentDepth is how many generations of sub-agents a research may have: its sub-agents may spawn their own, whose agents
 	// may not spawn any more (with 2).
-	MaxSubagentDepth = 2
+	MaxSubagentDepth = agent_defs.MaxSubagentDepth
 	// MaxSubagentsPerAgent is the most sub-agents one agent spawns, and MaxSubagentsPerTree the most in the whole tree of a research.
-	MaxSubagentsPerAgent = 5
-	MaxSubagentsPerTree  = 10
-	// DefaultSubagentMaxSteps is the number of model calls a sub-agent may make when its parent says none.
-	DefaultSubagentMaxSteps = 10
+	// They are ceilings: the definition of an agent may lower them (its Spawn limits), never raise them.
+	MaxSubagentsPerAgent = agent_defs.MaxSubagentsPerAgent
+	MaxSubagentsPerTree  = agent_defs.MaxSubagentsPerTree
+	// DefaultSubagentMaxSteps is the number of model calls a free-form sub-agent (one spawned without a role) may make when its parent
+	// says none; a role has its own default.
+	DefaultSubagentMaxSteps = agent_defs.DefaultSubagentSteps
 )
 
 // outcome is how a run ended.
@@ -41,6 +44,7 @@ type outcome struct {
 type member struct {
 	id     int64
 	name   string
+	role   string // the role of the parent's definition it was spawned for ("" free-form)
 	reason string
 	done   chan struct{}
 	out    outcome
@@ -102,20 +106,38 @@ func (f *family) waitAll() {
 	}
 }
 
-// tree counts the sub-agents of one research (the root and everything below it).
+// tree is what the agents of one research (the root and everything below it) share: the count of the sub-agents and the money spent.
 type tree struct {
 	mu      sync.Mutex
 	spawned int
+	// max is the most sub-agents in the tree (the limit of the root's definition; 0 is MaxSubagentsPerTree).
+	max int
+	// costCap is the most the whole research may spend, in USD (0: no cap); cost is what its agents have spent so far; hit says that an
+	// agent was cut short, or a sub-agent refused, because of the cap.
+	costCap float64
+	cost    float64
+	hit     bool
 }
 
 func (t *tree) reserve() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.spawned >= MaxSubagentsPerTree {
+	max := t.max
+	if max <= 0 {
+		max = MaxSubagentsPerTree
+	}
+	if t.spawned >= max {
 		return false
 	}
 	t.spawned++
 	return true
+}
+
+func (t *tree) limit() int {
+	if t.max <= 0 {
+		return MaxSubagentsPerTree
+	}
+	return t.max
 }
 
 func (t *tree) release() {
@@ -124,21 +146,47 @@ func (t *tree) release() {
 	t.mu.Unlock()
 }
 
+// addCost adds what an agent spent since it last told.
+func (t *tree) addCost(usd float64) {
+	if usd == 0 {
+		return
+	}
+	t.mu.Lock()
+	t.cost += usd
+	t.mu.Unlock()
+}
+
+// capReached reports whether the research has spent what its cap allows; with markHit it also records that the cap has cost the
+// research something (an agent was cut short or a sub-agent refused), which the report of the root says.
+func (t *tree) capReached(markHit bool) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	reached := t.costCap > 0 && t.cost >= t.costCap
+	if reached && markHit {
+		t.hit = true
+	}
+	return reached
+}
+
+// capHit reports whether the cap cut the research short.
+func (t *tree) capHit() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.hit
+}
+
 // team is the view of one agent of the sub-agents and the messages (agent.Team).
 type team struct{ r *researcher }
 
 var _ agent.Team = team{}
 
 // Spawn starts a sub-agent of the agent.
-func (t team) Spawn(_ context.Context, name, reason, task string, maxSteps int) (string, error) {
+func (t team) Spawn(_ context.Context, role, name, reason, task string, maxSteps int) (string, error) {
 	r := t.r
-	if r.depth >= MaxSubagentDepth {
-		return "", fmt.Errorf("you cannot spawn sub-agents: sub-agents go at most %d levels deep", MaxSubagentDepth)
+	if !r.canSpawn() {
+		return "", fmt.Errorf("you cannot spawn sub-agents: sub-agents go at most %d levels deep", r.def.MaxDepth())
 	}
-	if maxSteps == 0 {
-		maxSteps = DefaultSubagentMaxSteps
-	}
-	child, err := r.mgr.spawn(r, name, reason, task, maxSteps)
+	child, err := r.mgr.spawn(r, role, name, reason, task, maxSteps)
 	if err != nil {
 		return "", err
 	}
@@ -268,8 +316,14 @@ func orNone(s string) string {
 }
 
 // spawn records a sub-agent of parent (a run with parent_id and name) and starts it in the background, on its own goroutine like
-// every agent. It is called on the goroutine of parent, by its tool. Errors are shown to the model of the parent.
-func (m *Manager) spawn(parent *researcher, name, reason, task string, maxSteps int) (*researcher, error) {
+// every agent. role is the role of the parent's definition the sub-agent is for: it decides the definition the sub-agent runs ("" when
+// the definition has no roles: the sub-agent is a copy of the parent). maxSteps 0 is the default of the role. It is called on the
+// goroutine of parent, by its tool (or by the start of the parent, for an on_start role). Errors are shown to the model of the parent.
+func (m *Manager) spawn(parent *researcher, role, name, reason, task string, maxSteps int) (*researcher, error) {
+	child, maxSteps, err := m.childDef(parent, role, maxSteps)
+	if err != nil {
+		return nil, err
+	}
 	switch {
 	case !agent.ValidSubagentName(name):
 		return nil, errors.New("name must be 1 to 40 letters, digits, - or _")
@@ -285,16 +339,26 @@ func (m *Manager) spawn(parent *researcher, name, reason, task string, maxSteps 
 	kids := parent.kids
 	kids.mu.Lock() // the name check, the record and the entry in the family are one step
 	defer kids.mu.Unlock()
+	instances := 0
 	for _, k := range kids.members {
 		if k.name == name {
 			return nil, fmt.Errorf("you have a sub-agent called %q already: choose another name", name)
 		}
+		if role != "" && k.role == role {
+			instances++
+		}
 	}
-	if len(kids.members) >= MaxSubagentsPerAgent {
-		return nil, fmt.Errorf("you have %d sub-agents already, the most one agent may have", MaxSubagentsPerAgent)
+	if limit := parent.def.MaxPerAgent(); len(kids.members) >= limit {
+		return nil, fmt.Errorf("you have %d sub-agents already, the most one agent may have", limit)
+	}
+	if rc, ok := parent.def.Role(role); ok && rc.MaxInstances > 0 && instances >= rc.MaxInstances {
+		return nil, fmt.Errorf("you have %d sub-agents of the role %q already, the most you may have", instances, role)
+	}
+	if parent.tree.capReached(true) {
+		return nil, fmt.Errorf("the cost cap of this research ($%.2f) was reached: you cannot start more sub-agents; go on with what you have", parent.tree.costCap)
 	}
 	if !parent.tree.reserve() {
-		return nil, fmt.Errorf("this research has %d sub-agents already, the most it may have", MaxSubagentsPerTree)
+		return nil, fmt.Errorf("this research has %d sub-agents already, the most it may have", parent.tree.limit())
 	}
 	ok := false
 	defer func() {
@@ -303,13 +367,23 @@ func (m *Manager) spawn(parent *researcher, name, reason, task string, maxSteps 
 		}
 	}()
 
+	// The sub-agent runs on the model of its own definition, else on its parent's, and in the dataset of its own definition, else its parent's.
+	model := child.Model
+	if model == "" {
+		model = parent.opts.Model
+	}
+	dataset := parent.opts.Dataset
+	if child.Knowledge.Dataset != "" {
+		dataset = child.Knowledge.Dataset
+	}
 	parentID := parent.run.ID
 	run := &core.Run{
 		UserID: parent.run.UserID, ParentID: &parentID, Name: name, Reason: strings.TrimSpace(reason), Topic: strings.TrimSpace(task),
-		Status: core.StatusRunning, State: core.StateStarting, Model: parent.opts.Model, MaxSteps: maxSteps,
+		Status: core.StatusRunning, State: core.StateStarting, Model: model, MaxSteps: maxSteps,
+		AgentName: child.Name, AgentVersion: child.Version, AgentHash: child.Hash,
 	}
 	dbCtx := context.WithoutCancel(m.ctx)
-	err := m.tx(dbCtx, func(q db.Execer) error {
+	err = m.tx(dbCtx, func(q db.Execer) error {
 		if err := m.Ops.Store.CreateRun(dbCtx, q, run); err != nil {
 			return err
 		}
@@ -320,22 +394,61 @@ func (m *Manager) spawn(parent *researcher, name, reason, task string, maxSteps 
 		log.WithError(err).WithField("parent_id", parentID).Error("agent research: recording the sub-agent failed")
 		return nil, errors.New("could not record the sub-agent")
 	}
-	opts := Options{Topic: run.Topic, MaxSteps: maxSteps, Model: run.Model, Dataset: parent.opts.Dataset}
-	child := newResearcher(m, run, opts, parent.mem, parent)
-	child.onTrajectory = parent.onTrajectory
-	child.recordTrajectory()
+	opts := Options{Topic: run.Topic, MaxSteps: maxSteps, Model: model, Dataset: dataset, Agent: child.Name}
+	sub := newResearcher(m, run, opts, parent.mem, parent, child)
+	sub.self.role = role
+	sub.onTrajectory = parent.onTrajectory
+	sub.recordTrajectory()
 	if err := m.Messenger.Open(run.ID); err != nil {
 		log.WithError(err).WithField("run_id", run.ID).Error("agent research: opening the inbox failed")
 	}
-	kids.members = append(kids.members, child.self)
-	m.track(child)
+	kids.members = append(kids.members, sub.self)
+	m.track(sub)
 	ok = true
 
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
-		defer m.untrack(child)
-		child.work()
+		defer m.untrack(sub)
+		sub.work()
 	}()
-	return child, nil
+	return sub, nil
+}
+
+// childDef finds the definition of the sub-agent that parent spawns for role, and its steps (maxSteps, or the default of the role).
+func (m *Manager) childDef(parent *researcher, role string, maxSteps int) (*agent_defs.Def, int, error) {
+	pd := parent.def
+	if role == "" {
+		if len(pd.Spawn.Roles) > 0 {
+			return nil, 0, fmt.Errorf("role is required: choose one of your roles (%s)", roleNames(pd))
+		}
+		if maxSteps == 0 {
+			maxSteps = DefaultSubagentMaxSteps
+		}
+		return pd, maxSteps, nil
+	}
+	rc, ok := pd.Role(role)
+	if !ok {
+		return nil, 0, fmt.Errorf("unknown role %q (yours: %s)", role, roleNames(pd))
+	}
+	child, err := parent.reg.RoleDef(rc)
+	if err != nil {
+		return nil, 0, err
+	}
+	def, limit := rc.Steps(child)
+	switch {
+	case maxSteps == 0:
+		maxSteps = def
+	case maxSteps > limit:
+		return nil, 0, fmt.Errorf("max_steps of the role %q is at most %d", role, limit)
+	}
+	return child, maxSteps, nil
+}
+
+func roleNames(d *agent_defs.Def) string {
+	names := make([]string, len(d.Spawn.Roles))
+	for i, r := range d.Spawn.Roles {
+		names[i] = r.Name
+	}
+	return strings.Join(names, ", ")
 }

@@ -142,6 +142,13 @@ type Config struct {
 	// these directories in order. Nothing is scanned or loaded at startup. Default: none (the "file" form is then rejected).
 	// `serve --ontology-dir` (repeatable) overrides it.
 	OntologyDirs []string `toml:"ontology_dirs"`
+	// AgentDefsDir is the directory the definitions of the research agents (one TOML or JSON file each, see docs/agent-defs.md) are loaded
+	// from when the server starts. Default: an agent_defs directory next to the binary. A relative path is relative to the config file.
+	// `serve --agent-defs-dir` overrides it.
+	AgentDefsDir string `toml:"agent_defs_dir"`
+	// ResearchMaxCostUSD is the most one research (all its agents together) may spend, in USD, whatever its agent definition and its
+	// request say: they can only lower it. 0 (default): no cap of the server.
+	ResearchMaxCostUSD float64 `toml:"research_max_cost_usd"`
 	// Prices overrides/extends the built-in per-model price table used to compute LLM call costs.
 	// Keys are model-name prefixes (the longest matching prefix wins).
 	Prices map[string]Price `toml:"prices"`
@@ -232,6 +239,9 @@ func (c *Config) Validate() error {
 	if c.GeoRadiusKm != 0 && (math.IsNaN(c.GeoRadiusKm) || c.GeoRadiusKm < 0 || c.GeoRadiusKm > memory_geo.MaxDistanceKm) {
 		return fmt.Errorf("config: geo_radius_km %v must be greater than 0 and at most %v", c.GeoRadiusKm, memory_geo.MaxDistanceKm)
 	}
+	if c.ResearchMaxCostUSD < 0 || math.IsNaN(c.ResearchMaxCostUSD) || math.IsInf(c.ResearchMaxCostUSD, 0) {
+		return fmt.Errorf("config: research_max_cost_usd %v must be 0 (no cap) or a positive number of USD", c.ResearchMaxCostUSD)
+	}
 	if err := c.Chunking().Validate(); err != nil {
 		return fmt.Errorf("config: chunk_size / chunk_overlap_percent: %w", err)
 	}
@@ -290,6 +300,9 @@ func Load(path string) (*Config, error) {
 // resolveDirs makes the relative directories of the *_dirs lists relative to base, the directory of the config file, so that they
 // do not depend on the working directory the program is started from.
 func (c *Config) resolveDirs(base string) {
+	if c.AgentDefsDir != "" && !filepath.IsAbs(c.AgentDefsDir) {
+		c.AgentDefsDir = filepath.Join(base, c.AgentDefsDir)
+	}
 	for _, list := range []*[]string{&c.DatasetsTrainingDirs, &c.EvalsTrainingDirs, &c.EvalsKnowledgeDirs, &c.OntologyDirs} {
 		for i, d := range *list {
 			if !filepath.IsAbs(d) {

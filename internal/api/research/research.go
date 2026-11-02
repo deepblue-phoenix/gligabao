@@ -55,8 +55,10 @@ func user(w http.ResponseWriter, userID string) (string, bool) {
 // (core.Run, status "running", state "starting"); the agent works in the background (see Get and List), searching the web and
 // reading pages, and ends with a report.
 //   - topic: what to research (required, at most 2000 characters)
-//   - max_steps: the most model calls the agent makes, the last of which writes the report (default 20, at most 40)
-//   - model: the model it runs on, one that supports Anthropic's web search tool (default: the server's default model)
+//   - max_steps: the most model calls the agent makes, the last of which writes the report (default: the agent's, 20 for the default one; at most 40)
+//   - model: the model it runs on, one that supports Anthropic's web search tool (default: the model of the agent, else the server's default)
+//   - agent, agent_version: the agent definition to run (see Agents; default "default"), and a constraint on its version
+//   - max_cost_usd: a cap on what the whole research may spend, sub-agents included (it lowers the caps of the agent and the server)
 //
 // 400 for a bad body, 409 when the user has 3 agents working already, 503 without an Anthropic API key.
 func Start(m *agent_research.Manager) http.HandlerFunc {
@@ -76,6 +78,14 @@ func Start(m *agent_research.Manager) http.HandlerFunc {
 			return
 		}
 		httputil.WriteJSON(w, http.StatusAccepted, run)
+	}
+}
+
+// Agents serves GET /v1/gb/research/agents: {"agents": [...]}, the agent definitions a research can run (the "agent" of the start
+// request): name, version, description, the hash of the content, the file it came from, and its main settings (see agent_research.AgentInfo).
+func Agents(m *agent_research.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"agents": m.Agents()})
 	}
 }
 

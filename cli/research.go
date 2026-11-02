@@ -23,7 +23,7 @@ func (c *CLI) researchCmd() *cobra.Command {
 state it goes through (searching, reading, thinking, ...) is recorded, so that you can follow what it does (docs/research.md). Each one
 costs money: model calls and web searches (it needs an Anthropic key).` + clientHelp,
 	}
-	cmd.AddCommand(c.researchStartCmd(), c.researchListCmd(), c.researchGetCmd())
+	cmd.AddCommand(c.researchStartCmd(), c.researchListCmd(), c.researchGetCmd(), c.researchAgentsCmd())
 	return cmd
 }
 
@@ -34,6 +34,9 @@ func (c *CLI) researchStartCmd() *cobra.Command {
 		model    string
 		dataset  string
 		runner   string
+		agent    string
+		agentVer string
+		maxCost  float64
 		wait     bool
 		raw      bool
 	)
@@ -47,6 +50,7 @@ run (with its report). The topic is the argument, or stdin if the argument is "-
 		Example: `  gligabao research start "How do solid-state batteries compare with lithium-ion in 2025?"
   gligabao research start "EU AI Act obligations for startups" --max-steps 10 --wait --raw
   gligabao research start "Market for grid batteries" --runner modal --wait --raw
+  gligabao research start "Grid batteries in Europe" --agent news_scanner --max-cost 2 --wait --raw
   gligabao research ls --active`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -79,6 +83,18 @@ run (with its report). The topic is the argument, or stdin if the argument is "-
 			}
 			if cmd.Flags().Changed("dataset") {
 				b.set("dataset", dataset)
+			}
+			if cmd.Flags().Changed("agent") {
+				b.set("agent", agent)
+			}
+			if cmd.Flags().Changed("agent-version") {
+				b.set("agent_version", agentVer)
+			}
+			if cmd.Flags().Changed("max-cost") {
+				if maxCost < 0 {
+					return usageErr("--max-cost must be 0 (no cap) or a positive number of USD")
+				}
+				b.set("max_cost_usd", maxCost)
 			}
 			if cmd.Flags().Changed("runner") {
 				if runner != "local" && runner != "modal" {
@@ -134,8 +150,11 @@ run (with its report). The topic is the argument, or stdin if the argument is "-
 	}
 	f := cmd.Flags()
 	f.StringVar(&jsonBody, "json", "", `the request body as JSON ('{"topic": "..."}', @file, or - for stdin); the flags below override its fields`)
-	f.IntVar(&maxSteps, "max-steps", 0, "the most model calls the agent makes (default 20, at most 40); more research more, and cost more")
-	f.StringVar(&model, "model", "", "the model the agent runs on (must support web search; default: the server's)")
+	f.IntVar(&maxSteps, "max-steps", 0, "the most model calls the agent makes (default: the agent's, 20 for the default one; at most 40); more research more, and cost more")
+	f.StringVar(&model, "model", "", "the model the agent runs on (must support web search; default: the agent's, else the server's)")
+	f.StringVar(&agent, "agent", "", `the agent definition to run (see "research agents"; default "default", the built-in research agent)`)
+	f.StringVar(&agentVer, "agent-version", "", `a constraint the agent's version must meet, e.g. 1.2.0, ">=1.0" or "^1.2"`)
+	f.Float64Var(&maxCost, "max-cost", 0, "a cap in USD on what the whole research may spend, sub-agents included; when it is reached the agents write their reports and say so")
 	f.StringVarP(&dataset, "dataset", "d", "", `the dataset of your knowledge base the agent queries and remembers into (default "main")`)
 	f.StringVar(&runner, "runner", "", `where the agent runs: "local" (default: in the server) or "modal" (the gligabao_agent binary in a Modal container, through the sidecar)`)
 	f.BoolVar(&wait, "wait", false, "wait until the agent ends, and print the finished run (exit code 1 if it failed)")
@@ -173,6 +192,19 @@ func (c *CLI) researchListCmd() *cobra.Command {
 	f.StringVar(&status, "status", "", "only the agents with this status: running, completed or failed")
 	f.IntVar(&limit, "limit", 0, "the most agents listed (default 50, at most 500)")
 	return cmd
+}
+
+func (c *CLI) researchAgentsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "agents",
+		Short: "List the agent definitions a research can run (GET /v1/gb/research/agents)",
+		Long: `List the agent definitions the server loaded from its agent_defs directory (and the built-in default): name, version, description, hash, the
+file, and the main settings. Use a name with "research start --agent".` + clientHelp,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.send(cmd, "GET", "/v1/gb/research/agents", nil, nil)
+		},
+	}
 }
 
 func (c *CLI) researchGetCmd() *cobra.Command {

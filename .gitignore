@@ -4,6 +4,7 @@ build/*
 !build/evals_knowledge/
 !build/evals_training/
 !build/ontology/
+!build/agent_defs/
 
 __pycache__/
 *.pyc

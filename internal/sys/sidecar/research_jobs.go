@@ -26,6 +26,12 @@ type StartResearchJobRequest struct {
 	MaxSteps int    `json:"max_steps,omitempty"`
 	Model    string `json:"model,omitempty"`
 	Dataset  string `json:"dataset,omitempty"`
+	// Agent is the name of the agent definition to run, and AgentBundle the definitions (agent_defs.Bundle as JSON: the agent, those its
+	// roles start, with the prompts and skills as text): the container has no agent_defs directory. MaxCostUSD caps the cost of the
+	// whole research (0: no cap).
+	Agent       string          `json:"agent,omitempty"`
+	AgentBundle json.RawMessage `json:"agent_bundle,omitempty"`
+	MaxCostUSD  float64         `json:"max_cost_usd,omitempty"`
 }
 
 // StartResearchJob starts the agent in Modal through POST /research/job_start. The sidecar answers 503 (a *StatusError) when the app

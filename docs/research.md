@@ -56,22 +56,28 @@ All three routes are user routes: the user is the `gb-user-id` header (required;
 Starts an agent. Body:
 
 ```json
-{"topic": "How do solid-state batteries compare with lithium-ion?", "max_steps": 20, "model": "", "dataset": "main", "runner": "local"}
+{"topic": "How do solid-state batteries compare with lithium-ion?", "agent": "default", "max_steps": 20, "model": "", "max_cost_usd": 0, "dataset": "main", "runner": "local"}
 ```
 
 - `topic` (required, at most 2000 characters): what to research. A question, or a subject to write a report on.
-- `max_steps` (optional, default 20, at most 40): the most model calls the agent makes, the last of which writes the report. More steps let it search and read more, and cost more.
-- `model` (optional): the model it runs on, which must support Anthropic's web search tool. Default: the server's default model.
+- `agent` (optional, default `default`): the [agent definition](agent-defs.md) to run (`GET /v1/gb/research/agents` lists them); an unknown one is a `400`. `agent_version` (optional) is a constraint its version must meet (`1.2.0`, `>=1.0`, `^1.2`); a mismatch is a `400`. The run records `agent_name`, `agent_version` and `agent_hash`.
+- `max_cost_usd` (optional, 0 = none): a cap in USD on what the whole research may spend, sub-agents included. It can lower the caps of the definition and of the server (`research_max_cost_usd`), never raise them. When it is reached the agents write their reports and the report says so ([cost caps](agent-defs.md#limits-cost-caps)).
+- `max_steps` (optional, default: the `max_steps` of the definition, 20 for `default`; at most 40): the most model calls the agent makes, the last of which writes the report. More steps let it search and read more, and cost more.
+- `model` (optional): the model it runs on, which must support Anthropic's web search tool. Default: the `model` of the definition, else the server's default model. It is the model of the main agent; a sub-agent runs on the model of its own definition, else its parent's.
 - `dataset` (optional, default `main`): the dataset of the user's knowledge base the agent queries and remembers into ([below](#the-knowledge-base)). It is created by the first `remember` if it does not exist; a bad name is a `400`. It is not stored with the run. With the `modal` runner it is the dataset the agent's knowledge lands in when the agent ends ([below](#what-comes-back-the-import)).
 - `runner` (optional, default `local`): where the agent runs, `local` (in the server, as always) or `modal` (the `gligabao_agent` binary in a Modal container, see [below](#where-the-agent-runs-the-runner)). Any other value is a `400`. The run says which one it has (`runner`).
 
 Answers `202` with the run (`status` `running`, `state` `starting`); the agent goes on in the background. `400` for a bad body, `409` if the user already has 3 agents working (wait for one to end), `503` without an Anthropic API key (for `local`), or, for `modal`, when the sidecar cannot start the job (it is down, or the Modal app has no agent: the message says which).
 
 ```json
-{"id": 7, "user_id": "u1", "topic": "...", "status": "running", "state": "starting", "model": "", "max_steps": 20, "runner": "local",
+{"id": 7, "user_id": "u1", "topic": "...", "status": "running", "state": "starting", "model": "", "max_steps": 20, "runner": "local", "agent_name": "default", "agent_version": "1.0.0", "agent_hash": "9f2c...",
  "steps": 0, "tool_calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0, "report": "", "error": "",
  "created_at": "2026-11-01T10:00:00.120Z", "finished_at": null}
 ```
+
+### `GET /v1/gb/research/agents`
+
+`{"agents": [...]}`: the [agent definitions](agent-defs.md) a research can run, by name, each with `name`, `version`, `description`, `hash`, `source` (the file, or `builtin`), `model`, `max_steps`, `max_cost_usd`, `max_tree_cost_usd`, `knowledge`, `skills` and `subagents` (the roles).
 
 ### `GET /v1/gb/research`
 
@@ -105,9 +111,10 @@ To follow a run, poll this route (or `research_get`, or `gligabao research get`)
 ## CLI
 
 ```
-gligabao research start TOPIC [--max-steps N] [--model M] [-d DATASET] [--runner local|modal] [--wait [--raw]] [--json BODY]
+gligabao research start TOPIC [--agent NAME] [--agent-version V] [--max-cost USD] [--max-steps N] [--model M] [-d DATASET] [--runner local|modal] [--wait [--raw]] [--json BODY]
 gligabao research ls [--active] [--status S] [--limit N]
 gligabao research get ID [--raw]
+gligabao research agents
 ```
 
 `--runner modal` runs the agent in Modal ([below](#where-the-agent-runs-the-runner)); the default is local. `start` prints the run right away; with `--wait` it waits for the agent to end and prints the finished run (exit code 1 if it failed), and `--raw` prints only the report. `get --raw` prints only the report. See [cli.md](cli.md).

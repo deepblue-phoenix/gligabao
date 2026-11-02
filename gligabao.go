@@ -211,6 +211,10 @@ type ServeOptions struct {
 	// request to POST or PUT /v1/gb/ontologies with "file" instead of "content"). Nothing is loaded at startup. If empty,
 	// Config.OntologyDirs; if that is empty too, there are none and only "content" can be sent.
 	OntologyDirs []string
+	// AgentDefsDir is the directory the definitions of the research agents (one TOML or JSON file each, see docs/agent-defs.md) are loaded
+	// from when the server starts. If empty, Config.AgentDefsDir; if that is empty too, an agent_defs directory next to the binary (it
+	// need not exist: only the built-in agent is there then).
+	AgentDefsDir string
 	// TrainedModelDeployDir is the directory the files of trained models are fetched to for a deployment, one subdirectory per training
 	// job (gligabao never deletes them). Default: a "trained_models" directory next to DBPath.
 	TrainedModelDeployDir string
@@ -370,18 +374,24 @@ func serverOptions(cfg *Config, opts ServeOptions) (serverOpts server.Options, r
 	if trainingDirs.ModelDeploy == "" {
 		trainingDirs.ModelDeploy = cfg.TrainedModelDeployDir
 	}
+	agentDefsDir := opts.AgentDefsDir
+	if agentDefsDir == "" {
+		agentDefsDir = cfg.AgentDefsDir
+	}
 	return server.Options{
-		Addr:         cfg.Addr(),
-		DB:           dbConfig,
-		TrainingDirs: trainingDirs,
-		OntologyDirs: ontologyDirs,
-		AnthropicKey: cfg.AnthropicKey,
-		OpenAIKey:    cfg.OpenAIKey,
-		JevKey:       cfg.JevKey,
-		JevBaseURL:   cfg.JevBaseURL,
-		JevModel:     cfg.JevModel,
-		SidecarURL:   cfg.SidecarURL,
-		Prices:       aiPrices(cfg),
+		Addr:               cfg.Addr(),
+		DB:                 dbConfig,
+		TrainingDirs:       trainingDirs,
+		OntologyDirs:       ontologyDirs,
+		AgentDefsDir:       agentDefsDir,
+		ResearchMaxCostUSD: cfg.ResearchMaxCostUSD,
+		AnthropicKey:       cfg.AnthropicKey,
+		OpenAIKey:          cfg.OpenAIKey,
+		JevKey:             cfg.JevKey,
+		JevBaseURL:         cfg.JevBaseURL,
+		JevModel:           cfg.JevModel,
+		SidecarURL:         cfg.SidecarURL,
+		Prices:             aiPrices(cfg),
 
 		Auth:                    opts.Auth,
 		GeoResolver:             opts.GeoResolver,

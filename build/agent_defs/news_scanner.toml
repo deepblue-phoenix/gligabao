@@ -1,0 +1,44 @@
+# Example agent definition: the files of this directory are loaded when the server starts (agent_defs/ next to the binary, or
+# agent_defs_dir / serve --agent-defs-dir). Run it with: gligabao research start "..." --agent news_scanner
+# The format is described in docs/agent-defs.md.
+schema = 1
+name = "news_scanner"
+version = "1.0.0"
+description = "Scans recent news on a topic: prefers news agencies, looks at the last week, and starts a regional scout for each region the topic names."
+
+system_prompt_file = "prompts/news_scanner.md"
+
+max_steps = 20
+tools = ["web_search", "fetch_url"]
+skills = ["citation_style"]          # skills/citation_style.md (a missing file is a warning); required_skills = [...] makes it an error
+
+[search]
+preferred_domains = ["reuters.com", "apnews.com"]
+blocked_domains = ["pinterest.com"]
+recency = "week"
+instructions = "Prefer primary sources and official statistics over commentary."
+max_calls = 30                       # at most 30 web_search calls in a run (0: no limit)
+
+[knowledge]
+access = "read_write"
+query_first = true
+
+[limits]
+max_cost_usd = 1.00                  # this agent alone
+max_tree_cost_usd = 3.00             # the whole research, sub-agents included
+
+[spawn]
+enabled = true
+messaging = true
+max_per_agent = 3
+
+[[spawn.roles]]
+name = "regional"
+agent = "regional_scout"
+version = "^1.0"
+trigger = "on_demand"
+when = "The topic names two or more countries or regions that each need searches of their own."
+does = "Researches the news of one region in depth and reports dated facts with source URLs."
+max_instances = 3
+max_steps = 8
+max_steps_limit = 12

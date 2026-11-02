@@ -31,7 +31,9 @@ type teamFake struct {
 	hang map[string]bool
 }
 
-func (f *teamFake) start(t *testing.T) *ai.Client {
+func (f *teamFake) start(t *testing.T) *ai.Client { return f.startWith(t) }
+
+func (f *teamFake) startWith(t *testing.T, opts ...ai.Option) *ai.Client {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
@@ -60,7 +62,7 @@ func (f *teamFake) start(t *testing.T) *ai.Client {
 		io.WriteString(w, script[n-1])
 	}))
 	t.Cleanup(srv.Close)
-	c, err := ai.New("k", ai.WithBaseURL(srv.URL))
+	c, err := ai.New("k", append([]ai.Option{ai.WithBaseURL(srv.URL)}, opts...)...)
 	if err != nil {
 		t.Fatal(err)
 	}

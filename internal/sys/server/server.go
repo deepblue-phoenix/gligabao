@@ -19,6 +19,7 @@ import (
 	"time"
 
 	adminui "github.com/deepblue-phoenix/gligabao/admin_ui"
+	"github.com/deepblue-phoenix/gligabao/internal/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api"
@@ -111,6 +112,11 @@ type Options struct {
 	TrainingDirs coretraining.Dirs
 	// OntologyDirs are the directories ontology documents are loaded from by file name (see api.WithOntologyDirs). Default: none.
 	OntologyDirs []string
+	// AgentDefsDir is the directory the definitions of the research agents are loaded from at startup (agent_defs.Load; a definition that is
+	// not valid stops the server). Default: an agent_defs directory next to the binary; if it does not exist only the built-in agent is there.
+	AgentDefsDir string
+	// ResearchMaxCostUSD is the most one research may spend, all its agents together (0: no cap of the server).
+	ResearchMaxCostUSD float64
 	// EvalDBPath is a second SQLite file, the eval database (see internal/evals/knowledge/cmd): the evaluation datasets, the
 	// experiments and their runs. The admin UI shows it next to the main database and reads the Evals block (and the
 	// ATIF files, from an "atif" directory next to it) from it. Opened for the admin UI only; ignored (with a warning)
@@ -807,10 +813,25 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 	sc, sidecarActive := connectSidecar(ctx, opts.SidecarURL)
 	SidecarActive.Store(sidecarActive)
 
+	// The definitions of the research agents are read once, here: one that is not valid is an error, not an agent that is missing later.
+	agentDefsDir := opts.AgentDefsDir
+	if agentDefsDir == "" {
+		agentDefsDir = agent_defs.DefaultDir()
+	}
+	agentDefs, err := agent_defs.Load(agentDefsDir)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	// The remember manager stops when everything is released, i.e. after the graceful shutdown has given the runs in progress their time.
 	mgrCtx, stopMgr := context.WithCancel(ctx)
 	// The research agents are stopped with it, and given the time to write the end of their runs before the databases close.
 	research := newResearch(mgrCtx, database, llm)
+	research.MaxCostUSD = opts.ResearchMaxCostUSD
+	if err := research.UseAgentDefs(agentDefs); err != nil {
+		stopMgr()
+		return nil, nil, err
+	}
 	// The reruns of eval cases (admin UI): this is where the injected hook Options.EvalRerunner is called (it is injected because the
 	// package that implements it imports this one, see its comment). The reruns need the LLM, so without one there are none. The eval
 	// database named EvalDBName is the only one that can have reruns; its Named gets the rerunner, and the routes (registerAdminUI)

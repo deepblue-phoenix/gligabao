@@ -61,9 +61,13 @@ Input: `{"names": ["alpha", "beta"]}` (`names` optional: all the agent's sub-age
 
 The parent need not call `wait_subagents`: it may end first (see [When an agent ends](#when-an-agent-ends)).
 
+### Roles of an agent definition
+
+With [agent definitions](agent-defs.md) the model does not spawn copies of itself: when its definition has `[[spawn.roles]]`, `spawn_subagent` takes a required `role`, and the sub-agent runs the definition of that role (its own prompt, tools, search and knowledge settings, caps and roles). A role says **when** the sub-agent is started (`on_demand`: the model decides, guided by the role's `when`; `on_start`: the runtime starts it before the parent's first model call, with a task from `task_template`) and **what it does** (the definition, and `does`). The sub-agent runs on the model of its own definition, else its parent's, and in its parent's dataset unless its definition names one. A definition without roles keeps the free-form behaviour described on this page. `spawn.messaging` lets the sub-agents it spawns message each other. The run of a sub-agent records its `agent_name`, `agent_version` and `agent_hash`.
+
 ### Limits
 
-They are constants in `internal/agent_research/team.go`:
+They are constants in `internal/agent_defs` (aliased in `internal/agent_research/team.go`); a definition may only lower them (`spawn.max_depth`, `max_per_agent`, `max_per_tree`):
 
 | Limit | Value |
 | ----- | ----- |
@@ -72,7 +76,7 @@ They are constants in `internal/agent_research/team.go`:
 | generations of sub-agents (`MaxSubagentDepth`) | 2: a root spawns sub-agents, which may spawn their own; those get no `spawn_subagent` tool |
 | `max_steps` of a sub-agent | default 10 (`DefaultSubagentMaxSteps`), at most 40 |
 
-The worst case of a research is therefore its own `max_steps` plus 10 sub-agents of up to 40 steps each, each with the web searches it makes. There is no cap in dollars yet. A sub-agent's cost is its own (`cost_usd` of its run): it is **not** added to the parent's.
+The worst case of a research is therefore its own `max_steps` plus 10 sub-agents of up to 40 steps each, each with the web searches it makes. A sub-agent's cost is its own (`cost_usd` of its run): it is **not** added to the parent's, but a [cost cap](agent-defs.md#limits-cost-caps) of the research counts all the agents together: when it is reached every agent of the tree stops at its next model call, no more sub-agents can be started, and the reports say so.
 
 ### When an agent ends
 

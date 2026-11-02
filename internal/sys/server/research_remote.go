@@ -34,7 +34,13 @@ func (r sidecarRemote) Start(ctx context.Context, req agent_research.RemoteReque
 	if err != nil {
 		return "", err
 	}
-	job, err := c.StartResearchJob(ctx, sidecar.StartResearchJobRequest{Topic: req.Topic, MaxSteps: req.MaxSteps, Model: req.Model, Dataset: req.Dataset})
+	sreq := sidecar.StartResearchJobRequest{Topic: req.Topic, MaxSteps: req.MaxSteps, Model: req.Model, Dataset: req.Dataset, Agent: req.Agent, MaxCostUSD: req.MaxCostUSD}
+	if req.Bundle != nil {
+		if sreq.AgentBundle, err = req.Bundle.JSON(); err != nil {
+			return "", err
+		}
+	}
+	job, err := c.StartResearchJob(ctx, sreq)
 	var se *sidecar.StatusError
 	if errors.As(err, &se) {
 		return "", errors.New(se.Message()) // the sidecar's own words (e.g. the agent is not deployed), not the whole request line

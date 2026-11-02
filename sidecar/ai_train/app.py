@@ -239,10 +239,13 @@ agent_secrets = (CONFIG.agent_secret,) if CONFIG.agent_secret else ()
 
 
 @provider.function(FunctionSpec(image=AGENT_IMAGE, timeout_s=CONFIG.agent_timeout_s, secrets=agent_secrets))
-def run_agent(topic: str, max_steps: int = 20, model: str = "", dataset: str = "", job_id: str = "") -> dict:
-    """Research `topic` with the agent binary and report to the event log of `job_id` (agent_run.py)."""
+def run_agent(topic: str, max_steps: int = 20, model: str = "", dataset: str = "", job_id: str = "", agent: str = "",
+              agent_bundle: str = "", max_cost_usd: float = 0.0) -> dict:
+    """Research `topic` with the agent binary and report to the event log of `job_id` (agent_run.py). `agent` is the agent definition to
+    run, `agent_bundle` the definitions (JSON text), `max_cost_usd` the cap on the cost of the whole research."""
     return agent_run.run_agent_job(topic, max_steps, model, dataset, job_id or str(int(time.time())),
-                                   event_kv=provider.event_kv(), timeout_s=CONFIG.agent_timeout_s)
+                                   event_kv=provider.event_kv(), timeout_s=CONFIG.agent_timeout_s, agent=agent,
+                                   agent_bundle=agent_bundle, max_cost_usd=max_cost_usd)
 
 
 #-----------------------------------------------------------------------------------------
@@ -260,8 +263,9 @@ def serve_api():
         reload_volumes=provider.reload_volumes,
         event_kv=provider.event_kv(),
         call_status=provider.call_status,
-        spawn_agent_job=(lambda topic, max_steps, model, dataset, job_id: provider.spawn(
-            run_agent, topic=topic, max_steps=max_steps, model=model, dataset=dataset, job_id=job_id)
+        spawn_agent_job=(lambda topic, max_steps, model, dataset, job_id, agent="", agent_bundle="", max_cost_usd=0.0: provider.spawn(
+            run_agent, topic=topic, max_steps=max_steps, model=model, dataset=dataset, job_id=job_id, agent=agent,
+            agent_bundle=agent_bundle, max_cost_usd=max_cost_usd)
         ) if os.environ.get("SIDECAR_AGENT_DEPLOYED") == "1" else None,
     )
 

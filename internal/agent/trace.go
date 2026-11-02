@@ -37,7 +37,11 @@ func newTracer(a *Agent, prompt string, l *loop) *tracer {
 	if name == "" {
 		name = defaultAgentName
 	}
-	t := &tracer{b: atif.NewBuilder(atif.Agent{Name: name, Version: agentVersion, ModelName: a.Model}), dir: a.TrajectoryDir}
+	version := a.Version
+	if version == "" {
+		version = agentVersion
+	}
+	t := &tracer{b: atif.NewBuilder(atif.Agent{Name: name, Version: version, ModelName: a.Model}), dir: a.TrajectoryDir}
 	if a.SessionID != "" { // the trajectories of one session share the session ID
 		t.b.SetSessionID(a.SessionID)
 	}

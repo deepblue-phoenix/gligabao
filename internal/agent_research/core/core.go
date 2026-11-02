@@ -95,6 +95,11 @@ type Run struct {
 	// Runner is where the agent runs: RunnerLocal (in the process of the server, the default) or RunnerModal (the gligabao_agent binary in
 	// a Modal container, through the sidecar).
 	Runner string `json:"runner"`
+	// AgentName, AgentVersion and AgentHash say which agent definition (package agent_defs) the agent was built from: its name and version,
+	// and the hash of its content (a file can change without a version bump). A run made before definitions existed has none of them.
+	AgentName    string `json:"agent_name"`
+	AgentVersion string `json:"agent_version"`
+	AgentHash    string `json:"agent_hash"`
 	// Steps is the number of model calls made so far and ToolCalls the number of tool runs; they, the tokens and the cost are
 	// updated as the run goes. CostUSD includes the model calls of the tools (the web searches).
 	Steps        int     `json:"steps"`

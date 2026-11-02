@@ -27,6 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/deepblue-phoenix/gligabao/internal/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
 	log "github.com/sirupsen/logrus"
@@ -71,6 +72,12 @@ type RemoteRequest struct {
 	MaxSteps int
 	Model    string
 	Dataset  string
+	// Agent is the name of the agent definition to run and Bundle holds it with the definitions its roles start (prompts and skills as
+	// text): the container has no agent_defs directory of its own. MaxCostUSD is the cap on the cost of the whole research that the
+	// request, the definition and the server give (0: none).
+	Agent      string
+	Bundle     *agent_defs.Bundle
+	MaxCostUSD float64
 }
 
 // Types of a RemoteEvent.
@@ -180,17 +187,27 @@ func (m *Manager) UseImporter(i Importer) {
 
 // startRemote is Start for a research that runs in Modal: it starts the job, records the run and follows the job in the background.
 // The caller has counted the run in m.active (release undoes it). opts are resolved.
-func (m *Manager) startRemote(ctx context.Context, userID string, opts Options, remote Remote, release func()) (*core.Run, error) {
+func (m *Manager) startRemote(ctx context.Context, userID string, opts Options, def *agent_defs.Def, remote Remote, release func()) (*core.Run, error) {
+	bundle, err := m.registry().Bundle(def.Name)
+	if err != nil {
+		release()
+		return nil, invalidErr(err.Error())
+	}
+	if def.Knowledge.Access == agent_defs.AccessReadOnly {
+		log.WithField("agent", def.Name).Warn("agent research: the agent has read-only access to the knowledge base, but in Modal the knowledge base starts empty")
+	}
 	startCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), remoteStartTimeout)
 	defer cancel()
-	jobID, err := remote.Start(startCtx, RemoteRequest{Topic: opts.Topic, MaxSteps: opts.MaxSteps, Model: opts.Model, Dataset: opts.Dataset})
+	jobID, err := remote.Start(startCtx, RemoteRequest{Topic: opts.Topic, MaxSteps: opts.MaxSteps, Model: opts.Model, Dataset: opts.Dataset,
+		Agent: def.Name, Bundle: bundle, MaxCostUSD: opts.treeCostCap})
 	if err != nil {
 		release()
 		log.WithError(err).WithField("user_id", userID).Warn("agent research: starting the job in Modal failed")
 		return nil, unavailableErr("could not start the research in Modal: " + err.Error())
 	}
 
-	run := &core.Run{UserID: userID, Topic: opts.Topic, Status: core.StatusRunning, State: core.StateStarting, Model: opts.Model, MaxSteps: opts.MaxSteps, Runner: core.RunnerModal}
+	run := &core.Run{UserID: userID, Topic: opts.Topic, Status: core.StatusRunning, State: core.StateStarting, Model: opts.Model, MaxSteps: opts.MaxSteps, Runner: core.RunnerModal,
+		AgentName: def.Name, AgentVersion: def.Version, AgentHash: def.Hash}
 	dbCtx := context.WithoutCancel(ctx)
 	err = m.tx(dbCtx, func(q db.Execer) error {
 		if err := m.Ops.Store.CreateRun(dbCtx, q, run); err != nil {
@@ -212,7 +229,7 @@ func (m *Manager) startRemote(ctx context.Context, userID string, opts Options, 
 	}
 	rec := *run
 
-	rr := newRemoteRun(m, run, remote, jobID)
+	rr := newRemoteRun(m, run, remote, jobID, opts.treeCostCap)
 	m.mu.Lock()
 	m.remotes[run.ID] = rr
 	m.mu.Unlock()
@@ -239,6 +256,9 @@ type remoteRun struct {
 	jobID  string
 	logf   *log.Entry
 	dbCtx  context.Context
+	// capUSD is the cap on the cost of the whole research (0: none). The agent in the container enforces it itself, and the follower
+	// ends the job if the usage that it reports goes well over it (remoteCapGrace): a backstop for an agent that does not.
+	capUSD float64
 
 	// runCtx ends when the manager's context does or when a stop that could not reach the job ends the follower.
 	runCtx context.Context
@@ -259,9 +279,9 @@ type remoteStateKey struct {
 	seq   int
 }
 
-func newRemoteRun(m *Manager, run *core.Run, remote Remote, jobID string) *remoteRun {
+func newRemoteRun(m *Manager, run *core.Run, remote Remote, jobID string, capUSD float64) *remoteRun {
 	rr := &remoteRun{
-		m: m, run: run, remote: remote, jobID: jobID, dbCtx: context.WithoutCancel(m.ctx), done: make(chan struct{}),
+		m: m, run: run, remote: remote, jobID: jobID, capUSD: capUSD, dbCtx: context.WithoutCancel(m.ctx), done: make(chan struct{}),
 		logf:   log.WithFields(log.Fields{"run_id": run.ID, "user_id": run.UserID, "runner": core.RunnerModal, "job_id": jobID}),
 		states: map[remoteStateKey]int64{},
 	}
@@ -361,6 +381,7 @@ func (rr *remoteRun) handle(ev RemoteEvent) error {
 	case RemoteUsageEvent:
 		if ev.Usage != nil {
 			rr.saveUsage(*ev.Usage)
+			rr.checkCap(ev.Usage.CostUSD)
 		}
 	case RemoteLog:
 		rr.logf.Info("agent research: modal: " + truncate(ev.Message, maxTextLen))
@@ -368,6 +389,20 @@ func (rr *remoteRun) handle(ev RemoteEvent) error {
 		return rr.status(ev)
 	}
 	return nil
+}
+
+// remoteCapGrace is how far over the cost cap the usage of a remote job may go before the follower ends the job: the agent stops itself at
+// the cap, but a call that is running when it is reached still adds its cost.
+const remoteCapGrace = 1.25
+
+// checkCap ends the job, as stopped by the cap, when it has spent well over what the cap allows.
+func (rr *remoteRun) checkCap(costUSD float64) {
+	if rr.capUSD <= 0 || costUSD <= rr.capUSD*remoteCapGrace || rr.cause.Load() != nil {
+		return
+	}
+	rr.logf.Warnf("agent research: the job in Modal spent $%.4f, over its cost cap of $%.2f: ending it", costUSD, rr.capUSD)
+	rr.cause.Store(&stopCause{runID: rr.run.ID, by: fmt.Sprintf("the cost cap ($%.2f): the agent went well over it", rr.capUSD)})
+	rr.cancelJob()
 }
 
 // status handles a status event; the terminal ones end the run.

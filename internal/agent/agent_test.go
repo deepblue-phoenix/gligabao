@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/deepblue-phoenix/gligabao/internal/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 )
@@ -99,7 +100,7 @@ func TestFetchURLTool(t *testing.T) {
 		w.Write([]byte("<p>page</p>"))
 	}))
 	defer srv.Close()
-	tool := fetchURLTool(srv.Client())
+	tool := fetchURLTool(srv.Client(), agent_defs.Fetch{})
 	out, err := tool.Run(context.Background(), json.RawMessage(`{"url":"`+srv.URL+`"}`))
 	if err != nil || out != "page" {
 		t.Fatalf("got %q, %v", out, err)
@@ -308,5 +309,185 @@ func TestFailedRunStillHasATrajectory(t *testing.T) {
 	}
 	if res.Trajectory == nil || !strings.HasPrefix(res.Trajectory.Notes, "failed: ") || res.TrajectoryPath != "" {
 		t.Fatalf("trajectory: %+v", res)
+	}
+}
+
+func fetchOf(t *testing.T, tool Tool, url string) (string, error) {
+	t.Helper()
+	return tool.Run(context.Background(), json.RawMessage(`{"url":"`+url+`"}`))
+}
+
+func TestFetchURLToolDomains(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/redirect" {
+			http.Redirect(w, r, "http://other.example.org/x", http.StatusFound)
+			return
+		}
+		w.Write([]byte("<p>page</p>"))
+	}))
+	defer srv.Close()
+
+	// The test server is 127.0.0.1: nothing of the lists matches it but a list that has it.
+	blocked := fetchURLTool(srv.Client(), agent_defs.Fetch{BlockedDomains: []string{"127.0.0.1"}})
+	if _, err := fetchOf(t, blocked, srv.URL); err == nil || !strings.Contains(err.Error(), "blocked") {
+		t.Fatalf("blocked: %v", err)
+	}
+	allowedOther := fetchURLTool(srv.Client(), agent_defs.Fetch{AllowedDomains: []string{"example.com"}})
+	if _, err := fetchOf(t, allowedOther, srv.URL); err == nil || !strings.Contains(err.Error(), "not allowed") {
+		t.Fatalf("allowed list without the host: %v", err)
+	}
+	allowed := fetchURLTool(srv.Client(), agent_defs.Fetch{AllowedDomains: []string{"127.0.0.1"}})
+	if out, err := fetchOf(t, allowed, srv.URL); err != nil || out != "page" {
+		t.Fatalf("allowed host: %q, %v", out, err)
+	}
+	// A redirect may not leave the allowed sites.
+	if _, err := fetchOf(t, allowed, srv.URL+"/redirect"); err == nil || !strings.Contains(err.Error(), "not allowed") {
+		t.Fatalf("redirect out of the allowed sites: %v", err)
+	}
+}
+
+func TestHostMatches(t *testing.T) {
+	list := []string{"example.com"}
+	for host, want := range map[string]bool{"example.com": true, "www.example.com": true, "EXAMPLE.com.": true, "badexample.com": false, "example.com.evil.org": false} {
+		if got := hostMatches(host, list); got != want {
+			t.Errorf("%s: %v", host, got)
+		}
+	}
+}
+
+func TestFetchURLToolCallLimitAndPageSize(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("<p>" + strings.Repeat("x", 5000) + "</p>"))
+	}))
+	defer srv.Close()
+	tool := fetchURLTool(srv.Client(), agent_defs.Fetch{MaxCalls: 2, MaxPageChars: 1000})
+	for i := 0; i < 2; i++ {
+		out, err := fetchOf(t, tool, srv.URL)
+		if err != nil || len(out) != 1000 {
+			t.Fatalf("call %d: %d chars, %v", i, len(out), err)
+		}
+	}
+	if _, err := fetchOf(t, tool, srv.URL); err == nil || !strings.Contains(err.Error(), "limit reached") {
+		t.Fatalf("third call: %v", err)
+	}
+}
+
+func TestWebSearchToolSendsTheDomainsAndLocationAndCountsCalls(t *testing.T) {
+	var bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(b))
+		w.Write([]byte(`{"model":"m","stop_reason":"end_turn","content":[{"type":"text","text":"found"}],"usage":{}}`))
+	}))
+	defer srv.Close()
+	client, err := ai.New("k", ai.WithBaseURL(srv.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tool := webSearchTool(client, agent_defs.Search{
+		AllowedDomains: []string{"reuters.com"}, PreferredDomains: []string{"apnews.com"}, MaxUsesPerCall: 4, MaxCalls: 1,
+		Location: &agent_defs.Location{Country: "DE", City: "Munich"}, Instructions: "Primary sources first.",
+	})
+	if _, err := tool.Run(context.Background(), json.RawMessage(`{"query":"q"}`)); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"allowed_domains":["reuters.com"]`, `"max_uses":4`, `"user_location":{`, `"country":"DE"`, `"city":"Munich"`, `Primary sources first.`, `apnews.com`} {
+		if !strings.Contains(bodies[0], want) {
+			t.Errorf("the request lacks %s: %s", want, bodies[0])
+		}
+	}
+	if strings.Contains(bodies[0], "blocked_domains") {
+		t.Errorf("empty blocked_domains sent: %s", bodies[0])
+	}
+	if _, err := tool.Run(context.Background(), json.RawMessage(`{"query":"q"}`)); err == nil || !strings.Contains(err.Error(), "limit reached") {
+		t.Fatalf("second call: %v", err)
+	}
+	if len(bodies) != 1 {
+		t.Fatalf("the refused call reached the API: %d", len(bodies))
+	}
+}
+
+func TestOutOfBudgetMakesTheNextCallTheLastOne(t *testing.T) {
+	client, bodies := fakeAPI(t,
+		`{"model":"m","content":[{"type":"tool_use","id":"t1","name":"x","input":{}}],"usage":{}}`,
+		`{"model":"m","content":[{"type":"text","text":"report from what I have"}],"usage":{}}`,
+	)
+	calls := 0
+	a := &Agent{Client: client, MaxSteps: 10, Tools: []Tool{{Name: "x", Schema: objectSchema("a", "a"),
+		Run: func(context.Context, json.RawMessage) (string, error) { return "r", nil }}},
+		OutOfBudget: func() string {
+			calls++
+			if calls >= 2 {
+				return "The cost cap was reached."
+			}
+			return ""
+		}}
+	var finals []bool
+	a.Observer.BeforeModel = func(step int, final bool) { finals = append(finals, final) }
+	res, err := a.Run(context.Background(), "go")
+	if err != nil || res.Answer != "report from what I have" || res.Steps != 2 {
+		t.Fatalf("got %+v, %v", res, err)
+	}
+	if res.OutOfBudget != "The cost cap was reached." {
+		t.Errorf("OutOfBudget: %q", res.OutOfBudget)
+	}
+	if fmt.Sprint(finals) != "[false true]" {
+		t.Errorf("final flags: %v", finals)
+	}
+	second := (*bodies)[1]
+	if !strings.Contains(second, `"tool_choice":{"type":"none"}`) || !strings.Contains(second, "[Budget reached] The cost cap was reached.") {
+		t.Fatalf("the last call is not told: %s", second)
+	}
+	if strings.Contains((*bodies)[0], "Budget reached") {
+		t.Errorf("the first call was told of a budget: %s", (*bodies)[0])
+	}
+}
+
+func TestOutOfBudgetNeverCutsAnAgentThatIsWithinIt(t *testing.T) {
+	client, _ := fakeAPI(t, `{"model":"m","content":[{"type":"text","text":"done"}],"usage":{}}`)
+	a := &Agent{Client: client, OutOfBudget: func() string { return "" }}
+	res, err := a.Run(context.Background(), "go")
+	if err != nil || res.OutOfBudget != "" || res.Answer != "done" {
+		t.Fatalf("got %+v, %v", res, err)
+	}
+}
+
+func TestFromDefBuildsTheAgentOfADefinition(t *testing.T) {
+	def := agent_defs.Builtin()
+	def.Name, def.Version = "scout", "2.1.0"
+	def.SystemPrompt = "You are a scout."
+	def.Model, def.MaxSteps, def.MaxTokens = "my-model", 7, 1234
+	def.Tools = []string{agent_defs.ToolWebSearch}
+	def.Search.PreferredDomains = []string{"apnews.com"}
+	def.Search.Recency = agent_defs.RecencyWeek
+	def.Search.Fetch.AllowedDomains = []string{"example.com"}
+	def.Knowledge.Access = agent_defs.AccessReadOnly
+	def.Knowledge.QueryFirst = true
+	def.Knowledge.Instructions = "Be terse about the knowledge base."
+	a := FromDef(def, nil, nil, &fakeKB{})
+	if a.Name != "gligabao-scout" || a.Version != "2.1.0" || a.Model != "my-model" || a.MaxSteps != 7 || a.MaxTokens != 1234 {
+		t.Errorf("settings: %+v", a)
+	}
+	if got := toolNames(a); got != "web_search,query" {
+		t.Errorf("tools: %s", got)
+	}
+	for _, want := range []string{"You are a scout.", "apnews.com", "the last week", "which you can only read", "Always start by asking the knowledge base", "Be terse about the knowledge base."} {
+		if !strings.Contains(a.System, want) {
+			t.Errorf("the prompt lacks %q:\n%s", want, a.System)
+		}
+	}
+	if strings.Contains(a.System, "remember") {
+		t.Errorf("a read-only agent is told about remember:\n%s", a.System)
+	}
+	def.Knowledge.Access = agent_defs.AccessNone
+	if got := toolNames(FromDef(def, nil, nil, &fakeKB{})); got != "web_search" {
+		t.Errorf("no knowledge access: %s", got)
+	}
+	AddSkills(a, []agent_defs.Skill{{Name: "dates", Content: "Always give dates."}})
+	if !strings.HasSuffix(a.System, "## Skill: dates\n\nAlways give dates.") {
+		t.Errorf("the skills are not last:\n%s", a.System)
+	}
+	if n := FromDef(agent_defs.Builtin(), nil, nil, nil).Name; n != "gligabao-research" {
+		t.Errorf("the name of the default agent in a trajectory: %s", n)
 	}
 }

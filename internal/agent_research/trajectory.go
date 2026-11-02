@@ -28,6 +28,8 @@ type agentInfo struct {
 	RunID        int64   `json:"run_id"`
 	ParentRunID  int64   `json:"parent_run_id,omitempty"`
 	Depth        int     `json:"depth"`
+	AgentDef     string  `json:"agent_def,omitempty"` // the definition it was built from (package agent_defs) and its version
+	AgentVersion string  `json:"agent_version,omitempty"`
 	Status       string  `json:"status"`
 	Error        string  `json:"error,omitempty"`
 	Steps        int     `json:"steps"`
@@ -61,7 +63,7 @@ func (r *researcher) finishTrajectory(res *agent.Result) {
 		return
 	}
 	info := agentInfo{
-		Agent: r.whoAmI(), RunID: r.run.ID, Depth: r.depth, Status: string(r.out.status), Error: r.out.err,
+		Agent: r.whoAmI(), RunID: r.run.ID, Depth: r.depth, AgentDef: r.def.Name, AgentVersion: r.def.Version, Status: string(r.out.status), Error: r.out.err,
 		Steps: res.Steps, ToolCalls: res.ToolCalls, InputTokens: res.InputTokens, OutputTokens: res.OutputTokens, CostUSD: res.CostUSD,
 	}
 	if r.parent != nil {

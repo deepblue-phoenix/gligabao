@@ -19,6 +19,9 @@ CREATE TABLE IF NOT EXISTS gb_agent_research_runs (
 	model         TEXT NOT NULL DEFAULT '',
 	max_steps     BIGINT NOT NULL DEFAULT 0,
 	runner        TEXT NOT NULL DEFAULT 'local',
+	agent_name    TEXT NOT NULL DEFAULT '',
+	agent_version TEXT NOT NULL DEFAULT '',
+	agent_hash    TEXT NOT NULL DEFAULT '',
 	steps         BIGINT NOT NULL DEFAULT 0,
 	tool_calls    BIGINT NOT NULL DEFAULT 0,
 	input_tokens  BIGINT NOT NULL DEFAULT 0,
@@ -48,12 +51,15 @@ CREATE TABLE IF NOT EXISTS gb_agent_research_states (
 `
 
 // Upgrade is what an older database lacks: the columns parent_id, name and reason of gb_agent_research_runs (before sub-agents, 0.129.0)
-// and runner (before the Modal runner, 0.165.0).
+// and runner (before the Modal runner, 0.165.0), and agent_name, agent_version and agent_hash (before the agent definitions, 0.168.0).
 const Upgrade = `
 ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS parent_id BIGINT REFERENCES gb_agent_research_runs(id) ON DELETE CASCADE;
 ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
 ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT '';
 ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS runner TEXT NOT NULL DEFAULT 'local';
+ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS agent_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS agent_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS agent_hash TEXT NOT NULL DEFAULT '';
 `
 
 // SubagentIndexes are the indexes on the columns of Upgrade, so that they are made after it (see the sqlite package).

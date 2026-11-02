@@ -74,6 +74,23 @@ func testResearchRoutes(t *testing.T, d *sql.DB) {
 		t.Fatalf("bad json: %d", rec.Code)
 	}
 
+	// The agent definitions: listed, and a request for an unknown one (or a bad cap) is refused.
+	if rec := do("", "GET", "/v1/gb/research/agents", ``); rec.Code != 401 {
+		t.Fatalf("agents without a key: %d", rec.Code)
+	}
+	rec := do("key-alice", "GET", "/v1/gb/research/agents", ``)
+	var agents struct {
+		Agents []struct{ Name, Version, Hash, Source string } `json:"agents"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &agents); rec.Code != 200 || err != nil || len(agents.Agents) != 1 || agents.Agents[0].Name != "default" || agents.Agents[0].Source != "builtin" || len(agents.Agents[0].Hash) != 64 {
+		t.Fatalf("agents: %d %s", rec.Code, rec.Body)
+	}
+	for _, body := range []string{`{"topic":"t","agent":"nobody"}`, `{"topic":"t","max_cost_usd":-1}`, `{"topic":"t","agent_version":">=9"}`} {
+		if rec := do("key-alice", "POST", "/v1/gb/research", body); rec.Code != 400 {
+			t.Fatalf("%s: %d %s", body, rec.Code, rec.Body)
+		}
+	}
+
 	// The runner is local or modal; this manager has no way to run in Modal.
 	if rec := do("key-alice", "POST", "/v1/gb/research", `{"topic":"t","runner":"lambda"}`); rec.Code != 400 {
 		t.Fatalf("bad runner: %d %s", rec.Code, rec.Body)
@@ -83,7 +100,7 @@ func testResearchRoutes(t *testing.T, d *sql.DB) {
 	}
 
 	// The user is the owner of the key, whatever user_id the caller sends.
-	rec := do("key-alice", "POST", "/v1/gb/research", `{"user_id":"mallory","topic":"batteries","max_steps":3}`)
+	rec = do("key-alice", "POST", "/v1/gb/research", `{"user_id":"mallory","topic":"batteries","max_steps":3}`)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("start: %d %s", rec.Code, rec.Body)
 	}

@@ -55,13 +55,23 @@ ERROR_TAIL_LINES = 15                    # lines of stderr that explain a failed
 _USAGE_KEYS = ("steps", "tool_calls", "input_tokens", "output_tokens", "cost_usd", "subagents")
 
 
+BUNDLE_FILE = "agent_bundle.json"        # the agent definitions of the job (agent_defs.Bundle), in the job's directory
+
+
 def build_command(binary: str, workdir: str, max_steps: int, model: str, dataset: str, timeout_s: int,
-                  export_path: str = "") -> list:
+                  export_path: str = "", agent: str = "", bundle_path: str = "", max_cost_usd: float = 0.0) -> list:
     """The command line of the binary: the topic comes on stdin ("-"), the database is in `workdir`. With `export_path` the binary
-    writes its state there when it ends (--export)."""
+    writes its state there when it ends (--export). `bundle_path` is the file with the agent definitions (--agent-bundle), `agent` the
+    one to run (--agent) and `max_cost_usd` the cap on the cost of the whole research (--max-cost-usd)."""
     cmd = [binary, "--json", "--events", "--max-steps", str(max_steps), "--db", os.path.join(workdir, "gligabao.db")]
     if export_path:
         cmd += ["--export", export_path]
+    if bundle_path:
+        cmd += ["--agent-bundle", bundle_path]
+    if agent:
+        cmd += ["--agent", agent]
+    if max_cost_usd and max_cost_usd > 0:
+        cmd += ["--max-cost-usd", repr(float(max_cost_usd))]
     if model:
         cmd += ["--model", model]
     if dataset:
@@ -112,10 +122,12 @@ def _executable(binary: str, workdir: str) -> str:
 
 
 def run_agent_job(topic: str, max_steps: int, model: str, dataset: str, job_id: str, *, event_kv, timeout_s: int,
-                  binary: str = AGENT_BINARY, popen: Callable = subprocess.Popen) -> dict:
+                  binary: str = AGENT_BINARY, popen: Callable = subprocess.Popen, agent: str = "", agent_bundle: str = "",
+                  max_cost_usd: float = 0.0) -> dict:
     """Research `topic` with the binary and report to the job's event log (`event_kv`: the provider's key-value store). The events
     end with "completed" (with the report), "cancelled" (a stop was requested) or "failed" (with why); the result says which.
-    `timeout_s` is the function's timeout: the binary is told to stop a little before it."""
+    `timeout_s` is the function's timeout: the binary is told to stop a little before it. `agent_bundle` (JSON text) holds the definitions of
+    the agent `agent` and of the sub-agents it may start: the container has no agent_defs directory."""
     log = EventLog(event_kv, job_id)
     write_status(log, "running")
     if stop_requested(log):    # stopped before the container started
@@ -129,7 +141,7 @@ def run_agent_job(topic: str, max_steps: int, model: str, dataset: str, job_id: 
 
     workdir = tempfile.mkdtemp(prefix="agent-")
     try:
-        return _run(log, topic, max_steps, model, dataset, timeout_s, binary, workdir, popen)
+        return _run(log, topic, max_steps, model, dataset, timeout_s, binary, workdir, popen, agent, agent_bundle, max_cost_usd)
     except BaseException as e:
         try:
             write_status(log, "failed", error=f"{type(e).__name__}: {e}"[:2000],
@@ -142,11 +154,18 @@ def run_agent_job(topic: str, max_steps: int, model: str, dataset: str, job_id: 
 
 
 def _run(log: EventLog, topic: str, max_steps: int, model: str, dataset: str, timeout_s: int, binary: str, workdir: str,
-         popen: Callable) -> dict:
+         popen: Callable, agent: str = "", agent_bundle: str = "", max_cost_usd: float = 0.0) -> dict:
     agent_timeout = max(timeout_s - TIMEOUT_MARGIN_S, 60) if timeout_s else 0
     export_path = os.path.join(workdir, EXPORT_FILE)
-    cmd = build_command(_executable(binary, workdir), workdir, max_steps, model, dataset, agent_timeout, export_path)
-    write_log(log, f"starting the agent: {os.path.basename(binary)} --max-steps {max_steps}" + (f" --model {model}" if model else ""))
+    bundle_path = ""
+    if agent_bundle:
+        bundle_path = os.path.join(workdir, BUNDLE_FILE)
+        with open(bundle_path, "w", encoding="utf-8") as f:
+            f.write(agent_bundle)
+    cmd = build_command(_executable(binary, workdir), workdir, max_steps, model, dataset, agent_timeout, export_path, agent, bundle_path,
+                        max_cost_usd)
+    write_log(log, f"starting the agent: {os.path.basename(binary)} --max-steps {max_steps}" + (f" --model {model}" if model else "")
+              + (f" --agent {agent}" if agent else ""))
     proc = popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=workdir)
 
     # Events go to the log from a thread of their own, so that a slow store never makes the binary block on a full stderr pipe.

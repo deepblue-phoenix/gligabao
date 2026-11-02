@@ -173,8 +173,15 @@ func testModalRun(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	if s := run.States[3]; s.Detail != "[kid] https://example.com" {
 		t.Errorf("a sub-agent's state is named in its detail: %+v", s)
 	}
-	if len(remote.requests) != 1 || remote.requests[0] != (agent_research.RemoteRequest{Topic: "batteries", MaxSteps: 5, Model: "my-model", Dataset: "ds"}) {
-		t.Errorf("requests: %+v", remote.requests)
+	if len(remote.requests) != 1 {
+		t.Fatalf("requests: %+v", remote.requests)
+	}
+	if rq := remote.requests[0]; rq.Topic != "batteries" || rq.MaxSteps != 5 || rq.Model != "my-model" || rq.Dataset != "ds" || rq.Agent != "default" || rq.MaxCostUSD != 0 ||
+		rq.Bundle == nil || rq.Bundle.Agent != "default" || len(rq.Bundle.Defs) != 1 {
+		t.Errorf("request: %+v", rq)
+	}
+	if run.AgentName != "default" || run.AgentVersion == "" || run.AgentHash == "" {
+		t.Errorf("the run does not say which agent definition it ran: %+v", run)
 	}
 	if len(remote.froms) < 2 || remote.froms[0] != 0 || remote.froms[1] != 2 {
 		t.Errorf("the follower should resume where the stream ended: froms %v", remote.froms)

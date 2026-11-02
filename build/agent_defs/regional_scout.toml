@@ -1,0 +1,19 @@
+schema = 1
+name = "regional_scout"
+version = "1.0.0"
+description = "Researches the news of one region, in its own language where that helps."
+
+system_prompt_file = "prompts/regional_scout.md"
+max_steps = 8
+tools = ["web_search", "fetch_url"]
+skills = ["citation_style"]
+
+[search]
+recency = "week"
+max_calls = 12
+
+[knowledge]
+access = "read_only"
+
+[limits]
+max_cost_usd = 0.40
