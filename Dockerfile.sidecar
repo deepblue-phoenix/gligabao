@@ -1,6 +1,16 @@
 # syntax=docker/dockerfile:1
 
 # The Python sidecar (sidecar/): a FastAPI server the Go server talks to over HTTP.
+# The research agent binary (Go, static, Linux x86-64: what a Modal container runs), baked into the Modal app by the "deploy" action
+# so that research agents can run in Modal (runner "modal", docs/research.md).
+FROM golang:1.26-bookworm AS agent
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=$(tr -d '[:space:]' < VERSION)" \
+    -o /out/gligabao_agent_linux_amd64 ./cmd/gligabao_agent
+
 FROM python:3.13-slim
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
@@ -10,6 +20,8 @@ COPY sidecar/main_sidecar.py sidecar/sidecar_config.py sidecar/routes.py ./
 COPY sidecar/backends ./backends
 # The code the "deploy" action uploads to Modal (backends/modal_backend.py runs `python -m providers.modal.deploy` from here).
 COPY sidecar/ai_train ./ai_train
+# Next to ai_train/, where ai_train/config.py looks for it (SIDECAR_AGENT_BINARY overrides).
+COPY --from=agent /out/gligabao_agent_linux_amd64 ./gligabao_agent_linux_amd64
 RUN useradd --uid 10002 --no-create-home sidecar
 USER sidecar
 # Inside a container it must listen on all interfaces to be reachable through the published port.

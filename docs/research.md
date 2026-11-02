@@ -6,6 +6,8 @@ Every run is stored in the relational database, and so is **every state the agen
 
 It needs an Anthropic API key (else `503`). Each run costs money: up to `max_steps` model calls plus the web searches (a fee for each, on top of the tokens, see [web-search.md](web-search.md)). The cost is recorded and updated as the run goes.
 
+By default the agent runs **in the server's process** (the `local` runner). With `"runner": "modal"` it runs instead as the `gligabao_agent` binary **in Modal**, started through the sidecar the way training is ([below](#where-the-agent-runs-the-runner)).
+
 Access: REST ([below](#rest)), [MCP](mcp.md#research-agents) (`research_start`, `research_list`, `research_get`) and the [CLI](cli.md) (`gligabao research start|ls|get`). They all use the same handlers, so they behave the same.
 
 ## Runs and states
@@ -19,7 +21,7 @@ A **run** (`gb_agent_research_runs`) is one execution of the agent on a topic. I
 | `failed` | it could not finish: a model call failed, or the server stopped (`error` says why) |
 | `stopped` | somebody stopped it before it ended (from the [admin UI](#admin-ui)); `error` says who, and there is no report |
 
-A run left `running` by a process that died is marked `failed` ("interrupted") when the server starts again.
+A run left `running` by a process that died is marked `failed` ("interrupted") when the server starts again (the job of a run in Modal is not followed again after a restart: see [the runner](#where-the-agent-runs-the-runner)).
 
 A **state** (`gb_agent_research_states`) is one stage of its work. A row is inserted every time the agent moves from one state to the next; the table is append-only (a state is only ended, never rewritten), and `state` of the run is always the last row's. The states of a run:
 
@@ -53,18 +55,19 @@ All three routes are user routes: `user_id` is required (in the body, or in the 
 Starts an agent. Body:
 
 ```json
-{"user_id": "u1", "topic": "How do solid-state batteries compare with lithium-ion?", "max_steps": 20, "model": "", "dataset": "main"}
+{"user_id": "u1", "topic": "How do solid-state batteries compare with lithium-ion?", "max_steps": 20, "model": "", "dataset": "main", "runner": "local"}
 ```
 
 - `topic` (required, at most 2000 characters): what to research. A question, or a subject to write a report on.
 - `max_steps` (optional, default 20, at most 40): the most model calls the agent makes, the last of which writes the report. More steps let it search and read more, and cost more.
 - `model` (optional): the model it runs on, which must support Anthropic's web search tool. Default: the server's default model.
-- `dataset` (optional, default `main`): the dataset of the user's knowledge base the agent queries and remembers into ([below](#the-knowledge-base)). It is created by the first `remember` if it does not exist; a bad name is a `400`. It is not stored with the run.
+- `dataset` (optional, default `main`): the dataset of the user's knowledge base the agent queries and remembers into ([below](#the-knowledge-base)). It is created by the first `remember` if it does not exist; a bad name is a `400`. It is not stored with the run. (Not used by the `modal` runner, which has a knowledge base of its own.)
+- `runner` (optional, default `local`): where the agent runs, `local` (in the server, as always) or `modal` (the `gligabao_agent` binary in a Modal container, see [below](#where-the-agent-runs-the-runner)). Any other value is a `400`. The run says which one it has (`runner`).
 
-Answers `202` with the run (`status` `running`, `state` `starting`); the agent goes on in the background. `400` for a bad body, `409` if the user already has 3 agents working (wait for one to end), `503` without an Anthropic API key.
+Answers `202` with the run (`status` `running`, `state` `starting`); the agent goes on in the background. `400` for a bad body, `409` if the user already has 3 agents working (wait for one to end), `503` without an Anthropic API key (for `local`), or, for `modal`, when the sidecar cannot start the job (it is down, or the Modal app has no agent: the message says which).
 
 ```json
-{"id": 7, "user_id": "u1", "topic": "...", "status": "running", "state": "starting", "model": "", "max_steps": 20,
+{"id": 7, "user_id": "u1", "topic": "...", "status": "running", "state": "starting", "model": "", "max_steps": 20, "runner": "local",
  "steps": 0, "tool_calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0, "report": "", "error": "",
  "created_at": "2026-11-01T10:00:00.120Z", "finished_at": null}
 ```
@@ -101,12 +104,12 @@ To follow a run, poll this route (or `research_get`, or `gligabao research get`)
 ## CLI
 
 ```
-gligabao research start TOPIC [--max-steps N] [--model M] [--wait [--raw]] [--json BODY]
+gligabao research start TOPIC [--max-steps N] [--model M] [-d DATASET] [--runner local|modal] [--wait [--raw]] [--json BODY]
 gligabao research ls [--active] [--status S] [--limit N]
 gligabao research get ID [--raw]
 ```
 
-`start` prints the run right away; with `--wait` it waits for the agent to end and prints the finished run (exit code 1 if it failed), and `--raw` prints only the report. `get --raw` prints only the report. See [cli.md](cli.md).
+`--runner modal` runs the agent in Modal ([below](#where-the-agent-runs-the-runner)); the default is local. `start` prints the run right away; with `--wait` it waits for the agent to end and prints the finished run (exit code 1 if it failed), and `--raw` prints only the report. `get --raw` prints only the report. See [cli.md](cli.md).
 
 ## Admin UI
 
@@ -123,7 +126,7 @@ The **research** view of the [admin UI](../README.md#admin-ui) shows the agents 
 - a green **start agent** button that starts an agent, see below;
 - a **dock** of the agents that work, see below.
 
-**Starting.** The **start agent** button opens a modal with a tall text box for the task (at most 2000 characters; **Ctrl+Enter** submits). The agent is started as the user `admin`, with the defaults of [`POST /v1/gb/research`](#post-v1gbresearch) (20 steps, the server's model, the `main` dataset), and the modal closes when the server accepts it.
+**Starting.** The **start agent** button opens a modal with a tall text box for the task (at most 2000 characters; **Ctrl+Enter** submits). The modal also has a **Where it runs** choice: *local* (the default) or *Modal*. The agent is started as the user `admin`, with the defaults of [`POST /v1/gb/research`](#post-v1gbresearch) (20 steps, the server's model, the `main` dataset), and the modal closes when the server accepts it. The **Details** modal of an agent says where it runs.
 
 **The dock.** A block on the right of the screen, fixed so it stays while the page scrolls, for every agent that works: its state, topic, running time and steps. It is green while the agent is healthy (working or completed) and red when it failed, was stopped, or the server cannot be reached. An agent that ends while its block is shown keeps the block, with its final status, until it is dismissed. Clicking a block opens the details of the agent. The **Details** modal of a working agent redraws itself every few seconds and keeps its **States** section open and its scroll position.
 
@@ -133,7 +136,45 @@ The **research** view of the [admin UI](../README.md#admin-ui) shows the agents 
 
 **Temporal plot.** The **Temporal plot** button of the details modal opens the same plot as the **Temporal changes** of a [remember run](remember.md#admin-ui): what the agent did to the facts over event time (created, confirmed, ended, invalidated, superseded). It covers the whole session `research-<run id>` in whichever dataset the agent remembered (the artifacts and events of each event are read from the dataset of that event, so a plot can span several datasets), and the sub-agents' sessions too when the agent has any. The queries the agent asked (`query`) carry the same session in the query run log (`gb_query_runs`).
 
-Endpoints (admin routes, under `/v1/gb/admin/api/`, not tied to a user): `GET research[?status=running|completed|failed|stopped|finished][&user_id=][&roots_only=true][&limit=]` (the counts of all the agents by status and the agents that match, each with `children`, `duration_ms`, `age_ms` and `has_report`, without their reports), `GET research/{id}` (the agent with its report, states, parent and sub-agents), `POST research` (starts an agent like `POST /v1/gb/research`, with the body `{"topic": "", "user_id": "admin", "max_steps": 20, "model": "", "dataset": ""}`, only `topic` required; answers `202` with the agent, and `400`, `409` and `503` as there), `POST research/{id}/stop`, `GET research/{id}/provenance[?include_subagents=true]` (`datasets`, `artifacts`, `entities` and `edges`) and `GET research/{id}/temporal[?include_subagents=true]` (`artifacts` and `events`, as in `GET remember-run-temporal`). They are mounted with the admin UI (`internal/api/admin/research.go`), and only read or stop the agents of the server's own database.
+Endpoints (admin routes, under `/v1/gb/admin/api/`, not tied to a user): `GET research[?status=running|completed|failed|stopped|finished][&user_id=][&roots_only=true][&limit=]` (the counts of all the agents by status and the agents that match, each with `children`, `duration_ms`, `age_ms` and `has_report`, without their reports), `GET research/{id}` (the agent with its report, states, parent and sub-agents), `POST research` (starts an agent like `POST /v1/gb/research`, with the body `{"topic": "", "user_id": "admin", "max_steps": 20, "model": "", "dataset": "", "runner": "local"}`, only `topic` required; answers `202` with the agent, and `400`, `409` and `503` as there), `POST research/{id}/stop`, `GET research/{id}/provenance[?include_subagents=true]` (`datasets`, `artifacts`, `entities` and `edges`) and `GET research/{id}/temporal[?include_subagents=true]` (`artifacts` and `events`, as in `GET remember-run-temporal`). They are mounted with the admin UI (`internal/api/admin/research.go`), and only read or stop the agents of the server's own database.
+
+## Where the agent runs (the runner)
+
+A research has a **runner**, chosen when it is started (`runner` in the REST body, `--runner` in the CLI, `runner` in `research_start`, the choice in the admin UI):
+
+| Runner | What it is |
+| ------ | ---------- |
+| `local` (the default) | the agent is a goroutine of the server, as described everywhere else on this page |
+| `modal` | the agent is the **`gligabao_agent` binary running in a Modal container**, started through the sidecar, the way training jobs are |
+
+The server never talks to Modal: for `modal` it asks the [sidecar](training/sidecar.md) (`POST /research/job_start`), which spawns a function of the same Modal app that trains ([modal.md](training/modal.md)), whose container runs the binary ([deep-research-agent.md](deep-research-agent.md#the-standalone-binary-gligabao_agent)) on the topic, with the sub-agents inside it. The server records the run exactly as for a local one (`gb_agent_research_runs`, with `runner` `modal`), follows the job's event stream (SSE, like a training job's) and writes what the container reports to the run: the states the agents enter, the usage and, in the end, the report. REST, MCP, the CLI and the admin UI see the same run and the same states; only `runner` differs.
+
+```
+server ── POST /research/job_start ──► sidecar ──► Modal app: run_agent (container with the gligabao_agent binary)
+   ▲                                                  │  the binary writes its progress (--events) to stderr;
+   └──── GET /research/job_events (SSE) ◄─────────────┘  the container puts it in the job's event log (a Modal Dict)
+```
+
+**What differs from a local run:**
+
+- **The sub-agents are not runs of their own on the server.** They run inside the container (in a database of the container). The states they enter are in the timeline of the run, with the name of the sub-agent in front of the detail (`[worker] https://...`), and the run's `steps`, `tool_calls`, tokens and `cost_usd` are those of the **whole tree** (as the totals of `gligabao_agent`), updated about every half second as the container reports them. `GET /v1/gb/research?parent_id=` lists none for it.
+- **The knowledge base is the container's own**: empty at the start and gone when the container ends. The `remember` and `query` tools work inside the run, but nothing the agent remembers reaches the user's knowledge base (the `dataset` option has no effect). Provenance and the temporal plot of the admin UI therefore show nothing for such a run.
+- **The keys are the Modal app's.** The container uses the keys of the Modal secret named by `SIDECAR_AGENT_SECRET` (`ANTHROPIC_API_KEY` and `OPENAI_API_KEY`), not the server's: the server needs no Anthropic key to start a `modal` research. The `model` must still support Anthropic's web search tool.
+- **No per-process limit but the user's.** The limit of 3 agents working at once per user counts the runs in Modal too.
+- **Stopping** (admin UI, `Manager.Stop`) asks the sidecar to cancel the job; the container ends the binary (`SIGTERM`, which ends the research properly; `SIGKILL` after 20 seconds) and the run ends as `stopped` when the job reports it. If the sidecar cannot be reached the run ends as `stopped` at once, with a note that the job may go on in Modal until its timeout (`SIDECAR_AGENT_TIMEOUT_S`, 30 minutes by default). The same happens when the server stops: it asks for the job to be cancelled before it ends the run as `failed` ("interrupted").
+- **A restart of the server does not reattach to the job**: runs still `running` are marked `failed` when it starts again (as for local runs), and a job that is still going in Modal runs until it ends or times out. Its cost is not recorded.
+- **Failures are as visible as for a local run**: a job that dies without reporting (out of memory, the timeout) is closed by the sidecar's watchdog with a `failed` event, and a follower that cannot reach the sidecar for 5 minutes gives up and ends the run as `failed` ("lost contact"). A job may take 3 hours at most.
+
+**Setting it up.**
+
+1. Build the agent for the containers: `./run_build.sh` makes `build/gligabao_agent_linux_amd64` (a static Linux x86-64 binary, whatever the machine). The sidecar image (`Dockerfile.sidecar`) builds it itself and has it next to `ai_train/`; `SIDECAR_AGENT_BINARY` points the sidecar at another file.
+2. Create the Modal secret with the keys: `modal secret create gligabao-agent ANTHROPIC_API_KEY=... OPENAI_API_KEY=...` and set `SIDECAR_AGENT_SECRET=gligabao-agent` for the sidecar. (Without a secret the agent runs without keys and fails with a message saying which one is missing.)
+3. **Deploy the Modal app again** (the admin UI's training view, or `modal deploy app.py`): the deploy bakes the binary into the agent's image. An app deployed without the binary has no agent: starting a `modal` research answers `503` ("this Modal app has no research agent ...").
+4. Start a research with `runner: "modal"`. The server only needs a reachable sidecar (`sidecar_url`).
+
+`SIDECAR_AGENT_TIMEOUT_S` (default 1800) is the timeout of the container's function; the binary is told to end 90 seconds before it so that it finishes by itself, with a report if it can. More about the Modal side (the function, the event protocol, the configuration) is in [training/sidecar.md](training/sidecar.md#the-research-agent-in-modal).
+
+Code: `internal/agent_research/remote.go` (the `Remote` interface the manager runs the `modal` runner through, and the follower that writes the job's events to the run), `internal/sys/server/research_remote.go` (its implementation over the sidecar client), `internal/sys/sidecar/research_jobs.go` (the client), `sidecar/ai_train/ai_train_core/agent_run.py` (the container side).
 
 ## The knowledge base
 
@@ -155,8 +196,9 @@ A research agent can spawn **sub-agents**, other research agents that take sub-t
 - `internal/agent_research/team.go` and `messages.go`, `internal/agent/team.go`: the sub-agents and their messages; the prompts are in `internal/agent/prompts/` (see [subagents.md](subagents.md)).
 - `internal/agent_memory/memory.go`: `Memory` (the remember manager, the database, the LLM and the options of the remember and query endpoints), which `api.Register` gives the manager (`Manager.UseMemory`; `agent_research.Memory` is an alias of it); each agent gets its own view of it (`Memory.Knowledge`: its user, dataset and session) that implements `agent.Knowledge`, the interface behind the tools `remember` and `query` (`internal/agent/knowledge.go`). The package is shared with the standalone binary ([deep-research-agent.md](deep-research-agent.md#the-standalone-binary-gligabao_agent)). Without a `Memory` the agents only have the web tools.
 - `internal/api/research`: the REST handlers; `internal/api/mcp` and `cli` call them (the MCP tools in process, the CLI over HTTP).
+- `internal/agent_research/remote.go`: the `modal` runner ([above](#where-the-agent-runs-the-runner)): `Manager.UseRemote` gives the manager the `Remote` it starts the jobs with, and a `remoteRun` follows the job of each such run on a goroutine of its own, writing its events to the run like a `researcher` does.
 - When the server stops, the agents are cancelled and their runs are ended as `failed` ("interrupted") before the databases close.
 
 ## Not included yet
 
-Cancelling a run by a user (only the admin UI can stop one), messages between agents that are not siblings (a parent and its sub-agents, cousins), storing the messages, a stream of its states (poll `GET /v1/gb/research/{id}`), storing the report itself in a dataset, waiting for the queued snippets before a run ends, counting the cost of `remember` and `query` in the run's cost, recording the agent's model calls in `gb_inferences`, and a cap on the cost of a run. See the [roadmap](roadmap/ROADMAP.md).
+Following again, after a restart of the server, the jobs it had running in Modal; a knowledge base of the user's own for the agents that run in Modal (they have one of the container's), the sub-agents of such a run as runs of their own, other places to run the agent than Modal, cancelling a run by a user (only the admin UI can stop one), messages between agents that are not siblings (a parent and its sub-agents, cousins), storing the messages, a stream of its states (poll `GET /v1/gb/research/{id}`), storing the report itself in a dataset, waiting for the queued snippets before a run ends, counting the cost of `remember` and `query` in the run's cost, recording the agent's model calls in `gb_inferences`, and a cap on the cost of a run. See the [roadmap](roadmap/ROADMAP.md).

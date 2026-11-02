@@ -7,6 +7,8 @@ import json
 import os
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -16,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from unittest import mock
 
 import training_data
-from ai_train_core import dataset, event_log, paths, progress_events, trained_model
+from ai_train_core import agent_run, dataset, event_log, paths, progress_events, trained_model
 from providers.base import CallStatus
 from ai_train_core import model_families, training_common
 from ai_train_core.gemma4 import prompt_format
@@ -586,6 +588,14 @@ class ApiTest(unittest.TestCase):
                 raise self.spawn_error
             self.calls.append((steps, size, ds, job_id))
             return "fc-1"
+        self.agent_calls = []
+
+        def spawn_agent(topic, max_steps, model, ds, job_id):
+            if self.spawn_error:
+                raise self.spawn_error
+            self.agent_calls.append((topic, max_steps, model, ds, job_id))
+            return "fc-agent"
+        self.spawn_agent = spawn_agent
         api = create_api(
             spawn_training_job=spawn,
             infer_response=lambda *a: {"response": "ok", "args": list(a)},
@@ -593,6 +603,7 @@ class ApiTest(unittest.TestCase):
             reload_volumes=lambda p: None,
             event_kv=self.kv,
             call_status=lambda call_id: self.call_state,
+            spawn_agent_job=spawn_agent,
             poll_interval_s=0.01,
             max_stream_s=0.3,
             watchdog_s=0.05,
@@ -801,6 +812,208 @@ class ApiTest(unittest.TestCase):
         for bad in ("../x", "trained/../x", "/models/trained/a", "finetuned_model_4b", "trained/a/b", "trained/"):
             r = self.client.post("/infer/query", json={"prompt": "hi", "model_path": bad})
             self.assertEqual(r.status_code, 400, bad)
+
+    # ---- research jobs (the gligabao_agent binary in Modal) ----
+
+    def test_research_job_start(self):
+        r = self.client.post("/research/job_start", json={"topic": "  batteries  ", "max_steps": 7, "model": "m", "dataset": "d"})
+        self.assertEqual(r.status_code, 200, r.text)
+        job = r.json()
+        self.assertEqual((job["provider_job_id"], job["status"]), ("fc-agent", "started"))
+        self.assertTrue(progress_events.valid_job_id(job["job_id"]))
+        self.assertEqual(self.agent_calls, [("batteries", 7, "m", "d", job["job_id"])])
+        self.assertEqual(self.log(job["job_id"]).meta()["call_id"], "fc-agent")  # for the watchdog
+        r = self.client.post("/research/job_start", json={"topic": "t"})  # defaults
+        self.assertEqual(self.agent_calls[-1][1:4], (20, "", ""))
+
+    def test_research_job_start_validates(self):
+        for body in ({}, {"topic": " "}, {"topic": 5}, {"topic": "t", "max_steps": 0}, {"topic": "t", "max_steps": 41},
+                     {"topic": "t", "max_steps": "9"}, {"topic": "t", "model": "a b"}, {"topic": "t", "dataset": "a b"}):
+            self.assertEqual(self.client.post("/research/job_start", json=body).status_code, 400, body)
+        self.assertEqual(self.client.post("/research/job_start", content=b"[1]").status_code, 400)
+        self.assertEqual(self.agent_calls, [])
+
+    def test_research_job_start_without_the_agent(self):
+        from api.api import create_api
+        client = type(self.client)(create_api(spawn_training_job=None, infer_response=None, commit_volumes=None, reload_volumes=None,
+                                              event_kv=self.kv, call_status=None))
+        r = client.post("/research/job_start", json={"topic": "t"})
+        self.assertEqual(r.status_code, 503)
+        self.assertIn("gligabao_agent", r.json()["error"])
+        self.assertEqual(self.kv.d, {})  # no job was made
+
+    def test_research_job_that_cannot_spawn_closes_the_log(self):
+        self.spawn_error = RuntimeError("modal is down")
+        client = type(self.client)(self.client.app, raise_server_exceptions=False)
+        self.assertEqual(client.post("/research/job_start", json={"topic": "t"}).status_code, 500)
+        jobs = {k.split(":")[0] for k in self.kv.d}
+        self.assertEqual(len(jobs), 1)
+        events = self.log(jobs.pop()).read_from(0)
+        self.assertEqual([(e["type"], e["status"]) for _, e in events], [("status", "failed")])
+
+    def test_research_job_events_and_watchdog(self):
+        log = self.log("r1")
+        progress_events.write_status(log, "running")
+        progress_events.write_event(log, {"type": "state", "agent": "main", "state": "searching"})
+        progress_events.write_status(log, "completed", report="R")
+        r = self.client.get("/research/job_events?job_id=r1&from=1")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("id: 1\nevent: state\n", r.text)
+        self.assertIn('id: 2\nevent: status\ndata: {"type": "status", "status": "completed", "report": "R"', r.text)
+        self.assertNotIn("id: 0", r.text)
+        # a job whose call ended without a final event is closed by the watchdog, which names the kind of job
+        job = self.client.post("/research/job_start", json={"topic": "t"}).json()["job_id"]
+        self.call_state = CallStatus("failed", "OOM")
+        self.client.get(f"/research/job_events?job_id={job}")
+        last = self.log(job).last_event()
+        self.assertEqual(last["status"], "failed")
+        self.assertIn("research container ended without reporting it", last["error"])
+
+    def test_research_job_cancel(self):
+        job = self.client.post("/research/job_start", json={"topic": "t"}).json()["job_id"]
+        r = self.client.post("/research/job_cancel", json={"job_id": job})
+        self.assertEqual((r.status_code, r.json()["status"]), (200, "stopping"))
+        self.assertTrue(self.log(job).stop_requested())
+        self.assertEqual(self.client.post("/research/job_cancel", json={"job_id": "nope"}).status_code, 404)
+        self.assertEqual(self.client.post("/research/job_cancel", json={}).status_code, 400)
+        progress_events.write_status(self.log(job), "cancelled")
+        self.assertEqual(self.client.post("/research/job_cancel", json={"job_id": job}).status_code, 409)
+
+
+FAKE_AGENT = """#!/usr/bin/env python3
+import json, os, signal, sys, time
+mode = os.environ.get("FAKE_AGENT_MODE", "ok")
+topic = sys.stdin.read()
+ev = lambda **kw: print(json.dumps({"event": kw.pop("event"), **kw}, separators=(",", ":")), file=sys.stderr, flush=True)
+with open(os.environ["FAKE_AGENT_ARGS"], "w") as f:
+    json.dump({"argv": sys.argv[1:], "topic": topic, "cwd": os.getcwd()}, f)
+if mode == "ok":
+    ev(event="state", agent="main", state_seq=2, state="searching", step=1, detail="q", error="")
+    print("gligabao_agent: a warning", file=sys.stderr, flush=True)
+    ev(event="state", agent="kid", state_seq=2, state="reading", step=1, detail="u", error="")
+    ev(event="usage", steps=2, tool_calls=1, input_tokens=10, output_tokens=5, cost_usd=0.5, subagents=1)
+    print(json.dumps({"report": "REPORT of " + topic, "run_id": 7, "subagents": 1, "steps": 3, "tool_calls": 2,
+                      "input_tokens": 100, "output_tokens": 50, "cost_usd": 0.75}))
+elif mode == "fail":
+    print("gligabao_agent: the research failed: anthropic is overloaded", file=sys.stderr, flush=True)
+    sys.exit(1)
+elif mode == "garbage":
+    print("not json")
+elif mode == "hang":
+    signal.signal(signal.SIGTERM, lambda *a: sys.exit(1))
+    ev(event="state", agent="main", state_seq=2, state="thinking", step=1, detail="", error="")
+    time.sleep(60)
+"""
+
+
+class AgentRunTest(unittest.TestCase):
+    """ai_train_core/agent_run.py with a fake binary: a script that speaks the --events protocol of gligabao_agent."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.binary = Path(self.tmp.name, "gligabao_agent")
+        self.binary.write_text(FAKE_AGENT)
+        self.binary.chmod(0o755)
+        self.args_file = Path(self.tmp.name, "args.json")
+        self.kv = FakeKV()
+        for k, v in (("FAKE_AGENT_ARGS", str(self.args_file)), ("FAKE_AGENT_MODE", "ok")):
+            p = mock.patch.dict(os.environ, {k: v})
+            p.start()
+            self.addCleanup(p.stop)
+
+    def run_job(self, **kw):
+        args = dict(topic="batteries", max_steps=7, model="m", dataset="d", job_id="j1", event_kv=self.kv, timeout_s=1800,
+                    binary=str(self.binary))
+        args.update(kw)
+        return agent_run.run_agent_job(**args)
+
+    def events(self, job_id="j1"):
+        return [e for _, e in event_log.EventLog(self.kv, job_id).read_from(0)]
+
+    def test_completed(self):
+        result = self.run_job()
+        self.assertEqual(result["status"], "completed")
+        evs = self.events()
+        self.assertEqual(evs[0], {"type": "status", "status": "running", "timestamp": evs[0]["timestamp"]})
+        states = [(e["agent"], e["state_seq"], e["state"], e["detail"]) for e in evs if e["type"] == "state"]
+        self.assertEqual(states, [("main", 2, "searching", "q"), ("kid", 2, "reading", "u")])
+        self.assertIn("gligabao_agent: a warning", [e["message"] for e in evs if e["type"] == "log"])
+        usage = [e["usage"] for e in evs if e["type"] == "usage"]
+        self.assertEqual(usage, [{"steps": 2, "tool_calls": 1, "input_tokens": 10, "output_tokens": 5, "cost_usd": 0.5, "subagents": 1}])
+        last = evs[-1]
+        self.assertEqual((last["type"], last["status"], last["report"]), ("status", "completed", "REPORT of batteries"))
+        self.assertEqual(last["usage"], {"steps": 3, "tool_calls": 2, "input_tokens": 100, "output_tokens": 50, "cost_usd": 0.75, "subagents": 1})
+        # the final status comes after every event the binary wrote
+        self.assertEqual([e["type"] for e in evs][-2:], ["usage", "status"])
+        self.assertTrue(event_log.EventLog(self.kv, "j1").exists())
+
+    def test_command_line(self):
+        self.run_job()
+        got = json.loads(self.args_file.read_text())
+        self.assertEqual(got["topic"], "batteries")     # on stdin
+        argv = got["argv"]
+        self.assertEqual(argv[-1], "-")
+        for flag, value in (("--max-steps", "7"), ("--model", "m"), ("--dataset", "d"), ("--timeout", f"{1800 - agent_run.TIMEOUT_MARGIN_S}s")):
+            self.assertEqual(argv[argv.index(flag) + 1], value)
+        self.assertIn("--json", argv)
+        self.assertIn("--events", argv)
+        db = argv[argv.index("--db") + 1]
+        self.assertTrue(db.startswith(got["cwd"]) and db.endswith("gligabao.db"))   # in a directory of the job
+        self.assertFalse(os.path.exists(got["cwd"]))                                # which is removed afterwards
+
+    def test_optional_flags_are_left_out(self):
+        cmd = agent_run.build_command("/b", "/w", 5, "", "", 0)
+        self.assertEqual(cmd, ["/b", "--json", "--events", "--max-steps", "5", "--db", "/w/gligabao.db", "-"])
+
+    def test_failed(self):
+        os.environ["FAKE_AGENT_MODE"] = "fail"
+        self.assertEqual(self.run_job()["status"], "failed")
+        last = self.events()[-1]
+        self.assertEqual((last["type"], last["status"]), ("status", "failed"))
+        self.assertIn("exited with code 1", last["error"])
+        self.assertIn("anthropic is overloaded", last["error"])
+
+    def test_unreadable_result(self):
+        os.environ["FAKE_AGENT_MODE"] = "garbage"
+        self.assertEqual(self.run_job()["status"], "failed")
+        self.assertIn("without a readable result", self.events()[-1]["error"])
+
+    def test_missing_binary(self):
+        self.assertEqual(self.run_job(binary=str(self.binary) + ".nope")["status"], "failed")
+        self.assertIn("build it with ./run_build.sh", self.events()[-1]["error"])
+
+    def test_stop_before_start(self):
+        event_log.EventLog(self.kv, "j1").request_stop()
+        self.assertEqual(self.run_job()["status"], "cancelled")
+        self.assertFalse(self.args_file.exists())   # the binary never ran
+        self.assertEqual(self.events()[-1]["status"], "cancelled")
+
+    def test_stop_while_running(self):
+        os.environ["FAKE_AGENT_MODE"] = "hang"
+        log = event_log.EventLog(self.kv, "j1")
+
+        def stop_when_working():
+            for _ in range(500):
+                if any(e.get("state") == "thinking" for _, e in log.read_from(0)):
+                    log.request_stop()
+                    return
+                time.sleep(0.02)
+        t = threading.Thread(target=stop_when_working, daemon=True)
+        t.start()
+        with mock.patch.object(agent_run, "STOP_POLL_S", 0.05):
+            result = self.run_job()
+        t.join()
+        self.assertEqual(result["status"], "cancelled")
+        last = self.events()[-1]
+        self.assertEqual((last["type"], last["status"]), ("status", "cancelled"))
+
+    def test_convert_event(self):
+        self.assertIsNone(agent_run.convert_event("gligabao_agent: something"))
+        self.assertIsNone(agent_run.convert_event('{"event":"state", broken'))
+        self.assertIsNone(agent_run.convert_event('{"event":"other"}'))
+        self.assertEqual(agent_run.convert_event('{"event":"state","state":"reading"}'),
+                         {"type": "state", "agent": "main", "state_seq": 0, "state": "reading", "step": 0, "detail": "", "error": ""})
 
 
 class InferenceCacheTest(unittest.TestCase):

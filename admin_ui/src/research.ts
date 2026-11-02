@@ -12,7 +12,7 @@ import { onViewShown } from "./views.js";
 interface State { seq: number; state: string; step: number; detail: string; error: string; started_at: string; finished_at: string | null }
 interface Agent {
   id: number; user_id: string; parent_id: number | null; name: string; reason: string; topic: string;
-  status: "running" | "completed" | "failed" | "stopped"; state: string; model: string; max_steps: number;
+  status: "running" | "completed" | "failed" | "stopped"; state: string; model: string; max_steps: number; runner: string;
   steps: number; tool_calls: number; input_tokens: number; output_tokens: number; cost_usd: number;
   report: string; error: string; created_at: string; finished_at: string | null;
   children: number; duration_ms: number; age_ms: number; has_report: boolean; states?: State[];
@@ -310,6 +310,7 @@ function renderDetail(d: Detail): HTMLElement {
   row("Tokens", `${fmtInt(d.input_tokens)} in / ${fmtInt(d.output_tokens)} out`);
   row("Cost", fmtCost(d.cost_usd));
   row("Model", d.model || "(server default)");
+  row("Runs in", d.runner === "modal" ? "Modal (gligabao_agent binary)" : "this server", "Where the agent runs: in the server's process, or in a Modal container started through the sidecar");
   row("State", d.state);
 
   root.appendChild(node("h4", "", "Topic"));
@@ -535,6 +536,7 @@ async function startAgent(): Promise<void> {
   const err = el("research-start-error");
   const submit = el<HTMLButtonElement>("research-start-submit");
   const text = topic.value.trim();
+  const runner = el<HTMLSelectElement>("research-start-runner").value;
   if (!text) {
     err.textContent = "Describe the research task first.";
     err.hidden = false;
@@ -544,7 +546,7 @@ async function startAgent(): Promise<void> {
   submit.disabled = true;
   err.hidden = true;
   try {
-    const a = await getJSON<Agent>("api/research", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic: text }) });
+    const a = await getJSON<Agent>("api/research", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic: text, runner }) });
     el<HTMLDialogElement>("research-start-modal").close();
     topic.value = "";
     dock.set(a.id, a);

@@ -595,6 +595,11 @@
       <div class="modal-body">
         <label for="research-start-topic" class="muted">Describe the research task: a question, or a subject for a report (at most 2000 characters). The agent searches the web, reads pages and ends with a report; it costs money.</label>
         <textarea id="research-start-topic" class="rs-start-topic" maxlength="2000" placeholder="What should the agent research?"></textarea>
+        <label for="research-start-runner" class="muted">Where it runs</label>
+        <select id="research-start-runner" title="Where the agent runs">
+          <option value="local" selected>local: in this server</option>
+          <option value="modal">Modal: the gligabao_agent binary in a Modal container (through the sidecar)</option>
+        </select>
         <p id="research-start-error" class="error" hidden></p>
       </div>
       <div class="modal-foot">

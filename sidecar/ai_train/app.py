@@ -11,14 +11,19 @@ Run (Modal):
     modal run app.py --action infer --model-size 4b --prompt "..."      # fine-tuned model inference
                                                               # [--model-path trained/<job id>: a trained model; default: the legacy adapter]
     modal serve app.py                                        # web API (dev); `modal deploy app.py` to persist
+    modal run app.py --action agent --prompt "topic"          # the research agent (the gligabao_agent binary) on a topic
 
 Cloud-specific code lives in providers/<name>/ (providers/modal/). This file only declares *what* to run.
+
+The research agent (docs/research.md, runner "modal"): `run_agent` runs the gligabao_agent Linux binary in a CPU container, with the
+keys of the Modal secret SIDECAR_AGENT_SECRET; the web API starts it (POST /research/job_start) and streams its events.
 
 Images (see below): training uses Unsloth on a CUDA toolkit image (requirements_train.txt); inference uses a separate,
 lighter one without Unsloth (requirements_infer.txt); the CPU functions and the web API have none of the ML stack.
 """
 import os
 import sys
+import time
 
 modd_str = os.path.abspath(os.path.dirname(__file__))
 # Local: this dir. In the container: the mounted code dir (see providers/modal/provider.py).
@@ -26,7 +31,7 @@ for _p in (modd_str, "/pkg"):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from ai_train_core import paths
+from ai_train_core import agent_run, paths
 from ai_train_core.model_families import model_sizes
 
 MODEL_SIZES = model_sizes()   # of the default model family
@@ -60,7 +65,13 @@ WEB_VOLS = _volumes(paths.DATA_DIR, paths.EVAL_DIR)
 
 # Images. Code is mounted last, so code edits don't rebuild the pip layers.
 CPU_IMAGE = ImageSpec(gpu=False)
-WEB_IMAGE = ImageSpec(gpu=False, requirements_path=f"{modd_str}/requirements_web.txt")
+# The research agent is the gligabao_agent binary baked into its image. Without the binary at deploy time the app is deployed without an
+# agent: the function still exists (it must be defined the same in every container) but reports that the binary is missing, and the web
+# API (whose image says, in SIDECAR_AGENT_DEPLOYED, whether it was there) answers POST /research/job_start with 503.
+AGENT_DEPLOYED = bool(CONFIG.agent_binary)
+AGENT_IMAGE = ImageSpec(gpu=False, local_files=((CONFIG.agent_binary, agent_run.AGENT_BINARY),) if AGENT_DEPLOYED else ())
+WEB_IMAGE = ImageSpec(gpu=False, requirements_path=f"{modd_str}/requirements_web.txt",
+                      env=(("SIDECAR_AGENT_DEPLOYED", "1" if AGENT_DEPLOYED else "0"),))
 UNSLOTH_IMAGE = ImageSpec(gpu=True, requirements_path=f"{modd_str}/requirements_train.txt")             # training, 4B, 12B and 31B
 # Inference only: transformers + peft + bitsandbytes on a slim base (no Unsloth, no trainer, no CUDA toolkit). 4B, 12B and 31B.
 INFER_IMAGE = ImageSpec(gpu=True, cuda_toolkit=False, requirements_path=f"{modd_str}/requirements_infer.txt")
@@ -222,6 +233,19 @@ def infer(prompt: str,
 
 
 #-----------------------------------------------------------------------------------------
+# RESEARCH AGENT: the gligabao_agent binary (Go) in a container of its own; it reports to the event log of its job
+
+agent_secrets = (CONFIG.agent_secret,) if CONFIG.agent_secret else ()
+
+
+@provider.function(FunctionSpec(image=AGENT_IMAGE, timeout_s=CONFIG.agent_timeout_s, secrets=agent_secrets))
+def run_agent(topic: str, max_steps: int = 20, model: str = "", dataset: str = "", job_id: str = "") -> dict:
+    """Research `topic` with the agent binary and report to the event log of `job_id` (agent_run.py)."""
+    return agent_run.run_agent_job(topic, max_steps, model, dataset, job_id or str(int(time.time())),
+                                   event_kv=provider.event_kv(), timeout_s=CONFIG.agent_timeout_s)
+
+
+#-----------------------------------------------------------------------------------------
 # WEB API
 
 @provider.asgi_app(FunctionSpec(image=WEB_IMAGE, timeout_s=600, volumes=WEB_VOLS))
@@ -236,6 +260,9 @@ def serve_api():
         reload_volumes=provider.reload_volumes,
         event_kv=provider.event_kv(),
         call_status=provider.call_status,
+        spawn_agent_job=(lambda topic, max_steps, model, dataset, job_id: provider.spawn(
+            run_agent, topic=topic, max_steps=max_steps, model=model, dataset=dataset, job_id=job_id)
+        ) if os.environ.get("SIDECAR_AGENT_DEPLOYED") == "1" else None,
     )
 
 
@@ -282,8 +309,12 @@ def _run_action(action, train_steps, model_size, dataset, model_path, prompt) ->
         print(provider.call(train, dataset=ds.filename, num_train_steps=train_steps, model_size=model_size))
     elif action == "infer":
         print(provider.call(infer, prompt, 1024, 0.7, model_size, model_path))
+    elif action == "agent":
+        if not AGENT_DEPLOYED:
+            raise DatasetError("no gligabao_agent binary was found: run ./run_build.sh or set SIDECAR_AGENT_BINARY")
+        print(provider.call(run_agent, topic=prompt))
     else:
-        print(f"unknown action {action!r}; valid: ping, datasets, sync, validate, train, infer")
+        print(f"unknown action {action!r}; valid: ping, datasets, sync, validate, train, infer, agent")
 
 
 def _need_dataset(name: str) -> str:

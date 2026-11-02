@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -47,19 +48,20 @@ func TestUsageErrors(t *testing.T) {
 		args      []string
 		want      string
 	}{
-		"no topic":          {anthropic: "k", args: nil, want: "exactly one topic"},
-		"two topics":        {anthropic: "k", args: []string{"a", "b"}, want: "exactly one topic"},
-		"empty stdin":       {anthropic: "k", args: []string{"-"}, stdin: "  \n", want: "empty topic"},
-		"topic too long":    {anthropic: "k", args: []string{strings.Repeat("x", maxTopicChars+1)}, want: "too long"},
-		"steps too small":   {anthropic: "k", args: []string{"--max-steps", "0", "t"}, want: "--max-steps"},
-		"steps too big":     {anthropic: "k", args: []string{"--max-steps", "41", "t"}, want: "--max-steps"},
-		"bad user":          {anthropic: "k", args: []string{"--user", " ", "t"}, want: "user_id"},
-		"bad dataset":       {anthropic: "k", args: []string{"--dataset", "a b", "t"}, want: "dataset"},
-		"no anthropic key":  {args: []string{"t"}, want: config.EnvAnthropicKey},
-		"no openai key":     {anthropic: "k", args: []string{"t"}, want: config.EnvOpenAIKey},
-		"atif without json": {anthropic: "k", args: []string{"--atif", "t"}, want: "--json"},
-		"bad flag":          {anthropic: "k", args: []string{"--nope", "t"}, want: "not defined"},
-		"missing config":    {anthropic: "k", args: []string{"--config", "/nonexistent/gligabao.toml", "t"}, want: "nonexistent"},
+		"no topic":           {anthropic: "k", args: nil, want: "exactly one topic"},
+		"two topics":         {anthropic: "k", args: []string{"a", "b"}, want: "exactly one topic"},
+		"empty stdin":        {anthropic: "k", args: []string{"-"}, stdin: "  \n", want: "empty topic"},
+		"topic too long":     {anthropic: "k", args: []string{strings.Repeat("x", maxTopicChars+1)}, want: "too long"},
+		"steps too small":    {anthropic: "k", args: []string{"--max-steps", "0", "t"}, want: "--max-steps"},
+		"steps too big":      {anthropic: "k", args: []string{"--max-steps", "41", "t"}, want: "--max-steps"},
+		"bad user":           {anthropic: "k", args: []string{"--user", " ", "t"}, want: "user_id"},
+		"bad dataset":        {anthropic: "k", args: []string{"--dataset", "a b", "t"}, want: "dataset"},
+		"no anthropic key":   {args: []string{"t"}, want: config.EnvAnthropicKey},
+		"no openai key":      {anthropic: "k", args: []string{"t"}, want: config.EnvOpenAIKey},
+		"atif without json":  {anthropic: "k", args: []string{"--atif", "t"}, want: "--json"},
+		"events and verbose": {anthropic: "k", args: []string{"--events", "--verbose", "t"}, want: "use one"},
+		"bad flag":           {anthropic: "k", args: []string{"--nope", "t"}, want: "not defined"},
+		"missing config":     {anthropic: "k", args: []string{"--config", "/nonexistent/gligabao.toml", "t"}, want: "nonexistent"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			setKeys(t, tc.anthropic, tc.openai)
@@ -148,9 +150,12 @@ func TestResearchWithKnowledgeBaseAndSubagents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var progress bytes.Buffer
+	var progress, events bytes.Buffer
 	trajectory := a.captureTrajectory()
-	out, err := a.runResearch(ctx, "u1", agent_research.Options{Topic: "ROOT TOPIC", MaxSteps: 6}, &progress)
+	text := textProgress(&progress)
+	jsonState, jsonUsage := jsonEvents(&events)
+	out, err := a.runResearch(ctx, "u1", agent_research.Options{Topic: "ROOT TOPIC", MaxSteps: 6},
+		func(ev stateEvent) { text(ev); jsonState(ev) }, jsonUsage)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,6 +174,33 @@ func TestResearchWithKnowledgeBaseAndSubagents(t *testing.T) {
 	for _, want := range []string{"[agent] remembering", "[agent] spawning: kid", "[sub-agent kid] thinking"} {
 		if !strings.Contains(progress.String(), want) {
 			t.Errorf("progress lacks %q:\n%s", want, progress.String())
+		}
+	}
+	// The same progress as JSON lines (--events), which the Modal runner reads: the states of both agents, then the totals of the tree.
+	var states, usages int
+	var lastUsage map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(events.String()), "\n") {
+		var ev map[string]any
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			t.Fatalf("not a JSON line: %q", line)
+		}
+		switch ev["event"] {
+		case "state":
+			states++
+			if ev["agent"] == "kid" && ev["state"] == "thinking" && ev["state_seq"] == nil {
+				t.Errorf("a state event has no state_seq: %v", ev)
+			}
+		case "usage":
+			usages++
+			lastUsage = ev
+		}
+	}
+	if states == 0 || usages == 0 || lastUsage["subagents"] != float64(1) || lastUsage["steps"] != float64(out.Root.Steps+out.Kids[0].Steps) {
+		t.Errorf("events: %d states, %d usages, last usage %v\n%s", states, usages, lastUsage, events.String())
+	}
+	for _, want := range []string{`"agent":"kid"`, `"agent":"main"`, `"state":"spawning"`} {
+		if !strings.Contains(events.String(), want) {
+			t.Errorf("events lack %s:\n%s", want, events.String())
 		}
 	}
 	// The trajectory of the research has the steps of the sub-agent merged into the main agent's.
@@ -209,7 +241,7 @@ func TestResearchInterrupted(t *testing.T) {
 	}
 	defer a.close()
 	cancel()
-	if _, err := a.runResearch(ctx, "u1", agent_research.Options{Topic: "ROOT TOPIC"}, nil); err == nil {
+	if _, err := a.runResearch(ctx, "u1", agent_research.Options{Topic: "ROOT TOPIC"}, nil, nil); err == nil {
 		t.Error("starting a research with a done context should fail")
 	}
 }

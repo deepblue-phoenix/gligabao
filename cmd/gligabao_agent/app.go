@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"sync"
@@ -119,16 +120,16 @@ func (o outcome) totals() (steps, toolCalls, in, out int, cost float64) {
 }
 
 // runResearch starts an agent on opts.Topic and returns when it, its sub-agents and the remember calls it made without waiting are over
-// (or ctx is done, which fails the agents). With progress set, every state the agents enter is written to it as it goes. The error
+// (or ctx is done, which fails the agents). With state or usage set, they are called as the agents go (see followStates). The error
 // is one of starting the research; how it went is in the Root run (Status, Report, Error).
-func (a *app) runResearch(ctx context.Context, userID string, opts agent_research.Options, progress io.Writer) (*outcome, error) {
+func (a *app) runResearch(ctx context.Context, userID string, opts agent_research.Options, state func(stateEvent), usage func(totals)) (*outcome, error) {
 	root, err := a.research.Start(ctx, userID, opts)
 	if err != nil {
 		return nil, err
 	}
 	var stopProgress func()
-	if progress != nil {
-		stopProgress = a.followStates(ctx, userID, root.ID, progress)
+	if state != nil || usage != nil {
+		stopProgress = a.followStates(ctx, userID, root.ID, state, usage)
 	}
 	a.research.Wait()
 	out := &outcome{DrainErr: a.mem.Drain(ctx)}
@@ -166,10 +167,25 @@ func (a *app) subagents(ctx context.Context, userID string, id int64) ([]core.Ru
 	return all, nil
 }
 
-// followStates writes the states the agents of the research enter to w (from the records in the database, polled), until the
-// returned function is called, which writes the rest.
-func (a *app) followStates(ctx context.Context, userID string, rootID int64, w io.Writer) (stop func()) {
-	seen := map[int64]int{} // the last state of each run written
+// stateEvent is a state an agent of the research entered (Update false), or the error a state that was reported before ended with
+// (Update true; the same Agent and Seq).
+type stateEvent struct {
+	Agent  string // "main", or the name of the sub-agent
+	Seq    int    // the number of the state among those of the agent
+	State  string
+	Step   int
+	Detail string
+	Error  string
+	Update bool
+}
+
+// followStates calls state with the states the agents of the research enter, and usage with the totals of the whole tree of agents each
+// time they change (either may be nil), from the records in the database, polled; until the returned function is called, which does
+// the last poll.
+func (a *app) followStates(ctx context.Context, userID string, rootID int64, state func(stateEvent), usage func(totals)) (stop func()) {
+	seen := map[int64]int{}         // the last state of each run reported
+	reported := map[[2]int64]bool{} // the states reported with their error: (run, seq)
+	var last totals
 	poll := func(ctx context.Context) {
 		runs, err := a.subagents(ctx, userID, rootID)
 		if err != nil {
@@ -180,29 +196,38 @@ func (a *app) followStates(ctx context.Context, userID string, rootID int64, w i
 			return
 		}
 		runs = append([]core.Run{*root}, runs...)
+		var sum totals
 		for _, r := range runs {
 			full, err := a.research.Get(ctx, userID, r.ID)
 			if err != nil {
 				continue
 			}
-			who := "agent"
+			sum.add(full)
+			who := "main"
 			if r.Name != "" {
-				who = "sub-agent " + r.Name
+				who = r.Name
 			}
 			for _, s := range full.States {
-				if s.Seq <= seen[r.ID] {
+				key := [2]int64{r.ID, int64(s.Seq)}
+				ev := stateEvent{Agent: who, Seq: s.Seq, State: s.State, Step: s.Step, Detail: s.Detail, Error: s.Error}
+				switch {
+				case s.Seq > seen[r.ID]:
+					seen[r.ID] = s.Seq
+					reported[key] = s.Error != ""
+				case s.Error != "" && !reported[key]:
+					reported[key], ev.Update = true, true
+				default:
 					continue
 				}
-				seen[r.ID] = s.Seq
-				line := fmt.Sprintf("[%s] %s", who, s.State)
-				if s.Detail != "" {
-					line += ": " + s.Detail
+				if state != nil {
+					state(ev)
 				}
-				if s.Error != "" {
-					line += " (error: " + s.Error + ")"
-				}
-				fmt.Fprintln(w, line)
 			}
+		}
+		sum.subagents = len(runs) - 1
+		if usage != nil && sum != last {
+			last = sum
+			usage(sum)
 		}
 	}
 	done, finished := make(chan struct{}), make(chan struct{})
@@ -224,4 +249,63 @@ func (a *app) followStates(ctx context.Context, userID string, rootID int64, w i
 		<-finished
 		poll(context.WithoutCancel(ctx))
 	}
+}
+
+// totals are what the whole tree of agents of a research has spent so far.
+type totals struct {
+	steps, toolCalls, inputTokens, outputTokens, subagents int
+	costUSD                                                float64
+}
+
+func (t *totals) add(r *core.Run) {
+	t.steps += r.Steps
+	t.toolCalls += r.ToolCalls
+	t.inputTokens += r.InputTokens
+	t.outputTokens += r.OutputTokens
+	t.costUSD += r.CostUSD
+}
+
+// textProgress writes the states the agents enter as lines of text to w (--verbose); the errors that states end with later are not.
+func textProgress(w io.Writer) func(stateEvent) {
+	return func(ev stateEvent) {
+		if ev.Update {
+			return
+		}
+		who := "agent"
+		if ev.Agent != "main" {
+			who = "sub-agent " + ev.Agent
+		}
+		line := fmt.Sprintf("[%s] %s", who, ev.State)
+		if ev.Detail != "" {
+			line += ": " + ev.Detail
+		}
+		if ev.Error != "" {
+			line += " (error: " + ev.Error + ")"
+		}
+		fmt.Fprintln(w, line)
+	}
+}
+
+// jsonEvents writes the progress of the research as JSON lines to w (--events), the protocol of the Modal runner: a line is
+// {"event":"state",...} for every state an agent enters (and once more, with the error, for a state that ended with one after it was
+// reported) and {"event":"usage",...} whenever the totals of the tree of agents change. Lines are written one at a time.
+func jsonEvents(w io.Writer) (state func(stateEvent), usage func(totals)) {
+	var mu sync.Mutex
+	write := func(v any) {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		fmt.Fprintf(w, "%s\n", b)
+	}
+	state = func(ev stateEvent) {
+		write(map[string]any{"event": "state", "agent": ev.Agent, "state_seq": ev.Seq, "state": ev.State, "step": ev.Step, "detail": ev.Detail, "error": ev.Error})
+	}
+	usage = func(t totals) {
+		write(map[string]any{"event": "usage", "steps": t.steps, "tool_calls": t.toolCalls, "input_tokens": t.inputTokens, "output_tokens": t.outputTokens,
+			"cost_usd": t.costUSD, "subagents": t.subagents})
+	}
+	return state, usage
 }

@@ -64,6 +64,7 @@ type ResearchStartInput struct {
 	MaxSteps int    `json:"max_steps,omitempty" jsonschema:"the most model calls the agent makes, the last of which writes the report (default 20, at most 40); more steps research more and cost more"`
 	Model    string `json:"model,omitempty" jsonschema:"the model the agent runs on, one that supports Anthropic's web search tool (default: the server's)"`
 	Dataset  string `json:"dataset,omitempty" jsonschema:"the dataset of the user's knowledge base the agent queries and remembers into (default main)"`
+	Runner   string `json:"runner,omitempty" jsonschema:"where the agent runs: local (default, in the server) or modal (the gligabao_agent binary in a Modal container, through the sidecar; its knowledge base is the container's own, not the user's)"`
 }
 
 // ResearchListInput is the input of the research_list tool: the query of GET /v1/gb/research.

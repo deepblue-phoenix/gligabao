@@ -58,10 +58,14 @@ class ModalProvider(Provider):
             img = modal.Image.debian_slim(python_version=spec.python)
         if _has_requirements(spec.requirements_path):
             img = img.pip_install_from_requirements(spec.requirements_path)
-        # Last step: mount our code (no rebuild on code changes).
+        if spec.env:
+            img = img.env(dict(spec.env))
+        # Last steps: mount our code and files (no rebuild on changes).
         img = img.add_local_dir(
             self._local_pkg_dir, remote_path=REMOTE_PKG_DIR,
             ignore=["__pycache__", "*.pyc"])
+        for local, remote in spec.local_files:
+            img = img.add_local_file(local, remote_path=remote)
         self._images[spec] = img
         return img
 

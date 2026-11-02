@@ -4,6 +4,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
@@ -30,12 +31,20 @@ type Options struct {
 	// Dataset is the dataset of the user's knowledge base the agent queries and remembers into, when the server gives the agents one
 	// (default "main"). It is created by the first remember if it does not exist. It is not stored with the run.
 	Dataset string `json:"dataset,omitempty"`
+	// Runner is where the agent runs: core.RunnerLocal ("local", the default: in this process, like always) or core.RunnerModal ("modal":
+	// the gligabao_agent binary in a Modal container, started through the sidecar, see Manager.UseRemote). With "modal" the agent works
+	// with a knowledge base of its own in the container, not the user's (so Dataset has no effect there).
+	Runner string `json:"runner,omitempty"`
 }
 
 // resolve checks the options and returns them with the defaults filled in.
 func (o Options) resolve() (Options, error) {
 	o.Topic = strings.TrimSpace(o.Topic)
 	o.Model = strings.TrimSpace(o.Model)
+	o.Runner = strings.ToLower(strings.TrimSpace(o.Runner))
+	if o.Runner == "" {
+		o.Runner = core.RunnerLocal
+	}
 	dataset, err := memory_core.ResolveDatasetName(o.Dataset)
 	if err != nil {
 		return o, invalidErr(err.Error())
@@ -48,6 +57,8 @@ func (o Options) resolve() (Options, error) {
 		return o, invalidErr("topic is too long (at most 2000 characters)")
 	case o.MaxSteps < 0 || o.MaxSteps > MaxMaxSteps:
 		return o, invalidErr("max_steps must be between 1 and 40")
+	case o.Runner != core.RunnerLocal && o.Runner != core.RunnerModal:
+		return o, invalidErr("runner must be local or modal")
 	case len(o.Model) > maxModelLen || strings.ContainsAny(o.Model, " \t\r\n"):
 		return o, invalidErr("model is not a valid model name")
 	}

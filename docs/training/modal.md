@@ -11,6 +11,7 @@ The Go server stays out of it: it only passes the admin UI's requests on to the 
 - The sidecar running with `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` (create them with `modal token new`; see the [sidecar's configuration](sidecar.md#configuration)). The same variables are what the deploy, stop and volume scripts use: the sidecar hands them to the subprocesses it starts.
 - `SIDECAR_APP_NAME` set the same for the sidecar and the app (the default `gligabao-train` is fine). The sidecar passes its value to the scripts, so a deploy from the admin UI always deploys the app the sidecar looks up.
 - The server running with the [admin UI](../../README.md) and a reachable sidecar (`sidecar_url`).
+- For running research agents in Modal (the `modal` [runner](../research.md#where-the-agent-runs-the-runner)), the Linux build of the agent binary (`./run_build.sh` makes `build/gligabao_agent_linux_amd64`; the sidecar image has it) and a Modal secret with `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` named by `SIDECAR_AGENT_SECRET`. The deploy bakes the binary into the app, so deploy again after a new one; without it the app has no agent. See [the research agent in Modal](sidecar.md#the-research-agent-in-modal).
 - For fine-tuning, a Modal secret with `HF_TOKEN` named by `SIDECAR_HF_SECRET`, created in Modal beforehand (see [Running on Modal](sidecar.md#remote-training-bootstrap)). A deploy fails, and says so in its log, if the secret the app names does not exist.
 
 ## Where the state lives
@@ -175,7 +176,9 @@ curl           http://127.0.0.1:8787/backends/modal/volumes
 | `app not deployed` | Nothing is deployed under `SIDECAR_APP_NAME`: press **Deploy**. A training job started now fails with `502` saying the web URL of the app cannot be found. |
 | `unhealthy`, tooltip `Token not found` / `Token ID is malformed` | The sidecar's `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` are wrong or revoked: create new ones with `modal token new` and restart the sidecar. |
 | Deploy ends `failed` with `AuthError` in the log | The same: the tokens are not accepted. |
-| Deploy ends `failed` about a missing secret | `SIDECAR_HF_SECRET` names a Modal secret that does not exist: create it (`modal secret create`) or unset the variable. |
+| Deploy ends `failed` about a missing secret | `SIDECAR_HF_SECRET` or `SIDECAR_AGENT_SECRET` names a Modal secret that does not exist: create it (`modal secret create`) or unset the variable. |
+| Starting a research with the `modal` runner answers `503` "this Modal app has no research agent" | The app was deployed without the `gligabao_agent` binary: run `./run_build.sh` (or use the sidecar image), then **Redeploy**. |
+| A research in Modal fails at once, naming `ANTHROPIC_API_KEY` | The agent's container has no keys: create the secret and set `SIDECAR_AGENT_SECRET`, then redeploy. |
 | A warm inference request is still slow | Read `output_tokens` in the request's history line (trained-model dialog): a reply that does not end until `max_tokens` takes long with 4-bit generation; otherwise it waited behind another request of the same container. A *cold* one is expected to be slow, see [Cold and warm starts](#cold-and-warm-starts). |
 | Deploy stays at *starting* for long | Modal is slow to answer or the upload is large; read the log. If it is really stuck, **Cancel run** and try again. |
 | **Stop** is missing | The app is not deployed (nothing to stop). |

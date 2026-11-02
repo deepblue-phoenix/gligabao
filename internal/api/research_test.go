@@ -74,6 +74,14 @@ func testResearchRoutes(t *testing.T, d *sql.DB) {
 		t.Fatalf("bad json: %d", rec.Code)
 	}
 
+	// The runner is local or modal; this manager has no way to run in Modal.
+	if rec := do("key-alice", "POST", "/v1/gb/research", `{"topic":"t","runner":"lambda"}`); rec.Code != 400 {
+		t.Fatalf("bad runner: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do("key-alice", "POST", "/v1/gb/research", `{"topic":"t","runner":"modal"}`); rec.Code != 503 {
+		t.Fatalf("modal runner without the sidecar: %d %s", rec.Code, rec.Body)
+	}
+
 	// The user is the owner of the key, whatever user_id the caller sends.
 	rec := do("key-alice", "POST", "/v1/gb/research", `{"user_id":"mallory","topic":"batteries","max_steps":3}`)
 	if rec.Code != http.StatusAccepted {

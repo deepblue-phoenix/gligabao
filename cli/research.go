@@ -33,6 +33,7 @@ func (c *CLI) researchStartCmd() *cobra.Command {
 		maxSteps int
 		model    string
 		dataset  string
+		runner   string
 		wait     bool
 		raw      bool
 	)
@@ -45,6 +46,7 @@ run (with its report). The topic is the argument, or stdin if the argument is "-
 ` + clientHelp,
 		Example: `  gligabao research start "How do solid-state batteries compare with lithium-ion in 2025?"
   gligabao research start "EU AI Act obligations for startups" --max-steps 10 --wait --raw
+  gligabao research start "Market for grid batteries" --runner modal --wait --raw
   gligabao research ls --active`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -77,6 +79,12 @@ run (with its report). The topic is the argument, or stdin if the argument is "-
 			}
 			if cmd.Flags().Changed("dataset") {
 				b.set("dataset", dataset)
+			}
+			if cmd.Flags().Changed("runner") {
+				if runner != "local" && runner != "modal" {
+					return usageErr("--runner must be local or modal")
+				}
+				b.set("runner", runner)
 			}
 			cl, err := c.client(cmd)
 			if err != nil {
@@ -129,6 +137,7 @@ run (with its report). The topic is the argument, or stdin if the argument is "-
 	f.IntVar(&maxSteps, "max-steps", 0, "the most model calls the agent makes (default 20, at most 40); more research more, and cost more")
 	f.StringVar(&model, "model", "", "the model the agent runs on (must support web search; default: the server's)")
 	f.StringVarP(&dataset, "dataset", "d", "", `the dataset of your knowledge base the agent queries and remembers into (default "main")`)
+	f.StringVar(&runner, "runner", "", `where the agent runs: "local" (default: in the server) or "modal" (the gligabao_agent binary in a Modal container, through the sidecar)`)
 	f.BoolVar(&wait, "wait", false, "wait until the agent ends, and print the finished run (exit code 1 if it failed)")
 	f.BoolVar(&raw, "raw", false, "with --wait: print only the report, as text")
 	return cmd

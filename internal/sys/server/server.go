@@ -301,14 +301,17 @@ func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, g
 }
 
 // newResearch makes the manager of the research agents (POST /v1/gb/research), which runs them until ctx is done. They need the Anthropic
-// client: with any other llm (or none) starting a research answers 503.
+// client: with any other llm (or none) starting a research answers 503 (but for one with the modal runner, which runs with the keys of the
+// Modal app and needs the sidecar).
 func newResearch(ctx context.Context, d *db.DB, llm memory_core.LLM) *agent_research.Manager {
 	ops, err := agent_research.OpsFor(d.Backend)
 	if err != nil {
 		log.WithError(err).Fatal("agent research")
 	}
 	client, _ := llm.(*ai.Client)
-	return agent_research.NewManager(ctx, d.Relational, ops, client)
+	m := agent_research.NewManager(ctx, d.Relational, ops, client)
+	m.UseRemote(sidecarRemote{}) // researches started with runner "modal" run in Modal, through the sidecar
+	return m
 }
 
 // versionHandler reports the version (and git commit) of gligabao and, if registered, of the embedding program.

@@ -71,17 +71,20 @@ func CreateRun(ctx context.Context, q db.Execer, r *core.Run) error {
 	if r.Status == "" {
 		r.Status = core.StatusRunning
 	}
+	if r.Runner == "" {
+		r.Runner = core.RunnerLocal
+	}
 	if r.CreatedAt.IsZero() {
 		r.CreatedAt = now()
 	}
 	r.CreatedAt = r.CreatedAt.UTC().Truncate(time.Millisecond)
 	var id int64
 	if err := q.QueryRowContext(ctx, `
-		INSERT INTO gb_agent_research_runs (user_id, parent_id, name, reason, topic, status, state, model, max_steps, steps, tool_calls, input_tokens,
+		INSERT INTO gb_agent_research_runs (user_id, parent_id, name, reason, topic, status, state, model, max_steps, runner, steps, tool_calls, input_tokens,
 			output_tokens, cost_usd, report, error, created_at, finished_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id`,
-		r.UserID, r.ParentID, r.Name, r.Reason, r.Topic, string(r.Status), r.State, r.Model, r.MaxSteps, r.Steps, r.ToolCalls, r.InputTokens, r.OutputTokens,
+		r.UserID, r.ParentID, r.Name, r.Reason, r.Topic, string(r.Status), r.State, r.Model, r.MaxSteps, r.Runner, r.Steps, r.ToolCalls, r.InputTokens, r.OutputTokens,
 		r.CostUSD, r.Report, r.Error, text(r.CreatedAt), textPtr(r.FinishedAt)).Scan(&id); err != nil {
 		return fmt.Errorf("create agent research run: %w", err)
 	}
@@ -212,7 +215,7 @@ func FailActive(ctx context.Context, q db.Execer, reason string) (int64, error) 
 	return n, nil
 }
 
-const runColumns = `id, user_id, parent_id, name, reason, topic, status, state, model, max_steps, steps, tool_calls, input_tokens, output_tokens, cost_usd,
+const runColumns = `id, user_id, parent_id, name, reason, topic, status, state, model, max_steps, runner, steps, tool_calls, input_tokens, output_tokens, cost_usd,
 	report, error, created_at, finished_at`
 
 func scanRun(s scanner) (*core.Run, error) {
@@ -220,7 +223,7 @@ func scanRun(s scanner) (*core.Run, error) {
 	var status, created string
 	var finished sql.NullString
 	var parent sql.NullInt64
-	if err := s.Scan(&r.ID, &r.UserID, &parent, &r.Name, &r.Reason, &r.Topic, &status, &r.State, &r.Model, &r.MaxSteps, &r.Steps, &r.ToolCalls, &r.InputTokens,
+	if err := s.Scan(&r.ID, &r.UserID, &parent, &r.Name, &r.Reason, &r.Topic, &status, &r.State, &r.Model, &r.MaxSteps, &r.Runner, &r.Steps, &r.ToolCalls, &r.InputTokens,
 		&r.OutputTokens, &r.CostUSD, &r.Report, &r.Error, &created, &finished); err != nil {
 		return nil, err
 	}

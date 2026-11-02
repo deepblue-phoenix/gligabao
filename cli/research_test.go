@@ -52,11 +52,17 @@ func TestResearchStartFromStdinAndJSON(t *testing.T) {
 	if _, ok := got["model"]; ok {
 		t.Errorf("model sent: %v", got)
 	}
+	if _, ok := got["runner"]; ok {
+		t.Errorf("runner sent when not asked for (the server's default is local): %v", got)
+	}
+	if _, err := run(t, h, "", "research", "start", "t", "--runner", "modal"); err != nil || got["runner"] != "modal" {
+		t.Errorf("runner: %v %v", err, got)
+	}
 }
 
 func TestResearchStartUsage(t *testing.T) {
 	never := func(http.ResponseWriter, *http.Request) { t.Error("the server was called") }
-	for _, args := range [][]string{{"research", "start"}, {"research", "start", "  "}, {"research", "start", "t", "--raw"}} {
+	for _, args := range [][]string{{"research", "start"}, {"research", "start", "  "}, {"research", "start", "t", "--raw"}, {"research", "start", "t", "--runner", "lambda"}} {
 		if _, err := run(t, never, "", args...); codeOf(err) != exitUsage {
 			t.Errorf("%v: err = %v, code %d", args, err, codeOf(err))
 		}

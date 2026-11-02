@@ -14,6 +14,7 @@ const runsColumns = `
 	state         TEXT NOT NULL DEFAULT '',
 	model         TEXT NOT NULL DEFAULT '',
 	max_steps     INTEGER NOT NULL DEFAULT 0,
+	runner        TEXT NOT NULL DEFAULT 'local',
 	steps         INTEGER NOT NULL DEFAULT 0,
 	tool_calls    INTEGER NOT NULL DEFAULT 0,
 	input_tokens  INTEGER NOT NULL DEFAULT 0,
@@ -41,6 +42,7 @@ const Schema = `
 --                   marks those 'failed' when it starts.
 --   state           the state the run is in now: the state of its last row in gb_agent_research_states (core.State*)
 --   model, max_steps  the model the agent runs on ('' for the server's default) and the most model calls it may make
+--   runner          where the agent runs: 'local' (in the server's process) or 'modal' (the gligabao_agent binary in a Modal container)
 --   steps, tool_calls, input_tokens, output_tokens, cost_usd  what it has spent so far, updated as it goes; the cost includes the
 --                   model calls of the web searches
 --   report          the answer of the agent, set when it completes
@@ -75,13 +77,15 @@ CREATE TABLE IF NOT EXISTS gb_agent_research_states (
 );
 `
 
-// Upgrade is what a database made before sub-agents (0.129.0) lacks: the columns parent_id, name and reason of gb_agent_research_runs.
+// Upgrade is what an older database lacks: the columns parent_id, name and reason of gb_agent_research_runs (before sub-agents, 0.129.0)
+// and runner (before the Modal runner, 0.165.0).
 // SQLite has no ADD COLUMN IF NOT EXISTS, so each statement is run only if its column is missing (see the Open of package
 // agent_research).
 var Upgrade = []struct{ Column, Statement string }{
 	{"parent_id", `ALTER TABLE gb_agent_research_runs ADD COLUMN parent_id INTEGER REFERENCES gb_agent_research_runs(id) ON DELETE CASCADE`},
 	{"name", `ALTER TABLE gb_agent_research_runs ADD COLUMN name TEXT NOT NULL DEFAULT ''`},
 	{"reason", `ALTER TABLE gb_agent_research_runs ADD COLUMN reason TEXT NOT NULL DEFAULT ''`},
+	{"runner", `ALTER TABLE gb_agent_research_runs ADD COLUMN runner TEXT NOT NULL DEFAULT 'local'`},
 }
 
 // SubagentIndexes are the indexes on the columns of Upgrade, so that they are made after it: the sub-agents of a run, and the rule
@@ -97,9 +101,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_agent_research_runs_parent_name ON gb_a
 // the table's SQL (sqlite_master) does not mention 'stopped' (see the Open of package agent_research).
 const StatusMigration = `
 CREATE TABLE gb_agent_research_runs_new (` + runsColumns + `);
-INSERT INTO gb_agent_research_runs_new (id, user_id, parent_id, name, reason, topic, status, state, model, max_steps, steps, tool_calls,
+INSERT INTO gb_agent_research_runs_new (id, user_id, parent_id, name, reason, topic, status, state, model, max_steps, runner, steps, tool_calls,
 	input_tokens, output_tokens, cost_usd, report, error, created_at, finished_at)
-SELECT id, user_id, parent_id, name, reason, topic, status, state, model, max_steps, steps, tool_calls,
+SELECT id, user_id, parent_id, name, reason, topic, status, state, model, max_steps, runner, steps, tool_calls,
 	input_tokens, output_tokens, cost_usd, report, error, created_at, finished_at FROM gb_agent_research_runs;
 DROP TABLE gb_agent_research_runs;
 ALTER TABLE gb_agent_research_runs_new RENAME TO gb_agent_research_runs;

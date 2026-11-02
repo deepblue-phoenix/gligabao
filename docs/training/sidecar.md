@@ -9,7 +9,7 @@ Go server ── HTTP ──► sidecar (sidecar/, FastAPI) ── HTTP ──�
 internal/sys/sidecar        routes.py → Backend.forward              runs the jobs on a cloud GPU
 ```
 
-The sidecar answers a health check itself and forwards the training/dataset API, unchanged, to its backend. Behind the `modal` backend sits the bootstrap for remote (cloud GPU) training jobs; see [Remote training bootstrap](#remote-training-bootstrap).
+The sidecar answers a health check itself and forwards the training/dataset API and the research jobs API, unchanged, to its backend. Behind the `modal` backend sits the bootstrap for remote (cloud GPU) training jobs; see [Remote training bootstrap](#remote-training-bootstrap).
 
 ## The service
 
@@ -19,7 +19,7 @@ The sidecar answers a health check itself and forwards the training/dataset API,
 |---|---|
 | `GET /health` | `200 {"status": "ok"}` (answered by the sidecar itself: it says the sidecar is up, not that the backend is reachable) |
 | `GET /models/file?model_path=trained/<job id>&file=<path>` | The raw bytes of one file of a trained model, answered by the sidecar itself (not forwarded), see [Fetching the files of a model](#fetching-the-files-of-a-model) |
-| `POST /training/job_start`, `GET /training/job_progress`, `GET /training/job_events` (SSE), `POST /training/job_cancel`, `POST /infer/query`, `POST /evals/add_to_dataset`, `GET /evals/get_dataset_count` | Answered by the **backend** (below) |
+| `POST /training/job_start`, `GET /training/job_progress`, `GET /training/job_events` (SSE), `POST /training/job_cancel`, `POST /research/job_start`, `GET /research/job_events` (SSE), `POST /research/job_cancel`, `POST /infer/query`, `POST /evals/add_to_dataset`, `GET /evals/get_dataset_count` | Answered by the **backend** (below) |
 
 ### Backends
 
@@ -84,6 +84,7 @@ sidecar/ai_train/
     inference.py              # run inference with a trained adapter (model_path picks it)
     trained_model.py          # where a job's weights are saved, how they are described, model_path validation
     bootstrap.py              # ping + train
+    agent_run.py              # runs the research agent (the gligabao_agent binary) in a container and reports to its job's event log
   api/
     api.py                    # FastAPI app (training jobs, progress, infer, eval, datasets)
   providers/
@@ -278,6 +279,9 @@ All settings are in `config.py` and can be overridden by environment variable:
 | `SIDECAR_TRAIN_TIMEOUT_S` | `7200` | Timeout of the train jobs. |
 | `SIDECAR_INFER_IDLE_TIMEOUT_S` | `60` | How long a GPU inference container, with its model loaded, stays up after its last request (Modal: 2 to 1200). Requests within that time skip the model load. See [Warm inference containers](modal.md#warm-inference-containers). |
 | `SIDECAR_HF_SECRET` | *(empty)* | Name of a provider secret with `HF_TOKEN`. Empty means no secret is attached. |
+| `SIDECAR_AGENT_BINARY` | *(see [below](#the-research-agent-in-modal))* | The Linux x86-64 `gligabao_agent` binary baked into the research agent's image at deploy time. Default: `gligabao_agent_linux_amd64` next to `ai_train/` (the sidecar image has it there), else `build/gligabao_agent_linux_amd64` of the repo (`./run_build.sh`). None found (or the variable names a file that is not there): the app is deployed without an agent. |
+| `SIDECAR_AGENT_SECRET` | *(empty)* | Name of a provider secret with `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`, for the research agent. Empty means no secret is attached (the agent then fails for lack of keys). |
+| `SIDECAR_AGENT_TIMEOUT_S` | `1800` | Timeout of the research agent's function, i.e. the longest a research in Modal can take (the binary is told to stop 90 s before it). |
 | `SIDECAR_VOL_DATA` | `gligabao-train-data` | Volume mounted at `/data` (datasets). |
 | `SIDECAR_VOL_MODELS` | `gligabao-train-models` | Volume mounted at `/models` (fine-tuned adapters). |
 | `SIDECAR_VOL_EVAL` | `gligabao-train-eval` | Volume mounted at `/eval` (eval examples from the web API). |
@@ -285,9 +289,26 @@ All settings are in `config.py` and can be overridden by environment variable:
 
 Volumes are created if missing.
 
+### The research agent in Modal
+
+The same Modal app also runs the [research agent](../deep-research-agent.md) when a research is started with the `modal` [runner](../research.md#where-the-agent-runs-the-runner). The Go server asks the sidecar, the sidecar forwards to the web API, and the web API spawns the function `run_agent` and returns at once, exactly as for a training job:
+
+| Route | |
+|---|---|
+| `POST /research/job_start` | body `{"topic", "max_steps"?, "model"?, "dataset"?}` → `{"job_id", "provider_job_id", "status": "started"}`. `400` for a bad body (topic required, `max_steps` 1 to 40). `503` if the app was deployed without the agent binary. |
+| `GET /research/job_events?job_id=[&from=N]` | SSE stream of the job's events, with the same ids, reconnection (`from`), keepalives, time limit and watchdog as `/training/job_events` |
+| `POST /research/job_cancel` | body `{"job_id"}`: sets the job's stop flag (`200`; `404` unknown job, `409` already over) |
+
+- **The function.** `run_agent` (`app.py`) runs in a CPU container (`AGENT_IMAGE`: Debian slim with the binary at `/opt/gligabao_agent`, added with `ImageSpec.local_files`, so a new binary does not rebuild anything else) with the secret `SIDECAR_AGENT_SECRET` and the timeout `SIDECAR_AGENT_TIMEOUT_S`. It calls `ai_train_core/agent_run.py`: it runs the binary with `--json --events --max-steps N [--model M] [--dataset D] --timeout T --db <temporary directory> -` and the topic on stdin, so the whole tree of agents and their database live in that container and are gone with it. There are no volumes.
+- **The events** go to the job's event log (`event_log.py`: a Modal Dict, 7 days), which the web API streams. The binary's `--events` lines become `state` events (`agent`, `state_seq`, `state`, `step`, `detail`, `error`) and `usage` events (the tokens, cost, steps and sub-agents of the whole tree); other stderr lines become `log` events (the first 200); `status` events say `running`, then end it: `completed` (the `report` and the final `usage`), `failed` (`error`: the exit code and the end of stderr) or `cancelled`. The events are written from a thread of their own, so a slow Dict never blocks the binary, and the final status is written after every event before it. The full protocol is in the docstring of `agent_run.py`.
+- **Stopping.** The stop flag of the job is looked at every 2 seconds (before the binary starts, too); then the binary gets `SIGTERM` (it ends the research as stopped) and `SIGKILL` 20 seconds later; the job ends `cancelled`.
+- **Without the binary.** `run_agent` is always defined (a Modal app must define the same functions in every container) but the web API only spawns it when its image says the binary was there at deploy time (`SIDECAR_AGENT_DEPLOYED`, set in the image of the web function): else `/research/job_start` answers `503` and tells how to fix it. Deploy again after building the binary.
+- **Where the binary comes from.** `./run_build.sh` builds `build/gligabao_agent_linux_amd64`; `Dockerfile.sidecar` builds it in a Go stage and copies it next to `ai_train/`, so a deploy from the sidecar container needs nothing else. Try it by hand: `cd sidecar/ai_train && modal run app.py --action agent --prompt "topic"`.
+- **Go side.** `internal/sys/sidecar/research_jobs.go` (`StartResearchJob`, `CancelResearchJob`, `StreamResearchJobEvents`); the server's adapter is `internal/sys/server/research_remote.go`, and `internal/agent_research/remote.go` follows the events and records them in the run.
+
 ### How the provider abstraction works
 
-`app.py` only says *what* to run. It builds a `FunctionSpec` (image, GPU, timeout, volumes, secrets) and registers functions with `@provider.function(spec)` (or `@provider.asgi_app(spec)` for the web API). It runs them with `provider.call(fn, ...)` or `provider.spawn(fn, ...)` and persists/refreshes volumes with `provider.commit_volumes(paths)` / `provider.reload_volumes(paths)`. Images are described by a provider-neutral `ImageSpec` (CUDA base or not, requirements file); the provider decides how to build them, and mounts the `ai_train/` directory into the container at `/pkg`. Code in `ai_train_core/` and `api/` gets what it needs from the provider as injected callables (e.g. `commit_fn`).
+`app.py` only says *what* to run. It builds a `FunctionSpec` (image, GPU, timeout, volumes, secrets) and registers functions with `@provider.function(spec)` (or `@provider.asgi_app(spec)` for the web API). It runs them with `provider.call(fn, ...)` or `provider.spawn(fn, ...)` and persists/refreshes volumes with `provider.commit_volumes(paths)` / `provider.reload_volumes(paths)`. Images are described by a provider-neutral `ImageSpec` (CUDA base or not, requirements file, single files to bake in, environment variables); the provider decides how to build them, and mounts the `ai_train/` directory into the container at `/pkg`. Code in `ai_train_core/` and `api/` gets what it needs from the provider as injected callables (e.g. `commit_fn`).
 
 Rules that keep it swappable:
 
@@ -307,7 +328,7 @@ To add a provider (e.g. AWS): implement `Provider` in `providers/aws/provider.py
 
 ## The container
 
-`Dockerfile.sidecar` (in the repo root; the plain `Dockerfile` is the Go server's) packages the sidecar on `python:3.13-slim`: it installs the requirements, copies `main_sidecar.py`, `sidecar_config.py`, `routes.py`, `backends/` and `ai_train/` (what the deploy action uploads to Modal), runs as the non-root user `sidecar` and starts `python main_sidecar.py`. The image sets `SIDECAR_HOST=0.0.0.0` (a container must listen on all interfaces for a published port to reach it) and exposes `8787`.
+`Dockerfile.sidecar` (in the repo root; the plain `Dockerfile` is the Go server's) packages the sidecar on `python:3.13-slim`: it installs the requirements, copies `main_sidecar.py`, `sidecar_config.py`, `routes.py`, `backends/` and `ai_train/` (what the deploy action uploads to Modal) and, built in a Go stage, `gligabao_agent_linux_amd64` (the research agent that the deploy bakes into the Modal app), runs as the non-root user `sidecar` and starts `python main_sidecar.py`. The image sets `SIDECAR_HOST=0.0.0.0` (a container must listen on all interfaces for a published port to reach it) and exposes `8787`.
 
 ```sh
 ./run_build_sidecar.sh                         # builds gligabao-sidecar:latest

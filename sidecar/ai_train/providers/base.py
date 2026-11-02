@@ -18,6 +18,8 @@ class ImageSpec:
                                       # bring: much smaller, enough to run torch/transformers/bitsandbytes.
     requirements_path: str = ""       # pip requirements file ("" or no entries = nothing to install)
     python: str = "3.11"
+    local_files: tuple = ()           # (local path, path in the image) pairs: single files baked into the image, e.g. a binary
+    env: tuple = ()                   # (name, value) pairs set in the image's environment
 
 
 @dataclass(frozen=True)

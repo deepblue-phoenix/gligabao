@@ -46,11 +46,14 @@ type Manager struct {
 	// onTrajectory, when set (UseTrajectories), makes the agents record ATIF trajectories and gets the merged one of each research;
 	// guarded by mu.
 	onTrajectory TrajectoryFunc
+	// remote runs the researches started with the Modal runner (nil: they cannot be started); guarded by mu.
+	remote Remote
 
-	mu     sync.Mutex
-	active map[string]int        // running agents by user
-	runs   map[int64]*researcher // the agents that are working, by run ID, to stop them (sub-agents too)
-	wg     sync.WaitGroup
+	mu      sync.Mutex
+	active  map[string]int        // running agents by user
+	runs    map[int64]*researcher // the agents that are working, by run ID, to stop them (sub-agents too)
+	remotes map[int64]*remoteRun  // the researches that run in Modal, by run ID
+	wg      sync.WaitGroup
 }
 
 // ManagerOption customizes NewManager.
@@ -72,7 +75,7 @@ func NewManager(ctx context.Context, d *sql.DB, ops Ops, client *ai.Client, opts
 	for _, opt := range opts {
 		opt(&o)
 	}
-	m := &Manager{DB: d, Client: client, Ops: ops, ctx: ctx, active: map[string]int{}, runs: map[int64]*researcher{}, Messenger: NewChanMessenger()}
+	m := &Manager{DB: d, Client: client, Ops: ops, ctx: ctx, active: map[string]int{}, runs: map[int64]*researcher{}, remotes: map[int64]*remoteRun{}, Messenger: NewChanMessenger()}
 	if o.keepActive {
 		return m
 	}
@@ -99,12 +102,19 @@ func (m *Manager) Wait() { m.wg.Wait() }
 // run (status running, state starting). Errors are *Error: KindInvalid for bad options, KindUnavailable without an LLM, KindConflict
 // if the user has too many agents working, KindInternal.
 func (m *Manager) Start(ctx context.Context, userID string, opts Options) (*core.Run, error) {
-	if m.Client == nil {
-		return nil, unavailableErr("no LLM is available for the research agent (set ANTHROPIC_API_KEY)")
-	}
 	opts, err := opts.resolve()
 	if err != nil {
 		return nil, err
+	}
+	m.mu.Lock()
+	remote := m.remote
+	m.mu.Unlock()
+	switch {
+	case opts.Runner == core.RunnerModal && remote == nil:
+		// The agent runs in Modal with the API keys of the Modal app: this server needs no LLM client of its own for it.
+		return nil, unavailableErr("the modal runner is not available: it needs the sidecar, with the agent deployed to Modal (see docs/research.md)")
+	case opts.Runner != core.RunnerModal && m.Client == nil:
+		return nil, unavailableErr("no LLM is available for the research agent (set ANTHROPIC_API_KEY)")
 	}
 	if m.ctx.Err() != nil {
 		return nil, unavailableErr("the server is shutting down")
@@ -128,6 +138,9 @@ func (m *Manager) Start(ctx context.Context, userID string, opts Options) (*core
 			delete(m.active, userID)
 		}
 		m.mu.Unlock()
+	}
+	if opts.Runner == core.RunnerModal {
+		return m.startRemote(ctx, userID, opts, remote, release)
 	}
 
 	run := &core.Run{UserID: userID, Topic: opts.Topic, Status: core.StatusRunning, State: core.StateStarting, Model: opts.Model, MaxSteps: opts.MaxSteps}
@@ -185,7 +198,11 @@ const stopWait = 10 * time.Second
 func (m *Manager) Stop(ctx context.Context, userID string, id int64, by string) (*core.Run, error) {
 	m.mu.Lock()
 	r := m.runs[id]
+	rr := m.remotes[id]
 	m.mu.Unlock()
+	if rr != nil {
+		return m.stopRemote(ctx, userID, rr, by)
+	}
 	if r == nil {
 		run, err := m.Get(ctx, userID, id) // not found, or not the owner's
 		if err != nil {
@@ -203,6 +220,24 @@ func (m *Manager) Stop(ctx context.Context, userID string, id int64, by string) 
 	case <-ctx.Done():
 	}
 	run, err := m.Ops.Store.GetRun(context.WithoutCancel(ctx), m.DB, id)
+	if err != nil {
+		return nil, internalErr("failed to read the research", err)
+	}
+	return run, nil
+}
+
+// stopRemote is Stop for a research that runs in Modal: the job is asked to end, and the run ends as stopped when it has.
+func (m *Manager) stopRemote(ctx context.Context, userID string, rr *remoteRun, by string) (*core.Run, error) {
+	if userID != "" && rr.run.UserID != userID {
+		return nil, notFoundErr("research not found")
+	}
+	rr.requestStop(ctx, by)
+	select {
+	case <-rr.done:
+	case <-time.After(stopWait):
+	case <-ctx.Done():
+	}
+	run, err := m.Ops.Store.GetRun(context.WithoutCancel(ctx), m.DB, rr.run.ID)
 	if err != nil {
 		return nil, internalErr("failed to read the research", err)
 	}

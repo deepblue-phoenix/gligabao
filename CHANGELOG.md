@@ -5,6 +5,19 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.165.0] - 2026-11-02
+
+### Added
+- **A research agent can now run in Modal instead of in the server.** A research has a **runner**: `local` (the default, in the server's process, as before) or `modal` (the `gligabao_agent` binary, with its sub-agents, in a Modal container, started through the sidecar the way training jobs are). Pick it when you start the agent: `"runner": "modal"` in `POST /v1/gb/research` (and the admin UI's `POST /v1/gb/admin/api/research`), `runner` in the MCP tool `research_start`, `gligabao research start ... --runner modal`, or the new **Where it runs** choice of the admin UI's start dialog. Without it nothing changes. A bad value is a `400`. Runs have a new `runner` field (REST, admin UI details) and a `runner` column in `gb_agent_research_runs` (added to existing SQLite and PostgreSQL databases on start; old runs are `local`).
+- A run in Modal is recorded like any other: the server follows the job's event stream and writes the states the agents enter (the sub-agents' ones named in the detail, `[worker] ...`), the usage of the whole tree of agents (live) and the report. Stopping it from the admin UI cancels the job in Modal (the run ends as `stopped`); a server that stops cancels it too. Differences: the knowledge base the agents work with is the container's own (empty, and gone with it), the sub-agents are not runs of their own on the server, the keys are those of the Modal secret `SIDECAR_AGENT_SECRET`, and the jobs are not followed again after a server restart. See `docs/research.md`.
+- **Sidecar:** new routes `POST /research/job_start`, `GET /research/job_events` (SSE) and `POST /research/job_cancel`, forwarded to the Modal app like the training ones, which run a new Modal function `run_agent` (`sidecar/ai_train/ai_train_core/agent_run.py`) in a CPU container that has the Linux `gligabao_agent` binary baked in. It reports to a job event log with the same protocol, watchdog and cancel flag as training jobs. New settings: `SIDECAR_AGENT_BINARY` (the binary baked into the image, found by default), `SIDECAR_AGENT_SECRET` (a Modal secret with `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`), `SIDECAR_AGENT_TIMEOUT_S` (default 1800). A Modal app deployed without the binary has no agent: starting a `modal` research answers `503` and says to build it and deploy again. `modal run app.py --action agent --prompt "..."` runs the agent by hand.
+- `gligabao_agent --events` writes the progress to stderr as JSON lines (`state` of every agent, `usage` of the tree): the protocol the Modal function reads. Not together with `--verbose`.
+- `./run_build.sh` also builds `build/gligabao_agent_linux_amd64` (static Linux x86-64, whatever the host), and `Dockerfile.sidecar` builds it in a Go stage and puts it next to `ai_train/`, so the sidecar can deploy the agent.
+- Internal: `agent_research.Manager.UseRemote` and the `agent_research.Remote` interface (implemented over the sidecar client in `internal/sys/server`); `sidecar.Client` has `StartResearchJob`, `CancelResearchJob` and `StreamResearchJobEvents`; `providers.ImageSpec` can bake single files and environment variables into an image.
+
+### Changed
+- The server no longer needs an Anthropic key to start a research with the `modal` runner (the keys are the Modal secret's); a `local` research still answers `503` without one. Options are now checked before the key, so a bad request is a `400` even without a key.
+
 ## [0.164.0] - 2026-11-02
 
 ### Added

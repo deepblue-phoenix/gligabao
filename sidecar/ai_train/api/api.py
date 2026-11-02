@@ -8,6 +8,11 @@ Endpoints:
     GET  /training/job_progress?job_id=                          -> all the job's events so far, as {"progress": [...]}
     GET  /training/job_events?job_id=[&from=N]                   -> SSE stream of the job's progress events (see below)
     POST /training/job_cancel  {job_id}                          -> asks the job to stop (200 {job_id, status: "stopping"}); 404 unknown job, 409 already over
+    POST /research/job_start   {topic, max_steps?, model?, dataset?}  -> spawns the research agent (the gligabao_agent binary, see
+                                       ai_train_core/agent_run.py), returns {job_id, provider_job_id, status}; 503 if the app was deployed
+                                       without the binary
+    GET  /research/job_events?job_id=[&from=N]                   -> SSE stream of the research job's events (same protocol as the training job's)
+    POST /research/job_cancel  {job_id}                          -> asks the job to stop (200, 404 unknown job, 409 already over)
     POST /infer/query                  {prompt, max_tokens?, temperature?, model_size?, model_path?}
                                        model_path ("trained/<job id>", the path of a trained model that a completed job reported)
                                        picks the weights; model_size must be the size they were trained for
@@ -31,6 +36,9 @@ Watchdog: the training container reports its own end as an event, but it cannot 
 timeout, ...). While a stream has nothing new, every `watchdog_s` seconds it asks the provider about the job's call (its id
 is in the log's meta, written by job_start); when the call is over and the log does not end with a terminal event, the
 API writes the "failed" event itself. The training container is gone by then, so it is the only writer.
+
+The research jobs use the same event logs, streams, cancel flag and watchdog (the events are those of
+ai_train_core/agent_run.py, not the training job's).
 """
 import asyncio
 import json
@@ -39,7 +47,7 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
 
 from fastapi import FastAPI, Query, Request
 from fastapi.concurrency import run_in_threadpool
@@ -64,6 +72,10 @@ def _describe(ev: dict) -> str:
         return f"step {ev.get('step')} loss {ev.get('loss')}"
     if ev["type"] == "log":
         return str(ev.get("message"))
+    if ev["type"] == "state":   # a research job
+        return f"{ev.get('agent')}: {ev.get('state')}"
+    if ev["type"] == "usage":
+        return f"usage {ev.get('usage')}"
     return f"status {ev.get('status')}"
 
 
@@ -74,6 +86,7 @@ def create_api(
     reload_volumes: Callable[[list], None],
     event_kv,                                   # the key-value store of the event logs (Provider.event_kv)
     call_status: Callable[[str], object],       # (the provider's call id) -> CallStatus (Provider.call_status)
+    spawn_agent_job: Optional[Callable[..., str]] = None,   # (topic, max_steps, model, dataset, job_id) -> the provider's call id; None: no agent deployed
     poll_interval_s: float = 1.0,               # how often /training/job_events looks for new events
     max_stream_s: float = 300.0,                # how long one /training/job_events response lasts at most
     watchdog_s: float = 15.0,                   # how often an idle stream checks that the job's call is still alive
@@ -83,9 +96,9 @@ def create_api(
     def events_of(job_id: str) -> EventLog:
         return EventLog(event_kv, job_id, retries=2)  # a reader that fails soon polls again; it does not wait
 
-    def dead_job_event(events: EventLog) -> bool:
+    def dead_job_event(events: EventLog, what: str = "training") -> bool:
         """Watchdog: if the job's call is over and the log has no terminal event, write the "failed" one. Whether it
-        wrote one."""
+        wrote one. `what` names the kind of job in the message."""
         meta = events.meta() or {}
         call_id = meta.get("call_id")
         if not call_id:
@@ -98,8 +111,8 @@ def create_api(
         if last is not None and is_terminal(last):
             return False
         error = status.error or "the job's function ended without reporting that the job is over"
-        write_status(events, "failed", error=f"the training container ended without reporting it: {error}"[:2000])
-        log.warning("training job %s: its call ended (%s) with no final event: reported as failed", events.job_id, status.state)
+        write_status(events, "failed", error=f"the {what} container ended without reporting it: {error}"[:2000])
+        log.warning("%s job %s: its call ended (%s) with no final event: reported as failed", what, events.job_id, status.state)
         return True
 
     def bad_model_size(model_size):
@@ -160,10 +173,9 @@ def create_api(
         events = await run_in_threadpool(events_of(job_id).read_from, 0)
         return JSONResponse({"progress": [ev for _, ev in events]})
 
-    @api.post("/training/job_cancel")
-    async def job_cancel(request: Request):
-        """Ask a job to stop. The training container sees the stop flag between steps (and between the stages of its
-        setup) and ends the job with a "cancelled" event, so the stop takes effect at the next step, not instantly."""
+    async def cancel_job(request: Request, what: str):
+        """Ask a job (`what`: "training" or "research") to stop. The container sees the stop flag between steps (and between the
+        stages of its setup) and ends the job with a "cancelled" event, so the stop takes effect at the next step, not instantly."""
         try:
             data = await request.json()
         except ValueError:
@@ -178,11 +190,19 @@ def create_api(
         if last is not None and is_terminal(last):
             return JSONResponse({"error": f"job {job_id!r} is already over"}, status_code=409)
         await run_in_threadpool(request_stop, events)
-        log.info("training job %s: stop requested", job_id)
+        log.info("%s job %s: stop requested", what, job_id)
         return JSONResponse({"job_id": job_id, "status": "stopping"})
 
-    @api.get("/training/job_events")
-    async def job_events(request: Request, job_id: str = "", start: int = Query(0, alias="from", ge=0)):
+    @api.post("/training/job_cancel")
+    async def job_cancel(request: Request):
+        return await cancel_job(request, "training")
+
+    @api.post("/research/job_cancel")
+    async def research_job_cancel(request: Request):
+        return await cancel_job(request, "research")
+
+    def events_stream(request: Request, job_id: str, start: int, what: str):
+        """The SSE response of the events of a job (`what`: "training" or "research", for the log and the watchdog's message)."""
         if not valid_job_id(job_id):
             return JSONResponse({"error": "job_id is required (letters, digits, - and _)"}, status_code=400)
         events = events_of(job_id)
@@ -191,22 +211,22 @@ def create_api(
             pos = start
             now = time.monotonic()
             deadline, next_watch = now + max_stream_s, now + watchdog_s
-            log.info("training job %s: event stream opened from %d", job_id, start)
+            log.info("%s job %s: event stream opened from %d", what, job_id, start)
             yield ": connected\n\n"
             polls = 0
             while time.monotonic() < deadline:
                 if await request.is_disconnected():
-                    log.info("training job %s: event stream closed by the reader at %d", job_id, pos)
+                    log.info("%s job %s: event stream closed by the reader at %d", what, job_id, pos)
                     return
                 try:
                     new = await run_in_threadpool(events.read_from, pos)
                 except Exception as e:  # e.g. the store is unreachable: try again next time
-                    log.warning("training job %s: reading the event log failed: %r", job_id, e)
+                    log.warning("%s job %s: reading the event log failed: %r", what, job_id, e)
                     new = []
                 polls += 1
                 for seq, ev in new:
                     yield f"id: {seq}\nevent: {ev['type']}\ndata: {json.dumps(ev)}\n\n"
-                    log.info("training job %s: event %d sent: %s", job_id, seq, _describe(ev))
+                    log.info("%s job %s: event %d sent: %s", what, job_id, seq, _describe(ev))
                     pos = seq + 1
                     next_watch = time.monotonic() + watchdog_s
                     if is_terminal(ev):
@@ -214,19 +234,71 @@ def create_api(
                 if not new:
                     yield ": keepalive\n\n"
                     if polls % 30 == 0:
-                        log.info("training job %s: nothing new after event %d", job_id, pos - 1)
+                        log.info("%s job %s: nothing new after event %d", what, job_id, pos - 1)
                     if time.monotonic() >= next_watch:
                         next_watch = time.monotonic() + watchdog_s
                         try:
-                            if await run_in_threadpool(dead_job_event, events):
+                            if await run_in_threadpool(dead_job_event, events, what):
                                 continue  # read the event it wrote right away
                         except Exception as e:
-                            log.warning("training job %s: checking the job's call failed: %r", job_id, e)
+                            log.warning("%s job %s: checking the job's call failed: %r", what, job_id, e)
                 await asyncio.sleep(poll_interval_s)
-            log.info("training job %s: event stream ends at its time limit (the reader reconnects from %d)", job_id, pos)
+            log.info("%s job %s: event stream ends at its time limit (the reader reconnects from %d)", what, job_id, pos)
 
         return StreamingResponse(stream(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    @api.get("/training/job_events")
+    async def job_events(request: Request, job_id: str = "", start: int = Query(0, alias="from", ge=0)):
+        return events_stream(request, job_id, start, "training")
+
+    @api.get("/research/job_events")
+    async def research_job_events(request: Request, job_id: str = "", start: int = Query(0, alias="from", ge=0)):
+        return events_stream(request, job_id, start, "research")
+
+    @api.post("/research/job_start")
+    async def research_job_start(request: Request):
+        try:
+            data = await request.json()
+        except ValueError:
+            data = None
+        if not isinstance(data, dict):
+            return JSONResponse({"error": "the body must be a JSON object"}, status_code=400)
+        topic = data.get("topic")
+        max_steps = data.get("max_steps")
+        if max_steps is None:
+            max_steps = 20
+        model = data.get("model") or ""
+        dataset = data.get("dataset") or ""
+        if not isinstance(topic, str) or not topic.strip():
+            return JSONResponse({"error": "topic is required"}, status_code=400)
+        if len(topic) > 8000:
+            return JSONResponse({"error": "topic is too long"}, status_code=400)
+        if isinstance(max_steps, bool) or not isinstance(max_steps, int) or not 1 <= max_steps <= 40:
+            return JSONResponse({"error": "max_steps must be an integer from 1 to 40"}, status_code=400)
+        if not isinstance(model, str) or len(model) > 100 or any(c.isspace() for c in model):
+            return JSONResponse({"error": "model is not a valid model name"}, status_code=400)
+        if not isinstance(dataset, str) or len(dataset) > 100 or any(c.isspace() for c in dataset):
+            return JSONResponse({"error": "dataset is not a valid dataset name"}, status_code=400)
+        if spawn_agent_job is None:
+            return JSONResponse({"error": "this Modal app has no research agent: build the gligabao_agent binary for Linux "
+                                          "(./run_build.sh makes build/gligabao_agent_linux_amd64) and deploy the app again"},
+                                status_code=503)
+        job_id = uuid.uuid4().hex[:16]  # names the event log
+        events = events_of(job_id)
+        meta = {"created": time.time(), "kind": "research"}
+        await run_in_threadpool(events.set_meta, meta)  # the job exists (cancel, events) before its container does
+        try:
+            provider_job_id = await run_in_threadpool(spawn_agent_job, topic.strip(), max_steps, model, dataset, job_id)
+        except Exception as e:
+            try:
+                await run_in_threadpool(write_status, events, "failed", error=f"the job could not be started: {e!r}"[:2000])
+            except Exception as we:
+                log.warning("research job %s: could not record that it failed to start: %r", job_id, we)
+            raise
+        await run_in_threadpool(events.set_meta, {**meta, "call_id": str(provider_job_id)})  # for the watchdog
+        log.info("research job %s: started", job_id)
+        return JSONResponse({"job_id": job_id, "provider_job_id": str(provider_job_id), "status": "started"})
 
     @api.post("/infer/query")
     async def infer_endpoint(request: Request):

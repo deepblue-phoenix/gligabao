@@ -84,6 +84,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		withATIF    = fs.Bool("atif", false, "add the ATIF trajectory of the research (the sub-agents' steps merged into it) to the --json output as \"trajectory\"")
 		atifDir     = fs.String("atif-dir", "", "store the ATIF trajectory of the research in this directory as <trajectory_id>.json")
 		verbose     = fs.Bool("verbose", false, "log every step and tool call to stderr")
+		events      = fs.Bool("events", false, "write the progress to stderr as JSON lines ({\"event\":\"state\"|\"usage\",...}), for the program that runs the agent (the Modal runner); not with --verbose")
 		showVersion = fs.Bool("version", false, "print the version and exit")
 		configPath  = fs.String("config", "", "gligabao.toml to read the settings from (API keys, db_backend, postgres_dsn, vector_store, ...); default: the environment only")
 		dbPath      = fs.String("db", "", "SQLite database file (sqlite backend), with the vector store and the images next to it; default: $"+envDB+", else "+db.DefaultSQLitePath)
@@ -116,6 +117,10 @@ Flags:
 		return exitOK
 	}
 
+	if *events && *verbose {
+		fmt.Fprintln(stderr, "gligabao_agent: --events and --verbose both write to stderr: use one")
+		return exitUsage
+	}
 	if *withATIF && !*asJSON {
 		fmt.Fprintln(stderr, "gligabao_agent: --atif adds the trajectory to the --json output: use it with --json (or --atif-dir to store it in a file)")
 		return exitUsage
@@ -178,15 +183,19 @@ Flags:
 	}
 	defer a.close()
 
-	var progress io.Writer
-	if *verbose {
-		progress = stderr
+	var onState func(stateEvent)
+	var onUsage func(totals)
+	switch {
+	case *events:
+		onState, onUsage = jsonEvents(stderr)
+	case *verbose:
+		onState = textProgress(stderr)
 	}
 	var trajectory func() *atif.Trajectory
 	if *withATIF || *atifDir != "" {
 		trajectory = a.captureTrajectory()
 	}
-	out, err := a.runResearch(ctx, userID, agent_research.Options{Topic: topic, MaxSteps: *maxSteps, Model: *model, Dataset: datasetName}, progress)
+	out, err := a.runResearch(ctx, userID, agent_research.Options{Topic: topic, MaxSteps: *maxSteps, Model: *model, Dataset: datasetName}, onState, onUsage)
 	if err != nil {
 		fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
 		return exitError

@@ -5,6 +5,7 @@ without editing code while testing.
 """
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from ai_train_core import paths
 from ai_train_core.model_families import get_model_config
@@ -12,6 +13,23 @@ from ai_train_core.model_families import get_model_config
 
 def _env(name: str, default: str) -> str:
     return os.environ.get(name, default)
+
+
+AGENT_BINARY_NAME = "gligabao_agent_linux_amd64"
+
+
+def _agent_binary() -> str:
+    """The gligabao_agent binary (Linux, x86-64: what a Modal container runs) that is baked into the agent's image: SIDECAR_AGENT_BINARY,
+    else the one next to the sidecar's code (the sidecar image has it there, see Dockerfile.sidecar), else the one `run_build.sh` builds
+    in the repo's build/ directory. "" if there is none: the Modal app is then deployed without the ability to run research agents."""
+    env = os.environ.get("SIDECAR_AGENT_BINARY")
+    if env is not None:
+        return env if os.path.isfile(env) else ""
+    here = Path(__file__).resolve().parent                # sidecar/ai_train (/app/ai_train in the sidecar image)
+    for candidate in (here.parent / AGENT_BINARY_NAME, here.parent.parent / "build" / AGENT_BINARY_NAME):
+        if candidate.is_file():
+            return str(candidate)
+    return ""
 
 
 @dataclass(frozen=True)
@@ -32,6 +50,13 @@ class TrainConfig:
 
     # Optional secret holding HF_TOKEN etc. Empty = no secret attached.
     hf_secret: str = field(default_factory=lambda: _env("SIDECAR_HF_SECRET", ""))
+
+    # The research agent (docs/research.md, runner "modal"): the gligabao_agent binary runs in a Modal container. The binary is baked
+    # into the image at deploy time ("" = none found: the app has no agent and POST /research/job_start answers 503). The secret holds
+    # the keys the binary needs (ANTHROPIC_API_KEY, OPENAI_API_KEY; empty = no secret attached: the agent fails without keys).
+    agent_binary: str = field(default_factory=_agent_binary)
+    agent_secret: str = field(default_factory=lambda: _env("SIDECAR_AGENT_SECRET", ""))
+    agent_timeout_s: int = field(default_factory=lambda: int(_env("SIDECAR_AGENT_TIMEOUT_S", "1800")))
 
     # Persistent storage: logical mount path in the container -> volume name.
     volumes: dict = field(default_factory=lambda: {

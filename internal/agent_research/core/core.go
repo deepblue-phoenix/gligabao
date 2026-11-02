@@ -18,6 +18,15 @@ const (
 	StatusStopped Status = "stopped"
 )
 
+// Where an agent runs (Run.Runner).
+const (
+	// RunnerLocal: in the process of the server (or of the binary that started it), on goroutines. The default.
+	RunnerLocal = "local"
+	// RunnerModal: the gligabao_agent binary runs the agent and its sub-agents in a Modal container, started through the sidecar. The
+	// server records the run and the states the binary reports.
+	RunnerModal = "modal"
+)
+
 // Statuses lists the statuses.
 var Statuses = []Status{StatusRunning, StatusCompleted, StatusFailed, StatusStopped}
 
@@ -79,6 +88,9 @@ type Run struct {
 	// Model is the model the agent runs on ("" for the server's default); MaxSteps the most model calls it may make.
 	Model    string `json:"model"`
 	MaxSteps int    `json:"max_steps"`
+	// Runner is where the agent runs: RunnerLocal (in the process of the server, the default) or RunnerModal (the gligabao_agent binary in
+	// a Modal container, through the sidecar).
+	Runner string `json:"runner"`
 	// Steps is the number of model calls made so far and ToolCalls the number of tool runs; they, the tokens and the cost are
 	// updated as the run goes. CostUSD includes the model calls of the tools (the web searches).
 	Steps        int     `json:"steps"`
