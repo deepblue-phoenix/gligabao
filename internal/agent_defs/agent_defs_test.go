@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const goodTOML = `
@@ -195,6 +196,14 @@ func TestInvalidDefinitionsAreAllReported(t *testing.T) {
 		want  []string
 	}{
 		"unknown key":                   {map[string]string{"x.toml": base + "system_prompt = \"p\"\nmodle = \"m\"\n"}, []string{"unknown key(s): modle"}},
+		"schedule without cron":         {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ntopic = \"t\"\n"}, []string{"schedule.cron: required"}},
+		"schedule bad cron":             {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"61 * * * *\"\ntopic = \"t\"\n"}, []string{"schedule.cron", "minute"}},
+		"schedule too often":            {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"* * * * *\"\ntopic = \"t\"\n"}, []string{"at least 5m0s"}},
+		"schedule never":                {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"0 0 31 2 *\"\ntopic = \"t\"\n"}, []string{"never matches"}},
+		"schedule bad timezone":         {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"@daily\"\ntimezone = \"Mars/Base\"\ntopic = \"t\"\n"}, []string{"schedule.timezone"}},
+		"schedule without topic":        {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"@daily\"\n"}, []string{"schedule.topic: required"}},
+		"schedule bad topic template":   {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"@daily\"\ntopic = \"{{.Nope}}\"\n"}, []string{"schedule.topic"}},
+		"schedule unknown key":          {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"@daily\"\ntopic = \"t\"\nevery = 5\n"}, []string{"unknown key(s): schedule.every"}},
 		"unknown json key":              {map[string]string{"x.json": `{"name":"x","bogus":1}`}, []string{"invalid JSON"}},
 		"bad toml":                      {map[string]string{"x.toml": "name = "}, []string{"invalid TOML"}},
 		"no prompt":                     {map[string]string{"x.toml": base}, []string{"system_prompt or system_prompt_file: one is required"}},
@@ -415,5 +424,51 @@ func TestRoleStepsDefaults(t *testing.T) {
 		if def, limit := c.role.Steps(child); def != c.wantDef || limit != c.wantMax {
 			t.Errorf("%+v: %d %d", c.role, def, limit)
 		}
+	}
+}
+
+func TestScheduleIsLoadedWithDefaultsAndIsNotInTheHash(t *testing.T) {
+	const base = "name = \"x\"\nversion = \"1.0.0\"\ndescription = \"d\"\nsystem_prompt = \"p\"\n"
+	reg, err := Load(dir(t, map[string]string{
+		"x.toml": base + "[schedule]\ncron = \" 30 7 * * mon-fri \"\ntopic = \"News of {{.Date}}\"\n",
+		"y.toml": strings.Replace(base, `"x"`, `"y"`, 1),
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	x, _ := reg.Get("x")
+	sc := x.Schedule
+	if sc == nil || sc.Cron != "30 7 * * mon-fri" || sc.Timezone != "UTC" || sc.User != "scheduler" || sc.Paused {
+		t.Fatalf("schedule: %+v", sc)
+	}
+	y, _ := reg.Get("y")
+	if y.Schedule != nil {
+		t.Error("y has a schedule")
+	}
+	// Friday 2030-01-04 08:00 UTC: the next run is Monday the 7th at 7:30.
+	next := sc.Next(time.Date(2030, 1, 4, 8, 0, 0, 0, time.UTC))
+	if want := time.Date(2030, 1, 7, 7, 30, 0, 0, time.UTC); !next.Equal(want) {
+		t.Errorf("next = %v, want %v", next, want)
+	}
+	if topic, err := sc.TopicAt(next); err != nil || topic != "News of 2030-01-07" {
+		t.Errorf("topic = %q, %v", topic, err)
+	}
+	hashed := *x
+	hashed.Schedule = nil
+	if hashOf(&hashed) != x.Hash {
+		t.Error("the schedule is part of the hash")
+	}
+	// It goes through a bundle.
+	b, err := reg.Bundle("x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := b.JSON()
+	reg2, _, err := ParseBundle(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if x2, _ := reg2.Get("x"); x2.Schedule == nil || x2.Schedule.Cron != sc.Cron {
+		t.Errorf("bundle lost the schedule: %+v", x2.Schedule)
 	}
 }

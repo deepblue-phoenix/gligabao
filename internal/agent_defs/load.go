@@ -48,6 +48,7 @@ type fileDef struct {
 	Knowledge        Knowledge `toml:"knowledge" json:"knowledge"`
 	Limits           Limits    `toml:"limits" json:"limits"`
 	Spawn            Spawn     `toml:"spawn" json:"spawn"`
+	Schedule         *Schedule `toml:"schedule" json:"schedule"`
 }
 
 // Load reads the definitions of dir: every *.toml and *.json file in it is one agent (the subdirectories hold what the files refer to:
@@ -145,7 +146,7 @@ func loadFile(path, root string) (*Def, []string) {
 	var problems []string
 	d := &Def{
 		Schema: f.Schema, Name: f.Name, Version: f.Version, Description: f.Description, SystemPrompt: f.SystemPrompt, Model: f.Model,
-		MaxSteps: f.MaxSteps, MaxTokens: f.MaxTokens, Tools: f.Tools, Search: f.Search, Knowledge: f.Knowledge, Limits: f.Limits, Spawn: f.Spawn,
+		MaxSteps: f.MaxSteps, MaxTokens: f.MaxTokens, Tools: f.Tools, Search: f.Search, Knowledge: f.Knowledge, Limits: f.Limits, Spawn: f.Spawn, Schedule: f.Schedule,
 		Source: path,
 	}
 	switch {

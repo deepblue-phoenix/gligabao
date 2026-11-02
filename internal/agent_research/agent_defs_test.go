@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
@@ -361,5 +362,99 @@ dataset_locked = true
 		if got := strings.Join(names, ","); got != "default@1.0.0,pinned@1.0.0,scout@1.2.0" {
 			t.Errorf("agents: %s", got)
 		}
+	})
+}
+
+const scheduledDef = `
+name = "daily"
+version = "1.0.0"
+description = "Runs every morning."
+system_prompt = "DAILY PROMPT"
+[schedule]
+cron = "30 7 * * *"
+timezone = "Europe/Berlin"
+topic = "News of {{.Date}}"
+user = "cron_user"
+`
+
+func TestScheduledAgentsRunWhenDue(t *testing.T) { runOnBackends(t, testScheduled) }
+
+func testScheduled(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+	ctx := context.Background()
+	reg := writeDefs(t, map[string]string{
+		"daily.toml":  scheduledDef,
+		"paused.toml": strings.NewReplacer(`"daily"`, `"paused"`, `[schedule]`, "[schedule]\npaused = true").Replace(scheduledDef),
+		"lead.toml":   rootDef, "scout.toml": scoutDef, // no schedule
+	})
+	fake := newTeamFake(map[string][]string{"root": {final("morning report"), final("second report")}})
+	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
+	if err := m.UseAgentDefs(reg); err != nil {
+		t.Fatal(err)
+	}
+	berlin, _ := time.LoadLocation("Europe/Berlin")
+	at := func(day, h, min int) time.Time { return time.Date(2030, 1, day, h, min, 0, 0, berlin) }
+	tick := agent_research.ScheduleTicker(m, at(1, 7, 0)) // first due: 1 January 7:30
+
+	tick(at(1, 7, 29))
+	m.Wait()
+	if runs, _ := m.List(ctx, "cron_user", agent_research.ListOptions{}); len(runs) != 0 {
+		t.Fatalf("started before it was due: %+v", runs)
+	}
+	tick(at(1, 7, 31))
+	m.Wait()
+	tick(at(1, 12, 0)) // not due again until the next morning
+	m.Wait()
+	runs, _ := m.List(ctx, "cron_user", agent_research.ListOptions{})
+	if len(runs) != 1 {
+		t.Fatalf("runs: %+v", runs)
+	}
+	if r := runs[0]; r.AgentName != "daily" || r.Topic != "News of 2030-01-01" || r.Status != core.StatusCompleted || r.Report != "morning report" {
+		t.Errorf("the scheduled run: %+v", r)
+	}
+	// The server was down for three days: the next run comes once, not once per missed day.
+	tick(at(4, 9, 0))
+	m.Wait()
+	runs, _ = m.List(ctx, "cron_user", agent_research.ListOptions{})
+	if len(runs) != 2 {
+		t.Fatalf("runs after the downtime: %d", len(runs))
+	}
+	if all, _ := m.List(ctx, "scheduler", agent_research.ListOptions{}); len(all) != 0 {
+		t.Errorf("the paused agent ran: %+v", all)
+	}
+
+	var info *agent_research.ScheduleInfo
+	for _, a := range m.Agents() {
+		if a.Name == "daily" {
+			info = a.Schedule
+		}
+		if a.Name == "lead" && a.Schedule != nil {
+			t.Errorf("lead has no schedule: %+v", a.Schedule)
+		}
+	}
+	if info == nil || info.Cron != "30 7 * * *" || info.Timezone != "Europe/Berlin" || info.User != "cron_user" || info.Paused || info.NextRun == nil {
+		t.Errorf("schedule in the list of agents: %+v", info)
+	}
+}
+
+func TestScheduleSkipsARunWhileThePreviousOneWorks(t *testing.T) {
+	runOnBackends(t, func(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		reg := writeDefs(t, map[string]string{"daily.toml": strings.Replace(scheduledDef, "30 7 * * *", "*/10 * * * *", 1)})
+		fake := newTeamFake(map[string][]string{"root": {final("report")}})
+		fake.hang = map[string]bool{"root": true} // the first run never answers
+		m := agent_research.NewManager(ctx, d, ops, fake.start(t))
+		if err := m.UseAgentDefs(reg); err != nil {
+			t.Fatal(err)
+		}
+		start := time.Date(2030, 1, 1, 6, 0, 0, 0, time.UTC)
+		tick := agent_research.ScheduleTicker(m, start)
+		tick(start.Add(11 * time.Minute)) // starts and waits for the model
+		tick(start.Add(21 * time.Minute)) // the first still works: skipped
+		if runs, _ := m.List(ctx, "cron_user", agent_research.ListOptions{}); len(runs) != 1 {
+			t.Fatalf("runs while the first works: %d", len(runs))
+		}
+		cancel()
+		m.Wait()
 	})
 }

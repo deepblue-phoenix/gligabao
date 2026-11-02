@@ -860,7 +860,12 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 			reruns.Wait()
 		}
 	})
-	return newMux(mgrCtx, standalone, opts.Auth, geoResolver, opts.GeoRadiusKm, opts.GraphEmbedder, opts.ClassifyingTrainingHook, opts.MCPEnable, research, database, llm, emb, jv, ws, providers, hooks, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, ai.NewPriceTable(opts.Prices), extra...), closeAll, nil
+	mux := newMux(mgrCtx, standalone, opts.Auth, geoResolver, opts.GeoRadiusKm, opts.GraphEmbedder, opts.ClassifyingTrainingHook, opts.MCPEnable, research, database, llm, emb, jv, ws, providers, hooks, dirs, opts.OntologyDirs, sc, opts.EvalModeEnable, opts.TrainingModeEnable, opts.AdminUIenable, adminExts, ai.NewPriceTable(opts.Prices), extra...)
+	// The agents that have a schedule start running by it now that their knowledge base is set up (by newMux). They stop with mgrCtx.
+	if n := research.RunSchedules(); n > 0 {
+		log.Infof("agent research: %d agent(s) run on a schedule", n)
+	}
+	return mux, closeAll, nil
 }
 
 // newJev builds the Jev client from the options.

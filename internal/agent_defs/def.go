@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 	"text/template"
+	"time"
 )
 
 // The format version of the files (Def.Schema).
@@ -114,11 +115,73 @@ type Def struct {
 	Knowledge Knowledge `json:"knowledge"`
 	Limits    Limits    `json:"limits"`
 	Spawn     Spawn     `json:"spawn"`
+	// Schedule says when the server runs the agent by itself (nil: only when a research asks for it). It is not part of Hash: when an
+	// agent runs does not change what it is.
+	Schedule *Schedule `json:"schedule,omitempty"`
 
 	// Source is the file the definition was loaded from ("builtin" for the built-in one) and Hash the SHA-256 of everything else, so
 	// that a run records exactly which definition it ran even when a file changed without a version bump.
 	Source string `json:"source,omitempty"`
 	Hash   string `json:"hash"`
+}
+
+// Defaults and limits of Schedule.
+const (
+	// DefaultScheduleTimezone is the time zone of a schedule that names none.
+	DefaultScheduleTimezone = "UTC"
+	// DefaultScheduleUser is the user whose runs a schedule makes when it names none.
+	DefaultScheduleUser = "scheduler"
+	// MinScheduleInterval is the shortest time allowed between two scheduled runs: every run is paid for.
+	MinScheduleInterval = 5 * time.Minute
+)
+
+// Schedule makes the server run the agent on a CRON schedule: at every time the expression matches, a research of Topic is started
+// with this agent, for User. A run that would start while the previous scheduled run of the agent is still working is skipped, and
+// so is every time the server was down (nothing is caught up).
+type Schedule struct {
+	// Cron is the expression of five fields (minute hour day-of-month month day-of-week) or a macro like @daily; see ParseCron.
+	Cron string `toml:"cron" json:"cron"`
+	// Timezone is the IANA time zone the expression is read in (default "UTC").
+	Timezone string `toml:"timezone" json:"timezone"`
+	// Topic is the topic of every scheduled research: a Go text/template with {{.Date}} (YYYY-MM-DD) and {{.Time}} (RFC 3339), both
+	// of the moment the run is due, in Timezone.
+	Topic string `toml:"topic" json:"topic"`
+	// User is the user_id the runs (and the knowledge base the agent writes to) belong to (default "scheduler").
+	User string `toml:"user" json:"user"`
+	// Paused keeps the schedule in the file without running it.
+	Paused bool `toml:"paused" json:"paused,omitempty"`
+}
+
+// Next returns the first time after t that the schedule runs the agent (zero if never, or if it is invalid: a loaded definition
+// never is), in the schedule's time zone.
+func (s *Schedule) Next(t time.Time) time.Time {
+	c, err := ParseCron(s.Cron)
+	if err != nil {
+		return time.Time{}
+	}
+	loc, err := time.LoadLocation(s.Timezone)
+	if err != nil {
+		return time.Time{}
+	}
+	return c.Next(t.In(loc))
+}
+
+// TopicAt is the topic of the run that is due at t.
+func (s *Schedule) TopicAt(t time.Time) (string, error) {
+	loc, err := time.LoadLocation(s.Timezone)
+	if err != nil {
+		return "", err
+	}
+	t = t.In(loc)
+	tpl, err := template.New("topic").Option("missingkey=error").Parse(s.Topic)
+	if err != nil {
+		return "", err
+	}
+	var sb strings.Builder
+	if err := tpl.Execute(&sb, struct{ Date, Time string }{t.Format("2006-01-02"), t.Format(time.RFC3339)}); err != nil {
+		return "", fmt.Errorf("schedule.topic: %w", err)
+	}
+	return strings.TrimSpace(sb.String()), nil
 }
 
 // Skill is a skill file: a Markdown document of the skills directory that the agent gets in its system prompt.

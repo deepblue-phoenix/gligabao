@@ -31,6 +31,14 @@ max_tree_cost_usd = 3.00             # the whole research, sub-agents included
 enabled = true
 max_per_agent = 3
 
+# Run by itself every weekday at 7:30 (Berlin time). paused = true keeps it in the file without running it: remove that line to turn it on.
+[schedule]
+cron = "30 7 * * 1-5"
+timezone = "Europe/Berlin"
+topic = "The most important news of {{.Date}}"
+user = "scheduler"
+paused = true
+
 [[spawn.roles]]
 name = "regional"
 agent = "regional_scout"

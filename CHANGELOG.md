@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.170.0] - 2026-11-03
+
+### Added
+- **Agent definitions can run on a CRON schedule.** A new `[schedule]` section (`cron`, `timezone`, `topic`, `user`, `paused`) makes the server start a research with that agent every time the expression matches: five fields (`30 7 * * 1-5`) with lists, ranges, steps, month and day names, or a macro (`@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`). The expression is read in `timezone` (default UTC); `topic` is a template with `{{.Date}}` and `{{.Time}}`; the runs belong to `user` (default `scheduler`). A run is skipped while the previous scheduled run of the same agent still works, and times the server was down are not caught up. A schedule that runs more often than every 5 minutes, never matches, has an unknown time zone, or lacks `cron` or `topic` stops the server at startup, like any other invalid definition. The schedule is not part of `agent_hash`. `GET /v1/gb/research/agents` shows `schedule` with the next run. `build/agent_defs/news_scanner.toml` has a paused example. Details: [docs/agent-defs.md](docs/agent-defs.md#schedule-running-on-a-schedule). New `agent_defs.ParseCron`, `agent_defs.Schedule` and `agent_research.Manager.RunSchedules`.
+
 ## [0.169.0] - 2026-11-02
 
 ### Removed

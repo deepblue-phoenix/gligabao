@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"text/template"
+	"time"
 	"unicode/utf8"
 )
 
@@ -71,6 +72,15 @@ func normalize(d *Def) {
 		k.Access = AccessReadWrite
 	}
 	k.Dataset, k.Instructions = strings.TrimSpace(k.Dataset), strings.TrimSpace(k.Instructions)
+	if sc := d.Schedule; sc != nil {
+		sc.Cron, sc.Timezone, sc.Topic, sc.User = strings.TrimSpace(sc.Cron), strings.TrimSpace(sc.Timezone), strings.TrimSpace(sc.Topic), strings.TrimSpace(sc.User)
+		if sc.Timezone == "" {
+			sc.Timezone = DefaultScheduleTimezone
+		}
+		if sc.User == "" {
+			sc.User = DefaultScheduleUser
+		}
+	}
 	for i := range d.Spawn.Roles {
 		r := &d.Spawn.Roles[i]
 		r.Name, r.Agent = strings.TrimSpace(r.Name), strings.TrimSpace(r.Agent)
@@ -153,6 +163,7 @@ func check(d *Def) []string {
 		}
 	}
 	errs = append(errs, checkSpawn(d)...)
+	errs = append(errs, checkSchedule(d)...)
 	return errs
 }
 
@@ -336,6 +347,45 @@ func checkSpawn(d *Def) []string {
 	return errs
 }
 
+func checkSchedule(d *Def) []string {
+	sc := d.Schedule
+	if sc == nil {
+		return nil
+	}
+	var errs []string
+	bad := func(format string, args ...any) { errs = append(errs, fmt.Sprintf(format, args...)) }
+	loc, locErr := time.LoadLocation(sc.Timezone)
+	if locErr != nil {
+		bad("schedule.timezone: %q is not an IANA time zone like Europe/Berlin", sc.Timezone)
+	}
+	if sc.Cron == "" {
+		bad("schedule.cron: required")
+	} else if c, err := ParseCron(sc.Cron); err != nil {
+		bad("schedule.cron: %v", err)
+	} else if locErr == nil {
+		from := time.Date(2030, 1, 1, 0, 0, 0, 0, loc)
+		if c.Next(from).IsZero() {
+			bad("schedule.cron: %q never matches a date", sc.Cron)
+		} else if gap := c.MinGap(from); gap > 0 && gap < MinScheduleInterval {
+			bad("schedule.cron: %q runs the agent every %v, at least %v is needed between two runs", sc.Cron, gap, MinScheduleInterval)
+		}
+	}
+	switch {
+	case sc.Topic == "":
+		bad("schedule.topic: required (what every scheduled run researches)")
+	case utf8.RuneCountInString(sc.Topic) > 2000:
+		bad("schedule.topic: too long (at most 2000 characters)")
+	case locErr == nil:
+		if _, err := sc.TopicAt(time.Now()); err != nil {
+			bad("schedule.topic: %v", err)
+		}
+	}
+	if len(sc.User) > 128 || strings.ContainsFunc(sc.User, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+		bad("schedule.user: %q must be at most 128 bytes, without control characters", sc.User)
+	}
+	return errs
+}
+
 func contains(list []string, s string) bool {
 	for _, x := range list {
 		if x == s {
@@ -345,10 +395,10 @@ func contains(list []string, s string) bool {
 	return false
 }
 
-// hashOf is the SHA-256 of the definition without its Source and Hash.
+// hashOf is the SHA-256 of the definition without its Source, Hash and Schedule.
 func hashOf(d *Def) string {
 	c := *d
-	c.Source, c.Hash = "", ""
+	c.Source, c.Hash, c.Schedule = "", "", nil
 	b, err := json.Marshal(&c)
 	if err != nil {
 		panic("agent_defs: " + err.Error()) // a Def is always marshalable

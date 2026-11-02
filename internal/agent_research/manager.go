@@ -113,6 +113,14 @@ func (m *Manager) UseAgentDefs(reg *agent_defs.Registry) error {
 			return fmt.Errorf("agent %q (%s): knowledge.dataset: %w", d.Name, d.Source, err)
 		}
 	}
+	for _, d := range reg.List() {
+		if d.Schedule == nil {
+			continue
+		}
+		if _, err := memory_core.ResolveUserID(d.Schedule.User); err != nil {
+			return fmt.Errorf("agent %q (%s): schedule.user: %w", d.Name, d.Source, err)
+		}
+	}
 	m.mu.Lock()
 	m.defs = reg
 	m.mu.Unlock()
@@ -148,6 +156,18 @@ type AgentInfo struct {
 	Knowledge      string   `json:"knowledge"`
 	Skills         []string `json:"skills"`
 	Subagents      []string `json:"subagents"`
+	// Schedule is when the server runs the agent by itself (nil: it does not).
+	Schedule *ScheduleInfo `json:"schedule,omitempty"`
+}
+
+// ScheduleInfo is the schedule of an agent definition; NextRun is when it runs next (nil if never, or if it is paused).
+type ScheduleInfo struct {
+	Cron     string     `json:"cron"`
+	Timezone string     `json:"timezone"`
+	Topic    string     `json:"topic"`
+	User     string     `json:"user"`
+	Paused   bool       `json:"paused"`
+	NextRun  *time.Time `json:"next_run,omitempty"`
 }
 
 // Agents lists the agent definitions, by name.
@@ -158,6 +178,12 @@ func (m *Manager) Agents() []AgentInfo {
 			Name: d.Name, Version: d.Version, Description: d.Description, Hash: d.Hash, Source: d.Source, Model: d.Model, MaxSteps: d.MaxSteps,
 			MaxCostUSD: d.Limits.MaxCostUSD, MaxTreeCostUSD: d.Limits.MaxTreeCostUSD, Knowledge: d.Knowledge.Access,
 			Skills: []string{}, Subagents: []string{},
+		}
+		if sc := d.Schedule; sc != nil {
+			info.Schedule = &ScheduleInfo{Cron: sc.Cron, Timezone: sc.Timezone, Topic: sc.Topic, User: sc.User, Paused: sc.Paused}
+			if next := sc.Next(time.Now()); !sc.Paused && !next.IsZero() {
+				info.Schedule.NextRun = &next
+			}
 		}
 		for _, s := range d.Skills {
 			info.Skills = append(info.Skills, s.Name)

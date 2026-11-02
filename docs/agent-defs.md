@@ -44,6 +44,7 @@ required_skills = []                  # the same, but a missing file is a startu
 [knowledge] # how it uses the knowledge base
 [limits]    # cost caps
 [spawn]     # sub-agents
+[schedule]  # runs by itself on a CRON schedule (optional)
 ```
 
 Unknown keys are errors. Every field but `name`, `version`, `description` and the prompt is optional.
@@ -150,6 +151,30 @@ task_template = "Headlines about {{.Topic}}"   # Go template; {{.Topic}} is the 
 - **Checks at startup**: a role must name an existing definition whose version meets `version`, the role's steps must fit, and no definition may start itself through its roles (a loop is an error).
 - Every sub-agent is a run of its own, with its `agent_name`, `agent_version` and `agent_hash`.
 
+### `[schedule]`: running on a schedule
+
+An agent that should run by itself (a morning briefing, a weekly scan) gets a `[schedule]`. The server then starts a research with this agent every time the CRON expression matches, as if someone had called `POST /v1/gb/research`.
+
+```toml
+[schedule]
+cron     = "30 7 * * 1-5"                        # minute hour day-of-month month day-of-week; required
+timezone = "Europe/Berlin"                       # IANA zone the expression is read in (default UTC)
+topic    = "The most important news of {{.Date}}"   # required: what every scheduled run researches
+user     = "scheduler"                           # whose runs (and knowledge base) they are (default "scheduler")
+paused   = false                                 # true: keep the section in the file without running it
+```
+
+- **`cron`** has five fields, as usual: `*`, numbers, ranges (`1-5`), lists (`1,3,5`), steps (`*/15`, `10-40/10`), month names (`jan`..`dec`), day names (`sun`..`sat`; `0` and `7` are Sunday) and the macros `@hourly`, `@daily` (`@midnight`), `@weekly`, `@monthly`, `@yearly` (`@annually`). When both the day of month and the day of week are restricted, a day that matches either counts (like `cron`). There is no seconds field.
+- **`topic`** is a Go template with `{{.Date}}` (`2030-01-07`) and `{{.Time}}` (RFC 3339), both of the moment the run was due, in `timezone`. A run is made as the `user`, like a request with that `gb-user-id`: it counts for the user's limit of working agents, writes to the knowledge base of that user (`[knowledge]` decides how) and is listed for that user. The run uses the model, steps, caps and sub-agents of the definition.
+- **At most one run per agent at a time.** If the previous scheduled run of the agent still works when the next one is due, the new one is skipped (a warning is logged). The times the server was down are not caught up: after a start the next time after it is used.
+- **At least 5 minutes between two runs** (every run is paid for): a schedule that runs more often is a startup error, and so are an expression that never matches (`0 0 31 2 *`), an unknown time zone and a missing `cron` or `topic`.
+- **One server** should run the schedules. Every process that serves the same definitions starts its own runs, so with several servers behind one database keep the `[schedule]` sections in one of them only (or `paused`).
+- Only the server runs schedules: `gligabao_agent` ignores the section, and an agent that is only used as a sub-agent role is never started by it. The schedule is not part of `agent_hash` (when an agent runs is not what it is), so changing it does not make a new hash. It travels in a bundle but the container does nothing with it.
+- `GET /v1/gb/research/agents` shows it: `schedule` with `cron`, `timezone`, `topic`, `user`, `paused` and `next_run`.
+- The runs are ordinary researches (`agent_name` says which agent, `GET /v1/gb/research?...` lists them for the `user`). There is no separate record of the schedule: what ran is in `gb_agent_research_runs`.
+
+Code: `internal/agent_defs/cron.go` (the parser and `Next`), `agent_defs.Schedule`, `internal/agent_research/scheduler.go` (`Manager.RunSchedules`, started by the server after it is set up).
+
 ## Model
 
 The model of the main agent is the request's `model`, else `model` of its definition, else the server's default. A **sub-agent** runs on the `model` of its own definition, else on its parent's: the parent cannot choose it (`spawn_subagent` has no such argument).
@@ -181,7 +206,8 @@ The container has no `agent_defs` directory, and baking the files into the image
 | a limit over its ceiling | `spawn.max_per_agent: 6 must be between 0 (the ceiling) and 5, the ceiling` |
 | a role that points nowhere or loops | `spawn.roles[0] (r).agent: no agent called "ghost"`, `a -> b -> a starts itself through its roles` |
 | a role's version not met | `agent "x" is at version 1.0.0, which does not meet ">=2"` |
+| a bad schedule | `schedule.cron: "* * * * *" runs the agent every 1m0s, at least 5m0s is needed between two runs`, `schedule.cron: minute: "61": 61 is out of range (0 to 59)`, `schedule.timezone: "Mars/Base" is not an IANA time zone like Europe/Berlin` |
 
 ## Not included yet
 
-Reloading the definitions without a restart, several versions of one name side by side, other triggers than `on_demand` and `on_start` (after N steps, when a tool returns something), skills the agent loads on demand (today they are all in the prompt), a cap on the cost of a research in the admin UI (the API, MCP and CLI have it), a choice of the agent in the admin UI's start form, and a `research_agents` MCP tool. See the [roadmap](roadmap/ROADMAP.md).
+Reloading the definitions without a restart, several versions of one name side by side, other triggers than `on_demand` and `on_start` (after N steps, when a tool returns something), catching up the runs of a schedule that were missed while the server was down, a schedule that survives several servers (a lock in the database), a schedule that names its own runner, model or dataset, an admin UI view of the schedules, skills the agent loads on demand (today they are all in the prompt), a cap on the cost of a research in the admin UI (the API, MCP and CLI have it), a choice of the agent in the admin UI's start form, and a `research_agents` MCP tool. See the [roadmap](roadmap/ROADMAP.md).
