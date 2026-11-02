@@ -22,6 +22,7 @@ ROUTES = (
     ("POST", "/research/job_start"),       # the research agent (the gligabao_agent binary) in Modal
     ("GET", "/research/job_events"),       # SSE
     ("POST", "/research/job_cancel"),
+    ("GET", "/research/job_export"),       # what the agent handed back (a ZIP archive)
     ("POST", "/infer/query"),
     ("POST", "/evals/add_to_dataset"),
     ("GET", "/evals/get_dataset_count"),

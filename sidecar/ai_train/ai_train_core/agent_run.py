@@ -13,8 +13,14 @@ Events of a research job (like the training job's, see progress_events.py; "comp
     {"type": "usage", "usage": {"steps", "tool_calls", "input_tokens", "output_tokens", "cost_usd", "subagents"}}
         what the whole tree of agents spent so far
     {"type": "log", "message": str}                                   a line the binary wrote to stderr (warnings, errors)
-    {"type": "status", "status": "completed", "report": str, "usage": {...}}
-    {"type": "status", "status": "failed" | "cancelled", "error": str}
+    {"type": "status", "status": "completed", "report": str, "usage": {...}, "export": {...}}
+    {"type": "status", "status": "failed" | "cancelled", "error": str, "export": {...}}
+
+`export` ({"bytes", "sha256"}) is there when the binary wrote its export file (`--export`: the knowledge it gathered, its runs and
+costs, see internal/db/dbexport) and it was stored in the job's event log (EventLog.put_export). The container and its storage are
+gone when the job ends, so this is how the knowledge gets back to the server that started the job: the web API serves the file
+(GET /research/job_export) and the server loads it into its databases. It is there for a failed or stopped job too (what it learned
+until then is kept), and it is stored before the final event, so whoever sees the final event finds the file.
 
 Stopping: the web API sets the stop flag of the log (progress_events.request_stop); a watcher thread here sees it, ends the binary
 with SIGTERM (which ends the research properly) and reports "cancelled".
@@ -35,6 +41,7 @@ from .event_log import EventLog
 from .progress_events import stop_requested, write_event, write_log, write_status
 
 AGENT_BINARY = "/opt/gligabao_agent"     # where the image has the binary (app.py)
+EXPORT_FILE = "export.zip"               # the file the binary writes its state to (--export), in the job's directory
 EVENT_PREFIX = '{"event":'               # a line of the binary's stderr that is an event (gligabao_agent --events)
 
 STOP_POLL_S = 2.0                        # how often the stop flag is looked at
@@ -48,9 +55,13 @@ ERROR_TAIL_LINES = 15                    # lines of stderr that explain a failed
 _USAGE_KEYS = ("steps", "tool_calls", "input_tokens", "output_tokens", "cost_usd", "subagents")
 
 
-def build_command(binary: str, workdir: str, max_steps: int, model: str, dataset: str, timeout_s: int) -> list:
-    """The command line of the binary: the topic comes on stdin ("-"), the database is in `workdir`."""
+def build_command(binary: str, workdir: str, max_steps: int, model: str, dataset: str, timeout_s: int,
+                  export_path: str = "") -> list:
+    """The command line of the binary: the topic comes on stdin ("-"), the database is in `workdir`. With `export_path` the binary
+    writes its state there when it ends (--export)."""
     cmd = [binary, "--json", "--events", "--max-steps", str(max_steps), "--db", os.path.join(workdir, "gligabao.db")]
+    if export_path:
+        cmd += ["--export", export_path]
     if model:
         cmd += ["--model", model]
     if dataset:
@@ -133,7 +144,8 @@ def run_agent_job(topic: str, max_steps: int, model: str, dataset: str, job_id: 
 def _run(log: EventLog, topic: str, max_steps: int, model: str, dataset: str, timeout_s: int, binary: str, workdir: str,
          popen: Callable) -> dict:
     agent_timeout = max(timeout_s - TIMEOUT_MARGIN_S, 60) if timeout_s else 0
-    cmd = build_command(_executable(binary, workdir), workdir, max_steps, model, dataset, agent_timeout)
+    export_path = os.path.join(workdir, EXPORT_FILE)
+    cmd = build_command(_executable(binary, workdir), workdir, max_steps, model, dataset, agent_timeout, export_path)
     write_log(log, f"starting the agent: {os.path.basename(binary)} --max-steps {max_steps}" + (f" --model {model}" if model else ""))
     proc = popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=workdir)
 
@@ -177,22 +189,53 @@ def _run(log: EventLog, topic: str, max_steps: int, model: str, dataset: str, ti
     watcher.join(timeout=STOP_POLL_S + 5)
     stdout = stdout_chunks[0] if stdout_chunks else ""
 
+    # The export goes first: whoever sees the final event finds the file. Also for a failed or a stopped job.
+    export = _store_export(log, export_path)
+    extra = {"export": export} if export else {}
+
     if cancelled.is_set():
-        write_status(log, "cancelled", error="stopped")
+        write_status(log, "cancelled", error="stopped", **extra)
         return {"status": "cancelled"}
+    result = _result_of(stdout)
+    if code != 0 and result is not None and not export and not os.path.exists(export_path):
+        # The research ended with a report, but the binary exits with an error when it could not write the export (see
+        # gligabao_agent): the report is the result, the missing export is only said.
+        write_log(log, "the agent finished, but its export could not be written: " + (" | ".join(tail) or "(no output)")[:500])
+        code = 0
     if code == 0:
-        try:
-            result = json.loads(stdout)
-            report = result["report"]
-        except (ValueError, KeyError, TypeError):
+        if result is None:
             error = "the agent ended without a readable result: " + (stdout.strip()[:500] or "(no output)")
-            write_status(log, "failed", error=error)
+            write_status(log, "failed", error=error, **extra)
             return {"status": "failed", "error": error}
-        write_status(log, "completed", report=report, usage=_usage_of_result(result))
+        write_status(log, "completed", report=result["report"], usage=_usage_of_result(result), **extra)
         return {"status": "completed", "run_id": result.get("run_id"), "cost_usd": result.get("cost_usd")}
     error = f"the agent exited with code {code}: " + (" | ".join(tail) or "(no output)")
-    write_status(log, "failed", error=error[:2000])
+    write_status(log, "failed", error=error[:2000], **extra)
     return {"status": "failed", "error": error[:2000]}
+
+
+def _result_of(stdout: str) -> Optional[dict]:
+    """The binary's --json output when it is a result with a report, else None."""
+    try:
+        result = json.loads(stdout)
+        result["report"]
+    except (ValueError, KeyError, TypeError):
+        return None
+    return result if isinstance(result, dict) else None
+
+
+def _store_export(log: EventLog, path: str) -> Optional[dict]:
+    """Put the binary's export file (if it wrote one) in the job's event log; returns {"bytes", "sha256"}, None if there is no
+    file or it could not be stored (said in a log event: the job's result does not depend on it)."""
+    if not os.path.isfile(path):
+        return None
+    try:
+        info = log.put_export(path)
+    except Exception as e:
+        write_log(log, f"the export of the agent could not be stored, so its knowledge is lost: {type(e).__name__}: {e}"[:MAX_LOG_CHARS])
+        return None
+    write_log(log, f"the export of the agent is stored ({info['bytes']} bytes)")
+    return info
 
 
 def _put(pending: "queue.Queue", ev: dict) -> None:

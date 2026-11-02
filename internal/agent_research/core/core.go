@@ -61,6 +61,10 @@ const (
 	StateUsingTool = "using_tool"
 	// StateWritingReport: the last model call, the one that may not call tools, is running: its text is the report.
 	StateWritingReport = "writing_report"
+	// StateImporting: only for a research that ran in Modal (RunnerModal): the agent ended and the server loads what it handed back (its
+	// knowledge base, its runs and costs, its embeddings) into its own databases. The detail says how big the export is; an error on the
+	// state says why the import failed (the run itself is not failed by it: its report is there).
+	StateImporting = "importing"
 	// StateCompleted: the run ended with a report.
 	StateCompleted = "completed"
 	// StateFailed: the run ended with an error.

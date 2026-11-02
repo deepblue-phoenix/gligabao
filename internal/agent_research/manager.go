@@ -48,6 +48,8 @@ type Manager struct {
 	onTrajectory TrajectoryFunc
 	// remote runs the researches started with the Modal runner (nil: they cannot be started); guarded by mu.
 	remote Remote
+	// importer loads what the agents of those researches hand back (nil: it is not imported); guarded by mu.
+	importer Importer
 
 	mu      sync.Mutex
 	active  map[string]int        // running agents by user

@@ -13,12 +13,18 @@ of a job `<id>`:
                   filling, together with `head`, in one update, so a reader never sees an event without its head.
     <id>:meta     what the web API knows about the job (the provider's call id, see api/api.py); written by the web API
     <id>:stop     set by the web API to ask the job to stop (progress_events.py: request_stop)
+    <id>:export   the file a research job hands back when it ends (put_export): {"bytes", "sha256", "chunks"}; written by
+                  the job container, after its chunks and before its final event
+    <id>:x<n>     chunk n of that file (bytes, EXPORT_CHUNK_BYTES each, the last may be shorter). The web API streams them
+                  to the Go server (/research/job_export), which loads the file into its databases
 
 One writer at a time: the training container, and, after it is gone, the web API's watchdog (api/api.py) that writes
 the "failed" event of a job that died without reporting it. Entries expire in the store (7 days in a Modal Dict), which
 is how old jobs are cleaned up: the Go server and its database are the permanent record.
 """
+import hashlib
 import json
+import os
 import threading
 import time
 from typing import Any, Callable, Optional
@@ -30,6 +36,12 @@ CHUNK_SIZE = 50
 # step would stall the training for as long as the store is down: with one event per step, an outage of the Dict could add
 # hours to a job. One retry (a 0.5 s wait at most) rides out a blip and then gives up; the event is skipped.
 INFORMING_RETRIES = 1
+
+# A file handed back by a job (put_export) is stored in chunks of this size, one request each, so that no request is bigger than a
+# store accepts (a Modal Dict takes much larger values than this, but a request that is not small is the first to fail on a
+# bad connection). A file over EXPORT_MAX_BYTES is not stored: it would fill the store for a file nobody can use in time.
+EXPORT_CHUNK_BYTES = 4 * 1024 * 1024
+EXPORT_MAX_BYTES = 256 * 1024 * 1024
 
 
 class EventLog:
@@ -94,6 +106,38 @@ class EventLog:
 
     def request_stop(self) -> None:
         self._retry(self.kv.update, {self._key("stop"): time.time()})
+
+    def put_export(self, path: str, chunk_bytes: Optional[int] = None, max_bytes: Optional[int] = None) -> dict:
+        """Store the file at `path` as the job's export, in chunks, and return what a reader needs to check it: {"bytes",
+        "sha256"}. The chunks are written first and the description (`<id>:export`) last, so a reader that sees the
+        description finds every chunk. Raises ValueError for a file that is empty or over `max_bytes`, and what the store
+        raises when it keeps failing (the chunks written so far stay; they expire with the job)."""
+        chunk_bytes, max_bytes = chunk_bytes or EXPORT_CHUNK_BYTES, max_bytes or EXPORT_MAX_BYTES
+        size = os.path.getsize(path)
+        if size == 0:
+            raise ValueError("the export is empty")
+        if size > max_bytes:
+            raise ValueError(f"the export is {size} bytes, over the limit of {max_bytes}")
+        digest, chunks = hashlib.sha256(), 0
+        with open(path, "rb") as f:
+            while True:
+                data = f.read(chunk_bytes)
+                if not data:
+                    break
+                digest.update(data)
+                self._retry(self.kv.update, {self._key(f"x{chunks}"): data})
+                chunks += 1
+        info = {"bytes": size, "sha256": digest.hexdigest()}
+        self._retry(self.kv.update, {self._key("export"): {**info, "chunks": chunks}})
+        return info
+
+    def export_meta(self) -> Optional[dict]:
+        """What put_export stored ({"bytes", "sha256", "chunks"}), None if the job has no export."""
+        return self._get("export")
+
+    def read_export_chunk(self, n: int) -> Optional[bytes]:
+        """Chunk `n` of the export, None if the store does not have it."""
+        return self._get(f"x{n}")
 
     # ---- reading ----
 

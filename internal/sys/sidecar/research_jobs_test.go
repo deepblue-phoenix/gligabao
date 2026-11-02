@@ -1,6 +1,7 @@
 package sidecar
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -79,7 +80,7 @@ func TestStreamResearchJobEvents(t *testing.T) {
 		fmt.Fprint(w, ": connected\n\n")
 		fmt.Fprint(w, "id: 2\nevent: state\ndata: {\"type\":\"state\",\"agent\":\"main\",\"state_seq\":1,\"state\":\"searching\",\"step\":1,\"detail\":\"q\"}\n\n")
 		fmt.Fprint(w, ": keepalive\n\n")
-		fmt.Fprint(w, "id: 3\nevent: status\ndata: {\"type\":\"status\",\"status\":\"completed\",\"report\":\"R\",\"usage\":{\"steps\":3,\"cost_usd\":0.5,\"subagents\":1}}\n\n")
+		fmt.Fprint(w, "id: 3\nevent: status\ndata: {\"type\":\"status\",\"status\":\"completed\",\"report\":\"R\",\"usage\":{\"steps\":3,\"cost_usd\":0.5,\"subagents\":1},\"export\":{\"bytes\":24,\"sha256\":\"abc\"}}\n\n")
 	}))
 	defer srv.Close()
 
@@ -94,7 +95,45 @@ func TestStreamResearchJobEvents(t *testing.T) {
 	if len(got) != 2 || got[0].Seq != 2 || got[0].State != "searching" || got[0].Agent != "main" || got[0].Finished() {
 		t.Fatalf("got %+v", got)
 	}
-	if last := got[1]; last.Seq != 3 || !last.Finished() || last.Report != "R" || last.Usage == nil || last.Usage.Steps != 3 || last.Usage.CostUSD != 0.5 || last.Usage.Subagents != 1 {
+	if last := got[1]; last.Seq != 3 || !last.Finished() || last.Report != "R" || last.Usage == nil || last.Usage.Steps != 3 || last.Usage.CostUSD != 0.5 || last.Usage.Subagents != 1 || last.Export == nil || last.Export.Bytes != 24 || last.Export.SHA256 != "abc" {
 		t.Fatalf("last: %+v", got[1])
+	}
+}
+
+func TestDownloadResearchExport(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/research/job_export" || r.Method != http.MethodGet {
+			http.NotFound(w, r)
+			return
+		}
+		switch r.URL.Query().Get("job_id") {
+		case "abc":
+			w.Header().Set("Content-Type", "application/zip")
+			w.Write([]byte("PK-the-archive"))
+		case "short":
+			w.Header().Set("Content-Length", "100")
+			w.Write([]byte("PK"))
+		default:
+			http.Error(w, `{"error":"job has no export"}`, http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	c := New(srv.URL)
+
+	var buf bytes.Buffer
+	n, err := c.DownloadResearchExport(context.Background(), "abc", &buf)
+	if err != nil || n != 14 || buf.String() != "PK-the-archive" {
+		t.Fatalf("n %d, err %v, got %q", n, err, buf.String())
+	}
+	_, err = c.DownloadResearchExport(context.Background(), "none", &buf)
+	var se *StatusError
+	if !errors.As(err, &se) || se.Code != http.StatusNotFound || se.Message() != "job has no export" {
+		t.Fatalf("got %v", err)
+	}
+	if _, err := c.DownloadResearchExport(context.Background(), "short", &bytes.Buffer{}); err == nil {
+		t.Fatal("a body that ends early must be an error")
+	}
+	if _, err := c.DownloadResearchExport(context.Background(), " ", &buf); err == nil {
+		t.Fatal("expected an error for no job id")
 	}
 }

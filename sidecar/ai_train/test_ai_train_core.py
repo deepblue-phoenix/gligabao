@@ -3,6 +3,7 @@
     cd sidecar/ai_train && python -m unittest test_ai_train_core -v
 """
 import base64
+import hashlib
 import json
 import os
 import sys
@@ -285,6 +286,53 @@ class FakeKV:
     def update(self, other):
         self._req()
         self.d.update(other)
+
+
+class EventLogExportTest(unittest.TestCase):
+    """EventLog.put_export: a file in chunks, then its description."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.kv = FakeKV()
+        self.log = event_log.EventLog(self.kv, "j", sleep=lambda s: None)
+
+    def write(self, data: bytes) -> str:
+        p = Path(self.tmp.name, "f.zip")
+        p.write_bytes(data)
+        return str(p)
+
+    def test_chunks_and_description(self):
+        data = bytes(range(256)) * 10
+        info = self.log.put_export(self.write(data), chunk_bytes=1000)
+        self.assertEqual(info, {"bytes": 2560, "sha256": hashlib.sha256(data).hexdigest()})
+        self.assertEqual(self.log.export_meta(), {**info, "chunks": 3})
+        self.assertEqual(b"".join(self.log.read_export_chunk(n) for n in range(3)), data)
+        self.assertEqual([len(self.log.read_export_chunk(n)) for n in range(3)], [1000, 1000, 560])
+        self.assertIsNone(self.log.read_export_chunk(3))
+        self.assertEqual(list(self.kv.d)[-1], "j:export")   # the description comes after the chunks
+
+    def test_empty_and_too_large_files(self):
+        with self.assertRaises(ValueError):
+            self.log.put_export(self.write(b""))
+        with self.assertRaises(ValueError):
+            self.log.put_export(self.write(b"123456"), max_bytes=5)
+        self.assertEqual(self.kv.d, {})
+
+    def test_retries_a_failing_store_and_gives_up_without_a_description(self):
+        self.kv.fail = 2
+        self.log.put_export(self.write(b"abc"))
+        self.assertEqual(self.log.export_meta()["chunks"], 1)
+        kv = FakeKV()
+        log = event_log.EventLog(kv, "k", retries=1, sleep=lambda s: None)
+        kv.fail = 10
+        with self.assertRaises(ConnectionError):
+            log.put_export(self.write(b"abc"))
+        kv.fail = 0
+        self.assertIsNone(log.export_meta())
+
+    def test_no_export(self):
+        self.assertIsNone(self.log.export_meta())
 
 
 class EventLogTest(unittest.TestCase):
@@ -879,6 +927,25 @@ class ApiTest(unittest.TestCase):
         progress_events.write_status(self.log(job), "cancelled")
         self.assertEqual(self.client.post("/research/job_cancel", json={"job_id": job}).status_code, 409)
 
+    def test_research_job_export(self):
+        data = os.urandom(10_000)
+        path = Path(tempfile.mkdtemp(), "export.zip")
+        path.write_bytes(data)
+        self.addCleanup(path.unlink)
+        info = self.log("r2").put_export(str(path), chunk_bytes=4096)
+        r = self.client.get("/research/job_export?job_id=r2")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.headers["content-type"], "application/zip")
+        self.assertEqual(r.headers["content-length"], "10000")
+        self.assertEqual(r.content, data)
+        self.assertEqual(hashlib.sha256(r.content).hexdigest(), info["sha256"])
+        # no export, a job that does not exist, a bad id
+        progress_events.write_status(self.log("r3"), "completed", report="R")
+        self.assertEqual(self.client.get("/research/job_export?job_id=r3").status_code, 404)
+        self.assertEqual(self.client.get("/research/job_export?job_id=nope").status_code, 404)
+        self.assertEqual(self.client.get("/research/job_export?job_id=a/b").status_code, 400)
+        self.assertEqual(self.client.get("/research/job_export").status_code, 400)
+
 
 FAKE_AGENT = """#!/usr/bin/env python3
 import json, os, signal, sys, time
@@ -887,6 +954,10 @@ topic = sys.stdin.read()
 ev = lambda **kw: print(json.dumps({"event": kw.pop("event"), **kw}, separators=(",", ":")), file=sys.stderr, flush=True)
 with open(os.environ["FAKE_AGENT_ARGS"], "w") as f:
     json.dump({"argv": sys.argv[1:], "topic": topic, "cwd": os.getcwd()}, f)
+def export():
+    if "--export" in sys.argv and not os.environ.get("FAKE_AGENT_NO_EXPORT"):
+        with open(sys.argv[sys.argv.index("--export") + 1], "wb") as f:
+            f.write(b"PK-fake-export:" + topic.encode())
 if mode == "ok":
     ev(event="state", agent="main", state_seq=2, state="searching", step=1, detail="q", error="")
     print("gligabao_agent: a warning", file=sys.stderr, flush=True)
@@ -894,13 +965,22 @@ if mode == "ok":
     ev(event="usage", steps=2, tool_calls=1, input_tokens=10, output_tokens=5, cost_usd=0.5, subagents=1)
     print(json.dumps({"report": "REPORT of " + topic, "run_id": 7, "subagents": 1, "steps": 3, "tool_calls": 2,
                       "input_tokens": 100, "output_tokens": 50, "cost_usd": 0.75}))
+    export()
+elif mode == "export_failed":   # the report is there, the export is not: the binary exits with 1
+    print(json.dumps({"report": "REPORT", "run_id": 7}))
+    print("gligabao_agent: export: disk full", file=sys.stderr, flush=True)
+    sys.exit(1)
 elif mode == "fail":
     print("gligabao_agent: the research failed: anthropic is overloaded", file=sys.stderr, flush=True)
+    export()
     sys.exit(1)
 elif mode == "garbage":
     print("not json")
 elif mode == "hang":
-    signal.signal(signal.SIGTERM, lambda *a: sys.exit(1))
+    def stop(*a):
+        export()
+        sys.exit(1)
+    signal.signal(signal.SIGTERM, stop)
     ev(event="state", agent="main", state_seq=2, state="thinking", step=1, detail="", error="")
     time.sleep(60)
 """
@@ -945,7 +1025,8 @@ class AgentRunTest(unittest.TestCase):
         self.assertEqual((last["type"], last["status"], last["report"]), ("status", "completed", "REPORT of batteries"))
         self.assertEqual(last["usage"], {"steps": 3, "tool_calls": 2, "input_tokens": 100, "output_tokens": 50, "cost_usd": 0.75, "subagents": 1})
         # the final status comes after every event the binary wrote
-        self.assertEqual([e["type"] for e in evs][-2:], ["usage", "status"])
+        # (the log event between them says that the export of the agent is stored, which comes before the final event)
+        self.assertEqual([e["type"] for e in evs][-3:], ["usage", "log", "status"])
         self.assertTrue(event_log.EventLog(self.kv, "j1").exists())
 
     def test_command_line(self):
@@ -961,6 +1042,66 @@ class AgentRunTest(unittest.TestCase):
         db = argv[argv.index("--db") + 1]
         self.assertTrue(db.startswith(got["cwd"]) and db.endswith("gligabao.db"))   # in a directory of the job
         self.assertFalse(os.path.exists(got["cwd"]))                                # which is removed afterwards
+
+    def test_export_is_stored_and_reported(self):
+        result = self.run_job()
+        self.assertEqual(result["status"], "completed")
+        argv = json.loads(self.args_file.read_text())["argv"]
+        self.assertEqual(os.path.basename(argv[argv.index("--export") + 1]), agent_run.EXPORT_FILE)
+        log = event_log.EventLog(self.kv, "j1")
+        data = b"PK-fake-export:batteries"
+        meta = log.export_meta()
+        self.assertEqual(meta, {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(), "chunks": 1})
+        self.assertEqual(log.read_export_chunk(0), data)
+        evs = self.events()
+        self.assertEqual(evs[-1]["export"], {"bytes": len(data), "sha256": meta["sha256"]})
+        self.assertIn("export", [e["message"].split()[1] for e in evs if e["type"] == "log" and e["message"].startswith("the export")])
+
+    def test_export_of_a_failed_job_is_kept(self):
+        os.environ["FAKE_AGENT_MODE"] = "fail"
+        self.assertEqual(self.run_job()["status"], "failed")
+        last = self.events()[-1]
+        self.assertEqual(last["status"], "failed")
+        self.assertEqual(last["export"]["bytes"], len(b"PK-fake-export:batteries"))
+
+    def test_no_export_file_no_export_field(self):
+        os.environ["FAKE_AGENT_NO_EXPORT"] = "1"
+        self.assertEqual(self.run_job()["status"], "completed")
+        self.assertNotIn("export", self.events()[-1])
+        self.assertIsNone(event_log.EventLog(self.kv, "j1").export_meta())
+
+    def test_export_that_cannot_be_stored_does_not_fail_the_job(self):
+        with mock.patch.object(event_log, "EXPORT_MAX_BYTES", 5):
+            result = self.run_job()
+        self.assertEqual(result["status"], "completed")
+        evs = self.events()
+        self.assertNotIn("export", evs[-1])
+        self.assertTrue(any("could not be stored" in e.get("message", "") for e in evs))
+
+    def test_report_without_export_is_still_a_completed_job(self):
+        os.environ["FAKE_AGENT_MODE"] = "export_failed"
+        self.assertEqual(self.run_job()["status"], "completed")
+        evs = self.events()
+        self.assertEqual((evs[-1]["status"], evs[-1]["report"]), ("completed", "REPORT"))
+        self.assertNotIn("export", evs[-1])
+        self.assertTrue(any("export: disk full" in e.get("message", "") for e in evs))
+
+    def test_stopped_job_keeps_its_export(self):
+        os.environ["FAKE_AGENT_MODE"] = "hang"
+        log = event_log.EventLog(self.kv, "j1")
+
+        def stop_when_working():
+            for _ in range(500):
+                if any(e.get("state") == "thinking" for _, e in log.read_from(0)):
+                    log.request_stop()
+                    return
+                time.sleep(0.02)
+        t = threading.Thread(target=stop_when_working, daemon=True)
+        t.start()
+        with mock.patch.object(agent_run, "STOP_POLL_S", 0.05):
+            self.assertEqual(self.run_job()["status"], "cancelled")
+        t.join()
+        self.assertIn("export", self.events()[-1])
 
     def test_optional_flags_are_left_out(self):
         cmd = agent_run.build_command("/b", "/w", 5, "", "", 0)

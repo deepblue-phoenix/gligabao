@@ -304,7 +304,7 @@ func TestMinimalDependencies(t *testing.T) {
 	const prefix = "github.com/deepblue-phoenix/gligabao/"
 	forbidden := []string{
 		"internal/api", "internal/sys/server", "internal/sys/sidecar", "internal/training", "internal/training_audits", "internal/evals",
-		"internal/db/dbfull", "cli", "monitoring", "admin_ui",
+		"internal/db/dbfull", "internal/db/dbimport", "cli", "monitoring", "admin_ui",
 	}
 	for _, pkg := range strings.Fields(string(out)) {
 		rest, ok := strings.CutPrefix(pkg, prefix)

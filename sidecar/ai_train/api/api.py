@@ -13,6 +13,9 @@ Endpoints:
                                        without the binary
     GET  /research/job_events?job_id=[&from=N]                   -> SSE stream of the research job's events (same protocol as the training job's)
     POST /research/job_cancel  {job_id}                          -> asks the job to stop (200, 404 unknown job, 409 already over)
+    GET  /research/job_export?job_id=                            -> the file the agent handed back when its job ended (a ZIP archive,
+                                       see internal/db/dbexport), streamed; 404 if the job has none. Its size and SHA-256 are in the
+                                       "export" field of the job's final event
     POST /infer/query                  {prompt, max_tokens?, temperature?, model_size?, model_path?}
                                        model_path ("trained/<job id>", the path of a trained model that a completed job reported)
                                        picks the weights; model_size must be the size they were trained for
@@ -255,6 +258,27 @@ def create_api(
     @api.get("/research/job_events")
     async def research_job_events(request: Request, job_id: str = "", start: int = Query(0, alias="from", ge=0)):
         return events_stream(request, job_id, start, "research")
+
+    @api.get("/research/job_export")
+    async def research_job_export(job_id: str = ""):
+        if not valid_job_id(job_id):
+            return JSONResponse({"error": "job_id is required (letters, digits, - and _)"}, status_code=400)
+        events = events_of(job_id)
+        meta = await run_in_threadpool(events.export_meta)
+        if not isinstance(meta, dict) or not meta.get("chunks"):
+            return JSONResponse({"error": f"job {job_id!r} has no export"}, status_code=404)
+
+        async def stream():
+            for n in range(meta["chunks"]):
+                chunk = await run_in_threadpool(events.read_export_chunk, n)
+                if chunk is None:   # the store lost it: the answer breaks off, and the reader sees the size/SHA-256 not match
+                    log.error("research job %s: chunk %d of the export is missing", job_id, n)
+                    raise RuntimeError(f"chunk {n} of the export of job {job_id} is missing")
+                yield chunk
+            log.info("research job %s: export sent (%d bytes)", job_id, meta.get("bytes", 0))
+
+        headers = {"Content-Length": str(meta["bytes"])} if isinstance(meta.get("bytes"), int) else {}
+        return StreamingResponse(stream(), media_type="application/zip", headers=headers)
 
     @api.post("/research/job_start")
     async def research_job_start(request: Request):

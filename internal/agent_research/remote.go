@@ -10,13 +10,19 @@ package agent_research
 //   - The sub-agents are not runs of their own on the server: they run inside the container (in a database of the container), and the
 //     states they enter are in the timeline of the run, with the name of the sub-agent in front of the detail ("[worker] ...").
 //   - The usage is that of the whole tree of agents (like the totals of gligabao_agent), updated as the container reports it.
-//   - The agents work with the knowledge base of the container (empty, and gone when the container ends), not the user's.
+//   - The agents work with the knowledge base of the container (empty, and gone when the container ends), not the user's. What they
+//     learned comes back when they end: the container hands over an export of its databases (gligabao_agent --export), the follower
+//     downloads it and the Importer loads it into the server's own databases (see "importing" below).
 //   - The run is started and stopped through the sidecar: a stop asks the container to end, and the run ends when it has.
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -38,6 +44,25 @@ type Remote interface {
 	Follow(ctx context.Context, jobID string, from int, fn func(RemoteEvent) error) error
 	// Cancel asks the job to end. The job reports a RemoteCancelled status when it has.
 	Cancel(ctx context.Context, jobID string) error
+	// Export writes the export file of the job (RemoteEvent.Export says there is one) to w and returns the number of bytes written. On an
+	// error w may have got part of the file.
+	Export(ctx context.Context, jobID string, w io.Writer) (int64, error)
+}
+
+// Importer loads what the agent of a remote research handed back into the databases of the server (see UseImporter). The server's
+// implementation is internal/sys/server (it has the databases, and package dbimport does the work).
+type Importer interface {
+	// Import loads the export file at path (an archive of package dbexport, written by gligabao_agent --export) for the research run
+	// of the user: the knowledge the agent gathered goes to the user's datasets, the runs of its sub-agents become children of run (see
+	// dbimport). It returns a line that says what was loaded.
+	Import(ctx context.Context, path string, run ImportRun) (summary string, err error)
+}
+
+// ImportRun says whose research an export is from.
+type ImportRun struct {
+	UserID string
+	// RunID is the run that the server recorded for the main agent of the export.
+	RunID int64
 }
 
 // RemoteRequest is what a remote job is started with: the options of the research.
@@ -89,6 +114,15 @@ type RemoteEvent struct {
 	Message string
 	// Usage is set on the RemoteUsageEvent and on the completed status.
 	Usage *RemoteUsage
+	// Export is set on the last status (completed, failed or cancelled) when the agent handed back an export file: what Remote.Export
+	// downloads. nil if there is none.
+	Export *RemoteExport
+}
+
+// RemoteExport describes the export file of a job: its size in bytes and the hex SHA-256 of its content, to check the download.
+type RemoteExport struct {
+	Bytes  int64
+	SHA256 string
 }
 
 // RemoteUsage is what the agents of a remote research spent, sub-agents included.
@@ -117,6 +151,11 @@ var (
 	remoteLostAfter = 5 * time.Minute
 	// remoteWatchLimit is how long a job may take at all (the container's own timeout is shorter: SIDECAR_AGENT_TIMEOUT_S).
 	remoteWatchLimit = 3 * time.Hour
+	// remoteExportTimeout bounds the download and the import of the export of a job; remoteExportAttempts is how many times the download
+	// is tried, remoteExportRetryDelay apart.
+	remoteExportTimeout    = 10 * time.Minute
+	remoteExportAttempts   = 3
+	remoteExportRetryDelay = 2 * time.Second
 )
 
 // errRemoteDone ends Follow when the job's last event has been handled.
@@ -127,6 +166,15 @@ var errRemoteDone = errors.New("remote job ended")
 func (m *Manager) UseRemote(r Remote) {
 	m.mu.Lock()
 	m.remote = r
+	m.mu.Unlock()
+}
+
+// UseImporter gives the manager the way to load the export of a research that ran in Modal into the server's databases (see Importer),
+// for the runs that end from now on. Without it (the default) the export is not downloaded, and what the agent learned in its
+// container is lost with it.
+func (m *Manager) UseImporter(i Importer) {
+	m.mu.Lock()
+	m.importer = i
 	m.mu.Unlock()
 }
 
@@ -328,6 +376,14 @@ func (rr *remoteRun) status(ev RemoteEvent) error {
 		rr.saveUsage(*ev.Usage)
 	}
 	switch ev.Status {
+	case RemoteCompleted, RemoteFailed, RemoteCancelled:
+		// What the agent learned comes back before the run ends, also if it failed or was stopped: the run is not over for the user
+		// until the knowledge is in.
+		if ev.Export != nil {
+			rr.importExport(*ev.Export)
+		}
+	}
+	switch ev.Status {
 	case RemoteCompleted:
 		if strings.TrimSpace(ev.Report) == "" {
 			rr.finish(core.StatusFailed, "", "the agent ended without a report")
@@ -347,6 +403,104 @@ func (rr *remoteRun) status(ev RemoteEvent) error {
 	}
 	rr.final = true
 	return errRemoteDone
+}
+
+// importExport downloads the export of the job and has the Importer load it, as the state "importing" of the run. A failure is said on
+// that state and in the log, and does not change how the run ends: the agent's report is the result, the export is its by-product.
+func (rr *remoteRun) importExport(ex RemoteExport) {
+	rr.m.mu.Lock()
+	importer := rr.m.importer
+	rr.m.mu.Unlock()
+	if importer == nil {
+		rr.logf.Info("agent research: the agent handed back an export, but this server cannot import it")
+		return
+	}
+	detail := fmt.Sprintf("loading what the agent learned (%s)", byteSize(ex.Bytes))
+	err := rr.tx(func(q db.Execer) (err error) {
+		rr.cur, err = rr.m.Ops.Store.EnterState(rr.dbCtx, q, rr.run.ID, core.StateImporting, 0, detail)
+		return err
+	})
+	if err != nil {
+		rr.logf.WithError(err).Warn("agent research: recording the state failed")
+		rr.cur = nil
+	}
+	started := time.Now()
+	summary, err := rr.fetchAndImport(importer, ex)
+	var errText string
+	if err != nil {
+		errText = truncate("the export of the agent was not imported: "+err.Error(), maxTextLen)
+		rr.logf.WithError(err).Warn("agent research: the export of the agent was not imported")
+	} else {
+		rr.logf.WithField("took", time.Since(started).Round(time.Millisecond)).Info("agent research: the export of the agent was imported: " + summary)
+	}
+	if rr.cur != nil {
+		rr.closeCurrent(errText)
+	}
+}
+
+// fetchAndImport downloads the export to a temporary file, checks it against what the job said it is, and imports it.
+func (rr *remoteRun) fetchAndImport(importer Importer, ex RemoteExport) (string, error) {
+	ctx, cancel := context.WithTimeout(rr.runCtx, remoteExportTimeout)
+	defer cancel()
+	f, err := os.CreateTemp("", "gligabao-agent-export-*.zip")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(f.Name())
+	defer f.Close()
+
+	var lastErr error
+	for attempt := 1; attempt <= remoteExportAttempts; attempt++ {
+		if lastErr = rr.download(ctx, f, ex); lastErr == nil {
+			break
+		}
+		rr.logf.WithError(lastErr).Warnf("agent research: downloading the export failed (attempt %d of %d)", attempt, remoteExportAttempts)
+		if attempt == remoteExportAttempts {
+			return "", lastErr
+		}
+		select {
+		case <-time.After(remoteExportRetryDelay):
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+	if err := f.Close(); err != nil {
+		return "", err
+	}
+	return importer.Import(ctx, f.Name(), ImportRun{UserID: rr.run.UserID, RunID: rr.run.ID})
+}
+
+// download writes the export to f (from its start) and checks its size and SHA-256.
+func (rr *remoteRun) download(ctx context.Context, f *os.File, ex RemoteExport) error {
+	if err := f.Truncate(0); err != nil {
+		return err
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	h := sha256.New()
+	n, err := rr.remote.Export(ctx, rr.jobID, io.MultiWriter(f, h))
+	if err != nil {
+		return err
+	}
+	if ex.Bytes > 0 && n != ex.Bytes {
+		return fmt.Errorf("the export is %d bytes, the job said %d", n, ex.Bytes)
+	}
+	if want := strings.ToLower(strings.TrimSpace(ex.SHA256)); want != "" && hex.EncodeToString(h.Sum(nil)) != want {
+		return errors.New("the export does not match its SHA-256")
+	}
+	return nil
+}
+
+// byteSize is a size for a person: 12 bytes, 3.4 KB, 5.6 MB.
+func byteSize(n int64) string {
+	switch {
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.1f KB", float64(n)/(1<<10))
+	}
+	return fmt.Sprintf("%d bytes", n)
 }
 
 func orDefault(s, def string) string {

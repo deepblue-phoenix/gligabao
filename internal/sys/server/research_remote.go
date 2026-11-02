@@ -3,9 +3,14 @@ package server
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
+	"github.com/deepblue-phoenix/gligabao/internal/db"
+	"github.com/deepblue-phoenix/gligabao/internal/db/dbexport"
+	"github.com/deepblue-phoenix/gligabao/internal/db/dbimport"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
 )
 
@@ -61,10 +66,52 @@ func (r sidecarRemote) Cancel(ctx context.Context, jobID string) error {
 	return err
 }
 
+// Export downloads the export file of the job from the sidecar (what the agent in the container wrote with --export).
+func (r sidecarRemote) Export(ctx context.Context, jobID string, w io.Writer) (int64, error) {
+	c, err := r.client()
+	if err != nil {
+		return 0, err
+	}
+	n, err := c.DownloadResearchExport(ctx, jobID, w)
+	var se *sidecar.StatusError
+	if errors.As(err, &se) {
+		return n, errors.New(se.Message())
+	}
+	return n, err
+}
+
+// dbImporter loads the export of an agent that ran in Modal into the server's databases (agent_research.Importer): its knowledge base
+// goes to the datasets of the user that started the research, and the runs of its sub-agents are recorded under the research's run.
+type dbImporter struct{ d *db.DB }
+
+var _ agent_research.Importer = dbImporter{}
+
+func (i dbImporter) Import(ctx context.Context, path string, run agent_research.ImportRun) (string, error) {
+	r, err := dbexport.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer r.Close()
+	res, err := dbimport.Import(ctx, r, dbimport.Target{
+		Relational:          i.d.Relational,
+		Backend:             i.d.Backend,
+		Vector:              i.d.Vector,
+		EmbeddingDimensions: i.d.EmbeddingDimensions,
+		ImageDir:            i.d.ImageDir,
+	}, dbimport.Options{UserID: run.UserID, RootRunID: run.RunID, SessionPrefix: agent_research.SessionPrefix, Runner: core.RunnerModal})
+	if err != nil {
+		return "", err
+	}
+	return res.Summary(), nil
+}
+
 func remoteEventOf(ev sidecar.ResearchEvent) agent_research.RemoteEvent {
 	out := agent_research.RemoteEvent{
 		Seq: ev.Seq, Type: ev.Type, Status: ev.Status, Error: ev.Error, Report: ev.Report,
 		Agent: ev.Agent, StateSeq: ev.StateSeq, State: ev.State, Step: ev.Step, Detail: ev.Detail, Message: ev.Message,
+	}
+	if x := ev.Export; x != nil {
+		out.Export = &agent_research.RemoteExport{Bytes: x.Bytes, SHA256: x.SHA256}
 	}
 	if u := ev.Usage; u != nil {
 		out.Usage = &agent_research.RemoteUsage{Steps: u.Steps, ToolCalls: u.ToolCalls, InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, CostUSD: u.CostUSD, Subagents: u.Subagents}

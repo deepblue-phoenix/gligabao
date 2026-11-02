@@ -49,6 +49,7 @@ class BackendRoutesTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn(("POST", "/research/job_start"), ROUTES)
         self.assertIn(("GET", "/research/job_events"), ROUTES)
         self.assertIn(("POST", "/research/job_cancel"), ROUTES)
+        self.assertIn(("GET", "/research/job_export"), ROUTES)
         r = await self.client.post("/research/job_start", content=b'{"topic": "t"}', headers={"content-type": "application/json"})
         self.assertEqual((r.status_code, r.json()), (202, {"ok": True}))   # the backend's answer, as it is
         await self.client.get("/research/job_events", params={"job_id": "j", "from": 3})

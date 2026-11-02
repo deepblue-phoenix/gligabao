@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -89,8 +92,17 @@ type ResearchEvent struct {
 	Message string `json:"message,omitempty"`
 	// Usage is on usage events and on the completed status.
 	Usage *ResearchUsage `json:"usage,omitempty"`
+	// Export is on the final status event (completed, failed or cancelled) of a job whose agent handed back an export file: what the
+	// agent learned and recorded in the container (see DownloadResearchExport). nil if there is none.
+	Export *ResearchExport `json:"export,omitempty"`
 	// Timestamp is when the event was written, in seconds since the Unix epoch.
 	Timestamp float64 `json:"timestamp,omitempty"`
+}
+
+// ResearchExport describes the export file of a research job: its size in bytes and the hex SHA-256 of its content, to check a download.
+type ResearchExport struct {
+	Bytes  int64  `json:"bytes"`
+	SHA256 string `json:"sha256"`
 }
 
 // ResearchUsage is what the agents of a research spent, sub-agents included.
@@ -119,4 +131,30 @@ func (c *Client) StreamResearchJobEvents(ctx context.Context, jobID string, from
 		ev.Seq = seq
 		return fn(ev)
 	})
+}
+
+// DownloadResearchExport streams the export file of a research job from the sidecar into w (GET /research/job_export): the archive
+// (see internal/db/dbexport) that the agent wrote in its container when it ended. It returns the number of bytes written. A failure is
+// a *StatusError (404 if the job has no export, 400 for a bad job ID) or a transport error; a body that ends early is an error too, but
+// w may already have got part of the file, so the caller must not trust w after an error (check the size and SHA-256 of the event's
+// ResearchExport as well).
+func (c *Client) DownloadResearchExport(ctx context.Context, jobID string, w io.Writer) (int64, error) {
+	if strings.TrimSpace(jobID) == "" {
+		return 0, errors.New("sidecar: job_id is required")
+	}
+	const path = "/research/job_export"
+	resp, err := c.Open(ctx, http.MethodGet, path, url.Values{"job_id": {jobID}}.Encode(), nil)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return 0, &StatusError{Method: http.MethodGet, Path: path, Code: resp.StatusCode, Body: strings.TrimSpace(string(body))}
+	}
+	n, err := io.Copy(w, resp.Body)
+	if err != nil {
+		return n, fmt.Errorf("sidecar GET %s %s: reading the body: %w", path, jobID, err)
+	}
+	return n, nil
 }

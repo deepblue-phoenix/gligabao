@@ -1,6 +1,6 @@
 // Package dbexport dumps everything gligabao keeps locally (the SQLite tables, the Chromem vector store with its embeddings, and the
 // image files) into one archive file, and reads such a file back. It is how a gligabao whose storage is going away (the research agent
-// in a Modal container) hands its state to another one, which loads it into its own databases.
+// in a Modal container) hands its state to another one, which loads it into its own databases (package dbimport).
 //
 // Only what is local is exported: a remote database (PostgreSQL) or vector store (Pinecone) persists its data itself, so there is
 // nothing to hand over. The archive then has no tables or no vectors, and Manifest.Skipped says why.

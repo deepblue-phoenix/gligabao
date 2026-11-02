@@ -311,6 +311,7 @@ func newResearch(ctx context.Context, d *db.DB, llm memory_core.LLM) *agent_rese
 	client, _ := llm.(*ai.Client)
 	m := agent_research.NewManager(ctx, d.Relational, ops, client)
 	m.UseRemote(sidecarRemote{}) // researches started with runner "modal" run in Modal, through the sidecar
+	m.UseImporter(dbImporter{d}) // and what their agents learned there is loaded into the databases of the server when they end
 	return m
 }
 
