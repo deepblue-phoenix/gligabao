@@ -7,12 +7,13 @@ Answers a question from the knowledge graph built by [`remember`](remember.md). 
 ```
 POST /v1/gb/query
 content-type: application/json
+gb-user-id: u1
 
-{"user_id": "u1", "query": "Where does Alice work?", "session_id": "chat-42"}
+{"query": "Where does Alice work?", "session_id": "chat-42"}
 ```
 
 - `query` (required): non-empty string. The request body is limited to 64 KiB.
-- `user_id` (required): the user who owns the dataset. `400` if missing.
+- `gb-user-id` (header, required): the user who owns the dataset (see [identity.md](identity.md)); it is not a body field. `400` if missing.
 - `dataset` (optional): name of the [dataset](datasets.md) to search. Defaults to `main`. Only that user's dataset graph is used. `404` if it does not exist.
 - `session_id` (optional): the user/agent session the call belongs to, a string you choose (at most 128 bytes, no control characters; `400` otherwise). Use the same one as in the `remember` calls of that session, to connect the query to the artifacts (and their entities and facts) of the same session, see [sessions.md](sessions.md). It is echoed in the response and recorded in the call's trajectory and monitoring event. It does **not** change retrieval or the answer.
 - `graph_index` (optional): the name of the [graph embedding index](hooks.md#graph-embedder) of the call: 1-64 letters, digits, `.`, `_` or `-`, starting with a letter or digit. It is handed to the graph embedder hook with the graph context of the question (`GraphEmbedRequest.Index`), so the hook knows which index to embed for or search. Omitted: the hook uses its default. `400` if it is malformed or the server has no graph embedder hook.
@@ -192,8 +193,8 @@ Facts are [bi-temporal](temporal.md): `valid_at` / `invalid_at` say when a fact 
 export ANTHROPIC_API_KEY=...
 ./run_build.sh
 ./build/gligabao serve &
-curl -s localhost:7878/v1/gb/remember -d '{"user_id":"u1","text":"Alice works at Acme and lives in Paris."}'
-curl -s localhost:7878/v1/gb/query   -d '{"user_id":"u1","query":"Where does Alice work?"}'
+curl -s -H 'gb-user-id: u1' localhost:7878/v1/gb/remember -d '{"text":"Alice works at Acme and lives in Paris."}'
+curl -s -H 'gb-user-id: u1' localhost:7878/v1/gb/query   -d '{"query":"Where does Alice work?"}'
 ```
 
 ## Limitations

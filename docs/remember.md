@@ -7,11 +7,12 @@ Takes a block of text (or, with `image`, an image: see [images.md](images.md)), 
 ```
 POST /v1/gb/remember
 content-type: application/json
+gb-user-id: u1
 
-{"user_id": "u1", "text": "Alice works at Acme and lives in Paris.", "kind": "episode", "reference_time": "2025-01-31T09:00:00Z", "session_id": "chat-42"}
+{"text": "Alice works at Acme and lives in Paris.", "kind": "episode", "reference_time": "2025-01-31T09:00:00Z", "session_id": "chat-42"}
 ```
 
-- `user_id` (required): the user who owns the dataset. `400` if missing.
+- `gb-user-id` (header, required): the user who owns the dataset (see [identity.md](identity.md)); it is not a body field. `400` if missing.
 - `text` (required unless `image` is given): non-empty string, at most 1 MiB. If it is larger than the chunk size (`chunk_size`, 1024 tokens by default) it is split into overlapping chunks: see [chunking.md](chunking.md).
 - `image` (optional): a base64-encoded image, instead of `text`. The request then goes through the separate [image pipeline](images.md) (OCR of the title and text blocks, and a theme such as `plot` or `graph`), with a different response; `text` and `kind` must not be given with it.
 - `dataset` (optional): name of the [dataset](datasets.md) to store into; created if it does not exist. Defaults to `main`. Entities and edges are deduplicated and reconciled only within the dataset.
@@ -131,7 +132,7 @@ Steps 1, 1b and 2 each run on their [own model](#choosing-the-model-of-each-stag
 The LLM-invoking stages of the pipeline can each run on a different model, for instance a stronger model to extract and a cheaper one to resolve. The caller picks them per request with `models`, a map from a stage name to a model name:
 
 ```json
-{"user_id": "u1", "text": "Alice works at Acme.", "models": {"extract_graph": "claude-sonnet-4-5", "resolve_edges": "claude-haiku-5-5"}}
+{"text": "Alice works at Acme.", "models": {"extract_graph": "claude-sonnet-4-5", "resolve_edges": "claude-haiku-5-5"}}
 ```
 
 | Stage | Step | Used for |
@@ -160,7 +161,7 @@ The rules:
 Every LLM stage runs with a reasoning (extended thinking) level, which the caller picks per request with `reasoning`, a map from a stage to `none`, `low`, `medium` or `high`. The stages that take one are `extract_graph`, `summarize_chunk`, `resolve_edges`, `classify_graph`, `resolve_series`, `detect_geo` and `extract_image` (any other stage is a `400`; `web_search` and Jev do not think). **The default is `none`** (no thinking) for every stage, to avoid the cost; a request turns it on per stage:
 
 ```json
-{"user_id": "u1", "text": "<a long text>", "models": {"summarize_chunk": "claude-haiku-5-5"}, "reasoning": {"summarize_chunk": "low", "resolve_edges": "medium"}}
+{"text": "<a long text>", "models": {"summarize_chunk": "claude-haiku-5-5"}, "reasoning": {"summarize_chunk": "low", "resolve_edges": "medium"}}
 ```
 
 (`query` takes a level too, also `none` by default, see [query.md](query.md).) A level turns on the model's extended thinking with a token budget (`low` 1024, `medium` 4096, `high` 16384), which is added on top of the answer's own `max_tokens`; thinking tokens are billed as output tokens like any other. A model that has no extended thinking (the Claude 3 and 3.5 families) is called without it, and the run records `none`; the response of such a call carries a warning (below). A model that **refuses the budget** (Anthropic answers `400`, e.g. `"thinking.type.enabled" is not supported for this model. Use "thinking.type.adaptive" and "output_config.effort"...`) does not fail the call: it is retried the way the provider says it takes (adaptive thinking, with the level as its effort: `low`, `medium` or `high`), or without thinking when it names none, and the model is remembered for the next calls (`thinkMode` in `internal/ai`). The inference records the level the call really ran with (`none` when thinking was dropped). In both cases the response has a **warning** (`ai.Response.Warning`) saying what the provider made the call do differently; on an [eval](evals/knowledge.md) call it is kept in the `warnings` of the trajectory (`extra.warnings`) and in the `extra.warning` of the step, and the admin UI shows it (the [case modal](evals/experiments.md#admin-ui) has a **Warnings** section). **Every call is a [inference](inferences.md)** that records the level it ran with (`gb_inferences.reasoning`) next to the model, the stage, the tokens and the cost. The summary artifact of a chunk references its run (`gb_artifacts.inference_id`) and `chunks[].summary` returns `model`, `reasoning` and `inference_id`, so summaries written by different settings can be told apart and compared. The model is the one the API reports, as for the [model of the knowledge](#choosing-the-model-of-each-stage) above; it is registered in `gb_models` if it is new.
@@ -368,8 +369,8 @@ export ANTHROPIC_API_KEY=...
 export OPENAI_API_KEY=...    # required: embeds the entities and edges (and the question of a query)
 ./run_build.sh
 ./build/gligabao serve &
-curl -s localhost:7878/v1/gb/remember \
-  -d '{"user_id":"u1","text":"Alice works at Acme and lives in Paris."}'
+curl -s localhost:7878/v1/gb/remember -H 'gb-user-id: u1' \
+  -d '{"text":"Alice works at Acme and lives in Paris."}'
 ```
 
 ## Limitations

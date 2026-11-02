@@ -8,7 +8,6 @@ Loads an ontology under a name.
 
 ```json
 {
-  "user_id": "u1",
   "name": "market",
   "description": "optional",
   "format": "rdfxml",
@@ -18,7 +17,7 @@ Loads an ontology under a name.
 
 | Field | Required | Description |
 | ----- | -------- | ----------- |
-| `user_id` | yes | Owner of the ontology (see [identity.md](identity.md)). An ontology loaded from a file belongs to the user who sends the request too. |
+| `gb-user-id` (header) | yes | Owner of the ontology (see [identity.md](identity.md)); not a body field. An ontology loaded from a file belongs to the user who sends the request too. |
 | `name` | yes | Name of the ontology: 1-64 characters of letters, digits, `.`, `_`, `-`, starting with a letter or digit. Unique per user. |
 | `content` | one of `content` and `file` | The ontology document, as a string (at most 8 MiB). |
 | `file` | one of `content` and `file` | The name of a file of the [ontology directories](#ontology-directories) to load instead of sending `content`, e.g. `"market.owl"`. A plain file name, no directory. |
@@ -30,7 +29,6 @@ Response `201` with the metadata of the ontology:
 ```json
 {
   "id": 1,
-  "user_id": "u1",
   "name": "market",
   "description": "A general ontology of markets: ...",
   "iri": "https://gligabao.example/ontology/market",
@@ -48,7 +46,7 @@ Response `201` with the metadata of the ontology:
 
 | Status | Meaning |
 | ------ | ------- |
-| `400` | Bad JSON, missing or invalid `user_id` or `name`, neither `content` nor `file` (or both), a `file` that is not a plain file name or when no ontology directories are configured, unsupported `format`, or a document that is not well-formed RDF/XML or defines no class. |
+| `400` | Bad JSON, missing or invalid `gb-user-id` header or `name`, neither `content` nor `file` (or both), a `file` that is not a plain file name or when no ontology directories are configured, unsupported `format`, or a document that is not well-formed RDF/XML or defines no class. |
 | `404` | The `file` is in none of the ontology directories. |
 | `409` | The user already has an ontology with that name. Nothing is replaced. |
 | `500` | Database error. |
@@ -56,8 +54,8 @@ Response `201` with the metadata of the ontology:
 Errors are `{"error": "..."}`. It makes no LLM call. Example, loading the bundled ontology:
 
 ```sh
-jq -n --rawfile c build/ontology/market.owl '{user_id:"u1", name:"market", content:$c}' \
-  | curl -s localhost:7878/v1/gb/ontologies -d @-
+jq -n --rawfile c build/ontology/market.owl '{name:"market", content:$c}' \
+  | curl -s -H 'gb-user-id: u1' localhost:7878/v1/gb/ontologies -d @-
 ```
 
 ## Ontology directories
@@ -65,7 +63,7 @@ jq -n --rawfile c build/ontology/market.owl '{user_id:"u1", name:"market", conte
 `ontology_dirs` in `gligabao.toml` (relative paths are relative to the file; `serve --ontology-dir`, repeatable, and `ServeOptions.OntologyDirs` override it) lists directories of ontology documents. They are listed explicitly and **not scanned**: nothing is loaded at startup, and an ontology is only loaded when a request names its file with `file` (in `POST` or `PUT`). The directories are searched in order and the first one that has the file is used, so a program that embeds gligabao can list its own directory first to override a file of the same name. The ontology is stored under the `user_id` of the request and the `name` it gives, exactly as if the file's text had been sent in `content`. Without `ontology_dirs`, `file` is rejected with `400`.
 
 ```sh
-curl -s localhost:7878/v1/gb/ontologies -d '{"user_id":"u1","name":"market","file":"market.owl"}'
+curl -s -H 'gb-user-id: u1' localhost:7878/v1/gb/ontologies -d '{"name":"market","file":"market.owl"}'
 ```
 
 ## PUT /v1/gb/ontologies/{name}
@@ -92,12 +90,12 @@ Only the owner's ontology can be updated. Response `200` with the new metadata. 
 
 ```sh
 # merge a fragment into the stored ontology
-jq -n --rawfile c extension.owl '{user_id:"u1", content:$c}' \
-  | curl -s -X PUT localhost:7878/v1/gb/ontologies/market -d @-
+jq -n --rawfile c extension.owl '{content:$c}' \
+  | curl -s -H 'gb-user-id: u1' -X PUT localhost:7878/v1/gb/ontologies/market -d @-
 
 # replace it with a complete one
-jq -n --rawfile c build/ontology/market.owl '{user_id:"u1", content:$c, replace:true}' \
-  | curl -s -X PUT localhost:7878/v1/gb/ontologies/market -d @-
+jq -n --rawfile c build/ontology/market.owl '{content:$c, replace:true}' \
+  | curl -s -H 'gb-user-id: u1' -X PUT localhost:7878/v1/gb/ontologies/market -d @-
 ```
 
 Either way, the update is all or nothing. The classes and edges are changed in one transaction, so readers never see a mix of old and new, and if the update fails (an unparseable document, a database error) the stored ontology is left exactly as it was.

@@ -5,13 +5,14 @@ Exports the whole knowledge graph of a [dataset](datasets.md) as JSON: every ent
 ## Request
 
 ```
-GET /v1/gb/datasets/main/graph?user_id=u1
+GET /v1/gb/datasets/main/graph
+gb-user-id: u1
 ```
 
 | Part | Required | Description |
 | ---- | -------- | ----------- |
 | `{name}` (path) | yes | Dataset name. |
-| `user_id` (query) | yes | Owner of the dataset (see [identity.md](identity.md)). |
+| `gb-user-id` (header) | yes | Owner of the dataset (see [identity.md](identity.md)). |
 
 Only the owner's live dataset can be exported. Datasets of other users, and soft-deleted ones, are not visible.
 
@@ -96,7 +97,7 @@ All timestamps are RFC 3339 in UTC. See [temporal.md](temporal.md) for the meani
 
 | Status | Meaning |
 | ------ | ------- |
-| `400` | `user_id` is missing or invalid. |
+| `400` | The `gb-user-id` header is missing or invalid. |
 | `404` | The user has no live dataset with that name (it never existed, was deleted, belongs to another user, or the name is invalid). |
 | `500` | Database error. |
 
@@ -105,5 +106,5 @@ Errors are `{"error": "..."}`.
 ## Example
 
 ```
-curl 'http://localhost:7878/v1/gb/datasets/main/graph?user_id=u1' > graph.json
+curl -H 'gb-user-id: u1' 'http://localhost:7878/v1/gb/datasets/main/graph' > graph.json
 ```

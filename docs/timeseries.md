@@ -59,7 +59,6 @@ Deleting an artifact, entity or edge deletes only its anchors: the series stays,
 
 ```json
 {
-  "user_id": "u1",
   "text": "Apple fell sharply after the earnings miss.",
   "kind": "episode",
   "reference_time": "2025-01-31T21:00:00Z",
@@ -136,7 +135,7 @@ err := gligabao.Serve(ctx, cfg, gligabao.ServeOptions{
 ### Fetching in a `remember` request
 
 ```json
-{"user_id": "u1", "text": "Apple fell sharply after the earnings miss.", "kind": "episode", "reference_time": "2025-01-31T21:00:00Z",
+{"text": "Apple fell sharply after the earnings miss.", "kind": "episode", "reference_time": "2025-01-31T21:00:00Z",
  "timeseries": {"fetch": {"providers": ["prices"], "before": "30d", "after": "0"}},
  "models": {"resolve_series": "claude-sonnet-4-5"}}
 ```
@@ -182,7 +181,7 @@ The stats are what the rest of the system is meant to look at instead of the raw
 A series is not part of the graph: its points live in tables of their own. With `timeseries.observations: true`, `remember` also **derives an artifact from each series it stored**, so what the series says reaches the graph as facts, with bi-temporal edges, deduplication and embeddings and no logic of its own.
 
 ```json
-{"user_id": "u1", "text": "Apple fell sharply after the earnings miss.", "kind": "episode", "reference_time": "2025-01-31T21:00:00Z",
+{"text": "Apple fell sharply after the earnings miss.", "kind": "episode", "reference_time": "2025-01-31T21:00:00Z",
  "timeseries": {"observations": true, "series": [{"key": "AAPL.close", "name": "Apple close", "unit": "USD",
    "points": [["2025-01-29T00:00:00Z", 235.1], ["2025-01-30T00:00:00Z", 237.6], ["2025-01-31T00:00:00Z", 222.0]],
    "anchors": [{"entity": {"name": "Apple", "type": "organization"}}]}]}}
@@ -248,7 +247,7 @@ Stores series in an **existing** dataset and anchors them, for what `remember` c
 
 ```json
 {
-  "user_id": "u1", "dataset": "main",
+  "dataset": "main",
   "series": [{
     "key": "AAPL.close",
     "points": [["2025-02-03T00:00:00Z", 225.0]],
@@ -257,7 +256,7 @@ Stores series in an **existing** dataset and anchors them, for what `remember` c
 }
 ```
 
-- `user_id` (required) and `dataset` (default `main`): the dataset must exist (`404`; unlike `remember`, this never creates one).
+- `dataset` (default `main`; the user is the `gb-user-id` header, as for every route of users): the dataset must exist (`404`; unlike `remember`, this never creates one).
 - `series`: as above, except that there is no artifact, so `artifact: true` is a `400`, and a series **without anchors is stored unanchored** (anchor it later by sending its key again with anchors; its points are kept).
 - The body can be up to 16 MiB (`remember` takes 1 MiB of text).
 - Everything is one transaction.
@@ -272,8 +271,8 @@ Stores series in an **existing** dataset and anchors them, for what `remember` c
 
 ## Reading
 
-- `GET /v1/gb/timeseries?user_id=...&dataset=...`: the dataset's series (`id`, `key`, `field`, `name`, `unit`, `frequency`, `source`, `point_count`, `first_ts`, `last_ts`, `stats`, `anchors`, ...), without points. `anchors` are `type`, `id`, `role`, `window_start`, `window_end`.
-- `GET /v1/gb/timeseries/{id}?user_id=...&dataset=...&from=...&to=...&limit=...`: one series with the same fields plus its `points` (`[time, value]` pairs, oldest first) between `from` and `to` (RFC 3339, both optional, inclusive), at most `limit` (default 1000, at most 100,000). `truncated` says there were more. With `from` or `to` (and not truncated) `window_stats` has the [stats](#stats) of the points returned. `404` for an unknown series, dataset or user, `400` for a malformed `from`, `to` or `limit`.
+- `GET /v1/gb/timeseries?dataset=...`: the dataset's series (`id`, `key`, `field`, `name`, `unit`, `frequency`, `source`, `point_count`, `first_ts`, `last_ts`, `stats`, `anchors`, ...), without points. `anchors` are `type`, `id`, `role`, `window_start`, `window_end`.
+- `GET /v1/gb/timeseries/{id}?dataset=...&from=...&to=...&limit=...`: one series with the same fields plus its `points` (`[time, value]` pairs, oldest first) between `from` and `to` (RFC 3339, both optional, inclusive), at most `limit` (default 1000, at most 100,000). `truncated` says there were more. With `from` or `to` (and not truncated) `window_stats` has the [stats](#stats) of the points returned. `404` for an unknown series, dataset or user, `400` for a malformed `from`, `to` or `limit`.
 
 `query` does not use series yet, and neither the endpoints nor `query` treat a `series_observation` artifact any differently from other artifacts.
 

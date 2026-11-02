@@ -137,7 +137,7 @@ The event types and field names above are what the server emits now. New fields 
 
 ## Auth
 
-By default gligabao does not authenticate: every request says which user it acts for with a `user_id` and is trusted. The `Auth` hook turns that around: the caller sends an **API key** and gligabao asks your code which user it belongs to.
+By default gligabao does not authenticate: every request says which user it acts for with the `gb-user-id` header and is trusted. The `Auth` hook turns that around: the caller sends an **API key** and gligabao asks your code which user it belongs to.
 
 ```go
 gligabao.ServeOptions{
@@ -156,13 +156,13 @@ gligabao.ServeOptions{
 | `gligabao.Authenticator` | `func(ctx context.Context, apiKey string) (userID string, err error)` |
 
 - The key is read from the header `Authorization: Bearer <key>`. A request without one gets `401` and the hook is not called.
-- When the hook returns a user ID, the request acts as that user: its `user_id` (the JSON body of `POST`/`PUT`, the query string of `GET`/`DELETE`) is **replaced** with it, whatever the caller sent or left out. A caller can therefore only reach the data of the owner of its key.
+- When the hook returns a user ID, the request acts as that user: the `gb-user-id` header is **set** to it, whatever the caller sent or left out (the handlers read the user from the header only, never from the body or the query string). A caller can therefore only reach the data of the owner of its key.
 - When it returns an error, or an empty ID, the request gets `401` with `{"error": "invalid API key"}` (the error itself is only logged, at debug level).
 - It covers the user routes: `POST /v1/gb/remember`, `POST /v1/gb/query`, the datasets, timeseries, ontologies and research endpoints. It does not cover the admin UI and the training and eval endpoints, which are not tied to a user; with `Mount`, protect those with `MountOptions.Wrap`. It does not cover the [MCP](mcp.md) endpoint (`/v1/gb/mcp`, off by default, no authentication yet) either: where MCP is enabled, anyone who can reach it can act as any user; with `Mount`, `MountOptions.Wrap` covers it.
 - It is called once per request, concurrently: it must be safe for concurrent use and fast (cache the lookups if the key store is remote). It does not need to compare keys in constant time, only to return the user.
-- With no hook, nothing changes: `user_id` is trusted. See [identity.md](identity.md).
+- With no hook the user is the one in the `gb-user-id` header, trusted as is (a request without it gets `400`). See [identity.md](identity.md).
 
-The Python client sends the key it finds in `GLIGABAO_API_KEY`, and does not take a `user_id` at all.
+The Python client sends the key it finds in `GLIGABAO_API_KEY`, and does not take a user ID at all. The [Go client](../README.md#go-client) sends the API key too, or (without the hook) the user ID in the `gb-user-id` header.
 
 ## Timeseries providers
 
@@ -304,7 +304,7 @@ The graph of an artifact is what is linked to it (see [artifacts.md](artifacts.m
 
 ### Endpoint
 
-`POST /v1/gb/datasets/{name}/training`, body `{"user_id": "u1"}` (under [`Auth`](#auth) like the other routes of users). It loads the dataset (`404` for one that does not exist), calls the hook and answers `200` with a summary of the training dataset it made:
+`POST /v1/gb/datasets/{name}/training`, header `gb-user-id: u1`, no body needed (under [`Auth`](#auth) like the other routes of users). It loads the dataset (`404` for one that does not exist), calls the hook and answers `200` with a summary of the training dataset it made:
 
 ```json
 {"dataset": "main", "artifacts": 2, "artifacts_total": 5, "graphs": 2, "graphs_total": 4,

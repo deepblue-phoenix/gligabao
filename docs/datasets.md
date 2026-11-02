@@ -2,7 +2,7 @@
 
 A dataset is a hard logical container. Every artifact, entity and edge belongs to exactly one dataset (`dataset_id`), and datasets never share nodes: the same entity remembered into two datasets is two separate rows, and query only sees the graph of the dataset it targets. Its embeddings are isolated the same way, in vector datasets of its own, one per purpose (see [Vectors](#vectors)).
 
-- Every dataset is owned by a `user_id`, and that ownership covers all its artifacts, entities and edges. All endpoints require `user_id` (see [identity.md](identity.md)) (a non-empty string of at most 128 bytes): in the JSON body for `POST`, in the query string for `GET` and `DELETE`. A missing or invalid one returns `400`. A user only sees and changes their own datasets; names are unique per user, so two users can each have a dataset called `work`.
+- Every dataset is owned by a `user_id`, and that ownership covers all its artifacts, entities and edges. All endpoints take the user from the `gb-user-id` header (see [identity.md](identity.md)), a non-empty string of at most 128 bytes; it is never read from the body or the query string. A missing or invalid one returns `400`. A user only sees and changes their own datasets; names are unique per user, so two users can each have a dataset called `work`.
 - `remember` and `query` take an optional `dataset` (name). If omitted, the default dataset `main` is used. There is no dataset until it is created: `main` is created for a user by their first `remember`.
 - `remember` creates the dataset on demand if it does not exist. `query` on a dataset that does not exist (or was deleted) returns `404`.
 - Names are 1-64 characters of letters, digits, `.`, `_`, `-`, starting with a letter or digit. Invalid names return `400`.
@@ -34,12 +34,12 @@ The vectors are the exception: they are removed with the dataset (`DeleteAll` on
 
 ## Endpoints
 
-`POST /v1/gb/datasets`: `{"user_id": "u1", "name": "work", "tags": ["project"], "description": "optional"}` returns `201` with the dataset. `409` if a live dataset with that name exists, `400` for a bad name.
+`POST /v1/gb/datasets` (header `gb-user-id: u1`): `{"name": "work", "tags": ["project"], "description": "optional"}` returns `201` with the dataset. `409` if a live dataset with that name exists, `400` for a bad name.
 
-`GET /v1/gb/datasets?user_id=u1`: lists that user's datasets: `{"datasets": [{"id": 1, "user_id": "u1", "name": "main", "tags": [], "created_at": "...", "deleted": false}, ...]}`, oldest first. `?include_deleted=true` also lists soft-deleted ones.
+`GET /v1/gb/datasets` (header `gb-user-id: u1`): lists that user's datasets: `{"datasets": [{"id": 1, "user_id": "u1", "name": "main", "tags": [], "created_at": "...", "deleted": false}, ...]}`, oldest first. `?include_deleted=true` also lists soft-deleted ones.
 
-`DELETE /v1/gb/datasets/{name}?user_id=u1`: soft-deletes the dataset and removes its vectors. `204`, or `404` if the user has no live dataset with that name.
+`DELETE /v1/gb/datasets/{name}` (header `gb-user-id: u1`): soft-deletes the dataset and removes its vectors. `204`, or `404` if the user has no live dataset with that name.
 
-`GET /v1/gb/datasets/{name}/graph?user_id=u1`: exports the dataset's whole graph as JSON; see [graph.md](graph.md).
+`GET /v1/gb/datasets/{name}/graph` (header `gb-user-id: u1`): exports the dataset's whole graph as JSON; see [graph.md](graph.md).
 
-`POST /v1/gb/datasets/{name}/training`: `{"user_id": "u1"}` hands the dataset (every artifact and the graph of each) to the classifying training hook and answers with a summary of the training dataset it made, a possibly filtered subset with the class of each graph. It only exists when the embedding program supplies the hook; see [hooks.md](hooks.md#classifying-training-hook).
+`POST /v1/gb/datasets/{name}/training` (header `gb-user-id: u1`, no body needed) hands the dataset (every artifact and the graph of each) to the classifying training hook and answers with a summary of the training dataset it made, a possibly filtered subset with the class of each graph. It only exists when the embedding program supplies the hook; see [hooks.md](hooks.md#classifying-training-hook).

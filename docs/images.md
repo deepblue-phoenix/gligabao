@@ -11,12 +11,13 @@ Code: `internal/memory/memory_image/image.go` (`RememberImage`, `ExtractImage`),
 ```
 POST /v1/gb/remember
 content-type: application/json
+gb-user-id: u1
 
-{"user_id": "u1", "dataset": "charts", "image": "<base64>", "reference_time": "2025-01-31T09:00:00Z"}
+{"dataset": "charts", "image": "<base64>", "reference_time": "2025-01-31T09:00:00Z"}
 ```
 
 - `image`: the image, base64-encoded (standard alphabet): a JPEG, PNG, GIF or WebP, at most 5 MiB (the Anthropic API limit) before encoding. The type is detected from the bytes. A request with `image` is an image request; the body may be up to about 7 MiB (instead of 1 MiB for text).
-- `user_id` (required), `dataset` (optional, default `main`, created if missing) and `reference_time` (optional, RFC 3339, default now: when the image was captured or observed) work as for text.
+- `dataset` (optional, default `main`, created if missing) and `reference_time` (optional, RFC 3339, default now: when the image was captured or observed) work as for text.
 - `session_id` (optional) works as for text ([sessions.md](sessions.md)): it is stored on the new image artifact (`gb_image_artifacts.session_id`) and echoed as `session_id` in the response. Images add no entities or edges, so there are no session links beyond it. `400` if it is too long or has control characters.
 - `models` (optional): `{"extract_image": "<model>"}` picks the vision model that reads the image; without it the default model is used (see [remember.md](remember.md#choosing-the-model-of-each-stage)). A repeated image is answered from its stored extraction without an LLM call, so the model reported is the one that made it.
 - `text` and `kind` must not be given together with `image` (`400`): an image is not a text artifact.

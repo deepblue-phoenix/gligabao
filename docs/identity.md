@@ -1,40 +1,39 @@
 # Identity
 
-Every request to gligabao says which user it acts for, with a `user_id`. Without the `Auth` hook gligabao does not authenticate users: `user_id` is an opaque string that the calling application supplies and is trusted to get right. Put gligabao behind your own auth layer and pass the authenticated user's ID.
+Every request to gligabao says which user it acts for, with the **`gb-user-id` header**. It is the only place the API takes the user from: a `user_id` in the query string or in the JSON body of a request is never read (the field is gone from the request bodies, and anything sent there is ignored). Without the `Auth` hook gligabao does not authenticate users: the ID in the header is an opaque string that the calling application supplies and is trusted to get right. Put gligabao behind your own auth layer and pass the authenticated user's ID.
 
 ## With the `Auth` hook
 
-A program that embeds gligabao can set `ServeOptions.Auth` (see [hooks.md](hooks.md#auth)). The caller then sends an API key (`Authorization: Bearer <key>`) instead of a `user_id`: the hook maps the key to a user, and the request acts as that user, replacing any `user_id` it carries. A missing or rejected key is a `401`. Everything below about `user_id` (format, ownership) is unchanged, it is just not the caller that chooses it any more. The Python client works this way: it reads the key from `GLIGABAO_API_KEY`.
+A program that embeds gligabao can set `ServeOptions.Auth` (see [hooks.md](hooks.md#auth)). The caller then sends an API key (`Authorization: Bearer <key>`) instead of the header: the hook maps the key to a user, and the request acts as that user (the `gb-user-id` header is set to it, whatever the caller sent). A missing or rejected key is a `401`. Everything below about the user ID (format, ownership) is unchanged, it is just not the caller that chooses it any more. The Python client works this way: it reads the key from `GLIGABAO_API_KEY`.
 
-The [MCP](mcp.md) tools (`remember`, `query`; off by default) take `user_id` as an argument and are not covered by the `Auth` hook: whoever can reach the MCP endpoint can act as any user.
+The [MCP](mcp.md) tools (`remember`, `query`; off by default) take `user_id` as an argument (the tool sends it to the handler as the header) and are not covered by the `Auth` hook: whoever can reach the MCP endpoint can act as any user.
 
-## Passing `user_id`
+## Passing the user
 
 | Endpoint | Where |
 | -------- | ----- |
-| `POST /v1/gb/remember` | JSON body: `"user_id"` |
-| `POST /v1/gb/query` | JSON body: `"user_id"` |
-| `POST /v1/gb/datasets` | JSON body: `"user_id"` |
-| `GET /v1/gb/datasets` | query string: `?user_id=u1` |
-| `DELETE /v1/gb/datasets/{name}` | query string: `?user_id=u1` |
-| `POST /v1/gb/ontologies`, `PUT /v1/gb/ontologies/{name}` | JSON body: `"user_id"` (ontologies are owned by a user; names are unique per user, see [ontologies.md](ontologies.md)) |
+| `POST /v1/gb/remember`, `POST /v1/gb/query` | header `gb-user-id: u1` |
+| `POST /v1/gb/datasets`, `GET /v1/gb/datasets`, `DELETE /v1/gb/datasets/{name}` | header `gb-user-id: u1` |
+| `POST /v1/gb/ontologies`, `PUT /v1/gb/ontologies/{name}` | header `gb-user-id: u1` (ontologies are owned by a user; names are unique per user, see [ontologies.md](ontologies.md)) |
+| the rest of the routes of users (graph, timeseries, geo nearby, research, dataset training) | header `gb-user-id: u1` |
 
+The [admin API](../README.md#admin-ui) has its own `user_id` filters (it is not tied to a user).
 `GET /health` takes none.
 
 ```
-curl -s localhost:7878/v1/gb/remember -d '{"user_id":"u1","text":"Alice works at Acme."}'
-curl -s "localhost:7878/v1/gb/datasets?user_id=u1"
+curl -s -H 'gb-user-id: u1' localhost:7878/v1/gb/remember -d '{"text":"Alice works at Acme."}'
+curl -s -H 'gb-user-id: u1' localhost:7878/v1/gb/datasets
 ```
 
 ## Format
 
-`user_id` is required. Leading and trailing whitespace is trimmed, and what remains must be:
+The header is required. Leading and trailing whitespace is trimmed, and what remains must be:
 
 - not empty,
 - at most 128 bytes,
 - free of control characters.
 
-Anything else is allowed (UUIDs, emails, numeric IDs as strings, ...). IDs are compared exactly, so `Alice` and `alice` are different users. A missing or invalid `user_id` returns `400` with `{"error": "invalid user_id: ..."}`.
+Anything else is allowed (UUIDs, emails, numeric IDs as strings, ...). IDs are compared exactly, so `Alice` and `alice` are different users. A missing header returns `400` (`missing user: send the gb-user-id header`) and an invalid ID `400` with `{"error": "invalid user_id: ..."}`.
 
 ## Ownership
 
@@ -47,7 +46,7 @@ A [dataset](datasets.md) is owned by the user who created it, and that ownership
 - There is no cross-user sharing. Nothing is read or written across users.
 - The default dataset `main` is per user, and is created by that user's first `remember`.
 
-Because a user's dataset is looked up by `(user_id, name)`, a user cannot reach another user's data by guessing a dataset name or id. A caller that supplies someone else's `user_id` can, since there is no authentication.
+Because a user's dataset is looked up by `(user_id, name)`, a user cannot reach another user's data by guessing a dataset name or id. A caller that sends someone else's ID in the header can, since there is no authentication (with the `Auth` hook the header is set from the API key, so it cannot).
 
 ## Storage
 

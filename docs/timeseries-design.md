@@ -62,7 +62,6 @@ Additions to the `remember` request:
 
 ```json
 {
-  "user_id": "u1",
   "text": "Apple fell sharply after the earnings miss.",
   "kind": "episode",
   "reference_time": "2025-01-31T21:00:00Z",
@@ -123,7 +122,8 @@ For finance, `Resolve` maps an organization to a ticker and `Fetch` calls a pric
 
 ```
 POST /v1/gb/timeseries
-{"user_id": "u1", "dataset": "main", "series": {...},
+gb-user-id: u1
+{"dataset": "main", "series": {...},
  "anchors": [{"entity_id": 12}, {"artifact_id": 1, "window": ["2025-01-01", "2025-02-01"]}]}
 ```
 

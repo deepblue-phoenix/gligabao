@@ -49,14 +49,14 @@ The run keeps `steps` (model calls made), `tool_calls`, `input_tokens`, `output_
 
 ## REST
 
-All three routes are user routes: `user_id` is required (in the body, or in the query string for `GET`), and with the [`Auth` hook](hooks.md#auth) the API key sets it. A user only sees their own runs: another user's run is a `404`.
+All three routes are user routes: the user is the `gb-user-id` header (required; never read from the body or the query string), and with the [`Auth` hook](hooks.md#auth) the API key sets it. A user only sees their own runs: another user's run is a `404`.
 
 ### `POST /v1/gb/research`
 
 Starts an agent. Body:
 
 ```json
-{"user_id": "u1", "topic": "How do solid-state batteries compare with lithium-ion?", "max_steps": 20, "model": "", "dataset": "main", "runner": "local"}
+{"topic": "How do solid-state batteries compare with lithium-ion?", "max_steps": 20, "model": "", "dataset": "main", "runner": "local"}
 ```
 
 - `topic` (required, at most 2000 characters): what to research. A question, or a subject to write a report on.
@@ -73,7 +73,7 @@ Answers `202` with the run (`status` `running`, `state` `starting`); the agent g
  "created_at": "2026-11-01T10:00:00.120Z", "finished_at": null}
 ```
 
-### `GET /v1/gb/research?user_id=...`
+### `GET /v1/gb/research`
 
 Lists the agents of the user, newest first, without their states: `{"runs": [...]}`.
 
@@ -84,7 +84,7 @@ Lists the agents of the user, newest first, without their states: `{"runs": [...
 
 Sub-agents are runs like any other and are in the list too, with `parent_id`, `name` and `reason` set (`null`/`""` for a research a user started).
 
-### `GET /v1/gb/research/{id}?user_id=...`
+### `GET /v1/gb/research/{id}`
 
 Reads one run with its `states`, in the order they were entered. The `report` is in it once `status` is `completed`.
 

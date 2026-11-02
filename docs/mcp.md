@@ -2,7 +2,7 @@
 
 gligabao can serve `remember` and `query` as tools of an [MCP](https://modelcontextprotocol.io) (Model Context Protocol) server, so that MCP clients (Claude Desktop, Claude Code, IDE agents, ...) can use it as their memory. It is built on the official Go SDK, [`modelcontextprotocol/go-sdk`](https://github.com/modelcontextprotocol/go-sdk).
 
-**It is off by default and has no authentication.** Enable it with `mcp = true` in the config file (`build/gligabao.toml`) or `serve --mcp`. Callers choose the `user_id` themselves, exactly as with the REST API when no `Auth` hook is set, so turn it on only on a trusted network. The endpoint is **not** covered by the [`Auth` hook](hooks.md#auth) (a warning is logged at startup if both are set); when gligabao is [mounted](../README.md) on a host's mux, `MountOptions.Wrap` does cover it, as it is under `/v1/gb/`.
+**It is off by default and has no authentication.** Enable it with `mcp = true` in the config file (`build/gligabao.toml`) or `serve --mcp`. Callers choose the `user_id` themselves (an argument of every tool, which the tool sends to the handler as the `gb-user-id` header), exactly as with the REST API when no `Auth` hook is set, so turn it on only on a trusted network. The endpoint is **not** covered by the [`Auth` hook](hooks.md#auth) (a warning is logged at startup if both are set); when gligabao is [mounted](../README.md) on a host's mux, `MountOptions.Wrap` does cover it, as it is under `/v1/gb/`.
 
 ## Endpoint
 

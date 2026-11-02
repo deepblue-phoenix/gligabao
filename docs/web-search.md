@@ -15,7 +15,7 @@ It is **off unless asked for**, per call: nothing is searched for a request that
 ## Request
 
 ```json
-{"user_id": "u1", "text": "Apple, Microsoft and Nvidia are among the largest companies in the world.", "web_search": true}
+{"text": "Apple, Microsoft and Nvidia are among the largest companies in the world.", "web_search": true}
 ```
 
 - `web_search` (optional, default `false`): search the web for the key entities of this text. `503` if web search is not available (no Anthropic API key). `400` together with `image` (the image pipeline extracts no entities yet).

@@ -36,13 +36,13 @@ gligabao status                                  # the target, and whether it ru
 gligabao stop                                    # stop the local daemon
 ```
 
-Global flags: `--user` (env `GLIGABAO_USER`, default `local_user`: the `user_id` of every request), `--server`, `--config`.
+Global flags: `--user` (env `GLIGABAO_USER`, default `local_user`: sent as the `gb-user-id` header of every request), `--server`, `--config`.
 
 - `remember` takes the text as an argument, from `--file`, or from stdin with `-`; `--image` remembers an image instead. The flags map to the request fields (`--at` is `reference_time`, `--series` is `timeseries.series`, `--model` and `--reasoning` are `models` and `reasoning`, repeatable as `STAGE=VALUE`).
-- `--json` (on `remember` and `query`) is the whole request body as JSON text, `@file` or `-` (stdin), so the exact REST body can be passed and a new request field never needs a new flag. The flags that are given override its fields; `user_id` defaults to `--user` only if the body has none.
+- `--json` (on `remember` and `query`) is the whole request body as JSON text, `@file` or `-` (stdin), so the exact REST body can be passed and a new request field never needs a new flag. The flags that are given override its fields. The user is `--user`, sent in the header: a `user_id` in the body is ignored by the server.
 - `query --evidence-only` is a retrieval-only call, see [query.md](query.md#retrieval-only-evidence_only). `query --raw` prints just the answer, as text.
 - `research` starts and follows [research agents](research.md): `start` prints the run right away (`-d` picks the dataset of your knowledge base the agent queries and remembers into, `main` by default; `--runner modal` runs the agent in Modal through the sidecar instead of in the server, see [research.md](research.md#where-the-agent-runs-the-runner)) (the agent goes on in the background, it costs money), `--wait` waits for it to end and prints the finished run (exit code 1 if it failed; `--raw` prints only the report), `ls --active` lists the agents that are working, and `get ID` shows a run with every state it went through (`--raw`: only the report).
-- `api` sends the request as it is (it adds no `user_id`), for what has no command.
+- `api` sends the request as it is (it adds no body or query fields, only the `gb-user-id` header of `--user`; a `user_id` in the JSON or in the path is ignored by the server), for what has no command.
 
 ## Output and exit codes
 
