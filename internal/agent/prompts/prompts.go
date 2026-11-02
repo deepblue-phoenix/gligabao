@@ -1,7 +1,7 @@
 // Package prompts holds the prompts of the research agents. Each prompt is a Markdown file in this directory, embedded in the
 // binary, so that a prompt can be read and changed without touching Go code. A research agent's system prompt is made of parts: the
 // base (Research), then Knowledge if it has the knowledge base, Spawn if it can spawn sub-agents, and, for a sub-agent, Subagent
-// and Messaging (see agent.ResearchAgent, agent.AddTeamTools and package agent_research).
+// (see agent.ResearchAgent, agent.AddTeamTools and package agent_research).
 package prompts
 
 import (
@@ -29,8 +29,6 @@ var (
 	Knowledge = read("knowledge.md")
 	// Spawn is added when the agent can spawn sub-agents: when spawning is warranted and how to do it.
 	Spawn = read("spawn.md")
-	// Messaging is added to a sub-agent: its siblings, and the tools to see and message them.
-	Messaging = read("messaging.md")
 	// WebSearch is the system prompt of the call the web_search tool makes.
 	WebSearch = read("web_search.md")
 
@@ -107,9 +105,8 @@ type Role struct {
 type RolesInfo struct {
 	// OnDemand are the roles the model starts itself; OnStart the sub-agents the runtime starts for it.
 	OnDemand, OnStart []Role
-	// MaxPerAgent is the most sub-agents it may have; Messaging says that they can message each other.
+	// MaxPerAgent is the most sub-agents it may have.
 	MaxPerAgent int
-	Messaging   bool
 }
 
 // Roles is the part of the prompt of an agent whose definition has roles: instead of Spawn, which is the free-form policy.

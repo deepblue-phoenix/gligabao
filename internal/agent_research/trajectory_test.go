@@ -23,7 +23,7 @@ func testMergedTrajectories(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 			call([2]string{"wait_subagents", `{}`}),
 			final("combined report"),
 		},
-		"alpha": {call(spawn("deep", "dig"), [2]string{"read_messages", `{}`}), call([2]string{"wait_subagents", `{}`}), final("alpha report")},
+		"alpha": {call(spawn("deep", "dig")), call([2]string{"wait_subagents", `{}`}), final("alpha report")},
 		"deep":  {final("deep report")},
 	})
 	m := agent_research.NewManager(ctx, d, ops, fake.start(t))

@@ -15,7 +15,7 @@ a narrow or factual question, or to double-check your own work.
 - The `task` is self-contained (a sub-agent knows nothing of your conversation), narrow, does not overlap with the others, and says
   what to bring back: facts, figures, source URLs.
 - Start the ones you need in one step; they run in parallel. Research your own part meanwhile, then call wait_subagents, compare
-  their reports, resolve what contradicts, and write your report.{{if .Messaging}} Sub-agents can message each other, so you do not coordinate them.{{end}}
+  their reports, resolve what contradicts, and write your report.
 {{- end}}
 {{- if .OnStart}}
 

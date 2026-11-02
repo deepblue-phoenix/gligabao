@@ -20,7 +20,7 @@ func Builtin() *Def {
 		Version:      "1.0.0",
 		Description:  "The built-in deep-research agent: searches the web, reads pages, works with the knowledge base, may spawn sub-agents, and writes a report.",
 		SystemPrompt: prompts.Research,
-		Spawn:        Spawn{Enabled: true, Messaging: true},
+		Spawn:        Spawn{Enabled: true},
 		Source:       builtinSource,
 	}
 	normalize(d)

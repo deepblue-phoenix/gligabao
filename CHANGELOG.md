@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.169.0] - 2026-11-02
+
+### Removed
+- **Message passing between agents.** Sub-agents can no longer message their siblings: the tools `send_message`, `read_messages` and `list_siblings`, the sibling prompt, the `messaging` run state and the `Messenger` (channel inboxes) are gone. A sub-agent now only gets its task, works alone and hands its report to its parent (`spawn_subagent` / `wait_subagents` are unchanged). The `[spawn] messaging` key of agent definitions is removed too: a definition that still sets it is rejected as an unknown key, so delete the line (`build/agent_defs/news_scanner.toml` already has). `waiting` is now only for `wait_subagents`.
+
 ## [0.168.0] - 2026-11-02
 
 ### Added

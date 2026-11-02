@@ -190,8 +190,6 @@ type Spawn struct {
 	// Enabled gives the agent the sub-agent tools. Without Roles it spawns free-form: sub-agents that are copies of itself, as before
 	// definitions existed; with Roles, only those.
 	Enabled bool `toml:"enabled" json:"enabled"`
-	// Messaging lets the sub-agents it spawns message each other (list_siblings, send_message, read_messages).
-	Messaging bool `toml:"messaging" json:"messaging,omitempty"`
 	// MaxDepth, MaxPerAgent and MaxPerTree lower the ceilings (MaxSubagentDepth, MaxSubagentsPerAgent, MaxSubagentsPerTree); 0 is the
 	// ceiling. The depth counts from the root research (the root is 0); the number per tree is that of the root's definition.
 	MaxDepth    int    `toml:"max_depth" json:"max_depth,omitempty"`

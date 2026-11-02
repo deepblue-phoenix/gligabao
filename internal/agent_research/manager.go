@@ -42,9 +42,6 @@ type Manager struct {
 	// MaxCostUSD is the most one research may spend, all its agents together, whatever the definition and the request say (0: no ceiling
 	// of the server). Set it before starting any agent.
 	MaxCostUSD float64
-	// Messenger carries the messages between the sibling agents (NewChanMessenger, Go channels, if nil when the manager is made).
-	// Set it before starting any agent to swap the message system.
-	Messenger Messenger
 
 	ctx context.Context
 	mem *Memory // the knowledge base of the agents (nil: they have only the web tools); guarded by mu
@@ -84,7 +81,7 @@ func NewManager(ctx context.Context, d *sql.DB, ops Ops, client *ai.Client, opts
 	for _, opt := range opts {
 		opt(&o)
 	}
-	m := &Manager{DB: d, Client: client, Ops: ops, ctx: ctx, active: map[string]int{}, runs: map[int64]*researcher{}, remotes: map[int64]*remoteRun{}, Messenger: NewChanMessenger()}
+	m := &Manager{DB: d, Client: client, Ops: ops, ctx: ctx, active: map[string]int{}, runs: map[int64]*researcher{}, remotes: map[int64]*remoteRun{}}
 	if o.keepActive {
 		return m
 	}

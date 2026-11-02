@@ -263,7 +263,7 @@ func checkSpawn(d *Def) []string {
 		}
 	}
 	if !sp.Enabled {
-		if sp.Messaging || sp.MaxDepth != 0 || sp.MaxPerAgent != 0 || sp.MaxPerTree != 0 || len(sp.Roles) > 0 {
+		if sp.MaxDepth != 0 || sp.MaxPerAgent != 0 || sp.MaxPerTree != 0 || len(sp.Roles) > 0 {
 			bad("spawn: settings or roles are given but enabled is false")
 		}
 		return errs

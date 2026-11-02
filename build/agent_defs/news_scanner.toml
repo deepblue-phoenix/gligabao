@@ -29,7 +29,6 @@ max_tree_cost_usd = 3.00             # the whole research, sub-agents included
 
 [spawn]
 enabled = true
-messaging = true
 max_per_agent = 3
 
 [[spawn.roles]]

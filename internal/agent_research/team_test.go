@@ -3,7 +3,6 @@ package agent_research_test
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,7 +10,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
@@ -111,8 +109,8 @@ func testSubagents(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 			call([2]string{"wait_subagents", `{}`}),
 			final("combined report"),
 		},
-		"alpha": {call([2]string{"list_siblings", `{}`}), call([2]string{"send_message", `{"to":"beta","text":"market is huge"}`}), final("alpha report")},
-		"beta":  {call([2]string{"read_messages", `{"wait_seconds":5}`}), final("beta report")},
+		"alpha": {final("alpha report")},
+		"beta":  {final("beta report")},
 	})
 	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
 
@@ -162,75 +160,23 @@ func testSubagents(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 		t.Errorf("all runs: %d", len(all))
 	}
 	beta, _ := m.Get(ctx, "u1", byName["beta"].ID)
-	if got := stateNames(beta.States); got != "starting,thinking,waiting,thinking,completed" {
+	if got := stateNames(beta.States); got != "starting,thinking,completed" {
 		t.Errorf("beta states: %s", got)
 	}
 
-	// A sub-agent learns who its siblings are and why they exist (and is not listed itself), and is told its own reason.
-	if b := fake.body("alpha", 1); !strings.Contains(b, "beta [working]: reason of beta") || strings.Contains(b, "alpha [") {
-		t.Errorf("alpha did not get its siblings: %s", b)
+	// A sub-agent is told its own reason.
+	if b := fake.body("alpha", 0); !strings.Contains(b, "reason of alpha") {
+		t.Errorf("alpha: reason not in the prompt: %s", b)
 	}
-	if b := fake.body("alpha", 0); !strings.Contains(b, `"name":"list_siblings"`) || !strings.Contains(b, "reason of alpha") {
-		t.Errorf("alpha: tools or reason in the prompt: %s", b)
-	}
-	// The message of alpha reached beta; the parent got the reports of both.
-	if b := fake.body("beta", 1); !strings.Contains(b, "From alpha") || !strings.Contains(b, "market is huge") {
-		t.Errorf("beta did not get the message: %s", b)
-	}
+	// The parent got the reports of both.
 	if b := fake.body("root", 2); !strings.Contains(b, "alpha report") || !strings.Contains(b, "beta report") {
 		t.Errorf("root did not get the reports: %s", b)
 	}
-	// Tools: the root can spawn but has no siblings; the sub-agents can do both. A sub-agent is told who it is.
-	if b := fake.body("root", 0); !strings.Contains(b, `"name":"spawn_subagent"`) || !strings.Contains(b, `"name":"wait_subagents"`) || strings.Contains(b, `"name":"send_message"`) {
-		t.Errorf("root tools: %s", b)
-	}
-	if b := fake.body("alpha", 0); !strings.Contains(b, `"name":"send_message"`) || !strings.Contains(b, `"name":"read_messages"`) || !strings.Contains(b, `"name":"spawn_subagent"`) {
-		t.Errorf("sub-agent tools: %s", b)
-	}
-}
-
-func TestOnlySiblingsCanBeMessaged(t *testing.T) { runOnBackends(t, testSiblingsOnly) }
-
-func testSiblingsOnly(t *testing.T, d *sql.DB, ops agent_research.Ops) {
-	ctx := context.Background()
-	fake := newTeamFake(map[string][]string{
-		"root": {call(spawn("a", "task a"), spawn("b", "task b")), call([2]string{"wait_subagents", `{}`}), final("done")},
-		"a":    {call(spawn("a1", "task a1")), call([2]string{"wait_subagents", `{}`}), final("a done")},
-		// a1 is a child of a and a cousin of b: it can reach neither its parent, nor b, nor itself.
-		"a1": {call(
-			[2]string{"send_message", `{"to":"b","text":"hi cousin"}`},
-			[2]string{"send_message", `{"to":"a","text":"hi parent"}`},
-			[2]string{"send_message", `{"to":"a1","text":"hi me"}`}), final("a1 done")},
-		"b": {call([2]string{"send_message", `{"to":"a","text":"hi sibling"}`}), call([2]string{"send_message", `{"to":"root","text":"hi root"}`}), final("b done")},
-	})
-	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
-	if _, err := m.Start(ctx, "u1", agent_research.Options{Topic: "t", MaxSteps: 5}); err != nil {
-		t.Fatal(err)
-	}
-	m.Wait()
-
-	b := fake.body("a1", 1)
-	if strings.Count(b, "you have no sibling called") != 2 || !strings.Contains(b, "you cannot message yourself") {
-		t.Errorf("a1 reached someone it should not: %s", b)
-	}
-	// b to its sibling a: delivered, or a has ended already; never "no sibling".
-	if b := fake.body("b", 1); strings.Contains(b, "no sibling") {
-		t.Errorf("b to a: %s", b)
-	}
-	if b := fake.body("b", 2); !strings.Contains(b, "you have no sibling called") {
-		t.Errorf("b reached the root: %s", b)
-	}
-	// The third generation: a1 has depth 2 and cannot spawn.
-	if b := fake.body("a1", 0); strings.Contains(b, `"name":"spawn_subagent"`) || !strings.Contains(b, `"name":"send_message"`) {
-		t.Errorf("a1 tools: %s", b)
-	}
-	runs, _ := m.List(ctx, "u1", agent_research.ListOptions{})
-	if len(runs) != 4 {
-		t.Fatalf("runs: %d", len(runs))
-	}
-	for _, r := range runs {
-		if r.Status != core.StatusCompleted {
-			t.Errorf("%s: %+v", r.Name, r)
+	// Tools: the sub-agents can spawn like the root; nobody has messaging tools.
+	for _, name := range []string{"root", "alpha"} {
+		if b := fake.body(name, 0); !strings.Contains(b, `"name":"spawn_subagent"`) || !strings.Contains(b, `"name":"wait_subagents"`) ||
+			strings.Contains(b, `"name":"send_message"`) || strings.Contains(b, `"name":"read_messages"`) || strings.Contains(b, `"name":"list_siblings"`) {
+			t.Errorf("%s tools: %s", name, b)
 		}
 	}
 }
@@ -313,65 +259,6 @@ func testSubagentLimit(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	}
 	if b := fake.body("root", 3); !strings.Contains(b, "ra") || !strings.Contains(b, "rd") {
 		t.Errorf("reports: %s", b)
-	}
-}
-
-func TestChanMessenger(t *testing.T) {
-	ctx := context.Background()
-	mr := agent_research.NewChanMessenger()
-	if err := mr.Open(1); err != nil {
-		t.Fatal(err)
-	}
-	if err := mr.Open(1); err == nil {
-		t.Error("opening twice should fail")
-	}
-	if err := agent_research.SendMessage(ctx, mr, agent_research.Message{From: 2, To: 3, Text: "x"}); !errors.Is(err, agent_research.ErrNoInbox) {
-		t.Errorf("send to nobody: %v", err)
-	}
-	for _, s := range []string{"one", "two"} {
-		if err := agent_research.SendMessage(ctx, mr, agent_research.Message{From: 2, FromName: "x", To: 1, Text: s}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	got, err := mr.Receive(ctx, 1, 0)
-	if err != nil || len(got) != 2 || got[0].Text != "one" || got[1].Text != "two" || got[0].SentAt.IsZero() {
-		t.Fatalf("receive: %+v %v", got, err)
-	}
-	if got, err := mr.Receive(ctx, 1, 0); err != nil || len(got) != 0 {
-		t.Fatalf("empty: %+v %v", got, err)
-	}
-	// Waiting for a message that comes, and for one that does not.
-	go func() {
-		time.Sleep(20 * time.Millisecond)
-		mr.Send(ctx, agent_research.Message{To: 1, Text: "late"})
-	}()
-	if got, err := mr.Receive(ctx, 1, 5*time.Second); err != nil || len(got) != 1 || got[0].Text != "late" {
-		t.Fatalf("wait: %+v %v", got, err)
-	}
-	start := time.Now()
-	if got, err := mr.Receive(ctx, 1, 30*time.Millisecond); err != nil || len(got) != 0 || time.Since(start) < 25*time.Millisecond {
-		t.Fatalf("timeout: %+v %v", got, err)
-	}
-	cctx, cancel := context.WithCancel(ctx)
-	cancel()
-	if _, err := mr.Receive(cctx, 1, time.Minute); !errors.Is(err, context.Canceled) {
-		t.Fatalf("cancelled: %v", err)
-	}
-	// A full inbox refuses, a closed one is gone.
-	for i := 0; i < agent_research.InboxSize; i++ {
-		if err := mr.Send(ctx, agent_research.Message{To: 1}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := mr.Send(ctx, agent_research.Message{To: 1}); !errors.Is(err, agent_research.ErrInboxFull) {
-		t.Errorf("full: %v", err)
-	}
-	mr.Close(1)
-	if err := mr.Send(ctx, agent_research.Message{To: 1}); !errors.Is(err, agent_research.ErrNoInbox) {
-		t.Errorf("closed: %v", err)
-	}
-	if _, err := mr.Receive(ctx, 1, 0); !errors.Is(err, agent_research.ErrNoInbox) {
-		t.Errorf("receive closed: %v", err)
 	}
 }
 

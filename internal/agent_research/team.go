@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_defs"
@@ -39,7 +38,7 @@ type outcome struct {
 	err    string
 }
 
-// member is a sub-agent as its parent and its siblings know it. Only id, name and reason (which never change) are read before the
+// member is a sub-agent as its parent knows it. Only id, name and reason (which never change) are read before the
 // sub-agent has ended; out is written before done is closed, and read after.
 type member struct {
 	id     int64
@@ -64,8 +63,7 @@ func (m *member) ended() bool {
 	}
 }
 
-// family is the sub-agents of one parent, in the order they were spawned. The siblings of an agent are the other members of the family
-// of its parent: that is the only way an agent finds another, so it can reach no one else.
+// family is the sub-agents of one parent, in the order they were spawned.
 type family struct {
 	mu      sync.Mutex
 	members []*member
@@ -175,7 +173,7 @@ func (t *tree) capHit() bool {
 	return t.hit
 }
 
-// team is the view of one agent of the sub-agents and the messages (agent.Team).
+// team is the view of one agent of the sub-agents (agent.Team).
 type team struct{ r *researcher }
 
 var _ agent.Team = team{}
@@ -232,87 +230,6 @@ func (t team) Wait(ctx context.Context, names []string) (string, error) {
 		}
 	}
 	return sb.String(), nil
-}
-
-// Send sends text to a sibling. Only the members of the family of the parent can be found, so a sub-agent of a sibling (a "cousin"),
-// the parent and the agents of other researches cannot be written to.
-func (t team) Send(ctx context.Context, to, text string) (string, error) {
-	r := t.r
-	if r.parent == nil {
-		return "", errors.New("you have no siblings: only sub-agents can message each other")
-	}
-	sib := r.parent.kids.get(to)
-	switch {
-	case sib == nil:
-		return "", fmt.Errorf("you have no sibling called %q (your siblings: %s)", to, orNone(r.parent.kids.names(r.run.Name)))
-	case sib.id == r.run.ID:
-		return "", errors.New("you cannot message yourself")
-	}
-	err := SendMessage(ctx, r.mgr.Messenger, Message{From: r.run.ID, FromName: r.run.Name, To: sib.id, Text: text})
-	switch {
-	case errors.Is(err, ErrNoInbox):
-		return "", fmt.Errorf("sibling %q has ended: the message was not delivered", to)
-	case errors.Is(err, ErrInboxFull):
-		return "", fmt.Errorf("sibling %q has too many unread messages: try later", to)
-	case err != nil:
-		return "", err
-	}
-	return fmt.Sprintf("sent to %q", to), nil
-}
-
-// Siblings lists the other sub-agents of the parent of the agent, with their reasons and whether they still work: the agents it can
-// message, and no others.
-func (t team) Siblings(_ context.Context) (string, error) {
-	r := t.r
-	if r.parent == nil {
-		return "", errors.New("you have no siblings: only sub-agents have them")
-	}
-	var sb strings.Builder
-	n := 0
-	for _, m := range r.parent.kids.all() {
-		if m.id == r.run.ID {
-			continue
-		}
-		status := "working"
-		if m.ended() {
-			status = "ended"
-			if m.out.status == core.StatusFailed {
-				status = "ended, failed"
-			}
-		}
-		fmt.Fprintf(&sb, "- %s [%s]: %s\n", m.name, status, m.reason)
-		n++
-	}
-	if n == 0 {
-		return "You have no siblings now (your parent may still spawn some).", nil
-	}
-	return fmt.Sprintf("Your siblings, the sub-agents you can message (%d):\n%s", n, strings.TrimRight(sb.String(), "\n")), nil
-}
-
-// Receive returns the messages that were sent to the agent.
-func (t team) Receive(ctx context.Context, wait time.Duration) (string, error) {
-	msgs, err := t.r.mgr.Messenger.Receive(ctx, t.r.run.ID, wait)
-	if err != nil {
-		return "", err
-	}
-	if len(msgs) == 0 {
-		return "No new messages.", nil
-	}
-	var sb strings.Builder
-	for i, m := range msgs {
-		if i > 0 {
-			sb.WriteString("\n\n")
-		}
-		fmt.Fprintf(&sb, "From %s (run %d): %s", m.FromName, m.From, m.Text)
-	}
-	return sb.String(), nil
-}
-
-func orNone(s string) string {
-	if s == "" {
-		return "none"
-	}
-	return s
 }
 
 // spawn records a sub-agent of parent (a run with parent_id and name) and starts it in the background, on its own goroutine like
@@ -399,9 +316,6 @@ func (m *Manager) spawn(parent *researcher, role, name, reason, task string, max
 	sub.self.role = role
 	sub.onTrajectory = parent.onTrajectory
 	sub.recordTrajectory()
-	if err := m.Messenger.Open(run.ID); err != nil {
-		log.WithError(err).WithField("run_id", run.ID).Error("agent research: opening the inbox failed")
-	}
 	kids.members = append(kids.members, sub.self)
 	m.track(sub)
 	ok = true

@@ -51,12 +51,10 @@ const (
 	StateQuerying = "querying"
 	// StateRemembering: the remember tool is running; the detail says whether it waits (sync) or not, and the start of the text.
 	StateRemembering = "remembering"
-	// StateWaiting: the agent waits for its sub-agents to end (wait_subagents) or for a message of a sibling (read_messages with a wait).
+	// StateWaiting: the agent waits for its sub-agents to end (wait_subagents).
 	StateWaiting = "waiting"
 	// StateSpawning: the spawn_subagent tool is running; the detail is the name of the sub-agent and its reason.
 	StateSpawning = "spawning"
-	// StateMessaging: the send_message, read_messages (without a wait) or list_siblings tool is running; the detail is the sibling it writes to.
-	StateMessaging = "messaging"
 	// StateUsingTool: any other tool is running; the detail is its name.
 	StateUsingTool = "using_tool"
 	// StateWritingReport: the last model call, the one that may not call tools, is running: its text is the report.

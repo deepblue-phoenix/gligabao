@@ -120,8 +120,7 @@ func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent 
 	if parent != nil {
 		r.agent.System = prompts.Join(r.agent.System, prompts.Subagent(run.Name, run.Reason))
 	}
-	// An agent can spawn sub-agents if its definition says so, unless it is at the deepest level; a sub-agent has siblings to message if the
-	// definition of its parent lets them.
+	// An agent can spawn sub-agents if its definition says so, unless it is at the deepest level.
 	agent.AddTeamTools(r.agent, team{r}, r.teamTools())
 	agent.AddSkills(r.agent, def.Skills)
 	r.agent.OutOfBudget = r.outOfBudget
@@ -191,12 +190,11 @@ func (r *researcher) endKids() {
 	r.kids.waitAll()
 }
 
-// end is the last thing the agent does: its inbox goes away, and its parent, who may wait for it, learns how it ended.
+// end is the last thing the agent does: its parent, who may wait for it, learns how it ended.
 func (r *researcher) end() {
 	if r.self == nil {
 		return
 	}
-	r.mgr.Messenger.Close(r.run.ID)
 	r.self.out = r.out
 	r.self.traj, r.self.agents = r.traj, r.agents
 	close(r.self.done)
@@ -310,21 +308,6 @@ func toolState(name string, input json.RawMessage) (state, detail string) {
 			return core.StateWaiting, "all sub-agents"
 		}
 		return core.StateWaiting, strings.Join(m.Names, ", ")
-	case agent.ToolSendMessage:
-		var m struct{ To, Text string }
-		json.Unmarshal(input, &m)
-		return core.StateMessaging, m.To + ": " + truncate(m.Text, 200)
-	case agent.ToolListSiblings:
-		return core.StateMessaging, "list the siblings"
-	case agent.ToolReadMessages:
-		var m struct {
-			WaitSeconds int `json:"wait_seconds"`
-		}
-		json.Unmarshal(input, &m)
-		if m.WaitSeconds > 0 {
-			return core.StateWaiting, fmt.Sprintf("a message, up to %d s", min(m.WaitSeconds, 60))
-		}
-		return core.StateMessaging, "read the messages"
 	case "remember":
 		var m struct {
 			Text string `json:"text"`
@@ -355,9 +338,9 @@ func truncate(s string, n int) string {
 // canSpawn reports whether the agent may start sub-agents: its definition says so and it is not at its deepest level.
 func (r *researcher) canSpawn() bool { return r.def.Spawn.Enabled && r.depth < r.def.MaxDepth() }
 
-// teamTools says which tools and which part of the prompt about sub-agents and siblings the agent gets.
+// teamTools says which tools and which part of the prompt about sub-agents the agent gets.
 func (r *researcher) teamTools() agent.TeamTools {
-	tt := agent.TeamTools{Messaging: r.parent != nil && r.parent.def.Spawn.Messaging}
+	var tt agent.TeamTools
 	if !r.canSpawn() {
 		return tt
 	}
@@ -366,7 +349,7 @@ func (r *researcher) teamTools() agent.TeamTools {
 		return tt
 	}
 	// With roles, the model starts the on_demand ones; the on_start ones are started for it (startRoles), and it only waits for them.
-	info := prompts.RolesInfo{MaxPerAgent: r.def.MaxPerAgent(), Messaging: r.def.Spawn.Messaging}
+	info := prompts.RolesInfo{MaxPerAgent: r.def.MaxPerAgent()}
 	for _, role := range r.def.OnDemandRoles() {
 		tt.Roles = append(tt.Roles, agent.Role{Name: role.Name, Does: role.Does, When: role.When})
 		info.OnDemand = append(info.OnDemand, prompts.Role{Name: role.Name, Does: role.Does, When: role.When, MaxInstances: role.MaxInstances})

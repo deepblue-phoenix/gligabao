@@ -44,7 +44,6 @@ max_tree_cost_usd = 5
 
 [spawn]
 enabled = true
-messaging = true
 max_per_agent = 3
 [[spawn.roles]]
 name = "regional"
@@ -167,7 +166,7 @@ func TestMissingDirectoryIsOnlyTheBuiltin(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := reg.Default()
-	if len(reg.List()) != 1 || d.Source != builtinSource || !d.Spawn.Enabled || !d.Spawn.Messaging || d.MaxSteps != 20 || d.MaxTokens != 8192 || d.Limits != (Limits{}) {
+	if len(reg.List()) != 1 || d.Source != builtinSource || !d.Spawn.Enabled || d.MaxSteps != 20 || d.MaxTokens != 8192 || d.Limits != (Limits{}) {
 		t.Errorf("builtin: %+v", d)
 	}
 	if _, err := Load(filepath.Join(dir(t, map[string]string{"f": "x"}), "f")); err == nil {

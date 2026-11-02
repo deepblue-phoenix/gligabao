@@ -6,7 +6,7 @@ import (
 )
 
 func TestPromptsAreLoaded(t *testing.T) {
-	for name, p := range map[string]string{"Research": Research, "Knowledge": Knowledge, "Spawn": Spawn, "Messaging": Messaging, "WebSearch": WebSearch} {
+	for name, p := range map[string]string{"Research": Research, "Knowledge": Knowledge, "Spawn": Spawn, "WebSearch": WebSearch} {
 		if strings.TrimSpace(p) == "" || p != strings.TrimSpace(p) {
 			t.Errorf("%s: empty or not trimmed: %q", name, p)
 		}
@@ -18,14 +18,6 @@ func TestSpawnPromptSaysWhenAndWhy(t *testing.T) {
 	for _, want := range []string{"really warranted", "reason", "wait_subagents"} {
 		if !strings.Contains(Spawn, want) {
 			t.Errorf("the spawn prompt lacks %q", want)
-		}
-	}
-}
-
-func TestMessagingPromptMentionsTheTools(t *testing.T) {
-	for _, want := range []string{"list_siblings", "send_message", "read_messages"} {
-		if !strings.Contains(Messaging, want) {
-			t.Errorf("the messaging prompt lacks %q", want)
 		}
 	}
 }
@@ -63,11 +55,11 @@ func TestSearchPrefs(t *testing.T) {
 
 func TestRoles(t *testing.T) {
 	got := Roles(RolesInfo{
-		MaxPerAgent: 4, Messaging: true,
-		OnDemand: []Role{{Name: "regional", Does: "covers a region.", When: "there are several regions", MaxInstances: 2}},
-		OnStart:  []Role{{Name: "news", Does: "reads the news."}},
+		MaxPerAgent: 4,
+		OnDemand:    []Role{{Name: "regional", Does: "covers a region.", When: "there are several regions", MaxInstances: 2}},
+		OnStart:     []Role{{Name: "news", Does: "reads the news."}},
 	})
-	for _, want := range []string{"at most 4", "`regional`: covers a region. Start it when: there are several regions (at most 2 at once)", "`role` argument", "message each other", "started for you", "`news`: reads the news.", "wait_subagents"} {
+	for _, want := range []string{"at most 4", "`regional`: covers a region. Start it when: there are several regions (at most 2 at once)", "`role` argument", "started for you", "`news`: reads the news.", "wait_subagents"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("lacks %q:\n%s", want, got)
 		}
