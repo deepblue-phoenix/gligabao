@@ -71,3 +71,13 @@ type Statter interface {
 	// Stats returns the statistics of the dataset. A dataset that does not exist has zero Count.
 	Stats(ctx context.Context, dataset string) (Stats, error)
 }
+
+// Exporter is implemented by the stores that keep their vectors locally (Chromem), to copy them elsewhere (see internal/db/dbexport).
+// A hosted store (Pinecone) persists them itself and does not implement it.
+type Exporter interface {
+	// Datasets returns the names of the datasets that have at least one vector, sorted. The backend's default dataset is "".
+	Datasets(ctx context.Context) ([]string, error)
+	// Export calls fn for every vector of the dataset, with its embedding and metadata, in ID order (a dataset that does not exist
+	// has none). It stops at the first error of fn and returns it.
+	Export(ctx context.Context, dataset string, fn func(Vector) error) error
+}

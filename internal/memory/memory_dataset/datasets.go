@@ -99,6 +99,29 @@ func VectorDataset(datasetID int64, index VectorIndex) string {
 	return "dataset-" + strconv.FormatInt(datasetID, 10) + "-" + string(index)
 }
 
+// ParseVectorDataset is the inverse of VectorDataset: the ID of the gligabao dataset and the index that a vector store dataset
+// name stands for. ok is false for a name that VectorDataset does not make.
+func ParseVectorDataset(name string) (datasetID int64, index VectorIndex, ok bool) {
+	rest, found := strings.CutPrefix(name, "dataset-")
+	if !found {
+		return 0, "", false
+	}
+	idText, indexText, found := strings.Cut(rest, "-")
+	if !found {
+		return 0, "", false
+	}
+	id, err := strconv.ParseInt(idText, 10, 64)
+	if err != nil || id < 0 || strconv.FormatInt(id, 10) != idText {
+		return 0, "", false
+	}
+	for _, idx := range VectorIndexes {
+		if string(idx) == indexText {
+			return id, idx, true
+		}
+	}
+	return 0, "", false
+}
+
 // EntityDataset is the vector store dataset of the entity index of a dataset (VectorDataset with IndexEntities).
 func EntityDataset(datasetID int64) string { return VectorDataset(datasetID, IndexEntities) }
 

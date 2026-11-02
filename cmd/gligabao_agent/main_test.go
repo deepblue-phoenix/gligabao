@@ -17,7 +17,10 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/db/dbexport"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	log "github.com/sirupsen/logrus"
 )
@@ -220,6 +223,52 @@ func TestResearchWithKnowledgeBaseAndSubagents(t *testing.T) {
 	runs, total, err := relational.ListRememberRuns(ctx, a.database.Relational, relational.RememberRunFilter{}, 10, 0)
 	if err != nil || total != 1 || len(runs) != 1 || runs[0].Status != relational.RememberSucceeded {
 		t.Errorf("remember runs: %+v, %v", runs, err)
+	}
+
+	// The full export has all of it: the knowledge base, the runs of both agents with their states, the vectors and the trajectory.
+	if err := a.database.Vector.Upsert(ctx, "dataset-1-entities", []vector.Vector{{ID: "entity:1", Values: []float32{1, 0}, Metadata: map[string]any{"kind": "entity"}}}); err != nil {
+		t.Fatal(err)
+	}
+	trajJSON, _ := atif.Marshal(traj)
+	archive := filepath.Join(dir, "out", "agent-export.zip")
+	m, err := a.fullExport(ctx, archive, dbexport.Extra{Name: trajectoryFile, Data: trajJSON})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := dbexport.Open(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	rows := map[string]int64{}
+	for _, tb := range m.Tables {
+		rows[tb.Name] = tb.Rows
+	}
+	if rows["gb_agent_research_runs"] != 2 || rows["gb_agent_research_states"] == 0 || rows["gb_artifacts"] == 0 || rows["gb_remember_runs"] != 1 || rows["gb_inferences"] == 0 {
+		t.Errorf("rows per table: %v", rows)
+	}
+	var reports []string
+	if err := r.Rows("gb_agent_research_runs", func(row dbexport.Row) error {
+		reports = append(reports, fmt.Sprint(row["report"]))
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(reports, "|") != "ROOT REPORT|KID REPORT" {
+		t.Errorf("reports of the runs: %q", reports)
+	}
+	var texts []string
+	r.Rows("gb_artifacts", func(row dbexport.Row) error { texts = append(texts, fmt.Sprint(row["text"])); return nil })
+	if len(texts) == 0 || !strings.Contains(texts[0], "Acme was founded in 1999.") {
+		t.Errorf("the remembered text is not in the export: %q", texts)
+	}
+	var vecs int
+	r.Vectors("dataset-1-entities", func(vector.Vector) error { vecs++; return nil })
+	if vecs != 1 || m.EmbeddingDimensions != 2 || m.Backend != "sqlite" || m.Source != "gligabao_agent" {
+		t.Errorf("vectors %d, manifest %+v", vecs, m)
+	}
+	if b, err := r.Extra(trajectoryFile); err != nil || !strings.Contains(string(b), "ROOT TOPIC") {
+		t.Errorf("trajectory: %q, %v", b, err)
 	}
 	a.close()
 

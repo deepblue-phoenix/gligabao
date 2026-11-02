@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,8 +48,9 @@ type Chromem struct {
 }
 
 var (
-	_ Store   = (*Chromem)(nil)
-	_ Statter = (*Chromem)(nil)
+	_ Store    = (*Chromem)(nil)
+	_ Statter  = (*Chromem)(nil)
+	_ Exporter = (*Chromem)(nil)
 )
 
 // NewChromem opens (creating if needed) the vector store persisted in the directory dir.
@@ -252,6 +254,52 @@ func (s *Chromem) Stats(_ context.Context, dataset string) (Stats, error) {
 		st.DiskBytes, st.LastWrite = collectionFiles(filepath.Join(s.dir, hash2hex(collectionName(dataset))))
 	}
 	return st, nil
+}
+
+// Datasets returns the names of the datasets that have vectors, sorted.
+func (s *Chromem) Datasets(context.Context) ([]string, error) {
+	var out []string
+	for name, c := range s.db.ListCollections() {
+		if c.Count() == 0 {
+			continue
+		}
+		if name == defaultCollection {
+			name = ""
+		}
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// Export calls fn for every vector of the dataset in ID order. Chromem has no way to list its documents, so they are read with a
+// search for all of them (a scan of the whole collection, which a search is anyway); the embeddings are the stored, normalized ones.
+func (s *Chromem) Export(ctx context.Context, dataset string, fn func(Vector) error) error {
+	c, err := s.collection(dataset, false)
+	if err != nil || c == nil {
+		return err
+	}
+	n := c.Count()
+	if n == 0 {
+		return nil
+	}
+	probe := make([]float32, s.dims)
+	probe[0] = 1
+	res, err := c.QueryEmbedding(ctx, probe, n, nil, nil)
+	if err != nil {
+		return fmt.Errorf("vector: export: %w", err)
+	}
+	sort.Slice(res, func(i, j int) bool { return res[i].ID < res[j].ID })
+	for _, r := range res {
+		meta, err := decodeMetadata(r.Metadata)
+		if err != nil {
+			return fmt.Errorf("vector: decode metadata of %q: %w", r.ID, err)
+		}
+		if err := fn(Vector{ID: r.ID, Values: r.Embedding, Metadata: meta}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // hash2hex is chromem-go's name of the directory of a collection (and of a document's file in it): 4 bytes of the

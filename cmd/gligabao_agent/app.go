@@ -14,6 +14,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
+	"github.com/deepblue-phoenix/gligabao/internal/db/dbexport"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
@@ -79,6 +80,27 @@ func (a *app) close() {
 	if err := a.database.Close(); err != nil {
 		log.WithError(err).Warn("closing the databases")
 	}
+}
+
+// fullExport writes everything the agent has in its local state to one archive file at path (see package dbexport for the format): every
+// table of the SQLite database (the knowledge base: artifacts, entities, facts, places, images, timeseries; the runs of the agents and their states;
+// the model calls and their costs; the remember runs), the embeddings of the Chromem vector store with their metadata, and the image files. A
+// PostgreSQL database or a Pinecone index is remote and persists its data itself: it is left out (the manifest says so). extra
+// are more files for the archive (the ATIF trajectory). Call it when the agents are over (it waits for them and for the remember calls
+// that were queued anyway); the export does not need the context to be alive, so that a research that was stopped can be exported too.
+func (a *app) fullExport(ctx context.Context, path string, extra ...dbexport.Extra) (*dbexport.Manifest, error) {
+	a.research.Wait()
+	if err := a.mem.Drain(ctx); err != nil {
+		log.WithError(err).Warn("export: some text that was queued for the knowledge base was not absorbed")
+	}
+	return dbexport.WriteFile(context.WithoutCancel(ctx), path, dbexport.Source{
+		Relational:          a.database.Relational,
+		Backend:             a.database.Backend,
+		Vector:              a.database.Vector,
+		VectorStore:         a.database.VectorStore,
+		EmbeddingDimensions: a.database.EmbeddingDimensions,
+		ImageDir:            a.database.ImageDir,
+	}, dbexport.Options{Source: "gligabao_agent", Version: version, Extra: extra})
 }
 
 // captureTrajectory makes the agents of the researches started from now on record ATIF trajectories (the ones of the sub-agents merged

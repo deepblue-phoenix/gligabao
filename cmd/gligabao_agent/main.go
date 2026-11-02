@@ -3,7 +3,9 @@
 // server, no HTTP API, no admin UI, no training and no evals. What it does have is what the research jobs of the server have: the
 // research manager (internal/agent_research) that runs the agent and its sub-agents and records every run and state in the database,
 // and the knowledge base (the memory): the databases (SQLite or PostgreSQL, and the vector store) are opened in process, and the
-// agents work with them through their remember and query tools. TestMinimalDependencies lists what must stay out of the binary. See
+// agents work with them through their remember and query tools. With --export it ends by writing everything it has (the database, the
+// embeddings, the images, the trajectory) to one archive file, for a program that runs it where its storage is thrown away afterwards
+// (the Modal runner): see internal/db/dbexport. TestMinimalDependencies lists what must stay out of the binary. See
 // docs/deep-research-agent.md.
 //
 //	ANTHROPIC_API_KEY=... OPENAI_API_KEY=... gligabao_agent "How do solid-state batteries compare with lithium-ion?"
@@ -26,6 +28,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
+	"github.com/deepblue-phoenix/gligabao/internal/db/dbexport"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
@@ -69,7 +72,24 @@ type output struct {
 	CostUSD      float64 `json:"cost_usd"`
 	// Trajectory is the ATIF trajectory of the research, with the steps of all the sub-agents merged in; only with --atif.
 	Trajectory *atif.Trajectory `json:"trajectory,omitempty"`
+	// Export says what was written to the archive of --export.
+	Export *exportSummary `json:"export,omitempty"`
 }
+
+// exportSummary is what the archive of --export holds.
+type exportSummary struct {
+	Path    string `json:"path"`
+	Bytes   int64  `json:"bytes"`
+	Tables  int    `json:"tables"`
+	Rows    int64  `json:"rows"`
+	Vectors int64  `json:"vectors"`
+	Images  int    `json:"images"`
+	// Skipped is what is not in the archive because it is remote and persisted by its own server: "tables" (PostgreSQL), "vectors" (Pinecone).
+	Skipped []string `json:"skipped,omitempty"`
+}
+
+// trajectoryFile is the name of the ATIF trajectory in the archive of --export ("extra/trajectory.json").
+const trajectoryFile = "trajectory.json"
 
 // run is main without the process: it returns the exit code. The report goes to stdout; everything else (progress, cost, errors) to
 // stderr.
@@ -83,6 +103,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		asJSON      = fs.Bool("json", false, "print the report and the totals as JSON instead of the plain report")
 		withATIF    = fs.Bool("atif", false, "add the ATIF trajectory of the research (the sub-agents' steps merged into it) to the --json output as \"trajectory\"")
 		atifDir     = fs.String("atif-dir", "", "store the ATIF trajectory of the research in this directory as <trajectory_id>.json")
+		exportPath  = fs.String("export", "", "after the research (also if it failed) write what the agent has to this one archive file: the whole SQLite database (knowledge base, runs, states, costs), the embeddings of the Chromem vector store, the images and the ATIF trajectory; a PostgreSQL database or a Pinecone index is not exported, it persists its data itself; the format is described in internal/db/dbexport")
 		verbose     = fs.Bool("verbose", false, "log every step and tool call to stderr")
 		events      = fs.Bool("events", false, "write the progress to stderr as JSON lines ({\"event\":\"state\"|\"usage\",...}), for the program that runs the agent (the Modal runner); not with --verbose")
 		showVersion = fs.Bool("version", false, "print the version and exit")
@@ -101,6 +122,10 @@ for the parts of a broad topic. Each run costs money (model calls and web search
 It works with the knowledge base (the memory of gligabao) in process, through its remember and query tools, and records every run
 and its states in the database, as the research jobs of the server do: the database is opened here (SQLite file, or PostgreSQL with
 --config), and nothing needs to be running. That needs %s and %s (embeddings) in the environment or the config file.
+
+--export FILE keeps what the agent learned when its storage is not kept: it writes the local state (every table of the SQLite database,
+the embeddings of the Chromem vector store, the images, the trajectory) to one ZIP archive, JSON lines inside, that another gligabao
+can load. A PostgreSQL database or a Pinecone index persists its data itself, so those are left out.
 
 Flags:
 `, config.EnvAnthropicKey, config.EnvOpenAIKey)
@@ -192,7 +217,7 @@ Flags:
 		onState = textProgress(stderr)
 	}
 	var trajectory func() *atif.Trajectory
-	if *withATIF || *atifDir != "" {
+	if *withATIF || *atifDir != "" || *exportPath != "" {
 		trajectory = a.captureTrajectory()
 	}
 	out, err := a.runResearch(ctx, userID, agent_research.Options{Topic: topic, MaxSteps: *maxSteps, Model: *model, Dataset: datasetName}, onState, onUsage)
@@ -207,7 +232,9 @@ Flags:
 	if trajectory != nil {
 		// Also for a research that failed: that is when it is most wanted.
 		if traj = trajectory(); traj == nil {
-			fmt.Fprintln(stderr, "gligabao_agent: no ATIF trajectory was recorded")
+			if *withATIF || *atifDir != "" {
+				fmt.Fprintln(stderr, "gligabao_agent: no ATIF trajectory was recorded")
+			}
 		} else if *atifDir != "" {
 			if path, err := atif.WriteFile(*atifDir, traj); err != nil {
 				fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
@@ -216,8 +243,17 @@ Flags:
 			}
 		}
 	}
+	var export *exportSummary
+	if *exportPath != "" {
+		// Also for a research that failed or was stopped: what it learned until then is worth keeping.
+		var err error
+		if export, err = fullExport(ctx, a, *exportPath, traj, stderr); err != nil {
+			fmt.Fprintf(stderr, "gligabao_agent: export: %v\n", err)
+		}
+	}
 	steps, toolCalls, in, outTokens, cost := out.totals()
 	fmt.Fprintf(stderr, "run %d, sub-agents: %d, steps: %d, tool calls: %d, tokens: %d in / %d out, cost: $%.4f\n", out.Root.ID, len(out.Kids), steps, toolCalls, in, outTokens, cost)
+	exportFailed := *exportPath != "" && export == nil // the archive is what the program that runs this wants: it is a failure without it
 	if out.Root.Status != core.StatusCompleted {
 		reason := out.Root.Error
 		if ctx.Err() != nil {
@@ -230,14 +266,49 @@ Flags:
 	if *asJSON {
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(output{out.Root.Report, out.Root.ID, len(out.Kids), steps, toolCalls, in, outTokens, cost, trajectoryIf(*withATIF, traj)}); err != nil {
+		if err := enc.Encode(output{out.Root.Report, out.Root.ID, len(out.Kids), steps, toolCalls, in, outTokens, cost, trajectoryIf(*withATIF, traj), export}); err != nil {
 			fmt.Fprintf(stderr, "gligabao_agent: %v\n", err)
 			return exitError
 		}
-		return exitOK
+	} else {
+		fmt.Fprintln(stdout, out.Root.Report)
 	}
-	fmt.Fprintln(stdout, out.Root.Report)
+	if exportFailed {
+		return exitError
+	}
 	return exitOK
+}
+
+// fullExport writes the archive of --export (the agent's whole state, with the trajectory if there is one) and says so on stderr.
+func fullExport(ctx context.Context, a *app, path string, traj *atif.Trajectory, stderr io.Writer) (*exportSummary, error) {
+	var extra []dbexport.Extra
+	if traj != nil {
+		b, err := atif.Marshal(traj)
+		if err != nil {
+			return nil, fmt.Errorf("the trajectory: %w", err)
+		}
+		extra = append(extra, dbexport.Extra{Name: trajectoryFile, Data: b})
+	}
+	m, err := a.fullExport(ctx, path, extra...)
+	if err != nil {
+		return nil, err
+	}
+	sum := &exportSummary{Path: path, Tables: len(m.Tables), Images: len(m.Images)}
+	for _, t := range m.Tables {
+		sum.Rows += t.Rows
+	}
+	for _, v := range m.Vectors {
+		sum.Vectors += v.Count
+	}
+	for _, sk := range m.Skipped {
+		sum.Skipped = append(sum.Skipped, sk.What)
+		fmt.Fprintf(stderr, "export: no %s: %s\n", sk.What, sk.Reason)
+	}
+	if info, err := os.Stat(path); err == nil {
+		sum.Bytes = info.Size()
+	}
+	fmt.Fprintf(stderr, "export: %s (%d bytes: %d rows in %d tables, %d vectors, %d images)\n", path, sum.Bytes, sum.Rows, sum.Tables, sum.Vectors, sum.Images)
+	return sum, nil
 }
 
 // trajectoryIf is t if on, else nil (left out of the JSON).
