@@ -172,6 +172,8 @@ paused   = false                                 # true: keep the section in the
 - `GET /v1/gb/research/agents` shows it: `schedule` with `cron`, `timezone`, `topic`, `user`, `paused` and `next_run`.
 - The runs are ordinary researches (`agent_name` says which agent, `GET /v1/gb/research?...` lists them for the `user`). There is no separate record of the schedule: what ran is in `gb_agent_research_runs`.
 
+How the scheduler works inside the server (the loop, the skipping, what is not remembered): [agent-scheduler.md](agent-scheduler.md).
+
 Code: `internal/agent_defs/cron.go` (the parser and `Next`), `agent_defs.Schedule`, `internal/agent_research/scheduler.go` (`Manager.RunSchedules`, started by the server after it is set up).
 
 ## Model

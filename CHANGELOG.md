@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.172.1] - 2026-11-03
+
+### Changed
+- **Docs: the agent scheduler.** New page [docs/agent-scheduler.md](docs/agent-scheduler.md) explains how the server starts agents on their CRON `[schedule]` (the loop, the skip while the previous run works, what is not remembered across restarts). A roadmap note, [docs/roadmap/agent-scheduler-lock.md](docs/roadmap/agent-scheduler-lock.md), records that several servers on one database each start their own runs and that a Postgres lock is needed.
+
 ## [0.172.0] - 2026-11-03
 
 ### Added
