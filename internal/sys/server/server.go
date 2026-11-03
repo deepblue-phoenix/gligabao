@@ -287,6 +287,7 @@ func newMux(ctx context.Context, standalone bool, auth httputil.Authenticator, g
 		})
 		mux.HandleFunc("GET /version", versionHandler)
 	}
+	mux.HandleFunc("GET /v1/gb/status", statusHandler(d, sc != nil))
 	// The remember manager runs every remember pipeline run, one at a time, until ctx is done.
 	mgr := memory_remember.NewManager(ctx, d.Relational, llm)
 	api.Register(mux, mgr, d, llm, emb, jv, ws, providers, api.WithOntologyDirs(ontologyDirs), api.WithAuth(auth), api.WithGeoResolver(geoResolver), api.WithGeoRadius(geoRadiusKm), api.WithGraphEmbedder(graphEmbedder), api.WithClassifyingTrainingHook(trainingHook), api.WithResearch(research))
@@ -319,6 +320,25 @@ func newResearch(ctx context.Context, d *db.DB, llm memory_core.LLM) *agent_rese
 	m.UseRemote(sidecarRemote{}) // researches started with runner "modal" run in Modal, through the sidecar
 	m.UseImporter(dbImporter{d}) // and what their agents learned there is loaded into the databases of the server when they end
 	return m
+}
+
+// statusHandler serves GET /v1/gb/status: the version of gligabao, whether the database answers ("db") and the sidecar's
+// state (a live check, like the admin UI's, and whether it was active on startup). It answers 503 when the database does not
+// answer; a sidecar that is down is only reported, it does not change the status.
+func statusHandler(d *db.DB, sidecarConfigured bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		out := map[string]any{"gligabao": buildinfo.Library(), "commit": buildinfo.Revision(), "status": "ok", "db": "ok"}
+		code := http.StatusOK
+		if err := d.Ping(r.Context()); err != nil {
+			out["status"], out["db"] = "unavailable", "unavailable"
+			code = http.StatusServiceUnavailable
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		defer cancel()
+		out["sidecar_up"] = sidecarPing(ctx) == nil
+		out["sidecar_active"] = sidecarConfigured
+		httputil.WriteJSON(w, code, out)
+	}
 }
 
 // versionHandler reports the version (and git commit) of gligabao and, if registered, of the embedding program.

@@ -25,6 +25,7 @@ gligabao is a small, self-hosted MCP/HTTP/CLI server that gives an AI applicatio
 | `POST /v1/gb/research`, `GET /v1/gb/research`, `GET /v1/gb/research/{id}`, `GET /v1/gb/research/agents` | Start a deep-research agent on a topic (it searches the web, reads pages and works with your knowledge base with `remember`/`query` in the background, and ends with a report), list the agents (the active ones only, if asked), read one with the states it went through, and list the agent definitions (TOML or JSON files in `agent_defs/` next to the binary: prompt, skills, search and knowledge settings, cost caps, sub-agent roles; pick one with `agent`); also `research_start`, `research_list` and `research_get` over MCP and `gligabao research` | [docs/research.md](docs/research.md), [docs/agent-defs.md](docs/agent-defs.md) |
 | `/v1/gb/mcp` | [MCP](https://modelcontextprotocol.io) server (streamable HTTP) with `remember` and `query` as tools; off by default (`mcp = true` / `serve --mcp`), no authentication | [docs/mcp.md](docs/mcp.md) |
 | `GET /health` | Health check | |
+| `GET /v1/gb/status` | Status: version, commit hash, database and sidecar state (`503` if the database does not answer) | |
 | `GET /version` | Version (and git commit) of the running binary | [Versioning](#versioning) |
 
 ## CLI

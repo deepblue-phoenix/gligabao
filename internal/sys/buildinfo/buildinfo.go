@@ -26,7 +26,7 @@ const RepoURL = "https://github.com/deepblue-phoenix/gligabao"
 
 // CommitURL returns the GitHub URL of the commit the running binary was built from, or "" if unknown.
 func CommitURL() string {
-	if rev := vcsRevision(); rev != "" {
+	if rev := Revision(); rev != "" {
 		return RepoURL + "/commit/" + rev
 	}
 	return ""
@@ -85,8 +85,8 @@ func Commit() string {
 	return rev
 }
 
-// vcsRevision returns the full VCS revision stamped by `go build`, or "".
-func vcsRevision() string { rev, _ := vcs(); return rev }
+// Revision returns the full VCS revision stamped by `go build` (40 hex characters), or "" if not available.
+func Revision() string { rev, _ := vcs(); return rev }
 
 func vcs() (rev string, dirty bool) {
 	info, ok := debug.ReadBuildInfo()

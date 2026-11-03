@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.174.0] - 2026-11-03
+
+### Added
+- **`GET /v1/gb/status`: a status endpoint.** It answers the version and commit of gligabao (as `GET /version` does), `status` (`ok`, or `unavailable` with HTTP `503` when the database does not answer), `db` (`ok` or `unavailable`), `sidecar_up` (a live check of the sidecar, as the admin UI's badge) and `sidecar_active` (whether a sidecar is configured for this server). `commit` is the full git hash the binary was built from (`+dirty` is not appended; `gligabao.commit` has the short one). A sidecar that is down is reported but does not change `status`. It is part of the API, so it is also served when gligabao is mounted into a host (see `Mount`).
+
 ## [0.173.0] - 2026-11-03
 
 ### Added
