@@ -45,7 +45,7 @@ Every research agent is **isolated** from the others, so that one cannot slow do
 | Steps (`MaxSteps`) | 20 by default; the job lets the caller choose 1 to 40 (`max_steps`) |
 | Answer size (`MaxTokens`) | 8192 tokens per model call (so a report is at most that long) |
 | Model | the server's default model, or the `model` of the request. It runs the loop and writes the report |
-| Tools | `web_search` and `fetch_url`; with a knowledge base (the case when it runs as a job on the server), also `query` and `remember`; as a job, also `spawn_subagent` and `wait_subagents` (unless it is at the deepest level), and `list_siblings`, `send_message` and `read_messages` if it is itself a sub-agent (see [subagents.md](subagents.md)) |
+| Tools | `web_search` and `fetch_url`; with a knowledge base (the case when it runs as a job on the server), also `query` and `remember`; as a job, also `spawn_subagent` and `wait_subagents` (unless it is at the deepest level) (see [subagents.md](subagents.md)) |
 
 The system prompts live in Markdown files in `internal/agent/prompts/` (embedded in the binary; the parts and who gets them are in [subagents.md](subagents.md#prompts)). The base prompt tells it to: research the topic by searching the web several times with different queries; read the most relevant pages with `fetch_url`; check claims against more than one source; stop when it can answer well; and then write a report: **a short summary first, then the details, then the list of the source URLs used**, saying what it could not find out and never guessing. The user turn is the topic as given.
 
@@ -92,7 +92,7 @@ Without a knowledge base (an agent built with `agent.Research`, or a server with
 
 ## Sub-agents
 
-As a job, the agent can hand sub-tasks to other agents with `spawn_subagent` and `wait_subagents`, and a sub-agent can list its siblings and their reasons with `list_siblings` and message them with `send_message` and `read_messages`. Every spawn carries a reason, and the prompt of the agent that can spawn says it should do so only when really warranted. The tools reach the job through `agent.Team` (five methods, `Spawn`, `Wait`, `Siblings`, `Send`, `Receive`) and are added to the agent with `agent.AddTeamTools`. Everything about them (the tools, the limits, who can message whom, the message system, what a sub-agent costs) is in [subagents.md](subagents.md).
+As a job, the agent can hand sub-tasks to other agents with `spawn_subagent` and `wait_subagents`. Every spawn carries a reason, and the prompt of the agent that can spawn says it should do so only when really warranted. The tools reach the job through `agent.Team` (two methods, `Spawn` and `Wait`) and are added to the agent with `agent.AddTeamTools`. Everything about them (the tools, the limits, what a sub-agent costs) is in [subagents.md](subagents.md).
 
 ## What a run costs
 
@@ -117,7 +117,7 @@ Besides the job on the server, the agent has a deployment of its own: `build/gli
 ANTHROPIC_API_KEY=... OPENAI_API_KEY=... gligabao_agent [flags] TOPIC | -
 ```
 
-**How it runs.** It opens the databases, builds the remember manager, the knowledge base (`agent_memory.Memory`, the same code the server gives its research agents) and the research manager with `UseMemory`, starts one research (`Manager.Start`, with the options a `POST /v1/gb/research` has: topic, `max_steps`, `model`, `dataset`), waits for it and its sub-agents to end, and prints the report of the run. So the agent has all the tools of a job (`web_search`, `fetch_url`, `query`, `remember`, and `spawn_subagent`, `wait_subagents`, `list_siblings`, `send_message` and `read_messages`), the same prompts, limits (up to 10 sub-agents, 2 levels deep) and states as in [research.md](research.md#runs-and-states). The run, its states, its sub-agents, the usage and the report are in `gb_agent_research_runs` and `gb_agent_research_states` as for a job (`gb_remember_runs` and the rest of the knowledge base tables too), and what the agents remember carries the session `research-<run id>`.
+**How it runs.** It opens the databases, builds the remember manager, the knowledge base (`agent_memory.Memory`, the same code the server gives its research agents) and the research manager with `UseMemory`, starts one research (`Manager.Start`, with the options a `POST /v1/gb/research` has: topic, `max_steps`, `model`, `dataset`), waits for it and its sub-agents to end, and prints the report of the run. So the agent has all the tools of a job (`web_search`, `fetch_url`, `query`, `remember`, and `spawn_subagent` and `wait_subagents`), the same prompts, limits (up to 10 sub-agents, 2 levels deep) and states as in [research.md](research.md#runs-and-states). The run, its states, its sub-agents, the usage and the report are in `gb_agent_research_runs` and `gb_agent_research_states` as for a job (`gb_remember_runs` and the rest of the knowledge base tables too), and what the agents remember carries the session `research-<run id>`.
 
 **The databases.** `internal/db` is opened with the knowledge base tables (relational and graph, and the vector store) and the research run tables only; the tables of training, evals and training audits are not created (`internal/db/dbfull` adds them for the server).
 

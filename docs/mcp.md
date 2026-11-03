@@ -56,7 +56,7 @@ Three tools run the handlers of the [research agent](research.md) endpoints: `re
 
 | Tool | Arguments |
 | ---- | --------- |
-| `research_start` | `user_id` (required), `topic` (required), `max_steps` (optional, default 20, at most 40), `model` (optional), `dataset` (optional: the dataset of the knowledge base the agent queries and remembers into, default `main`), `runner` (optional: `local`, the default, runs the agent in the server; `modal` runs the `gligabao_agent` binary in Modal through the sidecar, see [research.md](research.md#where-the-agent-runs-the-runner)) |
+| `research_start` | `user_id` (required), `topic` (required), `agent` (optional: the [agent definition](agent-defs.md) to run, default `default`), `agent_version` (optional: a version constraint such as `1.2.0`, `>=1.0` or `^1.2`), `max_steps` (optional, default: the agent's, 20 for `default`; at most 40), `model` (optional: default the agent's, else the server's), `max_cost_usd` (optional: a cap in USD on the whole research, sub-agents included, see [cost caps](agent-defs.md#limits-cost-caps)), `dataset` (optional: the dataset of the knowledge base the agent queries and remembers into, default `main`), `runner` (optional: `local`, the default, runs the agent in the server; `modal` runs the `gligabao_agent` binary in Modal through the sidecar, see [research.md](research.md#where-the-agent-runs-the-runner)) |
 | `research_list` | `user_id` (required), `active` (optional: only the agents working now), `status` (optional: `running`, `completed`, `failed` or `stopped`), `limit` (optional) |
 | `research_get` | `user_id` (required), `id` (required: the id `research_start` returned) |
 

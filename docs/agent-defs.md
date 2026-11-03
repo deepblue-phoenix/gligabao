@@ -51,7 +51,7 @@ Unknown keys are errors. Every field but `name`, `version`, `description` and th
 
 ### The system prompt
 
-`system_prompt` (or the text of `system_prompt_file`, a path relative to the file, inside the directory) is the **base** of the agent's prompt: it replaces the built-in research prompt. The runtime adds, in this order, what the tools need to be told: the search preferences, the part for the knowledge base (if it has the tools), the part for sub-agents (its roles, or the free-form policy), for a sub-agent its own preamble (its name and the reason its parent gave) and the siblings part, and last the skills. So a prompt file is only about the agent's job and style.
+`system_prompt` (or the text of `system_prompt_file`, a path relative to the file, inside the directory) is the **base** of the agent's prompt: it replaces the built-in research prompt. The runtime adds, in this order, what the tools need to be told: the search preferences, the part for the knowledge base (if it has the tools), the part for sub-agents (its roles, or the free-form policy), for a sub-agent its own preamble (its name and the reason its parent gave), and last the skills. So a prompt file is only about the agent's job and style.
 
 ### Skills
 
@@ -120,7 +120,6 @@ A cap is a **soft stop**, not a failure:
 ```toml
 [spawn]
 enabled = true            # gives the agent the sub-agent tools
-messaging = true          # the sub-agents it spawns can message each other
 max_depth = 2             # these three can only lower the ceilings (2, 5 and 10); 0 is the ceiling
 max_per_agent = 4
 max_per_tree = 8          # of the root's definition
