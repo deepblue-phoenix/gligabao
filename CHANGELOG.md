@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.174.1] - 2026-11-03
+
+### Changed
+- **Docs in code: the `gb-user-id` header.** The comments where the header is set and read now say that it is inbound only: it is never written to the response (the end-user does not get it back) and not copied to downstream calls. No behaviour change.
+
 ## [0.174.0] - 2026-11-03
 
 ### Added

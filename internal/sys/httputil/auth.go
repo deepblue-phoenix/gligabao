@@ -10,6 +10,10 @@ import (
 
 // UserIDHeader is the request header that carries the ID of the user a request acts as. It is the only place the API takes the
 // user from (see UserID): a "user_id" in the query string or in the JSON body of a request is never read.
+//
+// The header is inbound only. It lives on the incoming *http.Request, is read by the handlers, and is never written to the
+// response: the end-user does not get it back. It is also not copied to downstream calls (for example SidecarBackendProxy
+// sends none of the request headers to the sidecar). A caller that needs it in its own responses must add it itself.
 const UserIDHeader = "gb-user-id"
 
 // UserID returns the ID of the user r acts as: its UserIDHeader header, trimmed ("" if there is none). Validate it with
@@ -51,6 +55,8 @@ func Authenticate(auth Authenticator, next http.Handler) http.Handler {
 			Error(w, http.StatusUnauthorized, "invalid API key")
 			return
 		}
+		// Overwrite (not add) the header, so a caller-supplied gb-user-id can never win over the key's user. This mutates the
+		// incoming request only; the response is untouched, so the end-user never sees the header. Handlers read it via UserID.
 		r.Header.Set(UserIDHeader, userID)
 		next.ServeHTTP(w, r)
 	})
