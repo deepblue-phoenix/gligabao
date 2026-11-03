@@ -20,6 +20,7 @@ gligabao is a small, self-hosted MCP/HTTP/CLI server that gives an AI applicatio
 | `POST /v1/gb/query` | Answer a question from the graph, with evidence | [docs/query.md](docs/query.md), [docs/pipeline.md](docs/pipeline.md) |
 | `POST /v1/gb/datasets`, `GET /v1/gb/datasets`, `DELETE /v1/gb/datasets/{name}` | Create, list and (soft) delete datasets | [docs/datasets.md](docs/datasets.md) |
 | `GET /v1/gb/datasets/{name}/graph` | Export a dataset's whole graph as JSON | [docs/graph.md](docs/graph.md) |
+| `GET /v1/gb/datasets/{name}/git` | Export a dataset as a git repository (one commit per `remember` call) | [docs/git-export.md](docs/git-export.md) |
 | `POST /v1/gb/ontologies`, `PUT /v1/gb/ontologies/{name}` | Load an OWL ontology (RDF/XML) under a name, or update the one stored under it (merge or replace) | [docs/ontologies.md](docs/ontologies.md) |
 | `POST /v1/gb/research`, `GET /v1/gb/research`, `GET /v1/gb/research/{id}`, `GET /v1/gb/research/agents` | Start a deep-research agent on a topic (it searches the web, reads pages and works with your knowledge base with `remember`/`query` in the background, and ends with a report), list the agents (the active ones only, if asked), read one with the states it went through, and list the agent definitions (TOML or JSON files in `agent_defs/` next to the binary: prompt, skills, search and knowledge settings, cost caps, sub-agent roles; pick one with `agent`); also `research_start`, `research_list` and `research_get` over MCP and `gligabao research` | [docs/research.md](docs/research.md), [docs/agent-defs.md](docs/agent-defs.md) |
 | `/v1/gb/mcp` | [MCP](https://modelcontextprotocol.io) server (streamable HTTP) with `remember` and `query` as tools; off by default (`mcp = true` / `serve --mcp`), no authentication | [docs/mcp.md](docs/mcp.md) |
@@ -28,7 +29,7 @@ gligabao is a small, self-hosted MCP/HTTP/CLI server that gives an AI applicatio
 
 ## CLI
 
-Besides `serve` and `version`, the `gligabao` binary has commands that use the API, so an agent can use gligabao without HTTP calls: `remember`, `query` (with `--evidence-only` to only retrieve), `dataset ls|create|rm|graph`, `research start|ls|get` (deep-research agents), `api` (any other endpoint), `status` and `stop`. They talk to a **local daemon** (`serve` on `127.0.0.1`, without authentication), started in the background by the first command if none is running, with `local_user` as the default user; `--server URL` targets another server. Without a `gligabao.toml` in the current directory the daemon keeps its config, database and log in `~/.gligabao`. Output is JSON on stdout, errors are JSON on stderr, and the exit codes say what failed. Details: [docs/cli.md](docs/cli.md).
+Besides `serve` and `version`, the `gligabao` binary has commands that use the API, so an agent can use gligabao without HTTP calls: `remember`, `query` (with `--evidence-only` to only retrieve), `dataset ls|create|rm|graph|git`, `research start|ls|get` (deep-research agents), `api` (any other endpoint), `status` and `stop`. They talk to a **local daemon** (`serve` on `127.0.0.1`, without authentication), started in the background by the first command if none is running, with `local_user` as the default user; `--server URL` targets another server. Without a `gligabao.toml` in the current directory the daemon keeps its config, database and log in `~/.gligabao`. Output is JSON on stdout, errors are JSON on stderr, and the exit codes say what failed. Details: [docs/cli.md](docs/cli.md).
 
 ## Datasets
 
@@ -100,6 +101,8 @@ If there is nothing to answer from (no entity, fact or passage), a fixed "I don'
 ## Graph export
 
 `GET /v1/gb/datasets/{name}/graph` (header `gb-user-id: u1`) returns the whole graph of a dataset as JSON: `dataset`, `entities` (`id`, `name`, `type`, `description`) and `edges` (`id`, `source_id`, `target_id`, `source`, `target`, `relation`, `description`, `artifact_id` and the bi-temporal fields). Edges reference entities by `source_id`/`target_id`. Superseded edges are included, with `invalid_at`/`expired_at` set, so the output is the full history, not just current facts. It makes no LLM call. An empty dataset returns empty lists; an unknown or deleted dataset returns 404. Details: [docs/graph.md](docs/graph.md).
+
+`GET /v1/gb/datasets/{name}/git` (header `gb-user-id: u1`) returns the dataset as a bare git repository in a `tar.gz`: one commit per `remember` call, dated when the call was made, with the texts, entities and facts as files; a later call that contradicts a fact edits its file, so `git log -p edges/` is the history of the facts; the graph classes are in the artifacts' front matter and the remember and query run logs are JSON files under `runs/` (each query is a commit). The same dataset gives the same commit IDs. `gligabao dataset git NAME [DIR]` unpacks it. Details: [docs/git-export.md](docs/git-export.md).
 
 ## Database
 

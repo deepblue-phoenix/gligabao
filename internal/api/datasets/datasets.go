@@ -11,6 +11,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_dataset"
+	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_gitexport"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	log "github.com/sirupsen/logrus"
 )
@@ -115,6 +116,37 @@ func Graph(d *sql.DB) http.HandlerFunc {
 			httputil.Error(w, http.StatusInternalServerError, "failed to export graph")
 		default:
 			httputil.WriteJSON(w, http.StatusOK, g)
+		}
+	}
+}
+
+// Git serves GET /v1/gb/datasets/{name}/git: the dataset as a bare git repository (one commit per remember call, see
+// docs/git-export.md), as a gzip-compressed tar archive with the repository in the directory <name>.git.
+func Git(d *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		in, err := memory.LoadGitExport(r.Context(), d, httputil.UserID(r), r.PathValue("name"))
+		switch {
+		case errors.Is(err, memory_core.ErrInvalidUser):
+			httputil.Error(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory_core.ErrDatasetNotFound):
+			httputil.Error(w, http.StatusNotFound, "dataset not found")
+		case err != nil:
+			log.WithError(err).WithFields(log.Fields{
+				"user_id": httputil.UserID(r),
+				"dataset": r.PathValue("name"),
+			}).Error("export git failed")
+			httputil.Error(w, http.StatusInternalServerError, "failed to export git repository")
+		default:
+			w.Header().Set("Content-Type", "application/gzip")
+			w.Header().Set("Content-Disposition", `attachment; filename="`+in.Name+`.git.tar.gz"`)
+			sink := memory_gitexport.NewTarGzSink(w, in.Name+".git")
+			_, err := memory_gitexport.Write(*in, sink)
+			if err == nil {
+				err = sink.Close()
+			}
+			if err != nil { // the status is already sent: the archive is cut short, which the client sees as a corrupt download
+				log.WithError(err).WithFields(log.Fields{"user_id": httputil.UserID(r), "dataset": in.Name}).Error("export git failed while writing")
+			}
 		}
 	}
 }

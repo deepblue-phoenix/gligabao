@@ -1,12 +1,17 @@
 package cli
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
 	"os"
+	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -344,7 +349,82 @@ func (c *CLI) datasetCmd() *cobra.Command {
 			return c.send(cmd, "GET", "/v1/gb/datasets/"+url.PathEscape(args[0])+"/graph", nil, nil)
 		},
 	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "git NAME [DIR]",
+		Short: "Export a dataset as a git repository (GET /v1/gb/datasets/{name}/git)",
+		Long: `Write the dataset as a bare git repository into DIR (default NAME.git): one commit per remember call, dated when it was made, with the
+texts, entities and facts as files (docs/git-export.md). Read it with git log, or git clone DIR OUT for a working tree.` + clientHelp,
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dest := args[0] + ".git"
+			if len(args) == 2 {
+				dest = args[1]
+			}
+			cl, err := c.client(cmd)
+			if err != nil {
+				return err
+			}
+			archive, err := cl.call(cmd.Context(), "GET", "/v1/gb/datasets/"+url.PathEscape(args[0])+"/git", nil, nil)
+			if err != nil {
+				return err
+			}
+			files, err := extractRepo(archive, dest)
+			if err != nil {
+				return err
+			}
+			out, _ := json.Marshal(map[string]any{"path": dest, "files": files})
+			emit(cmd, out)
+			return nil
+		},
+	})
 	return cmd
+}
+
+// extractRepo unpacks the tar.gz of a repository into dest, dropping the top directory of the archive (<name>.git). dest must not
+// exist or must be empty. It returns the number of files written.
+func extractRepo(archive []byte, dest string) (int, error) {
+	if entries, err := os.ReadDir(dest); err == nil && len(entries) > 0 {
+		return 0, usageErr("%s exists and is not empty", dest)
+	}
+	gz, err := gzip.NewReader(bytes.NewReader(archive))
+	if err != nil {
+		return 0, fmt.Errorf("the server's archive is not valid: %w", err)
+	}
+	tr := tar.NewReader(gz)
+	n := 0
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return n, nil
+		}
+		if err != nil {
+			return n, fmt.Errorf("the server's archive is not valid: %w", err)
+		}
+		if hdr.Typeflag != tar.TypeReg {
+			continue
+		}
+		_, rel, _ := strings.Cut(hdr.Name, "/") // drop <name>.git/
+		rel = path.Clean(rel)
+		if rel == "." || path.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, "../") {
+			return n, fmt.Errorf("the server's archive has an unsafe path %q", hdr.Name)
+		}
+		full := filepath.Join(dest, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			return n, err
+		}
+		f, err := os.OpenFile(full, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+		if err != nil {
+			return n, err
+		}
+		_, copyErr := io.Copy(f, tr)
+		if closeErr := f.Close(); copyErr == nil {
+			copyErr = closeErr
+		}
+		if copyErr != nil {
+			return n, copyErr
+		}
+		n++
+	}
 }
 
 //---------------------------------------------------------------------------------------------

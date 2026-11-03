@@ -27,7 +27,7 @@ gligabao remember [TEXT | -] [-f FILE] [-d DATASET] [--kind episode] [--at TIME]
                   [--web-search] [--series FILE.json] [--image FILE] [--model STAGE=NAME] [--reasoning STAGE=LEVEL] [--json BODY]
 gligabao query QUESTION [-d DATASET] [--session S] [--evidence-only] [--geo-nearby] [--geo-radius KM]
                   [--model STAGE=NAME] [--reasoning STAGE=LEVEL] [--raw] [--json BODY]
-gligabao dataset ls | create NAME [--description D] [--tag T] | rm NAME | graph NAME
+gligabao dataset ls | create NAME [--description D] [--tag T] | rm NAME | graph NAME | git NAME [DIR]
 gligabao research start TOPIC [--max-steps N] [--model M] [-d DATASET] [--runner local|modal] [--wait [--raw]] [--json BODY]
 gligabao research ls [--active] [--status running|completed|failed|stopped] [--limit N]
 gligabao research get ID [--raw]

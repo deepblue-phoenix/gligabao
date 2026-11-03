@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.172.0] - 2026-11-03
+
+### Added
+- **Export a dataset as a git repository.** `GET /v1/gb/datasets/{name}/git` returns a `tar.gz` with a bare git repository whose history is the dataset's: one commit per `remember` call, dated with the call's creation time, that adds the text (chunks, summaries, web searches and observations under it), the new entities and the new facts as Markdown files, and edits the files of facts the call confirmed, ended or invalidated (from the edge events), so `git log -p edges/` is the history of the facts. The commit message says what the call did (`+2 entities, +3 edges, 1 facts changed`) and carries the artifact ID, kind, session and `valid_at`. The output is deterministic (the same dataset gives the same commit IDs), needs no `git` binary on the server, and reads the databases only. Entity descriptions are only approximate (no history is stored); timeseries, geo, images and embeddings are not exported. `gligabao dataset git NAME [DIR]` downloads and unpacks it. Details: [docs/git-export.md](docs/git-export.md). New package `internal/memory/memory_gitexport`, `memory.LoadGitExport`, `datasets.Git`.
+- **The git export has the graph classes and the run logs.** In `GET /v1/gb/datasets/{name}/git` (and `gligabao dataset git`), the classes of the `classify_graph` stage are the `classes` of the front matter of their artifact. The log of each remember call (parameters, stages with their status and the models, tokens and cost of their LLM calls, and the stage outputs) is `runs/remember/<run id>.json` in the call's commit, which gets a `Remember-Run-Id` trailer. Each query is a commit of its own, `query #<id>: <question>`, that adds `runs/query/<run id>.json` and changes nothing else; a remember call that stored no artifact is a commit of its own too. Commits are in time order. The runs of an earlier deleted dataset of the same name, and of other users, are not included. Details: [docs/git-export.md](docs/git-export.md#run-logs). New `memory_gitexport.RememberRunLog` and `QueryRunLog`, and `Input.Classes`, `Input.RememberRuns`, `Input.QueryRuns`.
+
 ## [0.170.0] - 2026-11-03
 
 ### Added
