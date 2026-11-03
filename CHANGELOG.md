@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.173.0] - 2026-11-03
+
+### Added
+- **`gligabao_lambda`: one `remember`, `query` or `research` per process, no server.** A new small static binary (`cmd/gligabao_lambda`, built by `./run_build.sh` as `build/gligabao_lambda`) for places that start for one job and are thrown away, such as an AWS Lambda. `gligabao_lambda remember TEXT|-`, `query QUESTION|-` and `research TOPIC|-` open the databases in process (SQLite and the chromem vector store, or PostgreSQL / Pinecone with `--config`), run the operation, close the databases and exit; there is no daemon, HTTP API or admin UI, and nothing else needs to run. `remember` waits until the text is absorbed, so it is stored when the process ends. Flags: `--db` (or `$GLIGABAO_DB`; its directory is created if missing), `--vector-dir`, `--user`, `--dataset`, `--timeout`, `--json`, `--verbose`, `--config`, `--export FILE` (the whole local state in one archive, also if the operation failed), and per command `--kind`, `--at`, `--session` (remember), `--session` (query), `--agent`, `--agent-defs-dir`, `--model`, `--max-steps`, `--max-cost-usd` (research). The result goes to stdout, logs and totals to stderr; exit code `0` ok, `1` the operation failed, `2` bad input or setup. Getting the SQLite file and the vector directory in before the run and out after it is the caller's job. Details: [docs/lambda.md](docs/lambda.md).
+
 ## [0.172.1] - 2026-11-03
 
 ### Changed

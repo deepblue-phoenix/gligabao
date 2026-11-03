@@ -122,7 +122,7 @@ POSTGRES_TEST_DSN='postgres://user:pw@localhost:5432/gb?sslmode=disable' ./run_t
 ## Getting started
 
 ```sh
-./run_build.sh                      # builds build/gligabao and build/gligabao_agent (the deep-research agent with its sub-agents and the knowledge base in process, see docs/deep-research-agent.md), and build/gligabao_agent_linux_amd64 (the same, for Linux containers: what runs a research in Modal, see docs/research.md)
+./run_build.sh                      # builds build/gligabao, build/gligabao_agent (the deep-research agent with its sub-agents and the knowledge base in process, see docs/deep-research-agent.md), build/gligabao_lambda (one remember, query or research per process, no server: see docs/lambda.md), and build/gligabao_agent_linux_amd64 (the same, for Linux containers: what runs a research in Modal, see docs/research.md)
 export ANTHROPIC_API_KEY=...        # required for remember/query
 ./build/gligabao serve                # listens on :7878 by default
 ./build/gligabao query "..."          # CLI: starts a local daemon if none runs, see below
@@ -217,7 +217,7 @@ See [LICENSE](LICENSE).
 
 ## Building
 
-gligabao is pure Go and builds with `CGO_ENABLED=0`: SQLite uses the `modernc.org/sqlite` driver and the default vector store is [chromem-go](https://github.com/philippgille/chromem-go), so no C compiler is needed. `./run_build.sh` builds `build/gligabao` and `build/gligabao_agent` (the [deep-research agent](docs/deep-research-agent.md#the-standalone-binary-gligabao_agent) as a minimal binary for Lambdas and the like: it runs the research manager and opens the databases in process, with no server, API, training or evals), `./run_tests.sh` runs the tests, and `docker build .` (or `./run_build_container.sh`) builds a static binary in a container; the Dockerfile builds with `CGO_ENABLED=0`. Plain `go build ./cmd/gligabao` / `go test ./...` work as they are. `./run_pypi.sh` builds and uploads the PyPI packages `gligabao` (the Python client) and `gligabao-server` (the binary and `gligabao.toml`, one wheel per platform; no sidecar), see [docs/pypi.md](docs/pypi.md).
+gligabao is pure Go and builds with `CGO_ENABLED=0`: SQLite uses the `modernc.org/sqlite` driver and the default vector store is [chromem-go](https://github.com/philippgille/chromem-go), so no C compiler is needed. `./run_build.sh` builds `build/gligabao` and `build/gligabao_agent` (the [deep-research agent](docs/deep-research-agent.md#the-standalone-binary-gligabao_agent) as a minimal binary for Lambdas and the like: it runs the research manager and opens the databases in process, with no server, API, training or evals; [`gligabao_lambda`](docs/lambda.md) is its sibling that runs one `remember`, `query` or `research` per process and exits), `./run_tests.sh` runs the tests, and `docker build .` (or `./run_build_container.sh`) builds a static binary in a container; the Dockerfile builds with `CGO_ENABLED=0`. Plain `go build ./cmd/gligabao` / `go test ./...` work as they are. `./run_pypi.sh` builds and uploads the PyPI packages `gligabao` (the Python client) and `gligabao-server` (the binary and `gligabao.toml`, one wheel per platform; no sidecar), see [docs/pypi.md](docs/pypi.md).
 
 ## Versioning
 
