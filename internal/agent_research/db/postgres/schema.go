@@ -2,75 +2,28 @@
 // functions that write and read its tables (Store).
 package postgres
 
+import _ "embed"
+
 // Schema is the schema for Postgres: the same tables as the sqlite package (see there for what they hold), with native types
 // (BIGSERIAL ids, TIMESTAMPTZ for times). The statements are idempotent and in dependency order, so the whole schema can be executed
 // in one call.
-const Schema = `
--- core.Run: ONE ROW PER EXECUTION OF THE DEEP-RESEARCH AGENT on a topic (see internal/agent_research and the sqlite schema).
-CREATE TABLE IF NOT EXISTS gb_agent_research_runs (
-	id            BIGSERIAL PRIMARY KEY,
-	user_id       TEXT NOT NULL,
-	parent_id     BIGINT REFERENCES gb_agent_research_runs(id) ON DELETE CASCADE,
-	name          TEXT NOT NULL DEFAULT '',
-	reason        TEXT NOT NULL DEFAULT '',
-	topic         TEXT NOT NULL CHECK (topic <> ''),
-	status        TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'completed', 'failed', 'stopped')),
-	state         TEXT NOT NULL DEFAULT '',
-	model         TEXT NOT NULL DEFAULT '',
-	max_steps     BIGINT NOT NULL DEFAULT 0,
-	runner        TEXT NOT NULL DEFAULT 'local',
-	agent_name    TEXT NOT NULL DEFAULT '',
-	agent_version TEXT NOT NULL DEFAULT '',
-	agent_hash    TEXT NOT NULL DEFAULT '',
-	steps         BIGINT NOT NULL DEFAULT 0,
-	tool_calls    BIGINT NOT NULL DEFAULT 0,
-	input_tokens  BIGINT NOT NULL DEFAULT 0,
-	output_tokens BIGINT NOT NULL DEFAULT 0,
-	cost_usd      DOUBLE PRECISION NOT NULL DEFAULT 0,
-	report        TEXT NOT NULL DEFAULT '',
-	error         TEXT NOT NULL DEFAULT '',
-	created_at    TIMESTAMPTZ NOT NULL,
-	finished_at   TIMESTAMPTZ
-);
-CREATE INDEX IF NOT EXISTS idx_gb_agent_research_runs_user ON gb_agent_research_runs(user_id, id);
-CREATE INDEX IF NOT EXISTS idx_gb_agent_research_runs_status ON gb_agent_research_runs(status);
-
--- core.State: ONE ROW EACH TIME A RUN ENTERS A STATE (append-only; see the sqlite schema).
-CREATE TABLE IF NOT EXISTS gb_agent_research_states (
-	id          BIGSERIAL PRIMARY KEY,
-	run_id      BIGINT NOT NULL REFERENCES gb_agent_research_runs(id) ON DELETE CASCADE,
-	seq         BIGINT NOT NULL CHECK (seq >= 1),
-	state       TEXT NOT NULL CHECK (state <> ''),
-	step        BIGINT NOT NULL DEFAULT 0 CHECK (step >= 0),
-	detail      TEXT NOT NULL DEFAULT '',
-	error       TEXT NOT NULL DEFAULT '',
-	started_at  TIMESTAMPTZ NOT NULL,
-	finished_at TIMESTAMPTZ,
-	UNIQUE (run_id, seq)
-);
-`
+//
+//go:embed schema.sql
+var Schema string
 
 // Upgrade is what an older database lacks: the columns parent_id, name and reason of gb_agent_research_runs (before sub-agents, 0.129.0)
 // and runner (before the Modal runner, 0.165.0), and agent_name, agent_version and agent_hash (before the agent definitions, 0.168.0).
-const Upgrade = `
-ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS parent_id BIGINT REFERENCES gb_agent_research_runs(id) ON DELETE CASCADE;
-ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
-ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT '';
-ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS runner TEXT NOT NULL DEFAULT 'local';
-ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS agent_name TEXT NOT NULL DEFAULT '';
-ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS agent_version TEXT NOT NULL DEFAULT '';
-ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS agent_hash TEXT NOT NULL DEFAULT '';
-`
+//
+//go:embed upgrade_columns.sql
+var Upgrade string
 
 // SubagentIndexes are the indexes on the columns of Upgrade, so that they are made after it (see the sqlite package).
-const SubagentIndexes = `
-CREATE INDEX IF NOT EXISTS idx_gb_agent_research_runs_parent ON gb_agent_research_runs(parent_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_agent_research_runs_parent_name ON gb_agent_research_runs(parent_id, name) WHERE parent_id IS NOT NULL;
-`
+//
+//go:embed schema_subagent_indexes.sql
+var SubagentIndexes string
 
 // StatusMigration is what a database made before the status 'stopped' (0.145.0) lacks: its CHECK on gb_agent_research_runs.status does not
 // allow it. The constraint (named by Postgres after the table and column) is replaced; it is run at every start, like the rest.
-const StatusMigration = `
-ALTER TABLE gb_agent_research_runs DROP CONSTRAINT IF EXISTS gb_agent_research_runs_status_check;
-ALTER TABLE gb_agent_research_runs ADD CONSTRAINT gb_agent_research_runs_status_check CHECK (status IN ('running', 'completed', 'failed', 'stopped'));
-`
+//
+//go:embed upgrade_status.sql
+var StatusMigration string

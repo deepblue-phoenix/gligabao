@@ -54,7 +54,7 @@ An audit run has `id`, `trained_model_id`, `dataset`, `dataset_sha256`, `status`
 
 ## Tables
 
-An audit has two tables of its own, created on start-up (SQLite and PostgreSQL) by `training_audits.Open`; the full description is in `internal/training_audits/db/sqlite/schema.go`.
+An audit has two tables of its own, created on start-up (SQLite and PostgreSQL) by `training_audits.Open`; the full description is in `internal/training_audits/db/sqlite/schema.sql`.
 
 | table | what it stores |
 |---|---|

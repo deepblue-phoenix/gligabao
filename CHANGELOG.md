@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.174.2] - 2026-11-04
+
+### Changed
+- **The database schema is in `.sql` files.** The `CREATE TABLE` statements (and their comments) that were Go strings in the `db_schema.go` / `schema.go` files of each backend are now plain SQL files next to them, embedded into the binary with `go:embed` (`schema.sql` for each of `internal/db/relational`, `internal/db/graph`, `internal/training/db`, `internal/evals/db`, `internal/training_audits/db` and `internal/agent_research/db`, in `sqlite/` and `postgres/`; `schema_remember_runs.sql` and `schema_query_runs.sql` for the run tables; the PostGIS / R*Tree geo index in `optional_geo_index.sql`; the upgrades of older research-agent databases in `upgrade_*.sql`). The tables of `gb_remember_runs` and `gb_query_runs` are now written out in full instead of being generated from the stage lists; a test (`schema_test.go`) checks them against `model.RememberStages` and `model.QueryStages`. The SQL itself is unchanged: a fresh SQLite database has the same tables as before. No behaviour change.
+
 ## [0.174.1] - 2026-11-03
 
 ### Changed

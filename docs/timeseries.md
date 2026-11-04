@@ -278,7 +278,7 @@ Stores series in an **existing** dataset and anchors them, for what `remember` c
 
 ## Schema
 
-All tables are created with the other graph tables (`internal/db/graph/{sqlite,postgres}/db_schema.go`).
+All tables are created with the other graph tables (`internal/db/graph/{sqlite,postgres}/schema.sql`).
 
 | Table | Columns |
 | ----- | ------- |

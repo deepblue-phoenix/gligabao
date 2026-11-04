@@ -100,7 +100,7 @@ A file is `<dataset id>/<sha256>.<ext>` (`jpg`, `png`, `gif` or `webp`) inside i
 
 ## Schema
 
-Created on startup in the same database as the other tables (`internal/db/graph/{sqlite,postgres}/db_schema.go`).
+Created on startup in the same database as the other tables (`internal/db/graph/{sqlite,postgres}/schema.sql`).
 
 | Table | Columns |
 | ----- | ------- |

@@ -12,7 +12,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Training job runs and their events (gb_training_job_runs, gb_training_job_events, see db_schema.go)
+// Training job runs and their events (gb_training_job_runs, gb_training_job_events, see schema.sql)
 
 // InsertTrainingJobRun stores one training job run and returns its ID. r.ID and r.CreatedAt are ignored, and so are the
 // fields that only events set (last step and loss, final loss, error, finish time).

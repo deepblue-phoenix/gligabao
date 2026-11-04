@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	_ "embed"
 	"errors"
 	"fmt"
 	"strconv"
@@ -13,59 +14,13 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Remember runs (see sqlite/db_remember_run.go and sqlite/db_schema.go for what the table and the functions are)
+// Remember runs (see sqlite/db_remember_run.go and sqlite/schema.sql for what the table and the functions are)
 
-// rememberRunsSchema is the DDL of gb_remember_runs, generated from model.RememberStages (see the sqlite backend).
-func rememberRunsSchema() string {
-	statuses := "'" + strings.Join(model.RememberStatuses, "', '") + "'"
-	var b strings.Builder
-	fmt.Fprintf(&b, `
-CREATE TABLE IF NOT EXISTS gb_remember_runs (
-	id          BIGSERIAL PRIMARY KEY,
-	user_id     TEXT NOT NULL,
-	dataset     TEXT NOT NULL,
-	kind        TEXT NOT NULL,
-	params      JSONB NOT NULL DEFAULT '{}',
-	artifact_id BIGINT,
-	status      TEXT NOT NULL CHECK (status IN (%s)),
-	error       TEXT,
-	started_at  TIMESTAMPTZ NOT NULL,
-	finished_at TIMESTAMPTZ`, statuses)
-	for _, s := range model.RememberStages {
-		fmt.Fprintf(&b, `,
-	%[1]s_status      TEXT NOT NULL DEFAULT 'not_started' CHECK (%[1]s_status IN (%[2]s)),
-	%[1]s_error       TEXT,
-	%[1]s_started_at  TIMESTAMPTZ,
-	%[1]s_finished_at TIMESTAMPTZ`, s.Name, statuses)
-		if s.Model {
-			fmt.Fprintf(&b, `,
-	%s_inference_ids  JSONB NOT NULL DEFAULT '[]'`, s.Name)
-		}
-	}
-	b.WriteString(`
-);
-CREATE INDEX IF NOT EXISTS idx_gb_remember_runs_dataset ON gb_remember_runs(user_id, dataset);
-CREATE INDEX IF NOT EXISTS idx_gb_remember_runs_status ON gb_remember_runs(status);
-`)
-	names := make([]string, len(model.RememberStages))
-	for i, st := range model.RememberStages {
-		names[i] = st.Name
-	}
-	fmt.Fprintf(&b, `
-CREATE TABLE IF NOT EXISTS gb_remember_run_stage_outputs (
-	id         BIGSERIAL PRIMARY KEY,
-	run_id     BIGINT NOT NULL REFERENCES gb_remember_runs(id) ON DELETE CASCADE,
-	stage      TEXT NOT NULL CHECK (stage IN (%s)),
-	name       TEXT NOT NULL,
-	label      TEXT NOT NULL DEFAULT '',
-	output     JSONB NOT NULL,
-	created_at TIMESTAMPTZ NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_gb_remember_run_stage_outputs_run ON gb_remember_run_stage_outputs(run_id, stage);
-CREATE INDEX IF NOT EXISTS idx_gb_remember_run_stage_outputs_created ON gb_remember_run_stage_outputs(created_at);
-`, "'"+strings.Join(names, "', '")+"'")
-	return b.String()
-}
+// rememberRunsSchema is the DDL of gb_remember_runs and gb_remember_run_stage_outputs: the columns of the run itself, then those of each stage in
+// model.RememberStages. The stage columns are written out in the file; schema_test.go checks that they match model.RememberStages.
+//
+//go:embed schema_remember_runs.sql
+var rememberRunsSchema string
 
 // rememberCol is a column of gb_remember_runs; jsonb ones are written with a cast and read as text.
 type rememberCol struct {

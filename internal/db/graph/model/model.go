@@ -20,7 +20,7 @@ type Entity struct {
 	Type        string `json:"type"`
 	Description string `json:"description,omitempty"`
 	// ModelID is the ID of the model (gb_models) that inferred the entity; "" if unknown. The pipeline sets it, never
-	// the LLM output. See sqlite/db_schema.go for what it means for an entity shared between artifacts.
+	// the LLM output. See sqlite/schema.sql for what it means for an entity shared between artifacts.
 	ModelID string `json:"model_id,omitempty"`
 }
 

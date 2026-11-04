@@ -11,7 +11,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Remember runs (the gb_remember_runs table, see sqlite/db_schema.go; package memory_remember keeps it up to date)
+// Remember runs (the gb_remember_runs table, see sqlite/schema.sql; package memory_remember keeps it up to date)
 
 // CreateRememberRun stores a remember run (r.ID is ignored; see model.NewRememberRun) and returns its ID. Call it outside
 // any open transaction.

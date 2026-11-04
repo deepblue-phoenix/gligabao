@@ -10,7 +10,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Training job runs (the gb_training_job_runs table, see sqlite/db_schema.go)
+// Training job runs (the gb_training_job_runs table, see sqlite/schema.sql)
 
 // RecordTrainingJobRun stores a training job the sidecar started (one record per job) and returns its ID. r.ID and
 // r.CreatedAt are ignored, and so are the fields that only events set (last step and loss, final loss, error, finish time).

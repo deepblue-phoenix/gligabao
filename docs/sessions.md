@@ -4,7 +4,7 @@ A **session** is one run of a user or an agent: a conversation, a task, a crawl.
 
 A session is only a label. It is not a store: there is no session table, no expiry, no cache of turns, and `query` gives the same answer with or without it. (For what a Cognee-style session memory would add, and why it is left out, see [not-included.md](not-included.md#session-memory).)
 
-Code: `internal/memory/memory_core` (`ResolveSessionID`, `WithSessionID`), `internal/memory/memory_remember` (`Store`), `internal/db/graph/{sqlite,postgres}/db_schema.go` (tables).
+Code: `internal/memory/memory_core` (`ResolveSessionID`, `WithSessionID`), `internal/memory/memory_remember` (`Store`), `internal/db/graph/{sqlite,postgres}/schema.sql` (tables).
 
 ## The `session_id`
 

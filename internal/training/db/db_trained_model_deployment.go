@@ -10,7 +10,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Deployments of trained models (the gb_trained_model_deployments table, see sqlite/db_schema.go)
+// Deployments of trained models (the gb_trained_model_deployments table, see sqlite/schema.sql)
 
 // RecordTrainedModelDeployment stores a new deployment (status "running" unless e.Status says otherwise) and returns its ID.
 // e.ID, e.CreatedAt and the completion fields are ignored.

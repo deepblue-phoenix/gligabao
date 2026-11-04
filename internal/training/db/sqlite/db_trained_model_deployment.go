@@ -11,7 +11,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Deployments of trained models (gb_trained_model_deployments, see db_schema.go)
+// Deployments of trained models (gb_trained_model_deployments, see schema.sql)
 
 // InsertTrainedModelDeployment stores a new deployment and returns its ID.
 func InsertTrainedModelDeployment(ctx context.Context, d *sql.DB, e model.TrainedModelDeployment) (int64, error) {

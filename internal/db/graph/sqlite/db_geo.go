@@ -12,7 +12,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 )
 
-// The geo metadata of entities (gb_entity_geo, see db_schema.go).
+// The geo metadata of entities (gb_entity_geo, see schema.sql).
 
 const geoColumns = `g.entity_id, g.kind, g.query, g.latitude, g.longitude, g.display_name, g.country, g.country_code, g.region,
 	g.place_type, g.bbox_south, g.bbox_west, g.bbox_north, g.bbox_east, g.importance, g.provider, g.provider_ref, g.created_at, g.updated_at`

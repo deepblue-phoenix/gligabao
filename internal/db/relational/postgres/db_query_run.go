@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	_ "embed"
 	"errors"
 	"fmt"
 	"strconv"
@@ -12,42 +13,13 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Query runs (see sqlite/db_query_run.go and sqlite/db_schema.go for what the table and the functions are)
+// Query runs (see sqlite/db_query_run.go and sqlite/schema.sql for what the table and the functions are)
 
-// queryRunsSchema is the DDL of gb_query_runs, generated from model.QueryStages (see the sqlite backend).
-func queryRunsSchema() string {
-	statuses := "'" + strings.Join(model.RememberStatuses, "', '") + "'"
-	var b strings.Builder
-	fmt.Fprintf(&b, `
-CREATE TABLE IF NOT EXISTS gb_query_runs (
-	id          BIGSERIAL PRIMARY KEY,
-	user_id     TEXT NOT NULL,
-	dataset     TEXT NOT NULL,
-	question    TEXT NOT NULL,
-	params      JSONB NOT NULL DEFAULT '{}',
-	session_id  TEXT NOT NULL DEFAULT '',
-	status      TEXT NOT NULL CHECK (status IN (%s)),
-	error       TEXT,
-	started_at  TIMESTAMPTZ NOT NULL,
-	finished_at TIMESTAMPTZ`, statuses)
-	for _, s := range model.QueryStages {
-		fmt.Fprintf(&b, `,
-	%[1]s_status      TEXT NOT NULL DEFAULT 'not_started' CHECK (%[1]s_status IN (%[2]s)),
-	%[1]s_error       TEXT,
-	%[1]s_started_at  TIMESTAMPTZ,
-	%[1]s_finished_at TIMESTAMPTZ`, s.Name, statuses)
-		if s.Model {
-			fmt.Fprintf(&b, `,
-	%s_inference_ids  JSONB NOT NULL DEFAULT '[]'`, s.Name)
-		}
-	}
-	b.WriteString(`
-);
-CREATE INDEX IF NOT EXISTS idx_gb_query_runs_dataset ON gb_query_runs(user_id, dataset);
-CREATE INDEX IF NOT EXISTS idx_gb_query_runs_status ON gb_query_runs(status);
-`)
-	return b.String()
-}
+// queryRunsSchema is the DDL of gb_query_runs: the columns of the run itself, then those of each stage in model.QueryStages. The stage
+// columns are written out in the file; schema_test.go checks that they match model.QueryStages.
+//
+//go:embed schema_query_runs.sql
+var queryRunsSchema string
 
 // queryRunCols are the columns of a run but its ID, in the order of queryRunValues and scanQueryRun (see rememberCol).
 func queryRunCols() []rememberCol {

@@ -6,7 +6,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Remember runs (gb_remember_runs, see sqlite/db_schema.go)
+// Remember runs (gb_remember_runs, see sqlite/schema.sql)
 
 // Statuses of a remember run as a whole and of each of its stages.
 const (
@@ -165,7 +165,7 @@ type RememberRunFilter struct {
 }
 
 //---------------------------------------------------------------------------------------------
-// Stage outputs (gb_remember_run_stage_outputs, see sqlite/db_schema.go)
+// Stage outputs (gb_remember_run_stage_outputs, see sqlite/schema.sql)
 
 // RememberStageOutput is one output of a stage of a remember run, kept for debugging: what a step of the stage produced (the
 // entities the LLM extracted, the candidate facts found, the places a resolver returned, ...). They are in a table of their

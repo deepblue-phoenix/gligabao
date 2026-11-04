@@ -11,7 +11,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Trained models (gb_trained_models, see db_schema.go)
+// Trained models (gb_trained_models, see schema.sql)
 
 // InsertTrainedModel stores the model a completed job saved and returns its ID and whether it is new: the job (JobID)
 // may have a model already, which is then left as it is and its ID returned. m.ID and m.CreatedAt are ignored.

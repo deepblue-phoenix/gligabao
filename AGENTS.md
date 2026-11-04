@@ -48,3 +48,12 @@ Anything related to the project roadmap (planned features, plans, priorities, st
 `docs/roadmap/`. The main list of features/plans is `docs/roadmap/ROADMAP.md`; put any supporting or more detailed roadmap
 documents in the same directory and link them from `ROADMAP.md`. Do not scatter roadmap items elsewhere (README, other docs, etc.).
 Create `docs/roadmap/ROADMAP.md` if it does not exist yet.
+
+## Database schema files
+
+The database schema is SQL, not Go strings: one `schema.sql` per backend package (`sqlite/` and `postgres/` of `internal/db/relational`, `internal/db/graph`, `internal/training/db`, `internal/evals/db`, `internal/training_audits/db`, `internal/agent_research/db`), embedded with `go:embed` (the Go file next to it only runs it). Rules:
+
+- `schema*.sql` is the **final state** of the tables for a new database (idempotent: `CREATE ... IF NOT EXISTS`, in dependency order); other tools read these files (e.g. the schema diagram tool of `../gligabao_int_site/tools`), so a new table goes into them, not into Go code. Changes needed for an older database go into `upgrade_*.sql` (or the `Upgrade` of the package) and **also** into `schema*.sql`.
+- `optional_*.sql` is DDL that is not applied on every start (the geo index).
+- Write plain SQL (no Go `Sprintf` placeholders or string splicing, except the one documented in `optional_geo_index.sql` of PostgreSQL); the SQLite and PostgreSQL files of a feature define the same tables, the SQLite one holding the comments that say what the columns mean.
+- Keep `docs/listings/db-tables.md` up to date with every table change.

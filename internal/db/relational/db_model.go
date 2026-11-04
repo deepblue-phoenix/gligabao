@@ -11,7 +11,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Models (the gb_models table, see sqlite/db_schema.go)
+// Models (the gb_models table, see sqlite/schema.sql)
 
 // ModelID returns the ID of the model called name (see model.ModelID): derived from the name alone, so it is the same
 // in every database; "" for an empty name.

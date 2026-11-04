@@ -321,7 +321,7 @@ The [in-context log](#schema) (`gb_graph_in_ctx_counters`) is shown in the admin
 
 ## Schema
 
-All tables are prefixed with `gb_` (see `internal/db/relational/{sqlite,postgres}/db_schema.go` for datasets and `internal/db/graph/{sqlite,postgres}/db_schema.go` for the graph tables).
+All tables are prefixed with `gb_` (see `internal/db/relational/{sqlite,postgres}/schema.sql` for datasets and `internal/db/graph/{sqlite,postgres}/schema.sql` for the graph tables).
 
 | Table | Columns |
 | ----- | ------- |

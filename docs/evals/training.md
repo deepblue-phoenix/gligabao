@@ -78,7 +78,7 @@ These are separate from the knowledge-extraction experiments of [`internal/evals
 
 ## Tables
 
-Both types of eval (knowledge and training) share one set of tables, the `gb_*` tables of `internal/evals`; every universal table has a `type` column (`knowledge` or `training`), and what only one type has is in its metadata tables. The full description is in `internal/evals/db/sqlite/schema.go` (and [experiments.md](experiments.md#data-model)).
+Both types of eval (knowledge and training) share one set of tables, the `gb_*` tables of `internal/evals`; every universal table has a `type` column (`knowledge` or `training`), and what only one type has is in its metadata tables. The full description is in `internal/evals/db/sqlite/schema.sql` (and [experiments.md](experiments.md#data-model)).
 
 | table | what a training eval stores there |
 |---|---|
