@@ -99,7 +99,8 @@ func agentArchive(t *testing.T) string {
 		t.Fatal(err)
 	}
 
-	ex(t, d, `INSERT INTO gb_remember_runs (user_id, dataset, kind, params, artifact_id, status, started_at, extract_graph_status, extract_graph_inference_ids, summarize_chunk_inference_ids) VALUES ('agent', 'main', 'knowledge', '{"session":"research-2","other":"x"}', 1, 'succeeded', ?, 'succeeded', '[1,99]', '[2]')`, ts)
+	ex(t, d, `INSERT INTO gb_remember_runs (user_id, dataset, kind, params, artifact_id, status, started_at) VALUES ('agent', 'main', 'knowledge', '{"session":"research-2","other":"x"}', 1, 'succeeded', ?)`, ts)
+	ex(t, d, `INSERT INTO gb_remember_run_stages (run_id, stage_type, status, inference_ids) VALUES (1, 'extract_graph', 'succeeded', '[1,99]'), (1, 'summarize_chunk', 'succeeded', '[2]')`)
 	ex(t, d, `INSERT INTO gb_remember_run_stage_outputs (run_id, stage, name, label, output, created_at) VALUES (1, 'extract_graph', 'extract_graph', '', '{"a":1}', ?)`, ts)
 	ex(t, d, `INSERT INTO gb_query_runs (user_id, dataset, question, session_id, status, started_at) VALUES ('agent', 'main', 'what?', 'research-1', 'succeeded', ?)`, ts)
 	ex(t, d, `INSERT INTO gb_graph_in_ctx_counters (dataset_id, kind, item_id, pipeline, stage, run_id, created_at) VALUES (1, 'entity', 1, 'remember', 'resolve_edges', 1, ?)`, ts)
@@ -326,7 +327,13 @@ func TestImport(t *testing.T) {
 		// the runs of the pipelines: artifact, inferences (the unknown one is dropped) and the session in the params are mapped
 		var artifactID int64
 		var params, ids1, ids2, user string
-		if err := d.QueryRow(`SELECT user_id, artifact_id, params, extract_graph_inference_ids, summarize_chunk_inference_ids FROM gb_remember_runs`).Scan(&user, &artifactID, &params, &ids1, &ids2); err != nil {
+		if err := d.QueryRow(`SELECT user_id, artifact_id, params FROM gb_remember_runs`).Scan(&user, &artifactID, &params); err != nil {
+			t.Fatal(err)
+		}
+		if err := d.QueryRow(`SELECT inference_ids FROM gb_remember_run_stages WHERE stage_type = 'extract_graph'`).Scan(&ids1); err != nil {
+			t.Fatal(err)
+		}
+		if err := d.QueryRow(`SELECT inference_ids FROM gb_remember_run_stages WHERE stage_type = 'summarize_chunk'`).Scan(&ids2); err != nil {
 			t.Fatal(err)
 		}
 		if user != "u1" || artifactID != doc {

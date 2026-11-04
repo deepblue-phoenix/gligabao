@@ -9,6 +9,7 @@
 - `gb_models`
 - `gb_inferences`
 - `gb_remember_runs`
+- `gb_remember_run_stages`
 - `gb_remember_run_stage_outputs`
 - `gb_query_runs`
 - `gb_artifacts`
@@ -45,7 +46,8 @@
 | `gb_ontologies`               | metadata of a loaded ontology (name, IRI, format, digest, counts); its classes and edges are in `gb_onto_classes` and `gb_onto_edges`.          |
 | `gb_models`                   | the static list of AI models gligabao knows, referenced by entities, edges and inferences.                                                      |
 | `gb_inferences`               | one row per model invocation (LLM call, embedding, web search, Jev classification) with tokens, cost and reasoning level.                       |
-| `gb_remember_runs`            | one row per remember call, tracking its status and the status, times and errors of each pipeline stage.                                         |
+| `gb_remember_runs`            | one row per remember call, tracking its user, dataset, parameters, status, error and times.                                                    |
+| `gb_remember_run_stages`      | one row per stage of a remember run (`stage_type`): its status, error, times and the IDs of its inferences.                                    |
 | `gb_remember_run_stage_outputs` | what each stage of a remember run produced (extracted entities and facts, candidates, decisions, raw LLM answers), one row per output, kept apart from the run log for debugging. |
 | `gb_query_runs`               | one row per query call, tracking its question, session, status and the status, times, errors and inferences of each pipeline stage. |
 | `gb_artifacts`                | ingested pieces of data (notes, episodes, chunks, web search results, series observations, chunk summaries), the provenance of the graph.       |
@@ -83,6 +85,7 @@
 | `gb_models`                   | `internal/db/relational/sqlite/schema.sql`       | `internal/db/relational/postgres/schema.sql`       |
 | `gb_inferences`               | `internal/db/relational/sqlite/schema.sql`       | `internal/db/relational/postgres/schema.sql`       |
 | `gb_remember_runs`            | `internal/db/relational/sqlite/schema_remember_runs.sql` | `internal/db/relational/postgres/schema_remember_runs.sql` |
+| `gb_remember_run_stages`      | `internal/db/relational/sqlite/schema_remember_runs.sql` | `internal/db/relational/postgres/schema_remember_runs.sql` |
 | `gb_remember_run_stage_outputs` | `internal/db/relational/sqlite/schema_remember_runs.sql` | `internal/db/relational/postgres/schema_remember_runs.sql` |
 | `gb_query_runs`               | `internal/db/relational/sqlite/schema_query_runs.sql`    | `internal/db/relational/postgres/schema_query_runs.sql`    |
 | `gb_artifacts`                | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |

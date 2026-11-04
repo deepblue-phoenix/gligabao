@@ -73,11 +73,11 @@ A group of stages that is used in more than one place is a list of its own: `rec
 
 `Run` returns the error of the first `Fatal` stage that failed, and `nil` otherwise.
 
-This is the point of the pattern: **the stages do not know the run log**. A stage cannot forget to open or close itself in the log, cannot leave itself open on an early `return`, and cannot be named wrong, because the runner does all of it, around the stage, from the list. Adding a stage is adding one line to the list (and its column group to the run table); the run log, the admin API and the admin UI follow.
+This is the point of the pattern: **the stages do not know the run log**. A stage cannot forget to open or close itself in the log, cannot leave itself open on an early `return`, and cannot be named wrong, because the runner does all of it, around the stage, from the list. Adding a stage is adding one line to the list (for `remember`, nothing else: its row in `gb_remember_run_stages` is written from the list; `query` still needs its column group in the run table); the run log, the admin API and the admin UI follow.
 
 ### Inferences
 
-A stage that calls a model (an LLM, an embedding request, a web search) makes **inferences** (`gb_inferences`, see [inferences.md](inferences.md)). The context the runner hands to a stage carries a sink (`memory_core.WithInferenceSink`), and `memory_core.RecordRun` (which every inference is recorded through) passes it the ID of each one. The sink is `observer.AddInference(stage, id)`, so every inference ends up in the `<stage>_inference_ids` of the stage that made it, in any goroutine of the stage, with no call to the log from the stage. A stage must therefore **use the context it is given** for its model calls (and pass it on); a call made with another context is not filed.
+A stage that calls a model (an LLM, an embedding request, a web search) makes **inferences** (`gb_inferences`, see [inferences.md](inferences.md)). The context the runner hands to a stage carries a sink (`memory_core.WithInferenceSink`), and `memory_core.RecordRun` (which every inference is recorded through) passes it the ID of each one. The sink is `observer.AddInference(stage, id)`, so every inference ends up in the `inference_ids` of the stage that made it (its row of `gb_remember_run_stages`), in any goroutine of the stage, with no call to the log from the stage. A stage must therefore **use the context it is given** for its model calls (and pass it on); a call made with another context is not filed.
 
 ## The run log
 

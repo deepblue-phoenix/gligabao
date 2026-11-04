@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.175.0] - 2026-11-04
+
+### Changed
+- **The stages of a remember run are rows, not columns.** The table `gb_remember_runs` no longer has the four columns (`<stage>_status`, `<stage>_error`, `<stage>_started_at`, `<stage>_finished_at`) and the `<stage>_inference_ids` of each stage. Its stages are in the new table `gb_remember_run_stages`: one row per stage of a run, keyed by `run_id` and `stage_type` (the name of the stage), with `status`, `error`, `started_at`, `finished_at` and `inference_ids` (the JSON list of the inferences of the stage, `[]` for a stage that runs no model). A new stage is a new `stage_type`, so the schema no longer changes when a stage is added. The run's own columns (`status`, `error`, `started_at`, `finished_at`, ...) are unchanged, and so is the API and the JSON of a run. SQLite and PostgreSQL. There is no migration: an existing database has to be recreated. The archive import (`dbimport`) reads the new table; `gb_query_runs` keeps its per-stage columns for now.
+
 ## [0.174.2] - 2026-11-04
 
 ### Changed

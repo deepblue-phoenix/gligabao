@@ -238,14 +238,15 @@ Every call is recorded in `gb_remember_runs`: **one row per execution of the pip
 | `status`, `error` | **the call as a whole**, so it can be checked without looking at the stages: `started`, then `succeeded` if `remember` returned a result or `failed` (with `error`) if it returned an error |
 | `started_at`, `finished_at` | of the call |
 
-and, for **each stage** (`<stage>_` prefix):
+and, for **each stage**, one row of `gb_remember_run_stages` (the stage's name is its `stage_type`, so a new stage is a new name, not a column):
 
 | Column | |
 | ------ | - |
-| `<stage>_status` | `not_started` (the pipeline has not reached it: an earlier stage failed, or the run is still on its way), `started`, `succeeded`, `failed` or `skipped` (the call does not use it: no web search was asked for, the text is not a document, there is no geo resolver, ...) (constants `relational.RememberNotStarted`, `RememberStarted`, `RememberSucceeded`, `RememberFailed`, `RememberSkipped`) |
-| `<stage>_error` | why the stage failed; `NULL` if it did not |
-| `<stage>_started_at`, `<stage>_finished_at` | when the stage began and when it last ended; a stage that runs for each chunk spans all the chunks |
-| `<stage>_inference_ids` | only for the stages that run a model: JSON array of the `gb_inferences` IDs of what the stage ran, in order. A list, because a stage runs a model once per chunk |
+| `run_id`, `stage_type` | the run, and the stage (its primary key) |
+| `status` | `not_started` (the pipeline has not reached it: an earlier stage failed, or the run is still on its way), `started`, `succeeded`, `failed` or `skipped` (the call does not use it: no web search was asked for, the text is not a document, there is no geo resolver, ...) (constants `relational.RememberNotStarted`, `RememberStarted`, `RememberSucceeded`, `RememberFailed`, `RememberSkipped`) |
+| `error` | why the stage failed; `NULL` if it did not |
+| `started_at`, `finished_at` | when the stage began and when it last ended; a stage that runs for each chunk spans all the chunks |
+| `inference_ids` | JSON array of the `gb_inferences` IDs of what the stage ran, in order; `[]` for a stage that runs no model. A list, because a stage runs a model once per chunk |
 
 The stages, in order: `classify_complexity` (Jev), `chunk_text`, `extract_graph`, `summarize_chunk`, `load_candidates`, `resolve_edges`, `store`, `store_series`, `classify_graph`, `resolve_geo`, `web_search`, `fetch_series`, `observe_series` (`relational.RememberStages` lists them; the ones that run a model are marked there). A stage the call does not use is `skipped`, so a run that succeeded has no stage left `not_started`.
 
@@ -255,7 +256,7 @@ The stages, in order: `classify_complexity` (Jev), `chunk_text`, `extract_graph`
 
 ```sql
 SELECT id, dataset, error FROM gb_remember_runs WHERE status = 'failed';
-SELECT id, web_search_error FROM gb_remember_runs WHERE web_search_status = 'failed';
+SELECT run_id, error FROM gb_remember_run_stages WHERE stage_type = 'web_search' AND status = 'failed';
 ```
 
 From Go: `relational.GetRememberRun`, `ListRememberRuns` (filter by user, dataset and status). Writing is done by the pipeline runner: `startRunLog` returns a `*runLog` whose methods (`Start`, `Done`, `Skip`, `AddInference`, `Artifact`, `Finish`) do nothing on `nil` and never fail the call; a row that cannot be written is logged. A stage only files its [outputs](#stage-outputs), with `j.run.Output`.

@@ -94,14 +94,17 @@ CREATE INDEX IF NOT EXISTS idx_gb_inferences_model ON gb_inferences(model_id);
 --                call (resolve_geo, web_search, fetch_series, observe_series, classify_complexity) can be 'failed' in a 'succeeded' run.
 --   error        why the call failed; NULL if it did not
 --   started_at, finished_at  of the call
--- and, for each stage of the pipeline (model.RememberStages: classify_complexity, chunk_text, extract_graph,
--- summarize_chunk, load_candidates, resolve_edges, store, store_series, resolve_geo, web_search, fetch_series, observe_series):
---   <stage>_status       'not_started' (not reached), 'started', 'succeeded', 'failed' or 'skipped' (not used by the call)
---   <stage>_error        why the stage failed; NULL if it did not
---   <stage>_started_at, <stage>_finished_at   when the stage began and when it last ended (a stage that runs for each chunk
---                        of a text spans all the chunks)
---   <stage>_inference_ids  only for the stages that run a model: JSON array of the IDs (gb_inferences) of the runs the stage
---                        made, in order. A list, because a stage makes one run per chunk (and an embedding request is a run).
+-- Remember run stages: gb_remember_run_stages holds ONE ROW PER STAGE of a run (model.RememberStages: classify_complexity,
+-- chunk_text, extract_graph, summarize_chunk, load_candidates, resolve_edges, store, store_series, classify_graph, resolve_geo,
+-- web_search, fetch_series, observe_series). A new stage is a new stage_type, not a change of the table.
+--   run_id        the run (gb_remember_runs); the primary key is (run_id, stage_type)
+--   stage_type    the name of the stage
+--   status        'not_started' (not reached), 'started', 'succeeded', 'failed' or 'skipped' (not used by the call)
+--   error         why the stage failed; NULL if it did not
+--   started_at, finished_at   when the stage began and when it last ended (a stage that runs for each chunk of a text spans
+--                 all the chunks)
+--   inference_ids JSON array of the IDs (gb_inferences) of the runs the stage made, in order: empty for a stage that runs no
+--                 model. A list, because a stage makes one run per chunk (and an embedding request is a run).
 -- All the DATETIME columns follow the convention of db_time.go.
 --
 -- Stage outputs: gb_remember_run_stage_outputs holds what the stages of a run produced, FOR DEBUGGING, in a table of its own so
@@ -117,7 +120,8 @@ CREATE INDEX IF NOT EXISTS idx_gb_inferences_model ON gb_inferences(model_id);
 --   created_at  when it was made
 
 -- Query runs: ONE ROW PER EXECUTION OF THE QUERY PIPELINE, the same kind of record as gb_remember_runs, for Query (see
--- internal/memory/memory_query/runlog.go; the table is created by schema_query_runs.sql).
+-- internal/memory/memory_query/runlog.go; the table is created by schema_query_runs.sql). Unlike gb_remember_runs, its stages are
+-- columns of the table, not rows.
 --   user_id, dataset (the name), question  what was asked
 --   params       JSON object: how the call was made (session, models and reasoning per stage, the options of the geo search)
 --   session_id   the session of the call ('' if it had none)
@@ -126,6 +130,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_inferences_model ON gb_inferences(model_id);
 --                (detect_geo, nearby_geo) can be 'failed' in a 'succeeded' run.
 --   error        why the call failed; NULL if it did not
 --   started_at, finished_at  of the call
--- and, for each stage of the pipeline (model.QueryStages: retrieve_graph, detect_geo, nearby_geo, query), the columns of the stages
--- of gb_remember_runs (<stage>_status, <stage>_error, <stage>_started_at, <stage>_finished_at and, for the stages that run a
--- model, <stage>_inference_ids), with the same statuses. A stage the call does not use is 'skipped'.
+-- and, for each stage of the pipeline (model.QueryStages: retrieve_graph, detect_geo, nearby_geo, query), a group of columns:
+-- <stage>_status, <stage>_error, <stage>_started_at, <stage>_finished_at and, for the stages that run a model,
+-- <stage>_inference_ids (JSON array of gb_inferences IDs), with the same statuses as the remember stages. A stage the call does
+-- not use is 'skipped'.

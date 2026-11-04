@@ -120,7 +120,7 @@ var (
 		"gb_graph_in_ctx_counters": true, "gb_entity_geo": true,
 		"gb_image_artifacts": true, "gb_image_extractions": true, "gb_image_text_blocks": true,
 		"gb_series": true, "gb_series_points": true, "gb_series_anchors": true,
-		"gb_remember_runs": true, "gb_remember_run_stage_outputs": true, "gb_query_runs": true,
+		"gb_remember_runs": true, "gb_remember_run_stages": true, "gb_remember_run_stage_outputs": true, "gb_query_runs": true,
 		tableRuns: true, tableStates: true,
 	}
 	notImported = map[string]bool{
@@ -141,6 +141,7 @@ const (
 	tableSeries    = "gb_series"
 	tableInfs      = "gb_inferences"
 	tableRemember  = "gb_remember_runs"
+	tableStages    = "gb_remember_run_stages"
 	tableQuery     = "gb_query_runs"
 )
 
@@ -224,7 +225,7 @@ func level(name string) int {
 		return 0
 	case tableRemember, tableQuery:
 		return 2
-	case "gb_remember_run_stage_outputs", "gb_graph_in_ctx_counters":
+	case tableStages, "gb_remember_run_stage_outputs", "gb_graph_in_ctx_counters":
 		return 3
 	}
 	return 1
@@ -464,6 +465,10 @@ func (im *importer) after(ctx context.Context, tx *sql.Tx, table string, vals ma
 		return id, false, err
 	case tableRemember, tableQuery:
 		im.fixRun(table, vals)
+	case tableStages:
+		if s, ok := vals["inference_ids"].(string); ok {
+			vals["inference_ids"] = im.inferenceIDs(s)
+		}
 	case "gb_graph_in_ctx_counters":
 		item, _ := asInt(vals["item_id"])
 		itemTable := tableEntities
@@ -505,7 +510,7 @@ func (im *importer) after(ctx context.Context, tx *sql.Tx, table string, vals ma
 }
 
 // fixRun maps what the rows of gb_remember_runs and gb_query_runs hold that is not a foreign key: the artifact of a run, the
-// inferences of its stages, and the session in its parameters.
+// inferences of the stages of a query run (gb_query_runs' <stage>_inference_ids), and the session in its parameters.
 func (im *importer) fixRun(table string, vals map[string]any) {
 	if v, ok := vals["artifact_id"]; ok && v != nil {
 		old, _ := asInt(v)
@@ -522,18 +527,7 @@ func (im *importer) fixRun(table string, vals map[string]any) {
 		}
 		switch {
 		case strings.HasSuffix(col, "_inference_ids"):
-			var list []int64
-			if json.Unmarshal([]byte(s), &list) != nil {
-				continue
-			}
-			out := make([]int64, 0, len(list))
-			for _, old := range list {
-				if id, ok := im.mapID(tableInfs, old); ok {
-					out = append(out, id)
-				}
-			}
-			b, _ := json.Marshal(out)
-			vals[col] = string(b)
+			vals[col] = im.inferenceIDs(s)
 		case col == "params":
 			var m map[string]any
 			if json.Unmarshal([]byte(s), &m) != nil || m == nil {
@@ -553,6 +547,22 @@ func (im *importer) fixRun(table string, vals map[string]any) {
 			}
 		}
 	}
+}
+
+// inferenceIDs maps a JSON list of inference IDs of the archive to the IDs in the target; the ones that were not imported are dropped.
+func (im *importer) inferenceIDs(s string) string {
+	var list []int64
+	if json.Unmarshal([]byte(s), &list) != nil {
+		return s
+	}
+	out := make([]int64, 0, len(list))
+	for _, old := range list {
+		if id, ok := im.mapID(tableInfs, old); ok {
+			out = append(out, id)
+		}
+	}
+	b, _ := json.Marshal(out)
+	return string(b)
 }
 
 // session renames a session ID that ends with the ID of an agent run of the archive to the ID of the run in the target (what

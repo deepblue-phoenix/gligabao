@@ -31,7 +31,8 @@ const (
 // RememberStatuses lists the statuses.
 var RememberStatuses = []string{RememberNotStarted, RememberStarted, RememberSucceeded, RememberFailed, RememberSkipped}
 
-// The stages of the remember pipeline, in pipeline order (RememberStages). Each is a column group of gb_remember_runs.
+// The stages of the remember pipeline, in pipeline order (RememberStages). Each is a row of gb_remember_run_stages, whose
+// stage_type is the name.
 // The names of the stages that run a model are those of gb_inferences.stage (see memory_core.Stages).
 const (
 	// RememberStageClassifyComplexity is the judgement of Jev (system 1) of how complex the text is.
@@ -98,15 +99,6 @@ func RememberStageDefOf(name string) (RememberStageDef, bool) {
 	}
 	return RememberStageDef{}, false
 }
-
-// Columns of a stage in gb_remember_runs are <stage>_<suffix>.
-const (
-	RememberColStatus       = "status"
-	RememberColError        = "error"
-	RememberColStartedAt    = "started_at"
-	RememberColFinishedAt   = "finished_at"
-	RememberColInferenceIDs = "inference_ids"
-)
 
 // RememberStage is how one stage of a remember run went.
 type RememberStage struct {
