@@ -289,6 +289,8 @@ type ClassifyingTrainingHook = memory_core.ClassifyingTrainingHook // func(ctx c
 | `gligabao.ArtifactClass` | one record of `gb_artifact_classes`: `ID`, `DatasetID`, `ArtifactID`, `Class`, `InferenceID` (the model run that gave the class, see [inferences.md](inferences.md)), `CreatedAt` |
 | `gligabao.TrainingDataset` | the `KnowledgeDataset` embedded (what is kept of it: all, or a subset) and `Classes` (`map[int64]string`: the class of each graph in it, by the `ArtifactID` of the graph) |
 
+`KnowledgeDataset.TopClasses(ctx, n)` (also on `TrainingDataset`) returns the `n` classes most given to the artifact graphs of the whole dataset, as `[]gligabao.ClassCount` (`Class`, `Count`), most frequent first: the same as `GET /v1/gb/datasets/{name}/classes` ([datasets.md](datasets.md)), with no HTTP call. It reads the database, so it only works on a dataset gligabao loaded (else it returns an error).
+
 `TrainingDataset` is a superset of `KnowledgeDataset`: the knowledge dataset it wraps is the part of the dataset that is trained on, and `Classes` is what is added to it.
 
 The graph of an artifact is what is linked to it (see [artifacts.md](artifacts.md#provenance-links)): the entities that mention it, the ones it created and the ones it found already stored, and the facts it stated, the ones it created and the ones whose duplicate it was merged into, in their stored state (expired facts included). An artifact that yielded nothing (no entity, no fact) has no graph. The graphs of two artifacts can share entities and facts.

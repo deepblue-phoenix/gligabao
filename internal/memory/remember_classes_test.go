@@ -101,9 +101,20 @@ func testRememberClassifiesGraph(t *testing.T, d *sql.DB) {
 		ds.Graphs[0].Classes[0].InferenceID != recs[0].InferenceID {
 		t.Fatalf("dataset graphs = %+v, %v", ds.Graphs, err)
 	}
+
+	// the knowledge dataset gives the top classes of the whole dataset (what the hook of an embedding program needs)
+	top, err := ds.TopClasses(ctx, 1)
+	if err != nil || len(top) != 1 || top[0].Count < 1 {
+		t.Fatalf("top classes = %+v, %v", top, err)
+	}
+	if _, err := (memory_core.KnowledgeDataset{}).TopClasses(ctx, 1); err == nil {
+		t.Fatal("a dataset not loaded by gligabao must say so")
+	}
 }
 
-func TestRememberClassifiesGraphAllowed(t *testing.T) { dbtest.Run(t, testRememberClassifiesGraphAllowed) }
+func TestRememberClassifiesGraphAllowed(t *testing.T) {
+	dbtest.Run(t, testRememberClassifiesGraphAllowed)
+}
 
 func testRememberClassifiesGraphAllowed(t *testing.T, d *sql.DB) {
 	ctx := context.Background()

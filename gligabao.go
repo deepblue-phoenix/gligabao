@@ -138,6 +138,9 @@ type ClassifyingTrainingHook = memory_core.ClassifyingTrainingHook
 // KnowledgeDataset is what a ClassifyingTrainingHook gets: the artifacts of a dataset and the graphs that come with them.
 type KnowledgeDataset = memory_core.KnowledgeDataset
 
+// ClassCount is a class with the number of artifact graphs of a dataset it was given to (see KnowledgeDataset.TopClasses).
+type ClassCount = graph.ClassCount
+
 // ArtifactGraph is the graph that comes with one artifact of a KnowledgeDataset.
 type ArtifactGraph = memory_core.ArtifactGraph
 

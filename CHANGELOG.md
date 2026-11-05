@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.178.0] - 2026-11-06
+
+### Added
+- **Top classes in the Go API: `KnowledgeDataset.TopClasses(ctx, n)`.** The knowledge dataset a `ClassifyingTrainingHook` gets (and the `TrainingDataset` that embeds it) can now answer the same question as `GET /v1/gb/datasets/{name}/classes`, in process and with no HTTP call: the `n` classes most given to the artifact graphs of the whole dataset (also the graphs a hook filters out), as `[]gligabao.ClassCount` (`Class`, `Count`), most frequent first. It returns an error on a dataset that gligabao did not load.
+
 ## [0.177.0] - 2026-11-06
 
 ### Added

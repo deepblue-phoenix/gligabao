@@ -43,6 +43,18 @@ type KnowledgeDataset struct {
 	Artifacts []graph.Artifact
 	// Graphs are the graphs of the artifacts that have one, in the order of the artifact IDs.
 	Graphs []ArtifactGraph
+	// TopClassesFunc reads the top classes of the dataset (set by gligabao when it loads the dataset; use TopClasses).
+	TopClassesFunc func(ctx context.Context, n int) ([]graph.ClassCount, error)
+}
+
+// TopClasses returns the n classes most given to the artifact graphs of the whole dataset (not only of the graphs in ds, which a hook may
+// have filtered), each with the number of artifacts it was given to, the most frequent first. It is the function behind
+// GET /v1/gb/datasets/{name}/classes, and reads the database, so it only works on a dataset gligabao loaded (else it returns an error).
+func (ds KnowledgeDataset) TopClasses(ctx context.Context, n int) ([]graph.ClassCount, error) {
+	if ds.TopClassesFunc == nil {
+		return nil, errors.New("top classes: the knowledge dataset was not loaded by gligabao")
+	}
+	return ds.TopClassesFunc(ctx, n)
 }
 
 // TrainingDataset is the superset of a KnowledgeDataset that a training works from: the knowledge dataset (all of it, or a filtered

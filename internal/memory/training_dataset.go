@@ -58,6 +58,9 @@ func LoadKnowledgeDataset(ctx context.Context, d *sql.DB, userID, name string) (
 		UserID: userID, Dataset: name, DatasetID: dsID,
 		Artifacts: artifacts,
 		Graphs:    artifactGraphs(artifacts, entities, edges, entityLinks, edgeLinks, classes),
+		TopClassesFunc: func(ctx context.Context, n int) ([]graph.ClassCount, error) {
+			return graph.TopArtifactClasses(ctx, d, dsID, n)
+		},
 	}, nil
 }
 
