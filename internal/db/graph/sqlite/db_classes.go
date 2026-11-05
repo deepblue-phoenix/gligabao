@@ -87,3 +87,27 @@ func ClassNames(ctx context.Context, d *sql.DB, dsID int64, limit int) ([]string
 	}
 	return out, rows.Err()
 }
+
+// TopArtifactClasses returns the classes used in the dataset with the number of artifact graphs each was given to, the most used
+// first (then by name), at most limit.
+func TopArtifactClasses(ctx context.Context, d *sql.DB, dsID int64, limit int) ([]model.ClassCount, error) {
+	rows, err := d.QueryContext(ctx, `
+		SELECT class, COUNT(DISTINCT artifact_id) AS n FROM gb_artifact_classes
+		WHERE dataset_id = ?
+		GROUP BY class
+		ORDER BY n DESC, class
+		LIMIT ?`, dsID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.ClassCount{}
+	for rows.Next() {
+		var c model.ClassCount
+		if err := rows.Scan(&c.Class, &c.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}

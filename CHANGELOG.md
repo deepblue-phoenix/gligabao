@@ -5,6 +5,17 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.177.0] - 2026-11-06
+
+### Added
+- **Top classes of a dataset: `GET /v1/gb/datasets/{name}/classes?n=N`.** Returns the N classes most given to the artifact graphs (the subgraphs deduced from each artifact) over the whole dataset, most frequent first, each with the number of artifacts it was given to (`n` defaults to 10, at most 1000). It reads `gb_artifact_classes` only and makes no LLM call; meant to find the classes of interest of a dataset (fixed classifiers, analytics).
+
+## [0.176.0] - 2026-11-05
+
+### Changed
+- **Graph classification is on by default.** `POST /v1/gb/remember` now classifies the graph of each artifact of a text (`classify_graph`) unless the request sends `classify_graph: false`; it costs one more LLM call (the `classify_graph` stage, advisory) per artifact. `graph_classes` alone now turns it on (before it was a `400` without `classify_graph: true`); it is a `400` with `classify_graph: false`. An image is never classified, and the eval endpoint (`/v1/gb/eval/remember`) keeps `false` as its default. The Go client's `RememberRequest.ClassifyGraph` is now a `*bool`; in the Python client `classify_graph` is `None` (server default) unless set.
+- **`graph_classes` makes the LLM pick the closest class.** When a `remember` request restricts the classes (`graph_classes`, with `classify_graph`), the classification prompt now tells the LLM to choose exactly one of them, the one that fits the graph closest, and only the first class of its answer is kept (so one class per graph). Without `graph_classes` nothing changes: the LLM chooses freely, one to three classes. The docs say what the classifier sees (the graph of each artifact, not the raw text).
+
 ## [0.175.0] - 2026-11-04
 
 ### Changed

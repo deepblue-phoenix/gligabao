@@ -42,6 +42,8 @@ The vectors are the exception: they are removed with the dataset (`DeleteAll` on
 
 `GET /v1/gb/datasets/{name}/graph` (header `gb-user-id: u1`): exports the dataset's whole graph as JSON; see [graph.md](graph.md).
 
+`GET /v1/gb/datasets/{name}/classes?n=N` (header `gb-user-id: u1`): the N classes most given to the artifact graphs (the subgraphs deduced from each artifact, classified by `remember` with `classify_graph`) over the whole dataset, most frequent first: `{"dataset": "main", "classes": [{"class": "sports", "count": 12}, ...]}`. `count` is the number of artifacts whose graph got the class. `n` defaults to 10 (`1`-`1000`, else `400`); `404` for an unknown dataset. It makes no LLM call. Use it to pick the classes of interest of a dataset (fixed classifiers, analytics).
+
 `GET /v1/gb/datasets/{name}/git` (header `gb-user-id: u1`): exports the dataset as a git repository, one commit per `remember` call, as a `tar.gz` of a bare repository; see [git-export.md](git-export.md).
 
 `POST /v1/gb/datasets/{name}/training` (header `gb-user-id: u1`, no body needed) hands the dataset (every artifact and the graph of each) to the classifying training hook and answers with a summary of the training dataset it made, a possibly filtered subset with the class of each graph. It only exists when the embedding program supplies the hook; see [hooks.md](hooks.md#classifying-training-hook).

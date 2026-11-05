@@ -59,6 +59,7 @@ type (
 	EntityArtifact               = model.EntityArtifact
 	EdgeArtifact                 = model.EdgeArtifact
 	ArtifactClass                = model.ArtifactClass
+	ClassCount                   = model.ClassCount
 	EdgeEvent                    = model.EdgeEvent
 	InContextEvent               = model.InContextEvent
 	InContextCount               = model.InContextCount
@@ -597,6 +598,18 @@ func ClassNames(ctx context.Context, d *sql.DB, dsID int64, limit int) ([]string
 		return sqlite.ClassNames(ctx, d, dsID, limit)
 	case config.DBBackendPostgres:
 		return postgres.ClassNames(ctx, d, dsID, limit)
+	}
+	return nil, unsupported()
+}
+
+// TopArtifactClasses returns the classes given to the artifact graphs of the dataset with the number of artifacts of each, the most
+// used first (then by name), at most limit.
+func TopArtifactClasses(ctx context.Context, d *sql.DB, dsID int64, limit int) ([]ClassCount, error) {
+	switch backend() {
+	case config.DBBackendSQLite:
+		return sqlite.TopArtifactClasses(ctx, d, dsID, limit)
+	case config.DBBackendPostgres:
+		return postgres.TopArtifactClasses(ctx, d, dsID, limit)
 	}
 	return nil, unsupported()
 }

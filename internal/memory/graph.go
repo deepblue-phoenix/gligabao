@@ -87,3 +87,22 @@ func referencedModels(ctx context.Context, d *sql.DB, entities []graph.EvidenceE
 	}
 	return out, nil
 }
+
+// TopClasses returns the n classes most given to the artifact graphs (the subgraphs deduced from an artifact) of userID's live
+// dataset called name (empty means the default dataset), each with the number of artifacts it was given to, the most frequent first.
+// It returns ErrDatasetNotFound if there is no such dataset.
+func TopClasses(ctx context.Context, d *sql.DB, userID, name string, n int) ([]graph.ClassCount, error) {
+	userID, err := memory_core.ResolveUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	name, err = memory_core.ResolveDatasetName(name)
+	if err != nil {
+		return nil, err
+	}
+	dsID, err := memory_core.DatasetID(ctx, d, userID, name)
+	if err != nil {
+		return nil, err
+	}
+	return graph.TopArtifactClasses(ctx, d, dsID, n)
+}

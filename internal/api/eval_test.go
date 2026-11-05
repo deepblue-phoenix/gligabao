@@ -56,7 +56,7 @@ func testEvalEndpoints(t *testing.T, d *sql.DB) {
 	}
 
 	for _, c := range []struct{ plain, eval, body string }{
-		{"/v1/gb/remember", "/v1/gb/eval/remember", `{"user_id":"u1","text":"Alice"}`},
+		{"/v1/gb/remember", "/v1/gb/eval/remember", `{"user_id":"u1","text":"Alice","classify_graph":false}`},
 		{"/v1/gb/query", "/v1/gb/eval/query", `{"user_id":"u1","query":"Alice?"}`},
 	} {
 		// Only the eval endpoint generates a trajectory.

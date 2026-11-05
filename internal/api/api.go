@@ -40,6 +40,7 @@ func Register(mux *http.ServeMux, mgr *memory_remember.Manager, d *db.DB, llm me
 	mux.Handle("GET /v1/gb/datasets", a(datasets.List(d.Relational)))
 	mux.Handle("DELETE /v1/gb/datasets/{name}", a(datasets.Delete(d.Relational, d.Vector)))
 	mux.Handle("GET /v1/gb/datasets/{name}/graph", a(datasets.Graph(d.Relational)))
+	mux.Handle("GET /v1/gb/datasets/{name}/classes", a(datasets.Classes(d.Relational)))
 	mux.Handle("GET /v1/gb/datasets/{name}/git", a(datasets.Git(d.Relational)))
 	if o.trainingHook != nil {
 		mux.Handle("POST /v1/gb/datasets/{name}/training", a(datasets.Training(d.Relational, o.trainingHook)))

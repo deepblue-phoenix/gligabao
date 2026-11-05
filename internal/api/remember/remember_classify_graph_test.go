@@ -53,17 +53,26 @@ func testRememberClassifyGraph(t *testing.T, d *sql.DB) {
 		t.Fatalf("records %+v", recs)
 	}
 
-	// without classify_graph nothing is classified
-	if code, body := post(`{"user_id":"u1","dataset":"d","text":"Alice works at Acme."}`); code != 200 || strings.Contains(body, `"classes"`) || len(llm.prompts) != 1 {
+	// classify_graph false: nothing is classified
+	if code, body := post(`{"user_id":"u1","dataset":"d","text":"Alice works at Acme.","classify_graph":false}`); code != 200 || strings.Contains(body, `"classes"`) || len(llm.prompts) != 1 {
 		t.Fatalf("status %d: %s (%d class requests)", code, body, len(llm.prompts))
 	}
 
-	// refused: classes without the flag, a malformed class, too many classes, an image
+	// on by default: without the flag the graph is classified (the real handler, no flag injected)
+	raw := httptest.NewRecorder()
+	rawMux := http.NewServeMux()
+	rawMux.HandleFunc("POST /v1/gb/remember", testRawHandler(t, d, &classifyLLM{}))
+	rawMux.ServeHTTP(raw, httputiltest.NewRequest("POST", "/v1/gb/remember", strings.NewReader(`{"user_id":"u1","dataset":"d2","text":"Alice works at Acme."}`)))
+	if raw.Code != 200 || !strings.Contains(raw.Body.String(), `"classes":[{"artifact_id":`) {
+		t.Fatalf("default: status %d: %s", raw.Code, raw.Body)
+	}
+
+	// refused: classes with the flag off the flag, a malformed class, too many classes, an image
 	for name, req := range map[string]string{
-		"classes without the flag": `{"user_id":"u1","text":"x","graph_classes":["a"]}`,
-		"empty class":              `{"user_id":"u1","text":"x","classify_graph":true,"graph_classes":["!!"]}`,
-		"too many":                 `{"user_id":"u1","text":"x","classify_graph":true,"graph_classes":[` + `"c"` + manyClasses(60) + `]}`,
-		"image":                    `{"user_id":"u1","image":"aGk=","classify_graph":true}`,
+		"classes with the flag off": `{"user_id":"u1","text":"x","classify_graph":false,"graph_classes":["a"]}`,
+		"empty class":               `{"user_id":"u1","text":"x","classify_graph":true,"graph_classes":["!!"]}`,
+		"too many":                  `{"user_id":"u1","text":"x","classify_graph":true,"graph_classes":[` + `"c"` + manyClasses(60) + `]}`,
+		"image":                     `{"user_id":"u1","image":"aGk=","classify_graph":true}`,
 	} {
 		if code, body := post(req); code != 400 {
 			t.Errorf("%s: status %d: %s", name, code, body)

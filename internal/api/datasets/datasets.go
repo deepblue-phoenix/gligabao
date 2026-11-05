@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
+	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
@@ -116,6 +118,49 @@ func Graph(d *sql.DB) http.HandlerFunc {
 			httputil.Error(w, http.StatusInternalServerError, "failed to export graph")
 		default:
 			httputil.WriteJSON(w, http.StatusOK, g)
+		}
+	}
+}
+
+// maxTopClasses is the largest n the classes endpoint accepts; defaultTopClasses is used when n is absent.
+const (
+	defaultTopClasses = 10
+	maxTopClasses     = 1000
+)
+
+// classesResponse is what GET /v1/gb/datasets/{name}/classes answers.
+type classesResponse struct {
+	Dataset string             `json:"dataset"`
+	Classes []graph.ClassCount `json:"classes"`
+}
+
+// Classes serves GET /v1/gb/datasets/{name}/classes?n=N: the N classes most given to the artifact graphs (subgraphs) of the whole
+// dataset, each with the number of artifacts it was given to, the most frequent first. n defaults to 10 and is at most 1000.
+func Classes(d *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		n := defaultTopClasses
+		if v := r.URL.Query().Get("n"); v != "" {
+			var convErr error
+			if n, convErr = strconv.Atoi(v); convErr != nil || n < 1 || n > maxTopClasses {
+				httputil.Error(w, http.StatusBadRequest, "n must be an integer between 1 and 1000")
+				return
+			}
+		}
+		classes, err := memory.TopClasses(r.Context(), d, httputil.UserID(r), r.PathValue("name"), n)
+		switch {
+		case errors.Is(err, memory_core.ErrInvalidUser):
+			httputil.Error(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, memory_core.ErrInvalidDataset), errors.Is(err, memory_core.ErrDatasetNotFound):
+			httputil.Error(w, http.StatusNotFound, "dataset not found")
+		case err != nil:
+			log.WithError(err).WithFields(log.Fields{
+				"user_id": httputil.UserID(r),
+				"dataset": r.PathValue("name"),
+			}).Error("top classes failed")
+			httputil.Error(w, http.StatusInternalServerError, "failed to get classes")
+		default:
+			name, _ := memory_core.ResolveDatasetName(r.PathValue("name"))
+			httputil.WriteJSON(w, http.StatusOK, classesResponse{Dataset: name, Classes: classes})
 		}
 	}
 }

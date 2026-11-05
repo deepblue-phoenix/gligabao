@@ -61,13 +61,13 @@ type rememberRequest struct {
 	// text and remembers what it finds, as artifacts of kind "web_search" (see docs/web-search.md). Only available when
 	// the server has an Anthropic API key (else 503); not for an image (400).
 	WebSearch bool `json:"web_search"`
-	// ClassifyGraph (optional, default false) has an LLM classify the graph of each artifact the call stores (the text, or each chunk of a
+	// ClassifyGraph (optional, default true for a text; nil is the default, false turns it off) has an LLM classify the graph of each artifact the call stores (the text, or each chunk of a
 	// document): it picks one to three classes, and each is stored as a record of gb_artifact_classes that references the run (inference)
 	// of the call. It costs a call per artifact; the model and the reasoning level are those of the "classify_graph" stage. Not for an image
 	// (400). See docs/remember.md#graph-classes.
-	ClassifyGraph bool `json:"classify_graph"`
+	ClassifyGraph *bool `json:"classify_graph"`
 	// GraphClasses (optional) are the only classes the LLM may choose from (at most memory_core.MaxGraphClasses, normalized to lowercase
-	// snake_case); without them it chooses freely, reusing the classes the dataset already has. Needs classify_graph (400 without).
+	// snake_case); without them it chooses freely, reusing the classes the dataset already has. 400 with classify_graph false.
 	GraphClasses []string `json:"graph_classes"`
 	// Timeseries (optional) supplies timeseries to store and anchor to what the text yields (see docs/timeseries.md).
 	// Not for an image (400).
@@ -194,7 +194,9 @@ func handler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, eval 
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		graphClasses, err := resolveGraphClasses(req.ClassifyGraph, req.GraphClasses)
+		// On by default, except on the eval endpoint, whose trajectories and costs must not change under an eval that did not ask for it.
+		classifyGraph := req.ClassifyGraph != nil && *req.ClassifyGraph || req.ClassifyGraph == nil && !eval
+		graphClasses, err := resolveGraphClasses(classifyGraph, req.GraphClasses)
 		if err != nil {
 			httputil.Error(w, http.StatusBadRequest, err.Error())
 			return
@@ -218,7 +220,7 @@ func handler(mgr *memory_remember.Manager, d *sql.DB, llm memory_core.LLM, eval 
 		outcome := make(chan memory_remember.Outcome, 1)
 		runID, err := mgr.Submit(memory_remember.Request{
 			UserID: httputil.UserID(r), Dataset: req.Dataset, Kind: req.Kind, Text: req.Text, Ref: ref,
-			Opts: append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithGraphIndex(graphIndex), memory_core.WithModels(models), memory_core.WithReasoning(reasoning), memory_core.WithWebSearch(req.WebSearch), memory_core.WithClassifyGraph(req.ClassifyGraph, graphClasses), memory_core.WithSeries(series), memory_core.WithSeriesFetch(fetch), memory_core.WithSeriesObservations(observe)),
+			Opts: append(opts[:len(opts):len(opts)], memory_core.WithSessionID(sessionID), memory_core.WithGraphIndex(graphIndex), memory_core.WithModels(models), memory_core.WithReasoning(reasoning), memory_core.WithWebSearch(req.WebSearch), memory_core.WithClassifyGraph(classifyGraph, graphClasses), memory_core.WithSeries(series), memory_core.WithSeriesFetch(fetch), memory_core.WithSeriesObservations(observe)),
 			Ctx:  r.Context(), Outcome: outcome,
 		})
 		if err != nil {
@@ -314,10 +316,11 @@ func resolveTimeseries(t *timeseriesRequest, providers []memory_core.SeriesProvi
 	return series, f, t.Observations, err
 }
 
-// resolveGraphClasses validates graph_classes of a request: they only make sense with classify_graph.
+// resolveGraphClasses validates graph_classes of a request: they only make sense when the graph is classified (it is, unless the
+// request says classify_graph false).
 func resolveGraphClasses(classify bool, classes []string) ([]string, error) {
 	if len(classes) > 0 && !classify {
-		return nil, errors.New("graph_classes needs classify_graph")
+		return nil, errors.New("graph_classes needs classify_graph, which is false")
 	}
 	return memory_core.ResolveGraphClasses(classes)
 }
@@ -353,7 +356,7 @@ func rememberImage(w http.ResponseWriter, r *http.Request, d *sql.DB, llm memory
 		httputil.Error(w, http.StatusBadRequest, "graph_index does not apply to an image")
 		return
 	}
-	if req.ClassifyGraph || len(req.GraphClasses) > 0 {
+	if (req.ClassifyGraph != nil && *req.ClassifyGraph) || len(req.GraphClasses) > 0 {
 		httputil.Error(w, http.StatusBadRequest, "classify_graph does not apply to an image")
 		return
 	}

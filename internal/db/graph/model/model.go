@@ -456,3 +456,9 @@ type Tx interface {
 	// GetEntityGeo reads the geo metadata of an entity. It returns ErrNotFound if the entity has none.
 	GetEntityGeo(ctx context.Context, entityID int64) (*EntityGeo, error)
 }
+
+// ClassCount is a class with the number of artifact graphs of a dataset it was given to.
+type ClassCount struct {
+	Class string `json:"class"`
+	Count int    `json:"count"`
+}
