@@ -40,5 +40,5 @@ Rules:
 - Give one to three classes, the best fitting first. Most graphs need one; give more only if the graph clearly is several kinds of thing.
 - A class names the kind of situation or domain the graph describes as a whole (for example corporate_ownership, supply_chain, family, software_dependencies, geopolitics), not one of its entities and not a single fact.
 - A class is a short lowercase snake_case name of one to four words.
-- If <allowed_classes> is given, you MUST choose only from it, exactly as written, and nothing else.
+- If <allowed_classes> is given, you MUST choose exactly ONE class, only from it, exactly as written: the one that fits the graph closest, even if none fits well. Ignore the one-to-three rule and the idea of making up a class.
 - Otherwise, if <existing_classes> is given, reuse one of them when it fits the graph; make a new class only when none of them does.`

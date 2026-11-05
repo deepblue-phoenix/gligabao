@@ -42,7 +42,7 @@ class Client:
         timeseries: list[dict[str, Any]] | None = None,
         fetch_timeseries: dict[str, Any] | bool | None = None,
         observe_timeseries: bool = False,
-        classify_graph: bool = False,
+        classify_graph: bool | None = None,
         graph_classes: list[str] | None = None,
     ) -> dict[str, Any]:
         """Store `text`, or an `image`, in memory (POST /v1/gb/remember).
@@ -98,11 +98,11 @@ class Client:
         and extracted into the graph like any text. The response lists them under "series_observations". It costs
         an extraction call each.
 
-        `classify_graph=True` (text only) has an LLM classify the graph of each artifact the call stores (the text,
-        or each chunk of a long text): it picks one to three classes, each stored as a record of the artifact's
+        The graph is classified by default (text only; `classify_graph=False` turns it off): an LLM classifies the graph
+        of each artifact the call stores (the text, or each chunk of a long text): it picks one to three classes, each stored as a record of the artifact's
         classes together with the run (inference) of the call. The response lists them under "classes". It costs a
         call per artifact; its model and reasoning level are the "classify_graph" stage of `models` and `reasoning`.
-        `graph_classes` (needs `classify_graph`) are the only classes the LLM may choose from (lowercase snake_case
+        `graph_classes` are the only classes the LLM may choose from, it picks the closest (lowercase snake_case
         names); without it the LLM chooses freely, reusing the classes the dataset already has.
         """
         if (text is None) == (image is None):
@@ -133,12 +133,12 @@ class Client:
             body["reasoning"] = reasoning
         if web_search:
             body["web_search"] = True
-        if graph_classes and not classify_graph:
-            raise ValueError("graph_classes needs classify_graph")
-        if classify_graph:
-            body["classify_graph"] = True
-            if graph_classes:
-                body["graph_classes"] = list(graph_classes)
+        if graph_classes and classify_graph is False:
+            raise ValueError("graph_classes needs classify_graph, which is False")
+        if classify_graph is not None:
+            body["classify_graph"] = classify_graph
+        if graph_classes:
+            body["graph_classes"] = list(graph_classes)
         if timeseries or fetch_timeseries:
             ts: dict[str, Any] = {}
             if timeseries:

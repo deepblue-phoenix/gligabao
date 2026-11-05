@@ -97,7 +97,7 @@ type RememberRequest struct {
 	Models        map[string]string `json:"models,omitempty"`    // model per stage
 	Reasoning     map[string]string `json:"reasoning,omitempty"` // level per stage: none, low, medium, high
 	WebSearch     bool              `json:"web_search,omitempty"`
-	ClassifyGraph bool              `json:"classify_graph,omitempty"`
+	ClassifyGraph *bool             `json:"classify_graph,omitempty"` // default true for a text; point to false to turn it off
 	GraphClasses  []string          `json:"graph_classes,omitempty"`
 	GraphIndex    string            `json:"graph_index,omitempty"`
 	// Extra holds any other field of the API (e.g. "timeseries"); it is merged into the body, and wins over the fields above.

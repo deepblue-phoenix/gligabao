@@ -172,7 +172,7 @@ func classifyGraph(ctx context.Context, llm memory_core.LLM, g artifactGraph, al
 }
 
 // parseClasses reads the answer {"classes": ["a", "b"]}: the classes are normalized, repeats dropped, only the first
-// memory_core.MaxClassesPerGraph kept, and, if allowed is not empty, those not in it left out. It is an error if none is left.
+// memory_core.MaxClassesPerGraph kept (only the first if allowed is not empty), and, if allowed is not empty, those not in it left out. It is an error if none is left.
 func parseClasses(answer string, allowed []string) ([]string, error) {
 	js, err := memory_core.JSONObject(answer)
 	if err != nil {
@@ -197,7 +197,8 @@ func parseClasses(answer string, allowed []string) ([]string, error) {
 		}
 		seen[n] = true
 		out = append(out, n)
-		if len(out) == memory_core.MaxClassesPerGraph {
+		// With a set to choose from the LLM is asked for the one closest class, so only the first is kept.
+		if len(out) == memory_core.MaxClassesPerGraph || len(allowed) > 0 {
 			break
 		}
 	}
