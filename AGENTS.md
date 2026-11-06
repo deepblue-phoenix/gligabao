@@ -57,3 +57,29 @@ The database schema is SQL, not Go strings: one `schema.sql` per backend package
 - `optional_*.sql` is DDL that is not applied on every start (the geo index).
 - Write plain SQL (no Go `Sprintf` placeholders or string splicing, except the one documented in `optional_geo_index.sql` of PostgreSQL); the SQLite and PostgreSQL files of a feature define the same tables, the SQLite one holding the comments that say what the columns mean.
 - Keep `docs/listings/db-tables.md` up to date with every table change.
+
+## Leftover tasks (record scoped-out work)
+
+A task often changes some code while related parts are intentionally left unchanged, so the task stays scoped and does not grow too big. That is fine, but the unfinished part must not get lost. Every such set of left-over sub-changes is recorded as a file in the `leftover_tasks/` directory at the repo root, so that an agent can later be pointed at that directory and pick the work up independently.
+
+**When to record:** at the end of a task, if you knowingly left related code, docs, config, schema or tests unchanged that still need changing, or if a known gap or unfinished follow-up remains. Do not record things that are unrelated to the task, or vague ideas nobody asked for.
+
+**Format:**
+
+- One file per set of left-over sub-changes (one unfinished task per file). Name: `leftover_tasks/<YYYY-MM-DD>-<short-kebab-slug>.md`. If the name is taken, choose another slug.
+- Each file is self-contained: an agent with no other context must be able to pick it up. Headers, in this order:
+  - `# <Title>`: imperative, short (e.g. `Migrate the audit table to the new schema in the sqlite backend`).
+  - `**Date**` (`YYYY-MM-DD`), `**Version**` (the `VERSION` it was left at, if the repo is versioned), `**Status**` (`open`).
+  - `## Context`: what the finished task changed (files, functions, paths, tables, configs) and why the related parts were left out (the scope reason).
+  - `## Remaining work`: a concrete checklist of what still has to change, with file paths and symbols, and the expected end state.
+  - `## How to pick it up`: pointers to the relevant code, commands to run (tests, builds), dependencies on other leftover tasks, risks and gotchas, and how to tell it is done.
+- Be complete but short: a few paragraphs and checklists. Do not paste large diffs.
+- Commit the leftover file in the same commit as the change that left the work undone.
+
+**Managing leftover tasks:**
+
+- When a later task completes a leftover task fully, delete its file in that commit (git history keeps the record, and the commit or changelog entry should mention it). When it is completed partly, update `Remaining work` to what is still open and add a dated line under `## Progress`.
+- When a change makes a leftover task obsolete, delete its file in that commit and say so in the changelog if the repo has one.
+- Do not edit leftover files that the current task does not complete or obsolete.
+- Leftover tasks are unfinished parts of changes, not roadmap items or changelog entries. Do not put them in `CHANGELOG.md`, the README, or the roadmap directory.
+- When asked to work on the leftover tasks (or pointed at a file in `leftover_tasks/`), read the file(s), then do the work as a normal task, including the versioning and changelog rules above.
