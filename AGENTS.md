@@ -1,5 +1,7 @@
 # Instructions for coding agents / LLMs
 
+**All new code must be written in the functional-programming style.** Use pure functions, immutable data, and explicit data transformations; avoid mutable shared state, hidden side effects, and imperative loops where a functional form fits. This is mandatory, not a preference.
+
 ## Versioning and changelog (required for every change)
 
 This repo is versioned on its own (separately from `../gligabao_int`). The version lives in two files at the repo root
