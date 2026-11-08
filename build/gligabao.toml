@@ -12,7 +12,7 @@ db_backend = "sqlite"
 # postgres_dsn = "postgres://user:password@localhost:5432/gligabao?sslmode=disable"
 
 # Vector store for embeddings: "chromem" (default; chromem-go, pure Go, a local directory next to the main
-# database, see `serve --vector-dir`) or "pinecone".
+# database, see `serve --vector-dir`) "pinecone" or "s3vectors" (an Amazon S3 vector bucket).
 vector_store = "chromem"
 # Embedding size (text-embedding-3-small = 1536); also the output size requested from OpenAI. Fixed when the
 # chromem vector store is created; a Pinecone index must be created with the same dimension.
@@ -22,6 +22,14 @@ embedding_dimensions = 1536
 # Pinecone console (also settable with PINECONE_INDEX_HOST). Leave unset to disable.
 # pinecone_api_key = ""
 # pinecone_index_host = "my-index-abc123.svc.aped-1234.pinecone.io"
+
+# Amazon S3 Vectors settings (used when vector_store = "s3vectors"; see docs/s3-vectors.md). The vector bucket must exist.
+# Credentials come from the standard AWS chain (AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, ~/.aws, IAM role), not from this file.
+# Each dataset is one index of the bucket named "<prefix>.<dataset>", so the prefix works as a subdirectory: deployments
+# (prod, staging, a project) can share one bucket. Also settable with S3_VECTORS_BUCKET / S3_VECTORS_REGION / S3_VECTORS_PREFIX.
+# s3_vectors_bucket = "my-gligabao-vectors"
+# s3_vectors_region = "us-east-1"
+# s3_vectors_prefix = "prod"
 
 # Long texts: remember splits a text of more than chunk_size tokens into chunks (at paragraph boundaries, with
 # chunk_overlap_percent of each chunk repeated at the start of the next) and extracts, stores and embeds each chunk on

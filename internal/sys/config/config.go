@@ -23,14 +23,17 @@ const FileName = "gligabao.toml"
 
 // Environment variables the API keys are loaded from.
 const (
-	EnvAnthropicKey = "ANTHROPIC_API_KEY"
-	EnvOpenAIKey    = "OPENAI_API_KEY"
-	EnvJevKey       = "JEV_API_KEY"
-	EnvJevBaseURL   = "JEV_BASE_URL"
-	EnvPineconeKey  = "PINECONE_API_KEY"
-	EnvPineconeHost = "PINECONE_INDEX_HOST"
-	EnvPostgresDSN  = "POSTGRES_DSN"
-	EnvSidecarURL   = "SIDECAR_URL"
+	EnvAnthropicKey    = "ANTHROPIC_API_KEY"
+	EnvOpenAIKey       = "OPENAI_API_KEY"
+	EnvJevKey          = "JEV_API_KEY"
+	EnvJevBaseURL      = "JEV_BASE_URL"
+	EnvPineconeKey     = "PINECONE_API_KEY"
+	EnvPineconeHost    = "PINECONE_INDEX_HOST"
+	EnvPostgresDSN     = "POSTGRES_DSN"
+	EnvS3VectorsBucket = "S3_VECTORS_BUCKET"
+	EnvS3VectorsRegion = "S3_VECTORS_REGION"
+	EnvS3VectorsPrefix = "S3_VECTORS_PREFIX"
+	EnvSidecarURL      = "SIDECAR_URL"
 )
 
 // Database backends selectable with the db_backend setting.
@@ -41,8 +44,9 @@ const (
 
 // Vector stores selectable with the vector_store setting.
 const (
-	VectorStoreChromem  = "chromem"
-	VectorStorePinecone = "pinecone"
+	VectorStoreChromem   = "chromem"
+	VectorStorePinecone  = "pinecone"
+	VectorStoreS3Vectors = "s3vectors"
 )
 
 // DefaultEmbeddingDimensions is the output size of the default embedding model (text-embedding-3-small).
@@ -80,7 +84,7 @@ type Config struct {
 	// Required when db_backend = "postgres". The sqlite database file is set with `serve --db`.
 	PostgresDSN string `toml:"postgres_dsn"`
 	// VectorStore selects where embeddings are stored: "chromem" (default; chromem-go, pure Go, a local directory
-	// next to the main database) or "pinecone".
+	// next to the main database), "pinecone" or "s3vectors" (an Amazon S3 vector bucket).
 	VectorStore string `toml:"vector_store"`
 	// EmbeddingDimensions is the size of the stored embeddings. The chromem store fixes it when its
 	// directory is created; a Pinecone index must have been created with the same dimension.
@@ -89,6 +93,14 @@ type Config struct {
 	// The host is the index's data-plane host from the Pinecone console. Both empty = vector DB disabled.
 	PineconeKey       string `toml:"pinecone_api_key"`
 	PineconeIndexHost string `toml:"pinecone_index_host"`
+	// S3VectorsBucket is the (existing) Amazon S3 vector bucket of vector_store = "s3vectors" (also S3_VECTORS_BUCKET).
+	S3VectorsBucket string `toml:"s3_vectors_bucket"`
+	// S3VectorsRegion is its AWS region (also S3_VECTORS_REGION); empty = the AWS SDK default (AWS_REGION, shared config).
+	// Credentials come from the standard AWS chain (environment, shared files, IAM role), never from this file.
+	S3VectorsRegion string `toml:"s3_vectors_region"`
+	// S3VectorsPrefix is the "subdirectory" of the bucket gligabao uses (also S3_VECTORS_PREFIX): each dataset is the index
+	// "<prefix>.<dataset>", so deployments can share a bucket. Optional.
+	S3VectorsPrefix string `toml:"s3_vectors_prefix"`
 	// ChunkSize is the chunk size, in tokens: remember splits a text of more than this many tokens into chunks (see
 	// docs/chunking.md). Default chunk.DefaultSize (1024).
 	ChunkSize int `toml:"chunk_size"`
@@ -201,6 +213,9 @@ func Default() *Config {
 
 		PineconeKey:       os.Getenv(EnvPineconeKey),
 		PineconeIndexHost: os.Getenv(EnvPineconeHost),
+		S3VectorsBucket:   os.Getenv(EnvS3VectorsBucket),
+		S3VectorsRegion:   os.Getenv(EnvS3VectorsRegion),
+		S3VectorsPrefix:   os.Getenv(EnvS3VectorsPrefix),
 	}
 }
 
@@ -230,8 +245,12 @@ func (c *Config) Validate() error {
 	}
 	switch c.VectorStore {
 	case VectorStoreChromem, VectorStorePinecone:
+	case VectorStoreS3Vectors:
+		if strings.TrimSpace(c.S3VectorsBucket) == "" {
+			return fmt.Errorf("config: s3_vectors_bucket (or %s) is required when vector_store is %q", EnvS3VectorsBucket, VectorStoreS3Vectors)
+		}
 	default:
-		return fmt.Errorf("config: vector_store %q must be %q or %q", c.VectorStore, VectorStoreChromem, VectorStorePinecone)
+		return fmt.Errorf("config: vector_store %q must be %q, %q or %q", c.VectorStore, VectorStoreChromem, VectorStorePinecone, VectorStoreS3Vectors)
 	}
 	if c.EmbeddingDimensions < 1 {
 		return fmt.Errorf("config: embedding_dimensions %d must be positive", c.EmbeddingDimensions)

@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.179.0] - 2026-11-08
+
+### Added
+- **Amazon S3 vector buckets as a vector store.** `vector_store = "s3vectors"` keeps the embeddings in an S3 vector bucket, next to the local `chromem` store and `pinecone`. New settings `s3_vectors_bucket` (required, the bucket must exist), `s3_vectors_region` and `s3_vectors_prefix` (also `S3_VECTORS_BUCKET`, `S3_VECTORS_REGION`, `S3_VECTORS_PREFIX`); credentials come from the standard AWS chain. Datasets are separated like subdirectories of the bucket: each vector dataset is one index named `<prefix>.<dataset>`, so deployments can share a bucket by prefix. The wrapper is `vector.S3Vectors` (`internal/db/vector/s3vectors.go`). See `docs/s3-vectors.md`.
+
 ## [0.178.0] - 2026-11-06
 
 ### Added

@@ -326,3 +326,20 @@ func TestAgentDefsAndResearchCostCap(t *testing.T) {
 		t.Error("a negative cap is invalid")
 	}
 }
+
+func TestS3VectorsStore(t *testing.T) {
+	t.Setenv(EnvS3VectorsBucket, "b-env")
+	t.Setenv(EnvS3VectorsRegion, "")
+	t.Setenv(EnvS3VectorsPrefix, "")
+	cfg, err := Load(write(t, "vector_store = \"s3vectors\"\ns3_vectors_prefix = \"prod\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.S3VectorsBucket != "b-env" || cfg.S3VectorsPrefix != "prod" || cfg.VectorStore != VectorStoreS3Vectors {
+		t.Fatalf("got %+v", cfg)
+	}
+	t.Setenv(EnvS3VectorsBucket, "")
+	if _, err := Load(write(t, "vector_store = \"s3vectors\"\n")); err == nil {
+		t.Error("s3vectors without a bucket: expected error")
+	}
+}

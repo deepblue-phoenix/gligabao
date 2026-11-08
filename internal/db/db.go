@@ -47,7 +47,7 @@ type Config struct {
 	PostgresDSN string
 
 	// VectorStore is the vector database type: config.VectorStoreChromem (default if empty) or
-	// config.VectorStorePinecone.
+	// config.VectorStorePinecone or config.VectorStoreS3Vectors.
 	VectorStore string
 	// VectorDir is the chromem directory (chromem store only). Default: next to SQLitePath.
 	VectorDir string
@@ -58,6 +58,8 @@ type Config struct {
 	// PineconeKey and PineconeIndexHost configure the Pinecone store.
 	PineconeKey       string
 	PineconeIndexHost string
+	// S3Vectors configures the S3 vector store (config.VectorStoreS3Vectors); its Dimensions default to EmbeddingDimensions.
+	S3Vectors vector.S3VectorsConfig
 	// Chunking is the chunk size and overlap remember uses for a long text. The zero value means chunk.DefaultConfig().
 	Chunking memory_chunk.Config
 
@@ -91,7 +93,10 @@ func ConfigFrom(c *config.Config, sqlitePath, vectorDir, imageDir string) Config
 		EmbeddingDimensions: c.EmbeddingDimensions,
 		PineconeKey:         c.PineconeKey,
 		PineconeIndexHost:   c.PineconeIndexHost,
-		Chunking:            c.Chunking(),
+		S3Vectors: vector.S3VectorsConfig{
+			Bucket: c.S3VectorsBucket, Region: c.S3VectorsRegion, Prefix: c.S3VectorsPrefix, Dimensions: c.EmbeddingDimensions,
+		},
+		Chunking: c.Chunking(),
 	}
 }
 
@@ -112,13 +117,13 @@ type DB struct {
 
 	// Backend is the relational/graph backend in use (config.DBBackendSQLite or config.DBBackendPostgres).
 	Backend string
-	// VectorStore is the vector store in use (config.VectorStoreChromem or config.VectorStorePinecone).
+	// VectorStore is the vector store in use (config.VectorStoreChromem, config.VectorStorePinecone or config.VectorStoreS3Vectors).
 	VectorStore string
 	// EmbeddingDimensions is the size of the stored embeddings.
 	EmbeddingDimensions int
 	// SQLitePath is the sqlite database file ("" for postgres).
 	SQLitePath string
-	// VectorDir is the chromem directory ("" for pinecone).
+	// VectorDir is the chromem directory ("" for pinecone and s3vectors).
 	VectorDir string
 	// ImageDir is the directory of the image files (created when the first image is stored). The relational
 	// database only tracks their paths.
@@ -224,6 +229,17 @@ func Open(cfg Config) (*DB, error) {
 			return nil, err
 		}
 		d.Vector = p
+	case config.VectorStoreS3Vectors:
+		s3cfg := cfg.S3Vectors
+		if s3cfg.Dimensions == 0 {
+			s3cfg.Dimensions = cfg.EmbeddingDimensions
+		}
+		s, err := vector.NewS3Vectors(context.Background(), s3cfg)
+		if err != nil {
+			rel.Close()
+			return nil, err
+		}
+		d.Vector = s
 	default:
 		rel.Close()
 		return nil, fmt.Errorf("unknown vector store %q", cfg.VectorStore)

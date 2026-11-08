@@ -6,6 +6,7 @@ Embeddings live in a vector store (`internal/db/vector`), selected with `vector_
 |---|---|---|
 | `"chromem"` (default) | [chromem-go](https://github.com/philippgille/chromem-go), embedded and pure Go | nothing (no CGO, no C compiler, no extension) |
 | `"pinecone"` | Pinecone, hosted | `pinecone_api_key`, `pinecone_index_host` |
+| `"s3vectors"` | Amazon S3 Vectors, a vector bucket (see [s3-vectors.md](s3-vectors.md)) | `s3_vectors_bucket`, AWS credentials |
 
 Pinecone is independent of the chromem store and is unchanged. The sqlite-vec extension (and with it CGO and `mattn/go-sqlite3`) is no longer used. The main SQLite database uses the pure-Go `modernc.org/sqlite` driver.
 
@@ -17,6 +18,7 @@ The vector store's unit of isolation is the **dataset**, the same abstraction as
 |---|---|---|---|
 | chromem | a collection, named after the dataset | on the first `Upsert` | deletes the collection |
 | Pinecone | a namespace of the index, named after the dataset | on the first `Upsert` (Pinecone creates namespaces on write) | deletes all vectors of the namespace; a namespace that does not exist is not an error |
+| S3 Vectors | an index of the vector bucket, named `<prefix>.<dataset>` | on the first `Upsert` | deletes the index; one that does not exist is not an error |
 
 An empty dataset name is the backend's default one (chromem: a collection named `_default`; Pinecone: the default namespace). gligabao itself never uses it.
 
