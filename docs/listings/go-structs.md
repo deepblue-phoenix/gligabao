@@ -241,6 +241,8 @@
 | `internal/db/vector.Match`                                | is a similarity search result.                                                                                         |
 | `internal/db/vector.Pinecone`                             | is a vector Store backed by a Pinecone index via its REST API.                                                         |
 | `internal/db/vector.QueryOptions`                         | tunes a similarity search (top-k, filter, values).                                                                     |
+| `internal/db/vector.S3Vectors`                            | is a vector Store backed by Amazon S3 Vectors (one index per dataset).                                                 |
+| `internal/db/vector.S3VectorsConfig`                      | configures the S3 Vectors store (bucket, region, prefix, dimensions).                                                  |
 | `internal/db/vector.Stats`                                | describes the vectors of one dataset.                                                                                  |
 | `internal/db/vector.Vector`                               | is an embedding with an ID and optional metadata.                                                                      |
 | `internal/db/vector.pcDeleteRequest`                      | is the Pinecone delete request body.                                                                                   |
