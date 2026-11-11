@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.179.1] - 2026-11-11
+
+### Changed
+- **Docs reorganized.** The agent pages moved into `docs/agents/` (`agent-defs.md`, `agent-scheduler.md`, `research.md`, `subagents.md`) and the temporal pages into `docs/temporal/` (`temporal.md`, `temporal-edge-cases.md`). Some links in other pages still point to the old paths.
+- **Design and implementation plans for the deep-research loop.** New `docs/agents/deep-research-loop.md` (frontier, notes, challenges, two-phase research, schema), split into two implementation stages: `docs/agents/deep-research-loop-stage-1.md` (state, storage and tools, no loop change) and `docs/agents/deep-research-loop-stage-2.md` (the investigative loop, gates, breakers, observability and evals). Not implemented yet.
+
 ## [0.179.0] - 2026-11-08
 
 ### Added
