@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"os"
-	"path/filepath"
+	"fmt"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_memory"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
-	"github.com/deepblue-phoenix/gligabao/internal/db/dbexport"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
@@ -29,23 +27,20 @@ type app struct {
 	rememberOpts, queryOpts []memory_core.Option
 }
 
-// openApp opens the databases described by cfg (the SQLite file at sqlitePath, or its default; the chromem vector store next to it, or at
-// vectorDir) and builds the app over them. Call close when done.
-func openApp(ctx context.Context, cfg *config.Config, llm *ai.Client, emb memory_core.Embedder, sqlitePath, vectorDir string) (*app, error) {
-	dbCfg := db.ConfigFrom(cfg, sqlitePath, vectorDir, "")
+// openApp opens the databases described by cfg (PostgreSQL, and a remote vector store: Pinecone or S3 Vectors; see checkRemote) and builds
+// the app over them. Call close when done.
+func openApp(ctx context.Context, cfg *config.Config, llm *ai.Client, emb memory_core.Embedder) (*app, error) {
+	if err := checkRemote(cfg); err != nil {
+		return nil, err
+	}
+	dbCfg := db.ConfigFrom(cfg, "", "", "")
 	dbCfg.Geo = cfg.Geo
 	dbCfg.Models = ai.SupportedModels(ai.NewPriceTable(cfg.AIPrices()))
-	if dbCfg.SQLitePath != "" {
-		// A fresh Lambda has an empty /tmp: the directory of the file may not exist yet.
-		if err := os.MkdirAll(filepath.Dir(dbCfg.SQLitePath), 0o755); err != nil {
-			return nil, err
-		}
-	}
 	database, err := db.Open(dbCfg)
 	if err != nil {
 		return nil, err
 	}
-	log.WithFields(log.Fields{"backend": database.Backend, "sqlite_path": database.SQLitePath, "vector_store": database.VectorStore, "vector_dir": database.VectorDir}).Info("databases opened")
+	log.WithFields(log.Fields{"backend": database.Backend, "vector_store": database.VectorStore}).Info("databases opened")
 
 	var geo memory_geo.Resolver
 	if cfg.Geo {
@@ -63,7 +58,7 @@ func openApp(ctx context.Context, cfg *config.Config, llm *ai.Client, emb memory
 	return a, nil
 }
 
-// close stops the managers and closes the databases (for SQLite, the file is then complete and can be copied). The calls should be over.
+// close stops the managers and closes the databases. The calls should be over.
 func (a *app) close() {
 	a.stop()
 	a.remember.Wait()
@@ -72,17 +67,15 @@ func (a *app) close() {
 	}
 }
 
-// fullExport writes the whole local state (SQLite tables, chromem embeddings, images) to one archive at path (see package dbexport).
-func (a *app) fullExport(ctx context.Context, path string) (*dbexport.Manifest, error) {
-	if err := a.mem.Drain(ctx); err != nil {
-		log.WithError(err).Warn("export: some text that was queued for the knowledge base was not absorbed")
+// checkRemote fails unless cfg uses PostgreSQL and a remote vector store (Pinecone or S3 Vectors). The worker keeps no state of its own: it
+// works on the databases of the main gligabao instance, which see every write at once, so nothing has to be synced.
+func checkRemote(cfg *config.Config) error {
+	if cfg.DBBackend != config.DBBackendPostgres {
+		return fmt.Errorf("db_backend %q is not supported: the worker needs %q (set db_backend and postgres_dsn, or %s)", cfg.DBBackend, config.DBBackendPostgres, config.EnvPostgresDSN)
 	}
-	return dbexport.WriteFile(context.WithoutCancel(ctx), path, dbexport.Source{
-		Relational:          a.database.Relational,
-		Backend:             a.database.Backend,
-		Vector:              a.database.Vector,
-		VectorStore:         a.database.VectorStore,
-		EmbeddingDimensions: a.database.EmbeddingDimensions,
-		ImageDir:            a.database.ImageDir,
-	}, dbexport.Options{Source: "gligabao_pipelines", Version: version})
+	switch cfg.VectorStore {
+	case config.VectorStorePinecone, config.VectorStoreS3Vectors:
+		return nil
+	}
+	return fmt.Errorf("vector_store %q is not supported: the worker needs %q or %q", cfg.VectorStore, config.VectorStorePinecone, config.VectorStoreS3Vectors)
 }

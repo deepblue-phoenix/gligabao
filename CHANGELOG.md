@@ -5,6 +5,16 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.184.0] - 2026-11-13
+
+### Changed
+- **Breaking: `gligabao_pipelines` is now `gligabao_worker`** (binary `build/gligabao_worker`, source `cmd/gligabao_worker/`, docs `docs/worker_binary.md`). The default `--user` is now `worker` (was `pipelines`): pass `--user pipelines` to keep using an existing knowledge base.
+- **The worker works only on PostgreSQL and a remote vector store (Pinecone or S3 Vectors)**, the ones of the main gligabao instance, so it needs no syncing. A config that selects `sqlite` or `chromem` is refused (exit code 2). Without `--config`, it uses PostgreSQL from `POSTGRES_DSN`, and S3 Vectors if `S3_VECTORS_BUCKET` is set, else Pinecone.
+
+### Removed
+- SQLite and the chromem vector store from the worker, with the flags `--db` and `--vector-dir` and the variable `GLIGABAO_DB`.
+- The `--export` flag of the worker (the archive of the newly extracted data that was then loaded into the main instance).
+
 ## [0.183.1] - 2026-11-11
 
 ### Added

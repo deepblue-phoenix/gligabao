@@ -1,12 +1,11 @@
-// Command gligabao_pipelines runs one gligabao memory pipeline (remember or query) in process and exits: the databases (SQLite and the
-// chromem vector store, or PostgreSQL / Pinecone with --config) are opened, the pipeline runs, the databases are closed and the process
-// ends. It is for places that start for one job and are thrown away (an AWS Lambda, a container job, a sub-process of an orchestrator
-// agent): no server, HTTP API, admin UI, agents, training, evals or daemon, so the binary is small and starts fast. The state is the
-// SQLite file and the vector directory (point --db to a writable path such as /tmp/gligabao.db); getting them in before the run and out
-// after it is the caller's job, or --export writes them to one archive. See docs/pipelines_binary.md.
+// Command gligabao_worker runs one gligabao memory pipeline (remember or query) in process and exits, over the PostgreSQL database and the
+// remote vector store (Pinecone or S3 Vectors) of the main gligabao instance, so both see the same data at once and nothing is synced
+// or exported. It is for places that start for one job and are thrown away (an AWS Lambda, a container job, a sub-process of an
+// orchestrator agent): no server, HTTP API, admin UI, agents, training, evals or daemon, so the binary is small and starts fast. There is
+// no SQLite and no local vector store. See docs/worker_binary.md.
 //
-//	OPENAI_API_KEY=... ANTHROPIC_API_KEY=... gligabao_pipelines remember "Alice joined Acme in 2021."
-//	OPENAI_API_KEY=... ANTHROPIC_API_KEY=... gligabao_pipelines query "Where does Alice work?"
+//	OPENAI_API_KEY=... ANTHROPIC_API_KEY=... gligabao_worker remember "Alice joined Acme in 2021."
+//	OPENAI_API_KEY=... ANTHROPIC_API_KEY=... gligabao_worker query "Where does Alice work?"
 package main
 
 import (
@@ -23,7 +22,6 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_query"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
@@ -36,8 +34,7 @@ import (
 var version = ""
 
 const (
-	envDB       = "GLIGABAO_DB" // the SQLite file, when --db is not given
-	defaultUser = "pipelines"
+	defaultUser = "worker"
 	maxTextLen  = 1 << 20 // the text of remember, in bytes
 )
 
@@ -54,7 +51,7 @@ func main() {
 	os.Exit(run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-const usage = `Usage: gligabao_pipelines COMMAND [flags] ARG | -
+const usage = `Usage: gligabao_worker COMMAND [flags] ARG | -
 
 Runs one gligabao memory pipeline in process, then exits. Commands:
 
@@ -62,24 +59,21 @@ Runs one gligabao memory pipeline in process, then exits. Commands:
   query    [flags] QUESTION | - answer QUESTION from the knowledge base
   version                       print the version
 
-The result goes to stdout; logs and totals go to stderr. Every command takes the flags of "gligabao_pipelines COMMAND -h".
+The result goes to stdout; logs and totals go to stderr. Every command takes the flags of "gligabao_worker COMMAND -h".
 Needs ANTHROPIC_API_KEY and OPENAI_API_KEY (embeddings) in the environment or the --config file.
 `
 
 // common are the flags every command has.
 type common struct {
-	config, db, vectorDir, user, dataset, export string
-	timeout                                      time.Duration
-	json, verbose                                bool
+	config, user, dataset string
+	timeout               time.Duration
+	json, verbose         bool
 }
 
 func (c *common) register(fs *flag.FlagSet) {
-	fs.StringVar(&c.config, "config", "", "gligabao.toml to read the settings from (API keys, db_backend, postgres_dsn, vector_store, ...); default: the environment only")
-	fs.StringVar(&c.db, "db", "", "SQLite database file, with the vector store and the images next to it; default: $"+envDB+", else "+db.DefaultSQLitePath)
-	fs.StringVar(&c.vectorDir, "vector-dir", "", "chromem vector store directory (default: next to the database)")
+	fs.StringVar(&c.config, "config", "", "gligabao.toml to read the settings from (API keys, db_backend = \"postgres\", postgres_dsn, vector_store = \"pinecone\" or \"s3vectors\", ...); default: the environment only (POSTGRES_DSN, and the Pinecone or S3 Vectors variables)")
 	fs.StringVar(&c.user, "user", defaultUser, "the user whose knowledge base is used")
 	fs.StringVar(&c.dataset, "dataset", memory_core.DefaultDataset, "the dataset of the user's knowledge base")
-	fs.StringVar(&c.export, "export", "", "when done (also if the operation failed) write the whole local state (SQLite tables, embeddings, images) to this ZIP archive")
 	fs.DurationVar(&c.timeout, "timeout", 0, "give up after this long, e.g. 90s (default: no limit)")
 	fs.BoolVar(&c.json, "json", false, "print the result as JSON")
 	fs.BoolVar(&c.verbose, "verbose", false, "log what the databases and pipelines do to stderr")
@@ -101,11 +95,11 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return exitOK
 	case "remember", "query":
 	default:
-		fmt.Fprintf(stderr, "gligabao_pipelines: unknown command %q\n\n%s", cmd, usage)
+		fmt.Fprintf(stderr, "gligabao_worker: unknown command %q\n\n%s", cmd, usage)
 		return exitUsage
 	}
 
-	fs := flag.NewFlagSet("gligabao_pipelines "+cmd, flag.ContinueOnError)
+	fs := flag.NewFlagSet("gligabao_worker "+cmd, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var c common
 	c.register(fs)
@@ -119,7 +113,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		fs.StringVar(&session, "session", "", "session ID to label the query with")
 	}
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, "Usage: gligabao_pipelines %s [flags] ARG | -\n\nFlags:\n", cmd)
+		fmt.Fprintf(stderr, "Usage: gligabao_worker %s [flags] ARG | -\n\nFlags:\n", cmd)
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -129,7 +123,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return exitUsage
 	}
 	fail := func(code int, err error) int {
-		fmt.Fprintf(stderr, "gligabao_pipelines: %v\n", err)
+		fmt.Fprintf(stderr, "gligabao_worker: %v\n", err)
 		return code
 	}
 
@@ -182,11 +176,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		defer cancel()
 	}
 
-	path := c.db
-	if path == "" {
-		path = os.Getenv(envDB)
-	}
-	a, err := openApp(ctx, cfg, client, emb, path, c.vectorDir)
+	a, err := openApp(ctx, cfg, client, emb)
 	if err != nil {
 		return fail(exitUsage, err)
 	}
@@ -201,18 +191,6 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		})
 	case "query":
 		code = a.cmdQuery(ctx, stdout, stderr, c.json, userID, datasetName, input, sessionOpt(session))
-	}
-	if c.export != "" {
-		// Also when the operation failed: what was learned until then is worth keeping.
-		m, err := a.fullExport(ctx, c.export)
-		if err != nil {
-			fmt.Fprintf(stderr, "gligabao_pipelines: export: %v\n", err)
-			if code == exitOK {
-				code = exitError
-			}
-		} else {
-			fmt.Fprintf(stderr, "export: %s (%d tables, %d vector datasets, %d images)\n", c.export, len(m.Tables), len(m.Vectors), len(m.Images))
-		}
 	}
 	return code
 }
@@ -230,18 +208,18 @@ func (a *app) cmdRemember(ctx context.Context, stdout, stderr io.Writer, asJSON 
 	req.Ctx, req.Outcome = ctx, outcome
 	runID, err := a.remember.Submit(req)
 	if err != nil {
-		fmt.Fprintf(stderr, "gligabao_pipelines: could not queue the text: %v\n", err)
+		fmt.Fprintf(stderr, "gligabao_worker: could not queue the text: %v\n", err)
 		return exitError
 	}
 	var out memory_remember.Outcome
 	select {
 	case out = <-outcome:
 	case <-ctx.Done():
-		fmt.Fprintf(stderr, "gligabao_pipelines: remember run %d: %v\n", runID, context.Cause(ctx))
+		fmt.Fprintf(stderr, "gligabao_worker: remember run %d: %v\n", runID, context.Cause(ctx))
 		return exitError
 	}
 	if out.Err != nil {
-		fmt.Fprintf(stderr, "gligabao_pipelines: remember run %d failed: %v\n", runID, out.Err)
+		fmt.Fprintf(stderr, "gligabao_worker: remember run %d failed: %v\n", runID, out.Err)
 		return exitError
 	}
 	if asJSON {
@@ -259,7 +237,7 @@ func (a *app) cmdQuery(ctx context.Context, stdout, stderr io.Writer, asJSON boo
 		res, err = &memory_query.QueryResult{Answer: "The knowledge base is empty: nothing was remembered yet."}, nil
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "gligabao_pipelines: query: %v\n", err)
+		fmt.Fprintf(stderr, "gligabao_worker: query: %v\n", err)
 		return exitError
 	}
 	if asJSON {
@@ -273,7 +251,7 @@ func printJSON(stdout, stderr io.Writer, v any) int {
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(v); err != nil {
-		fmt.Fprintf(stderr, "gligabao_pipelines: %v\n", err)
+		fmt.Fprintf(stderr, "gligabao_worker: %v\n", err)
 		return exitError
 	}
 	return exitOK
@@ -303,17 +281,31 @@ func readInput(cmd string, args []string, stdin io.Reader) (string, error) {
 	return s, nil
 }
 
-// loadConfig reads the settings: the file at path, or with no path the defaults, which take the API keys and the PostgreSQL
-// connection string from the environment.
+// loadConfig reads the settings: the file at path (which must say db_backend and vector_store itself), or with no path the defaults of
+// the environment: PostgreSQL, and the vector store whose settings are in the environment (S3 Vectors if its bucket is set, else Pinecone).
 func loadConfig(path string) (*config.Config, error) {
 	if path != "" {
-		return config.Load(path)
+		cfg, err := config.Load(path)
+		if err != nil {
+			return nil, err
+		}
+		return cfg, checkRemote(cfg)
 	}
 	cfg := config.Default()
+	cfg.DBBackend = config.DBBackendPostgres
+	cfg.VectorStore = vectorStoreFromEnv(cfg)
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	return cfg, nil
+	return cfg, checkRemote(cfg)
+}
+
+// vectorStoreFromEnv is the remote vector store the environment configures: S3 Vectors with a bucket, else Pinecone.
+func vectorStoreFromEnv(cfg *config.Config) string {
+	if cfg.S3VectorsBucket != "" {
+		return config.VectorStoreS3Vectors
+	}
+	return config.VectorStorePinecone
 }
 
 func versionString() string {
@@ -321,7 +313,7 @@ func versionString() string {
 	if v == "" {
 		v = "dev"
 	}
-	s := "gligabao_pipelines " + v
+	s := "gligabao_worker " + v
 	if c := buildinfo.Commit(); c != "" {
 		s += " (" + c + ")"
 	}
