@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.182.1] - 2026-11-12
+
+### Added
+- **Docs: influences of the deep-research loop.** New page `docs/agents/deep-research-loop-influences.md` summarizing the systems that separate a question frontier from a knowledge workspace (Stanford STORM, LangChain Open Deep Research, DualGraph, GPT-Researcher), what they share and how they map to the loop.
+
 ## [0.182.0] - 2026-11-12
 
 ### Added
