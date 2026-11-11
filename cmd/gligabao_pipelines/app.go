@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_memory"
-	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbexport"
@@ -18,13 +17,12 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// app is what the server builds to serve remember, query and research, without the server: the databases, the remember manager, the
-// knowledge base over them and, for research, the research manager.
+// app is what the server builds to serve remember and query, without the server: the databases, the remember manager and the
+// knowledge base over them.
 type app struct {
 	database *db.DB
 	mem      *agent_memory.Memory
 	remember *memory_remember.Manager
-	research *agent_research.Manager // nil unless opened with research
 	llm      *ai.Client
 	stop     context.CancelFunc
 	// rememberOpts and queryOpts are the options of every remember and query call (vectors, chunking, geo).
@@ -32,16 +30,11 @@ type app struct {
 }
 
 // openApp opens the databases described by cfg (the SQLite file at sqlitePath, or its default; the chromem vector store next to it, or at
-// vectorDir) and builds the app over them. With research the tables of the research runs are created too and the research manager is
-// built. Call close when done.
-func openApp(ctx context.Context, cfg *config.Config, llm *ai.Client, emb memory_core.Embedder, sqlitePath, vectorDir string, research bool) (*app, error) {
+// vectorDir) and builds the app over them. Call close when done.
+func openApp(ctx context.Context, cfg *config.Config, llm *ai.Client, emb memory_core.Embedder, sqlitePath, vectorDir string) (*app, error) {
 	dbCfg := db.ConfigFrom(cfg, sqlitePath, vectorDir, "")
 	dbCfg.Geo = cfg.Geo
 	dbCfg.Models = ai.SupportedModels(ai.NewPriceTable(cfg.AIPrices()))
-	if research {
-		// Not dbfull: the tables of training and evals are not created here.
-		dbCfg.Schemas = []db.Schema{agent_research.Open}
-	}
 	if dbCfg.SQLitePath != "" {
 		// A fresh Lambda has an empty /tmp: the directory of the file may not exist yet.
 		if err := os.MkdirAll(filepath.Dir(dbCfg.SQLitePath), 0o755); err != nil {
@@ -67,27 +60,12 @@ func openApp(ctx context.Context, cfg *config.Config, llm *ai.Client, emb memory
 	a.stop = stop
 	a.remember = memory_remember.NewManager(mgrCtx, database.Relational, llm)
 	a.mem = &agent_memory.Memory{Remember: a.remember, DB: database.Relational, LLM: llm, RememberOpts: a.rememberOpts, QueryOpts: a.queryOpts}
-	if research {
-		ops, err := agent_research.OpsFor(database.Backend)
-		if err != nil {
-			stop()
-			a.remember.Wait()
-			database.Close()
-			return nil, err
-		}
-		// KeepActiveRuns: the runs that are running in this database belong to other processes.
-		a.research = agent_research.NewManager(mgrCtx, database.Relational, ops, llm, agent_research.KeepActiveRuns())
-		a.research.UseMemory(a.mem)
-	}
 	return a, nil
 }
 
 // close stops the managers and closes the databases (for SQLite, the file is then complete and can be copied). The calls should be over.
 func (a *app) close() {
 	a.stop()
-	if a.research != nil {
-		a.research.Wait()
-	}
 	a.remember.Wait()
 	if err := a.database.Close(); err != nil {
 		log.WithError(err).Warn("closing the databases")
@@ -96,9 +74,6 @@ func (a *app) close() {
 
 // fullExport writes the whole local state (SQLite tables, chromem embeddings, images) to one archive at path (see package dbexport).
 func (a *app) fullExport(ctx context.Context, path string) (*dbexport.Manifest, error) {
-	if a.research != nil {
-		a.research.Wait()
-	}
 	if err := a.mem.Drain(ctx); err != nil {
 		log.WithError(err).Warn("export: some text that was queued for the knowledge base was not absorbed")
 	}
@@ -109,5 +84,5 @@ func (a *app) fullExport(ctx context.Context, path string) (*dbexport.Manifest, 
 		VectorStore:         a.database.VectorStore,
 		EmbeddingDimensions: a.database.EmbeddingDimensions,
 		ImageDir:            a.database.ImageDir,
-	}, dbexport.Options{Source: "gligabao_lambda", Version: version})
+	}, dbexport.Options{Source: "gligabao_pipelines", Version: version})
 }

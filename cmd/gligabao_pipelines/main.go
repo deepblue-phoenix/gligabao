@@ -1,13 +1,12 @@
-// Command gligabao_lambda runs one gligabao operation (remember, query or research) in process and exits: the databases (SQLite and the
-// chromem vector store, or PostgreSQL / Pinecone with --config) are opened, the operation runs, the databases are closed and the process
-// ends. It is for places that start for one job and are thrown away (an AWS Lambda, a container job): no server, HTTP API, admin UI,
-// training, evals or daemon, so the binary is small and starts fast. The state is the SQLite file and the vector directory (point --db
-// to a writable path such as /tmp/gligabao.db); getting them in before the run and out after it is the caller's job, or --export writes
-// them to one archive. See docs/lambda.md.
+// Command gligabao_pipelines runs one gligabao memory pipeline (remember or query) in process and exits: the databases (SQLite and the
+// chromem vector store, or PostgreSQL / Pinecone with --config) are opened, the pipeline runs, the databases are closed and the process
+// ends. It is for places that start for one job and are thrown away (an AWS Lambda, a container job, a sub-process of an orchestrator
+// agent): no server, HTTP API, admin UI, agents, training, evals or daemon, so the binary is small and starts fast. The state is the
+// SQLite file and the vector directory (point --db to a writable path such as /tmp/gligabao.db); getting them in before the run and out
+// after it is the caller's job, or --export writes them to one archive. See docs/pipelines_binary.md.
 //
-//	OPENAI_API_KEY=... ANTHROPIC_API_KEY=... gligabao_lambda remember "Alice joined Acme in 2021."
-//	OPENAI_API_KEY=... ANTHROPIC_API_KEY=... gligabao_lambda query "Where does Alice work?"
-//	OPENAI_API_KEY=... ANTHROPIC_API_KEY=... gligabao_lambda research "Solid-state batteries"
+//	OPENAI_API_KEY=... ANTHROPIC_API_KEY=... gligabao_pipelines remember "Alice joined Acme in 2021."
+//	OPENAI_API_KEY=... ANTHROPIC_API_KEY=... gligabao_pipelines query "Where does Alice work?"
 package main
 
 import (
@@ -23,9 +22,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
-	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
-	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
@@ -41,7 +37,7 @@ var version = ""
 
 const (
 	envDB       = "GLIGABAO_DB" // the SQLite file, when --db is not given
-	defaultUser = "lambda"
+	defaultUser = "pipelines"
 	maxTextLen  = 1 << 20 // the text of remember, in bytes
 )
 
@@ -58,16 +54,15 @@ func main() {
 	os.Exit(run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-const usage = `Usage: gligabao_lambda COMMAND [flags] ARG | -
+const usage = `Usage: gligabao_pipelines COMMAND [flags] ARG | -
 
-Runs one gligabao operation in process, then exits. Commands:
+Runs one gligabao memory pipeline in process, then exits. Commands:
 
   remember [flags] TEXT | -     store TEXT (- reads it from stdin) in the knowledge base, and wait until it is absorbed
   query    [flags] QUESTION | - answer QUESTION from the knowledge base
-  research [flags] TOPIC | -    run a research agent on TOPIC and print its report
   version                       print the version
 
-The result goes to stdout; logs and totals go to stderr. Every command takes the flags of "gligabao_lambda COMMAND -h".
+The result goes to stdout; logs and totals go to stderr. Every command takes the flags of "gligabao_pipelines COMMAND -h".
 Needs ANTHROPIC_API_KEY and OPENAI_API_KEY (embeddings) in the environment or the --config file.
 `
 
@@ -104,21 +99,17 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	case "version", "--version":
 		fmt.Fprintln(stdout, versionString())
 		return exitOK
-	case "remember", "query", "research":
+	case "remember", "query":
 	default:
-		fmt.Fprintf(stderr, "gligabao_lambda: unknown command %q\n\n%s", cmd, usage)
+		fmt.Fprintf(stderr, "gligabao_pipelines: unknown command %q\n\n%s", cmd, usage)
 		return exitUsage
 	}
 
-	fs := flag.NewFlagSet("gligabao_lambda "+cmd, flag.ContinueOnError)
+	fs := flag.NewFlagSet("gligabao_pipelines "+cmd, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var c common
 	c.register(fs)
-	var (
-		kind, at, session, agentName, defsDir, model string
-		maxSteps                                     int
-		maxCost                                      float64
-	)
+	var kind, at, session string
 	switch cmd {
 	case "remember":
 		fs.StringVar(&kind, "kind", "", "kind of the text: knowledge (default) or episode")
@@ -126,15 +117,9 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		fs.StringVar(&session, "session", "", "session ID to attach to what is remembered")
 	case "query":
 		fs.StringVar(&session, "session", "", "session ID to label the query with")
-	case "research":
-		fs.StringVar(&agentName, "agent", "", "the agent definition to run (default: the built-in research agent)")
-		fs.StringVar(&defsDir, "agent-defs-dir", "", "directory the agent definitions are loaded from (default: "+agent_defs.DirName+" next to the binary; it need not exist)")
-		fs.StringVar(&model, "model", "", "model to run on; it must support Anthropic's web search tool (default: the built-in default)")
-		fs.IntVar(&maxSteps, "max-steps", 0, fmt.Sprintf("most model calls (1 to %d; default: the agent's)", agent_research.MaxMaxSteps))
-		fs.Float64Var(&maxCost, "max-cost-usd", 0, "cap on what the whole research may spend in USD (0: only the agent's caps apply)")
 	}
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, "Usage: gligabao_lambda %s [flags] ARG | -\n\nFlags:\n", cmd)
+		fmt.Fprintf(stderr, "Usage: gligabao_pipelines %s [flags] ARG | -\n\nFlags:\n", cmd)
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -144,7 +129,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return exitUsage
 	}
 	fail := func(code int, err error) int {
-		fmt.Fprintf(stderr, "gligabao_lambda: %v\n", err)
+		fmt.Fprintf(stderr, "gligabao_pipelines: %v\n", err)
 		return code
 	}
 
@@ -169,25 +154,6 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if session != "" {
 		if session, err = memory_core.ResolveSessionID(session); err != nil {
 			return fail(exitUsage, err)
-		}
-	}
-	if maxSteps < 0 || maxSteps > agent_research.MaxMaxSteps {
-		return fail(exitUsage, fmt.Errorf("--max-steps must be between 1 and %d", agent_research.MaxMaxSteps))
-	}
-	if maxCost < 0 {
-		return fail(exitUsage, errors.New("--max-cost-usd must be 0 (no cap) or a positive number of USD"))
-	}
-	var reg *agent_defs.Registry
-	if cmd == "research" {
-		dir := defsDir
-		if dir == "" {
-			dir = agent_defs.DefaultDir()
-		}
-		if reg, err = agent_defs.Load(dir); err != nil {
-			return fail(exitUsage, err)
-		}
-		if _, err = reg.Resolve(agentName, ""); err != nil {
-			return fail(exitUsage, fmt.Errorf("--agent: %w", err))
 		}
 	}
 
@@ -220,7 +186,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	if path == "" {
 		path = os.Getenv(envDB)
 	}
-	a, err := openApp(ctx, cfg, client, emb, path, c.vectorDir, cmd == "research")
+	a, err := openApp(ctx, cfg, client, emb, path, c.vectorDir)
 	if err != nil {
 		return fail(exitUsage, err)
 	}
@@ -235,17 +201,12 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		})
 	case "query":
 		code = a.cmdQuery(ctx, stdout, stderr, c.json, userID, datasetName, input, sessionOpt(session))
-	case "research":
-		if err := a.research.UseAgentDefs(reg); err != nil {
-			return fail(exitUsage, err)
-		}
-		code = a.cmdResearch(ctx, stdout, stderr, c.json, userID, agent_research.Options{Topic: input, MaxSteps: maxSteps, Model: model, Dataset: datasetName, Agent: agentName, MaxCostUSD: maxCost})
 	}
 	if c.export != "" {
 		// Also when the operation failed: what was learned until then is worth keeping.
 		m, err := a.fullExport(ctx, c.export)
 		if err != nil {
-			fmt.Fprintf(stderr, "gligabao_lambda: export: %v\n", err)
+			fmt.Fprintf(stderr, "gligabao_pipelines: export: %v\n", err)
 			if code == exitOK {
 				code = exitError
 			}
@@ -269,18 +230,18 @@ func (a *app) cmdRemember(ctx context.Context, stdout, stderr io.Writer, asJSON 
 	req.Ctx, req.Outcome = ctx, outcome
 	runID, err := a.remember.Submit(req)
 	if err != nil {
-		fmt.Fprintf(stderr, "gligabao_lambda: could not queue the text: %v\n", err)
+		fmt.Fprintf(stderr, "gligabao_pipelines: could not queue the text: %v\n", err)
 		return exitError
 	}
 	var out memory_remember.Outcome
 	select {
 	case out = <-outcome:
 	case <-ctx.Done():
-		fmt.Fprintf(stderr, "gligabao_lambda: remember run %d: %v\n", runID, context.Cause(ctx))
+		fmt.Fprintf(stderr, "gligabao_pipelines: remember run %d: %v\n", runID, context.Cause(ctx))
 		return exitError
 	}
 	if out.Err != nil {
-		fmt.Fprintf(stderr, "gligabao_lambda: remember run %d failed: %v\n", runID, out.Err)
+		fmt.Fprintf(stderr, "gligabao_pipelines: remember run %d failed: %v\n", runID, out.Err)
 		return exitError
 	}
 	if asJSON {
@@ -298,7 +259,7 @@ func (a *app) cmdQuery(ctx context.Context, stdout, stderr io.Writer, asJSON boo
 		res, err = &memory_query.QueryResult{Answer: "The knowledge base is empty: nothing was remembered yet."}, nil
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "gligabao_lambda: query: %v\n", err)
+		fmt.Fprintf(stderr, "gligabao_pipelines: query: %v\n", err)
 		return exitError
 	}
 	if asJSON {
@@ -308,88 +269,19 @@ func (a *app) cmdQuery(ctx context.Context, stdout, stderr io.Writer, asJSON boo
 	return exitOK
 }
 
-// researchOutput is what research --json prints.
-type researchOutput struct {
-	Report       string  `json:"report"`
-	RunID        int64   `json:"run_id"`
-	Subagents    int     `json:"subagents"`
-	Steps        int     `json:"steps"`
-	ToolCalls    int     `json:"tool_calls"`
-	InputTokens  int     `json:"input_tokens"`
-	OutputTokens int     `json:"output_tokens"`
-	CostUSD      float64 `json:"cost_usd"`
-}
-
-// cmdResearch runs the agent, waits for it, its sub-agents and the text they remembered without waiting, and prints the report.
-func (a *app) cmdResearch(ctx context.Context, stdout, stderr io.Writer, asJSON bool, userID string, opts agent_research.Options) int {
-	root, err := a.research.Start(ctx, userID, opts)
-	if err != nil {
-		fmt.Fprintf(stderr, "gligabao_lambda: %v\n", err)
-		return exitError
-	}
-	a.research.Wait()
-	if err := a.mem.Drain(ctx); err != nil {
-		fmt.Fprintf(stderr, "gligabao_lambda: some text that was queued for the knowledge base was not absorbed: %v\n", err)
-	}
-	dbCtx := context.WithoutCancel(ctx) // the runs are ended and recorded even if ctx is done
-	run, err := a.research.Get(dbCtx, userID, root.ID)
-	if err != nil {
-		fmt.Fprintf(stderr, "gligabao_lambda: %v\n", err)
-		return exitError
-	}
-	out := researchOutput{Report: run.Report, RunID: run.ID}
-	queue := []int64{run.ID}
-	all := []core.Run{*run}
-	for len(queue) > 0 {
-		parent := queue[0]
-		queue = queue[1:]
-		kids, err := a.research.List(dbCtx, userID, agent_research.ListOptions{ParentID: parent, Limit: agent_research.MaxListLimit})
-		if err != nil {
-			fmt.Fprintf(stderr, "gligabao_lambda: %v\n", err)
-			return exitError
-		}
-		for _, k := range kids {
-			all = append(all, k)
-			queue = append(queue, k.ID)
-		}
-	}
-	out.Subagents = len(all) - 1
-	for _, r := range all {
-		out.Steps += r.Steps
-		out.ToolCalls += r.ToolCalls
-		out.InputTokens += r.InputTokens
-		out.OutputTokens += r.OutputTokens
-		out.CostUSD += r.CostUSD
-	}
-	fmt.Fprintf(stderr, "run %d, sub-agents: %d, steps: %d, tool calls: %d, tokens: %d in / %d out, cost: $%.4f\n", out.RunID, out.Subagents, out.Steps, out.ToolCalls, out.InputTokens, out.OutputTokens, out.CostUSD)
-	if run.Status != core.StatusCompleted {
-		reason := run.Error
-		if ctx.Err() != nil {
-			reason = fmt.Sprintf("%s (%v)", reason, context.Cause(ctx))
-		}
-		fmt.Fprintf(stderr, "gligabao_lambda: the research %s: %s\n", run.Status, reason)
-		return exitError
-	}
-	if asJSON {
-		return printJSON(stdout, stderr, out)
-	}
-	fmt.Fprintln(stdout, run.Report)
-	return exitOK
-}
-
 func printJSON(stdout, stderr io.Writer, v any) int {
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(v); err != nil {
-		fmt.Fprintf(stderr, "gligabao_lambda: %v\n", err)
+		fmt.Fprintf(stderr, "gligabao_pipelines: %v\n", err)
 		return exitError
 	}
 	return exitOK
 }
 
-// readInput takes the text, question or topic from the only argument, or from stdin if it is "-".
+// readInput takes the text or question from the only argument, or from stdin if it is "-".
 func readInput(cmd string, args []string, stdin io.Reader) (string, error) {
-	what := map[string]string{"remember": "text", "query": "question", "research": "topic"}[cmd]
+	what := map[string]string{"remember": "text", "query": "question"}[cmd]
 	if len(args) != 1 {
 		return "", fmt.Errorf("give exactly one %s as an argument, or - to read it from stdin (see -h)", what)
 	}
@@ -407,11 +299,6 @@ func readInput(cmd string, args []string, stdin io.Reader) (string, error) {
 	}
 	if len(s) > maxTextLen {
 		return "", fmt.Errorf("%s too long (at most %d bytes)", what, maxTextLen)
-	}
-	if cmd == "research" {
-		if n := len([]rune(s)); n > agent_research.MaxTopicLen {
-			return "", fmt.Errorf("topic too long (%d characters, at most %d)", n, agent_research.MaxTopicLen)
-		}
 	}
 	return s, nil
 }
@@ -434,7 +321,7 @@ func versionString() string {
 	if v == "" {
 		v = "dev"
 	}
-	s := "gligabao_lambda " + v
+	s := "gligabao_pipelines " + v
 	if c := buildinfo.Commit(); c != "" {
 		s += " (" + c + ")"
 	}

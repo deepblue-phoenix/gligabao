@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.183.0] - 2026-11-12
+
+### Changed
+- **Breaking: `gligabao_lambda` is now `gligabao_pipelines`, and it only runs the `remember` and `query` pipelines.** The binary is `build/gligabao_pipelines` (source `cmd/gligabao_pipelines/`, docs `docs/pipelines_binary.md`, `--export` archives name it as their source). The default `--user` is now `pipelines` (was `lambda`): pass `--user lambda` to keep using an existing knowledge base.
+
+### Removed
+- The `research` command of the binary and its flags (`--agent`, `--agent-defs-dir`, `--model`, `--max-steps`, `--max-cost-usd`). Use `gligabao_agent` or the server for research. The research tables are no longer created by this binary, and the research manager is not linked into it.
+
 ## [0.182.3] - 2026-11-12
 
 ### Changed

@@ -14,7 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbexport"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
@@ -46,14 +45,9 @@ func TestUsageErrors(t *testing.T) {
 		"unknown command":     {args: []string{"nope"}, want: "unknown command"},
 		"remember no text":    {anthropic: "k", args: []string{"remember"}, want: "exactly one text"},
 		"query two args":      {anthropic: "k", args: []string{"query", "a", "b"}, want: "exactly one question"},
-		"research empty":      {anthropic: "k", args: []string{"research", "-"}, stdin: " \n", want: "empty topic"},
-		"topic too long":      {anthropic: "k", args: []string{"research", strings.Repeat("x", agent_research.MaxTopicLen+1)}, want: "too long"},
 		"bad user":            {anthropic: "k", args: []string{"query", "--user", " ", "q"}, want: "user_id"},
 		"bad dataset":         {anthropic: "k", args: []string{"query", "--dataset", "a b", "q"}, want: "dataset"},
 		"bad time":            {anthropic: "k", args: []string{"remember", "--at", "yesterday", "t"}, want: "--at"},
-		"steps too big":       {anthropic: "k", args: []string{"research", "--max-steps", "41", "t"}, want: "--max-steps"},
-		"negative cost cap":   {anthropic: "k", args: []string{"research", "--max-cost-usd", "-1", "t"}, want: "--max-cost-usd"},
-		"unknown agent":       {anthropic: "k", args: []string{"research", "--agent", "nope", "--agent-defs-dir", t.TempDir(), "t"}, want: "unknown agent"},
 		"no anthropic key":    {args: []string{"query", "q"}, want: config.EnvAnthropicKey},
 		"no openai key":       {anthropic: "k", args: []string{"query", "q"}, want: config.EnvOpenAIKey},
 		"flag of another cmd": {anthropic: "k", openai: "k", args: []string{"query", "--kind", "episode", "q"}, want: "not defined"},
@@ -79,11 +73,11 @@ func TestUsageErrors(t *testing.T) {
 
 func TestVersionAndHelp(t *testing.T) {
 	code, stdout, _ := runArgs(t, "", "version")
-	if code != exitOK || !strings.HasPrefix(stdout, "gligabao_lambda ") {
+	if code != exitOK || !strings.HasPrefix(stdout, "gligabao_pipelines ") {
 		t.Errorf("version: code %d, stdout %q", code, stdout)
 	}
 	code, stdout, _ = runArgs(t, "", "--help")
-	if code != exitOK || !strings.Contains(stdout, "remember") || !strings.Contains(stdout, "research") {
+	if code != exitOK || !strings.Contains(stdout, "remember") {
 		t.Errorf("--help: code %d, stdout %q", code, stdout)
 	}
 }
@@ -114,11 +108,11 @@ func (fakeEmbedder) EmbedBatchUsage(_ context.Context, texts []string) ([][]floa
 	return out, &ai.EmbedUsage{Provider: ai.ProviderOpenAI, Model: "test-embed"}, nil
 }
 
-func open(t *testing.T, dbFile string, research bool) *app {
+func open(t *testing.T, dbFile string) *app {
 	t.Helper()
 	cfg := config.Default()
 	cfg.EmbeddingDimensions = 2
-	a, err := openApp(context.Background(), cfg, fakeAnthropic(t), fakeEmbedder{}, dbFile, "", research)
+	a, err := openApp(context.Background(), cfg, fakeAnthropic(t), fakeEmbedder{}, dbFile, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +125,7 @@ func TestRememberThenQueryInAnotherProcess(t *testing.T) {
 	ctx := context.Background()
 	dbFile := filepath.Join(t.TempDir(), "state", "gligabao.db")
 
-	a := open(t, dbFile, false)
+	a := open(t, dbFile)
 	var out, errb bytes.Buffer
 	req := memory_remember.Request{UserID: "u1", Dataset: "main", Text: "Acme was founded in 1999.", Opts: a.rememberOpts}
 	if code := a.cmdRemember(ctx, &out, &errb, false, req); code != exitOK {
@@ -147,7 +141,7 @@ func TestRememberThenQueryInAnotherProcess(t *testing.T) {
 		}
 	}
 
-	b := open(t, dbFile, false)
+	b := open(t, dbFile)
 	out.Reset()
 	errb.Reset()
 	if code := b.cmdQuery(ctx, &out, &errb, true, "u1", "main", "When was Acme founded?", nil); code != exitOK {
@@ -172,7 +166,7 @@ func TestRememberThenQueryInAnotherProcess(t *testing.T) {
 	// The export has what the first process remembered.
 	archive := filepath.Join(t.TempDir(), "x.zip")
 	m, err := b.fullExport(ctx, archive)
-	if err != nil || m.Source != "gligabao_lambda" {
+	if err != nil || m.Source != "gligabao_pipelines" {
 		t.Fatalf("export: %+v, %v", m, err)
 	}
 	r, err := dbexport.Open(archive)
@@ -190,7 +184,7 @@ func TestRememberThenQueryInAnotherProcess(t *testing.T) {
 
 // A remember that fails (its context is done) is reported with exit code 1 and nothing is claimed as remembered.
 func TestRememberCancelled(t *testing.T) {
-	a := open(t, filepath.Join(t.TempDir(), "g.db"), false)
+	a := open(t, filepath.Join(t.TempDir(), "g.db"))
 	defer a.close()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -198,23 +192,6 @@ func TestRememberCancelled(t *testing.T) {
 	code := a.cmdRemember(ctx, &out, &errb, false, memory_remember.Request{UserID: "u1", Dataset: "main", Text: "x", Opts: a.rememberOpts})
 	if code != exitError || out.Len() != 0 {
 		t.Errorf("code %d, stdout %q, stderr %q", code, out.String(), errb.String())
-	}
-}
-
-// The research manager is only built for the research command, and the tables of the runs only exist then.
-func TestResearchOnlyWhenAsked(t *testing.T) {
-	a := open(t, filepath.Join(t.TempDir(), "g.db"), false)
-	if a.research != nil {
-		t.Error("research manager built for a command that does not need it")
-	}
-	a.close()
-	b := open(t, filepath.Join(t.TempDir(), "g.db"), true)
-	defer b.close()
-	if b.research == nil {
-		t.Error("no research manager")
-	}
-	if _, err := b.database.Relational.Exec(`SELECT 1 FROM gb_agent_research_runs`); err != nil {
-		t.Errorf("research tables: %v", err)
 	}
 }
 
@@ -226,7 +203,7 @@ func TestMinimalDependencies(t *testing.T) {
 	}
 	const prefix = "github.com/deepblue-phoenix/gligabao/"
 	forbidden := []string{
-		"internal/api", "internal/sys/server", "internal/sys/sidecar", "internal/training", "internal/training_audits", "internal/evals",
+		"internal/api", "internal/agent_research", "internal/sys/server", "internal/sys/sidecar", "internal/training", "internal/training_audits", "internal/evals",
 		"internal/db/dbfull", "internal/db/dbimport", "cli", "monitoring", "admin_ui",
 	}
 	for _, pkg := range strings.Fields(string(out)) {
@@ -236,7 +213,7 @@ func TestMinimalDependencies(t *testing.T) {
 		}
 		for _, f := range forbidden {
 			if rest == f || strings.HasPrefix(rest, f+"/") {
-				t.Errorf("gligabao_lambda must not depend on %s (keep the binary minimal)", pkg)
+				t.Errorf("gligabao_pipelines must not depend on %s (keep the binary minimal)", pkg)
 			}
 		}
 	}
