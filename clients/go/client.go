@@ -164,7 +164,7 @@ func (c *Client) Remember(ctx context.Context, req RememberRequest) (*RememberRe
 	return &out, nil
 }
 
-// QueryRequest is the body of POST /v1/gb/query. See gligabao docs/query.md.
+// QueryRequest is the body of POST /v1/gb/query. See gligabao docs/query/query.md.
 type QueryRequest struct {
 	Query        string            `json:"query"`
 	Dataset      string            `json:"dataset,omitempty"` // default "main"

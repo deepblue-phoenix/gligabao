@@ -1,4 +1,4 @@
-// The query button of the top bar and its modal (see docs/query.md#admin-ui): asks the knowledge base a question from any view. A big
+// The query button of the top bar and its modal (see docs/query/query.md#admin-ui): asks the knowledge base a question from any view. A big
 // question box; pickers for the dataset (of the standard database, any user's), the model and the thinking level; the answer in the same
 // modal, and the ID of the query run, a link that opens the details of that run (the modal of the "query" view, runs.ts).
 // Calls POST api/query (the body of POST /v1/gb/query; the dataset owner goes in the gb-user-id header) and the lists of api/query-options and api/overview.

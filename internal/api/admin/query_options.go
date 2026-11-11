@@ -1,6 +1,6 @@
 package admin
 
-// What the query button of the admin UI's top bar offers to pick (see docs/query.md#admin-ui): the LLM models and the thinking levels.
+// What the query button of the admin UI's top bar offers to pick (see docs/query/query.md#admin-ui): the LLM models and the thinking levels.
 // The query itself is POST /admin/api/query, the handler of POST /v1/gb/query without the API key check (registered by the server).
 
 import (

@@ -219,7 +219,7 @@ type GraphEmbedder = memory_core.GraphEmbedder // func(ctx context.Context, req 
 
 ### The index name
 
-A `remember` and a `query` request can name the graph embedding index they are for, with the optional field **`graph_index`** (see [remember/remember.md](remember/remember.md), [query.md](query.md)); the hook gets it as `req.Index`, for the embedding it makes (remember) and for the search it does (query). It is how a hook that keeps several indexes (one per model, per size bin, per tenant, ...) knows which one: the graph engine of `baby_thinker` has named indexes (`-index NAME`) and its client passes `req.Index` there. gligabao only carries the name and does not interpret it.
+A `remember` and a `query` request can name the graph embedding index they are for, with the optional field **`graph_index`** (see [remember/remember.md](remember/remember.md), [query/query.md](query/query.md)); the hook gets it as `req.Index`, for the embedding it makes (remember) and for the search it does (query). It is how a hook that keeps several indexes (one per model, per size bin, per tenant, ...) knows which one: the graph engine of `baby_thinker` has named indexes (`-index NAME`) and its client passes `req.Index` there. gligabao only carries the name and does not interpret it.
 
 - The name is 1-64 letters, digits, `.`, `_` or `-`, starting with a letter or digit (the names the graph engine accepts, so it can never be a path); gligabao validates it (`400` otherwise) and trims it.
 - **Empty means "none given"**: the hook uses its own default (the engine's is `default`).

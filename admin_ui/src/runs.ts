@@ -1,4 +1,4 @@
-// The "remember runs" and "query runs" views (see docs/remember/remember.md#run-log, docs/query.md#run-log, docs/pipeline.md): both are
+// The "remember runs" and "query runs" views (see docs/remember/remember.md#run-log, docs/query/query.md#run-log, docs/pipeline.md): both are
 // run logs of a pipeline, with the same shape, so one piece of code draws both, configured by a Kind. Per database, how many runs
 // are in each status and the list of the runs, newest first. Clicking a status tile filters the list by it; clicking a run shows
 // its parameters and how each stage went (status, error, time, inferences). For remember runs, each stage that ran has a button
@@ -50,7 +50,7 @@ const REMEMBER_HELP: Record<string, string> = {
   fetch_series: "The LLM decides which timeseries provider can supply a series for which entity of the text, the providers are called, and the series are stored and anchored to the entity. Runs after the text is stored; a failure does not fail the run. Only runs with timeseries.fetch.",
   observe_series: "Generates a short text from the statistics of each series stored in this run, extracts a graph from it and stores it as a series_observation artifact. Runs last; a failure does not fail the run. Only runs with timeseries.observations.",
 };
-// The same for the stages of the query pipeline (see docs/query.md#how-it-works).
+// The same for the stages of the query pipeline (see docs/query/query.md#how-it-works).
 const QUERY_HELP: Record<string, string> = {
   retrieve_graph: "Embeds the question and finds the entities that match it (by keywords and by vector similarity), the facts around them and the text passages (chunks and their summaries) close to the question: the context the answer is made from. If nothing is found, the pipeline ends here with the fixed \"no information\" answer and the stages after it are skipped.",
   detect_geo: "Asks the LLM which places the question mentions, and stores the ones the geo resolver finds. Advisory: a failure never fails the call. Only runs with a geo resolver.",

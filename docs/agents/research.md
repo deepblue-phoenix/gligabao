@@ -206,7 +206,7 @@ Code: `internal/agent_research/remote.go` (the `Remote` and `Importer` interface
 
 ## The knowledge base
 
-Besides the web, the agent works with the user's internal knowledge base (the graph memory of [remember](../remember/remember.md) and [query](../query.md)), through two more tools (details in [deep-research-agent.md](../deep-research-agent.md#tool-query)):
+Besides the web, the agent works with the user's internal knowledge base (the graph memory of [remember](../remember/remember.md) and [query](../query/query.md)), through two more tools (details in [deep-research-agent.md](../deep-research-agent.md#tool-query)):
 
 - **`remember`** (`text`, optional `source`, optional `sync`): while it searches the web and reads pages, the agent submits the important parts (short snippets with their context, the URL as the source) to the [remember manager](../remember/remember-manager.md), as the user, into the run's dataset. **`sync` toggles whether the call blocks.** By default (`sync=false`) the call only queues the text and returns at once, so the agent goes on without waiting for it to be absorbed; with `sync=true` it waits until the text is in the knowledge base, for when the agent needs it right away (to `query` for it).
 - **`query`** (`question`): besides web searches and page reads, the agent asks the knowledge base what it knows already, and checks what it found against it. It gets the answer and the facts it is based on. An empty (not yet existing) dataset answers that it is empty.

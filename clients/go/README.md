@@ -17,6 +17,6 @@ fmt.Println(ans.Answer, ans.Evidence.Edges)
 - A server with auth maps the API key (`Authorization: Bearer`) to the user; a server without it needs `WithUserID`: the user ID is sent in the `gb-user-id` header of every call (never in the body or the query string, the server does not read it there).
 - A non-2xx answer is a `*gligabao.Error` (`Status`, `Message`); a server that cannot be reached has `Status` 0.
 - Fields not modelled by the request structs go in `Extra`; the whole JSON answer is in `Raw`.
-- Fields: [docs/remember/remember.md](../../docs/remember/remember.md), [docs/query.md](../../docs/query.md).
+- Fields: [docs/remember/remember.md](../../docs/remember/remember.md), [docs/query/query.md](../../docs/query/query.md).
 
 Tests: `cd clients/go && go test ./...`.

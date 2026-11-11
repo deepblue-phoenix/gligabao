@@ -60,7 +60,7 @@ Resolution only sees the live edges that share an entity with the new ones (by n
 | Ended (`invalid_at`, no `expired_at`) | yes | Shown with `valid_at` and `invalid_at`; answers history ("where was it before?") and must not be presented as current. This is the state of the Wiesbaden edge in a completed move. |
 | Superseded (`expired_at`) | no | Kept in the database, not retrieved: a question about what used to be true can't be answered from it. |
 
-Details: [query.md](../query.md#facts-over-time-and-history).
+Details: [query/query.md](../query/query.md#facts-over-time-and-history).
 
 ## 6. Writing tests and evals for these cases
 

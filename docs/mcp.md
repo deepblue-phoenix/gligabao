@@ -39,7 +39,7 @@ The other options of the endpoint (`image`, `models`, `reasoning`, `web_search`,
 
 ### `query`
 
-Answers a question from the graph, like [`POST /v1/gb/query`](query.md).
+Answers a question from the graph, like [`POST /v1/gb/query`](query/query.md).
 
 | Argument | | |
 | -------- | - | - |

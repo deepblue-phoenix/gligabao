@@ -12,6 +12,7 @@ Newest entry first; its version must equal the contents of `VERSION` (checked by
 
 ### Changed
 - Docs: the `remember` pages moved to `docs/remember/` (`remember.md`, `remember-manager.md`, `remember-data-access.md`); every link and code comment that points at them was updated.
+- Docs: `docs/query.md` moved to `docs/query/query.md`, with its links and code comments updated.
 
 ## [0.183.0] - 2026-11-12
 

@@ -17,7 +17,7 @@ gligabao is a small, self-hosted MCP/HTTP/CLI server that gives an AI applicatio
 | -------- | ------- | ---- |
 | `POST /v1/gb/remember` | Extract a temporal knowledge graph from text and store it; or, with `image`, read an image (OCR and theme) and store the extraction | [docs/remember/remember.md](docs/remember/remember.md), [docs/artifacts.md](docs/artifacts.md), [docs/temporal/temporal.md](docs/temporal/temporal.md), [docs/edge-events.md](docs/edge-events.md), [docs/images.md](docs/images.md), [docs/chunking.md](docs/chunking.md), [docs/web-search.md](docs/web-search.md), [docs/geo.md](docs/geo.md), [docs/pipeline.md](docs/pipeline.md) |
 | `POST /v1/gb/timeseries`, `GET /v1/gb/timeseries`, `GET /v1/gb/timeseries/{id}` | Store timeseries in a dataset and anchor them to artifacts, entities and facts; list and read them. A `remember` request can also supply them, fetch them from the providers, or derive `series_observation` artifacts from them (`timeseries`) | [docs/timeseries.md](docs/timeseries.md) |
-| `POST /v1/gb/query` | Answer a question from the graph, with evidence | [docs/query.md](docs/query.md), [docs/pipeline.md](docs/pipeline.md) |
+| `POST /v1/gb/query` | Answer a question from the graph, with evidence | [docs/query/query.md](docs/query/query.md), [docs/pipeline.md](docs/pipeline.md) |
 | `POST /v1/gb/datasets`, `GET /v1/gb/datasets`, `DELETE /v1/gb/datasets/{name}` | Create, list and (soft) delete datasets | [docs/datasets.md](docs/datasets.md) |
 | `GET /v1/gb/datasets/{name}/graph` | Export a dataset's whole graph as JSON | [docs/graph.md](docs/graph.md) |
 | `GET /v1/gb/datasets/{name}/classes?n=N` | Top N classes of the artifact graphs of a dataset, with counts | [docs/datasets.md](docs/datasets.md) |
@@ -98,7 +98,7 @@ When a new fact contradicts a stored one, the older fact is closed (`invalid_at`
 3. **Answer**: the subgraph and the passages (the best three with the text of the chunk) are rendered as text with IDs and sent to the LLM with the question. The model is told to answer only from them and to return JSON with the `answer` plus the IDs of the entities, edges and passages it used.
 4. **Verify evidence**: cited IDs are checked against what was actually sent, so hallucinated IDs are dropped. The endpoints of every cited edge are included, and each edge carries its `artifact_id` so a fact can be traced to the original text.
 
-If there is nothing to answer from (no entity, fact or passage), a fixed "I don't have any information" answer is returned without calling the LLM. If the graph lacks the needed information, the answer says so. Details: [docs/query.md](docs/query.md).
+If there is nothing to answer from (no entity, fact or passage), a fixed "I don't have any information" answer is returned without calling the LLM. If the graph lacks the needed information, the answer says so. Details: [docs/query/query.md](docs/query/query.md).
 
 ## Graph export
 

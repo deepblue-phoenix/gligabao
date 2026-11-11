@@ -92,11 +92,11 @@ An artifact carries the `session_id` of the `remember` call that created it, whi
 ## Where artifacts show up
 
 - `POST /v1/gb/remember` returns the new `artifact_id`, its `kind`, `session_id` (if any), `valid_at` and `created_at` ([remember/remember.md](remember/remember.md)).
-- Edges in the [graph export](graph.md) and in the query `evidence` ([query.md](query.md)) carry `artifact_id` (the creating artifact).
+- Edges in the [graph export](graph.md) and in the query `evidence` ([query/query.md](query/query.md)) carry `artifact_id` (the creating artifact).
 
 ## Limitations
 
 - There is no endpoint to read, list or delete artifacts yet. The raw text can only be read from the database.
-- `query` answers from the graph, plus the text of the best few chunks of [long texts](chunking.md) that are close to the question (the passages, see [query.md](query.md#2-retrieve-by-similarity-and-passages)); the text of every other artifact is not sent to the LLM.
+- `query` answers from the graph, plus the text of the best few chunks of [long texts](chunking.md) that are close to the question (the passages, see [query/query.md](query/query.md#2-retrieve-by-similarity-and-passages)); the text of every other artifact is not sent to the LLM.
 - The `gb_edge_artifacts` and `gb_entity_artifacts` links, and the session links (`gb_entity_sessions`, `gb_edge_sessions`), are stored but not exposed by the API yet.
 - Artifacts are not embedded, except chunks: `remember` embeds the entities and edges extracted from an artifact, and the text of each chunk of a long text (see [chunking.md](chunking.md) and [vectors.md](vectors.md)); the text of an artifact that is not chunked is not embedded.

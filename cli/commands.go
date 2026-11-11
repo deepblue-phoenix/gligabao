@@ -232,7 +232,7 @@ func (c *CLI) queryCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "query QUESTION",
 		Short: "Answer a question from the knowledge graph (POST /v1/gb/query)",
-		Long: `Answer a question from the knowledge graph of a dataset. The response (see docs/query.md) has the answer and its evidence: the
+		Long: `Answer a question from the knowledge graph of a dataset. The response (see docs/query/query.md) has the answer and its evidence: the
 entities, edges and passages it relied on.
 
 With --evidence-only nothing is answered: the command only retrieves, and returns as evidence everything it found (no LLM call writes

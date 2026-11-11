@@ -1,6 +1,6 @@
 # The pipeline of `remember` and `query`
 
-`remember` ([remember/remember.md](remember/remember.md)) and `query` ([query.md](query.md)) are two different operations, but they are built the same way: each is a **pipeline**, a fixed list of named **stages** that run one after the other on the state of one call, and each call leaves a **run log**, a row that says how every stage went. This page describes that common pattern. What each stage of each operation does is in its own page; the code of the pattern is the package `internal/memory/memory_pipeline`.
+`remember` ([remember/remember.md](remember/remember.md)) and `query` ([query/query.md](query/query.md)) are two different operations, but they are built the same way: each is a **pipeline**, a fixed list of named **stages** that run one after the other on the state of one call, and each call leaves a **run log**, a row that says how every stage went. This page describes that common pattern. What each stage of each operation does is in its own page; the code of the pattern is the package `internal/memory/memory_pipeline`.
 
 The image pipeline ([images.md](images.md)) does not use it, and has no run log.
 
@@ -25,7 +25,7 @@ The two operations compared:
 | Declared in | `memory_remember/remember_pipeline.go` (`rememberPipeline`, `reconcileSteps`) | `memory_query/query.go` (`queryPipeline`) |
 | Stages | `classify_complexity`, `chunk_text`, `extract_graph`, `summarize_chunk`, `load_candidates`, `resolve_edges`, `store`, `store_series`, `resolve_geo`, `web_search`, `fetch_series`, `observe_series` | `retrieve_graph`, `detect_geo`, `nearby_geo`, `query` |
 | State of the call | `job` in `memory_remember` | `job` in `memory_query` |
-| Run log | `gb_remember_runs` (`memory_remember/runlog.go`), [run log](remember/remember.md#run-log) | `gb_query_runs` (`memory_query/runlog.go`), [run log](query.md#run-log) |
+| Run log | `gb_remember_runs` (`memory_remember/runlog.go`), [run log](remember/remember.md#run-log) | `gb_query_runs` (`memory_query/runlog.go`), [run log](query/query.md#run-log) |
 | Response field | `remember_run_id` | `query_run_id` |
 | Stage names and columns | `relational.RememberStages` | `relational.QueryStages` |
 | Stage outputs (for debugging) | yes, `gb_remember_run_stage_outputs` ([stage outputs](remember/remember.md#stage-outputs)) | no |

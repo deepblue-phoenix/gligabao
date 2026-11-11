@@ -74,13 +74,13 @@ All the texts of one call (for a chunked text: of one chunk) are embedded in a s
 
 ## What `query` reads
 
-[`query`](query.md) embeds the question (one request, recorded as an inference of type `query`, stage `embed`) and searches the four indexes of the dataset with it:
+[`query`](query/query.md) embeds the question (one request, recorded as an inference of type `query`, stage `embed`) and searches the four indexes of the dataset with it:
 
 - the entity index gives seeds of the subgraph, next to the ones found by keywords;
 - the edge index gives facts, with their endpoints;
 - the chunk and summary indexes give the passages (chunks of long texts) whose text, or whose summary, is close to the question: the best are given to the LLM with the chunk's text.
 
-Matches under a cosine similarity of 0.75 are dropped, and so are the edges that are expired (superseded): a vector outlives the validity of its edge. The row of a match is read from its vector ID (`entity-<id>`, ...) and from the database, never from the vector's metadata; a vector whose row is gone is dropped. See [query.md](query.md#2-retrieve-by-similarity-and-passages).
+Matches under a cosine similarity of 0.75 are dropped, and so are the edges that are expired (superseded): a vector outlives the validity of its edge. The row of a match is read from its vector ID (`entity-<id>`, ...) and from the database, never from the vector's metadata; a vector whose row is gone is dropped. See [query/query.md](query/query.md#2-retrieve-by-similarity-and-passages).
 
 If you change `embedding_dimensions`, or the embedding model, the stored vectors are no longer comparable with new ones (the chromem store rejects the new dimension outright); there is no re-embedding yet.
 

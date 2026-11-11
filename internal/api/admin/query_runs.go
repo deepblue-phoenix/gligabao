@@ -1,6 +1,6 @@
 package admin
 
-// Query runs in the admin API (see docs/query.md#run-log): the run log of the query pipeline (gb_query_runs), how many runs ended in
+// Query runs in the admin API (see docs/query/query.md#run-log): the run log of the query pipeline (gb_query_runs), how many runs ended in
 // each status, and the list of the runs (newest first, filterable) with the state of each stage. Like the remember runs
 // (remember_runs.go).
 

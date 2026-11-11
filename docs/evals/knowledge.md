@@ -24,7 +24,7 @@ Same request body and behavior as [`POST /v1/gb/remember`](../remember/remember.
 
 ### `POST /v1/gb/eval/query`
 
-Same request body and behavior as [`POST /v1/gb/query`](../query.md). The response is the usual query result (`answer`, `evidence`) plus `trajectory_id` and `trajectory`.
+Same request body and behavior as [`POST /v1/gb/query`](../query/query.md). The response is the usual query result (`answer`, `evidence`) plus `trajectory_id` and `trajectory`.
 
 Errors are the same as for the regular endpoints, except that a `502` also puts the cause in its message (`failed to process text: <cause>`, `failed to answer query: <cause>`; the regular endpoints keep the generic message), which the runner records, without the JSON around it, as the reason the case errored (e.g. the provider's own error text). A failed call returns no trajectory (it is still stored, see below). Without eval mode both routes answer `404`/`405`.
 
@@ -93,7 +93,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 | remember | `select_web_search_entities` | (only with [`web_search`](../web-search.md)) the key entities that were picked to search the web for |
 | remember | `web_search` | (only with `web_search`, one per entity) the web search: the entity, the query issued, the briefing, the queries the model sent to the search engine, the sources and `search_errors`; `model_name`, `metrics` (tokens and cost, search fee included) and `latency_ms` in the extra. An error here is recorded but not fatal |
 | query | `detect_geo` | (only with a geo resolver, and when the graph is not empty) the places the LLM found in the question, each with `text`, `kind` and `query`; or the `error` if it failed (the LLM call itself is the usual `system`, `user`, `agent` steps). It comes after `retrieve_graph` |
-| query | `search_vectors` | the embedding request of the question and what the four vector indexes returned for it (`entities`, `edges`, `chunks`, `summaries`: the row `id` and the cosine `score` of each match, best first), with `model_name` and `metrics` (tokens, cost), so the embedding cost counts in `final_metrics`. It comes first: the matches become seeds, facts and passages of the next step (see [query.md](../query.md#2-retrieve-by-similarity-and-passages)) |
+| query | `search_vectors` | the embedding request of the question and what the four vector indexes returned for it (`entities`, `edges`, `chunks`, `summaries`: the row `id` and the cosine `score` of each match, best first), with `model_name` and `metrics` (tokens, cost), so the embedding cost counts in `final_metrics`. It comes first: the matches become seeds, facts and passages of the next step (see [query/query.md](../query/query.md#2-retrieve-by-similarity-and-passages)) |
 | query | `retrieve_graph` | the context handed to the LLM, as rendered in its prompt: the subgraph (entities and live facts) followed by the passages, if any |
 
 ### Remember
