@@ -5,27 +5,6 @@ import (
 	"slices"
 )
 
-// State is everything the tools read and change: the frontier, the notes (claims, sources and the rest) and the challenges of one run. It is
-// an immutable value; a handler returns a new one.
-type State struct {
-	Limits     Limits
-	Frontier   Frontier
-	Notes      Notes
-	Challenges []Challenge
-}
-
-// NewState is the state of a run that starts: the root question (the objective) and empty notes. It also returns the transitions of the root.
-func NewState(objective string, limits Limits) (State, []Transition, error) {
-	f, ts, err := NewRoot(objective)
-	if err != nil {
-		return State{}, nil, err
-	}
-	return State{Limits: limits, Frontier: f, Notes: Notes{Objective: clean(objective)}}, ts, nil
-}
-
-// Effect is a change to the database or the notes file that a handler asks the effect layer to make. The handlers do not make them.
-type Effect interface{ isEffect() }
-
 // UpsertQuestion writes the row of a question (not its dependencies or attempts, which have their own effects).
 type UpsertQuestion struct{ Question Question }
 
@@ -55,6 +34,27 @@ type WriteNotes struct {
 	Text   string
 	Reason string
 }
+
+// State is everything the tools read and change: the frontier, the notes (claims, sources and the rest) and the challenges of one run. It is
+// an immutable value; a handler returns a new one.
+type State struct {
+	Limits     Limits
+	Frontier   Frontier
+	Notes      Notes
+	Challenges []Challenge
+}
+
+// NewState is the state of a run that starts: the root question (the objective) and empty notes. It also returns the transitions of the root.
+func NewState(objective string, limits Limits) (State, []Transition, error) {
+	f, ts, err := NewRoot(objective)
+	if err != nil {
+		return State{}, nil, err
+	}
+	return State{Limits: limits, Frontier: f, Notes: Notes{Objective: clean(objective)}}, ts, nil
+}
+
+// Effect is a change to the database or the notes file that a handler asks the effect layer to make. The handlers do not make them.
+type Effect interface{ isEffect() }
 
 func (UpsertQuestion) isEffect()    {}
 func (AddDependency) isEffect()     {}

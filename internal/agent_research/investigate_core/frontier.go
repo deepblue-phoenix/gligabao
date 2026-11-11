@@ -9,6 +9,51 @@ import (
 	"unicode"
 )
 
+// Transition is one status (or priority) change of a question: a row of gb_agent_frontier_transitions. StateSeq is set by the effect layer.
+type Transition struct {
+	QuestionID string
+	Seq        int
+	From, To   Status
+	Trigger    Trigger
+	Actor      Actor
+	Reason     string
+	Priority   float64
+	Attempts   int
+	CausedBy   string
+	StateSeq   int
+}
+
+// Frontier is the questions of a run, in creation order. It is an immutable value: every function returns a new one.
+type Frontier struct {
+	Questions []Question
+}
+
+// AddInput is what the model gives to add_question (and the objective, for the root).
+type AddInput struct {
+	Kind               Kind
+	Question           string
+	Rationale          string
+	Priority           float64
+	ValidationCriteria string
+	TargetSources      []string
+	DependsOn          []string
+	// BlocksParent makes the new question a dependency of its parent (the question that this one unblocks): the child gets at least the
+	// priority of the parent, and a parent that is in progress goes back to pending until the child is resolved.
+	BlocksParent bool
+	// Actor says who adds it (the model by default) and CausedBy the question or challenge that led to it ("" if none).
+	Actor    Actor
+	CausedBy string
+}
+
+// ResolveInput is what the model gives to resolve_question.
+type ResolveInput struct {
+	Answer   string
+	ClaimIDs []string
+	// Reason is the explicit reason that replaces a check the tool layer made (a hypothesis without both searches, a shallow question
+	// without an answer challenge); it is stored in the transition.
+	Reason string
+}
+
 // Status is the lifecycle state of a question (the design's Lifecycle section).
 type Status string
 
@@ -105,25 +150,6 @@ type Question struct {
 
 // AttemptCount is the number of distinct query formulations tried.
 func (q Question) AttemptCount() int { return len(q.Attempts) }
-
-// Transition is one status (or priority) change of a question: a row of gb_agent_frontier_transitions. StateSeq is set by the effect layer.
-type Transition struct {
-	QuestionID string
-	Seq        int
-	From, To   Status
-	Trigger    Trigger
-	Actor      Actor
-	Reason     string
-	Priority   float64
-	Attempts   int
-	CausedBy   string
-	StateSeq   int
-}
-
-// Frontier is the questions of a run, in creation order. It is an immutable value: every function returns a new one.
-type Frontier struct {
-	Questions []Question
-}
 
 // NewFrontier is the frontier of the questions, in creation order (by id number): for the store that loads them.
 func NewFrontier(questions []Question) Frontier {
@@ -232,23 +258,6 @@ func created(q Question, actor Actor, reason string) (Question, Transition) {
 	q.TransSeq = 1
 	return q, Transition{QuestionID: q.ID, Seq: 1, From: "", To: StatusPending, Trigger: TriggerCreated, Actor: actor, Reason: reason,
 		Priority: q.Priority, Attempts: 0}
-}
-
-// AddInput is what the model gives to add_question (and the objective, for the root).
-type AddInput struct {
-	Kind               Kind
-	Question           string
-	Rationale          string
-	Priority           float64
-	ValidationCriteria string
-	TargetSources      []string
-	DependsOn          []string
-	// BlocksParent makes the new question a dependency of its parent (the question that this one unblocks): the child gets at least the
-	// priority of the parent, and a parent that is in progress goes back to pending until the child is resolved.
-	BlocksParent bool
-	// Actor says who adds it (the model by default) and CausedBy the question or challenge that led to it ("" if none).
-	Actor    Actor
-	CausedBy string
 }
 
 // NewRoot creates the root question q_001 (the objective) and selects it: the objective is always being worked on, and its children are
@@ -491,15 +500,6 @@ func Select(f Frontier) (Frontier, *Question, []Transition) {
 		return f.with(q), &q, append(ts, t)
 	}
 	return f, nil, nil
-}
-
-// ResolveInput is what the model gives to resolve_question.
-type ResolveInput struct {
-	Answer   string
-	ClaimIDs []string
-	// Reason is the explicit reason that replaces a check the tool layer made (a hypothesis without both searches, a shallow question
-	// without an answer challenge); it is stored in the transition.
-	Reason string
 }
 
 // ReasonMarker starts the stored reason in the answer of a question that was resolved with an explicit reason ("(reason: ...)").

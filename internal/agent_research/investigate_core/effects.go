@@ -7,6 +7,14 @@ import (
 	"fmt"
 )
 
+// Session drives the tools of a run against the store: the effect layer around the pure handlers. Each call loads the state, runs the
+// handler, executes its effects and returns the text for the model. It holds no state between calls.
+type Session struct {
+	Env      Env
+	Registry Registry
+	Limits   Limits
+}
+
 // Env is what the effect layer works with: the store, the notes file and the run.
 type Env struct {
 	Store Store
@@ -74,14 +82,6 @@ func apply(ctx context.Context, tx Tx, runID int64, stateSeq int, e Effect) erro
 		return err
 	}
 	return fmt.Errorf("unknown effect %T", e)
-}
-
-// Session drives the tools of a run against the store: the effect layer around the pure handlers. Each call loads the state, runs the
-// handler, executes its effects and returns the text for the model. It holds no state between calls.
-type Session struct {
-	Env      Env
-	Registry Registry
-	Limits   Limits
 }
 
 // Start records a new run in the store: the root question for the objective.

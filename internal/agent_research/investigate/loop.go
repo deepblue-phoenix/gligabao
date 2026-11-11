@@ -15,6 +15,30 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 )
 
+type runner struct {
+	cfg    Config
+	sess   investigate_core.Session
+	prompt investigate_core.Prompt
+	ls     investigate_core.LoopState
+	report string
+	// toolCalls and in/out are the totals not kept by the loop state (the state has the tokens and the cost).
+	toolCalls, in, out int
+	tr                 *recorder
+}
+
+// recorder records the run as an ATIF trajectory; a nil recorder records nothing.
+type recorder struct {
+	b     *atif.Builder
+	model string
+}
+
+// stepRec is one model call of the run, an agent step of the trajectory.
+type stepRec struct {
+	step   atif.Step
+	failed []string
+	r      *recorder
+}
+
 // This file is the effect layer of the investigative loop: it runs the cycle (state, decide, act, observe, update) with the pure functions of
 // the package deciding every step. The model, the tools, the database and the notes file are touched here and only here.
 
@@ -92,17 +116,6 @@ func Run(ctx context.Context, cfg Config) (RunResult, error) {
 	res := RunResult{Report: r.report, Phase: r.ls.Phase, StopReason: r.ls.StopReason, Totals: r.totals()}
 	res.Trajectory = r.tr.finish(res, err)
 	return res, err
-}
-
-type runner struct {
-	cfg    Config
-	sess   investigate_core.Session
-	prompt investigate_core.Prompt
-	ls     investigate_core.LoopState
-	report string
-	// toolCalls and in/out are the totals not kept by the loop state (the state has the tokens and the cost).
-	toolCalls, in, out int
-	tr                 *recorder
 }
 
 func (r *runner) totals() Totals {
@@ -491,12 +504,6 @@ func (r *runner) runRegistry(ctx context.Context, st investigate_core.State, c i
 	return text, false
 }
 
-// recorder records the run as an ATIF trajectory; a nil recorder records nothing.
-type recorder struct {
-	b     *atif.Builder
-	model string
-}
-
 func newRecorder(cfg Config, p investigate_core.Prompt) *recorder {
 	t := cfg.Trajectory
 	name, version := t.Name, t.Version
@@ -518,13 +525,6 @@ func newRecorder(cfg Config, p investigate_core.Prompt) *recorder {
 	b.System(p.System)
 	b.User(p.Task)
 	return &recorder{b: b}
-}
-
-// stepRec is one model call of the run, an agent step of the trajectory.
-type stepRec struct {
-	step   atif.Step
-	failed []string
-	r      *recorder
 }
 
 func (t *recorder) begin(started time.Time, resp *ai.RawResponse, turn int, kind investigate_core.TurnKind, state string, phase investigate_core.Phase, question string) *stepRec {

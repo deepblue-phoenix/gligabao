@@ -7,43 +7,6 @@ import (
 	"strings"
 )
 
-// Section is a section of the notes file.
-type Section string
-
-// The fixed sections of the notes, in the order of the file.
-const (
-	SectionVerified       Section = "Verified"
-	SectionUnverified     Section = "Unverified"
-	SectionContradictions Section = "Contradictions"
-	SectionDatapoints     Section = "Datapoints"
-	SectionSources        Section = "Sources"
-	SectionAssumptions    Section = "Assumptions & gaps"
-	SectionScratch        Section = "Scratch"
-)
-
-var sectionOrder = []Section{SectionVerified, SectionUnverified, SectionContradictions, SectionDatapoints, SectionSources, SectionAssumptions, SectionScratch}
-
-// ParseSection reads the name of a section as the model may write it (case and "&" free: "assumptions", "gaps").
-func ParseSection(name string) (Section, bool) {
-	switch Normalize(name) {
-	case "verified":
-		return SectionVerified, true
-	case "unverified":
-		return SectionUnverified, true
-	case "contradictions":
-		return SectionContradictions, true
-	case "datapoints":
-		return SectionDatapoints, true
-	case "sources":
-		return SectionSources, true
-	case "assumptions gaps", "assumptions", "gaps":
-		return SectionAssumptions, true
-	case "scratch":
-		return SectionScratch, true
-	}
-	return "", false
-}
-
 // Contradiction is a conflict between two claims, with the question spawned to resolve it ("" if none).
 type Contradiction struct {
 	A, B       string
@@ -100,6 +63,43 @@ type Change struct {
 	Check string `json:"check"`
 	Note  string `json:"note"`
 	Title string `json:"title"`
+}
+
+// Section is a section of the notes file.
+type Section string
+
+// The fixed sections of the notes, in the order of the file.
+const (
+	SectionVerified       Section = "Verified"
+	SectionUnverified     Section = "Unverified"
+	SectionContradictions Section = "Contradictions"
+	SectionDatapoints     Section = "Datapoints"
+	SectionSources        Section = "Sources"
+	SectionAssumptions    Section = "Assumptions & gaps"
+	SectionScratch        Section = "Scratch"
+)
+
+var sectionOrder = []Section{SectionVerified, SectionUnverified, SectionContradictions, SectionDatapoints, SectionSources, SectionAssumptions, SectionScratch}
+
+// ParseSection reads the name of a section as the model may write it (case and "&" free: "assumptions", "gaps").
+func ParseSection(name string) (Section, bool) {
+	switch Normalize(name) {
+	case "verified":
+		return SectionVerified, true
+	case "unverified":
+		return SectionUnverified, true
+	case "contradictions":
+		return SectionContradictions, true
+	case "datapoints":
+		return SectionDatapoints, true
+	case "sources":
+		return SectionSources, true
+	case "assumptions gaps", "assumptions", "gaps":
+		return SectionAssumptions, true
+	case "scratch":
+		return SectionScratch, true
+	}
+	return "", false
 }
 
 // clean makes a text fit the one-line grammar of the notes: one line, single spaces, no "|" (it separates the fields).

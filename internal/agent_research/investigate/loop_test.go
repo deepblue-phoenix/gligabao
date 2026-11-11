@@ -20,6 +20,16 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 )
 
+type env struct {
+	d      *sql.DB
+	pg     bool
+	run    *core.Run
+	sess   investigate_core.Session
+	phases []string
+	states []string
+	outs   map[string]string // the output of the tool calls, by "name#k"
+}
+
 // tc is one tool call of a scripted reply.
 type tc struct {
 	name string
@@ -86,16 +96,6 @@ func fakeTools() []agent.Tool {
 			return strings.Repeat("page ", 40) + "MARKER" + strings.Repeat(" text", 40), nil
 		}},
 	}
-}
-
-type env struct {
-	d      *sql.DB
-	pg     bool
-	run    *core.Run
-	sess   investigate_core.Session
-	phases []string
-	states []string
-	outs   map[string]string // the output of the tool calls, by "name#k"
 }
 
 func newEnv(t *testing.T, d *sql.DB, limits investigate_core.Limits) *env {

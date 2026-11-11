@@ -19,6 +19,12 @@ import (
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
+type notesMirror struct {
+	local investigate_core.NotesStore
+	s3    *NotesS3
+	user  string
+}
+
 // DefaultNotesS3Prefix is the "subdirectory" of the research bucket the notes go to when no prefix is configured.
 const DefaultNotesS3Prefix = "investigative_notes"
 
@@ -85,12 +91,6 @@ func (n *NotesS3) Key(user, localPath string) string {
 // read of a file missing locally (a container restarted with an empty disk) is served from the bucket.
 func (n *NotesS3) Mirror(local investigate_core.NotesStore, user string) investigate_core.NotesStore {
 	return notesMirror{local: local, s3: n, user: user}
-}
-
-type notesMirror struct {
-	local investigate_core.NotesStore
-	s3    *NotesS3
-	user  string
 }
 
 // Write writes the local file (an error there is the error of the write), then the object. A failure of the bucket is logged and does not

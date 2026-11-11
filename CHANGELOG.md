@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.186.4] - 2026-11-11
+
+### Changed
+- The struct definitions of the subpackages of `internal/agent_research` (`core`, `db/sqlite`, `db/postgres`, `investigate`, `investigate_core`) are at the top of their files, above the functions. No behaviour change.
+
 ## [0.186.3] - 2026-11-11
 
 ### Changed

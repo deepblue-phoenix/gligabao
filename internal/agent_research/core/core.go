@@ -9,73 +9,6 @@ import (
 	"time"
 )
 
-// Status is the lifecycle of a Run as a whole.
-type Status string
-
-const (
-	// StatusRunning: the agent is working on the topic.
-	StatusRunning Status = "running"
-	// StatusCompleted: the agent ended with a report (Run.Report).
-	StatusCompleted Status = "completed"
-	// StatusFailed: the agent could not finish (a model call failed, or the server stopped). Run.Error says why.
-	StatusFailed Status = "failed"
-	// StatusStopped: somebody stopped the agent (Manager.Stop, from the admin UI) before it ended. Run.Error says by whom; there is no report.
-	StatusStopped Status = "stopped"
-)
-
-// Where an agent runs (Run.Runner).
-const (
-	// RunnerLocal: in the process of the server (or of the binary that started it), on goroutines. The default.
-	RunnerLocal = "local"
-	// RunnerModal: the gligabao_agent binary runs the agent and its sub-agents in a Modal container, started through the sidecar. The
-	// server records the run and the states the binary reports.
-	RunnerModal = "modal"
-)
-
-// Statuses lists the statuses.
-var Statuses = []Status{StatusRunning, StatusCompleted, StatusFailed, StatusStopped}
-
-// Active reports whether a run with this status is still working.
-func (s Status) Active() bool { return s == StatusRunning }
-
-// The states of a run: what the agent is doing. A run enters them one after the other (State.Seq), and each is recorded in
-// gb_agent_research_states when it is entered. A run is recorded in StateStarting, then the agent alternates between StateThinking, where it waits for the model to decide
-// what to do next, and the states of the tools the model chose (StateSearching, StateReading, StateQuerying, StateRemembering, StateUsingTool); the step of the
-// last model call, which may not use tools, is StateWritingReport. A run ends in StateCompleted or StateFailed, which are
-// recorded too, so that the states are the whole history; a run that is stopped ends in StateStopped.
-const (
-	// StateStarting: the run is recorded and the agent has not made its first model call yet.
-	StateStarting = "starting"
-	// StateThinking: a model call is running; it decides whether to search or read more, or writes the report.
-	StateThinking = "thinking"
-	// StateSearching: the web_search tool is running; the detail is the query.
-	StateSearching = "searching"
-	// StateReading: the fetch_url tool is running; the detail is the URL.
-	StateReading = "reading"
-	// StateQuerying: the query tool is running; the detail is the question asked of the knowledge base.
-	StateQuerying = "querying"
-	// StateRemembering: the remember tool is running; the detail says whether it waits (sync) or not, and the start of the text.
-	StateRemembering = "remembering"
-	// StateWaiting: the agent waits for its sub-agents to end (wait_subagents).
-	StateWaiting = "waiting"
-	// StateSpawning: the spawn_subagent tool is running; the detail is the name of the sub-agent and its reason.
-	StateSpawning = "spawning"
-	// StateUsingTool: any other tool is running; the detail is its name.
-	StateUsingTool = "using_tool"
-	// StateWritingReport: the last model call, the one that may not call tools, is running: its text is the report.
-	StateWritingReport = "writing_report"
-	// StateImporting: only for a research that ran in Modal (RunnerModal): the agent ended and the server loads what it handed back (its
-	// knowledge base, its runs and costs, its embeddings) into its own databases. The detail says how big the export is; an error on the
-	// state says why the import failed (the run itself is not failed by it: its report is there).
-	StateImporting = "importing"
-	// StateCompleted: the run ended with a report.
-	StateCompleted = "completed"
-	// StateFailed: the run ended with an error.
-	StateFailed = "failed"
-	// StateStopped: the run was stopped before it ended.
-	StateStopped = "stopped"
-)
-
 // Run is one execution of the research agent on a topic.
 type Run struct {
 	ID     int64  `json:"id"`
@@ -158,6 +91,73 @@ type RunFilter struct {
 	// RootsOnly keeps only the researches a user started (the runs without a parent).
 	RootsOnly bool
 }
+
+// Status is the lifecycle of a Run as a whole.
+type Status string
+
+const (
+	// StatusRunning: the agent is working on the topic.
+	StatusRunning Status = "running"
+	// StatusCompleted: the agent ended with a report (Run.Report).
+	StatusCompleted Status = "completed"
+	// StatusFailed: the agent could not finish (a model call failed, or the server stopped). Run.Error says why.
+	StatusFailed Status = "failed"
+	// StatusStopped: somebody stopped the agent (Manager.Stop, from the admin UI) before it ended. Run.Error says by whom; there is no report.
+	StatusStopped Status = "stopped"
+)
+
+// Where an agent runs (Run.Runner).
+const (
+	// RunnerLocal: in the process of the server (or of the binary that started it), on goroutines. The default.
+	RunnerLocal = "local"
+	// RunnerModal: the gligabao_agent binary runs the agent and its sub-agents in a Modal container, started through the sidecar. The
+	// server records the run and the states the binary reports.
+	RunnerModal = "modal"
+)
+
+// Statuses lists the statuses.
+var Statuses = []Status{StatusRunning, StatusCompleted, StatusFailed, StatusStopped}
+
+// Active reports whether a run with this status is still working.
+func (s Status) Active() bool { return s == StatusRunning }
+
+// The states of a run: what the agent is doing. A run enters them one after the other (State.Seq), and each is recorded in
+// gb_agent_research_states when it is entered. A run is recorded in StateStarting, then the agent alternates between StateThinking, where it waits for the model to decide
+// what to do next, and the states of the tools the model chose (StateSearching, StateReading, StateQuerying, StateRemembering, StateUsingTool); the step of the
+// last model call, which may not use tools, is StateWritingReport. A run ends in StateCompleted or StateFailed, which are
+// recorded too, so that the states are the whole history; a run that is stopped ends in StateStopped.
+const (
+	// StateStarting: the run is recorded and the agent has not made its first model call yet.
+	StateStarting = "starting"
+	// StateThinking: a model call is running; it decides whether to search or read more, or writes the report.
+	StateThinking = "thinking"
+	// StateSearching: the web_search tool is running; the detail is the query.
+	StateSearching = "searching"
+	// StateReading: the fetch_url tool is running; the detail is the URL.
+	StateReading = "reading"
+	// StateQuerying: the query tool is running; the detail is the question asked of the knowledge base.
+	StateQuerying = "querying"
+	// StateRemembering: the remember tool is running; the detail says whether it waits (sync) or not, and the start of the text.
+	StateRemembering = "remembering"
+	// StateWaiting: the agent waits for its sub-agents to end (wait_subagents).
+	StateWaiting = "waiting"
+	// StateSpawning: the spawn_subagent tool is running; the detail is the name of the sub-agent and its reason.
+	StateSpawning = "spawning"
+	// StateUsingTool: any other tool is running; the detail is its name.
+	StateUsingTool = "using_tool"
+	// StateWritingReport: the last model call, the one that may not call tools, is running: its text is the report.
+	StateWritingReport = "writing_report"
+	// StateImporting: only for a research that ran in Modal (RunnerModal): the agent ended and the server loads what it handed back (its
+	// knowledge base, its runs and costs, its embeddings) into its own databases. The detail says how big the export is; an error on the
+	// state says why the import failed (the run itself is not failed by it: its report is there).
+	StateImporting = "importing"
+	// StateCompleted: the run ended with a report.
+	StateCompleted = "completed"
+	// StateFailed: the run ended with an error.
+	StateFailed = "failed"
+	// StateStopped: the run was stopped before it ended.
+	StateStopped = "stopped"
+)
 
 // NewNotesID returns a random 128-bit id as 32 lower-case hex characters, for Run.NotesID.
 func NewNotesID() (string, error) {

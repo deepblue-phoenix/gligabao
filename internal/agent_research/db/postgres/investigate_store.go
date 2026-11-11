@@ -12,6 +12,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
 )
 
+type investigateTx struct{ q db.Execer }
+
 // InvestigateStore is the implementation of investigate.Store on PostgreSQL: the tables of the frontier, the claims and sources, the challenges
 // and the notes versions (see sql/schema.sql). Every method that changes state runs inside the transaction of InTx.
 type InvestigateStore struct{ D *sql.DB }
@@ -36,8 +38,6 @@ func (s InvestigateStore) InTx(ctx context.Context, fn func(investigate_core.Tx)
 	}
 	return nil
 }
-
-type investigateTx struct{ q db.Execer }
 
 func nullable(s string) any {
 	if s == "" {
