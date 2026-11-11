@@ -11,6 +11,7 @@ package gligabao
 import (
 	"context"
 	_ "embed"
+	"github.com/deepblue-phoenix/gligabao/internal/monty"
 	"net/http"
 	"sync"
 
@@ -390,6 +391,7 @@ func serverOptions(cfg *Config, opts ServeOptions) (serverOpts server.Options, r
 		AgentDefsDir:       agentDefsDir,
 		ResearchMaxCostUSD: cfg.ResearchMaxCostUSD,
 		ResearchNotesDir:   cfg.ResearchNotesDirOrDefault(),
+		Monty:              monty.Config{Python: cfg.MontyPython, Bin: cfg.MontyBin, Workers: cfg.MontyWorkers, RequestTimeoutS: cfg.MontyRequestTimeoutS},
 		ResearchNotesS3: investigate.NotesS3Config{
 			Bucket: cfg.ResearchNotesS3Bucket, Region: cfg.ResearchNotesS3Region, Prefix: cfg.ResearchNotesS3Prefix,
 		},

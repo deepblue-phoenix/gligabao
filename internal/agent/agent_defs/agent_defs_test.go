@@ -533,3 +533,37 @@ func TestInvestigateMerge(t *testing.T) {
 		t.Errorf("%+v", got)
 	}
 }
+
+func TestCodeTable(t *testing.T) {
+	reg, err := loadLoop(t, "loop = \"investigative\"\n[code]\nenabled = true\ntimeout_s = 5\nmax_calls = 0\nfunctions = [\"notes_read\", \"log\"]\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, _ := reg.Get("deep")
+	if !d.CodeEnabled() || d.Code.TimeoutS != 5 || d.Code.MaxCalls == nil || *d.Code.MaxCalls != 0 {
+		t.Fatalf("%+v", d.Code)
+	}
+	c := d.Code.WithDefaults()
+	if c.MaxMemoryMB != DefaultCodeMaxMemoryMB || c.TimeoutS != 5 || *c.MaxCalls != 0 {
+		t.Errorf("defaults: %+v", c)
+	}
+	if n := *(Code{}).WithDefaults().MaxCalls; n != DefaultCodeMaxCalls {
+		t.Errorf("max_calls default: %d", n)
+	}
+	plain, _ := loadLoop(t, "loop = \"investigative\"\n")
+	if p, _ := plain.Get("deep"); p.CodeEnabled() || p.Hash == d.Hash {
+		t.Error("no [code]: no code tool, another hash")
+	}
+	for name, c := range map[string]struct{ extra, want string }{
+		"simple loop":  {"[code]\nenabled = true\n", "run_code is a tool of the investigative loop"},
+		"not enabled":  {"loop = \"investigative\"\n[code]\ntimeout_s = 5\n", "the table needs enabled = true"},
+		"range":        {"loop = \"investigative\"\n[code]\nenabled = true\ntimeout_s = 600\n", "code.timeout_s"},
+		"memory":       {"loop = \"investigative\"\n[code]\nenabled = true\nmax_memory_mb = 2\n", "code.max_memory_mb"},
+		"unknown func": {"loop = \"investigative\"\n[code]\nenabled = true\nfunctions = [\"rm_rf\"]\n", "unknown host function(s): rm_rf"},
+		"unknown key":  {"loop = \"investigative\"\n[code]\nenabled = true\nsudo = true\n", "unknown key"},
+	} {
+		if _, err := loadLoop(t, c.extra); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}

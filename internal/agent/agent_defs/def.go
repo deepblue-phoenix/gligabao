@@ -94,6 +94,53 @@ type Investigate struct {
 	GatePriority     float64 `toml:"gate_priority" json:"gate_priority,omitempty"`
 }
 
+// Code is the [code] table of an agent that runs the investigative loop: the run_code tool, Python in a sandbox (Pydantic Monty,
+// docs/agents/monty-code-execution.md). Without the table, or with enabled = false, the agent has no code tool. 0 means the default
+// (Code.WithDefaults), except MaxCalls, where 0 is no limit and nil the default.
+type Code struct {
+	Enabled        bool     `toml:"enabled" json:"enabled"`
+	TimeoutS       int      `toml:"timeout_s" json:"timeout_s,omitempty"`
+	MaxMemoryMB    int      `toml:"max_memory_mb" json:"max_memory_mb,omitempty"`
+	MaxRecursion   int      `toml:"max_recursion" json:"max_recursion,omitempty"`
+	MaxOutputChars int      `toml:"max_output_chars" json:"max_output_chars,omitempty"`
+	MaxCalls       *int     `toml:"max_calls" json:"max_calls,omitempty"`
+	MaxHostCalls   int      `toml:"max_host_calls" json:"max_host_calls,omitempty"`
+	MaxResultChars int      `toml:"max_result_chars" json:"max_result_chars,omitempty"`
+	Functions      []string `toml:"functions" json:"functions,omitempty"`
+	TypeCheck      bool     `toml:"type_check" json:"type_check,omitempty"`
+}
+
+// Defaults of Code.
+const (
+	DefaultCodeTimeoutS       = 10
+	DefaultCodeMaxMemoryMB    = 128
+	DefaultCodeMaxRecursion   = 500
+	DefaultCodeMaxOutputChars = 4000
+	DefaultCodeMaxCalls       = 30
+	DefaultCodeMaxHostCalls   = 20
+	DefaultCodeMaxResultChars = 20000
+)
+
+// WithDefaults returns c with every unset number replaced by its default (MaxCalls is then never nil).
+func (c Code) WithDefaults() Code {
+	pick := func(v, def int) int {
+		if v > 0 {
+			return v
+		}
+		return def
+	}
+	c.TimeoutS, c.MaxMemoryMB, c.MaxRecursion = pick(c.TimeoutS, DefaultCodeTimeoutS), pick(c.MaxMemoryMB, DefaultCodeMaxMemoryMB), pick(c.MaxRecursion, DefaultCodeMaxRecursion)
+	c.MaxOutputChars, c.MaxHostCalls, c.MaxResultChars = pick(c.MaxOutputChars, DefaultCodeMaxOutputChars), pick(c.MaxHostCalls, DefaultCodeMaxHostCalls), pick(c.MaxResultChars, DefaultCodeMaxResultChars)
+	if c.MaxCalls == nil {
+		n := DefaultCodeMaxCalls
+		c.MaxCalls = &n
+	}
+	return c
+}
+
+// CodeEnabled reports whether the agent has the run_code tool.
+func (d *Def) CodeEnabled() bool { return d.Code != nil && d.Code.Enabled }
+
 // Investigative reports whether the agent runs the investigative loop.
 func (d *Def) Investigative() bool { return d.Loop == LoopInvestigative }
 
@@ -156,6 +203,8 @@ type Def struct {
 	// with the simple loop.
 	Loop        string       `json:"loop,omitempty"`
 	Investigate *Investigate `json:"investigate,omitempty"`
+	// Code is the run_code tool of the investigative loop (nil: no code tool); it is an error to set it with the simple loop.
+	Code *Code `json:"code,omitempty"`
 	// Schedule says when the server runs the agent by itself (nil: only when a research asks for it). It is not part of Hash: when an
 	// agent runs does not change what it is.
 	Schedule *Schedule `json:"schedule,omitempty"`

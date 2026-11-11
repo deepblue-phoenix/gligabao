@@ -5,6 +5,18 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.187.0] - 2026-11-12
+
+### Added
+- The `run_code` tool for the investigative agent ([monty-code-execution.md](docs/agents/monty-code-execution.md)): an agent whose definition has `[code] enabled = true` (with `loop = "investigative"`) can run a short Python program in a sandbox (Pydantic Monty) for exact arithmetic, conversions, counting and parsing, and read back only what it prints. The program can call a fixed registry of Go host functions (`notes_read`, `frontier_get`, `frontier_list`, `claims_list`, `fetch_page`, `web_search`, `kb_query`, `log`); the fetch ones run the agent's own tools, so their limits, cost and attempt log apply; none of them changes the frontier, the notes or the claims. It is offered in the exploration and planning turns only.
+- The `[code]` table of the agent definition (`enabled`, `timeout_s`, `max_memory_mb`, `max_recursion`, `max_output_chars`, `max_calls`, `max_host_calls`, `max_result_chars`, `functions`, `type_check`); it is an error with the simple loop or without `enabled = true`.
+- `gligabao.toml` settings `monty_python`, `monty_bin`, `monty_workers`, `monty_request_timeout_s` (also `GLIGABAO_MONTY_PYTHON` and `MONTY_BIN`, which `gligabao_agent` uses). The sandbox runs in a sidecar process that the server (or `gligabao_agent`) starts at the first `run_code` and stops with the research manager; a run of an agent with `[code]` enabled fails at its start, naming the missing piece, when it is not installed.
+- The trajectory step of a model call that used `run_code` records the code, the output and the host function calls in `extra.code_runs`.
+- The example agent `build/agent_defs/numeric_investigator.toml`.
+
+### Changed
+- The Docker image installs Pydantic Monty (pinned by the build argument `MONTY_VERSION`, default 0.0.21) in a venv at `/opt/monty`, with `python3`. Nothing changes for an agent that does not set `[code] enabled`.
+
 ## [0.186.4] - 2026-11-11
 
 ### Changed

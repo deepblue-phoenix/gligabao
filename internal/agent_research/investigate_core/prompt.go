@@ -43,6 +43,8 @@ type Prompt struct {
 const (
 	ToolFinishExploration = "finish_exploration"
 	ToolFinalizeReport    = "finalize_report"
+	// ToolRunCode is the code tool (docs/agents/monty-code-execution.md); an external tool like web_search.
+	ToolRunCode = "run_code"
 )
 
 var notesToolNames = []string{"notes_read", "notes_append", "notes_update", "notes_scratch"}
@@ -271,8 +273,20 @@ func systemText(p Prompt, kind TurnKind) string {
 	default:
 		phase = exploreInstructions
 	}
+	if kind == TurnPlanning || kind == TurnExplore {
+		if slices.Contains(p.External, ToolRunCode) {
+			phase += "\n\n" + codeInstructions
+		}
+	}
 	return strings.TrimSpace(p.System + "\n\n" + phase)
 }
+
+// codeInstructions is the block added to the instructions of the turns that offer run_code.
+const codeInstructions = `## Code
+You have run_code: a short Python program in a sandbox, for exact work you would otherwise do in your head: arithmetic, unit conversions, ratios, counting, sorting, filtering or parsing a long text, checking whether two figures agree. Compute exact numbers rather than estimating them.
+- A run is stateless (variables do not survive to the next call) and the sandbox is a limited subset of Python: no third-party packages, no files, no network. Only what you print and the value of the last expression come back, so print the result, not the data.
+- It reads the state (the functions listed in the tool); it cannot change the frontier, the notes or the claims. Record what you learn with the normal tools.
+- The code is not a source. A number you computed is recorded as a claim or datapoint with the sources of its inputs.`
 
 type blocks = []any
 

@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/deepblue-phoenix/gligabao/internal/monty"
 	"sync"
 	"time"
 
@@ -42,6 +43,11 @@ type Manager struct {
 	NotesDir string
 	// NotesS3, if set, mirrors the notes files to the research S3 bucket, under a subdirectory per user. Set it before starting any agent.
 	NotesS3 *investigate.NotesS3
+	// Monty says where the code sandbox of the agents with [code] enabled is (the interpreter, the monty binary, the workers); unset fields
+	// come from GLIGABAO_MONTY_PYTHON and MONTY_BIN. Set it before starting any agent.
+	Monty monty.Config
+	// Sandbox, if set, runs the code of the agents instead of the sidecar made (lazily, at the first run_code) from Monty: for tests.
+	Sandbox monty.Runner
 
 	ctx context.Context
 	mem *Memory // the knowledge base of the agents (nil: they have only the web tools); guarded by mu
@@ -54,6 +60,9 @@ type Manager struct {
 	importer Importer
 	// defs are the agent definitions the researches can run (nil: only the built-in default); guarded by mu.
 	defs *agent_defs.Registry
+
+	sandboxOnce sync.Once
+	sidecar     *monty.Sidecar
 
 	mu      sync.Mutex
 	active  map[string]int        // running agents by user

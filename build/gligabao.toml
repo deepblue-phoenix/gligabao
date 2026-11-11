@@ -99,6 +99,13 @@ agent_defs_dir = "agent_defs"
 # Where the notes files of the investigative research loop go (notes_<user>_<run>_<notes_id>.md); only agents with loop = "investigative" write there.
 # Default: a research_notes directory next to the binary.
 # research_notes_dir = "research_notes"
+# The code sandbox (Pydantic Monty) of the investigative agents with [code] enabled in their definition (docs/agents/monty-code-execution.md).
+# Needs `pip install pydantic-monty`: monty_python is the interpreter that has it (also GLIGABAO_MONTY_PYTHON, default python3), monty_bin the
+# worker binary (also MONTY_BIN, default: next to the interpreter, then PATH). Workers: the most worker processes; the timeout kills a stuck one.
+# monty_python = "/opt/monty/bin/python"
+# monty_bin = "/opt/monty/bin/monty"
+# monty_workers = 2
+# monty_request_timeout_s = 90
 # Also store those notes in an (existing) Amazon S3 bucket, the research bucket common to all the research agents (also RESEARCH_NOTES_S3_BUCKET,
 # _REGION, _PREFIX). The local files stay the working copy and every write is mirrored to s3://<bucket>/<prefix>/<user>/notes_<user>_<run>_<notes_id>.md;
 # a notes file missing locally is read back from the bucket. Credentials: the default AWS chain (instance role). Default: off, local files only.

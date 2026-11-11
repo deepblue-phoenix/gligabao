@@ -46,6 +46,7 @@ required_skills = []                  # the same, but a missing file is a startu
 [limits]    # cost caps
 [spawn]     # sub-agents
 [investigate] # knobs of the investigative loop (only with loop = "investigative")
+[code]      # the run_code tool, Python in a sandbox (only with loop = "investigative", optional)
 [schedule]  # runs by itself on a CRON schedule (optional)
 ```
 
@@ -148,6 +149,27 @@ max_parallel = 1                 # only 1 is implemented
 ```
 
 The cost cap of the run is `[limits] max_cost_usd` (and the request's and the server's caps, the lowest counts). When any breaker fires in exploration the run goes on to synthesis with a note of the cut and does not fail; if one fires in synthesis the run fails and names the breaker. The knobs and their meaning are in [the design](deep-research-loop.md#configuration).
+
+### `[code]`: the `run_code` tool
+
+An agent with `loop = "investigative"` can have one more tool, `run_code`: a short Python program run in a sandbox ([Pydantic Monty](https://github.com/pydantic/monty), a sandboxed subset of Python in a sidecar process; the design is in [monty-code-execution.md](monty-code-execution.md)). It is for exact arithmetic, unit conversions, counting, parsing a long text and cross-checking figures; only what the program prints and the value of its last expression come back. It is offered in the exploration and planning turns, not in extraction, consolidation and synthesis. A run is stateless, cannot change the frontier, the notes or the claims, and can only call the host functions in the registry (`notes_read`, `frontier_get`, `frontier_list`, `claims_list`, `fetch_page`, `web_search`, `kb_query`, `log`; the fetch ones run the agent's own tools, so their limits, domain rules and cost apply).
+
+```toml
+loop = "investigative"
+[code]
+enabled = true             # required: the table without enabled = true is an error
+timeout_s = 10             # wall time of one call, 1 to 60
+max_memory_mb = 128        # 8 to 1024
+max_recursion = 500
+max_output_chars = 4000    # what the model reads back, 200 to 20000
+max_calls = 30             # run_code calls per run, 0 = no limit
+max_host_calls = 20        # host function calls per run_code call
+max_result_chars = 20000   # one host function result
+functions = []             # names allowed; empty = all (a name not in the registry is an error)
+type_check = false         # Monty's type checker, against the stubs of the functions, before running
+```
+
+The table is an **error** with the simple loop. Without the table the agent has no code tool and nothing changes. The sandbox must be installed on the server (the Docker image has it; otherwise `pip install pydantic-monty` and set `monty_python` / `monty_bin` of `gligabao.toml`, or `GLIGABAO_MONTY_PYTHON` / `MONTY_BIN`): a run of an agent with `[code] enabled` fails at its start, naming the missing piece, when it is not there. `build/agent_defs/numeric_investigator.toml` is an example.
 
 ### `[spawn]`: sub-agents
 

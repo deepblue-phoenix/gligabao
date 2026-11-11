@@ -18,7 +18,11 @@ COPY --from=admin_ui /src/admin_ui/dist ./admin_ui/dist
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/gligabao ./cmd/gligabao
 
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+ARG MONTY_VERSION=0.0.21
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates python3 python3-venv \
+    && python3 -m venv /opt/monty \
+    && /opt/monty/bin/pip install --no-cache-dir "pydantic-monty==${MONTY_VERSION}" \
+    && apt-get purge -y --auto-remove python3-venv \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --no-create-home gligabao && mkdir /data && chown gligabao /data
 WORKDIR /app
@@ -31,6 +35,9 @@ COPY build/evals_training /app/evals_training
 COPY build/ontology /app/ontology
 # The definitions of the research agents (agent_defs next to the binary is where the server looks; docs/agents/agent-defs.md).
 COPY build/agent_defs /app/agent_defs
+# The code sandbox (Pydantic Monty, a venv with the Python bridge client and the monty worker binary): only used by the agents with [code] enabled
+# in their definition (docs/agents/monty-code-execution.md); the server finds it through these two variables.
+ENV GLIGABAO_MONTY_PYTHON=/opt/monty/bin/python MONTY_BIN=/opt/monty/bin/monty PYTHONDONTWRITEBYTECODE=1
 USER gligabao
 VOLUME /data
 EXPOSE 7878

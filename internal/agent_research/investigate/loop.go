@@ -24,6 +24,9 @@ type runner struct {
 	// toolCalls and in/out are the totals not kept by the loop state (the state has the tokens and the cost).
 	toolCalls, in, out int
 	tr                 *recorder
+	// rec is the trajectory step of the turn that is running (nil without a trajectory); code is the state of run_code (nil: off).
+	rec  *stepRec
+	code *code
 }
 
 // recorder records the run as an ATIF trajectory; a nil recorder records nothing.
@@ -85,6 +88,8 @@ type Config struct {
 	Hooks    Hooks
 	// Trajectory, if not nil, makes Run record the trajectory.
 	Trajectory *Trajectory
+	// Code, if not nil, gives the agent the run_code tool (docs/agents/monty-code-execution.md).
+	Code *CodeConfig
 }
 
 // RunResult is how the run went.
@@ -108,11 +113,15 @@ func (e *BreakerError) Error() string {
 // *BreakerError), the model fails or ctx ends. The run's state is in the store of cfg.Session: a first call records the root question.
 func Run(ctx context.Context, cfg Config) (RunResult, error) {
 	r := &runner{cfg: cfg, ls: investigate_core.StartLoop(), sess: cfg.Session}
+	var err error
+	if r.code, err = newCode(cfg.Code, cfg.External); err != nil {
+		return RunResult{}, fmt.Errorf("run_code: %w", err)
+	}
 	r.prompt = r.buildPrompt()
 	if t := cfg.Trajectory; t != nil {
 		r.tr = newRecorder(cfg, r.prompt)
 	}
-	err := r.run(ctx)
+	err = r.run(ctx)
 	res := RunResult{Report: r.report, Phase: r.ls.Phase, StopReason: r.ls.StopReason, Totals: r.totals()}
 	res.Trajectory = r.tr.finish(res, err)
 	return res, err
@@ -125,7 +134,7 @@ func (r *runner) totals() Totals {
 func (r *runner) buildPrompt() investigate_core.Prompt {
 	var cat []investigate_core.ToolSpec
 	var ext []string
-	for _, t := range r.cfg.External {
+	for _, t := range r.externals() {
 		cat = append(cat, investigate_core.ToolSpec{Name: t.Name, Description: t.Description, Schema: t.Schema})
 		ext = append(ext, t.Name)
 	}
@@ -311,6 +320,7 @@ func (r *runner) turn(ctx context.Context, kind investigate_core.TurnKind, st in
 		h(n, r.totals())
 	}
 	rec := r.tr.begin(started, resp, n, kind, state, r.ls.Phase, investigate_core.CurrentID(st))
+	r.rec = rec
 
 	var text strings.Builder
 	var calls []investigate_core.Call
@@ -408,7 +418,7 @@ func (r *runner) dispatch(ctx context.Context, kind investigate_core.TurnKind, s
 		}
 	}()
 	external := map[string]agent.Tool{}
-	for _, t := range r.cfg.External {
+	for _, t := range r.externals() {
 		external[t.Name] = t
 	}
 	registry := r.sess.Registry.Names()

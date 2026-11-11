@@ -1,0 +1,18 @@
+schema = 1
+name = "numeric_investigator"
+version = "1.0.0"
+description = "Investigative agent with a code sandbox: for topics full of numbers (sizes, prices, rates), it computes and cross-checks the figures with run_code."
+
+system_prompt_file = "prompts/numeric_investigator.md"
+tools = ["web_search", "fetch_url"]
+loop = "investigative"
+
+[limits]
+max_cost_usd = 2.00
+
+# run_code: Python in a sandbox (Pydantic Monty). Needs pydantic-monty on the server (the Docker image has it);
+# see docs/agents/monty-code-execution.md. Without it a run of this agent fails at its start with the missing piece named.
+[code]
+enabled = true
+timeout_s = 10
+max_calls = 30

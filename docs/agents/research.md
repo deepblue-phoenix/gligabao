@@ -224,6 +224,8 @@ An agent whose definition says `loop = "investigative"` runs the [deep-research 
 
 The states of an investigative run (`gb_agent_research_states.state`) are the ones above plus: `planning` (the first level of questions is asked for), `selecting` (the loop picks the next question, no model call; detail `frontier_next`), `extracting` (forced extraction: only the notes tools), `verifying` (an UNVERIFIED claim of the current question has no challenge yet), `challenging` (a challenge is open), `consolidating` (the notes are over `notes_max_tokens`) and `synthesizing`. The `detail` of a turn is `turn 7 of 60, question q_003`. A tool call has its usual state (`searching`, `reading`, `using_tool`, ...); `fetch_page` is `reading`.
 
+With `[code] enabled` in the definition the agent also has `run_code` ([agent-defs.md](agent-defs.md#code-the-run_code-tool), [monty-code-execution.md](monty-code-execution.md)). Its programs run in a sidecar process (a Python bridge over Pydantic Monty) that the process running the agent starts at the first call and stops with the manager; the settings are `monty_python`, `monty_bin`, `monty_workers` and `monty_request_timeout_s` of `gligabao.toml` (or `GLIGABAO_MONTY_PYTHON`, `MONTY_BIN`).
+
 The loop keeps the prompt of each turn bounded (the task, the notes, the frontier summary and the last `keep_turns` turns); a result above `extraction_threshold` characters forces an extraction turn; and the last turn is forced to call `finalize_report`. The notes file is `notes_<user>_<run>_<notes_id>.md` in `research_notes_dir`; with `research_notes_s3_bucket` set (also `RESEARCH_NOTES_S3_BUCKET`, `research_notes_s3_region`, `research_notes_s3_prefix`, default `investigative_notes`) every write is also put to `s3://<bucket>/<prefix>/<user>/notes_<user>_<run>_<notes_id>.md` (one research bucket for all research agents, a subdirectory per user; a failed put is logged, and a file missing locally is read back from the bucket); if it is missing or differs from the latest stored version, it is rebuilt from `gb_agent_notes_versions` (reason `restore`) before the next turn.
 
 ### Reading a run with SQL
@@ -292,7 +294,7 @@ SELECT stop_reason, status, COUNT(*) AS runs, AVG(cost_usd) AS avg_cost_usd, AVG
 FROM gb_agent_research_runs WHERE phase <> '' GROUP BY stop_reason, status;
 ```
 
-The ATIF trajectory of an investigative run has one agent step per model call, with the turn, its kind, the state, the phase and the question id in the step's `extra`, and the phase and stop reason in the trajectory's `result` extra.
+The ATIF trajectory of an investigative run has one agent step per model call, with the turn, its kind, the state, the phase and the question id in the step's `extra`, and the phase and stop reason in the trajectory's `result` extra. A step that used `run_code` also has `code_runs` in its `extra`: the code, the output, the wall time and the host function calls of each call.
 
 ## Sub-agents
 

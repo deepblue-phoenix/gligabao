@@ -50,6 +50,7 @@ type fileDef struct {
 	Spawn            Spawn        `toml:"spawn" json:"spawn"`
 	Loop             string       `toml:"loop" json:"loop"`
 	Investigate      *Investigate `toml:"investigate" json:"investigate"`
+	Code             *Code        `toml:"code" json:"code"`
 	Schedule         *Schedule    `toml:"schedule" json:"schedule"`
 }
 
@@ -148,7 +149,7 @@ func loadFile(path, root string) (*Def, []string) {
 	var problems []string
 	d := &Def{
 		Schema: f.Schema, Name: f.Name, Version: f.Version, Description: f.Description, SystemPrompt: f.SystemPrompt, Model: f.Model,
-		MaxSteps: f.MaxSteps, MaxTokens: f.MaxTokens, Tools: f.Tools, Search: f.Search, Knowledge: f.Knowledge, Limits: f.Limits, Spawn: f.Spawn, Loop: f.Loop, Investigate: f.Investigate, Schedule: f.Schedule,
+		MaxSteps: f.MaxSteps, MaxTokens: f.MaxTokens, Tools: f.Tools, Search: f.Search, Knowledge: f.Knowledge, Limits: f.Limits, Spawn: f.Spawn, Loop: f.Loop, Investigate: f.Investigate, Code: f.Code, Schedule: f.Schedule,
 		Source: path,
 	}
 	switch {

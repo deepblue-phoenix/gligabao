@@ -1,7 +1,11 @@
 package agent_research
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"github.com/deepblue-phoenix/gligabao/internal/monty"
+	"github.com/deepblue-phoenix/gligabao/internal/monty/hostfn"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
@@ -48,6 +52,33 @@ func (m *Manager) notesDir() string {
 	return config.DefaultResearchNotesDirName
 }
 
+// sandbox is the code sandbox of the manager: Sandbox if set, else the sidecar, made at the first call and stopped with the manager's context.
+func (m *Manager) sandbox() monty.Runner {
+	if m.Sandbox != nil {
+		return m.Sandbox
+	}
+	m.sandboxOnce.Do(func() {
+		m.sidecar = monty.NewSidecar(monty.ConfigFromEnv(m.Monty), nil)
+		context.AfterFunc(m.ctx, m.sidecar.Close)
+	})
+	return m.sidecar
+}
+
+// codeConfig is the run_code setup of the agent: nil if its definition has no [code]; an error if the sandbox is not there, so that the run
+// fails at its start with the missing piece named and not in the middle.
+func (r *researcher) codeConfig() (*investigate.CodeConfig, error) {
+	if !r.def.CodeEnabled() {
+		return nil, nil
+	}
+	sb := r.mgr.sandbox()
+	if c, ok := sb.(interface{ Check(context.Context) error }); ok {
+		if err := c.Check(r.runCtx); err != nil {
+			return nil, fmt.Errorf("the agent %q needs the code sandbox (its [code] is enabled): %w", r.def.Name, err)
+		}
+	}
+	return &investigate.CodeConfig{Runner: sb, Settings: *r.def.Code, Registry: hostfn.Standard()}, nil
+}
+
 // runInvestigative runs the investigative loop of the agent and returns its outcome in the shape of the simple loop's.
 func (r *researcher) runInvestigative() (*agent.Result, error) {
 	limits := investigateLimits(r.opts.investigateKnobs(r.def), lowestCap(r.def.Limits.MaxCostUSD, r.opts.treeCostCap))
@@ -64,10 +95,14 @@ func (r *researcher) runInvestigative() (*agent.Result, error) {
 		Registry: investigate_core.LoopRegistry(),
 		Limits:   limits,
 	}
+	code, err := r.codeConfig()
+	if err != nil {
+		return nil, err
+	}
 	usage := func(t investigate.Totals) { r.saveUsage(totalsOf(t)) }
 	cfg := investigate.Config{
 		Session: sess, Model: r.client.Raw, ModelName: r.opts.Model, MaxTokens: r.agent.MaxTokens,
-		System: r.agent.System, Task: r.opts.Topic, External: r.agent.Tools,
+		System: r.agent.System, Task: r.opts.Topic, External: r.agent.Tools, Code: code,
 		Hooks: investigate.Hooks{
 			BeforeModel: func(turn int, state, detail string) { r.enter(state, turn, detail) },
 			Entered:     func(turn int, state, detail string) { r.enter(state, turn, detail) },

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/deepblue-phoenix/gligabao/internal/monty/hostfn"
 	"math"
 	"regexp"
 	"strings"
@@ -422,6 +423,9 @@ func (d *Def) checkLoop() []string {
 		if d.Investigate != nil {
 			out = append(out, `investigate: the knobs only take effect with loop = "investigative"; set the loop or remove the table`)
 		}
+		if d.Code != nil {
+			out = append(out, `code: run_code is a tool of the investigative loop; set loop = "investigative" or remove the table`)
+		}
 		return out
 	case LoopInvestigative:
 	default:
@@ -432,6 +436,35 @@ func (d *Def) checkLoop() []string {
 	}
 	if v := d.Investigate; v != nil {
 		out = append(out, v.Check()...)
+	}
+	if c := d.Code; c != nil {
+		out = append(out, c.Check()...)
+	}
+	return out
+}
+
+// Check returns what is wrong with the [code] table (each number is 0, the default, or in its range).
+func (c Code) Check() []string {
+	var out []string
+	if !c.Enabled {
+		out = append(out, "code: the table needs enabled = true (remove it to have no code tool)")
+	}
+	in := func(name string, value, lo, hi int) {
+		if value != 0 && (value < lo || value > hi) {
+			out = append(out, fmt.Sprintf("code.%s: %d must be between %d and %d (or 0 for the default)", name, value, lo, hi))
+		}
+	}
+	in("timeout_s", c.TimeoutS, 1, 60)
+	in("max_memory_mb", c.MaxMemoryMB, 8, 1024)
+	in("max_recursion", c.MaxRecursion, 10, 5000)
+	in("max_output_chars", c.MaxOutputChars, 200, 20000)
+	in("max_host_calls", c.MaxHostCalls, 1, 1000)
+	in("max_result_chars", c.MaxResultChars, 100, 1000000)
+	if c.MaxCalls != nil && (*c.MaxCalls < 0 || *c.MaxCalls > 1000) {
+		out = append(out, fmt.Sprintf("code.max_calls: %d must be between 0 (no limit) and 1000", *c.MaxCalls))
+	}
+	if _, err := hostfn.Standard().Only(c.Functions); err != nil {
+		out = append(out, "code.functions: "+err.Error())
 	}
 	return out
 }

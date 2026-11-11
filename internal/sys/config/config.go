@@ -165,6 +165,14 @@ type Config struct {
 	// see docs/agents/deep-research-loop.md). Default: a research_notes directory next to the binary (see ResearchNotesDirOrDefault), like
 	// agent_defs. A relative path is relative to the config file. Only agents with loop = "investigative" write there.
 	ResearchNotesDir string `toml:"research_notes_dir"`
+	// MontyPython is the interpreter that runs the bridge of the code sandbox of the investigative agents with [code] enabled (it has
+	// pydantic-monty installed; also GLIGABAO_MONTY_PYTHON; default python3). MontyBin is the monty worker binary (also MONTY_BIN; default:
+	// next to the interpreter, then PATH). MontyWorkers is the most worker processes (default 2) and MontyRequestTimeoutS the parent-side
+	// deadline that kills a stuck worker (default 90). See docs/agents/monty-code-execution.md.
+	MontyPython          string `toml:"monty_python"`
+	MontyBin             string `toml:"monty_bin"`
+	MontyWorkers         int    `toml:"monty_workers"`
+	MontyRequestTimeoutS int    `toml:"monty_request_timeout_s"`
 	// ResearchNotesS3Bucket, when set, also stores the notes files of the investigative loop in this (existing) Amazon S3 bucket (also
 	// RESEARCH_NOTES_S3_BUCKET), the research bucket common to all the research agents: the local files stay the working copy and every
 	// write is mirrored to <prefix>/<user>/notes_<user>_<run>_<notes_id>.md. Empty (default): local files only.
