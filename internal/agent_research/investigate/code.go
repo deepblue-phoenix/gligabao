@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
@@ -245,4 +246,81 @@ func (s *stepRec) codeRun(t *codeTrace) {
 	}
 	prev, _ := s.step.Extra["code_runs"].([]map[string]any)
 	s.step.Extra["code_runs"] = append(prev, t.extra())
+}
+
+// WorkerCodeNote is added to the system prompt of a worker that has run_code.
+const WorkerCodeNote = `## Code
+You have run_code: a short Python program in a sandbox, for exact work you would otherwise do in your head: arithmetic, unit conversions, ratios, counting, sorting, filtering or parsing a long text, checking whether two figures agree. Compute exact numbers rather than estimating them.
+- A run is stateless and the sandbox is a limited subset of Python: no third-party packages, no files, no network. Only what you print and the value of the last expression come back, so print the result, not the data.
+- The code is not a source. A number you computed goes into your findings with the sources of its inputs.`
+
+// WorkerCodeTool is the run_code tool of a worker (a sub-agent on the simple tool loop): the same sandbox and limits as the supervisor's, but
+// without the functions that read the supervisor's state (notes, frontier, claims: a worker has none); the fetch functions run the worker's
+// own tools (tools). ok is false when code is off for the worker (no config or no runner).
+func WorkerCodeTool(cfg *CodeConfig, tools []agent.Tool) (tool agent.Tool, ok bool, err error) {
+	c, err := newCode(cfg, tools)
+	if err != nil || c == nil {
+		return agent.Tool{}, false, err
+	}
+	c.reg = c.reg.Filter(func(s hostfn.Spec) bool { return s.Class == hostfn.ClassFetch || s.Name == "log" })
+	var calls atomic.Int64
+	desc, schema := CodeToolSpec(c.reg)
+	run := func(ctx context.Context, input json.RawMessage) (string, error) {
+		return runWorkerCode(ctx, c, tools, int(calls.Add(1)), input)
+	}
+	return agent.Tool{Name: ToolRunCode, Description: desc, Schema: schema, Run: run}, true, nil
+}
+
+// runWorkerCode runs one program of a worker; n is the number of this call among the worker's.
+func runWorkerCode(ctx context.Context, c *code, tools []agent.Tool, n int, input json.RawMessage) (string, error) {
+	var in struct {
+		Code   string         `json:"code"`
+		Inputs map[string]any `json:"inputs"`
+	}
+	if err := json.Unmarshal(input, &in); err != nil {
+		return "", fmt.Errorf("bad input: %w", err)
+	}
+	if strings.TrimSpace(in.Code) == "" {
+		return "", errors.New(`missing "code"`)
+	}
+	s := c.cfg.Settings
+	if s.MaxCalls != nil && *s.MaxCalls > 0 && n > *s.MaxCalls {
+		return "", fmt.Errorf("run_code was used %d times, the most you may: work with what you have", n-1)
+	}
+	hostCalls := 0
+	env := hostfn.Env{
+		Questions: []map[string]any{}, Claims: []map[string]any{},
+		Fetch: func(ctx context.Context, tool string, args map[string]any) (string, error) {
+			for _, t := range tools {
+				if t.Name != tool {
+					continue
+				}
+				raw, err := json.Marshal(args)
+				if err != nil {
+					return "", err
+				}
+				return t.Run(ctx, raw)
+			}
+			return "", fmt.Errorf("the tool %s is not available", tool)
+		},
+	}
+	host := func(ctx context.Context, name string, args []any, kwargs map[string]any) (any, error) {
+		hostCalls++
+		if hostCalls > s.MaxHostCalls {
+			return nil, fmt.Errorf("BudgetExceeded: at most %d host function calls per run_code call", s.MaxHostCalls)
+		}
+		return c.reg.Call(ctx, env, name, args, kwargs, s.MaxResultChars)
+	}
+	res, err := c.cfg.Runner.Run(ctx, monty.Request{
+		Code: in.Code, Inputs: in.Inputs, Functions: c.reg.Names(), Stubs: c.reg.Stubs(), TypeCheck: s.TypeCheck,
+		Limits: monty.Limits{MaxDurationS: float64(s.TimeoutS), MaxMemoryMB: s.MaxMemoryMB, MaxRecursion: s.MaxRecursion},
+	}, host)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return "", ctxErr
+	}
+	text, isErr := FormatCodeResult(res, err, s.MaxOutputChars)
+	if isErr {
+		return "", errors.New(text)
+	}
+	return text, nil
 }

@@ -273,10 +273,32 @@ func workerDef(d *agent_defs.Def) *agent_defs.Def {
 // terminal tool.
 func workerAgent(r *researcher, kb agent.Knowledge) *agent.Agent {
 	a := agent.FromDef(workerDef(r.def), r.client, r.http, kb)
+	a = withWorkerCode(r, a)
 	a.Tools = append(a.Tools, agent.SubmitFindingsTool(investigate_core.FindingsSchema(), func(raw json.RawMessage) error {
 		_, err := investigate_core.ParseFindings(raw)
 		return err
 	}))
 	a.Terminal = agent.ToolSubmitFindings
+	return a
+}
+
+// withWorkerCode gives the worker the run_code tool when the definition has [code] on and the sandbox is available (like its supervisor's).
+func withWorkerCode(r *researcher, a *agent.Agent) *agent.Agent {
+	cfg, err := r.codeConfig()
+	if err != nil || cfg == nil {
+		if err != nil {
+			r.logf.WithError(err).Warn("agent research: the worker runs without run_code")
+		}
+		return a
+	}
+	tool, ok, err := investigate.WorkerCodeTool(cfg, a.Tools)
+	if err != nil || !ok {
+		if err != nil {
+			r.logf.WithError(err).Warn("agent research: the worker runs without run_code")
+		}
+		return a
+	}
+	a.Tools = append(a.Tools, tool)
+	a.System = prompts.Join(a.System, investigate.WorkerCodeNote)
 	return a
 }

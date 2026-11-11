@@ -3,11 +3,13 @@ package investigate_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/deepblue-phoenix/gligabao/internal/agent"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
@@ -136,5 +138,29 @@ func testRunCode(t *testing.T, d *sql.DB) {
 	}
 	if len(sb.runs) < 3 || !slices.Contains(sb.runs[0].Functions, "fetch_page") || slices.Contains(sb.runs[0].Functions, "notes_append") {
 		t.Errorf("requests: %+v", sb.runs)
+	}
+}
+
+func TestWorkerCodeTool(t *testing.T) {
+	sb := &fakeSandbox{}
+	page := agent.Tool{Name: "fetch_page", Run: func(context.Context, json.RawMessage) (string, error) { return "hello", nil }}
+	max := 1
+	cfg := &investigate.CodeConfig{Runner: sb, Settings: agent_defs.Code{Enabled: true, MaxCalls: &max}, Registry: hostfn.Standard()}
+	tool, ok, err := investigate.WorkerCodeTool(cfg, []agent.Tool{page})
+	if err != nil || !ok {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+	if strings.Contains(tool.Description, "notes_read") || strings.Contains(tool.Description, "frontier_list") || !strings.Contains(tool.Description, "fetch_page") {
+		t.Errorf("description: %s", tool.Description)
+	}
+	out, err := tool.Run(context.Background(), json.RawMessage(`{"code":"fetch"}`))
+	if err != nil || !strings.Contains(out, "value: 5") {
+		t.Errorf("%q %v", out, err)
+	}
+	if _, err := tool.Run(context.Background(), json.RawMessage(`{"code":"fetch"}`)); err == nil {
+		t.Error("the second call should pass the max_calls limit")
+	}
+	if _, ok, _ := investigate.WorkerCodeTool(nil, nil); ok {
+		t.Error("no config: no tool")
 	}
 }

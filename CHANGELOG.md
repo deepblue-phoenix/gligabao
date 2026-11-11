@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.190.0] - 2026-11-13
+
+### Added
+- Workers (sub-agents) of the investigative loop get `run_code` too, when their agent definition has `[code]` enabled and Monty is installed. Same sandbox and limits as the supervisor's (`max_calls` counts per worker). Their programs can call `web_search`, `fetch_page`, `kb_query` and `log` (through the worker's own tools); the functions that read the supervisor's state (`notes_read`, `frontier_*`, `claims_list`) are not offered. The worker prompt gets a short code section.
+
 ## [0.189.0] - 2026-11-13
 
 ### Added
