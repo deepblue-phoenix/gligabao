@@ -1,6 +1,6 @@
 # Database tables
 
-> **Note:** keep this file up to date. Whenever a table is added, renamed or removed (in any `schema*.sql` file), update the list and its description here.
+> **Note:** keep this file up to date. Whenever a table is added, renamed or removed (in any `sql/schema*.sql` file), update the list and its description here.
 
 ## Tables
 
@@ -80,39 +80,39 @@
 
 | Table                         | SQLite                                             | Postgres                                             |
 | ----------------------------- | -------------------------------------------------- | ---------------------------------------------------- |
-| `gb_datasets`                 | `internal/db/relational/sqlite/schema.sql`       | `internal/db/relational/postgres/schema.sql`       |
-| `gb_ontologies`               | `internal/db/relational/sqlite/schema.sql`       | `internal/db/relational/postgres/schema.sql`       |
-| `gb_models`                   | `internal/db/relational/sqlite/schema.sql`       | `internal/db/relational/postgres/schema.sql`       |
-| `gb_inferences`               | `internal/db/relational/sqlite/schema.sql`       | `internal/db/relational/postgres/schema.sql`       |
-| `gb_remember_runs`            | `internal/db/relational/sqlite/schema_remember_runs.sql` | `internal/db/relational/postgres/schema_remember_runs.sql` |
-| `gb_remember_run_stages`      | `internal/db/relational/sqlite/schema_remember_runs.sql` | `internal/db/relational/postgres/schema_remember_runs.sql` |
-| `gb_remember_run_stage_outputs` | `internal/db/relational/sqlite/schema_remember_runs.sql` | `internal/db/relational/postgres/schema_remember_runs.sql` |
-| `gb_query_runs`               | `internal/db/relational/sqlite/schema_query_runs.sql`    | `internal/db/relational/postgres/schema_query_runs.sql`    |
-| `gb_artifacts`                | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |
-| `gb_entities`                 | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |
-| `gb_edges`                    | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |
-| `gb_edge_artifacts`           | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |
-| `gb_entity_artifacts`         | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |
-| `gb_entity_sessions`          | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |
-| `gb_edge_sessions`            | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |
-| `gb_edge_events`              | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |
-| `gb_artifact_classes`         | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |
-| `gb_graph_in_ctx_counters`    | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |
-| `gb_image_artifacts`          | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |
-| `gb_image_extractions`        | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |
-| `gb_image_text_blocks`        | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |
-| `gb_entity_geo`               | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |
-| `gb_series`                   | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |
-| `gb_series_points`            | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |
-| `gb_series_anchors`           | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |
-| `gb_onto_classes`             | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |
-| `gb_onto_edges`               | `internal/db/graph/sqlite/schema.sql`            | `internal/db/graph/postgres/schema.sql`            |
-| `gb_training_job_runs`        | `internal/training/db/sqlite/schema.sql`         | `internal/training/db/postgres/schema.sql`         |
-| `gb_training_job_events`      | `internal/training/db/sqlite/schema.sql`         | `internal/training/db/postgres/schema.sql`         |
-| `gb_trained_models`           | `internal/training/db/sqlite/schema.sql`         | `internal/training/db/postgres/schema.sql`         |
-| `gb_trained_model_inferences` | `internal/training/db/sqlite/schema.sql`         | `internal/training/db/postgres/schema.sql`         |
-| `gb_trained_model_deployments` | `internal/training/db/sqlite/schema.sql`         | `internal/training/db/postgres/schema.sql`         |
-| `gb_training_datasets`        | `internal/training/db/sqlite/schema.sql`         | `internal/training/db/postgres/schema.sql`         |
+| `gb_datasets`                 | `internal/db/relational/sqlite/sql/schema.sql`       | `internal/db/relational/postgres/sql/schema.sql`       |
+| `gb_ontologies`               | `internal/db/relational/sqlite/sql/schema.sql`       | `internal/db/relational/postgres/sql/schema.sql`       |
+| `gb_models`                   | `internal/db/relational/sqlite/sql/schema.sql`       | `internal/db/relational/postgres/sql/schema.sql`       |
+| `gb_inferences`               | `internal/db/relational/sqlite/sql/schema.sql`       | `internal/db/relational/postgres/sql/schema.sql`       |
+| `gb_remember_runs`            | `internal/db/relational/sqlite/sql/schema_remember_runs.sql` | `internal/db/relational/postgres/sql/schema_remember_runs.sql` |
+| `gb_remember_run_stages`      | `internal/db/relational/sqlite/sql/schema_remember_runs.sql` | `internal/db/relational/postgres/sql/schema_remember_runs.sql` |
+| `gb_remember_run_stage_outputs` | `internal/db/relational/sqlite/sql/schema_remember_runs.sql` | `internal/db/relational/postgres/sql/schema_remember_runs.sql` |
+| `gb_query_runs`               | `internal/db/relational/sqlite/sql/schema_query_runs.sql`    | `internal/db/relational/postgres/sql/schema_query_runs.sql`    |
+| `gb_artifacts`                | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_entities`                 | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_edges`                    | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_edge_artifacts`           | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_entity_artifacts`         | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_entity_sessions`          | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_edge_sessions`            | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_edge_events`              | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_artifact_classes`         | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_graph_in_ctx_counters`    | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_image_artifacts`          | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_image_extractions`        | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_image_text_blocks`        | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_entity_geo`               | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_series`                   | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_series_points`            | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_series_anchors`           | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_onto_classes`             | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_onto_edges`               | `internal/db/graph/sqlite/sql/schema.sql`            | `internal/db/graph/postgres/sql/schema.sql`            |
+| `gb_training_job_runs`        | `internal/training/db/sqlite/sql/schema.sql`         | `internal/training/db/postgres/sql/schema.sql`         |
+| `gb_training_job_events`      | `internal/training/db/sqlite/sql/schema.sql`         | `internal/training/db/postgres/sql/schema.sql`         |
+| `gb_trained_models`           | `internal/training/db/sqlite/sql/schema.sql`         | `internal/training/db/postgres/sql/schema.sql`         |
+| `gb_trained_model_inferences` | `internal/training/db/sqlite/sql/schema.sql`         | `internal/training/db/postgres/sql/schema.sql`         |
+| `gb_trained_model_deployments` | `internal/training/db/sqlite/sql/schema.sql`         | `internal/training/db/postgres/sql/schema.sql`         |
+| `gb_training_datasets`        | `internal/training/db/sqlite/sql/schema.sql`         | `internal/training/db/postgres/sql/schema.sql`         |
 
 ## TRAINING_AUDIT
 
@@ -132,8 +132,8 @@ Tables of the training data audits (`internal/training_audits`, see `docs/traini
 
 | Table                         | SQLite                                             | Postgres                                             |
 | ----------------------------- | -------------------------------------------------- | ---------------------------------------------------- |
-| `gb_training_audit_runs`  | `internal/training_audits/db/sqlite/schema.sql`     | `internal/training_audits/db/postgres/schema.sql`     |
-| `gb_training_audit_case_runs` | `internal/training_audits/db/sqlite/schema.sql`     | `internal/training_audits/db/postgres/schema.sql`     |
+| `gb_training_audit_runs`  | `internal/training_audits/db/sqlite/sql/schema.sql`     | `internal/training_audits/db/postgres/sql/schema.sql`     |
+| `gb_training_audit_case_runs` | `internal/training_audits/db/sqlite/sql/schema.sql`     | `internal/training_audits/db/postgres/sql/schema.sql`     |
 
 ## EVALS
 
@@ -177,7 +177,7 @@ Tables of the evals (`internal/evals`, see its `README.md`; applied by `dbfull.O
 
 ### Where each table is defined
 
-All of them are in `internal/evals/db/sqlite/schema.sql` (SQLite) and `internal/evals/db/postgres/schema.sql` (Postgres).
+All of them are in `internal/evals/db/sqlite/sql/schema.sql` (SQLite) and `internal/evals/db/postgres/sql/schema.sql` (Postgres).
 
 ## AGENT_RESEARCH
 
@@ -217,15 +217,15 @@ Tables of the research agents (`internal/agent_research`, see `docs/agents/resea
 
 | Table                          | SQLite                                          | Postgres                                          |
 | ------------------------------ | ----------------------------------------------- | ------------------------------------------------- |
-| `gb_agent_research_runs`   | `internal/agent_research/db/sqlite/schema.sql`   | `internal/agent_research/db/postgres/schema.sql`   |
-| `gb_agent_research_states` | `internal/agent_research/db/sqlite/schema.sql`   | `internal/agent_research/db/postgres/schema.sql`   |
-| `gb_agent_frontier_questions` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |
-| `gb_agent_frontier_deps` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |
-| `gb_agent_frontier_attempts` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |
-| `gb_agent_frontier_transitions` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |
-| `gb_agent_sources` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |
-| `gb_agent_claims` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |
-| `gb_agent_claim_sources` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |
-| `gb_agent_challenges` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |
-| `gb_agent_challenge_sources` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |
-| `gb_agent_notes_versions` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |
+| `gb_agent_research_runs`   | `internal/agent_research/db/sqlite/sql/schema.sql`   | `internal/agent_research/db/postgres/sql/schema.sql`   |
+| `gb_agent_research_states` | `internal/agent_research/db/sqlite/sql/schema.sql`   | `internal/agent_research/db/postgres/sql/schema.sql`   |
+| `gb_agent_frontier_questions` | `internal/agent_research/db/sqlite/sql/schema.sql` | `internal/agent_research/db/postgres/sql/schema.sql` |
+| `gb_agent_frontier_deps` | `internal/agent_research/db/sqlite/sql/schema.sql` | `internal/agent_research/db/postgres/sql/schema.sql` |
+| `gb_agent_frontier_attempts` | `internal/agent_research/db/sqlite/sql/schema.sql` | `internal/agent_research/db/postgres/sql/schema.sql` |
+| `gb_agent_frontier_transitions` | `internal/agent_research/db/sqlite/sql/schema.sql` | `internal/agent_research/db/postgres/sql/schema.sql` |
+| `gb_agent_sources` | `internal/agent_research/db/sqlite/sql/schema.sql` | `internal/agent_research/db/postgres/sql/schema.sql` |
+| `gb_agent_claims` | `internal/agent_research/db/sqlite/sql/schema.sql` | `internal/agent_research/db/postgres/sql/schema.sql` |
+| `gb_agent_claim_sources` | `internal/agent_research/db/sqlite/sql/schema.sql` | `internal/agent_research/db/postgres/sql/schema.sql` |
+| `gb_agent_challenges` | `internal/agent_research/db/sqlite/sql/schema.sql` | `internal/agent_research/db/postgres/sql/schema.sql` |
+| `gb_agent_challenge_sources` | `internal/agent_research/db/sqlite/sql/schema.sql` | `internal/agent_research/db/postgres/sql/schema.sql` |
+| `gb_agent_notes_versions` | `internal/agent_research/db/sqlite/sql/schema.sql` | `internal/agent_research/db/postgres/sql/schema.sql` |

@@ -1,6 +1,6 @@
 package memory_remember
 
-// The remember run log: the row of gb_remember_runs (see internal/db/relational/sqlite/schema.sql) that records how one
+// The remember run log: the row of gb_remember_runs (see internal/db/relational/sqlite/sql/schema.sql) that records how one
 // call of Remember was executed, the authoritative record of it: the status of the call and of each stage of the
 // pipeline, the error of a stage that failed, when each stage began and ended, and the inferences (gb_inferences) each
 // stage made.

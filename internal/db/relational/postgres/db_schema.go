@@ -9,10 +9,10 @@ import (
 
 //---------------------------------------------------------------------------------------------
 
-// The same tables as the sqlite backend (see sqlite/schema.sql for what the columns mean), with native types:
+// The same tables as the sqlite backend (see sqlite/sql/schema.sql for what the columns mean), with native types:
 // BIGSERIAL ids, TIMESTAMPTZ times, BOOLEAN flags and JSONB tags.
 //
-//go:embed schema.sql
+//go:embed sql/schema.sql
 var schema string
 
 // initSchema applies the database schema. Concurrent starters are serialized with an advisory lock, because

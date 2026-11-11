@@ -247,7 +247,7 @@ func TestMigrationAddsPhaseAndStopReason(t *testing.T) {
 	}
 }
 
-// A fresh database has the columns from schema.sql, and the upgrade is a no-op.
+// A fresh database has the columns from sql/schema.sql, and the upgrade is a no-op.
 func TestFreshDatabaseHasPhaseAndStopReason(t *testing.T) {
 	dbtest.Run(t, func(t *testing.T, d *sql.DB) {
 		backend := config.DBBackendSQLite

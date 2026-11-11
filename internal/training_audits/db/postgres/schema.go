@@ -7,5 +7,5 @@ import _ "embed"
 // (BIGSERIAL ids, JSONB for params, TIMESTAMPTZ for times). The statements are idempotent and in dependency order, so the whole
 // schema can be executed in one call.
 //
-//go:embed schema.sql
+//go:embed sql/schema.sql
 var Schema string

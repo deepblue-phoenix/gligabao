@@ -2,7 +2,7 @@
 
 gligabao follows the bi-temporal model of [Graphiti](https://github.com/getzep/graphiti).
 
-Code: `internal/memory/memory_remember` (`Extract`, `Remember`, `Store`), `internal/memory/memory_temporal` (reconciliation: `ResolveEdges`, `LoadCandidates`, `StoreEdges`, `FixSpan`), `internal/db/graph/{sqlite,postgres}/schema.sql` (tables). What a call did to each fact is logged in [edge-events.md](../edge-events.md).
+Code: `internal/memory/memory_remember` (`Extract`, `Remember`, `Store`), `internal/memory/memory_temporal` (reconciliation: `ResolveEdges`, `LoadCandidates`, `StoreEdges`, `FixSpan`), `internal/db/graph/{sqlite,postgres}/sql/schema.sql` (tables). What a call did to each fact is logged in [edge-events.md](../edge-events.md).
 
 ## Artifacts
 

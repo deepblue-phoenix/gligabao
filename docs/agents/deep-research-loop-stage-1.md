@@ -30,7 +30,7 @@ Anything from the design's "Out of scope" section stays out.
 
 - **Functional style is mandatory** (see `gligabao/AGENTS.md`). The frontier, notes, claims and challenges are immutable values. Every change is a pure function `(value, input) -> (value, effects-to-record, error)`. Reads and writes to the DB and the notes file happen only in the effect layer.
 - **Code decides control, the model decides content.** Selection order, depth cap, attempt cap, dependency checks, DAG check, duplicate check and the challenge rules are code. Wording, queries and answers come from the model.
-- **Schema is SQL.** New tables go into `internal/agent_research/db/sqlite/schema.sql` and `internal/agent_research/db/postgres/schema.sql` (same tables, comments in the SQLite file). Both files are idempotent (`CREATE ... IF NOT EXISTS`) and in dependency order. Plain SQL only, no string splicing.
+- **Schema is SQL.** New tables go into `internal/agent_research/db/sqlite/sql/schema.sql` and `internal/agent_research/db/postgres/sql/schema.sql` (same tables, comments in the SQLite file). Both files are idempotent (`CREATE ... IF NOT EXISTS`) and in dependency order. Plain SQL only, no string splicing.
 - **Migrations for existing tables.** A change to a table that already exists is an `ALTER` that runs on every startup, as the design's [Migrations](deep-research-loop.md#database-schema) rules say (item 10 shows the stage 1 case).
 - **Versioning:** a new schema is a minor bump of `VERSION`, with a `CHANGELOG.md` entry (see `gligabao/AGENTS.md`). Keep `docs/listings/db-tables.md` up to date with every new table.
 - **Tests first for the pure core.** Each pure function gets unit tests that need no model and no DB.
@@ -45,7 +45,7 @@ The design does not fix the code layout; this is the layout to use unless someth
 | `internal/agent_research/investigate/tools.go` | tool specs (name, JSON schema, description) and the pure handlers `(state, args) -> (state, result, effects)` |
 | `internal/agent_research/investigate/store.go` | the `Store` interface the effect layer needs (no DB types) |
 | `internal/agent_research/investigate/notes_file.go` | the notes file behind a small interface (`Read`, `Write`), file implementation |
-| `internal/agent_research/db/sqlite/` and `db/postgres/` | the new tables in `schema.sql`, and the `Store` implementation in `store.go` (or a sibling file of the same package) |
+| `internal/agent_research/db/sqlite/` and `db/postgres/` | the new tables in `sql/schema.sql`, and the `Store` implementation in `store.go` (or a sibling file of the same package) |
 | `internal/agent_research/db/db.go` | wiring only, if the package needs it |
 
 Test files sit next to the code (`*_test.go`), following the existing `internal/agent_research/*_test.go` files.
@@ -167,7 +167,7 @@ The file is the working copy the loop reads and edits; the versions are the reco
 
 ### 10. Schema and migrations
 
-**New tables.** Add to **both** `schema.sql` files, in dependency order, the tables of the design's [database schema](deep-research-loop.md#database-schema) section:
+**New tables.** Add to **both** `sql/schema.sql` files, in dependency order, the tables of the design's [database schema](deep-research-loop.md#database-schema) section:
 
 - `gb_agent_frontier_questions`, `gb_agent_frontier_deps`, `gb_agent_frontier_attempts`, `gb_agent_frontier_transitions`;
 - `gb_agent_sources`, `gb_agent_claims`, `gb_agent_claim_sources`;
@@ -177,15 +177,15 @@ The file is the working copy the loop reads and edits; the versions are the reco
 Rules:
 
 - copy the DDL from the design; the SQLite file gets the column comments (the design's comments are the spec); the PostgreSQL file gets the same tables with its types (`BIGSERIAL`, `TIMESTAMPTZ`, `BIGINT` for `attempt_id`, as the other PostgreSQL schema files of the package do);
-- a new table is applied on every start by `CREATE ... IF NOT EXISTS` in `schema.sql` (the `Schema` of each backend, run by `Open` in `internal/agent_research/ops.go`); it needs no upgrade statement;
+- a new table is applied on every start by `CREATE ... IF NOT EXISTS` in `sql/schema.sql` (the `Schema` of each backend, run by `Open` in `internal/agent_research/ops.go`); it needs no upgrade statement;
 - update `docs/listings/db-tables.md` with the nine new tables and a one-line description each.
 
 **Changed table: `gb_agent_research_runs.notes_id`.** This is the one change to an existing table in this stage. It must work on a database that already has the table, so it goes in two places:
 
-1. `schema.sql` (both backends), in the `CREATE TABLE` of `gb_agent_research_runs`: `notes_id TEXT NOT NULL DEFAULT ''` (PostgreSQL: the same), with a comment line in the SQLite file.
+1. `sql/schema.sql` (both backends), in the `CREATE TABLE` of `gb_agent_research_runs`: `notes_id TEXT NOT NULL DEFAULT ''` (PostgreSQL: the same), with a comment line in the SQLite file.
 2. The upgrade list, run by `Open` on every start:
    - SQLite: an entry in the `Upgrade` list of `db/sqlite/schema.go`, `{"notes_id", "ALTER TABLE gb_agent_research_runs ADD COLUMN notes_id TEXT NOT NULL DEFAULT ''"}`. `Open` already runs an `ADD COLUMN` only when `pragma_table_info` does not list the column.
-   - PostgreSQL: one line in `db/postgres/upgrade_columns.sql`: `ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS notes_id TEXT NOT NULL DEFAULT '';`.
+   - PostgreSQL: one line in `db/postgres/sql/upgrade_columns.sql`: `ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS notes_id TEXT NOT NULL DEFAULT '';`.
 
 Do not add `phase` or `stop_reason` here (stage 2). Do not change any existing `CHECK` in this stage (that would need the SQLite table rebuild of `migrateSQLiteStatus`).
 
@@ -193,7 +193,7 @@ Tests for the migration (both backends, with a database created by the **previou
 
 - starting the server on that database adds `notes_id` and leaves the old rows intact (their `notes_id` is `''`);
 - a second start changes nothing and does not fail;
-- a fresh database gets `notes_id` from `schema.sql` and the upgrade step is a no-op;
+- a fresh database gets `notes_id` from `sql/schema.sql` and the upgrade step is a no-op;
 - the new tables exist after the start on the old database;
 - a foreign key or check violation is rejected (for example a transition row with an unknown `to_status`, a notes version with `seq = 0`).
 

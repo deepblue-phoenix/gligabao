@@ -13,12 +13,12 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Query runs (see sqlite/db_query_run.go and sqlite/schema.sql for what the table and the functions are)
+// Query runs (see sqlite/db_query_run.go and sqlite/sql/schema.sql for what the table and the functions are)
 
 // queryRunsSchema is the DDL of gb_query_runs: the columns of the run itself, then those of each stage in model.QueryStages. The stage
 // columns are written out in the file; schema_test.go checks that they match model.QueryStages.
 //
-//go:embed schema_query_runs.sql
+//go:embed sql/schema_query_runs.sql
 var queryRunsSchema string
 
 // queryRunCols are the columns of a run but its ID, in the order of queryRunValues and scanQueryRun (see rememberCol).

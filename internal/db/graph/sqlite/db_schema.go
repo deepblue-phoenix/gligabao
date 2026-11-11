@@ -12,7 +12,7 @@ import (
 // so that schema must be applied first.
 // All DATETIME columns hold RFC 3339 UTC strings (SQLite has no real datetime type; see relational/sqlite/db_time.go).
 //
-//go:embed schema.sql
+//go:embed sql/schema.sql
 var schema string
 
 // initSchema applies the graph schema.
@@ -25,7 +25,7 @@ func initSchema(d *sql.DB) error {
 
 // geoIndexSchema is the geo index of gb_entity_geo; it is only created when geo is on (EnableGeoIndex).
 //
-//go:embed optional_geo_index.sql
+//go:embed sql/optional_geo_index.sql
 var geoIndexSchema string
 
 // EnableGeoIndex creates the geo index (an R*Tree and the triggers that keep it in step with gb_entity_geo) if it does not

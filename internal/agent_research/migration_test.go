@@ -14,7 +14,7 @@ import (
 )
 
 // The tables of the version before the deep-research loop state (0.179.2): no notes_id, none of the new tables. Written out here, not read
-// from schema.sql, so that the test starts from a database an older server made.
+// from sql/schema.sql, so that the test starts from a database an older server made.
 const oldSQLiteSchema = `
 CREATE TABLE gb_agent_research_runs (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -239,7 +239,7 @@ func testMigration(t *testing.T, backend string) {
 	}
 }
 
-// A new database gets notes_id from schema.sql, and the upgrade step is a no-op.
+// A new database gets notes_id from sql/schema.sql, and the upgrade step is a no-op.
 func TestFreshDatabaseHasNotesID(t *testing.T) {
 	dbtest.Run(t, func(t *testing.T, d *sql.DB) {
 		backend := config.DBBackendSQLite

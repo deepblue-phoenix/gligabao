@@ -415,13 +415,13 @@ The frontier is the unit of work distribution. With one worker the loop selects 
 
 ## Database schema
 
-New tables, in `internal/agent_research/db/{sqlite,postgres}/schema.sql` (final state, idempotent, same tables in both, columns documented in the SQLite file) and listed in `docs/listings/db-tables.md`. All are scoped to a run and deleted with it (`ON DELETE CASCADE`). The frontier is **not stored in `notes.md`**. The notes file is a working copy on disk; its history is `gb_agent_notes_versions`. The claim/source tables below are the structured history behind the notes sections.
+New tables, in `internal/agent_research/db/{sqlite,postgres}/sql/schema.sql` (final state, idempotent, same tables in both, columns documented in the SQLite file) and listed in `docs/listings/db-tables.md`. All are scoped to a run and deleted with it (`ON DELETE CASCADE`). The frontier is **not stored in `notes.md`**. The notes file is a working copy on disk; its history is `gb_agent_notes_versions`. The claim/source tables below are the structured history behind the notes sections.
 
 **Migrations.** Every startup applies the schema to the database the server opens (the `Open` of the package, `internal/agent_research/ops.go`):
 
-- A **new table** is a `CREATE TABLE IF NOT EXISTS` in `schema.sql`. It is created on start and needs nothing else.
-- A **change to an existing table** (a new column, a new index) is an `ALTER` in the package's upgrade list, run on every start. `CREATE TABLE IF NOT EXISTS` never changes a table that already exists, so the `schema.sql` file alone is not enough for an older database. SQLite has no `ADD COLUMN IF NOT EXISTS`: each `ALTER ... ADD COLUMN` runs only when `pragma_table_info` does not list the column. PostgreSQL uses `ADD COLUMN IF NOT EXISTS`. The same column also goes into `schema.sql`, so a new database gets it directly.
-- Indexes on an added column are created after the upgrade (as `schema_subagent_indexes.sql` is).
+- A **new table** is a `CREATE TABLE IF NOT EXISTS` in `sql/schema.sql`. It is created on start and needs nothing else.
+- A **change to an existing table** (a new column, a new index) is an `ALTER` in the package's upgrade list, run on every start. `CREATE TABLE IF NOT EXISTS` never changes a table that already exists, so the `sql/schema.sql` file alone is not enough for an older database. SQLite has no `ADD COLUMN IF NOT EXISTS`: each `ALTER ... ADD COLUMN` runs only when `pragma_table_info` does not list the column. PostgreSQL uses `ADD COLUMN IF NOT EXISTS`. The same column also goes into `sql/schema.sql`, so a new database gets it directly.
+- Indexes on an added column are created after the upgrade (as `sql/schema_subagent_indexes.sql` is).
 - A column added by `ALTER` may have a simple `CHECK`. Changing an existing `CHECK` needs a table rebuild in SQLite (the `migrateSQLiteStatus` pattern), so avoid it.
 
 Frontier:

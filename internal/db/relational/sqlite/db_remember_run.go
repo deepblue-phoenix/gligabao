@@ -13,12 +13,12 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Remember runs (gb_remember_runs and gb_remember_run_stages, see schema_remember_runs.sql)
+// Remember runs (gb_remember_runs and gb_remember_run_stages, see sql/schema_remember_runs.sql)
 
 // rememberRunsSchema is the DDL of gb_remember_runs, gb_remember_run_stages and gb_remember_run_stage_outputs. A stage is a row of
 // gb_remember_run_stages (its stage_type is the name of the stage), so a new stage needs no change of the schema.
 //
-//go:embed schema_remember_runs.sql
+//go:embed sql/schema_remember_runs.sql
 var rememberRunsSchema string
 
 // stageRow holds the columns of one stage in the wide layout of gb_query_runs, as they are scanned (see db_query_run.go).

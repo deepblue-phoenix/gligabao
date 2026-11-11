@@ -11,7 +11,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Inferences (gb_inferences, see schema.sql)
+// Inferences (gb_inferences, see sql/schema.sql)
 
 // InsertInference stores one inference and returns its ID. r.ModelID must already be stored in gb_models ("" for
 // unknown); r.Reasoning must be valid.

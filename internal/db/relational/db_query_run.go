@@ -10,7 +10,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Query runs (the gb_query_runs table, see sqlite/schema.sql; package memory_query keeps it up to date)
+// Query runs (the gb_query_runs table, see sqlite/sql/schema.sql; package memory_query keeps it up to date)
 
 // CreateQueryRun stores a query run (r.ID is ignored; see model.NewQueryRun) and returns its ID. Call it outside any open
 // transaction.

@@ -11,7 +11,7 @@ import (
 // The training tables are created in the same database as the relational data, which is opened by
 // internal/db/relational/sqlite (its timestamp convention applies: all DATETIME columns hold RFC 3339 UTC strings).
 //
-//go:embed schema.sql
+//go:embed sql/schema.sql
 var schema string
 
 // initSchema applies the training schema.

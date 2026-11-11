@@ -11,7 +11,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Inference requests (gb_trained_model_inferences, see schema.sql)
+// Inference requests (gb_trained_model_inferences, see sql/schema.sql)
 
 // InsertTrainedModelInference stores a new request and returns its ID.
 func InsertTrainedModelInference(ctx context.Context, d *sql.DB, r model.TrainedModelInference) (int64, error) {

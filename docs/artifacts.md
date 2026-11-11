@@ -2,7 +2,7 @@
 
 An artifact is a piece of data ingested to be remembered: the raw text that `POST /v1/gb/remember` receives, stored as it came. It is the provenance of the graph: every entity and edge is anchored to the artifact(s) it was inferred from, so a fact can always be traced back to the original text.
 
-Code: `internal/memory/memory_remember/remember.go` (`Remember`, `Store`, `ResolveKind`), `remember_chunks.go` (chunked texts), `remember_websearch.go` (web searches), `internal/db/graph/model/model.go` (types), `internal/db/graph/{sqlite,postgres}/schema.sql` (tables).
+Code: `internal/memory/memory_remember/remember.go` (`Remember`, `Store`, `ResolveKind`), `remember_chunks.go` (chunked texts), `remember_websearch.go` (web searches), `internal/db/graph/model/model.go` (types), `internal/db/graph/{sqlite,postgres}/sql/schema.sql` (tables).
 
 Images are not artifacts in this sense: `remember` with an `image` stores an image artifact (a row in `gb_image_artifacts` tracking a file on disk) through a separate pipeline, and they are not linked to entities or edges yet (see [images.md](images.md)).
 

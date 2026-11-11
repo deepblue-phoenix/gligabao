@@ -14,12 +14,12 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Remember runs (see sqlite/db_remember_run.go and sqlite/schema.sql for what the table and the functions are)
+// Remember runs (see sqlite/db_remember_run.go and sqlite/sql/schema.sql for what the table and the functions are)
 
 // rememberRunsSchema is the DDL of gb_remember_runs, gb_remember_run_stages and gb_remember_run_stage_outputs. A stage is a row of
 // gb_remember_run_stages (its stage_type is the name of the stage), so a new stage needs no change of the schema.
 //
-//go:embed schema_remember_runs.sql
+//go:embed sql/schema_remember_runs.sql
 var rememberRunsSchema string
 
 // rememberCol is a column of gb_query_runs (the wide layout); jsonb ones are written with a cast and read as text.

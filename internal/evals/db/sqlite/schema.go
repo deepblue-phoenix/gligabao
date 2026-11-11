@@ -11,5 +11,5 @@ import _ "embed"
 // (SQLite has no datetime type). Foreign keys must be on (PRAGMA foreign_keys = ON). The statements are idempotent and in
 // dependency order, so the whole schema can be executed in one call.
 //
-//go:embed schema.sql
+//go:embed sql/schema.sql
 var Schema string

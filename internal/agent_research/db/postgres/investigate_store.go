@@ -13,7 +13,7 @@ import (
 )
 
 // InvestigateStore is the implementation of investigate.Store on PostgreSQL: the tables of the frontier, the claims and sources, the challenges
-// and the notes versions (see schema.sql). Every method that changes state runs inside the transaction of InTx.
+// and the notes versions (see sql/schema.sql). Every method that changes state runs inside the transaction of InTx.
 type InvestigateStore struct{ D *sql.DB }
 
 var _ investigate.Store = InvestigateStore{}

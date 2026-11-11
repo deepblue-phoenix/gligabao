@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.186.1] - 2026-11-11
+
+### Changed
+- The SQL schema, upgrade and optional files of each database package (`internal/**/db/{sqlite,postgres}`) are in a `sql/` subdirectory, next to the Go files that embed them. No behaviour change.
+
 ## [0.186.0] - 2026-11-11
 
 ### Changed

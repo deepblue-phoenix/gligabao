@@ -8,7 +8,7 @@ import _ "embed"
 // database. Times are UTC RFC 3339 strings (SQLite has no datetime type). Foreign keys must be on (PRAGMA foreign_keys = ON). The
 // statements are idempotent and in dependency order, so the whole schema can be executed in one call.
 //
-//go:embed schema.sql
+//go:embed sql/schema.sql
 var Schema string
 
 // Upgrade is what an older database lacks: the columns parent_id, name and reason of gb_agent_research_runs (before sub-agents, 0.129.0)
@@ -31,7 +31,7 @@ var Upgrade = []struct{ Column, Statement string }{
 // SubagentIndexes are the indexes on the columns of Upgrade, so that they are made after it: the sub-agents of a run, and the rule
 // that the name of a sub-agent is unique among those of its parent.
 //
-//go:embed schema_subagent_indexes.sql
+//go:embed sql/schema_subagent_indexes.sql
 var SubagentIndexes string
 
 // StatusMigration is what a database made before the status 'stopped' (0.145.0) lacks: its CHECK on gb_agent_research_runs.status does not
@@ -39,5 +39,5 @@ var SubagentIndexes string
 // run it on one connection with foreign keys off, in a transaction, and make the indexes again after it (Schema). Only needed when
 // the table's SQL (sqlite_master) does not mention 'stopped' (see the Open of package agent_research).
 //
-//go:embed upgrade_status.sql
+//go:embed sql/upgrade_status.sql
 var StatusMigration string

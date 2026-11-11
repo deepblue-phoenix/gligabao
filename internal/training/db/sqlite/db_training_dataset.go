@@ -11,7 +11,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Training datasets (gb_training_datasets, see schema.sql)
+// Training datasets (gb_training_datasets, see sql/schema.sql)
 
 // UpsertTrainingDataset records a dataset file under its filename (a new row, or replacing the row that has that name) as
 // 'stored', not synced, and returns its ID. Only Filename, SizeBytes, NumRecords and SHA256 of ds are used.

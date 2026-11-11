@@ -10,7 +10,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Inference requests to trained models (the gb_trained_model_inferences table, see sqlite/schema.sql)
+// Inference requests to trained models (the gb_trained_model_inferences table, see sqlite/sql/schema.sql)
 
 // RecordTrainedModelInference stores a new request (status "running" unless r.Status says otherwise) and returns its ID.
 // r.ID, r.CreatedAt and the completion fields are ignored.

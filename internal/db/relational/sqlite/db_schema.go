@@ -8,7 +8,7 @@ import (
 
 //---------------------------------------------------------------------------------------------
 
-//go:embed schema.sql
+//go:embed sql/schema.sql
 var schema string
 
 // initSchema applies the database schema.

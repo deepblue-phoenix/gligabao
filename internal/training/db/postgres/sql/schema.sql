@@ -1,5 +1,5 @@
 
--- One row per training job the sidecar started (see sqlite/schema.sql).
+-- One row per training job the sidecar started (see sqlite/sql/schema.sql).
 CREATE TABLE IF NOT EXISTS gb_training_job_runs (
 	id              BIGSERIAL PRIMARY KEY,
 	job_id          TEXT NOT NULL,
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS gb_training_job_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_training_job_runs_job ON gb_training_job_runs(job_id);
 
--- The events the sidecar reported for a training job (see sqlite/schema.sql).
+-- The events the sidecar reported for a training job (see sqlite/sql/schema.sql).
 CREATE TABLE IF NOT EXISTS gb_training_job_events (
 	run_id     BIGINT NOT NULL REFERENCES gb_training_job_runs(id) ON DELETE CASCADE,
 	seq        BIGINT NOT NULL,
@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS gb_training_job_events (
 	PRIMARY KEY (run_id, seq)
 );
 
--- One row per trained model: the weights a completed training job saved (see sqlite/schema.sql).
+-- One row per trained model: the weights a completed training job saved (see sqlite/sql/schema.sql).
 CREATE TABLE IF NOT EXISTS gb_trained_models (
 	id              BIGSERIAL PRIMARY KEY,
 	name            TEXT NOT NULL,
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS gb_trained_models (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_trained_models_run ON gb_trained_models(run_id);
 
--- One row per inference request to a trained model (see sqlite/schema.sql).
+-- One row per inference request to a trained model (see sqlite/sql/schema.sql).
 CREATE TABLE IF NOT EXISTS gb_trained_model_inferences (
 	id               BIGSERIAL PRIMARY KEY,
 	trained_model_id BIGINT NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS gb_trained_model_inferences (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_trained_model_inferences_model ON gb_trained_model_inferences(trained_model_id, id);
 
--- One row per deployment of a trained model through a deployer (see sqlite/schema.sql).
+-- One row per deployment of a trained model through a deployer (see sqlite/sql/schema.sql).
 CREATE TABLE IF NOT EXISTS gb_trained_model_deployments (
 	id               BIGSERIAL PRIMARY KEY,
 	trained_model_id BIGINT NOT NULL REFERENCES gb_trained_models(id) ON DELETE CASCADE,
@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS gb_trained_model_deployments (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_trained_model_deployments_model ON gb_trained_model_deployments(trained_model_id, id);
 
--- JSONL training datasets found in the training datasets directory by the Go server (see sqlite/schema.sql).
+-- JSONL training datasets found in the training datasets directory by the Go server (see sqlite/sql/schema.sql).
 CREATE TABLE IF NOT EXISTS gb_training_datasets (
 	id          BIGSERIAL PRIMARY KEY,
 	filename    TEXT NOT NULL UNIQUE,

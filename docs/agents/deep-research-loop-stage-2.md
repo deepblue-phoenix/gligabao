@@ -34,7 +34,7 @@ The simple loop stays as it is and stays the default. `loop = "simple"` behaves 
 
 - Functional style is mandatory (see `gligabao/AGENTS.md`). The turn builder, the gates, the breaker checks and the phase transitions are pure functions of the loop state. The model call, the tool execution and the DB are at the edge.
 - Code decides whether the loop continues; the model decides content. A text-only turn is never an end: the loop reminds the model of the open frontier and continues.
-- Schema changes follow the design's [Migrations](deep-research-loop.md#database-schema) rules: a new table is `CREATE TABLE IF NOT EXISTS` in both `schema.sql` files; a change to an existing table is an `ALTER` in the package's upgrade list (SQLite: only if the column is missing; PostgreSQL: `ADD COLUMN IF NOT EXISTS`), run on every start and also reflected in `schema.sql`. Update `docs/listings/db-tables.md` for every new table.
+- Schema changes follow the design's [Migrations](deep-research-loop.md#database-schema) rules: a new table is `CREATE TABLE IF NOT EXISTS` in both `sql/schema.sql` files; a change to an existing table is an `ALTER` in the package's upgrade list (SQLite: only if the column is missing; PostgreSQL: `ADD COLUMN IF NOT EXISTS`), run on every start and also reflected in `sql/schema.sql`. Update `docs/listings/db-tables.md` for every new table.
 - Versioning: a new loop and knobs are a minor bump, with a `CHANGELOG.md` entry that states that `loop = "simple"` is still the default.
 
 ## Recommended layout
@@ -173,20 +173,20 @@ Stop reasons written to `gb_agent_research_runs.stop_reason`: `finalized`, `fron
 ### 11. Persistence of the run, the states and the migrations
 
 - Add the columns `phase` and `stop_reason` to `gb_agent_research_runs`. Both are changes to an existing table, so they follow the design's [Migrations](deep-research-loop.md#database-schema) rules:
-  - `schema.sql` (both backends): `phase TEXT NOT NULL DEFAULT ''` and `stop_reason TEXT NOT NULL DEFAULT ''`. Keep them without a `CHECK`, so that a later value does not need a table rebuild (the vocabulary is enforced in Go, the constants of `loop_state.go`).
+  - `sql/schema.sql` (both backends): `phase TEXT NOT NULL DEFAULT ''` and `stop_reason TEXT NOT NULL DEFAULT ''`. Keep them without a `CHECK`, so that a later value does not need a table rebuild (the vocabulary is enforced in Go, the constants of `loop_state.go`).
   - SQLite: two entries in the `Upgrade` list of `db/sqlite/schema.go` (`{"phase", "ALTER TABLE ... ADD COLUMN phase ..."}`, same for `stop_reason`); `Open` runs each only when the column is missing.
-  - PostgreSQL: two lines in `db/postgres/upgrade_columns.sql` with `ADD COLUMN IF NOT EXISTS`.
+  - PostgreSQL: two lines in `db/postgres/sql/upgrade_columns.sql` with `ADD COLUMN IF NOT EXISTS`.
   - Existing rows get `''`, which means "not an investigative run" (their `phase` and `stop_reason` are never read by the simple loop).
 - Write one `gb_agent_research_states` row per state transition and per turn, with the question id in its `detail` as today. The new state values are not constrained, so they need no migration.
 - The turn count is the existing `steps` of the run (it now counts turns for the investigative loop; state this in the changelog).
 - The totals (`tool_calls`, tokens, cost) keep their meaning.
-- Index: if a read needs one (for example runs by `stop_reason`), it goes in a file that runs after the upgrade, as `schema_subagent_indexes.sql` does, never before the column exists.
+- Index: if a read needs one (for example runs by `stop_reason`), it goes in a file that runs after the upgrade, as `sql/schema_subagent_indexes.sql` does, never before the column exists.
 
 **Migration tests**, on both backends, each with a database made by the **previous** version's DDL:
 
 - the server adds `phase` and `stop_reason` on start; old runs keep their values and get `''`;
 - a second start changes nothing and does not fail;
-- a fresh database has the columns from `schema.sql`, and the upgrade is a no-op;
+- a fresh database has the columns from `sql/schema.sql`, and the upgrade is a no-op;
 - an investigative run's `phase` and `stop_reason` are written and read back;
 - the simple loop still runs on the upgraded database (regression).
 

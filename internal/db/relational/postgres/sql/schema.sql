@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS gb_ontologies (
 	UNIQUE (user_id, name)
 );
 
--- The AI models gligabao knows (see sqlite/schema.sql).
+-- The AI models gligabao knows (see sqlite/sql/schema.sql).
 CREATE TABLE IF NOT EXISTS gb_models (
 	id         TEXT PRIMARY KEY,
 	name       TEXT NOT NULL UNIQUE,
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS gb_models (
 	created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- One row per invocation of a model (see sqlite/schema.sql).
+-- One row per invocation of a model (see sqlite/sql/schema.sql).
 CREATE TABLE IF NOT EXISTS gb_inferences (
 	id            BIGSERIAL PRIMARY KEY,
 	type          TEXT NOT NULL,

@@ -83,7 +83,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_inferences_type ON gb_inferences(type);
 CREATE INDEX IF NOT EXISTS idx_gb_inferences_model ON gb_inferences(model_id);
 
 -- Remember runs: ONE ROW PER EXECUTION OF THE REMEMBER PIPELINE, the authoritative record of how it went, stage by stage
--- (see internal/memory/memory_remember/runlog.go; the table is created by schema_remember_runs.sql).
+-- (see internal/memory/memory_remember/runlog.go; the table is created by sql/schema_remember_runs.sql).
 --   user_id, dataset (the name), kind (the artifact kind)  what was remembered
 --   params       JSON object: how the call was made (reference time, session, models and reasoning per stage, chunk size,
 --                which optional stages were asked for)
@@ -120,7 +120,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_inferences_model ON gb_inferences(model_id);
 --   created_at  when it was made
 
 -- Query runs: ONE ROW PER EXECUTION OF THE QUERY PIPELINE, the same kind of record as gb_remember_runs, for Query (see
--- internal/memory/memory_query/runlog.go; the table is created by schema_query_runs.sql). Unlike gb_remember_runs, its stages are
+-- internal/memory/memory_query/runlog.go; the table is created by sql/schema_query_runs.sql). Unlike gb_remember_runs, its stages are
 -- columns of the table, not rows.
 --   user_id, dataset (the name), question  what was asked
 --   params       JSON object: how the call was made (session, models and reasoning per stage, the options of the geo search)

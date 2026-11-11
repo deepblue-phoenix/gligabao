@@ -9,10 +9,10 @@ import (
 
 //---------------------------------------------------------------------------------------------
 
-// The same tables as the sqlite backend (see sqlite/schema.sql for what the columns mean), with native types.
+// The same tables as the sqlite backend (see sqlite/sql/schema.sql for what the columns mean), with native types.
 // They are created in the same database as the relational data, which is opened by internal/db/relational/postgres.
 //
-//go:embed schema.sql
+//go:embed sql/schema.sql
 var schema string
 
 // initSchema applies the training schema. Concurrent starters are serialized with an advisory lock, because

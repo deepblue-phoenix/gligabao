@@ -12,7 +12,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Inferences (the gb_inferences table, see sqlite/schema.sql)
+// Inferences (the gb_inferences table, see sqlite/sql/schema.sql)
 
 // RecordInference stores one invocation of a model and returns its ID. The model (r.Model, r.Provider, r.Kind) is
 // registered in gb_models first if it is not stored yet, so r.ModelID is ignored (an empty r.Model means the API did not

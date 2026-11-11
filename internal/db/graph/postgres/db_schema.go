@@ -10,11 +10,11 @@ import (
 
 //---------------------------------------------------------------------------------------------
 
-// The same tables as the sqlite backend (see sqlite/schema.sql for what the columns mean), with native types:
+// The same tables as the sqlite backend (see sqlite/sql/schema.sql for what the columns mean), with native types:
 // BIGSERIAL ids and TIMESTAMPTZ times. They reference gb_datasets, which is created by the relational backend
 // (internal/db/relational/postgres), so that schema must be applied first.
 //
-//go:embed schema.sql
+//go:embed sql/schema.sql
 var schema string
 
 // initSchema applies the graph schema. Concurrent starters are serialized with an advisory lock, because
@@ -41,7 +41,7 @@ func initSchema(ctx context.Context, d *sql.DB) error {
 // written, and is filled in for the rows stored before the column existed), and a GiST index on it, which proximity queries use
 // (ST_DWithin(geo, ST_MakePoint(lon, lat)::geography, meters)).
 //
-//go:embed optional_geo_index.sql
+//go:embed sql/optional_geo_index.sql
 var geoIndexSQL string
 
 // EnableGeoIndex adds the PostGIS geo index to gb_entity_geo; it is only called when geo is on. The result says whether the

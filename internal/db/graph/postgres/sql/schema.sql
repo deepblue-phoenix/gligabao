@@ -1,5 +1,5 @@
 
--- A timeseries (see sqlite/schema.sql for what the columns mean). It comes first because gb_artifacts references it;
+-- A timeseries (see sqlite/sql/schema.sql for what the columns mean). It comes first because gb_artifacts references it;
 -- its points and anchors are defined further down.
 CREATE TABLE IF NOT EXISTS gb_series (
 	id          BIGSERIAL PRIMARY KEY,
@@ -26,20 +26,20 @@ CREATE TABLE IF NOT EXISTS gb_artifacts (
 	dataset_id BIGINT NOT NULL REFERENCES gb_datasets(id),
 	kind       TEXT NOT NULL DEFAULT 'knowledge',
 	text       TEXT NOT NULL,
-	session_id TEXT, -- the session that remembered it; NULL if none (see sqlite/schema.sql)
+	session_id TEXT, -- the session that remembered it; NULL if none (see sqlite/sql/schema.sql)
 	-- A chunk of a long text is an artifact whose parent is the artifact holding the whole text; the columns are NULL
-	-- for any other artifact (see sqlite/schema.sql).
+	-- for any other artifact (see sqlite/sql/schema.sql).
 	parent_id    BIGINT REFERENCES gb_artifacts(id) ON DELETE CASCADE,
 	chunk_index  INTEGER,
 	start_offset INTEGER,
 	end_offset   INTEGER,
 	tokens       INTEGER,
 	-- Only for a 'web_search' artifact: the query that was issued; its parent_id is the artifact the searched entity
-	-- came from (see sqlite/schema.sql).
+	-- came from (see sqlite/sql/schema.sql).
 	query        TEXT,
-	-- Only for a 'chunk_summary' artifact: the run of the model that wrote it (see sqlite/schema.sql).
+	-- Only for a 'chunk_summary' artifact: the run of the model that wrote it (see sqlite/sql/schema.sql).
 	inference_id BIGINT REFERENCES gb_inferences(id),
-	-- Only for a 'series_observation' artifact: the series it describes (see sqlite/schema.sql).
+	-- Only for a 'series_observation' artifact: the series it describes (see sqlite/sql/schema.sql).
 	series_id    BIGINT REFERENCES gb_series(id) ON DELETE SET NULL,
 	valid_at   TIMESTAMPTZ NOT NULL,
 	created_at TIMESTAMPTZ NOT NULL,
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS gb_entities (
 	name_key    TEXT NOT NULL, -- normalized name used for dedup
 	type        TEXT NOT NULL,
 	description TEXT NOT NULL DEFAULT '',
-	model_id    TEXT REFERENCES gb_models(id), -- the model that inferred the entity (see sqlite/schema.sql)
+	model_id    TEXT REFERENCES gb_models(id), -- the model that inferred the entity (see sqlite/sql/schema.sql)
 	created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
 	updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
 	UNIQUE (dataset_id, name_key, type)
@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS gb_edges (
 );
 
 -- Edge <-> artifact provenance, many-to-many: gb_edges.artifact_id is only the artifact that created the edge; this
--- also records every later artifact whose duplicate of the fact was merged into it (see sqlite/schema.sql).
+-- also records every later artifact whose duplicate of the fact was merged into it (see sqlite/sql/schema.sql).
 CREATE TABLE IF NOT EXISTS gb_edge_artifacts (
 	edge_id     BIGINT NOT NULL REFERENCES gb_edges(id) ON DELETE CASCADE,
 	artifact_id BIGINT NOT NULL REFERENCES gb_artifacts(id) ON DELETE CASCADE,
@@ -83,14 +83,14 @@ CREATE TABLE IF NOT EXISTS gb_edge_artifacts (
 );
 
 -- Entity <-> artifact provenance, many-to-many: an entity is deduplicated per dataset and so is inferred from many
--- artifacts, which one artifact_id column could not express (see sqlite/schema.sql for the full rationale).
+-- artifacts, which one artifact_id column could not express (see sqlite/sql/schema.sql for the full rationale).
 CREATE TABLE IF NOT EXISTS gb_entity_artifacts (
 	entity_id   BIGINT NOT NULL REFERENCES gb_entities(id) ON DELETE CASCADE,
 	artifact_id BIGINT NOT NULL REFERENCES gb_artifacts(id) ON DELETE CASCADE,
 	PRIMARY KEY (entity_id, artifact_id)
 );
 
--- Which sessions an entity / an edge was discovered in, many-to-many (see sqlite/schema.sql): recorded for every
+-- Which sessions an entity / an edge was discovered in, many-to-many (see sqlite/sql/schema.sql): recorded for every
 -- artifact of a session that mentions the entity or states the fact, including duplicates of stored ones.
 CREATE TABLE IF NOT EXISTS gb_entity_sessions (
 	entity_id  BIGINT NOT NULL REFERENCES gb_entities(id) ON DELETE CASCADE,
@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS gb_edge_sessions (
 	PRIMARY KEY (edge_id, session_id)
 );
 
--- What each Remember call did to the temporal state of the facts (see sqlite/schema.sql for what the columns mean).
+-- What each Remember call did to the temporal state of the facts (see sqlite/sql/schema.sql for what the columns mean).
 CREATE TABLE IF NOT EXISTS gb_edge_events (
 	id                BIGSERIAL PRIMARY KEY,
 	dataset_id        BIGINT NOT NULL REFERENCES gb_datasets(id),
@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS gb_edge_events (
 	created_at        TIMESTAMPTZ NOT NULL
 );
 
--- The classes an LLM gave to the graph of an artifact (see sqlite/schema.sql for what the columns mean).
+-- The classes an LLM gave to the graph of an artifact (see sqlite/sql/schema.sql for what the columns mean).
 CREATE TABLE IF NOT EXISTS gb_artifact_classes (
 	id           BIGSERIAL PRIMARY KEY,
 	dataset_id   BIGINT NOT NULL REFERENCES gb_datasets(id),
@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS gb_artifact_classes (
 	created_at   TIMESTAMPTZ NOT NULL
 );
 
--- The image pipeline (see sqlite/schema.sql for what the columns mean).
+-- The image pipeline (see sqlite/sql/schema.sql for what the columns mean).
 CREATE TABLE IF NOT EXISTS gb_image_artifacts (
 	id         BIGSERIAL PRIMARY KEY,
 	dataset_id BIGINT NOT NULL REFERENCES gb_datasets(id),
@@ -213,7 +213,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_gb_series_anchors_edge ON gb_series_anchor
 
 CREATE INDEX IF NOT EXISTS idx_gb_series_dataset ON gb_series(dataset_id);
 
--- The geo metadata of the entities that are places (see sqlite/schema.sql for what the columns mean).
+-- The geo metadata of the entities that are places (see sqlite/sql/schema.sql for what the columns mean).
 CREATE TABLE IF NOT EXISTS gb_entity_geo (
 	entity_id    BIGINT PRIMARY KEY REFERENCES gb_entities(id) ON DELETE CASCADE,
 	kind         TEXT NOT NULL,
@@ -246,7 +246,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_artifacts_parent ON gb_artifacts(parent_id);
 CREATE INDEX IF NOT EXISTS idx_gb_entities_dataset ON gb_entities(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_dataset ON gb_edges(dataset_id);
 CREATE INDEX IF NOT EXISTS idx_gb_edges_source ON gb_edges(source_id);
--- The in-context log: a row every time an entity or an edge went into the context of an LLM call (see sqlite/schema.sql).
+-- The in-context log: a row every time an entity or an edge went into the context of an LLM call (see sqlite/sql/schema.sql).
 CREATE TABLE IF NOT EXISTS gb_graph_in_ctx_counters (
 	id         BIGSERIAL PRIMARY KEY,
 	dataset_id BIGINT NOT NULL REFERENCES gb_datasets(id),

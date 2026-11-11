@@ -10,7 +10,7 @@ import (
 )
 
 //---------------------------------------------------------------------------------------------
-// Trained models (the gb_trained_models table, see sqlite/schema.sql)
+// Trained models (the gb_trained_models table, see sqlite/sql/schema.sql)
 
 // RecordTrainedModel stores the model a completed training job saved, and returns its ID and whether it is new: a model
 // of a job (JobID) that already has one is left as it is (the job's completed event was replayed) and its ID is returned.

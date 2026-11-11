@@ -3,7 +3,7 @@ package model
 import "time"
 
 //---------------------------------------------------------------------------------------------
-// Query runs (gb_query_runs, see sqlite/schema.sql)
+// Query runs (gb_query_runs, see sqlite/sql/schema.sql)
 
 // The stages of the query pipeline, in pipeline order (QueryStages). Each is a column group of gb_query_runs. The statuses of a
 // query run and of its stages are those of the remember runs (RememberStarted, RememberSkipped, ...).
