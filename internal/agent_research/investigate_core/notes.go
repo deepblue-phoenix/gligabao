@@ -1,4 +1,4 @@
-package investigate
+package investigate_core
 
 import (
 	"fmt"
@@ -106,6 +106,9 @@ type Change struct {
 func clean(s string) string {
 	return strings.Join(strings.Fields(strings.ReplaceAll(s, "|", "/")), " ")
 }
+
+// Excerpt is the text as one clean line cut to n characters.
+func Excerpt(s string, n int) string { return truncate(clean(s), n) }
 
 func cleanTitle(s string) string { return clean(strings.ReplaceAll(s, `"`, "'")) }
 

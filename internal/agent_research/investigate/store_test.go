@@ -15,12 +15,13 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db/postgres"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db/sqlite"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 )
 
 type m = map[string]any
 
-func storeFor(t *testing.T, d *sql.DB) investigate.Store {
+func storeFor(t *testing.T, d *sql.DB) investigate_core.Store {
 	if strings.HasSuffix(t.Name(), "postgres") {
 		return postgres.NewInvestigateStore(d)
 	}
@@ -43,15 +44,15 @@ func createRun(t *testing.T, d *sql.DB, user string) *core.Run {
 	return run
 }
 
-func session(t *testing.T, d *sql.DB, run *core.Run) investigate.Session {
+func session(t *testing.T, d *sql.DB, run *core.Run) investigate_core.Session {
 	files := investigate.NotesFile{Dir: filepath.Join(t.TempDir(), "notes")}
-	return investigate.Session{
-		Env:      investigate.Env{Store: storeFor(t, d), Files: files, RunID: run.ID, NotesPath: files.Path(run.UserID, run.ID, run.NotesID)},
-		Registry: investigate.InvestigativeRegistry(), Limits: investigate.DefaultLimits(),
+	return investigate_core.Session{
+		Env:      investigate_core.Env{Store: storeFor(t, d), Files: files, RunID: run.ID, NotesPath: files.Path(run.UserID, run.ID, run.NotesID)},
+		Registry: investigate_core.InvestigativeRegistry(), Limits: investigate_core.DefaultLimits(),
 	}
 }
 
-func call(t *testing.T, s investigate.Session, name string, args m) string {
+func call(t *testing.T, s investigate_core.Session, name string, args m) string {
 	t.Helper()
 	raw, _ := json.Marshal(args)
 	text, err := s.Call(context.Background(), name, raw)
@@ -92,13 +93,13 @@ func testSessionEndToEnd(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, chs, err := investigate.LinkAttempt(st.Frontier, st.Challenges, "ch_001", "web_search", "nothing against")
+	f, chs, err := investigate_core.LinkAttempt(st.Frontier, st.Challenges, "ch_001", "web_search", "nothing against")
 	if err != nil {
 		t.Fatal(err)
 	}
 	after := st
 	after.Frontier, after.Challenges = f, chs
-	if err := investigate.Execute(ctx, s.Env, 1, investigate.Diff(st, after, nil, "")); err != nil {
+	if err := investigate_core.Execute(ctx, s.Env, 1, investigate_core.Diff(st, after, nil, "")); err != nil {
 		t.Fatal(err)
 	}
 	call(t, s, "record_challenge_result", m{"challenge_id": "ch_001", "outcome": "survived"})
@@ -123,8 +124,8 @@ func testSessionEndToEnd(t *testing.T, d *sql.DB) {
 	if !reflect.DeepEqual(loaded.Challenges, pure.Challenges) {
 		t.Errorf("challenges from the store differ:\n got %+v\nwant %+v", loaded.Challenges, pure.Challenges)
 	}
-	if investigate.Render(loaded.Notes) != investigate.Render(pure.Notes) {
-		t.Errorf("notes from the store differ:\n%s\n---\n%s", investigate.Render(loaded.Notes), investigate.Render(pure.Notes))
+	if investigate_core.Render(loaded.Notes) != investigate_core.Render(pure.Notes) {
+		t.Errorf("notes from the store differ:\n%s\n---\n%s", investigate_core.Render(loaded.Notes), investigate_core.Render(pure.Notes))
 	}
 	// Transitions: one row per change, seq per question 1, 2, 3, ..., the last one equals the status.
 	rows, err := d.QueryContext(ctx, queryFor(t, `SELECT question_id, seq, to_status, state_seq FROM gb_agent_frontier_transitions WHERE run_id = ? ORDER BY id`), run.ID)
@@ -162,7 +163,7 @@ func testSessionEndToEnd(t *testing.T, d *sql.DB) {
 	if v.Seq != 5 {
 		t.Errorf("notes versions: %d (append x3, update, scratch)", v.Seq)
 	}
-	back, errs := investigate.Parse(onDisk)
+	back, errs := investigate_core.Parse(onDisk)
 	if len(errs) > 0 || !reflect.DeepEqual(back, loaded.Notes) {
 		t.Errorf("write, reload, parse: %v", errs)
 	}
@@ -205,13 +206,13 @@ func queryFor(t *testing.T, q string) string {
 }
 
 // replayPure runs the same calls on pure values (no store), linking the challenge attempt the same way.
-func replayPure(t *testing.T) investigate.State {
+func replayPure(t *testing.T) investigate_core.State {
 	t.Helper()
-	s, _, err := investigate.NewState("Does X fit in 16 GB of VRAM?", investigate.DefaultLimits())
+	s, _, err := investigate_core.NewState("Does X fit in 16 GB of VRAM?", investigate_core.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	reg := investigate.InvestigativeRegistry()
+	reg := investigate_core.InvestigativeRegistry()
 	run := func(name string, args m) {
 		tool, _ := reg.Get(name)
 		raw, _ := json.Marshal(args)
@@ -232,7 +233,7 @@ func replayPure(t *testing.T) investigate.State {
 	run("notes_append", m{"section": "Datapoints", "entries": []m{{"value": "7", "unit": "GB", "text": "weights at fp16", "question_id": "q_002", "sources": []m{{"source_id": "s_001"}}}}})
 	run("challenge", m{"target_type": "claim", "target_id": "c_001", "negation": "weights are much larger than 7 GB", "strategy": "discrepancy",
 		"expected_if_false": "a model card with a bigger size", "query": "model weights conflicting size card"})
-	f, chs, err := investigate.LinkAttempt(s.Frontier, s.Challenges, "ch_001", "web_search", "nothing against")
+	f, chs, err := investigate_core.LinkAttempt(s.Frontier, s.Challenges, "ch_001", "web_search", "nothing against")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,12 +260,12 @@ func testExecuteIsAtomic(t *testing.T, d *sql.DB) {
 	if err := s.Start(ctx, "objective"); err != nil {
 		t.Fatal(err)
 	}
-	q := investigate.Question{ID: "q_002", ParentID: "q_001", Depth: 1, Kind: investigate.KindQuestion, Question: "child", Priority: 0.5, Status: investigate.StatusPending}
-	bad := investigate.Question{ID: "q_003", ParentID: "q_001", Depth: 1, Kind: investigate.KindQuestion, Question: "bad priority", Priority: 7, Status: investigate.StatusPending}
-	err := investigate.Execute(ctx, s.Env, 0, []investigate.Effect{
-		investigate.UpsertQuestion{Question: q},
-		investigate.WriteNotes{Text: "# Notes: x\n", Reason: "notes_append"},
-		investigate.UpsertQuestion{Question: bad}, // violates the CHECK on priority
+	q := investigate_core.Question{ID: "q_002", ParentID: "q_001", Depth: 1, Kind: investigate_core.KindQuestion, Question: "child", Priority: 0.5, Status: investigate_core.StatusPending}
+	bad := investigate_core.Question{ID: "q_003", ParentID: "q_001", Depth: 1, Kind: investigate_core.KindQuestion, Question: "bad priority", Priority: 7, Status: investigate_core.StatusPending}
+	err := investigate_core.Execute(ctx, s.Env, 0, []investigate_core.Effect{
+		investigate_core.UpsertQuestion{Question: q},
+		investigate_core.WriteNotes{Text: "# Notes: x\n", Reason: "notes_append"},
+		investigate_core.UpsertQuestion{Question: bad}, // violates the CHECK on priority
 	})
 	if err == nil {
 		t.Fatal("the bad row must fail")
@@ -273,17 +274,17 @@ func testExecuteIsAtomic(t *testing.T, d *sql.DB) {
 	if err != nil || len(l.Frontier.Questions) != 1 || l.NotesText != "" {
 		t.Fatalf("nothing of the failed list is stored: %v %+v", err, l)
 	}
-	if got, _ := s.Env.Files.Read(s.Env.NotesPath); got != investigate.Render(investigate.Notes{}) {
+	if got, _ := s.Env.Files.Read(s.Env.NotesPath); got != investigate_core.Render(investigate_core.Notes{}) {
 		t.Fatalf("the notes file is not written for a failed transaction: %q", got)
 	}
 	// The database refuses a bad transition and a bad notes version too.
-	for name, e := range map[string]investigate.Effect{
-		"unknown status": investigate.RecordTransitions{Transitions: []investigate.Transition{{QuestionID: "q_001", To: "nowhere", Trigger: investigate.TriggerSelected, Actor: investigate.ActorCode}}},
-		"unknown actor":  investigate.RecordTransitions{Transitions: []investigate.Transition{{QuestionID: "q_001", To: investigate.StatusPending, Trigger: investigate.TriggerSelected, Actor: "god"}}},
-		"orphan dep":     investigate.AddDependency{QuestionID: "q_001", DependsOnID: "q_077"},
-		"self dep":       investigate.AddDependency{QuestionID: "q_001", DependsOnID: "q_001"},
+	for name, e := range map[string]investigate_core.Effect{
+		"unknown status": investigate_core.RecordTransitions{Transitions: []investigate_core.Transition{{QuestionID: "q_001", To: "nowhere", Trigger: investigate_core.TriggerSelected, Actor: investigate_core.ActorCode}}},
+		"unknown actor":  investigate_core.RecordTransitions{Transitions: []investigate_core.Transition{{QuestionID: "q_001", To: investigate_core.StatusPending, Trigger: investigate_core.TriggerSelected, Actor: "god"}}},
+		"orphan dep":     investigate_core.AddDependency{QuestionID: "q_001", DependsOnID: "q_077"},
+		"self dep":       investigate_core.AddDependency{QuestionID: "q_001", DependsOnID: "q_001"},
 	} {
-		if err := investigate.Execute(ctx, s.Env, 0, []investigate.Effect{e}); err == nil {
+		if err := investigate_core.Execute(ctx, s.Env, 0, []investigate_core.Effect{e}); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
@@ -294,7 +295,7 @@ func TestRegistryIsNotWiredToAgents(t *testing.T) {
 	if got := strings.Join(agent_defs.KnownTools, ","); got != "web_search,fetch_url" {
 		t.Fatalf("agent tools: %s", got)
 	}
-	for _, name := range investigate.InvestigativeRegistry().Names() {
+	for _, name := range investigate_core.InvestigativeRegistry().Names() {
 		if slices.Contains(agent_defs.KnownTools, name) {
 			t.Errorf("%s is a tool of the agent definitions", name)
 		}

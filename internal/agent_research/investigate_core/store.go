@@ -1,4 +1,4 @@
-package investigate
+package investigate_core
 
 import (
 	"context"
@@ -51,3 +51,9 @@ type Store interface {
 // ErrNotesFile is returned by Execute when everything was stored but writing the notes file failed. The version is in the database, so the
 // loop restores the file from it at the next turn (stage 2).
 var ErrNotesFile = errors.New("the notes were stored but the notes file could not be written")
+
+// NotesStore is the small read/write interface the notes live behind, so that they can move (an object store) without touching the loop.
+type NotesStore interface {
+	Read(path string) (string, error)
+	Write(path, text string) error
+}

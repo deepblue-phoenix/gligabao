@@ -6,6 +6,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 )
 
@@ -15,8 +16,8 @@ import (
 
 // investigateLimits are the limits of the loop: the defaults of the design, the knobs of the definition and the options over them, and
 // the cost cap (the lowest of the caps that apply, 0 for none).
-func investigateLimits(k agent_defs.Investigate, costCap float64) investigate.Limits {
-	l := investigate.DefaultLimits()
+func investigateLimits(k agent_defs.Investigate, costCap float64) investigate_core.Limits {
+	l := investigate_core.DefaultLimits()
 	pick := func(v, def int) int {
 		if v > 0 {
 			return v
@@ -51,16 +52,16 @@ func (m *Manager) notesDir() string {
 func (r *researcher) runInvestigative() (*agent.Result, error) {
 	limits := investigateLimits(r.opts.investigateKnobs(r.def), lowestCap(r.def.Limits.MaxCostUSD, r.opts.treeCostCap))
 	local := investigate.NotesFile{Dir: r.mgr.notesDir()}
-	var files investigate.NotesStore = local
+	var files investigate_core.NotesStore = local
 	if r.mgr.NotesS3 != nil {
 		files = r.mgr.NotesS3.Mirror(local, r.run.UserID)
 	}
-	sess := investigate.Session{
-		Env: investigate.Env{
+	sess := investigate_core.Session{
+		Env: investigate_core.Env{
 			Store: r.mgr.Ops.Investigate(r.db), Files: files, RunID: r.run.ID,
 			NotesPath: local.Path(r.run.UserID, r.run.ID, r.run.NotesID),
 		},
-		Registry: investigate.LoopRegistry(),
+		Registry: investigate_core.LoopRegistry(),
 		Limits:   limits,
 	}
 	usage := func(t investigate.Totals) { r.saveUsage(totalsOf(t)) }
@@ -92,7 +93,7 @@ func totalsOf(t investigate.Totals) agent.Result {
 }
 
 // savePhase writes the phase and the stop reason of the run. A failed write is logged and does not stop the agent.
-func (r *researcher) savePhase(phase investigate.Phase, stopReason string) {
+func (r *researcher) savePhase(phase investigate_core.Phase, stopReason string) {
 	if err := r.store.SetPhase(r.dbCtx, r.db, r.run.ID, string(phase), stopReason); err != nil {
 		r.logf.WithError(err).Warn("agent research: recording the phase failed")
 	}

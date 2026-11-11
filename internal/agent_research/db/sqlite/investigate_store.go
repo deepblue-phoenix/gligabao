@@ -9,20 +9,20 @@ import (
 	"strconv"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
-	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
 )
 
 // InvestigateStore is the implementation of investigate.Store on SQLite: the tables of the frontier, the claims and sources, the challenges
 // and the notes versions (see sql/schema.sql). Every method that changes state runs inside the transaction of InTx.
 type InvestigateStore struct{ D *sql.DB }
 
-var _ investigate.Store = InvestigateStore{}
+var _ investigate_core.Store = InvestigateStore{}
 
 // NewInvestigateStore returns the store of the investigative loop's state on d.
-func NewInvestigateStore(d *sql.DB) investigate.Store { return InvestigateStore{D: d} }
+func NewInvestigateStore(d *sql.DB) investigate_core.Store { return InvestigateStore{D: d} }
 
 // InTx runs fn in a transaction.
-func (s InvestigateStore) InTx(ctx context.Context, fn func(investigate.Tx) error) error {
+func (s InvestigateStore) InTx(ctx context.Context, fn func(investigate_core.Tx) error) error {
 	tx, err := s.D.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("investigate: begin: %w", err)
@@ -46,7 +46,7 @@ func nullable(s string) any {
 	return s
 }
 
-func (t investigateTx) UpsertQuestion(ctx context.Context, runID int64, q investigate.Question) error {
+func (t investigateTx) UpsertQuestion(ctx context.Context, runID int64, q investigate_core.Question) error {
 	sources, err := json.Marshal(append([]string{}, q.TargetSources...))
 	if err != nil {
 		return err
@@ -76,7 +76,7 @@ func (t investigateTx) AddDependency(ctx context.Context, runID int64, questionI
 	return nil
 }
 
-func (t investigateTx) InsertAttempt(ctx context.Context, runID int64, questionID string, a investigate.Attempt) error {
+func (t investigateTx) InsertAttempt(ctx context.Context, runID int64, questionID string, a investigate_core.Attempt) error {
 	if _, err := t.q.ExecContext(ctx, `
 		INSERT INTO gb_agent_frontier_attempts (run_id, question_id, seq, query, tool, outcome, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		runID, questionID, a.Seq, a.Query, a.Tool, a.Outcome, text(now())); err != nil {
@@ -85,7 +85,7 @@ func (t investigateTx) InsertAttempt(ctx context.Context, runID int64, questionI
 	return nil
 }
 
-func (t investigateTx) InsertTransition(ctx context.Context, runID int64, tr investigate.Transition) (int, error) {
+func (t investigateTx) InsertTransition(ctx context.Context, runID int64, tr investigate_core.Transition) (int, error) {
 	var seq int
 	if err := t.q.QueryRowContext(ctx, `
 		INSERT INTO gb_agent_frontier_transitions (run_id, question_id, seq, from_status, to_status, trigger, actor, reason, priority, attempts,
@@ -99,7 +99,7 @@ func (t investigateTx) InsertTransition(ctx context.Context, runID int64, tr inv
 	return seq, nil
 }
 
-func (t investigateTx) UpsertSource(ctx context.Context, runID int64, s investigate.Source) error {
+func (t investigateTx) UpsertSource(ctx context.Context, runID int64, s investigate_core.Source) error {
 	if _, err := t.q.ExecContext(ctx, `
 		INSERT INTO gb_agent_sources (run_id, id, url, domain, title, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (run_id, id) DO UPDATE SET title = excluded.title, note = excluded.note`,
@@ -109,7 +109,7 @@ func (t investigateTx) UpsertSource(ctx context.Context, runID int64, s investig
 	return nil
 }
 
-func (t investigateTx) UpsertClaim(ctx context.Context, runID int64, c investigate.Claim) error {
+func (t investigateTx) UpsertClaim(ctx context.Context, runID int64, c investigate_core.Claim) error {
 	at := text(now())
 	if _, err := t.q.ExecContext(ctx, `
 		INSERT INTO gb_agent_claims (run_id, id, question_id, kind, text, value, unit, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -130,7 +130,7 @@ func (t investigateTx) UpsertClaim(ctx context.Context, runID int64, c investiga
 	return nil
 }
 
-func (t investigateTx) UpsertChallenge(ctx context.Context, runID int64, c investigate.Challenge) error {
+func (t investigateTx) UpsertChallenge(ctx context.Context, runID int64, c investigate_core.Challenge) error {
 	var attemptID any
 	if c.AttemptSeq > 0 {
 		var id int64
@@ -142,7 +142,7 @@ func (t investigateTx) UpsertChallenge(ctx context.Context, runID int64, c inves
 	}
 	at := text(now())
 	var closedAt any
-	if c.Status == investigate.ChallengeClosed {
+	if c.Status == investigate_core.ChallengeClosed {
 		closedAt = at
 	}
 	if _, err := t.q.ExecContext(ctx, `
@@ -177,8 +177,8 @@ func (t investigateTx) AddNotesVersion(ctx context.Context, runID int64, notes, 
 }
 
 // LatestNotesVersion is the latest notes version of the run.
-func (s InvestigateStore) LatestNotesVersion(ctx context.Context, runID int64) (investigate.NotesVersion, bool, error) {
-	var v investigate.NotesVersion
+func (s InvestigateStore) LatestNotesVersion(ctx context.Context, runID int64) (investigate_core.NotesVersion, bool, error) {
+	var v investigate_core.NotesVersion
 	err := s.D.QueryRowContext(ctx, `SELECT seq, state_seq, reason, text FROM gb_agent_notes_versions WHERE run_id = ? ORDER BY seq DESC LIMIT 1`,
 		runID).Scan(&v.Seq, &v.StateSeq, &v.Reason, &v.Text)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -200,13 +200,13 @@ func (s InvestigateStore) StateSeq(ctx context.Context, runID int64) (int, error
 }
 
 // Load reads the frontier, the challenges and the latest notes text of a run.
-func (s InvestigateStore) Load(ctx context.Context, runID int64) (investigate.Loaded, error) {
-	var out investigate.Loaded
+func (s InvestigateStore) Load(ctx context.Context, runID int64) (investigate_core.Loaded, error) {
+	var out investigate_core.Loaded
 	qs, err := s.loadQuestions(ctx, runID)
 	if err != nil {
 		return out, err
 	}
-	out.Frontier = investigate.NewFrontier(qs)
+	out.Frontier = investigate_core.NewFrontier(qs)
 	if out.Challenges, err = s.loadChallenges(ctx, runID); err != nil {
 		return out, err
 	}
@@ -220,7 +220,7 @@ func (s InvestigateStore) Load(ctx context.Context, runID int64) (investigate.Lo
 	return out, nil
 }
 
-func (s InvestigateStore) loadQuestions(ctx context.Context, runID int64) ([]investigate.Question, error) {
+func (s InvestigateStore) loadQuestions(ctx context.Context, runID int64) ([]investigate_core.Question, error) {
 	rows, err := s.D.QueryContext(ctx, `
 		SELECT id, parent_id, depth, kind, question, rationale, priority, status, validation_criteria, target_sources, answer
 		FROM gb_agent_frontier_questions WHERE run_id = ?`, runID)
@@ -228,16 +228,16 @@ func (s InvestigateStore) loadQuestions(ctx context.Context, runID int64) ([]inv
 		return nil, fmt.Errorf("investigate: load questions of run %d: %w", runID, err)
 	}
 	defer rows.Close()
-	byID := map[string]*investigate.Question{}
+	byID := map[string]*investigate_core.Question{}
 	var order []string
 	for rows.Next() {
-		var q investigate.Question
+		var q investigate_core.Question
 		var parent sql.NullString
 		var kind, status, sources string
 		if err := rows.Scan(&q.ID, &parent, &q.Depth, &kind, &q.Question, &q.Rationale, &q.Priority, &status, &q.ValidationCriteria, &sources, &q.Answer); err != nil {
 			return nil, fmt.Errorf("investigate: load questions of run %d: %w", runID, err)
 		}
-		q.ParentID, q.Kind, q.Status = parent.String, investigate.Kind(kind), investigate.Status(status)
+		q.ParentID, q.Kind, q.Status = parent.String, investigate_core.Kind(kind), investigate_core.Status(status)
 		if err := json.Unmarshal([]byte(sources), &q.TargetSources); err != nil {
 			return nil, fmt.Errorf("investigate: target_sources of %s: %w", q.ID, err)
 		}
@@ -265,7 +265,7 @@ func (s InvestigateStore) loadQuestions(ctx context.Context, runID int64) ([]inv
 	defer arows.Close()
 	for arows.Next() {
 		var qid string
-		var a investigate.Attempt
+		var a investigate_core.Attempt
 		if err := arows.Scan(&qid, &a.Seq, &a.Query, &a.Tool, &a.Outcome); err != nil {
 			return nil, err
 		}
@@ -274,7 +274,7 @@ func (s InvestigateStore) loadQuestions(ctx context.Context, runID int64) ([]inv
 	if err := arows.Err(); err != nil {
 		return nil, err
 	}
-	out := make([]investigate.Question, 0, len(order))
+	out := make([]investigate_core.Question, 0, len(order))
 	for _, id := range order {
 		out = append(out, *byID[id])
 	}
@@ -298,7 +298,7 @@ func (s InvestigateStore) pairs(ctx context.Context, query string, runID int64, 
 	return rows.Err()
 }
 
-func (s InvestigateStore) loadChallenges(ctx context.Context, runID int64) ([]investigate.Challenge, error) {
+func (s InvestigateStore) loadChallenges(ctx context.Context, runID int64) ([]investigate_core.Challenge, error) {
 	rows, err := s.D.QueryContext(ctx, `
 		SELECT c.id, c.question_id, c.target_type, c.target_id, c.negation, c.strategy, c.expected_if_false, c.query, a.seq,
 			c.status, c.outcome, c.evidence, c.result_claim_id
@@ -308,9 +308,9 @@ func (s InvestigateStore) loadChallenges(ctx context.Context, runID int64) ([]in
 		return nil, fmt.Errorf("investigate: load challenges of run %d: %w", runID, err)
 	}
 	defer rows.Close()
-	var out []investigate.Challenge
+	var out []investigate_core.Challenge
 	for rows.Next() {
-		var c investigate.Challenge
+		var c investigate_core.Challenge
 		var qid, result sql.NullString
 		var seq sql.NullInt64
 		var tt, strategy, status, outcome string
@@ -318,7 +318,7 @@ func (s InvestigateStore) loadChallenges(ctx context.Context, runID int64) ([]in
 			return nil, err
 		}
 		c.QuestionID, c.ResultClaimID, c.AttemptSeq = qid.String, result.String, int(seq.Int64)
-		c.TargetType, c.Strategy, c.Status, c.Outcome = investigate.TargetType(tt), investigate.Strategy(strategy), investigate.ChallengeStatus(status), investigate.Outcome(outcome)
+		c.TargetType, c.Strategy, c.Status, c.Outcome = investigate_core.TargetType(tt), investigate_core.Strategy(strategy), investigate_core.ChallengeStatus(status), investigate_core.Outcome(outcome)
 		out = append(out, c)
 	}
 	if err := rows.Err(); err != nil {
@@ -343,5 +343,5 @@ func (s InvestigateStore) loadChallenges(ctx context.Context, runID int64) ([]in
 	if err := srows.Err(); err != nil {
 		return nil, err
 	}
-	return investigate.SortChallenges(out), nil
+	return investigate_core.SortChallenges(out), nil
 }

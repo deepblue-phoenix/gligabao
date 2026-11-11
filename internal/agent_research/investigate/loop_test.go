@@ -15,6 +15,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 )
@@ -91,23 +92,23 @@ type env struct {
 	d      *sql.DB
 	pg     bool
 	run    *core.Run
-	sess   investigate.Session
+	sess   investigate_core.Session
 	phases []string
 	states []string
 	outs   map[string]string // the output of the tool calls, by "name#k"
 }
 
-func newEnv(t *testing.T, d *sql.DB, limits investigate.Limits) *env {
+func newEnv(t *testing.T, d *sql.DB, limits investigate_core.Limits) *env {
 	run := createRun(t, d, "user")
 	files := investigate.NotesFile{Dir: filepath.Join(t.TempDir(), "notes")}
-	return &env{d: d, pg: strings.HasSuffix(t.Name(), "postgres"), run: run, outs: map[string]string{}, sess: investigate.Session{
-		Env:      investigate.Env{Store: storeFor(t, d), Files: files, RunID: run.ID, NotesPath: files.Path(run.UserID, run.ID, run.NotesID)},
-		Registry: investigate.LoopRegistry(), Limits: limits,
+	return &env{d: d, pg: strings.HasSuffix(t.Name(), "postgres"), run: run, outs: map[string]string{}, sess: investigate_core.Session{
+		Env:      investigate_core.Env{Store: storeFor(t, d), Files: files, RunID: run.ID, NotesPath: files.Path(run.UserID, run.ID, run.NotesID)},
+		Registry: investigate_core.LoopRegistry(), Limits: limits,
 	}}
 }
 
-func loopLimits() investigate.Limits {
-	l := investigate.DefaultLimits()
+func loopLimits() investigate_core.Limits {
+	l := investigate_core.DefaultLimits()
 	l.MinSources, l.MinDomains, l.MinIndependentSources = 1, 1, 1
 	l.ExtractionThreshold, l.MaxIterations = 200, 40
 	return l
@@ -116,7 +117,7 @@ func loopLimits() investigate.Limits {
 func (e *env) run1(t *testing.T, fm *fakeModel, hooks investigate.Hooks) (investigate.RunResult, error) {
 	t.Helper()
 	count := map[string]int{}
-	hooks.PhaseChanged = func(p investigate.Phase, stop string) { e.phases = append(e.phases, string(p)+"/"+stop) }
+	hooks.PhaseChanged = func(p investigate_core.Phase, stop string) { e.phases = append(e.phases, string(p)+"/"+stop) }
 	prevBefore := hooks.BeforeModel
 	hooks.BeforeModel = func(turn int, state, detail string) {
 		e.states = append(e.states, state)
@@ -183,7 +184,7 @@ func testRunExplorationAndSynthesis(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.StopReason != investigate.StopFinalized || res.Phase != investigate.PhaseSynthesis || res.Turns != 12 {
+	if res.StopReason != investigate_core.StopFinalized || res.Phase != investigate_core.PhaseSynthesis || res.Turns != 12 {
 		t.Fatalf("result: %+v", res)
 	}
 	if !strings.Contains(res.Report, "[s_001](https://a.com/p)") || strings.Contains(res.Report, "s_099") {
@@ -242,7 +243,7 @@ func testRunExplorationAndSynthesis(t *testing.T, d *sql.DB) {
 	if len(q.Attempts) < 2 || q.Attempts[0].Tool != "fetch_page" {
 		t.Errorf("attempts: %+v", q.Attempts)
 	}
-	if st.Challenges[0].AttemptSeq == 0 || st.Challenges[0].Outcome != investigate.OutcomeSurvived {
+	if st.Challenges[0].AttemptSeq == 0 || st.Challenges[0].Outcome != investigate_core.OutcomeSurvived {
 		t.Errorf("challenge: %+v", st.Challenges[0])
 	}
 	// The notes file is the latest version.
@@ -337,7 +338,7 @@ func testRunBreakerInExploration(t *testing.T, d *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.StopReason != investigate.StopIterations || res.Report == "" || res.Turns != 10 {
+	if res.StopReason != investigate_core.StopIterations || res.Report == "" || res.Turns != 10 {
 		t.Fatalf("result: %+v", res)
 	}
 	if want := []string{"exploration/", "synthesis/breaker:iterations", "synthesis/breaker:iterations"}; !slices.Equal(e.phases, want) {
@@ -399,7 +400,7 @@ func testRunCostBreakerAndReserve(t *testing.T, d *sql.DB) {
 		{calls: []tc{{"finalize_report", m{"report": "Cut short by the cost cap."}}}},
 	}}
 	res, err := e.run1(t, fm, investigate.Hooks{})
-	if err != nil || res.StopReason != investigate.StopCost || res.Report == "" {
+	if err != nil || res.StopReason != investigate_core.StopCost || res.Report == "" {
 		t.Fatalf("%+v %v", res, err)
 	}
 	if res.CostUSD < 0.085 || res.CostUSD > 0.10 {
@@ -421,7 +422,7 @@ func testRunTokenBreaker(t *testing.T, d *sql.DB) {
 		{calls: []tc{{"finalize_report", m{"report": "Cut short by the token ceiling."}}}},
 	}}
 	res, err := e.run1(t, fm, investigate.Hooks{})
-	if err != nil || res.StopReason != investigate.StopTokens || res.Report == "" {
+	if err != nil || res.StopReason != investigate_core.StopTokens || res.Report == "" {
 		t.Fatalf("%+v %v", res, err)
 	}
 }
@@ -452,7 +453,7 @@ func testRunReopen(t *testing.T, d *sql.DB) {
 		t.Fatal(err)
 	}
 	want := []string{"exploration/", "synthesis/frontier_exhausted", "exploration/", "synthesis/frontier_exhausted", "synthesis/frontier_exhausted"}
-	if !slices.Equal(e.phases, want) || res.StopReason != investigate.StopFrontierExhausted || res.Report == "" {
+	if !slices.Equal(e.phases, want) || res.StopReason != investigate_core.StopFrontierExhausted || res.Report == "" {
 		t.Fatalf("%+v phases %v", res, e.phases)
 	}
 	if out := e.outs["reopen_question#2"]; !strings.Contains(out, "cannot reopen exploration again") {

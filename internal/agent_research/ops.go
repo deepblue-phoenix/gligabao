@@ -10,7 +10,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db/postgres"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db/sqlite"
-	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 )
 
@@ -19,7 +19,7 @@ import (
 type Ops struct {
 	Store db.Store
 	// Investigate makes the store of the investigative loop (frontier, notes, claims, challenges) on the database.
-	Investigate func(*sql.DB) investigate.Store
+	Investigate func(*sql.DB) investigate_core.Store
 }
 
 // The Ops of each backend.

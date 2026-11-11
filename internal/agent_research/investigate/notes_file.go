@@ -3,17 +3,12 @@ package investigate
 import (
 	"errors"
 	"fmt"
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 )
-
-// NotesStore is the small read/write interface the notes live behind, so that they can move (an object store) without touching the loop.
-type NotesStore interface {
-	Read(path string) (string, error)
-	Write(path, text string) error
-}
 
 // NotesFile is the notes working copy as files in Dir.
 type NotesFile struct {
@@ -57,7 +52,7 @@ func (f NotesFile) Path(user string, runID int64, notesID string) string {
 func (f NotesFile) Read(path string) (string, error) {
 	b, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return Render(Notes{}), nil
+		return investigate_core.Render(investigate_core.Notes{}), nil
 	}
 	if err != nil {
 		return "", fmt.Errorf("read notes file: %w", err)

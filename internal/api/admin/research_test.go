@@ -13,7 +13,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
-	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
@@ -254,11 +254,11 @@ func testResearchAdmin(t *testing.T, d *sql.DB) {
 	if err := st.SetPhase(ctx, d, root.ID, "exploration", ""); err != nil {
 		t.Fatal(err)
 	}
-	err = ops.Investigate(d).InTx(ctx, func(tx investigate.Tx) error {
-		if err := tx.UpsertQuestion(ctx, root.ID, investigate.Question{ID: "q_001", Kind: investigate.KindQuestion, Question: "root?", Priority: 1, Status: investigate.StatusResolved, Answer: "yes"}); err != nil {
+	err = ops.Investigate(d).InTx(ctx, func(tx investigate_core.Tx) error {
+		if err := tx.UpsertQuestion(ctx, root.ID, investigate_core.Question{ID: "q_001", Kind: investigate_core.KindQuestion, Question: "root?", Priority: 1, Status: investigate_core.StatusResolved, Answer: "yes"}); err != nil {
 			return err
 		}
-		if err := tx.UpsertQuestion(ctx, root.ID, investigate.Question{ID: "q_002", ParentID: "q_001", Depth: 1, Kind: investigate.KindQuestion, Question: "child?", Priority: 0.5, Status: investigate.StatusPending}); err != nil {
+		if err := tx.UpsertQuestion(ctx, root.ID, investigate_core.Question{ID: "q_002", ParentID: "q_001", Depth: 1, Kind: investigate_core.KindQuestion, Question: "child?", Priority: 0.5, Status: investigate_core.StatusPending}); err != nil {
 			return err
 		}
 		_, err := tx.AddNotesVersion(ctx, root.ID, "# Notes\n", "notes_append", 1)

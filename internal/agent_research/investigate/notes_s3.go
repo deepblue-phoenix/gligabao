@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
 	"io"
 	"log"
 	"path"
@@ -82,12 +83,12 @@ func (n *NotesS3) Key(user, localPath string) string {
 
 // Mirror returns the NotesStore of a user's runs: the local files stay the working copy, every write is also put to the bucket, and a
 // read of a file missing locally (a container restarted with an empty disk) is served from the bucket.
-func (n *NotesS3) Mirror(local NotesStore, user string) NotesStore {
+func (n *NotesS3) Mirror(local investigate_core.NotesStore, user string) investigate_core.NotesStore {
 	return notesMirror{local: local, s3: n, user: user}
 }
 
 type notesMirror struct {
-	local NotesStore
+	local investigate_core.NotesStore
 	s3    *NotesS3
 	user  string
 }
@@ -107,7 +108,7 @@ func (m notesMirror) Write(p, text string) error {
 // Read reads the local file; if it is missing (it reads as the empty notes) the object of the bucket is used when there is one.
 func (m notesMirror) Read(p string) (string, error) {
 	got, err := m.local.Read(p)
-	if err != nil || got != Render(Notes{}) {
+	if err != nil || got != investigate_core.Render(investigate_core.Notes{}) {
 		return got, err
 	}
 	if remote, ok := m.s3.get(m.s3.Key(m.user, p)); ok {

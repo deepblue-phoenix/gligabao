@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.186.2] - 2026-11-11
+
+### Changed
+- The pure core of the investigative loop (state, frontier, notes, claims, challenges, tools, prompt, gates, breakers, effects and the store interfaces) moved from `internal/agent_research/investigate` to the new package `internal/agent_research/investigate_core`. The loop runner and the notes files stay in `investigate`. No behaviour change.
+
 ## [0.186.1] - 2026-11-11
 
 ### Changed

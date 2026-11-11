@@ -17,6 +17,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	log "github.com/sirupsen/logrus"
@@ -218,7 +219,7 @@ func (m *Manager) applyDef(opts Options, def *agent_defs.Def) (Options, error) {
 		}
 		opts.MaxSteps = opts.investigateKnobs(def).MaxIterations
 		if opts.MaxSteps == 0 {
-			opts.MaxSteps = investigate.DefaultLimits().MaxIterations
+			opts.MaxSteps = investigate_core.DefaultLimits().MaxIterations
 		}
 	} else if opts.Investigate != nil {
 		return opts, invalidErr(fmt.Sprintf("the investigate options only take effect with the investigative loop, and the agent %q runs the simple one", def.Name))

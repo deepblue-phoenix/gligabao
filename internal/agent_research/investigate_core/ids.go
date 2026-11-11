@@ -4,7 +4,7 @@
 //
 // The files ids.go, limits.go, frontier.go, notes.go, claims.go, challenges.go, state.go, diff.go and tools.go are the pure core: values and
 // functions of values, with no database, model or file system (a test checks their imports). effects.go, store.go and notes_file.go are the edge.
-package investigate
+package investigate_core
 
 import (
 	"fmt"

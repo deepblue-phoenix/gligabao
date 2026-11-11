@@ -1,4 +1,4 @@
-package investigate
+package investigate_core
 
 // Limits are the knobs of the investigation that stage 1 uses (the defaults of the design's Configuration section). Stage 2 passes
 // run options in through the same struct.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
 	"slices"
 	"strings"
 	"time"
@@ -38,7 +39,7 @@ type Hooks struct {
 	// Entered is called when the loop enters a state of its own, outside a model call (selecting the next question).
 	Entered func(turn int, state, detail string)
 	// PhaseChanged is called when the phase or the stop reason changes (and at the start), to store them.
-	PhaseChanged func(phase Phase, stopReason string)
+	PhaseChanged func(phase investigate_core.Phase, stopReason string)
 }
 
 // Trajectory asks the loop to record an ATIF trajectory of the run.
@@ -48,7 +49,7 @@ type Trajectory struct {
 
 // Config is everything Run needs.
 type Config struct {
-	Session Session
+	Session investigate_core.Session
 	Model   ModelFunc
 	// ModelName and MaxTokens go into every request ("" and 0: the client's defaults).
 	ModelName string
@@ -66,14 +67,14 @@ type Config struct {
 type RunResult struct {
 	// Report is the accepted report, with the source ids as links ("" if the run did not end with one).
 	Report     string
-	Phase      Phase
+	Phase      investigate_core.Phase
 	StopReason string
 	Totals
 	Trajectory *atif.Trajectory
 }
 
 // BreakerError is the error of a run that ended in synthesis because a breaker fired there (the reserve was not enough).
-type BreakerError struct{ Breaker Breaker }
+type BreakerError struct{ Breaker investigate_core.Breaker }
 
 func (e *BreakerError) Error() string {
 	return fmt.Sprintf("the synthesis reserve was exhausted without a report (%s)", e.Breaker)
@@ -82,7 +83,7 @@ func (e *BreakerError) Error() string {
 // Run runs the investigation to the end: exploration, then synthesis, until a report is accepted, or a breaker fires in synthesis (a
 // *BreakerError), the model fails or ctx ends. The run's state is in the store of cfg.Session: a first call records the root question.
 func Run(ctx context.Context, cfg Config) (RunResult, error) {
-	r := &runner{cfg: cfg, ls: StartLoop(), sess: cfg.Session}
+	r := &runner{cfg: cfg, ls: investigate_core.StartLoop(), sess: cfg.Session}
 	r.prompt = r.buildPrompt()
 	if t := cfg.Trajectory; t != nil {
 		r.tr = newRecorder(cfg, r.prompt)
@@ -95,9 +96,9 @@ func Run(ctx context.Context, cfg Config) (RunResult, error) {
 
 type runner struct {
 	cfg    Config
-	sess   Session
-	prompt Prompt
-	ls     LoopState
+	sess   investigate_core.Session
+	prompt investigate_core.Prompt
+	ls     investigate_core.LoopState
 	report string
 	// toolCalls and in/out are the totals not kept by the loop state (the state has the tokens and the cost).
 	toolCalls, in, out int
@@ -108,17 +109,17 @@ func (r *runner) totals() Totals {
 	return Totals{Turns: r.ls.Turns, ToolCalls: r.toolCalls, InputTokens: r.in, OutputTokens: r.out, CostUSD: r.ls.CostUSD}
 }
 
-func (r *runner) buildPrompt() Prompt {
-	var cat []ToolSpec
+func (r *runner) buildPrompt() investigate_core.Prompt {
+	var cat []investigate_core.ToolSpec
 	var ext []string
 	for _, t := range r.cfg.External {
-		cat = append(cat, ToolSpec{Name: t.Name, Description: t.Description, Schema: t.Schema})
+		cat = append(cat, investigate_core.ToolSpec{Name: t.Name, Description: t.Description, Schema: t.Schema})
 		ext = append(ext, t.Name)
 	}
 	for _, t := range r.sess.Registry.Tools() {
-		cat = append(cat, ToolSpec{Name: t.Name, Description: t.Description, Schema: t.Schema})
+		cat = append(cat, investigate_core.ToolSpec{Name: t.Name, Description: t.Description, Schema: t.Schema})
 	}
-	return Prompt{System: r.cfg.System, Task: r.cfg.Task, Catalog: cat, External: ext}
+	return investigate_core.Prompt{System: r.cfg.System, Task: r.cfg.Task, Catalog: cat, External: ext}
 }
 
 func (r *runner) phaseChanged() {
@@ -158,11 +159,11 @@ func (r *runner) step(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if bs := CheckBreakers(r.ls, st.Limits); len(bs) > 0 {
+	if bs := investigate_core.CheckBreakers(r.ls, st.Limits); len(bs) > 0 {
 		return r.onBreaker(ctx, st, bs[0])
 	}
-	kind := NextKind(r.ls, st)
-	if r.ls.Phase == PhaseExploration && kind == TurnExplore && needsSelection(st) {
+	kind := investigate_core.NextKind(r.ls, st)
+	if r.ls.Phase == investigate_core.PhaseExploration && kind == investigate_core.TurnExplore && needsSelection(st) {
 		var moved bool
 		if st, moved, err = r.selectNext(ctx, st); err != nil || moved {
 			return err
@@ -173,13 +174,15 @@ func (r *runner) step(ctx context.Context) error {
 
 // onBreaker: in exploration the run moves to synthesis with a note of the cut (it is not failed); in synthesis the reserve is exhausted and
 // the run fails with the breaker named.
-func (r *runner) onBreaker(ctx context.Context, st State, b Breaker) error {
-	if r.ls.Phase == PhaseSynthesis {
+func (r *runner) onBreaker(ctx context.Context, st investigate_core.State, b investigate_core.Breaker) error {
+	if r.ls.Phase == investigate_core.PhaseSynthesis {
 		r.ls = r.ls.Failed(b.StopReason())
 		r.phaseChanged()
 		return &BreakerError{Breaker: b}
 	}
-	if err := r.sess.apply(ctx, "breaker", func(s State) (State, []Transition) { return CutShort(s, b), nil }); err != nil {
+	if err := r.sess.Apply(ctx, "breaker", func(s investigate_core.State) (investigate_core.State, []investigate_core.Transition) {
+		return investigate_core.CutShort(s, b), nil
+	}); err != nil {
 		return err
 	}
 	r.ls = r.ls.ToSynthesis(b.StopReason())
@@ -188,7 +191,7 @@ func (r *runner) onBreaker(ctx context.Context, st State, b Breaker) error {
 }
 
 // needsSelection: the objective has sub-questions and none of them is in progress.
-func needsSelection(s State) bool {
+func needsSelection(s investigate_core.State) bool {
 	root, ok := s.Frontier.Root()
 	if !ok || len(s.Frontier.Children(root.ID)) == 0 {
 		return false
@@ -201,12 +204,12 @@ func needsSelection(s State) bool {
 // exhausted: the final check queues the claims still UNVERIFIED behind resolved questions; if it queued none, the gate is looked at, and
 // either exploration ends or the model is given a few turns to wrap up. moved says that the loop state or the frontier changed and the
 // iteration is over.
-func (r *runner) selectNext(ctx context.Context, st State) (State, bool, error) {
+func (r *runner) selectNext(ctx context.Context, st investigate_core.State) (investigate_core.State, bool, error) {
 	turn := r.ls.Turns + 1
 	if h := r.cfg.Hooks.Entered; h != nil {
-		h(turn, StateSelecting, "frontier_next")
+		h(turn, investigate_core.StateSelecting, "frontier_next")
 	}
-	if _, err := r.sess.Call(ctx, "frontier_next", json.RawMessage(`{}`)); err != nil && !errors.Is(err, ErrNotesFile) {
+	if _, err := r.sess.Call(ctx, "frontier_next", json.RawMessage(`{}`)); err != nil && !errors.Is(err, investigate_core.ErrNotesFile) {
 		return st, false, fmt.Errorf("selecting the next question: %w", err)
 	}
 	next, err := r.sess.Load(ctx)
@@ -218,12 +221,14 @@ func (r *runner) selectNext(ctx context.Context, st State) (State, bool, error) 
 		return next, false, nil
 	}
 	// Exhausted.
-	checked, ts, ids := FinalCheck(next)
+	checked, ts, ids := investigate_core.FinalCheck(next)
 	if len(ids) > 0 {
-		return next, true, r.sess.apply(ctx, "", func(State) (State, []Transition) { return checked, ts })
+		return next, true, r.sess.Apply(ctx, "", func(investigate_core.State) (investigate_core.State, []investigate_core.Transition) {
+			return checked, ts
+		})
 	}
-	if len(ExplorationGate(next)) == 0 || r.ls.WrapUp >= WrapUpTurns {
-		r.ls = r.ls.ToSynthesis(StopFrontierExhausted)
+	if len(investigate_core.ExplorationGate(next)) == 0 || r.ls.WrapUp >= investigate_core.WrapUpTurns {
+		r.ls = r.ls.ToSynthesis(investigate_core.StopFrontierExhausted)
 		r.phaseChanged()
 		return next, true, nil
 	}
@@ -248,7 +253,7 @@ func (r *runner) restoreNotes(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		want = Render(st.Notes)
+		want = investigate_core.Render(st.Notes)
 	}
 	if got, rerr := env.Files.Read(env.NotesPath); rerr == nil && got == want {
 		return nil
@@ -260,30 +265,13 @@ func (r *runner) restoreNotes(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return Execute(ctx, env, seq, []Effect{WriteNotes{Text: want, Reason: "restore"}})
-}
-
-// apply runs a pure change of the state as one list of effects.
-func (s Session) apply(ctx context.Context, notesReason string, fn func(State) (State, []Transition)) error {
-	st, err := s.Load(ctx)
-	if err != nil {
-		return err
-	}
-	next, ts := fn(st)
-	seq, err := s.Env.Store.StateSeq(ctx, s.Env.RunID)
-	if err != nil {
-		return err
-	}
-	if err := Execute(ctx, s.Env, seq, Diff(st, next, ts, notesReason)); err != nil && !errors.Is(err, ErrNotesFile) {
-		return err
-	}
-	return nil
+	return investigate_core.Execute(ctx, env, seq, []investigate_core.Effect{investigate_core.WriteNotes{Text: want, Reason: "restore"}})
 }
 
 // turn is the act step: build the request, call the model, run the tools it asked for, then update (commit, evict, reblock).
-func (r *runner) turn(ctx context.Context, kind TurnKind, st State) error {
+func (r *runner) turn(ctx context.Context, kind investigate_core.TurnKind, st investigate_core.State) error {
 	n, phaseBefore := r.ls.Turns+1, r.ls.Phase
-	req := BuildRequest(r.prompt, kind, r.ls, st)
+	req := investigate_core.BuildRequest(r.prompt, kind, r.ls, st)
 	payload := req.Payload()
 	if r.cfg.ModelName != "" {
 		payload["model"] = r.cfg.ModelName
@@ -291,9 +279,9 @@ func (r *runner) turn(ctx context.Context, kind TurnKind, st State) error {
 	if r.cfg.MaxTokens > 0 {
 		payload["max_tokens"] = r.cfg.MaxTokens
 	}
-	state := StateOf(kind, r.ls, st)
+	state := investigate_core.StateOf(kind, r.ls, st)
 	detail := fmt.Sprintf("turn %d of %d", n, st.Limits.MaxIterations)
-	if q := CurrentID(st); q != "" && r.ls.Phase == PhaseExploration {
+	if q := investigate_core.CurrentID(st); q != "" && r.ls.Phase == investigate_core.PhaseExploration {
 		detail += ", question " + q
 	}
 	if h := r.cfg.Hooks.BeforeModel; h != nil {
@@ -309,10 +297,10 @@ func (r *runner) turn(ctx context.Context, kind TurnKind, st State) error {
 	if h := r.cfg.Hooks.AfterModel; h != nil {
 		h(n, r.totals())
 	}
-	rec := r.tr.begin(started, resp, n, kind, state, r.ls.Phase, CurrentID(st))
+	rec := r.tr.begin(started, resp, n, kind, state, r.ls.Phase, investigate_core.CurrentID(st))
 
 	var text strings.Builder
-	var calls []Call
+	var calls []investigate_core.Call
 	for _, raw := range resp.Content {
 		var b struct {
 			Type  string          `json:"type"`
@@ -329,7 +317,7 @@ func (r *runner) turn(ctx context.Context, kind TurnKind, st State) error {
 			text.WriteString(b.Text)
 		case "tool_use":
 			rec.call(b.ID, b.Name, b.Input)
-			c := r.runTool(ctx, kind, n, st, Call{ID: b.ID, Name: b.Name, Input: b.Input})
+			c := r.runTool(ctx, kind, n, st, investigate_core.Call{ID: b.ID, Name: b.Name, Input: b.Input})
 			rec.result(c)
 			calls = append(calls, c)
 		}
@@ -344,28 +332,29 @@ func (r *runner) turn(ctx context.Context, kind TurnKind, st State) error {
 	if err != nil {
 		return err
 	}
-	turn := Turn{N: n, Content: resp.Content, Calls: calls}
+	turn := investigate_core.Turn{N: n, Content: resp.Content, Calls: calls}
 	if len(calls) == 0 {
-		turn.Nudge = Reminder(kind, next)
+		turn.Nudge = investigate_core.Reminder(kind, next)
 	}
-	r.ls = r.ls.AddTurn(turn, PendingOf(turn, CurrentID(st)))
+	r.ls = r.ls.AddTurn(turn, investigate_core.PendingOf(turn, investigate_core.CurrentID(st)))
 	switch {
-	case kind == TurnExtract:
-		if !WroteNotes(turn) {
+	case kind == investigate_core.TurnExtract:
+		if !investigate_core.WroteNotes(turn) {
 			r.noteNothingRelevant(ctx)
 		}
 		r.ls = r.ls.CommitUpTo(n)
-	case WroteNotes(turn):
+	case investigate_core.WroteNotes(turn):
 		r.ls = r.ls.CommitUpTo(n - 1)
 	}
-	if kind == TurnConsolidate {
-		r.ls = AfterConsolidation(r.ls, TokenEstimate(st.Notes), TokenEstimate(next.Notes), next.Limits)
+	if kind == investigate_core.TurnConsolidate {
+		r.ls = investigate_core.AfterConsolidation(r.ls, investigate_core.TokenEstimate(st.Notes), investigate_core.TokenEstimate(next.Notes), next.Limits)
 	}
-	r.ls = Evict(r.ls, next.Limits.KeepTurns)
-	if r.ls.Phase == PhaseExploration {
-		if err := r.sess.apply(ctx, "", func(s State) (State, []Transition) {
-			f, ts := Reblock(s.Frontier)
-			return s.with(f), ts
+	r.ls = investigate_core.Evict(r.ls, next.Limits.KeepTurns)
+	if r.ls.Phase == investigate_core.PhaseExploration {
+		if err := r.sess.Apply(ctx, "", func(s investigate_core.State) (investigate_core.State, []investigate_core.Transition) {
+			f, ts := investigate_core.Reblock(s.Frontier)
+			s.Frontier = f
+			return s, ts
 		}); err != nil {
 			return err
 		}
@@ -386,7 +375,7 @@ func (r *runner) noteNothingRelevant(ctx context.Context) {
 }
 
 // runTool runs one tool call of a turn and returns it with its output.
-func (r *runner) runTool(ctx context.Context, kind TurnKind, turn int, st State, c Call) Call {
+func (r *runner) runTool(ctx context.Context, kind investigate_core.TurnKind, turn int, st investigate_core.State, c investigate_core.Call) investigate_core.Call {
 	r.toolCalls++
 	if h := r.cfg.Hooks.BeforeTool; h != nil {
 		h(turn, c.Name, c.Input)
@@ -399,7 +388,7 @@ func (r *runner) runTool(ctx context.Context, kind TurnKind, turn int, st State,
 	return c
 }
 
-func (r *runner) dispatch(ctx context.Context, kind TurnKind, st State, c Call) (out string, isErr bool) {
+func (r *runner) dispatch(ctx context.Context, kind investigate_core.TurnKind, st investigate_core.State, c investigate_core.Call) (out string, isErr bool) {
 	defer func() {
 		if p := recover(); p != nil { // a tool that panics must not take the run down
 			out, isErr = fmt.Sprintf("tool %s failed: %v", c.Name, p), true
@@ -414,7 +403,7 @@ func (r *runner) dispatch(ctx context.Context, kind TurnKind, st State, c Call) 
 	for n := range external {
 		extNames = append(extNames, n)
 	}
-	if !slices.Contains(OfferedTools(kind, extNames, registry), c.Name) {
+	if !slices.Contains(investigate_core.OfferedTools(kind, extNames, registry), c.Name) {
 		return fmt.Sprintf("the tool %s is not available in this turn", c.Name), true
 	}
 	if t, ok := external[c.Name]; ok {
@@ -423,7 +412,7 @@ func (r *runner) dispatch(ctx context.Context, kind TurnKind, st State, c Call) 
 	return r.runRegistry(ctx, st, c)
 }
 
-func (r *runner) runExternal(ctx context.Context, t agent.Tool, st State, c Call) (string, bool) {
+func (r *runner) runExternal(ctx context.Context, t agent.Tool, st investigate_core.State, c investigate_core.Call) (string, bool) {
 	uctx, drain := agent.WithUsage(ctx)
 	out, err := t.Run(uctx, c.Input)
 	in, o, cost := drain()
@@ -433,7 +422,7 @@ func (r *runner) runExternal(ctx context.Context, t agent.Tool, st State, c Call
 		out, c.IsErr = err.Error(), true
 	}
 	c.Output = out
-	if !c.IsErr && IsRawTool(c.Name) {
+	if !c.IsErr && investigate_core.IsRawTool(c.Name) {
 		r.logAttempt(ctx, c)
 	}
 	return out, c.IsErr
@@ -442,57 +431,59 @@ func (r *runner) runExternal(ctx context.Context, t agent.Tool, st State, c Call
 // logAttempt writes the attempt a search, a page read or a knowledge-base query made for the question to the attempt log, in the effect
 // list of its own; the registered query of an open challenge is linked to its challenge instead. A query that is already in the log (the
 // one retry_question logged) is not logged again. A failure is not fatal: the attempt log is a record.
-func (r *runner) logAttempt(ctx context.Context, c Call) {
-	arg := ArgOf(c)
+func (r *runner) logAttempt(ctx context.Context, c investigate_core.Call) {
+	arg := investigate_core.ArgOf(c)
 	if arg == "" {
 		return
 	}
-	outcome := fmt.Sprintf("%d chars: %s", len([]rune(c.Output)), truncate(clean(c.Output), 100))
-	_ = r.sess.apply(ctx, "", func(s State) (State, []Transition) {
+	outcome := fmt.Sprintf("%d chars: %s", len([]rune(c.Output)), investigate_core.Excerpt(c.Output, 100))
+	_ = r.sess.Apply(ctx, "", func(s investigate_core.State) (investigate_core.State, []investigate_core.Transition) {
 		next := s
-		if i := slices.IndexFunc(s.Challenges, func(h Challenge) bool {
-			return h.Status == ChallengeOpen && h.AttemptSeq == 0 && Normalize(h.Query) == Normalize(arg)
+		if i := slices.IndexFunc(s.Challenges, func(h investigate_core.Challenge) bool {
+			return h.Status == investigate_core.ChallengeOpen && h.AttemptSeq == 0 && investigate_core.Normalize(h.Query) == investigate_core.Normalize(arg)
 		}); i >= 0 {
-			if f, chs, err := LinkAttempt(s.Frontier, s.Challenges, s.Challenges[i].ID, c.Name, outcome); err == nil {
+			if f, chs, err := investigate_core.LinkAttempt(s.Frontier, s.Challenges, s.Challenges[i].ID, c.Name, outcome); err == nil {
 				next.Frontier, next.Challenges = f, chs
 			}
 			return next, nil
 		}
-		qid := CurrentID(s)
+		qid := investigate_core.CurrentID(s)
 		q, ok := s.Frontier.Get(qid)
-		if !ok || slices.ContainsFunc(q.Attempts, func(a Attempt) bool { return Normalize(a.Query) == Normalize(arg) }) {
+		if !ok || slices.ContainsFunc(q.Attempts, func(a investigate_core.Attempt) bool {
+			return investigate_core.Normalize(a.Query) == investigate_core.Normalize(arg)
+		}) {
 			return s, nil
 		}
-		if f, _, err := AddAttempt(s.Frontier, qid, Attempt{Query: arg, Tool: c.Name, Outcome: outcome}); err == nil {
+		if f, _, err := investigate_core.AddAttempt(s.Frontier, qid, investigate_core.Attempt{Query: arg, Tool: c.Name, Outcome: outcome}); err == nil {
 			next.Frontier = f
 		}
 		return next, nil
 	})
 }
 
-func (r *runner) runRegistry(ctx context.Context, st State, c Call) (string, bool) {
+func (r *runner) runRegistry(ctx context.Context, st investigate_core.State, c investigate_core.Call) (string, bool) {
 	// Only synthesis may reopen, and only max_reopens times: then the run goes back to exploration.
-	if r.ls.Phase == PhaseSynthesis && c.Name == "reopen_question" && !r.ls.CanReopen(st.Limits) {
+	if r.ls.Phase == investigate_core.PhaseSynthesis && c.Name == "reopen_question" && !r.ls.CanReopen(st.Limits) {
 		return fmt.Sprintf("the report cannot reopen exploration again (at most %d times): state the gap in the report", st.Limits.MaxReopens), true
 	}
 	text, err := r.sess.Call(ctx, c.Name, c.Input)
-	if err != nil && !errors.Is(err, ErrNotesFile) {
+	if err != nil && !errors.Is(err, investigate_core.ErrNotesFile) {
 		return err.Error(), true
 	}
 	switch c.Name {
-	case ToolFinishExploration:
+	case investigate_core.ToolFinishExploration:
 		r.ls = r.ls.ToSynthesis("")
 		r.phaseChanged()
-	case ToolFinalizeReport:
+	case investigate_core.ToolFinalizeReport:
 		var a struct {
 			Report string `json:"report"`
 		}
 		_ = json.Unmarshal(c.Input, &a)
-		r.report = RenderReport(strings.TrimSpace(a.Report), st.Notes)
+		r.report = investigate_core.RenderReport(strings.TrimSpace(a.Report), st.Notes)
 		r.ls = r.ls.Finalized()
 		r.phaseChanged()
 	case "reopen_question":
-		if r.ls.Phase == PhaseSynthesis {
+		if r.ls.Phase == investigate_core.PhaseSynthesis {
 			r.ls = r.ls.Reopen()
 			r.phaseChanged()
 		}
@@ -506,7 +497,7 @@ type recorder struct {
 	model string
 }
 
-func newRecorder(cfg Config, p Prompt) *recorder {
+func newRecorder(cfg Config, p investigate_core.Prompt) *recorder {
 	t := cfg.Trajectory
 	name, version := t.Name, t.Version
 	if name == "" {
@@ -536,7 +527,7 @@ type stepRec struct {
 	r      *recorder
 }
 
-func (t *recorder) begin(started time.Time, resp *ai.RawResponse, turn int, kind TurnKind, state string, phase Phase, question string) *stepRec {
+func (t *recorder) begin(started time.Time, resp *ai.RawResponse, turn int, kind investigate_core.TurnKind, state string, phase investigate_core.Phase, question string) *stepRec {
 	if t == nil {
 		return nil
 	}
@@ -565,7 +556,7 @@ func (s *stepRec) call(id, name string, input json.RawMessage) {
 	s.step.ToolCalls = append(s.step.ToolCalls, atif.ToolCall{ToolCallID: id, FunctionName: name, Arguments: args})
 }
 
-func (s *stepRec) result(c Call) {
+func (s *stepRec) result(c investigate_core.Call) {
 	if s == nil {
 		return
 	}

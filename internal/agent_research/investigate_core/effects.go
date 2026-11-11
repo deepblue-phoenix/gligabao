@@ -1,8 +1,9 @@
-package investigate
+package investigate_core
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -135,4 +136,21 @@ func (s Session) Call(ctx context.Context, name string, args json.RawMessage) (s
 		return res.Text, err
 	}
 	return res.Text, nil
+}
+
+// Apply runs a pure change of the state as one list of effects.
+func (s Session) Apply(ctx context.Context, notesReason string, fn func(State) (State, []Transition)) error {
+	st, err := s.Load(ctx)
+	if err != nil {
+		return err
+	}
+	next, ts := fn(st)
+	seq, err := s.Env.Store.StateSeq(ctx, s.Env.RunID)
+	if err != nil {
+		return err
+	}
+	if err := Execute(ctx, s.Env, seq, Diff(st, next, ts, notesReason)); err != nil && !errors.Is(err, ErrNotesFile) {
+		return err
+	}
+	return nil
 }

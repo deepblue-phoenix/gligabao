@@ -1,4 +1,4 @@
-package investigate
+package investigate_core
 
 import "slices"
 

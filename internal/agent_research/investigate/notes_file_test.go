@@ -1,6 +1,7 @@
 package investigate
 
 import (
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,19 +52,19 @@ func TestNotesFileReadWrite(t *testing.T) {
 	f := NotesFile{Dir: dir}
 	path := f.Path("u", 1, strings.Repeat("0", 32))
 	text, err := f.Read(path)
-	if err != nil || text != Render(Notes{}) {
+	if err != nil || text != investigate_core.Render(investigate_core.Notes{}) {
 		t.Fatalf("a missing file reads as the empty notes: %q %v", text, err)
 	}
-	n := richNotes(t)
-	if err := f.Write(path, Render(n)); err != nil { // creates the directory
+	n := investigate_core.Notes{Objective: "Does X fit in 16 GB?"}
+	if err := f.Write(path, investigate_core.Render(n)); err != nil { // creates the directory
 		t.Fatal(err)
 	}
 	got, err := f.Read(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	back, errs := Parse(got)
-	if len(errs) > 0 || Render(back) != Render(n) {
+	back, errs := investigate_core.Parse(got)
+	if len(errs) > 0 || investigate_core.Render(back) != investigate_core.Render(n) {
 		t.Fatalf("write, read, parse: %v", errs)
 	}
 	if err := f.Write(path, "second"); err != nil {
