@@ -50,11 +50,15 @@ func (m *Manager) notesDir() string {
 // runInvestigative runs the investigative loop of the agent and returns its outcome in the shape of the simple loop's.
 func (r *researcher) runInvestigative() (*agent.Result, error) {
 	limits := investigateLimits(r.opts.investigateKnobs(r.def), lowestCap(r.def.Limits.MaxCostUSD, r.opts.treeCostCap))
-	files := investigate.NotesFile{Dir: r.mgr.notesDir()}
+	local := investigate.NotesFile{Dir: r.mgr.notesDir()}
+	var files investigate.NotesStore = local
+	if r.mgr.NotesS3 != nil {
+		files = r.mgr.NotesS3.Mirror(local, r.run.UserID)
+	}
 	sess := investigate.Session{
 		Env: investigate.Env{
 			Store: r.mgr.Ops.Investigate(r.db), Files: files, RunID: r.run.ID,
-			NotesPath: files.Path(r.run.UserID, r.run.ID, r.run.NotesID),
+			NotesPath: local.Path(r.run.UserID, r.run.ID, r.run.NotesID),
 		},
 		Registry: investigate.LoopRegistry(),
 		Limits:   limits,

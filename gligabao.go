@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
@@ -389,13 +390,16 @@ func serverOptions(cfg *Config, opts ServeOptions) (serverOpts server.Options, r
 		AgentDefsDir:       agentDefsDir,
 		ResearchMaxCostUSD: cfg.ResearchMaxCostUSD,
 		ResearchNotesDir:   cfg.ResearchNotesDirOrDefault(),
-		AnthropicKey:       cfg.AnthropicKey,
-		OpenAIKey:          cfg.OpenAIKey,
-		JevKey:             cfg.JevKey,
-		JevBaseURL:         cfg.JevBaseURL,
-		JevModel:           cfg.JevModel,
-		SidecarURL:         cfg.SidecarURL,
-		Prices:             aiPrices(cfg),
+		ResearchNotesS3: investigate.NotesS3Config{
+			Bucket: cfg.ResearchNotesS3Bucket, Region: cfg.ResearchNotesS3Region, Prefix: cfg.ResearchNotesS3Prefix,
+		},
+		AnthropicKey: cfg.AnthropicKey,
+		OpenAIKey:    cfg.OpenAIKey,
+		JevKey:       cfg.JevKey,
+		JevBaseURL:   cfg.JevBaseURL,
+		JevModel:     cfg.JevModel,
+		SidecarURL:   cfg.SidecarURL,
+		Prices:       aiPrices(cfg),
 
 		Auth:                    opts.Auth,
 		GeoResolver:             opts.GeoResolver,

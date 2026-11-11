@@ -21,6 +21,7 @@ import (
 	adminui "github.com/deepblue-phoenix/gligabao/admin_ui"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
@@ -119,6 +120,8 @@ type Options struct {
 	ResearchMaxCostUSD float64
 	// ResearchNotesDir is the directory of the notes files of the investigative research loop ("": research_notes in the working directory).
 	ResearchNotesDir string
+	// ResearchNotesS3 ("" bucket: off) also stores the notes files of the investigative loop in the research S3 bucket.
+	ResearchNotesS3 investigate.NotesS3Config
 	// EvalDBPath is a second SQLite file, the eval database (see internal/evals/knowledge/cmd): the evaluation datasets, the
 	// experiments and their runs. The admin UI shows it next to the main database and reads the Evals block (and the
 	// ATIF files, from an "atif" directory next to it) from it. Opened for the admin UI only; ignored (with a warning)
@@ -851,6 +854,14 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 	research := newResearch(mgrCtx, database, llm)
 	research.MaxCostUSD = opts.ResearchMaxCostUSD
 	research.NotesDir = opts.ResearchNotesDir
+	if opts.ResearchNotesS3.Bucket != "" {
+		notesS3, err := investigate.NewNotesS3(ctx, opts.ResearchNotesS3)
+		if err != nil {
+			stopMgr()
+			return nil, nil, err
+		}
+		research.NotesS3 = notesS3
+	}
 	if err := research.UseAgentDefs(agentDefs); err != nil {
 		stopMgr()
 		return nil, nil, err

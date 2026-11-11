@@ -358,3 +358,14 @@ func TestS3VectorsStore(t *testing.T) {
 		t.Error("s3vectors without a bucket: expected error")
 	}
 }
+
+func TestResearchNotesS3(t *testing.T) {
+	p := write(t, "research_notes_s3_bucket = \"b\"\nresearch_notes_s3_prefix = \"notes\"\n")
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ResearchNotesS3Bucket != "b" || cfg.ResearchNotesS3Prefix != "notes" {
+		t.Errorf("got %+v", cfg)
+	}
+}

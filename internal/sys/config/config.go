@@ -23,17 +23,20 @@ const FileName = "gligabao.toml"
 
 // Environment variables the API keys are loaded from.
 const (
-	EnvAnthropicKey    = "ANTHROPIC_API_KEY"
-	EnvOpenAIKey       = "OPENAI_API_KEY"
-	EnvJevKey          = "JEV_API_KEY"
-	EnvJevBaseURL      = "JEV_BASE_URL"
-	EnvPineconeKey     = "PINECONE_API_KEY"
-	EnvPineconeHost    = "PINECONE_INDEX_HOST"
-	EnvPostgresDSN     = "POSTGRES_DSN"
-	EnvS3VectorsBucket = "S3_VECTORS_BUCKET"
-	EnvS3VectorsRegion = "S3_VECTORS_REGION"
-	EnvS3VectorsPrefix = "S3_VECTORS_PREFIX"
-	EnvSidecarURL      = "SIDECAR_URL"
+	EnvAnthropicKey          = "ANTHROPIC_API_KEY"
+	EnvOpenAIKey             = "OPENAI_API_KEY"
+	EnvJevKey                = "JEV_API_KEY"
+	EnvJevBaseURL            = "JEV_BASE_URL"
+	EnvPineconeKey           = "PINECONE_API_KEY"
+	EnvPineconeHost          = "PINECONE_INDEX_HOST"
+	EnvPostgresDSN           = "POSTGRES_DSN"
+	EnvResearchNotesS3Bucket = "RESEARCH_NOTES_S3_BUCKET"
+	EnvResearchNotesS3Region = "RESEARCH_NOTES_S3_REGION"
+	EnvResearchNotesS3Prefix = "RESEARCH_NOTES_S3_PREFIX"
+	EnvS3VectorsBucket       = "S3_VECTORS_BUCKET"
+	EnvS3VectorsRegion       = "S3_VECTORS_REGION"
+	EnvS3VectorsPrefix       = "S3_VECTORS_PREFIX"
+	EnvSidecarURL            = "SIDECAR_URL"
 )
 
 // Database backends selectable with the db_backend setting.
@@ -162,6 +165,14 @@ type Config struct {
 	// see docs/agents/deep-research-loop.md). Default: a research_notes directory next to the binary (see ResearchNotesDirOrDefault), like
 	// agent_defs. A relative path is relative to the config file. Only agents with loop = "investigative" write there.
 	ResearchNotesDir string `toml:"research_notes_dir"`
+	// ResearchNotesS3Bucket, when set, also stores the notes files of the investigative loop in this (existing) Amazon S3 bucket (also
+	// RESEARCH_NOTES_S3_BUCKET), the research bucket common to all the research agents: the local files stay the working copy and every
+	// write is mirrored to <prefix>/<user>/notes_<user>_<run>_<notes_id>.md. Empty (default): local files only.
+	ResearchNotesS3Bucket string `toml:"research_notes_s3_bucket"`
+	// ResearchNotesS3Region is its AWS region (also RESEARCH_NOTES_S3_REGION); empty = the AWS SDK default (AWS_REGION, shared config).
+	ResearchNotesS3Region string `toml:"research_notes_s3_region"`
+	// ResearchNotesS3Prefix is the subdirectory of the bucket for the investigative notes (also RESEARCH_NOTES_S3_PREFIX); default "investigative_notes".
+	ResearchNotesS3Prefix string `toml:"research_notes_s3_prefix"`
 	// ResearchMaxCostUSD is the most one research (all its agents together) may spend, in USD, whatever its agent definition and its
 	// request say: they can only lower it. 0 (default): no cap of the server.
 	ResearchMaxCostUSD float64 `toml:"research_max_cost_usd"`
@@ -235,6 +246,10 @@ func Default() *Config {
 		S3VectorsBucket:   os.Getenv(EnvS3VectorsBucket),
 		S3VectorsRegion:   os.Getenv(EnvS3VectorsRegion),
 		S3VectorsPrefix:   os.Getenv(EnvS3VectorsPrefix),
+
+		ResearchNotesS3Bucket: os.Getenv(EnvResearchNotesS3Bucket),
+		ResearchNotesS3Region: os.Getenv(EnvResearchNotesS3Region),
+		ResearchNotesS3Prefix: os.Getenv(EnvResearchNotesS3Prefix),
 	}
 }
 

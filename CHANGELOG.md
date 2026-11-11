@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.182.0] - 2026-11-12
+
+### Added
+- **Notes of the investigative loop in S3.** New server config `research_notes_s3_bucket` (also `RESEARCH_NOTES_S3_BUCKET`), with `research_notes_s3_region` and `research_notes_s3_prefix` (default `investigative_notes`). When the bucket is set, every write of a notes file is also put to `s3://<bucket>/<prefix>/<user>/notes_<user>_<run>_<notes_id>.md` (one research bucket common to all the research agents, a subdirectory per user), and a notes file missing locally is read back from the bucket. The local file stays the working copy; a failed S3 write is logged and does not stop the run. Off by default. New file `internal/agent_research/investigate/notes_s3.go` (AWS SDK `service/s3`).
+
 ## [0.181.0] - 2026-11-11
 
 ### Added

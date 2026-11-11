@@ -99,6 +99,12 @@ agent_defs_dir = "agent_defs"
 # Where the notes files of the investigative research loop go (notes_<user>_<run>_<notes_id>.md); only agents with loop = "investigative" write there.
 # Default: a research_notes directory next to the binary.
 # research_notes_dir = "research_notes"
+# Also store those notes in an (existing) Amazon S3 bucket, the research bucket common to all the research agents (also RESEARCH_NOTES_S3_BUCKET,
+# _REGION, _PREFIX). The local files stay the working copy and every write is mirrored to s3://<bucket>/<prefix>/<user>/notes_<user>_<run>_<notes_id>.md;
+# a notes file missing locally is read back from the bucket. Credentials: the default AWS chain (instance role). Default: off, local files only.
+# research_notes_s3_bucket = "gligabao-int-research-dev"
+# research_notes_s3_region = "us-east-1"
+# research_notes_s3_prefix = "investigative_notes"
 
 # The most one research (all its agents together) may spend, in USD, whatever its agent definition and request say: they can only lower it.
 # When it is reached the agents write their reports and say so. 0 (default): no cap of the server.

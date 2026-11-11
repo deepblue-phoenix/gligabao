@@ -45,6 +45,8 @@ type Manager struct {
 	MaxCostUSD float64
 	// NotesDir is the directory of the notes files of the investigative loop (config.DefaultResearchNotesDirName if ""). Set it before starting any agent.
 	NotesDir string
+	// NotesS3, if set, mirrors the notes files to the research S3 bucket, under a subdirectory per user. Set it before starting any agent.
+	NotesS3 *investigate.NotesS3
 
 	ctx context.Context
 	mem *Memory // the knowledge base of the agents (nil: they have only the web tools); guarded by mu
