@@ -32,23 +32,25 @@ func DefaultDir() string {
 
 // fileDef is what a definition file holds (TOML or JSON): the fields of Def, with the prompt and the skills as paths and names.
 type fileDef struct {
-	Schema           int       `toml:"schema" json:"schema"`
-	Name             string    `toml:"name" json:"name"`
-	Version          string    `toml:"version" json:"version"`
-	Description      string    `toml:"description" json:"description"`
-	SystemPrompt     string    `toml:"system_prompt" json:"system_prompt"`
-	SystemPromptFile string    `toml:"system_prompt_file" json:"system_prompt_file"`
-	Model            string    `toml:"model" json:"model"`
-	MaxSteps         int       `toml:"max_steps" json:"max_steps"`
-	MaxTokens        int       `toml:"max_tokens" json:"max_tokens"`
-	Tools            []string  `toml:"tools" json:"tools"`
-	Skills           []string  `toml:"skills" json:"skills"`
-	RequiredSkills   []string  `toml:"required_skills" json:"required_skills"`
-	Search           Search    `toml:"search" json:"search"`
-	Knowledge        Knowledge `toml:"knowledge" json:"knowledge"`
-	Limits           Limits    `toml:"limits" json:"limits"`
-	Spawn            Spawn     `toml:"spawn" json:"spawn"`
-	Schedule         *Schedule `toml:"schedule" json:"schedule"`
+	Schema           int          `toml:"schema" json:"schema"`
+	Name             string       `toml:"name" json:"name"`
+	Version          string       `toml:"version" json:"version"`
+	Description      string       `toml:"description" json:"description"`
+	SystemPrompt     string       `toml:"system_prompt" json:"system_prompt"`
+	SystemPromptFile string       `toml:"system_prompt_file" json:"system_prompt_file"`
+	Model            string       `toml:"model" json:"model"`
+	MaxSteps         int          `toml:"max_steps" json:"max_steps"`
+	MaxTokens        int          `toml:"max_tokens" json:"max_tokens"`
+	Tools            []string     `toml:"tools" json:"tools"`
+	Skills           []string     `toml:"skills" json:"skills"`
+	RequiredSkills   []string     `toml:"required_skills" json:"required_skills"`
+	Search           Search       `toml:"search" json:"search"`
+	Knowledge        Knowledge    `toml:"knowledge" json:"knowledge"`
+	Limits           Limits       `toml:"limits" json:"limits"`
+	Spawn            Spawn        `toml:"spawn" json:"spawn"`
+	Loop             string       `toml:"loop" json:"loop"`
+	Investigate      *Investigate `toml:"investigate" json:"investigate"`
+	Schedule         *Schedule    `toml:"schedule" json:"schedule"`
 }
 
 // Load reads the definitions of dir: every *.toml and *.json file in it is one agent (the subdirectories hold what the files refer to:
@@ -146,7 +148,7 @@ func loadFile(path, root string) (*Def, []string) {
 	var problems []string
 	d := &Def{
 		Schema: f.Schema, Name: f.Name, Version: f.Version, Description: f.Description, SystemPrompt: f.SystemPrompt, Model: f.Model,
-		MaxSteps: f.MaxSteps, MaxTokens: f.MaxTokens, Tools: f.Tools, Search: f.Search, Knowledge: f.Knowledge, Limits: f.Limits, Spawn: f.Spawn, Schedule: f.Schedule,
+		MaxSteps: f.MaxSteps, MaxTokens: f.MaxTokens, Tools: f.Tools, Search: f.Search, Knowledge: f.Knowledge, Limits: f.Limits, Spawn: f.Spawn, Loop: f.Loop, Investigate: f.Investigate, Schedule: f.Schedule,
 		Source: path,
 	}
 	switch {

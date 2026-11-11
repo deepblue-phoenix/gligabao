@@ -48,6 +48,10 @@ type Options struct {
 	// the gligabao_agent binary in a Modal container, started through the sidecar, see Manager.UseRemote). With "modal" the agent works
 	// with a knowledge base of its own in the container, not the user's (so Dataset has no effect there).
 	Runner string `json:"runner,omitempty"`
+	// Investigate are the knobs of the investigative loop (max_iterations, max_total_tokens, min_sources, ...; see agent_defs.Investigate), over
+	// those of the definition. They only take effect for an agent with loop = "investigative"; with another loop they are an error. With that
+	// loop max_iterations replaces max_steps (which is then not allowed) and max_cost_usd caps the cost as always.
+	Investigate *agent_defs.Investigate `json:"investigate,omitempty"`
 
 	// datasetGiven says that the request named a dataset (a definition may have a default of its own); treeCostCap is the cap on the cost
 	// of the whole research that results from the request, the definition and the server. Both are set by the Manager.
@@ -78,6 +82,8 @@ func (o Options) resolve() (Options, error) {
 		return o, invalidErr("topic is too long (at most 2000 characters)")
 	case o.MaxSteps < 0 || o.MaxSteps > MaxMaxSteps:
 		return o, invalidErr("max_steps must be between 1 and 40")
+	case o.Investigate != nil && len(o.Investigate.Check()) > 0:
+		return o, invalidErr(o.Investigate.Check()[0])
 	case o.Runner != core.RunnerLocal && o.Runner != core.RunnerModal:
 		return o, invalidErr("runner must be local or modal")
 	case len(o.Model) > maxModelLen || strings.ContainsAny(o.Model, " \t\r\n"):
@@ -113,3 +119,15 @@ const (
 	DefaultListLimit = 50
 	MaxListLimit     = 500
 )
+
+// investigateKnobs are the knobs of the investigative loop of a run: those of the definition, with the options' over them (0 is the default).
+func (o Options) investigateKnobs(def *agent_defs.Def) agent_defs.Investigate {
+	var base, over agent_defs.Investigate
+	if def.Investigate != nil {
+		base = *def.Investigate
+	}
+	if o.Investigate != nil {
+		over = *o.Investigate
+	}
+	return base.Merge(over)
+}

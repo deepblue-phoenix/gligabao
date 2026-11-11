@@ -200,7 +200,7 @@ Tables of the research agents (`internal/agent_research`, see `docs/agents/resea
 
 | Table                          | Description                                                                                                                                      |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `gb_agent_research_runs`   | one row per research agent started on a topic, with its status, the state it is in, steps, tokens and cost so far, and the report or the error. |
+| `gb_agent_research_runs`   | one row per research agent started on a topic, with its status, the state it is in, steps, tokens and cost so far, the report or the error, and (investigative loop) its phase and stop reason. |
 | `gb_agent_research_states` | one row per state the agent went through while working (starting, thinking, searching, reading, ...), append-only, with its detail, error and times. |
 | `gb_agent_frontier_questions` | one row per question of a run's deep-research frontier (a node of the question graph), with its parent, depth, priority, current status and answer. |
 | `gb_agent_frontier_deps` | the edges "question depends on question" of the frontier (a DAG). |

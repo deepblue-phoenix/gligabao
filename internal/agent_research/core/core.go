@@ -106,6 +106,10 @@ type Run struct {
 	// NotesID is the random id in the name of the notes file of the investigative loop (see package investigate); CreateRun makes it if
 	// it is empty. "" for a run made before 0.180.0: it has no notes file.
 	NotesID string `json:"notes_id,omitempty"`
+	// Phase is the phase of an investigative run (investigate.PhaseExploration, investigate.PhaseSynthesis) and StopReason why it stopped
+	// exploring or ended (investigate.Stop*; "" while it runs). Both are "" for a run of the simple loop and for runs made before 0.181.0.
+	Phase      string `json:"phase,omitempty"`
+	StopReason string `json:"stop_reason,omitempty"`
 	// Steps is the number of model calls made so far and ToolCalls the number of tool runs; they, the tokens and the cost are
 	// updated as the run goes. CostUSD includes the model calls of the tools (the web searches).
 	Steps        int     `json:"steps"`

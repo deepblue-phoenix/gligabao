@@ -1,6 +1,6 @@
 # Deep-research loop: frontier, notes and two-phase research (design)
 
-**Status:** design, not implemented. This page is the specification for the implementation. It defines the concepts, the data structures, the DB schema and the behaviour of the loop; it does not prescribe code layout beyond the constraints in [Constraints](#constraints). The agent as it works today is described in [deep-research-agent.md](../deep-research-agent.md); sub-agents in [subagents.md](subagents.md); the job around it in [research.md](research.md).
+**Status:** implemented in two stages: [stage 1](deep-research-loop-stage-1.md) (state, storage and tools, 0.180.0) and [stage 2](deep-research-loop-stage-2.md) (the loop, gates, breakers, knobs and observability, 0.181.0; `loop = "investigative"` in an agent definition, `simple` stays the default). This page is the specification the implementation follows. It defines the concepts, the data structures, the DB schema and the behaviour of the loop; it does not prescribe code layout beyond the constraints in [Constraints](#constraints). The agent as it works today is described in [deep-research-agent.md](../deep-research-agent.md); sub-agents in [subagents.md](subagents.md); the job around it in [research.md](research.md).
 
 ## Why
 

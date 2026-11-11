@@ -502,6 +502,9 @@ type ResolveInput struct {
 	Reason string
 }
 
+// ReasonMarker starts the stored reason in the answer of a question that was resolved with an explicit reason ("(reason: ...)").
+const ReasonMarker = "(reason:"
+
 var claimRef = regexp.MustCompile(`\b[cd]_\d+\b`)
 
 // ClaimRefs are the claim and datapoint ids that text cites.
@@ -524,10 +527,10 @@ func Resolve(f Frontier, id string, in ResolveInput) (Frontier, []Transition, er
 	if len(in.ClaimIDs) > 0 {
 		answer += " [" + strings.Join(dedupe(in.ClaimIDs), ", ") + "]"
 	}
-	reason := truncate(answer, 200)
-	if r := strings.TrimSpace(in.Reason); r != "" {
-		reason += " (reason: " + r + ")"
+	if r := clean(in.Reason); r != "" { // stored with the answer: the exploration gate reads it (ReasonMarker)
+		answer += " " + ReasonMarker + " " + r + ")"
 	}
+	reason := truncate(answer, 200)
 	q.Answer = answer
 	q, t := move(q, StatusResolved, TriggerResolved, ActorAgent, reason, "")
 	out, more := Reblock(f.with(q))

@@ -15,6 +15,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	log "github.com/sirupsen/logrus"
@@ -42,6 +43,8 @@ type Manager struct {
 	// MaxCostUSD is the most one research may spend, all its agents together, whatever the definition and the request say (0: no ceiling
 	// of the server). Set it before starting any agent.
 	MaxCostUSD float64
+	// NotesDir is the directory of the notes files of the investigative loop (config.DefaultResearchNotesDirName if ""). Set it before starting any agent.
+	NotesDir string
 
 	ctx context.Context
 	mem *Memory // the knowledge base of the agents (nil: they have only the web tools); guarded by mu
@@ -200,6 +203,20 @@ func (m *Manager) Agents() []AgentInfo {
 // the whole research (the lowest of the request's, the definition's and the server's). KindInvalid for a dataset the definition locks.
 func (m *Manager) applyDef(opts Options, def *agent_defs.Def) (Options, error) {
 	opts.Agent = def.Name
+	if def.Investigative() {
+		if opts.MaxSteps != 0 {
+			return opts, invalidErr("max_steps does not apply to the investigative loop: use investigate.max_iterations")
+		}
+		if opts.Runner == core.RunnerModal {
+			return opts, invalidErr("the investigative loop runs locally: the modal runner does not support it")
+		}
+		opts.MaxSteps = opts.investigateKnobs(def).MaxIterations
+		if opts.MaxSteps == 0 {
+			opts.MaxSteps = investigate.DefaultLimits().MaxIterations
+		}
+	} else if opts.Investigate != nil {
+		return opts, invalidErr(fmt.Sprintf("the investigate options only take effect with the investigative loop, and the agent %q runs the simple one", def.Name))
+	}
 	if opts.Model == "" {
 		opts.Model = def.Model
 	}

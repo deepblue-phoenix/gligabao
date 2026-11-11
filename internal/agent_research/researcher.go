@@ -115,6 +115,12 @@ func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent 
 	if mem != nil && def.Knowledge.Access != agent_defs.AccessNone {
 		kb = mem.Knowledge(r.ctx, run.UserID, opts.Dataset, SessionID(run.ID))
 	}
+	if def.Investigative() { // its loop is package investigate: no sub-agents, no step limit of the agent loop
+		r.agent = agent.FromDefInvestigative(def, r.client, r.http, kb)
+		r.agent.Model, r.agent.MaxSteps = opts.Model, opts.MaxSteps
+		agent.AddSkills(r.agent, def.Skills)
+		return r
+	}
 	r.agent = agent.FromDef(def, r.client, r.http, kb)
 	r.agent.Model, r.agent.MaxSteps = opts.Model, opts.MaxSteps
 	if parent != nil {
@@ -151,7 +157,13 @@ func (r *researcher) work() {
 	// Its sub-agents end with it, and the run is not finished before they are.
 	defer r.endKids()
 
-	res, err := r.agent.Run(r.runCtx, r.opts.Topic+r.startRoles())
+	var res *agent.Result
+	var err error
+	if r.def.Investigative() {
+		res, err = r.runInvestigative()
+	} else {
+		res, err = r.agent.Run(r.runCtx, r.opts.Topic+r.startRoles())
+	}
 	if res != nil {
 		r.total = *res
 	}
@@ -293,7 +305,7 @@ func toolState(name string, input json.RawMessage) (state, detail string) {
 	switch name {
 	case "web_search":
 		return core.StateSearching, arg("query")
-	case "fetch_url":
+	case "fetch_url", "fetch_page":
 		return core.StateReading, arg("url")
 	case "query":
 		return core.StateQuerying, arg("question")

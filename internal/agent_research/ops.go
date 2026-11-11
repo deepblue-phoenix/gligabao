@@ -10,6 +10,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db/postgres"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db/sqlite"
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 )
 
@@ -17,12 +18,14 @@ import (
 // their states (the backend).
 type Ops struct {
 	Store db.Store
+	// Investigate makes the store of the investigative loop (frontier, notes, claims, challenges) on the database.
+	Investigate func(*sql.DB) investigate.Store
 }
 
 // The Ops of each backend.
 var (
-	SQLiteOps   = Ops{Store: sqlite.Store}
-	PostgresOps = Ops{Store: postgres.Store}
+	SQLiteOps   = Ops{Store: sqlite.Store, Investigate: sqlite.NewInvestigateStore}
+	PostgresOps = Ops{Store: postgres.Store, Investigate: postgres.NewInvestigateStore}
 )
 
 // OpsFor returns the Ops of a database backend (config.DBBackendSQLite or config.DBBackendPostgres; empty is sqlite).

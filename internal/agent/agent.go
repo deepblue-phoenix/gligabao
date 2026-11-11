@@ -112,6 +112,14 @@ func ReportUsage(ctx context.Context, inputTokens, outputTokens int, costUSD flo
 	u.costUSD += costUSD
 }
 
+// WithUsage returns a context that collects what the tools run with it report (ReportUsage), and a function that returns what was
+// collected since its last call and resets it. For a loop that runs the tools itself (the investigative loop of package
+// agent_research/investigate); the Agent's own loop does this by itself.
+func WithUsage(ctx context.Context) (context.Context, func() (inputTokens, outputTokens int, costUSD float64)) {
+	u := &usage{}
+	return context.WithValue(ctx, usageKey{}, u), u.drain
+}
+
 // Result is the outcome of a Run.
 type Result struct {
 	// Answer is the text of the model's last turn.

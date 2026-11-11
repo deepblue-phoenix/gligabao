@@ -202,7 +202,7 @@ func TestResolve(t *testing.T) {
 		t.Fatal(err)
 	}
 	q, _ := f.Get(a)
-	if q.Status != StatusResolved || q.Answer != "yes [c_001, c_002]" || ts[0].Trigger != TriggerResolved || !strings.Contains(ts[0].Reason, "why not") {
+	if q.Status != StatusResolved || q.Answer != "yes [c_001, c_002] (reason: why not)" || ts[0].Trigger != TriggerResolved || !strings.Contains(ts[0].Reason, "why not") {
 		t.Fatalf("%+v %+v", q, ts)
 	}
 	if refs := ClaimRefs(q.Answer); len(refs) != 2 {

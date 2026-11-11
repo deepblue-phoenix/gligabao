@@ -117,6 +117,8 @@ type Options struct {
 	AgentDefsDir string
 	// ResearchMaxCostUSD is the most one research may spend, all its agents together (0: no cap of the server).
 	ResearchMaxCostUSD float64
+	// ResearchNotesDir is the directory of the notes files of the investigative research loop ("": research_notes in the working directory).
+	ResearchNotesDir string
 	// EvalDBPath is a second SQLite file, the eval database (see internal/evals/knowledge/cmd): the evaluation datasets, the
 	// experiments and their runs. The admin UI shows it next to the main database and reads the Evals block (and the
 	// ATIF files, from an "atif" directory next to it) from it. Opened for the admin UI only; ignored (with a warning)
@@ -848,6 +850,7 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 	// The research agents are stopped with it, and given the time to write the end of their runs before the databases close.
 	research := newResearch(mgrCtx, database, llm)
 	research.MaxCostUSD = opts.ResearchMaxCostUSD
+	research.NotesDir = opts.ResearchNotesDir
 	if err := research.UseAgentDefs(agentDefs); err != nil {
 		stopMgr()
 		return nil, nil, err

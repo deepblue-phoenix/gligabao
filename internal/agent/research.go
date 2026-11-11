@@ -311,3 +311,21 @@ func stringArg(input json.RawMessage, name string) (string, error) {
 	}
 	return s, nil
 }
+
+// ToolFetchPage is the name fetch_url has in the investigative loop (loop = "investigative" in an agent definition): the same tool, the
+// same result (the text of the page). The simple loop keeps the name fetch_url, and a definition lists fetch_url either way.
+const ToolFetchPage = "fetch_page"
+
+// FromDefInvestigative is FromDef for an agent that runs the investigative loop: the same tools and prompt, with fetch_url called
+// fetch_page. The loop itself is in package agent_research/investigate; it takes the Tools and the System of the returned agent.
+func FromDefInvestigative(def *agent_defs.Def, client *ai.Client, httpClient *http.Client, kb Knowledge) *Agent {
+	a := FromDef(def, client, httpClient, kb)
+	for i, t := range a.Tools {
+		if t.Name == agent_defs.ToolFetchURL {
+			a.Tools[i].Name = ToolFetchPage
+			a.Tools[i].Description = strings.ReplaceAll(t.Description, agent_defs.ToolFetchURL, ToolFetchPage)
+		}
+	}
+	a.System = strings.ReplaceAll(a.System, agent_defs.ToolFetchURL, ToolFetchPage)
+	return a
+}

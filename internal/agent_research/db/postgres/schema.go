@@ -12,7 +12,7 @@ import _ "embed"
 var Schema string
 
 // Upgrade is what an older database lacks: the columns parent_id, name and reason of gb_agent_research_runs (before sub-agents, 0.129.0)
-// and runner (before the Modal runner, 0.165.0), and agent_name, agent_version and agent_hash (before the agent definitions, 0.168.0), and notes_id (before the deep-research loop state, 0.180.0).
+// and runner (before the Modal runner, 0.165.0), and agent_name, agent_version and agent_hash (before the agent definitions, 0.168.0), and notes_id (before the deep-research loop state, 0.180.0), and phase and stop_reason (before the investigative loop, 0.181.0).
 //
 //go:embed upgrade_columns.sql
 var Upgrade string

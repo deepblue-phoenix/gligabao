@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS gb_agent_research_runs (
 	agent_version TEXT NOT NULL DEFAULT '',
 	agent_hash    TEXT NOT NULL DEFAULT '',
 	notes_id      TEXT NOT NULL DEFAULT '',
+	phase         TEXT NOT NULL DEFAULT '',
+	stop_reason   TEXT NOT NULL DEFAULT '',
 	steps         INTEGER NOT NULL DEFAULT 0,
 	tool_calls    INTEGER NOT NULL DEFAULT 0,
 	input_tokens  INTEGER NOT NULL DEFAULT 0,

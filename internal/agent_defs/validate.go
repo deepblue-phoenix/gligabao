@@ -42,6 +42,10 @@ func normalize(d *Def) {
 	if d.MaxTokens == 0 {
 		d.MaxTokens = DefaultMaxTokens
 	}
+	d.Loop = strings.ToLower(strings.TrimSpace(d.Loop))
+	if d.Loop == LoopSimple { // "" is the simple loop: keep one form, so that the hash of an agent does not depend on how it says so
+		d.Loop = ""
+	}
 	if d.Tools == nil {
 		d.Tools = append([]string(nil), KnownTools...)
 	}
@@ -140,6 +144,9 @@ func check(d *Def) []string {
 	}
 	if d.MaxTokens < 1 || d.MaxTokens > maxTokensCeiling {
 		bad("max_tokens: %d must be between 1 and %d", d.MaxTokens, maxTokensCeiling)
+	}
+	for _, p := range d.checkLoop() {
+		bad("%s", p)
 	}
 
 	seen := map[string]bool{}
@@ -405,4 +412,83 @@ func hashOf(d *Def) string {
 	}
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
+}
+
+// checkLoop returns what is wrong with the loop and its knobs.
+func (d *Def) checkLoop() []string {
+	var out []string
+	switch d.Loop {
+	case "":
+		if d.Investigate != nil {
+			out = append(out, `investigate: the knobs only take effect with loop = "investigative"; set the loop or remove the table`)
+		}
+		return out
+	case LoopInvestigative:
+	default:
+		return []string{fmt.Sprintf(`loop: %q must be "simple" or "investigative"`, d.Loop)}
+	}
+	if d.Spawn.Enabled {
+		out = append(out, `spawn: the investigative loop works alone (max_parallel is 1); sub-agents are not available with it`)
+	}
+	if v := d.Investigate; v != nil {
+		out = append(out, v.Check()...)
+	}
+	return out
+}
+
+// Check returns what is wrong with the knobs (each of them is 0, the default, or in its range).
+func (v Investigate) Check() []string {
+	var out []string
+	in := func(name string, value, lo, hi int) {
+		if value != 0 && (value < lo || value > hi) {
+			out = append(out, fmt.Sprintf("investigate.%s: %d must be between %d and %d (or 0 for the default)", name, value, lo, hi))
+		}
+	}
+	in("max_depth", v.MaxDepth, 1, 6)
+	in("max_attempts", v.MaxAttempts, 1, 10)
+	in("max_questions", v.MaxQuestions, 2, 200)
+	in("max_iterations", v.MaxIterations, 2, 300)
+	in("max_total_tokens", v.MaxTotalTokens, 1000, 1<<30)
+	in("keep_turns", v.KeepTurns, 1, 5)
+	in("extraction_threshold", v.ExtractionThreshold, 200, 100000)
+	in("notes_max_tokens", v.NotesMaxTokens, 500, 50000)
+	in("min_sources", v.MinSources, 1, 100)
+	in("min_domains", v.MinDomains, 1, 100)
+	in("min_independent_sources", v.MinIndependentSources, 1, 10)
+	in("min_challenges", v.MinChallenges, 1, 10)
+	in("max_challenges_per_target", v.MaxChallengesPerTarget, 1, 10)
+	in("max_reopens", v.MaxReopens, 1, 5)
+	in("max_parallel", v.MaxParallel, 1, 1)
+	if v.SynthesisReserve < 0 || v.SynthesisReserve > 0.5 || math.IsNaN(v.SynthesisReserve) {
+		out = append(out, "investigate.synthesis_reserve: must be between 0 and 0.5 (0 for the default 0.15)")
+	}
+	if v.GatePriority < 0 || v.GatePriority > 1 || math.IsNaN(v.GatePriority) {
+		out = append(out, "investigate.gate_priority: must be between 0 and 1 (0 for the default 0.5)")
+	}
+	return out
+}
+
+// Merge returns v with the knobs that o sets (not 0) in place of its own: the run options over the definition.
+func (v Investigate) Merge(o Investigate) Investigate {
+	pick := func(a, b int) int {
+		if b != 0 {
+			return b
+		}
+		return a
+	}
+	pickF := func(a, b float64) float64 {
+		if b != 0 {
+			return b
+		}
+		return a
+	}
+	return Investigate{
+		MaxDepth: pick(v.MaxDepth, o.MaxDepth), MaxAttempts: pick(v.MaxAttempts, o.MaxAttempts), MaxQuestions: pick(v.MaxQuestions, o.MaxQuestions),
+		MaxIterations: pick(v.MaxIterations, o.MaxIterations), MaxTotalTokens: pick(v.MaxTotalTokens, o.MaxTotalTokens), KeepTurns: pick(v.KeepTurns, o.KeepTurns),
+		ExtractionThreshold: pick(v.ExtractionThreshold, o.ExtractionThreshold), NotesMaxTokens: pick(v.NotesMaxTokens, o.NotesMaxTokens),
+		MinSources: pick(v.MinSources, o.MinSources), MinDomains: pick(v.MinDomains, o.MinDomains),
+		MinIndependentSources: pick(v.MinIndependentSources, o.MinIndependentSources), MinChallenges: pick(v.MinChallenges, o.MinChallenges),
+		MaxChallengesPerTarget: pick(v.MaxChallengesPerTarget, o.MaxChallengesPerTarget), MaxReopens: pick(v.MaxReopens, o.MaxReopens),
+		MaxParallel: pick(v.MaxParallel, o.MaxParallel), SynthesisReserve: pickF(v.SynthesisReserve, o.SynthesisReserve), GatePriority: pickF(v.GatePriority, o.GatePriority),
+	}
 }

@@ -472,3 +472,64 @@ func TestScheduleIsLoadedWithDefaultsAndIsNotInTheHash(t *testing.T) {
 		t.Errorf("bundle lost the schedule: %+v", x2.Schedule)
 	}
 }
+
+const loopTOML = `
+name = "deep"
+version = "1.0.0"
+description = "Investigates."
+system_prompt = "You investigate."
+`
+
+func loadLoop(t *testing.T, extra string) (*Registry, error) {
+	t.Helper()
+	return Load(dir(t, map[string]string{"deep.toml": loopTOML + extra}))
+}
+
+func TestLoopDefaultsToSimpleAndKnobsNeedTheInvestigativeLoop(t *testing.T) {
+	reg, err := loadLoop(t, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, _ := reg.Get("deep")
+	if d.Investigative() || d.Loop != "" || d.Investigate != nil {
+		t.Errorf("default: %+v", d)
+	}
+	// "simple" said out loud is the same agent: the hash does not depend on how the default is spelled.
+	same, err := loadLoop(t, "loop = \"simple\"\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := same.Get("deep"); s.Hash != d.Hash {
+		t.Error("loop = simple changed the hash")
+	}
+	inv, err := loadLoop(t, "loop = \"Investigative\"\n[investigate]\nmax_iterations = 30\nsynthesis_reserve = 0.2\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i, _ := inv.Get("deep"); !i.Investigative() || i.Investigate.MaxIterations != 30 || i.Hash == d.Hash {
+		t.Errorf("investigative: %+v", i)
+	}
+	for name, c := range map[string]struct{ extra, want string }{
+		"unknown loop":                {"loop = \"parallel\"\n", `loop: "parallel" must be "simple" or "investigative"`},
+		"knobs with the simple loop":  {"[investigate]\nmax_iterations = 30\n", `only take effect with loop = "investigative"`},
+		"knobs with the explicit one": {"loop = \"simple\"\n[investigate]\nmin_sources = 3\n", `only take effect`},
+		"sub-agents":                  {"loop = \"investigative\"\n[spawn]\nenabled = true\n", "sub-agents are not available"},
+		"range":                       {"loop = \"investigative\"\n[investigate]\nkeep_turns = 9\n", "investigate.keep_turns"},
+		"reserve":                     {"loop = \"investigative\"\n[investigate]\nsynthesis_reserve = 0.9\n", "synthesis_reserve"},
+		"parallel":                    {"loop = \"investigative\"\n[investigate]\nmax_parallel = 2\n", "max_parallel"},
+		"unknown knob":                {"loop = \"investigative\"\n[investigate]\nmax_chaos = 2\n", "unknown key"},
+	} {
+		if _, err := loadLoop(t, c.extra); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestInvestigateMerge(t *testing.T) {
+	base := Investigate{MaxIterations: 30, MinSources: 3, GatePriority: 0.4}
+	got := base.Merge(Investigate{MinSources: 7, SynthesisReserve: 0.2})
+	want := Investigate{MaxIterations: 30, MinSources: 7, GatePriority: 0.4, SynthesisReserve: 0.2}
+	if got != want {
+		t.Errorf("%+v", got)
+	}
+}

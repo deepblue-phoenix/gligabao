@@ -160,7 +160,7 @@ type Config struct {
 	AgentDefsDir string `toml:"agent_defs_dir"`
 	// ResearchNotesDir is the directory the notes files of the investigative research loop are written to (notes_<user>_<run>_<notes_id>.md,
 	// see docs/agents/deep-research-loop.md). Default: a research_notes directory next to the binary (see ResearchNotesDirOrDefault), like
-	// agent_defs. A relative path is relative to the config file. Nothing writes there until the loop is connected (stage 2).
+	// agent_defs. A relative path is relative to the config file. Only agents with loop = "investigative" write there.
 	ResearchNotesDir string `toml:"research_notes_dir"`
 	// ResearchMaxCostUSD is the most one research (all its agents together) may spend, in USD, whatever its agent definition and its
 	// request say: they can only lower it. 0 (default): no cap of the server.

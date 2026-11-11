@@ -61,6 +61,42 @@ const (
 // KnownTools are the tools of Def.Tools, in the order they are given to the agent.
 var KnownTools = []string{ToolWebSearch, ToolFetchURL}
 
+// Values of Def.Loop.
+const (
+	// LoopSimple: the loop of an agent that searches and reads until it writes the report, in at most max_steps model calls. The default.
+	LoopSimple = "simple"
+	// LoopInvestigative: the exploration loop on a question frontier with notes, challenges and gates, then the synthesis loop.
+	LoopInvestigative = "investigative"
+)
+
+// Investigate are the knobs of the investigative loop ([investigate] in a file); 0 means the default of the design (see
+// docs/agents/deep-research-loop.md, Configuration), and none of them has an effect with another loop. The run options can override them.
+type Investigate struct {
+	MaxDepth               int `toml:"max_depth" json:"max_depth,omitempty"`
+	MaxAttempts            int `toml:"max_attempts" json:"max_attempts,omitempty"`
+	MaxQuestions           int `toml:"max_questions" json:"max_questions,omitempty"`
+	MaxIterations          int `toml:"max_iterations" json:"max_iterations,omitempty"`
+	MaxTotalTokens         int `toml:"max_total_tokens" json:"max_total_tokens,omitempty"`
+	KeepTurns              int `toml:"keep_turns" json:"keep_turns,omitempty"`
+	ExtractionThreshold    int `toml:"extraction_threshold" json:"extraction_threshold,omitempty"`
+	NotesMaxTokens         int `toml:"notes_max_tokens" json:"notes_max_tokens,omitempty"`
+	MinSources             int `toml:"min_sources" json:"min_sources,omitempty"`
+	MinDomains             int `toml:"min_domains" json:"min_domains,omitempty"`
+	MinIndependentSources  int `toml:"min_independent_sources" json:"min_independent_sources,omitempty"`
+	MinChallenges          int `toml:"min_challenges" json:"min_challenges,omitempty"`
+	MaxChallengesPerTarget int `toml:"max_challenges_per_target" json:"max_challenges_per_target,omitempty"`
+	MaxReopens             int `toml:"max_reopens" json:"max_reopens,omitempty"`
+	// MaxParallel is the workers on the frontier; only 1 is implemented.
+	MaxParallel int `toml:"max_parallel" json:"max_parallel,omitempty"`
+	// SynthesisReserve is the fraction (0 to 0.5) of the iteration, token and cost limits that exploration cannot spend; GatePriority (0 to
+	// 1) the priority from which a pending question stops the exploration gate.
+	SynthesisReserve float64 `toml:"synthesis_reserve" json:"synthesis_reserve,omitempty"`
+	GatePriority     float64 `toml:"gate_priority" json:"gate_priority,omitempty"`
+}
+
+// Investigative reports whether the agent runs the investigative loop.
+func (d *Def) Investigative() bool { return d.Loop == LoopInvestigative }
+
 // Values of Knowledge.Access.
 const (
 	// AccessReadWrite: the agent has query and remember (when the knowledge base is there at all). The default.
@@ -115,6 +151,11 @@ type Def struct {
 	Knowledge Knowledge `json:"knowledge"`
 	Limits    Limits    `json:"limits"`
 	Spawn     Spawn     `json:"spawn"`
+	// Loop is the agent loop: LoopSimple ("" is the same: the default) or LoopInvestigative, the deep-research loop of
+	// docs/agents/deep-research-loop.md. Investigate holds the knobs of the investigative loop (nil: all defaults); it is an error to set it
+	// with the simple loop.
+	Loop        string       `json:"loop,omitempty"`
+	Investigate *Investigate `json:"investigate,omitempty"`
 	// Schedule says when the server runs the agent by itself (nil: only when a research asks for it). It is not part of Hash: when an
 	// agent runs does not change what it is.
 	Schedule *Schedule `json:"schedule,omitempty"`

@@ -44,7 +44,7 @@ The agent goes `starting`, then `thinking`, `searching`/`reading`/`querying`/`re
 
 Columns of a state: `seq` (1, 2, 3, ... in the order entered), `step` (the model call it was on; 0 for `starting`, `completed` and `failed`), `detail`, `error`, `started_at` and `finished_at` (null for the state the run is in; millisecond precision). A tool that fails (a page that cannot be read) does not fail the run: the model is told and goes on, so the state has an `error` and the run can still complete. When a run fails, the state it failed in and the `failed` state both carry the error.
 
-The run keeps `steps` (model calls made), `tool_calls`, `input_tokens`, `output_tokens` and `cost_usd`, updated after every model call and tool run. The cost includes the model calls of the web searches.
+The run keeps `steps` (model calls made; for an [investigative run](#the-investigative-loop) the turns), `tool_calls`, `input_tokens`, `output_tokens` and `cost_usd`, updated after every model call and tool run. The cost includes the model calls of the web searches.
 
 ## REST
 
@@ -64,6 +64,7 @@ Starts an agent. Body:
 - `max_steps` (optional, default: the `max_steps` of the definition, 20 for `default`; at most 40): the most model calls the agent makes, the last of which writes the report. More steps let it search and read more, and cost more.
 - `model` (optional): the model it runs on, which must support Anthropic's web search tool. Default: the `model` of the definition, else the server's default model. It is the model of the main agent; a sub-agent runs on the model of its own definition, else its parent's.
 - `dataset` (optional, default `main`): the dataset of the user's knowledge base the agent queries and remembers into ([below](#the-knowledge-base)). It is created by the first `remember` if it does not exist; a bad name is a `400`. It is not stored with the run. With the `modal` runner it is the dataset the agent's knowledge lands in when the agent ends ([below](#what-comes-back-the-import)).
+- `investigate` (optional): the knobs of the [investigative loop](#the-investigative-loop) (`max_iterations`, `max_total_tokens`, `min_sources`, ... the same names as the `[investigate]` table of the [agent definition](agent-defs.md#investigate-the-investigative-loop)), over those of the definition. Only for an agent with `loop = "investigative"`: with the simple loop they are a `400`. With that loop `max_steps` is a `400` too (`max_iterations` replaces it), and so is `runner: "modal"`.
 - `runner` (optional, default `local`): where the agent runs, `local` (in the server, as always) or `modal` (the `gligabao_agent` binary in a Modal container, see [below](#where-the-agent-runs-the-runner)). Any other value is a `400`. The run says which one it has (`runner`).
 
 Answers `202` with the run (`status` `running`, `state` `starting`); the agent goes on in the background. `400` for a bad body, `409` if the user already has 3 agents working (wait for one to end), `503` without an Anthropic API key (for `local`), or, for `modal`, when the sidecar cannot start the job (it is down, or the Modal app has no agent: the message says which).
@@ -212,6 +213,86 @@ Besides the web, the agent works with the user's internal knowledge base (the gr
 
 The tools are on whenever the server has an LLM for the memory (the same condition as the research itself); the remember and query calls are made with the options of the `remember` and `query` endpoints and the session `research-<run id>`, so they show in the remember run log (`gb_remember_runs`) and query run log with it. Text that is queued is not tied to the run: it is absorbed even after the run ended, and a failure of it does not fail the run. The cost of these calls is recorded as inferences (`gb_inferences`) and is not part of the run's `cost_usd`.
 
+## The investigative loop
+
+An agent whose definition says `loop = "investigative"` runs the [deep-research loop](deep-research-loop.md) instead of the simple one (the simple loop is the default and does not change). It works in two phases on a frontier of questions with a notes file, and a run records where it is:
+
+- `phase` of the run (`gb_agent_research_runs.phase`): `exploration` (the cycle on the frontier) or `synthesis` (the report is written from the notes, without search tools); `''` for a run of the simple loop and for runs made before 0.181.0.
+- `stop_reason`: `''` while the run explores normally; `frontier_exhausted` (no actionable question was left and the final check queued nothing), `breaker:iterations`, `breaker:tokens` or `breaker:cost` (a limit ended the exploration; the run is **not** failed, it writes its report with the cut and the open questions as gaps) are set when exploration ends; `finalized` is the reason of a run whose exploration ended by its own gate (`finish_exploration`) and whose report was accepted. A report that is accepted after a cut keeps the cut as the reason. A breaker that fires in synthesis (the reserve is used up) fails the run, with `stop_reason` and the `error` naming the breaker.
+- `steps` counts the turns (model calls), and the limit is `max_iterations` (default 60), not `max_steps`.
+
+The states of an investigative run (`gb_agent_research_states.state`) are the ones above plus: `planning` (the first level of questions is asked for), `selecting` (the loop picks the next question, no model call; detail `frontier_next`), `extracting` (forced extraction: only the notes tools), `verifying` (an UNVERIFIED claim of the current question has no challenge yet), `challenging` (a challenge is open), `consolidating` (the notes are over `notes_max_tokens`) and `synthesizing`. The `detail` of a turn is `turn 7 of 60, question q_003`. A tool call has its usual state (`searching`, `reading`, `using_tool`, ...); `fetch_page` is `reading`.
+
+The loop keeps the prompt of each turn bounded (the task, the notes, the frontier summary and the last `keep_turns` turns); a result above `extraction_threshold` characters forces an extraction turn; and the last turn is forced to call `finalize_report`. The notes file is `notes_<user>_<run>_<notes_id>.md` in `research_notes_dir`; if it is missing or differs from the latest stored version, it is rebuilt from `gb_agent_notes_versions` (reason `restore`) before the next turn.
+
+### Reading a run with SQL
+
+Everything the loop did is in plain tables. In the queries `?1` is the run id (`$1` on PostgreSQL); they are tested on SQLite (`TestInvestigativeRunThroughTheManager`).
+
+The frontier as a tree, from `parent_id`:
+
+<!-- query: tree -->
+```sql
+WITH RECURSIVE tree(id, depth, status, question, path) AS (
+    SELECT id, depth, status, question, id FROM gb_agent_frontier_questions WHERE run_id = ?1 AND parent_id IS NULL
+    UNION ALL
+    SELECT q.id, q.depth, q.status, q.question, tree.path || '/' || q.id
+    FROM gb_agent_frontier_questions q JOIN tree ON q.run_id = ?1 AND q.parent_id = tree.id
+)
+SELECT path, depth, status, question FROM tree ORDER BY path;
+```
+
+The history of every question (what was selected, retried, reopened or pruned, by whom and why):
+
+<!-- query: transitions -->
+```sql
+SELECT question_id, seq, from_status, to_status, trigger, actor, reason, caused_by, created_at
+FROM gb_agent_frontier_transitions WHERE run_id = ?1 ORDER BY id;
+```
+
+Challenges per target and per strategy, and the distribution of outcomes (a run where every challenge `survived` with one strategy is suspect):
+
+<!-- query: challenges_per_target_and_strategy -->
+```sql
+SELECT target_type, target_id, strategy, COUNT(*) AS challenges, SUM(outcome = 'survived') AS survived
+FROM gb_agent_challenges WHERE run_id = ?1 GROUP BY target_type, target_id, strategy ORDER BY target_type, target_id;
+```
+
+<!-- query: outcome_distribution -->
+```sql
+SELECT outcome, COUNT(*) AS challenges FROM gb_agent_challenges WHERE run_id = ?1 AND status = 'closed' GROUP BY outcome;
+```
+
+What changed after a `refuted` or `weakened` challenge (the questions and claims it moved; `caused_by` of a transition holds the challenge id):
+
+<!-- query: effects_of_challenges -->
+```sql
+SELECT c.id AS challenge, c.outcome, c.result_claim_id, t.question_id, t.from_status, t.to_status, t.reason
+FROM gb_agent_challenges c
+JOIN gb_agent_frontier_transitions t ON t.run_id = c.run_id AND t.caused_by = c.id
+WHERE c.run_id = ?1 AND c.outcome IN ('refuted', 'weakened') ORDER BY t.id;
+```
+
+The notes at each write, with the state the run was in (`state_seq` of a version is the `seq` of the state):
+
+<!-- query: notes_at_each_write -->
+```sql
+SELECT v.seq, v.reason, s.state, s.detail, LENGTH(v.text) AS size
+FROM gb_agent_notes_versions v
+LEFT JOIN gb_agent_research_states s ON s.run_id = v.run_id AND s.seq = v.state_seq
+WHERE v.run_id = ?1 ORDER BY v.seq;
+```
+
+How investigative runs ended, over all runs:
+
+<!-- query: runs_by_stop_reason -->
+```sql
+SELECT stop_reason, status, COUNT(*) AS runs, AVG(cost_usd) AS avg_cost_usd, AVG(steps) AS avg_turns
+FROM gb_agent_research_runs WHERE phase <> '' GROUP BY stop_reason, status;
+```
+
+The ATIF trajectory of an investigative run has one agent step per model call, with the turn, its kind, the state, the phase and the question id in the step's `extra`, and the phase and stop reason in the trajectory's `result` extra.
+
 ## Sub-agents
 
 A research agent can spawn **sub-agents**, other research agents that take sub-tasks (`spawn_subagent`, `wait_subagents`). Every sub-agent is spawned with a reason. A sub-agent is a run like any other: it has its own states, usage and report, and a `parent_id`, a `name` and a `reason` (`null`/`""` for a research a user started); `GET /v1/gb/research?parent_id=` lists the sub-agents of a run. They are bounded (5 per agent, 10 per research, 2 levels deep) and are cancelled when their parent ends. All of it, the tools and the limits, is in [subagents.md](subagents.md).
@@ -220,6 +301,7 @@ A research agent can spawn **sub-agents**, other research agents that take sub-t
 
 - `internal/agent`: the loop and the research agent ([deep-research-agent.md](../deep-research-agent.md)). It has an `Observer` (before and after each model call and each tool run) that the manager uses to record the states, and `ReportUsage`, with which a tool that calls a model (the web search) adds its tokens and cost to the run.
 - `internal/agent_research`: the `Manager` makes a `researcher` for each agent, the struct that holds all of its state (see [isolation](../deep-research-agent.md#isolation)), and starts it in a goroutine of its own (at most 3 working at once per user); the manager creates the run and its first state in one transaction, and the researcher enters a state in a transaction at each event (end the previous state, insert the new one, set the run's `state`), writes the usage after every model call and tool run, and ends the run (its status, report or error, and the terminal state) in a transaction. A failed write of the progress is logged and does not stop the agent. Storage is in `agent_research/db/sqlite` and `agent_research/db/postgres` (each with its schema); the types are in `agent_research/core`.
+- `internal/agent_research/investigative.go` and `internal/agent_research/investigate/`: the investigative loop ([above](#the-investigative-loop)): `loop_state.go`, `prompt.go`, `evict.go`, `gates.go` and `breakers.go` are pure; `loop.go` is the effect layer (model, tools, database, notes file); `investigative.go` connects it to the researcher (limits from the definition and the options, the states, the usage, the phase).
 - `internal/agent_research/team.go` and `internal/agent/team.go`: the sub-agents; the prompts are in `internal/agent/prompts/` (see [subagents.md](subagents.md)).
 - `internal/agent_memory/memory.go`: `Memory` (the remember manager, the database, the LLM and the options of the remember and query endpoints), which `api.Register` gives the manager (`Manager.UseMemory`; `agent_research.Memory` is an alias of it); each agent gets its own view of it (`Memory.Knowledge`: its user, dataset and session) that implements `agent.Knowledge`, the interface behind the tools `remember` and `query` (`internal/agent/knowledge.go`). The package is shared with the standalone binary ([deep-research-agent.md](../deep-research-agent.md#the-standalone-binary-gligabao_agent)). Without a `Memory` the agents only have the web tools.
 - `internal/api/research`: the REST handlers; `internal/api/mcp` and `cli` call them (the MCP tools in process, the CLI over HTTP).
@@ -228,4 +310,4 @@ A research agent can spawn **sub-agents**, other research agents that take sub-t
 
 ## Not included yet
 
-Following again, after a restart of the server, the jobs it had running in Modal (their export, and so what they learned, is lost with them); the user's own knowledge base *for* the agents that run in Modal (they start with an empty one of the container's; what they learn is merged back into the user's when they end), the import of an export into a server that has no vector store of the same embedding size (the rows are imported, the vectors are not), other places to run the agent than Modal, cancelling a run by a user (only the admin UI can stop one), a stream of its states (poll `GET /v1/gb/research/{id}`), storing the report itself in a dataset, waiting for the queued snippets before a run ends, counting the cost of `remember` and `query` in the run's cost, and recording the agent's model calls in `gb_inferences`. See the [roadmap](../roadmap/ROADMAP.md).
+Following again, after a restart of the server, the jobs it had running in Modal (their export, and so what they learned, is lost with them); the user's own knowledge base *for* the agents that run in Modal (they start with an empty one of the container's; what they learn is merged back into the user's when they end), the import of an export into a server that has no vector store of the same embedding size (the rows are imported, the vectors are not), other places to run the agent than Modal, cancelling a run by a user (only the admin UI can stop one), a stream of its states (poll `GET /v1/gb/research/{id}`), storing the report itself in a dataset, waiting for the queued snippets before a run ends, counting the cost of `remember` and `query` in the run's cost, recording the agent's model calls in `gb_inferences`, and, for the investigative loop, the frontier tree in the admin UI, parallel workers on the frontier and sub-agents sharing the notes. See the [roadmap](../roadmap/ROADMAP.md).

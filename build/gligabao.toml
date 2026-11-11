@@ -96,7 +96,7 @@ ontology_dirs = ["ontology"]
 # cost caps, sub-agent roles), read once at startup; a file that is not valid stops the server. Default if unset: "agent_defs" next to the
 # binary (it need not exist: only the built-in agent is then available). Relative to this file.
 agent_defs_dir = "agent_defs"
-# Where the notes files of the investigative research loop go (notes_<user>_<run>_<notes_id>.md); nothing writes there until the loop is connected.
+# Where the notes files of the investigative research loop go (notes_<user>_<run>_<notes_id>.md); only agents with loop = "investigative" write there.
 # Default: a research_notes directory next to the binary.
 # research_notes_dir = "research_notes"
 

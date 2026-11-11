@@ -18,6 +18,7 @@ var Store = db.Store{
 	EnterState:  EnterState,
 	CloseState:  CloseState,
 	UpdateUsage: UpdateUsage,
+	SetPhase:    SetPhase,
 	FinishRun:   FinishRun,
 	FailActive:  FailActive,
 	GetRun:      GetRun,
@@ -87,11 +88,11 @@ func CreateRun(ctx context.Context, q db.Execer, r *core.Run) error {
 	}
 	var id int64
 	if err := q.QueryRowContext(ctx, `
-		INSERT INTO gb_agent_research_runs (user_id, parent_id, name, reason, topic, status, state, model, max_steps, runner, agent_name, agent_version, agent_hash, notes_id,
+		INSERT INTO gb_agent_research_runs (user_id, parent_id, name, reason, topic, status, state, model, max_steps, runner, agent_name, agent_version, agent_hash, notes_id, phase, stop_reason,
 			steps, tool_calls, input_tokens, output_tokens, cost_usd, report, error, created_at, finished_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id`,
-		r.UserID, r.ParentID, r.Name, r.Reason, r.Topic, string(r.Status), r.State, r.Model, r.MaxSteps, r.Runner, r.AgentName, r.AgentVersion, r.AgentHash, r.NotesID, r.Steps, r.ToolCalls, r.InputTokens, r.OutputTokens,
+		r.UserID, r.ParentID, r.Name, r.Reason, r.Topic, string(r.Status), r.State, r.Model, r.MaxSteps, r.Runner, r.AgentName, r.AgentVersion, r.AgentHash, r.NotesID, r.Phase, r.StopReason, r.Steps, r.ToolCalls, r.InputTokens, r.OutputTokens,
 		r.CostUSD, r.Report, r.Error, text(r.CreatedAt), textPtr(r.FinishedAt)).Scan(&id); err != nil {
 		return fmt.Errorf("create agent research run: %w", err)
 	}
@@ -145,6 +146,18 @@ func UpdateUsage(ctx context.Context, q db.Execer, runID int64, u db.Usage) erro
 		u.Steps, u.ToolCalls, u.InputTokens, u.OutputTokens, u.CostUSD, runID)
 	if err != nil {
 		return fmt.Errorf("update usage of agent research run %d: %w", runID, err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return db.ErrNotFound
+	}
+	return nil
+}
+
+// SetPhase writes the phase and the stop reason of an investigative run (see core.Run); db.ErrNotFound if there is no such run.
+func SetPhase(ctx context.Context, q db.Execer, runID int64, phase, stopReason string) error {
+	res, err := q.ExecContext(ctx, `UPDATE gb_agent_research_runs SET phase = ?, stop_reason = ? WHERE id = ?`, phase, stopReason, runID)
+	if err != nil {
+		return fmt.Errorf("set phase of agent research run %d: %w", runID, err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return db.ErrNotFound
@@ -222,7 +235,7 @@ func FailActive(ctx context.Context, q db.Execer, reason string) (int64, error) 
 	return n, nil
 }
 
-const runColumns = `id, user_id, parent_id, name, reason, topic, status, state, model, max_steps, runner, agent_name, agent_version, agent_hash, notes_id, steps, tool_calls, input_tokens, output_tokens, cost_usd,
+const runColumns = `id, user_id, parent_id, name, reason, topic, status, state, model, max_steps, runner, agent_name, agent_version, agent_hash, notes_id, phase, stop_reason, steps, tool_calls, input_tokens, output_tokens, cost_usd,
 	report, error, created_at, finished_at`
 
 func scanRun(s scanner) (*core.Run, error) {
@@ -230,7 +243,7 @@ func scanRun(s scanner) (*core.Run, error) {
 	var status, created string
 	var finished sql.NullString
 	var parent sql.NullInt64
-	if err := s.Scan(&r.ID, &r.UserID, &parent, &r.Name, &r.Reason, &r.Topic, &status, &r.State, &r.Model, &r.MaxSteps, &r.Runner, &r.AgentName, &r.AgentVersion, &r.AgentHash, &r.NotesID, &r.Steps, &r.ToolCalls, &r.InputTokens,
+	if err := s.Scan(&r.ID, &r.UserID, &parent, &r.Name, &r.Reason, &r.Topic, &status, &r.State, &r.Model, &r.MaxSteps, &r.Runner, &r.AgentName, &r.AgentVersion, &r.AgentHash, &r.NotesID, &r.Phase, &r.StopReason, &r.Steps, &r.ToolCalls, &r.InputTokens,
 		&r.OutputTokens, &r.CostUSD, &r.Report, &r.Error, &created, &finished); err != nil {
 		return nil, err
 	}

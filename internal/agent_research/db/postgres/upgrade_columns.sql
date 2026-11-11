@@ -7,3 +7,5 @@ ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS agent_name TEXT NOT 
 ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS agent_version TEXT NOT NULL DEFAULT '';
 ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS agent_hash TEXT NOT NULL DEFAULT '';
 ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS notes_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS phase TEXT NOT NULL DEFAULT '';
+ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS stop_reason TEXT NOT NULL DEFAULT '';

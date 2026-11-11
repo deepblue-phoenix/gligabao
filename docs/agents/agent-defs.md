@@ -35,6 +35,7 @@ system_prompt_file = "prompts/news_scanner.md"   # or system_prompt = """...""":
 model = ""                       # "" inherits: see "Model"
 max_steps = 25                   # 1 to 40, default 20
 max_tokens = 8192                # of each answer, default 8192
+loop = "simple"                  # "simple" (default) or "investigative": see [investigate]
 tools = ["web_search", "fetch_url"]   # default: both; query and remember are NOT listed here: see [knowledge]
 
 skills = ["citation_style", "dates"]  # agent_defs/skills/citation_style.md, ...; a missing file is a warning, the agent starts without it
@@ -44,6 +45,7 @@ required_skills = []                  # the same, but a missing file is a startu
 [knowledge] # how it uses the knowledge base
 [limits]    # cost caps
 [spawn]     # sub-agents
+[investigate] # knobs of the investigative loop (only with loop = "investigative")
 [schedule]  # runs by itself on a CRON schedule (optional)
 ```
 
@@ -114,6 +116,36 @@ A cap is a **soft stop**, not a failure:
 - The **cap of the research** is the lowest of: `max_tree_cost_usd` of the root's definition, `max_cost_usd` of the request (`POST /v1/gb/research`, MCP, `research start --max-cost`, `gligabao_agent --max-cost-usd`), and `research_max_cost_usd` in `gligabao.toml` (the server's ceiling). A request or a definition can only lower what is above it. The built-in `default` agent has no caps of its own.
 - The cost is what the run records (`cost_usd`): it comes from the price table, so a model with no price counts $0 and its caps cannot work. The `remember` and `query` calls are not in it ([deep-research-agent.md](../deep-research-agent.md#what-a-run-costs)).
 - In Modal the agent in the container enforces the caps itself (the definition and `--max-cost-usd` travel with the job). As a backstop the server ends a job that reports a cost 25% over the cap of the research; the run is then `stopped` ("stopped by the cost cap").
+
+### `loop` and `[investigate]`: the investigative loop
+
+`loop = "simple"` (the default, also when the key is left out) is the loop an agent has always had: it searches and reads until it writes the report, in at most `max_steps` model calls. `loop = "investigative"` runs the [deep-research loop](deep-research-loop.md) instead: a frontier of questions with notes, claims and challenges, an exploration phase ended by a gate and a synthesis phase that writes the report without searching (see [the run](research.md#the-investigative-loop)). It has the same tools (`fetch_url` is called `fetch_page` for the model), the same prompt (plus the loop's instructions for each phase), skills, search and knowledge settings and cost caps (`max_cost_usd` is a circuit-breaker there). It works alone: `[spawn] enabled = true` is an error with it, and so is `runner = "modal"` for a research. `max_steps` does not apply; `max_iterations` replaces it.
+
+The `[investigate]` table sets the knobs; every one is optional (0 or left out is the default), and the table is an **error** with the simple loop (not a silent no-op). A research can override them with the `investigate` option of the request, which is also an error for a simple agent.
+
+```toml
+loop = "investigative"
+[investigate]
+max_iterations = 60              # turns (model calls) of the run, 2 to 300; the last 15% are the synthesis reserve
+max_total_tokens = 0             # input + output tokens of the run, 0 = no limit (also split by the reserve)
+synthesis_reserve = 0.15         # 0 to 0.5: the part of the iteration, token and cost limits that exploration cannot spend
+max_depth = 3                    # 1 to 6: how deep the question tree goes
+max_attempts = 4                 # query formulations on a question before it is unresolvable
+max_questions = 40               # questions in a run
+keep_turns = 2                   # recent turns kept in the prompt, 1 to 5
+extraction_threshold = 4000      # characters of a tool result from which the next turn is a forced extraction
+notes_max_tokens = 6000          # the notes over this size make a consolidation turn
+min_sources = 5                  # exploration gate: distinct sources in the notes
+min_domains = 3                  #   ... from at least this many domains
+min_independent_sources = 2      # independent supporting domains a claim needs for VERIFIED
+min_challenges = 1               # survived challenges a claim needs for VERIFIED
+max_challenges_per_target = 3
+gate_priority = 0.5              # a pending actionable question from this priority keeps the gate closed
+max_reopens = 1                  # times the synthesis may send the run back to exploration
+max_parallel = 1                 # only 1 is implemented
+```
+
+The cost cap of the run is `[limits] max_cost_usd` (and the request's and the server's caps, the lowest counts). When any breaker fires in exploration the run goes on to synthesis with a note of the cut and does not fail; if one fires in synthesis the run fails and names the breaker. The knobs and their meaning are in [the design](deep-research-loop.md#configuration).
 
 ### `[spawn]`: sub-agents
 

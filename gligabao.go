@@ -388,6 +388,7 @@ func serverOptions(cfg *Config, opts ServeOptions) (serverOpts server.Options, r
 		OntologyDirs:       ontologyDirs,
 		AgentDefsDir:       agentDefsDir,
 		ResearchMaxCostUSD: cfg.ResearchMaxCostUSD,
+		ResearchNotesDir:   cfg.ResearchNotesDirOrDefault(),
 		AnthropicKey:       cfg.AnthropicKey,
 		OpenAIKey:          cfg.OpenAIKey,
 		JevKey:             cfg.JevKey,
