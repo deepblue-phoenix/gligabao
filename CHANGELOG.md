@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.191.2] - 2026-11-12
+
+### Changed
+- The research database schemas (`internal/agent_research/db/sqlite/sql/schema.sql` and `db/postgres/sql/schema.sql`) document each table above its definition: what it holds, what it enables, and its main users. Comments only; no schema change.
+
 ## [0.191.1] - 2026-11-11
 
 ### Changed

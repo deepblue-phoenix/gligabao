@@ -1,5 +1,14 @@
 
--- core.Run: ONE ROW PER EXECUTION OF THE DEEP-RESEARCH AGENT on a topic (see internal/agent_research).
+-- gb_agent_research_runs: ONE ROW PER EXECUTION OF THE DEEP-RESEARCH AGENT (core.Run). A research a user starts is a run; so is each
+-- sub-agent (worker) the investigative loop starts for a question.
+--   What it is for: who asked, on what topic, with which agent definition and model, where it runs, its status, what it has spent
+--                   so far, and its outcome (the report or the error).
+--   What it enables: listing and following agents by user, status and parent; stopping one; the caps on steps and cost (enforced from
+--                   these counters); the sub-agent tree (parent_id); recovery after a crash (a run left 'running' is failed at start).
+--   Main users: agent_research (Manager and researcher: manager.go, researcher.go, and the investigative loop in investigative.go);
+--               workers.go (sub-agents); internal/api/research (REST /v1/gb/research); internal/api/admin/research.go (admin UI:
+--               list, details, stop); internal/db/dbimport (imports the runs of an agent that ran in Modal).
+-- The columns, one by one:
 --   user_id, topic  who asked, and what the agent researches (for a worker: its brief)
 --   parent_id, name for a worker (a sub-agent of the investigative loop), the run of the agent that started it and its name (the id of
 --                   its question; unique among the workers of one parent); NULL and '' for a research started by a user. (Runs of
@@ -50,7 +59,15 @@ CREATE TABLE IF NOT EXISTS gb_agent_research_runs (
 CREATE INDEX IF NOT EXISTS idx_gb_agent_research_runs_user ON gb_agent_research_runs(user_id, id);
 CREATE INDEX IF NOT EXISTS idx_gb_agent_research_runs_status ON gb_agent_research_runs(status);
 
--- core.State: ONE ROW EACH TIME A RUN ENTERS A STATE, the detailed history of how it went (APPEND-ONLY: a state is never rewritten
+-- gb_agent_research_states: ONE ROW EACH TIME A RUN ENTERS A STATE (core.State): the timeline of an agent.
+--   What it is for: the step-by-step history of a run (what it was doing, on which step, with which detail, and where it failed).
+--   What it enables: the progress view that follows a run while it works (the states of GET /v1/gb/research/{id}); the admin UI
+--                    'failed' view (the state it failed in); the 'waiting for workers' and 'delegating' view of investigative runs; the
+--                    timing of each stage (started_at, finished_at).
+--   Main users: researcher.go (EnterState, CloseState, in one transaction per event); manager.go (ListStates for the details);
+--               internal/api/research and internal/api/admin/research.go (the States section); internal/db/dbimport (imports the states
+--               of Modal runs).
+-- The columns, one by one (APPEND-ONLY: a state is never rewritten
 -- but for its end). Deleting the run deletes its states.
 --   run_id       the run (gb_agent_research_runs)
 --   seq          1, 2, 3, ... in the order the states were entered (unique within the run)
@@ -76,7 +93,15 @@ CREATE TABLE IF NOT EXISTS gb_agent_research_states (
 
 -- ---- Deep-research loop (docs/agents/deep-research-loop.md): frontier, claims and sources, challenges, notes versions. ----
 
--- One row per question of a run (a node of the frontier graph). ids are per-run ('q_001' is the root).
+-- gb_agent_frontier_questions: ONE ROW PER QUESTION of the investigative loop's frontier, a node of the question graph of a run.
+--   What it is for: the plan of the research. Each question has a parent, a depth, a priority, a status and, once settled, its answer.
+--   What it enables: the loop picks the next question to work on (by status, priority and depth); it resumes exactly where it stopped;
+--                    it shows the tree of questions to the model (frontier_view) and in the admin UI (Investigation block); it keeps
+--                    the root question ('q_001') and the sub-questions a contradiction or a hypothesis spawned.
+--   Main users: investigate_core/frontier.go (the rules: pick, branch, prune, unblock); investigate_core/tools.go (add_question,
+--               retry_question, resolve_question, reopen_question, set_priority, prune_branch, frontier_next, frontier_view);
+--               investigate/loop.go and db/*/investigate_store.go (Load, UpsertQuestion); the delegation to workers ('delegated' transitions in delegate.go).
+-- Its history of status changes is in gb_agent_frontier_transitions.
 CREATE TABLE IF NOT EXISTS gb_agent_frontier_questions (
 	run_id              INTEGER NOT NULL REFERENCES gb_agent_research_runs(id) ON DELETE CASCADE,
 	id                  TEXT NOT NULL,
@@ -100,7 +125,10 @@ CREATE TABLE IF NOT EXISTS gb_agent_frontier_questions (
 CREATE INDEX IF NOT EXISTS idx_gb_agent_frontier_questions_pick
 	ON gb_agent_frontier_questions(run_id, status, priority DESC, depth);
 
--- Edges "question depends on depends_on_id" (a DAG; cycles are rejected by the code before insert).
+-- gb_agent_frontier_deps: the edges "question depends on depends_on_id" of the frontier (a DAG; the code rejects cycles before insert).
+--   What it enables: a question waits for the questions it depends on. When one is resolved the dependent is unblocked
+--                    ('dependency_met' transition); when one fails it may be marked blocked ('dependency_failed').
+--   Main users: investigate_core/frontier.go (the rules that block and unblock questions); investigate_store.go (AddDependency).
 CREATE TABLE IF NOT EXISTS gb_agent_frontier_deps (
 	run_id        INTEGER NOT NULL,
 	question_id   TEXT NOT NULL,
@@ -111,7 +139,13 @@ CREATE TABLE IF NOT EXISTS gb_agent_frontier_deps (
 	FOREIGN KEY (run_id, depends_on_id) REFERENCES gb_agent_frontier_questions(run_id, id) ON DELETE CASCADE
 );
 
--- APPEND-ONLY attempt log: one row per query tried on a question (drives "attempted_queries" and the dead-end rule).
+-- gb_agent_frontier_attempts: APPEND-ONLY log of the queries tried on a question (one row per try: a web search, a page read or a
+-- knowledge-base query).
+--   What it enables: the cap on attempts per question (MaxAttempts): when it is reached the question becomes unresolvable; a retried
+--                    query must differ from the earlier ones; the link from a challenge to the search that ran it (gb_agent_challenges.attempt_id).
+--   Main users: investigate_core/frontier.go (AddAttempt; retry_question in tools.go); investigate_core/challenges.go (the search of a
+--               challenge is an attempt); investigate_core/diff.go and delegate.go (the InsertAttempt effect, also for worker findings);
+--               investigate_store.go (InsertAttempt).
 CREATE TABLE IF NOT EXISTS gb_agent_frontier_attempts (
 	id          INTEGER PRIMARY KEY AUTOINCREMENT,   -- BIGSERIAL in PostgreSQL
 	run_id      INTEGER NOT NULL,
@@ -125,6 +159,12 @@ CREATE TABLE IF NOT EXISTS gb_agent_frontier_attempts (
 	FOREIGN KEY (run_id, question_id) REFERENCES gb_agent_frontier_questions(run_id, id) ON DELETE CASCADE
 );
 
+-- gb_agent_frontier_transitions: THE AUDIT TRAIL OF THE FRONTIER. Each row is one status change (or priority change) of a question, with
+-- what caused it and who decided it. It answers "why is this question in this state" and lets the whole search be replayed.
+--   What it enables: reconstructing the history of the research (what was tried, what was pruned and why, which contradiction reopened
+--                    which question); the temporal and investigation views; debugging the loop's decisions.
+--   Main users: investigate_core/frontier.go (builds each transition; the constructors accept only the closed trigger vocabulary);
+--               investigate_store.go (InsertTransition, in the same transaction as the question's status update); investigate/loop.go.
 -- APPEND-ONLY: ONE ROW PER STATUS CHANGE OF A QUESTION (never updated, never deleted but with the run). The current status stays in
 -- gb_agent_frontier_questions.status; the code writes that column and the transition row in the SAME transaction, so the two never disagree
 -- and the latest row of a question always equals its status. Replaying the rows of a run rebuilds the history of the whole search.
@@ -162,7 +202,12 @@ CREATE TABLE IF NOT EXISTS gb_agent_frontier_transitions (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_agent_frontier_transitions_run ON gb_agent_frontier_transitions(run_id, id);
 
--- Sources read in a run (one row per distinct URL).
+-- gb_agent_sources: the sources read in a run, one row per distinct URL (id 's_001', ...).
+--   What it is for: the evidence base. Claims and challenges cite sources by id.
+--   What it enables: the 'Sources' section of the notes; the rule that a question is only settled with enough sources from enough
+--                    distinct domains (domain is the registrable domain, used for that count); the provenance of each claim.
+--   Main users: investigate_store.go (UpsertSource); investigate_core/notes.go (the Sources section, notes_append); gates.go (the
+--               exploration gate counts the domains); the web tools (web_search, fetch_page) that record what they read.
 CREATE TABLE IF NOT EXISTS gb_agent_sources (
 	run_id     INTEGER NOT NULL REFERENCES gb_agent_research_runs(id) ON DELETE CASCADE,
 	id         TEXT NOT NULL,                        -- 's_001'
@@ -175,7 +220,14 @@ CREATE TABLE IF NOT EXISTS gb_agent_sources (
 	UNIQUE (run_id, url)
 );
 
--- Claims and datapoints. kind 'datapoint' fills value/unit.
+-- gb_agent_claims: the claims (statements of fact) and the numeric datapoints (kind 'datapoint' fills value and unit) the agent extracts
+-- from its sources, with their verification status.
+--   What it is for: the findings of the run. The report is written from the claims that survived verification.
+--   What it enables: the verification workflow (UNVERIFIED -> VERIFIED, or REFUTED / RETRACTED when a challenge or a contradiction
+--                    defeats it); the 'Verified', 'Unverified', 'Datapoints' and 'Contradictions' sections of the notes; the exploration
+--                    gate (every resolved question must be backed by a VERIFIED claim, or a stated reason).
+--   Main users: investigate_core/notes.go and tools.go (notes_append, notes_update); the 'verifying' state of the loop; finish_tools.go
+--               and gates.go (the exploration gate); investigate_store.go (UpsertClaim).
 CREATE TABLE IF NOT EXISTS gb_agent_claims (
 	run_id      INTEGER NOT NULL REFERENCES gb_agent_research_runs(id) ON DELETE CASCADE,
 	id          TEXT NOT NULL,                       -- 'c_001', 'd_001'
@@ -190,7 +242,11 @@ CREATE TABLE IF NOT EXISTS gb_agent_claims (
 	PRIMARY KEY (run_id, id)
 );
 
--- Claim <-> source links; stance says whether the source supports or contradicts the claim.
+-- gb_agent_claim_sources: the links between a claim and the sources that bear on it. stance says whether the source supports the
+--   claim or contradicts it.
+--   What it enables: the verdict of a claim is based on its evidence (supporting sources to verify it, a contradicting one to raise a
+--                    contradiction); the notes show which sources back each claim.
+--   Main users: investigate_core/notes.go (notes_append with a claim's sources); investigate_store.go (UpsertClaim).
 CREATE TABLE IF NOT EXISTS gb_agent_claim_sources (
 	run_id    INTEGER NOT NULL,
 	claim_id  TEXT NOT NULL,
@@ -201,6 +257,14 @@ CREATE TABLE IF NOT EXISTS gb_agent_claim_sources (
 	FOREIGN KEY (run_id, source_id) REFERENCES gb_agent_sources(run_id, id) ON DELETE CASCADE
 );
 
+-- gb_agent_challenges: ONE ROW PER ADVERSARIAL QUERY. It is how the agent tries to break its own claims, answers and conclusion.
+--   What it is for: a claim or an answer is only trusted after the agent has searched for evidence against it and found none (or
+--                   found it and weakened or refuted the claim).
+--   What it enables: the 'verifying' and 'challenging' states of the loop; the 'no open challenge' rule of the exploration gate; the
+--                    'Challenges' view in the admin UI (target, strategy, negation, outcome, evidence); the audit of what was tried against a
+--                    conclusion before the report.
+--   Main users: investigate_core/challenges.go and tools.go (challenge creates a row, record_challenge_result closes it); finish_tools.go
+--               and gates.go (the conclusion must have survived a challenge); investigate_store.go (UpsertChallenge, loadChallenges).
 -- ONE ROW PER ADVERSARIAL QUERY: how the agent attacks its own claims, answers and conclusion. Created by the 'challenge' tool,
 -- closed by 'record_challenge_result'. Rows are never deleted but with the run; the verdict fields are set once, on closing.
 --   target_type  'claim', 'question_answer' or 'conclusion'
@@ -236,7 +300,9 @@ CREATE TABLE IF NOT EXISTS gb_agent_challenges (
 );
 CREATE INDEX IF NOT EXISTS idx_gb_agent_challenges_target ON gb_agent_challenges(run_id, target_type, target_id);
 
--- Sources that backed a verdict (a challenge can cite several).
+-- gb_agent_challenge_sources: the sources that backed the verdict of a challenge (a challenge can cite several).
+--   What it enables: the evidence of a verdict can be read back (the admin UI and the notes show what a refutation rests on).
+--   Main users: investigate_core/challenges.go (record_challenge_result); investigate_store.go (UpsertChallenge).
 CREATE TABLE IF NOT EXISTS gb_agent_challenge_sources (
 	run_id       INTEGER NOT NULL,
 	challenge_id TEXT NOT NULL,
@@ -246,6 +312,12 @@ CREATE TABLE IF NOT EXISTS gb_agent_challenge_sources (
 	FOREIGN KEY (run_id, source_id)    REFERENCES gb_agent_sources(run_id, id) ON DELETE CASCADE
 );
 
+-- gb_agent_notes_versions: the working memory of the investigative loop, as history. notes.md (the file) is the working copy the model
+-- reads and writes; this table keeps every version.
+--   What it enables: restoring the notes when the file is missing or differs from the latest version (reason 'restore'); the
+--                    'latest notes' view in the admin UI; debugging and exporting what the agent knew at each turn.
+--   Main users: investigate/loop.go (writes a version after each notes write, reads the latest on start or restore);
+--               investigate_store.go (AddNotesVersion, LatestNotesVersion); investigate/notes_s3.go mirrors the file to the bucket.
 -- APPEND-ONLY: the whole notes.md after each write, for debugging and export (the file is the working copy; this is the record).
 --   seq        1, 2, 3, ... per run, in write order
 --   state_seq  gb_agent_research_states.seq of the run when the write happened, to tie it to the turn
