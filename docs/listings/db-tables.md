@@ -229,3 +229,15 @@ Tables of the research agents (`internal/agent_research`, see `docs/agents/resea
 | `gb_agent_challenges` | `internal/agent_research/db/sqlite/sql/schema.sql` | `internal/agent_research/db/postgres/sql/schema.sql` |
 | `gb_agent_challenge_sources` | `internal/agent_research/db/sqlite/sql/schema.sql` | `internal/agent_research/db/postgres/sql/schema.sql` |
 | `gb_agent_notes_versions` | `internal/agent_research/db/sqlite/sql/schema.sql` | `internal/agent_research/db/postgres/sql/schema.sql` |
+
+## ERRORS
+
+Table of the tracked errors (`internal/sys/errors`, the `GBerror`; applied by `dbfull.Open`).
+
+- `gb_errors`
+
+| Table       | Description                                                                                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `gb_errors` | append-only: one row per `GBerror` (created by `errors.New`), with its `op`, package, function, message, stack trace and a small `meta` JSON of debugging parameters. |
+
+Defined in `internal/sys/errors/sqlite/sql/schema.sql` (SQLite) and `internal/sys/errors/postgres/sql/schema.sql` (Postgres).

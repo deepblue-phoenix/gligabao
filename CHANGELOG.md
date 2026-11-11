@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.193.0] - 2026-11-13
+
+### Added
+- `GBerror` (package `internal/sys/errors`): a unified error for failures that are key to track. It holds the package, function and stack trace where it happened, an `Op` (symbolic operation name, one word or several separated by `.`) and a small `Meta` map of debugging parameters (limited to 16 keys and 512 bytes per string value). `errors.New` / `errors.Newf` create it and store it through a `Sink`.
+- New table `gb_errors` (SQLite and PostgreSQL, created at start by `dbfull.Open`) and `Insert` functions for it (`internal/sys/errors/sqlite`, `.../postgres`; `.../db` has `Open` and `Sink`).
+- `AGENTS.md` note: create GBerrors only for the most important errors that are key to be tracked.
+
 ## [0.192.0] - 2026-11-12
 
 ### Added
