@@ -33,32 +33,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Remote runs researches somewhere else than in this process: the sidecar that starts the gligabao_agent binary in Modal
-// (internal/sys/server has the implementation). Events come in the order they happened and are numbered from 0 (RemoteEvent.Seq), so a
-// follower that was cut off resumes with the number of the first event it missed.
-type Remote interface {
-	// Start starts a job for req and returns its ID.
-	Start(ctx context.Context, req RemoteRequest) (jobID string, err error)
-	// Follow calls fn with every event of the job from the one numbered from on, as they happen. It returns nil when the stream ends
-	// (after the job's last event, or when it has been open long enough: the caller reconnects), fn's error if fn fails (which ends it),
-	// ctx's error when ctx is done, and an error for a connection that failed or broke.
-	Follow(ctx context.Context, jobID string, from int, fn func(RemoteEvent) error) error
-	// Cancel asks the job to end. The job reports a RemoteCancelled status when it has.
-	Cancel(ctx context.Context, jobID string) error
-	// Export writes the export file of the job (RemoteEvent.Export says there is one) to w and returns the number of bytes written. On an
-	// error w may have got part of the file.
-	Export(ctx context.Context, jobID string, w io.Writer) (int64, error)
-}
-
-// Importer loads what the agent of a remote research handed back into the databases of the server (see UseImporter). The server's
-// implementation is internal/sys/server (it has the databases, and package dbimport does the work).
-type Importer interface {
-	// Import loads the export file at path (an archive of package dbexport, written by gligabao_agent --export) for the research run
-	// of the user: the knowledge the agent gathered goes to the user's datasets, the runs of its sub-agents become children of run (see
-	// dbimport). It returns a line that says what was loaded.
-	Import(ctx context.Context, path string, run ImportRun) (summary string, err error)
-}
-
 // ImportRun says whose research an export is from.
 type ImportRun struct {
 	UserID string
@@ -79,26 +53,6 @@ type RemoteRequest struct {
 	Bundle     *agent_defs.Bundle
 	MaxCostUSD float64
 }
-
-// Types of a RemoteEvent.
-const (
-	// RemoteStatus: the job's status changed; it is over with RemoteCompleted, RemoteFailed or RemoteCancelled.
-	RemoteStatus = "status"
-	// RemoteState: an agent entered a state (or a state it was in ended with an error).
-	RemoteState = "state"
-	// RemoteUsageEvent: what the whole tree of agents has spent so far.
-	RemoteUsageEvent = "usage"
-	// RemoteLog: a line about what the job does (starting the container, ...).
-	RemoteLog = "log"
-)
-
-// Statuses of a RemoteStatus event.
-const (
-	RemoteRunning   = "running"
-	RemoteCompleted = "completed"
-	RemoteFailed    = "failed"
-	RemoteCancelled = "cancelled"
-)
 
 // RemoteEvent is one event of a remote job.
 type RemoteEvent struct {
@@ -141,6 +95,84 @@ type RemoteUsage struct {
 	CostUSD      float64
 	Subagents    int
 }
+
+// remoteRun is the follower of one job in Modal: it writes what the job reports to the run. Only its own goroutine (work) touches
+// the fields below the first group.
+type remoteRun struct {
+	m      *Manager
+	run    *core.Run
+	remote Remote
+	jobID  string
+	logf   *log.Entry
+	dbCtx  context.Context
+	// capUSD is the cap on the cost of the whole research (0: none). The agent in the container enforces it itself, and the follower
+	// ends the job if the usage that it reports goes well over it (remoteCapGrace): a backstop for an agent that does not.
+	capUSD float64
+
+	// runCtx ends when the manager's context does or when a stop that could not reach the job ends the follower.
+	runCtx context.Context
+	stop   context.CancelCauseFunc
+	done   chan struct{}
+	// cause is the stop that was asked for (Manager.Stop); the job's "cancelled" status then ends the run as stopped.
+	cause atomic.Pointer[stopCause]
+
+	cur    *core.State
+	states map[remoteStateKey]int64 // the states recorded, to find them again when they end with an error
+	usage  RemoteUsage
+	from   int  // the number of the next event wanted
+	final  bool // the job's last event was handled
+}
+
+type remoteStateKey struct {
+	agent string
+	seq   int
+}
+
+// Remote runs researches somewhere else than in this process: the sidecar that starts the gligabao_agent binary in Modal
+// (internal/sys/server has the implementation). Events come in the order they happened and are numbered from 0 (RemoteEvent.Seq), so a
+// follower that was cut off resumes with the number of the first event it missed.
+type Remote interface {
+	// Start starts a job for req and returns its ID.
+	Start(ctx context.Context, req RemoteRequest) (jobID string, err error)
+	// Follow calls fn with every event of the job from the one numbered from on, as they happen. It returns nil when the stream ends
+	// (after the job's last event, or when it has been open long enough: the caller reconnects), fn's error if fn fails (which ends it),
+	// ctx's error when ctx is done, and an error for a connection that failed or broke.
+	Follow(ctx context.Context, jobID string, from int, fn func(RemoteEvent) error) error
+	// Cancel asks the job to end. The job reports a RemoteCancelled status when it has.
+	Cancel(ctx context.Context, jobID string) error
+	// Export writes the export file of the job (RemoteEvent.Export says there is one) to w and returns the number of bytes written. On an
+	// error w may have got part of the file.
+	Export(ctx context.Context, jobID string, w io.Writer) (int64, error)
+}
+
+// Importer loads what the agent of a remote research handed back into the databases of the server (see UseImporter). The server's
+// implementation is internal/sys/server (it has the databases, and package dbimport does the work).
+type Importer interface {
+	// Import loads the export file at path (an archive of package dbexport, written by gligabao_agent --export) for the research run
+	// of the user: the knowledge the agent gathered goes to the user's datasets, the runs of its sub-agents become children of run (see
+	// dbimport). It returns a line that says what was loaded.
+	Import(ctx context.Context, path string, run ImportRun) (summary string, err error)
+}
+
+// Types of a RemoteEvent.
+const (
+	// RemoteStatus: the job's status changed; it is over with RemoteCompleted, RemoteFailed or RemoteCancelled.
+	RemoteStatus = "status"
+	// RemoteState: an agent entered a state (or a state it was in ended with an error).
+	RemoteState = "state"
+	// RemoteUsageEvent: what the whole tree of agents has spent so far.
+	RemoteUsageEvent = "usage"
+	// RemoteLog: a line about what the job does (starting the container, ...).
+	RemoteLog = "log"
+)
+
+// Statuses of a RemoteStatus event.
+const (
+	RemoteRunning   = "running"
+	RemoteCompleted = "completed"
+	RemoteFailed    = "failed"
+	RemoteCancelled = "cancelled"
+)
 
 const (
 	// remoteStartTimeout bounds the call that starts a job.
@@ -245,38 +277,6 @@ func (m *Manager) startRemote(ctx context.Context, userID string, opts Options, 
 		rr.work()
 	}()
 	return &rec, nil
-}
-
-// remoteRun is the follower of one job in Modal: it writes what the job reports to the run. Only its own goroutine (work) touches
-// the fields below the first group.
-type remoteRun struct {
-	m      *Manager
-	run    *core.Run
-	remote Remote
-	jobID  string
-	logf   *log.Entry
-	dbCtx  context.Context
-	// capUSD is the cap on the cost of the whole research (0: none). The agent in the container enforces it itself, and the follower
-	// ends the job if the usage that it reports goes well over it (remoteCapGrace): a backstop for an agent that does not.
-	capUSD float64
-
-	// runCtx ends when the manager's context does or when a stop that could not reach the job ends the follower.
-	runCtx context.Context
-	stop   context.CancelCauseFunc
-	done   chan struct{}
-	// cause is the stop that was asked for (Manager.Stop); the job's "cancelled" status then ends the run as stopped.
-	cause atomic.Pointer[stopCause]
-
-	cur    *core.State
-	states map[remoteStateKey]int64 // the states recorded, to find them again when they end with an error
-	usage  RemoteUsage
-	from   int  // the number of the next event wanted
-	final  bool // the job's last event was handled
-}
-
-type remoteStateKey struct {
-	agent string
-	seq   int
 }
 
 func newRemoteRun(m *Manager, run *core.Run, remote Remote, jobID string, capUSD float64) *remoteRun {

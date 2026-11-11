@@ -10,18 +10,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
-// Limits of Options.
-const (
-	// MaxTopicLen is the longest topic, in characters.
-	MaxTopicLen = 2000
-	// DefaultMaxSteps is the number of model calls the built-in agent may make when the options say none (the other agents have the
-	// max_steps of their definition); MaxMaxSteps is the most any agent may be given.
-	DefaultMaxSteps = agent_defs.DefaultMaxSteps
-	MaxMaxSteps     = agent_defs.MaxStepsCeiling
-	// maxModelLen is the longest model name.
-	maxModelLen = 100
-)
-
 // Options are what a research is started with. Its JSON is the body of POST /v1/gb/research (the user is the gb-user-id header).
 type Options struct {
 	// Topic is what to research; a question, or a subject for a report. Required.
@@ -58,6 +46,34 @@ type Options struct {
 	datasetGiven bool
 	treeCostCap  float64
 }
+
+// ListOptions select the runs List returns.
+type ListOptions struct {
+	// Active keeps only the runs that are still working (core.Status.Active).
+	Active bool
+	// Finished keeps only the runs that have ended (completed, failed or stopped); not together with Active or Status.
+	Finished bool
+	// Status keeps only the runs with this status ("running", "completed", "failed" or "stopped"); not together with Active.
+	Status string
+	// ParentID, if not 0, keeps only the sub-agents of that run.
+	ParentID int64
+	// RootsOnly keeps only the researches a user started, not the sub-agents.
+	RootsOnly bool
+	// Limit is the most runs returned, newest first; 0 means DefaultListLimit, and it is cut to MaxListLimit.
+	Limit int
+}
+
+// Limits of Options.
+const (
+	// MaxTopicLen is the longest topic, in characters.
+	MaxTopicLen = 2000
+	// DefaultMaxSteps is the number of model calls the built-in agent may make when the options say none (the other agents have the
+	// max_steps of their definition); MaxMaxSteps is the most any agent may be given.
+	DefaultMaxSteps = agent_defs.DefaultMaxSteps
+	MaxMaxSteps     = agent_defs.MaxStepsCeiling
+	// maxModelLen is the longest model name.
+	maxModelLen = 100
+)
 
 // resolve checks the options and returns them with the defaults filled in. The steps and the model default to those of the agent
 // definition, which the Manager applies once it has found it (applyDef).
@@ -96,22 +112,6 @@ func (o Options) resolve() (Options, error) {
 		return o, invalidErr("max_cost_usd must be 0 (no cap) or a positive number of USD")
 	}
 	return o, nil
-}
-
-// ListOptions select the runs List returns.
-type ListOptions struct {
-	// Active keeps only the runs that are still working (core.Status.Active).
-	Active bool
-	// Finished keeps only the runs that have ended (completed, failed or stopped); not together with Active or Status.
-	Finished bool
-	// Status keeps only the runs with this status ("running", "completed", "failed" or "stopped"); not together with Active.
-	Status string
-	// ParentID, if not 0, keeps only the sub-agents of that run.
-	ParentID int64
-	// RootsOnly keeps only the researches a user started, not the sub-agents.
-	RootsOnly bool
-	// Limit is the most runs returned, newest first; 0 means DefaultListLimit, and it is cut to MaxListLimit.
-	Limit int
 }
 
 // The number of runs List returns by default and at most.

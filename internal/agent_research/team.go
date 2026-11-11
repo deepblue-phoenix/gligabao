@@ -16,21 +16,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Limits of the sub-agents. They bound what one research can cost: a sub-agent works like any other agent, with up to dozens of
-// paid model calls. Sub-agents are not counted in the DefaultMaxActivePerUser of the user's researches; these limits bound them.
-const (
-	// MaxSubagentDepth is how many generations of sub-agents a research may have: its sub-agents may spawn their own, whose agents
-	// may not spawn any more (with 2).
-	MaxSubagentDepth = agent_defs.MaxSubagentDepth
-	// MaxSubagentsPerAgent is the most sub-agents one agent spawns, and MaxSubagentsPerTree the most in the whole tree of a research.
-	// They are ceilings: the definition of an agent may lower them (its Spawn limits), never raise them.
-	MaxSubagentsPerAgent = agent_defs.MaxSubagentsPerAgent
-	MaxSubagentsPerTree  = agent_defs.MaxSubagentsPerTree
-	// DefaultSubagentMaxSteps is the number of model calls a free-form sub-agent (one spawned without a role) may make when its parent
-	// says none; a role has its own default.
-	DefaultSubagentMaxSteps = agent_defs.DefaultSubagentSteps
-)
-
 // outcome is how a run ended.
 type outcome struct {
 	status core.Status
@@ -53,6 +38,43 @@ type member struct {
 	agents []agentInfo
 }
 
+// family is the sub-agents of one parent, in the order they were spawned.
+type family struct {
+	mu      sync.Mutex
+	members []*member
+}
+
+// tree is what the agents of one research (the root and everything below it) share: the count of the sub-agents and the money spent.
+type tree struct {
+	mu      sync.Mutex
+	spawned int
+	// max is the most sub-agents in the tree (the limit of the root's definition; 0 is MaxSubagentsPerTree).
+	max int
+	// costCap is the most the whole research may spend, in USD (0: no cap); cost is what its agents have spent so far; hit says that an
+	// agent was cut short, or a sub-agent refused, because of the cap.
+	costCap float64
+	cost    float64
+	hit     bool
+}
+
+// team is the view of one agent of the sub-agents (agent.Team).
+type team struct{ r *researcher }
+
+// Limits of the sub-agents. They bound what one research can cost: a sub-agent works like any other agent, with up to dozens of
+// paid model calls. Sub-agents are not counted in the DefaultMaxActivePerUser of the user's researches; these limits bound them.
+const (
+	// MaxSubagentDepth is how many generations of sub-agents a research may have: its sub-agents may spawn their own, whose agents
+	// may not spawn any more (with 2).
+	MaxSubagentDepth = agent_defs.MaxSubagentDepth
+	// MaxSubagentsPerAgent is the most sub-agents one agent spawns, and MaxSubagentsPerTree the most in the whole tree of a research.
+	// They are ceilings: the definition of an agent may lower them (its Spawn limits), never raise them.
+	MaxSubagentsPerAgent = agent_defs.MaxSubagentsPerAgent
+	MaxSubagentsPerTree  = agent_defs.MaxSubagentsPerTree
+	// DefaultSubagentMaxSteps is the number of model calls a free-form sub-agent (one spawned without a role) may make when its parent
+	// says none; a role has its own default.
+	DefaultSubagentMaxSteps = agent_defs.DefaultSubagentSteps
+)
+
 // ended reports whether the sub-agent has ended.
 func (m *member) ended() bool {
 	select {
@@ -61,12 +83,6 @@ func (m *member) ended() bool {
 	default:
 		return false
 	}
-}
-
-// family is the sub-agents of one parent, in the order they were spawned.
-type family struct {
-	mu      sync.Mutex
-	members []*member
 }
 
 func (f *family) get(name string) *member {
@@ -102,19 +118,6 @@ func (f *family) waitAll() {
 	for _, m := range f.all() {
 		<-m.done
 	}
-}
-
-// tree is what the agents of one research (the root and everything below it) share: the count of the sub-agents and the money spent.
-type tree struct {
-	mu      sync.Mutex
-	spawned int
-	// max is the most sub-agents in the tree (the limit of the root's definition; 0 is MaxSubagentsPerTree).
-	max int
-	// costCap is the most the whole research may spend, in USD (0: no cap); cost is what its agents have spent so far; hit says that an
-	// agent was cut short, or a sub-agent refused, because of the cap.
-	costCap float64
-	cost    float64
-	hit     bool
 }
 
 func (t *tree) reserve() bool {
@@ -172,9 +175,6 @@ func (t *tree) capHit() bool {
 	defer t.mu.Unlock()
 	return t.hit
 }
-
-// team is the view of one agent of the sub-agents (agent.Team).
-type team struct{ r *researcher }
 
 var _ agent.Team = team{}
 

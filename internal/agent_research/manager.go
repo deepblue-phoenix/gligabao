@@ -23,13 +23,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// DefaultMaxActivePerUser is the number of agents of one user that may work at the same time: each makes up to dozens of paid model
-// calls and web searches.
-const DefaultMaxActivePerUser = 3
-
-// maxTextLen cuts the details and errors that are stored (the query the model chose, an error from a web page, ...).
-const maxTextLen = 1000
-
 // Manager starts research agents and runs them in the background, until its context is done. It also lists and reads the runs.
 // Runs that were still working when the server last stopped are marked failed when the manager is made.
 type Manager struct {
@@ -69,10 +62,55 @@ type Manager struct {
 	wg      sync.WaitGroup
 }
 
+type managerOptions struct{ keepActive bool }
+
+// AgentInfo describes an agent definition that a research can run.
+type AgentInfo struct {
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+	// Hash is the SHA-256 of the definition's content; Source the file it was loaded from ("builtin" for the built-in agent).
+	Hash   string `json:"hash"`
+	Source string `json:"source"`
+	// Model, MaxSteps and the caps are the definition's settings; Subagents lists the roles it starts sub-agents for.
+	Model          string  `json:"model"`
+	MaxSteps       int     `json:"max_steps"`
+	MaxCostUSD     float64 `json:"max_cost_usd"`
+	MaxTreeCostUSD float64 `json:"max_tree_cost_usd"`
+	Knowledge      string  `json:"knowledge"`
+	// Loop is the loop the agent runs: "simple" or "investigative".
+	Loop      string   `json:"loop"`
+	Skills    []string `json:"skills"`
+	Subagents []string `json:"subagents"`
+	// Schedule is when the server runs the agent by itself (nil: it does not).
+	Schedule *ScheduleInfo `json:"schedule,omitempty"`
+}
+
+// ScheduleInfo is the schedule of an agent definition; NextRun is when it runs next (nil if never, or if it is paused).
+type ScheduleInfo struct {
+	Cron     string     `json:"cron"`
+	Timezone string     `json:"timezone"`
+	Topic    string     `json:"topic"`
+	User     string     `json:"user"`
+	Paused   bool       `json:"paused"`
+	NextRun  *time.Time `json:"next_run,omitempty"`
+}
+
+// stopCause is the cause of the cancelled context of an agent that Stop stopped. The sub-agents of the agent see it too.
+type stopCause struct {
+	runID int64  // the run that was stopped
+	by    string // who asked
+}
+
+// DefaultMaxActivePerUser is the number of agents of one user that may work at the same time: each makes up to dozens of paid model
+// calls and web searches.
+const DefaultMaxActivePerUser = 3
+
+// maxTextLen cuts the details and errors that are stored (the query the model chose, an error from a web page, ...).
+const maxTextLen = 1000
+
 // ManagerOption customizes NewManager.
 type ManagerOption func(*managerOptions)
-
-type managerOptions struct{ keepActive bool }
 
 // KeepActiveRuns makes NewManager leave the runs that are marked running alone. By default the manager takes every such run for one
 // that a restart interrupted and marks it failed, which is right for the server (the only process that runs agents on its database)
@@ -145,38 +183,6 @@ func (m *Manager) registry() *agent_defs.Registry {
 		return builtinDefs()
 	}
 	return m.defs
-}
-
-// AgentInfo describes an agent definition that a research can run.
-type AgentInfo struct {
-	Name        string `json:"name"`
-	Version     string `json:"version"`
-	Description string `json:"description"`
-	// Hash is the SHA-256 of the definition's content; Source the file it was loaded from ("builtin" for the built-in agent).
-	Hash   string `json:"hash"`
-	Source string `json:"source"`
-	// Model, MaxSteps and the caps are the definition's settings; Subagents lists the roles it starts sub-agents for.
-	Model          string  `json:"model"`
-	MaxSteps       int     `json:"max_steps"`
-	MaxCostUSD     float64 `json:"max_cost_usd"`
-	MaxTreeCostUSD float64 `json:"max_tree_cost_usd"`
-	Knowledge      string  `json:"knowledge"`
-	// Loop is the loop the agent runs: "simple" or "investigative".
-	Loop      string   `json:"loop"`
-	Skills    []string `json:"skills"`
-	Subagents []string `json:"subagents"`
-	// Schedule is when the server runs the agent by itself (nil: it does not).
-	Schedule *ScheduleInfo `json:"schedule,omitempty"`
-}
-
-// ScheduleInfo is the schedule of an agent definition; NextRun is when it runs next (nil if never, or if it is paused).
-type ScheduleInfo struct {
-	Cron     string     `json:"cron"`
-	Timezone string     `json:"timezone"`
-	Topic    string     `json:"topic"`
-	User     string     `json:"user"`
-	Paused   bool       `json:"paused"`
-	NextRun  *time.Time `json:"next_run,omitempty"`
 }
 
 // Agents lists the agent definitions, by name.
@@ -411,12 +417,6 @@ func (m *Manager) stopRemote(ctx context.Context, userID string, rr *remoteRun, 
 		return nil, internalErr("failed to read the research", err)
 	}
 	return run, nil
-}
-
-// stopCause is the cause of the cancelled context of an agent that Stop stopped. The sub-agents of the agent see it too.
-type stopCause struct {
-	runID int64  // the run that was stopped
-	by    string // who asked
 }
 
 func (c *stopCause) Error() string { return fmt.Sprintf("research %d stopped by %s", c.runID, c.by) }

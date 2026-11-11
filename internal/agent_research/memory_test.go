@@ -19,6 +19,8 @@ import (
 // kbLLM is the LLM of the knowledge base: it extracts nothing, so a query finds nothing and answers without calling it.
 type kbLLM struct{ calls atomic.Int32 }
 
+type fakeEmbedder struct{}
+
 func (l *kbLLM) Complete(_ context.Context, _ ai.Request) (*ai.Response, error) {
 	l.calls.Add(1)
 	return &ai.Response{Text: `{"entities":[],"edges":[]}`, StopReason: "end_turn", Model: "fake-model"}, nil
@@ -33,8 +35,6 @@ func kbOptions(t *testing.T) []memory_core.Option {
 	}
 	return []memory_core.Option{memory.WithVectors(vs, fakeEmbedder{})}
 }
-
-type fakeEmbedder struct{}
 
 func (fakeEmbedder) EmbedBatchUsage(_ context.Context, texts []string) ([][]float32, *ai.EmbedUsage, error) {
 	out := make([][]float32, len(texts))

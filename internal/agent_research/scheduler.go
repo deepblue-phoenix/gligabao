@@ -8,9 +8,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// maxScheduleSleep is the longest the scheduler sleeps without looking at the clock again (a clock that was set while it slept).
-const maxScheduleSleep = time.Minute
-
 // scheduler starts the researches of the agent definitions that have a [schedule] (agent_defs.Schedule): at every time the CRON
 // expression matches it starts a research of the schedule's topic, for the schedule's user, with that agent. It keeps nothing in the
 // database: after a restart the next time after the start is used, so the times the server was down are not caught up, and a run that
@@ -28,6 +25,9 @@ type scheduled struct {
 	mu      sync.Mutex
 	lastRun int64 // the ID of the research its last due time started (0: none)
 }
+
+// maxScheduleSleep is the longest the scheduler sleeps without looking at the clock again (a clock that was set while it slept).
+const maxScheduleSleep = time.Minute
 
 // newScheduler makes the scheduler of the definitions of m, with the first due time of each after from.
 func newScheduler(m *Manager, from time.Time) *scheduler {

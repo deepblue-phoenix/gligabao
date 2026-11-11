@@ -37,6 +37,14 @@ type fakeRemote struct {
 	exportCalls int
 }
 
+// fakeImporter records what it is given: the content of the file, and for whom.
+type fakeImporter struct {
+	mu      sync.Mutex
+	content []string
+	runs    []agent_research.ImportRun
+	err     error
+}
+
 func newFakeRemote() *fakeRemote {
 	f := &fakeRemote{}
 	f.cond = sync.NewCond(&f.mu)
@@ -328,14 +336,6 @@ func TestRunsAreLocalByDefault(t *testing.T) {
 			t.Fatalf("started %q, run %+v", started.Runner, run)
 		}
 	})
-}
-
-// fakeImporter records what it is given: the content of the file, and for whom.
-type fakeImporter struct {
-	mu      sync.Mutex
-	content []string
-	runs    []agent_research.ImportRun
-	err     error
 }
 
 func (f *fakeImporter) Import(_ context.Context, path string, run agent_research.ImportRun) (string, error) {

@@ -8,19 +8,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 )
 
-// ATIF trajectories of a research. The agent (package agent) records its own run when asked to (agent.Agent.Trajectory); here the
-// trajectories of the agents of a research are merged into one, the root's: when an agent has ended, and its sub-agents with it, the
-// steps of the sub-agents (each already merged with theirs) are put among its own, in the order the steps started. The root's merged
-// trajectory is what Manager.UseTrajectories hands over.
-
-// TrajectoryFunc receives the trajectory of a research: the one of the agent a user started (run runID), with the steps of all its
-// sub-agents merged in. It is called on the goroutine of the root agent, after its run has ended and was recorded, also for a research
-// that failed or was stopped.
-type TrajectoryFunc func(runID int64, t *atif.Trajectory)
-
-// mainAgent is the "agent" tag of the steps of the agent the user started.
-const mainAgent = "main"
-
 // agentInfo is what the trajectory says of each agent of the research (its "agents" extra): who it is, where it is in the tree and how
 // its run went. The totals are its own (the tools' spending included), not those of its sub-agents, which have entries of their own.
 type agentInfo struct {
@@ -38,6 +25,19 @@ type agentInfo struct {
 	OutputTokens int     `json:"output_tokens"`
 	CostUSD      float64 `json:"cost_usd"`
 }
+
+// ATIF trajectories of a research. The agent (package agent) records its own run when asked to (agent.Agent.Trajectory); here the
+// trajectories of the agents of a research are merged into one, the root's: when an agent has ended, and its sub-agents with it, the
+// steps of the sub-agents (each already merged with theirs) are put among its own, in the order the steps started. The root's merged
+// trajectory is what Manager.UseTrajectories hands over.
+
+// TrajectoryFunc receives the trajectory of a research: the one of the agent a user started (run runID), with the steps of all its
+// sub-agents merged in. It is called on the goroutine of the root agent, after its run has ended and was recorded, also for a research
+// that failed or was stopped.
+type TrajectoryFunc func(runID int64, t *atif.Trajectory)
+
+// mainAgent is the "agent" tag of the steps of the agent the user started.
+const mainAgent = "main"
 
 // UseTrajectories makes the agents started from now on record their runs as ATIF trajectories, and fn receive the merged trajectory of
 // each research when it is over (see TrajectoryFunc). With nil (the default) nothing is recorded. Agents already working are not changed.
