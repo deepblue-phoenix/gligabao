@@ -27,7 +27,7 @@ The worker keeps nothing: the data lives in the databases it is pointed at, whic
 
 ## Flags
 
-Every command: `--config FILE`, `--user` (default `pipelines`), `--dataset` (default `main`), `--timeout` (a duration like `90s`; default none), `--json`, `--verbose`.
+Every command: `--config FILE`, `--user` (default `worker`), `--dataset` (default `main`), `--timeout` (a duration like `90s`; default none), `--json`, `--verbose`.
 
 - `remember`: `--kind` (`knowledge`, default, or `episode`), `--at` (the event time, RFC 3339; default now), `--session`.
 - `query`: `--session`.
