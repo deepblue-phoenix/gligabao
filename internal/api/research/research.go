@@ -92,7 +92,7 @@ func Agents(m *agent_research.Manager) http.HandlerFunc {
 // List serves GET /v1/gb/research[?active=true][&status=running|completed|failed][&parent_id=<run id>][&limit=<n>]: {"runs": [...]}, the
 // agents of the user (core.Run, without their states), newest first, at most limit (default 50, at most 500). With active=true only
 // the agents that are working now; with status those with that status (not together with active); with parent_id only the
-// sub-agents that the run with that id spawned. Sub-agents are agents like any other and are in the list (with parent_id and name set).
+// sub-agents (workers of the investigative loop) that the run with that id started. Sub-agents are agents like any other and are in the list (with parent_id and name set).
 func List(m *agent_research.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()

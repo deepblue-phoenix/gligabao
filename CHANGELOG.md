@@ -5,6 +5,22 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.189.0] - 2026-11-13
+
+### Added
+- Sub-agents for the investigative loop ([subagents.md](docs/agents/subagents.md)). An agent with `loop = "investigative"` and `investigate.max_parallel` above 1 hands independent questions of its frontier (pending, dependencies resolved, with criteria) to worker sub-agents: the code of the loop marks them in progress (new transition trigger `delegated`), runs one worker per question at the same time (states `delegating` and `waiting`), and reduces what they hand back. A worker is a lean tool loop on one question, with a brief (the question, the queries already tried and a slice of the notes) and a last step forced to the new terminal tool `submit_findings` (claims with sources, a short answer, the queries tried, gaps found, caveats). The supervisor's reducer records the claims as `UNVERIFIED` (a worker cannot verify), the queries as attempts, the gaps as new questions, and resolves the question, returns it to the frontier (`partial`, `unresolvable` at the attempt cap) or leaves it in progress for the supervisor's own challenge. A worker that fails does not fail the run. Workers are runs with `parent_id`, `name` (the question id) and `reason`, their cost counts for the supervisor's breakers and the research's cost cap (each worker gets a share of what exploration may still spend), and their trajectories are merged into the supervisor's.
+- Knobs of `[investigate]` (and of the run options): `max_parallel` (1 to 8, default 1: no delegation), `worker_max_steps` (12), `worker_context_tokens` (1500), `max_workers` (20) and `min_priority_to_delegate` (0). `GET /v1/gb/research/agents` gives each agent's `max_parallel`.
+- `Agent.Terminal` and `Result.Final` in `internal/agent`: a tool that ends the run when it succeeds, with the last step forced to call it.
+
+### Changed
+- The `max_parallel` knob accepted only 1 before; it now takes 1 to 8. A definition with `loop = "investigative"` and `[spawn]` used to be refused with another message.
+- `GET /v1/gb/research/agents`: the `subagents` field (the roles) is replaced by `max_parallel`.
+- The agent definition in `build/agent_defs/news_scanner.toml` no longer starts regional scouts (`regional_scout.toml` stays as an agent of its own).
+
+### Removed
+- **Breaking:** the sub-agents of the simple loop. The tools `spawn_subagent` and `wait_subagents`, the `[spawn]` table of agent definitions (`enabled`, `max_depth`, `max_per_agent`, `max_per_tree`, `[[spawn.roles]]` with `on_demand`/`on_start`, `task_template` and the checks of roles and role cycles), the sub-agent parts of the prompt (`spawn.md`, `spawn_roles.md`, `subagent.md`) and the roles in bundles are gone. A definition file that still has `[spawn]` does not load (`spawn: sub-agents of the simple loop were removed; ...`); remove the table, or use `loop = "investigative"` with `investigate.max_parallel`. The built-in `default` agent works alone. The simple loop's request is shorter (no sub-agent tools in its first request).
+- The state `spawning` is not entered any more; runs made before keep it, and keep their sub-agent runs (`parent_id`, `name`, `reason`), which are read, listed and shown as before. There is no schema change.
+
 ## [0.188.1] - 2026-11-13
 
 ### Changed

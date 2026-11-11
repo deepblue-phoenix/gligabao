@@ -11,7 +11,6 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
-	"github.com/deepblue-phoenix/gligabao/internal/agent/prompts"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
@@ -34,42 +33,44 @@ type researcher struct {
 	store  db.Store
 	logf   *log.Entry
 	client *ai.Client
-	mgr    *Manager // for the sub-agents and the messages
-	mem    *Memory  // the knowledge base of the agent (nil: none); its sub-agents get the same
+	mgr    *Manager // for the workers
+	mem    *Memory  // the knowledge base of the agent (nil: none); its workers get the same
 
 	// Its own.
 	run  *core.Run // the record of the run, as created
 	opts Options
-	def  *agent_defs.Def      // the definition it was built from
-	reg  *agent_defs.Registry // all the definitions: the roles of def are found in it
+	def  *agent_defs.Def // the definition it was built from
 	// budgetReason is why the agent's last call was made early (see outOfBudget); "" if it was not. budgetTree says that it was the cap of the
 	// whole research, not its own.
 	budgetReason string
 	budgetTree   bool
-	agent        *agent.Agent
-	http         *http.Client // reads the pages of this agent only
-	cur          *core.State  // the state the run is in
-	total        agent.Result // the totals of the agent so far
+	// costCap, if not 0, is a cap on this agent's own cost that its supervisor gave it (a worker): the last call is made when it is reached.
+	costCap float64
+	agent   *agent.Agent
+	http    *http.Client // reads the pages of this agent only
+	cur     *core.State  // the state the run is in
+	total   agent.Result // the totals of the agent so far
 
-	// Its place in the tree of agents of a research. A research started by a user is the root: no parent, depth 0.
+	// Its place in the tree of agents of a research: a research started by a user is the root (no parent, depth 0), its workers (the
+	// sub-agents of the investigative loop) are its children.
 	parent *researcher
 	depth  int
 	tree   *tree
-	// runCtx is what the agent runs in: the context of the manager for a root, the kidCtx of the parent for a sub-agent, so that a
-	// sub-agent is cancelled when its parent ends. kidCtx is what its own sub-agents run in; kidCancel ends them.
+	// runCtx is what the agent runs in: the context of the manager for a root, the kidCtx of the supervisor for a worker, so that a
+	// worker is cancelled when its supervisor ends. kidCtx is what its own workers run in; kidCancel ends them.
 	runCtx    context.Context
 	kidCtx    context.Context
 	kidCancel context.CancelFunc
-	// stop ends runCtx (and so the agent and its sub-agents) with the cause *stopCause (Manager.Stop). done is closed when the
+	// stop ends runCtx (and so the agent and its workers) with the cause *stopCause (Manager.Stop). done is closed when the
 	// goroutine of the agent has ended its run.
 	stop context.CancelCauseFunc
 	done chan struct{}
-	// kids are its sub-agents. self is itself as its siblings know it (nil for a root). out is how its run ended.
+	// kids are its workers. self is itself as its supervisor knows it (nil for a root). out is how its run ended.
 	kids *family
 	self *member
 	out  outcome
 	// onTrajectory is set when trajectories are recorded (Manager.UseTrajectories). traj and agents are what finishTrajectory made of
-	// the trajectory of the agent and its sub-agents.
+	// the trajectory of the agent and its workers.
 	onTrajectory TrajectoryFunc
 	traj         *atif.Trajectory
 	agents       []agentInfo
@@ -77,7 +78,7 @@ type researcher struct {
 
 // newResearcher makes the researcher of run (already recorded) with its own agent, built from the definition def and observed by the
 // researcher itself. mem is the knowledge base the agent works with, in the dataset of opts (nil: none). parent is the researcher that
-// spawns it as a sub-agent (nil for a research started by a user).
+// starts it as a worker (nil for a research started by a user); a worker works on one question and ends with submit_findings.
 func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent *researcher, def *agent_defs.Def) *researcher {
 	r := &researcher{
 		ctx:    m.ctx,
@@ -89,12 +90,11 @@ func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent 
 		run:    run,
 		opts:   opts,
 		def:    def,
-		reg:    m.registry(),
 		http:   agent.NewHTTPClient(),
 		mgr:    m,
 		mem:    mem,
 		parent: parent,
-		tree:   &tree{max: def.MaxPerTree(), costCap: opts.treeCostCap},
+		tree:   &tree{max: opts.investigateKnobs(def).MaxWorkersOrDefault(), costCap: opts.treeCostCap},
 		kids:   &family{},
 		done:   make(chan struct{}),
 	}
@@ -108,14 +108,17 @@ func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent 
 		r.self = &member{id: run.ID, name: run.Name, reason: run.Reason, done: make(chan struct{})}
 	}
 	r.kidCtx, r.kidCancel = context.WithCancel(r.runCtx)
-	if parent != nil {
-		r.reg = parent.reg // the roles of a sub-agent are found among the definitions its parent's research started with
-	}
 	var kb agent.Knowledge // a nil Memory must become a nil Knowledge
 	if mem != nil && def.Knowledge.Access != agent_defs.AccessNone {
 		kb = mem.Knowledge(r.ctx, run.UserID, opts.Dataset, SessionID(run.ID))
 	}
-	if def.Investigative() { // its loop is package investigate: no sub-agents, no step limit of the agent loop
+	if parent != nil { // a worker: a lean tool loop on one question that ends with submit_findings
+		r.agent = workerAgent(r, kb)
+		r.agent.Model, r.agent.MaxSteps = opts.Model, opts.MaxSteps
+		r.watch()
+		return r
+	}
+	if def.Investigative() { // its loop is package investigate: no step limit of the agent loop
 		r.agent = agent.FromDefInvestigative(def, r.client, r.http, kb)
 		r.agent.Model, r.agent.MaxSteps = opts.Model, opts.MaxSteps
 		agent.AddSkills(r.agent, def.Skills)
@@ -123,12 +126,13 @@ func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent 
 	}
 	r.agent = agent.FromDef(def, r.client, r.http, kb)
 	r.agent.Model, r.agent.MaxSteps = opts.Model, opts.MaxSteps
-	if parent != nil {
-		r.agent.System = prompts.Join(r.agent.System, prompts.Subagent(run.Name, run.Reason))
-	}
-	// An agent can spawn sub-agents if its definition says so, unless it is at the deepest level.
-	agent.AddTeamTools(r.agent, team{r}, r.teamTools())
 	agent.AddSkills(r.agent, def.Skills)
+	r.watch()
+	return r
+}
+
+// watch makes the researcher the observer of its agent, and the one that says when its budget is spent.
+func (r *researcher) watch() {
 	r.agent.OutOfBudget = r.outOfBudget
 	r.agent.Observer = agent.Observer{
 		BeforeModel: r.beforeModel,
@@ -136,7 +140,6 @@ func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent 
 		BeforeTool:  r.beforeTool,
 		AfterTool:   r.afterTool,
 	}
-	return r
 }
 
 // work is the goroutine of the agent: it runs the agent, records every state it enters and what it spends, and ends the run's record.
@@ -154,15 +157,15 @@ func (r *researcher) work() {
 		}
 	}()
 
-	// Its sub-agents end with it, and the run is not finished before they are.
+	// Its workers end with it, and the run is not finished before they are.
 	defer r.endKids()
 
 	var res *agent.Result
 	var err error
-	if r.def.Investigative() {
+	if r.parent == nil && r.def.Investigative() {
 		res, err = r.runInvestigative()
 	} else {
-		res, err = r.agent.Run(r.runCtx, r.opts.Topic+r.startRoles())
+		res, err = r.agent.Run(r.runCtx, r.opts.Topic)
 	}
 	if res != nil {
 		r.total = *res
@@ -178,6 +181,10 @@ func (r *researcher) work() {
 	case err != nil:
 		r.logf.WithError(err).Warn("agent research: the agent failed")
 		r.finish(core.StatusFailed, "", truncate(err.Error(), maxTextLen))
+	case r.agent.Terminal != "" && (res == nil || res.Final == nil):
+		r.finish(core.StatusFailed, "", "the worker ended without submitting its findings")
+	case r.agent.Terminal != "":
+		r.finish(core.StatusCompleted, string(res.Final), "") // the findings, as the supervisor reads them
 	case strings.TrimSpace(res.Answer) == "":
 		r.finish(core.StatusFailed, "", "the agent ended without a report")
 	default:
@@ -309,17 +316,6 @@ func toolState(name string, input json.RawMessage) (state, detail string) {
 		return core.StateReading, arg("url")
 	case "query":
 		return core.StateQuerying, arg("question")
-	case agent.ToolSpawnSubagent:
-		var m struct{ Name, Reason string }
-		json.Unmarshal(input, &m)
-		return core.StateSpawning, m.Name + ": " + truncate(m.Reason, 200)
-	case agent.ToolWaitSubagents:
-		var m struct{ Names []string }
-		json.Unmarshal(input, &m)
-		if len(m.Names) == 0 {
-			return core.StateWaiting, "all sub-agents"
-		}
-		return core.StateWaiting, strings.Join(m.Names, ", ")
 	case "remember":
 		var m struct {
 			Text string `json:"text"`
@@ -347,66 +343,6 @@ func truncate(s string, n int) string {
 	return string([]rune(s)[:n])
 }
 
-// canSpawn reports whether the agent may start sub-agents: its definition says so and it is not at its deepest level.
-func (r *researcher) canSpawn() bool { return r.def.Spawn.Enabled && r.depth < r.def.MaxDepth() }
-
-// teamTools says which tools and which part of the prompt about sub-agents the agent gets.
-func (r *researcher) teamTools() agent.TeamTools {
-	var tt agent.TeamTools
-	if !r.canSpawn() {
-		return tt
-	}
-	if len(r.def.Spawn.Roles) == 0 { // free-form: sub-agents that are copies of the agent
-		tt.Spawn = true
-		return tt
-	}
-	// With roles, the model starts the on_demand ones; the on_start ones are started for it (startRoles), and it only waits for them.
-	info := prompts.RolesInfo{MaxPerAgent: r.def.MaxPerAgent()}
-	for _, role := range r.def.OnDemandRoles() {
-		tt.Roles = append(tt.Roles, agent.Role{Name: role.Name, Does: role.Does, When: role.When})
-		info.OnDemand = append(info.OnDemand, prompts.Role{Name: role.Name, Does: role.Does, When: role.When, MaxInstances: role.MaxInstances})
-	}
-	for _, role := range r.def.OnStartRoles() {
-		info.OnStart = append(info.OnStart, prompts.Role{Name: role.Name, Does: role.Does})
-	}
-	tt.Spawn, tt.Wait = len(info.OnDemand) > 0, len(info.OnDemand) == 0
-	tt.Prompt = prompts.Roles(info)
-	return tt
-}
-
-// startRoles starts the sub-agents of the on_start roles of the definition, before the agent's first model call, and returns the note
-// for its first turn that says so ("" if there are none). A sub-agent that cannot be started (a limit, the cost cap) is said in the note too.
-func (r *researcher) startRoles() string {
-	if !r.canSpawn() {
-		return ""
-	}
-	var started, failed []string
-	for _, role := range r.def.OnStartRoles() {
-		task, err := role.Task(r.opts.Topic)
-		if err == nil {
-			steps := 0
-			if child, derr := r.reg.RoleDef(role); derr == nil {
-				steps, _ = role.Steps(child)
-			}
-			_, err = r.mgr.spawn(r, role.Name, role.Name, role.Does, task, steps)
-		}
-		if err != nil {
-			r.logf.WithError(err).WithField("role", role.Name).Warn("agent research: starting the sub-agent of an on_start role failed")
-			failed = append(failed, fmt.Sprintf("%q (%v)", role.Name, err))
-			continue
-		}
-		started = append(started, fmt.Sprintf("%q", role.Name))
-	}
-	var sb strings.Builder
-	if len(started) > 0 {
-		fmt.Fprintf(&sb, "\n\n[Sub-agents %s were started for you and are working on parts of this topic in the background. Call wait_subagents to get their reports.]", strings.Join(started, ", "))
-	}
-	if len(failed) > 0 {
-		fmt.Fprintf(&sb, "\n\n[These sub-agents could not be started: %s.]", strings.Join(failed, ", "))
-	}
-	return sb.String()
-}
-
 // outOfBudget is the agent's OutOfBudget: it says why the next model call must be the last, when the cost cap of the whole research or
 // the agent's own was reached ("" if not). It is called on the agent's goroutine.
 func (r *researcher) outOfBudget() string {
@@ -414,8 +350,10 @@ func (r *researcher) outOfBudget() string {
 	case r.tree.capReached(true):
 		r.budgetTree = true
 		r.budgetReason = fmt.Sprintf("The cost cap of this research ($%.2f for all the agents together) was reached.", r.tree.costCap)
-	case r.def.Limits.MaxCostUSD > 0 && r.total.CostUSD >= r.def.Limits.MaxCostUSD:
+	case r.parent == nil && r.def.Limits.MaxCostUSD > 0 && r.total.CostUSD >= r.def.Limits.MaxCostUSD:
 		r.budgetReason = fmt.Sprintf("Your cost cap ($%.2f) was reached.", r.def.Limits.MaxCostUSD)
+	case r.costCap > 0 && r.total.CostUSD >= r.costCap:
+		r.budgetReason = fmt.Sprintf("Your share of the investigation's budget ($%.2f) was reached.", r.costCap)
 	default:
 		return ""
 	}

@@ -4,7 +4,7 @@
 schema = 1
 name = "news_scanner"
 version = "1.0.0"
-description = "Scans recent news on a topic: prefers news agencies, looks at the last week, and starts a regional scout for each region the topic names."
+description = "Scans recent news on a topic: prefers news agencies and looks at the last week."
 
 system_prompt_file = "prompts/news_scanner.md"
 
@@ -25,11 +25,7 @@ query_first = true
 
 [limits]
 max_cost_usd = 1.00                  # this agent alone
-max_tree_cost_usd = 3.00             # the whole research, sub-agents included
-
-[spawn]
-enabled = true
-max_per_agent = 3
+max_tree_cost_usd = 3.00             # the whole research
 
 # Run by itself every weekday at 7:30 (Berlin time). paused = true keeps it in the file without running it: remove that line to turn it on.
 [schedule]
@@ -38,14 +34,3 @@ timezone = "Europe/Berlin"
 topic = "The most important news of {{.Date}}"
 user = "scheduler"
 paused = true
-
-[[spawn.roles]]
-name = "regional"
-agent = "regional_scout"
-version = "^1.0"
-trigger = "on_demand"
-when = "The topic names two or more countries or regions that each need searches of their own."
-does = "Researches the news of one region in depth and reports dated facts with source URLs."
-max_instances = 3
-max_steps = 8
-max_steps_limit = 12

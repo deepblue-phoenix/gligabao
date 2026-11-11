@@ -96,7 +96,10 @@ const (
 	TriggerPrunedDepth       Trigger = "pruned_depth"
 	TriggerPrunedScope       Trigger = "pruned_scope"
 	TriggerContradiction     Trigger = "contradiction"
+	TriggerDelegated         Trigger = "delegated"
 )
+
+// TriggerDelegated is the selection of a question for a worker (a sub-agent, see delegate.go): pending to in_progress, by code.
 
 // Actor says who made a transition: the model through a tool, or a deterministic rule.
 type Actor string

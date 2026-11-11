@@ -1,7 +1,7 @@
 schema = 1
 name = "regional_scout"
 version = "1.0.0"
-description = "Researches the news of one region, in its own language where that helps."
+description = "Researches the news of one region, in its own language where that helps (an agent of its own: run it with --agent regional_scout)."
 
 system_prompt_file = "prompts/regional_scout.md"
 max_steps = 8

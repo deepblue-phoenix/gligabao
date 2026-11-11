@@ -7,10 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
 )
 
-// Bundle is an agent with everything it needs, as one JSON document: the definition, the definitions its roles start (and theirs), with
+// Bundle is an agent with everything it needs, as one JSON document: the definition, with
 // the prompts and the skills as text. A server that runs an agent somewhere that has no agent_defs directory of its own (the Modal
 // container) sends it a bundle; gligabao_agent --agent-bundle reads it. The definitions keep their hashes, which are checked on load.
 type Bundle struct {
@@ -25,23 +24,7 @@ func (r *Registry) Bundle(name string) (*Bundle, error) {
 	if !ok {
 		return nil, fmt.Errorf("unknown agent %q", name)
 	}
-	seen := map[string]bool{}
-	var walk func(d *Def)
-	walk = func(d *Def) {
-		if seen[d.Name] {
-			return
-		}
-		seen[d.Name] = true
-		for _, role := range d.Spawn.Roles {
-			walk(r.defs[role.Agent])
-		}
-	}
-	walk(root)
-	b := &Bundle{Agent: name}
-	for n := range seen {
-		b.Defs = append(b.Defs, r.defs[n])
-	}
-	sort.Slice(b.Defs, func(i, j int) bool { return b.Defs[i].Name < b.Defs[j].Name })
+	b := &Bundle{Agent: name, Defs: []*Def{root}}
 	if _, err := b.JSON(); err != nil {
 		return nil, err
 	}

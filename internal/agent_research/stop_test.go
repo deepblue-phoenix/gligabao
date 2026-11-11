@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -71,71 +70,6 @@ func testStopAgent(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	}
 	if fin, _ := m.List(ctx, "", agent_research.ListOptions{Finished: true}); len(fin) != 1 {
 		t.Fatalf("finished list: %+v", fin)
-	}
-}
-
-func TestStopOfAnAgentStopsItsSubagents(t *testing.T) { runOnBackends(t, testStopTree) }
-
-func testStopTree(t *testing.T, d *sql.DB, ops agent_research.Ops) {
-	ctx := context.Background()
-	fake := newTeamFake(map[string][]string{
-		"root": {call(spawn("slow", "never ends")), call([2]string{"wait_subagents", `{}`}), final("done")},
-	})
-	fake.hang["slow"] = true
-	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
-	started, _ := m.Start(ctx, "u1", agent_research.Options{Topic: "t", MaxSteps: 4})
-	waitFor(t, "the sub-agent to work", func() bool { fake.mu.Lock(); defer fake.mu.Unlock(); return fake.calls["slow"] == 1 })
-
-	if _, err := m.Stop(ctx, "", started.ID, "the test"); err != nil {
-		t.Fatal(err)
-	}
-	m.Wait()
-	root, _ := m.Get(ctx, "", started.ID)
-	if root.Status != core.StatusStopped {
-		t.Fatalf("root: %+v", root)
-	}
-	subs, _ := m.List(ctx, "", agent_research.ListOptions{ParentID: started.ID})
-	if len(subs) != 1 || subs[0].Status != core.StatusStopped || !strings.Contains(subs[0].Error, "spawned it") || subs[0].FinishedAt == nil {
-		t.Fatalf("sub-agent: %+v", subs)
-	}
-	kids, err := m.ChildCounts(ctx, []int64{started.ID, subs[0].ID})
-	if err != nil || kids[started.ID] != 1 || len(kids) != 1 {
-		t.Fatalf("child counts: %v %v", kids, err)
-	}
-	if roots, _ := m.List(ctx, "", agent_research.ListOptions{RootsOnly: true}); len(roots) != 1 || roots[0].ID != started.ID {
-		t.Fatalf("roots: %+v", roots)
-	}
-}
-
-func TestStopOfASubagentLeavesItsParentWorking(t *testing.T) { runOnBackends(t, testStopSubagent) }
-
-func testStopSubagent(t *testing.T, d *sql.DB, ops agent_research.Ops) {
-	ctx := context.Background()
-	fake := newTeamFake(map[string][]string{
-		"root": {call(spawn("slow", "never ends")), call([2]string{"wait_subagents", `{}`}), final("done")},
-	})
-	fake.hang["slow"] = true
-	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
-	started, _ := m.Start(ctx, "u1", agent_research.Options{Topic: "t", MaxSteps: 4})
-	waitFor(t, "the sub-agent to work", func() bool { fake.mu.Lock(); defer fake.mu.Unlock(); return fake.calls["slow"] == 1 })
-	subs, _ := m.List(ctx, "", agent_research.ListOptions{ParentID: started.ID})
-	if len(subs) != 1 {
-		t.Fatalf("sub-agents: %+v", subs)
-	}
-	if _, err := m.Stop(ctx, "", subs[0].ID, "the test"); err != nil {
-		t.Fatal(err)
-	}
-	m.Wait()
-	root, _ := m.Get(ctx, "", started.ID)
-	if root.Status != core.StatusCompleted || root.Report != "done" {
-		t.Fatalf("root: %+v", root)
-	}
-	if b := fake.body("root", 2); !strings.Contains(b, "stopped by the test") {
-		t.Errorf("the parent was not told why the sub-agent did not finish: %s", b)
-	}
-	sub, _ := m.Get(ctx, "", subs[0].ID)
-	if sub.Status != core.StatusStopped || sub.Error != "stopped by the test" {
-		t.Fatalf("sub-agent: %+v", sub)
 	}
 }
 

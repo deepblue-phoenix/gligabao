@@ -121,9 +121,10 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	fs.Usage = func() {
 		fmt.Fprintf(stderr, `Usage: gligabao_agent [flags] TOPIC | -
 
-Deep-research agent: searches the web, reads pages and prints a report on TOPIC (- reads it from stdin). It may spawn sub-agents
-for the parts of a broad topic. --agent picks the agent definition (prompt, tools, search and knowledge settings, cost caps, sub-agents) from the
-agent_defs directory next to the binary (see docs/agents/agent-defs.md). Each run costs money (model calls and web searches, sub-agents included).
+Deep-research agent: searches the web, reads pages and prints a report on TOPIC (- reads it from stdin). --agent picks the agent definition
+(prompt, tools, search and knowledge settings, cost caps, loop) from the agent_defs directory next to the binary (see
+docs/agents/agent-defs.md); an agent with loop = "investigative" and investigate.max_parallel above 1 runs independent questions in workers.
+Each run costs money (model calls and web searches, workers included).
 
 It works with the knowledge base (the memory of gligabao) in process, through its remember and query tools, and records every run
 and its states in the database, as the research jobs of the server do: the database is opened here (SQLite file, or PostgreSQL with

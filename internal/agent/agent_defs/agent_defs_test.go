@@ -42,24 +42,6 @@ query_first = true
 [limits]
 max_cost_usd = 1.5
 max_tree_cost_usd = 5
-
-[spawn]
-enabled = true
-max_per_agent = 3
-[[spawn.roles]]
-name = "regional"
-agent = "regional_scout"
-version = ">=1.0, <2"
-when = "the topic names several regions"
-does = "covers one region"
-max_instances = 2
-max_steps = 8
-[[spawn.roles]]
-name = "headlines"
-agent = "regional_scout"
-trigger = "on_start"
-does = "reads the headlines"
-task_template = "Headlines about {{.Topic}}"
 `
 
 const scoutTOML = `
@@ -126,29 +108,10 @@ func TestLoadReadsTomlAndResolvesEverything(t *testing.T) {
 	if d.Knowledge.Access != AccessReadOnly || d.Knowledge.Dataset != "news" || !d.Knowledge.QueryFirst || d.Limits.MaxCostUSD != 1.5 || d.Limits.MaxTreeCostUSD != 5 {
 		t.Errorf("knowledge and limits: %+v %+v", d.Knowledge, d.Limits)
 	}
-	if !d.Spawn.Enabled || d.MaxPerAgent() != 3 || d.MaxDepth() != MaxSubagentDepth || d.MaxPerTree() != MaxSubagentsPerTree {
-		t.Errorf("spawn: %+v", d.Spawn)
-	}
-	if on := d.OnDemandRoles(); len(on) != 1 || on[0].Name != "regional" {
-		t.Errorf("on demand: %+v", on)
-	}
-	start := d.OnStartRoles()
-	if len(start) != 1 || start[0].Name != "headlines" {
-		t.Fatalf("on start: %+v", start)
-	}
-	if task, err := start[0].Task("batteries"); err != nil || task != "Headlines about batteries" {
-		t.Errorf("task: %q %v", task, err)
-	}
-	child, _ := reg.Get("regional_scout")
-	if def, limit := on0(d).Steps(child); def != 8 || limit != 12 {
-		t.Errorf("steps of the role: %d %d", def, limit)
-	}
 	if len(d.Hash) != 64 || d.Source == "" {
 		t.Errorf("hash and source: %q %q", d.Hash, d.Source)
 	}
 }
-
-func on0(d *Def) Role { return d.OnDemandRoles()[0] }
 
 func TestLoadReadsJSON(t *testing.T) {
 	reg, err := Load(dir(t, map[string]string{"a.json": `{"name":"json_agent","version":"0.1.0","description":"d","system_prompt":"p","tools":["web_search"],"knowledge":{"access":"none"}}`}))
@@ -167,7 +130,7 @@ func TestMissingDirectoryIsOnlyTheBuiltin(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := reg.Default()
-	if len(reg.List()) != 2 || d.Source != builtinSource || !d.Spawn.Enabled || d.MaxSteps != 20 || d.MaxTokens != 8192 || d.Limits != (Limits{}) {
+	if len(reg.List()) != 2 || d.Source != builtinSource || d.MaxSteps != 20 || d.MaxTokens != 8192 || d.Limits != (Limits{}) {
 		t.Errorf("builtin: %+v", d)
 	}
 	if _, err := Load(filepath.Join(dir(t, map[string]string{"f": "x"}), "f")); err == nil {
@@ -195,50 +158,40 @@ func TestInvalidDefinitionsAreAllReported(t *testing.T) {
 		files map[string]string
 		want  []string
 	}{
-		"unknown key":                   {map[string]string{"x.toml": base + "system_prompt = \"p\"\nmodle = \"m\"\n"}, []string{"unknown key(s): modle"}},
-		"schedule without cron":         {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ntopic = \"t\"\n"}, []string{"schedule.cron: required"}},
-		"schedule bad cron":             {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"61 * * * *\"\ntopic = \"t\"\n"}, []string{"schedule.cron", "minute"}},
-		"schedule too often":            {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"* * * * *\"\ntopic = \"t\"\n"}, []string{"at least 5m0s"}},
-		"schedule never":                {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"0 0 31 2 *\"\ntopic = \"t\"\n"}, []string{"never matches"}},
-		"schedule bad timezone":         {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"@daily\"\ntimezone = \"Mars/Base\"\ntopic = \"t\"\n"}, []string{"schedule.timezone"}},
-		"schedule without topic":        {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"@daily\"\n"}, []string{"schedule.topic: required"}},
-		"schedule bad topic template":   {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"@daily\"\ntopic = \"{{.Nope}}\"\n"}, []string{"schedule.topic"}},
-		"schedule unknown key":          {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"@daily\"\ntopic = \"t\"\nevery = 5\n"}, []string{"unknown key(s): schedule.every"}},
-		"unknown json key":              {map[string]string{"x.json": `{"name":"x","bogus":1}`}, []string{"invalid JSON"}},
-		"bad toml":                      {map[string]string{"x.toml": "name = "}, []string{"invalid TOML"}},
-		"no prompt":                     {map[string]string{"x.toml": base}, []string{"system_prompt or system_prompt_file: one is required"}},
-		"both prompts":                  {map[string]string{"x.toml": base + "system_prompt = \"p\"\nsystem_prompt_file = \"p.md\"\n", "p.md": "p"}, []string{"give one of them"}},
-		"missing prompt":                {map[string]string{"x.toml": base + "system_prompt_file = \"p.md\"\n"}, []string{"system_prompt_file", "p.md"}},
-		"prompt escapes":                {map[string]string{"sub/x.toml": base + "system_prompt_file = \"../../x\"\n"}, []string{}}, // not loaded (subdirectory)
-		"prompt outside":                {map[string]string{"x.toml": base + "system_prompt_file = \"../outside.md\"\n"}, []string{"outside the definitions directory"}},
-		"absolute prompt":               {map[string]string{"x.toml": base + "system_prompt_file = \"/etc/passwd\"\n"}, []string{"relative"}},
-		"bad name":                      {map[string]string{"x.toml": "name = \"Bad Name\"\nversion = \"1.0.0\"\ndescription = \"d\"\nsystem_prompt = \"p\"\n"}, []string{"name:"}},
-		"bad version":                   {map[string]string{"x.toml": "name = \"x\"\nversion = \"1.0\"\ndescription = \"d\"\nsystem_prompt = \"p\"\n"}, []string{"version:"}},
-		"no description":                {map[string]string{"x.toml": "name = \"x\"\nversion = \"1.0.0\"\nsystem_prompt = \"p\"\n"}, []string{"description: required"}},
-		"unknown tool":                  {map[string]string{"x.toml": base + "system_prompt = \"p\"\ntools = [\"shell\"]\n"}, []string{"unknown tool \"shell\""}},
-		"knowledge tool":                {map[string]string{"x.toml": base + "system_prompt = \"p\"\ntools = [\"query\"]\n"}, []string{"[knowledge] access"}},
-		"too many steps":                {map[string]string{"x.toml": base + "system_prompt = \"p\"\nmax_steps = 41\n"}, []string{"max_steps"}},
-		"allowed+blocked":               {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[search]\nallowed_domains = [\"a.com\"]\nblocked_domains = [\"b.com\"]\n"}, []string{"cannot be used together"}},
-		"bad domain":                    {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[search]\nblocked_domains = [\"https://a.com/x\"]\n"}, []string{"not a host name"}},
-		"bad recency":                   {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[search]\nrecency = \"decade\"\n"}, []string{"search.recency"}},
-		"domains without the tool":      {map[string]string{"x.toml": base + "system_prompt = \"p\"\ntools = [\"fetch_url\"]\n[search]\nblocked_domains = [\"b.com\"]\n"}, []string{"web_search is not in tools"}},
-		"bad access":                    {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[knowledge]\naccess = \"write\"\n"}, []string{"knowledge.access"}},
-		"lock without dataset":          {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[knowledge]\ndataset_locked = true\n"}, []string{"needs a dataset"}},
-		"negative cap":                  {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[limits]\nmax_cost_usd = -1\n"}, []string{"limits.max_cost_usd"}},
-		"spawn settings while disabled": {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[spawn]\nmax_per_agent = 2\n"}, []string{"enabled is false"}},
-		"spawn over ceiling":            {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[spawn]\nenabled = true\nmax_per_agent = 6\n"}, []string{"spawn.max_per_agent"}},
-		"role needs when":               {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[spawn]\nenabled = true\n[[spawn.roles]]\nname = \"r\"\nagent = \"default\"\ndoes = \"d\"\n"}, []string{"when: required"}},
-		"on_demand task template":       {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[spawn]\nenabled = true\n[[spawn.roles]]\nname = \"r\"\nagent = \"default\"\ndoes = \"d\"\nwhen = \"w\"\ntask_template = \"x\"\n"}, []string{"only an on_start role"}},
-		"bad template":                  {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[spawn]\nenabled = true\n[[spawn.roles]]\nname = \"r\"\nagent = \"default\"\ndoes = \"d\"\ntrigger = \"on_start\"\ntask_template = \"{{.Nope}}\"\n"}, []string{"task_template"}},
-		"bad trigger":                   {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[spawn]\nenabled = true\n[[spawn.roles]]\nname = \"r\"\nagent = \"default\"\ndoes = \"d\"\nwhen = \"w\"\ntrigger = \"always\"\n"}, []string{"trigger"}},
-		"duplicate role":                {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[spawn]\nenabled = true\n[[spawn.roles]]\nname = \"r\"\nagent = \"default\"\ndoes = \"d\"\nwhen = \"w\"\n[[spawn.roles]]\nname = \"r\"\nagent = \"default\"\ndoes = \"d\"\nwhen = \"w\"\n"}, []string{"defined twice"}},
-		"unknown role agent":            {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[spawn]\nenabled = true\n[[spawn.roles]]\nname = \"r\"\nagent = \"ghost\"\ndoes = \"d\"\nwhen = \"w\"\n"}, []string{"no agent called \"ghost\""}},
-		"role version not met":          {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[spawn]\nenabled = true\n[[spawn.roles]]\nname = \"r\"\nagent = \"default\"\nversion = \">=2\"\ndoes = \"d\"\nwhen = \"w\"\n"}, []string{"does not meet"}},
-		"role steps do not fit":         {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[spawn]\nenabled = true\n[[spawn.roles]]\nname = \"r\"\nagent = \"default\"\ndoes = \"d\"\nwhen = \"w\"\nmax_steps = 30\n"}, []string{"do not fit"}},
-		"self role":                     {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[spawn]\nenabled = true\n[[spawn.roles]]\nname = \"r\"\nagent = \"x\"\ndoes = \"d\"\nwhen = \"w\"\n"}, []string{"x -> x starts itself"}},
-		"required skill missing":        {map[string]string{"x.toml": base + "system_prompt = \"p\"\nrequired_skills = [\"nope\"]\n"}, []string{"required_skills", "nope"}},
-		"bad skill name":                {map[string]string{"x.toml": base + "system_prompt = \"p\"\nskills = [\"../x\"]\n"}, []string{"skills:"}},
-		"duplicate name":                {map[string]string{"x.toml": base + "system_prompt = \"p\"\n", "y.json": `{"name":"x","version":"1.0.0","description":"d","system_prompt":"p"}`}, []string{"is also the name of"}},
+		"unknown key":                 {map[string]string{"x.toml": base + "system_prompt = \"p\"\nmodle = \"m\"\n"}, []string{"unknown key(s): modle"}},
+		"schedule without cron":       {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ntopic = \"t\"\n"}, []string{"schedule.cron: required"}},
+		"schedule bad cron":           {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"61 * * * *\"\ntopic = \"t\"\n"}, []string{"schedule.cron", "minute"}},
+		"schedule too often":          {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"* * * * *\"\ntopic = \"t\"\n"}, []string{"at least 5m0s"}},
+		"schedule never":              {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"0 0 31 2 *\"\ntopic = \"t\"\n"}, []string{"never matches"}},
+		"schedule bad timezone":       {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"@daily\"\ntimezone = \"Mars/Base\"\ntopic = \"t\"\n"}, []string{"schedule.timezone"}},
+		"schedule without topic":      {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"@daily\"\n"}, []string{"schedule.topic: required"}},
+		"schedule bad topic template": {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"@daily\"\ntopic = \"{{.Nope}}\"\n"}, []string{"schedule.topic"}},
+		"schedule unknown key":        {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[schedule]\ncron = \"@daily\"\ntopic = \"t\"\nevery = 5\n"}, []string{"unknown key(s): schedule.every"}},
+		"unknown json key":            {map[string]string{"x.json": `{"name":"x","bogus":1}`}, []string{"invalid JSON"}},
+		"bad toml":                    {map[string]string{"x.toml": "name = "}, []string{"invalid TOML"}},
+		"no prompt":                   {map[string]string{"x.toml": base}, []string{"system_prompt or system_prompt_file: one is required"}},
+		"both prompts":                {map[string]string{"x.toml": base + "system_prompt = \"p\"\nsystem_prompt_file = \"p.md\"\n", "p.md": "p"}, []string{"give one of them"}},
+		"missing prompt":              {map[string]string{"x.toml": base + "system_prompt_file = \"p.md\"\n"}, []string{"system_prompt_file", "p.md"}},
+		"prompt escapes":              {map[string]string{"sub/x.toml": base + "system_prompt_file = \"../../x\"\n"}, []string{}}, // not loaded (subdirectory)
+		"prompt outside":              {map[string]string{"x.toml": base + "system_prompt_file = \"../outside.md\"\n"}, []string{"outside the definitions directory"}},
+		"absolute prompt":             {map[string]string{"x.toml": base + "system_prompt_file = \"/etc/passwd\"\n"}, []string{"relative"}},
+		"bad name":                    {map[string]string{"x.toml": "name = \"Bad Name\"\nversion = \"1.0.0\"\ndescription = \"d\"\nsystem_prompt = \"p\"\n"}, []string{"name:"}},
+		"bad version":                 {map[string]string{"x.toml": "name = \"x\"\nversion = \"1.0\"\ndescription = \"d\"\nsystem_prompt = \"p\"\n"}, []string{"version:"}},
+		"no description":              {map[string]string{"x.toml": "name = \"x\"\nversion = \"1.0.0\"\nsystem_prompt = \"p\"\n"}, []string{"description: required"}},
+		"unknown tool":                {map[string]string{"x.toml": base + "system_prompt = \"p\"\ntools = [\"shell\"]\n"}, []string{"unknown tool \"shell\""}},
+		"knowledge tool":              {map[string]string{"x.toml": base + "system_prompt = \"p\"\ntools = [\"query\"]\n"}, []string{"[knowledge] access"}},
+		"too many steps":              {map[string]string{"x.toml": base + "system_prompt = \"p\"\nmax_steps = 41\n"}, []string{"max_steps"}},
+		"allowed+blocked":             {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[search]\nallowed_domains = [\"a.com\"]\nblocked_domains = [\"b.com\"]\n"}, []string{"cannot be used together"}},
+		"bad domain":                  {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[search]\nblocked_domains = [\"https://a.com/x\"]\n"}, []string{"not a host name"}},
+		"bad recency":                 {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[search]\nrecency = \"decade\"\n"}, []string{"search.recency"}},
+		"domains without the tool":    {map[string]string{"x.toml": base + "system_prompt = \"p\"\ntools = [\"fetch_url\"]\n[search]\nblocked_domains = [\"b.com\"]\n"}, []string{"web_search is not in tools"}},
+		"bad access":                  {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[knowledge]\naccess = \"write\"\n"}, []string{"knowledge.access"}},
+		"lock without dataset":        {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[knowledge]\ndataset_locked = true\n"}, []string{"needs a dataset"}},
+		"negative cap":                {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[limits]\nmax_cost_usd = -1\n"}, []string{"limits.max_cost_usd"}},
+		"spawn table (removed)":       {map[string]string{"x.toml": base + "system_prompt = \"p\"\n[spawn]\nenabled = true\n"}, []string{"sub-agents of the simple loop were removed", "investigate.max_parallel"}},
+		"required skill missing":      {map[string]string{"x.toml": base + "system_prompt = \"p\"\nrequired_skills = [\"nope\"]\n"}, []string{"required_skills", "nope"}},
+		"bad skill name":              {map[string]string{"x.toml": base + "system_prompt = \"p\"\nskills = [\"../x\"]\n"}, []string{"skills:"}},
+		"duplicate name":              {map[string]string{"x.toml": base + "system_prompt = \"p\"\n", "y.json": `{"name":"x","version":"1.0.0","description":"d","system_prompt":"p"}`}, []string{"is also the name of"}},
 	}
 	for name, c := range cases {
 		files := c.files
@@ -259,16 +212,6 @@ func TestInvalidDefinitionsAreAllReported(t *testing.T) {
 				t.Errorf("%s: the error lacks %q:\n%v", name, w, err)
 			}
 		}
-	}
-}
-
-func TestMutualRolesAreACycle(t *testing.T) {
-	mk := func(name, other string) string {
-		return "name = \"" + name + "\"\nversion = \"1.0.0\"\ndescription = \"d\"\nsystem_prompt = \"p\"\n[spawn]\nenabled = true\n[[spawn.roles]]\nname = \"r\"\nagent = \"" + other + "\"\ndoes = \"d\"\nwhen = \"w\"\n"
-	}
-	_, err := Load(dir(t, map[string]string{"a.toml": mk("a", "b"), "b.toml": mk("b", "a")}))
-	if err == nil || !strings.Contains(err.Error(), "starts itself through its roles") {
-		t.Fatalf("err: %v", err)
 	}
 }
 
@@ -298,7 +241,7 @@ func TestBundleRoundTripAndTamper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b.Agent != "news_scanner" || len(b.Defs) != 2 { // the agent and the one its roles start: not the default, not reachable
+	if b.Agent != "news_scanner" || len(b.Defs) != 1 {
 		t.Fatalf("bundle: %s %d", b.Agent, len(b.Defs))
 	}
 	data, err := b.JSON()
@@ -309,7 +252,7 @@ func TestBundleRoundTripAndTamper(t *testing.T) {
 	if err != nil || name != "news_scanner" {
 		t.Fatalf("parse: %q %v", name, err)
 	}
-	for _, n := range []string{"news_scanner", "regional_scout"} {
+	for _, n := range []string{"news_scanner"} {
 		a, _ := reg.Get(n)
 		c, _ := reg2.Get(n)
 		if c == nil || a.Hash != c.Hash || a.SystemPrompt != c.SystemPrompt || len(a.Skills) != len(c.Skills) {
@@ -412,21 +355,6 @@ func TestSatisfies(t *testing.T) {
 	}
 }
 
-func TestRoleStepsDefaults(t *testing.T) {
-	child := Builtin()
-	child.MaxSteps = 15
-	for _, c := range []struct {
-		role             Role
-		wantDef, wantMax int
-	}{
-		{Role{}, 15, 15}, {Role{MaxSteps: 5}, 5, 15}, {Role{MaxStepsLimit: 8}, 8, 8}, {Role{MaxSteps: 3, MaxStepsLimit: 9}, 3, 9},
-	} {
-		if def, limit := c.role.Steps(child); def != c.wantDef || limit != c.wantMax {
-			t.Errorf("%+v: %d %d", c.role, def, limit)
-		}
-	}
-}
-
 func TestScheduleIsLoadedWithDefaultsAndIsNotInTheHash(t *testing.T) {
 	const base = "name = \"x\"\nversion = \"1.0.0\"\ndescription = \"d\"\nsystem_prompt = \"p\"\n"
 	reg, err := Load(dir(t, map[string]string{
@@ -510,14 +438,18 @@ func TestLoopDefaultsToSimpleAndKnobsNeedTheInvestigativeLoop(t *testing.T) {
 		t.Errorf("investigative: %+v", i)
 	}
 	for name, c := range map[string]struct{ extra, want string }{
-		"unknown loop":                {"loop = \"parallel\"\n", `loop: "parallel" must be "simple" or "investigative"`},
-		"knobs with the simple loop":  {"[investigate]\nmax_iterations = 30\n", `only take effect with loop = "investigative"`},
-		"knobs with the explicit one": {"loop = \"simple\"\n[investigate]\nmin_sources = 3\n", `only take effect`},
-		"sub-agents":                  {"loop = \"investigative\"\n[spawn]\nenabled = true\n", "sub-agents are not available"},
-		"range":                       {"loop = \"investigative\"\n[investigate]\nkeep_turns = 9\n", "investigate.keep_turns"},
-		"reserve":                     {"loop = \"investigative\"\n[investigate]\nsynthesis_reserve = 0.9\n", "synthesis_reserve"},
-		"parallel":                    {"loop = \"investigative\"\n[investigate]\nmax_parallel = 2\n", "max_parallel"},
-		"unknown knob":                {"loop = \"investigative\"\n[investigate]\nmax_chaos = 2\n", "unknown key"},
+		"unknown loop":                 {"loop = \"parallel\"\n", `loop: "parallel" must be "simple" or "investigative"`},
+		"knobs with the simple loop":   {"[investigate]\nmax_iterations = 30\n", `only take effect with loop = "investigative"`},
+		"knobs with the explicit one":  {"loop = \"simple\"\n[investigate]\nmin_sources = 3\n", `only take effect`},
+		"sub-agents":                   {"loop = \"investigative\"\n[spawn]\nenabled = true\n", "sub-agents of the simple loop were removed"},
+		"range":                        {"loop = \"investigative\"\n[investigate]\nkeep_turns = 9\n", "investigate.keep_turns"},
+		"reserve":                      {"loop = \"investigative\"\n[investigate]\nsynthesis_reserve = 0.9\n", "synthesis_reserve"},
+		"too parallel":                 {"loop = \"investigative\"\n[investigate]\nmax_parallel = 9\n", "investigate.max_parallel"},
+		"workers over the ceiling":     {"loop = \"investigative\"\n[investigate]\nmax_workers = 41\n", "investigate.max_workers"},
+		"worker steps":                 {"loop = \"investigative\"\n[investigate]\nworker_max_steps = 41\n", "investigate.worker_max_steps"},
+		"min priority":                 {"loop = \"investigative\"\n[investigate]\nmin_priority_to_delegate = 1.5\n", "min_priority_to_delegate"},
+		"workers with the simple loop": {"[investigate]\nmax_parallel = 2\n", "only take effect"},
+		"unknown knob":                 {"loop = \"investigative\"\n[investigate]\nmax_chaos = 2\n", "unknown key"},
 	} {
 		if _, err := loadLoop(t, c.extra); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: %v", name, err)

@@ -130,7 +130,7 @@ Example (as the tools return it):
 ```
 
 - `pending`: waiting in the queue.
-- `in_progress`: selected; at most `max_parallel` at a time (1 for a single worker).
+- `in_progress`: selected (by the loop, or handed to a worker with the trigger `delegated`); with workers, up to `max_parallel` at a time, and the ones whose answer still needs the supervisor's challenge stay `in_progress` until it resolves them one by one.
 - `resolved`: validation criteria met; the answer and its claim ids are stored.
 - `blocked`: a dependency can never be satisfied; needs a rewrite by the agent, or it is pruned.
 - `unresolvable`: failed after `max_attempts` distinct reformulations. It is **not retried**; the gap and the assumption made go into the report.
@@ -411,7 +411,9 @@ When a breaker fires during exploration, the loop **does not fail the run**: it 
 
 ## Parallelism and sub-agents
 
-The frontier is the unit of work distribution. With one worker the loop selects one question at a time. The design allows more: several workers (the existing [sub-agents](subagents.md)) can each take an `in_progress` question; selection and status changes are atomic in the DB (a question is claimed with a conditional update, `pending -> in_progress` with the worker's run id), and `max_parallel` bounds them. The sub-agents of a run share its frontier, notes and claim ledger; `spawn_subagent` is called with a `question_id` so the sub-agent's task is that node, its report resolves it. How sub-agents write to the shared notes (serialized appends through the same tools) is an implementation matter; the first implementation may run with `max_parallel = 1` and leave this off.
+The frontier is the unit of work distribution. With `max_parallel = 1` (the default) the loop selects one question at a time and works on it itself. With `max_parallel` above 1 the **code** of the loop hands independent questions to **workers** (sub-agents, [subagents.md](subagents.md)): a pure function selects the pending questions whose dependencies are resolved (highest priority first, up to `max_parallel`), the loop marks them `in_progress` (trigger `delegated`), runs one worker for each on its own clean context and waits for all of them (fan-out, fan-in), and a pure reducer applies what each worker hands back (claims with sources, a short answer, the queries tried, the gaps it found) to the frontier, the notes and the claims.
+
+This is the *centralized-frontier* form, not the shared one this page first considered: only the supervisor (the loop) writes the frontier, the notes and the claim ledger, so no concurrent writers, no atomic claim of a question and no serialized appends are needed. A worker's claims enter as `UNVERIFIED` (`VERIFIED` is still only reached through the gate, by the supervisor's challenges), a gap becomes a child question added by code, and an answer resolves its question only if the checks of `resolve_question` pass; otherwise the question stays in progress for the supervisor, which challenges and resolves it. The model has no tool to start a worker. Costs and limits are shared (workers' cost counts for the breakers, each worker gets a share of the exploration budget). See [subagents.md](subagents.md) for the contract, the reducer, the failure handling and the knobs (`max_parallel`, `worker_max_steps`, `worker_context_tokens`, `max_workers`, `min_priority_to_delegate`).
 
 ## Database schema
 
@@ -483,7 +485,7 @@ CREATE TABLE IF NOT EXISTS gb_agent_frontier_attempts (
 --   seq            1, 2, 3, ... per question (unique with the question): the order of its changes; seq 1 is the creation (from_status NULL)
 --   from_status    the status before ('' on creation)
 --   to_status      the status after: pending, in_progress, resolved, blocked, unresolvable or pruned
---   trigger        what caused it, a closed vocabulary: created, selected, resolved, retried, attempts_exhausted, reopened, dependency_failed,
+--   trigger        what caused it, a closed vocabulary: created, selected, delegated, resolved, retried, attempts_exhausted, reopened, dependency_failed,
 --                  dependency_met, reprioritized (from_status = to_status), pruned_branch, pruned_depth, pruned_scope, contradiction
 --   actor          'agent' (a tool call of the model) or 'code' (a deterministic rule: attempt cap, branch pruning, unblocking)
 --   reason         the agent's stated reason, or the rule that fired (for resolved: the answer's gist; for unresolvable: the assumption)

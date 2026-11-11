@@ -1,7 +1,7 @@
 package admin
 
 // Research agents in the admin UI (see docs/agents/research.md#admin-ui): how many agents work now, the list of the agents (the active ones
-// and those that ended, any user's) with what each of them spent and how many sub-agents it spawned, one agent with its states,
+// and those that ended, any user's) with what each of them spent and how many sub-agents it started, one agent with its states,
 // report and sub-agents, stopping an active agent, and the provenance of an agent: what it put in the knowledge base (the
 // artifacts, entities and facts of its session "research-<run id>").
 
@@ -50,7 +50,7 @@ type ResearchCounts struct {
 // ResearchAgent is a research run as the admin UI shows it: the run, and what is derived from it.
 type ResearchAgent struct {
 	core.Run
-	// Children is how many sub-agents the agent spawned.
+	// Children is how many sub-agents (workers) the agent started.
 	Children int `json:"children"`
 	// DurationMS is how long the agent has been working (running) or worked (ended); AgeMS how long ago it was started.
 	DurationMS int64 `json:"duration_ms"`

@@ -491,3 +491,53 @@ func TestFromDefBuildsTheAgentOfADefinition(t *testing.T) {
 		t.Errorf("the name of the default agent in a trajectory: %s", n)
 	}
 }
+
+func toolNames(a *Agent) string {
+	var names []string
+	for _, t := range a.Tools {
+		names = append(names, t.Name)
+	}
+	return strings.Join(names, ",")
+}
+
+// A terminal tool ends the run when it succeeds; when it fails the model is told and may call it again; a text answer is told to call
+// it; and the last step is forced to call it instead of being tool-free.
+func TestTerminalToolEndsTheRun(t *testing.T) {
+	client, bodies := fakeAPI(t,
+		`{"model":"m","content":[{"type":"tool_use","id":"t1","name":"submit","input":{"v":"bad"}}],"usage":{}}`,
+		`{"model":"m","content":[{"type":"text","text":"I am done"}],"usage":{}}`,
+		`{"model":"m","content":[{"type":"tool_use","id":"t2","name":"submit","input":{"v":"good"}}],"usage":{}}`,
+	)
+	submit := SubmitFindingsTool(objectSchema("v", "v"), func(raw json.RawMessage) error {
+		if v, _ := stringArg(raw, "v"); v != "good" {
+			return fmt.Errorf("v is %s", v)
+		}
+		return nil
+	})
+	submit.Name = "submit"
+	res, err := (&Agent{Client: client, Terminal: "submit", Tools: []Tool{submit}, MaxSteps: 5}).Run(context.Background(), "go")
+	if err != nil || res.Steps != 3 || string(res.Final) != `{"v":"good"}` {
+		t.Fatalf("%+v %v", res, err)
+	}
+	if !strings.Contains((*bodies)[1], "v is bad") || !strings.Contains((*bodies)[2], "Call submit now") {
+		t.Errorf("the model was not told: %v", *bodies)
+	}
+}
+
+func TestTerminalToolIsForcedOnTheLastStep(t *testing.T) {
+	client, bodies := fakeAPI(t,
+		`{"model":"m","content":[{"type":"tool_use","id":"t1","name":"x","input":{}}],"usage":{}}`,
+		`{"model":"m","content":[{"type":"tool_use","id":"t2","name":"submit","input":{"v":"good"}}],"usage":{}}`,
+	)
+	tools := []Tool{
+		{Name: "x", Schema: objectSchema("a", "a"), Run: func(context.Context, json.RawMessage) (string, error) { return "r", nil }},
+		{Name: "submit", Schema: objectSchema("v", "v"), Run: func(context.Context, json.RawMessage) (string, error) { return "ok", nil }},
+	}
+	res, err := (&Agent{Client: client, Terminal: "submit", Tools: tools, MaxSteps: 2}).Run(context.Background(), "go")
+	if err != nil || res.Final == nil {
+		t.Fatalf("%+v %v", res, err)
+	}
+	if !strings.Contains((*bodies)[1], `"tool_choice":{"name":"submit","type":"tool"}`) {
+		t.Errorf("the last step is not forced: %s", (*bodies)[1])
+	}
+}

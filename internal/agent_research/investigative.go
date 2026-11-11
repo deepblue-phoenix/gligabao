@@ -118,6 +118,7 @@ func (r *researcher) runInvestigative() (*agent.Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	knobs := r.opts.investigateKnobs(r.def)
 	usage := func(t investigate.Totals) { r.saveUsage(totalsOf(t)) }
 	cfg := investigate.Config{
 		Session: sess, Model: r.client.Raw, ModelName: r.opts.Model, MaxTokens: r.agent.MaxTokens,
@@ -132,6 +133,12 @@ func (r *researcher) runInvestigative() (*agent.Result, error) {
 			},
 			PhaseChanged: r.savePhase,
 		},
+	}
+	if knobs.MaxParallelOrDefault() > 1 {
+		cfg.Delegation = investigate.Delegation{
+			Workers: workerPool{r: r, steps: knobs.WorkerStepsOrDefault()}, MaxParallel: knobs.MaxParallelOrDefault(),
+			MaxWorkers: knobs.MaxWorkersOrDefault(), MinPriority: knobs.MinPriorityToDelegate, ContextTokens: knobs.WorkerContextTokensOrDefault(),
+		}
 	}
 	if r.onTrajectory != nil {
 		cfg.Trajectory = &investigate.Trajectory{Name: r.agent.Name, Version: r.agent.Version, SessionID: SessionID(r.run.ID)}

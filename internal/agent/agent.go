@@ -49,6 +49,10 @@ type Agent struct {
 	// says so, that call is the last, as if the steps had run out: the model is told, may not call tools, and its text is the answer
 	// (Result.OutOfBudget says why the run was cut short). The answer of a question that stays "" is never changed.
 	OutOfBudget func() string
+	// Terminal, if set, is the name of one of the Tools that ends the run: when the model calls it and the tool succeeds, the run is
+	// over and its input is in Result.Final (an error of the tool goes back to the model, which may fix it). A model that answers in
+	// text without calling it is told to call it; the last step is forced to call it (tool_choice) instead of being tool-free.
+	Terminal string
 
 	// Trajectory makes Run record the run as an ATIF trajectory (see package atif), returned in Result.Trajectory (also for a run that
 	// failed). Off by default: nothing is recorded.
@@ -131,6 +135,8 @@ type Result struct {
 	InputTokens  int
 	OutputTokens int
 	CostUSD      float64
+	// Final is the input of the call of Agent.Terminal that ended the run (nil if it did not end that way).
+	Final json.RawMessage
 	// OutOfBudget is why the run was cut short by Agent.OutOfBudget ("" if it was not): the last call was made early, without tools.
 	OutOfBudget string
 	// Trajectory is the ATIF trajectory of the run, when the Agent asked for one (Agent.Trajectory); nil otherwise.
@@ -159,6 +165,7 @@ type loop struct {
 	maxTokens int
 	obs       Observer
 	budget    func() string
+	terminal  string
 	tools     map[string]Tool
 	specs     []any
 
@@ -179,6 +186,7 @@ func newLoop(a *Agent, prompt string) *loop {
 		maxTokens: a.MaxTokens,
 		obs:       a.Observer,
 		budget:    a.OutOfBudget,
+		terminal:  a.Terminal,
 		tools:     map[string]Tool{},
 		messages:  []any{map[string]any{"role": "user", "content": prompt}},
 	}
@@ -232,6 +240,9 @@ func (l *loop) steps(ctx context.Context) (*Result, error) {
 			payload["tools"] = l.specs
 			if res.Steps == l.maxSteps {
 				payload["tool_choice"] = map[string]any{"type": "none"}
+				if l.terminal != "" {
+					payload["tool_choice"] = map[string]any{"type": "tool", "name": l.terminal}
+				}
 			}
 		}
 		started := time.Now()
@@ -252,6 +263,7 @@ func (l *loop) steps(ctx context.Context) (*Result, error) {
 		// Collect the text, and run the tools the model asked for.
 		var text strings.Builder
 		var results []any
+		var final json.RawMessage
 		for _, raw := range resp.Content {
 			var b struct {
 				Type  string          `json:"type"`
@@ -283,6 +295,9 @@ func (l *loop) steps(ctx context.Context) (*Result, error) {
 				if obs.AfterTool != nil {
 					obs.AfterTool(res.Steps, b.Name, out, isErr, *res)
 				}
+				if l.terminal != "" && b.Name == l.terminal && !isErr {
+					final = b.Input
+				}
 				results = append(results, map[string]any{
 					"type": "tool_result", "tool_use_id": b.ID, "content": out, "is_error": isErr,
 				})
@@ -290,7 +305,15 @@ func (l *loop) steps(ctx context.Context) (*Result, error) {
 		}
 		res.Answer = strings.TrimSpace(text.String())
 		l.trace.endStep(rec, text.String())
+		if final != nil {
+			res.Final = final
+			return res, nil
+		}
 		if len(results) == 0 {
+			if l.terminal != "" && res.Steps < l.maxSteps {
+				l.messages = append(l.messages, map[string]any{"role": "user", "content": "Call " + l.terminal + " now to end your work."})
+				continue
+			}
 			return res, nil
 		}
 		l.messages = append(l.messages, map[string]any{"role": "user", "content": results})
@@ -300,6 +323,10 @@ func (l *loop) steps(ctx context.Context) (*Result, error) {
 
 // tellBudget adds to the user turn the model is about to answer (the results of its tools) that the budget is spent.
 func (l *loop) tellBudget(reason string) {
+	if l.terminal != "" {
+		l.tellBudgetTerminal(reason)
+		return
+	}
 	note := map[string]any{"type": "text", "text": "[Budget reached] " + reason + " This is your last turn: you cannot call tools any more. " +
 		"Write your final answer now, from what you have found so far, and say plainly what you could not cover."}
 	last, ok := l.messages[len(l.messages)-1].(map[string]any)
@@ -327,4 +354,16 @@ func runTool(ctx context.Context, tools map[string]Tool, name string, input json
 		return err.Error(), true
 	}
 	return out, false
+}
+
+// tellBudgetTerminal is tellBudget for an agent that ends with its Terminal tool.
+func (l *loop) tellBudgetTerminal(reason string) {
+	note := map[string]any{"type": "text", "text": "[Budget reached] " + reason + " This is your last turn: call " + l.terminal + " now with what you have found so far, and say plainly what you could not cover."}
+	last, ok := l.messages[len(l.messages)-1].(map[string]any)
+	if !ok || last["role"] != "user" {
+		return
+	}
+	if blocks, ok := last["content"].([]any); ok {
+		last["content"] = append(blocks, note)
+	}
 }

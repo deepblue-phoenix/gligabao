@@ -6,26 +6,19 @@ import (
 )
 
 func TestPromptsAreLoaded(t *testing.T) {
-	for name, p := range map[string]string{"Research": Research, "Knowledge": Knowledge, "Spawn": Spawn, "WebSearch": WebSearch} {
+	for name, p := range map[string]string{"Research": Research, "Knowledge": Knowledge, "Worker": Worker, "WebSearch": WebSearch} {
 		if strings.TrimSpace(p) == "" || p != strings.TrimSpace(p) {
 			t.Errorf("%s: empty or not trimmed: %q", name, p)
 		}
 	}
 }
 
-// The spawn prompt is the policy of the main agent: it must tell it to decide whether spawning is warranted and to give a reason.
-func TestSpawnPromptSaysWhenAndWhy(t *testing.T) {
-	for _, want := range []string{"really warranted", "reason", "wait_subagents"} {
-		if !strings.Contains(Spawn, want) {
-			t.Errorf("the spawn prompt lacks %q", want)
+// The worker prompt says how the worker ends and what it must not do.
+func TestWorkerPrompt(t *testing.T) {
+	for _, want := range []string{"submit_findings", "refut", "URL"} {
+		if !strings.Contains(Worker, want) {
+			t.Errorf("the worker prompt lacks %q", want)
 		}
-	}
-}
-
-func TestSubagent(t *testing.T) {
-	p := Subagent("alpha", `covers "Asia" & {{x}}`)
-	if !strings.Contains(p, `"alpha"`) || !strings.Contains(p, `covers "Asia" & {{x}}`) {
-		t.Errorf("prompt: %s", p)
 	}
 }
 
@@ -50,23 +43,6 @@ func TestSearchPrefs(t *testing.T) {
 	}
 	if blocked := Search(SearchPrefs{Blocked: []string{"x.com"}}); !strings.Contains(blocked, "never available to you: x.com") || strings.Contains(blocked, "\n\n\n") {
 		t.Errorf("blocked:\n%s", blocked)
-	}
-}
-
-func TestRoles(t *testing.T) {
-	got := Roles(RolesInfo{
-		MaxPerAgent: 4,
-		OnDemand:    []Role{{Name: "regional", Does: "covers a region.", When: "there are several regions", MaxInstances: 2}},
-		OnStart:     []Role{{Name: "news", Does: "reads the news."}},
-	})
-	for _, want := range []string{"at most 4", "`regional`: covers a region. Start it when: there are several regions (at most 2 at once)", "`role` argument", "started for you", "`news`: reads the news.", "wait_subagents"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("lacks %q:\n%s", want, got)
-		}
-	}
-	only := Roles(RolesInfo{MaxPerAgent: 5, OnStart: []Role{{Name: "news", Does: "d"}}})
-	if strings.Contains(only, "spawn_subagent") || !strings.Contains(only, "started for you") {
-		t.Errorf("on_start only:\n%s", only)
 	}
 }
 

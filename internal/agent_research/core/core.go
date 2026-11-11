@@ -13,14 +13,16 @@ import (
 type Run struct {
 	ID     int64  `json:"id"`
 	UserID string `json:"user_id"`
-	// ParentID is the run of the agent that spawned this one as a sub-agent (nil for a research started by a user). Name is what
-	// the parent called it; it is unique among the sub-agents of one parent, and "" for a research started by a user.
+	// ParentID is the run of the agent that started this one as a worker (a sub-agent of the investigative loop; nil for a research started
+	// by a user). Name is what the supervisor called it (the id of its question; "-2" and so on if the question went to a worker again); it
+	// is unique among the workers of one supervisor, and "" for a research started by a user. Runs of sub-agents made by the model (before
+	// 0.189.0) have the same columns and are kept.
 	ParentID *int64 `json:"parent_id"`
 	Name     string `json:"name"`
-	// Reason is why the parent spawned it: the reason it submitted with spawn_subagent, which the siblings of the sub-agent can
-	// read. "" for a research started by a user.
+	// Reason is why the supervisor started it ("question q_005: ..."; the reason the model gave to spawn_subagent in a run made before
+	// 0.189.0). "" for a research started by a user.
 	Reason string `json:"reason"`
-	// Topic is what the agent researches (for a sub-agent: the sub-task it was given).
+	// Topic is what the agent researches (for a worker: its brief).
 	Topic  string `json:"topic"`
 	Status Status `json:"status"`
 	// State is the state the run is in now: the State of its last record (one of the State constants).
@@ -139,9 +141,11 @@ const (
 	StateQuerying = "querying"
 	// StateRemembering: the remember tool is running; the detail says whether it waits (sync) or not, and the start of the text.
 	StateRemembering = "remembering"
-	// StateWaiting: the agent waits for its sub-agents to end (wait_subagents).
-	StateWaiting = "waiting"
-	// StateSpawning: the spawn_subagent tool is running; the detail is the name of the sub-agent and its reason.
+	// StateWaiting: the investigative loop waits for its workers to end (before 0.189.0: the agent waited in wait_subagents).
+	// StateDelegating: the investigative loop has handed independent questions to workers; the detail is their ids.
+	StateWaiting    = "waiting"
+	StateDelegating = "delegating"
+	// StateSpawning: not entered any more (the spawn_subagent tool was removed in 0.189.0); old runs have it.
 	StateSpawning = "spawning"
 	// StateUsingTool: any other tool is running; the detail is its name.
 	StateUsingTool = "using_tool"

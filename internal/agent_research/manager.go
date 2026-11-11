@@ -33,8 +33,8 @@ type Manager struct {
 	Client *ai.Client
 	// Ops is how the runs and states are stored and read.
 	Ops Ops
-	// MaxActivePerUser is how many agents of one user may work at once (DefaultMaxActivePerUser if 0). The sub-agents that the agents
-	// spawn are not counted: they are bounded by MaxSubagentsPerAgent, MaxSubagentsPerTree and MaxSubagentDepth.
+	// MaxActivePerUser is how many agents of one user may work at once (DefaultMaxActivePerUser if 0). The workers that the agents
+	// start are not counted: they are bounded by the max_workers of the definition.
 	MaxActivePerUser int
 	// MaxCostUSD is the most one research may spend, all its agents together, whatever the definition and the request say (0: no ceiling
 	// of the server). Set it before starting any agent.
@@ -80,16 +80,16 @@ type AgentInfo struct {
 	// Hash is the SHA-256 of the definition's content; Source the file it was loaded from ("builtin" for the built-in agent).
 	Hash   string `json:"hash"`
 	Source string `json:"source"`
-	// Model, MaxSteps and the caps are the definition's settings; Subagents lists the roles it starts sub-agents for.
+	// Model, MaxSteps and the caps are the definition's settings; MaxParallel is the most workers its investigative loop runs at once (1: it works alone).
 	Model          string  `json:"model"`
 	MaxSteps       int     `json:"max_steps"`
 	MaxCostUSD     float64 `json:"max_cost_usd"`
 	MaxTreeCostUSD float64 `json:"max_tree_cost_usd"`
 	Knowledge      string  `json:"knowledge"`
 	// Loop is the loop the agent runs: "simple" or "investigative".
-	Loop      string   `json:"loop"`
-	Skills    []string `json:"skills"`
-	Subagents []string `json:"subagents"`
+	Loop        string   `json:"loop"`
+	Skills      []string `json:"skills"`
+	MaxParallel int      `json:"max_parallel"`
 	// Schedule is when the server runs the agent by itself (nil: it does not).
 	Schedule *ScheduleInfo `json:"schedule,omitempty"`
 }
@@ -154,8 +154,7 @@ func (m *Manager) UseMemory(mem *Memory) {
 	m.mu.Unlock()
 }
 
-// UseAgentDefs makes the definitions of reg the agents that a research can run (Options.Agent), and those that its agents spawn as
-// sub-agents (the roles of a definition). Researches already working are not changed. It checks that the datasets the definitions name
+// UseAgentDefs makes the definitions of reg the agents that a research can run (Options.Agent). Researches already working are not changed. It checks that the datasets the definitions name
 // are valid, and returns the error of the first that is not. Without it only the built-in default agent is available.
 func (m *Manager) UseAgentDefs(reg *agent_defs.Registry) error {
 	for _, d := range reg.List() {
@@ -200,7 +199,7 @@ func (m *Manager) Agents() []AgentInfo {
 		info := AgentInfo{
 			Name: d.Name, Version: d.Version, Description: d.Description, Hash: d.Hash, Source: d.Source, Model: d.Model, MaxSteps: d.MaxSteps,
 			MaxCostUSD: d.Limits.MaxCostUSD, MaxTreeCostUSD: d.Limits.MaxTreeCostUSD, Knowledge: d.Knowledge.Access, Loop: cmp.Or(d.Loop, agent_defs.LoopSimple),
-			Skills: []string{}, Subagents: []string{},
+			Skills: []string{}, MaxParallel: 1,
 		}
 		if sc := d.Schedule; sc != nil {
 			info.Schedule = &ScheduleInfo{Cron: sc.Cron, Timezone: sc.Timezone, Topic: sc.Topic, User: sc.User, Paused: sc.Paused}
@@ -211,8 +210,8 @@ func (m *Manager) Agents() []AgentInfo {
 		for _, s := range d.Skills {
 			info.Skills = append(info.Skills, s.Name)
 		}
-		for _, r := range d.Spawn.Roles {
-			info.Subagents = append(info.Subagents, fmt.Sprintf("%s (%s, %s)", r.Name, r.Agent, r.Trigger))
+		if d.Investigate != nil && d.Investigate.MaxParallel > 1 {
+			info.MaxParallel = d.Investigate.MaxParallel
 		}
 		out = append(out, info)
 	}

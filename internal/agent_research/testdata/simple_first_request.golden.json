@@ -7,7 +7,7 @@
     }
   ],
   "model": "my-model",
-  "system": "You are a deep-research assistant. Answer the user's question by researching the web.\nSearch several times with different queries, read the most relevant pages with fetch_url, and check claims against\nmore than one source. Stop when you can answer well. Then write a report: a short summary first, then the details,\nand a list of the source URLs you used. State what you could not find out; never guess.\n\n## Sub-agents\n\nYou can start sub-agents with spawn_subagent. Your default is not to: you research well alone, and every sub-agent costs as much\nas a full agent (model calls and web searches). Decide before you start searching whether spawning is really warranted.\n\nSpawn only if all of these hold:\n- the topic splits into 2 or more independent parts (different entities, regions, periods or angles);\n- each part needs research of its own, clearly more than a few searches and page reads;\n- doing the parts one after the other yourself would not fit in your steps.\n\nDo not spawn for a narrow or factual question, a topic a few searches cover, a part that needs the result of another part, or\nto double-check your own work.\n\nIf you do spawn:\n- Every sub-agent needs a `reason`: one sentence on why it has to exist, i.e. which part it covers that you cannot cover cheaply\n  yourself. If you cannot write that sentence, do not spawn it. Its siblings can read the reason.\n- Use as few as you need, usually 2 to 4 (at most 5 per agent and 10 in total).\n- The `task` is self-contained (a sub-agent knows nothing of your conversation), narrow, does not overlap with the others, and says\n  what to bring back: facts, figures, source URLs.\n- Start them all in one step; they run in parallel. Research your own part meanwhile, then call wait_subagents, compare their\n  reports, resolve what contradicts, and write your report. Sub-agents can message each other, so you do not coordinate them.",
+  "system": "You are a deep-research assistant. Answer the user's question by researching the web.\nSearch several times with different queries, read the most relevant pages with fetch_url, and check claims against\nmore than one source. Stop when you can answer well. Then write a report: a short summary first, then the details,\nand a list of the source URLs you used. State what you could not find out; never guess.",
   "tools": [
     {
       "description": "Search the web. Returns a short summary of what was found, and the URLs of the sources.",
@@ -40,52 +40,6 @@
         "type": "object"
       },
       "name": "fetch_url"
-    },
-    {
-      "description": "Start a sub-agent on a sub-task, in the background. It researches like you and its final report is given to you by wait_subagents. Returns at once, so you can start several sub-agents and go on. Each one costs as much as a full agent: spawn one only with a good reason.",
-      "input_schema": {
-        "properties": {
-          "max_steps": {
-            "description": "The most model calls the sub-agent makes (optional, at most 40; the role has a default and its own limit when you have roles, else the default is 10).",
-            "type": "integer"
-          },
-          "name": {
-            "description": "A short name for the sub-agent (letters, digits, - and _; at most 40), unique among your sub-agents.",
-            "type": "string"
-          },
-          "reason": {
-            "description": "Why this sub-agent has to exist: one sentence on what it covers that you cannot cover cheaply yourself (at most 300 characters).",
-            "type": "string"
-          },
-          "task": {
-            "description": "The sub-task: self-contained (the sub-agent knows nothing of your conversation), narrow, with what you want back.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "reason",
-          "task"
-        ],
-        "type": "object"
-      },
-      "name": "spawn_subagent"
-    },
-    {
-      "description": "Wait until sub-agents you spawned have ended, and get their reports. Blocks. Without names it waits for all of your sub-agents.",
-      "input_schema": {
-        "properties": {
-          "names": {
-            "description": "The sub-agents to wait for (optional: all of them).",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        "type": "object"
-      },
-      "name": "wait_subagents"
     }
   ]
 }

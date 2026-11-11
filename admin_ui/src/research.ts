@@ -332,7 +332,7 @@ function renderDetail(d: Detail): HTMLElement {
   const info = root.appendChild(node("dl", "stats rs-info"));
   const row = (k: string, v: string, title = "") => { const div = info.appendChild(node("div")); if (title) div.title = title; div.append(node("dt", "", k), node("dd", "", v)); };
   row("User", d.user_id);
-  row("Children", String(d.children), "How many sub-agents it spawned");
+  row("Children", String(d.children), "How many sub-agents (workers of the investigative loop) it started");
   row("Running time", durationText(d.duration_ms), d.finished_at ? "From its start to its end" : "Working now");
   row("Started", agoText(d.age_ms), d.created_at);
   row("Steps", `${d.steps} of ${d.max_steps}`);
@@ -352,7 +352,7 @@ function renderDetail(d: Detail): HTMLElement {
   root.appendChild(node("h4", "", "Topic"));
   root.appendChild(node("p", "rs-text", d.topic));
   if (d.reason) {
-    root.appendChild(node("h4", "", "Why it was spawned"));
+    root.appendChild(node("h4", "", "Why it was started"));
     root.appendChild(node("p", "rs-text", d.reason));
   }
   if (d.parent) {
@@ -369,10 +369,10 @@ function renderDetail(d: Detail): HTMLElement {
     root.appendChild(node("p", "muted", `Stopped: ${d.error}`));
   }
 
-  // The sub-agents: whether it spawned any.
+  // The sub-agents (the workers of the investigative loop): whether it started any.
   root.appendChild(node("h4", "", `Sub-agents (${d.subagents.length})`));
   if (d.subagents.length === 0) {
-    root.appendChild(node("p", "muted", "This agent did not spawn any sub-agent."));
+    root.appendChild(node("p", "muted", "This agent did not start any sub-agent."));
   } else {
     const table = root.appendChild(node("table", "rs-table"));
     headRow(table, [["ID", true], ["Name", false], ["Reason", false], ["Status", false], ["Children", true], ["Running time", true], ["Started", false], ["", false]]);

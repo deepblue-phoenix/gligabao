@@ -55,7 +55,7 @@ func ResearchAgent(client *ai.Client, httpClient *http.Client, kb Knowledge) *Ag
 
 // FromDef builds the agent of a definition (package agent_defs): its model, limits, tools, search settings and system prompt, made of the
 // base prompt of the definition, its search preferences and the part for the knowledge base. What is left to the caller is what depends on
-// the place of the agent in a research: the parts for sub-agents and siblings (AddTeamTools), a sub-agent's own preamble, and the skills
+// the place of the agent in a research: the skills
 // (AddSkills, last). A tool with a limit of calls (Search.MaxCalls, Search.Fetch.MaxCalls) counts the calls of the Agent it is made for, so
 // make a new Agent for each research. kb is as in ResearchAgent; a definition with knowledge access "none" ignores it.
 func FromDef(def *agent_defs.Def, client *ai.Client, httpClient *http.Client, kb Knowledge) *Agent {

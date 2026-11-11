@@ -1,7 +1,7 @@
 // Package agent_defs is the declarative definition of the deep-research agents: an agent is described in a TOML or JSON file (name,
-// description, version, system prompt, model, limits, tools, skills, search and knowledge settings, cost caps, and when and which
-// sub-agents it starts), loaded once at startup from the agent_defs directory next to the binary, validated, and kept as immutable
-// structs in a Registry. The research manager (package agent_research) builds each agent, root or sub-agent, from one Def; the
+// description, version, system prompt, model, limits, tools, skills, search and knowledge settings, cost caps, and the workers of the
+// investigative loop), loaded once at startup from the agent_defs directory next to the binary, validated, and kept as immutable
+// structs in a Registry. The research manager (package agent_research) builds each agent, root or worker, from one Def; the
 // standalone gligabao_agent binary loads the same files, or a Bundle that a server made for it. See docs/agents/agent-defs.md.
 //
 // The package depends on the standard library, BurntSushi/toml, logrus and the prompts only, so that the standalone binary stays small.
@@ -24,7 +24,7 @@ const DefaultName = "default"
 const (
 	DefaultMaxSteps  = 20
 	DefaultMaxTokens = 8192
-	// MaxStepsCeiling is the most model calls any agent may be given (a definition, a request or a parent that spawns).
+	// MaxStepsCeiling is the most model calls any agent may be given (a definition, a request or a worker).
 	MaxStepsCeiling  = 40
 	maxTokensCeiling = 64000
 	// DefaultSearchUses is the most searches one web_search call makes.
@@ -35,14 +35,13 @@ const (
 	minPageChars        = 1000
 	maxPageChars        = 100000
 
-	// MaxSubagentDepth is how many generations of sub-agents a research may have, MaxSubagentsPerAgent the most sub-agents one agent
-	// spawns and MaxSubagentsPerTree the most in the whole tree of a research. A definition may lower them, never raise them.
-	MaxSubagentDepth     = 2
-	MaxSubagentsPerAgent = 5
-	MaxSubagentsPerTree  = 10
-	// DefaultSubagentSteps is the number of model calls a sub-agent may make when nothing says otherwise (a parent that spawns without
-	// a role of its definition).
-	DefaultSubagentSteps = 10
+	// The workers of the investigative loop (Investigate.MaxParallel > 1): the defaults and the ceilings of their knobs.
+	DefaultWorkerSteps         = 12
+	DefaultWorkerContextTokens = 1500
+	DefaultMaxWorkers          = 20
+	MaxWorkersCeiling          = 40
+	MaxParallelCeiling         = 8
+	maxWorkerContextTokens     = 8000
 
 	// MaxBundleBytes is the most a Bundle may be as JSON.
 	MaxBundleBytes = 1 << 20
@@ -52,7 +51,6 @@ const (
 )
 
 // The tools a definition may list in Def.Tools. The tools of the knowledge base (query, remember) come from Knowledge.Access, those of the
-// sub-agents from Spawn.
 const (
 	ToolWebSearch = "web_search"
 	ToolFetchURL  = "fetch_url"
@@ -86,12 +84,43 @@ type Investigate struct {
 	MinChallenges          int `toml:"min_challenges" json:"min_challenges,omitempty"`
 	MaxChallengesPerTarget int `toml:"max_challenges_per_target" json:"max_challenges_per_target,omitempty"`
 	MaxReopens             int `toml:"max_reopens" json:"max_reopens,omitempty"`
-	// MaxParallel is the workers on the frontier; only 1 is implemented.
+	// MaxParallel is the most workers (sub-agents) at once on independent questions of the frontier; 1 (the default) is no delegation: the
+	// loop works on every question itself. See docs/agents/subagents.md.
 	MaxParallel int `toml:"max_parallel" json:"max_parallel,omitempty"`
+	// WorkerMaxSteps is the model calls of a worker (default DefaultWorkerSteps, at most MaxStepsCeiling), WorkerContextTokens the size of
+	// the slice of the notes in its brief (default DefaultWorkerContextTokens), MaxWorkers the most workers of the whole run (default
+	// DefaultMaxWorkers, at most MaxWorkersCeiling), MinPriorityToDelegate the priority below which a question is not delegated (0: none).
+	WorkerMaxSteps        int     `toml:"worker_max_steps" json:"worker_max_steps,omitempty"`
+	WorkerContextTokens   int     `toml:"worker_context_tokens" json:"worker_context_tokens,omitempty"`
+	MaxWorkers            int     `toml:"max_workers" json:"max_workers,omitempty"`
+	MinPriorityToDelegate float64 `toml:"min_priority_to_delegate" json:"min_priority_to_delegate,omitempty"`
 	// SynthesisReserve is the fraction (0 to 0.5) of the iteration, token and cost limits that exploration cannot spend; GatePriority (0 to
 	// 1) the priority from which a pending question stops the exploration gate.
 	SynthesisReserve float64 `toml:"synthesis_reserve" json:"synthesis_reserve,omitempty"`
 	GatePriority     float64 `toml:"gate_priority" json:"gate_priority,omitempty"`
+}
+
+// MaxWorkersOrDefault is the most workers of a run (MaxWorkers, or DefaultMaxWorkers).
+func (v Investigate) MaxWorkersOrDefault() int { return orDefault(v.MaxWorkers, DefaultMaxWorkers) }
+
+// WorkerStepsOrDefault is the model calls of a worker.
+func (v Investigate) WorkerStepsOrDefault() int {
+	return orDefault(v.WorkerMaxSteps, DefaultWorkerSteps)
+}
+
+// WorkerContextTokensOrDefault is the size of the slice of the notes in the brief of a worker.
+func (v Investigate) WorkerContextTokensOrDefault() int {
+	return orDefault(v.WorkerContextTokens, DefaultWorkerContextTokens)
+}
+
+// MaxParallelOrDefault is the most workers at once (1: no delegation).
+func (v Investigate) MaxParallelOrDefault() int { return orDefault(v.MaxParallel, 1) }
+
+func orDefault(v, def int) int {
+	if v > 0 {
+		return v
+	}
+	return def
 }
 
 // Code is the [code] table of an agent that runs the investigative loop: the run_code tool, Python in a sandbox (Pydantic Monty,
@@ -154,14 +183,6 @@ const (
 	AccessNone = "none"
 )
 
-// Values of Role.Trigger.
-const (
-	// TriggerOnDemand: the parent's model decides when to start the sub-agent (spawn_subagent with the role), guided by Role.When.
-	TriggerOnDemand = "on_demand"
-	// TriggerOnStart: the runtime starts it before the parent's first model call, with Role.TaskTemplate as its task.
-	TriggerOnStart = "on_start"
-)
-
 // Values of Search.Recency.
 const (
 	RecencyAny   = "any"
@@ -183,9 +204,9 @@ type Def struct {
 	Version     string `json:"version"`
 	Description string `json:"description"`
 	// SystemPrompt is the base of the system prompt (it replaces the built-in research prompt). What the tools need to be told (the
-	// knowledge base, the sub-agents, the siblings) is added by the runtime from the settings below.
+	// knowledge base) is added by the runtime from the settings below.
 	SystemPrompt string `json:"system_prompt"`
-	// Model is the model it runs on; "" inherits (a root: the request's model, else the server's default; a sub-agent: its parent's).
+	// Model is the model it runs on; "" inherits (a root: the request's model, else the server's default; a worker: its supervisor's).
 	Model string `json:"model"`
 	// MaxSteps is the most model calls it makes (the last writes the report) and MaxTokens bounds each answer.
 	MaxSteps  int `json:"max_steps"`
@@ -197,7 +218,6 @@ type Def struct {
 	Search    Search    `json:"search"`
 	Knowledge Knowledge `json:"knowledge"`
 	Limits    Limits    `json:"limits"`
-	Spawn     Spawn     `json:"spawn"`
 	// Loop is the agent loop: LoopSimple ("" is the same: the default) or LoopInvestigative, the deep-research loop of
 	// docs/agents/deep-research-loop.md. Investigate holds the knobs of the investigative loop (nil: all defaults); it is an error to set it
 	// with the simple loop.
@@ -334,66 +354,8 @@ type Knowledge struct {
 type Limits struct {
 	// MaxCostUSD caps this agent alone (its own model calls and its tools).
 	MaxCostUSD float64 `toml:"max_cost_usd" json:"max_cost_usd,omitempty"`
-	// MaxTreeCostUSD caps the whole research, the agent and all the sub-agents below it; only the definition of the root agent counts.
+	// MaxTreeCostUSD caps the whole research, the agent and all its workers; only the definition of the root agent counts.
 	MaxTreeCostUSD float64 `toml:"max_tree_cost_usd" json:"max_tree_cost_usd,omitempty"`
-}
-
-// Spawn says whether the agent starts sub-agents, which, and when.
-type Spawn struct {
-	// Enabled gives the agent the sub-agent tools. Without Roles it spawns free-form: sub-agents that are copies of itself, as before
-	// definitions existed; with Roles, only those.
-	Enabled bool `toml:"enabled" json:"enabled"`
-	// MaxDepth, MaxPerAgent and MaxPerTree lower the ceilings (MaxSubagentDepth, MaxSubagentsPerAgent, MaxSubagentsPerTree); 0 is the
-	// ceiling. The depth counts from the root research (the root is 0); the number per tree is that of the root's definition.
-	MaxDepth    int    `toml:"max_depth" json:"max_depth,omitempty"`
-	MaxPerAgent int    `toml:"max_per_agent" json:"max_per_agent,omitempty"`
-	MaxPerTree  int    `toml:"max_per_tree" json:"max_per_tree,omitempty"`
-	Roles       []Role `toml:"roles" json:"roles,omitempty"`
-}
-
-// Role is a kind of sub-agent the agent may start: what it does (the definition it runs) and when it is started.
-type Role struct {
-	// Name is the role (the name of the sub-agent for an on_start role; the model chooses the names of the others).
-	Name string `toml:"name" json:"name"`
-	// Agent is the definition the sub-agent runs; Version is an optional constraint on it (">=1.0", "^1.2", "1.2.3"), checked at load.
-	Agent   string `toml:"agent" json:"agent"`
-	Version string `toml:"version" json:"version,omitempty"`
-	// When tells the parent's model when to start it (on_demand); Does says what it does, in a sentence (it is also the reason of an on_start sub-agent).
-	When string `toml:"when" json:"when,omitempty"`
-	Does string `toml:"does" json:"does"`
-	// Trigger is TriggerOnDemand (the default) or TriggerOnStart.
-	Trigger string `toml:"trigger" json:"trigger"`
-	// TaskTemplate is the task of an on_start sub-agent: a Go text/template with {{.Topic}} (default "{{.Topic}}").
-	TaskTemplate string `toml:"task_template" json:"task_template,omitempty"`
-	// MaxInstances is the most sub-agents of this role the parent has at once (0: only the limits of Spawn count).
-	MaxInstances int `toml:"max_instances" json:"max_instances,omitempty"`
-	// MaxSteps is the steps the sub-agent gets by default and MaxStepsLimit the most its parent may ask for; they default to the MaxSteps of its definition.
-	MaxSteps      int `toml:"max_steps" json:"max_steps,omitempty"`
-	MaxStepsLimit int `toml:"max_steps_limit" json:"max_steps_limit,omitempty"`
-}
-
-// OnDemandRoles and OnStartRoles are the roles of each trigger, in the order of the file.
-func (d *Def) OnDemandRoles() []Role { return d.rolesOf(TriggerOnDemand) }
-func (d *Def) OnStartRoles() []Role  { return d.rolesOf(TriggerOnStart) }
-
-func (d *Def) rolesOf(trigger string) []Role {
-	var out []Role
-	for _, r := range d.Spawn.Roles {
-		if r.Trigger == trigger {
-			out = append(out, r)
-		}
-	}
-	return out
-}
-
-// Role returns the role called name.
-func (d *Def) Role(name string) (Role, bool) {
-	for _, r := range d.Spawn.Roles {
-		if r.Name == name {
-			return r, true
-		}
-	}
-	return Role{}, false
 }
 
 // HasTool reports whether the definition lists the tool.
@@ -404,48 +366,6 @@ func (d *Def) HasTool(name string) bool {
 		}
 	}
 	return false
-}
-
-// MaxDepth, MaxPerAgent and MaxPerTree are the limits of Spawn with the ceilings applied.
-func (d *Def) MaxDepth() int    { return orCeiling(d.Spawn.MaxDepth, MaxSubagentDepth) }
-func (d *Def) MaxPerAgent() int { return orCeiling(d.Spawn.MaxPerAgent, MaxSubagentsPerAgent) }
-func (d *Def) MaxPerTree() int  { return orCeiling(d.Spawn.MaxPerTree, MaxSubagentsPerTree) }
-
-func orCeiling(v, ceiling int) int {
-	if v <= 0 || v > ceiling {
-		return ceiling
-	}
-	return v
-}
-
-// Steps returns the steps a sub-agent of role r that runs child gets by default, and the most its parent may ask for.
-func (r Role) Steps(child *Def) (def, limit int) {
-	limit = r.MaxStepsLimit
-	if limit <= 0 {
-		limit = child.MaxSteps
-	}
-	def = r.MaxSteps
-	if def <= 0 {
-		def = min(child.MaxSteps, limit)
-	}
-	return def, limit
-}
-
-// Task is the task of an on_start sub-agent of the role for a research on topic.
-func (r Role) Task(topic string) (string, error) {
-	text := r.TaskTemplate
-	if strings.TrimSpace(text) == "" {
-		text = "{{.Topic}}"
-	}
-	t, err := template.New("task").Option("missingkey=error").Parse(text)
-	if err != nil {
-		return "", err
-	}
-	var sb strings.Builder
-	if err := t.Execute(&sb, struct{ Topic string }{topic}); err != nil {
-		return "", fmt.Errorf("task_template of role %q: %w", r.Name, err)
-	}
-	return strings.TrimSpace(sb.String()), nil
 }
 
 // Short is the first 12 characters of the hash, as it is shown.

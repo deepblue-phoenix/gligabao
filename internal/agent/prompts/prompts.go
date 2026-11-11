@@ -1,7 +1,7 @@
 // Package prompts holds the prompts of the research agents. Each prompt is a Markdown file in this directory, embedded in the
 // binary, so that a prompt can be read and changed without touching Go code. A research agent's system prompt is made of parts: the
-// base (Research), then Knowledge if it has the knowledge base, Spawn if it can spawn sub-agents, and, for a sub-agent, Subagent
-// (see agent.ResearchAgent, agent.AddTeamTools and package agent_research).
+// base (Research), then Knowledge if it has the knowledge base; a worker of the investigative loop gets Worker after them (see
+// agent.ResearchAgent and package agent_research).
 package prompts
 
 import (
@@ -27,30 +27,19 @@ var (
 	Research = read("research.md")
 	// Knowledge is added when the agent has the knowledge base (the tools query and remember).
 	Knowledge = read("knowledge.md")
-	// Spawn is added when the agent can spawn sub-agents: when spawning is warranted and how to do it.
-	Spawn = read("spawn.md")
+	// Worker is added to the prompt of a worker (a sub-agent of the investigative loop): how it works on one question and ends with
+	// submit_findings.
+	Worker = read("worker.md")
 	// WebSearch is the system prompt of the call the web_search tool makes.
 	WebSearch = read("web_search.md")
 
 	// KnowledgeReadOnly replaces Knowledge for an agent that may query the knowledge base but not add to it.
 	KnowledgeReadOnly = read("knowledge_read_only.md")
 
-	subagent    = template.Must(template.New("subagent.md").Parse(read("subagent.md")))
 	searchPrefs = template.Must(template.New("search_prefs.md").Funcs(templateFuncs).Parse(read("search_prefs.md")))
-	spawnRoles  = template.Must(template.New("spawn_roles.md").Parse(read("spawn_roles.md")))
 )
 
 var templateFuncs = template.FuncMap{"join": func(s []string) string { return strings.Join(s, ", ") }}
-
-// Subagent is the part of the prompt of a sub-agent: its name, the reason its parent gave for spawning it, and that its answer goes
-// back to the parent.
-func Subagent(name, reason string) string {
-	var sb strings.Builder
-	if err := subagent.Execute(&sb, struct{ Name, Reason string }{name, reason}); err != nil {
-		panic("prompts: " + err.Error())
-	}
-	return sb.String()
-}
 
 // Join puts prompt parts together, one blank line between them; empty parts are skipped.
 func Join(parts ...string) string {
@@ -92,30 +81,6 @@ func Search(p SearchPrefs) string {
 		panic("prompts: " + err.Error())
 	}
 	return sb.String()
-}
-
-// Role is a kind of sub-agent as the parent's prompt describes it.
-type Role struct {
-	Name, When, Does string
-	// MaxInstances is the most of the role at once (0: no limit of its own).
-	MaxInstances int
-}
-
-// RolesInfo is what the sub-agent part of the prompt of an agent with roles says.
-type RolesInfo struct {
-	// OnDemand are the roles the model starts itself; OnStart the sub-agents the runtime starts for it.
-	OnDemand, OnStart []Role
-	// MaxPerAgent is the most sub-agents it may have.
-	MaxPerAgent int
-}
-
-// Roles is the part of the prompt of an agent whose definition has roles: instead of Spawn, which is the free-form policy.
-func Roles(info RolesInfo) string {
-	var sb strings.Builder
-	if err := spawnRoles.Execute(&sb, info); err != nil {
-		panic("prompts: " + err.Error())
-	}
-	return strings.TrimSpace(sb.String())
 }
 
 // Skill is a skill file of an agent definition.

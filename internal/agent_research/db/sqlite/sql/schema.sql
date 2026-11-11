@@ -1,11 +1,11 @@
 
 -- core.Run: ONE ROW PER EXECUTION OF THE DEEP-RESEARCH AGENT on a topic (see internal/agent_research).
---   user_id, topic  who asked, and what the agent researches (for a sub-agent: the sub-task it was given)
---   parent_id, name for a sub-agent, the run of the agent that spawned it and the name that agent gave it (unique among the
---                   sub-agents of one parent); NULL and '' for a research started by a user.
---   reason          for a sub-agent, why its parent spawned it (the reason it submitted with the spawn_subagent call; its siblings
---                   can read it); '' for a research started by a user Deleting the parent deletes its
---                   sub-agents.
+--   user_id, topic  who asked, and what the agent researches (for a worker: its brief)
+--   parent_id, name for a worker (a sub-agent of the investigative loop), the run of the agent that started it and its name (the id of
+--                   its question; unique among the workers of one parent); NULL and '' for a research started by a user. (Runs of
+--                   sub-agents that the model spawned, before 0.189.0, look the same.)
+--   reason          for a worker, why its supervisor started it ('question q_005: ...'); '' for a research started by a user.
+--                   Deleting the parent deletes its workers.
 --   status          the lifecycle: 'running', then 'completed' (it ended with a report), 'failed' (error says why) or 'stopped'
 --                   (somebody stopped it; error says who). A row that stays 'running' belongs to a process that died; the server
 --                   marks those 'failed' when it starts.
@@ -133,7 +133,8 @@ CREATE TABLE IF NOT EXISTS gb_agent_frontier_attempts (
 --   from_status    the status before ('' on creation)
 --   to_status      the status after: pending, in_progress, resolved, blocked, unresolvable or pruned
 --   trigger        what caused it, a closed vocabulary: created, selected, resolved, retried, attempts_exhausted, reopened, dependency_failed,
---                  dependency_met, reprioritized (from_status = to_status), pruned_branch, pruned_depth, pruned_scope, contradiction
+--                  dependency_met, reprioritized (from_status = to_status), pruned_branch, pruned_depth, pruned_scope, contradiction,
+--                  delegated (a question handed to a worker: pending to in_progress, by code)
 --   actor          'agent' (a tool call of the model) or 'code' (a deterministic rule: attempt cap, branch pruning, unblocking)
 --   reason         the agent's stated reason, or the rule that fired (for resolved: the answer's gist; for unresolvable: the assumption)
 --   priority       the question's priority at that moment (so re-prioritization is visible between rows)

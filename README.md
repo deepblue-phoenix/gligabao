@@ -124,7 +124,7 @@ POSTGRES_TEST_DSN='postgres://user:pw@localhost:5432/gb?sslmode=disable' ./run_t
 ## Getting started
 
 ```sh
-./run_build.sh                      # builds build/gligabao, build/gligabao_agent (the deep-research agent with its sub-agents and the knowledge base in process, see docs/deep-research-agent.md), build/gligabao_worker (one remember or query pipeline per process, no server: see docs/worker_binary.md), and build/gligabao_agent_linux_amd64 (the same, for Linux containers: what runs a research in Modal, see docs/agents/research.md)
+./run_build.sh                      # builds build/gligabao, build/gligabao_agent (the deep-research agent with the knowledge base in process, see docs/deep-research-agent.md), build/gligabao_worker (one remember or query pipeline per process, no server: see docs/worker_binary.md), and build/gligabao_agent_linux_amd64 (the same, for Linux containers: what runs a research in Modal, see docs/agents/research.md)
 export ANTHROPIC_API_KEY=...        # required for remember/query
 ./build/gligabao serve                # listens on :7878 by default
 ./build/gligabao query "..."          # CLI: starts a local daemon if none runs, see below

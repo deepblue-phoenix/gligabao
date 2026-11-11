@@ -23,7 +23,11 @@ type runner struct {
 	report string
 	// toolCalls and in/out are the totals not kept by the loop state (the state has the tokens and the cost).
 	toolCalls, in, out int
-	tr                 *recorder
+	// workers is how many workers the run has started; workerCost what they spent (it is in the loop state for the breakers, not in the
+	// totals of the run's own row: a worker's run has its own).
+	workers    int
+	workerCost float64
+	tr         *recorder
 	// rec is the trajectory step of the turn that is running (nil without a trajectory); code is the state of run_code (nil: off).
 	rec  *stepRec
 	code *code
@@ -90,6 +94,8 @@ type Config struct {
 	Trajectory *Trajectory
 	// Code, if not nil, gives the agent the run_code tool (docs/agents/monty-code-execution.md).
 	Code *CodeConfig
+	// Delegation, if it is on, lets the loop hand independent questions of the frontier to workers (docs/agents/subagents.md).
+	Delegation Delegation
 }
 
 // RunResult is how the run went.
@@ -128,7 +134,7 @@ func Run(ctx context.Context, cfg Config) (RunResult, error) {
 }
 
 func (r *runner) totals() Totals {
-	return Totals{Turns: r.ls.Turns, ToolCalls: r.toolCalls, InputTokens: r.in, OutputTokens: r.out, CostUSD: r.ls.CostUSD}
+	return Totals{Turns: r.ls.Turns, ToolCalls: r.toolCalls, InputTokens: r.in, OutputTokens: r.out, CostUSD: r.ls.CostUSD - r.workerCost}
 }
 
 func (r *runner) buildPrompt() investigate_core.Prompt {
@@ -185,6 +191,11 @@ func (r *runner) step(ctx context.Context) error {
 		return r.onBreaker(ctx, st, bs[0])
 	}
 	kind := investigate_core.NextKind(r.ls, st)
+	if r.cfg.Delegation.on() && r.ls.Phase == investigate_core.PhaseExploration && kind == investigate_core.TurnExplore && needsSelection(st) {
+		if moved, err := r.fanOut(ctx, st); err != nil || moved {
+			return err
+		}
+	}
 	if r.ls.Phase == investigate_core.PhaseExploration && kind == investigate_core.TurnExplore && needsSelection(st) {
 		var moved bool
 		if st, moved, err = r.selectNext(ctx, st); err != nil || moved {

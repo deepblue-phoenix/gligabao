@@ -1,7 +1,6 @@
 package agent_defs
 
 import (
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -13,14 +12,13 @@ import (
 const builtinSource = "builtin"
 
 // Builtin returns a new copy of the built-in default agent: today's research agent (web_search, fetch_url, the knowledge base, 20
-// steps, free-form sub-agents that message each other), uncapped. A file called default.toml replaces it.
+// steps), uncapped. A file called default.toml replaces it.
 func Builtin() *Def {
 	d := &Def{
 		Name:         DefaultName,
 		Version:      "1.0.0",
-		Description:  "The built-in deep-research agent: searches the web, reads pages, works with the knowledge base, may spawn sub-agents, and writes a report.",
+		Description:  "The built-in deep-research agent: searches the web, reads pages, works with the knowledge base, and writes a report.",
 		SystemPrompt: prompts.Research,
-		Spawn:        Spawn{Enabled: true},
 		Source:       builtinSource,
 	}
 	normalize(d)
@@ -67,9 +65,7 @@ type Registry struct {
 	dir  string
 }
 
-// NewRegistry checks defs against each other (every role names a definition that exists and meets its version constraint, no
-// definition starts itself through its roles, a role's steps fit its definition) and returns the registry. The built-in default is
-// added unless defs has one (so is the built-in investigator). The definitions must have been through normalize and check, as Load and ParseBundle do.
+// newRegistry makes the registry of defs. The built-in default is added unless defs has one (so is the built-in investigator). The definitions must have been through normalize and check, as Load and ParseBundle do.
 func newRegistry(dir string, defs []*Def) (*Registry, error) {
 	r := &Registry{defs: map[string]*Def{}, dir: dir}
 	for _, d := range defs {
@@ -81,20 +77,6 @@ func newRegistry(dir string, defs []*Def) (*Registry, error) {
 	if _, ok := r.defs[InvestigatorName]; !ok {
 		r.defs[InvestigatorName] = BuiltinInvestigator()
 	}
-	var errs []error
-	for _, d := range r.List() {
-		for _, e := range r.checkRoles(d) {
-			errs = append(errs, fmt.Errorf("%s: %s", d.sourceName(), e))
-		}
-	}
-	if len(errs) == 0 {
-		for _, e := range r.findCycles() {
-			errs = append(errs, e)
-		}
-	}
-	if err := errors.Join(errs...); err != nil {
-		return nil, err
-	}
 	return r, nil
 }
 
@@ -103,67 +85,6 @@ func (d *Def) sourceName() string {
 		return d.Source
 	}
 	return d.Name
-}
-
-func (r *Registry) checkRoles(d *Def) []string {
-	var errs []string
-	for i, role := range d.Spawn.Roles {
-		key := fmt.Sprintf("spawn.roles[%d] (%s)", i, role.Name)
-		child, ok := r.defs[role.Agent]
-		if !ok {
-			errs = append(errs, fmt.Sprintf("%s.agent: no agent called %q (known: %s)", key, role.Agent, strings.Join(r.names(), ", ")))
-			continue
-		}
-		if okVer, err := satisfies(child.Version, role.Version); err != nil {
-			errs = append(errs, fmt.Sprintf("%s.version: %v", key, err))
-		} else if !okVer {
-			errs = append(errs, fmt.Sprintf("%s.version: agent %q is at version %s, which does not meet %q", key, child.Name, child.Version, role.Version))
-		}
-		def, limit := role.Steps(child)
-		if def > limit || limit > MaxStepsCeiling {
-			errs = append(errs, fmt.Sprintf("%s: the steps of the role (default %d, limit %d) do not fit: the limit is at most %d and not below the default; agent %q has max_steps %d", key, def, limit, MaxStepsCeiling, child.Name, child.MaxSteps))
-		}
-	}
-	return errs
-}
-
-// findCycles reports the definitions that start themselves through their roles (a research tree with such a loop is a mistake: the
-// depth ceiling would stop it, but only after it spent money).
-func (r *Registry) findCycles() []error {
-	const (
-		white = iota
-		grey
-		black
-	)
-	state := map[string]int{}
-	var errs []error
-	var path []string
-	var visit func(name string)
-	visit = func(name string) {
-		state[name] = grey
-		path = append(path, name)
-		for _, role := range r.defs[name].Spawn.Roles {
-			switch state[role.Agent] {
-			case white:
-				visit(role.Agent)
-			case grey:
-				i := 0
-				for path[i] != role.Agent {
-					i++
-				}
-				loop := append(append([]string(nil), path[i:]...), role.Agent)
-				errs = append(errs, fmt.Errorf("%s: spawn.roles: %s starts itself through its roles", r.defs[name].sourceName(), strings.Join(loop, " -> ")))
-			}
-		}
-		path = path[:len(path)-1]
-		state[name] = black
-	}
-	for _, name := range r.names() {
-		if state[name] == white {
-			visit(name)
-		}
-	}
-	return errs
 }
 
 func (r *Registry) names() []string {
@@ -197,7 +118,7 @@ func (r *Registry) List() []*Def {
 func (r *Registry) Dir() string { return r.dir }
 
 // Resolve returns the definition called name ("" is the default), and checks it against a version constraint ("" for none; "1.2.0"
-// is exactly that version, see Role.Version for the syntax). The error says which agents there are.
+// is exactly that version, see parseConstraint for the syntax). The error says which agents there are.
 func (r *Registry) Resolve(name, constraint string) (*Def, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -213,15 +134,6 @@ func (r *Registry) Resolve(name, constraint string) (*Def, error) {
 	}
 	if !ok {
 		return nil, fmt.Errorf("agent %q is at version %s, which does not meet %q", name, d.Version, strings.TrimSpace(constraint))
-	}
-	return d, nil
-}
-
-// RoleDef returns the definition a role of d starts.
-func (r *Registry) RoleDef(role Role) (*Def, error) {
-	d, ok := r.defs[role.Agent]
-	if !ok {
-		return nil, fmt.Errorf("role %q: no agent called %q", role.Name, role.Agent)
 	}
 	return d, nil
 }

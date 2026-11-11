@@ -9,14 +9,12 @@ import (
 	"math"
 	"regexp"
 	"strings"
-	"text/template"
 	"time"
 	"unicode/utf8"
 )
 
 var (
 	nameRe     = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,39}$`)
-	roleRe     = regexp.MustCompile(`^[A-Za-z0-9_-]{1,40}$`) // as agent.ValidSubagentName: it becomes the name of a sub-agent
 	skillRe    = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 	domainRe   = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$`)
 	languageRe = regexp.MustCompile(`^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$`)
@@ -84,15 +82,6 @@ func normalize(d *Def) {
 		}
 		if sc.User == "" {
 			sc.User = DefaultScheduleUser
-		}
-	}
-	for i := range d.Spawn.Roles {
-		r := &d.Spawn.Roles[i]
-		r.Name, r.Agent = strings.TrimSpace(r.Name), strings.TrimSpace(r.Agent)
-		r.Version, r.When, r.Does = strings.TrimSpace(r.Version), strings.TrimSpace(r.When), strings.TrimSpace(r.Does)
-		r.Trigger = strings.ToLower(strings.TrimSpace(r.Trigger))
-		if r.Trigger == "" {
-			r.Trigger = TriggerOnDemand
 		}
 	}
 }
@@ -170,7 +159,6 @@ func check(d *Def) []string {
 			bad("%s: %v must be 0 (no cap) or a positive number of USD", key, v)
 		}
 	}
-	errs = append(errs, checkSpawn(d)...)
 	errs = append(errs, checkSchedule(d)...)
 	return errs
 }
@@ -268,93 +256,6 @@ func checkKnowledge(d *Def) []string {
 	return errs
 }
 
-func checkSpawn(d *Def) []string {
-	var errs []string
-	bad := func(format string, args ...any) { errs = append(errs, fmt.Sprintf(format, args...)) }
-	sp := d.Spawn
-	limits := []struct {
-		key        string
-		v, ceiling int
-	}{{"spawn.max_depth", sp.MaxDepth, MaxSubagentDepth}, {"spawn.max_per_agent", sp.MaxPerAgent, MaxSubagentsPerAgent}, {"spawn.max_per_tree", sp.MaxPerTree, MaxSubagentsPerTree}}
-	for _, l := range limits {
-		if l.v < 0 || l.v > l.ceiling {
-			bad("%s: %d must be between 0 (the ceiling) and %d, the ceiling", l.key, l.v, l.ceiling)
-		}
-	}
-	if !sp.Enabled {
-		if sp.MaxDepth != 0 || sp.MaxPerAgent != 0 || sp.MaxPerTree != 0 || len(sp.Roles) > 0 {
-			bad("spawn: settings or roles are given but enabled is false")
-		}
-		return errs
-	}
-	names := map[string]bool{}
-	onStart := 0
-	for i, r := range sp.Roles {
-		key := fmt.Sprintf("spawn.roles[%d]", i)
-		if r.Name != "" {
-			key += " (" + r.Name + ")"
-		}
-		switch {
-		case !roleRe.MatchString(r.Name):
-			bad("%s.name: %q must be 1 to 40 letters, digits, - or _", key, r.Name)
-		case names[r.Name]:
-			bad("%s.name: the role is defined twice", key)
-		}
-		names[r.Name] = true
-		if !nameRe.MatchString(r.Agent) {
-			bad("%s.agent: %q is not a valid agent name", key, r.Agent)
-		}
-		if r.Version != "" {
-			if err := checkConstraint(r.Version); err != nil {
-				bad("%s.version: %v", key, err)
-			}
-		}
-		switch {
-		case r.Does == "":
-			bad("%s.does: required (what the sub-agent does, in a sentence)", key)
-		case utf8.RuneCountInString(r.Does) > 300:
-			bad("%s.does: too long (at most 300 characters)", key)
-		}
-		if utf8.RuneCountInString(r.When) > 600 {
-			bad("%s.when: too long (at most 600 characters)", key)
-		}
-		if r.MaxInstances < 0 || r.MaxInstances > MaxSubagentsPerAgent {
-			bad("%s.max_instances: %d must be between 0 and %d", key, r.MaxInstances, MaxSubagentsPerAgent)
-		}
-		if r.MaxSteps < 0 || r.MaxSteps > MaxStepsCeiling || r.MaxStepsLimit < 0 || r.MaxStepsLimit > MaxStepsCeiling {
-			bad("%s: max_steps and max_steps_limit must be between 0 and %d", key, MaxStepsCeiling)
-		}
-		if r.MaxSteps > 0 && r.MaxStepsLimit > 0 && r.MaxSteps > r.MaxStepsLimit {
-			bad("%s: max_steps (%d) is above max_steps_limit (%d)", key, r.MaxSteps, r.MaxStepsLimit)
-		}
-		switch r.Trigger {
-		case TriggerOnDemand:
-			if r.When == "" {
-				bad("%s.when: required for an on_demand role (it tells the model when to start the sub-agent)", key)
-			}
-			if r.TaskTemplate != "" {
-				bad("%s.task_template: only an on_start role has one (the model writes the task of an on_demand sub-agent)", key)
-			}
-		case TriggerOnStart:
-			onStart++
-			if r.MaxInstances > 1 {
-				bad("%s.max_instances: an on_start role starts exactly one sub-agent", key)
-			}
-			if _, err := template.New("task").Option("missingkey=error").Parse(r.TaskTemplate); err != nil {
-				bad("%s.task_template: %v", key, err)
-			} else if _, err := r.Task("topic"); err != nil {
-				bad("%s.task_template: %v", key, err)
-			}
-		default:
-			bad("%s.trigger: %q must be on_demand or on_start", key, r.Trigger)
-		}
-	}
-	if onStart > d.MaxPerAgent() {
-		bad("spawn.roles: %d on_start roles are more than the %d sub-agents an agent may have", onStart, d.MaxPerAgent())
-	}
-	return errs
-}
-
 func checkSchedule(d *Def) []string {
 	sc := d.Schedule
 	if sc == nil {
@@ -431,9 +332,6 @@ func (d *Def) checkLoop() []string {
 	default:
 		return []string{fmt.Sprintf(`loop: %q must be "simple" or "investigative"`, d.Loop)}
 	}
-	if d.Spawn.Enabled {
-		out = append(out, `spawn: the investigative loop works alone (max_parallel is 1); sub-agents are not available with it`)
-	}
 	if v := d.Investigate; v != nil {
 		out = append(out, v.Check()...)
 	}
@@ -491,7 +389,13 @@ func (v Investigate) Check() []string {
 	in("min_challenges", v.MinChallenges, 1, 10)
 	in("max_challenges_per_target", v.MaxChallengesPerTarget, 1, 10)
 	in("max_reopens", v.MaxReopens, 1, 5)
-	in("max_parallel", v.MaxParallel, 1, 1)
+	in("max_parallel", v.MaxParallel, 1, MaxParallelCeiling)
+	in("worker_max_steps", v.WorkerMaxSteps, 1, MaxStepsCeiling)
+	in("worker_context_tokens", v.WorkerContextTokens, 100, maxWorkerContextTokens)
+	in("max_workers", v.MaxWorkers, 1, MaxWorkersCeiling)
+	if v.MinPriorityToDelegate < 0 || v.MinPriorityToDelegate > 1 || math.IsNaN(v.MinPriorityToDelegate) {
+		out = append(out, "investigate.min_priority_to_delegate: must be between 0 and 1 (0 for no minimum)")
+	}
 	if v.SynthesisReserve < 0 || v.SynthesisReserve > 0.5 || math.IsNaN(v.SynthesisReserve) {
 		out = append(out, "investigate.synthesis_reserve: must be between 0 and 0.5 (0 for the default 0.15)")
 	}
@@ -522,6 +426,8 @@ func (v Investigate) Merge(o Investigate) Investigate {
 		MinSources: pick(v.MinSources, o.MinSources), MinDomains: pick(v.MinDomains, o.MinDomains),
 		MinIndependentSources: pick(v.MinIndependentSources, o.MinIndependentSources), MinChallenges: pick(v.MinChallenges, o.MinChallenges),
 		MaxChallengesPerTarget: pick(v.MaxChallengesPerTarget, o.MaxChallengesPerTarget), MaxReopens: pick(v.MaxReopens, o.MaxReopens),
-		MaxParallel: pick(v.MaxParallel, o.MaxParallel), SynthesisReserve: pickF(v.SynthesisReserve, o.SynthesisReserve), GatePriority: pickF(v.GatePriority, o.GatePriority),
+		MaxParallel: pick(v.MaxParallel, o.MaxParallel), WorkerMaxSteps: pick(v.WorkerMaxSteps, o.WorkerMaxSteps),
+		WorkerContextTokens: pick(v.WorkerContextTokens, o.WorkerContextTokens), MaxWorkers: pick(v.MaxWorkers, o.MaxWorkers),
+		MinPriorityToDelegate: pickF(v.MinPriorityToDelegate, o.MinPriorityToDelegate), SynthesisReserve: pickF(v.SynthesisReserve, o.SynthesisReserve), GatePriority: pickF(v.GatePriority, o.GatePriority),
 	}
 }

@@ -14,7 +14,7 @@ func TestShippedExamplesLoad(t *testing.T) {
 		}
 	}
 	d, _ := reg.Get("news_scanner")
-	if len(d.Skills) != 1 || len(d.OnDemandRoles()) != 1 {
+	if len(d.Skills) != 1 {
 		t.Errorf("news_scanner: %+v", d)
 	}
 }

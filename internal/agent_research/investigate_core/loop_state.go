@@ -36,6 +36,8 @@ const (
 const (
 	StatePlanning      = "planning"
 	StateSelecting     = "selecting"
+	StateDelegating    = "delegating" // the questions are with workers
+	StateWaiting       = "waiting"    // the loop waits for the workers
 	StateExtracting    = "extracting"
 	StateVerifying     = "verifying"
 	StateChallenging   = "challenging"

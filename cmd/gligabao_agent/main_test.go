@@ -92,14 +92,13 @@ func TestVersionAndHelp(t *testing.T) {
 		t.Errorf("--version: code %d, stdout %q", code, stdout)
 	}
 	code, _, stderr := runArgs(t, "", "--help")
-	if code != exitOK || !strings.Contains(stderr, config.EnvAnthropicKey) || !strings.Contains(stderr, "sub-agents") {
+	if code != exitOK || !strings.Contains(stderr, config.EnvAnthropicKey) || !strings.Contains(stderr, "knowledge base") {
 		t.Errorf("--help: code %d, stderr %q", code, stderr)
 	}
 }
 
-// fakeAnthropic is a fake Messages API for the whole app: the agent that researches ROOT TOPIC remembers a snippet without waiting,
-// spawns the sub-agent "kid" (task KID TASK), waits for it and writes ROOT REPORT; the sub-agent answers KID REPORT at once; the
-// model calls of the remember pipeline extract nothing; the web search is not used.
+// fakeAnthropic is a fake Messages API for the whole app: the agent that researches ROOT TOPIC remembers a snippet without waiting and
+// writes ROOT REPORT; the model calls of the remember pipeline extract nothing; the web search is not used.
 func fakeAnthropic(t *testing.T) *ai.Client {
 	t.Helper()
 	const (
@@ -112,15 +111,10 @@ func fakeAnthropic(t *testing.T) *ai.Client {
 		switch {
 		case !strings.Contains(body, `"name":"fetch_url"`): // not an agent: the remember pipeline
 			io.WriteString(w, fmt.Sprintf(text, `{\"entities\":[],\"edges\":[]}`))
-		case !strings.Contains(body, "ROOT TOPIC"): // the sub-agent
-			io.WriteString(w, fmt.Sprintf(text, "KID REPORT"))
-		default: // the root, by how many tool results it has seen
+		default: // the agent, by how many tool results it has seen
 			switch strings.Count(body, `"tool_use_id"`) {
 			case 0:
-				io.WriteString(w, fmt.Sprintf(toolUse, `{"type":"tool_use","id":"r1","name":"remember","input":{"text":"Acme was founded in 1999.","source":"https://acme.test"}},`+
-					`{"type":"tool_use","id":"s1","name":"spawn_subagent","input":{"name":"kid","reason":"a part of its own","task":"KID TASK"}}`))
-			case 2:
-				io.WriteString(w, fmt.Sprintf(toolUse, `{"type":"tool_use","id":"w1","name":"wait_subagents","input":{}}`))
+				io.WriteString(w, fmt.Sprintf(toolUse, `{"type":"tool_use","id":"r1","name":"remember","input":{"text":"Acme was founded in 1999.","source":"https://acme.test"}}`))
 			default:
 				io.WriteString(w, fmt.Sprintf(text, "ROOT REPORT"))
 			}
@@ -145,8 +139,8 @@ func (fakeEmbedder) EmbedBatchUsage(_ context.Context, texts []string) ([][]floa
 }
 
 // The whole app over a SQLite file and a chromem directory: the research manager runs the agent, which remembers into the knowledge
-// base (without waiting: the remember run must be over when the research returns) and spawns a sub-agent; every run is recorded.
-func TestResearchWithKnowledgeBaseAndSubagents(t *testing.T) {
+// base (without waiting: the remember run must be over when the research returns); every run is recorded.
+func TestResearchWithKnowledgeBase(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	dbFile := filepath.Join(dir, "agent.db")
@@ -171,13 +165,7 @@ func TestResearchWithKnowledgeBaseAndSubagents(t *testing.T) {
 	if out.Root.Status != core.StatusCompleted || out.Root.Report != "ROOT REPORT" {
 		t.Errorf("root: %s %q (%s)", out.Root.Status, out.Root.Report, out.Root.Error)
 	}
-	if len(out.Kids) != 1 || out.Kids[0].Name != "kid" || out.Kids[0].Report != "KID REPORT" || out.Kids[0].Status != core.StatusCompleted {
-		t.Errorf("sub-agents: %+v", out.Kids)
-	}
-	if steps, _, _, _, cost := out.totals(); steps != out.Root.Steps+out.Kids[0].Steps || out.Kids[0].Steps == 0 || cost != out.Root.CostUSD+out.Kids[0].CostUSD {
-		t.Errorf("totals do not sum the tree: steps %d, cost %v (root %d, kid %d)", steps, cost, out.Root.Steps, out.Kids[0].Steps)
-	}
-	for _, want := range []string{"[agent] remembering", "[agent] spawning: kid", "[sub-agent kid] thinking"} {
+	for _, want := range []string{"[agent] remembering"} {
 		if !strings.Contains(progress.String(), want) {
 			t.Errorf("progress lacks %q:\n%s", want, progress.String())
 		}
@@ -193,7 +181,7 @@ func TestResearchWithKnowledgeBaseAndSubagents(t *testing.T) {
 		switch ev["event"] {
 		case "state":
 			states++
-			if ev["agent"] == "kid" && ev["state"] == "thinking" && ev["state_seq"] == nil {
+			if ev["agent"] == "main" && ev["state"] == "thinking" && ev["state_seq"] == nil {
 				t.Errorf("a state event has no state_seq: %v", ev)
 			}
 		case "usage":
@@ -201,15 +189,15 @@ func TestResearchWithKnowledgeBaseAndSubagents(t *testing.T) {
 			lastUsage = ev
 		}
 	}
-	if states == 0 || usages == 0 || lastUsage["subagents"] != float64(1) || lastUsage["steps"] != float64(out.Root.Steps+out.Kids[0].Steps) {
+	if states == 0 || usages == 0 || lastUsage["subagents"] != float64(0) || lastUsage["steps"] != float64(out.Root.Steps) {
 		t.Errorf("events: %d states, %d usages, last usage %v\n%s", states, usages, lastUsage, events.String())
 	}
-	for _, want := range []string{`"agent":"kid"`, `"agent":"main"`, `"state":"spawning"`} {
+	for _, want := range []string{`"agent":"main"`, `"state":"remembering"`} {
 		if !strings.Contains(events.String(), want) {
 			t.Errorf("events lack %s:\n%s", want, events.String())
 		}
 	}
-	// The trajectory of the research has the steps of the sub-agent merged into the main agent's.
+	// The trajectory of the research.
 	traj := trajectory()
 	if traj == nil {
 		t.Fatal("no trajectory")
@@ -218,8 +206,8 @@ func TestResearchWithKnowledgeBaseAndSubagents(t *testing.T) {
 	for _, st := range traj.Steps {
 		perAgent[st.Extra["agent"]]++
 	}
-	// system, user and 3 model calls for the main agent; system, user and 1 for the kid.
-	if perAgent["main"] != 5 || perAgent["kid"] != 3 || len(traj.Steps) != 8 {
+	// system, user and 2 model calls for the main agent.
+	if perAgent["main"] != 4 || len(traj.Steps) != 4 {
 		t.Errorf("steps per agent: %v", perAgent)
 	}
 	// The remember run that did not wait has ended (not left started), and was done in the user's dataset.
@@ -247,7 +235,7 @@ func TestResearchWithKnowledgeBaseAndSubagents(t *testing.T) {
 	for _, tb := range m.Tables {
 		rows[tb.Name] = tb.Rows
 	}
-	if rows["gb_agent_research_runs"] != 2 || rows["gb_agent_research_states"] == 0 || rows["gb_artifacts"] == 0 || rows["gb_remember_runs"] != 1 || rows["gb_inferences"] == 0 {
+	if rows["gb_agent_research_runs"] != 1 || rows["gb_agent_research_states"] == 0 || rows["gb_artifacts"] == 0 || rows["gb_remember_runs"] != 1 || rows["gb_inferences"] == 0 {
 		t.Errorf("rows per table: %v", rows)
 	}
 	var reports []string
@@ -257,7 +245,7 @@ func TestResearchWithKnowledgeBaseAndSubagents(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(reports, "|") != "ROOT REPORT|KID REPORT" {
+	if strings.Join(reports, "|") != "ROOT REPORT" {
 		t.Errorf("reports of the runs: %q", reports)
 	}
 	var texts []string

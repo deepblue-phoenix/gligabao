@@ -20,11 +20,11 @@ The simple loop stays as it is and stays the default. `loop = "simple"` behaves 
 ## Depends on
 
 - Stage 1 is complete: the pure core, the tables, the store, the effect executor, the tool registry, the notes file and the limits struct.
-- The existing research runtime (`internal/agent_research/researcher.go`, `team.go`, the model call path, the cost accounting, the trajectory writer). Read them before writing the loop; the investigative loop reuses the model call and the accounting, it does not copy them.
+- The existing research runtime (`internal/agent_research/researcher.go`, the model call path, the cost accounting, the trajectory writer). Read them before writing the loop; the investigative loop reuses the model call and the accounting, it does not copy them.
 
 ## Out of scope for this stage
 
-- Parallel workers on the frontier (`max_parallel` stays 1; the sub-agent sharing of notes is a leftover task, see the design's [parallelism section](deep-research-loop.md#parallelism-and-sub-agents)).
+- Parallel workers on the frontier (`max_parallel` stayed 1 in this stage; they came in 0.189.0, see [subagents.md](subagents.md) and the design's [parallelism section](deep-research-loop.md#parallelism-and-sub-agents)).
 - Notes in the DB or an object store.
 - Semantic dedup of questions (the normalized string test of stage 1 is the only one).
 - Automatic source independence beyond domain and the agent's declaration.
@@ -237,7 +237,7 @@ Where the code (`internal/agent_research/investigate/`, `internal/agent_research
 
 - **Files.** As recommended: `loop_state.go`, `prompt.go`, `evict.go`, `gates.go`, `breakers.go` (pure, checked by `purity_test.go`), `finish_tools.go` (the two tools, in `LoopRegistry()`, which is `InvestigativeRegistry()` plus them) and `loop.go` (effects). `investigative.go` in `agent_research` is the wiring; `Run` takes a `ModelFunc` (`(*ai.Client).Raw`), the `agent.Tool`s of the agent and `Hooks`, so the loop is tested with a fake model.
 - **Where the knobs live.** In the agent definition they are an `[investigate]` table next to `loop` (`agent_defs.Investigate`), in the request an `investigate` object of the same shape; zero is the default and the request overrides the definition per field (`Investigate.Merge`). `max_cost_usd` is the existing cap (the lowest of the definition's, the request's and the server's). `Limits` of stage 1 gained `GatePriority`, `KeepTurns`, `ExtractionThreshold`, `MaxIterations`, `MaxTotalTokens`, `MaxCostUSD` and `SynthesisReserve`.
-- **Errors for what does not fit.** `loop = "investigative"` with `[spawn] enabled`, with `runner = "modal"`, or with `max_steps` in the request is an error, like knobs with the simple loop.
+- **Errors for what does not fit.** `loop = "investigative"` with `runner = "modal"`, or with `max_steps` in the request is an error, like knobs with the simple loop.
 - **The loop selects.** `frontier_next` is never offered to the model in exploration (except in the planning turn, for the atomic case): the loop calls it (state `selecting`, no model call). When nothing is actionable the **final check** (`FinalCheck`) queues a question (priority 0.6, by the code) for every UNVERIFIED claim behind a resolved question (a claim that has one is not queued again, so it ends). If it queued none and the exploration gate passes, exploration ends with `frontier_exhausted`; if the gate does not pass, the model gets up to 6 **wrap-up turns** (resolve the root, state and challenge the conclusion, `finish_exploration`) before it ends the same way.
 - **Stop reason.** `stop_reason` is set when exploration ends by exhaustion or a breaker and a report accepted after that keeps it; `finalized` is the reason when the model's own `finish_exploration` ended exploration. The breaker that fails the run in synthesis is the `stop_reason` and is named in `error`.
 - **Reserve arithmetic.** Exploration may take `floor(max_iterations * (1 - synthesis_reserve))` turns and the same share of the token and cost limits; the last turn (`turns + 1 >= max_iterations`) is forced to `finalize_report` with `tool_choice`.

@@ -1,10 +1,10 @@
 # Agent definitions
 
-A [research agent](research.md) is described by a **definition**: a TOML or JSON file that says what the agent is (its name, description, version and system prompt), how it works (model, steps, tools, search and knowledge-base settings), what it may spend (cost caps), which skills it has, and **when and which sub-agents it starts**. The files are written by hand, versioned with git next to the binary, and loaded once when the server starts. A research names the definition it wants (`"agent": "news_scanner"`); without a name it runs the built-in `default`, which is today's research agent.
+A [research agent](research.md) is described by a **definition**: a TOML or JSON file that says what the agent is (its name, description, version and system prompt), how it works (model, steps, tools, search and knowledge-base settings), what it may spend (cost caps), which skills it has, and which loop it runs (with how many workers, for the investigative one). The files are written by hand, versioned with git next to the binary, and loaded once when the server starts. A research names the definition it wants (`"agent": "news_scanner"`); without a name it runs the built-in `default`, which is today's research agent.
 
 This makes it easy to have several agents that search different areas, behave in a certain way and have preferences, with no change to the Go code.
 
-Code: `internal/agent/agent_defs` (the format, the loader, the checks, the registry, the bundle), `internal/agent/research.go` (`FromDef` builds the agent of a definition), `internal/agent_research` (the manager uses the definition of every agent it starts, the sub-agents included). Examples: `build/agent_defs/`.
+Code: `internal/agent/agent_defs` (the format, the loader, the checks, the registry, the bundle), `internal/agent/research.go` (`FromDef` builds the agent of a definition), `internal/agent_research` (the manager uses the definition of every agent it starts, the workers of the investigative loop included). Examples: `build/agent_defs/`.
 
 ## Where the files are
 
@@ -44,7 +44,6 @@ required_skills = []                  # the same, but a missing file is a startu
 [search]    # how it searches the web
 [knowledge] # how it uses the knowledge base
 [limits]    # cost caps
-[spawn]     # sub-agents
 [investigate] # knobs of the investigative loop (only with loop = "investigative")
 [code]      # the run_code tool, Python in a sandbox (only with loop = "investigative", optional)
 [schedule]  # runs by itself on a CRON schedule (optional)
@@ -54,7 +53,7 @@ Unknown keys are errors. Every field but `name`, `version`, `description` and th
 
 ### The system prompt
 
-`system_prompt` (or the text of `system_prompt_file`, a path relative to the file, inside the directory) is the **base** of the agent's prompt: it replaces the built-in research prompt. The runtime adds, in this order, what the tools need to be told: the search preferences, the part for the knowledge base (if it has the tools), the part for sub-agents (its roles, or the free-form policy), for a sub-agent its own preamble (its name and the reason its parent gave), and last the skills. So a prompt file is only about the agent's job and style.
+`system_prompt` (or the text of `system_prompt_file`, a path relative to the file, inside the directory) is the **base** of the agent's prompt: it replaces the built-in research prompt. The runtime adds, in this order, what the tools need to be told: the search preferences, the part for the knowledge base (if it has the tools), and last the skills. (A worker of the investigative loop gets the prompt of a worker in place of the base.) So a prompt file is only about the agent's job and style.
 
 ### Skills
 
@@ -84,7 +83,7 @@ max_calls = 0              # most fetch_url calls in a run
 - **Hard** settings are enforced. `web_search` sends the domain lists and the location to Anthropic's search tool (which takes `allowed_domains` or `blocked_domains`, not both, so the loader rejects a file that sets both). `fetch_url` checks the host of every URL, and of every redirect, itself: a host matches a listed one or any subdomain of it. A refused call is an error the model reads and goes on from.
 - **Soft** settings (`preferred_domains`, `recency`, `language`, `instructions`) are text in the prompts; nothing enforces them (the search tool has no recency or language filter).
 - A call over `max_calls` is refused with an error that tells the agent to write its report with what it has.
-- The settings belong to the agent: a sub-agent has those of its own definition, nothing is inherited.
+- The settings belong to the agent; a worker of the investigative loop has those of its supervisor's definition.
 
 ### `[knowledge]`: the knowledge base
 
@@ -98,7 +97,7 @@ instructions = "Remember only dated, sourced facts; one fact per snippet."   # a
 ```
 
 - `access` is the one place that gives the knowledge-base tools; listing `query` or `remember` in `tools` is an error. `read_only` gives `query` only (and a prompt that says it cannot add); `none` gives neither. The tools exist only when the server gives its agents a knowledge base at all.
-- Dataset: a locked dataset of the definition, else the one of the request, else the default of the definition, else `main`. A **sub-agent** works in its parent's dataset (so siblings share what they remember) unless its own definition names one.
+- Dataset: a locked dataset of the definition, else the one of the request, else the default of the definition, else `main`. A worker of the investigative loop works in its supervisor's dataset (so they share what they remember).
 - With the `modal` runner the container's knowledge base starts empty, so `read_only` is of little use there (the server logs a warning).
 
 ### `[limits]`: cost caps
@@ -122,7 +121,7 @@ A cap is a **soft stop**, not a failure:
 
 The server has a built-in investigative agent, `investigator` (next to the built-in `default`): the loop with `web_search`, `fetch_url`, read/write knowledge and a cap of 2 USD. A file called `investigator.toml` replaces it. The admin UI starts it for its "investigative" choice.
 
-`loop = "simple"` (the default, also when the key is left out) is the loop an agent has always had: it searches and reads until it writes the report, in at most `max_steps` model calls. `loop = "investigative"` runs the [deep-research loop](deep-research-loop.md) instead: a frontier of questions with notes, claims and challenges, an exploration phase ended by a gate and a synthesis phase that writes the report without searching (see [the run](research.md#the-investigative-loop)). It has the same tools (`fetch_url` is called `fetch_page` for the model), the same prompt (plus the loop's instructions for each phase), skills, search and knowledge settings and cost caps (`max_cost_usd` is a circuit-breaker there). It works alone: `[spawn] enabled = true` is an error with it, and so is `runner = "modal"` for a research. `max_steps` does not apply; `max_iterations` replaces it.
+`loop = "simple"` (the default, also when the key is left out) is the loop an agent has always had: it searches and reads until it writes the report, in at most `max_steps` model calls. `loop = "investigative"` runs the [deep-research loop](deep-research-loop.md) instead: a frontier of questions with notes, claims and challenges, an exploration phase ended by a gate and a synthesis phase that writes the report without searching (see [the run](research.md#the-investigative-loop)). It has the same tools (`fetch_url` is called `fetch_page` for the model), the same prompt (plus the loop's instructions for each phase), skills, search and knowledge settings and cost caps (`max_cost_usd` is a circuit-breaker there). It runs independent questions in sub-agents when `max_parallel` is above 1 ([subagents.md](subagents.md)). `runner = "modal"` is an error for a research with it. `max_steps` does not apply; `max_iterations` replaces it.
 
 The `[investigate]` table sets the knobs; every one is optional (0 or left out is the default), and the table is an **error** with the simple loop (not a silent no-op). A research can override them with the `investigate` option of the request, which is also an error for a simple agent.
 
@@ -145,7 +144,11 @@ min_challenges = 1               # survived challenges a claim needs for VERIFIE
 max_challenges_per_target = 3
 gate_priority = 0.5              # a pending actionable question from this priority keeps the gate closed
 max_reopens = 1                  # times the synthesis may send the run back to exploration
-max_parallel = 1                 # only 1 is implemented
+max_parallel = 1                 # 1 to 8: workers (sub-agents) at once on independent questions; 1 = none (docs/agents/subagents.md)
+worker_max_steps = 12            # model calls of a worker, 1 to 40
+worker_context_tokens = 1500     # size of the slice of the notes in a worker's brief, 100 to 8000
+max_workers = 20                 # workers in the whole run, 1 to 40
+min_priority_to_delegate = 0     # 0 to 1: a question below this priority is not delegated
 ```
 
 The cost cap of the run is `[limits] max_cost_usd` (and the request's and the server's caps, the lowest counts). When any breaker fires in exploration the run goes on to synthesis with a note of the cut and does not fail; if one fires in synthesis the run fails and names the breaker. The knobs and their meaning are in [the design](deep-research-loop.md#configuration).
@@ -171,40 +174,11 @@ type_check = false         # Monty's type checker, against the stubs of the func
 
 The table is an **error** with the simple loop. Without the table the agent has no code tool and nothing changes. The sandbox must be installed on the server (the Docker image has it; otherwise `pip install pydantic-monty` and set `monty_python` / `monty_bin` of `gligabao.toml`, or `GLIGABAO_MONTY_PYTHON` / `MONTY_BIN`): a run of an agent with `[code] enabled` fails at its start, naming the missing piece, when it is not there. `build/agent_defs/numeric_investigator.toml` is an example.
 
-### `[spawn]`: sub-agents
+### Sub-agents: the `max_parallel` knob (and the removed `[spawn]`)
 
-```toml
-[spawn]
-enabled = true            # gives the agent the sub-agent tools
-max_depth = 2             # these three can only lower the ceilings (2, 5 and 10); 0 is the ceiling
-max_per_agent = 4
-max_per_tree = 8          # of the root's definition
+Sub-agents are a capability of the investigative loop: with `max_parallel` above 1 (and `worker_max_steps`, `worker_context_tokens`, `max_workers`, `min_priority_to_delegate`, in `[investigate]`, above) the loop runs independent questions of its frontier in workers and reduces their findings; the model has no tool to start one, and a definition has no list of kinds of sub-agents. All of it is in [subagents.md](subagents.md).
 
-[[spawn.roles]]
-name = "regional"                  # what the model picks in spawn_subagent (on_start: the name of the sub-agent)
-agent = "regional_scout"           # the definition the sub-agent runs
-version = ">=1.0, <2"              # optional: the version it must have (checked at startup)
-trigger = "on_demand"              # on_demand (default) | on_start
-when = "The topic names two or more regions that each need searches of their own."   # on_demand: told to the model
-does = "Researches one region in depth and returns dated facts with URLs."          # told to the model; the reason of an on_start sub-agent
-max_instances = 3                  # on_demand: most sub-agents of this role at once (0: only the limits above)
-max_steps = 8                      # the steps it gets by default (default: max_steps of its definition)
-max_steps_limit = 12               # the most the parent may ask for (default: max_steps of its definition)
-
-[[spawn.roles]]
-name = "headlines"
-agent = "regional_scout"
-trigger = "on_start"
-does = "Reads today's headlines."
-task_template = "Headlines about {{.Topic}}"   # Go template; {{.Topic}} is the topic of the research (default "{{.Topic}}")
-```
-
-- **Without roles**, `enabled = true` is the free-form behaviour of before definitions existed: the model spawns sub-agents that are **copies of itself** (same definition), with `spawn.md` as the policy. The built-in `default` works this way.
-- **With roles**, the model sees only them. `spawn_subagent` gets a required `role` argument (an enum of the `on_demand` roles), and the prompt lists each role with its `does` and **`when`**: that is the policy of when to start it. A sub-agent runs the definition of its role: its prompt, tools, skills, search and knowledge settings, caps, and its own roles.
-- **`on_start`**: the runtime starts the sub-agent **before the parent's first model call**, with the rendered `task_template` as its task, and tells the parent in its first turn that it was started, so it can work on its own part and call `wait_subagents`. The model does not decide. If it cannot be started, the parent is told.
-- **Limits**: the code ceilings (depth 2, 5 per agent, 10 per tree, 40 steps) cannot be raised by a file. The depth counts from the root (the root is 0); an agent at its deepest level gets no spawn tool. `max_per_tree` is read from the root's definition. The steps of a sub-agent are the role's default; the parent may ask for more up to `max_steps_limit`.
-- **Checks at startup**: a role must name an existing definition whose version meets `version`, the role's steps must fit, and no definition may start itself through its roles (a loop is an error).
-- Every sub-agent is a run of its own, with its `agent_name`, `agent_version` and `agent_hash`.
+The `[spawn]` table of earlier versions (the model-driven `spawn_subagent` and `wait_subagents`, the roles with their `on_demand` and `on_start` triggers, `max_depth`, `max_per_agent` and `max_per_tree`) was **removed in 0.189.0**. A file that still has it does not load: `spawn: sub-agents of the simple loop were removed; set loop = "investigative" and investigate.max_parallel to run questions in workers`. A bundle (the JSON of a definition) with a `spawn` field is refused too.
 
 ### `[schedule]`: running on a schedule
 
@@ -224,7 +198,7 @@ paused   = false                                 # true: keep the section in the
 - **At most one run per agent at a time.** If the previous scheduled run of the agent still works when the next one is due, the new one is skipped (a warning is logged). The times the server was down are not caught up: after a start the next time after it is used.
 - **At least 5 minutes between two runs** (every run is paid for): a schedule that runs more often is a startup error, and so are an expression that never matches (`0 0 31 2 *`), an unknown time zone and a missing `cron` or `topic`.
 - **One server** should run the schedules. Every process that serves the same definitions starts its own runs, so with several servers behind one database keep the `[schedule]` sections in one of them only (or `paused`).
-- Only the server runs schedules: `gligabao_agent` ignores the section, and an agent that is only used as a sub-agent role is never started by it. The schedule is not part of `agent_hash` (when an agent runs is not what it is), so changing it does not make a new hash. It travels in a bundle but the container does nothing with it.
+- Only the server runs schedules: `gligabao_agent` ignores the section, and an agent that is only used as a worker is never started by it. The schedule is not part of `agent_hash` (when an agent runs is not what it is), so changing it does not make a new hash. It travels in a bundle but the container does nothing with it.
 - `GET /v1/gb/research/agents` shows it: `schedule` with `cron`, `timezone`, `topic`, `user`, `paused` and `next_run`.
 - The runs are ordinary researches (`agent_name` says which agent, `GET /v1/gb/research?...` lists them for the `user`). There is no separate record of the schedule: what ran is in `gb_agent_research_runs`.
 
@@ -234,7 +208,7 @@ Code: `internal/agent/agent_defs/cron.go` (the parser and `Next`), `agent_defs.S
 
 ## Model
 
-The model of the main agent is the request's `model`, else `model` of its definition, else the server's default. A **sub-agent** runs on the `model` of its own definition, else on its parent's: the parent cannot choose it (`spawn_subagent` has no such argument).
+The model of the main agent is the request's `model`, else `model` of its definition, else the server's default. A worker of the investigative loop runs on the model of its supervisor.
 
 ## Versions
 
@@ -243,12 +217,12 @@ One file per name; `version` is metadata, and git keeps the history. Every run r
 ## Using a definition
 
 - `POST /v1/gb/research` `{"topic": "...", "agent": "news_scanner", "agent_version": "^1.0", "max_cost_usd": 2}`; the MCP tool `research_start` has the same fields; `gligabao research start "..." --agent news_scanner --agent-version "^1.0" --max-cost 2`.
-- `GET /v1/gb/research/agents` (`gligabao research agents`) lists the definitions: name, version, description, hash, source file, model, steps, caps, knowledge access, skills and roles.
+- `GET /v1/gb/research/agents` (`gligabao research agents`) lists the definitions: name, version, description, hash, source file, model, steps, caps, knowledge access, and skills (and `max_parallel`).
 - `gligabao_agent --agent news_scanner [--agent-defs-dir DIR]` runs one without the server. By default it reads the same `agent_defs` directory next to its binary.
 
 ## In Modal
 
-The container has no `agent_defs` directory, and baking the files into the image would need a new deployment for every prompt change. So the server sends the definitions with the job: a **bundle** (`agent_defs.Bundle`), JSON with the chosen definition, those its roles start (and theirs), the prompts and the skills as text, at most 1 MiB. It travels `Remote.Start` → `POST /research/job_start` (`agent`, `agent_bundle`, `max_cost_usd`) → the sidecar writes it to the job's directory → `gligabao_agent --agent NAME --agent-bundle FILE --max-cost-usd N`. The binary checks the hash of every definition against its content, so a bundle that was changed on the way is refused.
+The container has no `agent_defs` directory, and baking the files into the image would need a new deployment for every prompt change. So the server sends the definitions with the job: a **bundle** (`agent_defs.Bundle`), JSON with the chosen definition, the prompts and the skills as text, at most 1 MiB. It travels `Remote.Start` → `POST /research/job_start` (`agent`, `agent_bundle`, `max_cost_usd`) → the sidecar writes it to the job's directory → `gligabao_agent --agent NAME --agent-bundle FILE --max-cost-usd N`. The binary checks the hash of every definition against its content, so a bundle that was changed on the way is refused.
 
 ## Checks
 
@@ -260,9 +234,8 @@ The container has no `agent_defs` directory, and baking the files into the image
 | unknown tool, or a knowledge tool in `tools` | `tools: "query" is not listed here: the knowledge base tools come from [knowledge] access` |
 | bad domain, both domain lists | `search: allowed_domains and blocked_domains cannot be used together for web_search` |
 | a required skill that is missing | `required_skills: dates: "dates.md": file does not exist` |
-| a limit over its ceiling | `spawn.max_per_agent: 6 must be between 0 (the ceiling) and 5, the ceiling` |
-| a role that points nowhere or loops | `spawn.roles[0] (r).agent: no agent called "ghost"`, `a -> b -> a starts itself through its roles` |
-| a role's version not met | `agent "x" is at version 1.0.0, which does not meet ">=2"` |
+| a knob over its ceiling | `investigate.max_parallel: 9 must be between 1 and 8 (or 0 for the default)` |
+| the removed `[spawn]` table | `spawn: sub-agents of the simple loop were removed; ...` |
 | a bad schedule | `schedule.cron: "* * * * *" runs the agent every 1m0s, at least 5m0s is needed between two runs`, `schedule.cron: minute: "61": 61 is out of range (0 to 59)`, `schedule.timezone: "Mars/Base" is not an IANA time zone like Europe/Berlin` |
 
 ## Not included yet
