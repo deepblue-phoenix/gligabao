@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.191.1] - 2026-11-11
+
+### Changed
+- Admin UI, agent definitions modal: each definition is a card with badges (version, loop, schedule), the settings in titled panels, tools as pills, and the system prompt and skills rendered as Markdown.
+
 ## [0.191.0] - 2026-11-11
 
 ### Added

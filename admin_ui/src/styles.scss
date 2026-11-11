@@ -1075,6 +1075,26 @@ html:has(#tp-modal[open]) { overflow: hidden; }
 .rs-qid { font-size: 0.8rem; }
 .rs-answer { margin: 0.15rem 0 0 0.25rem; padding-left: 0.5rem; border-left: 2px solid $ok; font-size: 0.85rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .rs-open, .rs-graph-btn { margin-top: 0.75rem; }
+#research-defs-modal { width: min(96vw, 60rem); }
+.rs-def {
+  margin: 0.75rem 0; padding: 0.75rem 1rem; background: $surface; border: 1px solid $border; border-radius: 8px;
+  display: flex; flex-direction: column; gap: 0.6rem;
+}
+.rs-def-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; h3 { margin: 0 0.25rem 0 0; font-size: 1.1rem; } }
+.rs-def-desc { color: $muted; }
+.rs-def-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); gap: 0.6rem; }
+.rs-def-panel {
+  padding: 0.5rem 0.75rem; background: $bg; border: 1px solid $border; border-radius: 6px; min-width: 0;
+  h5 { margin: 0 0 0.35rem; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: $muted; }
+}
+.rs-kv {
+  border-collapse: collapse; width: 100%; font-size: 0.85rem;
+  th { text-align: left; font-weight: normal; color: $muted; padding: 0.15rem 0.75rem 0.15rem 0; vertical-align: top; white-space: nowrap; }
+  td { padding: 0.15rem 0; vertical-align: top; overflow-wrap: anywhere; }
+  .rs-kv { font-size: 0.8rem; }
+}
+.rs-def-text summary { cursor: pointer; font-weight: 600; margin-bottom: 0.4rem; }
+.rs-def-hash { margin: 0; font-size: 0.7rem; font-family: monospace; overflow-wrap: anywhere; }
 #research-error-modal .rs-info dd { font-size: 0.95rem; }
 
 // Starting a research agent: the green button, the modal with the task, and the dock of the working agents on the right of the screen.

@@ -787,54 +787,82 @@ function schedule(): void {
 type Json = Record<string, unknown>;
 interface DefSkill { name: string; content: string }
 interface AgentDef extends Json {
-  name: string; version: string; description: string; loop?: string; source: string; hash: string; system_prompt: string; skills?: DefSkill[];
+  name: string; version: string; description: string; loop?: string; source: string; hash: string; system_prompt: string; tools: string[]; skills?: DefSkill[];
+  schedule?: { paused?: boolean };
 }
 
 const isEmptyVal = (v: unknown): boolean => v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0);
-const valText = (v: unknown): string => (typeof v === "string" ? v : Array.isArray(v) && v.every((x) => typeof x !== "object") ? v.join(", ") : JSON.stringify(v, null, 1));
 
-// settings renders a block of the definition (search, knowledge, limits, ...) as a list of key and value, skipping the empty ones.
-function settings(title: string, obj: unknown, open = false): HTMLElement | null {
-  const entries = Object.entries((obj ?? {}) as Json).filter(([, v]) => !isEmptyVal(v));
-  if (entries.length === 0) return null;
-  const d = node("details");
-  d.open = open;
-  d.appendChild(node("summary", "", title));
-  const dl = d.appendChild(node("dl", "stats rs-info"));
-  for (const [k, v] of entries) {
-    const div = dl.appendChild(node("div"));
-    div.append(node("dt", "", k), node("dd", "rs-text", valText(v)));
+// chips renders a list of short strings as pills.
+function chips(items: string[]): HTMLElement {
+  const box = node("div", "ws-chips");
+  for (const i of items) box.appendChild(node("span", "chip", i));
+  return box;
+}
+
+// kvCell renders one value of a settings table: lists of words as pills, long text as wrapped text, nested objects as a nested table.
+function kvCell(v: unknown): Node {
+  if (Array.isArray(v) && v.every((x) => typeof x !== "object")) return chips(v.map(String));
+  if (typeof v === "boolean") return node("span", `badge ${v ? "badge-ok" : "badge-unknown"}`, v ? "yes" : "no");
+  if (v && typeof v === "object") return kvTable(v as Json);
+  return node("span", "rs-text", String(v));
+}
+
+function kvTable(obj: Json): HTMLElement {
+  const t = node("table", "rs-kv");
+  for (const [k, v] of Object.entries(obj)) {
+    if (isEmptyVal(v)) continue;
+    const tr = t.appendChild(node("tr"));
+    tr.appendChild(node("th", "", k.replace(/_/g, " ")));
+    tr.appendChild(node("td")).appendChild(kvCell(v));
   }
+  return t;
+}
+
+// panel is a titled box with the settings of one block of the definition; null when all its values are empty.
+function panel(title: string, obj: unknown): HTMLElement | null {
+  const o = (obj ?? {}) as Json;
+  if (Object.values(o).every(isEmptyVal)) return null;
+  const box = node("section", "rs-def-panel");
+  box.appendChild(node("h5", "", title));
+  box.appendChild(kvTable(o));
+  return box;
+}
+
+function textBlock(title: string, md: string, empty: string): HTMLElement {
+  const d = node("details", "rs-def-text");
+  d.appendChild(node("summary", "", title));
+  if (!md) { d.appendChild(node("p", "muted", empty)); return d; }
+  const box = d.appendChild(node("div", "rs-md"));
+  box.innerHTML = DOMPurify.sanitize(marked.parse(md, { gfm: true, breaks: false, async: false }));
   return d;
 }
 
 function renderDef(d: AgentDef): HTMLElement {
-  const root = node("details");
-  root.open = false;
-  const sum = root.appendChild(node("summary"));
-  sum.append(node("strong", "", d.name), node("span", "muted", ` v${d.version} · ${d.loop || "simple"} loop`));
-  const body = root.appendChild(node("div", "rs-detail"));
-  if (d.description) body.appendChild(node("p", "rs-text", d.description));
-  const info = body.appendChild(node("dl", "stats rs-info"));
-  const rows: [string, unknown][] = [["Source", d.source], ["Hash", d.hash], ["Model", d.model || "(inherited)"], ["Max steps", d.max_steps], ["Max tokens", d.max_tokens], ["Tools", d.tools]];
-  for (const [k, v] of rows) {
-    if (isEmptyVal(v)) continue;
-    const div = info.appendChild(node("div"));
-    div.append(node("dt", "", k), node("dd", "rs-text", valText(v)));
+  const card = node("article", "rs-def");
+  const head = card.appendChild(node("header", "rs-def-head"));
+  head.appendChild(node("h3", "", d.name));
+  head.appendChild(node("span", "badge badge-active", `v${d.version}`));
+  head.appendChild(node("span", "badge", `${d.loop || "simple"} loop`));
+  if (d.schedule) head.appendChild(node("span", `badge ${d.schedule.paused ? "badge-unknown" : "badge-ok"}`, d.schedule.paused ? "schedule paused" : "scheduled"));
+  if (d.description) card.appendChild(node("p", "rs-text rs-def-desc", d.description));
+
+  const grid = card.appendChild(node("div", "rs-def-grid"));
+  const general = panel("General", { model: d.model || "(inherited)", max_steps: d.max_steps, max_tokens: d.max_tokens, source: d.source });
+  if (general) grid.appendChild(general);
+  for (const [t, o] of [["Limits", d.limits], ["Knowledge", d.knowledge], ["Search", d.search], ["Investigate", d.investigate], ["Code", d.code], ["Schedule", d.schedule]] as [string, unknown][]) {
+    const x = panel(t, o);
+    if (x) grid.appendChild(x);
   }
-  for (const [t, o] of [["Search", d.search], ["Knowledge", d.knowledge], ["Limits", d.limits], ["Investigate", d.investigate], ["Code", d.code], ["Schedule", d.schedule]] as [string, unknown][]) {
-    const x = settings(t, o);
-    if (x) body.appendChild(x);
+  if (d.tools.length > 0) {
+    const box = card.appendChild(node("section", "rs-def-panel"));
+    box.appendChild(node("h5", "", `Tools (${d.tools.length})`));
+    box.appendChild(chips(d.tools));
   }
-  const prompt = body.appendChild(node("details"));
-  prompt.appendChild(node("summary", "", "System prompt"));
-  prompt.appendChild(node("pre", "rs-text", d.system_prompt || "(built-in prompt)"));
-  for (const s of d.skills ?? []) {
-    const sk = body.appendChild(node("details"));
-    sk.appendChild(node("summary", "", `Skill: ${s.name}`));
-    sk.appendChild(node("pre", "rs-text", s.content));
-  }
-  return root;
+  card.appendChild(textBlock("System prompt", d.system_prompt, "(the built-in research prompt)"));
+  for (const sk of d.skills ?? []) card.appendChild(textBlock(`Skill: ${sk.name}`, sk.content, "(empty)"));
+  card.appendChild(node("p", "muted rs-def-hash", `sha256 ${d.hash}`));
+  return card;
 }
 
 async function showDefs(): Promise<void> {
