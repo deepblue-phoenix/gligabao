@@ -119,6 +119,8 @@ A cap is a **soft stop**, not a failure:
 
 ### `loop` and `[investigate]`: the investigative loop
 
+The server has a built-in investigative agent, `investigator` (next to the built-in `default`): the loop with `web_search`, `fetch_url`, read/write knowledge and a cap of 2 USD. A file called `investigator.toml` replaces it. The admin UI starts it for its "investigative" choice.
+
 `loop = "simple"` (the default, also when the key is left out) is the loop an agent has always had: it searches and reads until it writes the report, in at most `max_steps` model calls. `loop = "investigative"` runs the [deep-research loop](deep-research-loop.md) instead: a frontier of questions with notes, claims and challenges, an exploration phase ended by a gate and a synthesis phase that writes the report without searching (see [the run](research.md#the-investigative-loop)). It has the same tools (`fetch_url` is called `fetch_page` for the model), the same prompt (plus the loop's instructions for each phase), skills, search and knowledge settings and cost caps (`max_cost_usd` is a circuit-breaker there). It works alone: `[spawn] enabled = true` is an error with it, and so is `runner = "modal"` for a research. `max_steps` does not apply; `max_iterations` replaces it.
 
 The `[investigate]` table sets the knobs; every one is optional (0 or left out is the default), and the table is an **error** with the simple loop (not a silent no-op). A research can override them with the `investigate` option of the request, which is also an error for a simple agent.

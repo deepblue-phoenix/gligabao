@@ -597,3 +597,93 @@ func ResearchTemporalOf(m *agent_research.Manager) http.HandlerFunc {
 		httputil.WriteJSON(w, http.StatusOK, out)
 	}
 }
+
+// ResearchAgentsOf serves GET /admin/api/research/agents: {"agents": [...]}, the agent definitions a research can run (with their loop),
+// for the start dialog of the admin UI.
+func ResearchAgentsOf(m *agent_research.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"agents": m.Agents()})
+	}
+}
+
+// InvestigationQuestion is a node of the frontier of an investigative run.
+type InvestigationQuestion struct {
+	ID        string   `json:"id"`
+	ParentID  string   `json:"parent_id"`
+	Depth     int      `json:"depth"`
+	Kind      string   `json:"kind"`
+	Question  string   `json:"question"`
+	Rationale string   `json:"rationale"`
+	Priority  float64  `json:"priority"`
+	Status    string   `json:"status"`
+	Answer    string   `json:"answer"`
+	DependsOn []string `json:"depends_on"`
+	Attempts  int      `json:"attempts"`
+}
+
+// InvestigationChallenge is an adversarial query of an investigative run.
+type InvestigationChallenge struct {
+	ID              string   `json:"id"`
+	QuestionID      string   `json:"question_id"`
+	TargetType      string   `json:"target_type"`
+	TargetID        string   `json:"target_id"`
+	Negation        string   `json:"negation"`
+	Strategy        string   `json:"strategy"`
+	ExpectedIfFalse string   `json:"expected_if_false"`
+	Query           string   `json:"query"`
+	Status          string   `json:"status"`
+	Outcome         string   `json:"outcome"`
+	Evidence        string   `json:"evidence"`
+	SourceIDs       []string `json:"source_ids"`
+	ResultClaimID   string   `json:"result_claim_id"`
+}
+
+type researchInvestigationResponse struct {
+	RunID      int64                    `json:"run_id"`
+	Phase      string                   `json:"phase"`
+	StopReason string                   `json:"stop_reason"`
+	Questions  []InvestigationQuestion  `json:"questions"`
+	Challenges []InvestigationChallenge `json:"challenges"`
+	// Notes is the latest version of the notes file of the run.
+	Notes string `json:"notes"`
+}
+
+// ResearchInvestigationOf serves GET /admin/api/research/{id}/investigation: what the investigative loop built for the run: the phase and
+// stop reason, the frontier of questions (in creation order; the tree is given by parent_id), the challenges and the latest notes. A run of
+// the simple loop answers with empty lists.
+func ResearchInvestigationOf(m *agent_research.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		ctx := r.Context()
+		run, err := m.Get(ctx, "", id)
+		if err != nil {
+			researchFail(w, err, "read the research agent")
+			return
+		}
+		out := researchInvestigationResponse{RunID: id, Phase: run.Phase, StopReason: run.StopReason, Questions: []InvestigationQuestion{}, Challenges: []InvestigationChallenge{}}
+		loaded, err := m.Ops.Investigate(m.DB).Load(ctx, id)
+		if err != nil {
+			log.WithError(err).WithField("run_id", id).Error("admin: research investigation failed")
+			httputil.Error(w, http.StatusInternalServerError, "failed to read the investigation")
+			return
+		}
+		out.Notes = loaded.NotesText
+		for _, q := range loaded.Frontier.Questions {
+			out.Questions = append(out.Questions, InvestigationQuestion{
+				ID: q.ID, ParentID: q.ParentID, Depth: q.Depth, Kind: string(q.Kind), Question: q.Question, Rationale: q.Rationale,
+				Priority: q.Priority, Status: string(q.Status), Answer: q.Answer, DependsOn: append([]string{}, q.DependsOn...), Attempts: q.AttemptCount(),
+			})
+		}
+		for _, c := range loaded.Challenges {
+			out.Challenges = append(out.Challenges, InvestigationChallenge{
+				ID: c.ID, QuestionID: c.QuestionID, TargetType: string(c.TargetType), TargetID: c.TargetID, Negation: c.Negation,
+				Strategy: string(c.Strategy), ExpectedIfFalse: c.ExpectedIfFalse, Query: c.Query, Status: string(c.Status),
+				Outcome: string(c.Outcome), Evidence: c.Evidence, SourceIDs: append([]string{}, c.SourceIDs...), ResultClaimID: c.ResultClaimID,
+			})
+		}
+		httputil.WriteJSON(w, http.StatusOK, out)
+	}
+}

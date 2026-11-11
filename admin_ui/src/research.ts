@@ -16,7 +16,17 @@ interface Agent {
   steps: number; tool_calls: number; input_tokens: number; output_tokens: number; cost_usd: number;
   report: string; error: string; created_at: string; finished_at: string | null;
   children: number; duration_ms: number; age_ms: number; has_report: boolean; states?: State[];
+  agent_name?: string; phase?: string; stop_reason?: string; // phase and stop_reason are set by the investigative loop only
 }
+interface IQuestion {
+  id: string; parent_id: string; depth: number; kind: string; question: string; rationale: string; priority: number; status: string;
+  answer: string; depends_on: string[]; attempts: number;
+}
+interface IChallenge {
+  id: string; question_id: string; target_type: string; target_id: string; negation: string; strategy: string; expected_if_false: string;
+  query: string; status: string; outcome: string; evidence: string; source_ids: string[]; result_claim_id: string;
+}
+interface Investigation { run_id: number; phase: string; stop_reason: string; questions: IQuestion[]; challenges: IChallenge[]; notes: string }
 interface Detail extends Agent { parent: Agent | null; subagents: Agent[] }
 interface Counts { running: number; completed: number; failed: number; stopped: number; total: number }
 interface ListResponse { counts: Counts; runs: Agent[]; total: number; limit: number }
@@ -288,11 +298,24 @@ async function showDetail(id: number): Promise<void> {
   if (d.status === "running") actions.append(button("Stop", "Stop this agent", "small danger", () => void stopAgent(d)));
   // A refresh redraws the whole body: keep what the user opened and where they scrolled.
   const same = renderedID === id;
-  const wasOpen = same && (body.querySelector<HTMLDetailsElement>("details.rs-states")?.open ?? false);
+  // Which sections (details elements with a data-key) were open or closed, by key, so that the refresh keeps them as the user left them.
+  const was = new Map<string, boolean>(same ? [...body.querySelectorAll<HTMLDetailsElement>("details[data-key]")].map((x) => [x.dataset.key ?? "", x.open]) : []);
   const scroll = same ? body.scrollTop : 0;
   renderedID = id;
+  // An investigative run also shows what its loop built: the frontier, the challenges and the notes.
+  let inv: Investigation | null = null;
+  let invErr = "";
+  if (d.phase) {
+    try {
+      inv = await getJSON<Investigation>(`api/research/${id}/investigation`);
+    } catch (err) {
+      invErr = errText(err);
+    }
+    if (currentID !== id) return;
+  }
   const fresh = renderDetail(d);
-  fresh.querySelector<HTMLDetailsElement>("details.rs-states")!.open = wasOpen;
+  if (d.phase) fresh.querySelector("details.rs-states")?.before(renderInvestigation(inv, invErr));
+  for (const x of fresh.querySelectorAll<HTMLDetailsElement>("details[data-key]")) if (was.has(x.dataset.key ?? "")) x.open = was.get(x.dataset.key ?? "") ?? false;
   body.replaceChildren(fresh);
   body.scrollTop = scroll;
 }
@@ -312,6 +335,12 @@ function renderDetail(d: Detail): HTMLElement {
   row("Model", d.model || "(server default)");
   row("Runs in", d.runner === "modal" ? "Modal (gligabao_agent binary)" : "this server", "Where the agent runs: in the server's process, or in a Modal container started through the sidecar");
   row("State", d.state);
+  if (d.agent_name) row("Agent definition", d.agent_name);
+  if (d.phase) {
+    row("Loop", "investigative", "The deep-research loop: a frontier of questions with notes, challenges and gates");
+    row("Phase", d.phase, "exploration: the cycle on the frontier; synthesis: the report is written from the notes");
+    row("Stop reason", d.stop_reason || "(still exploring)", "Why the exploration ended: frontier_exhausted, breaker:iterations|tokens|cost, or finalized");
+  }
 
   root.appendChild(node("h4", "", "Topic"));
   root.appendChild(node("p", "rs-text", d.topic));
@@ -367,6 +396,7 @@ function renderDetail(d: Detail): HTMLElement {
 
   const states = d.states ?? [];
   const det = root.appendChild(node("details", "rs-states"));
+  det.dataset.key = "states";
   det.appendChild(node("summary", "", `States (${states.length})`));
   const table = det.appendChild(node("table", "rs-table compact"));
   headRow(table, [["#", true], ["State", false], ["Step", true], ["Detail", false], ["Time", true], ["Error", false]]);
@@ -383,6 +413,95 @@ function renderDetail(d: Detail): HTMLElement {
     e.textContent = s.error;
     if (s.error) e.className = "error";
   }
+  return root;
+}
+
+// ----- the investigation: what the investigative loop built (the frontier of questions, the challenges, the notes)
+
+const Q_CLASS: Record<string, string> = { pending: "badge-unknown", in_progress: "badge-active", resolved: "badge-ok", blocked: "badge-unknown", unresolvable: "badge-error", pruned: "badge-unknown" };
+const OUTCOME_CLASS: Record<string, string> = { survived: "badge-ok", weakened: "badge-active", refuted: "badge-error", inconclusive: "badge-unknown", "": "badge-unknown" };
+const short = (t: string, n: number): string => (t.length > n ? t.slice(0, n) + "…" : t);
+
+function inv(root: HTMLElement, key: string, title: string, startOpen = false): HTMLElement {
+  const det = root.appendChild(node("details", "rs-states rs-inv"));
+  det.dataset.key = key;
+  det.open = startOpen;
+  det.appendChild(node("summary", "", title));
+  return det;
+}
+
+function questionTree(qs: IQuestion[]): HTMLElement {
+  const kids = new Map<string, IQuestion[]>();
+  const ids = new Set(qs.map((q) => q.id));
+  for (const q of qs) {
+    const key = q.parent_id && ids.has(q.parent_id) ? q.parent_id : "";
+    kids.set(key, [...(kids.get(key) ?? []), q]);
+  }
+  const build = (list: IQuestion[]): HTMLElement => {
+    const ul = node("ul", "rs-tree");
+    for (const q of list) {
+      const li = ul.appendChild(node("li"));
+      const head = li.appendChild(node("div", "rs-q"));
+      head.appendChild(node("span", `badge ${Q_CLASS[q.status] ?? "badge-unknown"}`, q.status));
+      head.appendChild(node("span", "muted rs-qid", ` ${q.id}${q.kind === "hypothesis" ? " (hypothesis)" : ""} · p ${q.priority.toFixed(2)} · ${q.attempts} attempt${q.attempts === 1 ? "" : "s"} `));
+      head.appendChild(node("span", "", q.question)).title = q.rationale;
+      if (q.depends_on.length > 0) head.appendChild(node("span", "muted rs-qid", ` · waits for ${q.depends_on.join(", ")}`));
+      if (q.answer) li.appendChild(node("div", "rs-answer", q.answer));
+      const sub = kids.get(q.id);
+      if (sub) li.appendChild(build(sub));
+    }
+    return ul;
+  };
+  return build(kids.get("") ?? []);
+}
+
+function renderInvestigation(i: Investigation | null, errMsg: string): HTMLElement {
+  const root = node("div", "rs-investigation");
+  root.appendChild(node("h4", "", "Investigation"));
+  if (!i) {
+    root.appendChild(node("p", "error", `Failed to load the investigation: ${errMsg}`));
+    return root;
+  }
+  const counts = new Map<string, number>();
+  for (const q of i.questions) counts.set(q.status, (counts.get(q.status) ?? 0) + 1);
+  const stats = root.appendChild(node("dl", "stats rs-info"));
+  const t = (k: string, v: string) => { const d = stats.appendChild(node("div")); d.append(node("dt", "", k), node("dd", "", v)); };
+  t("Questions", String(i.questions.length));
+  for (const st of ["resolved", "pending", "in_progress", "blocked", "unresolvable", "pruned"]) if (counts.get(st)) t(st.replace("_", " "), String(counts.get(st)));
+  t("Challenges", String(i.challenges.length));
+  const refuted = i.challenges.filter((c) => c.outcome === "refuted" || c.outcome === "weakened").length;
+  if (refuted > 0) t("Refuted / weakened", String(refuted));
+
+  const fr = inv(root, "frontier", `Frontier (${i.questions.length})`, true);
+  fr.appendChild(i.questions.length === 0 ? node("p", "muted", "No question yet: the loop is still planning.") : questionTree(i.questions));
+
+  const ch = inv(root, "challenges", `Challenges (${i.challenges.length})`);
+  if (i.challenges.length === 0) {
+    ch.appendChild(node("p", "muted", "No claim or answer was challenged yet."));
+  } else {
+    const table = ch.appendChild(node("table", "rs-table compact"));
+    headRow(table, [["ID", false], ["Target", false], ["Strategy", false], ["Negation tried", false], ["Outcome", false], ["Evidence", false]]);
+    const body = table.createTBody();
+    for (const c of i.challenges) {
+      const tr = body.insertRow();
+      tr.insertCell().textContent = c.id;
+      tr.insertCell().textContent = `${c.target_type}${c.target_id ? ` ${c.target_id}` : ""}${c.question_id ? ` (${c.question_id})` : ""}`;
+      tr.insertCell().textContent = c.strategy;
+      const neg = tr.insertCell();
+      neg.textContent = short(c.negation, 160);
+      neg.className = "rs-wrap";
+      neg.title = `Expected if the belief is false: ${c.expected_if_false}\nQuery: ${c.query}`;
+      const out = tr.insertCell();
+      out.appendChild(node("span", `badge ${OUTCOME_CLASS[c.outcome] ?? "badge-unknown"}`, c.status === "open" ? "open" : c.outcome));
+      const ev = tr.insertCell();
+      ev.textContent = c.evidence + (c.source_ids.length > 0 ? ` [${c.source_ids.join(", ")}]` : "");
+      ev.className = "rs-wrap";
+    }
+  }
+
+  const nt = inv(root, "notes", "Notes");
+  if (i.notes) nt.appendChild(node("pre", "rs-report", i.notes));
+  else nt.appendChild(node("p", "muted", "The notes file is empty."));
   return root;
 }
 
@@ -531,12 +650,27 @@ function provenanceGraph(p: Provenance) {
 
 // ----- starting an agent
 
+// The kind of agent picked next to the start button: "investigative" runs the investigator definition (the deep-research loop), "simple" the
+// default one. An investigative agent runs in this server only, so the Modal runner is turned off for it.
+const AGENT_OF_KIND: Record<string, string> = { investigative: "investigator", simple: "default" };
+
+const selectedKind = (): string => el<HTMLSelectElement>("research-start-kind").value;
+
+function syncKind(): void {
+  const investigative = selectedKind() === "investigative";
+  const runner = el<HTMLSelectElement>("research-start-runner");
+  if (investigative) runner.value = "local";
+  runner.disabled = investigative;
+  el("research-start-title").textContent = `Start ${selectedKind()} agent`;
+}
+
 async function startAgent(): Promise<void> {
   const topic = el<HTMLTextAreaElement>("research-start-topic");
   const err = el("research-start-error");
   const submit = el<HTMLButtonElement>("research-start-submit");
   const text = topic.value.trim();
   const runner = el<HTMLSelectElement>("research-start-runner").value;
+  const agent = AGENT_OF_KIND[selectedKind()] ?? "default";
   if (!text) {
     err.textContent = "Describe the research task first.";
     err.hidden = false;
@@ -546,7 +680,7 @@ async function startAgent(): Promise<void> {
   submit.disabled = true;
   err.hidden = true;
   try {
-    const a = await getJSON<Agent>("api/research", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic: text, runner }) });
+    const a = await getJSON<Agent>("api/research", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic: text, runner, agent }) });
     el<HTMLDialogElement>("research-start-modal").close();
     topic.value = "";
     dock.set(a.id, a);
@@ -655,8 +789,10 @@ export function initResearch(): void {
   el("research-start").addEventListener("click", () => {
     el("research-start-error").hidden = true;
     startModal.showModal();
+    syncKind();
     el("research-start-topic").focus();
   });
+  el("research-start-kind").addEventListener("change", syncKind);
   el("research-start-close").addEventListener("click", () => startModal.close());
   el("research-start-cancel").addEventListener("click", () => startModal.close());
   el("research-start-submit").addEventListener("click", () => void startAgent());

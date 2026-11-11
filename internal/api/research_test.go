@@ -82,7 +82,7 @@ func testResearchRoutes(t *testing.T, d *sql.DB) {
 	var agents struct {
 		Agents []struct{ Name, Version, Hash, Source string } `json:"agents"`
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &agents); rec.Code != 200 || err != nil || len(agents.Agents) != 1 || agents.Agents[0].Name != "default" || agents.Agents[0].Source != "builtin" || len(agents.Agents[0].Hash) != 64 {
+	if err := json.Unmarshal(rec.Body.Bytes(), &agents); rec.Code != 200 || err != nil || len(agents.Agents) != 2 || agents.Agents[0].Name != "default" || agents.Agents[0].Source != "builtin" || len(agents.Agents[0].Hash) != 64 {
 		t.Fatalf("agents: %d %s", rec.Code, rec.Body)
 	}
 	for _, body := range []string{`{"topic":"t","agent":"nobody"}`, `{"topic":"t","max_cost_usd":-1}`, `{"topic":"t","agent_version":">=9"}`} {

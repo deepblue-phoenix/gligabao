@@ -13,6 +13,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
@@ -56,6 +57,7 @@ func testResearchAdmin(t *testing.T, d *sql.DB) {
 		mux.HandleFunc("GET /x/{id}", h)
 		mux.HandleFunc("GET /x/{id}/provenance", h)
 		mux.HandleFunc("GET /x/{id}/temporal", h)
+		mux.HandleFunc("GET /x/{id}/investigation", h)
 		mux.HandleFunc("POST /x/{id}/stop", h)
 		mux.HandleFunc("GET /x", h)
 		rec := httptest.NewRecorder()
@@ -234,6 +236,41 @@ func testResearchAdmin(t *testing.T, d *sql.DB) {
 	}
 	if c := do(admin.ResearchProvenanceOf(m), "GET", "/x/"+itoa(failed.ID)+"/provenance", &p); c != 200 || len(p.Artifacts) != 0 || len(p.Datasets) != 0 {
 		t.Errorf("agent without provenance: %d %+v", c, p)
+	}
+
+	// The investigation: empty for a run of the simple loop, the frontier and the notes for one that has them.
+	var iv struct {
+		Phase      string                         `json:"phase"`
+		Questions  []admin.InvestigationQuestion  `json:"questions"`
+		Challenges []admin.InvestigationChallenge `json:"challenges"`
+		Notes      string                         `json:"notes"`
+	}
+	if c := do(admin.ResearchInvestigationOf(m), "GET", "/x/"+itoa(failed.ID)+"/investigation", &iv); c != 200 || len(iv.Questions) != 0 || iv.Notes != "" {
+		t.Errorf("investigation of a simple run: %d %+v", c, iv)
+	}
+	if c := do(admin.ResearchInvestigationOf(m), "GET", "/x/999/investigation", nil); c != 404 {
+		t.Errorf("investigation of unknown: %d", c)
+	}
+	if err := st.SetPhase(ctx, d, root.ID, "exploration", ""); err != nil {
+		t.Fatal(err)
+	}
+	err = ops.Investigate(d).InTx(ctx, func(tx investigate.Tx) error {
+		if err := tx.UpsertQuestion(ctx, root.ID, investigate.Question{ID: "q_001", Kind: investigate.KindQuestion, Question: "root?", Priority: 1, Status: investigate.StatusResolved, Answer: "yes"}); err != nil {
+			return err
+		}
+		if err := tx.UpsertQuestion(ctx, root.ID, investigate.Question{ID: "q_002", ParentID: "q_001", Depth: 1, Kind: investigate.KindQuestion, Question: "child?", Priority: 0.5, Status: investigate.StatusPending}); err != nil {
+			return err
+		}
+		_, err := tx.AddNotesVersion(ctx, root.ID, "# Notes\n", "notes_append", 1)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	iv.Questions = nil
+	if c := do(admin.ResearchInvestigationOf(m), "GET", "/x/"+itoa(root.ID)+"/investigation", &iv); c != 200 || iv.Phase != "exploration" || len(iv.Questions) != 2 ||
+		iv.Questions[1].ParentID != "q_001" || iv.Questions[0].Answer != "yes" || iv.Notes != "# Notes\n" {
+		t.Errorf("investigation: %d %+v", c, iv)
 	}
 }
 

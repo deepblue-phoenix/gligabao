@@ -5,6 +5,7 @@
 package agent_research
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -154,13 +155,15 @@ type AgentInfo struct {
 	Hash   string `json:"hash"`
 	Source string `json:"source"`
 	// Model, MaxSteps and the caps are the definition's settings; Subagents lists the roles it starts sub-agents for.
-	Model          string   `json:"model"`
-	MaxSteps       int      `json:"max_steps"`
-	MaxCostUSD     float64  `json:"max_cost_usd"`
-	MaxTreeCostUSD float64  `json:"max_tree_cost_usd"`
-	Knowledge      string   `json:"knowledge"`
-	Skills         []string `json:"skills"`
-	Subagents      []string `json:"subagents"`
+	Model          string  `json:"model"`
+	MaxSteps       int     `json:"max_steps"`
+	MaxCostUSD     float64 `json:"max_cost_usd"`
+	MaxTreeCostUSD float64 `json:"max_tree_cost_usd"`
+	Knowledge      string  `json:"knowledge"`
+	// Loop is the loop the agent runs: "simple" or "investigative".
+	Loop      string   `json:"loop"`
+	Skills    []string `json:"skills"`
+	Subagents []string `json:"subagents"`
 	// Schedule is when the server runs the agent by itself (nil: it does not).
 	Schedule *ScheduleInfo `json:"schedule,omitempty"`
 }
@@ -181,7 +184,7 @@ func (m *Manager) Agents() []AgentInfo {
 	for _, d := range m.registry().List() {
 		info := AgentInfo{
 			Name: d.Name, Version: d.Version, Description: d.Description, Hash: d.Hash, Source: d.Source, Model: d.Model, MaxSteps: d.MaxSteps,
-			MaxCostUSD: d.Limits.MaxCostUSD, MaxTreeCostUSD: d.Limits.MaxTreeCostUSD, Knowledge: d.Knowledge.Access,
+			MaxCostUSD: d.Limits.MaxCostUSD, MaxTreeCostUSD: d.Limits.MaxTreeCostUSD, Knowledge: d.Knowledge.Access, Loop: cmp.Or(d.Loop, agent_defs.LoopSimple),
 			Skills: []string{}, Subagents: []string{},
 		}
 		if sc := d.Schedule; sc != nil {

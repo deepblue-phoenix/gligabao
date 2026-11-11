@@ -28,6 +28,30 @@ func Builtin() *Def {
 	return d
 }
 
+// InvestigatorName is the name of the built-in investigative agent (the one the admin UI starts for "investigative").
+const InvestigatorName = "investigator"
+
+// investigatorPrompt is the system prompt of the built-in investigative agent.
+const investigatorPrompt = "You are an investigative researcher. Break the task into questions, answer them with evidence from the web (prefer primary sources and several independent domains), challenge your own claims before you rely on them, and say plainly what you could not establish. Write the final report with dates and the source URLs."
+
+// BuiltinInvestigator returns a new copy of the built-in investigative agent: the deep-research loop (frontier of questions, notes, claims,
+// challenges, then a synthesis) with web_search, fetch_url and the knowledge base, working alone, capped at 2 USD. A file called
+// investigator.toml replaces it.
+func BuiltinInvestigator() *Def {
+	d := &Def{
+		Name:         InvestigatorName,
+		Version:      "1.0.0",
+		Description:  "The built-in investigative agent: explores a frontier of questions, challenges its own claims, then writes a sourced report.",
+		SystemPrompt: investigatorPrompt,
+		Loop:         LoopInvestigative,
+		Limits:       Limits{MaxCostUSD: 2},
+		Source:       builtinSource,
+	}
+	normalize(d)
+	d.Hash = hashOf(d)
+	return d
+}
+
 // BuiltinRegistry returns a registry of the built-in default agent alone.
 func BuiltinRegistry() *Registry {
 	r, err := newRegistry("", nil)
@@ -45,7 +69,7 @@ type Registry struct {
 
 // NewRegistry checks defs against each other (every role names a definition that exists and meets its version constraint, no
 // definition starts itself through its roles, a role's steps fit its definition) and returns the registry. The built-in default is
-// added unless defs has one. The definitions must have been through normalize and check, as Load and ParseBundle do.
+// added unless defs has one (so is the built-in investigator). The definitions must have been through normalize and check, as Load and ParseBundle do.
 func newRegistry(dir string, defs []*Def) (*Registry, error) {
 	r := &Registry{defs: map[string]*Def{}, dir: dir}
 	for _, d := range defs {
@@ -53,6 +77,9 @@ func newRegistry(dir string, defs []*Def) (*Registry, error) {
 	}
 	if _, ok := r.defs[DefaultName]; !ok {
 		r.defs[DefaultName] = Builtin()
+	}
+	if _, ok := r.defs[InvestigatorName]; !ok {
+		r.defs[InvestigatorName] = BuiltinInvestigator()
 	}
 	var errs []error
 	for _, d := range r.List() {

@@ -105,7 +105,7 @@ func TestLoadReadsTomlAndResolvesEverything(t *testing.T) {
 	for _, d := range reg.List() {
 		names = append(names, d.Name)
 	}
-	if strings.Join(names, ",") != "default,news_scanner,regional_scout" {
+	if strings.Join(names, ",") != "default,investigator,news_scanner,regional_scout" {
 		t.Fatalf("names: %v", names)
 	}
 	d, err := reg.Resolve("news_scanner", "^1.1")
@@ -167,7 +167,7 @@ func TestMissingDirectoryIsOnlyTheBuiltin(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := reg.Default()
-	if len(reg.List()) != 1 || d.Source != builtinSource || !d.Spawn.Enabled || d.MaxSteps != 20 || d.MaxTokens != 8192 || d.Limits != (Limits{}) {
+	if len(reg.List()) != 2 || d.Source != builtinSource || !d.Spawn.Enabled || d.MaxSteps != 20 || d.MaxTokens != 8192 || d.Limits != (Limits{}) {
 		t.Errorf("builtin: %+v", d)
 	}
 	if _, err := Load(filepath.Join(dir(t, map[string]string{"f": "x"}), "f")); err == nil {
@@ -386,7 +386,7 @@ func TestResolve(t *testing.T) {
 			t.Errorf("%v should fail", bad)
 		}
 	}
-	if _, err := reg.Resolve("ghost", ""); err == nil || !strings.Contains(err.Error(), "available: default, news_scanner, regional_scout") {
+	if _, err := reg.Resolve("ghost", ""); err == nil || !strings.Contains(err.Error(), "available: default, investigator, news_scanner, regional_scout") {
 		t.Errorf("the error lists the agents: %v", err)
 	}
 }

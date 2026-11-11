@@ -443,6 +443,8 @@ func registerAdminUI(mux *http.ServeMux, dbs []admin.Named, geoRadiusKm float64,
 		mux.HandleFunc("POST /v1/gb/admin/api/research/{id}/stop", admin.ResearchStopOf(research))
 		mux.HandleFunc("GET /v1/gb/admin/api/research/{id}/provenance", admin.ResearchProvenanceOf(research))
 		mux.HandleFunc("GET /v1/gb/admin/api/research/{id}/temporal", admin.ResearchTemporalOf(research))
+		mux.HandleFunc("GET /v1/gb/admin/api/research/{id}/investigation", admin.ResearchInvestigationOf(research))
+		mux.HandleFunc("GET /v1/gb/admin/api/research/agents", admin.ResearchAgentsOf(research))
 	}
 	mux.HandleFunc("DELETE /v1/gb/admin/api/datasets", admin.DeleteDatasetOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/geo-index", admin.GeoIndexOf(dbs))

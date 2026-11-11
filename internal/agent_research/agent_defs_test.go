@@ -359,7 +359,7 @@ dataset_locked = true
 		for _, i := range infos {
 			names = append(names, i.Name+"@"+i.Version)
 		}
-		if got := strings.Join(names, ","); got != "default@1.0.0,pinned@1.0.0,scout@1.2.0" {
+		if got := strings.Join(names, ","); got != "default@1.0.0,investigator@1.0.0,pinned@1.0.0,scout@1.2.0" {
 			t.Errorf("agents: %s", got)
 		}
 	})

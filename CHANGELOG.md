@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.185.0] - 2026-11-11
+
+### Added
+- A built-in `investigator` agent (the investigative loop, 2 USD cap), always available next to `default`; a file called `investigator.toml` replaces it.
+- Admin UI, research view: an investigative run's details now show its loop, phase and stop reason, and an **Investigation** block with the frontier tree of questions, the challenges and the latest notes. A dropdown next to **start agent** picks investigative (default, the new built-in `investigator` agent) or simple (`default`); an investigative agent runs locally only.
+- `GET /v1/gb/admin/api/research/{id}/investigation` and `GET /v1/gb/admin/api/research/agents`; `GET /v1/gb/research/agents` and the MCP/CLI listing now say each agent's `loop`.
+
 ## [0.184.1] - 2026-11-13
 
 ### Changed
