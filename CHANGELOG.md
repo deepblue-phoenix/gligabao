@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.186.0] - 2026-11-11
+
+### Changed
+- Admin UI, research view: the report of an agent is rendered as Markdown in its Details modal (headings, lists, tables, code, links open in a new tab), cleaned as HTML so that text from the web cannot run scripts.
+- A research run now records the model it runs on when none was named: the server's default model (`claude-haiku-5-5`), not an empty model. The Details modal shows that model instead of `(server default)`. Runs made before this show `unknown`.
+
 ## [0.185.0] - 2026-11-11
 
 ### Added

@@ -78,6 +78,26 @@ func (f *fakeAnthropic) start(t *testing.T) *ai.Client {
 
 func TestResearchRecordsTheRunAndEveryState(t *testing.T) { runOnBackends(t, testResearch) }
 
+func TestResearchWithoutAModelRecordsTheServerDefault(t *testing.T) { runOnBackends(t, testDefaultModel) }
+
+func testDefaultModel(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+	ctx := context.Background()
+	fake := &fakeAnthropic{main: []string{finalReport}}
+	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
+	started, err := m.Start(ctx, "u1", agent_research.Options{Topic: "default model", MaxSteps: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Wait()
+	run, err := m.Get(ctx, "u1", started.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Model != ai.DefaultModel() {
+		t.Fatalf("model: %q, want the server default %q", run.Model, ai.DefaultModel())
+	}
+}
+
 func testResearch(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	ctx := context.Background()
 	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }))

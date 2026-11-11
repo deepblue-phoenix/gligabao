@@ -9,6 +9,13 @@ import { showGraph, showGraphFrom } from "./graph.js";
 import { openTemporalAt } from "./temporal.js";
 import { onViewShown } from "./views.js";
 
+// marked (Markdown to HTML) and DOMPurify (cleans the HTML) are loaded as globals (index.html). The report is written by a model that read
+// the web, so its HTML is always cleaned.
+interface MarkedLib { parse(src: string, opts: { gfm: boolean; breaks: boolean; async: false }): string }
+interface PurifyLib { sanitize(dirty: string): string }
+declare const marked: MarkedLib;
+declare const DOMPurify: PurifyLib;
+
 interface State { seq: number; state: string; step: number; detail: string; error: string; started_at: string; finished_at: string | null }
 interface Agent {
   id: number; user_id: string; parent_id: number | null; name: string; reason: string; topic: string;
@@ -332,7 +339,7 @@ function renderDetail(d: Detail): HTMLElement {
   row("Tool calls", String(d.tool_calls));
   row("Tokens", `${fmtInt(d.input_tokens)} in / ${fmtInt(d.output_tokens)} out`);
   row("Cost", fmtCost(d.cost_usd));
-  row("Model", d.model || "(server default)");
+  row("Model", d.model || "unknown", "The model the agent ran on (runs started before the server recorded it have none)");
   row("Runs in", d.runner === "modal" ? "Modal (gligabao_agent binary)" : "this server", "Where the agent runs: in the server's process, or in a Modal container started through the sidecar");
   row("State", d.state);
   if (d.agent_name) row("Agent definition", d.agent_name);
@@ -391,7 +398,7 @@ function renderDetail(d: Detail): HTMLElement {
 
   if (d.report) {
     root.appendChild(node("h4", "", "Report"));
-    root.appendChild(node("pre", "rs-report", d.report));
+    root.appendChild(renderMarkdown(d.report));
   }
 
   const states = d.states ?? [];
@@ -414,6 +421,17 @@ function renderDetail(d: Detail): HTMLElement {
     if (s.error) e.className = "error";
   }
   return root;
+}
+
+// renderMarkdown shows a Markdown text (a report) as HTML; links open in a new tab.
+function renderMarkdown(src: string): HTMLElement {
+  const box = node("div", "rs-md");
+  box.innerHTML = DOMPurify.sanitize(marked.parse(src, { gfm: true, breaks: false, async: false }));
+  for (const a of box.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+  }
+  return box;
 }
 
 // ----- the investigation: what the investigative loop built (the frontier of questions, the challenges, the notes)

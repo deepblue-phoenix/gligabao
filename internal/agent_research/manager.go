@@ -204,8 +204,9 @@ func (m *Manager) Agents() []AgentInfo {
 	return out
 }
 
-// applyDef fills in what the definition decides for options that do not say: the model, the steps, the dataset, and the cap on the cost of
-// the whole research (the lowest of the request's, the definition's and the server's). KindInvalid for a dataset the definition locks.
+// applyDef fills in what the definition decides for options that do not say: the model (else the server's default model), the steps,
+// the dataset, and the cap on the cost of the whole research (the lowest of the request's, the definition's and the server's).
+// KindInvalid for a dataset the definition locks.
 func (m *Manager) applyDef(opts Options, def *agent_defs.Def) (Options, error) {
 	opts.Agent = def.Name
 	if def.Investigative() {
@@ -224,6 +225,9 @@ func (m *Manager) applyDef(opts Options, def *agent_defs.Def) (Options, error) {
 	}
 	if opts.Model == "" {
 		opts.Model = def.Model
+	}
+	if opts.Model == "" { // the server's default model (what the LLM client calls when none is named): recorded, so the run shows it
+		opts.Model = ai.DefaultModel()
 	}
 	if opts.MaxSteps == 0 {
 		opts.MaxSteps = def.MaxSteps

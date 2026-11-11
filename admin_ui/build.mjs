@@ -18,6 +18,8 @@ for (const f of readdirSync(dist)) {
 execFileSync(bin("tsc"), ["-p", root], { stdio: "inherit" });
 execFileSync(bin("sass"), ["--no-source-map", "--style=compressed", join(root, "src/styles.scss"), join(dist, "styles.css")], { stdio: "inherit" });
 copyFileSync(join(root, "node_modules/d3/dist/d3.min.js"), join(dist, "d3.min.js"));
+copyFileSync(join(root, "node_modules/marked/lib/marked.umd.js"), join(dist, "marked.umd.js"));
+copyFileSync(join(root, "node_modules/dompurify/dist/purify.min.js"), join(dist, "purify.min.js"));
 mkdirSync(join(dist, "leaflet"), { recursive: true });
 copyFileSync(join(root, "node_modules/leaflet/dist/leaflet.js"), join(dist, "leaflet/leaflet.js"));
 copyFileSync(join(root, "node_modules/leaflet/dist/leaflet.css"), join(dist, "leaflet/leaflet.css"));

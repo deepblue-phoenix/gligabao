@@ -127,7 +127,7 @@ The **research** view of the [admin UI](../../README.md#admin-ui) shows the agen
 - **active agents**, each with a **Stop** button (it asks to confirm);
 - **stopped and finished agents** (all, or only the completed, failed or stopped ones);
 - for every agent, in its row: the number of **children** (sub-agents it spawned), its **running time** (from its start to its end, or to now while it works) and **how long ago** it started (minutes, hours, days or months);
-- a **Details** modal per agent: whether it spawned sub-agents (each with its reason and status, to open or stop), its parent, its report and its states;
+- a **Details** modal per agent: the **model** it ran on (the one recorded for the run: a run started without a model records the server's default model), whether it spawned sub-agents (each with its reason and status, to open or stop), its parent, its report (rendered as Markdown, sanitized as HTML) and its states;
 - for an agent that **failed**, a red **failed** button in its row that opens the error it failed with and the state it failed in;
 - a **Knowledge** button per agent: its **provenance**, see below;
 - a **Temporal plot** button in the **Details** modal (next to **Knowledge**): what the agent did to the facts over time, see below;
