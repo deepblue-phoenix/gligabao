@@ -77,7 +77,7 @@ Answers `202` with the run (`status` `running`, `state` `starting`); the agent g
 
 ### `GET /v1/gb/research/agents`
 
-`{"agents": [...]}`: the [agent definitions](agent-defs.md) a research can run, by name, each with `name`, `version`, `description`, `hash`, `source` (the file, or `builtin`), `model`, `max_steps`, `max_cost_usd`, `max_tree_cost_usd`, `knowledge`, `skills` and `subagents` (the roles).
+`{"agents": [...]}`: the [agent definitions](agent-defs.md) a research can run, by name, each with `name`, `version`, `description`, `hash`, `source` (the file, or `builtin`), `loop` (`simple` or `investigative`), `model`, `max_steps`, `max_cost_usd`, `max_tree_cost_usd`, `knowledge`, `skills` and `subagents` (the roles).
 
 ### `GET /v1/gb/research`
 

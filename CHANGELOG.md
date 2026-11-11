@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.188.1] - 2026-11-13
+
+### Changed
+- Docs: `docs/agents/research.md` says that the list of agent definitions (`GET /v1/gb/research/agents`) gives each agent's `loop`.
+
 ## [0.188.0] - 2026-11-13
 
 ### Changed
