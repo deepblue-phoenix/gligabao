@@ -859,7 +859,7 @@ func prepare(ctx context.Context, opts Options, standalone bool) (handler http.H
 	research := newResearch(mgrCtx, database, llm)
 	research.MaxCostUSD = opts.ResearchMaxCostUSD
 	research.NotesDir = opts.ResearchNotesDir
-	research.Monty = opts.Monty
+	research.InitSandbox(opts.Monty)
 	if opts.ResearchNotesS3.Bucket != "" {
 		notesS3, err := investigate.NewNotesS3(ctx, opts.ResearchNotesS3)
 		if err != nil {

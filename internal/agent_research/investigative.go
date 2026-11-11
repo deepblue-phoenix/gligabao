@@ -3,7 +3,10 @@ package agent_research
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"time"
+
+	log "github.com/sirupsen/logrus"
+
 	"github.com/deepblue-phoenix/gligabao/internal/monty"
 	"github.com/deepblue-phoenix/gligabao/internal/monty/hostfn"
 
@@ -52,29 +55,45 @@ func (m *Manager) notesDir() string {
 	return config.DefaultResearchNotesDirName
 }
 
-// sandbox is the code sandbox of the manager: Sandbox if set, else the sidecar, made at the first call and stopped with the manager's context.
+// InitSandbox is the startup of the code-execution subsystem: it checks that Monty is installed (it starts the bridge, which imports
+// pydantic_monty) and only then makes the sidecar, which is stopped with the manager's context. If Monty is not there, nothing is made: the
+// agents then run without the run_code tool. Call it once, before starting any agent. cfg's unset fields come from the environment.
+func (m *Manager) InitSandbox(cfg monty.Config) {
+	m.Monty = cfg
+	sc := monty.NewSidecar(monty.ConfigFromEnv(cfg), nil)
+	ctx, cancel := context.WithTimeout(m.ctx, 45*time.Second)
+	defer cancel()
+	if err := sc.Check(ctx); err != nil {
+		sc.Close()
+		log.WithError(err).Info("agent research: Monty is not installed, the code execution (run_code) is not available")
+		return
+	}
+	m.sidecar = sc
+	context.AfterFunc(m.ctx, sc.Close)
+	log.Infof("agent research: code execution (run_code) is available (Monty %s)", sc.Version())
+}
+
+// sandbox is the code sandbox of the manager: Sandbox if set, else the sidecar made by InitSandbox; nil if there is none.
 func (m *Manager) sandbox() monty.Runner {
 	if m.Sandbox != nil {
 		return m.Sandbox
 	}
-	m.sandboxOnce.Do(func() {
-		m.sidecar = monty.NewSidecar(monty.ConfigFromEnv(m.Monty), nil)
-		context.AfterFunc(m.ctx, m.sidecar.Close)
-	})
+	if m.sidecar == nil {
+		return nil
+	}
 	return m.sidecar
 }
 
-// codeConfig is the run_code setup of the agent: nil if its definition has no [code]; an error if the sandbox is not there, so that the run
-// fails at its start with the missing piece named and not in the middle.
+// codeConfig is the run_code setup of the agent: nil if its definition has no [code] or the code sandbox was not initialized (Monty is not
+// installed): the agent then runs without the run_code tool.
 func (r *researcher) codeConfig() (*investigate.CodeConfig, error) {
 	if !r.def.CodeEnabled() {
 		return nil, nil
 	}
 	sb := r.mgr.sandbox()
-	if c, ok := sb.(interface{ Check(context.Context) error }); ok {
-		if err := c.Check(r.runCtx); err != nil {
-			return nil, fmt.Errorf("the agent %q needs the code sandbox (its [code] is enabled): %w", r.def.Name, err)
-		}
+	if sb == nil {
+		log.Warnf("agent research: the agent %q has [code] enabled but the code sandbox is not available (Monty is not installed): it runs without run_code", r.def.Name)
+		return nil, nil
 	}
 	return &investigate.CodeConfig{Runner: sb, Settings: *r.def.Code, Registry: hostfn.Standard()}, nil
 }

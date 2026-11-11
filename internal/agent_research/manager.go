@@ -46,7 +46,7 @@ type Manager struct {
 	// Monty says where the code sandbox of the agents with [code] enabled is (the interpreter, the monty binary, the workers); unset fields
 	// come from GLIGABAO_MONTY_PYTHON and MONTY_BIN. Set it before starting any agent.
 	Monty monty.Config
-	// Sandbox, if set, runs the code of the agents instead of the sidecar made (lazily, at the first run_code) from Monty: for tests.
+	// Sandbox, if set, runs the code of the agents instead of the sidecar made by InitSandbox from Monty: for tests.
 	Sandbox monty.Runner
 
 	ctx context.Context
@@ -61,8 +61,7 @@ type Manager struct {
 	// defs are the agent definitions the researches can run (nil: only the built-in default); guarded by mu.
 	defs *agent_defs.Registry
 
-	sandboxOnce sync.Once
-	sidecar     *monty.Sidecar
+	sidecar *monty.Sidecar // the code sandbox, made by InitSandbox only if Monty is installed
 
 	mu      sync.Mutex
 	active  map[string]int        // running agents by user

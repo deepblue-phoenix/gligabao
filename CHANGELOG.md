@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.188.0] - 2026-11-13
+
+### Changed
+- The code execution (`run_code`) subsystem of the investigative agents is now checked at startup (the server and `gligabao_agent`): if Monty is installed it is set up as before; if it is not, the sandbox is not created at all, a line is logged, and agents with `[code] enabled` run without the `run_code` tool (before, their run failed at its start).
+
 ## [0.187.0] - 2026-11-12
 
 ### Added
