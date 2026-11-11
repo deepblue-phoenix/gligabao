@@ -51,7 +51,7 @@ class TrainConfig:
     # Optional secret holding HF_TOKEN etc. Empty = no secret attached.
     hf_secret: str = field(default_factory=lambda: _env("SIDECAR_HF_SECRET", ""))
 
-    # The research agent (docs/research.md, runner "modal"): the gligabao_agent binary runs in a Modal container. The binary is baked
+    # The research agent (docs/agents/research.md, runner "modal"): the gligabao_agent binary runs in a Modal container. The binary is baked
     # into the image at deploy time ("" = none found: the app has no agent and POST /research/job_start answers 503). The secret holds
     # the keys the binary needs (ANTHROPIC_API_KEY, OPENAI_API_KEY; empty = no secret attached: the agent fails without keys).
     agent_binary: str = field(default_factory=_agent_binary)

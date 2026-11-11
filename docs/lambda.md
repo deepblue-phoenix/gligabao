@@ -15,7 +15,7 @@ It opens the databases, runs the operation, stops the managers, closes the datab
 
 - `remember` submits the text to the remember manager and **waits for the run to end**, so the text, its entities, facts and embeddings are stored when the process exits. It has the pipeline of [remember](remember.md) with its defaults.
 - `query` is the pipeline of [query](query.md) with its defaults. A user or dataset that never remembered anything gets "The knowledge base is empty: nothing was remembered yet." (exit `0`), not an error.
-- `research` runs a [research agent](research.md) and its [sub-agents](subagents.md) as `gligabao_agent` does (same agent definitions, tools and limits; the knowledge base is the one of the other two commands), waits for them and for the text they remembered without waiting, and prints the report. The tables of the research runs are only created for this command.
+- `research` runs a [research agent](agents/research.md) and its [sub-agents](agents/subagents.md) as `gligabao_agent` does (same agent definitions, tools and limits; the knowledge base is the one of the other two commands), waits for them and for the text they remembered without waiting, and prints the report. The tables of the research runs are only created for this command.
 
 The output is the result on **stdout** (`remember`: a summary line; `query`: the answer; `research`: the report; `--json`: the result as JSON), and logs and totals on **stderr**. Exit codes: `0` ok, `1` the operation failed (a model call failed, the timeout was reached, SIGINT/SIGTERM), `2` bad flags or input, a missing API key or a database that cannot be opened. The API keys are `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` (embeddings; required), from the environment or `--config`.
 

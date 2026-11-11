@@ -92,7 +92,7 @@ evals_knowledge_dirs = ["evals_knowledge"]
 # under the requesting user_id. Default if unset: none (only "content" works).
 ontology_dirs = ["ontology"]
 
-# Definitions of the research agents (docs/agent-defs.md): one TOML or JSON file per agent (prompt, skills, search and knowledge settings,
+# Definitions of the research agents (docs/agents/agent-defs.md): one TOML or JSON file per agent (prompt, skills, search and knowledge settings,
 # cost caps, sub-agent roles), read once at startup; a file that is not valid stops the server. Default if unset: "agent_defs" next to the
 # binary (it need not exist: only the built-in agent is then available). Relative to this file.
 agent_defs_dir = "agent_defs"

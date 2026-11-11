@@ -6,7 +6,7 @@
 
 The goal is to let `POST /v1/gb/remember` associate **timeseries data** (not just text or images) with the events, entities and facts it remembers, so a memory such as "Apple fell sharply after the earnings miss" can be tied to Apple's price series around that date.
 
-Related: [remember.md](remember.md), [artifacts.md](artifacts.md), [images.md](images.md) (a separate pipeline with its own tables, the model for this), [web-search.md](web-search.md) (a post-store enrichment stage, the model for fetching), [temporal.md](temporal.md).
+Related: [remember.md](remember.md), [artifacts.md](artifacts.md), [images.md](images.md) (a separate pipeline with its own tables, the model for this), [web-search.md](web-search.md) (a post-store enrichment stage, the model for fetching), [temporal.md](temporal/temporal.md).
 
 ## Summary
 

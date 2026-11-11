@@ -1,6 +1,6 @@
 # Example agent definition: the files of this directory are loaded when the server starts (agent_defs/ next to the binary, or
 # agent_defs_dir / serve --agent-defs-dir). Run it with: gligabao research start "..." --agent news_scanner
-# The format is described in docs/agent-defs.md.
+# The format is described in docs/agents/agent-defs.md.
 schema = 1
 name = "news_scanner"
 version = "1.0.0"

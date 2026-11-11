@@ -1,4 +1,4 @@
-// The "research" view (see docs/research.md#admin-ui): the deep-research agents. A green "start agent" button (a modal for the task), a
+// The "research" view (see docs/agents/research.md#admin-ui): the deep-research agents. A green "start agent" button (a modal for the task), a
 // block on the right of the screen for each working agent (green or red by its health), how many work now, the active agents (each with a
 // stop button), the agents that ended (completed, failed or stopped), and for each agent, in a modal, its sub-agents, states and
 // report, the error it failed with, and its provenance: what it put in the knowledge base (artifacts, entities, facts).

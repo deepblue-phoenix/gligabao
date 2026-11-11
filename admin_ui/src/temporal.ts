@@ -1,4 +1,4 @@
-// The "Temporal changes" modal of a remember run (see docs/temporal.md#what-a-call-did-to-the-facts): what the call did to the
+// The "Temporal changes" modal of a remember run (see docs/temporal/temporal.md#what-a-call-did-to-the-facts): what the call did to the
 // temporal state of the facts, drawn as a small SVG plot, plus a table of the events. d3 is loaded as a global by index.html.
 //
 // The x-axis is event time (when the facts hold in the world). Each fact the run touched is a row above the axis: a dot at its

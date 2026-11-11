@@ -83,7 +83,7 @@ The models that the entities and edges refer to by `model_id`.
 | `valid_at`, `invalid_at` | When the fact became true and when it stopped being true (omitted while unknown or still true). |
 | `created_at`, `expired_at` | When the fact was learned and when it was found superseded (omitted if not). |
 
-All timestamps are RFC 3339 in UTC. See [temporal.md](temporal.md) for the meaning of the temporal fields.
+All timestamps are RFC 3339 in UTC. See [temporal.md](temporal/temporal.md) for the meaning of the temporal fields.
 
 ### Notes
 

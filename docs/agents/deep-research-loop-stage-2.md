@@ -165,7 +165,7 @@ Stop reasons written to `gb_agent_research_runs.stop_reason`: `finalized`, `fron
 
 ### 10. Run options, agent-definition knobs and selection of the loop
 
-- Add `loop` to the agent definition (`docs/agent-defs.md`): `simple` (default) or `investigative`. Validation rejects any other value with a clear error.
+- Add `loop` to the agent definition (`docs/agents/agent-defs.md`): `simple` (default) or `investigative`. Validation rejects any other value with a clear error.
 - Add the knobs of the design's [configuration](deep-research-loop.md#configuration) to the agent definition and to the run options (`internal/agent_research/options.go`), with the design's defaults. They take effect only when `loop = "investigative"`; setting them with `loop = "simple"` is an error, not a silent no-op.
 - Run options override the agent definition, as today for the other limits.
 - `max_iterations` replaces `max_steps` for the investigative loop only. The simple loop keeps its limit.
@@ -193,7 +193,7 @@ Stop reasons written to `gb_agent_research_runs.stop_reason`: `finalized`, `fron
 ### 12. Observability
 
 - The trajectory (ATIF) writer records the investigative states, with the question id, the phase and the stop reason.
-- The query-level reads named in the design (the frontier tree from `parent_id`, the transition history, challenges per target and per strategy, outcome distribution, and the notes of a run at each write from `gb_agent_notes_versions`, joined to `gb_agent_research_states` by `state_seq`) must be possible with plain SQL on the tables. Add one example query per read to the design's observability section or to `docs/research.md`, and test that each runs on SQLite.
+- The query-level reads named in the design (the frontier tree from `parent_id`, the transition history, challenges per target and per strategy, outcome distribution, and the notes of a run at each write from `gb_agent_notes_versions`, joined to `gb_agent_research_states` by `state_seq`) must be possible with plain SQL on the tables. Add one example query per read to the design's observability section or to `docs/agents/research.md`, and test that each runs on SQLite.
 - The admin UI rendering of the frontier tree is **not** required by this stage; if it is not done, record it in `leftover_tasks/`.
 
 ### 13. Evals and the comparison
@@ -207,9 +207,9 @@ Compare the investigative loop with the simple loop on the same topics, as the d
 ### 14. Documentation
 
 - `docs/agents/deep-research-loop.md`: change the status line from "design, not implemented" to the state after this stage, and link the two stage pages.
-- `docs/agent-defs.md`: document `loop` and the new knobs.
+- `docs/agents/agent-defs.md`: document `loop` and the new knobs.
 - `docs/deep-research-agent.md`: the loop section and the "Not included yet" list.
-- `docs/research.md`: the run states and the stop reasons, if they are described there.
+- `docs/agents/research.md`: the run states and the stop reasons, if they are described there.
 - `docs/listings/db-tables.md`: the two new run columns are not tables, so no change there unless a table was added in this stage.
 
 ## Tests

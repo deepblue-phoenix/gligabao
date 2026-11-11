@@ -2,11 +2,11 @@
 
 gligabao follows the bi-temporal model of [Graphiti](https://github.com/getzep/graphiti).
 
-Code: `internal/memory/memory_remember` (`Extract`, `Remember`, `Store`), `internal/memory/memory_temporal` (reconciliation: `ResolveEdges`, `LoadCandidates`, `StoreEdges`, `FixSpan`), `internal/db/graph/{sqlite,postgres}/schema.sql` (tables). What a call did to each fact is logged in [edge-events.md](edge-events.md).
+Code: `internal/memory/memory_remember` (`Extract`, `Remember`, `Store`), `internal/memory/memory_temporal` (reconciliation: `ResolveEdges`, `LoadCandidates`, `StoreEdges`, `FixSpan`), `internal/db/graph/{sqlite,postgres}/schema.sql` (tables). What a call did to each fact is logged in [edge-events.md](../edge-events.md).
 
 ## Artifacts
 
-See [artifacts.md](artifacts.md) for the full picture. Every input to `POST /v1/gb/remember` is stored as an **artifact** (a `gb_artifacts` row), a piece of data ingested to be remembered. The request's `kind` field picks the kind: `knowledge` (the default; knowledge that is not strictly episodic) or `episode` (a Graphiti-style episode, anchored in time). The kind is stored but does not change extraction or reconciliation yet: both kinds get the same bi-temporal treatment.
+See [artifacts.md](../artifacts.md) for the full picture. Every input to `POST /v1/gb/remember` is stored as an **artifact** (a `gb_artifacts` row), a piece of data ingested to be remembered. The request's `kind` field picks the kind: `knowledge` (the default; knowledge that is not strictly episodic) or `episode` (a Graphiti-style episode, anchored in time). The kind is stored but does not change extraction or reconciliation yet: both kinds get the same bi-temporal treatment.
 
 | Column | Meaning |
 | ------ | ------- |
@@ -24,7 +24,7 @@ Entities (`Alice`, `Acme`) are connected by **edges** (`Alice --works_at--> Acme
 | Event time (the world) | `valid_at`, `invalid_at` | When the fact became true / stopped being true. `invalid_at` is `NULL` while the fact is still true. |
 | System time (our knowledge) | `created_at`, `expired_at` | When we learned about it / when newer knowledge superseded it. `NULL` `expired_at` means the fact is live. |
 
-Each edge also has `artifact_id`, the artifact it was extracted from. Every artifact that states the edge is also recorded in `gb_edge_artifacts`, and entities are linked to artifacts in `gb_entity_artifacts` (see [remember.md](remember.md#schema)).
+Each edge also has `artifact_id`, the artifact it was extracted from. Every artifact that states the edge is also recorded in `gb_edge_artifacts`, and entities are linked to artifacts in `gb_entity_artifacts` (see [remember.md](../remember.md#schema)).
 
 All timestamps are RFC 3339 UTC strings (`2006-01-02T15:04:05Z`).
 
@@ -37,7 +37,7 @@ There is no uniqueness on (source, target, relation): a fact can end and later b
 Run by `memory.Remember`:
 
 1. **Extract** (`Extract`, 1 LLM call): the model receives the reference time and the text and returns entities and edges with `description`, `valid_at` and `invalid_at`.
-2. **Find candidates** (`memory_temporal.LoadCandidates`): live (not expired) stored edges that touch at least one entity named in the new edges matched by normalized name and, when vectors are on, by similarity of the entity embeddings (aliases), merged by edge ID, newest first, at most 50. See [remember.md](remember.md#candidate-facts-load_candidates).
+2. **Find candidates** (`memory_temporal.LoadCandidates`): live (not expired) stored edges that touch at least one entity named in the new edges matched by normalized name and, when vectors are on, by similarity of the entity embeddings (aliases), merged by edge ID, newest first, at most 50. See [remember.md](../remember.md#candidate-facts-load_candidates).
 3. **Resolve** (`memory_temporal.ResolveEdges`):
    - *Exact repeats* (same normalized source, target and relation as a candidate that has no `invalid_at`) are detected in Go, with no LLM call.
    - The rest are sent to a second LLM call together with the candidates. It returns `duplicates` (same fact, different wording) and `contradictions` (an existing fact can't be true at the same time as a new one). IDs and indexes that weren't in the prompt are dropped.
@@ -66,11 +66,11 @@ Example: "Alice works at Acme" (artifact at 2023-01-01), then "Alice started wor
 
 ## What a call did to the facts
 
-`gb_edges` only holds the final state of a fact. To see how one `remember` call changed it, `memory_temporal.StoreEdges` also appends to the **edge event log**, `gb_edge_events`, in the same transaction: one row for each fact the call created, confirmed, ended, invalidated or superseded, with the fact's `invalid_at` before and after. The table, the events and how to read them are in [edge-events.md](edge-events.md); the admin UI plots them ([remember.md](remember.md#admin-ui)).
+`gb_edges` only holds the final state of a fact. To see how one `remember` call changed it, `memory_temporal.StoreEdges` also appends to the **edge event log**, `gb_edge_events`, in the same transaction: one row for each fact the call created, confirmed, ended, invalidated or superseded, with the fact's `invalid_at` before and after. The table, the events and how to read them are in [edge-events.md](../edge-events.md); the admin UI plots them ([remember.md](../remember.md#admin-ui)).
 
 ## Query
 
-`query` sends every retrieved edge to the LLM with its `valid_at` and `invalid_at` plus the current time, but only live ones: an edge that newer knowledge superseded (it has an `expired_at`, as the closed Acme edge of the example above) is never retrieved, so "Where does Alice work now?" is answered from the Globex edge and a question about the past can no longer be answered from the superseded Acme edge. An edge that has an `invalid_at` but no `expired_at` (a fact that is known to have ended) is still sent, and can answer history questions. The model is told that edges without `invalid_at` are still true. Details: [query.md](query.md#facts-over-time-and-history). Evidence edges carry the temporal fields too.
+`query` sends every retrieved edge to the LLM with its `valid_at` and `invalid_at` plus the current time, but only live ones: an edge that newer knowledge superseded (it has an `expired_at`, as the closed Acme edge of the example above) is never retrieved, so "Where does Alice work now?" is answered from the Globex edge and a question about the past can no longer be answered from the superseded Acme edge. An edge that has an `invalid_at` but no `expired_at` (a fact that is known to have ended) is still sent, and can answer history questions. The model is told that edges without `invalid_at` are still true. Details: [query.md](../query.md#facts-over-time-and-history). Evidence edges carry the temporal fields too.
 
 ## Errors and cost
 

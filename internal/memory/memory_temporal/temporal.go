@@ -1,4 +1,4 @@
-// Package memory_temporal is the bi-temporal side of the remember pipeline (see docs/temporal.md): what a new fact means
+// Package memory_temporal is the bi-temporal side of the remember pipeline (see docs/temporal/temporal.md): what a new fact means
 // for the facts already stored, and how it is written.
 //
 // Every edge carries two timelines:

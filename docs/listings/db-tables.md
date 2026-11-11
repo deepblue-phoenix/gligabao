@@ -181,7 +181,7 @@ All of them are in `internal/evals/db/sqlite/schema.sql` (SQLite) and `internal/
 
 ## AGENT_RESEARCH
 
-Tables of the research agents (`internal/agent_research`, see `docs/research.md`; applied by `dbfull.Open` (`internal/db/dbfull`)).
+Tables of the research agents (`internal/agent_research`, see `docs/agents/research.md`; applied by `dbfull.Open` (`internal/db/dbfull`)).
 
 - `gb_agent_research_runs`
 - `gb_agent_research_states`

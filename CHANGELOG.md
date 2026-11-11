@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.179.2] - 2026-11-11
+
+### Fixed
+- **Broken links after the docs reorganization.** Links in the docs, the README and the roadmap that pointed at the moved pages (`docs/agents/` and `docs/temporal/`) now point at the new paths, and one anchor (`graph.md#entities`) is fixed. Comments, help text and the build config that named the old paths now name the new ones. Older changelog entries keep their original links.
+
 ## [0.179.1] - 2026-11-11
 
 ### Changed

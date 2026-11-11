@@ -53,7 +53,7 @@ gb-user-id: u1
 - `query_run_id`: the [run log](#run-log) of the call (`gb_query_runs.id`).
 - `answer`: the LLM's reply, based only on the retrieved graph context. If the graph lacks the information, the answer says so.
 - `evidence.entities`: entities used for the answer. `id` is the `gb_entities` row ID.
-- `evidence.edges`: edges used for the answer. `id` is the `gb_edges` row ID, `source_id`/`target_id` point at entities, and `artifact_id` (omitted if unset) is the `gb_artifacts` row the edge was inferred from (its artifact). This links each fact back to the original text. `valid_at`, `invalid_at`, `created_at` and `expired_at` (the last two omitted when null) are the fact's bi-temporal fields, see [temporal.md](temporal.md).
+- `evidence.edges`: edges used for the answer. `id` is the `gb_edges` row ID, `source_id`/`target_id` point at entities, and `artifact_id` (omitted if unset) is the `gb_artifacts` row the edge was inferred from (its artifact). This links each fact back to the original text. `valid_at`, `invalid_at`, `created_at` and `expired_at` (the last two omitted when null) are the fact's bi-temporal fields, see [temporal.md](temporal/temporal.md).
 - `evidence.passages`: the passages used for the answer: chunks of a [long text](chunking.md) that were given to the LLM (see [step 2](#2-retrieve-by-similarity-and-passages)). `artifact_id` is the `gb_artifacts` row of the chunk, `parent_id` the row of the whole text it is a chunk of and `index` the position of the chunk in it (from 0); `summary` (omitted if the search did not find it) is the chunk's summary and `text` (omitted for the passages that were given with the summary only) the chunk's text.
 - The three evidence lists are always arrays (`[]` when empty, never `null`).
 
@@ -168,7 +168,7 @@ The big **query** button in the top bar of the admin UI (outside of any view, so
 
 ### Facts over time and history
 
-Facts are [bi-temporal](temporal.md): `valid_at` / `invalid_at` say when a fact was true in the world, and `expired_at` says when newer knowledge superseded it. `query` treats the two differently:
+Facts are [bi-temporal](temporal/temporal.md): `valid_at` / `invalid_at` say when a fact was true in the world, and `expired_at` says when newer knowledge superseded it. `query` treats the two differently:
 
 | The edge | In the context? | What the LLM sees |
 | -------- | --------------- | ----------------- |
@@ -178,7 +178,7 @@ Facts are [bi-temporal](temporal.md): `valid_at` / `invalid_at` say when a fact 
 
 - **Retrieved by anything.** The filter is on the edge itself (`expired_at IS NULL`, in `graph.EdgesAround` and `graph.EdgesByID`), so it holds for every way a fact can get into the context: the edges around the keyword and similarity seeds, the facts found in the edge index, and the edges around the entities of the [nearby](geo.md#nearby-entities) search. A superseded fact's vector stays in the edge index (`remember` does not delete it), so a similarity match on it is simply dropped when it is resolved through the database. The filter is applied in the query itself, so the cap of 100 edges counts live facts only.
 - **Present and past.** The prompt gives the LLM the current time and tells it that an edge without `invalid_at` is still true and one with it stopped being true at that time. So "Where does Alice work now?" is answered from the live edge, and a question about the past can use an edge that ended without being superseded (it is not marked in any other way: the LLM reads `valid_at` and `invalid_at`).
-- **What is not answerable.** Once a fact is superseded, `query` cannot answer questions about what used to be true from it: if Alice moved from Acme to Globex and `remember` closed the Acme edge because of the Globex one, "Where did Alice work before?" has no Acme edge to use (the text the fact came from, if it was chunked, may still come back as a [passage](#2-retrieve-by-similarity-and-passages)). The superseded edges are kept in the database with their validity, for [temporal.md](temporal.md) and the admin views; they are just not retrieved.
+- **What is not answerable.** Once a fact is superseded, `query` cannot answer questions about what used to be true from it: if Alice moved from Acme to Globex and `remember` closed the Acme edge because of the Globex one, "Where did Alice work before?" has no Acme edge to use (the text the fact came from, if it was chunked, may still come back as a [passage](#2-retrieve-by-similarity-and-passages)). The superseded edges are kept in the database with their validity, for [temporal.md](temporal/temporal.md) and the admin views; they are just not retrieved.
 - **Evidence** edges carry the temporal fields as they are stored (`valid_at`, `invalid_at`, `created_at`, and `expired_at`, which is always null here since only live facts are cited).
 
 ## Configuration

@@ -1,6 +1,6 @@
 package admin
 
-// Research agents in the admin UI (see docs/research.md#admin-ui): how many agents work now, the list of the agents (the active ones
+// Research agents in the admin UI (see docs/agents/research.md#admin-ui): how many agents work now, the list of the agents (the active ones
 // and those that ended, any user's) with what each of them spent and how many sub-agents it spawned, one agent with its states,
 // report and sub-agents, stopping an active agent, and the provenance of an agent: what it put in the knowledge base (the
 // artifacts, entities and facts of its session "research-<run id>").

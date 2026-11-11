@@ -123,7 +123,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 
 Deep-research agent: searches the web, reads pages and prints a report on TOPIC (- reads it from stdin). It may spawn sub-agents
 for the parts of a broad topic. --agent picks the agent definition (prompt, tools, search and knowledge settings, cost caps, sub-agents) from the
-agent_defs directory next to the binary (see docs/agent-defs.md). Each run costs money (model calls and web searches, sub-agents included).
+agent_defs directory next to the binary (see docs/agents/agent-defs.md). Each run costs money (model calls and web searches, sub-agents included).
 
 It works with the knowledge base (the memory of gligabao) in process, through its remember and query tools, and records every run
 and its states in the database, as the research jobs of the server do: the database is opened here (SQLite file, or PostgreSQL with

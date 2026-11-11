@@ -102,7 +102,7 @@ Every LLM call becomes up to three steps: a `system` step (the prompt; omitted i
 2. LLM call: entity/edge extraction (`system`, `user`, `agent`).
 3. tool `extract_graph`, then the candidates: tool `find_candidates_by_name`, tool `search_similar_entities` (only when vectors are enabled and the dataset exists), tool `load_candidates` (the merge).
    (For each chunk of a [chunked](../chunking.md) text, an LLM call and a `summarize_chunk` tool step follow the extraction.)
-4. LLM call: duplicate/contradiction resolution (only when there are stored facts to compare against; see [temporal.md](../temporal.md)).
+4. LLM call: duplicate/contradiction resolution (only when there are stored facts to compare against; see [temporal.md](../temporal/temporal.md)).
 5. tool `embed` (only when vectors are enabled).
 6. tool `store_artifact`.
 6b. only when the server has a [geo resolver](../geo.md): tool `select_geo_entities`, then the LLM call of `detect_geo` and the tool `detect_geo`, then for each place tool `resolve_geo`, and tool `store_geo`.
@@ -166,7 +166,7 @@ Next to `temporal.json` is a manifest, `build/evals_knowledge/temporal.md` (the 
 
 The cases cover facts that start, end on a stated date, expire after a duration, end when an event happens, are superseded by a later exclusive fact, are renewed or extended, are restated, corrected or only announced, are reported late about an earlier time, or are given in relative dates ("two weeks ago"). Each case remembers one to four texts (each with its `reference_time`) and asks one question "as of" an explicit date, so the answer does not depend on today's date. Because the answer is checked with `expect_contains` (a case-insensitive substring), a question asks for a label (`Entity C`), for a one-word state that no other state contains (`FREE` or `SUSPENDED`, `ACTIVE` or `LAPSED`), or for the labels followed by `COUNT=<number>`, so a wrong set fails on the count. `expect_edges` checks the dates the extraction stored (`valid_at`, `invalid_at`, `ended`, and `superseded` where a later text closes the fact without saying so).
 
-Since superseded facts are not retrieved by `query` ([temporal-edge-cases.md](../temporal-edge-cases.md#5-what-query-sees)), a question about a past date is only asked where the fact at that date ended in its own text; questions about a fact that a later text replaced ask about the state after the change. Two cases (`temporal_lease_extended`, `temporal_badge_regranted`) have several facts between the same two entities and so check only the answer.
+Since superseded facts are not retrieved by `query` ([temporal-edge-cases.md](../temporal/temporal-edge-cases.md#5-what-query-sees)), a question about a past date is only asked where the fact at that date ended in its own text; questions about a fact that a later text replaced ask about the state after the change. Two cases (`temporal_lease_extended`, `temporal_badge_regranted`) have several facts between the same two entities and so check only the answer.
 
 | case | what it tests |
 |---|---|
@@ -226,7 +226,7 @@ Because each stage has its own model, an eval run can answer two different quest
 
 What the cases check is what measures precision, so pick the case for the stage:
 
-- `extract_graph` is checked by `expect_edges` (is each expected fact stored between the right entities, with the right `valid_at` / `invalid_at`). `"ended": true` requires an `invalid_at`; `"superseded": true` also requires an `expired_at`, which is set only when a later text contradicts the fact (see [temporal-edge-cases.md](../temporal-edge-cases.md)) and, through the graph it builds, by the query's `expect_contains`. A model that misses a fact, attaches the wrong dates or names an entity differently fails these. For a long text, `chunking_register` checks that facts from the start, middle and end all came out.
+- `extract_graph` is checked by `expect_edges` (is each expected fact stored between the right entities, with the right `valid_at` / `invalid_at`). `"ended": true` requires an `invalid_at`; `"superseded": true` also requires an `expired_at`, which is set only when a later text contradicts the fact (see [temporal-edge-cases.md](../temporal/temporal-edge-cases.md)) and, through the graph it builds, by the query's `expect_contains`. A model that misses a fact, attaches the wrong dates or names an entity differently fails these. For a long text, `chunking_register` checks that facts from the start, middle and end all came out.
 - `resolve_edges` only runs when the new facts have stored candidates to be compared with, so use a case that remembers more than one text about the same entities, like `job_change` (the Acme fact must be closed by the Globex one, and only that one). A model that misses a contradiction leaves the old fact live (`ended` and `superseded` fail); one that flags a contradiction that is not one closes a fact that should stay true; one that misses a duplicate stores it twice.
 - `web_search` is only used by a remember entry with `"web_search": true` (see [web-search.md](../web-search.md)).
 - `extract_image` is only used by an image remember, which the runner does not issue yet.

@@ -1,5 +1,5 @@
 // Package research contains the HTTP handlers of the research agents (package agent_research): start a deep-research agent on a topic,
-// list the agents (the active ones only, if asked) and read one with the states it went through (see docs/research.md).
+// list the agents (the active ones only, if asked) and read one with the states it went through (see docs/agents/research.md).
 package research
 
 import (

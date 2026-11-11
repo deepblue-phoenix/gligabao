@@ -20,7 +20,7 @@ func (c *CLI) researchCmd() *cobra.Command {
 		Use:   "research",
 		Short: "Start, list and follow deep-research agents",
 		Long: `A research agent searches the web and reads pages, over many steps, in the background, and ends with a report on a topic. Every
-state it goes through (searching, reading, thinking, ...) is recorded, so that you can follow what it does (docs/research.md). Each one
+state it goes through (searching, reading, thinking, ...) is recorded, so that you can follow what it does (docs/agents/research.md). Each one
 costs money: model calls and web searches (it needs an Anthropic key).` + clientHelp,
 	}
 	cmd.AddCommand(c.researchStartCmd(), c.researchListCmd(), c.researchGetCmd(), c.researchAgentsCmd())
@@ -43,7 +43,7 @@ func (c *CLI) researchStartCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "start [TOPIC | -]",
 		Short: "Start a research agent on a topic (POST /v1/gb/research)",
-		Long: `Start a deep-research agent on a topic and print the run (JSON of POST /v1/gb/research, see docs/research.md) right away: the agent
+		Long: `Start a deep-research agent on a topic and print the run (JSON of POST /v1/gb/research, see docs/agents/research.md) right away: the agent
 goes on in the background. Follow it with "research get ID"; with --wait the command waits for the agent to end, and prints the finished
 run (with its report). The topic is the argument, or stdin if the argument is "-". Or give the whole request with --json.
 ` + clientHelp,

@@ -11,7 +11,7 @@
 # gligabao_lambda runs one remember, query or research in process and exits (docs/lambda.md): the same kind of small static binary, for
 # Lambdas and one-shot jobs. Cross-compile it the same way (GOOS=linux GOARCH=arm64 ./run_build.sh --no-admin-ui).
 # gligabao_agent_linux_amd64 is the same binary for Linux on x86-64 whatever the host: it is what the sidecar bakes into the Modal app,
-# to run research agents in Modal (runner "modal", docs/research.md); the Modal app's deploy picks it up from build/.
+# to run research agents in Modal (runner "modal", docs/agents/research.md); the Modal app's deploy picks it up from build/.
 set -euo pipefail
 cd "$(dirname "$0")"
 

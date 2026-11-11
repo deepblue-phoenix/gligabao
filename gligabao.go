@@ -214,7 +214,7 @@ type ServeOptions struct {
 	// request to POST or PUT /v1/gb/ontologies with "file" instead of "content"). Nothing is loaded at startup. If empty,
 	// Config.OntologyDirs; if that is empty too, there are none and only "content" can be sent.
 	OntologyDirs []string
-	// AgentDefsDir is the directory the definitions of the research agents (one TOML or JSON file each, see docs/agent-defs.md) are loaded
+	// AgentDefsDir is the directory the definitions of the research agents (one TOML or JSON file each, see docs/agents/agent-defs.md) are loaded
 	// from when the server starts. If empty, Config.AgentDefsDir; if that is empty too, an agent_defs directory next to the binary (it
 	// need not exist: only the built-in agent is there then).
 	AgentDefsDir string

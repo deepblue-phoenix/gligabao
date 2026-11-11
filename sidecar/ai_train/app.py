@@ -15,7 +15,7 @@ Run (Modal):
 
 Cloud-specific code lives in providers/<name>/ (providers/modal/). This file only declares *what* to run.
 
-The research agent (docs/research.md, runner "modal"): `run_agent` runs the gligabao_agent Linux binary in a CPU container, with the
+The research agent (docs/agents/research.md, runner "modal"): `run_agent` runs the gligabao_agent Linux binary in a CPU container, with the
 keys of the Modal secret SIDECAR_AGENT_SECRET; the web API starts it (POST /research/job_start) and streams its events.
 
 Images (see below): training uses Unsloth on a CUDA toolkit image (requirements_train.txt); inference uses a separate,

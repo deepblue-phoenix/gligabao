@@ -291,11 +291,11 @@ Volumes are created if missing.
 
 ### The research agent in Modal
 
-The same Modal app also runs the [research agent](../deep-research-agent.md) when a research is started with the `modal` [runner](../research.md#where-the-agent-runs-the-runner). The Go server asks the sidecar, the sidecar forwards to the web API, and the web API spawns the function `run_agent` and returns at once, exactly as for a training job:
+The same Modal app also runs the [research agent](../deep-research-agent.md) when a research is started with the `modal` [runner](../agents/research.md#where-the-agent-runs-the-runner). The Go server asks the sidecar, the sidecar forwards to the web API, and the web API spawns the function `run_agent` and returns at once, exactly as for a training job:
 
 | Route | |
 |---|---|
-| `POST /research/job_start` | body `{"topic", "max_steps"?, "model"?, "dataset"?, "agent"?, "agent_bundle"?, "max_cost_usd"?}` → `{"job_id", "provider_job_id", "status": "started"}`. `agent` is the name of the [agent definition](../agent-defs.md) and `agent_bundle` the definitions as a JSON object (what the server sends, see [Modal](../agent-defs.md#in-modal); at most 1 MiB), `max_cost_usd` a cap on the research (0: none). `400` for a bad body (topic required, `max_steps` 1 to 40, `agent` a name without spaces of at most 40 characters, `agent_bundle` not an object or too big, `max_cost_usd` negative). `503` if the app was deployed without the agent binary. |
+| `POST /research/job_start` | body `{"topic", "max_steps"?, "model"?, "dataset"?, "agent"?, "agent_bundle"?, "max_cost_usd"?}` → `{"job_id", "provider_job_id", "status": "started"}`. `agent` is the name of the [agent definition](../agents/agent-defs.md) and `agent_bundle` the definitions as a JSON object (what the server sends, see [Modal](../agents/agent-defs.md#in-modal); at most 1 MiB), `max_cost_usd` a cap on the research (0: none). `400` for a bad body (topic required, `max_steps` 1 to 40, `agent` a name without spaces of at most 40 characters, `agent_bundle` not an object or too big, `max_cost_usd` negative). `503` if the app was deployed without the agent binary. |
 | `GET /research/job_events?job_id=[&from=N]` | SSE stream of the job's events, with the same ids, reconnection (`from`), keepalives, time limit and watchdog as `/training/job_events` |
 | `POST /research/job_cancel` | body `{"job_id"}`: sets the job's stop flag (`200`; `404` unknown job, `409` already over) |
 | `GET /research/job_export?job_id=` | the file the agent handed back when its job ended (`application/zip`, an archive of `internal/db/dbexport`), streamed. `404` if the job has none, `400` for a bad id. Its size and SHA-256 are in the `export` field of the job's final event. |

@@ -2,7 +2,7 @@
 
 `gb_edges` holds the **final** state of a fact. It cannot say what a `remember` call did to it: a closed fact keeps no trace of its old `invalid_at`, and a fact that was merely stated again leaves only a link in `gb_edge_artifacts`. The **edge event log**, `gb_edge_events`, keeps the steps: an append-only table, one row for each fact a call touched, written in the same transaction as the artifact. It is what the admin UI plots in the [Temporal changes](remember.md#admin-ui) view.
 
-The model of the two timelines and the invalidation rule are in [temporal.md](temporal.md); this page is only about the log.
+The model of the two timelines and the invalidation rule are in [temporal.md](temporal/temporal.md); this page is only about the log.
 
 Code: `StoreEdges` and `contradict` in `internal/memory/memory_temporal/store.go` (the writers), `model.EdgeEvent` in `internal/db/graph/model/model.go`, `InsertEdgeEvent` and `ListEdgeEvents` in `internal/db/graph/{sqlite,postgres}/db.go`, the endpoint in `internal/api/admin/remember_runs.go` (`RememberRunTemporalOf`).
 
@@ -35,7 +35,7 @@ Facts of the call that need no change (a repeat inside the same artifact, a cont
 
 ## Example
 
-"Alice works at Acme" (reference time 2023-01-01, run A), then "Alice started working at Globex" (2024-03-01, run B), as in [temporal.md](temporal.md#invalidation-rule):
+"Alice works at Acme" (reference time 2023-01-01, run A), then "Alice started working at Globex" (2024-03-01, run B), as in [temporal.md](temporal/temporal.md#invalidation-rule):
 
 | id | edge | artifact | event | `invalid_at_before` | `invalid_at_after` | `caused_by_edge_id` |
 | -- | ---- | -------- | ----- | ------------------- | ------------------ | ------------------- |

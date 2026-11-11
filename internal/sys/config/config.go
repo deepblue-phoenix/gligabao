@@ -154,7 +154,7 @@ type Config struct {
 	// these directories in order. Nothing is scanned or loaded at startup. Default: none (the "file" form is then rejected).
 	// `serve --ontology-dir` (repeatable) overrides it.
 	OntologyDirs []string `toml:"ontology_dirs"`
-	// AgentDefsDir is the directory the definitions of the research agents (one TOML or JSON file each, see docs/agent-defs.md) are loaded
+	// AgentDefsDir is the directory the definitions of the research agents (one TOML or JSON file each, see docs/agents/agent-defs.md) are loaded
 	// from when the server starts. Default: an agent_defs directory next to the binary. A relative path is relative to the config file.
 	// `serve --agent-defs-dir` overrides it.
 	AgentDefsDir string `toml:"agent_defs_dir"`

@@ -253,7 +253,7 @@ func (m *Manager) Start(ctx context.Context, userID string, opts Options) (*core
 	switch {
 	case opts.Runner == core.RunnerModal && remote == nil:
 		// The agent runs in Modal with the API keys of the Modal app: this server needs no LLM client of its own for it.
-		return nil, unavailableErr("the modal runner is not available: it needs the sidecar, with the agent deployed to Modal (see docs/research.md)")
+		return nil, unavailableErr("the modal runner is not available: it needs the sidecar, with the agent deployed to Modal (see docs/agents/research.md)")
 	case opts.Runner != core.RunnerModal && m.Client == nil:
 		return nil, unavailableErr("no LLM is available for the research agent (set ANTHROPIC_API_KEY)")
 	}

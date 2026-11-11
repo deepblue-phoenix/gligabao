@@ -2,7 +2,7 @@
 // description, version, system prompt, model, limits, tools, skills, search and knowledge settings, cost caps, and when and which
 // sub-agents it starts), loaded once at startup from the agent_defs directory next to the binary, validated, and kept as immutable
 // structs in a Registry. The research manager (package agent_research) builds each agent, root or sub-agent, from one Def; the
-// standalone gligabao_agent binary loads the same files, or a Bundle that a server made for it. See docs/agent-defs.md.
+// standalone gligabao_agent binary loads the same files, or a Bundle that a server made for it. See docs/agents/agent-defs.md.
 //
 // The package depends on the standard library, BurntSushi/toml, logrus and the prompts only, so that the standalone binary stays small.
 package agent_defs

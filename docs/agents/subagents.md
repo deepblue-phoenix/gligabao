@@ -1,6 +1,6 @@
 # Sub-agents
 
-A [research agent](research.md) can split its work: it can **spawn sub-agents**, other research agents that each take a sub-task, each with a **reason** to exist. Sub-agents work alone: they get a task, do it and hand a report to their parent (they cannot message each other). This page is about that capability. The agent itself (its loop, its web and knowledge-base tools) is in [deep-research-agent.md](deep-research-agent.md); the job around it (runs, states, REST, CLI) is in [research.md](research.md).
+A [research agent](research.md) can split its work: it can **spawn sub-agents**, other research agents that each take a sub-task, each with a **reason** to exist. Sub-agents work alone: they get a task, do it and hand a report to their parent (they cannot message each other). This page is about that capability. The agent itself (its loop, its web and knowledge-base tools) is in [deep-research-agent.md](../deep-research-agent.md); the job around it (runs, states, REST, CLI) is in [research.md](research.md).
 
 Code: `internal/agent/team.go` (the tools), `internal/agent/prompts/` (the prompts, one Markdown file each: see [Prompts](#prompts)), `internal/agent_research/team.go` (spawning and the limits) and `internal/agent_research/researcher.go` (the place of each agent in the tree).
 
@@ -38,7 +38,7 @@ A sub-agent is tracked like every other agent. It is a run in `gb_agent_research
 - Sub-agents do not count in the number of researches a user may have working at once (3); the [limits](#limits) below bound them instead.
 - The states have two more values for the tools of this page: `spawning` and `waiting` (see [research.md](research.md#runs-and-states)).
 
-Each sub-agent works like any agent: a `researcher` struct of its own, a goroutine of its own, its own HTTP client. They share the database and LLM clients and nothing else (see [isolation](deep-research-agent.md#isolation)); the only thing that connects them is the parent's list of its sub-agents (a `family`, guarded by a lock).
+Each sub-agent works like any agent: a `researcher` struct of its own, a goroutine of its own, its own HTTP client. They share the database and LLM clients and nothing else (see [isolation](../deep-research-agent.md#isolation)); the only thing that connects them is the parent's list of its sub-agents (a `family`, guarded by a lock).
 
 ## Spawning
 
@@ -111,4 +111,4 @@ Both return at once, runs 2 and 3 start (`parent_id: 1`, `name: "chemistry"` / `
 
 ## Not included yet
 
-Messages between agents (removed in 0.169.0: sub-agents work alone), cancelling one sub-agent from its parent (an admin can stop any agent from the [admin UI](research.md#admin-ui)), a per-user or server-wide setting that turns sub-agents off, and counting the cost of the sub-agents in their parent's `cost_usd`. See the [roadmap](roadmap/ROADMAP.md).
+Messages between agents (removed in 0.169.0: sub-agents work alone), cancelling one sub-agent from its parent (an admin can stop any agent from the [admin UI](research.md#admin-ui)), a per-user or server-wide setting that turns sub-agents off, and counting the cost of the sub-agents in their parent's `cost_usd`. See the [roadmap](../roadmap/ROADMAP.md).

@@ -60,10 +60,10 @@ Resolution only sees the live edges that share an entity with the new ones (by n
 | Ended (`invalid_at`, no `expired_at`) | yes | Shown with `valid_at` and `invalid_at`; answers history ("where was it before?") and must not be presented as current. This is the state of the Wiesbaden edge in a completed move. |
 | Superseded (`expired_at`) | no | Kept in the database, not retrieved: a question about what used to be true can't be answered from it. |
 
-Details: [query.md](query.md#facts-over-time-and-history).
+Details: [query.md](../query.md#facts-over-time-and-history).
 
 ## 6. Writing tests and evals for these cases
 
 - Use the past tense and a reference time after the event to test that a fact **ended** ("has moved ... in August 2024", reference time in September 2024). A future tense yields a live fact by design (section 3).
 - A single text can end a fact only through an `invalid_at` the extractor sets (sections 2 and 3). `expired_at` is set only when a later `remember` supersedes a stored fact (section 4), so a fact that is superseded needs two texts.
-- In an eval's `expect_edges`, `"ended": true` checks that the edge has an `invalid_at` (and `valid_at` / `invalid_at` check the dates when given). `"superseded": true` additionally checks that it has an `expired_at`: use it only in a case that remembers a second, contradicting text (like `job_change`). Before 0.140.0 `ended: true` also required an `expired_at`, which a single-text case can never satisfy; see [evals/knowledge.md](evals/knowledge.md).
+- In an eval's `expect_edges`, `"ended": true` checks that the edge has an `invalid_at` (and `valid_at` / `invalid_at` check the dates when given). `"superseded": true` additionally checks that it has an `expired_at`: use it only in a case that remembers a second, contradicting text (like `job_change`). Before 0.140.0 `ended: true` also required an `expired_at`, which a single-text case can never satisfy; see [evals/knowledge.md](../evals/knowledge.md).

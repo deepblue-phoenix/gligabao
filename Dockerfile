@@ -29,7 +29,7 @@ COPY build/gligabao.toml /app/gligabao.toml
 COPY build/evals_training /app/evals_training
 # The ontology files that can be loaded by name (POST /v1/gb/ontologies with "file"; ontology_dirs of the config).
 COPY build/ontology /app/ontology
-# The definitions of the research agents (agent_defs next to the binary is where the server looks; docs/agent-defs.md).
+# The definitions of the research agents (agent_defs next to the binary is where the server looks; docs/agents/agent-defs.md).
 COPY build/agent_defs /app/agent_defs
 USER gligabao
 VOLUME /data

@@ -2,7 +2,7 @@
 
 # The Python sidecar (sidecar/): a FastAPI server the Go server talks to over HTTP.
 # The research agent binary (Go, static, Linux x86-64: what a Modal container runs), baked into the Modal app by the "deploy" action
-# so that research agents can run in Modal (runner "modal", docs/research.md).
+# so that research agents can run in Modal (runner "modal", docs/agents/research.md).
 FROM golang:1.26-bookworm AS agent
 WORKDIR /src
 COPY go.mod go.sum ./

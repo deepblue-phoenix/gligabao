@@ -19,7 +19,7 @@ Every artifact has a `kind`, set by the optional `kind` field of the remember re
 
 Three more kinds exist but cannot be asked for: `web_search`, the result of a [web search](web-search.md) that `remember` made (with `web_search`) for an entity of another artifact, `series_observation`, a text derived from a [timeseries](timeseries.md#observations) (with `timeseries.observations`), and `chunk_summary`, the LLM-written [summary of a chunk](chunking.md#chunk-summaries). The first two have a `query` and a parent (below); a summary has a parent and references the inference (model and reasoning level) that wrote it.
 
-The kind is stored and returned, but it does not change how the text is extracted or reconciled yet. Both kinds get the same bi-temporal treatment (see [temporal.md](temporal.md)). It exists so that behaviour can differ per kind later (for example, a `knowledge` artifact need not supersede older facts).
+The kind is stored and returned, but it does not change how the text is extracted or reconciled yet. Both kinds get the same bi-temporal treatment (see [temporal.md](temporal/temporal.md)). It exists so that behaviour can differ per kind later (for example, a `knowledge` artifact need not supersede older facts).
 
 ## Fields
 
