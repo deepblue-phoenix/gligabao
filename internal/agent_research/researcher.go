@@ -33,8 +33,9 @@ type researcher struct {
 	store  db.Store
 	logf   *log.Entry
 	client *ai.Client
-	mgr    *Manager // for the workers
-	mem    *Memory  // the knowledge base of the agent (nil: none); its workers get the same
+	mgr    *Manager        // for the workers
+	mem    *Memory         // the knowledge base of the agent (nil: none); its workers get the same
+	kb     agent.Knowledge // the agent's view of mem, in its dataset (nil: none)
 
 	// Its own.
 	run  *core.Run // the record of the run, as created
@@ -112,6 +113,7 @@ func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent 
 	if mem != nil && def.Knowledge.Access != agent_defs.AccessNone {
 		kb = mem.Knowledge(r.ctx, run.UserID, opts.Dataset, SessionID(run.ID))
 	}
+	r.kb = kb
 	if parent != nil { // a worker: a lean tool loop on one question that ends with submit_findings
 		r.agent = workerAgent(r, kb)
 		r.agent.Model, r.agent.MaxSteps = opts.Model, opts.MaxSteps
@@ -171,6 +173,7 @@ func (r *researcher) work() {
 		r.total = *res
 	}
 	r.endKids()
+	r.rememberReport(res, err)
 	switch {
 	case r.ctx.Err() != nil:
 		r.finish(core.StatusFailed, "", "interrupted: the server stopped while the agent worked")

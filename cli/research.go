@@ -29,16 +29,17 @@ costs money: model calls and web searches (it needs an Anthropic key).` + client
 
 func (c *CLI) researchStartCmd() *cobra.Command {
 	var (
-		jsonBody string
-		maxSteps int
-		model    string
-		dataset  string
-		runner   string
-		agent    string
-		agentVer string
-		maxCost  float64
-		wait     bool
-		raw      bool
+		jsonBody   string
+		maxSteps   int
+		model      string
+		dataset    string
+		noRemember bool
+		runner     string
+		agent      string
+		agentVer   string
+		maxCost    float64
+		wait       bool
+		raw        bool
 	)
 	cmd := &cobra.Command{
 		Use:   "start [TOPIC | -]",
@@ -83,6 +84,9 @@ run (with its report). The topic is the argument, or stdin if the argument is "-
 			}
 			if cmd.Flags().Changed("dataset") {
 				b.set("dataset", dataset)
+			}
+			if noRemember {
+				b.set("no_remember", true)
 			}
 			if cmd.Flags().Changed("agent") {
 				b.set("agent", agent)
@@ -155,6 +159,7 @@ run (with its report). The topic is the argument, or stdin if the argument is "-
 	f.StringVar(&agent, "agent", "", `the agent definition to run (see "research agents"; default "default", the built-in research agent)`)
 	f.StringVar(&agentVer, "agent-version", "", `a constraint the agent's version must meet, e.g. 1.2.0, ">=1.0" or "^1.2"`)
 	f.Float64Var(&maxCost, "max-cost", 0, "a cap in USD on what the whole research may spend, sub-agents included; when it is reached the agents write their reports and say so")
+	f.BoolVar(&noRemember, "no-remember", false, "do not remember the final report into the dataset at the end (investigative agents do by default)")
 	f.StringVarP(&dataset, "dataset", "d", "", `the dataset of your knowledge base the agent queries and remembers into (default "main")`)
 	f.StringVar(&runner, "runner", "", `where the agent runs: "local" (default: in the server) or "modal" (the gligabao_agent binary in a Modal container, through the sidecar)`)
 	f.BoolVar(&wait, "wait", false, "wait until the agent ends, and print the finished run (exit code 1 if it failed)")

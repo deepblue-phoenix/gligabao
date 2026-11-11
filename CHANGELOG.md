@@ -5,6 +5,12 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.192.0] - 2026-11-12
+
+### Added
+- Investigative deep-research agents now remember their final report into the knowledge base when the run ends (an explicit, waiting call through the `remember` pipeline, into the research's `dataset`), so knowledge builds up. The `remember` tool and its logic in the loop are unchanged.
+- `POST /v1/gb/research` takes `no_remember` (and the CLI `research start --no-remember`) to turn that final remember off.
+
 ## [0.191.2] - 2026-11-12
 
 ### Changed

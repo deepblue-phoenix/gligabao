@@ -3,6 +3,7 @@ package agent_research
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
+	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
@@ -158,4 +160,36 @@ func (r *researcher) savePhase(phase investigate_core.Phase, stopReason string) 
 	if err := r.store.SetPhase(r.dbCtx, r.db, r.run.ID, string(phase), stopReason); err != nil {
 		r.logf.WithError(err).Warn("agent research: recording the phase failed")
 	}
+}
+
+// rememberTimeout is the longest the final remember call of a research may take.
+const rememberTimeout = 10 * time.Minute
+
+// reportMemoryText is the text remembered for a final report: the topic as the title, then the report.
+func reportMemoryText(topic, report string) string {
+	return "Deep-research report: " + topic + "\n\n" + strings.TrimSpace(report)
+}
+
+// shouldRememberReport says whether the final report of a run is remembered: only the root agent of an investigative research that
+// ended with a report, has a knowledge base, and was not asked not to.
+func (r *researcher) shouldRememberReport(res *agent.Result, runErr error) bool {
+	return r.parent == nil && r.def.Investigative() && !r.opts.NoRemember && r.kb != nil &&
+		runErr == nil && res != nil && strings.TrimSpace(res.Answer) != "" && r.runCtx.Err() == nil && r.ctx.Err() == nil
+}
+
+// rememberReport is the explicit remember call at the end of the run: the final report goes into the dataset of the research through
+// the remember pipeline (waiting for it), so that knowledge builds up. A failure is logged and does not fail the research.
+func (r *researcher) rememberReport(res *agent.Result, runErr error) {
+	if !r.shouldRememberReport(res, runErr) {
+		return
+	}
+	r.enter(core.StateRemembering, r.total.Steps, "final report")
+	ctx, cancel := context.WithTimeout(r.ctx, rememberTimeout)
+	defer cancel()
+	out, err := r.kb.Remember(ctx, reportMemoryText(r.opts.Topic, res.Answer), true)
+	if err != nil {
+		r.logf.WithError(err).Warn("agent research: remembering the final report failed")
+		return
+	}
+	r.logf.Info("agent research: the final report was remembered: " + out)
 }

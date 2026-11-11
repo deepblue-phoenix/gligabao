@@ -65,6 +65,7 @@ Starts an agent. Body:
 - `max_steps` (optional, default: the `max_steps` of the definition, 20 for `default`; at most 40): the most model calls the agent makes, the last of which writes the report. More steps let it search and read more, and cost more.
 - `model` (optional): the model it runs on, which must support Anthropic's web search tool. Default: the `model` of the definition, else the server's default model. It is the model of the main agent; its workers run on the same model.
 - `dataset` (optional, default `main`): the dataset of the user's knowledge base the agent queries and remembers into ([below](#the-knowledge-base)). It is created by the first `remember` if it does not exist; a bad name is a `400`. It is not stored with the run. With the `modal` runner it is the dataset the agent's knowledge lands in when the agent ends ([below](#what-comes-back-the-import)).
+- `no_remember` (optional, default `false`): with the [investigative loop](deep-research-loop.md), when the root agent has written the final report, the run makes one explicit, waiting `remember` call with it (titled with the topic) into `dataset`, through the remember pipeline, so that knowledge builds up (the run is in the state `remembering` meanwhile). `true` turns that call off. A failed call is logged and does not fail the research. The agent's `remember` tool is not affected, and the call is skipped for agents without a knowledge base. The `modal` runner does not use the investigative loop.
 - `investigate` (optional): the knobs of the [investigative loop](#the-investigative-loop) (`max_iterations`, `max_total_tokens`, `min_sources`, ... the same names as the `[investigate]` table of the [agent definition](agent-defs.md#loop-and-investigate-the-investigative-loop)), over those of the definition. Only for an agent with `loop = "investigative"`: with the simple loop they are a `400`. With that loop `max_steps` is a `400` too (`max_iterations` replaces it), and so is `runner: "modal"`.
 - `runner` (optional, default `local`): where the agent runs, `local` (in the server, as always) or `modal` (the `gligabao_agent` binary in a Modal container, see [below](#where-the-agent-runs-the-runner)). Any other value is a `400`. The run says which one it has (`runner`).
 
@@ -112,7 +113,7 @@ To follow a run, poll this route (or `research_get`, or `gligabao research get`)
 ## CLI
 
 ```
-gligabao research start TOPIC [--agent NAME] [--agent-version V] [--max-cost USD] [--max-steps N] [--model M] [-d DATASET] [--runner local|modal] [--wait [--raw]] [--json BODY]
+gligabao research start TOPIC [--agent NAME] [--agent-version V] [--max-cost USD] [--max-steps N] [--model M] [-d DATASET] [--no-remember] [--runner local|modal] [--wait [--raw]] [--json BODY]
 gligabao research ls [--active] [--status S] [--limit N]
 gligabao research get ID [--raw]
 gligabao research agents

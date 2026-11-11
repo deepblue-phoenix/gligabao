@@ -32,6 +32,9 @@ type Options struct {
 	// Dataset is the dataset of the user's knowledge base the agent queries and remembers into, when the server gives the agents one
 	// (default "main"). It is created by the first remember if it does not exist. It is not stored with the run.
 	Dataset string `json:"dataset,omitempty"`
+	// NoRemember turns off the automatic remember call at the end of an investigative research: by default the final report is
+	// remembered (sync) into Dataset when the agent has written it. The remember tool of the agent is not affected.
+	NoRemember bool `json:"no_remember,omitempty"`
 	// Runner is where the agent runs: core.RunnerLocal ("local", the default: in this process, like always) or core.RunnerModal ("modal":
 	// the gligabao_agent binary in a Modal container, started through the sidecar, see Manager.UseRemote). With "modal" the agent works
 	// with a knowledge base of its own in the container, not the user's (so Dataset has no effect there).
