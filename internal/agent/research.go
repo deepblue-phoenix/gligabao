@@ -11,8 +11,8 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/prompts"
-	"github.com/deepblue-phoenix/gligabao/internal/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 )
 

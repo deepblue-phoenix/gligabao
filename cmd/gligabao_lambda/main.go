@@ -23,7 +23,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/agent_defs"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"

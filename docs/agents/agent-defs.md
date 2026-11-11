@@ -4,7 +4,7 @@ A [research agent](research.md) is described by a **definition**: a TOML or JSON
 
 This makes it easy to have several agents that search different areas, behave in a certain way and have preferences, with no change to the Go code.
 
-Code: `internal/agent_defs` (the format, the loader, the checks, the registry, the bundle), `internal/agent/research.go` (`FromDef` builds the agent of a definition), `internal/agent_research` (the manager uses the definition of every agent it starts, the sub-agents included). Examples: `build/agent_defs/`.
+Code: `internal/agent/agent_defs` (the format, the loader, the checks, the registry, the bundle), `internal/agent/research.go` (`FromDef` builds the agent of a definition), `internal/agent_research` (the manager uses the definition of every agent it starts, the sub-agents included). Examples: `build/agent_defs/`.
 
 ## Where the files are
 
@@ -206,7 +206,7 @@ paused   = false                                 # true: keep the section in the
 
 How the scheduler works inside the server (the loop, the skipping, what is not remembered): [agent-scheduler.md](agent-scheduler.md).
 
-Code: `internal/agent_defs/cron.go` (the parser and `Next`), `agent_defs.Schedule`, `internal/agent_research/scheduler.go` (`Manager.RunSchedules`, started by the server after it is set up).
+Code: `internal/agent/agent_defs/cron.go` (the parser and `Next`), `agent_defs.Schedule`, `internal/agent_research/scheduler.go` (`Manager.RunSchedules`, started by the server after it is set up).
 
 ## Model
 

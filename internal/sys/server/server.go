@@ -19,7 +19,7 @@ import (
 	"time"
 
 	adminui "github.com/deepblue-phoenix/gligabao/admin_ui"
-	"github.com/deepblue-phoenix/gligabao/internal/agent_defs"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"

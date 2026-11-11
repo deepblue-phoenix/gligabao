@@ -4,7 +4,7 @@ import "testing"
 
 // The example definitions that ship in build/agent_defs must load.
 func TestShippedExamplesLoad(t *testing.T) {
-	reg, err := Load("../../build/agent_defs")
+	reg, err := Load("../../../build/agent_defs")
 	if err != nil {
 		t.Fatal(err)
 	}

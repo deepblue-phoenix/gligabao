@@ -2,7 +2,7 @@
 
 How the server starts [agents](agent-defs.md) by itself, at the times of their CRON `[schedule]`. This page is about the mechanism (a loop inside the server, what it checks, what it skips); the fields and the syntax of `[schedule]` are in [agent-defs.md](agent-defs.md#schedule-running-on-a-schedule), and the runs it starts are ordinary [researches](research.md).
 
-Code: `internal/agent_research/scheduler.go` (the scheduler, `Manager.RunSchedules`), `internal/agent_defs/cron.go` (`ParseCron`, `Cron.Next`, `Cron.MinGap`), `agent_defs.Schedule` in `internal/agent_defs/def.go` (`Next`, `TopicAt`), the startup check in `internal/agent_defs/validate.go` (`checkSchedule`).
+Code: `internal/agent_research/scheduler.go` (the scheduler, `Manager.RunSchedules`), `internal/agent/agent_defs/cron.go` (`ParseCron`, `Cron.Next`, `Cron.MinGap`), `agent_defs.Schedule` in `internal/agent/agent_defs/def.go` (`Next`, `TopicAt`), the startup check in `internal/agent/agent_defs/validate.go` (`checkSchedule`).
 
 ## In short
 
@@ -80,4 +80,4 @@ Only the server runs schedules. `gligabao_agent` ignores the section, and an age
 
 ## Tests
 
-`internal/agent_defs/cron_test.go` (the parser, `Next`, never-matching expressions, parse errors, `MinGap`) and `internal/agent_research/agent_defs_test.go` (the scheduler through `export_test.go`: runs start when due and the topic template is filled, and a run is skipped while the previous one works).
+`internal/agent/agent_defs/cron_test.go` (the parser, `Next`, never-matching expressions, parse errors, `MinGap`) and `internal/agent_research/agent_defs_test.go` (the scheduler through `export_test.go`: runs start when due and the topic template is filled, and a run is skipped while the previous one works).

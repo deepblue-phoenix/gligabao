@@ -10,8 +10,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/prompts"
-	"github.com/deepblue-phoenix/gligabao/internal/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"

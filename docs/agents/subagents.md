@@ -67,7 +67,7 @@ With [agent definitions](agent-defs.md) the model does not spawn copies of itsel
 
 ### Limits
 
-They are constants in `internal/agent_defs` (aliased in `internal/agent_research/team.go`); a definition may only lower them (`spawn.max_depth`, `max_per_agent`, `max_per_tree`):
+They are constants in `internal/agent/agent_defs` (aliased in `internal/agent_research/team.go`); a definition may only lower them (`spawn.max_depth`, `max_per_agent`, `max_per_tree`):
 
 | Limit | Value |
 | ----- | ----- |

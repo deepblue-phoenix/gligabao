@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.182.3] - 2026-11-12
+
+### Changed
+- Internal refactor, no change in behaviour: the packages `internal/agent_memory` and `internal/agent_defs` moved to `internal/agent/agent_memory` and `internal/agent/agent_defs` (the package names are unchanged). The docs name the new path.
+
 ## [0.182.2] - 2026-11-12
 
 ### Fixed

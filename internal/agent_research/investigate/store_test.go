@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"github.com/deepblue-phoenix/gligabao/internal/agent_defs"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
 	"path/filepath"
 	"reflect"
 	"slices"

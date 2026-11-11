@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/agent_defs"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 )

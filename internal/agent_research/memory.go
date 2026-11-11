@@ -3,7 +3,7 @@ package agent_research
 import (
 	"fmt"
 
-	"github.com/deepblue-phoenix/gligabao/internal/agent_memory"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_memory"
 )
 
 // Memory is how the research agents reach the internal knowledge base (see package agent_memory).

@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/deepblue-phoenix/gligabao/internal/agent_memory"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_memory"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db"

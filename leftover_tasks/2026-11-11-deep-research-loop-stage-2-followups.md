@@ -18,4 +18,4 @@ Stage 2 (`docs/agents/deep-research-loop-stage-2.md`) connected the investigativ
 
 ## How to pick it up
 
-`go test ./internal/agent_research/... ./internal/agent_defs/...`; for PostgreSQL set `POSTGRES_TEST_DSN`. The design is `docs/agents/deep-research-loop.md`, the stage page has an "Implementation notes" section with every place the code chose. Done when the checklist is empty and `./run_tests.sh` passes with PostgreSQL enabled.
+`go test ./internal/agent_research/... ./internal/agent/agent_defs/...`; for PostgreSQL set `POSTGRES_TEST_DSN`. The design is `docs/agents/deep-research-loop.md`, the stage page has an "Implementation notes" section with every place the code chose. Done when the checklist is empty and `./run_tests.sh` passes with PostgreSQL enabled.
