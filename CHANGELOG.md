@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.182.2] - 2026-11-12
+
+### Fixed
+- **Docs: a broken anchor.** The link to the investigative-loop section of the agent definitions in `docs/agents/research.md` now points at `#loop-and-investigate-the-investigative-loop`.
+
 ## [0.182.1] - 2026-11-12
 
 ### Added
