@@ -192,6 +192,9 @@ func (m *Manager) registry() *agent_defs.Registry {
 	return m.defs
 }
 
+// Definitions returns the loaded agent definitions in full, by name (for the admin UI).
+func (m *Manager) Definitions() []*agent_defs.Def { return m.registry().List() }
+
 // Agents lists the agent definitions, by name.
 func (m *Manager) Agents() []AgentInfo {
 	var out []AgentInfo

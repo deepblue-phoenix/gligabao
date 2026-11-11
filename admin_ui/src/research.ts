@@ -782,7 +782,77 @@ function schedule(): void {
   }, 1000);
 }
 
+// ----- the agent definitions
+
+type Json = Record<string, unknown>;
+interface DefSkill { name: string; content: string }
+interface AgentDef extends Json {
+  name: string; version: string; description: string; loop?: string; source: string; hash: string; system_prompt: string; skills?: DefSkill[];
+}
+
+const isEmptyVal = (v: unknown): boolean => v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0);
+const valText = (v: unknown): string => (typeof v === "string" ? v : Array.isArray(v) && v.every((x) => typeof x !== "object") ? v.join(", ") : JSON.stringify(v, null, 1));
+
+// settings renders a block of the definition (search, knowledge, limits, ...) as a list of key and value, skipping the empty ones.
+function settings(title: string, obj: unknown, open = false): HTMLElement | null {
+  const entries = Object.entries((obj ?? {}) as Json).filter(([, v]) => !isEmptyVal(v));
+  if (entries.length === 0) return null;
+  const d = node("details");
+  d.open = open;
+  d.appendChild(node("summary", "", title));
+  const dl = d.appendChild(node("dl", "stats rs-info"));
+  for (const [k, v] of entries) {
+    const div = dl.appendChild(node("div"));
+    div.append(node("dt", "", k), node("dd", "rs-text", valText(v)));
+  }
+  return d;
+}
+
+function renderDef(d: AgentDef): HTMLElement {
+  const root = node("details");
+  root.open = false;
+  const sum = root.appendChild(node("summary"));
+  sum.append(node("strong", "", d.name), node("span", "muted", ` v${d.version} · ${d.loop || "simple"} loop`));
+  const body = root.appendChild(node("div", "rs-detail"));
+  if (d.description) body.appendChild(node("p", "rs-text", d.description));
+  const info = body.appendChild(node("dl", "stats rs-info"));
+  const rows: [string, unknown][] = [["Source", d.source], ["Hash", d.hash], ["Model", d.model || "(inherited)"], ["Max steps", d.max_steps], ["Max tokens", d.max_tokens], ["Tools", d.tools]];
+  for (const [k, v] of rows) {
+    if (isEmptyVal(v)) continue;
+    const div = info.appendChild(node("div"));
+    div.append(node("dt", "", k), node("dd", "rs-text", valText(v)));
+  }
+  for (const [t, o] of [["Search", d.search], ["Knowledge", d.knowledge], ["Limits", d.limits], ["Investigate", d.investigate], ["Code", d.code], ["Schedule", d.schedule]] as [string, unknown][]) {
+    const x = settings(t, o);
+    if (x) body.appendChild(x);
+  }
+  const prompt = body.appendChild(node("details"));
+  prompt.appendChild(node("summary", "", "System prompt"));
+  prompt.appendChild(node("pre", "rs-text", d.system_prompt || "(built-in prompt)"));
+  for (const s of d.skills ?? []) {
+    const sk = body.appendChild(node("details"));
+    sk.appendChild(node("summary", "", `Skill: ${s.name}`));
+    sk.appendChild(node("pre", "rs-text", s.content));
+  }
+  return root;
+}
+
+async function showDefs(): Promise<void> {
+  const modal = el<HTMLDialogElement>("research-defs-modal");
+  const body = el("research-defs-body");
+  body.replaceChildren(node("p", "muted", "Loading…"));
+  if (!modal.open) modal.showModal();
+  try {
+    const r = await getJSON<{ definitions: AgentDef[] }>("api/research/agent-defs");
+    body.replaceChildren(node("p", "muted", `${r.definitions.length} loaded definition${r.definitions.length === 1 ? "" : "s"}.`), ...r.definitions.map(renderDef));
+  } catch (err) {
+    body.replaceChildren(node("p", "error", `Failed to load the agent definitions: ${errText(err)}`));
+  }
+}
+
 export function initResearch(): void {
+  el("research-defs").addEventListener("click", () => void showDefs());
+  el("research-defs-close").addEventListener("click", () => el<HTMLDialogElement>("research-defs-modal").close());
   const root = el("research-content");
   const act = root.appendChild(node("div", "rs-section"));
   act.appendChild(node("h3", "", "Active agents"));

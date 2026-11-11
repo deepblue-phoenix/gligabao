@@ -75,6 +75,7 @@
                 <option value="simple">simple</option>
               </select>
               <button type="button" id="research-start" class="start-agent" title="Start a deep-research agent on a task"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>start agent</button>
+              <button type="button" id="research-defs" title="Show the details of each loaded agent definition">definitions</button>
               <button type="button" id="research-refresh" class="icon refresh" title="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg></button>
             </div>
             <p class="muted">The deep-research agents of the standard database, any user's. The list refreshes itself every few seconds while this view is open.</p>
@@ -612,6 +613,14 @@
         <button type="button" id="research-start-cancel">Cancel</button>
         <button type="button" id="research-start-submit" class="start-agent">Start</button>
       </div>
+    </dialog>
+
+    <dialog id="research-defs-modal" class="modal">
+      <div class="modal-head">
+        <h2>Agent definitions</h2>
+        <button type="button" id="research-defs-close" class="close-x" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div id="research-defs-body" class="modal-body"></div>
     </dialog>
 
     <dialog id="research-error-modal" class="modal modal-small">

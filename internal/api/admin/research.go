@@ -606,6 +606,14 @@ func ResearchAgentsOf(m *agent_research.Manager) http.HandlerFunc {
 	}
 }
 
+// ResearchAgentDefsOf serves GET /admin/api/research/agent-defs: {"definitions": [...]}, every loaded agent definition in full (prompt,
+// tools, skills, limits, loop settings, schedule), for the definitions modal of the admin UI.
+func ResearchAgentDefsOf(m *agent_research.Manager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"definitions": m.Definitions()})
+	}
+}
+
 // InvestigationQuestion is a node of the frontier of an investigative run.
 type InvestigationQuestion struct {
 	ID        string   `json:"id"`
