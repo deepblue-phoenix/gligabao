@@ -1,6 +1,6 @@
 package memory_remember
 
-// Graph classes (see docs/remember.md#graph-classes): the classify_graph stage asks an LLM, for the graph of every artifact the call
+// Graph classes (see docs/remember/remember.md#graph-classes): the classify_graph stage asks an LLM, for the graph of every artifact the call
 // stored (the text, or each chunk of a document), which class or classes it belongs to, and stores each answer as a record of
 // gb_artifact_classes that references the run (gb_inferences) of the model call, so that the configuration of the run (model, reasoning
 // level, tokens, cost) can be fetched later. The classes are what the classifying training hook gets as the classes of the graphs.

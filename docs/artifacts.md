@@ -91,7 +91,7 @@ An artifact carries the `session_id` of the `remember` call that created it, whi
 
 ## Where artifacts show up
 
-- `POST /v1/gb/remember` returns the new `artifact_id`, its `kind`, `session_id` (if any), `valid_at` and `created_at` ([remember.md](remember.md)).
+- `POST /v1/gb/remember` returns the new `artifact_id`, its `kind`, `session_id` (if any), `valid_at` and `created_at` ([remember/remember.md](remember/remember.md)).
 - Edges in the [graph export](graph.md) and in the query `evidence` ([query.md](query.md)) carry `artifact_id` (the creating artifact).
 
 ## Limitations

@@ -22,7 +22,7 @@ const (
 	// StageResolveEdges is the comparison of the new edges with the stored ones (duplicates, contradictions).
 	StageResolveEdges = "resolve_edges"
 	// StageClassifyGraph is the classification of the graph of each artifact (only with the classify_graph flag of remember, see
-	// docs/remember.md#graph-classes): the LLM picks the classes of the graph, each stored as a record of gb_artifact_classes with its run.
+	// docs/remember/remember.md#graph-classes): the LLM picks the classes of the graph, each stored as a record of gb_artifact_classes with its run.
 	StageClassifyGraph = "classify_graph"
 	// StageExtractImage is the reading of an image (the image pipeline).
 	StageExtractImage = "extract_image"

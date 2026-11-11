@@ -1,6 +1,6 @@
 package admin
 
-// Remember runs in the admin UI (see docs/remember.md#run-log): the run log of the remember pipeline (gb_remember_runs),
+// Remember runs in the admin UI (see docs/remember/remember.md#run-log): the run log of the remember pipeline (gb_remember_runs),
 // how many runs ended in each status, and the list of the runs (newest first, filterable) with the state of each stage.
 // The outputs of the stages of one run (for debugging) are a separate endpoint, RememberRunOutputsOf, and so is what the run did to
 // the temporal state of the facts, RememberRunTemporalOf.

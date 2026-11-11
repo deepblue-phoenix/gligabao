@@ -1,6 +1,6 @@
 # POST /v1/gb/query
 
-Answers a question from the knowledge graph built by [`remember`](remember.md). The LLM writes a natural-language answer using only the retrieved context (a subgraph, and the passages of long texts close to the question), and the response includes `evidence`: the entities, edges and passages it relied on.
+Answers a question from the knowledge graph built by [`remember`](remember/remember.md). The LLM writes a natural-language answer using only the retrieved context (a subgraph, and the passages of long texts close to the question), and the response includes `evidence`: the entities, edges and passages it relied on.
 
 ## Request
 
@@ -67,7 +67,7 @@ Errors are returned as `{"error": "..."}`:
 
 ## How it works
 
-The code is in `internal/memory/memory_query/query.go` (logic) and `internal/api/query/query.go` (HTTP handler). The call is a pipeline of four stages, `queryPipeline` in `query.go`: `retrieve_graph` (steps 1 and 2 below), `detect_geo` and `nearby_geo` (only with [geo](geo.md#in-query)) and `query` (the LLM call of step 3), run by the same runner as the [`remember`](remember.md#how-the-pipeline-is-declared) pipeline. With nothing to answer from, `retrieve_graph` ends the pipeline (`memory_pipeline.Stop`): the answer says so, with no LLM call, and the other stages are `skipped`.
+The code is in `internal/memory/memory_query/query.go` (logic) and `internal/api/query/query.go` (HTTP handler). The call is a pipeline of four stages, `queryPipeline` in `query.go`: `retrieve_graph` (steps 1 and 2 below), `detect_geo` and `nearby_geo` (only with [geo](geo.md#in-query)) and `query` (the LLM call of step 3), run by the same runner as the [`remember`](remember/remember.md#how-the-pipeline-is-declared) pipeline. With nothing to answer from, `retrieve_graph` ends the pipeline (`memory_pipeline.Stop`): the answer says so, with no LLM call, and the other stages are `skipped`.
 
 Retrieval has two sources that are added together: keywords (SQL over `gb_entities`) and similarity (the [vector indexes](vectors.md) that `remember` fills). There is no switch for either: both always run, and the embedder and the vector store are required (the server does not start without `OPENAI_API_KEY`).
 
@@ -143,7 +143,7 @@ With `"evidence_only": true` the call only retrieves: steps 1 and 2 run as usual
 
 ### Run log
 
-Every call is recorded in `gb_query_runs`: **one row per execution of the pipeline, the authoritative record of how it was executed**, the same kind of record as the [run log of `remember`](remember.md#run-log) (`internal/memory/memory_query/runlog.go`). The row is written when the call starts and updated at every step, and a row that stays `started` belongs to a process that died. A request that is rejected before the pipeline starts (a `400`, an unknown dataset) has no row.
+Every call is recorded in `gb_query_runs`: **one row per execution of the pipeline, the authoritative record of how it was executed**, the same kind of record as the [run log of `remember`](remember/remember.md#run-log) (`internal/memory/memory_query/runlog.go`). The row is written when the call starts and updated at every step, and a row that stays `started` belongs to a process that died. A request that is rejected before the pipeline starts (a `400`, an unknown dataset) has no row.
 
 | Column | |
 | ------ | - |

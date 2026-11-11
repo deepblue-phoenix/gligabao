@@ -7,7 +7,7 @@ import (
 	"unicode"
 )
 
-// The graph classes: the classify_graph stage of Remember (see docs/remember.md#graph-classes) asks an LLM which class or classes the graph
+// The graph classes: the classify_graph stage of Remember (see docs/remember/remember.md#graph-classes) asks an LLM which class or classes the graph
 // of each artifact belongs to, and stores every answer as a record of gb_artifact_classes with the run of the model call. Those classes are
 // what the classifying training hook (see training_hook.go) gets as the classes of the graphs.
 

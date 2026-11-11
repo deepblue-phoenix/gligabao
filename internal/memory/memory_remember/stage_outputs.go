@@ -1,7 +1,7 @@
 package memory_remember
 
 // What the stages of the pipeline file in the run log as outputs, for debugging (see runLog.Output and
-// docs/remember.md#stage-outputs). The shapes are built here, next to each other, so that they stay consistent: the
+// docs/remember/remember.md#stage-outputs). The shapes are built here, next to each other, so that they stay consistent: the
 // trajectory (see memory_core.Trace) shows the same steps, but only when the call was made with WithEval, and outside
 // the database.
 

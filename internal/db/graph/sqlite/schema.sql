@@ -126,7 +126,7 @@ CREATE TABLE IF NOT EXISTS gb_edge_events (
 	created_at        DATETIME NOT NULL
 );
 
--- The classes an LLM gave to the graph of an artifact (the classify_graph stage of remember, see docs/remember.md). The graph of an
+-- The classes an LLM gave to the graph of an artifact (the classify_graph stage of remember, see docs/remember/remember.md). The graph of an
 -- artifact is what is linked to it (gb_entity_artifacts, gb_edge_artifacts). An artifact has any number of classes: one record each, so
 -- a call that gives two classes makes two records, and they are what the classifying training hook hands to the program that trains on them.
 --   class         the name of the class (non-empty)

@@ -1,6 +1,6 @@
 # Web search
 
-`POST /v1/gb/remember` can enrich what it remembers with the **latest world events** about the key entities of the text. With `"web_search": true`, after the text is stored as usual, the pipeline searches the web for the entities the text is about, and remembers what it finds: each result is an [artifact](artifacts.md) of its own, of kind `web_search`, and the entities and facts it mentions are stored in the graph like any other. The request, the response and the rest of the pipeline are in [remember.md](remember.md).
+`POST /v1/gb/remember` can enrich what it remembers with the **latest world events** about the key entities of the text. With `"web_search": true`, after the text is stored as usual, the pipeline searches the web for the entities the text is about, and remembers what it finds: each result is an [artifact](artifacts.md) of its own, of kind `web_search`, and the entities and facts it mentions are stored in the graph like any other. The request, the response and the rest of the pipeline are in [remember/remember.md](remember/remember.md).
 
 Code: `internal/memory/memory_remember/remember_websearch.go` (the stage), `internal/ai/websearch.go` (the Anthropic call), `internal/db/graph/` (the artifact).
 
@@ -19,7 +19,7 @@ It is **off unless asked for**, per call: nothing is searched for a request that
 ```
 
 - `web_search` (optional, default `false`): search the web for the key entities of this text. `503` if web search is not available (no Anthropic API key). `400` together with `image` (the image pipeline extracts no entities yet).
-- `models.web_search` (optional): the model that runs the searches (see [Choosing the model of each stage](remember.md#choosing-the-model-of-each-stage)); a stage left out uses the default model. It must support Anthropic's web search tool. The graph is extracted from the results by the `extract_graph` model, like any text.
+- `models.web_search` (optional): the model that runs the searches (see [Choosing the model of each stage](remember/remember.md#choosing-the-model-of-each-stage)); a stage left out uses the default model. It must support Anthropic's web search tool. The graph is extracted from the results by the `extract_graph` model, like any text.
 
 ## What it does
 

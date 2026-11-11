@@ -12,7 +12,7 @@ gligabao_pipelines version
 
 It opens the databases, runs the operation, stops the managers, closes the databases and exits:
 
-- `remember` submits the text to the remember manager and **waits for the run to end**, so the text, its entities, facts and embeddings are stored when the process exits. It has the pipeline of [remember](remember.md) with its defaults.
+- `remember` submits the text to the remember manager and **waits for the run to end**, so the text, its entities, facts and embeddings are stored when the process exits. It has the pipeline of [remember](remember/remember.md) with its defaults.
 - `query` is the pipeline of [query](query.md) with its defaults. A user or dataset that never remembered anything gets "The knowledge base is empty: nothing was remembered yet." (exit `0`), not an error.
 
 The output is the result on **stdout** (`remember`: a summary line; `query`: the answer; `--json`: the result as JSON), and logs and totals on **stderr**. Exit codes: `0` ok, `1` the operation failed (a model call failed, the timeout was reached, SIGINT/SIGTERM), `2` bad flags or input, a missing API key or a database that cannot be opened. The API keys are `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` (embeddings; required), from the environment or `--config`.

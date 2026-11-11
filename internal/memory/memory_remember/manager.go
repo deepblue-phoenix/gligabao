@@ -1,6 +1,6 @@
 package memory_remember
 
-// The remember manager: one goroutine that runs every remember pipeline run, one at a time. See docs/remember-manager.md.
+// The remember manager: one goroutine that runs every remember pipeline run, one at a time. See docs/remember/remember-manager.md.
 //
 // Whoever wants text remembered (the HTTP handlers, anything else) does not call Remember: it sends a Request to the
 // manager with Submit. Submit queues it and returns at once with the ID of the run (its row in gb_remember_runs), which

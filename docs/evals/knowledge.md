@@ -17,7 +17,7 @@ The flag wins when given. In eval mode the server logs a warning at startup. Do 
 
 ### `POST /v1/gb/eval/remember`
 
-Same request body and behavior as [`POST /v1/gb/remember`](../remember.md), including `models` (the LLM model of each stage, see [Models](#models)). The response is the usual remember result plus:
+Same request body and behavior as [`POST /v1/gb/remember`](../remember/remember.md), including `models` (the LLM model of each stage, see [Models](#models)). The response is the usual remember result plus:
 
 - `trajectory_id`: the ID of the trajectory (also the file name, see [Storage](#storage)).
 - `trajectory`: the full ATIF trajectory.
@@ -75,7 +75,7 @@ Package `internal/ai/atif` defines the types and a `Builder`; the schema version
 
 A step has `step_id` (from 1), `timestamp`, `source` (`system`, `user` or `agent`) and `message`. Agent steps may also have `model_name`, `metrics` (`prompt_tokens` including cache tokens, `completion_tokens`, `cost_usd`), `tool_calls` and an `observation` whose `source_call_id` points at the tool call.
 
-Every LLM call becomes up to three steps: a `system` step (the prompt; omitted if empty), a `user` step (the input message) and an `agent` step (the model's raw output, with `model_name`, `metrics` and `extra.provider` / `extra.stop_reason`, and `extra.warning` when the provider made the call run differently from what was asked, e.g. a model that refuses the [thinking level](../remember.md#reasoning); the trajectory's `extra.warnings` lists such warnings once each). Work that is not an LLM call is an agent step with one tool call:
+Every LLM call becomes up to three steps: a `system` step (the prompt; omitted if empty), a `user` step (the input message) and an `agent` step (the model's raw output, with `model_name`, `metrics` and `extra.provider` / `extra.stop_reason`, and `extra.warning` when the provider made the call run differently from what was asked, e.g. a model that refuses the [thinking level](../remember/remember.md#reasoning); the trajectory's `extra.warnings` lists such warnings once each). Work that is not an LLM call is an agent step with one tool call:
 
 | call | tool | what it records |
 |---|---|---|
@@ -193,7 +193,7 @@ Since superseded facts are not retrieved by `query` ([temporal-edge-cases.md](..
 
 ### Models
 
-An eval case can vary the model of each LLM stage of `remember` (`extract_graph`, `summarize_chunk`, `resolve_edges`, `web_search`, `extract_image`; see [remember.md](../remember.md#choosing-the-model-of-each-stage)) and of the query (`query`, the call that answers the question), to compare models stage by stage. `detect_geo` is a stage of both pipelines (the entities of a text, the places of a question) and one setting applies to both. The runner passes the stages of `remember` as `models` in every `remember` request of a case and `query` and `detect_geo` as `models` of its query request. The settings come from two places that are combined stage by stage:
+An eval case can vary the model of each LLM stage of `remember` (`extract_graph`, `summarize_chunk`, `resolve_edges`, `web_search`, `extract_image`; see [remember/remember.md](../remember/remember.md#choosing-the-model-of-each-stage)) and of the query (`query`, the call that answers the question), to compare models stage by stage. `detect_geo` is a stage of both pipelines (the entities of a text, the places of a question) and one setting applies to both. The runner passes the stages of `remember` as `models` in every `remember` request of a case and `query` and `detect_geo` as `models` of its query request. The settings come from two places that are combined stage by stage:
 
 1. `-models extract_graph=<model>,query=<model>` on the command line: the defaults of the whole run (and recorded in the experiment run's `params.models`);
 2. `"models": {"extract_graph": "<model>", "query": "<model>"}` in a case of an eval: that case only; a stage named here wins over `-models`.
@@ -202,7 +202,7 @@ A stage named by neither uses the default model. The model of each LLM step is i
 
 ### Reasoning levels
 
-An eval case can also vary the reasoning (thinking) level of each LLM stage, to see how it affects the results (see [remember.md](../remember.md#reasoning)). The stages are `extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series`, `detect_geo` and `extract_image` for `remember`, and `query` for the LLM call that answers the question (`detect_geo` is a stage of the query too, and its level applies to both). The levels come from two places that are combined stage by stage:
+An eval case can also vary the reasoning (thinking) level of each LLM stage, to see how it affects the results (see [remember/remember.md](../remember/remember.md#reasoning)). The stages are `extract_graph`, `summarize_chunk`, `resolve_edges`, `resolve_series`, `detect_geo` and `extract_image` for `remember`, and `query` for the LLM call that answers the question (`detect_geo` is a stage of the query too, and its level applies to both). The levels come from two places that are combined stage by stage:
 
 1. `-reasoning extract_graph=low,query=medium` on the command line: the defaults of the whole run (recorded in the experiment run's `params.reasoning`);
 2. `"reasoning": {"extract_graph": "low", "query": "medium"}` in a case of an eval: that case only; a stage named here wins over `-reasoning`, as for models (a case controls its own parameters).

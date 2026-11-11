@@ -19,7 +19,7 @@
 
 The thinking level is chosen per stage; the support for `low`, `medium` and `high` is complete, only the default is off:
 
-- `none` (no thinking) for every LLM stage of **`remember`** (and `remember_image`), see [remember.md](remember.md#reasoning), and for **`query`**, see [query.md](query.md): thinking costs output tokens, so it is off unless a request (or an [eval](evals/knowledge.md#reasoning-levels)) turns it on.
+- `none` (no thinking) for every LLM stage of **`remember`** (and `remember_image`), see [remember/remember.md](remember/remember.md#reasoning), and for **`query`**, see [query.md](query.md): thinking costs output tokens, so it is off unless a request (or an [eval](evals/knowledge.md#reasoning-levels)) turns it on.
 
 A request can pick another one per stage. A [chunk summary](chunking.md#chunk-summaries) artifact stores only a reference to its inference (`gb_artifacts.inference_id`), which holds the model and the level (and the tokens and cost) of the call that wrote it.
 
@@ -44,4 +44,4 @@ This table replaces `gb_llm_calls` (tokens and cost per call, without the model'
 
 ## Which stage of a remember call made a run
 
-The [run log](remember.md#run-log) of a `remember` call (`gb_remember_runs`) lists, for each stage of the pipeline, the IDs of the inferences the stage made (`inference_ids` of its row in `gb_remember_run_stages`); so does the [run log of a `query` call](query.md#run-log) (`gb_query_runs`).
+The [run log](remember/remember.md#run-log) of a `remember` call (`gb_remember_runs`) lists, for each stage of the pipeline, the IDs of the inferences the stage made (`inference_ids` of its row in `gb_remember_run_stages`); so does the [run log of a `query` call](query.md#run-log) (`gb_query_runs`).

@@ -1,6 +1,6 @@
 # The gligabao CLI
 
-`gligabao` is also a client: `remember`, `query`, `dataset`, `api`, `status` and `stop` let an agent (or a person) use gligabao from the command line, without writing HTTP calls. The commands are thin: each one builds the JSON body of the matching REST endpoint, sends it and prints the response, so fields, validation and errors are exactly those of the API ([remember](remember.md), [query](query.md), [datasets](datasets.md)). The commands live in the public `cli` package (`cli/commands.go`), so a program that embeds gligabao with `cli.New` gets them too (its own `serve`, with its hooks, is what the CLI starts as the local daemon).
+`gligabao` is also a client: `remember`, `query`, `dataset`, `api`, `status` and `stop` let an agent (or a person) use gligabao from the command line, without writing HTTP calls. The commands are thin: each one builds the JSON body of the matching REST endpoint, sends it and prints the response, so fields, validation and errors are exactly those of the API ([remember](remember/remember.md), [query](query.md), [datasets](datasets.md)). The commands live in the public `cli` package (`cli/commands.go`), so a program that embeds gligabao with `cli.New` gets them too (its own `serve`, with its hooks, is what the CLI starts as the local daemon).
 
 ## The local daemon
 

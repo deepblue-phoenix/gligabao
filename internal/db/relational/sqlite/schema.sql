@@ -114,7 +114,7 @@ CREATE INDEX IF NOT EXISTS idx_gb_inferences_model ON gb_inferences(model_id);
 --   run_id      the run (gb_remember_runs)
 --   stage       the stage of the run it belongs to (model.RememberStages). The web_search, fetch_series and observe_series stages
 --               hold the outputs of the steps of the texts they store too, as for their inferences
---   name        the step that made it: extract_graph, resolve_edges, detect_geo, ... (see docs/remember.md#stage-outputs)
+--   name        the step that made it: extract_graph, resolve_edges, detect_geo, ... (see docs/remember/remember.md#stage-outputs)
 --   label       what it is about when the step ran more than once ('chunk 2 of 5', 'web search for "Berlin"'); '' if not
 --   output      JSON, whose shape depends on name; an output over 64 KiB is replaced by {"truncated": true, "bytes": n, "preview": ...}
 --   created_at  when it was made

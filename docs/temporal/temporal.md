@@ -24,7 +24,7 @@ Entities (`Alice`, `Acme`) are connected by **edges** (`Alice --works_at--> Acme
 | Event time (the world) | `valid_at`, `invalid_at` | When the fact became true / stopped being true. `invalid_at` is `NULL` while the fact is still true. |
 | System time (our knowledge) | `created_at`, `expired_at` | When we learned about it / when newer knowledge superseded it. `NULL` `expired_at` means the fact is live. |
 
-Each edge also has `artifact_id`, the artifact it was extracted from. Every artifact that states the edge is also recorded in `gb_edge_artifacts`, and entities are linked to artifacts in `gb_entity_artifacts` (see [remember.md](../remember.md#schema)).
+Each edge also has `artifact_id`, the artifact it was extracted from. Every artifact that states the edge is also recorded in `gb_edge_artifacts`, and entities are linked to artifacts in `gb_entity_artifacts` (see [remember/remember.md](../remember/remember.md#schema)).
 
 All timestamps are RFC 3339 UTC strings (`2006-01-02T15:04:05Z`).
 
@@ -37,7 +37,7 @@ There is no uniqueness on (source, target, relation): a fact can end and later b
 Run by `memory.Remember`:
 
 1. **Extract** (`Extract`, 1 LLM call): the model receives the reference time and the text and returns entities and edges with `description`, `valid_at` and `invalid_at`.
-2. **Find candidates** (`memory_temporal.LoadCandidates`): live (not expired) stored edges that touch at least one entity named in the new edges matched by normalized name and, when vectors are on, by similarity of the entity embeddings (aliases), merged by edge ID, newest first, at most 50. See [remember.md](../remember.md#candidate-facts-load_candidates).
+2. **Find candidates** (`memory_temporal.LoadCandidates`): live (not expired) stored edges that touch at least one entity named in the new edges matched by normalized name and, when vectors are on, by similarity of the entity embeddings (aliases), merged by edge ID, newest first, at most 50. See [remember/remember.md](../remember/remember.md#candidate-facts-load_candidates).
 3. **Resolve** (`memory_temporal.ResolveEdges`):
    - *Exact repeats* (same normalized source, target and relation as a candidate that has no `invalid_at`) are detected in Go, with no LLM call.
    - The rest are sent to a second LLM call together with the candidates. It returns `duplicates` (same fact, different wording) and `contradictions` (an existing fact can't be true at the same time as a new one). IDs and indexes that weren't in the prompt are dropped.
@@ -66,7 +66,7 @@ Example: "Alice works at Acme" (artifact at 2023-01-01), then "Alice started wor
 
 ## What a call did to the facts
 
-`gb_edges` only holds the final state of a fact. To see how one `remember` call changed it, `memory_temporal.StoreEdges` also appends to the **edge event log**, `gb_edge_events`, in the same transaction: one row for each fact the call created, confirmed, ended, invalidated or superseded, with the fact's `invalid_at` before and after. The table, the events and how to read them are in [edge-events.md](../edge-events.md); the admin UI plots them ([remember.md](../remember.md#admin-ui)).
+`gb_edges` only holds the final state of a fact. To see how one `remember` call changed it, `memory_temporal.StoreEdges` also appends to the **edge event log**, `gb_edge_events`, in the same transaction: one row for each fact the call created, confirmed, ended, invalidated or superseded, with the fact's `invalid_at` before and after. The table, the events and how to read them are in [edge-events.md](../edge-events.md); the admin UI plots them ([remember/remember.md](../remember/remember.md#admin-ui)).
 
 ## Query
 

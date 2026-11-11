@@ -85,7 +85,7 @@ A text was remembered (`POST /v1/gb/remember` with `text`).
 
 The text pipeline failed (the request returned 502; nothing is stored).
 
-Fields: `user_id`, `dataset`, `session_id`, `remember_run_id` (the run in `gb_remember_runs`, see [remember-manager.md](remember-manager.md)), `text_bytes`, `duration_ms`, `error`.
+Fields: `user_id`, `dataset`, `session_id`, `remember_run_id` (the run in `gb_remember_runs`, see [remember/remember-manager.md](remember/remember-manager.md)), `text_bytes`, `duration_ms`, `error`.
 
 #### `remember_image.completed`
 
@@ -219,7 +219,7 @@ type GraphEmbedder = memory_core.GraphEmbedder // func(ctx context.Context, req 
 
 ### The index name
 
-A `remember` and a `query` request can name the graph embedding index they are for, with the optional field **`graph_index`** (see [remember.md](remember.md), [query.md](query.md)); the hook gets it as `req.Index`, for the embedding it makes (remember) and for the search it does (query). It is how a hook that keeps several indexes (one per model, per size bin, per tenant, ...) knows which one: the graph engine of `baby_thinker` has named indexes (`-index NAME`) and its client passes `req.Index` there. gligabao only carries the name and does not interpret it.
+A `remember` and a `query` request can name the graph embedding index they are for, with the optional field **`graph_index`** (see [remember/remember.md](remember/remember.md), [query.md](query.md)); the hook gets it as `req.Index`, for the embedding it makes (remember) and for the search it does (query). It is how a hook that keeps several indexes (one per model, per size bin, per tenant, ...) knows which one: the graph engine of `baby_thinker` has named indexes (`-index NAME`) and its client passes `req.Index` there. gligabao only carries the name and does not interpret it.
 
 - The name is 1-64 letters, digits, `.`, `_` or `-`, starting with a letter or digit (the names the graph engine accepts, so it can never be a path); gligabao validates it (`400` otherwise) and trims it.
 - **Empty means "none given"**: the hook uses its own default (the engine's is `default`).
@@ -285,7 +285,7 @@ type ClassifyingTrainingHook = memory_core.ClassifyingTrainingHook // func(ctx c
 | Type | Fields |
 |---|---|
 | `gligabao.KnowledgeDataset` | `UserID`, `Dataset` (the resolved name), `DatasetID`, `Artifacts` (`[]gligabao.Artifact`: every artifact of the dataset, of every kind, by ID), `Graphs` (`[]gligabao.ArtifactGraph`: the graph of every artifact that has one, by artifact ID) |
-| `gligabao.ArtifactGraph` | `ArtifactID` (the artifact the graph is of; it identifies the graph), `Entities` (`[]gligabao.GraphEntity`), `Edges` (`[]gligabao.GraphEdge`), `Classes` (`[]gligabao.ArtifactClass`: the classes an LLM gave to the graph when it was remembered with `classify_graph`, see [remember.md](remember.md#graph-classes); empty if it was not classified) |
+| `gligabao.ArtifactGraph` | `ArtifactID` (the artifact the graph is of; it identifies the graph), `Entities` (`[]gligabao.GraphEntity`), `Edges` (`[]gligabao.GraphEdge`), `Classes` (`[]gligabao.ArtifactClass`: the classes an LLM gave to the graph when it was remembered with `classify_graph`, see [remember/remember.md](remember/remember.md#graph-classes); empty if it was not classified) |
 | `gligabao.ArtifactClass` | one record of `gb_artifact_classes`: `ID`, `DatasetID`, `ArtifactID`, `Class`, `InferenceID` (the model run that gave the class, see [inferences.md](inferences.md)), `CreatedAt` |
 | `gligabao.TrainingDataset` | the `KnowledgeDataset` embedded (what is kept of it: all, or a subset) and `Classes` (`map[int64]string`: the class of each graph in it, by the `ArtifactID` of the graph) |
 

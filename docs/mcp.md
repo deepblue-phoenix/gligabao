@@ -24,7 +24,7 @@ For a client that takes a JSON config:
 
 ### `remember`
 
-Stores a text in memory, like [`POST /v1/gb/remember`](remember.md) with a text.
+Stores a text in memory, like [`POST /v1/gb/remember`](remember/remember.md) with a text.
 
 | Argument | | |
 | -------- | - | - |

@@ -86,7 +86,7 @@ func NewFromEnv(opts ...Option) *Client {
 	return New(os.Getenv(EnvURL), append(base, opts...)...)
 }
 
-// RememberRequest is the body of POST /v1/gb/remember (text only). See gligabao docs/remember.md.
+// RememberRequest is the body of POST /v1/gb/remember (text only). See gligabao docs/remember/remember.md.
 // Fields left empty are not sent, so the server's defaults apply.
 type RememberRequest struct {
 	Text          string            `json:"text"`

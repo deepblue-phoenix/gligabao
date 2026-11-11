@@ -1,9 +1,9 @@
-// The "remember runs" and "query runs" views (see docs/remember.md#run-log, docs/query.md#run-log, docs/pipeline.md): both are
+// The "remember runs" and "query runs" views (see docs/remember/remember.md#run-log, docs/query.md#run-log, docs/pipeline.md): both are
 // run logs of a pipeline, with the same shape, so one piece of code draws both, configured by a Kind. Per database, how many runs
 // are in each status and the list of the runs, newest first. Clicking a status tile filters the list by it; clicking a run shows
 // its parameters and how each stage went (status, error, time, inferences). For remember runs, each stage that ran has a button
 // that loads (only then) and opens a modal with what the stage produced (its outputs, kept for debugging: see
-// docs/remember.md#stage-outputs); query runs keep no outputs.
+// docs/remember/remember.md#stage-outputs); query runs keep no outputs.
 
 import { bookmarkButton, registerBookmarkOpener, type Bookmark } from "./bookmarks.js";
 import { openTemporal } from "./temporal.js";
@@ -34,7 +34,7 @@ interface Kind {
   outputs: boolean;    // does it keep the outputs of its stages
 }
 
-// What each stage of the remember pipeline does, for the "?" button of the stages table (see docs/remember.md#how-it-works).
+// What each stage of the remember pipeline does, for the "?" button of the stages table (see docs/remember/remember.md#how-it-works).
 const REMEMBER_HELP: Record<string, string> = {
   classify_complexity: "Asks Jev (a small fast model) whether the text is simple, medium or complex, i.e. how many entities it will probably yield. Advisory only: the result is logged, a failure never fails the run. Only runs when a Jev API key is configured.",
   chunk_text: "Splits a long text into chunks that the later stages process one after the other. A text that fits in one chunk is not split.",

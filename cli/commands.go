@@ -139,7 +139,7 @@ func (c *CLI) rememberCmd() *cobra.Command {
 		Use:   "remember [TEXT | -]",
 		Short: "Remember a text or an image (POST /v1/gb/remember)",
 		Long: `Remember a text (or an image) in the knowledge graph of a dataset: an LLM extracts its entities and facts, which are stored with
-their embeddings. The command returns when the run is complete, with the JSON response of POST /v1/gb/remember (see docs/remember.md).
+their embeddings. The command returns when the run is complete, with the JSON response of POST /v1/gb/remember (see docs/remember/remember.md).
 
 The text is the argument, the contents of --file, or stdin if the argument is "-". Or give the whole request with --json.
 ` + clientHelp,

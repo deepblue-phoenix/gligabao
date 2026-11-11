@@ -1,6 +1,6 @@
 # Edge events
 
-`gb_edges` holds the **final** state of a fact. It cannot say what a `remember` call did to it: a closed fact keeps no trace of its old `invalid_at`, and a fact that was merely stated again leaves only a link in `gb_edge_artifacts`. The **edge event log**, `gb_edge_events`, keeps the steps: an append-only table, one row for each fact a call touched, written in the same transaction as the artifact. It is what the admin UI plots in the [Temporal changes](remember.md#admin-ui) view.
+`gb_edges` holds the **final** state of a fact. It cannot say what a `remember` call did to it: a closed fact keeps no trace of its old `invalid_at`, and a fact that was merely stated again leaves only a link in `gb_edge_artifacts`. The **edge event log**, `gb_edge_events`, keeps the steps: an append-only table, one row for each fact a call touched, written in the same transaction as the artifact. It is what the admin UI plots in the [Temporal changes](remember/remember.md#admin-ui) view.
 
 The model of the two timelines and the invalidation rule are in [temporal.md](temporal/temporal.md); this page is only about the log.
 
@@ -46,7 +46,7 @@ Facts of the call that need no change (a repeat inside the same artifact, a cont
 ## Reading it
 
 - Go: `graph.ListEdgeEvents(ctx, db, artifactID)` returns the events of the artifact **and of every artifact below it** through `parent_id` (the chunks of a long text, its web searches and series observations), oldest first, each with its fact in its current state (`Edge`, with the endpoint names).
-- Admin UI endpoint: `GET /v1/gb/admin/api/remember-run-temporal?run_id=<id>[&db=<name>]`, described in [remember.md](remember.md#admin-ui). It uses the artifact of the run (`gb_remember_runs.artifact_id`), so a run that stored nothing has no events.
+- Admin UI endpoint: `GET /v1/gb/admin/api/remember-run-temporal?run_id=<id>[&db=<name>]`, described in [remember/remember.md](remember/remember.md#admin-ui). It uses the artifact of the run (`gb_remember_runs.artifact_id`), so a run that stored nothing has no events.
 - SQL, for the history of one fact: `SELECT * FROM gb_edge_events WHERE edge_id = ? ORDER BY id` (indexed, like `artifact_id`).
 
 ## Limitations

@@ -64,7 +64,7 @@ type rememberRequest struct {
 	// ClassifyGraph (optional, default true for a text; nil is the default, false turns it off) has an LLM classify the graph of each artifact the call stores (the text, or each chunk of a
 	// document): it picks one to three classes, and each is stored as a record of gb_artifact_classes that references the run (inference)
 	// of the call. It costs a call per artifact; the model and the reasoning level are those of the "classify_graph" stage. Not for an image
-	// (400). See docs/remember.md#graph-classes.
+	// (400). See docs/remember/remember.md#graph-classes.
 	ClassifyGraph *bool `json:"classify_graph"`
 	// GraphClasses (optional) are the only classes the LLM may choose from (at most memory_core.MaxGraphClasses, normalized to lowercase
 	// snake_case); without them it chooses freely, reusing the classes the dataset already has. 400 with classify_graph false.

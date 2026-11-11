@@ -1,6 +1,6 @@
 # GET /v1/gb/datasets/{name}/git
 
-Exports a [dataset](datasets.md) as a **git repository**: its history becomes the history of the repository. Every [`remember`](remember.md) call is one commit, dated when the call was made, that adds the text that was remembered and the entities and facts it yielded, and edits the files of the facts it confirmed, ended or invalidated. `git log` shows how the knowledge grew; `git log -p edges/` is the history of the facts. It reads the databases only and makes no LLM call, so it works even when no LLM is configured.
+Exports a [dataset](datasets.md) as a **git repository**: its history becomes the history of the repository. Every [`remember`](remember/remember.md) call is one commit, dated when the call was made, that adds the text that was remembered and the entities and facts it yielded, and edits the files of the facts it confirmed, ended or invalidated. `git log` shows how the knowledge grew; `git log -p edges/` is the history of the facts. It reads the databases only and makes no LLM call, so it works even when no LLM is configured.
 
 The repository is generated, read-only, and **deterministic**: the same dataset gives the same commit IDs. It is not imported back.
 
@@ -41,7 +41,7 @@ From the CLI: `gligabao dataset git NAME [DIR]` downloads it and unpacks the bar
 
 Files have a YAML front matter between `---` lines; strings are double-quoted. File names are lowercase slugs (letters, digits, `_`, `-`; at most 40 characters) plus the ID, so they never collide. A text that does not end in a newline gets one.
 
-How the dataset's changes become changes of files, replaying the [edge events](remember.md#schema) of each call:
+How the dataset's changes become changes of files, replaying the [edge events](remember/remember.md#schema) of each call:
 
 | Event | In the commit |
 |---|---|
@@ -54,7 +54,7 @@ How the dataset's changes become changes of files, replaying the [edge events](r
 
 ## Graph classes
 
-The classes an LLM gave to the graph of an artifact by the `classify_graph` stage (see [remember.md](remember.md#graph-classes)) are the `classes` of that artifact's front matter: a sorted list, once each (`classes: ["career_change", "hr"]`). For a [chunked](chunking.md) text they are on the chunk files, as the classes are of the chunk's graph. The classes of a call are in the call's commit.
+The classes an LLM gave to the graph of an artifact by the `classify_graph` stage (see [remember/remember.md](remember/remember.md#graph-classes)) are the `classes` of that artifact's front matter: a sorted list, once each (`classes: ["career_change", "hr"]`). For a [chunked](chunking.md) text they are on the chunk files, as the classes are of the chunk's graph. The classes of a call are in the call's commit.
 
 ## Run logs
 

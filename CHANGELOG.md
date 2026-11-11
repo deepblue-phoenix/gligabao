@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.183.1] - 2026-11-11
+
+### Added
+- Docs: `docs/remember/remember-data-access.md` lists what each stage of the `remember` pipeline reads from and writes to the database and the vector store.
+
+### Changed
+- Docs: the `remember` pages moved to `docs/remember/` (`remember.md`, `remember-manager.md`, `remember-data-access.md`); every link and code comment that points at them was updated.
+
 ## [0.183.0] - 2026-11-12
 
 ### Changed

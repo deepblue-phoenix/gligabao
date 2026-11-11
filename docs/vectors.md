@@ -56,7 +56,7 @@ The **vectors** view lists, per database, every live memory dataset (not trainin
 
 ## What `remember` writes
 
-[`remember`](remember.md) embeds what it stores, in the same call:
+[`remember`](remember/remember.md) embeds what it stores, in the same call:
 
 - every entity the text mentions (listed by the extraction, or created from an edge that names it) goes to the entity index;
 - every edge the text states goes to the edge index: a new edge, or the stored edge a repeated fact was merged into;
@@ -70,7 +70,7 @@ All the texts of one call (for a chunked text: of one chunk) are embedded in a s
 - The vectors are written right after the commit (the database and the vector store cannot share a transaction). If that write fails, the request fails with the relational data already saved; the vectors of those entities and edges are written again the next time they are mentioned.
 - Embedding needs `openai_api_key` (or `OPENAI_API_KEY`). It is required: without it the server does not start (it is also what `query` embeds the question with).
 - The tokens and cost of each embedding request are stored as an inference in `gb_inferences` (type `remember`, stage `embed`, with the embedding model, reasoning `none` and `output_tokens` 0), next to the LLM calls.
-- Besides the search for [candidate facts](remember.md) that `remember` makes with the entity index, the vectors are what `query` searches (see below).
+- Besides the search for [candidate facts](remember/remember.md) that `remember` makes with the entity index, the vectors are what `query` searches (see below).
 
 ## What `query` reads
 

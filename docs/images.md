@@ -1,6 +1,6 @@
 # Images (the image pipeline)
 
-`POST /v1/gb/remember` also remembers images. An image goes through a pipeline of its own, separate from the text pipeline ([remember.md](remember.md)): a vision LLM reads the text in the image (OCR: its title and text blocks) and classifies the whole image by a theme (`plot`, `graph`, ...). The image file is kept on the file system, tracked by an **image artifact** row (metadata and the file's path, never the bytes), and what the model read is stored as an **image extraction**, in their own tables.
+`POST /v1/gb/remember` also remembers images. An image goes through a pipeline of its own, separate from the text pipeline ([remember/remember.md](remember/remember.md)): a vision LLM reads the text in the image (OCR: its title and text blocks) and classifies the whole image by a theme (`plot`, `graph`, ...). The image file is kept on the file system, tracked by an **image artifact** row (metadata and the file's path, never the bytes), and what the model read is stored as an **image extraction**, in their own tables.
 
 For now nothing is added to the graph: no entities, edges or vectors come out of an image, and `query` does not see it. Grounding the extractions in the rest of the graph is planned; the extraction tables are the input for it.
 
@@ -19,7 +19,7 @@ gb-user-id: u1
 - `image`: the image, base64-encoded (standard alphabet): a JPEG, PNG, GIF or WebP, at most 5 MiB (the Anthropic API limit) before encoding. The type is detected from the bytes. A request with `image` is an image request; the body may be up to about 7 MiB (instead of 1 MiB for text).
 - `dataset` (optional, default `main`, created if missing) and `reference_time` (optional, RFC 3339, default now: when the image was captured or observed) work as for text.
 - `session_id` (optional) works as for text ([sessions.md](sessions.md)): it is stored on the new image artifact (`gb_image_artifacts.session_id`) and echoed as `session_id` in the response. Images add no entities or edges, so there are no session links beyond it. `400` if it is too long or has control characters.
-- `models` (optional): `{"extract_image": "<model>"}` picks the vision model that reads the image; without it the default model is used (see [remember.md](remember.md#choosing-the-model-of-each-stage)). A repeated image is answered from its stored extraction without an LLM call, so the model reported is the one that made it.
+- `models` (optional): `{"extract_image": "<model>"}` picks the vision model that reads the image; without it the default model is used (see [remember/remember.md](remember/remember.md#choosing-the-model-of-each-stage)). A repeated image is answered from its stored extraction without an LLM call, so the model reported is the one that made it.
 - `text` and `kind` must not be given together with `image` (`400`): an image is not a text artifact.
 
 ## Response

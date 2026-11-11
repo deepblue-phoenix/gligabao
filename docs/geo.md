@@ -75,7 +75,7 @@ errors are logged, recorded in the trajectory and run log, and returned in `geo`
 4. **Store**: one transaction writes the rows of `gb_entity_geo`, which are then in the geo index too ([The geo index](#the-geo-index)).
 
 `detect_geo` takes a model (`models`) and a reasoning level (`reasoning`) like the other LLM stages
-([remember.md](remember.md#choosing-the-model-of-each-stage)). In the run log the stage is `resolve_geo` and holds the
+([remember/remember.md](remember/remember.md#choosing-the-model-of-each-stage)). In the run log the stage is `resolve_geo` and holds the
 `detect_geo` inference.
 
 ## In the trajectory
