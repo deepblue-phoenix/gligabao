@@ -5,6 +5,14 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.180.0] - 2026-11-11
+
+### Added
+- **State, storage and tools of the deep-research loop (stage 1; the loop is not connected yet).** New package `internal/agent_research/investigate`: the question frontier, the notes (claims, datapoints, sources, contradictions, assumptions), the claim ledger with its `VERIFIED` rule and the challenges (adversarial queries) as immutable values with pure transitions (`Add`, `Select`, `Resolve`, `Retry`, `Reopen`, `SetPriority`, `PruneBranch`, `Reblock`, `Append`, `Update`, `Open`, `Close`, ...), the compact frontier `Summary`, a status-change log (one transition per change, the latest always equals the status), a parser and renderer of the fixed `notes.md` grammar, and 15 tools (`frontier_next`, `frontier_view`, `add_question`, `retry_question`, `resolve_question`, `reopen_question`, `set_priority`, `prune_branch`, `notes_read`, `notes_append`, `notes_update`, `notes_scratch`, `challenge`, `record_challenge_result`, `challenges_view`) in a registry (`InvestigativeRegistry`) that no agent definition uses. The tools return effects; an effect layer (`Execute`, `Session`) runs them in one store transaction, and the notes file is written after the commit (temp file and rename). Design defaults are Go constants (`DefaultLimits`).
+- **Ten new tables** in both backends: `gb_agent_frontier_questions`, `gb_agent_frontier_deps`, `gb_agent_frontier_attempts`, `gb_agent_frontier_transitions`, `gb_agent_sources`, `gb_agent_claims`, `gb_agent_claim_sources`, `gb_agent_challenges`, `gb_agent_challenge_sources` and `gb_agent_notes_versions` (created on start, see `docs/listings/db-tables.md`), with the store (`NewInvestigateStore` in `db/sqlite` and `db/postgres`).
+- **`gb_agent_research_runs.notes_id`** (random 128-bit id, 32 hex characters, made when a run is created) for the name of the notes file; runs made before have `''` and no notes file. It is added to existing databases on start (`ALTER`, SQLite `Upgrade` list and `upgrade_columns.sql`).
+- **`research_notes_dir`** (server config; default a `research_notes` directory next to the binary, a relative path is relative to the config file): the directory of the notes files `notes_<user>_<run>_<notes_id>.md`. Nothing writes there until the loop is connected.
+
 ## [0.179.2] - 2026-11-11
 
 ### Fixed

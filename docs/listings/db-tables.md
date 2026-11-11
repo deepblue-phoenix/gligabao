@@ -185,6 +185,16 @@ Tables of the research agents (`internal/agent_research`, see `docs/agents/resea
 
 - `gb_agent_research_runs`
 - `gb_agent_research_states`
+- `gb_agent_frontier_questions`
+- `gb_agent_frontier_deps`
+- `gb_agent_frontier_attempts`
+- `gb_agent_frontier_transitions`
+- `gb_agent_sources`
+- `gb_agent_claims`
+- `gb_agent_claim_sources`
+- `gb_agent_challenges`
+- `gb_agent_challenge_sources`
+- `gb_agent_notes_versions`
 
 ### What each table is about
 
@@ -192,6 +202,16 @@ Tables of the research agents (`internal/agent_research`, see `docs/agents/resea
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `gb_agent_research_runs`   | one row per research agent started on a topic, with its status, the state it is in, steps, tokens and cost so far, and the report or the error. |
 | `gb_agent_research_states` | one row per state the agent went through while working (starting, thinking, searching, reading, ...), append-only, with its detail, error and times. |
+| `gb_agent_frontier_questions` | one row per question of a run's deep-research frontier (a node of the question graph), with its parent, depth, priority, current status and answer. |
+| `gb_agent_frontier_deps` | the edges "question depends on question" of the frontier (a DAG). |
+| `gb_agent_frontier_attempts` | append-only log of the queries tried on a question (drives the dead-end rule and the "already attempted" list). |
+| `gb_agent_frontier_transitions` | append-only: one row per status (or priority) change of a question, with trigger, actor, reason and the research state it happened in. |
+| `gb_agent_sources` | the sources (one row per distinct URL, with its registrable domain) read in a run. |
+| `gb_agent_claims` | the claims and numeric datapoints of a run with their verification status (`UNVERIFIED`, `VERIFIED`, `REFUTED`, `RETRACTED`). |
+| `gb_agent_claim_sources` | links between claims and sources, with the stance (`supports` or `contradicts`). |
+| `gb_agent_challenges` | one row per adversarial query (strategy, negation, query, outcome, evidence) with which the agent attacks its own claims, answers and conclusion. |
+| `gb_agent_challenge_sources` | the sources that backed the verdict of a challenge. |
+| `gb_agent_notes_versions` | append-only: the whole `notes.md` of a run after each write, for debugging and export. |
 
 ### Where each table is defined
 
@@ -199,3 +219,13 @@ Tables of the research agents (`internal/agent_research`, see `docs/agents/resea
 | ------------------------------ | ----------------------------------------------- | ------------------------------------------------- |
 | `gb_agent_research_runs`   | `internal/agent_research/db/sqlite/schema.sql`   | `internal/agent_research/db/postgres/schema.sql`   |
 | `gb_agent_research_states` | `internal/agent_research/db/sqlite/schema.sql`   | `internal/agent_research/db/postgres/schema.sql`   |
+| `gb_agent_frontier_questions` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |
+| `gb_agent_frontier_deps` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |
+| `gb_agent_frontier_attempts` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |
+| `gb_agent_frontier_transitions` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |
+| `gb_agent_sources` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |
+| `gb_agent_claims` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |
+| `gb_agent_claim_sources` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |
+| `gb_agent_challenges` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |
+| `gb_agent_challenge_sources` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |
+| `gb_agent_notes_versions` | `internal/agent_research/db/sqlite/schema.sql` | `internal/agent_research/db/postgres/schema.sql` |

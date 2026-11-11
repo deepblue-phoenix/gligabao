@@ -12,7 +12,7 @@ import _ "embed"
 var Schema string
 
 // Upgrade is what an older database lacks: the columns parent_id, name and reason of gb_agent_research_runs (before sub-agents, 0.129.0)
-// and runner (before the Modal runner, 0.165.0), and agent_name, agent_version and agent_hash (before the agent definitions, 0.168.0).
+// and runner (before the Modal runner, 0.165.0), and agent_name, agent_version and agent_hash (before the agent definitions, 0.168.0), and notes_id (before the deep-research loop state, 0.180.0).
 // SQLite has no ADD COLUMN IF NOT EXISTS, so each statement is run only if its column is missing (see the Open of package
 // agent_research).
 var Upgrade = []struct{ Column, Statement string }{
@@ -23,6 +23,7 @@ var Upgrade = []struct{ Column, Statement string }{
 	{"agent_name", `ALTER TABLE gb_agent_research_runs ADD COLUMN agent_name TEXT NOT NULL DEFAULT ''`},
 	{"agent_version", `ALTER TABLE gb_agent_research_runs ADD COLUMN agent_version TEXT NOT NULL DEFAULT ''`},
 	{"agent_hash", `ALTER TABLE gb_agent_research_runs ADD COLUMN agent_hash TEXT NOT NULL DEFAULT ''`},
+	{"notes_id", `ALTER TABLE gb_agent_research_runs ADD COLUMN notes_id TEXT NOT NULL DEFAULT ''`},
 }
 
 // SubagentIndexes are the indexes on the columns of Upgrade, so that they are made after it: the sub-agents of a run, and the rule

@@ -6,3 +6,4 @@ ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS runner TEXT NOT NULL
 ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS agent_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS agent_version TEXT NOT NULL DEFAULT '';
 ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS agent_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE gb_agent_research_runs ADD COLUMN IF NOT EXISTS notes_id TEXT NOT NULL DEFAULT '';

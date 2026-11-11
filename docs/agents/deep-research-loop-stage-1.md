@@ -1,6 +1,6 @@
 # Deep-research loop, stage 1: state, storage and tools
 
-**Status:** to implement. This is the first of two implementation stages of the [deep-research loop](deep-research-loop.md). The design page defines the concepts, the data and the rules; this page says what to build in this stage, in what order, and how to know it is done. Stage 2 is [deep-research-loop-stage-2.md](deep-research-loop-stage-2.md).
+**Status:** implemented in 0.180.0 (see [Implementation notes](#implementation-notes) for where the code differs from or extends this page). This is the first of two implementation stages of the [deep-research loop](deep-research-loop.md). The design page defines the concepts, the data and the rules; this page says what to build in this stage, in what order, and how to know it is done. Stage 2 is [deep-research-loop-stage-2.md](deep-research-loop-stage-2.md).
 
 Read the design page first, in full. Where this page is narrower than the design, this page wins for this stage; where it seems to contradict the design, stop and raise it rather than choose.
 
@@ -218,3 +218,20 @@ Tests for the migration (both backends, with a database created by the **previou
 ## Hand-off to stage 2
 
 Stage 2 needs from this stage: the frontier, notes, claim and challenge values with their transitions; the `Store` and the effect executor; the tool registry; the limits struct; and the summary and size functions for the prompt. Keep those names stable, and say in the changelog that the loop is not yet connected.
+
+## Implementation notes
+
+Where the code (package `internal/agent_research/investigate`, 0.180.0) chose, extended or differs from this page:
+
+- **Notes value holds the records.** `Notes` contains the claims, datapoints, sources, contradictions and assumptions themselves (the claim and source values of `claims.go` are its records), so there is no second copy to keep in step. The notes **text** (latest `gb_agent_notes_versions` row) is the authority when a run is loaded: the independence declarations, the `check` and `note` of a claim have no column in the claim tables, so they live only in the text. The claim and source tables are written by the same effects as the structured history.
+- **Handlers describe, `Diff` derives the effects.** A handler returns the new `State`; `Diff(before, after, transitions, notesReason)` (pure) derives the effects, in foreign-key order. `Session` is the effect layer around the registry (`Start`, `Load`, `Call`).
+- **Transitions as returned values.** `Add`, `Resolve`, `Retry`, ... return `[]Transition` (a call can change several questions). A question carries its last `TransSeq`.
+- **Added trigger `dependency_added`:** an in-progress question goes back to `pending` when a child that blocks it is added (`add_question` with `blocks_parent`).
+- **Extra optional tool arguments:** `frontier_next(atomic_reason)` (the statement that the objective is atomic, stored in `Scratch` as `Atomic objective: ...`), `add_question(blocks_parent)`, `retry_question(assumption)` (required at the attempt cap), `resolve_question(reason)` (replaces a missing hypothesis search or answer challenge; stored in the transition).
+- **Root question** is created `in_progress` (the objective is always being worked on); `frontier_next` selects among its descendants and is rejected while another question is in progress.
+- **`Retry` semantics:** `new_query` is logged as the next attempt with `why` as its outcome; at `max_attempts` logged attempts the next call makes the question `unresolvable` (assumption required).
+- **Hypothesis check** counts the attempts that are the searches of challenges (linked by `LinkAttempt`) as refuting and the others as confirming.
+- **Outcomes of a challenge** are applied in `record_challenge_result` (claim `REFUTED` plus a high-priority question and reopening of the questions that cite it, scope added on `weakened`, a question queued for a `weakened` or `refuted` conclusion). The same refutation logic runs when `notes_update` sets `REFUTED`.
+- **`Domain`** uses a simple rule (last two labels, three for `co.uk`-style suffixes), documented in the code; the repo has no public-suffix list.
+- **`research_notes_dir`** defaults to a `research_notes` directory next to the binary (the repo has no research data directory to reuse).
+- **PostgreSQL** is covered by the same tests as SQLite when `POSTGRES_TEST_DSN` is set.

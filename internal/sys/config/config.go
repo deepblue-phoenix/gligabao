@@ -158,6 +158,10 @@ type Config struct {
 	// from when the server starts. Default: an agent_defs directory next to the binary. A relative path is relative to the config file.
 	// `serve --agent-defs-dir` overrides it.
 	AgentDefsDir string `toml:"agent_defs_dir"`
+	// ResearchNotesDir is the directory the notes files of the investigative research loop are written to (notes_<user>_<run>_<notes_id>.md,
+	// see docs/agents/deep-research-loop.md). Default: a research_notes directory next to the binary (see ResearchNotesDirOrDefault), like
+	// agent_defs. A relative path is relative to the config file. Nothing writes there until the loop is connected (stage 2).
+	ResearchNotesDir string `toml:"research_notes_dir"`
 	// ResearchMaxCostUSD is the most one research (all its agents together) may spend, in USD, whatever its agent definition and its
 	// request say: they can only lower it. 0 (default): no cap of the server.
 	ResearchMaxCostUSD float64 `toml:"research_max_cost_usd"`
@@ -190,6 +194,21 @@ func DefaultPath() string {
 		return FileName
 	}
 	return filepath.Join(filepath.Dir(exe), FileName)
+}
+
+// DefaultResearchNotesDirName is the directory next to the binary that ResearchNotesDirOrDefault falls back to.
+const DefaultResearchNotesDirName = "research_notes"
+
+// ResearchNotesDirOrDefault is ResearchNotesDir, or a research_notes directory next to the binary if it is empty.
+func (c *Config) ResearchNotesDirOrDefault() string {
+	if c.ResearchNotesDir != "" {
+		return c.ResearchNotesDir
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return DefaultResearchNotesDirName
+	}
+	return filepath.Join(filepath.Dir(exe), DefaultResearchNotesDirName)
 }
 
 // Default returns a Config populated with default values. API keys are
@@ -321,6 +340,9 @@ func Load(path string) (*Config, error) {
 func (c *Config) resolveDirs(base string) {
 	if c.AgentDefsDir != "" && !filepath.IsAbs(c.AgentDefsDir) {
 		c.AgentDefsDir = filepath.Join(base, c.AgentDefsDir)
+	}
+	if c.ResearchNotesDir != "" && !filepath.IsAbs(c.ResearchNotesDir) {
+		c.ResearchNotesDir = filepath.Join(base, c.ResearchNotesDir)
 	}
 	for _, list := range []*[]string{&c.DatasetsTrainingDirs, &c.EvalsTrainingDirs, &c.EvalsKnowledgeDirs, &c.OntologyDirs} {
 		for i, d := range *list {

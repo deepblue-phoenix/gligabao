@@ -67,13 +67,20 @@ func CreateRun(ctx context.Context, q db.Execer, r *core.Run) error {
 		r.CreatedAt = now()
 	}
 	r.CreatedAt = norm(r.CreatedAt)
+	if r.NotesID == "" {
+		notesID, err := core.NewNotesID()
+		if err != nil {
+			return fmt.Errorf("create agent research run: %w", err)
+		}
+		r.NotesID = notesID
+	}
 	var id int64
 	if err := q.QueryRowContext(ctx, `
-		INSERT INTO gb_agent_research_runs (user_id, parent_id, name, reason, topic, status, state, model, max_steps, runner, agent_name, agent_version, agent_hash,
+		INSERT INTO gb_agent_research_runs (user_id, parent_id, name, reason, topic, status, state, model, max_steps, runner, agent_name, agent_version, agent_hash, notes_id,
 			steps, tool_calls, input_tokens, output_tokens, cost_usd, report, error, created_at, finished_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
 		RETURNING id`,
-		r.UserID, r.ParentID, r.Name, r.Reason, r.Topic, string(r.Status), r.State, r.Model, r.MaxSteps, r.Runner, r.AgentName, r.AgentVersion, r.AgentHash, r.Steps, r.ToolCalls, r.InputTokens, r.OutputTokens,
+		r.UserID, r.ParentID, r.Name, r.Reason, r.Topic, string(r.Status), r.State, r.Model, r.MaxSteps, r.Runner, r.AgentName, r.AgentVersion, r.AgentHash, r.NotesID, r.Steps, r.ToolCalls, r.InputTokens, r.OutputTokens,
 		r.CostUSD, r.Report, r.Error, r.CreatedAt, ptr(r.FinishedAt)).Scan(&id); err != nil {
 		return fmt.Errorf("create agent research run: %w", err)
 	}
@@ -204,7 +211,7 @@ func FailActive(ctx context.Context, q db.Execer, reason string) (int64, error) 
 	return n, nil
 }
 
-const runColumns = `id, user_id, parent_id, name, reason, topic, status, state, model, max_steps, runner, agent_name, agent_version, agent_hash, steps, tool_calls, input_tokens, output_tokens, cost_usd,
+const runColumns = `id, user_id, parent_id, name, reason, topic, status, state, model, max_steps, runner, agent_name, agent_version, agent_hash, notes_id, steps, tool_calls, input_tokens, output_tokens, cost_usd,
 	report, error, created_at, finished_at`
 
 func scanRun(s scanner) (*core.Run, error) {
@@ -213,7 +220,7 @@ func scanRun(s scanner) (*core.Run, error) {
 	var created time.Time
 	var finished sql.NullTime
 	var parent sql.NullInt64
-	if err := s.Scan(&r.ID, &r.UserID, &parent, &r.Name, &r.Reason, &r.Topic, &status, &r.State, &r.Model, &r.MaxSteps, &r.Runner, &r.AgentName, &r.AgentVersion, &r.AgentHash, &r.Steps, &r.ToolCalls, &r.InputTokens,
+	if err := s.Scan(&r.ID, &r.UserID, &parent, &r.Name, &r.Reason, &r.Topic, &status, &r.State, &r.Model, &r.MaxSteps, &r.Runner, &r.AgentName, &r.AgentVersion, &r.AgentHash, &r.NotesID, &r.Steps, &r.ToolCalls, &r.InputTokens,
 		&r.OutputTokens, &r.CostUSD, &r.Report, &r.Error, &created, &finished); err != nil {
 		return nil, err
 	}

@@ -2,7 +2,12 @@
 // agent on a topic, and the States it went through, one record each time the agent moves from one stage of its work to the next.
 package core
 
-import "time"
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"time"
+)
 
 // Status is the lifecycle of a Run as a whole.
 type Status string
@@ -98,6 +103,9 @@ type Run struct {
 	AgentName    string `json:"agent_name"`
 	AgentVersion string `json:"agent_version"`
 	AgentHash    string `json:"agent_hash"`
+	// NotesID is the random id in the name of the notes file of the investigative loop (see package investigate); CreateRun makes it if
+	// it is empty. "" for a run made before 0.180.0: it has no notes file.
+	NotesID string `json:"notes_id,omitempty"`
 	// Steps is the number of model calls made so far and ToolCalls the number of tool runs; they, the tokens and the cost are
 	// updated as the run goes. CostUSD includes the model calls of the tools (the web searches).
 	Steps        int     `json:"steps"`
@@ -145,4 +153,13 @@ type RunFilter struct {
 	ParentID *int64
 	// RootsOnly keeps only the researches a user started (the runs without a parent).
 	RootsOnly bool
+}
+
+// NewNotesID returns a random 128-bit id as 32 lower-case hex characters, for Run.NotesID.
+func NewNotesID() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", fmt.Errorf("new notes id: %w", err)
+	}
+	return hex.EncodeToString(b[:]), nil
 }

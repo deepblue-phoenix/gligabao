@@ -327,6 +327,21 @@ func TestAgentDefsAndResearchCostCap(t *testing.T) {
 	}
 }
 
+func TestResearchNotesDir(t *testing.T) {
+	p := write(t, "research_notes_dir = \"my_notes\"\n")
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(filepath.Dir(p), "my_notes"); cfg.ResearchNotesDir != want || cfg.ResearchNotesDirOrDefault() != want {
+		t.Errorf("got %q", cfg.ResearchNotesDir)
+	}
+	def := Default()
+	if got := def.ResearchNotesDirOrDefault(); filepath.Base(got) != DefaultResearchNotesDirName {
+		t.Errorf("default: %q", got)
+	}
+}
+
 func TestS3VectorsStore(t *testing.T) {
 	t.Setenv(EnvS3VectorsBucket, "b-env")
 	t.Setenv(EnvS3VectorsRegion, "")
