@@ -10,9 +10,9 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox/hostfn"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
-	"github.com/deepblue-phoenix/gligabao/internal/monty"
-	"github.com/deepblue-phoenix/gligabao/internal/monty/hostfn"
 )
 
 // This file is the run_code tool of the loop (docs/agents/monty-code-execution.md): a Python program run in the sandbox, with the host
@@ -21,8 +21,8 @@ import (
 
 // CodeConfig turns the run_code tool on for a run (Config.Code).
 type CodeConfig struct {
-	// Runner runs the programs (a *monty.Sidecar).
-	Runner monty.Runner
+	// Runner runs the programs (a *code_sandbox.Sidecar).
+	Runner code_sandbox.Runner
 	// Settings are the limits of the [code] table (defaults are filled in by Run).
 	Settings agent_defs.Code
 	// Registry is the functions the program may call; the ones that need a tool the agent does not have are dropped by Run.
@@ -92,7 +92,7 @@ func EnvOf(st investigate_core.State) hostfn.Env {
 
 // FormatCodeResult is what the model reads of a run: "ok", the value and the stdout, or "error: kind: message"; capped at max chars
 // (0: no cap) with a [truncated N chars] marker. isErr says that the tool call is an error.
-func FormatCodeResult(res monty.Result,
+func FormatCodeResult(res code_sandbox.Result,
 	err error,
 	max int) (text string, isErr bool) {
 	if err != nil {
@@ -227,13 +227,13 @@ func (r *runner) runCode(ctx context.Context,
 			s.MaxResultChars)
 	}
 	res, err := r.code.cfg.Runner.Run(ctx,
-		monty.Request{
+		code_sandbox.Request{
 			Code:      in.Code,
 			Inputs:    in.Inputs,
 			Functions: r.code.reg.Names(),
 			Stubs:     r.code.reg.Stubs(),
 			TypeCheck: s.TypeCheck,
-			Limits: monty.Limits{
+			Limits: code_sandbox.Limits{
 				MaxDurationS: float64(s.TimeoutS),
 				MaxMemoryMB:  s.MaxMemoryMB,
 				MaxRecursion: s.MaxRecursion,
@@ -288,7 +288,7 @@ func (r *runner) codeFetch(ctx context.Context,
 type codeTrace struct {
 	code   string
 	output string
-	stats  monty.Stats
+	stats  code_sandbox.Stats
 	calls  []map[string]any
 	logs   []string
 }
@@ -395,13 +395,13 @@ func runWorkerCode(ctx context.Context,
 			s.MaxResultChars)
 	}
 	res, err := c.cfg.Runner.Run(ctx,
-		monty.Request{
+		code_sandbox.Request{
 			Code:      in.Code,
 			Inputs:    in.Inputs,
 			Functions: c.reg.Names(),
 			Stubs:     c.reg.Stubs(),
 			TypeCheck: s.TypeCheck,
-			Limits: monty.Limits{
+			Limits: code_sandbox.Limits{
 				MaxDurationS: float64(s.TimeoutS),
 				MaxMemoryMB:  s.MaxMemoryMB,
 				MaxRecursion: s.MaxRecursion,

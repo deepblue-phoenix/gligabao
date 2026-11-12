@@ -8,8 +8,8 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/deepblue-phoenix/gligabao/internal/monty"
-	"github.com/deepblue-phoenix/gligabao/internal/monty/hostfn"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox/hostfn"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
@@ -62,9 +62,9 @@ func (m *Manager) notesDir() string {
 // InitSandbox is the startup of the code-execution subsystem: it checks that Monty is installed (it starts the bridge, which imports
 // pydantic_monty) and only then makes the sidecar, which is stopped with the manager's context. If Monty is not there, nothing is made: the
 // agents then run without the run_code tool. Call it once, before starting any agent. cfg's unset fields come from the environment.
-func (m *Manager) InitSandbox(cfg monty.Config) {
+func (m *Manager) InitSandbox(cfg code_sandbox.Config) {
 	m.Monty = cfg
-	sc := monty.NewSidecar(monty.ConfigFromEnv(cfg), nil)
+	sc := code_sandbox.NewSidecar(code_sandbox.ConfigFromEnv(cfg), nil)
 	ctx, cancel := context.WithTimeout(m.ctx, 45*time.Second)
 	defer cancel()
 	if err := sc.Check(ctx); err != nil {
@@ -78,7 +78,7 @@ func (m *Manager) InitSandbox(cfg monty.Config) {
 }
 
 // sandbox is the code sandbox of the manager: Sandbox if set, else the sidecar made by InitSandbox; nil if there is none.
-func (m *Manager) sandbox() monty.Runner {
+func (m *Manager) sandbox() code_sandbox.Runner {
 	if m.Sandbox != nil {
 		return m.Sandbox
 	}

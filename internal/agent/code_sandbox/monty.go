@@ -1,8 +1,8 @@
-// Package monty runs the code of the run_code tool in Pydantic Monty, a sandboxed Python interpreter, through a sidecar: a child process that
+// Package code_sandbox runs the code of the run_code tool in Pydantic Monty, a sandboxed Python interpreter, through a sidecar: a child process that
 // runs the embedded Python bridge (bridge.py) and speaks JSON lines with this package (docs/agents/monty-code-execution.md).
 //
 // The functions the code may call back are Go functions (package hostfn); Run calls them through a HostFunc, on the goroutine that called Run.
-package monty
+package code_sandbox
 
 import (
 	"context"

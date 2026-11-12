@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.196.1] - 2026-11-12
+
+### Changed
+- Internal: the `internal/monty` package (run_code sandbox client, bridge and host functions) moved to `internal/agent/code_sandbox` (package `code_sandbox`). No behaviour change.
+
 ## [0.196.0] - 2026-11-12
 
 ### Added

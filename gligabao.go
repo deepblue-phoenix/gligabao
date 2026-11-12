@@ -11,7 +11,7 @@ package gligabao
 import (
 	"context"
 	_ "embed"
-	"github.com/deepblue-phoenix/gligabao/internal/monty"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox"
 	"net/http"
 	"sync"
 
@@ -411,7 +411,7 @@ func serverOptions(cfg *Config,
 		AgentDefsDir:       agentDefsDir,
 		ResearchMaxCostUSD: cfg.ResearchMaxCostUSD,
 		ResearchNotesDir:   cfg.ResearchNotesDirOrDefault(),
-		Monty: monty.Config{
+		Monty: code_sandbox.Config{
 			Python:          cfg.MontyPython,
 			Bin:             cfg.MontyBin,
 			Workers:         cfg.MontyWorkers,

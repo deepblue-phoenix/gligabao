@@ -1,9 +1,9 @@
-package monty
+package code_sandbox
 
 import (
 	"context"
 	"errors"
-	"github.com/deepblue-phoenix/gligabao/internal/monty/hostfn"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox/hostfn"
 	"os/exec"
 	"strings"
 	"testing"

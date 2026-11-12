@@ -1,4 +1,4 @@
-package monty
+package code_sandbox
 
 import (
 	"bufio"

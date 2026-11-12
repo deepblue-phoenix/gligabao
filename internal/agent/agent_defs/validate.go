@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/deepblue-phoenix/gligabao/internal/monty/hostfn"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox/hostfn"
 	"math"
 	"regexp"
 	"strings"

@@ -6,7 +6,7 @@
 
 ## Context
 
-0.187.0 added `run_code` for investigative agents (`docs/agents/monty-code-execution.md`, section "As built"). The core is done: `internal/monty/hostfn`, `internal/monty` (bridge and sidecar), the `[code]` table, the tool in `internal/agent_research/investigate/code.go`, the Dockerfile. The parts below were left out to keep the task scoped.
+0.187.0 added `run_code` for investigative agents (`docs/agents/monty-code-execution.md`, section "As built"). The core is done: `internal/agent/code_sandbox/hostfn`, `internal/agent/code_sandbox` (bridge and sidecar), the `[code]` table, the tool in `internal/agent_research/investigate/code.go`, the Dockerfile. The parts below were left out to keep the task scoped.
 
 ## Remaining work
 
@@ -19,4 +19,4 @@
 
 ## How to pick it up
 
-`go test ./internal/monty/... ./internal/agent_research/... ./internal/agent/agent_defs/...` (the integration tests of `internal/monty` skip when `pydantic_monty` is not installed for `GLIGABAO_MONTY_PYTHON` / `python3`). Each item is independent. Bump `VERSION` and `CHANGELOG.md` as `AGENTS.md` says; delete this file when all is done.
+`go test ./internal/agent/code_sandbox/... ./internal/agent_research/... ./internal/agent/agent_defs/...` (the integration tests of `internal/agent/code_sandbox` skip when `pydantic_monty` is not installed for `GLIGABAO_MONTY_PYTHON` / `python3`). Each item is independent. Bump `VERSION` and `CHANGELOG.md` as `AGENTS.md` says; delete this file when all is done.

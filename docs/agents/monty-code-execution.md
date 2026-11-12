@@ -60,7 +60,7 @@ or, on a failure, `error: <kind>: <message>` with the traceback line numbers (ki
 
 ```
 gligabao (server)  or  gligabao_agent
- └─ investigate loop ── run_code ──► internal/monty (Go client, supervisor)
+ └─ investigate loop ── run_code ──► internal/agent/code_sandbox (Go client, supervisor)
                                         │  JSON lines over the child's stdin/stdout
                                         ▼
                                    monty bridge (Python, pydantic-monty client)   ← the sidecar
@@ -80,7 +80,7 @@ Monty has Python and Rust APIs and no Go one. The sidecar is a **child process o
 - **Stopped with its owner**: closing its stdin ends it; on `serve` shutdown and when `gligabao_agent` exits the supervisor also terminates and then kills the process group, so no orphan stays.
 - **Not the training sidecar.** The existing [sidecar](../training/sidecar.md) is a separate HTTP service for Modal. This one is a local child process, with no port and no network surface: the pipe is private to the parent.
 
-The sidecar is the thin bridge below, not Monty itself, because the stable public interface of Monty is its Python client (`pydantic_monty`: `Monty` pool, `checkout()` sessions, `feed_start` snapshots for external calls, `ResourceLimits`); the `monty subprocess` wire format (framed protobuf, the `monty-proto` crate) is an internal protocol of a `0.0.x` project. Speaking it directly from Go (one less runtime in the image) is a possible later change that stays behind the same `internal/monty` interface ([Leftovers](#leftovers)).
+The sidecar is the thin bridge below, not Monty itself, because the stable public interface of Monty is its Python client (`pydantic_monty`: `Monty` pool, `checkout()` sessions, `feed_start` snapshots for external calls, `ResourceLimits`); the `monty subprocess` wire format (framed protobuf, the `monty-proto` crate) is an internal protocol of a `0.0.x` project. Speaking it directly from Go (one less runtime in the image) is a possible later change that stays behind the same `internal/agent/code_sandbox` interface ([Leftovers](#leftovers)).
 
 ### The bridge protocol
 
@@ -111,7 +111,7 @@ Bridge to Go:
 
 "The Go functions exposed to the Monty environment" are one declared, typed, immutable registry. Nothing is callable from the sandbox that is not in it, and the registry is the single source for four things: the callable names, the argument decoding, the Python stubs sent to the bridge (for name lookup and the optional type check), and the function list in the tool description.
 
-Package `internal/monty/hostfn` (no dependency on the process code):
+Package `internal/agent/code_sandbox/hostfn` (no dependency on the process code):
 
 ```go
 // Spec declares one function of the sandbox's world. Immutable.
@@ -254,8 +254,8 @@ A bare-metal install (`go install`, the release binaries) needs `pip install pyd
 
 ## Implementation order
 
-1. `internal/monty/hostfn`: `Spec`, `Registry`, the read-only functions, the stub and description generators, all with their pure tests.
-2. The bridge script and `internal/monty`: the client, the protocol types, the supervisor (lazy start, restart bound, shutdown), tested against the fake bridge, then against real Monty.
+1. `internal/agent/code_sandbox/hostfn`: `Spec`, `Registry`, the read-only functions, the stub and description generators, all with their pure tests.
+2. The bridge script and `internal/agent/code_sandbox`: the client, the protocol types, the supervisor (lazy start, restart bound, shutdown), tested against the fake bridge, then against real Monty.
 3. The `[code]` table in `internal/agent/agent_defs` (format, loader checks, the startup availability check) and the server settings and flags in `serve` and `gligabao_agent`.
 4. `run_code` as an `agent.Tool` and its wiring in `FromDef` and `investigate.Config.External`; the prompt block; the trajectory recording.
 5. The `fetch` class functions (`fetch_page`, `web_search`, `kb_query`) with the budgets, cost accounting and attempt logging.
@@ -265,7 +265,7 @@ A bare-metal install (`go install`, the release binaries) needs `pip install pyd
 
 ## As built
 
-Where the code is: `internal/monty/hostfn` (registry and the first set), `internal/monty` (`bridge.py`, embedded; `Sidecar`, the supervisor and client; `Runner` interface), `internal/agent_research/investigate/code.go` (the `run_code` tool, built by `investigate.Run` from `Config.Code`, not in `FromDef`: it needs the run's state and its fetch tools), `agent_defs.Code` (the `[code]` table), `investigate_core.ToolRunCode` and the prompt block, `Manager.Monty` / `Manager.Sandbox`.
+Where the code is: `internal/agent/code_sandbox/hostfn` (registry and the first set), `internal/agent/code_sandbox` (`bridge.py`, embedded; `Sidecar`, the supervisor and client; `Runner` interface), `internal/agent_research/investigate/code.go` (the `run_code` tool, built by `investigate.Run` from `Config.Code`, not in `FromDef`: it needs the run's state and its fetch tools), `agent_defs.Code` (the `[code]` table), `investigate_core.ToolRunCode` and the prompt block, `Manager.Monty` / `Manager.Sandbox`.
 
 Differences from the plan above:
 

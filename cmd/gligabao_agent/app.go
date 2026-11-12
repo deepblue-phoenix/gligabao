@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_memory"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
@@ -19,7 +20,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
-	"github.com/deepblue-phoenix/gligabao/internal/monty"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	log "github.com/sirupsen/logrus"
 )
@@ -94,7 +94,7 @@ func openApp(ctx context.Context,
 		ops,
 		llm,
 		agent_research.KeepActiveRuns())
-	a.research.InitSandbox(monty.Config{}) // env: GLIGABAO_MONTY_PYTHON, MONTY_BIN
+	a.research.InitSandbox(code_sandbox.Config{}) // env: GLIGABAO_MONTY_PYTHON, MONTY_BIN
 	a.research.UseMemory(a.mem)
 	return a, nil
 }

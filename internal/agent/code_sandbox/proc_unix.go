@@ -1,6 +1,6 @@
 //go:build unix
 
-package monty
+package code_sandbox
 
 import (
 	"os/exec"

@@ -20,6 +20,7 @@ import (
 
 	adminui "github.com/deepblue-phoenix/gligabao/admin_ui"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
@@ -37,7 +38,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
-	"github.com/deepblue-phoenix/gligabao/internal/monty"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
@@ -123,7 +123,7 @@ type Options struct {
 	// ResearchNotesDir is the directory of the notes files of the investigative research loop ("": research_notes in the working directory).
 	ResearchNotesDir string
 	// Monty is where the code sandbox of the investigative agents is (see agent_research.Manager.Monty).
-	Monty monty.Config
+	Monty code_sandbox.Config
 	// ResearchNotesS3 ("" bucket: off) also stores the notes files of the investigative loop in the research S3 bucket.
 	ResearchNotesS3 investigate.NotesS3Config
 	// EvalDBPath is a second SQLite file, the eval database (see internal/evals/knowledge/cmd): the evaluation datasets, the

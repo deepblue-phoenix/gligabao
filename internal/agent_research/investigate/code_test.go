@@ -11,15 +11,15 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox/hostfn"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
-	"github.com/deepblue-phoenix/gligabao/internal/monty"
-	"github.com/deepblue-phoenix/gligabao/internal/monty/hostfn"
 )
 
 func TestFormatCodeResult(t *testing.T) {
-	text, isErr := investigate.FormatCodeResult(monty.Result{
+	text, isErr := investigate.FormatCodeResult(code_sandbox.Result{
 		Value:  0.8421,
 		Stdout: "mean=0.8421 n=12\n",
 	},
@@ -30,7 +30,7 @@ func TestFormatCodeResult(t *testing.T) {
 			text,
 			isErr)
 	}
-	text, isErr = investigate.FormatCodeResult(monty.Result{
+	text, isErr = investigate.FormatCodeResult(code_sandbox.Result{
 		Stdout: strings.Repeat("x", 300),
 	},
 		nil,
@@ -38,9 +38,9 @@ func TestFormatCodeResult(t *testing.T) {
 	if isErr || !strings.Contains(text, "[truncated ") || len([]rune(text)) > 230 {
 		t.Errorf("%q", text)
 	}
-	text, isErr = investigate.FormatCodeResult(monty.Result{},
-		&monty.Error{
-			Kind:    monty.KindRuntime,
+	text, isErr = investigate.FormatCodeResult(code_sandbox.Result{},
+		&code_sandbox.Error{
+			Kind:    code_sandbox.KindRuntime,
 			Message: "ZeroDivisionError",
 			Line:    3,
 		},
@@ -61,11 +61,11 @@ func TestCodeToolSpecListsTheRegistry(t *testing.T) {
 }
 
 // fakeSandbox runs a "program" written as the name of a host function to call, so the loop is tested without Monty.
-type fakeSandbox struct{ runs []monty.Request }
+type fakeSandbox struct{ runs []code_sandbox.Request }
 
 func (f *fakeSandbox) Run(ctx context.Context,
-	req monty.Request,
-	host monty.HostFunc) (monty.Result, error) {
+	req code_sandbox.Request,
+	host code_sandbox.HostFunc) (code_sandbox.Result, error) {
 	f.runs = append(f.runs, req)
 	switch strings.TrimSpace(req.Code) {
 	case "fetch":
@@ -74,12 +74,12 @@ func (f *fakeSandbox) Run(ctx context.Context,
 			[]any{"https://a.com/p"},
 			nil)
 		if err != nil {
-			return monty.Result{}, &monty.Error{
-				Kind:    monty.KindHostFunction,
+			return code_sandbox.Result{}, &code_sandbox.Error{
+				Kind:    code_sandbox.KindHostFunction,
 				Message: err.Error(),
 			}
 		}
-		return monty.Result{
+		return code_sandbox.Result{
 			Value:  len(out.(string)),
 			Stdout: "fetched\n",
 		}, nil
@@ -88,7 +88,7 @@ func (f *fakeSandbox) Run(ctx context.Context,
 			"frontier_list",
 			nil,
 			nil)
-		return monty.Result{
+		return code_sandbox.Result{
 			Value: len(qs.([]map[string]any)),
 		}, err
 	case "forbidden":
@@ -96,12 +96,12 @@ func (f *fakeSandbox) Run(ctx context.Context,
 			"notes_append",
 			nil,
 			nil)
-		return monty.Result{}, &monty.Error{
-			Kind:    monty.KindHostFunction,
+		return code_sandbox.Result{}, &code_sandbox.Error{
+			Kind:    code_sandbox.KindHostFunction,
 			Message: err.Error(),
 		}
 	}
-	return monty.Result{
+	return code_sandbox.Result{
 		Value: 42,
 	}, nil
 }

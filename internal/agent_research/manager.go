@@ -10,7 +10,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/deepblue-phoenix/gligabao/internal/monty"
+	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox"
 	"sync"
 	"time"
 
@@ -46,9 +46,9 @@ type Manager struct {
 	NotesS3 *investigate.NotesS3
 	// Monty says where the code sandbox of the agents with [code] enabled is (the interpreter, the monty binary, the workers); unset fields
 	// come from GLIGABAO_MONTY_PYTHON and MONTY_BIN. Set it before starting any agent.
-	Monty monty.Config
+	Monty code_sandbox.Config
 	// Sandbox, if set, runs the code of the agents instead of the sidecar made by InitSandbox from Monty: for tests.
-	Sandbox monty.Runner
+	Sandbox code_sandbox.Runner
 
 	ctx context.Context
 	mem *Memory // the knowledge base of the agents (nil: they have only the web tools); guarded by mu
@@ -62,7 +62,7 @@ type Manager struct {
 	// defs are the agent definitions the researches can run (nil: only the built-in default); guarded by mu.
 	defs *agent_defs.Registry
 
-	sidecar *monty.Sidecar // the code sandbox, made by InitSandbox only if Monty is installed
+	sidecar *code_sandbox.Sidecar // the code sandbox, made by InitSandbox only if Monty is installed
 
 	mu      sync.Mutex
 	active  map[string]int        // running agents by user
