@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
@@ -31,7 +31,7 @@ type webLLM struct{ main string }
 var briefingAbout = regexp.MustCompile(`BRIEFING about (\w+)`)
 
 func (l webLLM) Complete(_ context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	out := l.main
 	switch msg := req.Messages[0].Content; {
 	case strings.HasPrefix(req.System, "You compare NEW facts"):
@@ -41,7 +41,7 @@ func (l webLLM) Complete(_ context.Context,
 		out = `{"entities":[{"name":"Initech","type":"organization","description":"news"},{"name":"` + x + `","type":"organization"}],
 			"edges":[{"source":"Initech","target":"` + x + `","relation":"partnered_with"}]}`
 	}
-	return &ai.Response{
+	return &llm.Response{
 		Text:       out,
 		StopReason: "end_turn",
 		Model:      "fake-model",
@@ -51,13 +51,13 @@ func (l webLLM) Complete(_ context.Context,
 // fakeSearcher answers every search with a briefing about the entity of the prompt, and records the requests.
 type fakeSearcher struct {
 	mu   sync.Mutex
-	reqs []ai.WebSearchRequest
+	reqs []llm.WebSearchRequest
 	text string // the answer; "" means a briefing about the entity
 	err  error
 }
 
 func (f *fakeSearcher) WebSearch(_ context.Context,
-	req ai.WebSearchRequest) (*ai.WebSearchResponse, error) {
+	req llm.WebSearchRequest) (*llm.WebSearchResponse, error) {
 	f.mu.Lock()
 	f.reqs = append(f.reqs, req)
 	f.mu.Unlock()
@@ -69,12 +69,12 @@ func (f *fakeSearcher) WebSearch(_ context.Context,
 		name := regexp.MustCompile(`name: (\w+)`).FindStringSubmatch(req.Prompt)[1]
 		text = "BRIEFING about " + name + " in 2026."
 	}
-	return &ai.WebSearchResponse{
+	return &llm.WebSearchResponse{
 		Text:     text,
 		Queries:  []string{"q1"},
-		Provider: ai.ProviderAnthropic,
+		Provider: llm.ProviderAnthropic,
 		Model:    "fake-search-model",
-		Sources: []ai.WebSource{{
+		Sources: []llm.WebSource{{
 			URL:     "https://news.example/1",
 			Title:   "News",
 			PageAge: "May 1, 2026",

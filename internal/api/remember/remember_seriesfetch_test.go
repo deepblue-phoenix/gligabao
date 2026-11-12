@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
@@ -102,7 +102,7 @@ func testRememberSeriesFetch(t *testing.T,
 	}
 
 	var resolvePrompt string
-	llm := llmFunc(func(req ai.Request) (*ai.Response, error) {
+	llm := llmFunc(func(req llm.Request) (*llm.Response, error) {
 		out := seriesLLM
 		if strings.Contains(req.System, "timeseries providers") {
 			resolvePrompt = req.Messages[0].Content
@@ -115,7 +115,7 @@ func testRememberSeriesFetch(t *testing.T,
 				{"entity":1,"provider":"foo","query":"x"},
 				{"entity":7,"provider":"prices","query":"x"}]}`
 		}
-		return &ai.Response{
+		return &llm.Response{
 			Text:       out,
 			StopReason: "end_turn",
 			Model:      "fake-model",

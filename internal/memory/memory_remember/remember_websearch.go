@@ -30,9 +30,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 
 	log "github.com/sirupsen/logrus"
@@ -76,8 +76,8 @@ type WebSearchResult struct {
 	// failed: see Error).
 	ArtifactID int64 `json:"artifact_id,omitempty"`
 	// Searches are the queries the model sent to the search engine; Sources the pages its answer is based on.
-	Searches []string       `json:"searches,omitempty"`
-	Sources  []ai.WebSource `json:"sources,omitempty"`
+	Searches []string        `json:"searches,omitempty"`
+	Sources  []llm.WebSource `json:"sources,omitempty"`
 	// Entities, Edges and InvalidatedEdges are what the result's text yielded, as for the artifact of a text (Result):
 	// the entities discovered on the web are stored like any other.
 	Entities         []Entity `json:"entities,omitempty"`
@@ -91,7 +91,7 @@ type WebSearchResult struct {
 
 // webSearched is the outcome of the call to the search tool for one entity.
 type webSearched struct {
-	resp    *ai.WebSearchResponse
+	resp    *llm.WebSearchResponse
 	err     error
 	started time.Time
 	latency time.Duration
@@ -280,7 +280,7 @@ func (j *job) webSearch(ctx context.Context) (out []WebSearchResult) {
 			defer wg.Done()
 			d := &done[i]
 			d.started = time.Now()
-			d.resp, d.err = j.co.WebSearcher.WebSearch(ctx, ai.WebSearchRequest{
+			d.resp, d.err = j.co.WebSearcher.WebSearch(ctx, llm.WebSearchRequest{
 				System:    webSearchSystemPrompt,
 				Prompt:    webSearchPrompt(p.Entity, j.now),
 				Model:     j.co.Models[memory_core.StageWebSearch],
@@ -350,7 +350,7 @@ func (j *job) storeWebSearch(ctx context.Context,
 			args,
 			map[string]any{"error": ws.err.Error()},
 			memory_core.ToolTiming{
-				Provider: ai.ProviderAnthropic,
+				Provider: llm.ProviderAnthropic,
 				Started:  ws.started,
 				Latency:  ws.latency,
 			})
@@ -369,8 +369,8 @@ func (j *job) storeWebSearch(ctx context.Context,
 			Stage:        memory_core.StageWebSearch,
 			Model:        resp.Model,
 			Provider:     resp.Provider,
-			Kind:         ai.KindOf(resp.Model),
-			Reasoning:    ai.ReasoningNone,
+			Kind:         llm.KindOf(resp.Model),
+			Reasoning:    llm.ReasoningNone,
 			InputTokens:  resp.InputTokens,
 			OutputTokens: resp.OutputTokens,
 			CostUSD:      resp.CostUSD,
@@ -419,7 +419,7 @@ func (j *job) storeWebSearch(ctx context.Context,
 
 	// The graph is extracted from the briefing alone; the artifact keeps the sources next to it.
 	ex, err := Extract(ctx,
-		wj.co.ModelLLM(wj.llm, memory_core.StageExtractGraph),
+		wj.co.ModelLLM(wj.lm, memory_core.StageExtractGraph),
 		briefing,
 		wj.ref)
 	wj.outputExtraction(wj.stepLabel(nil), ex)
@@ -444,7 +444,7 @@ func (j *job) storeWebSearch(ctx context.Context,
 
 // webSearchArtifactText is the text of a web_search artifact: the briefing, then the pages it is based on.
 func webSearchArtifactText(briefing string,
-	sources []ai.WebSource) string {
+	sources []llm.WebSource) string {
 	if len(sources) == 0 {
 		return briefing
 	}

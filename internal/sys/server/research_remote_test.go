@@ -7,11 +7,11 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbexport"
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbfull"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
 )
 
@@ -24,7 +24,7 @@ func TestDBImporterLoadsTheExportOfAnAgent(t *testing.T) {
 	agentDB, err := db.Open(db.Config{
 		SQLitePath:          filepath.Join(t.TempDir(), "agent.db"),
 		EmbeddingDimensions: 3,
-		Models:              ai.SupportedModels(nil),
+		Models:              llm.SupportedModels(nil),
 		Schemas:             []db.Schema{agent_research.Open},
 	})
 	if err != nil {
@@ -70,7 +70,7 @@ func TestDBImporterLoadsTheExportOfAnAgent(t *testing.T) {
 	srv, err := dbfull.Open(db.Config{
 		SQLitePath:          filepath.Join(t.TempDir(), "server.db"),
 		EmbeddingDimensions: 3,
-		Models:              ai.SupportedModels(nil),
+		Models:              llm.SupportedModels(nil),
 	})
 	if err != nil {
 		t.Fatal(err)

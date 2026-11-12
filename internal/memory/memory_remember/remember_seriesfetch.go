@@ -28,9 +28,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_timeseries"
 
@@ -256,10 +256,10 @@ func (j *job) fetchSeries(ctx context.Context) (out []SeriesFetchResult) {
 	j.countKeyEntities(ctx,
 		memory_core.StageResolveSeries,
 		cands) // IN-CONTEXT COUNTERS: the prompt lists the entities
-	resp, err := j.co.ModelLLM(j.llm, memory_core.StageResolveSeries).Complete(ctx, ai.Request{
+	resp, err := j.co.ModelLLM(j.lm, memory_core.StageResolveSeries).Complete(ctx, llm.Request{
 		System: resolveSeriesSystemPrompt,
-		Messages: []ai.Message{{
-			Role: ai.RoleUser,
+		Messages: []llm.Message{{
+			Role: llm.RoleUser,
 			Content: resolveSeriesPrompt(cands,
 				providers,
 				j.ref),

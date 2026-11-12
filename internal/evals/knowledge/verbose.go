@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
@@ -18,7 +18,7 @@ type verboseLLM struct {
 }
 
 func (v *verboseLLM) Complete(ctx context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	v.calls++
 	n := v.calls
 	fmt.Fprintf(v.out,

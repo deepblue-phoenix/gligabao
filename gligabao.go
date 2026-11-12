@@ -16,11 +16,11 @@ import (
 	"sync"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/knowledge"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
@@ -458,4 +458,4 @@ func serverOptions(cfg *Config,
 }
 
 // aiPrices converts the configured prices; omitted cache prices default to the input price.
-func aiPrices(c *Config) map[string]ai.Price { return c.AIPrices() }
+func aiPrices(c *Config) map[string]llm.Price { return c.AIPrices() }

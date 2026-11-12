@@ -12,10 +12,10 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbexport"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
@@ -35,11 +35,11 @@ type app struct {
 	stop     context.CancelFunc
 }
 
-// openApp opens the databases described by cfg (the SQLite file at sqlitePath, or its default) and builds the app over them. llm
+// openApp opens the databases described by cfg (the SQLite file at sqlitePath, or its default) and builds the app over them. lm
 // runs the agents and the knowledge base's own model calls; emb embeds. Call close when done (after the research ended).
 func openApp(ctx context.Context,
 	cfg *config.Config,
-	llm *ai.Client,
+	lm *llm.Client,
 	emb memory_core.Embedder,
 	sqlitePath,
 	vectorDir string) (*app, error) {
@@ -48,7 +48,7 @@ func openApp(ctx context.Context,
 		vectorDir,
 		"")
 	dbCfg.Geo = cfg.Geo
-	dbCfg.Models = ai.SupportedModels(ai.NewPriceTable(cfg.AIPrices()))
+	dbCfg.Models = llm.SupportedModels(llm.NewPriceTable(cfg.AIPrices()))
 	// Not dbfull: the tables of training and evals are not created here, only those of the research runs next to the knowledge base.
 	dbCfg.Schemas = []db.Schema{agent_research.Open}
 	database, err := db.Open(dbCfg)
@@ -78,12 +78,12 @@ func openApp(ctx context.Context,
 	}
 	a.remember = memory_remember.NewManager(mgrCtx,
 		database.Relational,
-		llm,
+		lm,
 		memory_remember.WithErrSink(ops.ErrSink(database.Relational)))
 	a.mem = &agent_memory.Memory{
 		Remember:     a.remember,
 		DB:           database.Relational,
-		LLM:          llm,
+		LLM:          lm,
 		RememberOpts: rememberOpts,
 		QueryOpts:    queryOpts,
 		ErrSink:      ops.ErrSink(database.Relational),
@@ -92,7 +92,7 @@ func openApp(ctx context.Context,
 	a.research = agent_research.NewManager(mgrCtx,
 		database.Relational,
 		ops,
-		llm,
+		lm,
 		agent_research.KeepActiveRuns())
 	a.research.InitSandbox(code_sandbox.Config{}) // env: GLIGABAO_MONTY_PYTHON, MONTY_BIN
 	a.research.UseMemory(a.mem)

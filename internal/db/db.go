@@ -19,10 +19,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
@@ -65,9 +65,9 @@ type Config struct {
 	Chunking memory_chunk.Config
 
 	// Models are the models gligabao supports, inserted into gb_models on every Open (see relational.SyncModels).
-	// Default (nil): ai.SupportedModels(nil), i.e. the built-in price table; pass the models of the configured price
-	// table (ai.SupportedModels(ai.NewPriceTable(prices))) to include the models of its overrides.
-	Models []ai.ModelInfo
+	// Default (nil): llm.SupportedModels(nil), i.e. the built-in price table; pass the models of the configured price
+	// table (llm.SupportedModels(llm.NewPriceTable(prices))) to include the models of its overrides.
+	Models []llm.ModelInfo
 
 	// Schemas create the tables of the features that are not part of the knowledge base (see Schema), in order, once the relational
 	// and graph schemas exist. See package dbfull for the full set. Default (nil): none.
@@ -211,7 +211,7 @@ func Open(cfg Config) (*DB, error) {
 
 	models := cfg.Models
 	if models == nil {
-		models = ai.SupportedModels(nil)
+		models = llm.SupportedModels(nil)
 	}
 	rows := make([]relational.Model,
 		0,

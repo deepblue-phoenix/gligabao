@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent"
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
 type runner struct {
@@ -49,9 +49,9 @@ type stepRec struct {
 // This file is the effect layer of the investigative loop: it runs the cycle (state, decide, act, observe, update) with the pure functions of
 // the package deciding every step. The model, the tools, the database and the notes file are touched here and only here.
 
-// ModelFunc makes one model call: (*ai.Client).Raw has this shape.
+// ModelFunc makes one model call: (*llm.Client).Raw has this shape.
 type ModelFunc func(ctx context.Context,
-	payload map[string]any) (*ai.RawResponse, error)
+	payload map[string]any) (*llm.RawResponse, error)
 
 // Totals are what the run has spent so far.
 type Totals struct {
@@ -712,7 +712,7 @@ func newRecorder(cfg Config,
 }
 
 func (t *recorder) begin(started time.Time,
-	resp *ai.RawResponse,
+	resp *llm.RawResponse,
 	turn int,
 	kind investigate_core.TurnKind,
 	state string,

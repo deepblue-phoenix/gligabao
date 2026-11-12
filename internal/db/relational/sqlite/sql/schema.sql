@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS gb_ontologies (
 	UNIQUE (user_id, name)
 );
 
--- The AI models gligabao knows (see ai.SupportedModels). The graph tables reference them: gb_entities.model_id and
+-- The AI models gligabao knows (see llm.SupportedModels). The graph tables reference them: gb_entities.model_id and
 -- gb_edges.model_id say which model inferred the row.
 --   id         derived from the name alone (model.ModelID: first 8 bytes of the SHA-256 of the lowercased name, hex), so a
 --              model has the same ID in every database

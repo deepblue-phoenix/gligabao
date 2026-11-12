@@ -12,10 +12,10 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_pipeline"
 	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
@@ -116,7 +116,7 @@ type EvidenceEdge = graph.EvidenceEdge
 // QueryResult.Trajectory, with its ID in QueryResult.TrajectoryID).
 func Query(ctx context.Context,
 	d *sql.DB,
-	llm memory_core.LLM,
+	lm memory_core.LLM,
 	userID,
 	dataset,
 	query string,
@@ -185,7 +185,7 @@ func Query(ctx context.Context,
 
 	j := &job{
 		d: d,
-		llm: tr.Wrap(memory_core.WithRecording(llm,
+		lm: tr.Wrap(memory_core.WithRecording(lm,
 			d,
 			CallQuery)),
 		tr:        tr,
@@ -235,9 +235,9 @@ func Query(ctx context.Context,
 // job is the state of one Query call, after its setup (validation, options, trace): what the stages of the pipeline share.
 type job struct {
 	d *sql.DB
-	// llm records every call as an inference (and a step of the trajectory); each stage runs it on the model and the reasoning
+	// lm records every call as an inference (and a step of the trajectory); each stage runs it on the model and the reasoning
 	// level the call sets for it (WithModels, WithReasoning), or the default ones (see CallOptions.ModelLLM).
-	llm       memory_core.LLM
+	lm        memory_core.LLM
 	tr        *memory_core.Trace
 	run       *runLog
 	co        memory_core.CallOptions
@@ -385,7 +385,7 @@ func (j *job) needsAnswer() bool { return !j.co.EvidenceOnly }
 func (j *job) detectGeo(ctx context.Context) (err error) {
 	j.places, err = detectGeo(ctx,
 		j.co,
-		j.llm,
+		j.lm,
 		j.tr,
 		j.userID,
 		j.dataset,
@@ -418,7 +418,7 @@ func (j *job) answer(ctx context.Context) error {
 		memory_core.StageQuery,
 		j.rc.Graph)
 	out, err := queryLLM(ctx,
-		j.co.ModelLLM(j.llm, memory_core.StageQuery),
+		j.co.ModelLLM(j.lm, memory_core.StageQuery),
 		j.rc)
 	if err != nil {
 		return err
@@ -510,12 +510,12 @@ func (c *queryContext) render() string {
 
 // queryLLM asks the LLM to answer rc.Question from rc and parses its structured output.
 func queryLLM(ctx context.Context,
-	llm memory_core.LLM,
+	lm memory_core.LLM,
 	rc *queryContext) (*queryOutput, error) {
-	resp, err := llm.Complete(ctx, ai.Request{
+	resp, err := lm.Complete(ctx, llm.Request{
 		System: querySystemPrompt,
-		Messages: []ai.Message{{
-			Role:    ai.RoleUser,
+		Messages: []llm.Message{{
+			Role:    llm.RoleUser,
 			Content: rc.render(),
 		}},
 		MaxTokens: 2048,

@@ -10,10 +10,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
@@ -69,7 +69,7 @@ func testRememberGeo(t *testing.T,
 	var mu sync.Mutex
 	var detectCalls int
 	var detectPrompt string
-	llm := llmFunc(func(req ai.Request) (*ai.Response, error) {
+	llm := llmFunc(func(req llm.Request) (*llm.Response, error) {
 		out := geoLLM
 		if strings.Contains(req.System, "geographic places") {
 			mu.Lock()
@@ -84,7 +84,7 @@ func testRememberGeo(t *testing.T,
 				out = `{"places":[{"entity":0,"kind":"City","query":"Paris, France"},{"entity":2,"kind":"nonsense","query":""},{"entity":0,"kind":"city","query":"dup"},{"entity":9,"kind":"city"}]}`
 			}
 		}
-		return &ai.Response{
+		return &llm.Response{
 			Text:       out,
 			StopReason: "end_turn",
 			Model:      "fake-model",
@@ -225,13 +225,13 @@ func testRememberGeoFailureAndOff(t *testing.T,
 	d *sql.DB) {
 	ctx := context.Background()
 	detects := 0
-	llm := llmFunc(func(req ai.Request) (*ai.Response, error) {
+	llm := llmFunc(func(req llm.Request) (*llm.Response, error) {
 		out := geoLLM
 		if strings.Contains(req.System, "geographic places") {
 			detects++
 			out = `{"places":[{"entity":0,"kind":"city","query":"Paris, France"}]}`
 		}
-		return &ai.Response{
+		return &llm.Response{
 			Text:       out,
 			StopReason: "end_turn",
 			Model:      "fake-model",

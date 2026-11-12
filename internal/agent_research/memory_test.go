@@ -9,8 +9,8 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
@@ -22,9 +22,9 @@ type kbLLM struct{ calls atomic.Int32 }
 type fakeEmbedder struct{}
 
 func (l *kbLLM) Complete(_ context.Context,
-	_ ai.Request) (*ai.Response, error) {
+	_ llm.Request) (*llm.Response, error) {
 	l.calls.Add(1)
-	return &ai.Response{
+	return &llm.Response{
 		Text:       `{"entities":[],"edges":[]}`,
 		StopReason: "end_turn",
 		Model:      "fake-model",
@@ -42,13 +42,13 @@ func kbOptions(t *testing.T) []memory_core.Option {
 }
 
 func (fakeEmbedder) EmbedBatchUsage(_ context.Context,
-	texts []string) ([][]float32, *ai.EmbedUsage, error) {
+	texts []string) ([][]float32, *llm.EmbedUsage, error) {
 	out := make([][]float32, len(texts))
 	for i := range out {
 		out[i] = []float32{1, 0}
 	}
-	return out, &ai.EmbedUsage{
-		Provider: ai.ProviderOpenAI,
+	return out, &llm.EmbedUsage{
+		Provider: llm.ProviderOpenAI,
 		Model:    "test-embed",
 	}, nil
 }

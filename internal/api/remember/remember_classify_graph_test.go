@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
 )
@@ -20,16 +20,16 @@ import (
 type classifyLLM struct{ models, levels, prompts []string }
 
 func (l *classifyLLM) Complete(_ context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	if strings.Contains(req.System, "You classify a knowledge graph") {
 		l.models, l.levels, l.prompts = append(l.models, req.Model), append(l.levels, req.Reasoning), append(l.prompts, req.Messages[0].Content)
-		return &ai.Response{
+		return &llm.Response{
 			Text:       `{"classes": ["Other Thing", "Staff"]}`,
 			StopReason: "end_turn",
 			Model:      "class-model",
 		}, nil
 	}
-	return &ai.Response{
+	return &llm.Response{
 		Text:       `{"entities":[{"name":"Alice","type":"person"},{"name":"Acme","type":"organization"}],"edges":[{"source":"Alice","target":"Acme","relation":"works_at"}]}`,
 		StopReason: "end_turn",
 		Model:      "fake-model",

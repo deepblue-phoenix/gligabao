@@ -13,8 +13,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 	log "github.com/sirupsen/logrus"
 )
@@ -33,7 +33,7 @@ type researcher struct {
 	db     *sql.DB
 	store  db.Store
 	logf   *log.Entry
-	client *ai.Client
+	client *llm.Client
 	mgr    *Manager        // for the workers
 	mem    *Memory         // the knowledge base of the agent (nil: none); its workers get the same
 	kb     agent.Knowledge // the agent's view of mem, in its dataset (nil: none)

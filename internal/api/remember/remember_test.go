@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
@@ -21,8 +21,8 @@ import (
 type fakeLLM struct{ out string }
 
 func (f fakeLLM) Complete(context.Context,
-	ai.Request) (*ai.Response, error) {
-	return &ai.Response{
+	llm.Request) (*llm.Response, error) {
+	return &llm.Response{
 		Text:       f.out,
 		StopReason: "end_turn",
 		Model:      "fake-model",

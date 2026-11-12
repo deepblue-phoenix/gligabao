@@ -10,9 +10,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	log "github.com/sirupsen/logrus"
@@ -32,7 +32,7 @@ import (
 // handlers testable with a fake (see the tests), without an LLM or a database to write to. A nil EvalRerunner means "cannot rerun".
 type EvalRerunner interface {
 	// Models are the LLM models a rerun can use: the ones of the price table.
-	Models() []ai.ModelInfo
+	Models() []llm.ModelInfo
 	// Rerun starts the rerun of a case run with the given model and reasoning level for every LLM stage of the remember pipeline and of
 	// the query (opts; an empty one keeps that setting as it was). It returns the new case run, already recorded (running), while the rerun goes on in the background. Its
 	// errors: evalsdb.ErrNotFound (unknown case run), core.ErrRerunRefused (it cannot be rerun), core.ErrRerunBusy (one is running),
@@ -46,7 +46,7 @@ type EvalRerunner interface {
 type evalRerunInfo struct {
 	// Models are the names of the models a rerun can use, sorted.
 	Models []string `json:"models"`
-	// Reasoning are the reasoning (thinking) levels a rerun can use, from none to the most (ai.ReasoningLevels).
+	// Reasoning are the reasoning (thinking) levels a rerun can use, from none to the most (llm.ReasoningLevels).
 	Reasoning []string `json:"reasoning"`
 }
 
@@ -157,7 +157,7 @@ func rerunInfo(rr EvalRerunner) *evalRerunInfo {
 	}
 	info := &evalRerunInfo{
 		Models:    []string{},
-		Reasoning: slices.Clone(ai.ReasoningLevels),
+		Reasoning: slices.Clone(llm.ReasoningLevels),
 	}
 	for _, m := range rr.Models() {
 		info.Models = append(info.Models, m.Name)
@@ -173,7 +173,7 @@ type rerunRequest struct {
 	RememberModel string `json:"remember_model,omitempty"`
 	QueryModel    string `json:"query_model,omitempty"`
 	// RememberReasoning and QueryReasoning are the same for the reasoning (thinking) level, "none", "low", "medium" or "high" (see
-	// ai.ReasoningLevels); empty keeps the levels the case run had. "none" is a choice of its own: no thinking.
+	// llm.ReasoningLevels); empty keeps the levels the case run had. "none" is a choice of its own: no thinking.
 	RememberReasoning string `json:"remember_reasoning,omitempty"`
 	QueryReasoning    string `json:"query_reasoning,omitempty"`
 }
@@ -189,7 +189,7 @@ type rerunStarted struct {
 
 // EvalCaseRunRerun serves POST /admin/api/evals/case_runs/{id}/rerun: it runs the case of a case run that has ended again, with the
 // models of the body ({"remember_model": "..", "query_model": "..", "remember_reasoning": "..", "query_reasoning": ".."}, each model one of
-// the models of the price table and each level one of ai.ReasoningLevels, any of them may be left out),
+// the models of the price table and each level one of llm.ReasoningLevels, any of them may be left out),
 // as a new eval run in the experiment run of that case run, so the rerun is listed with the experiment's. It answers 202 with the new
 // case run (rerunStarted) once it is recorded; the rerun goes on in the background and takes as long as the case does. Answers: 404 for
 // an unknown or non-knowledge case run, 400 for a model that is not in the price table or an unknown level, 409 for a case run that cannot be rerun (it has
@@ -238,10 +238,10 @@ func EvalCaseRunRerun(d *sql.DB,
 		}
 		req.RememberReasoning, req.QueryReasoning = strings.TrimSpace(req.RememberReasoning), strings.TrimSpace(req.QueryReasoning)
 		for _, l := range []struct{ what, level string }{{"remember_reasoning", req.RememberReasoning}, {"query_reasoning", req.QueryReasoning}} {
-			if _, valid := ai.NormalizeReasoning(l.level); !valid {
+			if _, valid := llm.NormalizeReasoning(l.level); !valid {
 				httputil.Error(w,
 					http.StatusBadRequest,
-					l.what+" "+l.level+" is not a reasoning level (levels: "+strings.Join(ai.ReasoningLevels, ", ")+")")
+					l.what+" "+l.level+" is not a reasoning level (levels: "+strings.Join(llm.ReasoningLevels, ", ")+")")
 				return
 			}
 		}

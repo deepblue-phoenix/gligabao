@@ -1,4 +1,4 @@
-package ai
+package llm
 
 // Web search with Anthropic's cloud-based web search tool: a "server tool", so Anthropic runs the searches and reads
 // the pages; gligabao only sends the request and gets back the model's answer (with citations) in the same response.

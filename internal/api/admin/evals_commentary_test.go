@@ -11,27 +11,27 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
+	"github.com/deepblue-phoenix/gligabao/internal/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
 // commentLLM answers every request with a fixed commentary and records the requests (or fails with err).
 type commentLLM struct {
-	reqs []ai.Request
+	reqs []llm.Request
 	err  error
 }
 
 func (l *commentLLM) Complete(_ context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	l.reqs = append(l.reqs, req)
 	if l.err != nil {
 		return nil, l.err
 	}
-	return &ai.Response{
+	return &llm.Response{
 		Text:         "Cause: the extractor missed it.\nFinal advice: change the prompt.",
 		Model:        req.Model,
 		InputTokens:  1000,

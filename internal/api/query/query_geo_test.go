@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_query"
@@ -26,11 +26,11 @@ type geoStubLLM struct {
 	mu      sync.Mutex
 	places  string // the answer of detect_geo
 	failGeo bool
-	reqs    []ai.Request
+	reqs    []llm.Request
 }
 
 func (f *geoStubLLM) Complete(_ context.Context,
-	r ai.Request) (*ai.Response, error) {
+	r llm.Request) (*llm.Response, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.reqs = append(f.reqs, r)
@@ -38,7 +38,7 @@ func (f *geoStubLLM) Complete(_ context.Context,
 	switch {
 	case strings.Contains(r.System, "places that a question mentions"):
 		if f.failGeo {
-			return &ai.Response{
+			return &llm.Response{
 				Text:       "not json",
 				StopReason: "end_turn",
 			}, nil
@@ -47,14 +47,14 @@ func (f *geoStubLLM) Complete(_ context.Context,
 	case strings.Contains(r.System, "extract"):
 		out = `{"entities":[{"name":"Alice","type":"person"},{"name":"Paris","type":"place"}],"edges":[]}`
 	}
-	return &ai.Response{
+	return &llm.Response{
 		Text:       out,
 		StopReason: "end_turn",
 	}, nil
 }
 
 // requestOf returns the request whose system prompt contains s, nil if there is none.
-func (f *geoStubLLM) requestOf(s string) *ai.Request {
+func (f *geoStubLLM) requestOf(s string) *llm.Request {
 	for i := range f.reqs {
 		if strings.Contains(f.reqs[i].System, s) {
 			return &f.reqs[i]

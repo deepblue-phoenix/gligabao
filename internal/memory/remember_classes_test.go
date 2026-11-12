@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
@@ -25,13 +25,13 @@ type classLLM struct {
 }
 
 func (l *classLLM) Complete(ctx context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	if strings.Contains(req.System, "You classify a knowledge graph") {
 		l.prompts = append(l.prompts, req.Messages[0].Content)
 		if l.classErr != nil {
 			return nil, l.classErr
 		}
-		return &ai.Response{
+		return &llm.Response{
 			StopReason:   "end_turn",
 			Model:        "class-model",
 			Provider:     "test",

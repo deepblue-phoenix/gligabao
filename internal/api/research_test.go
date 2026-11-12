@@ -15,9 +15,9 @@ import (
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
 // researchManager makes a research manager over d whose LLM always answers with a report.
@@ -30,7 +30,7 @@ func researchManager(t *testing.T,
 		w.Write([]byte(`{"model":"m","stop_reason":"end_turn","content":[{"type":"text","text":"the report"}],"usage":{"input_tokens":1,"output_tokens":1}}`))
 	}))
 	t.Cleanup(srv.Close)
-	client, err := ai.New("k", ai.WithBaseURL(srv.URL))
+	client, err := llm.New("k", llm.WithBaseURL(srv.URL))
 	if err != nil {
 		t.Fatal(err)
 	}

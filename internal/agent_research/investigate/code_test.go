@@ -14,8 +14,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox/hostfn"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
 func TestFormatCodeResult(t *testing.T) {
@@ -135,7 +135,7 @@ func testRunCode(t *testing.T,
 		Task:     "Does X fit?",
 		External: fakeTools(),
 		Model: func(ctx context.Context,
-			p map[string]any) (*ai.RawResponse, error) {
+			p map[string]any) (*llm.RawResponse, error) {
 			if len(fm.script) == 0 {
 				return nil, errors.New("script over")
 			}

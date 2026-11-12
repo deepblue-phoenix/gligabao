@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
@@ -249,7 +249,7 @@ func (j *Judge) Calls() int {
 
 // Complete grades the cases of a request.
 func (j *Judge) Complete(_ context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	content := req.Messages[0].Content
 	var cases []struct {
 		ID        int    `json:"id"`
@@ -272,7 +272,7 @@ func (j *Judge) Complete(_ context.Context,
 		out = append(out, map[string]any{"id": it.ID, "score": score, "reason": "because"})
 	}
 	b, _ := json.Marshal(out)
-	return &ai.Response{
+	return &llm.Response{
 		Text:         string(b),
 		Model:        "judge-model",
 		Provider:     "test",

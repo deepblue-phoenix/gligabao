@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_pipeline"
@@ -142,9 +142,9 @@ type ChunkResult struct {
 // job is what one Remember call shares between the steps it runs on each text it extracts (the text itself, or each of
 // the chunks of a long one).
 type job struct {
-	d   *sql.DB
-	llm memory_core.LLM // already recording and tracing
-	tr  *memory_core.Trace
+	d  *sql.DB
+	lm memory_core.LLM // already recording and tracing
+	tr *memory_core.Trace
 	// run is the run log of the call (see runlog.go). It is nil in the jobs that store the texts the enrichment stages make (a
 	// web search result, a series observation): they are part of those stages, not of the stages of the text itself.
 	run    *runLog
@@ -212,16 +212,16 @@ func (ex *Extraction) RunID() int64 {
 // If the LLM answered but its answer is no use (too long, malformed), the error comes with an Extraction that is empty but
 // for its InferenceID, so that the run it cost is not lost; it is nil if the call itself failed.
 func Extract(ctx context.Context,
-	llm memory_core.LLM,
+	lm memory_core.LLM,
 	text string,
 	ref time.Time) (*Extraction, error) {
 
 	//-----------------------
 	// LLM
-	resp, err := llm.Complete(ctx, ai.Request{
+	resp, err := lm.Complete(ctx, llm.Request{
 		System: entitySystemPrompt,
-		Messages: []ai.Message{{
-			Role: ai.RoleUser,
+		Messages: []llm.Message{{
+			Role: llm.RoleUser,
 			Content: "<reference_time>\n" + relational.FormatTime(ref) +
 				"\n</reference_time>\n\n<text>\n" + text + "\n</text>",
 		}},
@@ -378,7 +378,7 @@ func ResolveKind(kind string) (string, error) {
 // Result.Trajectory, with its ID in Result.TrajectoryID).
 func Remember(ctx context.Context,
 	d *sql.DB,
-	llm memory_core.LLM,
+	lm memory_core.LLM,
 	userID,
 	dataset,
 	kind,
@@ -402,7 +402,7 @@ func Remember(ctx context.Context,
 		ref = now
 	}
 	ref = relational.Normalize(ref)
-	llm = memory_core.WithRecording(llm,
+	lm = memory_core.WithRecording(lm,
 		d,
 		CallRemember)
 
@@ -428,7 +428,7 @@ func Remember(ctx context.Context,
 			res.TrajectoryID, res.Trajectory = traj.TrajectoryID, traj
 		}
 	}()
-	llm = tr.Wrap(llm)
+	lm = tr.Wrap(lm)
 	tr.User(text)
 	input := map[string]any{"user_id": userID, "dataset": dataset, "kind": kind, "reference_time": relational.FormatTime(ref), "session_id": co.SessionID}
 	cc := co.Chunking.WithDefaults()
@@ -481,7 +481,7 @@ func Remember(ctx context.Context,
 
 	j := &job{
 		d:       d,
-		llm:     llm,
+		lm:      lm,
 		tr:      tr,
 		run:     run,
 		co:      co,
@@ -685,7 +685,7 @@ func store(ctx context.Context,
 			relational.Model{
 				Name:     ex.Model,
 				Provider: ex.Provider,
-				Kind:     ai.KindOf(ex.Model),
+				Kind:     llm.KindOf(ex.Model),
 			})
 		if err != nil {
 			return nil, err
@@ -697,7 +697,7 @@ func store(ctx context.Context,
 		}
 	}
 	// Registered before the transaction's Rollback, so it runs after the transaction is finished (see prepareVectors).
-	var embedUsage *ai.EmbedUsage
+	var embedUsage *llm.EmbedUsage
 	defer func() {
 		recordEmbedUsage(ctx,
 			d,

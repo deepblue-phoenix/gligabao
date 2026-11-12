@@ -25,12 +25,12 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	log "github.com/sirupsen/logrus"
 )
@@ -81,10 +81,10 @@ type WebSearch struct {
 	BilledSearches int      `json:"billed_searches,omitempty"`
 	SearchErrors   []string `json:"search_errors,omitempty"`
 	// Sources are the pages the result is based on.
-	Sources          []ai.WebSource `json:"sources,omitempty"`
-	Entities         []WebEntity    `json:"entities,omitempty"`
-	Edges            []WebEdge      `json:"edges,omitempty"`
-	InvalidatedEdges []int64        `json:"invalidated_edges,omitempty"`
+	Sources          []llm.WebSource `json:"sources,omitempty"`
+	Entities         []WebEntity     `json:"entities,omitempty"`
+	Edges            []WebEdge       `json:"edges,omitempty"`
+	InvalidatedEdges []int64         `json:"invalidated_edges,omitempty"`
 	// StartedAt is when the search started (the artifact's time, for a search read from the database). LatencyMS is how
 	// long the call took, Model the model that ran it, and the tokens and cost those of the call, the search fee
 	// included (trajectory only).
@@ -198,13 +198,13 @@ func webSearchesOf(t *atif.Trajectory) []WebSearch {
 			w.PromptTokens, w.CompletionTokens, w.CostUSD = m.PromptTokens, m.CompletionTokens, m.CostUSD
 		}
 		var res struct {
-			Found        bool           `json:"found"`
-			Briefing     string         `json:"briefing"`
-			Searches     []string       `json:"searches"`
-			Sources      []ai.WebSource `json:"sources"`
-			SearchErrors []string       `json:"search_errors"`
-			Billed       int            `json:"billed_searches"`
-			Error        string         `json:"error"`
+			Found        bool            `json:"found"`
+			Briefing     string          `json:"briefing"`
+			Searches     []string        `json:"searches"`
+			Sources      []llm.WebSource `json:"sources"`
+			SearchErrors []string        `json:"search_errors"`
+			Billed       int             `json:"billed_searches"`
+			Error        string          `json:"error"`
 		}
 		if json.Unmarshal([]byte(observed(st, call)), &res) == nil {
 			w.Found, w.Error, w.Searches, w.Sources, w.SearchErrors, w.BilledSearches = res.Found, res.Error, res.Searches, res.Sources, res.SearchErrors, res.Billed
@@ -437,19 +437,19 @@ var webQueryRE = regexp.MustCompile(`^` + webQueryPrefix + `(.+) \(([^()]+)\)$`)
 
 // splitWebArtifactText splits the text of a web_search artifact into the briefing and the sources listed after it
 // (see memory_remember.webSearchArtifactText: "- <title> <url> (page age)" per line after "Sources:").
-func splitWebArtifactText(text string) (string, []ai.WebSource) {
+func splitWebArtifactText(text string) (string, []llm.WebSource) {
 	briefing, list, found := strings.Cut(text, "\n\nSources:")
 	if !found {
 		return strings.TrimSpace(text), nil
 	}
-	var sources []ai.WebSource
+	var sources []llm.WebSource
 	for _, line := range strings.Split(list, "\n") {
 		line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "- "))
 		open, end := strings.Index(line, "<"), strings.Index(line, ">")
 		if line == "" || open < 0 || end < open {
 			continue
 		}
-		s := ai.WebSource{
+		s := llm.WebSource{
 			URL:   line[open+1 : end],
 			Title: strings.TrimSpace(line[:open]),
 		}

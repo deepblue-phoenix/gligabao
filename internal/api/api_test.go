@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
 func TestLLMCallsRecorded(t *testing.T) { dbtest.Run(t, testLLMCallsRecorded) }
@@ -68,13 +68,13 @@ func testLLMCallsRecorded(t *testing.T,
 type costLLM struct{ outs []string }
 
 func (f *costLLM) Complete(_ context.Context,
-	_ ai.Request) (*ai.Response, error) {
+	_ llm.Request) (*llm.Response, error) {
 	out := f.outs[0]
 	f.outs = f.outs[1:]
-	return &ai.Response{
+	return &llm.Response{
 		Text:         out,
 		StopReason:   "end_turn",
-		Provider:     ai.ProviderAnthropic,
+		Provider:     llm.ProviderAnthropic,
 		Model:        "m",
 		InputTokens:  10,
 		OutputTokens: 5,

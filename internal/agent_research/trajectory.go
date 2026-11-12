@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent"
-	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/atif"
 )
 
 // agentInfo is what the trajectory says of each agent of the research (its "agents" extra): who it is, where it is in the tree and how

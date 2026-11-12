@@ -12,11 +12,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/training"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 
 	_ "modernc.org/sqlite"
@@ -67,7 +67,7 @@ type fakeJudge struct {
 }
 
 func (j *fakeJudge) Complete(_ context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if j.failing {
@@ -95,7 +95,7 @@ func (j *fakeJudge) Complete(_ context.Context,
 	if j.reply != nil {
 		text = j.reply(len(j.sizes), vs)
 	}
-	return &ai.Response{
+	return &llm.Response{
 		Text:         text,
 		Model:        "judge-1",
 		InputTokens:  100,

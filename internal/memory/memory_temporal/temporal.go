@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
@@ -59,7 +59,7 @@ func (p *EdgePlan) RunID() int64 {
 // inContext, if not nil, is called right before the LLM call with the IDs of the stored edges (cands) that its prompt holds, so that
 // they can be counted (see memory_core.CountInContext); it is not called when there is no LLM call.
 func ResolveEdges(ctx context.Context,
-	llm memory_core.LLM,
+	lm memory_core.LLM,
 	edges,
 	cands []graph.Edge,
 	inContext func(edgeIDs []int64)) (*EdgePlan, error) {
@@ -115,10 +115,10 @@ func ResolveEdges(ctx context.Context,
 	if inContext != nil {
 		inContext(candIDs)
 	}
-	resp, err := llm.Complete(ctx, ai.Request{
+	resp, err := lm.Complete(ctx, llm.Request{
 		System: resolveSystemPrompt,
-		Messages: []ai.Message{{
-			Role:    ai.RoleUser,
+		Messages: []llm.Message{{
+			Role:    llm.RoleUser,
 			Content: b.String(),
 		}},
 		MaxTokens: 2048,

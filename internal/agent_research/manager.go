@@ -19,7 +19,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/db"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 	log "github.com/sirupsen/logrus"
@@ -31,7 +31,7 @@ type Manager struct {
 	// DB holds the runs and their states.
 	DB *sql.DB
 	// Client is the LLM client the agents use (nil: starting a research is not possible).
-	Client *ai.Client
+	Client *llm.Client
 	// Ops is how the runs and states are stored and read.
 	Ops Ops
 	// MaxActivePerUser is how many agents of one user may work at once (DefaultMaxActivePerUser if 0). The workers that the agents
@@ -133,7 +133,7 @@ func KeepActiveRuns() ManagerOption { return func(o *managerOptions) { o.keepAct
 func NewManager(ctx context.Context,
 	d *sql.DB,
 	ops Ops,
-	client *ai.Client,
+	client *llm.Client,
 	opts ...ManagerOption) *Manager {
 	var o managerOptions
 	for _, opt := range opts {
@@ -295,7 +295,7 @@ func (m *Manager) applyDef(opts Options,
 		opts.Model = def.Model
 	}
 	if opts.Model == "" { // the server's default model (what the LLM client calls when none is named): recorded, so the run shows it
-		opts.Model = ai.DefaultModel()
+		opts.Model = llm.DefaultModel()
 	}
 	if opts.MaxSteps == 0 {
 		opts.MaxSteps = def.MaxSteps

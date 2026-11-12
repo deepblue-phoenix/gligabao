@@ -20,10 +20,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 
 	log "github.com/sirupsen/logrus"
@@ -110,15 +110,15 @@ type ImageExtraction struct {
 
 // ExtractImage sends the image (of a media type from ResolveImage) to the LLM, which reads its text and classifies it.
 func ExtractImage(ctx context.Context,
-	llm memory_core.LLM,
+	lm memory_core.LLM,
 	mediaType string,
 	data []byte) (*ImageExtraction, error) {
-	resp, err := llm.Complete(ctx, ai.Request{
+	resp, err := lm.Complete(ctx, llm.Request{
 		System: imageSystemPrompt,
-		Messages: []ai.Message{{
-			Role:    ai.RoleUser,
+		Messages: []llm.Message{{
+			Role:    llm.RoleUser,
 			Content: "Read this image.",
-			Images: []ai.Image{{
+			Images: []llm.Image{{
 				MediaType: mediaType,
 				Data:      data,
 			}},
@@ -243,7 +243,7 @@ const PipelineImage = "image"
 // result keeps the session of the stored artifact). Only with WithEval is the call recorded as an ATIF trajectory.
 func RememberImage(ctx context.Context,
 	d *sql.DB,
-	llm memory_core.LLM,
+	lm memory_core.LLM,
 	userID,
 	dataset string,
 	data []byte,
@@ -273,7 +273,7 @@ func RememberImage(ctx context.Context,
 	ref = relational.Normalize(ref)
 	sum := sha256.Sum256(data)
 	hash := hex.EncodeToString(sum[:])
-	llm = memory_core.WithRecording(llm,
+	lm = memory_core.WithRecording(lm,
 		d,
 		CallRememberImage)
 
@@ -283,7 +283,7 @@ func RememberImage(ctx context.Context,
 			res.TrajectoryID, res.Trajectory = traj.TrajectoryID, traj
 		}
 	}()
-	llm = tr.Wrap(llm)
+	lm = tr.Wrap(lm)
 	input := map[string]any{"user_id": userID, "dataset": dataset, "media_type": mediaType, "sha256": hash,
 		"size_bytes": len(data), "reference_time": relational.FormatTime(ref), "session_id": sessionID}
 	if len(co.Models) > 0 {
@@ -327,7 +327,7 @@ func RememberImage(ctx context.Context,
 	}
 
 	x, err := ExtractImage(ctx,
-		co.ModelLLM(llm, memory_core.StageExtractImage),
+		co.ModelLLM(lm, memory_core.StageExtractImage),
 		mediaType,
 		data)
 	if err != nil {

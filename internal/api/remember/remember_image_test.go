@@ -17,10 +17,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_image"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 
@@ -52,12 +52,12 @@ func testRememberImage(t *testing.T,
 	b64 := base64.StdEncoding.EncodeToString(data)
 
 	var calls int
-	llm := llmFunc(func(req ai.Request) (*ai.Response, error) {
+	llm := llmFunc(func(req llm.Request) (*llm.Response, error) {
 		calls++
 		if len(req.Messages) != 1 || len(req.Messages[0].Images) != 1 {
 			t.Errorf("the image was not sent: %+v", req.Messages)
 		}
-		return &ai.Response{
+		return &llm.Response{
 			Text:         imageJSON,
 			StopReason:   "end_turn",
 			Provider:     "anthropic",
@@ -309,8 +309,8 @@ func TestRememberImageLLMFailure(t *testing.T) { dbtest.Run(t, testRememberImage
 
 func testRememberImageLLMFailure(t *testing.T,
 	d *sql.DB) {
-	llm := llmFunc(func(ai.Request) (*ai.Response, error) {
-		return &ai.Response{
+	llm := llmFunc(func(llm.Request) (*llm.Response, error) {
+		return &llm.Response{
 			Text:       "I cannot read this.",
 			StopReason: "end_turn",
 		}, nil
@@ -341,17 +341,17 @@ func testRememberImageLLMFailure(t *testing.T,
 	}
 }
 
-type llmFunc func(ai.Request) (*ai.Response, error)
+type llmFunc func(llm.Request) (*llm.Response, error)
 
 func (f llmFunc) Complete(_ context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	return f(req)
 }
 
 func TestRememberImageEval(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
-	llm := llmFunc(func(ai.Request) (*ai.Response, error) {
-		return &ai.Response{
+	llm := llmFunc(func(llm.Request) (*llm.Response, error) {
+		return &llm.Response{
 			Text:       imageJSON,
 			StopReason: "end_turn",
 			Model:      "m",
@@ -388,8 +388,8 @@ func testRememberImageSession(t *testing.T,
 	ctx := context.Background()
 	imgDir := filepath.Join(t.TempDir(), "images")
 	b64 := base64.StdEncoding.EncodeToString(pngBytes(t))
-	llm := llmFunc(func(ai.Request) (*ai.Response, error) {
-		return &ai.Response{
+	llm := llmFunc(func(llm.Request) (*llm.Response, error) {
+		return &llm.Response{
 			Text:       imageJSON,
 			StopReason: "end_turn",
 			Model:      "claude-haiku-5-5",

@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
 // The stages of remember that call an LLM. A call can choose the model of each one (WithModels); a stage it names no
@@ -171,7 +171,7 @@ type modelLLM struct {
 }
 
 func (m *modelLLM) Complete(ctx context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	if req.Model == "" {
 		req.Model = m.model
 	}
@@ -211,8 +211,8 @@ var ReasoningStages = []string{StageExtractGraph, StageSummarizeChunk, StageReso
 // The reasoning level a stage runs with unless the call chooses another. It is none (no thinking) for both pipelines, so
 // that no thinking tokens are paid for by default; a call turns it on per stage (WithReasoning).
 const (
-	DefaultRememberReasoning = ai.ReasoningNone
-	DefaultQueryReasoning    = ai.ReasoningNone
+	DefaultRememberReasoning = llm.ReasoningNone
+	DefaultQueryReasoning    = llm.ReasoningNone
 )
 
 // DefaultReasoning is the reasoning level of a stage when the call sets none: DefaultQueryReasoning for StageQuery,
@@ -226,13 +226,13 @@ func DefaultReasoning(stage string) string {
 			return DefaultRememberReasoning
 		}
 	}
-	return ai.ReasoningNone
+	return llm.ReasoningNone
 }
 
 // ErrInvalidReasoning means a stage that takes no reasoning level is named, or a level is unknown.
 var ErrInvalidReasoning = errors.New("invalid reasoning")
 
-// Reasoning maps a stage (see ReasoningStages, and StageQuery for Query) to its reasoning level (ai.ReasoningLow, ...).
+// Reasoning maps a stage (see ReasoningStages, and StageQuery for Query) to its reasoning level (llm.ReasoningLow, ...).
 // A stage that is missing runs with its default (DefaultReasoning, none: no thinking); "low", "medium" and "high" turn it on.
 type Reasoning map[string]string
 
@@ -298,13 +298,13 @@ func resolveLevel(stage,
 	if strings.TrimSpace(level) == "" {
 		return "", nil
 	}
-	l, valid := ai.NormalizeReasoning(level)
+	l, valid := llm.NormalizeReasoning(level)
 	if !valid {
 		return "", fmt.Errorf("%w: %s: unknown level %q (levels: %s)",
 			ErrInvalidReasoning,
 			stage,
 			level,
-			strings.Join(ai.ReasoningLevels, ", "))
+			strings.Join(llm.ReasoningLevels, ", "))
 	}
 	return l, nil
 }

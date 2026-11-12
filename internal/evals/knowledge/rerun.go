@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbfull"
@@ -15,6 +14,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/server"
@@ -58,10 +58,10 @@ func NewRerunner(env server.EvalRerunEnv) admin.EvalRerunner {
 }
 
 // Models implements admin.EvalRerunner: the LLM models of the price table.
-func (r *Rerunner) Models() []ai.ModelInfo {
-	var out []ai.ModelInfo
-	for _, m := range ai.SupportedModels(r.env.Prices) {
-		if m.Kind == ai.KindLLM {
+func (r *Rerunner) Models() []llm.ModelInfo {
+	var out []llm.ModelInfo
+	for _, m := range llm.SupportedModels(r.env.Prices) {
+		if m.Kind == llm.KindLLM {
 			out = append(out, m)
 		}
 	}
@@ -116,7 +116,7 @@ func (r *Rerunner) Rerun(ctx context.Context,
 	database, err := dbfull.Open(db.Config{
 		SQLitePath: r.env.DBPath,
 		Geo:        true,
-		Models:     ai.SupportedModels(r.env.Prices),
+		Models:     llm.SupportedModels(r.env.Prices),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("open the eval database: %w", err)

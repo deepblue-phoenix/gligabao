@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 )
 
@@ -16,20 +16,20 @@ type queryOptions struct {
 	Models []string `json:"models"`
 	// DefaultModel is the model that answers when none is picked.
 	DefaultModel string `json:"default_model"`
-	// Reasoning are the thinking levels, from none to the most (ai.ReasoningLevels).
+	// Reasoning are the thinking levels, from none to the most (llm.ReasoningLevels).
 	Reasoning []string `json:"reasoning"`
 }
 
-// QueryOptionsOf serves GET /admin/api/query-options: the LLM models of models (the supported ones, see ai.SupportedModels), the one a
+// QueryOptionsOf serves GET /admin/api/query-options: the LLM models of models (the supported ones, see llm.SupportedModels), the one a
 // query uses by default and the thinking levels, for the model and thinking pickers of the query modal. Never null lists.
-func QueryOptionsOf(models []ai.ModelInfo) http.HandlerFunc {
+func QueryOptionsOf(models []llm.ModelInfo) http.HandlerFunc {
 	out := queryOptions{
 		Models:       []string{},
-		DefaultModel: ai.DefaultModel(),
-		Reasoning:    slices.Clone(ai.ReasoningLevels),
+		DefaultModel: llm.DefaultModel(),
+		Reasoning:    slices.Clone(llm.ReasoningLevels),
 	}
 	for _, m := range models {
-		if m.Kind == ai.KindLLM {
+		if m.Kind == llm.KindLLM {
 			out.Models = append(out.Models, m.Name)
 		}
 	}

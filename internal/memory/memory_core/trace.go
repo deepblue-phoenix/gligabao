@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
@@ -30,10 +30,10 @@ const agentVersion = "0.1"
 
 //---------------------------------------------------------------------------------------------
 
-// Embedder turns texts into embeddings (see ai.Embedder), one per text and in the same order, and reports the usage.
+// Embedder turns texts into embeddings (see llm.Embedder), one per text and in the same order, and reports the usage.
 type Embedder interface {
 	EmbedBatchUsage(ctx context.Context,
-		texts []string) ([][]float32, *ai.EmbedUsage, error)
+		texts []string) ([][]float32, *llm.EmbedUsage, error)
 }
 
 // Classifier is Jev (see package jev), the system 1 model, as far as the pipelines need it. *jev.Client implements it.
@@ -324,7 +324,7 @@ func (t *Trace) EmbedStep(message,
 	name string,
 	args,
 	res map[string]any,
-	usage *ai.EmbedUsage) {
+	usage *llm.EmbedUsage) {
 	if t == nil {
 		return
 	}
@@ -402,7 +402,7 @@ func (t *Trace) TimedTool(message,
 //---------------------------------------------------------------------------------------------
 
 // describeImages is how the images of a message appear in a trajectory: their bytes are not kept.
-func describeImages(images []ai.Image) string {
+func describeImages(images []llm.Image) string {
 	var sb strings.Builder
 	for _, im := range images {
 		fmt.Fprintf(&sb,
@@ -421,12 +421,12 @@ type tracingLLM struct {
 }
 
 func (l *tracingLLM) Complete(ctx context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	if req.System != "" {
 		l.b.System(req.System)
 	}
 	for _, m := range req.Messages {
-		if m.Role == ai.RoleAssistant {
+		if m.Role == llm.RoleAssistant {
 			l.b.Agent(atif.Step{
 				Message: m.Content,
 			})

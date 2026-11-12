@@ -1,7 +1,7 @@
 package memory_remember
 
 import (
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
@@ -14,7 +14,7 @@ func traceEmbed(t *memory_core.Trace,
 	edges int,
 	chunk,
 	summary bool,
-	usage *ai.EmbedUsage) {
+	usage *llm.EmbedUsage) {
 	msg := "Embedded the entities and edges stored by this artifact."
 	args := map[string]any{"entities": entities, "edges": edges, "texts": texts}
 	if chunk {
@@ -37,7 +37,7 @@ func traceSearchEntities(t *memory_core.Trace,
 	texts []string,
 	found []similarEntity,
 	facts []map[string]any,
-	usage *ai.EmbedUsage,
+	usage *llm.EmbedUsage,
 	err error) {
 	if t == nil || len(texts) == 0 {
 		return

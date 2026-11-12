@@ -1,5 +1,5 @@
-// Package ai provides a simple LLM wrapper. For now it only calls the Anthropic Messages API.
-package ai
+// Package llm provides a simple LLM wrapper. For now it only calls the Anthropic Messages API.
+package llm
 
 import (
 	"bytes"

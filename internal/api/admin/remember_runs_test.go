@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
 
@@ -207,12 +207,12 @@ func testRememberRunOutputs(t *testing.T,
 type scriptedLLM struct{ extractions []string }
 
 func (s *scriptedLLM) Complete(_ context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	out := `{"duplicates":[],"contradictions":[{"new":0,"existing":1}]}`
 	if !strings.HasPrefix(req.System, "You compare NEW facts") {
 		out, s.extractions = s.extractions[0], s.extractions[1:]
 	}
-	return &ai.Response{
+	return &llm.Response{
 		Text:       out,
 		StopReason: "end_turn",
 		Model:      "fake-model",

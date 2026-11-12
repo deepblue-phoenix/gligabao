@@ -12,7 +12,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
 // writeDefs writes the files (name -> content) to a new directory and loads them as the agent definitions.
@@ -75,8 +75,8 @@ func freeFinal(text string) string {
 
 // pricedClient prices the fake model "m" at 1 USD per token, so that a call of the fakes above (1 token in, 1 out) costs 2 USD.
 func pricedClient(t *testing.T,
-	f *teamFake) *ai.Client {
-	return f.startWith(t, ai.WithPrices(ai.NewPriceTable(map[string]ai.Price{"m": {
+	f *teamFake) *llm.Client {
+	return f.startWith(t, llm.WithPrices(llm.NewPriceTable(map[string]llm.Price{"m": {
 		Input:  1e6,
 		Output: 1e6,
 	}})))

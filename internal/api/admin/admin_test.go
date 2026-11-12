@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_dataset"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_image"
@@ -456,8 +456,8 @@ func testVectorsOpenOnDemand(t *testing.T,
 type fakeLLM struct{}
 
 func (fakeLLM) Complete(ctx context.Context,
-	req ai.Request) (*ai.Response, error) {
-	return &ai.Response{
+	req llm.Request) (*llm.Response, error) {
+	return &llm.Response{
 		Text:         `{"theme":"plot","title":"T","text_blocks":[{"kind":"title","text":"T"}]}`,
 		StopReason:   "end_turn",
 		Provider:     "p",

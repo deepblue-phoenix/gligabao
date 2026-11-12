@@ -7,23 +7,23 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
 // TestQueryOptionsOf checks that the query modal is offered the LLM models, sorted and without the embedding ones, the default model and
 // the thinking levels, as lists (never null).
 func TestQueryOptionsOf(t *testing.T) {
-	h := admin.QueryOptionsOf([]ai.ModelInfo{
+	h := admin.QueryOptionsOf([]llm.ModelInfo{
 		{
 			Name: "zeta",
-			Kind: ai.KindLLM,
+			Kind: llm.KindLLM,
 		}, {
 			Name: "emb",
-			Kind: ai.KindEmbedding,
+			Kind: llm.KindEmbedding,
 		}, {
 			Name: "alpha",
-			Kind: ai.KindLLM,
+			Kind: llm.KindLLM,
 		},
 	})
 	rec := httptest.NewRecorder()
@@ -46,7 +46,7 @@ func TestQueryOptionsOf(t *testing.T) {
 	if !slices.Equal(got.Models, []string{"alpha", "zeta"}) {
 		t.Errorf("models %v, want [alpha zeta]", got.Models)
 	}
-	if got.DefaultModel != ai.DefaultModel() || !slices.Equal(got.Reasoning, ai.ReasoningLevels) {
+	if got.DefaultModel != llm.DefaultModel() || !slices.Equal(got.Reasoning, llm.ReasoningLevels) {
 		t.Errorf("default %q, reasoning %v",
 			got.DefaultModel,
 			got.Reasoning)

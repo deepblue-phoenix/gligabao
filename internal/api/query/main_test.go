@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
@@ -30,7 +30,7 @@ func TestMain(m *testing.M) {
 type topicEmbedder struct{}
 
 func (topicEmbedder) EmbedBatchUsage(_ context.Context,
-	texts []string) ([][]float32, *ai.EmbedUsage, error) {
+	texts []string) ([][]float32, *llm.EmbedUsage, error) {
 	out := make([][]float32, len(texts))
 	for i, t := range texts {
 		t = strings.ToLower(t)
@@ -47,8 +47,8 @@ func (topicEmbedder) EmbedBatchUsage(_ context.Context,
 			out[i] = []float32{0, 0, 0, 0, 1}
 		}
 	}
-	return out, &ai.EmbedUsage{
-		Provider:    ai.ProviderOpenAI,
+	return out, &llm.EmbedUsage{
+		Provider:    llm.ProviderOpenAI,
 		Model:       "test-embed",
 		InputTokens: len(texts),
 	}, nil

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
 func TestResolveModels(t *testing.T) {
@@ -53,9 +53,9 @@ func TestParseAndMergeModels(t *testing.T) {
 type captureLLM struct{ model string }
 
 func (c *captureLLM) Complete(_ context.Context,
-	r ai.Request) (*ai.Response, error) {
+	r llm.Request) (*llm.Response, error) {
 	c.model = r.Model
-	return &ai.Response{}, nil
+	return &llm.Response{}, nil
 }
 
 func TestModelLLM(t *testing.T) {
@@ -63,15 +63,15 @@ func TestModelLLM(t *testing.T) {
 		StageExtractGraph: "x",
 	})})
 	c := &captureLLM{}
-	o.ModelLLM(c, StageExtractGraph).Complete(context.Background(), ai.Request{})
+	o.ModelLLM(c, StageExtractGraph).Complete(context.Background(), llm.Request{})
 	if c.model != "x" {
 		t.Errorf("extract model = %q", c.model)
 	}
-	o.ModelLLM(c, StageResolveEdges).Complete(context.Background(), ai.Request{})
+	o.ModelLLM(c, StageResolveEdges).Complete(context.Background(), llm.Request{})
 	if c.model != "" {
 		t.Errorf("resolve (unset) model = %q, want the default", c.model)
 	}
-	o.ModelLLM(c, StageExtractGraph).Complete(context.Background(), ai.Request{
+	o.ModelLLM(c, StageExtractGraph).Complete(context.Background(), llm.Request{
 		Model: "explicit",
 	})
 	if c.model != "explicit" {
@@ -82,16 +82,16 @@ func TestModelLLM(t *testing.T) {
 func TestReasoningDefaults(t *testing.T) {
 	var r Reasoning
 	for _, s := range ReasoningStages {
-		if r.Level(s) != ai.ReasoningNone {
+		if r.Level(s) != llm.ReasoningNone {
 			t.Errorf("%s default = %q, want none",
 				s,
 				r.Level(s))
 		}
 	}
-	if r.Level(StageQuery) != ai.ReasoningNone {
+	if r.Level(StageQuery) != llm.ReasoningNone {
 		t.Errorf("query default = %q, want none", r.Level(StageQuery))
 	}
-	if r.Level(StageWebSearch) != ai.ReasoningNone {
+	if r.Level(StageWebSearch) != llm.ReasoningNone {
 		t.Errorf("web_search default = %q, want none", r.Level(StageWebSearch))
 	}
 
@@ -126,12 +126,12 @@ func TestReasoningDefaults(t *testing.T) {
 
 // ModelLLM applies the reasoning level of the stage (its default, none, if none was set) and tells the stage to the recorder.
 func TestModelLLMReasoningAndStage(t *testing.T) {
-	var gotReq ai.Request
+	var gotReq llm.Request
 	var gotStage string
-	llm := llmFunc(func(ctx context.Context,
-		r ai.Request) (*ai.Response, error) {
+	lm := llmFunc(func(ctx context.Context,
+		r llm.Request) (*llm.Response, error) {
 		gotReq, gotStage = r, StageOf(ctx)
-		return &ai.Response{}, nil
+		return &llm.Response{}, nil
 	})
 	o := NewCallOptions([]Option{WithReasoning(Reasoning{
 		StageSummarizeChunk: "low",
@@ -140,7 +140,7 @@ func TestModelLLMReasoningAndStage(t *testing.T) {
 	for _, tc := range []struct{ stage, want string }{
 		{StageExtractGraph, "none"}, {StageSummarizeChunk, "low"}, {StageQuery, "high"},
 	} {
-		o.ModelLLM(llm, tc.stage).Complete(context.Background(), ai.Request{})
+		o.ModelLLM(lm, tc.stage).Complete(context.Background(), llm.Request{})
 		if gotReq.Reasoning != tc.want || gotStage != tc.stage {
 			t.Errorf("%s: reasoning %q, stage %q; want %q",
 				tc.stage,
@@ -149,11 +149,11 @@ func TestModelLLMReasoningAndStage(t *testing.T) {
 				tc.want)
 		}
 	}
-	NewCallOptions(nil).ModelLLM(llm, StageQuery).Complete(context.Background(), ai.Request{})
+	NewCallOptions(nil).ModelLLM(lm, StageQuery).Complete(context.Background(), llm.Request{})
 	if gotReq.Reasoning != "none" {
 		t.Errorf("query default = %q", gotReq.Reasoning)
 	}
-	NewCallOptions(nil).ModelLLM(llm, StageExtractGraph).Complete(context.Background(), ai.Request{
+	NewCallOptions(nil).ModelLLM(lm, StageExtractGraph).Complete(context.Background(), llm.Request{
 		Reasoning: "high",
 	})
 	if gotReq.Reasoning != "high" {
@@ -162,10 +162,10 @@ func TestModelLLMReasoningAndStage(t *testing.T) {
 }
 
 type llmFunc func(ctx context.Context,
-	r ai.Request) (*ai.Response, error)
+	r llm.Request) (*llm.Response, error)
 
 func (f llmFunc) Complete(ctx context.Context,
-	r ai.Request) (*ai.Response, error) {
+	r llm.Request) (*llm.Response, error) {
 	return f(ctx, r)
 }
 

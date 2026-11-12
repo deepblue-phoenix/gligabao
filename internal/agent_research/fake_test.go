@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
 // teamFake is a fake Messages API for agents that run at the same time: each agent has its own script of answers. The agent is told by
@@ -26,10 +26,10 @@ type teamFake struct {
 
 var workerKey = regexp.MustCompile(`Your question \((q_\d+)`)
 
-func (f *teamFake) start(t *testing.T) *ai.Client { return f.startWith(t) }
+func (f *teamFake) start(t *testing.T) *llm.Client { return f.startWith(t) }
 
 func (f *teamFake) startWith(t *testing.T,
-	opts ...ai.Option) *ai.Client {
+	opts ...llm.Option) *llm.Client {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
 		r *http.Request) {
@@ -63,7 +63,7 @@ func (f *teamFake) startWith(t *testing.T,
 		io.WriteString(w, script[n-1])
 	}))
 	t.Cleanup(srv.Close)
-	c, err := ai.New("k", append([]ai.Option{ai.WithBaseURL(srv.URL)}, opts...)...)
+	c, err := llm.New("k", append([]llm.Option{llm.WithBaseURL(srv.URL)}, opts...)...)
 	if err != nil {
 		t.Fatal(err)
 	}

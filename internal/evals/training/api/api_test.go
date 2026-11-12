@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
@@ -24,6 +23,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/training/api"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
 	trainingdb "github.com/deepblue-phoenix/gligabao/internal/training/db"
@@ -159,7 +159,7 @@ type evalJudge struct {
 }
 
 func (j *evalJudge) Complete(_ context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	content := req.Messages[0].Content
 	var cases []struct {
 		ID        int    `json:"id"`
@@ -183,7 +183,7 @@ func (j *evalJudge) Complete(_ context.Context,
 		out = append(out, map[string]any{"id": it.ID, "score": score, "reason": "because"})
 	}
 	b, _ := json.Marshal(out)
-	return &ai.Response{
+	return &llm.Response{
 		Text:         string(b),
 		Model:        "judge-model",
 		Provider:     "test",

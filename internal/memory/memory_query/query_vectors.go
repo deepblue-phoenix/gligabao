@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_dataset"
@@ -195,7 +195,7 @@ func vectorRowID(id,
 // so that a cancelled request still records money that was spent. It never fails the call.
 func recordEmbedUsage(ctx context.Context,
 	d *sql.DB,
-	usage *ai.EmbedUsage) {
+	usage *llm.EmbedUsage) {
 	if usage == nil {
 		return
 	}
@@ -206,8 +206,8 @@ func recordEmbedUsage(ctx context.Context,
 			Stage:       StageEmbed,
 			Model:       usage.Model,
 			Provider:    usage.Provider,
-			Kind:        ai.KindEmbedding,
-			Reasoning:   ai.ReasoningNone,
+			Kind:        llm.KindEmbedding,
+			Reasoning:   llm.ReasoningNone,
 			InputTokens: usage.InputTokens,
 			CostUSD:     usage.CostUSD,
 		})

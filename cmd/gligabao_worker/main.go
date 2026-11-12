@@ -21,7 +21,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_query"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
@@ -205,13 +205,13 @@ func run(ctx context.Context,
 	if err != nil {
 		return fail(exitUsage, err)
 	}
-	client, err := ai.New(cfg.AnthropicKey, ai.WithPrices(ai.NewPriceTable(cfg.AIPrices())))
+	client, err := llm.New(cfg.AnthropicKey, llm.WithPrices(llm.NewPriceTable(cfg.AIPrices())))
 	if err != nil {
 		return fail(exitUsage, err)
 	}
-	emb, err := ai.NewEmbedder(cfg.OpenAIKey,
-		ai.WithEmbedPrices(ai.NewPriceTable(cfg.AIPrices())),
-		ai.WithEmbedDimensions(cfg.EmbeddingDimensions))
+	emb, err := llm.NewEmbedder(cfg.OpenAIKey,
+		llm.WithEmbedPrices(llm.NewPriceTable(cfg.AIPrices())),
+		llm.WithEmbedDimensions(cfg.EmbeddingDimensions))
 	if err != nil {
 		return fail(exitUsage, fmt.Errorf("embedder: %w (set %s or openai_api_key)",
 			err,
@@ -332,7 +332,7 @@ func (a *app) cmdQuery(ctx context.Context,
 	opts := append(a.queryOpts[:len(a.queryOpts):len(a.queryOpts)], extra...)
 	res, err := memory_query.Query(ctx,
 		a.database.Relational,
-		a.llm,
+		a.lm,
 		userID,
 		dataset,
 		question,

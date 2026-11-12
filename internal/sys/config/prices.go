@@ -1,13 +1,13 @@
 package config
 
-import "github.com/deepblue-phoenix/gligabao/internal/ai"
+import "github.com/deepblue-phoenix/gligabao/internal/llm"
 
-// AIPrices converts the configured price overrides (prices) into those of the ai package; omitted cache prices default to the input
-// price. Use it with ai.NewPriceTable.
-func (c *Config) AIPrices() map[string]ai.Price {
-	out := make(map[string]ai.Price, len(c.Prices))
+// AIPrices converts the configured price overrides (prices) into those of the llm package; omitted cache prices default to the input
+// price. Use it with llm.NewPriceTable.
+func (c *Config) AIPrices() map[string]llm.Price {
+	out := make(map[string]llm.Price, len(c.Prices))
 	for model, p := range c.Prices {
-		ap := ai.Price{
+		ap := llm.Price{
 			Input:         p.Input,
 			Output:        p.Output,
 			CacheWrite:    p.Input,

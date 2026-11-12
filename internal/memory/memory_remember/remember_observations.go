@@ -243,7 +243,7 @@ func (j *job) observe(ctx context.Context,
 	oj.kind, oj.ref = graph.ArtifactSeriesObservation, last
 
 	ex, err := Extract(ctx,
-		oj.co.ModelLLM(oj.llm, memory_core.StageExtractGraph),
+		oj.co.ModelLLM(oj.lm, memory_core.StageExtractGraph),
 		text,
 		oj.ref)
 	oj.outputExtraction(oj.stepLabel(nil), ex)

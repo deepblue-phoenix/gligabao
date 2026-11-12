@@ -2,7 +2,7 @@
 
 `POST /v1/gb/remember` can enrich what it remembers with the **latest world events** about the key entities of the text. With `"web_search": true`, after the text is stored as usual, the pipeline searches the web for the entities the text is about, and remembers what it finds: each result is an [artifact](artifacts.md) of its own, of kind `web_search`, and the entities and facts it mentions are stored in the graph like any other. The request, the response and the rest of the pipeline are in [remember/remember.md](remember/remember.md).
 
-Code: `internal/memory/memory_remember/remember_websearch.go` (the stage), `internal/ai/websearch.go` (the Anthropic call), `internal/db/graph/` (the artifact).
+Code: `internal/memory/memory_remember/remember_websearch.go` (the stage), `internal/llm/websearch.go` (the Anthropic call), `internal/db/graph/` (the artifact).
 
 ## When it is available
 
@@ -86,7 +86,7 @@ The text has been stored before the first search starts, and the web search is a
 
 ## Cost
 
-Each search is billed by Anthropic: **$10 per 1,000 searches** (`ai.WebSearchRequestUSD`, $0.01 each) on top of the tokens of the model (which include the pages the tool read). A call is recorded in `gb_inferences` as any other (type `remember`, stage `web_search`, reasoning `none`: the web search does not use extended thinking) with its tokens and the cost including the search fee, and a trajectory's totals include it. With the key entity cap of 3 and up to 3 searches each, a `remember` call can make up to 9 searches, about $0.09 plus tokens, plus the usual extraction (and, when there are stored facts to compare, resolution) call for each briefing. That is why the feature is opt-in per call.
+Each search is billed by Anthropic: **$10 per 1,000 searches** (`llm.WebSearchRequestUSD`, $0.01 each) on top of the tokens of the model (which include the pages the tool read). A call is recorded in `gb_inferences` as any other (type `remember`, stage `web_search`, reasoning `none`: the web search does not use extended thinking) with its tokens and the cost including the search fee, and a trajectory's totals include it. With the key entity cap of 3 and up to 3 searches each, a `remember` call can make up to 9 searches, about $0.09 plus tokens, plus the usual extraction (and, when there are stored facts to compare, resolution) call for each briefing. That is why the feature is opt-in per call.
 
 ## In the trajectory
 
@@ -96,12 +96,12 @@ An [eval trajectory](evals/knowledge.md) of a call with `web_search` has, after 
 
 ```go
 res, err := memory_remember.Remember(ctx, db, llm, "u1", "main", "knowledge", text, time.Time{},
-	memory_core.WithWebSearcher(aiClient), // makes it available; *ai.Client implements memory_core.WebSearcher
+	memory_core.WithWebSearcher(aiClient), // makes it available; *llm.Client implements memory_core.WebSearcher
 	memory_core.WithWebSearch(true))       // asks for it, for this call
 res.WebSearches
 ```
 
-`ai.Client.WebSearch(ctx, ai.WebSearchRequest{...})` is the Anthropic call itself. The server wires the client as the searcher exactly when it has an Anthropic API key (`server.NewHandler`'s `ws` argument; nil leaves web search unavailable).
+`llm.Client.WebSearch(ctx, llm.WebSearchRequest{...})` is the Anthropic call itself. The server wires the client as the searcher exactly when it has an Anthropic API key (`server.NewHandler`'s `ws` argument; nil leaves web search unavailable).
 
 ## Eval
 

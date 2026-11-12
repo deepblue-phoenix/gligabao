@@ -3,8 +3,8 @@ package memory_remember
 import (
 	"context"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/jev"
@@ -35,7 +35,7 @@ func (j *job) classifyComplexity(ctx context.Context) error {
 		Type:      CallRemember,
 		Stage:     StageClassifyComplexity,
 		Provider:  jev.Provider,
-		Reasoning: ai.ReasoningNone,
+		Reasoning: llm.ReasoningNone,
 	}
 	if err == nil {
 		run.Model, run.InputTokens, run.OutputTokens = cl.Model, cl.InputTokens, cl.OutputTokens

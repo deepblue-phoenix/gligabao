@@ -23,7 +23,6 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent/code_sandbox"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/api/training"
@@ -35,6 +34,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
 	evalstraining "github.com/deepblue-phoenix/gligabao/internal/evals/training"
 	evalsapi "github.com/deepblue-phoenix/gligabao/internal/evals/training/api"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
@@ -101,7 +101,7 @@ type Options struct {
 	// (POST /v1/gb/training/jobs) calls. Default: sidecar.DefaultBaseURL.
 	SidecarURL string
 	// Prices overrides/extends the built-in model price table used for call costs. May be nil.
-	Prices map[string]ai.Price
+	Prices map[string]llm.Price
 	// TrajectoryDir is where the ATIF trajectories of the eval endpoints are stored as JSON.
 	// Default: an "atif" directory next to the SQLite file (memory_core.TrajectoryDir if there is none).
 	TrajectoryDir string
@@ -269,7 +269,7 @@ type EvalRerunEnv struct {
 	WebSearch memory_core.WebSearcher
 	Geo       memory_geo.Resolver
 	// Prices is the price table, whose models are the ones a rerun can pick.
-	Prices *ai.PriceTable
+	Prices *llm.PriceTable
 }
 
 // EvalDBName is the name of the eval database in the admin UI (see Options.EvalDBPath). It holds the evaluation
@@ -277,7 +277,7 @@ type EvalRerunEnv struct {
 const EvalDBName = "eval"
 
 // NewHandler builds the HTTP handler for the given databases and LLM. ctx bounds the remember manager (see memory_remember.Manager).
-// llm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities.
+// lm may be nil, in which case endpoints requiring it return 503. emb may be nil, in which case remember does not embed entities.
 // jv may be nil, in which case remember skips the steps that run on Jev. ws may be nil, in which case web search is not available
 // (a remember request with web_search returns 503); it is the Anthropic web search tool, so it is only set with an Anthropic API key.
 // geoResolver turns geo on (remember and query find the places of a text, see package memory_geo); nil: geo is off.
@@ -286,7 +286,7 @@ const EvalDBName = "eval"
 // (already validated; may be nil), mounted with it.
 func NewHandler(ctx context.Context,
 	d *db.DB,
-	llm memory_core.LLM,
+	lm memory_core.LLM,
 	emb memory_core.Embedder,
 	jv memory_core.Classifier,
 	ws memory_core.WebSearcher,
@@ -311,9 +311,9 @@ func NewHandler(ctx context.Context,
 		false,
 		newResearch(ctx,
 			d,
-			llm),
+			lm),
 		d,
-		llm,
+		lm,
 		emb,
 		jv,
 		ws,
@@ -342,7 +342,7 @@ func newMux(ctx context.Context,
 	mcpEnable bool,
 	research *agent_research.Manager,
 	d *db.DB,
-	llm memory_core.LLM,
+	lm memory_core.LLM,
 	emb memory_core.Embedder,
 	jv memory_core.Classifier,
 	ws memory_core.WebSearcher,
@@ -355,7 +355,7 @@ func newMux(ctx context.Context,
 	trainingMode,
 	adminUI bool,
 	adminExts []admin.Extension,
-	prices *ai.PriceTable,
+	prices *llm.PriceTable,
 	extraAdminDBs ...admin.Named) http.Handler {
 	mux := http.NewServeMux()
 	if standalone {
@@ -383,12 +383,12 @@ func newMux(ctx context.Context,
 	}
 	mgr := memory_remember.NewManager(ctx,
 		d.Relational,
-		llm,
+		lm,
 		memory_remember.WithErrSink(errSink))
 	api.Register(mux,
 		mgr,
 		d,
-		llm,
+		lm,
 		emb,
 		jv,
 		ws,
@@ -404,7 +404,7 @@ func newMux(ctx context.Context,
 		api.RegisterMCP(mux,
 			mgr,
 			d,
-			llm,
+			lm,
 			emb,
 			jv,
 			ws,
@@ -419,7 +419,7 @@ func newMux(ctx context.Context,
 		api.RegisterEval(mux,
 			mgr,
 			d,
-			llm,
+			lm,
 			emb,
 			jv,
 			ws,
@@ -442,7 +442,7 @@ func newMux(ctx context.Context,
 			dirs,
 			hooks,
 			sc,
-			llm)
+			lm)
 	}
 	if adminUI {
 		registerAdminUI(mux,
@@ -450,10 +450,10 @@ func newMux(ctx context.Context,
 			geoRadiusKm,
 			sc,
 			adminExts,
-			llm,
+			lm,
 			research,
 			api.QueryHandler(d,
-				llm,
+				lm,
 				emb,
 				api.WithGeoResolver(geoResolver),
 				api.WithGeoRadius(geoRadiusKm),
@@ -464,16 +464,16 @@ func newMux(ctx context.Context,
 }
 
 // newResearch makes the manager of the research agents (POST /v1/gb/research), which runs them until ctx is done. They need the Anthropic
-// client: with any other llm (or none) starting a research answers 503 (but for one with the modal runner, which runs with the keys of the
+// client: with any other lm (or none) starting a research answers 503 (but for one with the modal runner, which runs with the keys of the
 // Modal app and needs the sidecar).
 func newResearch(ctx context.Context,
 	d *db.DB,
-	llm memory_core.LLM) *agent_research.Manager {
+	lm memory_core.LLM) *agent_research.Manager {
 	ops, err := agent_research.OpsFor(d.Backend)
 	if err != nil {
 		log.WithError(err).Fatal("agent research")
 	}
-	client, _ := llm.(*ai.Client)
+	client, _ := lm.(*llm.Client)
 	m := agent_research.NewManager(ctx,
 		d.Relational,
 		ops,
@@ -519,7 +519,7 @@ func versionHandler(w http.ResponseWriter,
 
 // registerTraining registers the training endpoints under /v1/gb/training/ (they are part of the API, not of the admin UI,
 // and are served whether or not the admin UI is on, but only in training mode): the jobs, the datasets and the feed of the jobs' progress. They work with trainingDB; dirs are the directories they keep files in (the datasets, the evals, the deployed models). The training monitor follows the progress the sidecar
-// reports for the jobs (it resumes the unfinished ones now) and feeds it to the SSE endpoint. llm judges the evals and the training data audits of the
+// reports for the jobs (it resumes the unfinished ones now) and feeds it to the SSE endpoint. lm judges the evals and the training data audits of the
 // trained models (nil: starting one answers 503). Trained models are deployed through hooks.Deployers, after their files are fetched to dirs.ModelDeploy.
 func registerTraining(ctx context.Context,
 	mux *http.ServeMux,
@@ -528,7 +528,7 @@ func registerTraining(ctx context.Context,
 	dirs coretraining.Dirs,
 	hooks coretraining.Hooks,
 	sc coretraining.Sidecar,
-	llm memory_core.LLM) {
+	lm memory_core.LLM) {
 	mon := coretraining.NewMonitor(ctx,
 		trainingDB,
 		sc)
@@ -546,7 +546,7 @@ func registerTraining(ctx context.Context,
 		evalStore,
 		dirs.Evals,
 		evalInf,
-		llm)
+		lm)
 	var auditInf training_audits.Inferer // likewise nil without a sidecar
 	if sc != nil {
 		auditInf = sc
@@ -560,7 +560,7 @@ func registerTraining(ctx context.Context,
 		auditOps,
 		dirs.Datasets,
 		auditInf,
-		llm)
+		lm)
 	mux.HandleFunc("POST /v1/gb/training/jobs", training.StartJobOf(trainingDB,
 		dirs.Datasets,
 		sc,
@@ -601,10 +601,10 @@ func registerAdminUI(mux *http.ServeMux,
 	geoRadiusKm float64,
 	sc coretraining.Sidecar,
 	exts []admin.Extension,
-	llm memory_core.LLM,
+	lm memory_core.LLM,
 	research *agent_research.Manager,
 	query http.HandlerFunc,
-	prices *ai.PriceTable) {
+	prices *llm.PriceTable) {
 	if !adminui.Available() {
 		log.Warn("admin_ui is enabled but the web assets are not embedded in this binary; build with ./run_build.sh (admin UI build enabled)")
 		return
@@ -623,7 +623,7 @@ func registerAdminUI(mux *http.ServeMux,
 	mux.HandleFunc("GET /v1/gb/admin/api/remember-run-outputs", admin.RememberRunOutputsOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/remember-run-temporal", admin.RememberRunTemporalOf(dbs))
 	// The query button of the top bar: the models and thinking levels to pick, and the query itself (the body of POST /v1/gb/query, with no API key).
-	mux.HandleFunc("GET /v1/gb/admin/api/query-options", admin.QueryOptionsOf(ai.SupportedModels(prices)))
+	mux.HandleFunc("GET /v1/gb/admin/api/query-options", admin.QueryOptionsOf(llm.SupportedModels(prices)))
 	mux.HandleFunc("POST /v1/gb/admin/api/query", query) // 503 without an LLM, as the public one
 	mux.HandleFunc("GET /v1/gb/admin/api/query-runs", admin.QueryRunsOf(dbs))
 	mux.HandleFunc("GET /v1/gb/admin/api/query-run", admin.QueryRunOf(dbs))
@@ -675,16 +675,16 @@ func registerAdminUI(mux *http.ServeMux,
 			e.TrajectoryDir))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/graph", admin.EvalCaseRunGraph(e.DB, *e.EvalStore))
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/temporal", admin.EvalCaseRunTemporal(e.DB, *e.EvalStore))
-		// The debug view of a failed case: its checks, and the LLM commentary on it (made on request with llm; nil: none can be made).
+		// The debug view of a failed case: its checks, and the LLM commentary on it (made on request with lm; nil: none can be made).
 		mux.HandleFunc("GET /v1/gb/admin/api/evals/case_runs/{id}/debug", admin.EvalCaseRunDebug(e.DB,
 			*e.EvalStore,
 			e.TrajectoryDir,
-			llm,
+			lm,
 			e.EvalRerunner))
 		mux.HandleFunc("POST /v1/gb/admin/api/evals/case_runs/{id}/commentary", admin.EvalCaseRunCommentary(e.DB,
 			*e.EvalStore,
 			e.TrajectoryDir,
-			llm))
+			lm))
 		// The rerun of a case with other models, recorded in the experiment run of the case run (e.EvalRerunner nil: the server cannot).
 		mux.HandleFunc("POST /v1/gb/admin/api/evals/case_runs/{id}/rerun", admin.EvalCaseRunRerun(e.DB,
 			*e.EvalStore,
@@ -912,8 +912,8 @@ func prepare(ctx context.Context,
 		fields["app"], fields["app_version"], fields["app_commit"] = app.Name, app.Version, app.Commit
 	}
 	log.WithFields(fields).Info("starting gligabao")
-	opts.DB.Models = ai.SupportedModels(ai.NewPriceTable(opts.Prices)) // the models gligabao supports are stored on startup
-	opts.DB.Geo = opts.GeoResolver != nil || opts.Geo                  // the geo index is only created when geo is on
+	opts.DB.Models = llm.SupportedModels(llm.NewPriceTable(opts.Prices)) // the models gligabao supports are stored on startup
+	opts.DB.Geo = opts.GeoResolver != nil || opts.Geo                    // the geo index is only created when geo is on
 	database, err := dbfull.Open(opts.DB)
 	if err != nil {
 		return nil, nil, err
@@ -1026,21 +1026,21 @@ func prepare(ctx context.Context,
 		}
 	}
 
-	var llm memory_core.LLM
+	var lm memory_core.LLM
 	// Web search is Anthropic's cloud-based web search tool, so it needs the Anthropic API key and only exists with it.
 	var ws memory_core.WebSearcher
-	if c, err := ai.New(opts.AnthropicKey, ai.WithPrices(ai.NewPriceTable(opts.Prices))); err != nil {
+	if c, err := llm.New(opts.AnthropicKey, llm.WithPrices(llm.NewPriceTable(opts.Prices))); err != nil {
 		log.WithError(err).Warn("LLM client unavailable; /v1/gb/remember and /v1/gb/query will return 503")
 		log.Info("web search is not available (no Anthropic API key); remember requests with web_search return 503")
 	} else {
-		llm, ws = c, c
+		lm, ws = c, c
 		log.Info("web search is available: remember searches the web for the key entities of a text when asked (web_search)")
 	}
 
 	// The embedder is required: remember embeds what it stores with it and query embeds the question (similarity retrieval).
-	emb, err := ai.NewEmbedder(opts.OpenAIKey,
-		ai.WithEmbedPrices(ai.NewPriceTable(opts.Prices)),
-		ai.WithEmbedDimensions(database.EmbeddingDimensions))
+	emb, err := llm.NewEmbedder(opts.OpenAIKey,
+		llm.WithEmbedPrices(llm.NewPriceTable(opts.Prices)),
+		llm.WithEmbedDimensions(database.EmbeddingDimensions))
 	if err != nil {
 		return nil, nil, fmt.Errorf("embedder: %w (set openai_api_key or OPENAI_API_KEY)", err)
 	}
@@ -1104,7 +1104,7 @@ func prepare(ctx context.Context,
 	// The research agents are stopped with it, and given the time to write the end of their runs before the databases close.
 	research := newResearch(mgrCtx,
 		database,
-		llm)
+		lm)
 	research.MaxCostUSD = opts.ResearchMaxCostUSD
 	research.NotesDir = opts.ResearchNotesDir
 	research.InitSandbox(opts.Monty)
@@ -1126,7 +1126,7 @@ func prepare(ctx context.Context,
 	// pick it from there. Reruns are given the time to record how they ended before the databases close, like the research agents:
 	// the cleanup below cancels mgrCtx (which the rerunner got as EvalRerunEnv.Ctx) and then waits for them, if it can be waited for.
 	var reruns interface{ Wait() }
-	if opts.EvalRerunner != nil && llm != nil {
+	if opts.EvalRerunner != nil && lm != nil {
 		for i := range extra {
 			if extra[i].Name != EvalDBName || extra[i].EvalStore == nil {
 				continue
@@ -1134,11 +1134,11 @@ func prepare(ctx context.Context,
 			rr := opts.EvalRerunner(EvalRerunEnv{
 				Ctx:       mgrCtx,
 				DBPath:    opts.EvalDBPath,
-				LLM:       llm,
+				LLM:       lm,
 				Embedder:  emb,
 				WebSearch: ws,
 				Geo:       geoResolver,
-				Prices:    ai.NewPriceTable(opts.Prices),
+				Prices:    llm.NewPriceTable(opts.Prices),
 			})
 			if rr == nil {
 				break
@@ -1166,7 +1166,7 @@ func prepare(ctx context.Context,
 		opts.MCPEnable,
 		research,
 		database,
-		llm,
+		lm,
 		emb,
 		jv,
 		ws,
@@ -1179,7 +1179,7 @@ func prepare(ctx context.Context,
 		opts.TrainingModeEnable,
 		opts.AdminUIenable,
 		adminExts,
-		ai.NewPriceTable(opts.Prices),
+		llm.NewPriceTable(opts.Prices),
 		extra...)
 	// The agents that have a schedule start running by it now that their knowledge base is set up (by newMux). They stop with mgrCtx.
 	if n := research.RunSchedules(); n > 0 {

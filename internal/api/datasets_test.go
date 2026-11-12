@@ -10,12 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
 func must0(t *testing.T,
@@ -30,13 +30,13 @@ func must0(t *testing.T,
 type echoLLM struct{}
 
 func (echoLLM) Complete(_ context.Context,
-	r ai.Request) (*ai.Response, error) {
+	r llm.Request) (*llm.Response, error) {
 	out := `{"entities":[{"name":"Alice","type":"person"},{"name":"Acme","type":"organization"}],
 		"edges":[{"source":"Alice","target":"Acme","relation":"works_at"}]}`
 	if r.System == "" || strings.Contains(r.Messages[0].Content, "<question>") {
 		out = `{"answer":"ok","entities":[],"edges":[]}`
 	}
-	return &ai.Response{
+	return &llm.Response{
 		Text:       out,
 		StopReason: "end_turn",
 	}, nil

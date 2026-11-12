@@ -11,9 +11,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
@@ -57,14 +57,14 @@ Evidence: short bullet points.
 Suggestion: what to change (prompt, model, case expectation, code) or check; several possibilities may be listed.
 Final advice: exactly one piece of advice, the one with the highest probability of resolving this failure. If the case definition itself is the problem (its input text, expected values or params need to change, or it is invalid or contradictory, for example an expectation that the input does not support or that contradicts another expectation or the params), say so and give the concrete change (the new input, expected value or param). Otherwise give the single most likely fix for the cause (prompt, model, code or setting), as concrete as you can. Do not repeat the list of the Suggestion; pick one.`
 
-// Run sends the failure to llm and returns the commentary and the response (tokens, cost). An empty model is DefaultModel and a
+// Run sends the failure to lm and returns the commentary and the response (tokens, cost). An empty model is DefaultModel and a
 // maxTokens below 1 is DefaultMaxTokens.
 func Run(ctx context.Context,
-	llm memory_core.LLM,
+	lm memory_core.LLM,
 	model string,
 	maxTokens int,
-	f Failure) (string, *ai.Response, error) {
-	if llm == nil {
+	f Failure) (string, *llm.Response, error) {
+	if lm == nil {
 		return "", nil, errors.New("no LLM")
 	}
 	if model == "" {
@@ -73,10 +73,10 @@ func Run(ctx context.Context,
 	if maxTokens <= 0 {
 		maxTokens = DefaultMaxTokens
 	}
-	resp, err := llm.Complete(ctx, ai.Request{
+	resp, err := lm.Complete(ctx, llm.Request{
 		System: system,
-		Messages: []ai.Message{{
-			Role:    ai.RoleUser,
+		Messages: []llm.Message{{
+			Role:    llm.RoleUser,
 			Content: Prompt(f),
 		}},
 		Model:     model,

@@ -22,7 +22,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbfull"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
@@ -31,6 +30,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/evals/evalfile"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/training"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
@@ -208,7 +208,7 @@ func mainErr() error {
 	if key == "" {
 		return errors.New("ANTHROPIC_API_KEY must be set to run evals")
 	}
-	judgeLLM, err := ai.New(key)
+	judgeLLM, err := llm.New(key)
 	if err != nil {
 		return err
 	}

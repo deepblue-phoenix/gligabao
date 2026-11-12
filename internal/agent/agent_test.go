@@ -14,14 +14,14 @@ import (
 	"testing"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 )
 
 // fakeAPI answers with the given responses, in order, and records the request bodies.
 func fakeAPI(t *testing.T,
-	responses ...string) (*ai.Client, *[]string) {
+	responses ...string) (*llm.Client, *[]string) {
 	t.Helper()
 	var bodies []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
@@ -31,7 +31,7 @@ func fakeAPI(t *testing.T,
 		w.Write([]byte(responses[len(bodies)-1]))
 	}))
 	t.Cleanup(srv.Close)
-	c, err := ai.New("k", ai.WithBaseURL(srv.URL))
+	c, err := llm.New("k", llm.WithBaseURL(srv.URL))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestConcurrentRunsOfOneAgentAreIsolated(t *testing.T) {
 			string(b)[i:i+6])
 	}))
 	t.Cleanup(srv.Close)
-	client, err := ai.New("k", ai.WithBaseURL(srv.URL))
+	client, err := llm.New("k", llm.WithBaseURL(srv.URL))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,7 +412,7 @@ func TestFailedRunStillHasATrajectory(t *testing.T) {
 		w.Write([]byte(`{"error":{"type":"invalid_request_error","message":"nope"}}`))
 	}))
 	t.Cleanup(srv.Close)
-	client, err := ai.New("k", ai.WithBaseURL(srv.URL))
+	client, err := llm.New("k", llm.WithBaseURL(srv.URL))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -532,7 +532,7 @@ func TestWebSearchToolSendsTheDomainsAndLocationAndCountsCalls(t *testing.T) {
 		w.Write([]byte(`{"model":"m","stop_reason":"end_turn","content":[{"type":"text","text":"found"}],"usage":{}}`))
 	}))
 	defer srv.Close()
-	client, err := ai.New("k", ai.WithBaseURL(srv.URL))
+	client, err := llm.New("k", llm.WithBaseURL(srv.URL))
 	if err != nil {
 		t.Fatal(err)
 	}

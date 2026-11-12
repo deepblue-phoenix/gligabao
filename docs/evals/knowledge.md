@@ -61,7 +61,7 @@ The eval runner (`go run ./internal/evals/knowledge/cmd`) writes everything to t
 
 ## Trajectory format
 
-Package `internal/ai/atif` defines the types and a `Builder`; the schema version is `ATIF-v1.6`. Top level:
+Package `internal/atif` defines the types and a `Builder`; the schema version is `ATIF-v1.6`. Top level:
 
 | field | meaning |
 |---|---|
@@ -256,13 +256,13 @@ When a case fails (a check did not hold) or errors, and `-commentary` is on:
 2. The LLM gets: the case (its input as it ran and what it expects, its `models` / `reasoning` and the run's), the failed checks, the error if there was one, the answer, the checks that held, and the ATIF trajectories of the case (every remember, then the query). It is asked for the most likely cause, the stage and step ids where the behaviour diverges, the evidence and a suggestion. The trajectories are sent as compact JSON; if they are longer than about 400 KB the longest strings in them are cut (marked `...[N bytes cut]`) until they fit.
 3. The commentary is printed under the failure log, and then `Press Enter to continue ...`: the run is paused until the person confirms, so there is time to read it. A failed LLM call is printed instead of the commentary (and also waits for Enter); it never changes the result of the case.
 
-The model is `-commentary-model`, default `claude-sonnet-5-5` (not the default model of the rest of gligabao). Under each commentary the runner prints its tokens and cost and the running total of the commentaries of the run (`tokens: 1200 in, 300 out; cost $0.0054; commentary total this run: $0.0108 (2)`), and the final summary of the run repeats the total (`commentary: 2, cost $0.0108`). The cost comes from the price table (`ai.DefaultPrices`, which has `claude-sonnet-5-5`, `claude-opus-5-5` and `claude-fable-5-1`; a model without a price shows `cost unknown`) and is not part of the case's or the run's cost. Cases that were cancelled (Ctrl-C) are never offered a commentary, and Ctrl-C at the prompt stops the run as usual. The commentary does not apply to the training evals.
+The model is `-commentary-model`, default `claude-sonnet-5-5` (not the default model of the rest of gligabao). Under each commentary the runner prints its tokens and cost and the running total of the commentaries of the run (`tokens: 1200 in, 300 out; cost $0.0054; commentary total this run: $0.0108 (2)`), and the final summary of the run repeats the total (`commentary: 2, cost $0.0108`). The cost comes from the price table (`llm.DefaultPrices`, which has `claude-sonnet-5-5`, `claude-opus-5-5` and `claude-fable-5-1`; a model without a price shows `cost unknown`) and is not part of the case's or the run's cost. Cases that were cancelled (Ctrl-C) are never offered a commentary, and Ctrl-C at the prompt stops the run as usual. The commentary does not apply to the training evals.
 
 Because the runner blocks on the answer, `-commentary` needs a terminal on stdin: with stdin piped or redirected the runner stops at startup with an error instead of waiting forever. From Go, set `knowledge.Executor.Commentary` (a `*knowledge.Commentary` with the `LLM`, `Model` and the `In` reader the answers are read from); nil (the default) never asks anything. The interactive part is `internal/evals/knowledge/commentary.go`; the prompt and the LLM call (`commentary.Run`) are in the package `internal/evals/commentary`, which the admin UI uses too: a failed case of a recorded run can be sent for commentary from the **Evals** view, and the commentary is stored and shown next to the case's checks, graph and temporal plot (see [experiments.md](experiments.md#admin-ui)).
 
 ## Generating traces in code
 
-`internal/ai/atif` is independent of gligabao's memory code:
+`internal/atif` is independent of gligabao's memory code:
 
 ```go
 b := atif.NewBuilder(atif.Agent{Name: "my-agent", Version: "1"})

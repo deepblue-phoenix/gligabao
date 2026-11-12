@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_dataset"
@@ -19,8 +19,8 @@ import (
 type extractLLM struct{}
 
 func (extractLLM) Complete(context.Context,
-	ai.Request) (*ai.Response, error) {
-	return &ai.Response{
+	llm.Request) (*llm.Response, error) {
+	return &llm.Response{
 		StopReason: "end_turn",
 		Text: `{"entities":[{"name":"Alice","type":"person","description":"engineer"},{"name":"Acme","type":"organization"}],
 	"edges":[{"source":"Alice","target":"Acme","relation":"works at"},{"source":"Alice","target":"Paris","relation":"lives in"}]}`,
@@ -31,14 +31,14 @@ func (extractLLM) Complete(context.Context,
 type fakeEmbedder struct{ texts []string }
 
 func (f *fakeEmbedder) EmbedBatchUsage(_ context.Context,
-	texts []string) ([][]float32, *ai.EmbedUsage, error) {
+	texts []string) ([][]float32, *llm.EmbedUsage, error) {
 	f.texts = append(f.texts, texts...)
 	out := make([][]float32, len(texts))
 	for i, t := range texts {
 		out[i] = []float32{float32(len(t)), 1}
 	}
-	return out, &ai.EmbedUsage{
-		Provider:    ai.ProviderOpenAI,
+	return out, &llm.EmbedUsage{
+		Provider:    llm.ProviderOpenAI,
 		Model:       "m",
 		InputTokens: len(texts),
 	}, nil
@@ -250,8 +250,8 @@ func testRememberTracesEmbedding(t *testing.T,
 type aliasLLM struct{}
 
 func (aliasLLM) Complete(context.Context,
-	ai.Request) (*ai.Response, error) {
-	return &ai.Response{
+	llm.Request) (*llm.Response, error) {
+	return &llm.Response{
 		StopReason: "end_turn",
 		Text: `{"entities":[{"name":"Alicia","type":"person"}],
 	"edges":[{"source":"Alicia","target":"Berlin","relation":"lives in"}]}`,

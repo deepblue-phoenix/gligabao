@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
 
@@ -23,7 +23,7 @@ type gateLLM struct {
 }
 
 func (g *gateLLM) Complete(ctx context.Context,
-	_ ai.Request) (*ai.Response, error) {
+	_ llm.Request) (*llm.Response, error) {
 	n := g.cur.Add(1)
 	defer g.cur.Add(-1)
 	for {
@@ -38,7 +38,7 @@ func (g *gateLLM) Complete(ctx context.Context,
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-	return &ai.Response{
+	return &llm.Response{
 		Text:       `{"entities":[],"edges":[]}`,
 		StopReason: "end_turn",
 		Model:      "fake-model",

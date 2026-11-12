@@ -124,7 +124,7 @@ type KnowledgeCaseRunMeta struct {
 // CaseType implements CaseRunMeta.
 func (KnowledgeCaseRunMeta) CaseType() Type { return TypeKnowledge }
 
-// KnowledgeTrajectory is the reference to an ATIF trajectory (internal/ai/atif) of a knowledge case run. Only the reference
+// KnowledgeTrajectory is the reference to an ATIF trajectory (internal/atif) of a knowledge case run. Only the reference
 // is kept in the DB.
 type KnowledgeTrajectory struct {
 	// Seq is the order of the call within the case run, from 0.

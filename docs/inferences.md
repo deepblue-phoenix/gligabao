@@ -38,7 +38,7 @@ FROM gb_inferences
 GROUP BY stage, reasoning;
 ```
 
-From Go: `relational.RecordInference`, `relational.GetInference` and `relational.InferenceStats` (sums by type); `memory_core.WithRecording` records every call of an LLM, and puts the run's ID in `ai.Response.InferenceID`.
+From Go: `relational.RecordInference`, `relational.GetInference` and `relational.InferenceStats` (sums by type); `memory_core.WithRecording` records every call of an LLM, and puts the run's ID in `llm.Response.InferenceID`.
 
 This table replaces `gb_llm_calls` (tokens and cost per call, without the model's ID, the stage or the thinking level).
 

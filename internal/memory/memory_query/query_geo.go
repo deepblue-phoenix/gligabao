@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 )
@@ -102,15 +102,15 @@ func parseQueryPlaces(out,
 	return res, nil
 }
 
-// detectPlaces asks the LLM which places the question mentions. llm is already the one of the detect_geo stage. It returns the
+// detectPlaces asks the LLM which places the question mentions. lm is already the one of the detect_geo stage. It returns the
 // places (nil if there are none) and the error, if the call or its output failed; the caller only records it.
 func detectPlaces(ctx context.Context,
-	llm memory_core.LLM,
+	lm memory_core.LLM,
 	question string) ([]QueryPlace, error) {
-	resp, err := llm.Complete(ctx, ai.Request{
+	resp, err := lm.Complete(ctx, llm.Request{
 		System: detectQueryGeoSystemPrompt,
-		Messages: []ai.Message{{
-			Role:    ai.RoleUser,
+		Messages: []llm.Message{{
+			Role:    llm.RoleUser,
 			Content: "<question>\n" + question + "\n</question>",
 		}},
 		MaxTokens: 1024,

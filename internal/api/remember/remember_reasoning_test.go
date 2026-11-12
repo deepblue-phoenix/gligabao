@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
@@ -23,11 +23,11 @@ import (
 type summaryLLM struct{ models, levels, all []string }
 
 func (l *summaryLLM) Complete(_ context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	l.all = append(l.all, req.Reasoning)
 	if strings.Contains(req.System, "summarize a passage") {
 		l.models, l.levels = append(l.models, req.Model), append(l.levels, req.Reasoning)
-		return &ai.Response{
+		return &llm.Response{
 			Text:         "A summary.",
 			StopReason:   "end_turn",
 			Model:        "sum-model",
@@ -36,7 +36,7 @@ func (l *summaryLLM) Complete(_ context.Context,
 			CostUSD:      0.5,
 		}, nil
 	}
-	return &ai.Response{
+	return &llm.Response{
 		Text:       `{"entities":[],"edges":[]}`,
 		StopReason: "end_turn",
 		Model:      "fake-model",

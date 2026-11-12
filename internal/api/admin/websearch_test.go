@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 )
@@ -27,7 +27,7 @@ type webLLM struct{}
 var briefingAbout = regexp.MustCompile(`BRIEFING about (\w+)`)
 
 func (webLLM) Complete(_ context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	out := `{"entities":[{"name":"Alice","type":"person"},{"name":"Acme","type":"organization"},{"name":"Globex","type":"organization"}],
 		"edges":[{"source":"Alice","target":"Acme","relation":"works_at"},{"source":"Acme","target":"Globex","relation":"acquired"}]}`
 	switch msg := req.Messages[0].Content; {
@@ -38,7 +38,7 @@ func (webLLM) Complete(_ context.Context,
 		out = `{"entities":[{"name":"Initech","type":"organization"},{"name":"` + x + `","type":"organization"}],
 			"edges":[{"source":"Initech","target":"` + x + `","relation":"partnered_with"}]}`
 	}
-	return &ai.Response{
+	return &llm.Response{
 		Text:       out,
 		StopReason: "end_turn",
 		Model:      "fake-model",
@@ -49,18 +49,18 @@ func (webLLM) Complete(_ context.Context,
 type fakeSearcher struct{}
 
 func (fakeSearcher) WebSearch(_ context.Context,
-	req ai.WebSearchRequest) (*ai.WebSearchResponse, error) {
+	req llm.WebSearchRequest) (*llm.WebSearchResponse, error) {
 	name := regexp.MustCompile(`name: (\w+)`).FindStringSubmatch(req.Prompt)[1]
 	text := "BRIEFING about " + name + " in 2026."
 	if name == "Alice" {
 		text = "NO_RESULTS"
 	}
-	return &ai.WebSearchResponse{
+	return &llm.WebSearchResponse{
 		Text:     text,
 		Queries:  []string{name + " news", name + " deal"},
-		Provider: ai.ProviderAnthropic,
+		Provider: llm.ProviderAnthropic,
 		Model:    "fake-search-model",
-		Sources: []ai.WebSource{{
+		Sources: []llm.WebSource{{
 			URL:     "https://news.example/" + name,
 			Title:   "News of " + name,
 			PageAge: "May 1, 2026",

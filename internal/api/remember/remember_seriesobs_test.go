@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
@@ -26,16 +26,16 @@ func testRememberSeriesObservations(t *testing.T,
 	d *sql.DB) {
 	ctx := context.Background()
 	var texts []string // what the extraction was asked to read
-	llm := llmFunc(func(req ai.Request) (*ai.Response, error) {
+	llm := llmFunc(func(req llm.Request) (*llm.Response, error) {
 		if strings.Contains(req.Messages[0].Content, "Observation of the timeseries") {
 			texts = append(texts, req.Messages[0].Content)
-			return &ai.Response{
+			return &llm.Response{
 				Text:       obsLLM,
 				StopReason: "end_turn",
 				Model:      "fake-model",
 			}, nil
 		}
-		return &ai.Response{
+		return &llm.Response{
 			Text:       seriesLLM,
 			StopReason: "end_turn",
 			Model:      "fake-model",
@@ -181,7 +181,7 @@ func testRememberSeriesObservationsFetched(t *testing.T,
 	if err != nil {
 		t.Fatal(err)
 	}
-	llm := llmFunc(func(req ai.Request) (*ai.Response, error) {
+	llm := llmFunc(func(req llm.Request) (*llm.Response, error) {
 		out := seriesLLM
 		switch {
 		case strings.Contains(req.System, "timeseries providers"):
@@ -192,7 +192,7 @@ func testRememberSeriesObservationsFetched(t *testing.T,
 			}
 			out = obsLLM
 		}
-		return &ai.Response{
+		return &llm.Response{
 			Text:       out,
 			StopReason: "end_turn",
 			Model:      "fake-model",
@@ -245,12 +245,12 @@ func TestRememberSeriesObservationsLongText(t *testing.T) {
 func testRememberSeriesObservationsLongText(t *testing.T,
 	d *sql.DB) {
 	ctx := context.Background()
-	llm := llmFunc(func(req ai.Request) (*ai.Response, error) {
+	llm := llmFunc(func(req llm.Request) (*llm.Response, error) {
 		out := seriesLLM
 		if strings.Contains(req.Messages[0].Content, "Observation of the timeseries") {
 			out = obsLLM
 		}
-		return &ai.Response{
+		return &llm.Response{
 			Text:       out,
 			StopReason: "end_turn",
 			Model:      "fake-model",

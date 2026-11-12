@@ -35,7 +35,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbfull"
 	"github.com/deepblue-phoenix/gligabao/internal/evals"
@@ -44,6 +43,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/evals/evalfile"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/knowledge"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
@@ -92,7 +92,7 @@ func mainErr() error {
 		`LLM model per stage, e.g. "extract_graph=claude-sonnet-4-5,query=claude-haiku-5-5" (stages: `+strings.Join(knowledge.ModelStages(), ", ")+`; query is the call that answers the question, and detect_geo applies to remember and query); a stage left out uses the default model; a case's "models" win`)
 	reasoningFlag := flag.String("reasoning",
 		"",
-		`reasoning level per stage, e.g. "extract_graph=low,query=medium" (stages: `+strings.Join(knowledge.ReasoningStages(), ", ")+`; levels: `+strings.Join(ai.ReasoningLevels, ", ")+`); a stage left out uses the server default (none); a case's "reasoning" wins`)
+		`reasoning level per stage, e.g. "extract_graph=low,query=medium" (stages: `+strings.Join(knowledge.ReasoningStages(), ", ")+`; levels: `+strings.Join(llm.ReasoningLevels, ", ")+`); a stage left out uses the server default (none); a case's "reasoning" wins`)
 	geoFlag := flag.Bool("geo",
 		true,
 		"turn geo on in the eval server: remember stores the coordinates of the places it finds, looked up in Nominatim (OpenStreetMap; needs internet, costs one more LLM call per text) and query finds the places of the question; -geo=false turns it off")
@@ -155,13 +155,13 @@ func mainErr() error {
 	if key == "" {
 		return fmt.Errorf("ANTHROPIC_API_KEY must be set to run evals")
 	}
-	llm, err := ai.New(key)
+	lm, err := llm.New(key)
 	if err != nil {
 		return err
 	}
 	// remember embeds what it stores into the eval database's vector store (see docs/vectors.md) and query embeds the question
 	// to search it: the embedder is required.
-	emb, err := ai.NewEmbedder(os.Getenv(config.EnvOpenAIKey), ai.WithEmbedDimensions(config.DefaultEmbeddingDimensions))
+	emb, err := llm.NewEmbedder(os.Getenv(config.EnvOpenAIKey), llm.WithEmbedDimensions(config.DefaultEmbeddingDimensions))
 	if err != nil {
 		return fmt.Errorf("OPENAI_API_KEY must be set to run evals: %w", err)
 	}
@@ -231,9 +231,9 @@ func mainErr() error {
 	colors := ansi.New(os.Stdout)
 	x := &knowledge.Executor{
 		DB:            database,
-		LLM:           llm,
+		LLM:           lm,
 		Embedder:      emb,
-		WebSearch:     llm,
+		WebSearch:     lm,
 		Geo:           geoResolver,
 		EvalsDirs:     evalsDirs,
 		Models:        models,
@@ -245,7 +245,7 @@ func mainErr() error {
 	}
 	if *commentary {
 		x.Commentary = &knowledge.Commentary{
-			LLM:   llm,
+			LLM:   lm,
 			Model: *commentaryModel,
 			In:    os.Stdin,
 		}

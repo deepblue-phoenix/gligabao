@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
@@ -602,13 +602,13 @@ func testRememberRunLogSeries(t *testing.T,
 type searcher struct{ fail bool }
 
 func (s searcher) WebSearch(context.Context,
-	ai.WebSearchRequest) (*ai.WebSearchResponse, error) {
+	llm.WebSearchRequest) (*llm.WebSearchResponse, error) {
 	if s.fail {
 		return nil, context.DeadlineExceeded
 	}
-	return &ai.WebSearchResponse{
+	return &llm.WebSearchResponse{
 		Text:         "Person7 works at Acme in 2026.",
-		Provider:     ai.ProviderAnthropic,
+		Provider:     llm.ProviderAnthropic,
 		Model:        "search-model",
 		Searches:     1,
 		InputTokens:  10,
@@ -742,8 +742,8 @@ func TestRememberRunLogStages(t *testing.T) {
 type badJSONLLM struct{}
 
 func (badJSONLLM) Complete(context.Context,
-	ai.Request) (*ai.Response, error) {
-	return &ai.Response{
+	llm.Request) (*llm.Response, error) {
+	return &llm.Response{
 		StopReason: "end_turn",
 		Model:      "bad-model",
 		Text:       "this is not json",

@@ -11,7 +11,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbfull"
@@ -21,6 +20,7 @@ import (
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/knowledge"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/runner"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
@@ -39,7 +39,7 @@ type scriptedLLM struct {
 }
 
 func (l *scriptedLLM) Complete(_ context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	l.mu.Lock()
 	l.levels = append(l.levels, req.Reasoning)
 	l.models = append(l.models, req.Model)
@@ -48,10 +48,10 @@ func (l *scriptedLLM) Complete(_ context.Context,
 	if len(req.Messages) > 0 && strings.Contains(req.Messages[len(req.Messages)-1].Content, "<graph>") {
 		out = `{"answer":"` + l.answer + `","entities":[1],"edges":[]}`
 	}
-	return &ai.Response{
+	return &llm.Response{
 		Text:         out,
 		StopReason:   "end_turn",
-		Provider:     ai.ProviderAnthropic,
+		Provider:     llm.ProviderAnthropic,
 		Model:        "m",
 		InputTokens:  10,
 		OutputTokens: 5,
@@ -64,14 +64,14 @@ func (l *scriptedLLM) Complete(_ context.Context,
 type fakeEmbedder struct{ dims int }
 
 func (f fakeEmbedder) EmbedBatchUsage(_ context.Context,
-	texts []string) ([][]float32, *ai.EmbedUsage, error) {
+	texts []string) ([][]float32, *llm.EmbedUsage, error) {
 	out := make([][]float32, len(texts))
 	for i := range out {
 		out[i] = make([]float32, f.dims)
 		out[i][0] = 1
 	}
-	return out, &ai.EmbedUsage{
-		Provider: ai.ProviderOpenAI,
+	return out, &llm.EmbedUsage{
+		Provider: llm.ProviderOpenAI,
 		Model:    "test-embed",
 	}, nil
 }
@@ -80,7 +80,7 @@ func (f fakeEmbedder) EmbedBatchUsage(_ context.Context,
 type geoLLM struct{ scriptedLLM }
 
 func (l *geoLLM) Complete(ctx context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	var out string
 	switch {
 	case strings.Contains(req.System, "geographic places"): // remember: which entities are places
@@ -94,10 +94,10 @@ func (l *geoLLM) Complete(ctx context.Context,
 	if out == "" {
 		return l.scriptedLLM.Complete(ctx, req)
 	}
-	return &ai.Response{
+	return &llm.Response{
 		Text:         out,
 		StopReason:   "end_turn",
-		Provider:     ai.ProviderAnthropic,
+		Provider:     llm.ProviderAnthropic,
 		Model:        "m",
 		InputTokens:  10,
 		OutputTokens: 5,
@@ -112,7 +112,7 @@ type env struct {
 	r      *runner.Runner
 	x      *knowledge.Executor
 	atif   string
-	llm    *scriptedLLM
+	lm     *scriptedLLM
 	output strings.Builder
 }
 
@@ -138,13 +138,13 @@ func newEnv(t *testing.T,
 		db:   database,
 		r:    runner.New(database.Relational, store),
 		atif: atif,
-		llm: &scriptedLLM{
+		lm: &scriptedLLM{
 			answer: answer,
 		},
 	}
 	e.x = &knowledge.Executor{
 		DB:  database,
-		LLM: e.llm,
+		LLM: e.lm,
 		Embedder: fakeEmbedder{
 			dims: database.EmbeddingDimensions,
 		},
@@ -506,12 +506,12 @@ func TestCaseReasoning(t *testing.T) {
 	e := newEnv(t, "Alice.")
 	levels := func(c core.KnowledgeCase,
 		reasoning map[string]string) (got []string, run *core.EvalRun) {
-		e.llm.levels, e.x.Reasoning = nil, reasoning
+		e.lm.levels, e.x.Reasoning = nil, reasoning
 		run, _ = e.run(knowledge.Eval{
 			Name:  "s",
 			Cases: []core.KnowledgeCase{c},
 		})
-		return e.llm.levels, run
+		return e.lm.levels, run
 	}
 	base := kcase("r1",
 		"Alice is here.",
@@ -580,7 +580,7 @@ func TestCaseModels(t *testing.T) {
 	e := newEnv(t, "Alice.")
 	models := func(c core.KnowledgeCase,
 		m map[string]string) []string {
-		e.llm.models, e.x.Models = nil, m
+		e.lm.models, e.x.Models = nil, m
 		if run, _ := e.run(knowledge.Eval{
 			Name:  "m",
 			Cases: []core.KnowledgeCase{c},
@@ -589,7 +589,7 @@ func TestCaseModels(t *testing.T) {
 				c.Name,
 				run.Counts)
 		}
-		return e.llm.models
+		return e.lm.models
 	}
 	if got := models(kcase("m1",
 		"Alice is here.",
@@ -661,7 +661,7 @@ type cancelOnCall struct {
 }
 
 func (c cancelOnCall) Complete(ctx context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	c.cancel()
 	return c.LLM.Complete(ctx, req)
 }
@@ -673,7 +673,7 @@ func TestCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	e.x.LLM = cancelOnCall{
-		LLM:    e.llm,
+		LLM:    e.lm,
 		cancel: cancel,
 	}
 	ev := knowledge.Eval{
@@ -812,15 +812,15 @@ func TestTextAsList(t *testing.T) {
 // commentaryLLM records the requests it gets and answers with a fixed commentary.
 type commentaryLLM struct {
 	mu   sync.Mutex
-	reqs []ai.Request
+	reqs []llm.Request
 }
 
 func (l *commentaryLLM) Complete(_ context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	l.mu.Lock()
 	l.reqs = append(l.reqs, req)
 	l.mu.Unlock()
-	return &ai.Response{
+	return &llm.Response{
 		Text:         "Cause: the extractor missed Bob.",
 		Model:        req.Model,
 		InputTokens:  1000,
@@ -1054,15 +1054,15 @@ func TestRerunner(t *testing.T) {
 			err)
 	}
 	orig := cases[0]
-	newRerunner := func(llm memory_core.LLM) admin.EvalRerunner {
+	newRerunner := func(lm memory_core.LLM) admin.EvalRerunner {
 		return knowledge.NewRerunner(server.EvalRerunEnv{
 			Ctx:    ctx,
 			DBPath: e.db.SQLitePath,
-			LLM:    llm,
+			LLM:    lm,
 			Embedder: fakeEmbedder{
 				dims: e.db.EmbeddingDimensions,
 			},
-			Prices: ai.NewPriceTable(nil),
+			Prices: llm.NewPriceTable(nil),
 		})
 	}
 	if knowledge.NewRerunner(server.EvalRerunEnv{
@@ -1112,10 +1112,10 @@ func TestRerunner(t *testing.T) {
 		}
 	}
 
-	llm := &scriptedLLM{
+	lm := &scriptedLLM{
 		answer: "Bob.",
 	}
-	rr = newRerunner(llm)
+	rr = newRerunner(lm)
 	id, err := rr.Rerun(ctx,
 		orig.ID,
 		core.RerunOptions{
@@ -1158,11 +1158,11 @@ func TestRerunner(t *testing.T) {
 	}
 	// Every remember stage that ran got the remember model over the run's own base model; the query got the query model (its detection
 	// of the places of the question, then its answer).
-	if fmt.Sprint(llm.models) != "[claude-opus-5-5 claude-sonnet-5-5 claude-sonnet-5-5]" {
-		t.Errorf("models of the rerun's calls: %v", llm.models)
+	if fmt.Sprint(lm.models) != "[claude-opus-5-5 claude-sonnet-5-5 claude-sonnet-5-5]" {
+		t.Errorf("models of the rerun's calls: %v", lm.models)
 	}
-	if fmt.Sprint(llm.levels) != "[high low low]" {
-		t.Errorf("reasoning levels of the rerun's calls: %v", llm.levels)
+	if fmt.Sprint(lm.levels) != "[high low low]" {
+		t.Errorf("reasoning levels of the rerun's calls: %v", lm.levels)
 	}
 	xrun, err := e.r.Store.GetExperimentRun(ctx,
 		e.r.DB,

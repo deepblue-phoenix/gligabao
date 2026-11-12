@@ -8,9 +8,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
@@ -41,13 +41,13 @@ func mgrFor(t testing.TB,
 type fakeEmbedder struct{}
 
 func (fakeEmbedder) EmbedBatchUsage(_ context.Context,
-	texts []string) ([][]float32, *ai.EmbedUsage, error) {
+	texts []string) ([][]float32, *llm.EmbedUsage, error) {
 	out := make([][]float32, len(texts))
 	for i := range out {
 		out[i] = []float32{1, 0}
 	}
-	return out, &ai.EmbedUsage{
-		Provider: ai.ProviderOpenAI,
+	return out, &llm.EmbedUsage{
+		Provider: llm.ProviderOpenAI,
 		Model:    "test-embed",
 	}, nil
 }

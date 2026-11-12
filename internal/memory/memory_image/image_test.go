@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
 func testPNG(t *testing.T) []byte {
@@ -89,13 +89,13 @@ func TestParseImageExtraction(t *testing.T) {
 
 type imageLLM struct {
 	out  string
-	seen *ai.Request
+	seen *llm.Request
 }
 
 func (l imageLLM) Complete(_ context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	*l.seen = req
-	return &ai.Response{
+	return &llm.Response{
 		Text:         l.out,
 		StopReason:   "end_turn",
 		Provider:     "p",
@@ -107,7 +107,7 @@ func (l imageLLM) Complete(_ context.Context,
 }
 
 func TestExtractImage(t *testing.T) {
-	var seen ai.Request
+	var seen llm.Request
 	data := testPNG(t)
 	x, err := ExtractImage(context.Background(),
 		imageLLM{`{"theme":"graph","title":"T","text_blocks":[{"kind":"label","text":"A"}]}`, &seen},

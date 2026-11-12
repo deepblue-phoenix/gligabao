@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 )
 
@@ -70,7 +70,7 @@ func TestOpenStoresSupportedModels(t *testing.T) {
 	for _, m := range models {
 		byName[m.Name] = m
 	}
-	for _, m := range ai.SupportedModels(nil) {
+	for _, m := range llm.SupportedModels(nil) {
 		got, ok := byName[m.Name]
 		if !ok || got.ID != relational.ModelID(m.Name) || got.Provider != m.Provider || got.Kind != m.Kind || !got.Supported {
 			t.Errorf("model %q: %+v (stored: %v)",
@@ -84,17 +84,17 @@ func TestOpenStoresSupportedModels(t *testing.T) {
 		d.Relational,
 		relational.Model{
 			Name:     "claude-haiku-4-5-20251001",
-			Provider: ai.ProviderAnthropic,
+			Provider: llm.ProviderAnthropic,
 		}); err != nil {
 		t.Fatal(err)
 	}
 	d.Close()
 	d, err = Open(Config{
 		SQLitePath: path,
-		Models: []ai.ModelInfo{{
+		Models: []llm.ModelInfo{{
 			Name:     "only-this",
 			Provider: "x",
-			Kind:     ai.KindLLM,
+			Kind:     llm.KindLLM,
 		}},
 	})
 	if err != nil {
@@ -114,7 +114,7 @@ func TestOpenStoresSupportedModels(t *testing.T) {
 			t.Errorf("snapshot ID %q", m.ID)
 		}
 	}
-	if len(supported) != 1 || supported[0] != "only-this" || len(models) != len(ai.SupportedModels(nil))+2 {
+	if len(supported) != 1 || supported[0] != "only-this" || len(models) != len(llm.SupportedModels(nil))+2 {
 		t.Errorf("after restart: supported %v, %d models",
 			supported,
 			len(models))

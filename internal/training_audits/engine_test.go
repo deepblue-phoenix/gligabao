@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/training_audits/core"
 )
 
@@ -51,14 +51,14 @@ func echoGen(wrong ...string) GenerateFunc {
 type fakeJudge struct {
 	mu     sync.Mutex
 	sizes  []int
-	reqs   []ai.Request
+	reqs   []llm.Request
 	mangle func(call int,
 		verdicts []map[string]any) string // optional: the reply text from the verdicts
 	failing bool
 }
 
 func (j *fakeJudge) Complete(_ context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if j.failing {
@@ -84,7 +84,7 @@ func (j *fakeJudge) Complete(_ context.Context,
 	if j.mangle != nil {
 		text = j.mangle(len(j.sizes), vs)
 	}
-	return &ai.Response{
+	return &llm.Response{
 		Text:         text,
 		Model:        "judge-1",
 		InputTokens:  100,
@@ -161,7 +161,7 @@ func TestRunBatches(t *testing.T) {
 		t.Errorf("OnAnswer: %+v", answered)
 	}
 	// The judge got the question, with the input after a blank line, and the settings.
-	if got := j.reqs[0].Messages[0].Content; !strings.Contains(got, `"question": "q0"`) || j.reqs[0].Reasoning != ai.ReasoningNone {
+	if got := j.reqs[0].Messages[0].Content; !strings.Contains(got, `"question": "q0"`) || j.reqs[0].Reasoning != llm.ReasoningNone {
 		t.Errorf("judge request: %s", got)
 	}
 }
@@ -405,9 +405,9 @@ func TestRunCancelledWhileJudging(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	judge := llmFunc(func(context.Context,
-		ai.Request) (*ai.Response, error) {
+		llm.Request) (*llm.Response, error) {
 		cancel()
-		return &ai.Response{
+		return &llm.Response{
 			Text:         "[]",
 			Model:        "m",
 			InputTokens:  10,
@@ -445,10 +445,10 @@ func TestRunCancelledWhileJudging(t *testing.T) {
 }
 
 type llmFunc func(context.Context,
-	ai.Request) (*ai.Response, error)
+	llm.Request) (*llm.Response, error)
 
 func (f llmFunc) Complete(ctx context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	return f(ctx, req)
 }
 

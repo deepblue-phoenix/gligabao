@@ -11,11 +11,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/api/admin"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/evals/core"
 	evalsdb "github.com/deepblue-phoenix/gligabao/internal/evals/db"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
@@ -26,13 +26,13 @@ type fakeRerunner struct {
 	calls []string
 }
 
-func (f *fakeRerunner) Models() []ai.ModelInfo {
-	return []ai.ModelInfo{{
+func (f *fakeRerunner) Models() []llm.ModelInfo {
+	return []llm.ModelInfo{{
 		Name: "zeta-model",
-		Kind: ai.KindLLM,
+		Kind: llm.KindLLM,
 	}, {
 		Name: "alpha-model",
-		Kind: ai.KindLLM,
+		Kind: llm.KindLLM,
 	}}
 }
 

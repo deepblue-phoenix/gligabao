@@ -26,9 +26,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 
@@ -229,10 +229,10 @@ func (j *job) resolveGeo(ctx context.Context) (out []GeoResult) {
 	j.countKeyEntities(ctx,
 		memory_core.StageDetectGeo,
 		cands) // IN-CONTEXT COUNTERS: the prompt lists the entities
-	resp, err := j.co.ModelLLM(j.llm, memory_core.StageDetectGeo).Complete(ctx, ai.Request{
+	resp, err := j.co.ModelLLM(j.lm, memory_core.StageDetectGeo).Complete(ctx, llm.Request{
 		System: detectGeoSystemPrompt,
-		Messages: []ai.Message{{
-			Role:    ai.RoleUser,
+		Messages: []llm.Message{{
+			Role:    llm.RoleUser,
 			Content: detectGeoPrompt(cands),
 		}},
 		MaxTokens: 2048,

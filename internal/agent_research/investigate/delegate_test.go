@@ -12,8 +12,8 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
 // fakeWorkers answers the questions with the results of its map (by question id). With all > 0, a worker waits until that many workers are
@@ -102,7 +102,7 @@ var errStop = errors.New("stop here")
 
 func stopAfter(fm *fakeModel) investigate.ModelFunc {
 	return func(ctx context.Context,
-		p map[string]any) (*ai.RawResponse, error) {
+		p map[string]any) (*llm.RawResponse, error) {
 		if len(fm.script) == 0 {
 			return nil, errStop
 		}

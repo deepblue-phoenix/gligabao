@@ -260,7 +260,7 @@ func (j *job) extract(ctx context.Context) error {
 	}
 	if !j.chunked {
 		ex, err := Extract(ctx,
-			j.co.ModelLLM(j.llm, memory_core.StageExtractGraph),
+			j.co.ModelLLM(j.lm, memory_core.StageExtractGraph),
 			j.text,
 			j.ref)
 		j.outputExtraction("", ex)
@@ -280,7 +280,7 @@ func (j *job) extract(ctx context.Context) error {
 		Count: len(j.chunks),
 	}
 	ex, err := Extract(ctx,
-		j.co.ModelLLM(j.llm, memory_core.StageExtractGraph),
+		j.co.ModelLLM(j.lm, memory_core.StageExtractGraph),
 		c.Text,
 		j.ref)
 	j.outputExtraction(j.stepLabel(part), ex)
@@ -309,7 +309,7 @@ func (j *job) summarize(ctx context.Context) error {
 		Count: len(j.chunks),
 	}
 	sum, err := summarizeChunk(ctx,
-		j.co.ModelLLM(j.llm, memory_core.StageSummarizeChunk),
+		j.co.ModelLLM(j.lm, memory_core.StageSummarizeChunk),
 		c.Text)
 	if sum != nil {
 		j.run.Output(memory_core.StageSummarizeChunk,
@@ -459,7 +459,7 @@ func (j *job) resolveEdgesStage(ctx context.Context) error {
 	u := j.u
 	_, step := j.labels()
 	plan, err := memory_temporal.ResolveEdges(ctx,
-		j.co.ModelLLM(j.llm, memory_core.StageResolveEdges),
+		j.co.ModelLLM(j.lm, memory_core.StageResolveEdges),
 		u.ex.Edges,
 		u.cs.Edges,
 		// IN-CONTEXT COUNTERS: the stored facts the LLM compares the new ones with.

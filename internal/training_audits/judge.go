@@ -8,13 +8,13 @@ import (
 	"math"
 	"strings"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
-// LLM is the judge: the subset of ai.Client (and of memory_core.LLM) that grading uses.
+// LLM is the judge: the subset of llm.Client (and of memory_core.LLM) that grading uses.
 type LLM interface {
 	Complete(ctx context.Context,
-		req ai.Request) (*ai.Response, error)
+		req llm.Request) (*llm.Response, error)
 }
 
 // Scores are integers from MinScore to MaxScore. A score of at least CorrectScore is "correct"; below PartialScore the answer is
@@ -90,7 +90,7 @@ func clip(s string) string {
 
 // judgeRequest builds the request that grades cases.
 func judgeRequest(cases []judgeCase,
-	model string) (ai.Request, error) {
+	model string) (llm.Request, error) {
 	send := make([]judgeCase, len(cases))
 	for i, it := range cases {
 		send[i] = judgeCase{
@@ -104,17 +104,17 @@ func judgeRequest(cases []judgeCase,
 		"",
 		" ")
 	if err != nil {
-		return ai.Request{}, err
+		return llm.Request{}, err
 	}
-	return ai.Request{
+	return llm.Request{
 		System: judgeSystem,
-		Messages: []ai.Message{{
-			Role:    ai.RoleUser,
+		Messages: []llm.Message{{
+			Role:    llm.RoleUser,
 			Content: "Grade these cases:\n" + string(body),
 		}},
 		Model:     model,
 		MaxTokens: 300 + 150*len(cases),
-		Reasoning: ai.ReasoningNone,
+		Reasoning: llm.ReasoningNone,
 	}, nil
 }
 
@@ -156,7 +156,7 @@ func parseVerdicts(text string,
 func grade(ctx context.Context,
 	llm LLM,
 	cases []judgeCase,
-	model string) (map[int]verdict, *ai.Response, error) {
+	model string) (map[int]verdict, *llm.Response, error) {
 	req, err := judgeRequest(cases, model)
 	if err != nil {
 		return nil, nil, err

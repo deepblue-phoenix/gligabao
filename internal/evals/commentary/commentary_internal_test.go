@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/atif"
 )
 
 // TestTrajectoriesJSONBudget checks that long strings are cut, progressively, until the trajectories fit the budget, and that

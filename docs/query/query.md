@@ -119,7 +119,7 @@ summary: Alice joined Acme in 2023 and ...
 text: ...the chunk...
 ```
 
-It is sent with the question and the current time (`<current_time>`) to the LLM (`internal/ai`, default model `claude-haiku-5-5`, max 2048 output tokens). The system prompt tells the model to answer only from the graph and the passages, to treat edges with an `invalid_at` as no longer true (use them only for questions about the past), and to return only JSON:
+It is sent with the question and the current time (`<current_time>`) to the LLM (`internal/llm`, default model `claude-haiku-5-5`, max 2048 output tokens). The system prompt tells the model to answer only from the graph and the passages, to treat edges with an `invalid_at` as no longer true (use them only for questions about the past), and to return only JSON:
 
 ```json
 {"answer": "...", "entities": [1, 2], "edges": [1], "passages": [14]}

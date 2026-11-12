@@ -9,25 +9,25 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 
 	log "github.com/sirupsen/logrus"
 )
 
 //---------------------------------------------------------------------------------------------
 
-// LLM is the subset of ai.Client used here.
+// LLM is the subset of llm.Client used here.
 type LLM interface {
 	Complete(ctx context.Context,
-		req ai.Request) (*ai.Response, error)
+		req llm.Request) (*llm.Response, error)
 }
 
-// WebSearcher runs web searches (see ai.Client.WebSearch and docs/web-search.md). It is the Anthropic web search tool, so
-// it exists only when an Anthropic API key is supplied; *ai.Client implements it.
+// WebSearcher runs web searches (see llm.Client.WebSearch and docs/web-search.md). It is the Anthropic web search tool, so
+// it exists only when an Anthropic API key is supplied; *llm.Client implements it.
 type WebSearcher interface {
 	WebSearch(ctx context.Context,
-		req ai.WebSearchRequest) (*ai.WebSearchResponse, error)
+		req llm.WebSearchRequest) (*llm.WebSearchResponse, error)
 }
 
 //---------------------------------------------------------------------------------------------
@@ -42,8 +42,8 @@ type recordingLLM struct {
 
 // WithRecording returns llm with every successful call stored in gb_inferences as a run of an operation of the given
 // kind (the type of the run). The stage comes from the context (see WithStage) and the thinking level is the one the call
-// ran with (ai.Response.Reasoning, or the request's if the LLM does not report it). The ID of the run is returned in
-// ai.Response.InferenceID.
+// ran with (llm.Response.Reasoning, or the request's if the LLM does not report it). The ID of the run is returned in
+// llm.Response.InferenceID.
 func WithRecording(llm LLM,
 	d *sql.DB,
 	kind string) LLM {
@@ -55,24 +55,24 @@ func WithRecording(llm LLM,
 }
 
 func (r *recordingLLM) Complete(ctx context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	resp, err := r.LLM.Complete(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 	level := resp.Reasoning
 	if level == "" {
-		level, _ = ai.NormalizeReasoning(req.Reasoning)
+		level, _ = llm.NormalizeReasoning(req.Reasoning)
 	}
 	if level == "" {
-		level = ai.ReasoningNone
+		level = llm.ReasoningNone
 	}
 	run := relational.Inference{
 		Type:         r.kind,
 		Stage:        StageOf(ctx),
 		Model:        resp.Model,
 		Provider:     resp.Provider,
-		Kind:         ai.KindOf(resp.Model),
+		Kind:         llm.KindOf(resp.Model),
 		Reasoning:    level,
 		InputTokens:  resp.InputTokens,
 		OutputTokens: resp.OutputTokens,

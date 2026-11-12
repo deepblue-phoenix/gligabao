@@ -14,7 +14,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
 // fakeAnthropic is a fake Messages API. The calls of the agent (no web search tool in the request) are answered with main, in order;
@@ -41,7 +41,7 @@ func toolUseFetch(url string) string {
 	return `{"model":"m","stop_reason":"tool_use","content":[{"type":"tool_use","id":"t2","name":"fetch_url","input":{"url":"` + url + `"}}],"usage":{"input_tokens":12,"output_tokens":4}}`
 }
 
-func (f *fakeAnthropic) start(t *testing.T) *ai.Client {
+func (f *fakeAnthropic) start(t *testing.T) *llm.Client {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
 		r *http.Request) {
@@ -70,7 +70,7 @@ func (f *fakeAnthropic) start(t *testing.T) *ai.Client {
 		w.Write([]byte(f.main[n-1]))
 	}))
 	t.Cleanup(srv.Close)
-	c, err := ai.New("k", ai.WithBaseURL(srv.URL))
+	c, err := llm.New("k", llm.WithBaseURL(srv.URL))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,10 +112,10 @@ func testDefaultModel(t *testing.T,
 	if err != nil {
 		t.Fatal(err)
 	}
-	if run.Model != ai.DefaultModel() {
+	if run.Model != llm.DefaultModel() {
 		t.Fatalf("model: %q, want the server default %q",
 			run.Model,
-			ai.DefaultModel())
+			llm.DefaultModel())
 	}
 }
 
@@ -163,7 +163,7 @@ func testResearch(t *testing.T,
 		t.Fatalf("finished: %+v", run)
 	}
 	// 10+12+20 tokens of the agent and 7 of the search; the search cost is the only cost (the model has no known price).
-	if run.InputTokens != 49 || run.OutputTokens != 21 || run.CostUSD != ai.WebSearchRequestUSD {
+	if run.InputTokens != 49 || run.OutputTokens != 21 || run.CostUSD != llm.WebSearchRequestUSD {
 		t.Fatalf("usage: in %d out %d cost %v",
 			run.InputTokens,
 			run.OutputTokens,

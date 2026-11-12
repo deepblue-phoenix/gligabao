@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_query"
@@ -21,11 +21,11 @@ import (
 type answerLLM struct{ fail bool }
 
 func (l answerLLM) Complete(_ context.Context,
-	_ ai.Request) (*ai.Response, error) {
+	_ llm.Request) (*llm.Response, error) {
 	if l.fail {
 		return nil, errors.New("llm down")
 	}
-	return &ai.Response{
+	return &llm.Response{
 		StopReason: "end_turn",
 		Model:      "answer-model",
 		Text:       `{"answer":"Acme.","entities":[],"edges":[],"passages":[]}`,

@@ -16,11 +16,11 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbexport"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 	log "github.com/sirupsen/logrus"
 )
@@ -192,7 +192,7 @@ func TestVersionAndHelp(t *testing.T) {
 
 // fakeAnthropic is a fake Messages API for the whole app: the agent that researches ROOT TOPIC remembers a snippet without waiting and
 // writes ROOT REPORT; the model calls of the remember pipeline extract nothing; the web search is not used.
-func fakeAnthropic(t *testing.T) *ai.Client {
+func fakeAnthropic(t *testing.T) *llm.Client {
 	t.Helper()
 	const (
 		toolUse = `{"model":"m","stop_reason":"tool_use","content":[%s],"usage":{"input_tokens":10,"output_tokens":5}}`
@@ -215,7 +215,7 @@ func fakeAnthropic(t *testing.T) *ai.Client {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	c, err := ai.New("k", ai.WithBaseURL(srv.URL))
+	c, err := llm.New("k", llm.WithBaseURL(srv.URL))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,13 +225,13 @@ func fakeAnthropic(t *testing.T) *ai.Client {
 type fakeEmbedder struct{}
 
 func (fakeEmbedder) EmbedBatchUsage(_ context.Context,
-	texts []string) ([][]float32, *ai.EmbedUsage, error) {
+	texts []string) ([][]float32, *llm.EmbedUsage, error) {
 	out := make([][]float32, len(texts))
 	for i := range out {
 		out[i] = []float32{1, 0}
 	}
-	return out, &ai.EmbedUsage{
-		Provider: ai.ProviderOpenAI,
+	return out, &llm.EmbedUsage{
+		Provider: llm.ProviderOpenAI,
 		Model:    "test-embed",
 	}, nil
 }

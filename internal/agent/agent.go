@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 )
 
@@ -35,7 +35,7 @@ type Tool struct {
 
 // Agent is a model with tools and a system prompt. The zero values of the optional fields use defaults.
 type Agent struct {
-	Client *ai.Client
+	Client *llm.Client
 	System string
 	Tools  []Tool
 	// Model is the model to use; empty uses the client's default.
@@ -176,7 +176,7 @@ func (a *Agent) Run(ctx context.Context,
 // with any other Run.
 type loop struct {
 	// Settings, fixed when the loop is made.
-	client    *ai.Client
+	client    *llm.Client
 	system    string
 	model     string
 	maxSteps  int

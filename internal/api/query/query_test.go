@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_dataset"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_query"
@@ -23,15 +23,15 @@ import (
 // recordingLLM returns canned outputs in order and records requests.
 type recordingLLM struct {
 	outs []string
-	reqs []ai.Request
+	reqs []llm.Request
 }
 
 func (f *recordingLLM) Complete(_ context.Context,
-	r ai.Request) (*ai.Response, error) {
+	r llm.Request) (*llm.Response, error) {
 	f.reqs = append(f.reqs, r)
 	out := f.outs[0]
 	f.outs = f.outs[1:]
-	return &ai.Response{
+	return &llm.Response{
 		Text:       out,
 		StopReason: "end_turn",
 	}, nil

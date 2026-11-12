@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
@@ -31,13 +31,13 @@ type personLLM struct {
 }
 
 func (l *personLLM) Complete(_ context.Context,
-	req ai.Request) (*ai.Response, error) {
+	req llm.Request) (*llm.Response, error) {
 	l.calls++
 	if l.calls == l.failOn {
 		return nil, errors.New("llm down")
 	}
 	if !strings.Contains(req.System, "extract a temporal knowledge graph") { // resolveEdges: nothing to flag
-		return &ai.Response{
+		return &llm.Response{
 			StopReason: "end_turn",
 			Model:      "person-model",
 			Text:       `{"duplicates":[],"contradictions":[]}`,
@@ -55,7 +55,7 @@ func (l *personLLM) Complete(_ context.Context,
 		edges = append(edges, fmt.Sprintf(`{"source":%q,"target":"Acme","relation":"works at"}`, p))
 	}
 	ents = append(ents, `{"name":"Acme","type":"organization"}`)
-	return &ai.Response{
+	return &llm.Response{
 		StopReason: "end_turn",
 		Model:      "person-model",
 		Text:       `{"entities":[` + strings.Join(ents, ",") + `],"edges":[` + strings.Join(edges, ",") + `]}`,

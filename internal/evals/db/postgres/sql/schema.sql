@@ -240,7 +240,7 @@ CREATE TABLE IF NOT EXISTS gb_case_runs_meta_knowledge (
 	FOREIGN KEY (case_run_id, type) REFERENCES gb_case_runs(id, type) ON DELETE CASCADE
 );
 
--- core.KnowledgeTrajectory: the ATIF trajectories (internal/ai/atif) of a knowledge case run, in call order. Only the reference
+-- core.KnowledgeTrajectory: the ATIF trajectories (internal/atif) of a knowledge case run, in call order. Only the reference
 -- is kept: trajectory_id is the ATIF trajectory_id, path the JSON file it was stored in ('' if none). kind: 'remember' or
 -- 'query'. artifact_ids: JSON array of the IDs of the artifacts the call is about (remember: its input; query: the sources
 -- of the evidence).

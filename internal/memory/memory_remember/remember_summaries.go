@@ -11,7 +11,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 )
 
@@ -52,17 +52,17 @@ func (s *chunkSummary) RunID() int64 {
 	return s.InferenceID
 }
 
-// summarizeChunk asks the LLM for a short summary of text, a chunk of a longer one. llm must be the one of the
+// summarizeChunk asks the LLM for a short summary of text, a chunk of a longer one. lm must be the one of the
 // summarize_chunk stage, which applies its model and reasoning level (see memory_core.CallOptions.ModelLLM); the level the
 // call ran with and its run are read from the response (see memory_core.WithRecording). If the LLM answered but its answer
 // is no use, the error comes with a summary that is empty but for its InferenceID.
 func summarizeChunk(ctx context.Context,
-	llm memory_core.LLM,
+	lm memory_core.LLM,
 	text string) (*chunkSummary, error) {
-	resp, err := llm.Complete(ctx, ai.Request{
+	resp, err := lm.Complete(ctx, llm.Request{
 		System: summarySystemPrompt,
-		Messages: []ai.Message{{
-			Role:    ai.RoleUser,
+		Messages: []llm.Message{{
+			Role:    llm.RoleUser,
 			Content: "<text>\n" + text + "\n</text>",
 		}},
 		MaxTokens: summaryMaxTokens,
@@ -83,7 +83,7 @@ func summarizeChunk(ctx context.Context,
 			Raw:         resp.Text,
 		}, errors.New("memory: LLM returned an empty summary")
 	}
-	level, _ := ai.NormalizeReasoning(resp.Reasoning)
+	level, _ := llm.NormalizeReasoning(resp.Reasoning)
 	return &chunkSummary{
 		Text:        s,
 		Provider:    resp.Provider,

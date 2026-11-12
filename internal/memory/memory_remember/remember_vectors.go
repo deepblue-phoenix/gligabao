@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_dataset"
@@ -27,7 +27,7 @@ type candidates struct {
 	// search failed (a failed search is not an error of the call: the candidates are then those of the exact names).
 	Similar     []similarEntity
 	SearchTexts []string
-	SearchUsage *ai.EmbedUsage
+	SearchUsage *llm.EmbedUsage
 	SearchErr   error
 }
 
@@ -145,7 +145,7 @@ func findSimilarEntities(ctx context.Context,
 	d *sql.DB,
 	o memory_core.CallOptions,
 	dsID int64,
-	ex *Extraction) (found []similarEntity, texts []string, usage *ai.EmbedUsage, err error) {
+	ex *Extraction) (found []similarEntity, texts []string, usage *llm.EmbedUsage, err error) {
 	if o.Vectors == nil || o.Embedder == nil {
 		return nil, nil, nil, nil
 	}
@@ -240,7 +240,7 @@ func prepareVectors(ctx context.Context,
 	entityIDs []int64,
 	edges []Edge,
 	chunk *chunkVector,
-	summary *summaryVector) (*pendingVectors, *ai.EmbedUsage, error) {
+	summary *summaryVector) (*pendingVectors, *llm.EmbedUsage, error) {
 	if o.Vectors == nil || o.Embedder == nil || (len(entityIDs)+len(edges) == 0 && chunk == nil && summary == nil) {
 		return nil, nil, nil
 	}
@@ -377,7 +377,7 @@ const StageEmbed = "embed"
 // the ID of the inference, 0 if there is none (no request was made, or it could not be recorded).
 func recordEmbedUsage(ctx context.Context,
 	d *sql.DB,
-	usage *ai.EmbedUsage) int64 {
+	usage *llm.EmbedUsage) int64 {
 	if usage == nil {
 		return 0
 	}
@@ -388,8 +388,8 @@ func recordEmbedUsage(ctx context.Context,
 			Stage:       StageEmbed,
 			Model:       usage.Model,
 			Provider:    usage.Provider,
-			Kind:        ai.KindEmbedding,
-			Reasoning:   ai.ReasoningNone,
+			Kind:        llm.KindEmbedding,
+			Reasoning:   llm.ReasoningNone,
 			InputTokens: usage.InputTokens,
 			CostUSD:     usage.CostUSD,
 		})

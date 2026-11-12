@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_query"
@@ -32,9 +32,9 @@ type vecLLM struct {
 var passageRe = regexp.MustCompile(`\[passage (\d+)\]`)
 
 func (l *vecLLM) Complete(_ context.Context,
-	req ai.Request) (*ai.Response, error) {
-	text := func(s string) (*ai.Response, error) {
-		return &ai.Response{
+	req llm.Request) (*llm.Response, error) {
+	text := func(s string) (*llm.Response, error) {
+		return &llm.Response{
 			Text:       s,
 			StopReason: "end_turn",
 		}, nil

@@ -26,10 +26,10 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
-	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	"github.com/deepblue-phoenix/gligabao/internal/atif"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
 	"github.com/deepblue-phoenix/gligabao/internal/db/dbexport"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
@@ -263,16 +263,16 @@ Flags:
 			err)
 		return exitUsage
 	}
-	client, err := ai.New(cfg.AnthropicKey, ai.WithPrices(ai.NewPriceTable(cfg.AIPrices())))
+	client, err := llm.New(cfg.AnthropicKey, llm.WithPrices(llm.NewPriceTable(cfg.AIPrices())))
 	if err != nil {
 		fmt.Fprintf(stderr,
 			"gligabao_agent: %v\n",
 			err)
 		return exitUsage
 	}
-	emb, err := ai.NewEmbedder(cfg.OpenAIKey,
-		ai.WithEmbedPrices(ai.NewPriceTable(cfg.AIPrices())),
-		ai.WithEmbedDimensions(cfg.EmbeddingDimensions))
+	emb, err := llm.NewEmbedder(cfg.OpenAIKey,
+		llm.WithEmbedPrices(llm.NewPriceTable(cfg.AIPrices())),
+		llm.WithEmbedDimensions(cfg.EmbeddingDimensions))
 	if err != nil {
 		fmt.Fprintf(stderr,
 			"gligabao_agent: embedder: %v (set %s or openai_api_key)\n",

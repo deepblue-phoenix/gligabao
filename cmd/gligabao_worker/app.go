@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_memory"
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
@@ -22,7 +22,7 @@ type app struct {
 	database *db.DB
 	mem      *agent_memory.Memory
 	remember *memory_remember.Manager
-	llm      *ai.Client
+	lm       *llm.Client
 	stop     context.CancelFunc
 	// rememberOpts and queryOpts are the options of every remember and query call (vectors, chunking, geo).
 	rememberOpts, queryOpts []memory_core.Option
@@ -32,7 +32,7 @@ type app struct {
 // the app over them. Call close when done.
 func openApp(ctx context.Context,
 	cfg *config.Config,
-	llm *ai.Client,
+	lm *llm.Client,
 	emb memory_core.Embedder) (*app, error) {
 	if err := checkRemote(cfg); err != nil {
 		return nil, err
@@ -42,7 +42,7 @@ func openApp(ctx context.Context,
 		"",
 		"")
 	dbCfg.Geo = cfg.Geo
-	dbCfg.Models = ai.SupportedModels(ai.NewPriceTable(cfg.AIPrices()))
+	dbCfg.Models = llm.SupportedModels(llm.NewPriceTable(cfg.AIPrices()))
 	database, err := db.Open(dbCfg)
 	if err != nil {
 		return nil, err
@@ -56,7 +56,7 @@ func openApp(ctx context.Context,
 	// The same options as the remember and query endpoints of the server (internal/api), less what a command line cannot ask for.
 	a := &app{
 		database: database,
-		llm:      llm,
+		lm:       lm,
 	}
 	a.rememberOpts = []memory_core.Option{memory.WithVectors(database.Vector, emb), memory_core.WithChunking(database.Chunking), memory_core.WithGeoResolver(geo)}
 	a.queryOpts = []memory_core.Option{memory.WithVectors(database.Vector, emb), memory_core.WithGeoResolver(geo), memory_core.WithGeoRadius(cfg.GeoRadiusKm)}
@@ -71,12 +71,12 @@ func openApp(ctx context.Context,
 	}
 	a.remember = memory_remember.NewManager(mgrCtx,
 		database.Relational,
-		llm,
+		lm,
 		memory_remember.WithErrSink(errSink))
 	a.mem = &agent_memory.Memory{
 		Remember:     a.remember,
 		DB:           database.Relational,
-		LLM:          llm,
+		LLM:          lm,
 		RememberOpts: a.rememberOpts,
 		QueryOpts:    a.queryOpts,
 		ErrSink:      errSink,

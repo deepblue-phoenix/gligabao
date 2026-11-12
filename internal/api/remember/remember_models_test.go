@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil/httputiltest"
 )
@@ -24,7 +24,7 @@ func testRememberModels(t *testing.T,
 	const defaultModel = "default-model"
 	place := "Globex"
 	var requested []string // the model each request asked for ("" = none, so the client's default)
-	llm := llmFunc(func(r ai.Request) (*ai.Response, error) {
+	llm := llmFunc(func(r llm.Request) (*llm.Response, error) {
 		requested = append(requested, r.Model)
 		model := r.Model
 		if model == "" {
@@ -35,10 +35,10 @@ func testRememberModels(t *testing.T,
 		if strings.Contains(r.System, "duplicate") || strings.Contains(r.Messages[0].Content, "<existing_facts>") {
 			out = `{"duplicates":[],"contradictions":[]}`
 		}
-		return &ai.Response{
+		return &llm.Response{
 			Text:       out,
 			StopReason: "end_turn",
-			Provider:   ai.ProviderAnthropic,
+			Provider:   llm.ProviderAnthropic,
 			Model:      model,
 		}, nil
 	})

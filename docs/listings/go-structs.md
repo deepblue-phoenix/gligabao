@@ -52,44 +52,44 @@
 
 | Struct                                                    | Description                                                                                                            |
 | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `internal/ai.Client`                                      | calls the Anthropic LLM API with the configured key, model and price table.                                            |
-| `internal/ai.APIError`                                    | is an error answer of the Anthropic API (status, type, message).                                                       |
-| `internal/ai.EmbedUsage`                                  | records the token usage and cost of an embeddings request.                                                             |
-| `internal/ai.Embedder`                                    | computes text embeddings using the OpenAI embeddings API.                                                              |
-| `internal/ai.Image`                                       | is an image (media type and data) attached to a Message.                                                               |
-| `internal/ai.outputConfig`                                | is the effort of the adaptive thinking of a request.                                                                   |
-| `internal/ai.thinkMode`                                   | is how a request asks for thinking: a token budget, adaptive thinking steered by an effort, or none.                   |
-| `internal/ai.Message`                                     | is a single conversation turn with a role, content and optional images.                                                |
-| `internal/ai.ModelInfo`                                   | describes a model (name, provider, kind) that gligabao actively supports.                                              |
-| `internal/ai.Price`                                       | holds a model's price in USD per 1M tokens, including cache and long-context rates.                                    |
-| `internal/ai.PriceTable`                                  | looks up model prices by the longest key that prefixes a response model name.                                          |
-| `internal/ai.RawResponse`                                 | is the response to a Raw call: the content blocks as the API sent them (so they can go back to the model unchanged), the tokens and the cost. |
-| `internal/ai.Request`                                     | describes a single LLM call, with zero values falling back to client defaults.                                         |
-| `internal/ai.Response`                                    | is the result of an LLM call with its text, model, token usage and cost.                                               |
-| `internal/ai.Usage`                                       | is the token usage (input, output, cache write and cache read) of one call.                                            |
-| `internal/ai.WebSearchRequest`                            | asks the model to research a prompt using the web search tool.                                                         |
-| `internal/ai.WebSearchResponse`                           | is the result of a web search with its text, queries, sources and usage.                                               |
-| `internal/ai.WebSource`                                   | is a web page that backs the answer of a web search.                                                                   |
-| `internal/ai.apiError`                                    | decodes the error object of an Anthropic API response.                                                                 |
-| `internal/ai.apiRequest`                                  | is the JSON request body sent to the Anthropic messages API.                                                           |
-| `internal/ai.apiResponse`                                 | is the JSON response body decoded from the Anthropic messages API.                                                     |
-| `internal/ai.contentBlock`                                | is one content block (text or image) of an Anthropic API message.                                                      |
-| `internal/ai.embedRequest`                                | is the JSON request body sent to the OpenAI embeddings API.                                                            |
-| `internal/ai.embedResponse`                               | is the JSON response body decoded from the OpenAI embeddings API.                                                      |
-| `internal/ai.imageSource`                                 | is the base64 image source of an image content block.                                                                  |
-| `internal/ai.openAIError`                                 | decodes the error object of an OpenAI API response.                                                                    |
-| `internal/ai.thinking`                                    | is the extended-thinking setting (type and token budget) of an API request.                                            |
-| `internal/ai.webSearchAPIResponse`                        | is the JSON response body of a web search call to the Anthropic API.                                                   |
-| `internal/ai.webSearchBlock`                              | reads the parts of a web search content block whatever its type.                                                       |
-| `internal/ai/atif.Agent`                                  | describes the agent that produced an ATIF trajectory.                                                                  |
-| `internal/ai/atif.Builder`                                | records an ATIF trajectory step by step and is safe for concurrent use.                                                |
-| `internal/ai/atif.FinalMetrics`                           | holds the token, cost and step totals over a whole trajectory.                                                         |
-| `internal/ai/atif.Metrics`                                | holds the LLM usage of one agent step.                                                                                 |
-| `internal/ai/atif.Observation`                            | holds the results of a step's tool calls.                                                                              |
-| `internal/ai/atif.ObservationResult`                      | is the result of one tool call, linked to its call ID.                                                                 |
-| `internal/ai/atif.Step`                                   | is one turn of the trajectory with its message, tool calls, observation and metrics.                                   |
-| `internal/ai/atif.ToolCall`                               | is a function the agent invoked, with its arguments.                                                                   |
-| `internal/ai/atif.Trajectory`                             | is a complete ATIF document holding the agent, its steps and the final metrics.                                        |
+| `internal/llm.Client`                                      | calls the Anthropic LLM API with the configured key, model and price table.                                            |
+| `internal/llm.APIError`                                    | is an error answer of the Anthropic API (status, type, message).                                                       |
+| `internal/llm.EmbedUsage`                                  | records the token usage and cost of an embeddings request.                                                             |
+| `internal/llm.Embedder`                                    | computes text embeddings using the OpenAI embeddings API.                                                              |
+| `internal/llm.Image`                                       | is an image (media type and data) attached to a Message.                                                               |
+| `internal/llm.outputConfig`                                | is the effort of the adaptive thinking of a request.                                                                   |
+| `internal/llm.thinkMode`                                   | is how a request asks for thinking: a token budget, adaptive thinking steered by an effort, or none.                   |
+| `internal/llm.Message`                                     | is a single conversation turn with a role, content and optional images.                                                |
+| `internal/llm.ModelInfo`                                   | describes a model (name, provider, kind) that gligabao actively supports.                                              |
+| `internal/llm.Price`                                       | holds a model's price in USD per 1M tokens, including cache and long-context rates.                                    |
+| `internal/llm.PriceTable`                                  | looks up model prices by the longest key that prefixes a response model name.                                          |
+| `internal/llm.RawResponse`                                 | is the response to a Raw call: the content blocks as the API sent them (so they can go back to the model unchanged), the tokens and the cost. |
+| `internal/llm.Request`                                     | describes a single LLM call, with zero values falling back to client defaults.                                         |
+| `internal/llm.Response`                                    | is the result of an LLM call with its text, model, token usage and cost.                                               |
+| `internal/llm.Usage`                                       | is the token usage (input, output, cache write and cache read) of one call.                                            |
+| `internal/llm.WebSearchRequest`                            | asks the model to research a prompt using the web search tool.                                                         |
+| `internal/llm.WebSearchResponse`                           | is the result of a web search with its text, queries, sources and usage.                                               |
+| `internal/llm.WebSource`                                   | is a web page that backs the answer of a web search.                                                                   |
+| `internal/llm.apiError`                                    | decodes the error object of an Anthropic API response.                                                                 |
+| `internal/llm.apiRequest`                                  | is the JSON request body sent to the Anthropic messages API.                                                           |
+| `internal/llm.apiResponse`                                 | is the JSON response body decoded from the Anthropic messages API.                                                     |
+| `internal/llm.contentBlock`                                | is one content block (text or image) of an Anthropic API message.                                                      |
+| `internal/llm.embedRequest`                                | is the JSON request body sent to the OpenAI embeddings API.                                                            |
+| `internal/llm.embedResponse`                               | is the JSON response body decoded from the OpenAI embeddings API.                                                      |
+| `internal/llm.imageSource`                                 | is the base64 image source of an image content block.                                                                  |
+| `internal/llm.openAIError`                                 | decodes the error object of an OpenAI API response.                                                                    |
+| `internal/llm.thinking`                                    | is the extended-thinking setting (type and token budget) of an API request.                                            |
+| `internal/llm.webSearchAPIResponse`                        | is the JSON response body of a web search call to the Anthropic API.                                                   |
+| `internal/llm.webSearchBlock`                              | reads the parts of a web search content block whatever its type.                                                       |
+| `internal/atif.Agent`                                  | describes the agent that produced an ATIF trajectory.                                                                  |
+| `internal/atif.Builder`                                | records an ATIF trajectory step by step and is safe for concurrent use.                                                |
+| `internal/atif.FinalMetrics`                           | holds the token, cost and step totals over a whole trajectory.                                                         |
+| `internal/atif.Metrics`                                | holds the LLM usage of one agent step.                                                                                 |
+| `internal/atif.Observation`                            | holds the results of a step's tool calls.                                                                              |
+| `internal/atif.ObservationResult`                      | is the result of one tool call, linked to its call ID.                                                                 |
+| `internal/atif.Step`                                   | is one turn of the trajectory with its message, tool calls, observation and metrics.                                   |
+| `internal/atif.ToolCall`                               | is a function the agent invoked, with its arguments.                                                                   |
+| `internal/atif.Trajectory`                             | is a complete ATIF document holding the agent, its steps and the final metrics.                                        |
 
 >>> API
 

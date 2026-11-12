@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/graph"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 
 	log "github.com/sirupsen/logrus"
@@ -135,7 +135,7 @@ func (j *job) classifyOne(ctx context.Context,
 		}
 	}
 	c, err := classifyGraph(ctx,
-		j.co.ModelLLM(j.llm, memory_core.StageClassifyGraph),
+		j.co.ModelLLM(j.lm, memory_core.StageClassifyGraph),
 		g,
 		j.co.GraphClasses,
 		known)
@@ -184,19 +184,19 @@ func labelSuffix(label string) string {
 	return " (" + label + ")"
 }
 
-// classifyGraph asks the LLM for the classes of g. llm must be the one of the classify_graph stage (see
+// classifyGraph asks the LLM for the classes of g. lm must be the one of the classify_graph stage (see
 // memory_core.CallOptions.ModelLLM). allowed, if not empty, are the only classes it may choose (it is then not told of known); otherwise it
 // chooses freely, and known are the classes the dataset already uses, which it should reuse when one fits. If the LLM answered but its
 // answer is no use, the error comes with a classification that has only its InferenceID and Raw.
 func classifyGraph(ctx context.Context,
-	llm memory_core.LLM,
+	lm memory_core.LLM,
 	g artifactGraph,
 	allowed,
 	known []string) (*graphClassification, error) {
-	resp, err := llm.Complete(ctx, ai.Request{
+	resp, err := lm.Complete(ctx, llm.Request{
 		System: classifySystemPrompt,
-		Messages: []ai.Message{{
-			Role: ai.RoleUser,
+		Messages: []llm.Message{{
+			Role: llm.RoleUser,
 			Content: classifyUserMessage(g,
 				allowed,
 				known),
@@ -206,7 +206,7 @@ func classifyGraph(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	level, _ := ai.NormalizeReasoning(resp.Reasoning)
+	level, _ := llm.NormalizeReasoning(resp.Reasoning)
 	c := &graphClassification{
 		Provider:    resp.Provider,
 		Model:       resp.Model,

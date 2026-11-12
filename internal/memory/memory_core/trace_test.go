@@ -4,31 +4,31 @@ import (
 	"context"
 	"testing"
 
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
 type warnLLM struct{}
 
 func (warnLLM) Complete(context.Context,
-	ai.Request) (*ai.Response, error) {
-	return &ai.Response{
+	llm.Request) (*llm.Response, error) {
+	return &llm.Response{
 		Text:    "ok",
 		Model:   "m",
 		Warning: "model m ignored the thinking level",
 	}, nil
 }
 
-// The warning of a call that ran differently from the request (see ai.Response.Warning) is kept, once, in the extra of the trajectory.
+// The warning of a call that ran differently from the request (see llm.Response.Warning) is kept, once, in the extra of the trajectory.
 func TestTraceKeepsWarnings(t *testing.T) {
 	tr := StartTrace("remember", CallOptions{
 		Eval: true,
 		Dir:  t.TempDir(),
 	})
-	llm := tr.Wrap(warnLLM{})
+	lm := tr.Wrap(warnLLM{})
 	for i := 0; i < 2; i++ {
-		if _, err := llm.Complete(context.Background(), ai.Request{
-			Messages: []ai.Message{{
-				Role:    ai.RoleUser,
+		if _, err := lm.Complete(context.Background(), llm.Request{
+			Messages: []llm.Message{{
+				Role:    llm.RoleUser,
 				Content: "x",
 			}},
 		}); err != nil {

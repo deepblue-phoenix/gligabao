@@ -16,8 +16,8 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/core"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate"
 	"github.com/deepblue-phoenix/gligabao/internal/agent_research/investigate_core"
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational/dbtest"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
 type env struct {
@@ -55,7 +55,7 @@ type fakeModel struct {
 }
 
 func (f *fakeModel) call(_ context.Context,
-	payload map[string]any) (*ai.RawResponse, error) {
+	payload map[string]any) (*llm.RawResponse, error) {
 	raw, _ := json.Marshal(payload)
 	f.texts = append(f.texts, string(raw))
 	f.payloads = append(f.payloads, payload)
@@ -82,7 +82,7 @@ func (f *fakeModel) call(_ context.Context,
 			i), "name": c.name, "input": c.in})
 		content = append(content, b)
 	}
-	return &ai.RawResponse{
+	return &llm.RawResponse{
 		Model:        "fake",
 		StopReason:   "end_turn",
 		Content:      content,
@@ -742,7 +742,7 @@ func TestRunModelFailure(t *testing.T) {
 		Task:     "t",
 		External: fakeTools(),
 		Model: func(context.Context,
-			map[string]any) (*ai.RawResponse, error) {
+			map[string]any) (*llm.RawResponse, error) {
 			return nil, boom
 		},
 	})

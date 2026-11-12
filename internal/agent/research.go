@@ -13,7 +13,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/agent/prompts"
-	"github.com/deepblue-phoenix/gligabao/internal/ai"
+	"github.com/deepblue-phoenix/gligabao/internal/llm"
 )
 
 const (
@@ -27,7 +27,7 @@ const (
 // (Anthropic's web search) and fetch_url (no knowledge base: see ResearchAgent). The model must support the web search tool. Use ResearchAgent to change
 // the model or the limits.
 func Research(ctx context.Context,
-	client *ai.Client,
+	client *llm.Client,
 	question string) (*Result, error) {
 	if strings.TrimSpace(question) == "" {
 		return nil, errors.New("agent: empty question")
@@ -55,7 +55,7 @@ func NewHTTPClient() *http.Client {
 // reads the pages (fetch_url): give each agent its own (NewHTTPClient) for full isolation; nil makes one for this agent (without anyone
 // to close it). kb is the knowledge base the agent works with: it gets the tools remember and query, and the part of the prompt that says
 // how to use them; with nil (as in Research) it has only web_search and fetch_url. See FromDef for an agent of another definition.
-func ResearchAgent(client *ai.Client,
+func ResearchAgent(client *llm.Client,
 	httpClient *http.Client,
 	kb Knowledge) *Agent {
 	return FromDef(agent_defs.Builtin(),
@@ -70,7 +70,7 @@ func ResearchAgent(client *ai.Client,
 // (AddSkills, last). A tool with a limit of calls (Search.MaxCalls, Search.Fetch.MaxCalls) counts the calls of the Agent it is made for, so
 // make a new Agent for each research. kb is as in ResearchAgent; a definition with knowledge access "none" ignores it.
 func FromDef(def *agent_defs.Def,
-	client *ai.Client,
+	client *llm.Client,
 	httpClient *http.Client,
 	kb Knowledge) *Agent {
 	if httpClient == nil {
@@ -172,7 +172,7 @@ func (c *callCounter) allow() bool {
 	return c.n.Add(1) <= int64(c.limit)
 }
 
-func webSearchTool(client *ai.Client,
+func webSearchTool(client *llm.Client,
 	cfg agent_defs.Search) Tool {
 	counter := &callCounter{
 		limit: cfg.MaxCalls,
@@ -185,9 +185,9 @@ func webSearchTool(client *ai.Client,
 		Language:     cfg.Language,
 		Instructions: cfg.Instructions,
 	}))
-	var location *ai.WebSearchLocation
+	var location *llm.WebSearchLocation
 	if l := cfg.Location; l != nil {
-		location = &ai.WebSearchLocation{
+		location = &llm.WebSearchLocation{
 			Country:  l.Country,
 			Region:   l.Region,
 			City:     l.City,
@@ -211,7 +211,7 @@ func webSearchTool(client *ai.Client,
 			if !counter.allow() {
 				return "", errToolLimit("web_search", counter.limit)
 			}
-			r, err := client.WebSearch(ctx, ai.WebSearchRequest{
+			r, err := client.WebSearch(ctx, llm.WebSearchRequest{
 				System:         system,
 				Prompt:         query,
 				MaxTokens:      1024,
@@ -384,7 +384,7 @@ const ToolFetchPage = "fetch_page"
 // FromDefInvestigative is FromDef for an agent that runs the investigative loop: the same tools and prompt, with fetch_url called
 // fetch_page. The loop itself is in package agent_research/investigate; it takes the Tools and the System of the returned agent.
 func FromDefInvestigative(def *agent_defs.Def,
-	client *ai.Client,
+	client *llm.Client,
 	httpClient *http.Client,
 	kb Knowledge) *Agent {
 	a := FromDef(def,
