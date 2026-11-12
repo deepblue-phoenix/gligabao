@@ -1,12 +1,14 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"time"
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -25,6 +27,7 @@ type tracer struct {
 	b     *atif.Builder
 	dir   string
 	model string // the model of the first answer, when the Agent did not name one
+	sink  gberrors.Sink
 }
 
 // newTracer returns nil unless the agent asks for a trajectory. It records the system prompt and the user's prompt, the first steps of the
@@ -41,7 +44,7 @@ func newTracer(a *Agent, prompt string, l *loop) *tracer {
 	if version == "" {
 		version = agentVersion
 	}
-	t := &tracer{b: atif.NewBuilder(atif.Agent{Name: name, Version: version, ModelName: a.Model}), dir: a.TrajectoryDir}
+	t := &tracer{b: atif.NewBuilder(atif.Agent{Name: name, Version: version, ModelName: a.Model}), dir: a.TrajectoryDir, sink: a.ErrSink}
 	if a.SessionID != "" { // the trajectories of one session share the session ID
 		t.b.SetSessionID(a.SessionID)
 	}
@@ -142,8 +145,8 @@ func (t *tracer) endStep(s *stepRec, text string) {
 
 // finish ends the trajectory: it adds the run's totals (the tools' spending included, which the final metrics, the model calls only,
 // do not have) and the error if the run failed, stores it if there is a directory, and puts it in res. A failure to store it never fails
-// the run.
-func (t *tracer) finish(res *Result, runErr error) {
+// the run; it is tracked as a GBerror (the trajectory is lost).
+func (t *tracer) finish(ctx context.Context, res *Result, runErr error) {
 	if t == nil {
 		return
 	}
@@ -170,6 +173,7 @@ func (t *tracer) finish(res *Result, runErr error) {
 	path, err := atif.WriteFile(t.dir, traj)
 	if err != nil {
 		log.WithError(err).WithField("trajectory_id", traj.TrajectoryID).Error("store ATIF trajectory")
+		gberrors.New(context.WithoutCancel(ctx), t.sink, "agent.trajectory.store", err, gberrors.Meta{"trajectory_id": traj.TrajectoryID})
 		return
 	}
 	res.TrajectoryPath = path

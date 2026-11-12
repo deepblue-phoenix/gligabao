@@ -66,7 +66,7 @@ func openApp(ctx context.Context, cfg *config.Config, llm *ai.Client, emb memory
 	mgrCtx, stop := context.WithCancel(ctx)
 	a := &app{database: database, stop: stop}
 	a.remember = memory_remember.NewManager(mgrCtx, database.Relational, llm)
-	a.mem = &agent_memory.Memory{Remember: a.remember, DB: database.Relational, LLM: llm, RememberOpts: rememberOpts, QueryOpts: queryOpts}
+	a.mem = &agent_memory.Memory{Remember: a.remember, DB: database.Relational, LLM: llm, RememberOpts: rememberOpts, QueryOpts: queryOpts, ErrSink: ops.ErrSink(database.Relational)}
 	// KeepActiveRuns: the runs that are running in this database belong to other processes (a server, other runs of this binary).
 	a.research = agent_research.NewManager(mgrCtx, database.Relational, ops, llm, agent_research.KeepActiveRuns())
 	a.research.InitSandbox(monty.Config{}) // env: GLIGABAO_MONTY_PYTHON, MONTY_BIN

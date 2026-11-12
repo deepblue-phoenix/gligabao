@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.195.0] - 2026-11-13
+
+### Added
+- The agent package (`internal/agent`) now records a `GBerror` in `gb_errors` for its key failures: `agent.tool.panic` (a tool panicked; the run goes on with the failure as the tool's result), `agent.trajectory.store` (the ATIF trajectory of a run could not be written; the run still succeeds) and, in `internal/agent/agent_memory`, `agent.remember.async` (a `remember` call that did not wait failed, so its text is lost and nobody is told). `Agent` and `agent_memory.Memory` have a new `ErrSink`; the research agents, the server, `gligabao_agent` and `gligabao_worker` set it.
+
 ## [0.194.0] - 2026-11-13
 
 ### Added

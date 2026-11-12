@@ -12,6 +12,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
+	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -53,8 +54,14 @@ func openApp(ctx context.Context, cfg *config.Config, llm *ai.Client, emb memory
 
 	mgrCtx, stop := context.WithCancel(ctx)
 	a.stop = stop
+	errSink, err := gberrors.SinkFor(database.Backend, database.Relational)
+	if err != nil {
+		database.Close()
+		stop()
+		return nil, err
+	}
 	a.remember = memory_remember.NewManager(mgrCtx, database.Relational, llm)
-	a.mem = &agent_memory.Memory{Remember: a.remember, DB: database.Relational, LLM: llm, RememberOpts: a.rememberOpts, QueryOpts: a.queryOpts}
+	a.mem = &agent_memory.Memory{Remember: a.remember, DB: database.Relational, LLM: llm, RememberOpts: a.rememberOpts, QueryOpts: a.queryOpts, ErrSink: errSink}
 	return a, nil
 }
 

@@ -273,6 +273,7 @@ func workerDef(d *agent_defs.Def) *agent_defs.Def {
 // terminal tool.
 func workerAgent(r *researcher, kb agent.Knowledge) *agent.Agent {
 	a := agent.FromDef(workerDef(r.def), r.client, r.http, kb)
+	a.ErrSink = r.mgr.errSink()
 	a = withWorkerCode(r, a)
 	a.Tools = append(a.Tools, agent.SubmitFindingsTool(investigate_core.FindingsSchema(), func(raw json.RawMessage) error {
 		_, err := investigate_core.ParseFindings(raw)

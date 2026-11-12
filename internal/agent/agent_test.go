@@ -16,6 +16,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/agent/agent_defs"
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 )
 
 // fakeAPI answers with the given responses, in order, and records the request bodies.
@@ -539,5 +540,54 @@ func TestTerminalToolIsForcedOnTheLastStep(t *testing.T) {
 	}
 	if !strings.Contains((*bodies)[1], `"tool_choice":{"name":"submit","type":"tool"}`) {
 		t.Errorf("the last step is not forced: %s", (*bodies)[1])
+	}
+}
+
+// collectSink returns a GBerror sink that keeps what it is given.
+func collectSink(got *[]*gberrors.GBerror) gberrors.Sink {
+	return func(_ context.Context, e *gberrors.GBerror) error {
+		*got = append(*got, e)
+		return nil
+	}
+}
+
+func TestToolPanicIsTrackedAndTheRunGoesOn(t *testing.T) {
+	client, _ := fakeAPI(t,
+		`{"model":"m","stop_reason":"tool_use","content":[{"type":"tool_use","id":"t1","name":"boom","input":{}}],"usage":{"input_tokens":1,"output_tokens":1}}`,
+		`{"model":"m","stop_reason":"end_turn","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":1,"output_tokens":1}}`,
+	)
+	boom := Tool{Name: "boom", Schema: objectSchema("x", "x"), Run: func(context.Context, json.RawMessage) (string, error) { panic("kaboom") }}
+	var tracked []*gberrors.GBerror
+	res, err := (&Agent{Client: client, Tools: []Tool{boom}, ErrSink: collectSink(&tracked)}).Run(context.Background(), "go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Answer != "done" {
+		t.Fatalf("the run did not go on: %+v", res)
+	}
+	if len(tracked) != 1 || tracked[0].Op != "agent.tool.panic" || tracked[0].Message != "kaboom" || tracked[0].Meta["tool"] != "boom" {
+		t.Fatalf("tracked errors: %+v", tracked)
+	}
+}
+
+func TestTrajectoryThatCannotBeStoredIsTracked(t *testing.T) {
+	client, _ := fakeAPI(t,
+		`{"model":"m","stop_reason":"end_turn","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":1,"output_tokens":1}}`,
+	)
+	// A regular file where the directory should be: the trajectory cannot be written.
+	dir := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(dir, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var tracked []*gberrors.GBerror
+	res, err := (&Agent{Client: client, Trajectory: true, TrajectoryDir: dir, ErrSink: collectSink(&tracked)}).Run(context.Background(), "go")
+	if err != nil {
+		t.Fatalf("a trajectory that cannot be stored must not fail the run: %v", err)
+	}
+	if res.TrajectoryPath != "" || res.Trajectory == nil {
+		t.Fatalf("result: %+v", res)
+	}
+	if len(tracked) != 1 || tracked[0].Op != "agent.trajectory.store" || tracked[0].Meta["trajectory_id"] != res.Trajectory.TrajectoryID {
+		t.Fatalf("tracked errors: %+v", tracked)
 	}
 }

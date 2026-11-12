@@ -16,6 +16,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_query"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
+	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -35,6 +36,8 @@ type Memory struct {
 	// RememberOpts and QueryOpts are the options of every remember and query call (vectors, chunking, geo, ...): those of the
 	// remember and query endpoints.
 	RememberOpts, QueryOpts []memory_core.Option
+	// ErrSink stores the GBerrors of the calls that nobody waits for (a failed remember that did not wait: the text is lost); nil stores none.
+	ErrSink gberrors.Sink
 
 	// pending counts the remember calls that did not wait and are not over yet (see Drain).
 	pending sync.WaitGroup
@@ -104,6 +107,9 @@ func (k *knowledge) Remember(ctx context.Context, text string, wait bool) (strin
 			defer k.mem.pending.Done()
 			if out := <-outcome; out.Err != nil {
 				log.WithError(out.Err).WithField("remember_run_id", runID).Warn("agent memory: a remember call that did not wait failed")
+				// Nobody is told about this text (the agent has moved on): it is lost, so it is tracked.
+				gberrors.New(context.WithoutCancel(k.ctx), k.mem.ErrSink, "agent.remember.async", out.Err,
+					gberrors.Meta{"remember_run_id": runID, "user_id": k.userID, "dataset": k.dataset, "session_id": k.sessionID})
 			}
 		}()
 		return fmt.Sprintf("queued (remember run %d); it is being absorbed into the knowledge base in the background, and may not be found by query yet", runID), nil

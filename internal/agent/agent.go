@@ -13,6 +13,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/ai"
 	"github.com/deepblue-phoenix/gligabao/internal/ai/atif"
+	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 )
 
 const (
@@ -65,6 +66,8 @@ type Agent struct {
 	Version string
 	// SessionID is the session ID of the trajectory, so that what one session did can be connected; empty means the trajectory's own ID.
 	SessionID string
+	// ErrSink stores the GBerrors of the runs (a tool that panics, a trajectory that could not be stored); nil stores none.
+	ErrSink gberrors.Sink
 }
 
 // Observer receives the progress of a Run. Every field is optional. The functions are called on the goroutine that runs the agent,
@@ -168,6 +171,7 @@ type loop struct {
 	terminal  string
 	tools     map[string]Tool
 	specs     []any
+	errSink   gberrors.Sink
 
 	// What changes while it runs.
 	trace    *tracer // nil unless a trajectory was asked for
@@ -187,6 +191,7 @@ func newLoop(a *Agent, prompt string) *loop {
 		obs:       a.Observer,
 		budget:    a.OutOfBudget,
 		terminal:  a.Terminal,
+		errSink:   a.ErrSink,
 		tools:     map[string]Tool{},
 		messages:  []any{map[string]any{"role": "user", "content": prompt}},
 	}
@@ -207,7 +212,7 @@ func newLoop(a *Agent, prompt string) *loop {
 // run is the loop itself, and the trajectory of it, if there is one.
 func (l *loop) run(ctx context.Context) (*Result, error) {
 	res, err := l.steps(ctx)
-	l.trace.finish(res, err)
+	l.trace.finish(ctx, res, err)
 	return res, err
 }
 
@@ -286,7 +291,7 @@ func (l *loop) steps(ctx context.Context) (*Result, error) {
 				}
 				rec.call(b.ID, b.Name, b.Input)
 				toolStarted := time.Now()
-				out, isErr := runTool(ctx, l.tools, b.Name, b.Input)
+				out, isErr := runTool(ctx, l.tools, l.errSink, b.Name, b.Input)
 				in, outTokens, cost := l.spent.drain()
 				rec.result(b.ID, out, isErr, time.Since(toolStarted), in, outTokens, cost)
 				res.InputTokens += in
@@ -339,9 +344,10 @@ func (l *loop) tellBudget(reason string) {
 }
 
 // runTool runs one tool call; failures (unknown tool, tool error) become the text the model reads.
-func runTool(ctx context.Context, tools map[string]Tool, name string, input json.RawMessage) (out string, isErr bool) {
+func runTool(ctx context.Context, tools map[string]Tool, sink gberrors.Sink, name string, input json.RawMessage) (out string, isErr bool) {
 	defer func() {
-		if p := recover(); p != nil { // a tool that panics must not take the whole run down
+		if p := recover(); p != nil { // a tool that panics must not take the whole run down (and is a bug: tracked)
+			gberrors.New(context.WithoutCancel(ctx), sink, "agent.tool.panic", fmt.Errorf("%v", p), gberrors.Meta{"tool": name})
 			out, isErr = fmt.Sprintf("tool %s failed: %v", name, p), true
 		}
 	}()

@@ -128,7 +128,7 @@ func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent 
 		return r
 	}
 	r.agent = agent.FromDef(def, r.client, r.http, kb)
-	r.agent.Model, r.agent.MaxSteps = opts.Model, opts.MaxSteps
+	r.agent.Model, r.agent.MaxSteps, r.agent.ErrSink = opts.Model, opts.MaxSteps, m.errSink()
 	agent.AddSkills(r.agent, def.Skills)
 	r.watch()
 	return r

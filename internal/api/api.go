@@ -18,6 +18,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_image"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_remember"
+	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 )
 
@@ -90,7 +91,17 @@ func researchMemory(mgr *memory_remember.Manager, d *db.DB, llm memory_core.LLM,
 	if llm == nil || mgr == nil {
 		return nil
 	}
-	return &agent_research.Memory{Remember: mgr, DB: d.Relational, LLM: llm, RememberOpts: rememberOptions(d, emb, jv, ws, providers, o), QueryOpts: queryOptions(d, emb, o)}
+	return &agent_research.Memory{Remember: mgr, DB: d.Relational, LLM: llm, RememberOpts: rememberOptions(d, emb, jv, ws, providers, o), QueryOpts: queryOptions(d, emb, o), ErrSink: errSinkOf(d)}
+}
+
+// errSinkOf is the sink of the GBerrors of the knowledge base agents: the gb_errors table of the database d (nil if its backend has none,
+// and the errors are then not stored).
+func errSinkOf(d *db.DB) gberrors.Sink {
+	sink, err := gberrors.SinkFor(d.Backend, d.Relational)
+	if err != nil {
+		return nil
+	}
+	return sink
 }
 
 // RegisterMCP mounts the MCP endpoint (POST /v1/gb/mcp, see package mcp) with the tools remember and query (and, with WithResearch, those of the research agents). They run the same handlers
