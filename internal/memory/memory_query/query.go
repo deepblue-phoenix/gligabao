@@ -18,6 +18,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_pipeline"
+	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -203,6 +204,14 @@ func Query(ctx context.Context,
 		queryPipeline,
 		j,
 		run); err != nil {
+		// The core pipeline failed (not because the caller cancelled it): it is tracked.
+		if co.ErrSink != nil && ctx.Err() == nil {
+			gberrors.New(context.WithoutCancel(ctx),
+				co.ErrSink,
+				"query.pipeline",
+				err,
+				gberrors.Meta{"query_run_id": run.ID(), "user_id": userID, "dataset": dataset, "session_id": sessionID})
+		}
 		return nil, err
 	}
 	//------------------

@@ -28,6 +28,7 @@ import (
 
 	"github.com/deepblue-phoenix/gligabao/internal/db/relational"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_core"
+	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -76,7 +77,8 @@ type Manager struct {
 	llm memory_core.LLM
 	ctx context.Context
 
-	queue QueueHooks
+	queue   QueueHooks
+	errSink gberrors.Sink // where the GBerrors are stored; nil: none
 
 	mu      sync.Mutex        // guards pending and closed
 	pending map[int64]*queued // the requests that are queued, by run ID
@@ -135,6 +137,12 @@ func WithQueue(h QueueHooks) ManagerOption {
 		}
 		m.queue = h
 	}
+}
+
+// WithErrSink sets where the manager stores its GBerrors (a run that panicked, a request that could not be recorded) and those of
+// every run it makes (Remember gets it as memory_core.WithErrSink). Without it none are stored.
+func WithErrSink(s gberrors.Sink) ManagerOption {
+	return func(m *Manager) { m.errSink = s }
 }
 
 // NewManager starts the manager's goroutine. d and llm are what every run uses (as the arguments of Remember). It runs
@@ -203,6 +211,12 @@ func (m *Manager) Submit(req Request) (runID int64, err error) {
 		m.d,
 		run)
 	if err != nil {
+		// The request is lost before it has a run log: it is tracked.
+		gberrors.New(context.WithoutCancel(ctx),
+			m.errSink,
+			"remember.submit.create_run",
+			err,
+			gberrors.Meta{"user_id": userID, "dataset": dataset, "kind": kind})
 		return 0, fmt.Errorf("memory: create remember run: %w", err)
 	}
 	q := &queued{
@@ -323,6 +337,11 @@ func (m *Manager) run(q *queued) {
 		if p := recover(); p != nil {
 			log.WithFields(log.Fields{"remember_run_id": q.runID, "panic": p, "stack": string(debug.Stack())}).Error("remember run panicked")
 			res, err = nil, fmt.Errorf("memory: remember panicked: %v", p)
+			gberrors.New(context.WithoutCancel(q.ctx),
+				m.errSink,
+				"remember.panic",
+				err,
+				gberrors.Meta{"remember_run_id": q.runID, "user_id": q.UserID, "dataset": q.Dataset, "kind": q.Kind, "stack": string(debug.Stack())})
 		}
 		m.finish(q,
 			res,
@@ -335,7 +354,9 @@ func (m *Manager) run(q *queued) {
 	ctx, cancel := context.WithCancel(q.ctx)
 	defer cancel()
 	defer context.AfterFunc(m.ctx, cancel)()
-	opts := append(q.Opts[:len(q.Opts):len(q.Opts)], memory_core.WithRememberRunID(q.runID))
+	opts := append(q.Opts[:len(q.Opts):len(q.Opts)],
+		memory_core.WithRememberRunID(q.runID),
+		memory_core.WithErrSink(m.errSink))
 	res, err = Remember(ctx,
 		m.d,
 		m.llm,

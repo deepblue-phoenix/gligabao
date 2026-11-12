@@ -40,6 +40,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/monty"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/buildinfo"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
+	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/httputil"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/jev"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/sidecar"
@@ -376,9 +377,14 @@ func newMux(ctx context.Context,
 	}
 	mux.HandleFunc("GET /v1/gb/status", statusHandler(d, sc != nil))
 	// The remember manager runs every remember pipeline run, one at a time, until ctx is done.
+	errSink, sinkErr := gberrors.SinkFor(d.Backend, d.Relational)
+	if sinkErr != nil {
+		errSink = nil
+	}
 	mgr := memory_remember.NewManager(ctx,
 		d.Relational,
-		llm)
+		llm,
+		memory_remember.WithErrSink(errSink))
 	api.Register(mux,
 		mgr,
 		d,

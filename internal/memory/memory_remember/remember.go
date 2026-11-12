@@ -22,6 +22,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_pipeline"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_temporal"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_timeseries"
+	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -500,6 +501,12 @@ func Remember(ctx context.Context,
 		rememberPipeline,
 		j,
 		run); err != nil {
+		// The core pipeline failed (not because the caller cancelled it): the text was not absorbed, so it is tracked.
+		trackFailure(ctx,
+			co,
+			"remember.pipeline",
+			err,
+			gberrors.Meta{"remember_run_id": run.ID(), "user_id": userID, "dataset": dataset, "kind": kind, "session_id": co.SessionID})
 		return nil, err
 	}
 	//------------------
@@ -933,9 +940,20 @@ func store(ctx context.Context,
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
+		trackFailure(ctx,
+			co,
+			"remember.store.commit",
+			err,
+			gberrors.Meta{"user_id": userID, "dataset": dataset, "artifact_id": artID})
 		return nil, err
 	}
 	if err := pv.write(ctx); err != nil {
+		// The relational data is saved but its vectors are not: the stores are out of sync until the next mention.
+		trackFailure(ctx,
+			co,
+			"remember.store.vectors",
+			err,
+			gberrors.Meta{"user_id": userID, "dataset": dataset, "artifact_id": artID})
 		return nil, err
 	}
 	if pv != nil {

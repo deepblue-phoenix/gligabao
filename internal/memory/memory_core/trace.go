@@ -15,6 +15,7 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/db/vector"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_chunk"
 	"github.com/deepblue-phoenix/gligabao/internal/memory/memory_geo"
+	gberrors "github.com/deepblue-phoenix/gligabao/internal/sys/errors"
 	"github.com/deepblue-phoenix/gligabao/internal/sys/jev"
 
 	log "github.com/sirupsen/logrus"
@@ -119,6 +120,10 @@ type CallOptions struct {
 	// WithRememberRunID; 0 means Remember creates its own. The remember manager sets it: it creates the row when a
 	// request is queued, so that the caller has the ID right away.
 	RememberRunID int64
+
+	// ErrSink stores the GBerrors that Remember and Query create for their key failures (a failed pipeline, a failed commit,
+	// vectors that could not be written), set by WithErrSink; nil (the default) stores none (the errors are still returned).
+	ErrSink gberrors.Sink
 }
 
 // NewCallOptions applies opts on top of the defaults.
@@ -148,6 +153,9 @@ func WithSessionID(id string) Option { return func(o *CallOptions) { o.SessionID
 // WithRememberRunID makes Remember log the call in the existing run log row with that ID (created when the request was
 // queued, see memory_remember.Manager) instead of creating one. Without it (or with 0) Remember creates the row itself.
 func WithRememberRunID(id int64) Option { return func(o *CallOptions) { o.RememberRunID = id } }
+
+// WithErrSink sets where the GBerrors of the call are stored (see CallOptions.ErrSink).
+func WithErrSink(s gberrors.Sink) Option { return func(o *CallOptions) { o.ErrSink = s } }
 
 // WithSeries makes Remember (and Store) store the timeseries and anchor them: to the artifact the call creates, and to
 // the entities and edges the anchors select once the text was stored. They are validated with ResolveSeries (which

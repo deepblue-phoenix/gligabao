@@ -137,7 +137,7 @@ func QueryHandler(d *db.DB,
 func queryOptions(d *db.DB,
 	emb memory_core.Embedder,
 	o options) []memory_core.Option {
-	return []memory_core.Option{memory.WithVectors(d.Vector, emb), memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm), memory_core.WithGraphEmbedder(o.graphEmbedder)}
+	return []memory_core.Option{memory.WithVectors(d.Vector, emb), memory_core.WithGeoResolver(o.geo), memory_core.WithGeoRadius(o.geoRadiusKm), memory_core.WithGraphEmbedder(o.graphEmbedder), memory_core.WithErrSink(errSinkOf(d))}
 }
 
 // researchMemory is the knowledge base the research agents work with: the remember manager and the query pipeline, with the same

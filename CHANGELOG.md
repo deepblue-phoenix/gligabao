@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.196.0] - 2026-11-12
+
+### Added
+- The memory pipelines now track their key failures as GBerrors (table `gb_errors`): a remember run whose pipeline failed (`remember.pipeline`), a failed commit or unwritten vectors while storing (`remember.store.commit`, `remember.store.vectors`), a remember run that panicked (`remember.panic`), a request lost because its run log could not be created (`remember.submit.create_run`), and a query whose pipeline failed (`query.pipeline`). Cancelled calls are not tracked. New options `memory_core.WithErrSink` and `memory_remember.WithErrSink`; the server, worker and agent commands set them.
+
 ## [0.195.3] - 2026-11-12
 
 ### Changed

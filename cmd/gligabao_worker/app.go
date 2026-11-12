@@ -71,7 +71,8 @@ func openApp(ctx context.Context,
 	}
 	a.remember = memory_remember.NewManager(mgrCtx,
 		database.Relational,
-		llm)
+		llm,
+		memory_remember.WithErrSink(errSink))
 	a.mem = &agent_memory.Memory{
 		Remember:     a.remember,
 		DB:           database.Relational,
