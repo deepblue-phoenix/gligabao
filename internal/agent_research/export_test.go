@@ -10,6 +10,7 @@ func SetExportRetryDelay(d time.Duration) (restore func()) {
 }
 
 // ScheduleTicker makes the scheduler of m with its first due times after from and returns its tick, to call with the time it is now.
-func ScheduleTicker(m *Manager, from time.Time) func(now time.Time) {
+func ScheduleTicker(m *Manager,
+	from time.Time) func(now time.Time) {
 	return newScheduler(m, from).tick
 }

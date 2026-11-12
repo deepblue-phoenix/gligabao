@@ -61,7 +61,8 @@ func (f *fakeRemote) push(evs ...agent_research.RemoteEvent) {
 	f.cond.Broadcast()
 }
 
-func (f *fakeRemote) Start(_ context.Context, req agent_research.RemoteRequest) (string, error) {
+func (f *fakeRemote) Start(_ context.Context,
+	req agent_research.RemoteRequest) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.requests = append(f.requests, req)
@@ -71,7 +72,8 @@ func (f *fakeRemote) Start(_ context.Context, req agent_research.RemoteRequest) 
 	return "job1", nil
 }
 
-func (f *fakeRemote) Cancel(context.Context, string) error {
+func (f *fakeRemote) Cancel(context.Context,
+	string) error {
 	f.mu.Lock()
 	f.cancels++
 	err, on := f.cancelErr, f.onCancel
@@ -82,7 +84,9 @@ func (f *fakeRemote) Cancel(context.Context, string) error {
 	return err
 }
 
-func (f *fakeRemote) Export(_ context.Context, _ string, w io.Writer) (int64, error) {
+func (f *fakeRemote) Export(_ context.Context,
+	_ string,
+	w io.Writer) (int64, error) {
 	f.mu.Lock()
 	f.exportCalls++
 	fail := f.exportCalls <= f.exportFails
@@ -96,7 +100,10 @@ func (f *fakeRemote) Export(_ context.Context, _ string, w io.Writer) (int64, er
 	return int64(n), err
 }
 
-func (f *fakeRemote) Follow(ctx context.Context, _ string, from int, fn func(agent_research.RemoteEvent) error) error {
+func (f *fakeRemote) Follow(ctx context.Context,
+	_ string,
+	from int,
+	fn func(agent_research.RemoteEvent) error) error {
 	f.mu.Lock()
 	f.froms = append(f.froms, from)
 	first := len(f.froms) == 1
@@ -124,7 +131,11 @@ func (f *fakeRemote) Follow(ctx context.Context, _ string, from int, fn func(age
 	}
 }
 
-func state(agent string, seq int, name, detail, errText string) agent_research.RemoteEvent {
+func state(agent string,
+	seq int,
+	name,
+	detail,
+	errText string) agent_research.RemoteEvent {
 	return agent_research.RemoteEvent{
 		Type:     agent_research.RemoteState,
 		Agent:    agent,
@@ -143,22 +154,31 @@ func status(s string) agent_research.RemoteEvent {
 	}
 }
 
-func TestModalRunnerRecordsTheJobsEvents(t *testing.T) { runOnBackends(t, testModalRun) }
+func TestModalRunnerRecordsTheJobsEvents(t *testing.T) {
+	runOnBackends(t, testModalRun)
+}
 
-func testModalRun(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+func testModalRun(t *testing.T,
+	d *sql.DB,
+	ops agent_research.Ops) {
 	ctx := context.Background()
 	remote := newFakeRemote()
 	remote.cutAfter = 2 // the first stream ends early: the follower must resume with the next event
-	m := agent_research.NewManager(ctx, d, ops, nil)
+	m := agent_research.NewManager(ctx,
+		d,
+		ops,
+		nil)
 	m.UseRemote(remote)
 
-	started, err := m.Start(ctx, "u1", agent_research.Options{
-		Topic:    "batteries",
-		MaxSteps: 5,
-		Model:    "my-model",
-		Dataset:  "ds",
-		Runner:   "modal",
-	})
+	started, err := m.Start(ctx,
+		"u1",
+		agent_research.Options{
+			Topic:    "batteries",
+			MaxSteps: 5,
+			Model:    "my-model",
+			Dataset:  "ds",
+			Runner:   "modal",
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,9 +187,21 @@ func testModalRun(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	}
 	remote.push(
 		status(agent_research.RemoteRunning),
-		state("main", 1, core.StateStarting, "", ""), // the run has its own starting state
-		state("main", 2, core.StateThinking, "step 1 of 5", ""),
-		state("main", 3, core.StateSearching, "solid state", ""),
+		state("main",
+			1,
+			core.StateStarting,
+			"",
+			""), // the run has its own starting state
+		state("main",
+			2,
+			core.StateThinking,
+			"step 1 of 5",
+			""),
+		state("main",
+			3,
+			core.StateSearching,
+			"solid state",
+			""),
 		agent_research.RemoteEvent{
 			Type: agent_research.RemoteUsageEvent,
 			Usage: &agent_research.RemoteUsage{
@@ -180,8 +212,16 @@ func testModalRun(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 				CostUSD:      0.01,
 			},
 		},
-		state("main", 3, core.StateSearching, "solid state", "search failed"), // the state ended with an error, after it was reported
-		state("kid", 2, core.StateReading, "https://example.com", ""),
+		state("main",
+			3,
+			core.StateSearching,
+			"solid state",
+			"search failed"), // the state ended with an error, after it was reported
+		state("kid",
+			2,
+			core.StateReading,
+			"https://example.com",
+			""),
 		agent_research.RemoteEvent{
 			Type:    agent_research.RemoteLog,
 			Message: "hello",
@@ -202,7 +242,9 @@ func testModalRun(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	)
 	m.Wait()
 
-	run, err := m.Get(ctx, "u1", started.ID)
+	run, err := m.Get(ctx,
+		"u1",
+		started.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,45 +277,67 @@ func testModalRun(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 		t.Errorf("the follower should resume where the stream ended: froms %v", remote.froms)
 	}
 	// The run does not count against the user's limit any more.
-	if _, err := m.Start(ctx, "u1", agent_research.Options{
-		Topic:  "again",
-		Runner: "modal",
-	}); err != nil {
+	if _, err := m.Start(ctx,
+		"u1",
+		agent_research.Options{
+			Topic:  "again",
+			Runner: "modal",
+		}); err != nil {
 		t.Errorf("start again: %v", err)
 	}
 	m.Wait() // the fake plays its whole log to the second job too, which ends as the first did
 }
 
-func TestModalRunnerFailedJob(t *testing.T) { runOnBackends(t, testModalFailed) }
+func TestModalRunnerFailedJob(t *testing.T) {
+	runOnBackends(t, testModalFailed)
+}
 
-func testModalFailed(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+func testModalFailed(t *testing.T,
+	d *sql.DB,
+	ops agent_research.Ops) {
 	ctx := context.Background()
 	remote := newFakeRemote()
-	m := agent_research.NewManager(ctx, d, ops, nil)
+	m := agent_research.NewManager(ctx,
+		d,
+		ops,
+		nil)
 	m.UseRemote(remote)
-	started, err := m.Start(ctx, "u1", agent_research.Options{
-		Topic:  "t",
-		Runner: "modal",
-	})
+	started, err := m.Start(ctx,
+		"u1",
+		agent_research.Options{
+			Topic:  "t",
+			Runner: "modal",
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
-	remote.push(state("main", 2, core.StateThinking, "step 1 of 20", ""),
-		agent_research.RemoteEvent{
-			Type:   agent_research.RemoteStatus,
-			Status: agent_research.RemoteFailed,
-			Error:  "anthropic: 529 overloaded",
-		})
+	remote.push(state("main",
+		2,
+		core.StateThinking,
+		"step 1 of 20",
+		""), agent_research.RemoteEvent{
+		Type:   agent_research.RemoteStatus,
+		Status: agent_research.RemoteFailed,
+		Error:  "anthropic: 529 overloaded",
+	})
 	m.Wait()
-	run, _ := m.Get(ctx, "u1", started.ID)
+	run, _ := m.Get(ctx,
+		"u1",
+		started.ID)
 	if run.Status != core.StatusFailed || run.Error != "anthropic: 529 overloaded" || run.Report != "" || stateNames(run.States) != "starting,thinking,failed" {
-		t.Fatalf("run: %+v states %s", run, stateNames(run.States))
+		t.Fatalf("run: %+v states %s",
+			run,
+			stateNames(run.States))
 	}
 }
 
-func TestModalRunnerStop(t *testing.T) { runOnBackends(t, testModalStop) }
+func TestModalRunnerStop(t *testing.T) {
+	runOnBackends(t, testModalStop)
+}
 
-func testModalStop(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+func testModalStop(t *testing.T,
+	d *sql.DB,
+	ops agent_research.Ops) {
 	ctx := context.Background()
 	remote := newFakeRemote()
 	remote.onCancel = func(f *fakeRemote) {
@@ -283,44 +347,74 @@ func testModalStop(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 			Error:  "stopped",
 		})
 	}
-	m := agent_research.NewManager(ctx, d, ops, nil)
+	m := agent_research.NewManager(ctx,
+		d,
+		ops,
+		nil)
 	m.UseRemote(remote)
-	started, err := m.Start(ctx, "u1", agent_research.Options{
-		Topic:  "t",
-		Runner: "modal",
-	})
+	started, err := m.Start(ctx,
+		"u1",
+		agent_research.Options{
+			Topic:  "t",
+			Runner: "modal",
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
-	remote.push(state("main", 2, core.StateThinking, "step 1 of 20", ""))
-	if _, err := m.Stop(ctx, "u2", started.ID, "u2"); !isKind(err, agent_research.KindNotFound) {
+	remote.push(state("main",
+		2,
+		core.StateThinking,
+		"step 1 of 20",
+		""))
+	if _, err := m.Stop(ctx,
+		"u2",
+		started.ID,
+		"u2"); !isKind(err, agent_research.KindNotFound) {
 		t.Fatalf("stop by another user: %v", err)
 	}
-	run, err := m.Stop(ctx, "u1", started.ID, "the test")
+	run, err := m.Stop(ctx,
+		"u1",
+		started.ID,
+		"the test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if run.Status != core.StatusStopped || run.Error != "stopped by the test" || run.Report != "" || remote.cancels != 1 {
-		t.Fatalf("stopped: %+v, cancels %d", run, remote.cancels)
+		t.Fatalf("stopped: %+v, cancels %d",
+			run,
+			remote.cancels)
 	}
-	if _, err := m.Stop(ctx, "u1", started.ID, "the test"); !isKind(err, agent_research.KindConflict) {
+	if _, err := m.Stop(ctx,
+		"u1",
+		started.ID,
+		"the test"); !isKind(err, agent_research.KindConflict) {
 		t.Errorf("stopping a stopped run: %v", err)
 	}
 }
 
 // A job that cannot be asked to stop does not keep the run: it ends as stopped, and says the job may go on.
 func TestModalRunnerStopWhenTheJobCannotBeReached(t *testing.T) {
-	runOnBackends(t, func(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+	runOnBackends(t, func(t *testing.T,
+		d *sql.DB,
+		ops agent_research.Ops) {
 		ctx := context.Background()
 		remote := newFakeRemote()
 		remote.cancelErr = errors.New("sidecar down")
-		m := agent_research.NewManager(ctx, d, ops, nil)
+		m := agent_research.NewManager(ctx,
+			d,
+			ops,
+			nil)
 		m.UseRemote(remote)
-		started, _ := m.Start(ctx, "u1", agent_research.Options{
-			Topic:  "t",
-			Runner: "modal",
-		})
-		run, err := m.Stop(ctx, "", started.ID, "the test")
+		started, _ := m.Start(ctx,
+			"u1",
+			agent_research.Options{
+				Topic:  "t",
+				Runner: "modal",
+			})
+		run, err := m.Stop(ctx,
+			"",
+			started.ID,
+			"the test")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -331,48 +425,70 @@ func TestModalRunnerStopWhenTheJobCannotBeReached(t *testing.T) {
 }
 
 func TestModalRunnerStopOfTheServer(t *testing.T) {
-	runOnBackends(t, func(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+	runOnBackends(t, func(t *testing.T,
+		d *sql.DB,
+		ops agent_research.Ops) {
 		ctx, stop := context.WithCancel(context.Background())
 		remote := newFakeRemote()
-		m := agent_research.NewManager(ctx, d, ops, nil)
+		m := agent_research.NewManager(ctx,
+			d,
+			ops,
+			nil)
 		m.UseRemote(remote)
-		started, err := m.Start(ctx, "u1", agent_research.Options{
-			Topic:  "t",
-			Runner: "modal",
-		})
+		started, err := m.Start(ctx,
+			"u1",
+			agent_research.Options{
+				Topic:  "t",
+				Runner: "modal",
+			})
 		if err != nil {
 			t.Fatal(err)
 		}
 		stop()
 		m.Wait()
-		run, _ := m.Get(context.Background(), "u1", started.ID)
+		run, _ := m.Get(context.Background(),
+			"u1",
+			started.ID)
 		if run.Status != core.StatusFailed || run.Error == "" || remote.cancels != 1 {
-			t.Fatalf("run: %+v, cancels %d: the job must be cancelled so that it does not spend on", run, remote.cancels)
+			t.Fatalf("run: %+v, cancels %d: the job must be cancelled so that it does not spend on",
+				run,
+				remote.cancels)
 		}
 	})
 }
 
 func TestModalRunnerStartErrors(t *testing.T) {
-	runOnBackends(t, func(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+	runOnBackends(t, func(t *testing.T,
+		d *sql.DB,
+		ops agent_research.Ops) {
 		ctx := context.Background()
 		// No remote: unavailable (also with no LLM client, which the modal runner does not need), and a bad runner is invalid.
-		m := agent_research.NewManager(ctx, d, ops, nil)
-		if _, err := m.Start(ctx, "u1", agent_research.Options{
-			Topic:  "t",
-			Runner: "modal",
-		}); !isKind(err, agent_research.KindUnavailable) {
+		m := agent_research.NewManager(ctx,
+			d,
+			ops,
+			nil)
+		if _, err := m.Start(ctx,
+			"u1",
+			agent_research.Options{
+				Topic:  "t",
+				Runner: "modal",
+			}); !isKind(err, agent_research.KindUnavailable) {
 			t.Fatalf("no remote: %v", err)
 		}
-		if _, err := m.Start(ctx, "u1", agent_research.Options{
-			Topic:  "t",
-			Runner: "lambda",
-		}); !isKind(err, agent_research.KindInvalid) {
+		if _, err := m.Start(ctx,
+			"u1",
+			agent_research.Options{
+				Topic:  "t",
+				Runner: "lambda",
+			}); !isKind(err, agent_research.KindInvalid) {
 			t.Fatalf("bad runner: %v", err)
 		}
 		// A local run still needs the LLM.
-		if _, err := m.Start(ctx, "u1", agent_research.Options{
-			Topic: "t",
-		}); !isKind(err, agent_research.KindUnavailable) {
+		if _, err := m.Start(ctx,
+			"u1",
+			agent_research.Options{
+				Topic: "t",
+			}); !isKind(err, agent_research.KindUnavailable) {
 			t.Fatalf("local without llm: %v", err)
 		}
 		// A job that cannot be started leaves no run and no active slot behind.
@@ -380,43 +496,64 @@ func TestModalRunnerStartErrors(t *testing.T) {
 		remote.startErr = errors.New("the agent is not deployed")
 		m.UseRemote(remote)
 		for i := 0; i < agent_research.DefaultMaxActivePerUser+1; i++ {
-			if _, err := m.Start(ctx, "u1", agent_research.Options{
-				Topic:  "t",
-				Runner: "modal",
-			}); !isKind(err, agent_research.KindUnavailable) {
-				t.Fatalf("start %d: %v", i, err)
+			if _, err := m.Start(ctx,
+				"u1",
+				agent_research.Options{
+					Topic:  "t",
+					Runner: "modal",
+				}); !isKind(err, agent_research.KindUnavailable) {
+				t.Fatalf("start %d: %v",
+					i,
+					err)
 			}
 		}
-		runs, err := m.List(ctx, "", agent_research.ListOptions{})
+		runs, err := m.List(ctx,
+			"",
+			agent_research.ListOptions{})
 		if err != nil || len(runs) != 0 {
-			t.Fatalf("runs: %+v, %v", runs, err)
+			t.Fatalf("runs: %+v, %v",
+				runs,
+				err)
 		}
 	})
 }
 
 // Without a runner a run is local, and says so.
 func TestRunsAreLocalByDefault(t *testing.T) {
-	runOnBackends(t, func(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+	runOnBackends(t, func(t *testing.T,
+		d *sql.DB,
+		ops agent_research.Ops) {
 		ctx := context.Background()
 		fake := &fakeAnthropic{
 			main: []string{finalReport},
 		}
-		m := agent_research.NewManager(ctx, d, ops, fake.start(t))
-		started, err := m.Start(ctx, "u1", agent_research.Options{
-			Topic: "t",
-		})
+		m := agent_research.NewManager(ctx,
+			d,
+			ops,
+			fake.start(t))
+		started, err := m.Start(ctx,
+			"u1",
+			agent_research.Options{
+				Topic: "t",
+			})
 		if err != nil {
 			t.Fatal(err)
 		}
 		m.Wait()
-		run, _ := m.Get(ctx, "u1", started.ID)
+		run, _ := m.Get(ctx,
+			"u1",
+			started.ID)
 		if started.Runner != core.RunnerLocal || run.Runner != core.RunnerLocal || run.Status != core.StatusCompleted {
-			t.Fatalf("started %q, run %+v", started.Runner, run)
+			t.Fatalf("started %q, run %+v",
+				started.Runner,
+				run)
 		}
 	})
 }
 
-func (f *fakeImporter) Import(_ context.Context, path string, run agent_research.ImportRun) (string, error) {
+func (f *fakeImporter) Import(_ context.Context,
+	path string,
+	run agent_research.ImportRun) (string, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
@@ -436,7 +573,8 @@ func exportOf(data string) *agent_research.RemoteExport {
 	}
 }
 
-func finalWith(status string, ex *agent_research.RemoteExport) agent_research.RemoteEvent {
+func finalWith(status string,
+	ex *agent_research.RemoteExport) agent_research.RemoteEvent {
 	ev := agent_research.RemoteEvent{
 		Type:   agent_research.RemoteStatus,
 		Status: status,
@@ -451,33 +589,54 @@ func finalWith(status string, ex *agent_research.RemoteExport) agent_research.Re
 	return ev
 }
 
-func startModal(t *testing.T, d *sql.DB, ops agent_research.Ops, remote *fakeRemote, imp agent_research.Importer) (*agent_research.Manager, *core.Run) {
+func startModal(t *testing.T,
+	d *sql.DB,
+	ops agent_research.Ops,
+	remote *fakeRemote,
+	imp agent_research.Importer) (*agent_research.Manager, *core.Run) {
 	t.Helper()
-	m := agent_research.NewManager(context.Background(), d, ops, nil)
+	m := agent_research.NewManager(context.Background(),
+		d,
+		ops,
+		nil)
 	m.UseRemote(remote)
 	if imp != nil {
 		m.UseImporter(imp)
 	}
-	run, err := m.Start(context.Background(), "u1", agent_research.Options{
-		Topic:  "t",
-		Runner: "modal",
-	})
+	run, err := m.Start(context.Background(),
+		"u1",
+		agent_research.Options{
+			Topic:  "t",
+			Runner: "modal",
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return m, run
 }
 
-func TestModalRunnerImportsTheExport(t *testing.T) { runOnBackends(t, testModalImport) }
+func TestModalRunnerImportsTheExport(t *testing.T) {
+	runOnBackends(t, testModalImport)
+}
 
-func testModalImport(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+func testModalImport(t *testing.T,
+	d *sql.DB,
+	ops agent_research.Ops) {
 	for _, final := range []string{agent_research.RemoteCompleted, agent_research.RemoteFailed} {
 		t.Run(final, func(t *testing.T) {
 			remote := newFakeRemote()
 			remote.exportData = []byte("PK-the-archive")
 			imp := &fakeImporter{}
-			m, started := startModal(t, d, ops, remote, imp)
-			remote.push(state("main", 2, core.StateThinking, "step 1", ""), finalWith(final, exportOf("PK-the-archive")))
+			m, started := startModal(t,
+				d,
+				ops,
+				remote,
+				imp)
+			remote.push(state("main",
+				2,
+				core.StateThinking,
+				"step 1",
+				""), finalWith(final, exportOf("PK-the-archive")))
 			m.Wait()
 
 			// The export is loaded for the run, also when the job failed (what it learned until then is kept).
@@ -485,15 +644,21 @@ func testModalImport(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 				UserID: "u1",
 				RunID:  started.ID,
 			}) {
-				t.Fatalf("import: %q %+v", imp.content, imp.runs)
+				t.Fatalf("import: %q %+v",
+					imp.content,
+					imp.runs)
 			}
-			run, _ := m.Get(context.Background(), "u1", started.ID)
+			run, _ := m.Get(context.Background(),
+				"u1",
+				started.ID)
 			want := core.StatusCompleted
 			if final == agent_research.RemoteFailed {
 				want = core.StatusFailed
 			}
 			if run.Status != want || stateNames(run.States) != "starting,thinking,importing,"+string(want) {
-				t.Fatalf("run %s, states %s", run.Status, stateNames(run.States))
+				t.Fatalf("run %s, states %s",
+					run.Status,
+					stateNames(run.States))
 			}
 			imported := run.States[2]
 			if imported.Error != "" || imported.FinishedAt == nil || !strings.Contains(imported.Detail, "14 bytes") {
@@ -507,17 +672,25 @@ func TestModalRunnerImportFailureDoesNotFailTheRun(t *testing.T) {
 	runOnBackends(t, testModalImportFails)
 }
 
-func testModalImportFails(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+func testModalImportFails(t *testing.T,
+	d *sql.DB,
+	ops agent_research.Ops) {
 	defer agent_research.SetExportRetryDelay(time.Millisecond)()
 	remote := newFakeRemote()
 	remote.exportData = []byte("PK-the-archive")
 	imp := &fakeImporter{
 		err: errors.New("disk full"),
 	}
-	m, started := startModal(t, d, ops, remote, imp)
+	m, started := startModal(t,
+		d,
+		ops,
+		remote,
+		imp)
 	remote.push(finalWith(agent_research.RemoteCompleted, exportOf("PK-the-archive")))
 	m.Wait()
-	run, _ := m.Get(context.Background(), "u1", started.ID)
+	run, _ := m.Get(context.Background(),
+		"u1",
+		started.ID)
 	if run.Status != core.StatusCompleted || run.Report != "# Report" || run.Error != "" {
 		t.Fatalf("run: %+v", run)
 	}
@@ -529,21 +702,33 @@ func testModalImportFails(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	}
 }
 
-func TestModalRunnerRetriesTheDownload(t *testing.T) { runOnBackends(t, testModalRetries) }
+func TestModalRunnerRetriesTheDownload(t *testing.T) {
+	runOnBackends(t, testModalRetries)
+}
 
-func testModalRetries(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+func testModalRetries(t *testing.T,
+	d *sql.DB,
+	ops agent_research.Ops) {
 	defer agent_research.SetExportRetryDelay(time.Millisecond)()
 	// Two downloads break; the third works, and the importer gets the whole file (not what the first ones wrote).
 	remote := newFakeRemote()
 	remote.exportData, remote.exportFails = []byte("PK-the-archive"), 2
 	imp := &fakeImporter{}
-	m, started := startModal(t, d, ops, remote, imp)
+	m, started := startModal(t,
+		d,
+		ops,
+		remote,
+		imp)
 	remote.push(finalWith(agent_research.RemoteCompleted, exportOf("PK-the-archive")))
 	m.Wait()
 	if len(imp.content) != 1 || imp.content[0] != "PK-the-archive" || remote.exportCalls != 3 {
-		t.Fatalf("content %q, %d downloads", imp.content, remote.exportCalls)
+		t.Fatalf("content %q, %d downloads",
+			imp.content,
+			remote.exportCalls)
 	}
-	if run, _ := m.Get(context.Background(), "u1", started.ID); run.States[1].Error != "" {
+	if run, _ := m.Get(context.Background(),
+		"u1",
+		started.ID); run.States[1].Error != "" {
 		t.Errorf("importing: %+v", run.States[1])
 	}
 
@@ -551,55 +736,97 @@ func testModalRetries(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	remote = newFakeRemote()
 	remote.exportData, remote.exportFails = []byte("PK-the-archive"), 100
 	imp = &fakeImporter{}
-	m, started = startModal(t, d, ops, remote, imp)
+	m, started = startModal(t,
+		d,
+		ops,
+		remote,
+		imp)
 	remote.push(finalWith(agent_research.RemoteCompleted, exportOf("PK-the-archive")))
 	m.Wait()
-	run, _ := m.Get(context.Background(), "u1", started.ID)
+	run, _ := m.Get(context.Background(),
+		"u1",
+		started.ID)
 	if len(imp.content) != 0 || remote.exportCalls != 3 || run.Status != core.StatusCompleted || !strings.Contains(run.States[1].Error, "connection reset") {
-		t.Fatalf("content %q, %d downloads, run %s, states %+v", imp.content, remote.exportCalls, run.Status, run.States)
+		t.Fatalf("content %q, %d downloads, run %s, states %+v",
+			imp.content,
+			remote.exportCalls,
+			run.Status,
+			run.States)
 	}
 }
 
-func TestModalRunnerChecksTheExport(t *testing.T) { runOnBackends(t, testModalChecks) }
+func TestModalRunnerChecksTheExport(t *testing.T) {
+	runOnBackends(t, testModalChecks)
+}
 
-func testModalChecks(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+func testModalChecks(t *testing.T,
+	d *sql.DB,
+	ops agent_research.Ops) {
 	defer agent_research.SetExportRetryDelay(time.Millisecond)()
 	// The file is not what the job said it is: a wrong hash is never imported.
 	remote := newFakeRemote()
 	remote.exportData = []byte("PK-another-archive!")
 	imp := &fakeImporter{}
-	m, started := startModal(t, d, ops, remote, imp)
+	m, started := startModal(t,
+		d,
+		ops,
+		remote,
+		imp)
 	bad := exportOf("PK-the-archive")
 	bad.Bytes = int64(len(remote.exportData))
 	remote.push(finalWith(agent_research.RemoteCompleted, bad))
 	m.Wait()
-	run, _ := m.Get(context.Background(), "u1", started.ID)
+	run, _ := m.Get(context.Background(),
+		"u1",
+		started.ID)
 	if len(imp.content) != 0 || !strings.Contains(run.States[1].Error, "SHA-256") || run.Status != core.StatusCompleted {
-		t.Fatalf("content %q, run %s, states %+v", imp.content, run.Status, run.States)
+		t.Fatalf("content %q, run %s, states %+v",
+			imp.content,
+			run.Status,
+			run.States)
 	}
 }
 
 func TestModalRunnerWithoutAnImporterOrAnExport(t *testing.T) {
-	runOnBackends(t, func(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+	runOnBackends(t, func(t *testing.T,
+		d *sql.DB,
+		ops agent_research.Ops) {
 		// No importer: the export is not even downloaded, and there is no importing state.
 		remote := newFakeRemote()
 		remote.exportData = []byte("PK")
-		m, started := startModal(t, d, ops, remote, nil)
+		m, started := startModal(t,
+			d,
+			ops,
+			remote,
+			nil)
 		remote.push(finalWith(agent_research.RemoteCompleted, exportOf("PK")))
 		m.Wait()
-		run, _ := m.Get(context.Background(), "u1", started.ID)
+		run, _ := m.Get(context.Background(),
+			"u1",
+			started.ID)
 		if remote.exportCalls != 0 || stateNames(run.States) != "starting,completed" {
-			t.Errorf("downloads %d, states %s", remote.exportCalls, stateNames(run.States))
+			t.Errorf("downloads %d, states %s",
+				remote.exportCalls,
+				stateNames(run.States))
 		}
 		// An importer, but a job with no export: nothing to do.
 		remote = newFakeRemote()
 		imp := &fakeImporter{}
-		m, started = startModal(t, d, ops, remote, imp)
+		m, started = startModal(t,
+			d,
+			ops,
+			remote,
+			imp)
 		remote.push(finalWith(agent_research.RemoteCompleted, nil))
 		m.Wait()
-		run, _ = m.Get(context.Background(), "u1", started.ID)
+		run, _ = m.Get(context.Background(),
+			"u1",
+			started.ID)
 		if len(imp.content) != 0 || remote.exportCalls != 0 || stateNames(run.States) != "starting,completed" {
-			t.Errorf("imports %d, downloads %d, states %s", len(imp.content), remote.exportCalls, stateNames(run.States))
+			t.Errorf("imports %d, downloads %d, states %s",
+				len(imp.content),
+				remote.exportCalls,
+				stateNames(run.States))
 		}
 	})
 }

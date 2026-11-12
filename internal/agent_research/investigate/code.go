@@ -92,7 +92,9 @@ func EnvOf(st investigate_core.State) hostfn.Env {
 
 // FormatCodeResult is what the model reads of a run: "ok", the value and the stdout, or "error: kind: message"; capped at max chars
 // (0: no cap) with a [truncated N chars] marker. isErr says that the tool call is an error.
-func FormatCodeResult(res monty.Result, err error, max int) (text string, isErr bool) {
+func FormatCodeResult(res monty.Result,
+	err error,
+	max int) (text string, isErr bool) {
 	if err != nil {
 		return capChars("error: "+err.Error(), max), true
 	}
@@ -108,7 +110,8 @@ func FormatCodeResult(res monty.Result, err error, max int) (text string, isErr 
 	return capChars(b.String(), max), false
 }
 
-func capChars(s string, max int) string {
+func capChars(s string,
+	max int) string {
 	r := []rune(s)
 	if max <= 0 || len(r) <= max {
 		return s
@@ -124,7 +127,8 @@ type code struct {
 }
 
 // newCode returns the code tool state of the run, with the registry narrowed to the functions the agent can serve; nil if code is off.
-func newCode(cfg *CodeConfig, external []agent.Tool) (*code, error) {
+func newCode(cfg *CodeConfig,
+	external []agent.Tool) (*code, error) {
 	if cfg == nil || cfg.Runner == nil {
 		return nil, nil
 	}
@@ -155,7 +159,8 @@ func (c *code) tool(r *runner) agent.Tool {
 		Name:        ToolRunCode,
 		Description: desc,
 		Schema:      schema,
-		Run: func(ctx context.Context, input json.RawMessage) (string, error) {
+		Run: func(ctx context.Context,
+			input json.RawMessage) (string, error) {
 			return r.runCode(ctx, input)
 		},
 	}
@@ -170,7 +175,8 @@ func (r *runner) externals() []agent.Tool {
 }
 
 // runCode is the run_code tool: one program in a fresh sandbox session.
-func (r *runner) runCode(ctx context.Context, input json.RawMessage) (string, error) {
+func (r *runner) runCode(ctx context.Context,
+	input json.RawMessage) (string, error) {
 	var in struct {
 		Code   string         `json:"code"`
 		Inputs map[string]any `json:"inputs"`
@@ -194,33 +200,52 @@ func (r *runner) runCode(ctx context.Context, input json.RawMessage) (string, er
 		code: in.Code,
 	}
 	env := EnvOf(st)
-	env.Fetch = func(ctx context.Context, tool string, in map[string]any) (string, error) {
-		return r.codeFetch(ctx, st, tool, in)
+	env.Fetch = func(ctx context.Context,
+		tool string,
+		in map[string]any) (string, error) {
+		return r.codeFetch(ctx,
+			st,
+			tool,
+			in)
 	}
-	env.Log = func(line string) { run.logs = append(run.logs, line) }
-	host := func(ctx context.Context, name string, args []any, kwargs map[string]any) (any, error) {
+	env.Log = func(line string) {
+		run.logs = append(run.logs, line)
+	}
+	host := func(ctx context.Context,
+		name string,
+		args []any,
+		kwargs map[string]any) (any, error) {
 		run.calls = append(run.calls, map[string]any{"function": name, "args": args, "kwargs": kwargs})
 		if len(run.calls) > s.MaxHostCalls {
 			return nil, fmt.Errorf("BudgetExceeded: at most %d host function calls per run_code call", s.MaxHostCalls)
 		}
-		return r.code.reg.Call(ctx, env, name, args, kwargs, s.MaxResultChars)
+		return r.code.reg.Call(ctx,
+			env,
+			name,
+			args,
+			kwargs,
+			s.MaxResultChars)
 	}
-	res, err := r.code.cfg.Runner.Run(ctx, monty.Request{
-		Code:      in.Code,
-		Inputs:    in.Inputs,
-		Functions: r.code.reg.Names(),
-		Stubs:     r.code.reg.Stubs(),
-		TypeCheck: s.TypeCheck,
-		Limits: monty.Limits{
-			MaxDurationS: float64(s.TimeoutS),
-			MaxMemoryMB:  s.MaxMemoryMB,
-			MaxRecursion: s.MaxRecursion,
+	res, err := r.code.cfg.Runner.Run(ctx,
+		monty.Request{
+			Code:      in.Code,
+			Inputs:    in.Inputs,
+			Functions: r.code.reg.Names(),
+			Stubs:     r.code.reg.Stubs(),
+			TypeCheck: s.TypeCheck,
+			Limits: monty.Limits{
+				MaxDurationS: float64(s.TimeoutS),
+				MaxMemoryMB:  s.MaxMemoryMB,
+				MaxRecursion: s.MaxRecursion,
+			},
 		},
-	}, host)
+		host)
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return "", ctxErr
 	}
-	text, isErr := FormatCodeResult(res, err, s.MaxOutputChars)
+	text, isErr := FormatCodeResult(res,
+		err,
+		s.MaxOutputChars)
 	run.output, run.stats = text, res.Stats
 	r.rec.codeRun(run)
 	if isErr {
@@ -231,7 +256,10 @@ func (r *runner) runCode(ctx context.Context, input json.RawMessage) (string, er
 
 // codeFetch runs a tool of the agent for a fetch class function: through runExternal, so that usage and cost are counted, the tool's own
 // limits and domain rules apply and a raw tool's call is logged as an attempt of the current question.
-func (r *runner) codeFetch(ctx context.Context, st investigate_core.State, tool string, in map[string]any) (string, error) {
+func (r *runner) codeFetch(ctx context.Context,
+	st investigate_core.State,
+	tool string,
+	in map[string]any) (string, error) {
 	for _, t := range r.cfg.External {
 		if t.Name != tool {
 			continue
@@ -240,11 +268,14 @@ func (r *runner) codeFetch(ctx context.Context, st investigate_core.State, tool 
 		if err != nil {
 			return "", err
 		}
-		out, isErr := r.runExternal(ctx, t, st, investigate_core.Call{
-			ID:    "code",
-			Name:  tool,
-			Input: input,
-		})
+		out, isErr := r.runExternal(ctx,
+			t,
+			st,
+			investigate_core.Call{
+				ID:    "code",
+				Name:  tool,
+				Input: input,
+			})
 		if isErr {
 			return "", errors.New(out)
 		}
@@ -283,7 +314,8 @@ You have run_code: a short Python program in a sandbox, for exact work you would
 // WorkerCodeTool is the run_code tool of a worker (a sub-agent on the simple tool loop): the same sandbox and limits as the supervisor's, but
 // without the functions that read the supervisor's state (notes, frontier, claims: a worker has none); the fetch functions run the worker's
 // own tools (tools). ok is false when code is off for the worker (no config or no runner).
-func WorkerCodeTool(cfg *CodeConfig, tools []agent.Tool) (tool agent.Tool, ok bool, err error) {
+func WorkerCodeTool(cfg *CodeConfig,
+	tools []agent.Tool) (tool agent.Tool, ok bool, err error) {
 	c, err := newCode(cfg, tools)
 	if err != nil || c == nil {
 		return agent.Tool{}, false, err
@@ -291,8 +323,13 @@ func WorkerCodeTool(cfg *CodeConfig, tools []agent.Tool) (tool agent.Tool, ok bo
 	c.reg = c.reg.Filter(func(s hostfn.Spec) bool { return s.Class == hostfn.ClassFetch || s.Name == "log" })
 	var calls atomic.Int64
 	desc, schema := CodeToolSpec(c.reg)
-	run := func(ctx context.Context, input json.RawMessage) (string, error) {
-		return runWorkerCode(ctx, c, tools, int(calls.Add(1)), input)
+	run := func(ctx context.Context,
+		input json.RawMessage) (string, error) {
+		return runWorkerCode(ctx,
+			c,
+			tools,
+			int(calls.Add(1)),
+			input)
 	}
 	return agent.Tool{
 		Name:        ToolRunCode,
@@ -303,7 +340,11 @@ func WorkerCodeTool(cfg *CodeConfig, tools []agent.Tool) (tool agent.Tool, ok bo
 }
 
 // runWorkerCode runs one program of a worker; n is the number of this call among the worker's.
-func runWorkerCode(ctx context.Context, c *code, tools []agent.Tool, n int, input json.RawMessage) (string, error) {
+func runWorkerCode(ctx context.Context,
+	c *code,
+	tools []agent.Tool,
+	n int,
+	input json.RawMessage) (string, error) {
 	var in struct {
 		Code   string         `json:"code"`
 		Inputs map[string]any `json:"inputs"`
@@ -322,7 +363,9 @@ func runWorkerCode(ctx context.Context, c *code, tools []agent.Tool, n int, inpu
 	env := hostfn.Env{
 		Questions: []map[string]any{},
 		Claims:    []map[string]any{},
-		Fetch: func(ctx context.Context, tool string, args map[string]any) (string, error) {
+		Fetch: func(ctx context.Context,
+			tool string,
+			args map[string]any) (string, error) {
 			for _, t := range tools {
 				if t.Name != tool {
 					continue
@@ -336,29 +379,41 @@ func runWorkerCode(ctx context.Context, c *code, tools []agent.Tool, n int, inpu
 			return "", fmt.Errorf("the tool %s is not available", tool)
 		},
 	}
-	host := func(ctx context.Context, name string, args []any, kwargs map[string]any) (any, error) {
+	host := func(ctx context.Context,
+		name string,
+		args []any,
+		kwargs map[string]any) (any, error) {
 		hostCalls++
 		if hostCalls > s.MaxHostCalls {
 			return nil, fmt.Errorf("BudgetExceeded: at most %d host function calls per run_code call", s.MaxHostCalls)
 		}
-		return c.reg.Call(ctx, env, name, args, kwargs, s.MaxResultChars)
+		return c.reg.Call(ctx,
+			env,
+			name,
+			args,
+			kwargs,
+			s.MaxResultChars)
 	}
-	res, err := c.cfg.Runner.Run(ctx, monty.Request{
-		Code:      in.Code,
-		Inputs:    in.Inputs,
-		Functions: c.reg.Names(),
-		Stubs:     c.reg.Stubs(),
-		TypeCheck: s.TypeCheck,
-		Limits: monty.Limits{
-			MaxDurationS: float64(s.TimeoutS),
-			MaxMemoryMB:  s.MaxMemoryMB,
-			MaxRecursion: s.MaxRecursion,
+	res, err := c.cfg.Runner.Run(ctx,
+		monty.Request{
+			Code:      in.Code,
+			Inputs:    in.Inputs,
+			Functions: c.reg.Names(),
+			Stubs:     c.reg.Stubs(),
+			TypeCheck: s.TypeCheck,
+			Limits: monty.Limits{
+				MaxDurationS: float64(s.TimeoutS),
+				MaxMemoryMB:  s.MaxMemoryMB,
+				MaxRecursion: s.MaxRecursion,
+			},
 		},
-	}, host)
+		host)
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return "", ctxErr
 	}
-	text, isErr := FormatCodeResult(res, err, s.MaxOutputChars)
+	text, isErr := FormatCodeResult(res,
+		err,
+		s.MaxOutputChars)
 	if isErr {
 		return "", errors.New(text)
 	}

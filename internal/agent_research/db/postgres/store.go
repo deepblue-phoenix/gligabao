@@ -57,7 +57,9 @@ type scanner interface{ Scan(dest ...any) error }
 
 // CreateRun inserts r into gb_agent_research_runs and sets its ID, CreatedAt, and Status (core.StatusRunning if empty). It adds no
 // state: see EnterState.
-func CreateRun(ctx context.Context, q db.Execer, r *core.Run) error {
+func CreateRun(ctx context.Context,
+	q db.Execer,
+	r *core.Run) error {
 	if r.Status == "" {
 		r.Status = core.StatusRunning
 	}
@@ -76,13 +78,37 @@ func CreateRun(ctx context.Context, q db.Execer, r *core.Run) error {
 		r.NotesID = notesID
 	}
 	var id int64
-	if err := q.QueryRowContext(ctx, `
+	if err := q.QueryRowContext(ctx,
+		`
 		INSERT INTO gb_agent_research_runs (user_id, parent_id, name, reason, topic, status, state, model, max_steps, runner, agent_name, agent_version, agent_hash, notes_id, phase, stop_reason,
 			steps, tool_calls, input_tokens, output_tokens, cost_usd, report, error, created_at, finished_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
 		RETURNING id`,
-		r.UserID, r.ParentID, r.Name, r.Reason, r.Topic, string(r.Status), r.State, r.Model, r.MaxSteps, r.Runner, r.AgentName, r.AgentVersion, r.AgentHash, r.NotesID, r.Phase, r.StopReason, r.Steps, r.ToolCalls, r.InputTokens, r.OutputTokens,
-		r.CostUSD, r.Report, r.Error, r.CreatedAt, ptr(r.FinishedAt)).Scan(&id); err != nil {
+		r.UserID,
+		r.ParentID,
+		r.Name,
+		r.Reason,
+		r.Topic,
+		string(r.Status),
+		r.State,
+		r.Model,
+		r.MaxSteps,
+		r.Runner,
+		r.AgentName,
+		r.AgentVersion,
+		r.AgentHash,
+		r.NotesID,
+		r.Phase,
+		r.StopReason,
+		r.Steps,
+		r.ToolCalls,
+		r.InputTokens,
+		r.OutputTokens,
+		r.CostUSD,
+		r.Report,
+		r.Error,
+		r.CreatedAt,
+		ptr(r.FinishedAt)).Scan(&id); err != nil {
 		return fmt.Errorf("create agent research run: %w", err)
 	}
 	r.ID = id
@@ -92,11 +118,21 @@ func CreateRun(ctx context.Context, q db.Execer, r *core.Run) error {
 // EnterState records that the run runID moves to state: it ends the state the run is in (the one without a finished_at), adds the
 // new state to gb_agent_research_states, numbered after the last, and sets the run's state. It returns the new state. Run it in a
 // transaction to make the three writes one: with a *sql.DB they are three statements.
-func EnterState(ctx context.Context, q db.Execer, runID int64, state string, step int, detail string) (*core.State, error) {
+func EnterState(ctx context.Context,
+	q db.Execer,
+	runID int64,
+	state string,
+	step int,
+	detail string) (*core.State, error) {
 	at := now()
-	if _, err := q.ExecContext(ctx, `UPDATE gb_agent_research_states SET finished_at = $1 WHERE run_id = $2 AND finished_at IS NULL`,
-		at, runID); err != nil {
-		return nil, fmt.Errorf("enter state %q of agent research run %d: %w", state, runID, err)
+	if _, err := q.ExecContext(ctx,
+		`UPDATE gb_agent_research_states SET finished_at = $1 WHERE run_id = $2 AND finished_at IS NULL`,
+		at,
+		runID); err != nil {
+		return nil, fmt.Errorf("enter state %q of agent research run %d: %w",
+			state,
+			runID,
+			err)
 	}
 	s := &core.State{
 		RunID:     runID,
@@ -105,29 +141,54 @@ func EnterState(ctx context.Context, q db.Execer, runID int64, state string, ste
 		Detail:    detail,
 		StartedAt: at,
 	}
-	if err := q.QueryRowContext(ctx, `
+	if err := q.QueryRowContext(ctx,
+		`
 		INSERT INTO gb_agent_research_states (run_id, seq, state, step, detail, started_at)
 		VALUES ($1, (SELECT COALESCE(MAX(seq), 0) + 1 FROM gb_agent_research_states WHERE run_id = $1), $2, $3, $4, $5)
-		RETURNING id, seq`, runID, state, step, detail, at).Scan(&s.ID, &s.Seq); err != nil {
-		return nil, fmt.Errorf("enter state %q of agent research run %d: %w", state, runID, err)
+		RETURNING id, seq`,
+		runID,
+		state,
+		step,
+		detail,
+		at).Scan(&s.ID, &s.Seq); err != nil {
+		return nil, fmt.Errorf("enter state %q of agent research run %d: %w",
+			state,
+			runID,
+			err)
 	}
-	if _, err := q.ExecContext(ctx, `UPDATE gb_agent_research_runs SET state = $1 WHERE id = $2`, state, runID); err != nil {
-		return nil, fmt.Errorf("enter state %q of agent research run %d: %w", state, runID, err)
+	if _, err := q.ExecContext(ctx,
+		`UPDATE gb_agent_research_runs SET state = $1 WHERE id = $2`,
+		state,
+		runID); err != nil {
+		return nil, fmt.Errorf("enter state %q of agent research run %d: %w",
+			state,
+			runID,
+			err)
 	}
 	return s, nil
 }
 
 // CloseState ends the state stateID (sets its finished_at, if it has none) and its error ("" if it did not fail). It does not
 // change the run's state: the next EnterState does.
-func CloseState(ctx context.Context, q db.Execer, stateID int64, errText string) error {
-	res, err := q.ExecContext(ctx, `UPDATE gb_agent_research_states SET finished_at = $1, error = $2 WHERE id = $3 AND finished_at IS NULL`,
-		now(), errText, stateID)
+func CloseState(ctx context.Context,
+	q db.Execer,
+	stateID int64,
+	errText string) error {
+	res, err := q.ExecContext(ctx,
+		`UPDATE gb_agent_research_states SET finished_at = $1, error = $2 WHERE id = $3 AND finished_at IS NULL`,
+		now(),
+		errText,
+		stateID)
 	if err != nil {
-		return fmt.Errorf("close agent research state %d: %w", stateID, err)
+		return fmt.Errorf("close agent research state %d: %w",
+			stateID,
+			err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		var one int
-		if err := q.QueryRowContext(ctx, `SELECT 1 FROM gb_agent_research_states WHERE id = $1`, stateID).Scan(&one); errors.Is(err, sql.ErrNoRows) {
+		if err := q.QueryRowContext(ctx,
+			`SELECT 1 FROM gb_agent_research_states WHERE id = $1`,
+			stateID).Scan(&one); errors.Is(err, sql.ErrNoRows) {
 			return db.ErrNotFound
 		}
 	}
@@ -135,12 +196,23 @@ func CloseState(ctx context.Context, q db.Execer, stateID int64, errText string)
 }
 
 // UpdateUsage writes the counters of a run that is going (see db.Usage).
-func UpdateUsage(ctx context.Context, q db.Execer, runID int64, u db.Usage) error {
-	res, err := q.ExecContext(ctx, `
+func UpdateUsage(ctx context.Context,
+	q db.Execer,
+	runID int64,
+	u db.Usage) error {
+	res, err := q.ExecContext(ctx,
+		`
 		UPDATE gb_agent_research_runs SET steps = $1, tool_calls = $2, input_tokens = $3, output_tokens = $4, cost_usd = $5 WHERE id = $6`,
-		u.Steps, u.ToolCalls, u.InputTokens, u.OutputTokens, u.CostUSD, runID)
+		u.Steps,
+		u.ToolCalls,
+		u.InputTokens,
+		u.OutputTokens,
+		u.CostUSD,
+		runID)
 	if err != nil {
-		return fmt.Errorf("update usage of agent research run %d: %w", runID, err)
+		return fmt.Errorf("update usage of agent research run %d: %w",
+			runID,
+			err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return db.ErrNotFound
@@ -149,10 +221,20 @@ func UpdateUsage(ctx context.Context, q db.Execer, runID int64, u db.Usage) erro
 }
 
 // SetPhase writes the phase and the stop reason of an investigative run (see core.Run); db.ErrNotFound if there is no such run.
-func SetPhase(ctx context.Context, q db.Execer, runID int64, phase, stopReason string) error {
-	res, err := q.ExecContext(ctx, `UPDATE gb_agent_research_runs SET phase = $1, stop_reason = $2 WHERE id = $3`, phase, stopReason, runID)
+func SetPhase(ctx context.Context,
+	q db.Execer,
+	runID int64,
+	phase,
+	stopReason string) error {
+	res, err := q.ExecContext(ctx,
+		`UPDATE gb_agent_research_runs SET phase = $1, stop_reason = $2 WHERE id = $3`,
+		phase,
+		stopReason,
+		runID)
 	if err != nil {
-		return fmt.Errorf("set phase of agent research run %d: %w", runID, err)
+		return fmt.Errorf("set phase of agent research run %d: %w",
+			runID,
+			err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return db.ErrNotFound
@@ -164,41 +246,73 @@ func SetPhase(ctx context.Context, q db.Execer, runID int64, phase, stopReason s
 // run is in (with the error, if it has none of its own) and adds the terminal state (completed or failed, with the error). It
 // returns false, and writes nothing, if the run was finished already; db.ErrNotFound if there is no such run. Run it in a
 // transaction to make the writes one.
-func FinishRun(ctx context.Context, q db.Execer, id int64, status core.Status, report, errText string) (bool, error) {
+func FinishRun(ctx context.Context,
+	q db.Execer,
+	id int64,
+	status core.Status,
+	report,
+	errText string) (bool, error) {
 	if status.Active() || status == "" {
-		return false, fmt.Errorf("finish agent research run %d: status %q is not a final one", id, status)
+		return false, fmt.Errorf("finish agent research run %d: status %q is not a final one",
+			id,
+			status)
 	}
 	at := now()
-	res, err := q.ExecContext(ctx, `
+	res, err := q.ExecContext(ctx,
+		`
 		UPDATE gb_agent_research_runs SET status = $1, state = $2, report = $3, error = $4, finished_at = $5
-		WHERE id = $6 AND status = 'running'`, string(status), string(status), report, errText, at, id)
+		WHERE id = $6 AND status = 'running'`,
+		string(status),
+		string(status),
+		report,
+		errText,
+		at,
+		id)
 	if err != nil {
-		return false, fmt.Errorf("finish agent research run %d: %w", id, err)
+		return false, fmt.Errorf("finish agent research run %d: %w",
+			id,
+			err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		var one int
-		if err := q.QueryRowContext(ctx, `SELECT 1 FROM gb_agent_research_runs WHERE id = $1`, id).Scan(&one); errors.Is(err, sql.ErrNoRows) {
+		if err := q.QueryRowContext(ctx,
+			`SELECT 1 FROM gb_agent_research_runs WHERE id = $1`,
+			id).Scan(&one); errors.Is(err, sql.ErrNoRows) {
 			return false, db.ErrNotFound
 		}
 		return false, nil
 	}
-	if _, err := q.ExecContext(ctx, `
+	if _, err := q.ExecContext(ctx,
+		`
 		UPDATE gb_agent_research_states SET finished_at = $1, error = CASE WHEN error = '' THEN $2::text ELSE error END
-		WHERE run_id = $3 AND finished_at IS NULL`, at, errText, id); err != nil {
-		return false, fmt.Errorf("finish agent research run %d: %w", id, err)
+		WHERE run_id = $3 AND finished_at IS NULL`,
+		at,
+		errText,
+		id); err != nil {
+		return false, fmt.Errorf("finish agent research run %d: %w",
+			id,
+			err)
 	}
-	if _, err := q.ExecContext(ctx, `
+	if _, err := q.ExecContext(ctx,
+		`
 		INSERT INTO gb_agent_research_states (run_id, seq, state, step, detail, error, started_at, finished_at)
 		VALUES ($1, (SELECT COALESCE(MAX(seq), 0) + 1 FROM gb_agent_research_states WHERE run_id = $1), $2, 0, '', $3, $4, $4)`,
-		id, string(status), errText, at); err != nil {
-		return false, fmt.Errorf("finish agent research run %d: %w", id, err)
+		id,
+		string(status),
+		errText,
+		at); err != nil {
+		return false, fmt.Errorf("finish agent research run %d: %w",
+			id,
+			err)
 	}
 	return true, nil
 }
 
 // FailActive ends every running run as failed, with the reason as its error (the ones a restart of the server interrupted), and
 // returns how many there were.
-func FailActive(ctx context.Context, q db.Execer, reason string) (int64, error) {
+func FailActive(ctx context.Context,
+	q db.Execer,
+	reason string) (int64, error) {
 	rows, err := q.QueryContext(ctx, `SELECT id FROM gb_agent_research_runs WHERE status = 'running' ORDER BY id`)
 	if err != nil {
 		return 0, fmt.Errorf("fail active agent research runs: %w", err)
@@ -219,7 +333,12 @@ func FailActive(ctx context.Context, q db.Execer, reason string) (int64, error) 
 	rows.Close()
 	var n int64
 	for _, id := range ids {
-		ok, err := FinishRun(ctx, q, id, core.StatusFailed, "", reason)
+		ok, err := FinishRun(ctx,
+			q,
+			id,
+			core.StatusFailed,
+			"",
+			reason)
 		if err != nil {
 			return n, err
 		}
@@ -239,8 +358,32 @@ func scanRun(s scanner) (*core.Run, error) {
 	var created time.Time
 	var finished sql.NullTime
 	var parent sql.NullInt64
-	if err := s.Scan(&r.ID, &r.UserID, &parent, &r.Name, &r.Reason, &r.Topic, &status, &r.State, &r.Model, &r.MaxSteps, &r.Runner, &r.AgentName, &r.AgentVersion, &r.AgentHash, &r.NotesID, &r.Phase, &r.StopReason, &r.Steps, &r.ToolCalls, &r.InputTokens,
-		&r.OutputTokens, &r.CostUSD, &r.Report, &r.Error, &created, &finished); err != nil {
+	if err := s.Scan(&r.ID,
+		&r.UserID,
+		&parent,
+		&r.Name,
+		&r.Reason,
+		&r.Topic,
+		&status,
+		&r.State,
+		&r.Model,
+		&r.MaxSteps,
+		&r.Runner,
+		&r.AgentName,
+		&r.AgentVersion,
+		&r.AgentHash,
+		&r.NotesID,
+		&r.Phase,
+		&r.StopReason,
+		&r.Steps,
+		&r.ToolCalls,
+		&r.InputTokens,
+		&r.OutputTokens,
+		&r.CostUSD,
+		&r.Report,
+		&r.Error,
+		&created,
+		&finished); err != nil {
 		return nil, err
 	}
 	r.Status = core.Status(status)
@@ -252,13 +395,19 @@ func scanRun(s scanner) (*core.Run, error) {
 }
 
 // GetRun returns the run with that ID, without its States (see ListStates), or db.ErrNotFound.
-func GetRun(ctx context.Context, q db.Execer, id int64) (*core.Run, error) {
-	r, err := scanRun(q.QueryRowContext(ctx, `SELECT `+runColumns+` FROM gb_agent_research_runs WHERE id = $1`, id))
+func GetRun(ctx context.Context,
+	q db.Execer,
+	id int64) (*core.Run, error) {
+	r, err := scanRun(q.QueryRowContext(ctx,
+		`SELECT `+runColumns+` FROM gb_agent_research_runs WHERE id = $1`,
+		id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, db.ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("get agent research run %d: %w", id, err)
+		return nil, fmt.Errorf("get agent research run %d: %w",
+			id,
+			err)
 	}
 	return r, nil
 }
@@ -293,22 +442,30 @@ func where(f core.RunFilter) (string, []any) {
 }
 
 // CountRuns returns the number of runs that match f.
-func CountRuns(ctx context.Context, q db.Execer, f core.RunFilter) (int, error) {
+func CountRuns(ctx context.Context,
+	q db.Execer,
+	f core.RunFilter) (int, error) {
 	w, args := where(f)
 	var n int
-	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM gb_agent_research_runs`+w, args...).Scan(&n); err != nil {
+	if err := q.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM gb_agent_research_runs`+w,
+		args...).Scan(&n); err != nil {
 		return 0, fmt.Errorf("count agent research runs: %w", err)
 	}
 	return n, nil
 }
 
 // ChildCounts returns the number of sub-agents of each of the runs ids (runs with none are left out of the map).
-func ChildCounts(ctx context.Context, q db.Execer, ids []int64) (map[int64]int, error) {
+func ChildCounts(ctx context.Context,
+	q db.Execer,
+	ids []int64) (map[int64]int, error) {
 	out := map[int64]int{}
 	if len(ids) == 0 {
 		return out, nil
 	}
-	rows, err := q.QueryContext(ctx, `SELECT parent_id, COUNT(*) FROM gb_agent_research_runs WHERE parent_id = ANY($1) GROUP BY parent_id`, ids)
+	rows, err := q.QueryContext(ctx,
+		`SELECT parent_id, COUNT(*) FROM gb_agent_research_runs WHERE parent_id = ANY($1) GROUP BY parent_id`,
+		ids)
 	if err != nil {
 		return nil, fmt.Errorf("count the sub-agents of agent research runs: %w", err)
 	}
@@ -328,14 +485,19 @@ func ChildCounts(ctx context.Context, q db.Execer, ids []int64) (map[int64]int, 
 }
 
 // ListRuns returns the runs that match f, newest first, at most limit of them (all for limit <= 0), without their States.
-func ListRuns(ctx context.Context, q db.Execer, f core.RunFilter, limit int) ([]core.Run, error) {
+func ListRuns(ctx context.Context,
+	q db.Execer,
+	f core.RunFilter,
+	limit int) ([]core.Run, error) {
 	w, args := where(f)
 	query := `SELECT ` + runColumns + ` FROM gb_agent_research_runs` + w + ` ORDER BY id DESC`
 	if limit > 0 {
 		args = append(args, limit)
 		query += fmt.Sprintf(` LIMIT $%d`, len(args))
 	}
-	rows, err := q.QueryContext(ctx, query, args...)
+	rows, err := q.QueryContext(ctx,
+		query,
+		args...)
 	if err != nil {
 		return nil, fmt.Errorf("list agent research runs: %w", err)
 	}
@@ -356,12 +518,18 @@ func ListRuns(ctx context.Context, q db.Execer, f core.RunFilter, limit int) ([]
 
 // ListStates returns the states of the run, in the order they were entered. It is empty, not an error, for a run without states or
 // one that does not exist.
-func ListStates(ctx context.Context, q db.Execer, runID int64) ([]core.State, error) {
-	rows, err := q.QueryContext(ctx, `
+func ListStates(ctx context.Context,
+	q db.Execer,
+	runID int64) ([]core.State, error) {
+	rows, err := q.QueryContext(ctx,
+		`
 		SELECT id, run_id, seq, state, step, detail, error, started_at, finished_at
-		FROM gb_agent_research_states WHERE run_id = $1 ORDER BY seq`, runID)
+		FROM gb_agent_research_states WHERE run_id = $1 ORDER BY seq`,
+		runID)
 	if err != nil {
-		return nil, fmt.Errorf("list states of agent research run %d: %w", runID, err)
+		return nil, fmt.Errorf("list states of agent research run %d: %w",
+			runID,
+			err)
 	}
 	defer rows.Close()
 	out := []core.State{}
@@ -369,14 +537,26 @@ func ListStates(ctx context.Context, q db.Execer, runID int64) ([]core.State, er
 		var s core.State
 		var started time.Time
 		var finished sql.NullTime
-		if err := rows.Scan(&s.ID, &s.RunID, &s.Seq, &s.State, &s.Step, &s.Detail, &s.Error, &started, &finished); err != nil {
-			return nil, fmt.Errorf("list states of agent research run %d: %w", runID, err)
+		if err := rows.Scan(&s.ID,
+			&s.RunID,
+			&s.Seq,
+			&s.State,
+			&s.Step,
+			&s.Detail,
+			&s.Error,
+			&started,
+			&finished); err != nil {
+			return nil, fmt.Errorf("list states of agent research run %d: %w",
+				runID,
+				err)
 		}
 		s.StartedAt, s.FinishedAt = started.UTC(), timePtr(finished)
 		out = append(out, s)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("list states of agent research run %d: %w", runID, err)
+		return nil, fmt.Errorf("list states of agent research run %d: %w",
+			runID,
+			err)
 	}
 	return out, nil
 }

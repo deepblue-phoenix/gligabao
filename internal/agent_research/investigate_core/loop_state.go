@@ -123,20 +123,27 @@ func StartLoop() LoopState {
 }
 
 // AfterModel counts a model call and what it spent (the tools' spending is added with Spend).
-func (ls LoopState) AfterModel(inputTokens, outputTokens int, costUSD float64) LoopState {
+func (ls LoopState) AfterModel(inputTokens,
+	outputTokens int,
+	costUSD float64) LoopState {
 	ls.Turns++
-	return ls.Spend(inputTokens, outputTokens, costUSD)
+	return ls.Spend(inputTokens,
+		outputTokens,
+		costUSD)
 }
 
 // Spend adds spending that is not a model call of the loop (the tools: the web searches).
-func (ls LoopState) Spend(inputTokens, outputTokens int, costUSD float64) LoopState {
+func (ls LoopState) Spend(inputTokens,
+	outputTokens int,
+	costUSD float64) LoopState {
 	ls.Tokens += inputTokens + outputTokens
 	ls.CostUSD += costUSD
 	return ls
 }
 
 // AddTurn appends a turn to the window and the pending results it brought.
-func (ls LoopState) AddTurn(t Turn, pending []Pending) LoopState {
+func (ls LoopState) AddTurn(t Turn,
+	pending []Pending) LoopState {
 	ls.Window = append(slices.Clone(ls.Window), t)
 	ls.Pending = append(slices.Clone(ls.Pending), pending...)
 	return ls
@@ -209,7 +216,9 @@ func (ls LoopState) OpenCalls() []Call {
 var rawTools = []string{"web_search", "fetch_page", "query"}
 
 // IsRawTool reports whether the results of the tool are raw material (a search briefing, a page, a knowledge-base answer).
-func IsRawTool(name string) bool { return slices.Contains(rawTools, name) }
+func IsRawTool(name string) bool {
+	return slices.Contains(rawTools, name)
+}
 
 // ArgOf is the query, URL or question of a call of a raw tool.
 func ArgOf(c Call) string {
@@ -226,7 +235,8 @@ func ArgOf(c Call) string {
 }
 
 // PendingOf are the pending results a turn brings: the successful results of its raw tools. questionID is the question being worked on.
-func PendingOf(t Turn, questionID string) []Pending {
+func PendingOf(t Turn,
+	questionID string) []Pending {
 	var out []Pending
 	for _, c := range t.Calls {
 		if c.IsErr || !IsRawTool(c.Name) {
@@ -249,9 +259,14 @@ var notesWriters = []string{"notes_append", "notes_update", "notes_scratch"}
 
 // WroteNotes reports whether a turn changed the notes (a notes tool call that succeeded).
 func WroteNotes(t Turn) bool {
-	return slices.ContainsFunc(t.Calls, func(c Call) bool { return !c.IsErr && slices.Contains(notesWriters, c.Name) })
+	return slices.ContainsFunc(t.Calls, func(c Call) bool {
+		return !c.IsErr && slices.Contains(notesWriters, c.Name)
+	})
 }
 
 // Commits reports whether the turn is a commit point: a turn that wrote the notes, or a forced extraction turn (after which what the model
 // did not take is recorded as read, with nothing relevant).
-func Commits(t Turn, kind TurnKind) bool { return WroteNotes(t) || kind == TurnExtract }
+func Commits(t Turn,
+	kind TurnKind) bool {
+	return WroteNotes(t) || kind == TurnExtract
+}

@@ -45,7 +45,8 @@ type State struct {
 }
 
 // NewState is the state of a run that starts: the root question (the objective) and empty notes. It also returns the transitions of the root.
-func NewState(objective string, limits Limits) (State, []Transition, error) {
+func NewState(objective string,
+	limits Limits) (State, []Transition, error) {
 	f, ts, err := NewRoot(objective)
 	if err != nil {
 		return State{}, nil, err
@@ -80,7 +81,10 @@ func row(q Question) Question {
 // Diff is the list of effects that takes the stored state before to after: question rows, new dependency edges, new attempts, the
 // transitions, sources, claims and challenges that are new or changed, and (if notesReason is not "" and the rendered notes changed) the
 // notes version. The order is the one the foreign keys need. It is pure: handlers describe the change by the two values.
-func Diff(before, after State, transitions []Transition, notesReason string) []Effect {
+func Diff(before,
+	after State,
+	transitions []Transition,
+	notesReason string) []Effect {
 	var effects []Effect
 	for _, q := range after.Frontier.Questions {
 		old, existed := before.Frontier.Get(q.ID)

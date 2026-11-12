@@ -52,33 +52,42 @@ var notesToolNames = []string{"notes_read", "notes_append", "notes_update", "not
 // OfferedTools are the tools the model may call in a turn of this kind. A forced-extraction or consolidation turn has the notes tools
 // only; the planning turn has the tools to build the first level; frontier_next is never offered to the model in exploration (the loop
 // selects the question); synthesis has no search tool.
-func OfferedTools(kind TurnKind, external, registry []string) []string {
+func OfferedTools(kind TurnKind,
+	external,
+	registry []string) []string {
 	switch kind {
 	case TurnExtract, TurnConsolidate:
 		return slices.Clone(notesToolNames)
 	case TurnSynthesize, TurnFinal:
 		return []string{"notes_read", "frontier_view", "reopen_question", ToolFinalizeReport}
 	case TurnPlanning:
-		return slices.Concat(external, []string{"add_question", "set_priority", "frontier_view", "frontier_next"}, notesToolNames)
+		return slices.Concat(external,
+			[]string{"add_question", "set_priority", "frontier_view", "frontier_next"},
+			notesToolNames)
 	}
 	rest := slices.DeleteFunc(slices.Clone(registry), func(n string) bool {
 		return n == "frontier_next" || n == ToolFinishExploration || n == ToolFinalizeReport
 	})
-	return slices.Concat(external, rest, []string{ToolFinishExploration})
+	return slices.Concat(external,
+		rest,
+		[]string{ToolFinishExploration})
 }
 
 // NextKind is what the next model call is for. In synthesis it is the synthesis turn, forced to finalize_report when it is the last the run
 // may take. In exploration: a forced extraction when a result is large or about to leave the window; a consolidation when the notes are
 // over their budget (one turn, a second only if the first did not make them smaller); the planning turn while the objective has no
 // sub-question; else a normal turn.
-func NextKind(ls LoopState, s State) TurnKind {
+func NextKind(ls LoopState,
+	s State) TurnKind {
 	if ls.Phase == PhaseSynthesis {
 		if IsLastTurn(ls, s.Limits) {
 			return TurnFinal
 		}
 		return TurnSynthesize
 	}
-	if _, ok := NeedsExtraction(ls, s.Limits.ExtractionThreshold, s.Limits.KeepTurns); ok {
+	if _, ok := NeedsExtraction(ls,
+		s.Limits.ExtractionThreshold,
+		s.Limits.KeepTurns); ok {
 		return TurnExtract
 	}
 	if NeedsConsolidation(ls, s) {
@@ -92,7 +101,8 @@ func NextKind(ls LoopState, s State) TurnKind {
 
 // NeedsConsolidation reports whether the next turn is a consolidation: the notes are over notes_max_tokens and no consolidation was done,
 // or one was done and did not reduce them.
-func NeedsConsolidation(ls LoopState, s State) bool {
+func NeedsConsolidation(ls LoopState,
+	s State) bool {
 	size := TokenEstimate(s.Notes)
 	if size <= s.Limits.NotesMaxTokens {
 		return false
@@ -101,7 +111,10 @@ func NeedsConsolidation(ls LoopState, s State) bool {
 }
 
 // AfterConsolidation records a consolidation turn: the size of the notes before it and after.
-func AfterConsolidation(ls LoopState, before, after int, limits Limits) LoopState {
+func AfterConsolidation(ls LoopState,
+	before,
+	after int,
+	limits Limits) LoopState {
 	if after <= limits.NotesMaxTokens {
 		ls.Consol, ls.ConsolFrom = 0, 0
 		return ls
@@ -121,7 +134,9 @@ func CurrentID(s State) string {
 }
 
 // StateOf is the state of the research a turn is recorded in (gb_agent_research_states.state).
-func StateOf(kind TurnKind, ls LoopState, s State) string {
+func StateOf(kind TurnKind,
+	ls LoopState,
+	s State) string {
 	switch kind {
 	case TurnPlanning:
 		return StatePlanning
@@ -149,7 +164,9 @@ func unchallenged(s State) []Claim {
 		if c.Status != ClaimUnverified || c.QuestionID != cur || cur == "" {
 			continue
 		}
-		if len(ChallengesOn(s.Challenges, TargetClaim, c.ID)) == 0 {
+		if len(ChallengesOn(s.Challenges,
+			TargetClaim,
+			c.ID)) == 0 {
 			out = append(out, c)
 		}
 	}
@@ -163,12 +180,24 @@ func GapsText(f Frontier) string {
 	for _, q := range f.Questions {
 		switch q.Status {
 		case StatusUnresolvable:
-			fmt.Fprintf(&b, "- [%s] unresolvable: %s. Assumption: %s\n", q.ID, q.Question, orElse(q.Answer, "(none stated)"))
+			fmt.Fprintf(&b,
+				"- [%s] unresolvable: %s. Assumption: %s\n",
+				q.ID,
+				q.Question,
+				orElse(q.Answer, "(none stated)"))
 		case StatusPruned:
-			fmt.Fprintf(&b, "- [%s] pruned: %s. Reason: %s\n", q.ID, q.Question, orElse(q.Answer, "(none stated)"))
+			fmt.Fprintf(&b,
+				"- [%s] pruned: %s. Reason: %s\n",
+				q.ID,
+				q.Question,
+				orElse(q.Answer, "(none stated)"))
 		case StatusPending, StatusBlocked, StatusInProgress:
 			if q.ParentID != "" {
-				fmt.Fprintf(&b, "- [%s] still %s (not investigated): %s\n", q.ID, q.Status, q.Question)
+				fmt.Fprintf(&b,
+					"- [%s] still %s (not investigated): %s\n",
+					q.ID,
+					q.Status,
+					q.Question)
 			}
 		}
 	}
@@ -190,7 +219,8 @@ const consolidateInstructions = `The notes are over their size budget. This turn
 const synthesisInstructions = `The investigation is over: write the report. You cannot search. Work from the notes and the frontier below. The report starts with a summary, then the details, then a section on gaps and assumptions (every unresolvable question, by its id, with its assumption), the verification status of the key claims and the sources. Cite claim ids (c_001, d_001) and source ids (s_001) for every statement: the loop turns the source ids into URLs. Do not cite a claim that is REFUTED. Say plainly what could not be covered. Submit it with finalize_report; if it lists problems, fix them. Only if a hole would change the conclusion, reopen_question sends the run back to exploration (once).`
 
 // Reminder is what the loop says when the model answered without a tool call: that is not an end, here is what is still open.
-func Reminder(kind TurnKind, s State) string {
+func Reminder(kind TurnKind,
+	s State) string {
 	switch kind {
 	case TurnSynthesize, TurnFinal:
 		return "You answered without calling a tool. The run ends only with finalize_report(report): call it now with the report."
@@ -199,7 +229,9 @@ func Reminder(kind TurnKind, s State) string {
 	}
 	var b strings.Builder
 	b.WriteString("You answered without calling a tool; that does not end the investigation. Continue with a tool call.\n")
-	b.WriteString(Summary(s.Frontier, CurrentID(s), s.Limits))
+	b.WriteString(Summary(s.Frontier,
+		CurrentID(s),
+		s.Limits))
 	b.WriteString(ChallengeSummary(s.Challenges))
 	return b.String()
 }
@@ -209,16 +241,25 @@ func Reminder(kind TurnKind, s State) string {
 const WrapUpTurns = 6
 
 // instruction is the last block of the prompt: what this turn is for.
-func instruction(kind TurnKind, ls LoopState, s State) string {
+func instruction(kind TurnKind,
+	ls LoopState,
+	s State) string {
 	switch kind {
 	case TurnPlanning:
 		return planningInstructions
 	case TurnConsolidate:
-		return fmt.Sprintf("%s\nThe notes are about %d tokens; the budget is %d.", consolidateInstructions, TokenEstimate(s.Notes), s.Limits.NotesMaxTokens)
+		return fmt.Sprintf("%s\nThe notes are about %d tokens; the budget is %d.",
+			consolidateInstructions,
+			TokenEstimate(s.Notes),
+			s.Limits.NotesMaxTokens)
 	case TurnExtract:
-		p, _ := NeedsExtraction(ls, s.Limits.ExtractionThreshold, s.Limits.KeepTurns)
+		p, _ := NeedsExtraction(ls,
+			s.Limits.ExtractionThreshold,
+			s.Limits.KeepTurns)
 		q := orElse(p.QuestionID, CurrentID(s))
-		return fmt.Sprintf("%s\nExtract what matters for question %s from this result.", extractInstructions, q)
+		return fmt.Sprintf("%s\nExtract what matters for question %s from this result.",
+			extractInstructions,
+			q)
 	case TurnSynthesize:
 		return synthesisInstructions
 	case TurnFinal:
@@ -228,7 +269,9 @@ func instruction(kind TurnKind, ls LoopState, s State) string {
 	if cur, ok := s.Frontier.Current(); ok {
 		parts = append(parts, "Current question:\n"+questionView(cur))
 		if RequiresAnswerChallenge(cur) {
-			parts = append(parts, fmt.Sprintf("%s has depth %d: before resolve_question, its answer needs a closed challenge (target_type question_answer), or a stated reason.", cur.ID, cur.Depth))
+			parts = append(parts, fmt.Sprintf("%s has depth %d: before resolve_question, its answer needs a closed challenge (target_type question_answer), or a stated reason.",
+				cur.ID,
+				cur.Depth))
 		}
 	}
 	if cs := unchallenged(s); len(cs) > 0 {
@@ -259,7 +302,8 @@ func hasActionable(s State) bool {
 }
 
 // systemText is the system prompt of a turn: the agent's own and the loop's instructions for the phase.
-func systemText(p Prompt, kind TurnKind) string {
+func systemText(p Prompt,
+	kind TurnKind) string {
 	var phase string
 	switch kind {
 	case TurnSynthesize, TurnFinal:
@@ -293,12 +337,17 @@ type blocks = []any
 func textBlock(s string) map[string]any { return map[string]any{"type": "text", "text": s} }
 
 // head is the first user message: the task and the scratchpad.
-func head(p Prompt, kind TurnKind, ls LoopState, s State) blocks {
+func head(p Prompt,
+	kind TurnKind,
+	ls LoopState,
+	s State) blocks {
 	out := blocks{textBlock("# Task\n" + p.Task)}
 	out = append(out, textBlock("# Notes (notes.md)\n"+Render(s.Notes)))
 	switch kind {
 	case TurnSynthesize, TurnFinal:
-		out = append(out, textBlock("# Frontier\n"+Summary(s.Frontier, "", s.Limits)))
+		out = append(out, textBlock("# Frontier\n"+Summary(s.Frontier,
+			"",
+			s.Limits)))
 		if g := GapsText(s.Frontier); g != "" {
 			out = append(out, textBlock("# Questions that did not end resolved (they are gaps of the report)\n"+g))
 		}
@@ -306,7 +355,9 @@ func head(p Prompt, kind TurnKind, ls LoopState, s State) blocks {
 			out = append(out, textBlock(fmt.Sprintf("# The investigation was cut short by `%s`\nSay so in the report; the questions still open are listed above as gaps.", ls.Cut)))
 		}
 	default:
-		fr := "# Frontier\n" + Summary(s.Frontier, CurrentID(s), s.Limits)
+		fr := "# Frontier\n" + Summary(s.Frontier,
+			CurrentID(s),
+			s.Limits)
 		if open := ChallengeSummary(s.Challenges); open != "" {
 			fr += "\n# Open challenges\n" + open
 		}
@@ -338,22 +389,34 @@ func turnMessages(t Turn) (assistant, user map[string]any) {
 
 // BuildRequest builds the model call of one turn of the given kind from the loop state and the state of the investigation. Nothing else
 // goes in: the window holds only the last turns (Evict) and the uncommitted ones.
-func BuildRequest(p Prompt, kind TurnKind, ls LoopState, s State) Request {
-	registry := make([]string, 0, len(p.Catalog))
+func BuildRequest(p Prompt,
+	kind TurnKind,
+	ls LoopState,
+	s State) Request {
+	registry := make([]string,
+		0,
+		len(p.Catalog))
 	for _, t := range p.Catalog {
 		if !slices.Contains(p.External, t.Name) {
 			registry = append(registry, t.Name)
 		}
 	}
-	offered := OfferedTools(kind, p.External, registry)
+	offered := OfferedTools(kind,
+		p.External,
+		registry)
 	var tools []ToolSpec
 	for _, t := range p.Catalog {
 		if slices.Contains(offered, t.Name) {
 			tools = append(tools, t)
 		}
 	}
-	msgs := []any{map[string]any{"role": "user", "content": head(p, kind, ls, s)}}
-	instr := textBlock(instruction(kind, ls, s))
+	msgs := []any{map[string]any{"role": "user", "content": head(p,
+		kind,
+		ls,
+		s)}}
+	instr := textBlock(instruction(kind,
+		ls,
+		s))
 	if len(ls.Window) == 0 {
 		msgs[0].(map[string]any)["content"] = append(msgs[0].(map[string]any)["content"].(blocks), instr)
 	}
@@ -362,7 +425,9 @@ func BuildRequest(p Prompt, kind TurnKind, ls LoopState, s State) Request {
 		if i == len(ls.Window)-1 {
 			u["content"] = append(slices.Clone(u["content"].(blocks)), instr)
 		}
-		msgs = append(msgs, a, u)
+		msgs = append(msgs,
+			a,
+			u)
 	}
 	req := Request{
 		System:   systemText(p, kind),

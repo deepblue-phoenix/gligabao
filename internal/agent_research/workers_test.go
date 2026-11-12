@@ -30,8 +30,7 @@ max_parallel = 2
 // planTwo is the planning turn of the supervisor: two questions, both ready, so the loop hands them to workers.
 func planTwo() string {
 	return call(
-		[2]string{"add_question", `{"parent_id":"q_001","question":"Why are batteries good?","priority":0.8,"validation_criteria":"a reason"}`},
-		[2]string{"add_question", `{"parent_id":"q_001","question":"What do batteries cost?","priority":0.7,"validation_criteria":"a price"}`},
+		[2]string{"add_question", `{"parent_id":"q_001","question":"Why are batteries good?","priority":0.8,"validation_criteria":"a reason"}`}, [2]string{"add_question", `{"parent_id":"q_001","question":"What do batteries cost?","priority":0.7,"validation_criteria":"a price"}`},
 	)
 }
 
@@ -67,18 +66,26 @@ func finishRun() []string {
 	}
 }
 
-func startDeep(t *testing.T, d *sql.DB, ops agent_research.Ops, fake *teamFake) (*agent_research.Manager, core.Run) {
+func startDeep(t *testing.T,
+	d *sql.DB,
+	ops agent_research.Ops,
+	fake *teamFake) (*agent_research.Manager, core.Run) {
 	t.Helper()
 	ctx := context.Background()
-	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
+	m := agent_research.NewManager(ctx,
+		d,
+		ops,
+		fake.start(t))
 	m.NotesDir = filepath.Join(t.TempDir(), "notes")
 	if err := m.UseAgentDefs(writeDefs(t, map[string]string{"deep.toml": workersDef})); err != nil {
 		t.Fatal(err)
 	}
-	started, err := m.Start(ctx, "u1", agent_research.Options{
-		Topic: "batteries",
-		Agent: "deep",
-	})
+	started, err := m.Start(ctx,
+		"u1",
+		agent_research.Options{
+			Topic: "batteries",
+			Agent: "deep",
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,17 +96,24 @@ func TestInvestigativeLoopRunsIndependentQuestionsInWorkers(t *testing.T) {
 	runOnBackends(t, testWorkers)
 }
 
-func testWorkers(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+func testWorkers(t *testing.T,
+	d *sql.DB,
+	ops agent_research.Ops) {
 	ctx := context.Background()
 	fake := newTeamFake(withVerifiers(map[string][]string{
 		"root":  append([]string{planTwo()}, finishRun()...),
 		"q_002": {answered("https://a.example/x")},
 		"q_003": {answered("https://b.example/y")},
 	}))
-	m, started := startDeep(t, d, ops, fake)
+	m, started := startDeep(t,
+		d,
+		ops,
+		fake)
 	m.Wait()
 
-	root, err := m.Get(ctx, "u1", started.ID)
+	root, err := m.Get(ctx,
+		"u1",
+		started.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,11 +132,15 @@ func testWorkers(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 		t.Errorf("supervisor calls: %d", fake.calls["root"])
 	}
 	// The workers are runs with a parent and the name of their question.
-	subs, err := m.List(ctx, "u1", agent_research.ListOptions{
-		ParentID: root.ID,
-	})
+	subs, err := m.List(ctx,
+		"u1",
+		agent_research.ListOptions{
+			ParentID: root.ID,
+		})
 	if err != nil || len(subs) != 4 { // the two questions, and the two that verify their claims
-		t.Fatalf("workers: %+v %v", subs, err)
+		t.Fatalf("workers: %+v %v",
+			subs,
+			err)
 	}
 	for _, w := range subs {
 		if w.ParentID == nil || *w.ParentID != root.ID || w.UserID != "u1" || w.Status != core.StatusCompleted || !strings.HasPrefix(w.Name, "q_00") ||
@@ -141,43 +159,64 @@ func testWorkers(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	b := fake.body("q_002", 0)
 	for _, want := range []string{`"name":"web_search"`, `"name":"fetch_url"`, `"name":"submit_findings"`, "You are a worker of an investigation"} {
 		if !strings.Contains(b, want) {
-			t.Errorf("worker request lacks %s: %s", want, b)
+			t.Errorf("worker request lacks %s: %s",
+				want,
+				b)
 		}
 	}
 	if strings.Contains(b, `"name":"add_question"`) || strings.Contains(b, "spawn_subagent") {
 		t.Errorf("a worker has no loop tools: %s", b)
 	}
 	// The claims of the workers are in the notes, UNVERIFIED, with their questions.
-	runDocQueries(t, d, root.ID, strings.HasSuffix(t.Name(), "postgres"))
+	runDocQueries(t,
+		d,
+		root.ID,
+		strings.HasSuffix(t.Name(), "postgres"))
 	if got := fake.body("root", 1); !strings.Contains(got, "a claim from https://a.example/x") || !strings.Contains(got, "UNVERIFIED") {
 		t.Errorf("the notes the supervisor sees lack the claims of the workers")
 	}
 }
 
-func TestStopOfAnAgentStopsItsWorkers(t *testing.T) { runOnBackends(t, testStopWorkers) }
+func TestStopOfAnAgentStopsItsWorkers(t *testing.T) {
+	runOnBackends(t, testStopWorkers)
+}
 
-func testStopWorkers(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+func testStopWorkers(t *testing.T,
+	d *sql.DB,
+	ops agent_research.Ops) {
 	ctx := context.Background()
 	fake := newTeamFake(map[string][]string{"root": {planTwo()}})
 	fake.hang["q_002"], fake.hang["q_003"] = true, true
-	m, started := startDeep(t, d, ops, fake)
-	waitFor(t, "the workers to work", func() bool {
-		fake.mu.Lock()
-		defer fake.mu.Unlock()
-		return fake.calls["q_002"] == 1 && fake.calls["q_003"] == 1
-	})
+	m, started := startDeep(t,
+		d,
+		ops,
+		fake)
+	waitFor(t,
+		"the workers to work",
+		func() bool {
+			fake.mu.Lock()
+			defer fake.mu.Unlock()
+			return fake.calls["q_002"] == 1 && fake.calls["q_003"] == 1
+		})
 
-	if _, err := m.Stop(ctx, "", started.ID, "the test"); err != nil {
+	if _, err := m.Stop(ctx,
+		"",
+		started.ID,
+		"the test"); err != nil {
 		t.Fatal(err)
 	}
 	m.Wait()
-	root, _ := m.Get(ctx, "", started.ID)
+	root, _ := m.Get(ctx,
+		"",
+		started.ID)
 	if root.Status != core.StatusStopped {
 		t.Fatalf("root: %+v", root)
 	}
-	subs, _ := m.List(ctx, "", agent_research.ListOptions{
-		ParentID: started.ID,
-	})
+	subs, _ := m.List(ctx,
+		"",
+		agent_research.ListOptions{
+			ParentID: started.ID,
+		})
 	if len(subs) != 2 {
 		t.Fatalf("workers: %+v", subs)
 	}
@@ -188,22 +227,35 @@ func testStopWorkers(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	}
 	kids, err := m.ChildCounts(ctx, []int64{started.ID, subs[0].ID})
 	if err != nil || kids[started.ID] != 2 || len(kids) != 1 {
-		t.Fatalf("child counts: %v %v", kids, err)
+		t.Fatalf("child counts: %v %v",
+			kids,
+			err)
 	}
 }
 
-func TestStopOfAWorkerLeavesItsSupervisorWorking(t *testing.T) { runOnBackends(t, testStopWorker) }
+func TestStopOfAWorkerLeavesItsSupervisorWorking(t *testing.T) {
+	runOnBackends(t, testStopWorker)
+}
 
-func testStopWorker(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+func testStopWorker(t *testing.T,
+	d *sql.DB,
+	ops agent_research.Ops) {
 	ctx := context.Background()
 	// The supervisor has no script after the fan-out: what matters is that it gets there.
 	fake := newTeamFake(map[string][]string{"root": {planTwo()}, "q_003": {answered("https://b.example/y")}})
 	fake.hang["q_002"] = true
-	m, started := startDeep(t, d, ops, fake)
-	waitFor(t, "the worker to work", func() bool { fake.mu.Lock(); defer fake.mu.Unlock(); return fake.calls["q_002"] == 1 })
-	subs, _ := m.List(ctx, "", agent_research.ListOptions{
-		ParentID: started.ID,
-	})
+	m, started := startDeep(t,
+		d,
+		ops,
+		fake)
+	waitFor(t,
+		"the worker to work",
+		func() bool { fake.mu.Lock(); defer fake.mu.Unlock(); return fake.calls["q_002"] == 1 })
+	subs, _ := m.List(ctx,
+		"",
+		agent_research.ListOptions{
+			ParentID: started.ID,
+		})
 	var stopID int64
 	for _, w := range subs {
 		if w.Name == "q_002" {
@@ -213,11 +265,16 @@ func testStopWorker(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	if stopID == 0 {
 		t.Fatalf("workers: %+v", subs)
 	}
-	if _, err := m.Stop(ctx, "", stopID, "the test"); err != nil {
+	if _, err := m.Stop(ctx,
+		"",
+		stopID,
+		"the test"); err != nil {
 		t.Fatal(err)
 	}
 	m.Wait()
-	w, _ := m.Get(ctx, "", stopID)
+	w, _ := m.Get(ctx,
+		"",
+		stopID)
 	if w.Status != core.StatusStopped || w.Error != "stopped by the test" {
 		t.Fatalf("worker: %+v", w)
 	}
@@ -231,29 +288,37 @@ func TestWorkerTrajectoriesAreMergedIntoTheSupervisors(t *testing.T) {
 	runOnBackends(t, testMergedTrajectories)
 }
 
-func testMergedTrajectories(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+func testMergedTrajectories(t *testing.T,
+	d *sql.DB,
+	ops agent_research.Ops) {
 	ctx := context.Background()
 	fake := newTeamFake(withVerifiers(map[string][]string{
 		"root":  append([]string{planTwo()}, finishRun()...),
 		"q_002": {answered("https://a.example/x")},
 		"q_003": {answered("https://b.example/y")},
 	}))
-	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
+	m := agent_research.NewManager(ctx,
+		d,
+		ops,
+		fake.start(t))
 	m.NotesDir = filepath.Join(t.TempDir(), "notes")
 	if err := m.UseAgentDefs(writeDefs(t, map[string]string{"deep.toml": workersDef})); err != nil {
 		t.Fatal(err)
 	}
 	var mu sync.Mutex
 	got := map[int64]*atif.Trajectory{}
-	m.UseTrajectories(func(id int64, tr *atif.Trajectory) {
+	m.UseTrajectories(func(id int64,
+		tr *atif.Trajectory) {
 		mu.Lock()
 		got[id] = tr
 		mu.Unlock()
 	})
-	started, err := m.Start(ctx, "u1", agent_research.Options{
-		Topic: "batteries",
-		Agent: "deep",
-	})
+	started, err := m.Start(ctx,
+		"u1",
+		agent_research.Options{
+			Topic: "batteries",
+			Agent: "deep",
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +331,9 @@ func testMergedTrajectories(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	perAgent := map[string]int{}
 	for i, s := range tr.Steps {
 		if s.StepID != i+1 {
-			t.Fatalf("step %d has id %d", i+1, s.StepID)
+			t.Fatalf("step %d has id %d",
+				i+1,
+				s.StepID)
 		}
 		name, _ := s.Extra["agent"].(string)
 		perAgent[name]++

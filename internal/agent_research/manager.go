@@ -130,7 +130,11 @@ func KeepActiveRuns() ManagerOption { return func(o *managerOptions) { o.keepAct
 // NewManager makes the manager of the research agents whose runs are kept in d. client runs the agents (may be nil: Start then fails
 // with KindUnavailable). The agents stop when ctx is done. Runs that a restart interrupted (still running in the database) are marked
 // failed, unless KeepActiveRuns is given.
-func NewManager(ctx context.Context, d *sql.DB, ops Ops, client *ai.Client, opts ...ManagerOption) *Manager {
+func NewManager(ctx context.Context,
+	d *sql.DB,
+	ops Ops,
+	client *ai.Client,
+	opts ...ManagerOption) *Manager {
 	var o managerOptions
 	for _, opt := range opts {
 		opt(&o)
@@ -147,8 +151,14 @@ func NewManager(ctx context.Context, d *sql.DB, ops Ops, client *ai.Client, opts
 	if o.keepActive {
 		return m
 	}
-	if k, err := ops.Store.FailActive(ctx, d, "interrupted: the server stopped while the agent worked"); err != nil {
-		gberrors.New(ctx, m.errSink(), "research.recover", err, gberrors.Meta{})
+	if k, err := ops.Store.FailActive(ctx,
+		d,
+		"interrupted: the server stopped while the agent worked"); err != nil {
+		gberrors.New(ctx,
+			m.errSink(),
+			"research.recover",
+			err,
+			gberrors.Meta{})
 		log.WithError(err).Warn("agent research: could not mark interrupted runs as failed")
 	} else if k > 0 {
 		log.Infof("agent research: %d run(s) were interrupted by a restart and marked failed", k)
@@ -180,7 +190,10 @@ func (m *Manager) UseAgentDefs(reg *agent_defs.Registry) error {
 			continue
 		}
 		if _, err := memory_core.ResolveDatasetName(d.Knowledge.Dataset); err != nil {
-			return fmt.Errorf("agent %q (%s): knowledge.dataset: %w", d.Name, d.Source, err)
+			return fmt.Errorf("agent %q (%s): knowledge.dataset: %w",
+				d.Name,
+				d.Source,
+				err)
 		}
 	}
 	for _, d := range reg.List() {
@@ -188,7 +201,10 @@ func (m *Manager) UseAgentDefs(reg *agent_defs.Registry) error {
 			continue
 		}
 		if _, err := memory_core.ResolveUserID(d.Schedule.User); err != nil {
-			return fmt.Errorf("agent %q (%s): schedule.user: %w", d.Name, d.Source, err)
+			return fmt.Errorf("agent %q (%s): schedule.user: %w",
+				d.Name,
+				d.Source,
+				err)
 		}
 	}
 	m.mu.Lock()
@@ -258,7 +274,8 @@ func (m *Manager) Agents() []AgentInfo {
 // applyDef fills in what the definition decides for options that do not say: the model (else the server's default model), the steps,
 // the dataset, and the cap on the cost of the whole research (the lowest of the request's, the definition's and the server's).
 // KindInvalid for a dataset the definition locks.
-func (m *Manager) applyDef(opts Options, def *agent_defs.Def) (Options, error) {
+func (m *Manager) applyDef(opts Options,
+	def *agent_defs.Def) (Options, error) {
 	opts.Agent = def.Name
 	if def.Investigative() {
 		if opts.MaxSteps != 0 {
@@ -286,12 +303,16 @@ func (m *Manager) applyDef(opts Options, def *agent_defs.Def) (Options, error) {
 	if k := def.Knowledge; k.Dataset != "" {
 		switch {
 		case k.DatasetLocked && opts.datasetGiven && opts.Dataset != k.Dataset:
-			return opts, invalidErr(fmt.Sprintf("the agent %q works in the dataset %q only", def.Name, k.Dataset))
+			return opts, invalidErr(fmt.Sprintf("the agent %q works in the dataset %q only",
+				def.Name,
+				k.Dataset))
 		case k.DatasetLocked || !opts.datasetGiven:
 			opts.Dataset = k.Dataset
 		}
 	}
-	opts.treeCostCap = lowestCap(def.Limits.MaxTreeCostUSD, opts.MaxCostUSD, m.MaxCostUSD)
+	opts.treeCostCap = lowestCap(def.Limits.MaxTreeCostUSD,
+		opts.MaxCostUSD,
+		m.MaxCostUSD)
 	return opts, nil
 }
 
@@ -312,7 +333,9 @@ func (m *Manager) Wait() { m.wg.Wait() }
 // Start records a research of opts.Topic for userID (already validated), starts the agent in the background and returns the recorded
 // run (status running, state starting). Errors are *Error: KindInvalid for bad options, KindUnavailable without an LLM, KindConflict
 // if the user has too many agents working, KindInternal.
-func (m *Manager) Start(ctx context.Context, userID string, opts Options) (*core.Run, error) {
+func (m *Manager) Start(ctx context.Context,
+	userID string,
+	opts Options) (*core.Run, error) {
 	opts, err := opts.resolve()
 	if err != nil {
 		return nil, err
@@ -358,7 +381,12 @@ func (m *Manager) Start(ctx context.Context, userID string, opts Options) (*core
 		m.mu.Unlock()
 	}
 	if opts.Runner == core.RunnerModal {
-		return m.startRemote(ctx, userID, opts, def, remote, release)
+		return m.startRemote(ctx,
+			userID,
+			opts,
+			def,
+			remote,
+			release)
 	}
 
 	run := &core.Run{
@@ -374,22 +402,38 @@ func (m *Manager) Start(ctx context.Context, userID string, opts Options) (*core
 	}
 	dbCtx := context.WithoutCancel(ctx)
 	err = m.tx(dbCtx, func(q db.Execer) error {
-		if err := m.Ops.Store.CreateRun(dbCtx, q, run); err != nil {
+		if err := m.Ops.Store.CreateRun(dbCtx,
+			q,
+			run); err != nil {
 			return err
 		}
-		_, err := m.Ops.Store.EnterState(dbCtx, q, run.ID, core.StateStarting, 0, "")
+		_, err := m.Ops.Store.EnterState(dbCtx,
+			q,
+			run.ID,
+			core.StateStarting,
+			0,
+			"")
 		return err
 	})
 	if err != nil {
 		release()
-		gberrors.New(dbCtx, m.errSink(), "research.create", err, gberrors.Meta{"user_id": userID, "topic": truncate(opts.Topic, 100), "agent": def.Name})
+		gberrors.New(dbCtx,
+			m.errSink(),
+			"research.create",
+			err,
+			gberrors.Meta{"user_id": userID, "topic": truncate(opts.Topic, 100), "agent": def.Name})
 		log.WithError(err).WithField("user_id", userID).Error("agent research: recording the run failed")
 		return nil, internalErr("failed to record the research", err)
 	}
 	rec := *run // what the caller gets; the researcher owns run from here on
 
 	// Each agent gets a researcher (all of its state) and a goroutine of its own.
-	r := newResearcher(m, run, opts, mem, nil, def)
+	r := newResearcher(m,
+		run,
+		opts,
+		mem,
+		nil,
+		def)
 	r.onTrajectory = onTrajectory
 	r.recordTrajectory()
 	m.track(r)
@@ -424,20 +468,30 @@ const stopWait = 10 * time.Second
 // returns when the run has ended (or after a few seconds, when the run may still be ending), with the run as it is then. userID is
 // the owner ("" matches every owner, for internal use: the admin UI). KindNotFound if there is no such run, KindConflict if it
 // has ended already.
-func (m *Manager) Stop(ctx context.Context, userID string, id int64, by string) (*core.Run, error) {
+func (m *Manager) Stop(ctx context.Context,
+	userID string,
+	id int64,
+	by string) (*core.Run, error) {
 	m.mu.Lock()
 	r := m.runs[id]
 	rr := m.remotes[id]
 	m.mu.Unlock()
 	if rr != nil {
-		return m.stopRemote(ctx, userID, rr, by)
+		return m.stopRemote(ctx,
+			userID,
+			rr,
+			by)
 	}
 	if r == nil {
-		run, err := m.Get(ctx, userID, id) // not found, or not the owner's
+		run, err := m.Get(ctx,
+			userID,
+			id) // not found, or not the owner's
 		if err != nil {
 			return nil, err
 		}
-		return nil, conflictErr(fmt.Sprintf("research %d is not working (its status is %s)", run.ID, run.Status))
+		return nil, conflictErr(fmt.Sprintf("research %d is not working (its status is %s)",
+			run.ID,
+			run.Status))
 	}
 	if userID != "" && r.run.UserID != userID {
 		return nil, notFoundErr("research not found")
@@ -451,7 +505,9 @@ func (m *Manager) Stop(ctx context.Context, userID string, id int64, by string) 
 	case <-time.After(stopWait):
 	case <-ctx.Done():
 	}
-	run, err := m.Ops.Store.GetRun(context.WithoutCancel(ctx), m.DB, id)
+	run, err := m.Ops.Store.GetRun(context.WithoutCancel(ctx),
+		m.DB,
+		id)
 	if err != nil {
 		return nil, internalErr("failed to read the research", err)
 	}
@@ -459,7 +515,10 @@ func (m *Manager) Stop(ctx context.Context, userID string, id int64, by string) 
 }
 
 // stopRemote is Stop for a research that runs in Modal: the job is asked to end, and the run ends as stopped when it has.
-func (m *Manager) stopRemote(ctx context.Context, userID string, rr *remoteRun, by string) (*core.Run, error) {
+func (m *Manager) stopRemote(ctx context.Context,
+	userID string,
+	rr *remoteRun,
+	by string) (*core.Run, error) {
 	if userID != "" && rr.run.UserID != userID {
 		return nil, notFoundErr("research not found")
 	}
@@ -469,21 +528,29 @@ func (m *Manager) stopRemote(ctx context.Context, userID string, rr *remoteRun, 
 	case <-time.After(stopWait):
 	case <-ctx.Done():
 	}
-	run, err := m.Ops.Store.GetRun(context.WithoutCancel(ctx), m.DB, rr.run.ID)
+	run, err := m.Ops.Store.GetRun(context.WithoutCancel(ctx),
+		m.DB,
+		rr.run.ID)
 	if err != nil {
 		return nil, internalErr("failed to read the research", err)
 	}
 	return run, nil
 }
 
-func (c *stopCause) Error() string { return fmt.Sprintf("research %d stopped by %s", c.runID, c.by) }
+func (c *stopCause) Error() string {
+	return fmt.Sprintf("research %d stopped by %s",
+		c.runID,
+		c.by)
+}
 
 // text is the error recorded with the stopped run id: who stopped it, or that its parent was stopped.
 func (c *stopCause) text(id int64) string {
 	if c.runID == id {
 		return "stopped by " + c.by
 	}
-	return fmt.Sprintf("stopped: the agent that spawned it (run %d) was stopped by %s", c.runID, c.by)
+	return fmt.Sprintf("stopped: the agent that spawned it (run %d) was stopped by %s",
+		c.runID,
+		c.by)
 }
 
 // stopCauseOf is the stopCause that ended ctx, or nil if it was not ended by Stop.
@@ -497,22 +564,30 @@ func stopCauseOf(ctx context.Context) *stopCause {
 
 // Get returns run id with its states. userID is its owner: the run of another user is not found, as if it did not exist ("" matches
 // every owner, for internal use). KindNotFound if there is no such run.
-func (m *Manager) Get(ctx context.Context, userID string, id int64) (*core.Run, error) {
-	run, err := m.Ops.Store.GetRun(ctx, m.DB, id)
+func (m *Manager) Get(ctx context.Context,
+	userID string,
+	id int64) (*core.Run, error) {
+	run, err := m.Ops.Store.GetRun(ctx,
+		m.DB,
+		id)
 	if errors.Is(err, db.ErrNotFound) || (err == nil && userID != "" && run.UserID != userID) {
 		return nil, notFoundErr("research not found")
 	}
 	if err != nil {
 		return nil, internalErr("failed to read the research", err)
 	}
-	if run.States, err = m.Ops.Store.ListStates(ctx, m.DB, id); err != nil {
+	if run.States, err = m.Ops.Store.ListStates(ctx,
+		m.DB,
+		id); err != nil {
 		return nil, internalErr("failed to read the research", err)
 	}
 	return run, nil
 }
 
 // List returns the runs of userID (of every user for ""), newest first, without their states. KindInvalid for bad options.
-func (m *Manager) List(ctx context.Context, userID string, opts ListOptions) ([]core.Run, error) {
+func (m *Manager) List(ctx context.Context,
+	userID string,
+	opts ListOptions) ([]core.Run, error) {
 	f := core.RunFilter{
 		UserID:    userID,
 		RootsOnly: opts.RootsOnly,
@@ -550,7 +625,10 @@ func (m *Manager) List(ctx context.Context, userID string, opts ListOptions) ([]
 		limit = DefaultListLimit
 	}
 	limit = min(limit, MaxListLimit)
-	runs, err := m.Ops.Store.ListRuns(ctx, m.DB, f, limit)
+	runs, err := m.Ops.Store.ListRuns(ctx,
+		m.DB,
+		f,
+		limit)
 	if err != nil {
 		return nil, internalErr("failed to list the researches", err)
 	}
@@ -558,13 +636,16 @@ func (m *Manager) List(ctx context.Context, userID string, opts ListOptions) ([]
 }
 
 // Counts returns how many runs of userID (of every user for "") each status has, sub-agents included; every status is in the map.
-func (m *Manager) Counts(ctx context.Context, userID string) (map[core.Status]int, error) {
+func (m *Manager) Counts(ctx context.Context,
+	userID string) (map[core.Status]int, error) {
 	out := make(map[core.Status]int, len(core.Statuses))
 	for _, s := range core.Statuses {
-		n, err := m.Ops.Store.CountRuns(ctx, m.DB, core.RunFilter{
-			UserID:   userID,
-			Statuses: []core.Status{s},
-		})
+		n, err := m.Ops.Store.CountRuns(ctx,
+			m.DB,
+			core.RunFilter{
+				UserID:   userID,
+				Statuses: []core.Status{s},
+			})
 		if err != nil {
 			return nil, internalErr("failed to count the researches", err)
 		}
@@ -574,8 +655,11 @@ func (m *Manager) Counts(ctx context.Context, userID string) (map[core.Status]in
 }
 
 // ChildCounts returns, for each of the runs ids, how many sub-agents it spawned (a run with none is not in the map).
-func (m *Manager) ChildCounts(ctx context.Context, ids []int64) (map[int64]int, error) {
-	n, err := m.Ops.Store.ChildCounts(ctx, m.DB, ids)
+func (m *Manager) ChildCounts(ctx context.Context,
+	ids []int64) (map[int64]int, error) {
+	n, err := m.Ops.Store.ChildCounts(ctx,
+		m.DB,
+		ids)
 	if err != nil {
 		return nil, internalErr("failed to count the sub-agents", err)
 	}
@@ -583,7 +667,8 @@ func (m *Manager) ChildCounts(ctx context.Context, ids []int64) (map[int64]int, 
 }
 
 // tx runs fn in a transaction.
-func (m *Manager) tx(ctx context.Context, fn func(q db.Execer) error) error {
+func (m *Manager) tx(ctx context.Context,
+	fn func(q db.Execer) error) error {
 	tx, err := m.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err

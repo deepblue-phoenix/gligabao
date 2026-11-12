@@ -24,7 +24,10 @@ const (
 func (e *Error) Error() string { return e.Msg }
 func (e *Error) Unwrap() error { return e.Err }
 
-func internalErr(msg string, err error) *Error { return &Error{KindInternal, msg, err} }
+func internalErr(msg string,
+	err error) *Error {
+	return &Error{KindInternal, msg, err}
+}
 func invalidErr(msg string) *Error {
 	return &Error{
 		Kind: KindInvalid,

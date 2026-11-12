@@ -27,7 +27,10 @@ type Env struct {
 // Execute runs the effects in order inside one store transaction; an effect that fails aborts the whole list. The transitions get stateSeq.
 // A notes write adds its version row in the same transaction; the working-copy file is written after the commit, never inside it (if that
 // fails, the error wraps ErrNotesFile and the database is already right).
-func Execute(ctx context.Context, env Env, stateSeq int, effects []Effect) error {
+func Execute(ctx context.Context,
+	env Env,
+	stateSeq int,
+	effects []Effect) error {
 	if len(effects) == 0 {
 		return nil
 	}
@@ -35,7 +38,11 @@ func Execute(ctx context.Context, env Env, stateSeq int, effects []Effect) error
 	err := env.Store.InTx(ctx, func(tx Tx) error {
 		notes = nil
 		for _, e := range effects {
-			if err := apply(ctx, tx, env.RunID, stateSeq, e); err != nil {
+			if err := apply(ctx,
+				tx,
+				env.RunID,
+				stateSeq,
+				e); err != nil {
 				return err
 			}
 			if w, ok := e.(WriteNotes); ok {
@@ -49,43 +56,70 @@ func Execute(ctx context.Context, env Env, stateSeq int, effects []Effect) error
 	}
 	if notes != nil && env.Files != nil {
 		if err := env.Files.Write(env.NotesPath, notes.Text); err != nil {
-			return fmt.Errorf("%w: %w", ErrNotesFile, err)
+			return fmt.Errorf("%w: %w",
+				ErrNotesFile,
+				err)
 		}
 	}
 	return nil
 }
 
-func apply(ctx context.Context, tx Tx, runID int64, stateSeq int, e Effect) error {
+func apply(ctx context.Context,
+	tx Tx,
+	runID int64,
+	stateSeq int,
+	e Effect) error {
 	switch e := e.(type) {
 	case UpsertQuestion:
-		return tx.UpsertQuestion(ctx, runID, e.Question)
+		return tx.UpsertQuestion(ctx,
+			runID,
+			e.Question)
 	case AddDependency:
-		return tx.AddDependency(ctx, runID, e.QuestionID, e.DependsOnID)
+		return tx.AddDependency(ctx,
+			runID,
+			e.QuestionID,
+			e.DependsOnID)
 	case InsertAttempt:
-		return tx.InsertAttempt(ctx, runID, e.QuestionID, e.Attempt)
+		return tx.InsertAttempt(ctx,
+			runID,
+			e.QuestionID,
+			e.Attempt)
 	case RecordTransitions:
 		for _, t := range e.Transitions {
 			t.StateSeq = stateSeq
-			if _, err := tx.InsertTransition(ctx, runID, t); err != nil {
+			if _, err := tx.InsertTransition(ctx,
+				runID,
+				t); err != nil {
 				return err
 			}
 		}
 		return nil
 	case UpsertSource:
-		return tx.UpsertSource(ctx, runID, e.Source)
+		return tx.UpsertSource(ctx,
+			runID,
+			e.Source)
 	case UpsertClaim:
-		return tx.UpsertClaim(ctx, runID, e.Claim)
+		return tx.UpsertClaim(ctx,
+			runID,
+			e.Claim)
 	case UpsertChallenge:
-		return tx.UpsertChallenge(ctx, runID, e.Challenge)
+		return tx.UpsertChallenge(ctx,
+			runID,
+			e.Challenge)
 	case WriteNotes:
-		_, err := tx.AddNotesVersion(ctx, runID, e.Text, e.Reason, stateSeq)
+		_, err := tx.AddNotesVersion(ctx,
+			runID,
+			e.Text,
+			e.Reason,
+			stateSeq)
 		return err
 	}
 	return fmt.Errorf("unknown effect %T", e)
 }
 
 // Start records a new run in the store: the root question for the objective.
-func (s Session) Start(ctx context.Context, objective string) error {
+func (s Session) Start(ctx context.Context,
+	objective string) error {
 	st, ts, err := NewState(objective, s.Limits)
 	if err != nil {
 		return err
@@ -94,7 +128,13 @@ func (s Session) Start(ctx context.Context, objective string) error {
 	if err != nil {
 		return err
 	}
-	return Execute(ctx, s.Env, seq, Diff(State{}, st, ts, ""))
+	return Execute(ctx,
+		s.Env,
+		seq,
+		Diff(State{},
+			st,
+			ts,
+			""))
 }
 
 // Load is the state of the run as the store holds it.
@@ -120,7 +160,9 @@ func (s Session) Load(ctx context.Context) (State, error) {
 
 // Call runs the tool name with the arguments. An error from the tool or the store is returned (the text of a tool error is what the model
 // should read).
-func (s Session) Call(ctx context.Context, name string, args json.RawMessage) (string, error) {
+func (s Session) Call(ctx context.Context,
+	name string,
+	args json.RawMessage) (string, error) {
 	tool, ok := s.Registry.Get(name)
 	if !ok {
 		return "", fmt.Errorf("unknown tool %q", name)
@@ -137,14 +179,19 @@ func (s Session) Call(ctx context.Context, name string, args json.RawMessage) (s
 	if err != nil {
 		return "", err
 	}
-	if err := Execute(ctx, s.Env, seq, res.Effects); err != nil {
+	if err := Execute(ctx,
+		s.Env,
+		seq,
+		res.Effects); err != nil {
 		return res.Text, err
 	}
 	return res.Text, nil
 }
 
 // Apply runs a pure change of the state as one list of effects.
-func (s Session) Apply(ctx context.Context, notesReason string, fn func(State) (State, []Transition)) error {
+func (s Session) Apply(ctx context.Context,
+	notesReason string,
+	fn func(State) (State, []Transition)) error {
 	st, err := s.Load(ctx)
 	if err != nil {
 		return err
@@ -154,7 +201,13 @@ func (s Session) Apply(ctx context.Context, notesReason string, fn func(State) (
 	if err != nil {
 		return err
 	}
-	if err := Execute(ctx, s.Env, seq, Diff(st, next, ts, notesReason)); err != nil && !errors.Is(err, ErrNotesFile) {
+	if err := Execute(ctx,
+		s.Env,
+		seq,
+		Diff(st,
+			next,
+			ts,
+			notesReason)); err != nil && !errors.Is(err, ErrNotesFile) {
 		return err
 	}
 	return nil

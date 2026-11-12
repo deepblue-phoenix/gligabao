@@ -28,9 +28,11 @@ var workerKey = regexp.MustCompile(`Your question \((q_\d+)`)
 
 func (f *teamFake) start(t *testing.T) *ai.Client { return f.startWith(t) }
 
-func (f *teamFake) startWith(t *testing.T, opts ...ai.Option) *ai.Client {
+func (f *teamFake) startWith(t *testing.T,
+	opts ...ai.Option) *ai.Client {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,
+		r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		body := string(b)
 		if strings.Contains(body, "web_search_20250305") {
@@ -53,7 +55,9 @@ func (f *teamFake) startWith(t *testing.T, opts ...ai.Option) *ai.Client {
 			return
 		}
 		if n > len(script) {
-			http.Error(w, `{"type":"error","error":{"type":"api_error","message":"script ended"}}`, http.StatusInternalServerError)
+			http.Error(w,
+				`{"type":"error","error":{"type":"api_error","message":"script ended"}}`,
+				http.StatusInternalServerError)
 			return
 		}
 		io.WriteString(w, script[n-1])
@@ -88,7 +92,8 @@ func final(text string) string {
 	return `{"model":"m","stop_reason":"end_turn","content":[{"type":"text","text":"` + text + `"}],"usage":{"input_tokens":1,"output_tokens":1}}`
 }
 
-func (f *teamFake) body(key string, i int) string {
+func (f *teamFake) body(key string,
+	i int) string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if i >= len(f.bodies[key]) {

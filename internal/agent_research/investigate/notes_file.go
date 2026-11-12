@@ -41,11 +41,16 @@ func SanitizeUser(user string) string {
 
 // Path is the file of the notes of a run: Dir/notes_<user>_<run>_<notes_id>.md. A run made before notes ids (notes_id "") has no notes
 // file: Path returns "".
-func (f NotesFile) Path(user string, runID int64, notesID string) string {
+func (f NotesFile) Path(user string,
+	runID int64,
+	notesID string) string {
 	if notesID == "" {
 		return ""
 	}
-	return filepath.Join(f.Dir, fmt.Sprintf("notes_%s_%d_%s.md", SanitizeUser(user), runID, notesID))
+	return filepath.Join(f.Dir, fmt.Sprintf("notes_%s_%d_%s.md",
+		SanitizeUser(user),
+		runID,
+		notesID))
 }
 
 // Read returns the text of the file; a missing file reads as the rendered empty notes.
@@ -62,7 +67,8 @@ func (f NotesFile) Read(path string) (string, error) {
 
 // Write writes the text to a temp file in the same directory and renames it over the file, so a reader never sees half a file. The
 // directory is created on first write.
-func (f NotesFile) Write(path, text string) error {
+func (f NotesFile) Write(path,
+	text string) error {
 	if path == "" {
 		return errors.New("write notes file: the run has no notes id")
 	}

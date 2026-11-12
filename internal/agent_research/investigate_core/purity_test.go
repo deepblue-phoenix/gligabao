@@ -14,7 +14,10 @@ func TestPureCoreImports(t *testing.T) {
 		"loop_state.go", "delegate.go", "prompt.go", "evict.go", "gates.go", "breakers.go", "finish_tools.go"}
 	forbidden := []string{"database/sql", "os", "io/fs", "io", "net/http", "context", "path/filepath", "github.com/deepblue-phoenix/gligabao"}
 	for _, file := range pure {
-		f, err := parser.ParseFile(token.NewFileSet(), file, nil, parser.ImportsOnly)
+		f, err := parser.ParseFile(token.NewFileSet(),
+			file,
+			nil,
+			parser.ImportsOnly)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -22,7 +25,9 @@ func TestPureCoreImports(t *testing.T) {
 			path, _ := strconv.Unquote(imp.Path.Value)
 			for _, bad := range forbidden {
 				if path == bad || strings.HasPrefix(path, bad+"/") {
-					t.Errorf("%s imports %s", file, path)
+					t.Errorf("%s imports %s",
+						file,
+						path)
 				}
 			}
 		}

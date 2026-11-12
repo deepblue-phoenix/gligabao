@@ -104,13 +104,22 @@ func ParseSection(name string) (Section, bool) {
 
 // clean makes a text fit the one-line grammar of the notes: one line, single spaces, no "|" (it separates the fields).
 func clean(s string) string {
-	return strings.Join(strings.Fields(strings.ReplaceAll(s, "|", "/")), " ")
+	return strings.Join(strings.Fields(strings.ReplaceAll(s,
+		"|",
+		"/")), " ")
 }
 
 // Excerpt is the text as one clean line cut to n characters.
-func Excerpt(s string, n int) string { return truncate(clean(s), n) }
+func Excerpt(s string,
+	n int) string {
+	return truncate(clean(s), n)
+}
 
-func cleanTitle(s string) string { return clean(strings.ReplaceAll(s, `"`, "'")) }
+func cleanTitle(s string) string {
+	return clean(strings.ReplaceAll(s,
+		`"`,
+		"'"))
+}
 
 // ClaimIDs are the ids of the claims and datapoints.
 func (n Notes) ClaimIDs() []string {
@@ -152,20 +161,30 @@ func (n Notes) withClaim(c Claim) Notes {
 func (n Notes) checkLinks(links []Link) error {
 	for _, l := range links {
 		if _, ok := findSource(n.Sources, l.SourceID); !ok {
-			return fmt.Errorf("%w: unknown source %q (add it to the Sources section first)", ErrInvalid, l.SourceID)
+			return fmt.Errorf("%w: unknown source %q (add it to the Sources section first)",
+				ErrInvalid,
+				l.SourceID)
 		}
 		if l.Stance != "" && l.Stance != StanceSupports && l.Stance != StanceContradicts {
-			return fmt.Errorf("%w: stance %q is not supports or contradicts", ErrInvalid, l.Stance)
+			return fmt.Errorf("%w: stance %q is not supports or contradicts",
+				ErrInvalid,
+				l.Stance)
 		}
 	}
 	return nil
 }
 
 // withLinks returns c with the links added (stance defaults to supports).
-func withLinks(c Claim, links []Link, sources []Source) (Claim, error) {
+func withLinks(c Claim,
+	links []Link,
+	sources []Source) (Claim, error) {
 	for _, l := range links {
 		var err error
-		if c, err = Support(c, l.SourceID, l.Stance, l.Independent, sources); err != nil {
+		if c, err = Support(c,
+			l.SourceID,
+			l.Stance,
+			l.Independent,
+			sources); err != nil {
 			return c, err
 		}
 	}
@@ -175,7 +194,9 @@ func withLinks(c Claim, links []Link, sources []Source) (Claim, error) {
 // Append adds the entries to a section, assigning their ids (c_, d_, s_ with the functions of ids.go), and returns the new notes and the id
 // of each entry (for Sources, the id of the existing source when the URL is known). It is all or nothing. Verified takes no entries (a claim
 // starts UNVERIFIED and is promoted with Update) and Scratch is replaced with SetScratch.
-func Append(n Notes, section Section, entries []Entry) (Notes, []string, error) {
+func Append(n Notes,
+	section Section,
+	entries []Entry) (Notes, []string, error) {
 	if len(entries) == 0 {
 		return n, nil, fmt.Errorf("%w: no entries", ErrInvalid)
 	}
@@ -192,7 +213,10 @@ func Append(n Notes, section Section, entries []Entry) (Notes, []string, error) 
 		case SectionSources:
 			var s Source
 			var sources []Source
-			if sources, s, err = AddSource(n.Sources, e.URL, e.Title, e.Note); err == nil {
+			if sources, s, err = AddSource(n.Sources,
+				e.URL,
+				e.Title,
+				e.Note); err == nil {
 				n.Sources, id = sources, s.ID
 			}
 		case SectionContradictions:
@@ -219,17 +243,22 @@ func Append(n Notes, section Section, entries []Entry) (Notes, []string, error) 
 		case SectionVerified:
 			err = fmt.Errorf("%w: nothing is appended to Verified: add the claim to Unverified, then notes_update it to VERIFIED once it has the sources and the challenge", ErrInvalid)
 		default:
-			err = fmt.Errorf("%w: section %q takes no entries (use notes_scratch for Scratch)", ErrInvalid, section)
+			err = fmt.Errorf("%w: section %q takes no entries (use notes_scratch for Scratch)",
+				ErrInvalid,
+				section)
 		}
 		if err != nil {
-			return orig, nil, fmt.Errorf("entry %d: %w", i+1, err)
+			return orig, nil, fmt.Errorf("entry %d: %w",
+				i+1,
+				err)
 		}
 		ids = append(ids, id)
 	}
 	return n, ids, nil
 }
 
-func appendClaim(n Notes, e Entry) (Notes, string, error) {
+func appendClaim(n Notes,
+	e Entry) (Notes, string, error) {
 	text := clean(e.Text)
 	if text == "" {
 		return n, "", fmt.Errorf("%w: the claim text is empty", ErrInvalid)
@@ -245,7 +274,9 @@ func appendClaim(n Notes, e Entry) (Notes, string, error) {
 		QuestionID: e.QuestionID,
 		Check:      clean(e.Check),
 	}
-	c, err := withLinks(c, e.Sources, n.Sources)
+	c, err := withLinks(c,
+		e.Sources,
+		n.Sources)
 	if err != nil {
 		return n, "", err
 	}
@@ -253,7 +284,8 @@ func appendClaim(n Notes, e Entry) (Notes, string, error) {
 	return n, c.ID, nil
 }
 
-func appendDatapoint(n Notes, e Entry) (Notes, string, error) {
+func appendDatapoint(n Notes,
+	e Entry) (Notes, string, error) {
 	value, context := strings.TrimSpace(e.Value), clean(e.Text)
 	if value == "" || strings.ContainsAny(value, " \t\r\n|") {
 		return n, "", fmt.Errorf("%w: the datapoint needs a value without spaces (put words in the unit)", ErrInvalid)
@@ -274,7 +306,9 @@ func appendDatapoint(n Notes, e Entry) (Notes, string, error) {
 		QuestionID: e.QuestionID,
 		Check:      clean(e.Check),
 	}
-	d, err := withLinks(d, e.Sources, n.Sources)
+	d, err := withLinks(d,
+		e.Sources,
+		n.Sources)
 	if err != nil {
 		return n, "", err
 	}
@@ -290,10 +324,13 @@ func claimIDsOf(list []Claim) []string {
 	return ids
 }
 
-func checkContradiction(n Notes, e Entry) error {
+func checkContradiction(n Notes,
+	e Entry) error {
 	for _, id := range []string{e.A, e.B} {
 		if _, ok := n.Claim(id); !ok {
-			return fmt.Errorf("%w: unknown claim %q", ErrInvalid, id)
+			return fmt.Errorf("%w: unknown claim %q",
+				ErrInvalid,
+				id)
 		}
 	}
 	if e.A == e.B {
@@ -304,23 +341,37 @@ func checkContradiction(n Notes, e Entry) error {
 
 // Update is the only way to change the status, the sources or the retraction of a record. A change to VERIFIED must pass CanVerify (with
 // the challenges and limits it needs): the notes cannot hold a VERIFIED claim that does not meet the rule.
-func Update(n Notes, id string, ch Change, challenges []Challenge, limits Limits) (Notes, error) {
+func Update(n Notes,
+	id string,
+	ch Change,
+	challenges []Challenge,
+	limits Limits) (Notes, error) {
 	if strings.HasPrefix(id, prefixSource) {
-		return updateSource(n, id, ch)
+		return updateSource(n,
+			id,
+			ch)
 	}
 	c, ok := n.Claim(id)
 	if !ok {
-		return n, fmt.Errorf("%w: unknown record %q", ErrInvalid, id)
+		return n, fmt.Errorf("%w: unknown record %q",
+			ErrInvalid,
+			id)
 	}
 	if ch.AddSource != nil {
 		var err error
-		if c, err = Support(c, ch.AddSource.SourceID, ch.AddSource.Stance, ch.AddSource.Independent, n.Sources); err != nil {
+		if c, err = Support(c,
+			ch.AddSource.SourceID,
+			ch.AddSource.Stance,
+			ch.AddSource.Independent,
+			n.Sources); err != nil {
 			return n, err
 		}
 	}
 	if t := clean(ch.Text); t != "" {
 		if c.Status == ClaimVerified {
-			return n, fmt.Errorf("%w: %s is VERIFIED; its text cannot be amended (demote it with status UNVERIFIED and a reason first)", ErrBadStatus, id)
+			return n, fmt.Errorf("%w: %s is VERIFIED; its text cannot be amended (demote it with status UNVERIFIED and a reason first)",
+				ErrBadStatus,
+				id)
 		}
 		c.Text = t
 	}
@@ -333,13 +384,19 @@ func Update(n Notes, id string, ch Change, challenges []Challenge, limits Limits
 	switch ch.Status {
 	case "":
 	case ClaimVerified:
-		if err := CanVerify(c, n.Sources, challenges, limits); err != nil {
+		if err := CanVerify(c,
+			n.Sources,
+			challenges,
+			limits); err != nil {
 			return n, err
 		}
 		c.Status = ClaimVerified
 	case ClaimRefuted:
 		var err error
-		if c, err = Refute(c, ch.SourceID, ch.Reason, n.Sources); err != nil {
+		if c, err = Refute(c,
+			ch.SourceID,
+			ch.Reason,
+			n.Sources); err != nil {
 			return n, err
 		}
 	case ClaimRetracted:
@@ -349,24 +406,35 @@ func Update(n Notes, id string, ch Change, challenges []Challenge, limits Limits
 		}
 	case ClaimUnverified:
 		if c.Status != ClaimVerified && c.Status != ClaimUnverified {
-			return n, fmt.Errorf("%w: %s is %s and stays so", ErrBadStatus, id, c.Status)
+			return n, fmt.Errorf("%w: %s is %s and stays so",
+				ErrBadStatus,
+				id,
+				c.Status)
 		}
 		if c.Status == ClaimVerified {
 			if strings.TrimSpace(ch.Reason) == "" {
-				return n, fmt.Errorf("%w: give the reason for demoting %s", ErrInvalid, id)
+				return n, fmt.Errorf("%w: give the reason for demoting %s",
+					ErrInvalid,
+					id)
 			}
 			c.Status, c.Note = ClaimUnverified, clean(ch.Reason)
 		}
 	default:
-		return n, fmt.Errorf("%w: status %q is not VERIFIED, UNVERIFIED, REFUTED or RETRACTED", ErrInvalid, ch.Status)
+		return n, fmt.Errorf("%w: status %q is not VERIFIED, UNVERIFIED, REFUTED or RETRACTED",
+			ErrInvalid,
+			ch.Status)
 	}
 	return n.withClaim(c), nil
 }
 
-func updateSource(n Notes, id string, ch Change) (Notes, error) {
+func updateSource(n Notes,
+	id string,
+	ch Change) (Notes, error) {
 	i := slices.IndexFunc(n.Sources, func(s Source) bool { return s.ID == id })
 	if i < 0 {
-		return n, fmt.Errorf("%w: unknown source %q", ErrInvalid, id)
+		return n, fmt.Errorf("%w: unknown source %q",
+			ErrInvalid,
+			id)
 	}
 	if ch.Status != "" || ch.AddSource != nil {
 		return n, fmt.Errorf("%w: a source has no status; change its note or title", ErrInvalid)
@@ -385,8 +453,11 @@ func updateSource(n Notes, id string, ch Change) (Notes, error) {
 
 // SetScratch replaces the Scratch section. Line ends are normalized, a line that would look like a section header is indented, and a text
 // above ScratchMaxChars is rejected.
-func SetScratch(n Notes, text string) (Notes, error) {
-	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+func SetScratch(n Notes,
+	text string) (Notes, error) {
+	lines := strings.Split(strings.ReplaceAll(text,
+		"\r\n",
+		"\n"), "\n")
 	for i, l := range lines {
 		if strings.HasPrefix(l, "# ") || strings.HasPrefix(l, "## ") {
 			lines[i] = " " + l
@@ -394,7 +465,10 @@ func SetScratch(n Notes, text string) (Notes, error) {
 	}
 	text = strings.TrimSpace(strings.Join(lines, "\n"))
 	if r := len([]rune(text)); r > ScratchMaxChars {
-		return n, fmt.Errorf("%w: the scratch text has %d characters, the most is %d: shorten it", ErrInvalid, r, ScratchMaxChars)
+		return n, fmt.Errorf("%w: the scratch text has %d characters, the most is %d: shorten it",
+			ErrInvalid,
+			r,
+			ScratchMaxChars)
 	}
 	n.Scratch = text
 	return n, nil
@@ -406,7 +480,9 @@ func TokenEstimate(n Notes) int { return len([]rune(Render(n))) / 4 }
 // Render is the text of the notes file: the fixed sections, one record per line.
 func Render(n Notes) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Notes: %s\n", n.Objective)
+	fmt.Fprintf(&b,
+		"# Notes: %s\n",
+		n.Objective)
 	var verified, unverified []Claim
 	for _, c := range n.Claims {
 		if c.Status == ClaimVerified {
@@ -415,8 +491,11 @@ func Render(n Notes) string {
 			unverified = append(unverified, c)
 		}
 	}
-	section := func(s Section, lines []string) {
-		fmt.Fprintf(&b, "\n## %s\n", s)
+	section := func(s Section,
+		lines []string) {
+		fmt.Fprintf(&b,
+			"\n## %s\n",
+			s)
 		for _, l := range lines {
 			b.WriteString(l + "\n")
 		}
@@ -424,7 +503,9 @@ func Render(n Notes) string {
 	section(SectionVerified, mapSlice(verified, claimLine))
 	section(SectionUnverified, mapSlice(unverified, claimLine))
 	section(SectionContradictions, mapSlice(n.Contradictions, func(c Contradiction) string {
-		l := fmt.Sprintf("- %s vs %s", c.A, c.B)
+		l := fmt.Sprintf("- %s vs %s",
+			c.A,
+			c.B)
 		if c.QuestionID != "" {
 			l += " -> " + c.QuestionID
 		}
@@ -432,7 +513,11 @@ func Render(n Notes) string {
 	}))
 	section(SectionDatapoints, mapSlice(n.Datapoints, claimLine))
 	section(SectionSources, mapSlice(n.Sources, func(s Source) string {
-		l := fmt.Sprintf(`- [%s] %s "%s" (%s)`, s.ID, s.URL, s.Title, s.Domain)
+		l := fmt.Sprintf(`- [%s] %s "%s" (%s)`,
+			s.ID,
+			s.URL,
+			s.Title,
+			s.Domain)
 		if s.Note != "" {
 			l += " | note: " + s.Note
 		}
@@ -442,7 +527,9 @@ func Render(n Notes) string {
 		if a.QuestionID == "" {
 			return "- gap: " + a.Text
 		}
-		return fmt.Sprintf("- %s unresolvable: %s", a.QuestionID, a.Text)
+		return fmt.Sprintf("- %s unresolvable: %s",
+			a.QuestionID,
+			a.Text)
 	}))
 	section(SectionScratch, nil)
 	if n.Scratch != "" {
@@ -451,7 +538,8 @@ func Render(n Notes) string {
 	return b.String()
 }
 
-func mapSlice[T, U any](in []T, f func(T) U) []U {
+func mapSlice[T, U any](in []T,
+	f func(T) U) []U {
 	out := make([]U, len(in))
 	for i, x := range in {
 		out[i] = f(x)
@@ -461,7 +549,10 @@ func mapSlice[T, U any](in []T, f func(T) U) []U {
 
 func claimLine(c Claim) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "- [%s] %s  ", c.ID, c.Status)
+	fmt.Fprintf(&b,
+		"- [%s] %s  ",
+		c.ID,
+		c.Status)
 	if c.Kind == KindDatapoint {
 		b.WriteString(strings.TrimSpace(c.Value + " " + c.Unit))
 		b.WriteString(" | " + c.Text)
@@ -510,12 +601,18 @@ var (
 func Parse(text string) (Notes, []error) {
 	var n Notes
 	var errs []error
-	fail := func(no int, format string, args ...any) {
-		errs = append(errs, fmt.Errorf("notes line %d: %s", no, fmt.Sprintf(format, args...)))
+	fail := func(no int,
+		format string,
+		args ...any) {
+		errs = append(errs, fmt.Errorf("notes line %d: %s",
+			no,
+			fmt.Sprintf(format, args...)))
 	}
 	var section Section
 	var scratch []string
-	for i, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+	for i, line := range strings.Split(strings.ReplaceAll(text,
+		"\r\n",
+		"\n"), "\n") {
 		no := i + 1
 		if section == SectionScratch {
 			scratch = append(scratch, line)
@@ -532,7 +629,9 @@ func Parse(text string) (Notes, []error) {
 		if m := sectionLine.FindStringSubmatch(line); m != nil {
 			s, ok := ParseSection(m[1])
 			if !ok || string(s) != m[1] {
-				fail(no, "unknown section %q", m[1])
+				fail(no,
+					"unknown section %q",
+					m[1])
 				section = "?"
 				continue
 			}
@@ -579,18 +678,28 @@ func Parse(text string) (Notes, []error) {
 			err = fmt.Errorf("outside a known section")
 		}
 		if err != nil {
-			fail(no, "%v: %q", err, line)
+			fail(no,
+				"%v: %q",
+				err,
+				line)
 		}
 	}
 	n.Scratch = strings.TrimSpace(strings.Join(scratch, "\n"))
-	byID := func(a, b Claim) int { return trailingNumber(a.ID) - trailingNumber(b.ID) }
+	byID := func(a,
+		b Claim) int {
+		return trailingNumber(a.ID) - trailingNumber(b.ID)
+	}
 	slices.SortStableFunc(n.Claims, byID)
 	slices.SortStableFunc(n.Datapoints, byID)
-	slices.SortStableFunc(n.Sources, func(a, b Source) int { return trailingNumber(a.ID) - trailingNumber(b.ID) })
+	slices.SortStableFunc(n.Sources, func(a,
+		b Source) int {
+		return trailingNumber(a.ID) - trailingNumber(b.ID)
+	})
 	return n, errs
 }
 
-func parseClaim(line string, section Section) (Claim, error) {
+func parseClaim(line string,
+	section Section) (Claim, error) {
 	segs := strings.Split(line, " | ")
 	m := claimHead.FindStringSubmatch(segs[0])
 	if m == nil {
@@ -659,7 +768,8 @@ func parseClaim(line string, section Section) (Claim, error) {
 	return c, nil
 }
 
-func parseSource(line string, n *Notes) error {
+func parseSource(line string,
+	n *Notes) error {
 	head, note, hasNote := strings.Cut(line, " | note: ")
 	m := sourceLine.FindStringSubmatch(head)
 	if m == nil {

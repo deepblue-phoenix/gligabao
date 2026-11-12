@@ -172,9 +172,15 @@ type workerPool struct {
 var _ investigate.Workers = workerPool{}
 
 // Run starts the worker of the question, waits for it and returns its findings and what it spent.
-func (p workerPool) Run(ctx context.Context, req investigate.WorkerRequest) (investigate.WorkerResult, error) {
+func (p workerPool) Run(ctx context.Context,
+	req investigate.WorkerRequest) (investigate.WorkerResult, error) {
 	reason := "question " + req.QuestionID + ": " + truncate(req.Question, 250)
-	w, err := p.r.mgr.startWorker(p.r, req.QuestionID, reason, req.Brief, p.steps, req.MaxCostUSD)
+	w, err := p.r.mgr.startWorker(p.r,
+		req.QuestionID,
+		reason,
+		req.Brief,
+		p.steps,
+		req.MaxCostUSD)
 	if err != nil {
 		return investigate.WorkerResult{}, err
 	}
@@ -190,7 +196,9 @@ func (p workerPool) Run(ctx context.Context, req investigate.WorkerRequest) (inv
 		CostUSD:      w.total.CostUSD,
 	}
 	if out := w.self.out; out.status != core.StatusCompleted {
-		return res, fmt.Errorf("the worker %s did not finish: %s", w.self.name, out.err)
+		return res, fmt.Errorf("the worker %s did not finish: %s",
+			w.self.name,
+			out.err)
 	}
 	if res.Findings, err = investigate_core.ParseFindings(json.RawMessage(w.self.out.report)); err != nil {
 		return res, err
@@ -200,7 +208,12 @@ func (p workerPool) Run(ctx context.Context, req investigate.WorkerRequest) (inv
 
 // startWorker records a worker of parent (a run with parent_id and a name that starts with name) and starts it in the background, on its own
 // goroutine like every agent. costCap is the most it should spend (0: no cap of its own). It is called on the goroutine of the supervisor, from the fan-out of its loop, possibly several times at once.
-func (m *Manager) startWorker(parent *researcher, name, reason, task string, maxSteps int, costCap float64) (*researcher, error) {
+func (m *Manager) startWorker(parent *researcher,
+	name,
+	reason,
+	task string,
+	maxSteps int,
+	costCap float64) (*researcher, error) {
 	switch {
 	case strings.TrimSpace(task) == "":
 		return nil, errors.New("task is empty")
@@ -214,7 +227,9 @@ func (m *Manager) startWorker(parent *researcher, name, reason, task string, max
 	defer kids.mu.Unlock()
 	base := name
 	for i := 2; slices.ContainsFunc(kids.members, func(k *member) bool { return k.name == name }); i++ {
-		name = fmt.Sprintf("%s-%d", base, i) // a question that goes to a worker again
+		name = fmt.Sprintf("%s-%d",
+			base,
+			i) // a question that goes to a worker again
 	}
 	if parent.tree.capReached(true) {
 		return nil, fmt.Errorf("the cost cap of this research ($%.2f) was reached: no more workers", parent.tree.costCap)
@@ -247,10 +262,17 @@ func (m *Manager) startWorker(parent *researcher, name, reason, task string, max
 	}
 	dbCtx := context.WithoutCancel(m.ctx)
 	err := m.tx(dbCtx, func(q db.Execer) error {
-		if err := m.Ops.Store.CreateRun(dbCtx, q, run); err != nil {
+		if err := m.Ops.Store.CreateRun(dbCtx,
+			q,
+			run); err != nil {
 			return err
 		}
-		_, err := m.Ops.Store.EnterState(dbCtx, q, run.ID, core.StateStarting, 0, "")
+		_, err := m.Ops.Store.EnterState(dbCtx,
+			q,
+			run.ID,
+			core.StateStarting,
+			0,
+			"")
 		return err
 	})
 	if err != nil {
@@ -264,7 +286,12 @@ func (m *Manager) startWorker(parent *researcher, name, reason, task string, max
 		Dataset:  parent.opts.Dataset,
 		Agent:    def.Name,
 	}
-	sub := newResearcher(m, run, opts, parent.mem, parent, def)
+	sub := newResearcher(m,
+		run,
+		opts,
+		parent.mem,
+		parent,
+		def)
 	sub.costCap = costCap
 	sub.onTrajectory = parent.onTrajectory
 	sub.recordTrajectory()
@@ -290,8 +317,12 @@ func workerDef(d *agent_defs.Def) *agent_defs.Def {
 
 // workerAgent makes the agent of a worker: the tools of the definition and the knowledge base, a minimal prompt, and submit_findings as the
 // terminal tool.
-func workerAgent(r *researcher, kb agent.Knowledge) *agent.Agent {
-	a := agent.FromDef(workerDef(r.def), r.client, r.http, kb)
+func workerAgent(r *researcher,
+	kb agent.Knowledge) *agent.Agent {
+	a := agent.FromDef(workerDef(r.def),
+		r.client,
+		r.http,
+		kb)
 	a.ErrSink = r.mgr.errSink()
 	a = withWorkerCode(r, a)
 	a.Tools = append(a.Tools, agent.SubmitFindingsTool(investigate_core.FindingsSchema(), func(raw json.RawMessage) error {
@@ -303,7 +334,8 @@ func workerAgent(r *researcher, kb agent.Knowledge) *agent.Agent {
 }
 
 // withWorkerCode gives the worker the run_code tool when the definition has [code] on and the sandbox is available (like its supervisor's).
-func withWorkerCode(r *researcher, a *agent.Agent) *agent.Agent {
+func withWorkerCode(r *researcher,
+	a *agent.Agent) *agent.Agent {
 	cfg, err := r.codeConfig()
 	if err != nil || cfg == nil {
 		if err != nil {

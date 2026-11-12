@@ -157,7 +157,10 @@ func (q Question) AttemptCount() int { return len(q.Attempts) }
 // NewFrontier is the frontier of the questions, in creation order (by id number): for the store that loads them.
 func NewFrontier(questions []Question) Frontier {
 	qs := slices.Clone(questions)
-	slices.SortFunc(qs, func(a, b Question) int { return idCompare(a.ID, b.ID) })
+	slices.SortFunc(qs, func(a,
+		b Question) int {
+		return idCompare(a.ID, b.ID)
+	})
 	return Frontier{
 		Questions: qs,
 	}
@@ -242,7 +245,12 @@ func Normalize(s string) string {
 }
 
 // move returns q in the status to, and the transition that records it.
-func move(q Question, to Status, trigger Trigger, actor Actor, reason, causedBy string) (Question, Transition) {
+func move(q Question,
+	to Status,
+	trigger Trigger,
+	actor Actor,
+	reason,
+	causedBy string) (Question, Transition) {
 	t := Transition{
 		QuestionID: q.ID,
 		Seq:        q.TransSeq + 1,
@@ -261,7 +269,11 @@ func move(q Question, to Status, trigger Trigger, actor Actor, reason, causedBy 
 }
 
 // reprioritize returns q with priority p, and the transition (from and to are the current status).
-func reprioritize(q Question, p float64, actor Actor, reason, causedBy string) (Question, Transition) {
+func reprioritize(q Question,
+	p float64,
+	actor Actor,
+	reason,
+	causedBy string) (Question, Transition) {
 	q.Priority = p
 	t := Transition{
 		QuestionID: q.ID,
@@ -280,7 +292,9 @@ func reprioritize(q Question, p float64, actor Actor, reason, causedBy string) (
 }
 
 // created returns the question as new (pending) and its first transition.
-func created(q Question, actor Actor, reason string) (Question, Transition) {
+func created(q Question,
+	actor Actor,
+	reason string) (Question, Transition) {
 	q.Status = StatusPending
 	q.TransSeq = 1
 	return q, Transition{
@@ -309,8 +323,15 @@ func NewRoot(objective string) (Frontier, []Transition, error) {
 		Priority:           1,
 		Rationale:          "the objective of the run",
 		ValidationCriteria: "the objective is answered by verified claims, with the gaps and assumptions stated",
-	}, ActorCode, "root question: the objective")
-	q, t2 := move(q, StatusInProgress, TriggerSelected, ActorCode, "the objective is always in progress", "")
+	},
+		ActorCode,
+		"root question: the objective")
+	q, t2 := move(q,
+		StatusInProgress,
+		TriggerSelected,
+		ActorCode,
+		"the objective is always in progress",
+		"")
 	return Frontier{}.with(q), []Transition{t1, t2}, nil
 }
 
@@ -318,13 +339,20 @@ func NewRoot(objective string) (Frontier, []Transition, error) {
 // normalized duplicate of one that exists, more than MaxQuestions questions, unknown or failed dependencies, and a dependency cycle. It
 // returns the transitions it produced: the creation of the question first, then (BlocksParent) the return of the parent to pending, then
 // the raises of priority of the dependencies.
-func Add(f Frontier, parentID string, in AddInput, limits Limits) (Frontier, []Transition, error) {
+func Add(f Frontier,
+	parentID string,
+	in AddInput,
+	limits Limits) (Frontier, []Transition, error) {
 	parent, ok := f.Get(parentID)
 	if !ok {
-		return f, nil, fmt.Errorf("%w: parent %q", ErrUnknownQuestion, parentID)
+		return f, nil, fmt.Errorf("%w: parent %q",
+			ErrUnknownQuestion,
+			parentID)
 	}
 	if parent.Status == StatusPruned {
-		return f, nil, fmt.Errorf("%w: parent %s is pruned", ErrBadStatus, parentID)
+		return f, nil, fmt.Errorf("%w: parent %s is pruned",
+			ErrBadStatus,
+			parentID)
 	}
 	if parent.Depth+1 > limits.MaxDepth {
 		return f, nil, ErrDepthCap
@@ -334,7 +362,9 @@ func Add(f Frontier, parentID string, in AddInput, limits Limits) (Frontier, []T
 		return f, nil, fmt.Errorf("%w: the question is empty", ErrInvalid)
 	}
 	if in.Priority < 0 || in.Priority > 1 {
-		return f, nil, fmt.Errorf("%w: priority %v is not between 0 and 1", ErrInvalid, in.Priority)
+		return f, nil, fmt.Errorf("%w: priority %v is not between 0 and 1",
+			ErrInvalid,
+			in.Priority)
 	}
 	kind := in.Kind
 	switch kind {
@@ -342,26 +372,38 @@ func Add(f Frontier, parentID string, in AddInput, limits Limits) (Frontier, []T
 		kind = KindQuestion
 	case KindQuestion, KindHypothesis:
 	default:
-		return f, nil, fmt.Errorf("%w: kind %q is not question or hypothesis", ErrInvalid, kind)
+		return f, nil, fmt.Errorf("%w: kind %q is not question or hypothesis",
+			ErrInvalid,
+			kind)
 	}
 	norm := Normalize(text)
 	for _, q := range f.Questions {
 		if Normalize(q.Question) == norm {
-			return f, nil, fmt.Errorf("%w: %s already asks that", ErrDuplicateQuestion, q.ID)
+			return f, nil, fmt.Errorf("%w: %s already asks that",
+				ErrDuplicateQuestion,
+				q.ID)
 		}
 	}
 	if len(f.Questions) >= limits.MaxQuestions {
-		return f, nil, fmt.Errorf("%w: the run has %d questions (the most is %d); prune or resolve some", ErrTooManyQuestions, len(f.Questions), limits.MaxQuestions)
+		return f, nil, fmt.Errorf("%w: the run has %d questions (the most is %d); prune or resolve some",
+			ErrTooManyQuestions,
+			len(f.Questions),
+			limits.MaxQuestions)
 	}
 	deps := dedupe(in.DependsOn)
 	slices.SortFunc(deps, idCompare)
 	for _, d := range deps {
 		dq, ok := f.Get(d)
 		if !ok {
-			return f, nil, fmt.Errorf("%w: dependency %q", ErrUnknownQuestion, d)
+			return f, nil, fmt.Errorf("%w: dependency %q",
+				ErrUnknownQuestion,
+				d)
 		}
 		if dq.Status == StatusPruned || dq.Status == StatusUnresolvable {
-			return f, nil, fmt.Errorf("%w: dependency %s is %s and can never be resolved", ErrBadStatus, d, dq.Status)
+			return f, nil, fmt.Errorf("%w: dependency %s is %s and can never be resolved",
+				ErrBadStatus,
+				d,
+				dq.Status)
 		}
 	}
 	priority := in.Priority
@@ -384,17 +426,26 @@ func Add(f Frontier, parentID string, in AddInput, limits Limits) (Frontier, []T
 	if actor == "" {
 		actor = ActorAgent
 	}
-	child, tr := created(child, actor, "added under "+parentID)
+	child, tr := created(child,
+		actor,
+		"added under "+parentID)
 	tr.CausedBy = in.CausedBy
 	out := f.with(child)
 	ts := []Transition{tr}
 	if in.BlocksParent {
 		var err error
-		if out, err = addDep(out, parentID, child.ID); err != nil {
+		if out, err = addDep(out,
+			parentID,
+			child.ID); err != nil {
 			return f, nil, err
 		}
 		if p, _ := out.Get(parentID); p.Status == StatusInProgress {
-			p, t := move(p, StatusPending, TriggerDependencyAdded, ActorCode, child.ID+" must be resolved first", child.ID)
+			p, t := move(p,
+				StatusPending,
+				TriggerDependencyAdded,
+				ActorCode,
+				child.ID+" must be resolved first",
+				child.ID)
 			out = out.with(p)
 			ts = append(ts, t)
 		}
@@ -414,9 +465,16 @@ func dedupe(ids []string) []string {
 }
 
 // addDep makes id depend on dep; it fails if that would make a cycle.
-func addDep(f Frontier, id, dep string) (Frontier, error) {
-	if id == dep || reaches(f, dep, id) {
-		return f, fmt.Errorf("%w: %s cannot depend on %s", ErrCycle, id, dep)
+func addDep(f Frontier,
+	id,
+	dep string) (Frontier, error) {
+	if id == dep || reaches(f,
+		dep,
+		id) {
+		return f, fmt.Errorf("%w: %s cannot depend on %s",
+			ErrCycle,
+			id,
+			dep)
 	}
 	q, _ := f.Get(id)
 	if slices.Contains(q.DependsOn, dep) {
@@ -428,7 +486,9 @@ func addDep(f Frontier, id, dep string) (Frontier, error) {
 }
 
 // reaches reports whether to can be reached from from by following dependency edges (depth-first search).
-func reaches(f Frontier, from, to string) bool {
+func reaches(f Frontier,
+	from,
+	to string) bool {
 	seen := map[string]bool{}
 	var visit func(string) bool
 	visit = func(id string) bool {
@@ -447,7 +507,8 @@ func reaches(f Frontier, from, to string) bool {
 
 // raiseDeps raises, recursively, every unfinished dependency of id to at least the priority of its dependant (a reprioritized
 // transition each): unblocking work is never starved.
-func raiseDeps(f Frontier, id string) (Frontier, []Transition) {
+func raiseDeps(f Frontier,
+	id string) (Frontier, []Transition) {
 	q, _ := f.Get(id)
 	var ts []Transition
 	for _, d := range q.DependsOn {
@@ -455,7 +516,11 @@ func raiseDeps(f Frontier, id string) (Frontier, []Transition) {
 		if dq.Status == StatusResolved || dq.Status == StatusPruned || dq.Status == StatusUnresolvable || dq.Priority >= q.Priority {
 			continue
 		}
-		dq, t := reprioritize(dq, q.Priority, ActorCode, "raised to the priority of "+id+", which depends on it", id)
+		dq, t := reprioritize(dq,
+			q.Priority,
+			ActorCode,
+			"raised to the priority of "+id+", which depends on it",
+			id)
 		f = f.with(dq)
 		var more []Transition
 		f, more = raiseDeps(f, d)
@@ -465,7 +530,8 @@ func raiseDeps(f Frontier, id string) (Frontier, []Transition) {
 }
 
 // better orders questions for selection: higher priority, then lower depth, then older.
-func better(a, b Question) int {
+func better(a,
+	b Question) int {
 	switch {
 	case a.Priority != b.Priority:
 		if a.Priority > b.Priority {
@@ -540,13 +606,22 @@ func Select(f Frontier) (Frontier, *Question, []Transition) {
 			dep, _ := f.Get(chain[i+1])
 			if dep.Priority < up.Priority {
 				var t Transition
-				dep, t = reprioritize(dep, up.Priority, ActorCode, "raised to the priority of "+up.ID+", which waits on it", up.ID)
+				dep, t = reprioritize(dep,
+					up.Priority,
+					ActorCode,
+					"raised to the priority of "+up.ID+", which waits on it",
+					up.ID)
 				f = f.with(dep)
 				ts = append(ts, t)
 			}
 		}
 		q, _ := f.Get(chain[len(chain)-1])
-		q, t := move(q, StatusInProgress, TriggerSelected, ActorCode, "highest priority actionable question", "")
+		q, t := move(q,
+			StatusInProgress,
+			TriggerSelected,
+			ActorCode,
+			"highest priority actionable question",
+			"")
 		return f.with(q), &q, append(ts, t)
 	}
 	return f, nil, nil
@@ -558,12 +633,18 @@ const ReasonMarker = "(reason:"
 var claimRef = regexp.MustCompile(`\b[cd]_\d+\b`)
 
 // ClaimRefs are the claim and datapoint ids that text cites.
-func ClaimRefs(text string) []string { return dedupe(claimRef.FindAllString(text, -1)) }
+func ClaimRefs(text string) []string {
+	return dedupe(claimRef.FindAllString(text, -1))
+}
 
 // Resolve marks an in-progress question resolved. The question must have validation criteria and the answer must not be empty. The
 // answer is stored with the claim ids ("answer [c_001, c_002]"). It then runs Reblock.
-func Resolve(f Frontier, id string, in ResolveInput) (Frontier, []Transition, error) {
-	q, err := mustBe(f, id, StatusInProgress)
+func Resolve(f Frontier,
+	id string,
+	in ResolveInput) (Frontier, []Transition, error) {
+	q, err := mustBe(f,
+		id,
+		StatusInProgress)
 	if err != nil {
 		return f, nil, err
 	}
@@ -572,7 +653,9 @@ func Resolve(f Frontier, id string, in ResolveInput) (Frontier, []Transition, er
 		return f, nil, fmt.Errorf("%w: the answer is empty", ErrInvalid)
 	}
 	if strings.TrimSpace(q.ValidationCriteria) == "" {
-		return f, nil, fmt.Errorf("%w: %s has no validation criteria, so there is nothing to meet", ErrInvalid, id)
+		return f, nil, fmt.Errorf("%w: %s has no validation criteria, so there is nothing to meet",
+			ErrInvalid,
+			id)
 	}
 	if len(in.ClaimIDs) > 0 {
 		answer += " [" + strings.Join(dedupe(in.ClaimIDs), ", ") + "]"
@@ -582,7 +665,12 @@ func Resolve(f Frontier, id string, in ResolveInput) (Frontier, []Transition, er
 	}
 	reason := truncate(answer, 200)
 	q.Answer = answer
-	q, t := move(q, StatusResolved, TriggerResolved, ActorAgent, reason, "")
+	q, t := move(q,
+		StatusResolved,
+		TriggerResolved,
+		ActorAgent,
+		reason,
+		"")
 	out, more := Reblock(f.with(q))
 	return out, append([]Transition{t}, more...), nil
 }
@@ -590,8 +678,15 @@ func Resolve(f Frontier, id string, in ResolveInput) (Frontier, []Transition, er
 // Retry handles an inconclusive attempt on an in-progress question. While the question has fewer than MaxAttempts attempts, newQuery (which
 // must differ from every earlier query, normalized) is logged as the next attempt with why as its outcome, and the question goes back to
 // pending. At MaxAttempts it becomes unresolvable instead, and the assumption is required (it is stored as the answer).
-func Retry(f Frontier, id, newQuery, why, assumption string, limits Limits) (Frontier, []Transition, error) {
-	q, err := mustBe(f, id, StatusInProgress)
+func Retry(f Frontier,
+	id,
+	newQuery,
+	why,
+	assumption string,
+	limits Limits) (Frontier, []Transition, error) {
+	q, err := mustBe(f,
+		id,
+		StatusInProgress)
 	if err != nil {
 		return f, nil, err
 	}
@@ -602,10 +697,18 @@ func Retry(f Frontier, id, newQuery, why, assumption string, limits Limits) (Fro
 	if len(q.Attempts) >= limits.MaxAttempts {
 		assumption = strings.TrimSpace(assumption)
 		if assumption == "" {
-			return f, nil, fmt.Errorf("%w: %s has used its %d attempts and becomes unresolvable: state the assumption you make instead", ErrInvalid, id, limits.MaxAttempts)
+			return f, nil, fmt.Errorf("%w: %s has used its %d attempts and becomes unresolvable: state the assumption you make instead",
+				ErrInvalid,
+				id,
+				limits.MaxAttempts)
 		}
 		q.Answer = assumption
-		q, t := move(q, StatusUnresolvable, TriggerAttemptsExhausted, ActorCode, assumption, "")
+		q, t := move(q,
+			StatusUnresolvable,
+			TriggerAttemptsExhausted,
+			ActorCode,
+			assumption,
+			"")
 		out, more := Reblock(f.with(q))
 		return out, append([]Transition{t}, more...), nil
 	}
@@ -615,7 +718,9 @@ func Retry(f Frontier, id, newQuery, why, assumption string, limits Limits) (Fro
 	}
 	for _, a := range q.Attempts {
 		if Normalize(a.Query) == norm {
-			return f, nil, fmt.Errorf("%w: that query was already tried (attempt %d); formulate a different one", ErrDuplicateQuestion, a.Seq)
+			return f, nil, fmt.Errorf("%w: that query was already tried (attempt %d); formulate a different one",
+				ErrDuplicateQuestion,
+				a.Seq)
 		}
 	}
 	q.Attempts = append(slices.Clone(q.Attempts), Attempt{
@@ -623,15 +728,24 @@ func Retry(f Frontier, id, newQuery, why, assumption string, limits Limits) (Fro
 		Query:   strings.TrimSpace(newQuery),
 		Outcome: why,
 	})
-	q, t := move(q, StatusPending, TriggerRetried, ActorAgent, why, "")
+	q, t := move(q,
+		StatusPending,
+		TriggerRetried,
+		ActorAgent,
+		why,
+		"")
 	return f.with(q), []Transition{t}, nil
 }
 
 // AddAttempt appends an attempt to the log of a question (no status change, so no transition).
-func AddAttempt(f Frontier, id string, a Attempt) (Frontier, Attempt, error) {
+func AddAttempt(f Frontier,
+	id string,
+	a Attempt) (Frontier, Attempt, error) {
 	q, ok := f.Get(id)
 	if !ok {
-		return f, Attempt{}, fmt.Errorf("%w: %q", ErrUnknownQuestion, id)
+		return f, Attempt{}, fmt.Errorf("%w: %q",
+			ErrUnknownQuestion,
+			id)
 	}
 	a.Seq = len(q.Attempts) + 1
 	q.Attempts = append(slices.Clone(q.Attempts), a)
@@ -640,36 +754,61 @@ func AddAttempt(f Frontier, id string, a Attempt) (Frontier, Attempt, error) {
 
 // Reopen returns a resolved question to pending with a raised priority (priority if it is above the current one, else 0.2 more, at most
 // 1), clearing its answer; the reason and the cause (a question or challenge id, or "") go in the transition.
-func Reopen(f Frontier, id, why string, priority float64, causedBy string) (Frontier, []Transition, error) {
-	q, err := mustBe(f, id, StatusResolved)
+func Reopen(f Frontier,
+	id,
+	why string,
+	priority float64,
+	causedBy string) (Frontier, []Transition, error) {
+	q, err := mustBe(f,
+		id,
+		StatusResolved)
 	if err != nil {
 		return f, nil, err
 	}
 	if strings.TrimSpace(why) == "" {
-		return f, nil, fmt.Errorf("%w: say why %s is reopened", ErrInvalid, id)
+		return f, nil, fmt.Errorf("%w: say why %s is reopened",
+			ErrInvalid,
+			id)
 	}
 	if priority < 0 || priority > 1 {
-		return f, nil, fmt.Errorf("%w: priority %v is not between 0 and 1", ErrInvalid, priority)
+		return f, nil, fmt.Errorf("%w: priority %v is not between 0 and 1",
+			ErrInvalid,
+			priority)
 	}
 	q.Priority = max(priority, min(1, q.Priority+0.2))
 	q.Answer = ""
-	q, t := move(q, StatusPending, TriggerReopened, ActorAgent, strings.TrimSpace(why), causedBy)
+	q, t := move(q,
+		StatusPending,
+		TriggerReopened,
+		ActorAgent,
+		strings.TrimSpace(why),
+		causedBy)
 	out := f.with(q)
 	out, raised := raiseDeps(out, id)
 	return out, append([]Transition{t}, raised...), nil
 }
 
 // SetPriority changes the priority of a question that is not finished (a reprioritized transition) and raises the floor of its dependencies.
-func SetPriority(f Frontier, id string, priority float64, why string) (Frontier, []Transition, error) {
+func SetPriority(f Frontier,
+	id string,
+	priority float64,
+	why string) (Frontier, []Transition, error) {
 	q, ok := f.Get(id)
 	if !ok {
-		return f, nil, fmt.Errorf("%w: %q", ErrUnknownQuestion, id)
+		return f, nil, fmt.Errorf("%w: %q",
+			ErrUnknownQuestion,
+			id)
 	}
 	if q.Status == StatusResolved || q.Status == StatusPruned || q.Status == StatusUnresolvable {
-		return f, nil, fmt.Errorf("%w: %s is %s", ErrBadStatus, id, q.Status)
+		return f, nil, fmt.Errorf("%w: %s is %s",
+			ErrBadStatus,
+			id,
+			q.Status)
 	}
 	if priority < 0 || priority > 1 {
-		return f, nil, fmt.Errorf("%w: priority %v is not between 0 and 1", ErrInvalid, priority)
+		return f, nil, fmt.Errorf("%w: priority %v is not between 0 and 1",
+			ErrInvalid,
+			priority)
 	}
 	if strings.TrimSpace(why) == "" {
 		return f, nil, fmt.Errorf("%w: say why the priority changes", ErrInvalid)
@@ -677,7 +816,11 @@ func SetPriority(f Frontier, id string, priority float64, why string) (Frontier,
 	if priority == q.Priority {
 		return f, nil, nil
 	}
-	q, t := reprioritize(q, priority, ActorAgent, strings.TrimSpace(why), "")
+	q, t := reprioritize(q,
+		priority,
+		ActorAgent,
+		strings.TrimSpace(why),
+		"")
 	out, raised := raiseDeps(f.with(q), id)
 	return out, append([]Transition{t}, raised...), nil
 }
@@ -685,23 +828,35 @@ func SetPriority(f Frontier, id string, priority float64, why string) (Frontier,
 // PruneBranch drops a question (not the root) that is pending, blocked or in progress, and recursively all its pending and blocked
 // descendants, one transition each: the question itself with trigger pruned_scope by the agent, the descendants pruned_branch by code.
 // The reason is stored as the answer. It then runs Reblock.
-func PruneBranch(f Frontier, id, reason string) (Frontier, []Transition, error) {
+func PruneBranch(f Frontier,
+	id,
+	reason string) (Frontier, []Transition, error) {
 	q, ok := f.Get(id)
 	if !ok {
-		return f, nil, fmt.Errorf("%w: %q", ErrUnknownQuestion, id)
+		return f, nil, fmt.Errorf("%w: %q",
+			ErrUnknownQuestion,
+			id)
 	}
 	if q.ParentID == "" {
 		return f, nil, fmt.Errorf("%w: the root question cannot be pruned", ErrInvalid)
 	}
 	if q.Status != StatusPending && q.Status != StatusBlocked && q.Status != StatusInProgress {
-		return f, nil, fmt.Errorf("%w: %s is %s", ErrBadStatus, id, q.Status)
+		return f, nil, fmt.Errorf("%w: %s is %s",
+			ErrBadStatus,
+			id,
+			q.Status)
 	}
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
 		return f, nil, fmt.Errorf("%w: give the reason for pruning", ErrInvalid)
 	}
 	q.Answer = reason
-	q, t := move(q, StatusPruned, TriggerPrunedScope, ActorAgent, reason, "")
+	q, t := move(q,
+		StatusPruned,
+		TriggerPrunedScope,
+		ActorAgent,
+		reason,
+		"")
 	out, ts := f.with(q), []Transition{t}
 	var drop func(parent string)
 	drop = func(parent string) {
@@ -709,7 +864,12 @@ func PruneBranch(f Frontier, id, reason string) (Frontier, []Transition, error) 
 			if c.Status == StatusPending || c.Status == StatusBlocked {
 				c.Answer = "pruned with " + id + ": " + reason
 				var tc Transition
-				c, tc = move(c, StatusPruned, TriggerPrunedBranch, ActorCode, "descendant of "+id+": "+reason, id)
+				c, tc = move(c,
+					StatusPruned,
+					TriggerPrunedBranch,
+					ActorCode,
+					"descendant of "+id+": "+reason,
+					id)
 				out, ts = out.with(c), append(ts, tc)
 				drop(c.ID)
 			}
@@ -726,7 +886,9 @@ func Reblock(f Frontier) (Frontier, []Transition) {
 	var ts []Transition
 	for _, q := range f.Questions {
 		cur, _ := f.Get(q.ID)
-		deps := make([]Question, 0, len(cur.DependsOn))
+		deps := make([]Question,
+			0,
+			len(cur.DependsOn))
 		for _, d := range cur.DependsOn {
 			dq, _ := f.Get(d)
 			deps = append(deps, dq)
@@ -735,28 +897,47 @@ func Reblock(f Frontier) (Frontier, []Transition) {
 		allResolved := !slices.ContainsFunc(deps, func(d Question) bool { return d.Status != StatusResolved })
 		switch {
 		case cur.Status == StatusPending && failed >= 0:
-			next, t := move(cur, StatusBlocked, TriggerDependencyFailed, ActorCode, deps[failed].ID+" is "+string(deps[failed].Status), deps[failed].ID)
+			next, t := move(cur,
+				StatusBlocked,
+				TriggerDependencyFailed,
+				ActorCode,
+				deps[failed].ID+" is "+string(deps[failed].Status),
+				deps[failed].ID)
 			f, ts = f.with(next), append(ts, t)
 		case cur.Status == StatusBlocked && allResolved:
-			next, t := move(cur, StatusPending, TriggerDependencyMet, ActorCode, "all dependencies are resolved", "")
+			next, t := move(cur,
+				StatusPending,
+				TriggerDependencyMet,
+				ActorCode,
+				"all dependencies are resolved",
+				"")
 			f, ts = f.with(next), append(ts, t)
 		}
 	}
 	return f, ts
 }
 
-func mustBe(f Frontier, id string, want Status) (Question, error) {
+func mustBe(f Frontier,
+	id string,
+	want Status) (Question, error) {
 	q, ok := f.Get(id)
 	if !ok {
-		return Question{}, fmt.Errorf("%w: %q", ErrUnknownQuestion, id)
+		return Question{}, fmt.Errorf("%w: %q",
+			ErrUnknownQuestion,
+			id)
 	}
 	if q.Status != want {
-		return Question{}, fmt.Errorf("%w: %s is %s, it must be %s", ErrBadStatus, id, q.Status, want)
+		return Question{}, fmt.Errorf("%w: %s is %s, it must be %s",
+			ErrBadStatus,
+			id,
+			q.Status,
+			want)
 	}
 	return q, nil
 }
 
-func truncate(s string, n int) string {
+func truncate(s string,
+	n int) string {
 	r := []rune(s)
 	if len(r) <= n {
 		return s
@@ -766,7 +947,9 @@ func truncate(s string, n int) string {
 
 // Summary is the compact frontier text of the prompt (the design's Prompt contents): the counts by status, the current question with its
 // criteria and the queries tried, the next three actionable ones, and the blocked ones with what they wait on.
-func Summary(f Frontier, currentID string, limits Limits) string {
+func Summary(f Frontier,
+	currentID string,
+	limits Limits) string {
 	counts := map[Status]int{}
 	for _, q := range f.Questions {
 		counts[q.Status]++
@@ -774,25 +957,39 @@ func Summary(f Frontier, currentID string, limits Limits) string {
 	var parts []string
 	for _, s := range []Status{StatusResolved, StatusInProgress, StatusPending, StatusBlocked, StatusUnresolvable, StatusPruned} {
 		if counts[s] > 0 {
-			parts = append(parts, fmt.Sprintf("%d %s", counts[s], s))
+			parts = append(parts, fmt.Sprintf("%d %s",
+				counts[s],
+				s))
 		}
 	}
 	if len(parts) == 0 {
 		parts = []string{"empty"}
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Frontier: %s  (max_depth %d)\n", strings.Join(parts, ", "), limits.MaxDepth)
+	fmt.Fprintf(&b,
+		"Frontier: %s  (max_depth %d)\n",
+		strings.Join(parts, ", "),
+		limits.MaxDepth)
 	if cur, ok := f.Get(currentID); ok {
-		fmt.Fprintf(&b, "Current: [%s] (P %.2f, depth %d) %s\n", cur.ID, cur.Priority, cur.Depth, cur.Question)
+		fmt.Fprintf(&b,
+			"Current: [%s] (P %.2f, depth %d) %s\n",
+			cur.ID,
+			cur.Priority,
+			cur.Depth,
+			cur.Question)
 		if cur.ValidationCriteria != "" {
-			fmt.Fprintf(&b, "  criteria: %s\n", cur.ValidationCriteria)
+			fmt.Fprintf(&b,
+				"  criteria: %s\n",
+				cur.ValidationCriteria)
 		}
 		if len(cur.Attempts) > 0 {
 			tried := make([]string, len(cur.Attempts))
 			for i, a := range cur.Attempts {
 				tried[i] = fmt.Sprintf("%q", a.Query)
 			}
-			fmt.Fprintf(&b, "  tried: %s\n", strings.Join(tried, ", "))
+			fmt.Fprintf(&b,
+				"  tried: %s\n",
+				strings.Join(tried, ", "))
 		}
 	}
 	var next []Question
@@ -804,7 +1001,11 @@ func Summary(f Frontier, currentID string, limits Limits) string {
 	if len(next) > 0 {
 		b.WriteString("Next up:\n")
 		for _, q := range next[:min(3, len(next))] {
-			fmt.Fprintf(&b, "- [%s] (P %.2f) %s\n", q.ID, q.Priority, q.Question)
+			fmt.Fprintf(&b,
+				"- [%s] (P %.2f) %s\n",
+				q.ID,
+				q.Priority,
+				q.Question)
 		}
 	}
 	for _, q := range f.Questions {
@@ -815,7 +1016,10 @@ func Summary(f Frontier, currentID string, limits Limits) string {
 		for _, d := range f.unresolvedDeps(q) {
 			waits = append(waits, d.ID)
 		}
-		fmt.Fprintf(&b, "Blocked: [%s] waits on %s\n", q.ID, strings.Join(waits, ", "))
+		fmt.Fprintf(&b,
+			"Blocked: [%s] waits on %s\n",
+			q.ID,
+			strings.Join(waits, ", "))
 	}
 	return b.String()
 }

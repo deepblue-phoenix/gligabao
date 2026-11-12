@@ -25,9 +25,11 @@ import (
 
 // investigateLimits are the limits of the loop: the defaults of the design, the knobs of the definition and the options over them, and
 // the cost cap (the lowest of the caps that apply, 0 for none).
-func investigateLimits(k agent_defs.Investigate, costCap float64) investigate_core.Limits {
+func investigateLimits(k agent_defs.Investigate,
+	costCap float64) investigate_core.Limits {
 	l := investigate_core.DefaultLimits()
-	pick := func(v, def int) int {
+	pick := func(v,
+		def int) int {
 		if v > 0 {
 			return v
 		}
@@ -116,10 +118,12 @@ func (r *researcher) runInvestigative() (*agent.Result, error) {
 	}
 	sess := investigate_core.Session{
 		Env: investigate_core.Env{
-			Store:     r.mgr.Ops.Investigate(r.db),
-			Files:     files,
-			RunID:     r.run.ID,
-			NotesPath: local.Path(r.run.UserID, r.run.ID, r.run.NotesID),
+			Store: r.mgr.Ops.Investigate(r.db),
+			Files: files,
+			RunID: r.run.ID,
+			NotesPath: local.Path(r.run.UserID,
+				r.run.ID,
+				r.run.NotesID),
 		},
 		Registry: investigate_core.LoopRegistry(),
 		Limits:   limits,
@@ -140,12 +144,41 @@ func (r *researcher) runInvestigative() (*agent.Result, error) {
 		External:  r.agent.Tools,
 		Code:      code,
 		Hooks: investigate.Hooks{
-			BeforeModel: func(turn int, state, detail string) { r.enter(state, turn, detail) },
-			Entered:     func(turn int, state, detail string) { r.enter(state, turn, detail) },
-			AfterModel:  func(_ int, t investigate.Totals) { usage(t) },
-			BeforeTool:  func(turn int, name string, input json.RawMessage) { r.beforeTool(turn, name, input) },
-			AfterTool: func(turn int, name, out string, isErr bool, t investigate.Totals) {
-				r.afterTool(turn, name, out, isErr, totalsOf(t))
+			BeforeModel: func(turn int,
+				state,
+				detail string) {
+				r.enter(state,
+					turn,
+					detail)
+			},
+			Entered: func(turn int,
+				state,
+				detail string) {
+				r.enter(state,
+					turn,
+					detail)
+			},
+			AfterModel: func(_ int,
+				t investigate.Totals) {
+				usage(t)
+			},
+			BeforeTool: func(turn int,
+				name string,
+				input json.RawMessage) {
+				r.beforeTool(turn,
+					name,
+					input)
+			},
+			AfterTool: func(turn int,
+				name,
+				out string,
+				isErr bool,
+				t investigate.Totals) {
+				r.afterTool(turn,
+					name,
+					out,
+					isErr,
+					totalsOf(t))
 			},
 			PhaseChanged: r.savePhase,
 		},
@@ -186,8 +219,13 @@ func totalsOf(t investigate.Totals) agent.Result {
 }
 
 // savePhase writes the phase and the stop reason of the run. A failed write is logged and does not stop the agent.
-func (r *researcher) savePhase(phase investigate_core.Phase, stopReason string) {
-	if err := r.store.SetPhase(r.dbCtx, r.db, r.run.ID, string(phase), stopReason); err != nil {
+func (r *researcher) savePhase(phase investigate_core.Phase,
+	stopReason string) {
+	if err := r.store.SetPhase(r.dbCtx,
+		r.db,
+		r.run.ID,
+		string(phase),
+		stopReason); err != nil {
 		r.logf.WithError(err).Warn("agent research: recording the phase failed")
 	}
 }
@@ -196,27 +234,34 @@ func (r *researcher) savePhase(phase investigate_core.Phase, stopReason string) 
 const rememberTimeout = 10 * time.Minute
 
 // reportMemoryText is the text remembered for a final report: the topic as the title, then the report.
-func reportMemoryText(topic, report string) string {
+func reportMemoryText(topic,
+	report string) string {
 	return "Deep-research report: " + topic + "\n\n" + strings.TrimSpace(report)
 }
 
 // shouldRememberReport says whether the final report of a run is remembered: only the root agent of an investigative research that
 // ended with a report, has a knowledge base, and was not asked not to.
-func (r *researcher) shouldRememberReport(res *agent.Result, runErr error) bool {
+func (r *researcher) shouldRememberReport(res *agent.Result,
+	runErr error) bool {
 	return r.parent == nil && r.def.Investigative() && !r.opts.NoRemember && r.kb != nil &&
 		runErr == nil && res != nil && strings.TrimSpace(res.Answer) != "" && r.runCtx.Err() == nil && r.ctx.Err() == nil
 }
 
 // rememberReport is the explicit remember call at the end of the run: the final report goes into the dataset of the research through
 // the remember pipeline (waiting for it), so that knowledge builds up. A failure is logged and does not fail the research.
-func (r *researcher) rememberReport(res *agent.Result, runErr error) {
+func (r *researcher) rememberReport(res *agent.Result,
+	runErr error) {
 	if !r.shouldRememberReport(res, runErr) {
 		return
 	}
-	r.enter(core.StateRemembering, r.total.Steps, "final report")
+	r.enter(core.StateRemembering,
+		r.total.Steps,
+		"final report")
 	ctx, cancel := context.WithTimeout(r.ctx, rememberTimeout)
 	defer cancel()
-	out, err := r.kb.Remember(ctx, reportMemoryText(r.opts.Topic, res.Answer), true)
+	out, err := r.kb.Remember(ctx,
+		reportMemoryText(r.opts.Topic, res.Answer),
+		true)
 	if err != nil {
 		r.logf.WithError(err).Warn("agent research: remembering the final report failed")
 		return

@@ -4,6 +4,19 @@
 
 **Struct literals are pretty printed.** When constructing a struct, write every key/value on its own line, never the whole struct on one line. One-line struct construction is hard to read.
 
+**Function definitions with 2 or more arguments, and function calls with 3 or more arguments, are split per argument.** Keep the first argument on the line of the name, then put each following argument on its own line, indented one level deeper than the line the definition or call starts on. The closing `)` goes after the last argument. This makes the argument list easy to scan at a glance. Calls with 1 or 2 arguments stay on one line.
+
+```go
+func newRun(ctx context.Context,
+	db *sql.DB,
+	userID string) (*Run, error) {
+
+	run, err := store.CreateRun(ctx,
+		db,
+		userID)
+}
+```
+
 ## Versioning and changelog (required for every change)
 
 This repo is versioned on its own (separately from `../gligabao_int`). The version lives in two files at the repo root

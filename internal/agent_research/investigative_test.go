@@ -18,7 +18,9 @@ import (
 	"github.com/deepblue-phoenix/gligabao/internal/sys/config"
 )
 
-var update = flag.Bool("update", false, "rewrite the golden files")
+var update = flag.Bool("update",
+	false,
+	"rewrite the golden files")
 
 const investigativeDef = `
 name = "deep"
@@ -46,9 +48,13 @@ type kv = map[string]any
 
 // The investigative loop through the manager: the run is recorded with its states, phase and stop reason, the notes file is written, and the
 // report has its sources as links.
-func TestInvestigativeRunThroughTheManager(t *testing.T) { runOnBackends(t, testInvestigativeRun) }
+func TestInvestigativeRunThroughTheManager(t *testing.T) {
+	runOnBackends(t, testInvestigativeRun)
+}
 
-func testInvestigativeRun(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+func testInvestigativeRun(t *testing.T,
+	d *sql.DB,
+	ops agent_research.Ops) {
 	ctx := context.Background()
 	fake := &fakeAnthropic{
 		main: []string{
@@ -65,15 +71,20 @@ func testInvestigativeRun(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 			toolReply([2]any{"finalize_report", kv{"report": "# Report\nBatteries are good (s_001)."}}),
 		},
 	}
-	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
+	m := agent_research.NewManager(ctx,
+		d,
+		ops,
+		fake.start(t))
 	m.NotesDir = filepath.Join(t.TempDir(), "notes")
 	if err := m.UseAgentDefs(writeDefs(t, map[string]string{"deep.toml": investigativeDef})); err != nil {
 		t.Fatal(err)
 	}
-	started, err := m.Start(ctx, "u/1", agent_research.Options{
-		Topic: "batteries",
-		Agent: "deep",
-	})
+	started, err := m.Start(ctx,
+		"u/1",
+		agent_research.Options{
+			Topic: "batteries",
+			Agent: "deep",
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +92,9 @@ func testInvestigativeRun(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 		t.Errorf("max_iterations is the steps of the run: %d", started.MaxSteps)
 	}
 	m.Wait()
-	run, err := m.Get(ctx, "u/1", started.ID)
+	run, err := m.Get(ctx,
+		"u/1",
+		started.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +107,9 @@ func testInvestigativeRun(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	states := stateNames(run.States)
 	for _, want := range []string{"planning", "selecting", "synthesizing", "completed"} {
 		if !strings.Contains(states, want) {
-			t.Errorf("states %s lack %s", states, want)
+			t.Errorf("states %s lack %s",
+				states,
+				want)
 		}
 	}
 	// The planning request offers the investigative tools, with fetch_url named fetch_page; the synthesis one has no search tool.
@@ -105,10 +120,15 @@ func testInvestigativeRun(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	if strings.Contains(last, `"name":"web_search"`) || !strings.Contains(last, `"name":"finalize_report"`) {
 		t.Error("tools of the synthesis turn")
 	}
-	runDocQueries(t, d, run.ID, strings.HasSuffix(t.Name(), "postgres"))
+	runDocQueries(t,
+		d,
+		run.ID,
+		strings.HasSuffix(t.Name(), "postgres"))
 	entries, err := os.ReadDir(m.NotesDir)
 	if err != nil || len(entries) != 1 || !strings.HasPrefix(entries[0].Name(), "notes_u_1_") || !strings.Contains(entries[0].Name(), run.NotesID) {
-		t.Fatalf("notes file: %v %v", entries, err)
+		t.Fatalf("notes file: %v %v",
+			entries,
+			err)
 	}
 }
 
@@ -117,7 +137,10 @@ func TestInvestigativeOptions(t *testing.T) {
 	ctx := context.Background()
 	d := dbtest.OpenSQLite(t)
 	fake := &fakeAnthropic{}
-	m := agent_research.NewManager(ctx, d, agent_research.SQLiteOps, fake.start(t))
+	m := agent_research.NewManager(ctx,
+		d,
+		agent_research.SQLiteOps,
+		fake.start(t))
 	if err := m.UseAgentDefs(writeDefs(t, map[string]string{"deep.toml": investigativeDef})); err != nil {
 		t.Fatal(err)
 	}
@@ -149,9 +172,13 @@ func TestInvestigativeOptions(t *testing.T) {
 			Runner: "modal",
 		}, "runs locally"},
 	} {
-		_, err := m.Start(ctx, "u", c.opts)
+		_, err := m.Start(ctx,
+			"u",
+			c.opts)
 		if err == nil || !strings.Contains(err.Error(), c.want) {
-			t.Errorf("%s: %v", name, err)
+			t.Errorf("%s: %v",
+				name,
+				err)
 		}
 	}
 }
@@ -164,12 +191,17 @@ func TestSimpleLoopFirstRequestGolden(t *testing.T) {
 	fake := &fakeAnthropic{
 		main: []string{finalReport},
 	}
-	m := agent_research.NewManager(ctx, d, agent_research.SQLiteOps, fake.start(t))
-	if _, err := m.Start(ctx, "u1", agent_research.Options{
-		Topic:    "solid state batteries",
-		MaxSteps: 3,
-		Model:    "my-model",
-	}); err != nil {
+	m := agent_research.NewManager(ctx,
+		d,
+		agent_research.SQLiteOps,
+		fake.start(t))
+	if _, err := m.Start(ctx,
+		"u1",
+		agent_research.Options{
+			Topic:    "solid state batteries",
+			MaxSteps: 3,
+			Model:    "my-model",
+		}); err != nil {
 		t.Fatal(err)
 	}
 	m.Wait()
@@ -177,10 +209,14 @@ func TestSimpleLoopFirstRequestGolden(t *testing.T) {
 	if err := json.Unmarshal([]byte(fake.bodies[0]), &pretty); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := json.MarshalIndent(pretty, "", "  ")
+	got, _ := json.MarshalIndent(pretty,
+		"",
+		"  ")
 	path := filepath.Join("testdata", "simple_first_request.golden.json")
 	if *update {
-		if err := os.WriteFile(path, append(got, '\n'), 0o644); err != nil {
+		if err := os.WriteFile(path,
+			append(got, '\n'),
+			0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -191,7 +227,9 @@ func TestSimpleLoopFirstRequestGolden(t *testing.T) {
 	if strings.TrimSpace(string(want)) != string(got) {
 		t.Errorf("the first request of the simple loop changed:\n%s", got)
 	}
-	run, _ := m.Get(ctx, "u1", 1)
+	run, _ := m.Get(ctx,
+		"u1",
+		1)
 	if run.Phase != "" || run.StopReason != "" || run.Status != core.StatusCompleted {
 		t.Errorf("a simple run has no phase: %+v", run)
 	}
@@ -201,7 +239,8 @@ func TestSimpleLoopFirstRequestGolden(t *testing.T) {
 
 // previousDatabase is a database made by the previous version (0.180.0): gb_agent_research_runs with notes_id and without phase and
 // stop_reason.
-func previousDatabase(t *testing.T, backend string) *sql.DB {
+func previousDatabase(t *testing.T,
+	backend string) *sql.DB {
 	t.Helper()
 	d := oldDatabase(t, backend)
 	if _, err := d.Exec(`ALTER TABLE gb_agent_research_runs ADD COLUMN notes_id TEXT NOT NULL DEFAULT ''`); err != nil {
@@ -215,20 +254,34 @@ func TestMigrationAddsPhaseAndStopReason(t *testing.T) {
 		t.Run(backend, func(t *testing.T) {
 			d := previousDatabase(t, backend)
 			for _, c := range []string{"phase", "stop_reason"} {
-				if hasColumn(t, d, backend, "gb_agent_research_runs", c) {
+				if hasColumn(t,
+					d,
+					backend,
+					"gb_agent_research_runs",
+					c) {
 					t.Fatalf("the previous database must not have %s", c)
 				}
 			}
 			check := func() {
 				t.Helper()
 				for _, c := range []string{"phase", "stop_reason"} {
-					if !hasColumn(t, d, backend, "gb_agent_research_runs", c) {
+					if !hasColumn(t,
+						d,
+						backend,
+						"gb_agent_research_runs",
+						c) {
 						t.Fatalf("%s was not added", c)
 					}
 				}
 				var phase, stop, topic string
-				if err := d.QueryRow(`SELECT phase, stop_reason, topic FROM gb_agent_research_runs`).Scan(&phase, &stop, &topic); err != nil || phase != "" || stop != "" || topic != "old topic" {
-					t.Fatalf("old row: %q %q %q %v", phase, stop, topic, err)
+				if err := d.QueryRow(`SELECT phase, stop_reason, topic FROM gb_agent_research_runs`).Scan(&phase,
+					&stop,
+					&topic); err != nil || phase != "" || stop != "" || topic != "old topic" {
+					t.Fatalf("old row: %q %q %q %v",
+						phase,
+						stop,
+						topic,
+						err)
 				}
 			}
 			if err := agent_research.Open(backend, d); err != nil {
@@ -251,17 +304,31 @@ func TestMigrationAddsPhaseAndStopReason(t *testing.T) {
 				Topic:  "t",
 				State:  core.StateStarting,
 			}
-			if err := ops.Store.CreateRun(ctx, d, run); err != nil {
+			if err := ops.Store.CreateRun(ctx,
+				d,
+				run); err != nil {
 				t.Fatal(err)
 			}
-			if err := ops.Store.SetPhase(ctx, d, run.ID, "synthesis", "breaker:cost"); err != nil {
+			if err := ops.Store.SetPhase(ctx,
+				d,
+				run.ID,
+				"synthesis",
+				"breaker:cost"); err != nil {
 				t.Fatal(err)
 			}
-			got, err := ops.Store.GetRun(ctx, d, run.ID)
+			got, err := ops.Store.GetRun(ctx,
+				d,
+				run.ID)
 			if err != nil || got.Phase != "synthesis" || got.StopReason != "breaker:cost" {
-				t.Fatalf("read back: %+v %v", got, err)
+				t.Fatalf("read back: %+v %v",
+					got,
+					err)
 			}
-			if err := ops.Store.SetPhase(ctx, d, 99999, "x", "y"); err == nil {
+			if err := ops.Store.SetPhase(ctx,
+				d,
+				99999,
+				"x",
+				"y"); err == nil {
 				t.Error("an unknown run")
 			}
 
@@ -269,18 +336,27 @@ func TestMigrationAddsPhaseAndStopReason(t *testing.T) {
 			fake := &fakeAnthropic{
 				main: []string{finalReport},
 			}
-			m := agent_research.NewManager(ctx, d, ops, fake.start(t))
-			started, err := m.Start(ctx, "u2", agent_research.Options{
-				Topic:    "batteries",
-				MaxSteps: 2,
-			})
+			m := agent_research.NewManager(ctx,
+				d,
+				ops,
+				fake.start(t))
+			started, err := m.Start(ctx,
+				"u2",
+				agent_research.Options{
+					Topic:    "batteries",
+					MaxSteps: 2,
+				})
 			if err != nil {
 				t.Fatal(err)
 			}
 			m.Wait()
-			r, err := m.Get(ctx, "u2", started.ID)
+			r, err := m.Get(ctx,
+				"u2",
+				started.ID)
 			if err != nil || r.Status != core.StatusCompleted || r.Phase != "" || r.StopReason != "" {
-				t.Fatalf("simple run: %+v %v", r, err)
+				t.Fatalf("simple run: %+v %v",
+					r,
+					err)
 			}
 		})
 	}
@@ -288,13 +364,18 @@ func TestMigrationAddsPhaseAndStopReason(t *testing.T) {
 
 // A fresh database has the columns from sql/schema.sql, and the upgrade is a no-op.
 func TestFreshDatabaseHasPhaseAndStopReason(t *testing.T) {
-	dbtest.Run(t, func(t *testing.T, d *sql.DB) {
+	dbtest.Run(t, func(t *testing.T,
+		d *sql.DB) {
 		backend := config.DBBackendSQLite
 		if strings.HasSuffix(t.Name(), "postgres") {
 			backend = config.DBBackendPostgres
 		}
 		for _, c := range []string{"phase", "stop_reason"} {
-			if !hasColumn(t, d, backend, "gb_agent_research_runs", c) {
+			if !hasColumn(t,
+				d,
+				backend,
+				"gb_agent_research_runs",
+				c) {
 				t.Errorf("a fresh database lacks %s", c)
 			}
 		}
@@ -308,9 +389,16 @@ var docQuery = regexp.MustCompile("(?s)<!-- query: (\\w+) -->\n```sql\n(.*?)```"
 
 // runDocQueries runs every example query of docs/agents/research.md ("Reading a run with SQL") on the run and checks that it works and, for
 // the ones that must return rows here, that it does.
-func runDocQueries(t *testing.T, d *sql.DB, runID int64, postgres bool) {
+func runDocQueries(t *testing.T,
+	d *sql.DB,
+	runID int64,
+	postgres bool) {
 	t.Helper()
-	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "agents", "research.md"))
+	doc, err := os.ReadFile(filepath.Join("..",
+		"..",
+		"docs",
+		"agents",
+		"research.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,14 +411,18 @@ func runDocQueries(t *testing.T, d *sql.DB, runID int64, postgres bool) {
 		name, query := f[1], f[2]
 		args := []any{runID}
 		if postgres {
-			query = strings.ReplaceAll(query, "?1", "$1")
+			query = strings.ReplaceAll(query,
+				"?1",
+				"$1")
 		}
 		if strings.Contains(query, "FROM gb_agent_research_runs WHERE phase") {
 			args = nil
 		}
 		rows, err := d.Query(query, args...)
 		if err != nil {
-			t.Errorf("query %s: %v", name, err)
+			t.Errorf("query %s: %v",
+				name,
+				err)
 			continue
 		}
 		n := 0
@@ -338,7 +430,9 @@ func runDocQueries(t *testing.T, d *sql.DB, runID int64, postgres bool) {
 			n++
 		}
 		if err := rows.Err(); err != nil {
-			t.Errorf("query %s: %v", name, err)
+			t.Errorf("query %s: %v",
+				name,
+				err)
 		}
 		rows.Close()
 		if mustReturn[name] && n == 0 {

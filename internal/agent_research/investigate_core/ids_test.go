@@ -17,7 +17,10 @@ func TestNextIDs(t *testing.T) {
 	}
 	for _, c := range cases {
 		if c.got != c.want {
-			t.Errorf("%s: got %s, want %s", c.name, c.got, c.want)
+			t.Errorf("%s: got %s, want %s",
+				c.name,
+				c.got,
+				c.want)
 		}
 	}
 }

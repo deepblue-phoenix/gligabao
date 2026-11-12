@@ -29,7 +29,8 @@ type fakeWorkers struct {
 	block   <-chan struct{}
 }
 
-func (f *fakeWorkers) Run(ctx context.Context, req investigate.WorkerRequest) (investigate.WorkerResult, error) {
+func (f *fakeWorkers) Run(ctx context.Context,
+	req investigate.WorkerRequest) (investigate.WorkerResult, error) {
 	f.mu.Lock()
 	f.reqs = append(f.reqs, req)
 	f.running++
@@ -58,7 +59,9 @@ func (f *fakeWorkers) Run(ctx context.Context, req investigate.WorkerRequest) (i
 	return res, f.errs[req.QuestionID]
 }
 
-func findings(status, answer string, claims ...investigate_core.FindingClaim) investigate_core.Findings {
+func findings(status,
+	answer string,
+	claims ...investigate_core.FindingClaim) investigate_core.Findings {
 	return investigate_core.Findings{
 		Status: status,
 		Answer: answer,
@@ -71,7 +74,8 @@ func findings(status, answer string, claims ...investigate_core.FindingClaim) in
 	}
 }
 
-func claim(key, url string) investigate_core.FindingClaim {
+func claim(key,
+	url string) investigate_core.FindingClaim {
 	return investigate_core.FindingClaim{
 		Key:  key,
 		Text: "claim " + key,
@@ -97,7 +101,8 @@ func planThree() reply {
 var errStop = errors.New("stop here")
 
 func stopAfter(fm *fakeModel) investigate.ModelFunc {
-	return func(ctx context.Context, p map[string]any) (*ai.RawResponse, error) {
+	return func(ctx context.Context,
+		p map[string]any) (*ai.RawResponse, error) {
 		if len(fm.script) == 0 {
 			return nil, errStop
 		}
@@ -105,7 +110,11 @@ func stopAfter(fm *fakeModel) investigate.ModelFunc {
 	}
 }
 
-func runWith(t *testing.T, e *env, fm *fakeModel, dl investigate.Delegation, hooks investigate.Hooks) (investigate.RunResult, error) {
+func runWith(t *testing.T,
+	e *env,
+	fm *fakeModel,
+	dl investigate.Delegation,
+	hooks investigate.Hooks) (investigate.RunResult, error) {
 	t.Helper()
 	return investigate.Run(context.Background(), investigate.Config{
 		Session:    e.sess,
@@ -118,10 +127,15 @@ func runWith(t *testing.T, e *env, fm *fakeModel, dl investigate.Delegation, hoo
 	})
 }
 
-func TestFanOutAndReduce(t *testing.T) { dbtest.Run(t, testFanOutAndReduce) }
+func TestFanOutAndReduce(t *testing.T) {
+	dbtest.Run(t, testFanOutAndReduce)
+}
 
-func testFanOutAndReduce(t *testing.T, d *sql.DB) {
-	e := newEnv(t, d, loopLimits())
+func testFanOutAndReduce(t *testing.T,
+	d *sql.DB) {
+	e := newEnv(t,
+		d,
+		loopLimits())
 	fm := &fakeModel{
 		t:      t,
 		cost:   0.01,
@@ -132,7 +146,9 @@ func testFanOutAndReduce(t *testing.T, d *sql.DB) {
 		started: make(chan struct{}),
 		results: map[string]investigate.WorkerResult{
 			"q_002": {
-				Findings:     findings("answered", "A (c1)", claim("c1", "https://a.example/x")),
+				Findings: findings("answered",
+					"A (c1)",
+					claim("c1", "https://a.example/x")),
 				InputTokens:  10,
 				OutputTokens: 5,
 				CostUSD:      0.5,
@@ -149,13 +165,21 @@ func testFanOutAndReduce(t *testing.T, d *sql.DB) {
 	}
 	var states []string
 	hooks := investigate.Hooks{
-		Entered: func(_ int, state, detail string) { states = append(states, state+":"+detail) },
+		Entered: func(_ int,
+			state,
+			detail string) {
+			states = append(states, state+":"+detail)
+		},
 	}
-	res, err := runWith(t, e, fm, investigate.Delegation{
-		Workers:       fw,
-		MaxParallel:   3,
-		ContextTokens: 500,
-	}, hooks)
+	res, err := runWith(t,
+		e,
+		fm,
+		investigate.Delegation{
+			Workers:       fw,
+			MaxParallel:   3,
+			ContextTokens: 500,
+		},
+		hooks)
 	if !errors.Is(err, errStop) {
 		t.Fatalf("err: %v", err)
 	}
@@ -182,41 +206,59 @@ func testFanOutAndReduce(t *testing.T, d *sql.DB) {
 	q3, _ := st.Frontier.Get("q_003")
 	q4, _ := st.Frontier.Get("q_004")
 	if q2.Status != investigate_core.StatusInProgress || q3.Status != investigate_core.StatusPending || q4.Status != investigate_core.StatusUnresolvable {
-		t.Fatalf("statuses: %s %s %s", q2.Status, q3.Status, q4.Status)
+		t.Fatalf("statuses: %s %s %s",
+			q2.Status,
+			q3.Status,
+			q4.Status)
 	}
 	if len(st.Notes.Claims) != 1 || st.Notes.Claims[0].QuestionID != "q_002" || len(st.Notes.Sources) != 1 {
 		t.Errorf("notes: %+v", st.Notes)
 	}
 	if !strings.Contains(q2.Attempts[0].Query, "worker query") || !strings.Contains(q3.Attempts[len(q3.Attempts)-1].Query, "delegated run") {
-		t.Errorf("attempts: %+v %+v", q2.Attempts, q3.Attempts)
+		t.Errorf("attempts: %+v %+v",
+			q2.Attempts,
+			q3.Attempts)
 	}
 	// The totals of the run are its own: the workers' spending is in their runs, not in this one's (but the breakers saw it).
 	if res.CostUSD < 0.0099 || res.CostUSD > 0.0101 || res.InputTokens != 100 {
 		t.Errorf("totals: %+v", res.Totals)
 	}
 	// The transitions of the fan-out are in the log with their trigger.
-	if n := countTransitions(t, d, e, string(investigate_core.TriggerDelegated)); n != 3 {
+	if n := countTransitions(t,
+		d,
+		e,
+		string(investigate_core.TriggerDelegated)); n != 3 {
 		t.Errorf("delegated transitions: %d", n)
 	}
 }
 
-func countTransitions(t *testing.T, d *sql.DB, e *env, trigger string) int {
+func countTransitions(t *testing.T,
+	d *sql.DB,
+	e *env,
+	trigger string) int {
 	t.Helper()
 	var n int
 	q := `SELECT COUNT(*) FROM gb_agent_frontier_transitions WHERE run_id = ? AND trigger = ?`
 	if e.pg {
 		q = `SELECT COUNT(*) FROM gb_agent_frontier_transitions WHERE run_id = $1 AND trigger = $2`
 	}
-	if err := d.QueryRow(q, e.run.ID, trigger).Scan(&n); err != nil {
+	if err := d.QueryRow(q,
+		e.run.ID,
+		trigger).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	return n
 }
 
-func TestFailedWorkerSendsItsQuestionBack(t *testing.T) { dbtest.Run(t, testFailedWorker) }
+func TestFailedWorkerSendsItsQuestionBack(t *testing.T) {
+	dbtest.Run(t, testFailedWorker)
+}
 
-func testFailedWorker(t *testing.T, d *sql.DB) {
-	e := newEnv(t, d, loopLimits())
+func testFailedWorker(t *testing.T,
+	d *sql.DB) {
+	e := newEnv(t,
+		d,
+		loopLimits())
 	fm := &fakeModel{
 		t:      t,
 		script: []reply{planThree()},
@@ -230,11 +272,15 @@ func testFailedWorker(t *testing.T, d *sql.DB) {
 		errs: map[string]error{"q_002": errors.New("the worker blew up")},
 	}
 	// A worker that fails does not fail the run: the question is pending with the failure logged.
-	_, err := runWith(t, e, fm, investigate.Delegation{
-		Workers:     fw,
-		MaxParallel: 3,
-		MaxWorkers:  3,
-	}, investigate.Hooks{})
+	_, err := runWith(t,
+		e,
+		fm,
+		investigate.Delegation{
+			Workers:     fw,
+			MaxParallel: 3,
+			MaxWorkers:  3,
+		},
+		investigate.Hooks{})
 	if !errors.Is(err, errStop) {
 		t.Fatalf("err: %v", err)
 	}
@@ -250,7 +296,8 @@ func TestDelegationNeedsTwoQuestionsAndRespectsTheCaps(t *testing.T) {
 	dbtest.Run(t, testDelegationCaps)
 }
 
-func testDelegationCaps(t *testing.T, d *sql.DB) {
+func testDelegationCaps(t *testing.T,
+	d *sql.DB) {
 	plan := reply{
 		calls: []tc{{"add_question", m{"parent_id": "q_001", "question": "only", "priority": 0.9, "validation_criteria": "c"}}},
 	}
@@ -281,29 +328,45 @@ func testDelegationCaps(t *testing.T, d *sql.DB) {
 			MinPriority: 0.75,
 		}, 2},
 	} {
-		e := newEnv(t, d, loopLimits())
+		e := newEnv(t,
+			d,
+			loopLimits())
 		fw := &fakeWorkers{
 			results: map[string]investigate.WorkerResult{},
 		}
 		c.dl.Workers = fw
 		// With no fan-out the loop goes on with the question itself: the next model call (selecting q_002 first) ends the test.
-		_, err := runWith(t, e, &fakeModel{
-			t:      t,
-			script: c.script,
-		}, c.dl, investigate.Hooks{})
+		_, err := runWith(t,
+			e,
+			&fakeModel{
+				t:      t,
+				script: c.script,
+			},
+			c.dl,
+			investigate.Hooks{})
 		if !errors.Is(err, errStop) {
-			t.Fatalf("%s: err: %v", name, err)
+			t.Fatalf("%s: err: %v",
+				name,
+				err)
 		}
 		if len(fw.reqs) != c.wantRuns {
-			t.Errorf("%s: %d workers ran, want %d", name, len(fw.reqs), c.wantRuns)
+			t.Errorf("%s: %d workers ran, want %d",
+				name,
+				len(fw.reqs),
+				c.wantRuns)
 		}
 	}
 }
 
-func TestFanOutIsCancelledWithTheRun(t *testing.T) { dbtest.Run(t, testFanOutCancel) }
+func TestFanOutIsCancelledWithTheRun(t *testing.T) {
+	dbtest.Run(t, testFanOutCancel)
+}
 
-func testFanOutCancel(t *testing.T, d *sql.DB) {
-	e := newEnv(t, d, loopLimits())
+func testFanOutCancel(t *testing.T,
+	d *sql.DB) {
+	e := newEnv(t,
+		d,
+		loopLimits())
 	fm := &fakeModel{
 		t:      t,
 		script: []reply{planThree()},
@@ -314,7 +377,9 @@ func testFanOutCancel(t *testing.T, d *sql.DB) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	hooks := investigate.Hooks{
-		Entered: func(_ int, state, _ string) {
+		Entered: func(_ int,
+			state,
+			_ string) {
 			if state == investigate_core.StateDelegating {
 				time.AfterFunc(50*time.Millisecond, cancel)
 			}
@@ -337,22 +402,31 @@ func testFanOutCancel(t *testing.T, d *sql.DB) {
 	}
 }
 
-func TestNoCostLimitNoShare(t *testing.T) { dbtest.Run(t, testCostShare) }
+func TestNoCostLimitNoShare(t *testing.T) {
+	dbtest.Run(t, testCostShare)
+}
 
-func testCostShare(t *testing.T, d *sql.DB) {
+func testCostShare(t *testing.T,
+	d *sql.DB) {
 	l := loopLimits()
 	l.MaxCostUSD = 10
-	e := newEnv(t, d, l)
+	e := newEnv(t,
+		d,
+		l)
 	fw := &fakeWorkers{
 		results: map[string]investigate.WorkerResult{},
 	}
-	_, err := runWith(t, e, &fakeModel{
-		t:      t,
-		script: []reply{planThree()},
-	}, investigate.Delegation{
-		Workers:     fw,
-		MaxParallel: 2,
-	}, investigate.Hooks{})
+	_, err := runWith(t,
+		e,
+		&fakeModel{
+			t:      t,
+			script: []reply{planThree()},
+		},
+		investigate.Delegation{
+			Workers:     fw,
+			MaxParallel: 2,
+		},
+		investigate.Hooks{})
 	if !errors.Is(err, errStop) {
 		t.Fatal(err)
 	}

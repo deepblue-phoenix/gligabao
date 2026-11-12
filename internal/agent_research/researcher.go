@@ -81,7 +81,12 @@ type researcher struct {
 // newResearcher makes the researcher of run (already recorded) with its own agent, built from the definition def and observed by the
 // researcher itself. mem is the knowledge base the agent works with, in the dataset of opts (nil: none). parent is the researcher that
 // starts it as a worker (nil for a research started by a user); a worker works on one question and ends with submit_findings.
-func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent *researcher, def *agent_defs.Def) *researcher {
+func newResearcher(m *Manager,
+	run *core.Run,
+	opts Options,
+	mem *Memory,
+	parent *researcher,
+	def *agent_defs.Def) *researcher {
 	r := &researcher{
 		ctx:    m.ctx,
 		dbCtx:  context.WithoutCancel(m.ctx),
@@ -120,7 +125,10 @@ func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent 
 	r.kidCtx, r.kidCancel = context.WithCancel(r.runCtx)
 	var kb agent.Knowledge // a nil Memory must become a nil Knowledge
 	if mem != nil && def.Knowledge.Access != agent_defs.AccessNone {
-		kb = mem.Knowledge(r.ctx, run.UserID, opts.Dataset, SessionID(run.ID))
+		kb = mem.Knowledge(r.ctx,
+			run.UserID,
+			opts.Dataset,
+			SessionID(run.ID))
 	}
 	r.kb = kb
 	if parent != nil { // a worker: a lean tool loop on one question that ends with submit_findings
@@ -130,12 +138,18 @@ func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent 
 		return r
 	}
 	if def.Investigative() { // its loop is package investigate: no step limit of the agent loop
-		r.agent = agent.FromDefInvestigative(def, r.client, r.http, kb)
+		r.agent = agent.FromDefInvestigative(def,
+			r.client,
+			r.http,
+			kb)
 		r.agent.Model, r.agent.MaxSteps = opts.Model, opts.MaxSteps
 		agent.AddSkills(r.agent, def.Skills)
 		return r
 	}
-	r.agent = agent.FromDef(def, r.client, r.http, kb)
+	r.agent = agent.FromDef(def,
+		r.client,
+		r.http,
+		kb)
 	r.agent.Model, r.agent.MaxSteps, r.agent.ErrSink = opts.Model, opts.MaxSteps, m.errSink()
 	agent.AddSkills(r.agent, def.Skills)
 	r.watch()
@@ -147,9 +161,12 @@ func (r *researcher) watch() {
 	r.agent.OutOfBudget = r.outOfBudget
 	r.agent.Observer = agent.Observer{
 		BeforeModel: r.beforeModel,
-		AfterModel:  func(_ int, t agent.Result) { r.saveUsage(t) },
-		BeforeTool:  r.beforeTool,
-		AfterTool:   r.afterTool,
+		AfterModel: func(_ int,
+			t agent.Result) {
+			r.saveUsage(t)
+		},
+		BeforeTool: r.beforeTool,
+		AfterTool:  r.afterTool,
 	}
 }
 
@@ -164,8 +181,14 @@ func (r *researcher) work() {
 	defer func() {
 		if p := recover(); p != nil {
 			r.logf.Errorf("agent research: the agent panicked: %v", p)
-			gberrors.New(r.dbCtx, r.mgr.errSink(), "research.panic", fmt.Errorf("%v", p), r.meta())
-			r.finish(core.StatusFailed, "", fmt.Sprintf("internal error: %v", p))
+			gberrors.New(r.dbCtx,
+				r.mgr.errSink(),
+				"research.panic",
+				fmt.Errorf("%v", p),
+				r.meta())
+			r.finish(core.StatusFailed,
+				"",
+				fmt.Sprintf("internal error: %v", p))
 		}
 	}()
 
@@ -186,23 +209,43 @@ func (r *researcher) work() {
 	r.rememberReport(res, err)
 	switch {
 	case r.ctx.Err() != nil:
-		r.finish(core.StatusFailed, "", "interrupted: the server stopped while the agent worked")
+		r.finish(core.StatusFailed,
+			"",
+			"interrupted: the server stopped while the agent worked")
 	case stopCauseOf(r.runCtx) != nil:
-		r.finish(core.StatusStopped, "", stopCauseOf(r.runCtx).text(r.run.ID))
+		r.finish(core.StatusStopped,
+			"",
+			stopCauseOf(r.runCtx).text(r.run.ID))
 	case r.runCtx.Err() != nil:
-		r.finish(core.StatusFailed, "", "cancelled: the agent that spawned it ended")
+		r.finish(core.StatusFailed,
+			"",
+			"cancelled: the agent that spawned it ended")
 	case err != nil:
-		gberrors.New(r.dbCtx, r.mgr.errSink(), "research.agent", err, r.meta())
+		gberrors.New(r.dbCtx,
+			r.mgr.errSink(),
+			"research.agent",
+			err,
+			r.meta())
 		r.logf.WithError(err).Warn("agent research: the agent failed")
-		r.finish(core.StatusFailed, "", truncate(err.Error(), maxTextLen))
+		r.finish(core.StatusFailed,
+			"",
+			truncate(err.Error(), maxTextLen))
 	case r.agent.Terminal != "" && (res == nil || res.Final == nil):
-		r.finish(core.StatusFailed, "", "the worker ended without submitting its findings")
+		r.finish(core.StatusFailed,
+			"",
+			"the worker ended without submitting its findings")
 	case r.agent.Terminal != "":
-		r.finish(core.StatusCompleted, string(res.Final), "") // the findings, as the supervisor reads them
+		r.finish(core.StatusCompleted,
+			string(res.Final),
+			"") // the findings, as the supervisor reads them
 	case strings.TrimSpace(res.Answer) == "":
-		r.finish(core.StatusFailed, "", "the agent ended without a report")
+		r.finish(core.StatusFailed,
+			"",
+			"the agent ended without a report")
 	default:
-		r.finish(core.StatusCompleted, res.Answer+r.capNote(res), "")
+		r.finish(core.StatusCompleted,
+			res.Answer+r.capNote(res),
+			"")
 	}
 	r.finishTrajectory(res)
 }
@@ -246,30 +289,52 @@ func (r *researcher) tx(fn func(q db.Execer) error) error {
 	return tx.Commit()
 }
 
-func (r *researcher) beforeModel(step int, final bool) {
+func (r *researcher) beforeModel(step int,
+	final bool) {
 	if final {
-		detail := fmt.Sprintf("step %d of %d, the last: no tools, the answer is the report", step, r.opts.MaxSteps)
+		detail := fmt.Sprintf("step %d of %d, the last: no tools, the answer is the report",
+			step,
+			r.opts.MaxSteps)
 		if r.budgetReason != "" {
-			detail = fmt.Sprintf("step %d, the last, made early: %s No tools, the answer is the report", step, r.budgetReason)
+			detail = fmt.Sprintf("step %d, the last, made early: %s No tools, the answer is the report",
+				step,
+				r.budgetReason)
 		}
-		r.enter(core.StateWritingReport, step, detail)
+		r.enter(core.StateWritingReport,
+			step,
+			detail)
 		return
 	}
-	r.enter(core.StateThinking, step, fmt.Sprintf("step %d of %d", step, r.opts.MaxSteps))
+	r.enter(core.StateThinking,
+		step,
+		fmt.Sprintf("step %d of %d",
+			step,
+			r.opts.MaxSteps))
 }
 
-func (r *researcher) beforeTool(step int, name string, input json.RawMessage) {
+func (r *researcher) beforeTool(step int,
+	name string,
+	input json.RawMessage) {
 	state, detail := toolState(name, input)
-	r.enter(state, step, detail)
+	r.enter(state,
+		step,
+		detail)
 }
 
-func (r *researcher) afterTool(_ int, _, output string, isErr bool, t agent.Result) {
+func (r *researcher) afterTool(_ int,
+	_,
+	output string,
+	isErr bool,
+	t agent.Result) {
 	errText := ""
 	if isErr {
 		errText = truncate(output, maxTextLen)
 	}
 	if r.cur != nil {
-		if err := r.store.CloseState(r.dbCtx, r.db, r.cur.ID, errText); err != nil {
+		if err := r.store.CloseState(r.dbCtx,
+			r.db,
+			r.cur.ID,
+			errText); err != nil {
 			r.logf.WithError(err).Warn("agent research: ending the state failed")
 		}
 	}
@@ -277,10 +342,17 @@ func (r *researcher) afterTool(_ int, _, output string, isErr bool, t agent.Resu
 }
 
 // enter moves the run to a new state: it ends the previous one, records the new one and sets the run's state.
-func (r *researcher) enter(state string, step int, detail string) {
+func (r *researcher) enter(state string,
+	step int,
+	detail string) {
 	detail = truncate(detail, maxTextLen)
 	err := r.tx(func(q db.Execer) (err error) {
-		r.cur, err = r.store.EnterState(r.dbCtx, q, r.run.ID, state, step, detail)
+		r.cur, err = r.store.EnterState(r.dbCtx,
+			q,
+			r.run.ID,
+			state,
+			step,
+			detail)
 		return err
 	})
 	if err != nil {
@@ -292,7 +364,10 @@ func (r *researcher) enter(state string, step int, detail string) {
 func (r *researcher) saveUsage(t agent.Result) {
 	r.tree.addCost(t.CostUSD - r.total.CostUSD)
 	r.total = t
-	if err := r.store.UpdateUsage(r.dbCtx, r.db, r.run.ID, usageOf(t)); err != nil {
+	if err := r.store.UpdateUsage(r.dbCtx,
+		r.db,
+		r.run.ID,
+		usageOf(t)); err != nil {
 		r.logf.WithError(err).Warn("agent research: recording the usage failed")
 	}
 }
@@ -304,28 +379,43 @@ func (r *researcher) meta() gberrors.Meta {
 }
 
 // finish ends the run's record: the final usage, the status, the report or the error, and the terminal state.
-func (r *researcher) finish(status core.Status, report, errText string) {
+func (r *researcher) finish(status core.Status,
+	report,
+	errText string) {
 	r.out = outcome{
 		status: status,
 		report: report,
 		err:    errText,
 	}
 	err := r.tx(func(q db.Execer) error {
-		if err := r.store.UpdateUsage(r.dbCtx, q, r.run.ID, usageOf(r.total)); err != nil {
+		if err := r.store.UpdateUsage(r.dbCtx,
+			q,
+			r.run.ID,
+			usageOf(r.total)); err != nil {
 			return err
 		}
-		_, err := r.store.FinishRun(r.dbCtx, q, r.run.ID, status, report, errText)
+		_, err := r.store.FinishRun(r.dbCtx,
+			q,
+			r.run.ID,
+			status,
+			report,
+			errText)
 		return err
 	})
 	if err != nil {
-		gberrors.New(r.dbCtx, r.mgr.errSink(), "research.finish", err, gberrors.Meta{"run_id": r.run.ID, "status": string(status)})
+		gberrors.New(r.dbCtx,
+			r.mgr.errSink(),
+			"research.finish",
+			err,
+			gberrors.Meta{"run_id": r.run.ID, "status": string(status)})
 		r.logf.WithError(err).Error("agent research: ending the run failed")
 	}
 	r.logf.WithField("status", status).Info("agent research: ended")
 }
 
 // toolState is the state the agent enters when it runs the tool name with input, and its detail.
-func toolState(name string, input json.RawMessage) (state, detail string) {
+func toolState(name string,
+	input json.RawMessage) (state, detail string) {
 	arg := func(key string) string {
 		var m map[string]any
 		if json.Unmarshal(input, &m) != nil {
@@ -367,7 +457,8 @@ func usageOf(r agent.Result) db.Usage {
 }
 
 // truncate cuts s to n characters.
-func truncate(s string, n int) string {
+func truncate(s string,
+	n int) string {
 	if utf8.RuneCountInString(s) <= n {
 		return s
 	}

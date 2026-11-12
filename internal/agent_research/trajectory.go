@@ -34,7 +34,8 @@ type agentInfo struct {
 // TrajectoryFunc receives the trajectory of a research: the one of the agent a user started (run runID), with the steps of all its
 // sub-agents merged in. It is called on the goroutine of the root agent, after its run has ended and was recorded, also for a research
 // that failed or was stopped.
-type TrajectoryFunc func(runID int64, t *atif.Trajectory)
+type TrajectoryFunc func(runID int64,
+	t *atif.Trajectory)
 
 // mainAgent is the "agent" tag of the steps of the agent the user started.
 const mainAgent = "main"
@@ -85,7 +86,9 @@ func (r *researcher) finishTrajectory(res *agent.Result) {
 			kids = append(kids, k)
 		}
 	}
-	r.traj, r.agents = mergeTrajectories(res.Trajectory, info, kids)
+	r.traj, r.agents = mergeTrajectories(res.Trajectory,
+		info,
+		kids)
 	if r.parent == nil && r.onTrajectory != nil {
 		r.onTrajectory(r.run.ID, r.traj)
 	}
@@ -98,7 +101,9 @@ func (r *researcher) finishTrajectory(res *agent.Result) {
 // a step of a parent that waits for its sub-agents comes before their steps, with the reports in its observation), and numbered again.
 // The final metrics are those of all the steps. The trajectory keeps the ID, the session and the agent of own, and gets the "agents"
 // extra with one entry per agent (own first).
-func mergeTrajectories(own *atif.Trajectory, info agentInfo, kids []*member) (*atif.Trajectory, []agentInfo) {
+func mergeTrajectories(own *atif.Trajectory,
+	info agentInfo,
+	kids []*member) (*atif.Trajectory, []agentInfo) {
 	tag(own.Steps, info)
 	agents := []agentInfo{info}
 	merged := *own
@@ -124,7 +129,8 @@ func mergeTrajectories(own *atif.Trajectory, info agentInfo, kids []*member) (*a
 }
 
 // tag adds the agent's identity to the extra of its steps.
-func tag(steps []atif.Step, info agentInfo) {
+func tag(steps []atif.Step,
+	info agentInfo) {
 	for i := range steps {
 		extra := make(map[string]any, len(steps[i].Extra)+4)
 		for k, v := range steps[i].Extra {
@@ -144,5 +150,8 @@ func sortByStart(steps []atif.Step) {
 		t, _ := time.Parse(time.RFC3339Nano, s.Timestamp) // the zero time for an unreadable one
 		return t
 	}
-	sort.SliceStable(steps, func(i, j int) bool { return at(steps[i]).Before(at(steps[j])) })
+	sort.SliceStable(steps, func(i,
+		j int) bool {
+		return at(steps[i]).Before(at(steps[j]))
+	})
 }

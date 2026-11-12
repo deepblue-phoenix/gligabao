@@ -22,18 +22,22 @@ const (
 )
 
 // nextID is prefix and the number after the highest of the ids that have that prefix, zero-padded to 3 digits.
-func nextID(prefix string, ids []string) string {
+func nextID(prefix string,
+	ids []string) string {
 	highest := 0
 	for _, id := range ids {
 		if n := idNumber(prefix, id); n > highest {
 			highest = n
 		}
 	}
-	return fmt.Sprintf("%s%03d", prefix, highest+1)
+	return fmt.Sprintf("%s%03d",
+		prefix,
+		highest+1)
 }
 
 // idNumber is the number of an id of the given prefix (q_007 is 7), or 0 if id does not have the form.
-func idNumber(prefix, id string) int {
+func idNumber(prefix,
+	id string) int {
 	rest, ok := strings.CutPrefix(id, prefix)
 	if !ok {
 		return 0
@@ -46,22 +50,33 @@ func idNumber(prefix, id string) int {
 }
 
 // NextQuestionID is the id of the next question of a run, given the ids it has: q_001 for the first (the root).
-func NextQuestionID(ids []string) string { return nextID(prefixQuestion, ids) }
+func NextQuestionID(ids []string) string {
+	return nextID(prefixQuestion, ids)
+}
 
 // NextClaimID is the id of the next claim (c_001, ...).
-func NextClaimID(ids []string) string { return nextID(prefixClaim, ids) }
+func NextClaimID(ids []string) string {
+	return nextID(prefixClaim, ids)
+}
 
 // NextDatapointID is the id of the next datapoint (d_001, ...).
-func NextDatapointID(ids []string) string { return nextID(prefixDatapoint, ids) }
+func NextDatapointID(ids []string) string {
+	return nextID(prefixDatapoint, ids)
+}
 
 // NextSourceID is the id of the next source (s_001, ...).
-func NextSourceID(ids []string) string { return nextID(prefixSource, ids) }
+func NextSourceID(ids []string) string {
+	return nextID(prefixSource, ids)
+}
 
 // NextChallengeID is the id of the next challenge (ch_001, ...).
-func NextChallengeID(ids []string) string { return nextID(prefixChallenge, ids) }
+func NextChallengeID(ids []string) string {
+	return nextID(prefixChallenge, ids)
+}
 
 // idLess orders ids of the same prefix by number (then by text), so that q_010 comes after q_009 and also past q_999.
-func idLess(a, b string) bool {
+func idLess(a,
+	b string) bool {
 	na, nb := trailingNumber(a), trailingNumber(b)
 	if na != nb {
 		return na < nb
@@ -69,7 +84,8 @@ func idLess(a, b string) bool {
 	return a < b
 }
 
-func idCompare(a, b string) int {
+func idCompare(a,
+	b string) int {
 	switch {
 	case idLess(a, b):
 		return -1

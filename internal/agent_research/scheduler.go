@@ -30,7 +30,8 @@ type scheduled struct {
 const maxScheduleSleep = time.Minute
 
 // newScheduler makes the scheduler of the definitions of m, with the first due time of each after from.
-func newScheduler(m *Manager, from time.Time) *scheduler {
+func newScheduler(m *Manager,
+	from time.Time) *scheduler {
 	s := &scheduler{
 		m: m,
 	}
@@ -62,13 +63,16 @@ func (s *scheduler) tick(now time.Time) {
 }
 
 // fire starts the research of e that was due at due, unless the previous one is still working.
-func (s *scheduler) fire(e *scheduled, due time.Time) {
+func (s *scheduler) fire(e *scheduled,
+	due time.Time) {
 	sc := e.def.Schedule
 	l := log.WithFields(log.Fields{"agent": e.def.Name, "user_id": sc.User, "due": due})
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.lastRun != 0 {
-		if prev, err := s.m.Get(s.m.ctx, sc.User, e.lastRun); err == nil && prev.Status.Active() {
+		if prev, err := s.m.Get(s.m.ctx,
+			sc.User,
+			e.lastRun); err == nil && prev.Status.Active() {
 			l.WithField("run_id", e.lastRun).Warn("agent research: scheduled run skipped, the previous one is still working")
 			return
 		}
@@ -78,10 +82,12 @@ func (s *scheduler) fire(e *scheduled, due time.Time) {
 		l.WithError(err).Error("agent research: scheduled run skipped, the topic cannot be made")
 		return
 	}
-	run, err := s.m.Start(s.m.ctx, sc.User, Options{
-		Topic: topic,
-		Agent: e.def.Name,
-	})
+	run, err := s.m.Start(s.m.ctx,
+		sc.User,
+		Options{
+			Topic: topic,
+			Agent: e.def.Name,
+		})
 	if err != nil {
 		l.WithError(err).Error("agent research: scheduled run could not be started")
 		return

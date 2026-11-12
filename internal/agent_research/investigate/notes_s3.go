@@ -33,8 +33,12 @@ const s3Timeout = 30 * time.Second
 
 // S3API is the part of the AWS S3 client (*s3.Client) that the notes mirror uses; tests pass a fake.
 type S3API interface {
-	PutObject(ctx context.Context, in *s3.PutObjectInput, opts ...func(*s3.Options)) (*s3.PutObjectOutput, error)
-	GetObject(ctx context.Context, in *s3.GetObjectInput, opts ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+	PutObject(ctx context.Context,
+		in *s3.PutObjectInput,
+		opts ...func(*s3.Options)) (*s3.PutObjectOutput, error)
+	GetObject(ctx context.Context,
+		in *s3.GetObjectInput,
+		opts ...func(*s3.Options)) (*s3.GetObjectOutput, error)
 }
 
 // NotesS3Config describes where the notes are mirrored to.
@@ -55,7 +59,8 @@ type NotesS3 struct {
 }
 
 // NewNotesS3 creates the client with the default AWS credential chain (environment, shared config, instance role).
-func NewNotesS3(ctx context.Context, cfg NotesS3Config) (*NotesS3, error) {
+func NewNotesS3(ctx context.Context,
+	cfg NotesS3Config) (*NotesS3, error) {
 	if strings.TrimSpace(cfg.Bucket) == "" {
 		return nil, errors.New("notes s3: bucket is required")
 	}
@@ -71,7 +76,8 @@ func NewNotesS3(ctx context.Context, cfg NotesS3Config) (*NotesS3, error) {
 }
 
 // NewNotesS3WithClient is NewNotesS3 with a given client.
-func NewNotesS3WithClient(client S3API, cfg NotesS3Config) *NotesS3 {
+func NewNotesS3WithClient(client S3API,
+	cfg NotesS3Config) *NotesS3 {
 	prefix := strings.Trim(strings.TrimSpace(cfg.Prefix), "/")
 	if prefix == "" {
 		prefix = DefaultNotesS3Prefix
@@ -84,16 +90,20 @@ func NewNotesS3WithClient(client S3API, cfg NotesS3Config) *NotesS3 {
 }
 
 // Key is the object key of a notes file of a user: <prefix>/<sanitized user>/<file name>. "" for a run without notes file.
-func (n *NotesS3) Key(user, localPath string) string {
+func (n *NotesS3) Key(user,
+	localPath string) string {
 	if localPath == "" {
 		return ""
 	}
-	return path.Join(n.prefix, SanitizeUser(user), filepath.Base(localPath))
+	return path.Join(n.prefix,
+		SanitizeUser(user),
+		filepath.Base(localPath))
 }
 
 // Mirror returns the NotesStore of a user's runs: the local files stay the working copy, every write is also put to the bucket, and a
 // read of a file missing locally (a container restarted with an empty disk) is served from the bucket.
-func (n *NotesS3) Mirror(local investigate_core.NotesStore, user string) investigate_core.NotesStore {
+func (n *NotesS3) Mirror(local investigate_core.NotesStore,
+	user string) investigate_core.NotesStore {
 	return notesMirror{
 		local: local,
 		s3:    n,
@@ -103,7 +113,8 @@ func (n *NotesS3) Mirror(local investigate_core.NotesStore, user string) investi
 
 // Write writes the local file (an error there is the error of the write), then the object. A failure of the bucket is logged and does not
 // stop the research: the local file and the database hold the notes anyway.
-func (m notesMirror) Write(p, text string) error {
+func (m notesMirror) Write(p,
+	text string) error {
 	if err := m.local.Write(p, text); err != nil {
 		return err
 	}
@@ -125,7 +136,8 @@ func (m notesMirror) Read(p string) (string, error) {
 	return got, nil
 }
 
-func (n *NotesS3) put(key, text string) error {
+func (n *NotesS3) put(key,
+	text string) error {
 	if key == "" {
 		return errors.New("the run has no notes id")
 	}
@@ -138,7 +150,10 @@ func (n *NotesS3) put(key, text string) error {
 		ContentType: aws.String("text/markdown; charset=utf-8"),
 	})
 	if err != nil {
-		return fmt.Errorf("put s3://%s/%s: %w", n.bucket, key, err)
+		return fmt.Errorf("put s3://%s/%s: %w",
+			n.bucket,
+			key,
+			err)
 	}
 	return nil
 }

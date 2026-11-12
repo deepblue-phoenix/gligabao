@@ -34,12 +34,17 @@ func ExplorationGate(s State) []string {
 		case root.Status == StatusResolved:
 		case root.Status == StatusUnresolvable && strings.TrimSpace(root.Answer) != "":
 		default:
-			missing = append(missing, fmt.Sprintf("the root question %s is %s: resolve it (resolve_question), or make it unresolvable with a stated assumption", root.ID, root.Status))
+			missing = append(missing, fmt.Sprintf("the root question %s is %s: resolve it (resolve_question), or make it unresolvable with a stated assumption",
+				root.ID,
+				root.Status))
 		}
 	}
 	for _, q := range f.Questions {
 		if f.Actionable(q) && q.Priority >= lim.GatePriority {
-			missing = append(missing, fmt.Sprintf("%s is pending with priority %.2f (at or above %.2f): work on it, or prune it with a reason", q.ID, q.Priority, lim.GatePriority))
+			missing = append(missing, fmt.Sprintf("%s is pending with priority %.2f (at or above %.2f): work on it, or prune it with a reason",
+				q.ID,
+				q.Priority,
+				lim.GatePriority))
 		}
 	}
 	domains := map[string]bool{}
@@ -47,10 +52,14 @@ func ExplorationGate(s State) []string {
 		domains[src.Domain] = true
 	}
 	if len(s.Notes.Sources) < lim.MinSources {
-		missing = append(missing, fmt.Sprintf("the notes have %d distinct sources, at least %d are needed", len(s.Notes.Sources), lim.MinSources))
+		missing = append(missing, fmt.Sprintf("the notes have %d distinct sources, at least %d are needed",
+			len(s.Notes.Sources),
+			lim.MinSources))
 	}
 	if len(domains) < lim.MinDomains {
-		missing = append(missing, fmt.Sprintf("the sources come from %d distinct domains, at least %d are needed", len(domains), lim.MinDomains))
+		missing = append(missing, fmt.Sprintf("the sources come from %d distinct domains, at least %d are needed",
+			len(domains),
+			lim.MinDomains))
 	}
 	for _, q := range f.Questions {
 		if q.Status != StatusResolved {
@@ -67,7 +76,9 @@ func ExplorationGate(s State) []string {
 	}
 	for _, c := range s.Notes.Contradictions {
 		if q, ok := f.Get(c.QuestionID); c.QuestionID == "" || !ok || !terminal(q.Status) {
-			missing = append(missing, fmt.Sprintf("the contradiction %s vs %s is not addressed: resolve the question that settles it", c.A, c.B))
+			missing = append(missing, fmt.Sprintf("the contradiction %s vs %s is not addressed: resolve the question that settles it",
+				c.A,
+				c.B))
 		}
 	}
 	for _, c := range OpenChallenges(s.Challenges) {
@@ -86,12 +97,15 @@ var sourceRef = regexp.MustCompile(`\bs_\d+\b`)
 var questionRef = regexp.MustCompile(`\bq_\d+\b`)
 
 // SourceRefs are the source ids that text cites.
-func SourceRefs(text string) []string { return dedupe(sourceRef.FindAllString(text, -1)) }
+func SourceRefs(text string) []string {
+	return dedupe(sourceRef.FindAllString(text, -1))
+}
 
 // FinalizationGate is what is wrong with the report (the design's finalization gate): it cites only existing source ids and existing
 // claims, none of them REFUTED or RETRACTED, and every unresolvable question appears in it (under the gaps). Checked by ids in the text, not
 // by reading the claims.
-func FinalizationGate(s State, report string) []string {
+func FinalizationGate(s State,
+	report string) []string {
 	var problems []string
 	if strings.TrimSpace(report) == "" {
 		return []string{"the report is empty"}
@@ -107,13 +121,17 @@ func FinalizationGate(s State, report string) []string {
 		case !ok:
 			problems = append(problems, fmt.Sprintf("the report cites %s, which is not in the notes", id))
 		case c.Status == ClaimRefuted || c.Status == ClaimRetracted:
-			problems = append(problems, fmt.Sprintf("the report cites %s, which is %s", id, c.Status))
+			problems = append(problems, fmt.Sprintf("the report cites %s, which is %s",
+				id,
+				c.Status))
 		}
 	}
 	cited := questionRef.FindAllString(report, -1)
 	for _, q := range s.Frontier.Questions {
 		if q.Status == StatusUnresolvable && !slices.Contains(cited, q.ID) {
-			problems = append(problems, fmt.Sprintf("the unresolvable question %s (%s) is not in the report: list it under the gaps and assumptions", q.ID, truncate(q.Question, 80)))
+			problems = append(problems, fmt.Sprintf("the unresolvable question %s (%s) is not in the report: list it under the gaps and assumptions",
+				q.ID,
+				truncate(q.Question, 80)))
 		}
 	}
 	return problems
@@ -121,7 +139,8 @@ func FinalizationGate(s State, report string) []string {
 
 // RenderReport writes the source ids of the report as links to their URLs: "s_001" becomes "[s_001](url)" (an id that is already the
 // text of a link is left alone). Unknown ids stay as they are (the gate refuses them before).
-func RenderReport(report string, n Notes) string {
+func RenderReport(report string,
+	n Notes) string {
 	idx := sourceRef.FindAllStringIndex(report, -1)
 	var b strings.Builder
 	last := 0
@@ -131,7 +150,10 @@ func RenderReport(report string, n Notes) string {
 		inLink := m[0] > 0 && report[m[0]-1] == '[' && strings.HasPrefix(report[m[1]:], "](")
 		b.WriteString(report[last:m[0]])
 		if ok && !inLink {
-			fmt.Fprintf(&b, "[%s](%s)", id, src.URL)
+			fmt.Fprintf(&b,
+				"[%s](%s)",
+				id,
+				src.URL)
 		} else {
 			b.WriteString(id)
 		}
@@ -152,13 +174,18 @@ func FinalCheck(s State) (State, []Transition, []string) {
 		if c.Status != ClaimUnverified || !ok || q.Status != StatusResolved {
 			continue
 		}
-		f, added, err := Add(s.Frontier, q.ID, AddInput{
-			Question:           fmt.Sprintf("Verify claim %s: %s", c.ID, c.Text),
-			Rationale:          "an UNVERIFIED claim behind a resolved question: the final check queues it for verification",
-			Priority:           0.6,
-			ValidationCriteria: fmt.Sprintf("%d independent sources and a survived challenge, or a reason why the claim cannot be verified", s.Limits.MinIndependentSources),
-			Actor:              ActorCode,
-		}, s.Limits)
+		f, added, err := Add(s.Frontier,
+			q.ID,
+			AddInput{
+				Question: fmt.Sprintf("Verify claim %s: %s",
+					c.ID,
+					c.Text),
+				Rationale:          "an UNVERIFIED claim behind a resolved question: the final check queues it for verification",
+				Priority:           0.6,
+				ValidationCriteria: fmt.Sprintf("%d independent sources and a survived challenge, or a reason why the claim cannot be verified", s.Limits.MinIndependentSources),
+				Actor:              ActorCode,
+			},
+			s.Limits)
 		if err != nil {
 			continue
 		}

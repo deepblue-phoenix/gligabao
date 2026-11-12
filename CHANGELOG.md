@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.195.2] - 2026-11-12
+
+### Changed
+- Function definitions with 2 or more arguments, and calls with 3 or more, are split one argument per line in the research agents (`internal/agent_research`); calls with 1 or 2 arguments stay on one line. Formatting only, no behaviour change. The coding rule is in `AGENTS.md`.
+
 ## [0.195.1] - 2026-11-12
 
 ### Changed

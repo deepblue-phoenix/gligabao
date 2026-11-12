@@ -102,7 +102,8 @@ var newTables = []string{"gb_agent_frontier_questions", "gb_agent_frontier_deps"
 	"gb_agent_claims", "gb_agent_claim_sources", "gb_agent_challenges", "gb_agent_challenge_sources", "gb_agent_notes_versions"}
 
 // oldDatabase returns a database that an older server made: the runs and states tables without notes_id and none of the new tables, with one run.
-func oldDatabase(t *testing.T, backend string) *sql.DB {
+func oldDatabase(t *testing.T,
+	backend string) *sql.DB {
 	t.Helper()
 	if backend == config.DBBackendSQLite {
 		d, err := relational.Open(config.DBBackendSQLite, filepath.Join(t.TempDir(), "old.db"))
@@ -120,7 +121,9 @@ func oldDatabase(t *testing.T, backend string) *sql.DB {
 		t.Skipf("%s not set", dbtest.EnvPostgresDSN)
 	}
 	d := dbtest.OpenPostgres(t, dsn)
-	drops := append(append([]string{}, newTables...), "gb_agent_research_states", "gb_agent_research_runs")
+	drops := append(append([]string{}, newTables...),
+		"gb_agent_research_states",
+		"gb_agent_research_runs")
 	for _, name := range drops {
 		if _, err := d.Exec(`DROP TABLE IF EXISTS ` + name + ` CASCADE`); err != nil {
 			t.Fatal(err)
@@ -132,7 +135,11 @@ func oldDatabase(t *testing.T, backend string) *sql.DB {
 	return d
 }
 
-func hasColumn(t *testing.T, d *sql.DB, backend, table, column string) bool {
+func hasColumn(t *testing.T,
+	d *sql.DB,
+	backend,
+	table,
+	column string) bool {
 	t.Helper()
 	q := `SELECT COUNT(*) FROM pragma_table_info('` + table + `') WHERE name = ?`
 	if backend == config.DBBackendPostgres {
@@ -145,7 +152,10 @@ func hasColumn(t *testing.T, d *sql.DB, backend, table, column string) bool {
 	return n > 0
 }
 
-func hasTable(t *testing.T, d *sql.DB, backend, table string) bool {
+func hasTable(t *testing.T,
+	d *sql.DB,
+	backend,
+	table string) bool {
 	t.Helper()
 	q := `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`
 	if backend == config.DBBackendPostgres {
@@ -160,23 +170,40 @@ func hasTable(t *testing.T, d *sql.DB, backend, table string) bool {
 
 func TestMigrationAddsNotesIDAndTables(t *testing.T) {
 	for _, backend := range []string{config.DBBackendSQLite, config.DBBackendPostgres} {
-		t.Run(backend, func(t *testing.T) { testMigration(t, backend) })
+		t.Run(backend, func(t *testing.T) {
+			testMigration(t, backend)
+		})
 	}
 }
 
-func testMigration(t *testing.T, backend string) {
+func testMigration(t *testing.T,
+	backend string) {
 	d := oldDatabase(t, backend)
-	if hasColumn(t, d, backend, "gb_agent_research_runs", "notes_id") || hasTable(t, d, backend, "gb_agent_notes_versions") {
+	if hasColumn(t,
+		d,
+		backend,
+		"gb_agent_research_runs",
+		"notes_id") || hasTable(t,
+		d,
+		backend,
+		"gb_agent_notes_versions") {
 		t.Fatal("the old database must not have the new schema")
 	}
 	if err := agent_research.Open(backend, d); err != nil {
 		t.Fatal(err)
 	}
-	if !hasColumn(t, d, backend, "gb_agent_research_runs", "notes_id") {
+	if !hasColumn(t,
+		d,
+		backend,
+		"gb_agent_research_runs",
+		"notes_id") {
 		t.Fatal("notes_id was not added")
 	}
 	for _, table := range newTables {
-		if !hasTable(t, d, backend, table) {
+		if !hasTable(t,
+			d,
+			backend,
+			table) {
 			t.Errorf("table %s was not created", table)
 		}
 	}
@@ -185,10 +212,15 @@ func testMigration(t *testing.T, backend string) {
 		var n int
 		var notesID, topic string
 		if err := d.QueryRow(`SELECT COUNT(*) FROM gb_agent_research_runs`).Scan(&n); err != nil || n != 1 {
-			t.Fatalf("old rows: %d %v", n, err)
+			t.Fatalf("old rows: %d %v",
+				n,
+				err)
 		}
 		if err := d.QueryRow(`SELECT notes_id, topic FROM gb_agent_research_runs`).Scan(&notesID, &topic); err != nil || notesID != "" || topic != "old topic" {
-			t.Fatalf("old row: %q %q %v", notesID, topic, err)
+			t.Fatalf("old row: %q %q %v",
+				notesID,
+				topic,
+				err)
 		}
 	}
 	check()
@@ -210,19 +242,42 @@ func testMigration(t *testing.T, backend string) {
 		t.Fatal(err)
 	}
 	now := "2025-01-01T00:00:00Z"
-	exec := func(query string, args ...any) error { _, err := d.Exec(query, args...); return err }
-	if err := exec(`INSERT INTO gb_agent_frontier_questions (run_id, id, depth, question, priority, created_at, updated_at) VALUES (`+ph(1)+`, 'q_001', 0, 'root', 0.5, `+ph(2)+`, `+ph(3)+`)`, runID, now, now); err != nil {
+	exec := func(query string,
+		args ...any) error {
+		_, err := d.Exec(query, args...)
+		return err
+	}
+	if err := exec(`INSERT INTO gb_agent_frontier_questions (run_id, id, depth, question, priority, created_at, updated_at) VALUES (`+ph(1)+`, 'q_001', 0, 'root', 0.5, `+ph(2)+`, `+ph(3)+`)`,
+		runID,
+		now,
+		now); err != nil {
 		t.Fatal(err)
 	}
 	rejected := map[string]error{
-		"unknown to_status": exec(`INSERT INTO gb_agent_frontier_transitions (run_id, question_id, seq, to_status, trigger, actor, priority, created_at) VALUES (`+ph(1)+`, 'q_001', 1, 'nowhere', 'created', 'code', 0.5, `+ph(2)+`)`, runID, now),
-		"unknown actor":     exec(`INSERT INTO gb_agent_frontier_transitions (run_id, question_id, seq, to_status, trigger, actor, priority, created_at) VALUES (`+ph(1)+`, 'q_001', 1, 'pending', 'created', 'god', 0.5, `+ph(2)+`)`, runID, now),
-		"unknown question":  exec(`INSERT INTO gb_agent_frontier_transitions (run_id, question_id, seq, to_status, trigger, actor, priority, created_at) VALUES (`+ph(1)+`, 'q_099', 1, 'pending', 'created', 'code', 0.5, `+ph(2)+`)`, runID, now),
-		"seq 0 version":     exec(`INSERT INTO gb_agent_notes_versions (run_id, seq, text, created_at) VALUES (`+ph(1)+`, 0, 'x', `+ph(2)+`)`, runID, now),
+		"unknown to_status": exec(`INSERT INTO gb_agent_frontier_transitions (run_id, question_id, seq, to_status, trigger, actor, priority, created_at) VALUES (`+ph(1)+`, 'q_001', 1, 'nowhere', 'created', 'code', 0.5, `+ph(2)+`)`,
+			runID,
+			now),
+		"unknown actor": exec(`INSERT INTO gb_agent_frontier_transitions (run_id, question_id, seq, to_status, trigger, actor, priority, created_at) VALUES (`+ph(1)+`, 'q_001', 1, 'pending', 'created', 'god', 0.5, `+ph(2)+`)`,
+			runID,
+			now),
+		"unknown question": exec(`INSERT INTO gb_agent_frontier_transitions (run_id, question_id, seq, to_status, trigger, actor, priority, created_at) VALUES (`+ph(1)+`, 'q_099', 1, 'pending', 'created', 'code', 0.5, `+ph(2)+`)`,
+			runID,
+			now),
+		"seq 0 version": exec(`INSERT INTO gb_agent_notes_versions (run_id, seq, text, created_at) VALUES (`+ph(1)+`, 0, 'x', `+ph(2)+`)`,
+			runID,
+			now),
 		"version of no run": exec(`INSERT INTO gb_agent_notes_versions (run_id, seq, text, created_at) VALUES (999, 1, 'x', `+ph(1)+`)`, now),
-		"bad priority":      exec(`INSERT INTO gb_agent_frontier_questions (run_id, id, depth, question, priority, created_at, updated_at) VALUES (`+ph(1)+`, 'q_002', 1, 'x', 2, `+ph(2)+`, `+ph(3)+`)`, runID, now, now),
-		"bad claim status":  exec(`INSERT INTO gb_agent_claims (run_id, id, text, status, created_at, updated_at) VALUES (`+ph(1)+`, 'c_001', 'x', 'MAYBE', `+ph(2)+`, `+ph(3)+`)`, runID, now, now),
-		"open with outcome": exec(`INSERT INTO gb_agent_challenges (run_id, id, target_type, negation, strategy, expected_if_false, query, status, outcome, created_at) VALUES (`+ph(1)+`, 'ch_001', 'claim', 'n', 'negation', 'e', 'q', 'open', 'survived', `+ph(2)+`)`, runID, now),
+		"bad priority": exec(`INSERT INTO gb_agent_frontier_questions (run_id, id, depth, question, priority, created_at, updated_at) VALUES (`+ph(1)+`, 'q_002', 1, 'x', 2, `+ph(2)+`, `+ph(3)+`)`,
+			runID,
+			now,
+			now),
+		"bad claim status": exec(`INSERT INTO gb_agent_claims (run_id, id, text, status, created_at, updated_at) VALUES (`+ph(1)+`, 'c_001', 'x', 'MAYBE', `+ph(2)+`, `+ph(3)+`)`,
+			runID,
+			now,
+			now),
+		"open with outcome": exec(`INSERT INTO gb_agent_challenges (run_id, id, target_type, negation, strategy, expected_if_false, query, status, outcome, created_at) VALUES (`+ph(1)+`, 'ch_001', 'claim', 'n', 'negation', 'e', 'q', 'open', 'survived', `+ph(2)+`)`,
+			runID,
+			now),
 	}
 	for name, err := range rejected {
 		if err == nil {
@@ -235,22 +290,32 @@ func testMigration(t *testing.T, backend string) {
 	}
 	var n int
 	if err := d.QueryRow(`SELECT COUNT(*) FROM gb_agent_frontier_questions`).Scan(&n); err != nil || n != 0 {
-		t.Errorf("questions of a deleted run: %d %v", n, err)
+		t.Errorf("questions of a deleted run: %d %v",
+			n,
+			err)
 	}
 }
 
 // A new database gets notes_id from sql/schema.sql, and the upgrade step is a no-op.
 func TestFreshDatabaseHasNotesID(t *testing.T) {
-	dbtest.Run(t, func(t *testing.T, d *sql.DB) {
+	dbtest.Run(t, func(t *testing.T,
+		d *sql.DB) {
 		backend := config.DBBackendSQLite
 		if strings.HasSuffix(t.Name(), "postgres") {
 			backend = config.DBBackendPostgres
 		}
-		if !hasColumn(t, d, backend, "gb_agent_research_runs", "notes_id") {
+		if !hasColumn(t,
+			d,
+			backend,
+			"gb_agent_research_runs",
+			"notes_id") {
 			t.Fatal("a fresh database lacks notes_id")
 		}
 		for _, table := range newTables {
-			if !hasTable(t, d, backend, table) {
+			if !hasTable(t,
+				d,
+				backend,
+				table) {
 				t.Errorf("table %s", table)
 			}
 		}

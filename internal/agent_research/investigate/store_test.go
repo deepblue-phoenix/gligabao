@@ -21,14 +21,17 @@ import (
 
 type m = map[string]any
 
-func storeFor(t *testing.T, d *sql.DB) investigate_core.Store {
+func storeFor(t *testing.T,
+	d *sql.DB) investigate_core.Store {
 	if strings.HasSuffix(t.Name(), "postgres") {
 		return postgres.NewInvestigateStore(d)
 	}
 	return sqlite.NewInvestigateStore(d)
 }
 
-func createRun(t *testing.T, d *sql.DB, user string) *core.Run {
+func createRun(t *testing.T,
+	d *sql.DB,
+	user string) *core.Run {
 	t.Helper()
 	store := sqlite.Store
 	if strings.HasSuffix(t.Name(), "postgres") {
@@ -39,90 +42,177 @@ func createRun(t *testing.T, d *sql.DB, user string) *core.Run {
 		Topic:  "does X fit",
 		State:  core.StateStarting,
 	}
-	if err := store.CreateRun(context.Background(), d, run); err != nil {
+	if err := store.CreateRun(context.Background(),
+		d,
+		run); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.EnterState(context.Background(), d, run.ID, core.StateStarting, 0, ""); err != nil {
+	if _, err := store.EnterState(context.Background(),
+		d,
+		run.ID,
+		core.StateStarting,
+		0,
+		""); err != nil {
 		t.Fatal(err)
 	}
 	return run
 }
 
-func session(t *testing.T, d *sql.DB, run *core.Run) investigate_core.Session {
+func session(t *testing.T,
+	d *sql.DB,
+	run *core.Run) investigate_core.Session {
 	files := investigate.NotesFile{
 		Dir: filepath.Join(t.TempDir(), "notes"),
 	}
 	return investigate_core.Session{
 		Env: investigate_core.Env{
-			Store:     storeFor(t, d),
-			Files:     files,
-			RunID:     run.ID,
-			NotesPath: files.Path(run.UserID, run.ID, run.NotesID),
+			Store: storeFor(t, d),
+			Files: files,
+			RunID: run.ID,
+			NotesPath: files.Path(run.UserID,
+				run.ID,
+				run.NotesID),
 		},
 		Registry: investigate_core.InvestigativeRegistry(),
 		Limits:   investigate_core.DefaultLimits(),
 	}
 }
 
-func call(t *testing.T, s investigate_core.Session, name string, args m) string {
+func call(t *testing.T,
+	s investigate_core.Session,
+	name string,
+	args m) string {
 	t.Helper()
 	raw, _ := json.Marshal(args)
-	text, err := s.Call(context.Background(), name, raw)
+	text, err := s.Call(context.Background(),
+		name,
+		raw)
 	if err != nil {
-		t.Fatalf("%s %v: %v", name, args, err)
+		t.Fatalf("%s %v: %v",
+			name,
+			args,
+			err)
 	}
 	return text
 }
 
 // A whole history, driven through the tools with a store: the state read back from the database is the state the design describes.
-func TestSessionEndToEnd(t *testing.T) { dbtest.Run(t, testSessionEndToEnd) }
+func TestSessionEndToEnd(t *testing.T) {
+	dbtest.Run(t, testSessionEndToEnd)
+}
 
-func testSessionEndToEnd(t *testing.T, d *sql.DB) {
+func testSessionEndToEnd(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
-	run := createRun(t, d, "alice/../bob")
+	run := createRun(t,
+		d,
+		"alice/../bob")
 	if len(run.NotesID) != 32 {
 		t.Fatalf("CreateRun makes the notes id: %q", run.NotesID)
 	}
-	s := session(t, d, run)
+	s := session(t,
+		d,
+		run)
 	if err := s.Start(ctx, "Does X fit in 16 GB of VRAM?"); err != nil {
 		t.Fatal(err)
 	}
-	call(t, s, "add_question", m{"parent_id": "q_001", "question": "What is the weight size?", "priority": 0.8, "validation_criteria": "bytes", "target_sources": []string{"official_docs"}})
-	call(t, s, "add_question", m{"parent_id": "q_001", "question": "What is the activation memory?", "priority": 0.6, "validation_criteria": "profiling", "depends_on": []string{"q_002"}})
-	if got := call(t, s, "frontier_next", m{}); !strings.Contains(got, "[q_002] in_progress") {
+	call(t,
+		s,
+		"add_question",
+		m{"parent_id": "q_001", "question": "What is the weight size?", "priority": 0.8, "validation_criteria": "bytes", "target_sources": []string{"official_docs"}})
+	call(t,
+		s,
+		"add_question",
+		m{"parent_id": "q_001", "question": "What is the activation memory?", "priority": 0.6, "validation_criteria": "profiling", "depends_on": []string{"q_002"}})
+	if got := call(t,
+		s,
+		"frontier_next",
+		m{}); !strings.Contains(got, "[q_002] in_progress") {
 		t.Fatal(got)
 	}
-	call(t, s, "retry_question", m{"id": "q_002", "new_query": "model weights size fp16", "why": "no figure"})
-	call(t, s, "frontier_next", m{})
-	call(t, s, "notes_append", m{"section": "Sources", "entries": []m{{"url": "https://arxiv.org/abs/1", "title": "Paper"}, {"url": "https://docs.example.com/x", "title": "Docs"}}})
-	call(t, s, "notes_append", m{"section": "Unverified", "entries": []m{{"text": "Weights are 7 GB at fp16", "question_id": "q_002",
-		"sources": []m{{"source_id": "s_001", "independent": true}, {"source_id": "s_002", "independent": true}}}}})
-	call(t, s, "notes_append", m{"section": "Datapoints", "entries": []m{{"value": "7", "unit": "GB", "text": "weights at fp16", "question_id": "q_002", "sources": []m{{"source_id": "s_001"}}}}})
-	call(t, s, "challenge", m{"target_type": "claim", "target_id": "c_001", "negation": "weights are much larger than 7 GB", "strategy": "discrepancy",
-		"expected_if_false": "a model card with a bigger size", "query": "model weights conflicting size card"})
+	call(t,
+		s,
+		"retry_question",
+		m{"id": "q_002", "new_query": "model weights size fp16", "why": "no figure"})
+	call(t,
+		s,
+		"frontier_next",
+		m{})
+	call(t,
+		s,
+		"notes_append",
+		m{"section": "Sources", "entries": []m{{"url": "https://arxiv.org/abs/1", "title": "Paper"}, {"url": "https://docs.example.com/x", "title": "Docs"}}})
+	call(t,
+		s,
+		"notes_append",
+		m{"section": "Unverified", "entries": []m{{"text": "Weights are 7 GB at fp16", "question_id": "q_002",
+			"sources": []m{{"source_id": "s_001", "independent": true}, {"source_id": "s_002", "independent": true}}}}})
+	call(t,
+		s,
+		"notes_append",
+		m{"section": "Datapoints", "entries": []m{{"value": "7", "unit": "GB", "text": "weights at fp16", "question_id": "q_002", "sources": []m{{"source_id": "s_001"}}}}})
+	call(t,
+		s,
+		"challenge",
+		m{"target_type": "claim", "target_id": "c_001", "negation": "weights are much larger than 7 GB", "strategy": "discrepancy",
+			"expected_if_false": "a model card with a bigger size", "query": "model weights conflicting size card"})
 	// The effect layer executes the search of the challenge and links its attempt (the loop of stage 2 does this).
 	st, err := s.Load(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, chs, err := investigate_core.LinkAttempt(st.Frontier, st.Challenges, "ch_001", "web_search", "nothing against")
+	f, chs, err := investigate_core.LinkAttempt(st.Frontier,
+		st.Challenges,
+		"ch_001",
+		"web_search",
+		"nothing against")
 	if err != nil {
 		t.Fatal(err)
 	}
 	after := st
 	after.Frontier, after.Challenges = f, chs
-	if err := investigate_core.Execute(ctx, s.Env, 1, investigate_core.Diff(st, after, nil, "")); err != nil {
+	if err := investigate_core.Execute(ctx,
+		s.Env,
+		1,
+		investigate_core.Diff(st,
+			after,
+			nil,
+			"")); err != nil {
 		t.Fatal(err)
 	}
-	call(t, s, "record_challenge_result", m{"challenge_id": "ch_001", "outcome": "survived"})
-	call(t, s, "notes_update", m{"id": "c_001", "change": m{"status": "VERIFIED"}})
-	call(t, s, "notes_scratch", m{"text": "Conclusion: it fits."})
-	call(t, s, "challenge", m{"target_type": "question_answer", "target_id": "q_002", "negation": "the weights are not 7 GB", "strategy": "criticism",
-		"expected_if_false": "a correction", "query": "weights size correction errata"})
-	call(t, s, "record_challenge_result", m{"challenge_id": "ch_002", "outcome": "inconclusive", "evidence": "paywalled"})
-	call(t, s, "resolve_question", m{"id": "q_002", "answer": "7 GB", "claim_ids": []string{"c_001", "d_001"}})
-	call(t, s, "frontier_next", m{})
-	call(t, s, "prune_branch", m{"id": "q_003", "reason": "answer would not change the conclusion"})
+	call(t,
+		s,
+		"record_challenge_result",
+		m{"challenge_id": "ch_001", "outcome": "survived"})
+	call(t,
+		s,
+		"notes_update",
+		m{"id": "c_001", "change": m{"status": "VERIFIED"}})
+	call(t,
+		s,
+		"notes_scratch",
+		m{"text": "Conclusion: it fits."})
+	call(t,
+		s,
+		"challenge",
+		m{"target_type": "question_answer", "target_id": "q_002", "negation": "the weights are not 7 GB", "strategy": "criticism",
+			"expected_if_false": "a correction", "query": "weights size correction errata"})
+	call(t,
+		s,
+		"record_challenge_result",
+		m{"challenge_id": "ch_002", "outcome": "inconclusive", "evidence": "paywalled"})
+	call(t,
+		s,
+		"resolve_question",
+		m{"id": "q_002", "answer": "7 GB", "claim_ids": []string{"c_001", "d_001"}})
+	call(t,
+		s,
+		"frontier_next",
+		m{})
+	call(t,
+		s,
+		"prune_branch",
+		m{"id": "q_003", "reason": "answer would not change the conclusion"})
 
 	loaded, err := s.Load(ctx)
 	if err != nil {
@@ -131,16 +221,24 @@ func testSessionEndToEnd(t *testing.T, d *sql.DB) {
 	// The state from the database equals the state of the same calls on pure values.
 	pure := replayPure(t)
 	if !reflect.DeepEqual(loaded.Frontier, pure.Frontier) {
-		t.Errorf("frontier from the store differs:\n got %+v\nwant %+v", loaded.Frontier, pure.Frontier)
+		t.Errorf("frontier from the store differs:\n got %+v\nwant %+v",
+			loaded.Frontier,
+			pure.Frontier)
 	}
 	if !reflect.DeepEqual(loaded.Challenges, pure.Challenges) {
-		t.Errorf("challenges from the store differ:\n got %+v\nwant %+v", loaded.Challenges, pure.Challenges)
+		t.Errorf("challenges from the store differ:\n got %+v\nwant %+v",
+			loaded.Challenges,
+			pure.Challenges)
 	}
 	if investigate_core.Render(loaded.Notes) != investigate_core.Render(pure.Notes) {
-		t.Errorf("notes from the store differ:\n%s\n---\n%s", investigate_core.Render(loaded.Notes), investigate_core.Render(pure.Notes))
+		t.Errorf("notes from the store differ:\n%s\n---\n%s",
+			investigate_core.Render(loaded.Notes),
+			investigate_core.Render(pure.Notes))
 	}
 	// Transitions: one row per change, seq per question 1, 2, 3, ..., the last one equals the status.
-	rows, err := d.QueryContext(ctx, queryFor(t, `SELECT question_id, seq, to_status, state_seq FROM gb_agent_frontier_transitions WHERE run_id = ? ORDER BY id`), run.ID)
+	rows, err := d.QueryContext(ctx,
+		queryFor(t, `SELECT question_id, seq, to_status, state_seq FROM gb_agent_frontier_transitions WHERE run_id = ? ORDER BY id`),
+		run.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,17 +248,29 @@ func testSessionEndToEnd(t *testing.T, d *sql.DB) {
 	for rows.Next() {
 		var q, to string
 		var seq, stateSeq int
-		if err := rows.Scan(&q, &seq, &to, &stateSeq); err != nil {
+		if err := rows.Scan(&q,
+			&seq,
+			&to,
+			&stateSeq); err != nil {
 			t.Fatal(err)
 		}
 		if seq != seqs[q]+1 || stateSeq != 1 {
-			t.Fatalf("%s: seq %d after %d, state_seq %d", q, seq, seqs[q], stateSeq)
+			t.Fatalf("%s: seq %d after %d, state_seq %d",
+				q,
+				seq,
+				seqs[q],
+				stateSeq)
 		}
 		seqs[q], last[q] = seq, to
 	}
 	for _, q := range loaded.Frontier.Questions {
 		if last[q.ID] != string(q.Status) || seqs[q.ID] != q.TransSeq {
-			t.Errorf("%s: status %s, last transition %s (seq %d, TransSeq %d)", q.ID, q.Status, last[q.ID], seqs[q.ID], q.TransSeq)
+			t.Errorf("%s: status %s, last transition %s (seq %d, TransSeq %d)",
+				q.ID,
+				q.Status,
+				last[q.ID],
+				seqs[q.ID],
+				q.TransSeq)
 		}
 	}
 	// Every notes effect left a version, and the latest one is the file.
@@ -170,7 +280,9 @@ func testSessionEndToEnd(t *testing.T, d *sql.DB) {
 	}
 	onDisk, err := s.Env.Files.Read(s.Env.NotesPath)
 	if err != nil || onDisk != v.Text || v.Reason != "notes_scratch" && v.Reason != "notes_update" {
-		t.Fatalf("file != latest version (%q): %v", v.Reason, err)
+		t.Fatalf("file != latest version (%q): %v",
+			v.Reason,
+			err)
 	}
 	if v.Seq != 5 {
 		t.Errorf("notes versions: %d (append x3, update, scratch)", v.Seq)
@@ -187,20 +299,31 @@ func testSessionEndToEnd(t *testing.T, d *sql.DB) {
 		`SELECT COUNT(*) FROM gb_agent_sources WHERE run_id = ?`:                               &sources,
 		`SELECT COUNT(*) FROM gb_agent_challenges WHERE run_id = ? AND attempt_id IS NOT NULL`: &challengeSources,
 	} {
-		if err := d.QueryRowContext(ctx, queryFor(t, q), run.ID).Scan(dst); err != nil {
+		if err := d.QueryRowContext(ctx,
+			queryFor(t, q),
+			run.ID).Scan(dst); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if claims != 2 || links != 3 || sources != 2 || challengeSources != 1 {
-		t.Errorf("claims %d links %d sources %d challenges with attempt %d", claims, links, sources, challengeSources)
+		t.Errorf("claims %d links %d sources %d challenges with attempt %d",
+			claims,
+			links,
+			sources,
+			challengeSources)
 	}
 	var status string
-	if err := d.QueryRowContext(ctx, queryFor(t, `SELECT status FROM gb_agent_claims WHERE run_id = ? AND id = 'c_001'`), run.ID).Scan(&status); err != nil || status != "VERIFIED" {
-		t.Errorf("c_001: %q %v", status, err)
+	if err := d.QueryRowContext(ctx,
+		queryFor(t, `SELECT status FROM gb_agent_claims WHERE run_id = ? AND id = 'c_001'`),
+		run.ID).Scan(&status); err != nil || status != "VERIFIED" {
+		t.Errorf("c_001: %q %v",
+			status,
+			err)
 	}
 }
 
-func queryFor(t *testing.T, q string) string {
+func queryFor(t *testing.T,
+	q string) string {
 	if !strings.HasSuffix(t.Name(), "postgres") {
 		return q
 	}
@@ -225,12 +348,15 @@ func replayPure(t *testing.T) investigate_core.State {
 		t.Fatal(err)
 	}
 	reg := investigate_core.InvestigativeRegistry()
-	run := func(name string, args m) {
+	run := func(name string,
+		args m) {
 		tool, _ := reg.Get(name)
 		raw, _ := json.Marshal(args)
 		res, err := tool.Handler(s, raw)
 		if err != nil {
-			t.Fatalf("pure %s: %v", name, err)
+			t.Fatalf("pure %s: %v",
+				name,
+				err)
 		}
 		s = res.State
 	}
@@ -245,7 +371,11 @@ func replayPure(t *testing.T) investigate_core.State {
 	run("notes_append", m{"section": "Datapoints", "entries": []m{{"value": "7", "unit": "GB", "text": "weights at fp16", "question_id": "q_002", "sources": []m{{"source_id": "s_001"}}}}})
 	run("challenge", m{"target_type": "claim", "target_id": "c_001", "negation": "weights are much larger than 7 GB", "strategy": "discrepancy",
 		"expected_if_false": "a model card with a bigger size", "query": "model weights conflicting size card"})
-	f, chs, err := investigate_core.LinkAttempt(s.Frontier, s.Challenges, "ch_001", "web_search", "nothing against")
+	f, chs, err := investigate_core.LinkAttempt(s.Frontier,
+		s.Challenges,
+		"ch_001",
+		"web_search",
+		"nothing against")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,12 +393,19 @@ func replayPure(t *testing.T) investigate_core.State {
 }
 
 // A failing effect aborts the whole list: nothing of it is stored, and no notes file is written.
-func TestExecuteIsAtomic(t *testing.T) { dbtest.Run(t, testExecuteIsAtomic) }
+func TestExecuteIsAtomic(t *testing.T) {
+	dbtest.Run(t, testExecuteIsAtomic)
+}
 
-func testExecuteIsAtomic(t *testing.T, d *sql.DB) {
+func testExecuteIsAtomic(t *testing.T,
+	d *sql.DB) {
 	ctx := context.Background()
-	run := createRun(t, d, "u")
-	s := session(t, d, run)
+	run := createRun(t,
+		d,
+		"u")
+	s := session(t,
+		d,
+		run)
 	if err := s.Start(ctx, "objective"); err != nil {
 		t.Fatal(err)
 	}
@@ -290,24 +427,29 @@ func testExecuteIsAtomic(t *testing.T, d *sql.DB) {
 		Priority: 7,
 		Status:   investigate_core.StatusPending,
 	}
-	err := investigate_core.Execute(ctx, s.Env, 0, []investigate_core.Effect{
-		investigate_core.UpsertQuestion{
-			Question: q,
-		},
-		investigate_core.WriteNotes{
-			Text:   "# Notes: x\n",
-			Reason: "notes_append",
-		},
-		investigate_core.UpsertQuestion{
-			Question: bad,
-		}, // violates the CHECK on priority
-	})
+	err := investigate_core.Execute(ctx,
+		s.Env,
+		0,
+		[]investigate_core.Effect{
+			investigate_core.UpsertQuestion{
+				Question: q,
+			},
+			investigate_core.WriteNotes{
+				Text:   "# Notes: x\n",
+				Reason: "notes_append",
+			},
+			investigate_core.UpsertQuestion{
+				Question: bad,
+			}, // violates the CHECK on priority
+		})
 	if err == nil {
 		t.Fatal("the bad row must fail")
 	}
 	l, err := s.Env.Store.Load(ctx, run.ID)
 	if err != nil || len(l.Frontier.Questions) != 1 || l.NotesText != "" {
-		t.Fatalf("nothing of the failed list is stored: %v %+v", err, l)
+		t.Fatalf("nothing of the failed list is stored: %v %+v",
+			err,
+			l)
 	}
 	if got, _ := s.Env.Files.Read(s.Env.NotesPath); got != investigate_core.Render(investigate_core.Notes{}) {
 		t.Fatalf("the notes file is not written for a failed transaction: %q", got)
@@ -339,7 +481,10 @@ func testExecuteIsAtomic(t *testing.T, d *sql.DB) {
 			DependsOnID: "q_001",
 		},
 	} {
-		if err := investigate_core.Execute(ctx, s.Env, 0, []investigate_core.Effect{e}); err == nil {
+		if err := investigate_core.Execute(ctx,
+			s.Env,
+			0,
+			[]investigate_core.Effect{e}); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}

@@ -54,7 +54,8 @@ type fakeModel struct {
 	n         int
 }
 
-func (f *fakeModel) call(_ context.Context, payload map[string]any) (*ai.RawResponse, error) {
+func (f *fakeModel) call(_ context.Context,
+	payload map[string]any) (*ai.RawResponse, error) {
 	raw, _ := json.Marshal(payload)
 	f.texts = append(f.texts, string(raw))
 	f.payloads = append(f.payloads, payload)
@@ -76,7 +77,9 @@ func (f *fakeModel) call(_ context.Context, payload map[string]any) (*ai.RawResp
 		content = append(content, b)
 	}
 	for i, c := range r.calls {
-		b, _ := json.Marshal(m{"type": "tool_use", "id": fmt.Sprintf("tu_%d_%d", f.n, i), "name": c.name, "input": c.in})
+		b, _ := json.Marshal(m{"type": "tool_use", "id": fmt.Sprintf("tu_%d_%d",
+			f.n,
+			i), "name": c.name, "input": c.in})
 		content = append(content, b)
 	}
 	return &ai.RawResponse{
@@ -104,21 +107,29 @@ func fakeTools() []agent.Tool {
 			Name:        "web_search",
 			Description: "search",
 			Schema:      schema,
-			Run:         func(context.Context, json.RawMessage) (string, error) { return "a short briefing", nil },
+			Run: func(context.Context,
+				json.RawMessage) (string, error) {
+				return "a short briefing", nil
+			},
 		},
 		{
 			Name:        "fetch_page",
 			Description: "read",
 			Schema:      schema,
-			Run: func(context.Context, json.RawMessage) (string, error) {
+			Run: func(context.Context,
+				json.RawMessage) (string, error) {
 				return strings.Repeat("page ", 40) + "MARKER" + strings.Repeat(" text", 40), nil
 			},
 		},
 	}
 }
 
-func newEnv(t *testing.T, d *sql.DB, limits investigate_core.Limits) *env {
-	run := createRun(t, d, "user")
+func newEnv(t *testing.T,
+	d *sql.DB,
+	limits investigate_core.Limits) *env {
+	run := createRun(t,
+		d,
+		"user")
 	files := investigate.NotesFile{
 		Dir: filepath.Join(t.TempDir(), "notes"),
 	}
@@ -129,10 +140,12 @@ func newEnv(t *testing.T, d *sql.DB, limits investigate_core.Limits) *env {
 		outs: map[string]string{},
 		sess: investigate_core.Session{
 			Env: investigate_core.Env{
-				Store:     storeFor(t, d),
-				Files:     files,
-				RunID:     run.ID,
-				NotesPath: files.Path(run.UserID, run.ID, run.NotesID),
+				Store: storeFor(t, d),
+				Files: files,
+				RunID: run.ID,
+				NotesPath: files.Path(run.UserID,
+					run.ID,
+					run.NotesID),
 			},
 			Registry: investigate_core.LoopRegistry(),
 			Limits:   limits,
@@ -147,20 +160,35 @@ func loopLimits() investigate_core.Limits {
 	return l
 }
 
-func (e *env) run1(t *testing.T, fm *fakeModel, hooks investigate.Hooks) (investigate.RunResult, error) {
+func (e *env) run1(t *testing.T,
+	fm *fakeModel,
+	hooks investigate.Hooks) (investigate.RunResult, error) {
 	t.Helper()
 	count := map[string]int{}
-	hooks.PhaseChanged = func(p investigate_core.Phase, stop string) { e.phases = append(e.phases, string(p)+"/"+stop) }
+	hooks.PhaseChanged = func(p investigate_core.Phase,
+		stop string) {
+		e.phases = append(e.phases, string(p)+"/"+stop)
+	}
 	prevBefore := hooks.BeforeModel
-	hooks.BeforeModel = func(turn int, state, detail string) {
+	hooks.BeforeModel = func(turn int,
+		state,
+		detail string) {
 		e.states = append(e.states, state)
 		if prevBefore != nil {
-			prevBefore(turn, state, detail)
+			prevBefore(turn,
+				state,
+				detail)
 		}
 	}
-	hooks.AfterTool = func(turn int, name, out string, isErr bool, _ investigate.Totals) {
+	hooks.AfterTool = func(turn int,
+		name,
+		out string,
+		isErr bool,
+		_ investigate.Totals) {
 		count[name]++
-		e.outs[fmt.Sprintf("%s#%d", name, count[name])] = out
+		e.outs[fmt.Sprintf("%s#%d",
+			name,
+			count[name])] = out
 	}
 	return investigate.Run(context.Background(), investigate.Config{
 		Session:  e.sess,
@@ -185,10 +213,15 @@ var notesOnly = []string{"notes_read", "notes_append", "notes_update", "notes_sc
 // A whole run on a fake model: planning, the selection, a page that forces an extraction, a text-only turn that is reminded, a challenge and its
 // search, a failed finish_exploration with the list of what is missing, the conclusion, a passing finish_exploration, a synthesis with a
 // text-only turn and a report that fails the gate, and the report.
-func TestRunExplorationAndSynthesis(t *testing.T) { dbtest.Run(t, testRunExplorationAndSynthesis) }
+func TestRunExplorationAndSynthesis(t *testing.T) {
+	dbtest.Run(t, testRunExplorationAndSynthesis)
+}
 
-func testRunExplorationAndSynthesis(t *testing.T, d *sql.DB) {
-	e := newEnv(t, d, loopLimits())
+func testRunExplorationAndSynthesis(t *testing.T,
+	d *sql.DB) {
+	e := newEnv(t,
+		d,
+		loopLimits())
 	fm := &fakeModel{
 		t:    t,
 		cost: 0.01,
@@ -245,7 +278,9 @@ func testRunExplorationAndSynthesis(t *testing.T, d *sql.DB) {
 			},
 		},
 	}
-	res, err := e.run1(t, fm, investigate.Hooks{})
+	res, err := e.run1(t,
+		fm,
+		investigate.Hooks{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,10 +360,15 @@ func testRunExplorationAndSynthesis(t *testing.T, d *sql.DB) {
 }
 
 // A deleted notes file is rebuilt from the latest version, with a version of reason restore, before the next turn.
-func TestRunRestoresTheNotesFile(t *testing.T) { dbtest.Run(t, testRunRestoresTheNotesFile) }
+func TestRunRestoresTheNotesFile(t *testing.T) {
+	dbtest.Run(t, testRunRestoresTheNotesFile)
+}
 
-func testRunRestoresTheNotesFile(t *testing.T, d *sql.DB) {
-	e := newEnv(t, d, loopLimits())
+func testRunRestoresTheNotesFile(t *testing.T,
+	d *sql.DB) {
+	e := newEnv(t,
+		d,
+		loopLimits())
 	fm := &fakeModel{
 		t: t,
 		script: []reply{
@@ -351,7 +391,9 @@ func testRunRestoresTheNotesFile(t *testing.T, d *sql.DB) {
 	}
 	// The file is removed before the third turn.
 	hooks := investigate.Hooks{
-		BeforeModel: func(turn int, _, _ string) {
+		BeforeModel: func(turn int,
+			_,
+			_ string) {
 			if turn == 3 { // the file is gone during the third turn, which writes nothing
 				if err := os.Remove(e.sess.Env.NotesPath); err != nil {
 					t.Error(err)
@@ -360,7 +402,9 @@ func testRunRestoresTheNotesFile(t *testing.T, d *sql.DB) {
 		},
 	}
 	e.sess.Limits.MaxIterations = 5 // exploration may take 4 turns, the fifth is the report
-	if _, err := e.run1(t, fm, hooks); err != nil {
+	if _, err := e.run1(t,
+		fm,
+		hooks); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(e.sess.Env.NotesPath); err != nil {
@@ -401,12 +445,17 @@ func (e *env) ph() string {
 }
 
 // A breaker in exploration moves the run to synthesis with a note, and the run completes; the last turn is forced to finalize_report.
-func TestRunBreakerInExploration(t *testing.T) { dbtest.Run(t, testRunBreakerInExploration) }
+func TestRunBreakerInExploration(t *testing.T) {
+	dbtest.Run(t, testRunBreakerInExploration)
+}
 
-func testRunBreakerInExploration(t *testing.T, d *sql.DB) {
+func testRunBreakerInExploration(t *testing.T,
+	d *sql.DB) {
 	l := loopLimits()
 	l.MaxIterations = 10 // exploration may take 8 turns, synthesis the rest
-	e := newEnv(t, d, l)
+	e := newEnv(t,
+		d,
+		l)
 	search := reply{
 		calls: []tc{{"web_search", m{"query": "something"}}},
 	}
@@ -426,7 +475,9 @@ func testRunBreakerInExploration(t *testing.T, d *sql.DB) {
 			},
 		},
 	}
-	res, err := e.run1(t, fm, investigate.Hooks{})
+	res, err := e.run1(t,
+		fm,
+		investigate.Hooks{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -453,12 +504,17 @@ func testRunBreakerInExploration(t *testing.T, d *sql.DB) {
 }
 
 // A breaker in synthesis (the reserve is used up) fails the run with the breaker named.
-func TestRunBreakerInSynthesis(t *testing.T) { dbtest.Run(t, testRunBreakerInSynthesis) }
+func TestRunBreakerInSynthesis(t *testing.T) {
+	dbtest.Run(t, testRunBreakerInSynthesis)
+}
 
-func testRunBreakerInSynthesis(t *testing.T, d *sql.DB) {
+func testRunBreakerInSynthesis(t *testing.T,
+	d *sql.DB) {
 	l := loopLimits()
 	l.MaxIterations = 10
-	e := newEnv(t, d, l)
+	e := newEnv(t,
+		d,
+		l)
 	search := reply{
 		calls: []tc{{"web_search", m{"query": "something"}}},
 	}
@@ -475,7 +531,9 @@ func testRunBreakerInSynthesis(t *testing.T, d *sql.DB) {
 			search, search, search, search, search, bad, bad,
 		},
 	}
-	res, err := e.run1(t, fm, investigate.Hooks{})
+	res, err := e.run1(t,
+		fm,
+		investigate.Hooks{})
 	var be *investigate.BreakerError
 	if !errors.As(err, &be) || be.Breaker.Name != "iterations" || !strings.Contains(err.Error(), "breaker: iterations") {
 		t.Fatalf("err: %v", err)
@@ -489,12 +547,17 @@ func testRunBreakerInSynthesis(t *testing.T, d *sql.DB) {
 }
 
 // The cost breaker and the reserve: exploration stops at 85% of the cap, and synthesis may spend the rest.
-func TestRunCostBreakerAndReserve(t *testing.T) { dbtest.Run(t, testRunCostBreakerAndReserve) }
+func TestRunCostBreakerAndReserve(t *testing.T) {
+	dbtest.Run(t, testRunCostBreakerAndReserve)
+}
 
-func testRunCostBreakerAndReserve(t *testing.T, d *sql.DB) {
+func testRunCostBreakerAndReserve(t *testing.T,
+	d *sql.DB) {
 	l := loopLimits()
 	l.MaxCostUSD = 0.10
-	e := newEnv(t, d, l)
+	e := newEnv(t,
+		d,
+		l)
 	search := reply{
 		calls: []tc{{"web_search", m{"query": "something"}}},
 	}
@@ -512,9 +575,13 @@ func testRunCostBreakerAndReserve(t *testing.T, d *sql.DB) {
 			},
 		},
 	}
-	res, err := e.run1(t, fm, investigate.Hooks{})
+	res, err := e.run1(t,
+		fm,
+		investigate.Hooks{})
 	if err != nil || res.StopReason != investigate_core.StopCost || res.Report == "" {
-		t.Fatalf("%+v %v", res, err)
+		t.Fatalf("%+v %v",
+			res,
+			err)
 	}
 	if res.CostUSD < 0.085 || res.CostUSD > 0.10 {
 		t.Errorf("cost %.4f: exploration stops at 85%% of the cap, synthesis stays under the cap", res.CostUSD)
@@ -522,12 +589,17 @@ func testRunCostBreakerAndReserve(t *testing.T, d *sql.DB) {
 }
 
 // The token breaker.
-func TestRunTokenBreaker(t *testing.T) { dbtest.Run(t, testRunTokenBreaker) }
+func TestRunTokenBreaker(t *testing.T) {
+	dbtest.Run(t, testRunTokenBreaker)
+}
 
-func testRunTokenBreaker(t *testing.T, d *sql.DB) {
+func testRunTokenBreaker(t *testing.T,
+	d *sql.DB) {
 	l := loopLimits()
 	l.MaxTotalTokens = 1500 // 150 per call: exploration may take 8 (1275), synthesis up to 10
-	e := newEnv(t, d, l)
+	e := newEnv(t,
+		d,
+		l)
 	search := reply{
 		calls: []tc{{"web_search", m{"query": "something"}}},
 	}
@@ -544,19 +616,28 @@ func testRunTokenBreaker(t *testing.T, d *sql.DB) {
 			},
 		},
 	}
-	res, err := e.run1(t, fm, investigate.Hooks{})
+	res, err := e.run1(t,
+		fm,
+		investigate.Hooks{})
 	if err != nil || res.StopReason != investigate_core.StopTokens || res.Report == "" {
-		t.Fatalf("%+v %v", res, err)
+		t.Fatalf("%+v %v",
+			res,
+			err)
 	}
 }
 
 // Synthesis may send the run back to exploration once (max_reopens), and no more.
-func TestRunReopen(t *testing.T) { dbtest.Run(t, testRunReopen) }
+func TestRunReopen(t *testing.T) {
+	dbtest.Run(t, testRunReopen)
+}
 
-func testRunReopen(t *testing.T, d *sql.DB) {
+func testRunReopen(t *testing.T,
+	d *sql.DB) {
 	l := loopLimits()
 	l.MinSources, l.MinDomains = 0, 0
-	e := newEnv(t, d, l)
+	e := newEnv(t,
+		d,
+		l)
 	fm := &fakeModel{
 		t: t,
 		script: []reply{
@@ -586,13 +667,17 @@ func testRunReopen(t *testing.T, d *sql.DB) {
 			},
 		},
 	}
-	res, err := e.run1(t, fm, investigate.Hooks{})
+	res, err := e.run1(t,
+		fm,
+		investigate.Hooks{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"exploration/", "synthesis/frontier_exhausted", "exploration/", "synthesis/frontier_exhausted", "synthesis/frontier_exhausted"}
 	if !slices.Equal(e.phases, want) || res.StopReason != investigate_core.StopFrontierExhausted || res.Report == "" {
-		t.Fatalf("%+v phases %v", res, e.phases)
+		t.Fatalf("%+v phases %v",
+			res,
+			e.phases)
 	}
 	if out := e.outs["reopen_question#2"]; !strings.Contains(out, "cannot reopen exploration again") {
 		t.Errorf("the second reopen: %q", out)
@@ -603,13 +688,18 @@ func testRunReopen(t *testing.T, d *sql.DB) {
 }
 
 // Notes over their budget make a consolidation turn (notes tools only); a second one only if the first did not reduce them.
-func TestRunConsolidation(t *testing.T) { dbtest.Run(t, testRunConsolidation) }
+func TestRunConsolidation(t *testing.T) {
+	dbtest.Run(t, testRunConsolidation)
+}
 
-func testRunConsolidation(t *testing.T, d *sql.DB) {
+func testRunConsolidation(t *testing.T,
+	d *sql.DB) {
 	l := loopLimits()
 	l.NotesMaxTokens = 20
 	l.MaxIterations = 6
-	e := newEnv(t, d, l)
+	e := newEnv(t,
+		d,
+		l)
 	fm := &fakeModel{
 		t:         t,
 		autoNotes: true,
@@ -626,7 +716,9 @@ func testRunConsolidation(t *testing.T, d *sql.DB) {
 			},
 		},
 	}
-	_, _ = e.run1(t, fm, investigate.Hooks{})
+	_, _ = e.run1(t,
+		fm,
+		investigate.Hooks{})
 	if len(e.states) < 3 || !slices.Equal(e.states[:3], []string{"consolidating", "consolidating", "planning"}) {
 		t.Fatalf("states: %v", e.states)
 	}
@@ -641,13 +733,18 @@ func testRunConsolidation(t *testing.T, d *sql.DB) {
 // Run options and the ends: a model failure ends the run with its error.
 func TestRunModelFailure(t *testing.T) {
 	d := dbtest.OpenSQLite(t)
-	e := newEnv(t, d, loopLimits())
+	e := newEnv(t,
+		d,
+		loopLimits())
 	boom := errors.New("model down")
 	_, err := investigate.Run(context.Background(), investigate.Config{
 		Session:  e.sess,
 		Task:     "t",
 		External: fakeTools(),
-		Model:    func(context.Context, map[string]any) (*ai.RawResponse, error) { return nil, boom },
+		Model: func(context.Context,
+			map[string]any) (*ai.RawResponse, error) {
+			return nil, boom
+		},
 	})
 	if !errors.Is(err, boom) {
 		t.Fatal(err)

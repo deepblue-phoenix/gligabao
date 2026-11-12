@@ -134,16 +134,23 @@ type remoteStateKey struct {
 // follower that was cut off resumes with the number of the first event it missed.
 type Remote interface {
 	// Start starts a job for req and returns its ID.
-	Start(ctx context.Context, req RemoteRequest) (jobID string, err error)
+	Start(ctx context.Context,
+		req RemoteRequest) (jobID string, err error)
 	// Follow calls fn with every event of the job from the one numbered from on, as they happen. It returns nil when the stream ends
 	// (after the job's last event, or when it has been open long enough: the caller reconnects), fn's error if fn fails (which ends it),
 	// ctx's error when ctx is done, and an error for a connection that failed or broke.
-	Follow(ctx context.Context, jobID string, from int, fn func(RemoteEvent) error) error
+	Follow(ctx context.Context,
+		jobID string,
+		from int,
+		fn func(RemoteEvent) error) error
 	// Cancel asks the job to end. The job reports a RemoteCancelled status when it has.
-	Cancel(ctx context.Context, jobID string) error
+	Cancel(ctx context.Context,
+		jobID string) error
 	// Export writes the export file of the job (RemoteEvent.Export says there is one) to w and returns the number of bytes written. On an
 	// error w may have got part of the file.
-	Export(ctx context.Context, jobID string, w io.Writer) (int64, error)
+	Export(ctx context.Context,
+		jobID string,
+		w io.Writer) (int64, error)
 }
 
 // Importer loads what the agent of a remote research handed back into the databases of the server (see UseImporter). The server's
@@ -152,7 +159,9 @@ type Importer interface {
 	// Import loads the export file at path (an archive of package dbexport, written by gligabao_agent --export) for the research run
 	// of the user: the knowledge the agent gathered goes to the user's datasets, the runs of its sub-agents become children of run (see
 	// dbimport). It returns a line that says what was loaded.
-	Import(ctx context.Context, path string, run ImportRun) (summary string, err error)
+	Import(ctx context.Context,
+		path string,
+		run ImportRun) (summary string, err error)
 }
 
 // Types of a RemoteEvent.
@@ -220,7 +229,12 @@ func (m *Manager) UseImporter(i Importer) {
 
 // startRemote is Start for a research that runs in Modal: it starts the job, records the run and follows the job in the background.
 // The caller has counted the run in m.active (release undoes it). opts are resolved.
-func (m *Manager) startRemote(ctx context.Context, userID string, opts Options, def *agent_defs.Def, remote Remote, release func()) (*core.Run, error) {
+func (m *Manager) startRemote(ctx context.Context,
+	userID string,
+	opts Options,
+	def *agent_defs.Def,
+	remote Remote,
+	release func()) (*core.Run, error) {
 	bundle, err := m.registry().Bundle(def.Name)
 	if err != nil {
 		release()
@@ -260,10 +274,17 @@ func (m *Manager) startRemote(ctx context.Context, userID string, opts Options, 
 	}
 	dbCtx := context.WithoutCancel(ctx)
 	err = m.tx(dbCtx, func(q db.Execer) error {
-		if err := m.Ops.Store.CreateRun(dbCtx, q, run); err != nil {
+		if err := m.Ops.Store.CreateRun(dbCtx,
+			q,
+			run); err != nil {
 			return err
 		}
-		_, err := m.Ops.Store.EnterState(dbCtx, q, run.ID, core.StateStarting, 0, "waiting for the Modal container")
+		_, err := m.Ops.Store.EnterState(dbCtx,
+			q,
+			run.ID,
+			core.StateStarting,
+			0,
+			"waiting for the Modal container")
 		return err
 	})
 	if err != nil {
@@ -274,13 +295,21 @@ func (m *Manager) startRemote(ctx context.Context, userID string, opts Options, 
 		if cancelErr := remote.Cancel(cancelCtx, jobID); cancelErr != nil {
 			log.WithError(cancelErr).WithField("job_id", jobID).Warn("agent research: could not cancel the job of a run that was not recorded")
 		}
-		gberrors.New(context.WithoutCancel(ctx), m.errSink(), "research.remote.create", err, gberrors.Meta{"user_id": userID, "topic": truncate(opts.Topic, 100), "job_id": jobID})
+		gberrors.New(context.WithoutCancel(ctx),
+			m.errSink(),
+			"research.remote.create",
+			err,
+			gberrors.Meta{"user_id": userID, "topic": truncate(opts.Topic, 100), "job_id": jobID})
 		log.WithError(err).WithField("user_id", userID).Error("agent research: recording the run failed")
 		return nil, internalErr("failed to record the research", err)
 	}
 	rec := *run
 
-	rr := newRemoteRun(m, run, remote, jobID, opts.treeCostCap)
+	rr := newRemoteRun(m,
+		run,
+		remote,
+		jobID,
+		opts.treeCostCap)
 	m.mu.Lock()
 	m.remotes[run.ID] = rr
 	m.mu.Unlock()
@@ -298,7 +327,11 @@ func (m *Manager) startRemote(ctx context.Context, userID string, opts Options, 
 	return &rec, nil
 }
 
-func newRemoteRun(m *Manager, run *core.Run, remote Remote, jobID string, capUSD float64) *remoteRun {
+func newRemoteRun(m *Manager,
+	run *core.Run,
+	remote Remote,
+	jobID string,
+	capUSD float64) *remoteRun {
 	rr := &remoteRun{
 		m:      m,
 		run:    run,
@@ -316,7 +349,8 @@ func newRemoteRun(m *Manager, run *core.Run, remote Remote, jobID string, capUSD
 
 // requestStop asks the job to end, for Manager.Stop. If the job cannot be reached the follower ends the run as stopped at once
 // (the job may go on in Modal until its own timeout, which the error of the run says).
-func (rr *remoteRun) requestStop(ctx context.Context, by string) {
+func (rr *remoteRun) requestStop(ctx context.Context,
+	by string) {
 	cause := &stopCause{
 		runID: rr.run.ID,
 		by:    by,
@@ -337,8 +371,14 @@ func (rr *remoteRun) work() {
 	defer func() {
 		if p := recover(); p != nil {
 			rr.logf.Errorf("agent research: following the job panicked: %v", p)
-			gberrors.New(rr.dbCtx, rr.m.errSink(), "research.remote.panic", fmt.Errorf("%v", p), rr.meta())
-			rr.finish(core.StatusFailed, "", fmt.Sprintf("internal error: %v", p))
+			gberrors.New(rr.dbCtx,
+				rr.m.errSink(),
+				"research.remote.panic",
+				fmt.Errorf("%v", p),
+				rr.meta())
+			rr.finish(core.StatusFailed,
+				"",
+				fmt.Sprintf("internal error: %v", p))
 		}
 	}()
 	rr.logf.WithField("topic", truncate(rr.run.Topic, 100)).Info("agent research: started in Modal")
@@ -349,23 +389,38 @@ func (rr *remoteRun) work() {
 	for !rr.final {
 		if time.Now().After(deadline) {
 			rr.cancelJob()
-			gberrors.New(rr.dbCtx, rr.m.errSink(), "research.remote.timeout", nil, rr.meta())
-			rr.finish(core.StatusFailed, "", fmt.Sprintf("the job in Modal did not end within %s", remoteWatchLimit))
+			gberrors.New(rr.dbCtx,
+				rr.m.errSink(),
+				"research.remote.timeout",
+				nil,
+				rr.meta())
+			rr.finish(core.StatusFailed,
+				"",
+				fmt.Sprintf("the job in Modal did not end within %s", remoteWatchLimit))
 			return
 		}
 		before := rr.from
-		err := rr.remote.Follow(rr.runCtx, rr.jobID, rr.from, rr.handle)
+		err := rr.remote.Follow(rr.runCtx,
+			rr.jobID,
+			rr.from,
+			rr.handle)
 		switch {
 		case rr.final:
 		case rr.ctx().Err() != nil:
 			rr.cancelJob() // the job would go on spending money
-			rr.finish(core.StatusFailed, "", "interrupted: the server stopped while the agent worked")
+			rr.finish(core.StatusFailed,
+				"",
+				"interrupted: the server stopped while the agent worked")
 			return
 		case rr.runCtx.Err() != nil:
 			if c := stopCauseOf(rr.runCtx); c != nil {
-				rr.finish(core.StatusStopped, "", c.text(rr.run.ID)+" (the job in Modal could not be asked to stop and may run until its timeout)")
+				rr.finish(core.StatusStopped,
+					"",
+					c.text(rr.run.ID)+" (the job in Modal could not be asked to stop and may run until its timeout)")
 			} else {
-				rr.finish(core.StatusFailed, "", "cancelled")
+				rr.finish(core.StatusFailed,
+					"",
+					"cancelled")
 			}
 			return
 		case err == nil || rr.from > before:
@@ -378,8 +433,14 @@ func (rr *remoteRun) work() {
 			if time.Since(lastContact) > remoteLostAfter {
 				rr.logf.WithError(err).Warn("agent research: lost the job in Modal")
 				rr.cancelJob()
-				gberrors.New(rr.dbCtx, rr.m.errSink(), "research.remote.lost", err, rr.meta())
-				rr.finish(core.StatusFailed, "", truncate(fmt.Sprintf("lost contact with the job in Modal: %v", err), maxTextLen))
+				gberrors.New(rr.dbCtx,
+					rr.m.errSink(),
+					"research.remote.lost",
+					err,
+					rr.meta())
+				rr.finish(core.StatusFailed,
+					"",
+					truncate(fmt.Sprintf("lost contact with the job in Modal: %v", err), maxTextLen))
 				return
 			}
 			rr.logf.WithError(err).Warn("agent research: following the job in Modal failed; retrying")
@@ -431,7 +492,9 @@ func (rr *remoteRun) checkCap(costUSD float64) {
 	if rr.capUSD <= 0 || costUSD <= rr.capUSD*remoteCapGrace || rr.cause.Load() != nil {
 		return
 	}
-	rr.logf.Warnf("agent research: the job in Modal spent $%.4f, over its cost cap of $%.2f: ending it", costUSD, rr.capUSD)
+	rr.logf.Warnf("agent research: the job in Modal spent $%.4f, over its cost cap of $%.2f: ending it",
+		costUSD,
+		rr.capUSD)
 	rr.cause.Store(&stopCause{
 		runID: rr.run.ID,
 		by:    fmt.Sprintf("the cost cap ($%.2f): the agent went well over it", rr.capUSD),
@@ -455,17 +518,27 @@ func (rr *remoteRun) status(ev RemoteEvent) error {
 	switch ev.Status {
 	case RemoteCompleted:
 		if strings.TrimSpace(ev.Report) == "" {
-			rr.finish(core.StatusFailed, "", "the agent ended without a report")
+			rr.finish(core.StatusFailed,
+				"",
+				"the agent ended without a report")
 		} else {
-			rr.finish(core.StatusCompleted, ev.Report, "")
+			rr.finish(core.StatusCompleted,
+				ev.Report,
+				"")
 		}
 	case RemoteFailed:
-		rr.finish(core.StatusFailed, "", truncate(orDefault(ev.Error, "the job in Modal failed"), maxTextLen))
+		rr.finish(core.StatusFailed,
+			"",
+			truncate(orDefault(ev.Error, "the job in Modal failed"), maxTextLen))
 	case RemoteCancelled:
 		if c := rr.cause.Load(); c != nil {
-			rr.finish(core.StatusStopped, "", c.text(rr.run.ID))
+			rr.finish(core.StatusStopped,
+				"",
+				c.text(rr.run.ID))
 		} else {
-			rr.finish(core.StatusFailed, "", truncate("cancelled: "+orDefault(ev.Error, "the job in Modal was cancelled"), maxTextLen))
+			rr.finish(core.StatusFailed,
+				"",
+				truncate("cancelled: "+orDefault(ev.Error, "the job in Modal was cancelled"), maxTextLen))
 		}
 	default:
 		return nil // running
@@ -486,7 +559,12 @@ func (rr *remoteRun) importExport(ex RemoteExport) {
 	}
 	detail := fmt.Sprintf("loading what the agent learned (%s)", byteSize(ex.Bytes))
 	err := rr.tx(func(q db.Execer) (err error) {
-		rr.cur, err = rr.m.Ops.Store.EnterState(rr.dbCtx, q, rr.run.ID, core.StateImporting, 0, detail)
+		rr.cur, err = rr.m.Ops.Store.EnterState(rr.dbCtx,
+			q,
+			rr.run.ID,
+			core.StateImporting,
+			0,
+			detail)
 		return err
 	})
 	if err != nil {
@@ -508,7 +586,8 @@ func (rr *remoteRun) importExport(ex RemoteExport) {
 }
 
 // fetchAndImport downloads the export to a temporary file, checks it against what the job said it is, and imports it.
-func (rr *remoteRun) fetchAndImport(importer Importer, ex RemoteExport) (string, error) {
+func (rr *remoteRun) fetchAndImport(importer Importer,
+	ex RemoteExport) (string, error) {
 	ctx, cancel := context.WithTimeout(rr.runCtx, remoteExportTimeout)
 	defer cancel()
 	f, err := os.CreateTemp("", "gligabao-agent-export-*.zip")
@@ -520,10 +599,14 @@ func (rr *remoteRun) fetchAndImport(importer Importer, ex RemoteExport) (string,
 
 	var lastErr error
 	for attempt := 1; attempt <= remoteExportAttempts; attempt++ {
-		if lastErr = rr.download(ctx, f, ex); lastErr == nil {
+		if lastErr = rr.download(ctx,
+			f,
+			ex); lastErr == nil {
 			break
 		}
-		rr.logf.WithError(lastErr).Warnf("agent research: downloading the export failed (attempt %d of %d)", attempt, remoteExportAttempts)
+		rr.logf.WithError(lastErr).Warnf("agent research: downloading the export failed (attempt %d of %d)",
+			attempt,
+			remoteExportAttempts)
 		if attempt == remoteExportAttempts {
 			return "", lastErr
 		}
@@ -536,14 +619,18 @@ func (rr *remoteRun) fetchAndImport(importer Importer, ex RemoteExport) (string,
 	if err := f.Close(); err != nil {
 		return "", err
 	}
-	return importer.Import(ctx, f.Name(), ImportRun{
-		UserID: rr.run.UserID,
-		RunID:  rr.run.ID,
-	})
+	return importer.Import(ctx,
+		f.Name(),
+		ImportRun{
+			UserID: rr.run.UserID,
+			RunID:  rr.run.ID,
+		})
 }
 
 // download writes the export to f (from its start) and checks its size and SHA-256.
-func (rr *remoteRun) download(ctx context.Context, f *os.File, ex RemoteExport) error {
+func (rr *remoteRun) download(ctx context.Context,
+	f *os.File,
+	ex RemoteExport) error {
 	if err := f.Truncate(0); err != nil {
 		return err
 	}
@@ -551,12 +638,16 @@ func (rr *remoteRun) download(ctx context.Context, f *os.File, ex RemoteExport) 
 		return err
 	}
 	h := sha256.New()
-	n, err := rr.remote.Export(ctx, rr.jobID, io.MultiWriter(f, h))
+	n, err := rr.remote.Export(ctx,
+		rr.jobID,
+		io.MultiWriter(f, h))
 	if err != nil {
 		return err
 	}
 	if ex.Bytes > 0 && n != ex.Bytes {
-		return fmt.Errorf("the export is %d bytes, the job said %d", n, ex.Bytes)
+		return fmt.Errorf("the export is %d bytes, the job said %d",
+			n,
+			ex.Bytes)
 	}
 	if want := strings.ToLower(strings.TrimSpace(ex.SHA256)); want != "" && hex.EncodeToString(h.Sum(nil)) != want {
 		return errors.New("the export does not match its SHA-256")
@@ -575,7 +666,8 @@ func byteSize(n int64) string {
 	return fmt.Sprintf("%d bytes", n)
 }
 
-func orDefault(s, def string) string {
+func orDefault(s,
+	def string) string {
 	if strings.TrimSpace(s) == "" {
 		return def
 	}
@@ -604,7 +696,12 @@ func (rr *remoteRun) state(ev RemoteEvent) {
 	}
 	detail = truncate(detail, maxTextLen)
 	err := rr.tx(func(q db.Execer) (err error) {
-		rr.cur, err = rr.m.Ops.Store.EnterState(rr.dbCtx, q, rr.run.ID, ev.State, ev.Step, detail)
+		rr.cur, err = rr.m.Ops.Store.EnterState(rr.dbCtx,
+			q,
+			rr.run.ID,
+			ev.State,
+			ev.Step,
+			detail)
 		return err
 	})
 	if err != nil {
@@ -618,14 +715,20 @@ func (rr *remoteRun) state(ev RemoteEvent) {
 }
 
 func (rr *remoteRun) closeCurrent(errText string) {
-	if err := rr.m.Ops.Store.CloseState(rr.dbCtx, rr.m.DB, rr.cur.ID, truncate(errText, maxTextLen)); err != nil {
+	if err := rr.m.Ops.Store.CloseState(rr.dbCtx,
+		rr.m.DB,
+		rr.cur.ID,
+		truncate(errText, maxTextLen)); err != nil {
 		rr.logf.WithError(err).Warn("agent research: ending the state failed")
 	}
 }
 
 func (rr *remoteRun) saveUsage(u RemoteUsage) {
 	rr.usage = u
-	if err := rr.m.Ops.Store.UpdateUsage(rr.dbCtx, rr.m.DB, rr.run.ID, usageOfRemote(u)); err != nil {
+	if err := rr.m.Ops.Store.UpdateUsage(rr.dbCtx,
+		rr.m.DB,
+		rr.run.ID,
+		usageOfRemote(u)); err != nil {
 		rr.logf.WithError(err).Warn("agent research: recording the usage failed")
 	}
 }
@@ -646,19 +749,35 @@ func (rr *remoteRun) meta() gberrors.Meta {
 }
 
 // finish ends the run's record, like researcher.finish.
-func (rr *remoteRun) finish(status core.Status, report, errText string) {
+func (rr *remoteRun) finish(status core.Status,
+	report,
+	errText string) {
 	err := rr.tx(func(q db.Execer) error {
-		if err := rr.m.Ops.Store.UpdateUsage(rr.dbCtx, q, rr.run.ID, usageOfRemote(rr.usage)); err != nil {
+		if err := rr.m.Ops.Store.UpdateUsage(rr.dbCtx,
+			q,
+			rr.run.ID,
+			usageOfRemote(rr.usage)); err != nil {
 			return err
 		}
-		_, err := rr.m.Ops.Store.FinishRun(rr.dbCtx, q, rr.run.ID, status, report, errText)
+		_, err := rr.m.Ops.Store.FinishRun(rr.dbCtx,
+			q,
+			rr.run.ID,
+			status,
+			report,
+			errText)
 		return err
 	})
 	if err != nil {
-		gberrors.New(rr.dbCtx, rr.m.errSink(), "research.remote.finish", err, gberrors.Meta{"run_id": rr.run.ID, "status": string(status)})
+		gberrors.New(rr.dbCtx,
+			rr.m.errSink(),
+			"research.remote.finish",
+			err,
+			gberrors.Meta{"run_id": rr.run.ID, "status": string(status)})
 		rr.logf.WithError(err).Error("agent research: ending the run failed")
 	}
 	rr.logf.WithField("status", status).Info("agent research: ended")
 }
 
-func (rr *remoteRun) tx(fn func(q db.Execer) error) error { return rr.m.tx(rr.dbCtx, fn) }
+func (rr *remoteRun) tx(fn func(q db.Execer) error) error {
+	return rr.m.tx(rr.dbCtx, fn)
+}

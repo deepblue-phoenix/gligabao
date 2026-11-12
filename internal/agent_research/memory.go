@@ -14,4 +14,8 @@ const SessionPrefix = "research-"
 
 // SessionID is the session of the calls the agent of run runID makes: everything it remembers (the artifacts, entities and facts) and
 // every query it asks carries it, so that what an agent contributed can be told (see the provenance of the admin UI).
-func SessionID(runID int64) string { return fmt.Sprintf("%s%d", SessionPrefix, runID) }
+func SessionID(runID int64) string {
+	return fmt.Sprintf("%s%d",
+		SessionPrefix,
+		runID)
+}

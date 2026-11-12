@@ -21,7 +21,8 @@ type kbLLM struct{ calls atomic.Int32 }
 
 type fakeEmbedder struct{}
 
-func (l *kbLLM) Complete(_ context.Context, _ ai.Request) (*ai.Response, error) {
+func (l *kbLLM) Complete(_ context.Context,
+	_ ai.Request) (*ai.Response, error) {
 	l.calls.Add(1)
 	return &ai.Response{
 		Text:       `{"entities":[],"edges":[]}`,
@@ -40,7 +41,8 @@ func kbOptions(t *testing.T) []memory_core.Option {
 	return []memory_core.Option{memory.WithVectors(vs, fakeEmbedder{})}
 }
 
-func (fakeEmbedder) EmbedBatchUsage(_ context.Context, texts []string) ([][]float32, *ai.EmbedUsage, error) {
+func (fakeEmbedder) EmbedBatchUsage(_ context.Context,
+	texts []string) ([][]float32, *ai.EmbedUsage, error) {
 	out := make([][]float32, len(texts))
 	for i := range out {
 		out[i] = []float32{1, 0}
@@ -51,27 +53,44 @@ func (fakeEmbedder) EmbedBatchUsage(_ context.Context, texts []string) ([][]floa
 	}, nil
 }
 
-func toolUse(id, name, input string) string {
+func toolUse(id,
+	name,
+	input string) string {
 	return `{"model":"m","stop_reason":"tool_use","content":[{"type":"tool_use","id":"` + id + `","name":"` + name + `","input":` + input + `}],"usage":{"input_tokens":1,"output_tokens":1}}`
 }
 
-func TestResearchWorksWithTheKnowledgeBase(t *testing.T) { runOnBackends(t, testKnowledge) }
+func TestResearchWorksWithTheKnowledgeBase(t *testing.T) {
+	runOnBackends(t, testKnowledge)
+}
 
 // The agent remembers a snippet without waiting, another one waiting, and queries the knowledge base: the remember runs are the user's,
 // in the dataset the run asked for, and the tools show as states of the run.
-func testKnowledge(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+func testKnowledge(t *testing.T,
+	d *sql.DB,
+	ops agent_research.Ops) {
 	ctx := context.Background()
 	llm := &kbLLM{}
-	mgr := memory_remember.NewManager(ctx, d, llm)
+	mgr := memory_remember.NewManager(ctx,
+		d,
+		llm)
 	fake := &fakeAnthropic{
 		main: []string{
-			toolUse("t1", "remember", `{"text":"Acme was founded in 1999.","source":"https://acme.test/about"}`),
-			toolUse("t2", "remember", `{"text":"Acme has 50 staff.","sync":true}`),
-			toolUse("t3", "query", `{"question":"when was Acme founded?"}`),
+			toolUse("t1",
+				"remember",
+				`{"text":"Acme was founded in 1999.","source":"https://acme.test/about"}`),
+			toolUse("t2",
+				"remember",
+				`{"text":"Acme has 50 staff.","sync":true}`),
+			toolUse("t3",
+				"query",
+				`{"question":"when was Acme founded?"}`),
 			finalReport,
 		},
 	}
-	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
+	m := agent_research.NewManager(ctx,
+		d,
+		ops,
+		fake.start(t))
 	opts := kbOptions(t)
 	m.UseMemory(&agent_research.Memory{
 		Remember:     mgr,
@@ -81,15 +100,19 @@ func testKnowledge(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 		QueryOpts:    opts,
 	})
 
-	started, err := m.Start(ctx, "u1", agent_research.Options{
-		Topic:   "Acme",
-		Dataset: "research",
-	})
+	started, err := m.Start(ctx,
+		"u1",
+		agent_research.Options{
+			Topic:   "Acme",
+			Dataset: "research",
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
 	m.Wait()
-	run, err := m.Get(ctx, "u1", started.ID)
+	run, err := m.Get(ctx,
+		"u1",
+		started.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +151,9 @@ func testKnowledge(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	// Both texts are in the dataset of the user (the sync one ran after the async one: the manager runs one at a time).
 	var n int
 	if err := d.QueryRow(`SELECT COUNT(*) FROM gb_remember_runs WHERE user_id = 'u1' AND dataset = 'research' AND status = 'succeeded'`).Scan(&n); err != nil || n != 2 {
-		t.Fatalf("remember runs: %d, %v", n, err)
+		t.Fatalf("remember runs: %d, %v",
+			n,
+			err)
 	}
 }
 
@@ -136,15 +161,22 @@ func TestResearchWithoutAKnowledgeBaseHasOnlyTheWebTools(t *testing.T) {
 	runOnBackends(t, testNoKnowledge)
 }
 
-func testNoKnowledge(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+func testNoKnowledge(t *testing.T,
+	d *sql.DB,
+	ops agent_research.Ops) {
 	ctx := context.Background()
 	fake := &fakeAnthropic{
 		main: []string{finalReport},
 	}
-	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
-	if _, err := m.Start(ctx, "u1", agent_research.Options{
-		Topic: "t",
-	}); err != nil {
+	m := agent_research.NewManager(ctx,
+		d,
+		ops,
+		fake.start(t))
+	if _, err := m.Start(ctx,
+		"u1",
+		agent_research.Options{
+			Topic: "t",
+		}); err != nil {
 		t.Fatal(err)
 	}
 	m.Wait()
@@ -155,33 +187,51 @@ func testNoKnowledge(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	}
 }
 
-func TestQueryOfAnEmptyKnowledgeBaseIsNotAnError(t *testing.T) { runOnBackends(t, testEmptyKnowledge) }
+func TestQueryOfAnEmptyKnowledgeBaseIsNotAnError(t *testing.T) {
+	runOnBackends(t, testEmptyKnowledge)
+}
 
-func testEmptyKnowledge(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+func testEmptyKnowledge(t *testing.T,
+	d *sql.DB,
+	ops agent_research.Ops) {
 	ctx := context.Background()
 	llm := &kbLLM{}
 	fake := &fakeAnthropic{
-		main: []string{toolUse("t1", "query", `{"question":"anything?"}`), finalReport},
+		main: []string{toolUse("t1",
+			"query",
+			`{"question":"anything?"}`), finalReport},
 	}
-	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
+	m := agent_research.NewManager(ctx,
+		d,
+		ops,
+		fake.start(t))
 	opts := kbOptions(t)
 	m.UseMemory(&agent_research.Memory{
-		Remember:     memory_remember.NewManager(ctx, d, llm),
+		Remember: memory_remember.NewManager(ctx,
+			d,
+			llm),
 		DB:           d,
 		LLM:          llm,
 		RememberOpts: opts,
 		QueryOpts:    opts,
 	})
-	started, err := m.Start(ctx, "u1", agent_research.Options{
-		Topic: "t",
-	})
+	started, err := m.Start(ctx,
+		"u1",
+		agent_research.Options{
+			Topic: "t",
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
 	m.Wait()
-	run, _ := m.Get(ctx, "u1", started.ID)
+	run, _ := m.Get(ctx,
+		"u1",
+		started.ID)
 	if run.Status != core.StatusCompleted || run.States[2].Error != "" || llm.calls.Load() != 0 {
-		t.Fatalf("run: %+v states %s llm calls %d", run, stateNames(run.States), llm.calls.Load())
+		t.Fatalf("run: %+v states %s llm calls %d",
+			run,
+			stateNames(run.States),
+			llm.calls.Load())
 	}
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
@@ -190,17 +240,26 @@ func testEmptyKnowledge(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	}
 }
 
-func TestStartRejectsABadDataset(t *testing.T) { runOnBackends(t, testBadDataset) }
+func TestStartRejectsABadDataset(t *testing.T) {
+	runOnBackends(t, testBadDataset)
+}
 
-func testBadDataset(t *testing.T, d *sql.DB, ops agent_research.Ops) {
+func testBadDataset(t *testing.T,
+	d *sql.DB,
+	ops agent_research.Ops) {
 	ctx := context.Background()
-	m := agent_research.NewManager(ctx, d, ops, (&fakeAnthropic{
-		main: []string{finalReport},
-	}).start(t))
-	if _, err := m.Start(ctx, "u1", agent_research.Options{
-		Topic:   "t",
-		Dataset: "no spaces/allowed",
-	}); !isKind(err, agent_research.KindInvalid) {
+	m := agent_research.NewManager(ctx,
+		d,
+		ops,
+		(&fakeAnthropic{
+			main: []string{finalReport},
+		}).start(t))
+	if _, err := m.Start(ctx,
+		"u1",
+		agent_research.Options{
+			Topic:   "t",
+			Dataset: "no spaces/allowed",
+		}); !isKind(err, agent_research.KindInvalid) {
 		t.Fatalf("bad dataset: %v", err)
 	}
 }

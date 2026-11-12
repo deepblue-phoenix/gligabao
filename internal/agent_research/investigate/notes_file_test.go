@@ -25,7 +25,10 @@ func TestSanitizeUser(t *testing.T) {
 	for in, want := range cases {
 		got := SanitizeUser(in)
 		if got != want {
-			t.Errorf("SanitizeUser(%q) = %q, want %q", in, got, want)
+			t.Errorf("SanitizeUser(%q) = %q, want %q",
+				in,
+				got,
+				want)
 		}
 		if strings.ContainsAny(got, "/\\") {
 			t.Errorf("path separator in %q", got)
@@ -38,26 +41,40 @@ func TestNotesFilePath(t *testing.T) {
 		Dir: "/data/notes",
 	}
 	id := strings.Repeat("ab", 16)
-	if got, want := f.Path("a/b", 7, id), filepath.Join("/data/notes", "notes_a_b_7_"+id+".md"); got != want {
-		t.Fatalf("%q != %q", got, want)
+	if got, want := f.Path("a/b",
+		7,
+		id), filepath.Join("/data/notes", "notes_a_b_7_"+id+".md"); got != want {
+		t.Fatalf("%q != %q",
+			got,
+			want)
 	}
-	if f.Path("u", 7, "") != "" {
+	if f.Path("u",
+		7,
+		"") != "" {
 		t.Fatal("a run without a notes id has no file")
 	}
-	if filepath.Dir(f.Path("../..", 1, id)) != "/data/notes" {
+	if filepath.Dir(f.Path("../..",
+		1,
+		id)) != "/data/notes" {
 		t.Fatal("the user cannot leave the directory")
 	}
 }
 
 func TestNotesFileReadWrite(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "sub", "dir")
+	dir := filepath.Join(t.TempDir(),
+		"sub",
+		"dir")
 	f := NotesFile{
 		Dir: dir,
 	}
-	path := f.Path("u", 1, strings.Repeat("0", 32))
+	path := f.Path("u",
+		1,
+		strings.Repeat("0", 32))
 	text, err := f.Read(path)
 	if err != nil || text != investigate_core.Render(investigate_core.Notes{}) {
-		t.Fatalf("a missing file reads as the empty notes: %q %v", text, err)
+		t.Fatalf("a missing file reads as the empty notes: %q %v",
+			text,
+			err)
 	}
 	n := investigate_core.Notes{
 		Objective: "Does X fit in 16 GB?",

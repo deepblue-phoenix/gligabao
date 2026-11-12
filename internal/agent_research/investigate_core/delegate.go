@@ -85,30 +85,44 @@ type FindingGap struct {
 // FindingsSchema is the JSON schema of the input of submit_findings.
 func FindingsSchema() map[string]any {
 	src := obj(props{
-		"url":         str("the page"),
-		"title":       str("its title"),
-		"stance":      enum("what it says about the claim", "supports", "contradicts"),
+		"url":   str("the page"),
+		"title": str("its title"),
+		"stance": enum("what it says about the claim",
+			"supports",
+			"contradicts"),
 		"independent": props{"type": "boolean", "description": "true if it does not quote another source of this claim"},
 		"quote":       str("the sentence or figure that says it, short"),
 	}, "url")
 	claim := obj(props{
-		"key":     str("your name for the claim: c1, c2, ... (the answer cites it)"),
-		"text":    str("one atomic claim"),
-		"kind":    enum("claim, or datapoint for a number (then value and unit)", "claim", "datapoint"),
+		"key":  str("your name for the claim: c1, c2, ... (the answer cites it)"),
+		"text": str("one atomic claim"),
+		"kind": enum("claim, or datapoint for a number (then value and unit)",
+			"claim",
+			"datapoint"),
 		"value":   str("datapoint only: the number, without spaces"),
 		"unit":    str("datapoint only: its unit"),
 		"sources": props{"type": "array", "items": src, "description": "at least one source"},
-	}, "key", "text", "sources")
+	},
+		"key",
+		"text",
+		"sources")
 	return obj(props{
-		"status": enum("answered: the validation criteria are met; partial: found something, not enough; unresolvable: cannot be answered with what is available", FindingAnswered, FindingPartial, FindingUnresolvable),
+		"status": enum("answered: the validation criteria are met; partial: found something, not enough; unresolvable: cannot be answered with what is available",
+			FindingAnswered,
+			FindingPartial,
+			FindingUnresolvable),
 		"answer": str(fmt.Sprintf("the short answer (at most %d characters), citing the keys of the claims", MaxFindingAnswerChars)),
 		"claims": props{"type": "array", "items": claim, "description": fmt.Sprintf("at most %d", MaxFindingClaims)},
 		"queries": props{"type": "array", "description": "the searches you made", "items": obj(props{
 			"query": str("the query or the URL"), "tool": str("web_search, fetch_url or query"), "outcome": str("what it gave, in a few words")}, "query")},
 		"discovered_gaps": props{"type": "array", "description": fmt.Sprintf("questions you found and did not follow, at most %d", MaxFindingGaps), "items": obj(props{
-			"question": str("the question"), "rationale": str("why it matters"), "priority": num("0 to 1"), "kind": enum("question or hypothesis", "question", "hypothesis")}, "question")},
+			"question": str("the question"), "rationale": str("why it matters"), "priority": num("0 to 1"), "kind": enum("question or hypothesis",
+				"question",
+				"hypothesis")}, "question")},
 		"notes": str(fmt.Sprintf("caveats and dead ends, short (at most %d characters)", MaxFindingNotesChars)),
-	}, "status", "answer")
+	},
+		"status",
+		"answer")
 }
 
 // ParseFindings reads and checks the findings of a worker. The error says what is wrong, in words the worker can act on (it gets one
@@ -120,7 +134,10 @@ func ParseFindings(raw json.RawMessage) (Findings, error) {
 	}
 	f.Status, f.Answer, f.Notes = strings.ToLower(strings.TrimSpace(f.Status)), strings.TrimSpace(f.Answer), strings.TrimSpace(f.Notes)
 	var problems []string
-	bad := func(format string, args ...any) { problems = append(problems, fmt.Sprintf(format, args...)) }
+	bad := func(format string,
+		args ...any) {
+		problems = append(problems, fmt.Sprintf(format, args...))
+	}
 	switch f.Status {
 	case FindingAnswered, FindingPartial, FindingUnresolvable:
 	default:
@@ -130,19 +147,27 @@ func ParseFindings(raw json.RawMessage) (Findings, error) {
 		bad("the answer is empty")
 	}
 	if n := len([]rune(f.Answer)); n > MaxFindingAnswerChars {
-		bad("the answer is %d characters, at most %d: compress it", n, MaxFindingAnswerChars)
+		bad("the answer is %d characters, at most %d: compress it",
+			n,
+			MaxFindingAnswerChars)
 	}
 	if n := len([]rune(f.Notes)); n > MaxFindingNotesChars {
-		bad("the notes are %d characters, at most %d: compress them", n, MaxFindingNotesChars)
+		bad("the notes are %d characters, at most %d: compress them",
+			n,
+			MaxFindingNotesChars)
 	}
 	if len(f.Claims) > MaxFindingClaims {
-		bad("%d claims, at most %d: keep the ones that matter", len(f.Claims), MaxFindingClaims)
+		bad("%d claims, at most %d: keep the ones that matter",
+			len(f.Claims),
+			MaxFindingClaims)
 	}
 	if len(f.Queries) > MaxFindingQueries {
 		f.Queries = f.Queries[:MaxFindingQueries] // not worth an error: the log keeps the first ones
 	}
 	if len(f.DiscoveredGaps) > MaxFindingGaps {
-		bad("%d gaps, at most %d: keep the ones that matter", len(f.DiscoveredGaps), MaxFindingGaps)
+		bad("%d gaps, at most %d: keep the ones that matter",
+			len(f.DiscoveredGaps),
+			MaxFindingGaps)
 	}
 	if f.Status == FindingAnswered && len(f.Claims) == 0 {
 		bad("an answered question needs at least one claim with a source")
@@ -155,7 +180,9 @@ func ParseFindings(raw json.RawMessage) (Findings, error) {
 		case key == "":
 			bad("%s has no key", label)
 		case keys[key]:
-			bad("%s: the key %q is used twice", label, key)
+			bad("%s: the key %q is used twice",
+				label,
+				key)
 		}
 		keys[key] = true
 		if strings.TrimSpace(c.Text) == "" {
@@ -165,22 +192,34 @@ func ParseFindings(raw json.RawMessage) (Findings, error) {
 			bad("%s has no source: every claim needs at least one (a page, with its URL)", label)
 		}
 		if len(c.Sources) > MaxFindingSources {
-			bad("%s has %d sources, at most %d", label, len(c.Sources), MaxFindingSources)
+			bad("%s has %d sources, at most %d",
+				label,
+				len(c.Sources),
+				MaxFindingSources)
 		}
 		for _, s := range c.Sources {
-			if _, _, err := AddSource(nil, s.URL, s.Title, ""); err != nil {
-				bad("%s: %v", label, err)
+			if _, _, err := AddSource(nil,
+				s.URL,
+				s.Title,
+				""); err != nil {
+				bad("%s: %v",
+					label,
+					err)
 			}
 			switch strings.ToLower(strings.TrimSpace(s.Stance)) {
 			case "", "supports", "contradicts":
 			default:
-				bad("%s: stance %q must be supports or contradicts", label, s.Stance)
+				bad("%s: stance %q must be supports or contradicts",
+					label,
+					s.Stance)
 			}
 		}
 	}
 	if len(problems) == 0 {
 		if b, _ := json.Marshal(f); len(b) > MaxFindingsChars {
-			bad("the findings are %d characters, at most %d: compress them", len(b), MaxFindingsChars)
+			bad("the findings are %d characters, at most %d: compress them",
+				len(b),
+				MaxFindingsChars)
 		}
 	}
 	if len(problems) > 0 {
@@ -191,19 +230,25 @@ func ParseFindings(raw json.RawMessage) (Findings, error) {
 
 // delegable reports whether the question can be handed to a worker now: it is a pending question (not the root) whose dependencies are
 // resolved, with validation criteria, of at least the minimum priority.
-func delegable(f Frontier, q Question, minPriority float64) bool {
+func delegable(f Frontier,
+	q Question,
+	minPriority float64) bool {
 	return q.ParentID != "" && f.Actionable(q) && strings.TrimSpace(q.ValidationCriteria) != "" && q.Priority >= minPriority
 }
 
 // SelectBatch picks the questions to run in workers at once: at most n of those that can go (pending, every dependency resolved, with
 // criteria, not below minPriority), highest priority first, by the order of the selection rule.
-func SelectBatch(f Frontier, n int, minPriority float64) []Question {
+func SelectBatch(f Frontier,
+	n int,
+	minPriority float64) []Question {
 	var out []Question
 	for _, q := range f.pendingByOrder() {
 		if len(out) >= n {
 			break
 		}
-		if delegable(f, q, minPriority) {
+		if delegable(f,
+			q,
+			minPriority) {
 			out = append(out, q)
 		}
 	}
@@ -211,14 +256,22 @@ func SelectBatch(f Frontier, n int, minPriority float64) []Question {
 }
 
 // Delegate marks the questions ids in progress for their workers (delegated transitions, by code).
-func Delegate(f Frontier, ids []string) (Frontier, []Transition, error) {
+func Delegate(f Frontier,
+	ids []string) (Frontier, []Transition, error) {
 	var ts []Transition
 	for _, id := range ids {
-		q, err := mustBe(f, id, StatusPending)
+		q, err := mustBe(f,
+			id,
+			StatusPending)
 		if err != nil {
 			return f, nil, err
 		}
-		q, t := move(q, StatusInProgress, TriggerDelegated, ActorCode, "handed to a worker", "")
+		q, t := move(q,
+			StatusInProgress,
+			TriggerDelegated,
+			ActorCode,
+			"handed to a worker",
+			"")
 		f, ts = f.with(q), append(ts, t)
 	}
 	return f, ts, nil
@@ -226,7 +279,8 @@ func Delegate(f Frontier, ids []string) (Frontier, []Transition, error) {
 
 // DelegateBudgetOK reports whether the run can afford workers: exploration has not spent more than 60% of what its token and cost limits allow
 // (a worker costs as much as a dozen model calls, and the reserve of the synthesis must stay).
-func DelegateBudgetOK(ls LoopState, l Limits) bool {
+func DelegateBudgetOK(ls LoopState,
+	l Limits) bool {
 	const share = 0.6
 	if l.MaxCostUSD > 0 && ls.CostUSD >= share*ExplorationLimit(l.MaxCostUSD, l.SynthesisReserve) {
 		return false
@@ -239,7 +293,9 @@ func DelegateBudgetOK(ls LoopState, l Limits) bool {
 
 // WorkerCostShare is the cost cap of each of n workers started now: what exploration may still spend of the cost limit, shared by them (0:
 // there is no cost limit). A worker that reaches it makes its last call and hands in what it has; one model call can still pass it.
-func WorkerCostShare(ls LoopState, l Limits, n int) float64 {
+func WorkerCostShare(ls LoopState,
+	l Limits,
+	n int) float64 {
 	if l.MaxCostUSD <= 0 || n <= 0 {
 		return 0
 	}
@@ -249,19 +305,32 @@ func WorkerCostShare(ls LoopState, l Limits, n int) float64 {
 // WorkerBrief is what a worker is told about the question qid: the objective, the question with its rationale, criteria and target
 // sources, the queries already tried, and a slice of the notes: the answers and claims of the questions it depends on (and of its ancestors),
 // cut to about tokens tokens.
-func WorkerBrief(s State, qid string, tokens int) string {
+func WorkerBrief(s State,
+	qid string,
+	tokens int) string {
 	q, ok := s.Frontier.Get(qid)
 	if !ok {
 		return ""
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Objective of the investigation: %s\n\nYour question (%s, %s): %s\n", s.Notes.Objective, q.ID, q.Kind, q.Question)
+	fmt.Fprintf(&b,
+		"Objective of the investigation: %s\n\nYour question (%s, %s): %s\n",
+		s.Notes.Objective,
+		q.ID,
+		q.Kind,
+		q.Question)
 	if q.Rationale != "" {
-		fmt.Fprintf(&b, "Why it matters: %s\n", q.Rationale)
+		fmt.Fprintf(&b,
+			"Why it matters: %s\n",
+			q.Rationale)
 	}
-	fmt.Fprintf(&b, "It is answered when: %s\n", q.ValidationCriteria)
+	fmt.Fprintf(&b,
+		"It is answered when: %s\n",
+		q.ValidationCriteria)
 	if len(q.TargetSources) > 0 {
-		fmt.Fprintf(&b, "Look at: %s\n", strings.Join(q.TargetSources, ", "))
+		fmt.Fprintf(&b,
+			"Look at: %s\n",
+			strings.Join(q.TargetSources, ", "))
 	}
 	if q.Kind == KindHypothesis {
 		b.WriteString("This is a hypothesis: look for evidence that confirms it and for evidence that refutes it, and report both.\n")
@@ -269,10 +338,14 @@ func WorkerBrief(s State, qid string, tokens int) string {
 	if len(q.Attempts) > 0 {
 		b.WriteString("\nAlready tried (do not repeat):\n")
 		for _, a := range q.Attempts {
-			fmt.Fprintf(&b, "- %s\n", Excerpt(a.Query, 150))
+			fmt.Fprintf(&b,
+				"- %s\n",
+				Excerpt(a.Query, 150))
 		}
 	}
-	if context := briefContext(s, q, tokens); context != "" {
+	if context := briefContext(s,
+		q,
+		tokens); context != "" {
 		b.WriteString("\nWhat is known already:\n" + context)
 	}
 	return strings.TrimSpace(b.String())
@@ -280,7 +353,9 @@ func WorkerBrief(s State, qid string, tokens int) string {
 
 // briefContext is the answers of the dependencies and the ancestors of q and the claims of the notes about those questions, in lines, until
 // tokens (a token is 4 characters) are spent.
-func briefContext(s State, q Question, tokens int) string {
+func briefContext(s State,
+	q Question,
+	tokens int) string {
 	related := map[string]bool{}
 	var order []string
 	add := func(id string) {
@@ -313,7 +388,9 @@ func briefContext(s State, q Question, tokens int) string {
 	}
 	for _, id := range order {
 		rq, _ := s.Frontier.Get(id)
-		if rq.Status == StatusResolved && rq.ParentID != "" && !line(fmt.Sprintf("- %s answer: %s", rq.ID, Excerpt(rq.Answer, 300))) {
+		if rq.Status == StatusResolved && rq.ParentID != "" && !line(fmt.Sprintf("- %s answer: %s",
+			rq.ID,
+			Excerpt(rq.Answer, 300))) {
 			return b.String()
 		}
 	}
@@ -348,14 +425,19 @@ type Reduction struct {
 //  4. The question: answered is resolved if the checks of resolve_question pass, else it stays in progress with the answer logged, for
 //     the supervisor to finish (the challenge of its answer is its job); partial goes back to pending (Retry: at the attempt cap it is
 //     unresolvable); unresolvable is that, with the notes as the assumption.
-func Reduce(s State, qid string, fs Findings) (State, []Transition, Reduction) {
+func Reduce(s State,
+	qid string,
+	fs Findings) (State, []Transition, Reduction) {
 	var out Reduction
 	q, ok := s.Frontier.Get(qid)
 	if !ok || q.Status != StatusInProgress {
 		out.Note = fmt.Sprintf("%s is not in progress", qid)
 		return s, nil, out
 	}
-	n, keyIDs := recordClaims(s.Notes, qid, fs.Claims, &out)
+	n, keyIDs := recordClaims(s.Notes,
+		qid,
+		fs.Claims,
+		&out)
 	s.Notes = n
 
 	f := s.Frontier
@@ -368,11 +450,13 @@ func Reduce(s State, qid string, fs Findings) (State, []Transition, Reduction) {
 			continue
 		}
 		tool := orElse(strings.TrimSpace(fq.Tool), "web_search")
-		if nf, _, err := AddAttempt(f, qid, Attempt{
-			Query:   strings.TrimSpace(fq.Query),
-			Tool:    tool,
-			Outcome: orElse(clean(fq.Outcome), "(worker)"),
-		}); err == nil {
+		if nf, _, err := AddAttempt(f,
+			qid,
+			Attempt{
+				Query:   strings.TrimSpace(fq.Query),
+				Tool:    tool,
+				Outcome: orElse(clean(fq.Outcome), "(worker)"),
+			}); err == nil {
 			f = nf
 		}
 	}
@@ -380,21 +464,26 @@ func Reduce(s State, qid string, fs Findings) (State, []Transition, Reduction) {
 	var ts []Transition
 	for _, g := range fs.DiscoveredGaps {
 		kind := Kind(strings.ToLower(strings.TrimSpace(g.Kind)))
-		nf, gts, err := Add(f, qid, AddInput{
-			Kind:               kind,
-			Question:           g.Question,
-			Rationale:          g.Rationale,
-			Priority:           min(1, max(0, g.Priority)),
-			ValidationCriteria: "answered with sourced claims",
-			Actor:              ActorCode,
-			CausedBy:           qid,
-		}, s.Limits)
+		nf, gts, err := Add(f,
+			qid,
+			AddInput{
+				Kind:               kind,
+				Question:           g.Question,
+				Rationale:          g.Rationale,
+				Priority:           min(1, max(0, g.Priority)),
+				ValidationCriteria: "answered with sourced claims",
+				Actor:              ActorCode,
+				CausedBy:           qid,
+			},
+			s.Limits)
 		if err != nil {
 			out.GapsOpen = append(out.GapsOpen, strings.TrimSpace(g.Question))
-			if nn, _, aerr := Append(s.Notes, SectionAssumptions, []Entry{{
-				QuestionID: qid,
-				Text:       "open gap (found by the worker of " + qid + "): " + g.Question,
-			}}); aerr == nil {
+			if nn, _, aerr := Append(s.Notes,
+				SectionAssumptions,
+				[]Entry{{
+					QuestionID: qid,
+					Text:       "open gap (found by the worker of " + qid + "): " + g.Question,
+				}}); aerr == nil {
 				s.Notes = nn
 			}
 			continue
@@ -408,12 +497,20 @@ func Reduce(s State, qid string, fs Findings) (State, []Transition, Reduction) {
 		}
 	}
 	s.Frontier = f
-	s, ts2, out := finishQuestion(s, qid, fs, keyIDs, out)
+	s, ts2, out := finishQuestion(s,
+		qid,
+		fs,
+		keyIDs,
+		out)
 	return s, append(ts, ts2...), out
 }
 
 // finishQuestion is the last step of Reduce: the status of the question.
-func finishQuestion(s State, qid string, fs Findings, keyIDs map[string]string, out Reduction) (State, []Transition, Reduction) {
+func finishQuestion(s State,
+	qid string,
+	fs Findings,
+	keyIDs map[string]string,
+	out Reduction) (State, []Transition, Reduction) {
 	q, _ := s.Frontier.Get(qid)
 	answer := substituteKeys(fs.Answer, keyIDs)
 	switch fs.Status {
@@ -422,17 +519,23 @@ func finishQuestion(s State, qid string, fs Findings, keyIDs map[string]string, 
 			Answer:   answer,
 			ClaimIDs: out.ClaimIDs,
 		}
-		if problems := checkResolve(s, q, in); len(problems) > 0 {
-			f, _, _ := AddAttempt(s.Frontier, qid, Attempt{
-				Query:   "worker's answer",
-				Tool:    "worker",
-				Outcome: Excerpt(answer, 200),
-			})
+		if problems := checkResolve(s,
+			q,
+			in); len(problems) > 0 {
+			f, _, _ := AddAttempt(s.Frontier,
+				qid,
+				Attempt{
+					Query:   "worker's answer",
+					Tool:    "worker",
+					Outcome: Excerpt(answer, 200),
+				})
 			s.Frontier = f
 			out.Status, out.Note = StatusInProgress, "left in progress for the supervisor: "+strings.Join(problems, "; ")
 			return s, nil, out
 		}
-		f, ts, err := Resolve(s.Frontier, qid, in)
+		f, ts, err := Resolve(s.Frontier,
+			qid,
+			in)
 		if err != nil {
 			out.Status, out.Note = StatusInProgress, "left in progress for the supervisor: "+err.Error()
 			return s, nil, out
@@ -441,28 +544,49 @@ func finishQuestion(s State, qid string, fs Findings, keyIDs map[string]string, 
 		return s, ts, out
 	case FindingUnresolvable:
 		assumption := orElse(clean(fs.Notes), "the worker found nothing that answers it")
-		return markUnresolvable(s, qid, "the worker could not answer it: "+assumption, out)
+		return markUnresolvable(s,
+			qid,
+			"the worker could not answer it: "+assumption,
+			out)
 	}
 	// partial
-	return retryQuestion(s, qid, orElse(clean(fs.Notes), "the worker found only part of the answer"), out)
+	return retryQuestion(s,
+		qid,
+		orElse(clean(fs.Notes), "the worker found only part of the answer"),
+		out)
 }
 
 // WorkerFailed is what happens to the question of a worker that failed (an error, a timeout, findings that stayed invalid): it goes back to
 // pending with the failure logged as an attempt, and becomes unresolvable at the attempt cap.
-func WorkerFailed(s State, qid, why string) (State, []Transition, Reduction) {
+func WorkerFailed(s State,
+	qid,
+	why string) (State, []Transition, Reduction) {
 	if q, ok := s.Frontier.Get(qid); !ok || q.Status != StatusInProgress {
 		return s, nil, Reduction{
 			Note: fmt.Sprintf("%s is not in progress", qid),
 		}
 	}
-	return retryQuestion(s, qid, "worker failed: "+clean(why), Reduction{})
+	return retryQuestion(s,
+		qid,
+		"worker failed: "+clean(why),
+		Reduction{})
 }
 
 // retryQuestion sends the in-progress question back to pending with why as the outcome of a new attempt (Retry); at the attempt cap it
 // becomes unresolvable and why is its assumption, which goes to the notes too.
-func retryQuestion(s State, qid, why string, out Reduction) (State, []Transition, Reduction) {
+func retryQuestion(s State,
+	qid,
+	why string,
+	out Reduction) (State, []Transition, Reduction) {
 	q, _ := s.Frontier.Get(qid)
-	f, ts, err := Retry(s.Frontier, qid, fmt.Sprintf("delegated run %d: %s", len(q.Attempts)+1, Excerpt(why, 80)), why, why, s.Limits)
+	f, ts, err := Retry(s.Frontier,
+		qid,
+		fmt.Sprintf("delegated run %d: %s",
+			len(q.Attempts)+1,
+			Excerpt(why, 80)),
+		why,
+		why,
+		s.Limits)
 	if err != nil {
 		out.Note = err.Error()
 		return s, nil, out
@@ -471,10 +595,12 @@ func retryQuestion(s State, qid, why string, out Reduction) (State, []Transition
 	q, _ = f.Get(qid)
 	out.Status = q.Status
 	if q.Status == StatusUnresolvable {
-		if n, _, aerr := Append(s.Notes, SectionAssumptions, []Entry{{
-			QuestionID: qid,
-			Text:       q.Answer,
-		}}); aerr == nil {
+		if n, _, aerr := Append(s.Notes,
+			SectionAssumptions,
+			[]Entry{{
+				QuestionID: qid,
+				Text:       q.Answer,
+			}}); aerr == nil {
 			s.Notes = n
 		}
 	}
@@ -482,20 +608,32 @@ func retryQuestion(s State, qid, why string, out Reduction) (State, []Transition
 }
 
 // markUnresolvable ends the question as unresolvable with the assumption, in the notes too.
-func markUnresolvable(s State, qid, assumption string, out Reduction) (State, []Transition, Reduction) {
-	q, err := mustBe(s.Frontier, qid, StatusInProgress)
+func markUnresolvable(s State,
+	qid,
+	assumption string,
+	out Reduction) (State, []Transition, Reduction) {
+	q, err := mustBe(s.Frontier,
+		qid,
+		StatusInProgress)
 	if err != nil {
 		out.Note = err.Error()
 		return s, nil, out
 	}
 	q.Answer = assumption
-	q, t := move(q, StatusUnresolvable, TriggerAttemptsExhausted, ActorCode, truncate(assumption, 200), "")
+	q, t := move(q,
+		StatusUnresolvable,
+		TriggerAttemptsExhausted,
+		ActorCode,
+		truncate(assumption, 200),
+		"")
 	f, more := Reblock(s.Frontier.with(q))
 	s.Frontier = f
-	if n, _, aerr := Append(s.Notes, SectionAssumptions, []Entry{{
-		QuestionID: qid,
-		Text:       assumption,
-	}}); aerr == nil {
+	if n, _, aerr := Append(s.Notes,
+		SectionAssumptions,
+		[]Entry{{
+			QuestionID: qid,
+			Text:       assumption,
+		}}); aerr == nil {
 		s.Notes = n
 	}
 	out.Status = StatusUnresolvable
@@ -504,7 +642,10 @@ func markUnresolvable(s State, qid, assumption string, out Reduction) (State, []
 
 // recordClaims adds the sources and the claims of the findings to the notes and returns the new notes and the id each claim key got. A claim
 // that cannot be recorded is dropped (out.Dropped says why); the others are.
-func recordClaims(n Notes, qid string, claims []FindingClaim, out *Reduction) (Notes, map[string]string) {
+func recordClaims(n Notes,
+	qid string,
+	claims []FindingClaim,
+	out *Reduction) (Notes, map[string]string) {
 	ids := map[string]string{}
 	for _, c := range claims {
 		next := n
@@ -512,7 +653,10 @@ func recordClaims(n Notes, qid string, claims []FindingClaim, out *Reduction) (N
 		var err error
 		for _, fs := range c.Sources {
 			var src Source
-			if next.Sources, src, err = AddSource(next.Sources, fs.URL, fs.Title, Excerpt(fs.Quote, 160)); err != nil {
+			if next.Sources, src, err = AddSource(next.Sources,
+				fs.URL,
+				fs.Title,
+				Excerpt(fs.Quote, 160)); err != nil {
 				break
 			}
 			stance := StanceSupports
@@ -526,7 +670,9 @@ func recordClaims(n Notes, qid string, claims []FindingClaim, out *Reduction) (N
 			})
 		}
 		if err != nil {
-			out.Dropped = append(out.Dropped, fmt.Sprintf("%s: %v", c.Key, err))
+			out.Dropped = append(out.Dropped, fmt.Sprintf("%s: %v",
+				c.Key,
+				err))
 			continue
 		}
 		entry := Entry{
@@ -544,8 +690,12 @@ func recordClaims(n Notes, qid string, claims []FindingClaim, out *Reduction) (N
 			}
 		}
 		var got []string
-		if next, got, err = Append(next, section, []Entry{entry}); err != nil {
-			out.Dropped = append(out.Dropped, fmt.Sprintf("%s: %v", c.Key, err))
+		if next, got, err = Append(next,
+			section,
+			[]Entry{entry}); err != nil {
+			out.Dropped = append(out.Dropped, fmt.Sprintf("%s: %v",
+				c.Key,
+				err))
 			continue
 		}
 		n = next
@@ -556,12 +706,18 @@ func recordClaims(n Notes, qid string, claims []FindingClaim, out *Reduction) (N
 }
 
 // substituteKeys replaces the keys of the worker's claims in text by the ids they got in the notes (longest keys first, whole words only).
-func substituteKeys(text string, ids map[string]string) string {
-	keys := make([]string, 0, len(ids))
+func substituteKeys(text string,
+	ids map[string]string) string {
+	keys := make([]string,
+		0,
+		len(ids))
 	for k := range ids {
 		keys = append(keys, k)
 	}
-	slices.SortFunc(keys, func(a, b string) int { return len(b) - len(a) })
+	slices.SortFunc(keys, func(a,
+		b string) int {
+		return len(b) - len(a)
+	})
 	for _, k := range keys {
 		re := regexp.MustCompile(`\b` + regexp.QuoteMeta(k) + `\b`)
 		text = re.ReplaceAllLiteralString(text, ids[k])

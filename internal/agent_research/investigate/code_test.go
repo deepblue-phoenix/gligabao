@@ -22,21 +22,29 @@ func TestFormatCodeResult(t *testing.T) {
 	text, isErr := investigate.FormatCodeResult(monty.Result{
 		Value:  0.8421,
 		Stdout: "mean=0.8421 n=12\n",
-	}, nil, 0)
+	},
+		nil,
+		0)
 	if isErr || text != "ok\nvalue: 0.8421\nstdout:\nmean=0.8421 n=12" {
-		t.Errorf("%q %v", text, isErr)
+		t.Errorf("%q %v",
+			text,
+			isErr)
 	}
 	text, isErr = investigate.FormatCodeResult(monty.Result{
 		Stdout: strings.Repeat("x", 300),
-	}, nil, 200)
+	},
+		nil,
+		200)
 	if isErr || !strings.Contains(text, "[truncated ") || len([]rune(text)) > 230 {
 		t.Errorf("%q", text)
 	}
-	text, isErr = investigate.FormatCodeResult(monty.Result{}, &monty.Error{
-		Kind:    monty.KindRuntime,
-		Message: "ZeroDivisionError",
-		Line:    3,
-	}, 0)
+	text, isErr = investigate.FormatCodeResult(monty.Result{},
+		&monty.Error{
+			Kind:    monty.KindRuntime,
+			Message: "ZeroDivisionError",
+			Line:    3,
+		},
+		0)
 	if !isErr || text != "error: runtime: ZeroDivisionError (line 3)" {
 		t.Errorf("%q", text)
 	}
@@ -55,11 +63,16 @@ func TestCodeToolSpecListsTheRegistry(t *testing.T) {
 // fakeSandbox runs a "program" written as the name of a host function to call, so the loop is tested without Monty.
 type fakeSandbox struct{ runs []monty.Request }
 
-func (f *fakeSandbox) Run(ctx context.Context, req monty.Request, host monty.HostFunc) (monty.Result, error) {
+func (f *fakeSandbox) Run(ctx context.Context,
+	req monty.Request,
+	host monty.HostFunc) (monty.Result, error) {
 	f.runs = append(f.runs, req)
 	switch strings.TrimSpace(req.Code) {
 	case "fetch":
-		out, err := host(ctx, "fetch_page", []any{"https://a.com/p"}, nil)
+		out, err := host(ctx,
+			"fetch_page",
+			[]any{"https://a.com/p"},
+			nil)
 		if err != nil {
 			return monty.Result{}, &monty.Error{
 				Kind:    monty.KindHostFunction,
@@ -71,12 +84,18 @@ func (f *fakeSandbox) Run(ctx context.Context, req monty.Request, host monty.Hos
 			Stdout: "fetched\n",
 		}, nil
 	case "frontier":
-		qs, err := host(ctx, "frontier_list", nil, nil)
+		qs, err := host(ctx,
+			"frontier_list",
+			nil,
+			nil)
 		return monty.Result{
 			Value: len(qs.([]map[string]any)),
 		}, err
 	case "forbidden":
-		_, err := host(ctx, "notes_append", nil, nil)
+		_, err := host(ctx,
+			"notes_append",
+			nil,
+			nil)
 		return monty.Result{}, &monty.Error{
 			Kind:    monty.KindHostFunction,
 			Message: err.Error(),
@@ -87,10 +106,15 @@ func (f *fakeSandbox) Run(ctx context.Context, req monty.Request, host monty.Hos
 	}, nil
 }
 
-func TestRunCode(t *testing.T) { dbtest.Run(t, testRunCode) }
+func TestRunCode(t *testing.T) {
+	dbtest.Run(t, testRunCode)
+}
 
-func testRunCode(t *testing.T, d *sql.DB) {
-	e := newEnv(t, d, loopLimits())
+func testRunCode(t *testing.T,
+	d *sql.DB) {
+	e := newEnv(t,
+		d,
+		loopLimits())
 	sb := &fakeSandbox{}
 	script := []reply{
 		/* 1 planning */ {
@@ -110,14 +134,19 @@ func testRunCode(t *testing.T, d *sql.DB) {
 		System:   "You are a researcher.",
 		Task:     "Does X fit?",
 		External: fakeTools(),
-		Model: func(ctx context.Context, p map[string]any) (*ai.RawResponse, error) {
+		Model: func(ctx context.Context,
+			p map[string]any) (*ai.RawResponse, error) {
 			if len(fm.script) == 0 {
 				return nil, errors.New("script over")
 			}
 			return fm.call(ctx, p)
 		},
 		Hooks: investigate.Hooks{
-			AfterTool: func(_ int, name, out string, isErr bool, _ investigate.Totals) {
+			AfterTool: func(_ int,
+				name,
+				out string,
+				isErr bool,
+				_ investigate.Totals) {
 				count[name]++
 				e.outs[name+"#"+string(rune('0'+count[name]))] = out
 				if isErr {
@@ -139,7 +168,9 @@ func testRunCode(t *testing.T, d *sql.DB) {
 	// Offered in the planning and the exploration turns.
 	for i := 0; i < 2; i++ {
 		if !slices.Contains(toolNames(fm.payloads[i]), "run_code") {
-			t.Errorf("turn %d does not offer run_code: %v", i+1, toolNames(fm.payloads[i]))
+			t.Errorf("turn %d does not offer run_code: %v",
+				i+1,
+				toolNames(fm.payloads[i]))
 		}
 	}
 	if !strings.Contains(fm.texts[0], "## Code") {
@@ -185,7 +216,10 @@ func TestWorkerCodeTool(t *testing.T) {
 	sb := &fakeSandbox{}
 	page := agent.Tool{
 		Name: "fetch_page",
-		Run:  func(context.Context, json.RawMessage) (string, error) { return "hello", nil },
+		Run: func(context.Context,
+			json.RawMessage) (string, error) {
+			return "hello", nil
+		},
 	}
 	max := 1
 	cfg := &investigate.CodeConfig{
@@ -198,14 +232,18 @@ func TestWorkerCodeTool(t *testing.T) {
 	}
 	tool, ok, err := investigate.WorkerCodeTool(cfg, []agent.Tool{page})
 	if err != nil || !ok {
-		t.Fatalf("ok=%v err=%v", ok, err)
+		t.Fatalf("ok=%v err=%v",
+			ok,
+			err)
 	}
 	if strings.Contains(tool.Description, "notes_read") || strings.Contains(tool.Description, "frontier_list") || !strings.Contains(tool.Description, "fetch_page") {
 		t.Errorf("description: %s", tool.Description)
 	}
 	out, err := tool.Run(context.Background(), json.RawMessage(`{"code":"fetch"}`))
 	if err != nil || !strings.Contains(out, "value: 5") {
-		t.Errorf("%q %v", out, err)
+		t.Errorf("%q %v",
+			out,
+			err)
 	}
 	if _, err := tool.Run(context.Background(), json.RawMessage(`{"code":"fetch"}`)); err == nil {
 		t.Error("the second call should pass the max_calls limit")

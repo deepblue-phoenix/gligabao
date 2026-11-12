@@ -12,13 +12,17 @@ import (
 
 type fakeS3 struct{ objs map[string]string }
 
-func (f *fakeS3) PutObject(_ context.Context, in *s3.PutObjectInput, _ ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+func (f *fakeS3) PutObject(_ context.Context,
+	in *s3.PutObjectInput,
+	_ ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
 	b, _ := io.ReadAll(in.Body)
 	f.objs[*in.Bucket+"/"+*in.Key] = string(b)
 	return &s3.PutObjectOutput{}, nil
 }
 
-func (f *fakeS3) GetObject(_ context.Context, in *s3.GetObjectInput, _ ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+func (f *fakeS3) GetObject(_ context.Context,
+	in *s3.GetObjectInput,
+	_ ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
 	v, ok := f.objs[*in.Bucket+"/"+*in.Key]
 	if !ok {
 		return nil, io.EOF
@@ -38,7 +42,9 @@ func TestNotesS3Mirror(t *testing.T) {
 	files := NotesFile{
 		Dir: t.TempDir(),
 	}
-	p := files.Path("a/b", 7, "abc")
+	p := files.Path("a/b",
+		7,
+		"abc")
 	m := n.Mirror(files, "a/b")
 	if err := m.Write(p, "hello"); err != nil {
 		t.Fatal(err)
@@ -52,6 +58,8 @@ func TestNotesS3Mirror(t *testing.T) {
 		Dir: t.TempDir(),
 	}, "a/b")
 	if got, err := other.Read(p); err != nil || got != "hello" {
-		t.Fatalf("read: %q %v", got, err)
+		t.Fatalf("read: %q %v",
+			got,
+			err)
 	}
 }

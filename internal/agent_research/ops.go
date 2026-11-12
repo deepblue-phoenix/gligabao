@@ -69,7 +69,8 @@ const postgresSchemaLock = 0x67620009
 // Open applies the schema of the research agent tables (gb_agent_research_runs and gb_agent_research_states) to d, the relational
 // database opened for the backend (config.DBBackendSQLite or config.DBBackendPostgres; empty is sqlite). The statements are
 // idempotent.
-func Open(backend string, d *sql.DB) error {
+func Open(backend string,
+	d *sql.DB) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	switch backend {
@@ -79,7 +80,9 @@ func Open(backend string, d *sql.DB) error {
 		}
 		for _, u := range sqlite.Upgrade {
 			var n int
-			if err := d.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('gb_agent_research_runs') WHERE name = ?`, u.Column).Scan(&n); err != nil {
+			if err := d.QueryRowContext(ctx,
+				`SELECT COUNT(*) FROM pragma_table_info('gb_agent_research_runs') WHERE name = ?`,
+				u.Column).Scan(&n); err != nil {
 				return fmt.Errorf("agent research: upgrade schema: %w", err)
 			}
 			if n > 0 {
@@ -108,10 +111,14 @@ func Open(backend string, d *sql.DB) error {
 			return fmt.Errorf("agent research: init schema: %w", err)
 		}
 		defer conn.Close()
-		if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, int64(postgresSchemaLock)); err != nil {
+		if _, err := conn.ExecContext(ctx,
+			`SELECT pg_advisory_lock($1)`,
+			int64(postgresSchemaLock)); err != nil {
 			return fmt.Errorf("agent research: init schema: lock: %w", err)
 		}
-		defer conn.ExecContext(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1)`, int64(postgresSchemaLock))
+		defer conn.ExecContext(context.WithoutCancel(ctx),
+			`SELECT pg_advisory_unlock($1)`,
+			int64(postgresSchemaLock))
 		for _, stmts := range []string{postgres.Schema, postgres.Upgrade, postgres.StatusMigration, postgres.SubagentIndexes} {
 			if _, err := conn.ExecContext(ctx, stmts); err != nil {
 				return fmt.Errorf("agent research: init schema: %w", err)
@@ -125,7 +132,8 @@ func Open(backend string, d *sql.DB) error {
 // migrateSQLiteStatus rebuilds gb_agent_research_runs if its CHECK on status does not allow 'stopped' yet (a table made before 0.145.0),
 // and reports whether it did. The rebuild is run on one connection with foreign keys off, as SQLite requires (dropping the table
 // would otherwise delete its states), in a transaction, and the connection goes back to the pool with them on.
-func migrateSQLiteStatus(ctx context.Context, d *sql.DB) (bool, error) {
+func migrateSQLiteStatus(ctx context.Context,
+	d *sql.DB) (bool, error) {
 	var ddl string
 	if err := d.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'gb_agent_research_runs'`).Scan(&ddl); err != nil {
 		return false, err

@@ -11,17 +11,29 @@ import (
 
 // --- helpers ---
 
-func callRaw(t *testing.T, s State, name string, args any) State {
+func callRaw(t *testing.T,
+	s State,
+	name string,
+	args any) State {
 	t.Helper()
-	s, _ = ok(t, s, name, args)
+	s, _ = ok(t,
+		s,
+		name,
+		args)
 	return s
 }
 
 // ran says that the search of a challenge was made (the effect layer links it).
-func ran(t *testing.T, s State, id string) State {
+func ran(t *testing.T,
+	s State,
+	id string) State {
 	t.Helper()
 	var err error
-	if s.Frontier, s.Challenges, err = LinkAttempt(s.Frontier, s.Challenges, id, "web_search", "found nothing"); err != nil {
+	if s.Frontier, s.Challenges, err = LinkAttempt(s.Frontier,
+		s.Challenges,
+		id,
+		"web_search",
+		"found nothing"); err != nil {
 		t.Fatal(err)
 	}
 	return s
@@ -30,8 +42,14 @@ func ran(t *testing.T, s State, id string) State {
 func withQuestion(t *testing.T) State {
 	t.Helper()
 	s := newState(t)
-	s = callRaw(t, s, "add_question", m{"parent_id": "q_001", "question": "weight size?", "priority": 0.8, "validation_criteria": "bytes"})
-	s = callRaw(t, s, "frontier_next", m{})
+	s = callRaw(t,
+		s,
+		"add_question",
+		m{"parent_id": "q_001", "question": "weight size?", "priority": 0.8, "validation_criteria": "bytes"})
+	s = callRaw(t,
+		s,
+		"frontier_next",
+		m{})
 	return s
 }
 
@@ -67,7 +85,8 @@ func names(r Request) []string {
 	return out
 }
 
-func turnWith(n int, calls ...Call) Turn {
+func turnWith(n int,
+	calls ...Call) Turn {
 	return Turn{
 		N:       n,
 		Content: []json.RawMessage{json.RawMessage(`{"type":"text","text":"x"}`)},
@@ -75,7 +94,8 @@ func turnWith(n int, calls ...Call) Turn {
 	}
 }
 
-func fetchCall(id string, size int) Call {
+func fetchCall(id string,
+	size int) Call {
 	return Call{
 		ID:     id,
 		Name:   "fetch_page",
@@ -131,7 +151,11 @@ func TestPhaseTransitions(t *testing.T) {
 	if f := syn.Failed(StopTokens); !f.Done || f.StopReason != StopTokens {
 		t.Errorf("failed: %+v", f)
 	}
-	spent := StartLoop().AfterModel(100, 20, 0.5).Spend(5, 5, 0.25)
+	spent := StartLoop().AfterModel(100,
+		20,
+		0.5).Spend(5,
+		5,
+		0.25)
 	if spent.Turns != 1 || spent.Tokens != 130 || spent.CostUSD != 0.75 {
 		t.Errorf("spend: %+v", spent)
 	}
@@ -179,32 +203,51 @@ func turnNumbers(w []Turn) []int {
 }
 
 func TestNeedsExtraction(t *testing.T) {
-	ls := StartLoop().AfterModel(1, 1, 0)
+	ls := StartLoop().AfterModel(1,
+		1,
+		0)
 	small := fetchCall("a", 100)
 	big := fetchCall("b", 5000)
-	if len(PendingOf(turnWith(1, small, Call{
-		ID:    "e",
-		Name:  "fetch_page",
-		IsErr: true,
-	}, Call{
-		ID:   "n",
-		Name: "notes_read",
-	}), "q_002")) != 1 {
+	if len(PendingOf(turnWith(1,
+		small,
+		Call{
+			ID:    "e",
+			Name:  "fetch_page",
+			IsErr: true,
+		},
+		Call{
+			ID:   "n",
+			Name: "notes_read",
+		}), "q_002")) != 1 {
 		t.Error("only a successful raw tool result is pending")
 	}
 	ls = ls.AddTurn(turnWith(1, small), PendingOf(turnWith(1, small), "q_002"))
-	if _, ok := NeedsExtraction(ls, 4000, 2); ok {
+	if _, ok := NeedsExtraction(ls,
+		4000,
+		2); ok {
 		t.Error("a page below the threshold is not forced")
 	}
-	ls = ls.AfterModel(1, 1, 0).AddTurn(turnWith(2, big), PendingOf(turnWith(2, big), "q_002"))
-	p, ok := NeedsExtraction(ls, 4000, 2)
+	ls = ls.AfterModel(1,
+		1,
+		0).AddTurn(turnWith(2, big), PendingOf(turnWith(2, big), "q_002"))
+	p, ok := NeedsExtraction(ls,
+		4000,
+		2)
 	if !ok || p.CallID != "b" && p.CallID != "a" {
-		t.Fatalf("above the threshold it is: %+v %v", p, ok)
+		t.Fatalf("above the threshold it is: %+v %v",
+			p,
+			ok)
 	}
 	// A small result that would leave the window is forced too: the commit point comes before the window moves on.
-	aged := StartLoop().AfterModel(1, 1, 0).AfterModel(1, 1, 0)
+	aged := StartLoop().AfterModel(1,
+		1,
+		0).AfterModel(1,
+		1,
+		0)
 	aged = aged.AddTurn(turnWith(1, small), PendingOf(turnWith(1, small), "q_002"))
-	if _, ok := NeedsExtraction(aged, 4000, 2); !ok {
+	if _, ok := NeedsExtraction(aged,
+		4000,
+		2); !ok {
 		t.Error("a small pending result about to be evicted is extracted")
 	}
 	if Commits(turnWith(3, Call{
@@ -229,21 +272,43 @@ func TestExplorationGate(t *testing.T) {
 	joined := strings.Join(missing, "\n")
 	for _, want := range []string{"root question q_001", "sources", "domains", "Conclusion:"} {
 		if !strings.Contains(joined, want) {
-			t.Errorf("missing %q in\n%s", want, joined)
+			t.Errorf("missing %q in\n%s",
+				want,
+				joined)
 		}
 	}
 	// Build the passing state step by step.
-	s = callRaw(t, s, "notes_append", m{"section": "Sources", "entries": []m{{"url": "https://a.com/x", "title": "A"}, {"url": "https://b.org/y", "title": "B"}}})
-	s = callRaw(t, s, "notes_append", m{"section": "Unverified", "entries": []m{{"text": "weights are 8 GB", "question_id": "q_002",
-		"sources": []m{{"source_id": "s_001", "independent": true}, {"source_id": "s_002", "independent": true}}}}})
-	s = callRaw(t, s, "challenge", m{"target_type": "claim", "target_id": "c_001", "negation": "weights are not 8 GB", "strategy": "negation", "expected_if_false": "e", "query": "weights not 8 GB errata"})
+	s = callRaw(t,
+		s,
+		"notes_append",
+		m{"section": "Sources", "entries": []m{{"url": "https://a.com/x", "title": "A"}, {"url": "https://b.org/y", "title": "B"}}})
+	s = callRaw(t,
+		s,
+		"notes_append",
+		m{"section": "Unverified", "entries": []m{{"text": "weights are 8 GB", "question_id": "q_002",
+			"sources": []m{{"source_id": "s_001", "independent": true}, {"source_id": "s_002", "independent": true}}}}})
+	s = callRaw(t,
+		s,
+		"challenge",
+		m{"target_type": "claim", "target_id": "c_001", "negation": "weights are not 8 GB", "strategy": "negation", "expected_if_false": "e", "query": "weights not 8 GB errata"})
 	if g := strings.Join(ExplorationGate(s), "\n"); !strings.Contains(g, "challenge ch_001 is open") {
 		t.Errorf("an open challenge blocks:\n%s", g)
 	}
-	s = ran(t, s, "ch_001")
-	s = callRaw(t, s, "record_challenge_result", m{"challenge_id": "ch_001", "outcome": "survived", "evidence": "none"})
-	s = callRaw(t, s, "notes_update", m{"id": "c_001", "change": m{"status": "VERIFIED"}})
-	s = callRaw(t, s, "resolve_question", m{"id": "q_002", "answer": "8 GB", "claim_ids": []string{"c_001"}, "reason": "shallow"})
+	s = ran(t,
+		s,
+		"ch_001")
+	s = callRaw(t,
+		s,
+		"record_challenge_result",
+		m{"challenge_id": "ch_001", "outcome": "survived", "evidence": "none"})
+	s = callRaw(t,
+		s,
+		"notes_update",
+		m{"id": "c_001", "change": m{"status": "VERIFIED"}})
+	s = callRaw(t,
+		s,
+		"resolve_question",
+		m{"id": "q_002", "answer": "8 GB", "claim_ids": []string{"c_001"}, "reason": "shallow"})
 	// A question resolved without a VERIFIED claim blocks the gate, unless it stores a reason.
 	bare := s
 	q2, _ := bare.Frontier.Get("q_002")
@@ -257,14 +322,28 @@ func TestExplorationGate(t *testing.T) {
 	if g := strings.Join(ExplorationGate(bare), "\n"); strings.Contains(g, "q_002 is resolved without") {
 		t.Errorf("a stored reason is enough:\n%s", g)
 	}
-	s = callRaw(t, s, "resolve_question", m{"id": "q_001", "answer": "fits [c_001]", "claim_ids": []string{"c_001"}, "reason": "test"})
-	s = callRaw(t, s, "notes_scratch", m{"text": "Conclusion: it fits."})
+	s = callRaw(t,
+		s,
+		"resolve_question",
+		m{"id": "q_001", "answer": "fits [c_001]", "claim_ids": []string{"c_001"}, "reason": "test"})
+	s = callRaw(t,
+		s,
+		"notes_scratch",
+		m{"text": "Conclusion: it fits."})
 	if g := strings.Join(ExplorationGate(s), "\n"); !strings.Contains(g, "no closed challenge with outcome survived") {
 		t.Errorf("the conclusion needs a survived challenge:\n%s", g)
 	}
-	s = callRaw(t, s, "challenge", m{"target_type": "conclusion", "negation": "it does not fit", "strategy": "negation", "expected_if_false": "e", "query": "does not fit 16 GB official"})
-	s = ran(t, s, "ch_002")
-	s = callRaw(t, s, "record_challenge_result", m{"challenge_id": "ch_002", "outcome": "survived"})
+	s = callRaw(t,
+		s,
+		"challenge",
+		m{"target_type": "conclusion", "negation": "it does not fit", "strategy": "negation", "expected_if_false": "e", "query": "does not fit 16 GB official"})
+	s = ran(t,
+		s,
+		"ch_002")
+	s = callRaw(t,
+		s,
+		"record_challenge_result",
+		m{"challenge_id": "ch_002", "outcome": "survived"})
 	if g := ExplorationGate(s); len(g) != 0 {
 		t.Fatalf("the gate should pass: %v", g)
 	}
@@ -281,11 +360,17 @@ func TestExplorationGate(t *testing.T) {
 	if g := strings.Join(ExplorationGate(c), "\n"); !strings.Contains(g, "contradiction c_001 vs c_001") {
 		t.Errorf("contradiction: %s", g)
 	}
-	p := callRaw(t, s, "add_question", m{"parent_id": "q_001", "question": "what else", "priority": 0.7, "validation_criteria": "c"})
+	p := callRaw(t,
+		s,
+		"add_question",
+		m{"parent_id": "q_001", "question": "what else", "priority": 0.7, "validation_criteria": "c"})
 	if _, err := tool.Handler(p, nil); err == nil || !strings.Contains(err.Error(), "pending with priority 0.70") {
 		t.Errorf("a pending question at or above gate_priority blocks: %v", err)
 	}
-	low := callRaw(t, s, "add_question", m{"parent_id": "q_001", "question": "minor", "priority": 0.2, "validation_criteria": "c"})
+	low := callRaw(t,
+		s,
+		"add_question",
+		m{"parent_id": "q_001", "question": "minor", "priority": 0.2, "validation_criteria": "c"})
 	if g := ExplorationGate(low); len(g) != 0 {
 		t.Errorf("below gate_priority it does not: %v", g)
 	}
@@ -300,11 +385,26 @@ func TestExplorationGate(t *testing.T) {
 
 func TestFinalizationGate(t *testing.T) {
 	s := withQuestion(t)
-	s = callRaw(t, s, "notes_append", m{"section": "Sources", "entries": []m{{"url": "https://a.com/x", "title": "A"}}})
-	s = callRaw(t, s, "notes_append", m{"section": "Unverified", "entries": []m{{"text": "weights are 8 GB", "question_id": "q_002", "sources": []m{{"source_id": "s_001"}}}}})
-	s = callRaw(t, s, "notes_append", m{"section": "Unverified", "entries": []m{{"text": "weights are 9 GB", "question_id": "q_002", "sources": []m{{"source_id": "s_001"}}}}})
-	s = callRaw(t, s, "notes_update", m{"id": "c_002", "change": m{"status": "REFUTED", "source_id": "s_001", "reason": "wrong"}})
-	s = callRaw(t, s, "retry_question", m{"id": "q_002", "new_query": "other", "why": "w"})
+	s = callRaw(t,
+		s,
+		"notes_append",
+		m{"section": "Sources", "entries": []m{{"url": "https://a.com/x", "title": "A"}}})
+	s = callRaw(t,
+		s,
+		"notes_append",
+		m{"section": "Unverified", "entries": []m{{"text": "weights are 8 GB", "question_id": "q_002", "sources": []m{{"source_id": "s_001"}}}}})
+	s = callRaw(t,
+		s,
+		"notes_append",
+		m{"section": "Unverified", "entries": []m{{"text": "weights are 9 GB", "question_id": "q_002", "sources": []m{{"source_id": "s_001"}}}}})
+	s = callRaw(t,
+		s,
+		"notes_update",
+		m{"id": "c_002", "change": m{"status": "REFUTED", "source_id": "s_001", "reason": "wrong"}})
+	s = callRaw(t,
+		s,
+		"retry_question",
+		m{"id": "q_002", "new_query": "other", "why": "w"})
 	good := "Summary: 8 GB (c_001, s_001).\n## Gaps\nnone"
 	if p := FinalizationGate(s, good); len(p) != 0 {
 		t.Fatalf("good report: %v", p)
@@ -313,16 +413,21 @@ func TestFinalizationGate(t *testing.T) {
 		"": "empty", "uses s_009": "s_009", "uses c_002": "REFUTED", "uses c_077": "c_077",
 	} {
 		if p := strings.Join(FinalizationGate(s, report), "\n"); !strings.Contains(p, want) {
-			t.Errorf("%q: %s", report, p)
+			t.Errorf("%q: %s",
+				report,
+				p)
 		}
 	}
 	// An unresolvable question must be in the report.
 	u := s
-	u.Frontier, _, _ = Add(u.Frontier, "q_001", AddInput{
-		Question:           "hard one",
-		Priority:           0.5,
-		ValidationCriteria: "c",
-	}, u.Limits)
+	u.Frontier, _, _ = Add(u.Frontier,
+		"q_001",
+		AddInput{
+			Question:           "hard one",
+			Priority:           0.5,
+			ValidationCriteria: "c",
+		},
+		u.Limits)
 	q, _ := u.Frontier.Get("q_003")
 	q.Status = StatusUnresolvable
 	u.Frontier = u.Frontier.with(q)
@@ -339,9 +444,18 @@ func TestFinalizationGate(t *testing.T) {
 
 func TestFinalCheckQueuesUnverifiedClaims(t *testing.T) {
 	s := withQuestion(t)
-	s = callRaw(t, s, "notes_append", m{"section": "Sources", "entries": []m{{"url": "https://a.com/x", "title": "A"}}})
-	s = callRaw(t, s, "notes_append", m{"section": "Unverified", "entries": []m{{"text": "weights are 8 GB", "question_id": "q_002", "sources": []m{{"source_id": "s_001"}}}}})
-	s = callRaw(t, s, "resolve_question", m{"id": "q_002", "answer": "8 GB", "claim_ids": []string{"c_001"}, "reason": "r"})
+	s = callRaw(t,
+		s,
+		"notes_append",
+		m{"section": "Sources", "entries": []m{{"url": "https://a.com/x", "title": "A"}}})
+	s = callRaw(t,
+		s,
+		"notes_append",
+		m{"section": "Unverified", "entries": []m{{"text": "weights are 8 GB", "question_id": "q_002", "sources": []m{{"source_id": "s_001"}}}}})
+	s = callRaw(t,
+		s,
+		"resolve_question",
+		m{"id": "q_002", "answer": "8 GB", "claim_ids": []string{"c_001"}, "reason": "r"})
 	next, ts, ids := FinalCheck(s)
 	if len(ids) != 1 || len(ts) == 0 {
 		t.Fatalf("one verification question: %v", ids)
@@ -368,7 +482,9 @@ func TestCheckBreakersAndReserve(t *testing.T) {
 	if n := ExplorationTurns(20, 0.2); n != 16 {
 		t.Fatalf("reserve of turns: %d", n)
 	}
-	explore := func(turns, tokens int, cost float64) LoopState {
+	explore := func(turns,
+		tokens int,
+		cost float64) LoopState {
 		return LoopState{
 			Phase:   PhaseExploration,
 			Turns:   turns,
@@ -376,22 +492,34 @@ func TestCheckBreakersAndReserve(t *testing.T) {
 			CostUSD: cost,
 		}
 	}
-	if bs := CheckBreakers(explore(15, 799, 0.79), lim); len(bs) != 0 {
+	if bs := CheckBreakers(explore(15,
+		799,
+		0.79), lim); len(bs) != 0 {
 		t.Fatalf("below every limit: %v", bs)
 	}
 	for _, c := range []struct {
 		ls   LoopState
 		want string
 	}{
-		{explore(16, 0, 0), "iterations"}, {explore(0, 800, 0), "tokens"}, {explore(0, 0, 0.8), "cost"},
+		{explore(16,
+			0,
+			0), "iterations"}, {explore(0,
+			800,
+			0), "tokens"}, {explore(0,
+			0,
+			0.8), "cost"},
 	} {
 		bs := CheckBreakers(c.ls, lim)
 		if len(bs) != 1 || bs[0].Name != c.want || bs[0].StopReason() != "breaker:"+c.want {
-			t.Errorf("%s: %v", c.want, bs)
+			t.Errorf("%s: %v",
+				c.want,
+				bs)
 		}
 	}
 	// Synthesis uses the whole limit: the same counts that stop exploration do not stop it.
-	syn := func(turns, tokens int, cost float64) LoopState {
+	syn := func(turns,
+		tokens int,
+		cost float64) LoopState {
 		return LoopState{
 			Phase:   PhaseSynthesis,
 			Turns:   turns,
@@ -399,23 +527,36 @@ func TestCheckBreakersAndReserve(t *testing.T) {
 			CostUSD: cost,
 		}
 	}
-	if bs := CheckBreakers(syn(16, 800, 0.8), lim); len(bs) != 0 {
+	if bs := CheckBreakers(syn(16,
+		800,
+		0.8), lim); len(bs) != 0 {
 		t.Errorf("the reserve is spendable by synthesis: %v", bs)
 	}
-	if bs := CheckBreakers(syn(20, 1000, 1), lim); len(bs) != 3 {
+	if bs := CheckBreakers(syn(20,
+		1000,
+		1), lim); len(bs) != 3 {
 		t.Errorf("the reserve is exhausted: %v", bs)
 	}
-	if bs := CheckBreakers(explore(1000, 1<<30, 1e6), Limits{}); len(bs) != 0 {
+	if bs := CheckBreakers(explore(1000,
+		1<<30,
+		1e6), Limits{}); len(bs) != 0 {
 		t.Errorf("0 is no limit: %v", bs)
 	}
-	if !IsLastTurn(syn(19, 0, 0), lim) || IsLastTurn(syn(18, 0, 0), lim) {
+	if !IsLastTurn(syn(19,
+		0,
+		0), lim) || IsLastTurn(syn(18,
+		0,
+		0), lim) {
 		t.Error("the last turn is the one that reaches max_iterations")
 	}
 }
 
 func TestCutShortNotesTheGaps(t *testing.T) {
 	s := withQuestion(t)
-	s = callRaw(t, s, "add_question", m{"parent_id": "q_001", "question": "left over", "priority": 0.3, "validation_criteria": "c"})
+	s = callRaw(t,
+		s,
+		"add_question",
+		m{"parent_id": "q_001", "question": "left over", "priority": 0.3, "validation_criteria": "c"})
 	cut := CutShort(s, Breaker{
 		Name:  "cost",
 		Limit: 1,
@@ -427,7 +568,9 @@ func TestCutShortNotesTheGaps(t *testing.T) {
 	gaps := Render(cut.Notes)
 	for _, id := range []string{"q_002", "q_003"} {
 		if !strings.Contains(gaps, "open gap ("+id+")") {
-			t.Errorf("%s not listed:\n%s", id, gaps)
+			t.Errorf("%s not listed:\n%s",
+				id,
+				gaps)
 		}
 	}
 }
@@ -440,7 +583,9 @@ func TestBuildRequestIsBoundedByTheWindow(t *testing.T) {
 	short := StartLoop()
 	long := StartLoop()
 	for i := 1; i <= 200; i++ { // a long history: committed turns
-		long = long.AfterModel(1, 1, 0).AddTurn(turnWith(i, Call{
+		long = long.AfterModel(1,
+			1,
+			0).AddTurn(turnWith(i, Call{
 			ID:     fmt.Sprintf("c%d", i),
 			Name:   "notes_read",
 			Output: strings.Repeat("old output ", 50),
@@ -454,9 +599,17 @@ func TestBuildRequestIsBoundedByTheWindow(t *testing.T) {
 			Output: strings.Repeat("old output ", 50),
 		}), nil)
 	}
-	a, b := BuildRequest(p, TurnExplore, short, s), BuildRequest(p, TurnExplore, long, s)
+	a, b := BuildRequest(p,
+		TurnExplore,
+		short,
+		s), BuildRequest(p,
+		TurnExplore,
+		long,
+		s)
 	if a.Size() != b.Size() {
-		t.Fatalf("the prompt grows with the history: %d vs %d", a.Size(), b.Size())
+		t.Fatalf("the prompt grows with the history: %d vs %d",
+			a.Size(),
+			b.Size())
 	}
 	if len(b.Messages) != 1+2*2 {
 		t.Errorf("task + the last two turns: %d messages", len(b.Messages))
@@ -471,11 +624,23 @@ func TestBuildRequestIsBoundedByTheWindow(t *testing.T) {
 
 func TestBuildRequestContents(t *testing.T) {
 	s := withQuestion(t)
-	s = callRaw(t, s, "notes_append", m{"section": "Sources", "entries": []m{{"url": "https://a.com/x", "title": "A"}}})
-	s = callRaw(t, s, "notes_append", m{"section": "Unverified", "entries": []m{{"text": "weights are 8 GB", "question_id": "q_002", "sources": []m{{"source_id": "s_001"}}}}})
-	s = callRaw(t, s, "challenge", m{"target_type": "claim", "target_id": "c_001", "negation": "weights are not 8 GB", "strategy": "negation", "expected_if_false": "e", "query": "weights not 8 GB errata"})
+	s = callRaw(t,
+		s,
+		"notes_append",
+		m{"section": "Sources", "entries": []m{{"url": "https://a.com/x", "title": "A"}}})
+	s = callRaw(t,
+		s,
+		"notes_append",
+		m{"section": "Unverified", "entries": []m{{"text": "weights are 8 GB", "question_id": "q_002", "sources": []m{{"source_id": "s_001"}}}}})
+	s = callRaw(t,
+		s,
+		"challenge",
+		m{"target_type": "claim", "target_id": "c_001", "negation": "weights are not 8 GB", "strategy": "negation", "expected_if_false": "e", "query": "weights not 8 GB errata"})
 	p := testPrompt()
-	req := BuildRequest(p, TurnExplore, StartLoop(), s)
+	req := BuildRequest(p,
+		TurnExplore,
+		StartLoop(),
+		s)
 	text, _ := json.Marshal(req.Messages)
 	for _, want := range []string{"Does X fit in 16 GB?", "weights are 8 GB", "Current question", "[q_002]", "criteria: bytes", "Open challenge [ch_001]", "depth 1", "weights not 8 GB errata"} {
 		if !strings.Contains(string(text), want) {
@@ -489,12 +654,17 @@ func TestBuildRequestContents(t *testing.T) {
 		t.Errorf("explore tools: %v", n)
 	}
 	// Forced extraction: only the notes tools, and the instruction names the question.
-	ls := StartLoop().AfterModel(1, 1, 0)
+	ls := StartLoop().AfterModel(1,
+		1,
+		0)
 	ls = ls.AddTurn(turnWith(1, fetchCall("a", 5000)), PendingOf(turnWith(1, fetchCall("a", 5000)), "q_002"))
 	if NextKind(ls, s) != TurnExtract {
 		t.Fatal("a large result forces an extraction")
 	}
-	ex := BuildRequest(p, TurnExtract, ls, s)
+	ex := BuildRequest(p,
+		TurnExtract,
+		ls,
+		s)
 	if n := names(ex); !slices.Equal(n, notesToolNames) {
 		t.Errorf("extraction tools: %v", n)
 	}
@@ -506,7 +676,10 @@ func TestBuildRequestContents(t *testing.T) {
 	s2 := CutShort(s, Breaker{
 		Name: "cost",
 	})
-	syn := BuildRequest(p, TurnSynthesize, cutState, s2)
+	syn := BuildRequest(p,
+		TurnSynthesize,
+		cutState,
+		s2)
 	if n := names(syn); slices.Contains(n, "web_search") || slices.Contains(n, "fetch_page") || slices.Contains(n, "challenge") || !slices.Contains(n, ToolFinalizeReport) || !slices.Contains(n, "reopen_question") {
 		t.Errorf("synthesis tools: %v", n)
 	}
@@ -516,7 +689,10 @@ func TestBuildRequestContents(t *testing.T) {
 	if syn.ForceTool != "" {
 		t.Error("only the last turn is forced")
 	}
-	last := BuildRequest(p, TurnFinal, cutState, s2)
+	last := BuildRequest(p,
+		TurnFinal,
+		cutState,
+		s2)
 	if pl := last.Payload(); pl["tool_choice"].(map[string]any)["name"] != ToolFinalizeReport {
 		t.Errorf("last turn: %v", pl["tool_choice"])
 	}
@@ -525,7 +701,10 @@ func TestBuildRequestContents(t *testing.T) {
 	if NextKind(StartLoop(), root) != TurnPlanning {
 		t.Error("planning while the root has no child")
 	}
-	if n := names(BuildRequest(p, TurnPlanning, StartLoop(), root)); !slices.Contains(n, "add_question") || !slices.Contains(n, "frontier_next") {
+	if n := names(BuildRequest(p,
+		TurnPlanning,
+		StartLoop(),
+		root)); !slices.Contains(n, "add_question") || !slices.Contains(n, "frontier_next") {
 		t.Errorf("planning tools: %v", n)
 	}
 }
@@ -539,20 +718,32 @@ func TestNextKindConsolidation(t *testing.T) {
 	}
 	size := TokenEstimate(s.Notes)
 	// One turn, and a second only if it did not reduce the size.
-	reduced := AfterConsolidation(ls, size, size-5, s.Limits)
+	reduced := AfterConsolidation(ls,
+		size,
+		size-5,
+		s.Limits)
 	if NeedsConsolidation(reduced, s) != false && size-5 >= size {
 		t.Fatal("unreachable")
 	}
-	still := AfterConsolidation(ls, size, size, s.Limits)
+	still := AfterConsolidation(ls,
+		size,
+		size,
+		s.Limits)
 	if !NeedsConsolidation(still, s) {
 		t.Error("it did not reduce: a second one")
 	}
-	twice := AfterConsolidation(still, size, size, s.Limits)
+	twice := AfterConsolidation(still,
+		size,
+		size,
+		s.Limits)
 	if NeedsConsolidation(twice, s) {
 		t.Error("no third")
 	}
 	s.Limits.NotesMaxTokens = 6000
-	if NextKind(twice, s) == TurnConsolidate || AfterConsolidation(twice, size, 1, s.Limits).Consol != 0 {
+	if NextKind(twice, s) == TurnConsolidate || AfterConsolidation(twice,
+		size,
+		1,
+		s.Limits).Consol != 0 {
 		t.Error("under budget resets")
 	}
 }
@@ -579,7 +770,8 @@ func TestTransitionInvariantWithLoopOperations(t *testing.T) {
 		s.Limits.MaxAttempts, s.Limits.MaxQuestions = 3, 20
 		_, log, _ := NewRoot("x")
 		pick := func() string { return s.Frontier.Questions[r.Intn(len(s.Frontier.Questions))].ID }
-		run := func(name string, args any) {
+		run := func(name string,
+			args any) {
 			tool, _ := LoopRegistry().Get(name)
 			raw, _ := json.Marshal(args)
 			res, err := tool.Handler(s, raw)
@@ -596,7 +788,9 @@ func TestTransitionInvariantWithLoopOperations(t *testing.T) {
 		for step := 0; step < 70; step++ {
 			switch r.Intn(10) {
 			case 0, 1:
-				run("add_question", m{"parent_id": pick(), "question": fmt.Sprintf("q %d %d", seed, step), "priority": r.Float64(), "validation_criteria": "c"})
+				run("add_question", m{"parent_id": pick(), "question": fmt.Sprintf("q %d %d",
+					seed,
+					step), "priority": r.Float64(), "validation_criteria": "c"})
 			case 2:
 				run("frontier_next", m{})
 			case 3:
@@ -619,7 +813,11 @@ func TestTransitionInvariantWithLoopOperations(t *testing.T) {
 			case 9:
 				run("notes_append", m{"section": "Unverified", "entries": []m{{"text": fmt.Sprintf("claim %d", step), "question_id": pick()}}})
 			}
-			checkInvariant(t, seed, step, s.Frontier, log)
+			checkInvariant(t,
+				seed,
+				step,
+				s.Frontier,
+				log)
 		}
 	}
 }

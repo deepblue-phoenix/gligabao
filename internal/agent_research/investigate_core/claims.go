@@ -111,14 +111,21 @@ func canonicalURL(raw string) string {
 }
 
 // AddSource adds a source for a URL, or returns the existing one if the URL is known (one row per distinct URL). It returns the new list.
-func AddSource(sources []Source, rawURL, title, note string) ([]Source, Source, error) {
+func AddSource(sources []Source,
+	rawURL,
+	title,
+	note string) ([]Source, Source, error) {
 	u := canonicalURL(rawURL)
 	if u == "" || strings.ContainsAny(u, " \t\r\n|") {
-		return sources, Source{}, fmt.Errorf("%w: %q is not a URL", ErrInvalid, rawURL)
+		return sources, Source{}, fmt.Errorf("%w: %q is not a URL",
+			ErrInvalid,
+			rawURL)
 	}
 	parsed, err := url.Parse(u)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
-		return sources, Source{}, fmt.Errorf("%w: %q is not an http(s) URL", ErrInvalid, rawURL)
+		return sources, Source{}, fmt.Errorf("%w: %q is not an http(s) URL",
+			ErrInvalid,
+			rawURL)
 	}
 	if i := slices.IndexFunc(sources, func(s Source) bool { return s.URL == u }); i >= 0 {
 		return sources, sources[i], nil
@@ -137,7 +144,8 @@ func AddSource(sources []Source, rawURL, title, note string) ([]Source, Source, 
 	return append(slices.Clone(sources), s), s, nil
 }
 
-func findSource(sources []Source, id string) (Source, bool) {
+func findSource(sources []Source,
+	id string) (Source, bool) {
 	i := slices.IndexFunc(sources, func(s Source) bool { return s.ID == id })
 	if i < 0 {
 		return Source{}, false
@@ -146,15 +154,23 @@ func findSource(sources []Source, id string) (Source, bool) {
 }
 
 // Support adds (or replaces) the link of a source to a claim, with the independence declaration.
-func Support(c Claim, sourceID string, stance Stance, independent bool, sources []Source) (Claim, error) {
+func Support(c Claim,
+	sourceID string,
+	stance Stance,
+	independent bool,
+	sources []Source) (Claim, error) {
 	if _, ok := findSource(sources, sourceID); !ok {
-		return c, fmt.Errorf("%w: unknown source %q (add it to the Sources section first)", ErrInvalid, sourceID)
+		return c, fmt.Errorf("%w: unknown source %q (add it to the Sources section first)",
+			ErrInvalid,
+			sourceID)
 	}
 	if stance == "" {
 		stance = StanceSupports
 	}
 	if stance != StanceSupports && stance != StanceContradicts {
-		return c, fmt.Errorf("%w: stance %q is not supports or contradicts", ErrInvalid, stance)
+		return c, fmt.Errorf("%w: stance %q is not supports or contradicts",
+			ErrInvalid,
+			stance)
 	}
 	links := slices.DeleteFunc(slices.Clone(c.Links), func(l Link) bool { return l.SourceID == sourceID })
 	c.Links = append(links, Link{
@@ -166,7 +182,8 @@ func Support(c Claim, sourceID string, stance Stance, independent bool, sources 
 }
 
 // SupportingDomains are the distinct domains of the sources that support c with the independence declaration.
-func SupportingDomains(c Claim, sources []Source) []string {
+func SupportingDomains(c Claim,
+	sources []Source) []string {
 	var out []string
 	for _, l := range c.Links {
 		if l.Stance != StanceSupports || !l.Independent {
@@ -181,13 +198,21 @@ func SupportingDomains(c Claim, sources []Source) []string {
 
 // CanVerify is the only check for VERIFIED, and every change of status to it goes through it: at least MinIndependentSources supporting
 // sources, declared independent, with distinct domains, and at least MinChallenges closed challenges on the claim with outcome survived.
-func CanVerify(c Claim, sources []Source, challenges []Challenge, limits Limits) error {
+func CanVerify(c Claim,
+	sources []Source,
+	challenges []Challenge,
+	limits Limits) error {
 	if c.Status == ClaimRefuted || c.Status == ClaimRetracted {
-		return fmt.Errorf("%s %w: it is %s", c.ID, ErrNotVerifiable, c.Status)
+		return fmt.Errorf("%s %w: it is %s",
+			c.ID,
+			ErrNotVerifiable,
+			c.Status)
 	}
 	var problems []string
 	if n := len(SupportingDomains(c, sources)); n < limits.MinIndependentSources {
-		problems = append(problems, fmt.Sprintf("it has %d independent supporting source(s) with distinct domains, it needs %d (link sources with independent=true)", n, limits.MinIndependentSources))
+		problems = append(problems, fmt.Sprintf("it has %d independent supporting source(s) with distinct domains, it needs %d (link sources with independent=true)",
+			n,
+			limits.MinIndependentSources))
 	}
 	survived := 0
 	for _, ch := range challenges {
@@ -196,23 +221,39 @@ func CanVerify(c Claim, sources []Source, challenges []Challenge, limits Limits)
 		}
 	}
 	if survived < limits.MinChallenges {
-		problems = append(problems, fmt.Sprintf("it has %d survived challenge(s), it needs %d (use the challenge tool on it)", survived, limits.MinChallenges))
+		problems = append(problems, fmt.Sprintf("it has %d survived challenge(s), it needs %d (use the challenge tool on it)",
+			survived,
+			limits.MinChallenges))
 	}
 	if len(problems) > 0 {
-		return fmt.Errorf("%s %w: %s", c.ID, ErrNotVerifiable, strings.Join(problems, "; "))
+		return fmt.Errorf("%s %w: %s",
+			c.ID,
+			ErrNotVerifiable,
+			strings.Join(problems, "; "))
 	}
 	return nil
 }
 
 // Refute marks the claim REFUTED, with a contradicts link to the source that refutes it and the reason.
-func Refute(c Claim, sourceID, reason string, sources []Source) (Claim, error) {
+func Refute(c Claim,
+	sourceID,
+	reason string,
+	sources []Source) (Claim, error) {
 	if strings.TrimSpace(reason) == "" {
-		return c, fmt.Errorf("%w: give the reason for refuting %s", ErrInvalid, c.ID)
+		return c, fmt.Errorf("%w: give the reason for refuting %s",
+			ErrInvalid,
+			c.ID)
 	}
 	if c.Status == ClaimRetracted {
-		return c, fmt.Errorf("%w: %s is retracted", ErrBadStatus, c.ID)
+		return c, fmt.Errorf("%w: %s is retracted",
+			ErrBadStatus,
+			c.ID)
 	}
-	c, err := Support(c, sourceID, StanceContradicts, true, sources)
+	c, err := Support(c,
+		sourceID,
+		StanceContradicts,
+		true,
+		sources)
 	if err != nil {
 		return c, err
 	}
@@ -222,9 +263,12 @@ func Refute(c Claim, sourceID, reason string, sources []Source) (Claim, error) {
 }
 
 // Retract marks the claim RETRACTED (the agent withdrew it), with the reason.
-func Retract(c Claim, reason string) (Claim, error) {
+func Retract(c Claim,
+	reason string) (Claim, error) {
 	if strings.TrimSpace(reason) == "" {
-		return c, fmt.Errorf("%w: give the reason for retracting %s", ErrInvalid, c.ID)
+		return c, fmt.Errorf("%w: give the reason for retracting %s",
+			ErrInvalid,
+			c.ID)
 	}
 	c.Status = ClaimRetracted
 	c.Note = clean(reason)
