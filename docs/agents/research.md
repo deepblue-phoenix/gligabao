@@ -131,6 +131,7 @@ The **research** view of the [admin UI](../../README.md#admin-ui) shows the agen
 - for every agent, in its row: the number of **children** (sub-agents it started), its **running time** (from its start to its end, or to now while it works) and **how long ago** it started (minutes, hours, days or months);
 - a **Details** modal per agent: the **model** it ran on (the one recorded for the run: a run started without a model records the server's default model), whether it started sub-agents (each with its reason and status, to open or stop), its parent, its report (rendered as Markdown, sanitized as HTML) and its states;
 - for an agent that **failed**, a red **failed** button in its row that opens the error it failed with and the state it failed in;
+- a **definitions** button that opens a modal with every loaded agent definition: one card each, with badges (version, loop, schedule), the settings (model, tools, limits, search, knowledge, investigate, code, schedule) in titled panels, tools as pills, and the system prompt and skills rendered as Markdown (`GET /v1/gb/admin/api/research/agent-defs`, `{"definitions": [...]}`);
 - a **Knowledge** button per agent: its **provenance**, see below;
 - a **Temporal plot** button in the **Details** modal (next to **Knowledge**): what the agent did to the facts over time, see below;
 - for an **investigative** run (`phase` set), the Details modal also shows its loop, **phase** and **stop reason**, and an **Investigation** block: the **frontier** as a tree of questions (status, priority, attempts, answer), the **challenges** (target, strategy, negation tried, outcome, evidence) and the latest **notes**. It refreshes with the modal while the run works (`GET /admin/api/research/{id}/investigation`). Claims, sources and the history of the questions are not shown yet;
@@ -297,6 +298,10 @@ FROM gb_agent_research_runs WHERE phase <> '' GROUP BY stop_reason, status;
 ```
 
 The ATIF trajectory of an investigative run has one agent step per model call, with the turn, its kind, the state, the phase and the question id in the step's `extra`, and the phase and stop reason in the trajectory's `result` extra. A step that used `run_code` also has `code_runs` in its `extra`: the code, the output, the wall time and the host function calls of each call.
+
+## Tracked errors
+
+The key failures of the research agents are recorded as `GBerror`s in the table `gb_errors` (`internal/sys/errors`, see [db-tables.md](../listings/db-tables.md#errors)): `research.create` and `research.remote.create` (the run could not be recorded), `research.recover` (restart cleanup failed), `research.agent` (the agent ended with an error), `research.panic`, `research.finish` (the end of the run could not be written), and for runs in Modal `research.remote.panic`, `.timeout`, `.lost` and `.finish`. The agent loop records `agent.tool.panic` (a tool panicked; the run goes on with the failure as the tool's result) and `agent.trajectory.store` (the trajectory could not be written; the run still succeeds), and the `remember` tool `agent.remember.async` (a `remember` that did not wait failed, so its text is lost). The memory pipelines record `remember.pipeline`, `remember.store.commit`, `remember.store.vectors`, `remember.panic`, `remember.submit.create_run` and `query.pipeline`; cancelled calls are not tracked. A `GBerror` holds the package, function and stack trace, the `op` and a small `meta` map.
 
 ## Sub-agents
 

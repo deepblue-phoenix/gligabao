@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.196.2] - 2026-11-12
+
+### Changed
+- Docs only: brought `docs/` up to date with 0.189.0 to 0.196.1 (investigative sub-agents with `run_code`, the agent definitions modal of the admin UI, tracked errors `GBerror` / `gb_errors`, the `internal/llm`, `internal/atif` and `internal/agent/code_sandbox` package moves).
+
 ## [0.196.1] - 2026-11-12
 
 ### Changed
