@@ -364,7 +364,11 @@ func BuildRequest(p Prompt, kind TurnKind, ls LoopState, s State) Request {
 		}
 		msgs = append(msgs, a, u)
 	}
-	req := Request{System: systemText(p, kind), Tools: tools, Messages: msgs}
+	req := Request{
+		System:   systemText(p, kind),
+		Tools:    tools,
+		Messages: msgs,
+	}
 	if kind == TurnFinal {
 		req.ForceTool = ToolFinalizeReport
 	}

@@ -52,7 +52,9 @@ func TestAddSource(t *testing.T) {
 
 func TestSupportReplacesLink(t *testing.T) {
 	sources, _, _ := AddSource(nil, "https://a.org", "", "")
-	c := Claim{ID: "c_001"}
+	c := Claim{
+		ID: "c_001",
+	}
 	c, err := Support(c, "s_001", "", false, sources)
 	if err != nil || c.Links[0].Stance != StanceSupports || c.Links[0].Independent {
 		t.Fatalf("%v %+v", err, c)

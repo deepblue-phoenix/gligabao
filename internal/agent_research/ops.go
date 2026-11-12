@@ -27,8 +27,16 @@ type Ops struct {
 
 // The Ops of each backend.
 var (
-	SQLiteOps   = Ops{Store: sqlite.Store, Investigate: sqlite.NewInvestigateStore, ErrSink: errSink(config.DBBackendSQLite)}
-	PostgresOps = Ops{Store: postgres.Store, Investigate: postgres.NewInvestigateStore, ErrSink: errSink(config.DBBackendPostgres)}
+	SQLiteOps = Ops{
+		Store:       sqlite.Store,
+		Investigate: sqlite.NewInvestigateStore,
+		ErrSink:     errSink(config.DBBackendSQLite),
+	}
+	PostgresOps = Ops{
+		Store:       postgres.Store,
+		Investigate: postgres.NewInvestigateStore,
+		ErrSink:     errSink(config.DBBackendPostgres),
+	}
 )
 
 // errSink returns the function that makes the GBerror sink of the backend on a database.

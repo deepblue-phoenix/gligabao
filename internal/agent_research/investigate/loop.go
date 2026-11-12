@@ -118,7 +118,11 @@ func (e *BreakerError) Error() string {
 // Run runs the investigation to the end: exploration, then synthesis, until a report is accepted, or a breaker fires in synthesis (a
 // *BreakerError), the model fails or ctx ends. The run's state is in the store of cfg.Session: a first call records the root question.
 func Run(ctx context.Context, cfg Config) (RunResult, error) {
-	r := &runner{cfg: cfg, ls: investigate_core.StartLoop(), sess: cfg.Session}
+	r := &runner{
+		cfg:  cfg,
+		ls:   investigate_core.StartLoop(),
+		sess: cfg.Session,
+	}
 	var err error
 	if r.code, err = newCode(cfg.Code, cfg.External); err != nil {
 		return RunResult{}, fmt.Errorf("run_code: %w", err)
@@ -128,26 +132,50 @@ func Run(ctx context.Context, cfg Config) (RunResult, error) {
 		r.tr = newRecorder(cfg, r.prompt)
 	}
 	err = r.run(ctx)
-	res := RunResult{Report: r.report, Phase: r.ls.Phase, StopReason: r.ls.StopReason, Totals: r.totals()}
+	res := RunResult{
+		Report:     r.report,
+		Phase:      r.ls.Phase,
+		StopReason: r.ls.StopReason,
+		Totals:     r.totals(),
+	}
 	res.Trajectory = r.tr.finish(res, err)
 	return res, err
 }
 
 func (r *runner) totals() Totals {
-	return Totals{Turns: r.ls.Turns, ToolCalls: r.toolCalls, InputTokens: r.in, OutputTokens: r.out, CostUSD: r.ls.CostUSD - r.workerCost}
+	return Totals{
+		Turns:        r.ls.Turns,
+		ToolCalls:    r.toolCalls,
+		InputTokens:  r.in,
+		OutputTokens: r.out,
+		CostUSD:      r.ls.CostUSD - r.workerCost,
+	}
 }
 
 func (r *runner) buildPrompt() investigate_core.Prompt {
 	var cat []investigate_core.ToolSpec
 	var ext []string
 	for _, t := range r.externals() {
-		cat = append(cat, investigate_core.ToolSpec{Name: t.Name, Description: t.Description, Schema: t.Schema})
+		cat = append(cat, investigate_core.ToolSpec{
+			Name:        t.Name,
+			Description: t.Description,
+			Schema:      t.Schema,
+		})
 		ext = append(ext, t.Name)
 	}
 	for _, t := range r.sess.Registry.Tools() {
-		cat = append(cat, investigate_core.ToolSpec{Name: t.Name, Description: t.Description, Schema: t.Schema})
+		cat = append(cat, investigate_core.ToolSpec{
+			Name:        t.Name,
+			Description: t.Description,
+			Schema:      t.Schema,
+		})
 	}
-	return investigate_core.Prompt{System: r.cfg.System, Task: r.cfg.Task, Catalog: cat, External: ext}
+	return investigate_core.Prompt{
+		System:   r.cfg.System,
+		Task:     r.cfg.Task,
+		Catalog:  cat,
+		External: ext,
+	}
 }
 
 func (r *runner) phaseChanged() {
@@ -211,7 +239,9 @@ func (r *runner) onBreaker(ctx context.Context, st investigate_core.State, b inv
 	if r.ls.Phase == investigate_core.PhaseSynthesis {
 		r.ls = r.ls.Failed(b.StopReason())
 		r.phaseChanged()
-		return &BreakerError{Breaker: b}
+		return &BreakerError{
+			Breaker: b,
+		}
 	}
 	if err := r.sess.Apply(ctx, "breaker", func(s investigate_core.State) (investigate_core.State, []investigate_core.Transition) {
 		return investigate_core.CutShort(s, b), nil
@@ -298,7 +328,10 @@ func (r *runner) restoreNotes(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return investigate_core.Execute(ctx, env, seq, []investigate_core.Effect{investigate_core.WriteNotes{Text: want, Reason: "restore"}})
+	return investigate_core.Execute(ctx, env, seq, []investigate_core.Effect{investigate_core.WriteNotes{
+		Text:   want,
+		Reason: "restore",
+	}})
 }
 
 // turn is the act step: build the request, call the model, run the tools it asked for, then update (commit, evict, reblock).
@@ -351,7 +384,11 @@ func (r *runner) turn(ctx context.Context, kind investigate_core.TurnKind, st in
 			text.WriteString(b.Text)
 		case "tool_use":
 			rec.call(b.ID, b.Name, b.Input)
-			c := r.runTool(ctx, kind, n, st, investigate_core.Call{ID: b.ID, Name: b.Name, Input: b.Input})
+			c := r.runTool(ctx, kind, n, st, investigate_core.Call{
+				ID:    b.ID,
+				Name:  b.Name,
+				Input: b.Input,
+			})
 			rec.result(c)
 			calls = append(calls, c)
 		}
@@ -366,7 +403,11 @@ func (r *runner) turn(ctx context.Context, kind investigate_core.TurnKind, st in
 	if err != nil {
 		return err
 	}
-	turn := investigate_core.Turn{N: n, Content: resp.Content, Calls: calls}
+	turn := investigate_core.Turn{
+		N:       n,
+		Content: resp.Content,
+		Calls:   calls,
+	}
 	if len(calls) == 0 {
 		turn.Nudge = investigate_core.Reminder(kind, next)
 	}
@@ -488,7 +529,11 @@ func (r *runner) logAttempt(ctx context.Context, c investigate_core.Call) {
 		}) {
 			return s, nil
 		}
-		if f, _, err := investigate_core.AddAttempt(s.Frontier, qid, investigate_core.Attempt{Query: arg, Tool: c.Name, Outcome: outcome}); err == nil {
+		if f, _, err := investigate_core.AddAttempt(s.Frontier, qid, investigate_core.Attempt{
+			Query:   arg,
+			Tool:    c.Name,
+			Outcome: outcome,
+		}); err == nil {
 			next.Frontier = f
 		}
 		return next, nil
@@ -534,7 +579,11 @@ func newRecorder(cfg Config, p investigate_core.Prompt) *recorder {
 	if version == "" {
 		version = "0.1"
 	}
-	b := atif.NewBuilder(atif.Agent{Name: name, Version: version, ModelName: cfg.ModelName})
+	b := atif.NewBuilder(atif.Agent{
+		Name:      name,
+		Version:   version,
+		ModelName: cfg.ModelName,
+	})
 	if t.SessionID != "" {
 		b.SetSessionID(t.SessionID)
 	}
@@ -545,7 +594,9 @@ func newRecorder(cfg Config, p investigate_core.Prompt) *recorder {
 	b.SetExtra("input", map[string]any{"loop": "investigative", "tools": names})
 	b.System(p.System)
 	b.User(p.Task)
-	return &recorder{b: b}
+	return &recorder{
+		b: b,
+	}
 }
 
 func (t *recorder) begin(started time.Time, resp *ai.RawResponse, turn int, kind investigate_core.TurnKind, state string, phase investigate_core.Phase, question string) *stepRec {
@@ -555,15 +606,22 @@ func (t *recorder) begin(started time.Time, resp *ai.RawResponse, turn int, kind
 	if t.model == "" {
 		t.model = resp.Model
 	}
-	return &stepRec{r: t, step: atif.Step{
-		Timestamp: started.UTC().Format(time.RFC3339Nano),
-		ModelName: resp.Model,
-		Metrics:   &atif.Metrics{PromptTokens: resp.InputTokens, CompletionTokens: resp.OutputTokens, CostUSD: resp.CostUSD},
-		Extra: map[string]any{
-			"provider": "anthropic", "stop_reason": resp.StopReason, "turn": turn, "turn_kind": string(kind), "state": state,
-			"phase": string(phase), "question_id": question, "latency_ms": float64(time.Since(started).Microseconds()) / 1000,
+	return &stepRec{
+		r: t,
+		step: atif.Step{
+			Timestamp: started.UTC().Format(time.RFC3339Nano),
+			ModelName: resp.Model,
+			Metrics: &atif.Metrics{
+				PromptTokens:     resp.InputTokens,
+				CompletionTokens: resp.OutputTokens,
+				CostUSD:          resp.CostUSD,
+			},
+			Extra: map[string]any{
+				"provider": "anthropic", "stop_reason": resp.StopReason, "turn": turn, "turn_kind": string(kind), "state": state,
+				"phase": string(phase), "question_id": question, "latency_ms": float64(time.Since(started).Microseconds()) / 1000,
+			},
 		},
-	}}
+	}
 }
 
 func (s *stepRec) call(id, name string, input json.RawMessage) {
@@ -574,7 +632,11 @@ func (s *stepRec) call(id, name string, input json.RawMessage) {
 	if err := json.Unmarshal(input, &args); err != nil || args == nil {
 		args = map[string]any{"_raw": string(input)}
 	}
-	s.step.ToolCalls = append(s.step.ToolCalls, atif.ToolCall{ToolCallID: id, FunctionName: name, Arguments: args})
+	s.step.ToolCalls = append(s.step.ToolCalls, atif.ToolCall{
+		ToolCallID:   id,
+		FunctionName: name,
+		Arguments:    args,
+	})
 }
 
 func (s *stepRec) result(c investigate_core.Call) {
@@ -584,7 +646,10 @@ func (s *stepRec) result(c investigate_core.Call) {
 	if s.step.Observation == nil {
 		s.step.Observation = &atif.Observation{}
 	}
-	s.step.Observation.Results = append(s.step.Observation.Results, atif.ObservationResult{SourceCallID: c.ID, Content: c.Output})
+	s.step.Observation.Results = append(s.step.Observation.Results, atif.ObservationResult{
+		SourceCallID: c.ID,
+		Content:      c.Output,
+	})
 	if c.IsErr {
 		s.failed = append(s.failed, c.ID)
 	}

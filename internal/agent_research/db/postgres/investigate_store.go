@@ -21,7 +21,11 @@ type InvestigateStore struct{ D *sql.DB }
 var _ investigate_core.Store = InvestigateStore{}
 
 // NewInvestigateStore returns the store of the investigative loop's state on d.
-func NewInvestigateStore(d *sql.DB) investigate_core.Store { return InvestigateStore{D: d} }
+func NewInvestigateStore(d *sql.DB) investigate_core.Store {
+	return InvestigateStore{
+		D: d,
+	}
+}
 
 // InTx runs fn in a transaction.
 func (s InvestigateStore) InTx(ctx context.Context, fn func(investigate_core.Tx) error) error {
@@ -29,7 +33,9 @@ func (s InvestigateStore) InTx(ctx context.Context, fn func(investigate_core.Tx)
 	if err != nil {
 		return fmt.Errorf("investigate: begin: %w", err)
 	}
-	if err := fn(investigateTx{q: tx}); err != nil {
+	if err := fn(investigateTx{
+		q: tx,
+	}); err != nil {
 		tx.Rollback()
 		return err
 	}

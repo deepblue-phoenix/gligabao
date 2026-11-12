@@ -135,7 +135,15 @@ func NewManager(ctx context.Context, d *sql.DB, ops Ops, client *ai.Client, opts
 	for _, opt := range opts {
 		opt(&o)
 	}
-	m := &Manager{DB: d, Client: client, Ops: ops, ctx: ctx, active: map[string]int{}, runs: map[int64]*researcher{}, remotes: map[int64]*remoteRun{}}
+	m := &Manager{
+		DB:      d,
+		Client:  client,
+		Ops:     ops,
+		ctx:     ctx,
+		active:  map[string]int{},
+		runs:    map[int64]*researcher{},
+		remotes: map[int64]*remoteRun{},
+	}
 	if o.keepActive {
 		return m
 	}
@@ -210,12 +218,28 @@ func (m *Manager) Agents() []AgentInfo {
 	var out []AgentInfo
 	for _, d := range m.registry().List() {
 		info := AgentInfo{
-			Name: d.Name, Version: d.Version, Description: d.Description, Hash: d.Hash, Source: d.Source, Model: d.Model, MaxSteps: d.MaxSteps,
-			MaxCostUSD: d.Limits.MaxCostUSD, MaxTreeCostUSD: d.Limits.MaxTreeCostUSD, Knowledge: d.Knowledge.Access, Loop: cmp.Or(d.Loop, agent_defs.LoopSimple),
-			Skills: []string{}, MaxParallel: 1,
+			Name:           d.Name,
+			Version:        d.Version,
+			Description:    d.Description,
+			Hash:           d.Hash,
+			Source:         d.Source,
+			Model:          d.Model,
+			MaxSteps:       d.MaxSteps,
+			MaxCostUSD:     d.Limits.MaxCostUSD,
+			MaxTreeCostUSD: d.Limits.MaxTreeCostUSD,
+			Knowledge:      d.Knowledge.Access,
+			Loop:           cmp.Or(d.Loop, agent_defs.LoopSimple),
+			Skills:         []string{},
+			MaxParallel:    1,
 		}
 		if sc := d.Schedule; sc != nil {
-			info.Schedule = &ScheduleInfo{Cron: sc.Cron, Timezone: sc.Timezone, Topic: sc.Topic, User: sc.User, Paused: sc.Paused}
+			info.Schedule = &ScheduleInfo{
+				Cron:     sc.Cron,
+				Timezone: sc.Timezone,
+				Topic:    sc.Topic,
+				User:     sc.User,
+				Paused:   sc.Paused,
+			}
 			if next := sc.Next(time.Now()); !sc.Paused && !next.IsZero() {
 				info.Schedule.NextRun = &next
 			}
@@ -337,8 +361,17 @@ func (m *Manager) Start(ctx context.Context, userID string, opts Options) (*core
 		return m.startRemote(ctx, userID, opts, def, remote, release)
 	}
 
-	run := &core.Run{UserID: userID, Topic: opts.Topic, Status: core.StatusRunning, State: core.StateStarting, Model: opts.Model, MaxSteps: opts.MaxSteps,
-		AgentName: def.Name, AgentVersion: def.Version, AgentHash: def.Hash}
+	run := &core.Run{
+		UserID:       userID,
+		Topic:        opts.Topic,
+		Status:       core.StatusRunning,
+		State:        core.StateStarting,
+		Model:        opts.Model,
+		MaxSteps:     opts.MaxSteps,
+		AgentName:    def.Name,
+		AgentVersion: def.Version,
+		AgentHash:    def.Hash,
+	}
 	dbCtx := context.WithoutCancel(ctx)
 	err = m.tx(dbCtx, func(q db.Execer) error {
 		if err := m.Ops.Store.CreateRun(dbCtx, q, run); err != nil {
@@ -409,7 +442,10 @@ func (m *Manager) Stop(ctx context.Context, userID string, id int64, by string) 
 	if userID != "" && r.run.UserID != userID {
 		return nil, notFoundErr("research not found")
 	}
-	r.stop(&stopCause{runID: id, by: by})
+	r.stop(&stopCause{
+		runID: id,
+		by:    by,
+	})
 	select {
 	case <-r.done:
 	case <-time.After(stopWait):
@@ -477,7 +513,10 @@ func (m *Manager) Get(ctx context.Context, userID string, id int64) (*core.Run, 
 
 // List returns the runs of userID (of every user for ""), newest first, without their states. KindInvalid for bad options.
 func (m *Manager) List(ctx context.Context, userID string, opts ListOptions) ([]core.Run, error) {
-	f := core.RunFilter{UserID: userID, RootsOnly: opts.RootsOnly}
+	f := core.RunFilter{
+		UserID:    userID,
+		RootsOnly: opts.RootsOnly,
+	}
 	if opts.ParentID != 0 {
 		f.ParentID = &opts.ParentID
 	}
@@ -522,7 +561,10 @@ func (m *Manager) List(ctx context.Context, userID string, opts ListOptions) ([]
 func (m *Manager) Counts(ctx context.Context, userID string) (map[core.Status]int, error) {
 	out := make(map[core.Status]int, len(core.Statuses))
 	for _, s := range core.Statuses {
-		n, err := m.Ops.Store.CountRuns(ctx, m.DB, core.RunFilter{UserID: userID, Statuses: []core.Status{s}})
+		n, err := m.Ops.Store.CountRuns(ctx, m.DB, core.RunFilter{
+			UserID:   userID,
+			Statuses: []core.Status{s},
+		})
 		if err != nil {
 			return nil, internalErr("failed to count the researches", err)
 		}

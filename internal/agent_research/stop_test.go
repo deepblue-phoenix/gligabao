@@ -29,9 +29,14 @@ func TestStopEndsAnActiveAgent(t *testing.T) { runOnBackends(t, testStopAgent) }
 
 func testStopAgent(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	ctx := context.Background()
-	fake := &fakeAnthropic{main: []string{finalReport}, gate: make(chan struct{})} // never opened: the first call hangs
+	fake := &fakeAnthropic{
+		main: []string{finalReport},
+		gate: make(chan struct{}),
+	} // never opened: the first call hangs
 	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
-	started, err := m.Start(ctx, "u1", agent_research.Options{Topic: "t"})
+	started, err := m.Start(ctx, "u1", agent_research.Options{
+		Topic: "t",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,10 +70,14 @@ func testStopAgent(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	if n, err := m.Counts(ctx, ""); err != nil || n[core.StatusStopped] != 1 || n[core.StatusRunning] != 0 {
 		t.Fatalf("counts: %v %v", n, err)
 	}
-	if stopped, _ := m.List(ctx, "", agent_research.ListOptions{Status: "stopped"}); len(stopped) != 1 {
+	if stopped, _ := m.List(ctx, "", agent_research.ListOptions{
+		Status: "stopped",
+	}); len(stopped) != 1 {
 		t.Fatalf("stopped list: %+v", stopped)
 	}
-	if fin, _ := m.List(ctx, "", agent_research.ListOptions{Finished: true}); len(fin) != 1 {
+	if fin, _ := m.List(ctx, "", agent_research.ListOptions{
+		Finished: true,
+	}); len(fin) != 1 {
 		t.Fatalf("finished list: %+v", fin)
 	}
 }
@@ -78,15 +87,28 @@ func TestCountRunsAndChildCountsOfTheStore(t *testing.T) { runOnBackends(t, test
 func testCounts(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	ctx := context.Background()
 	st := ops.Store
-	root := &core.Run{UserID: "u1", Topic: "r", State: core.StateStarting}
-	other := &core.Run{UserID: "u2", Topic: "o", State: core.StateStarting}
+	root := &core.Run{
+		UserID: "u1",
+		Topic:  "r",
+		State:  core.StateStarting,
+	}
+	other := &core.Run{
+		UserID: "u2",
+		Topic:  "o",
+		State:  core.StateStarting,
+	}
 	for _, r := range []*core.Run{root, other} {
 		if err := st.CreateRun(ctx, d, r); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for _, n := range []string{"a", "b"} {
-		if err := st.CreateRun(ctx, d, &core.Run{UserID: "u1", Topic: n, ParentID: &root.ID, Name: n}); err != nil {
+		if err := st.CreateRun(ctx, d, &core.Run{
+			UserID:   "u1",
+			Topic:    n,
+			ParentID: &root.ID,
+			Name:     n,
+		}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -103,16 +125,25 @@ func testCounts(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	if n := count(core.RunFilter{}); n != 4 {
 		t.Errorf("all: %d", n)
 	}
-	if n := count(core.RunFilter{UserID: "u1"}); n != 3 {
+	if n := count(core.RunFilter{
+		UserID: "u1",
+	}); n != 3 {
 		t.Errorf("u1: %d", n)
 	}
-	if n := count(core.RunFilter{RootsOnly: true}); n != 2 {
+	if n := count(core.RunFilter{
+		RootsOnly: true,
+	}); n != 2 {
 		t.Errorf("roots: %d", n)
 	}
-	if n := count(core.RunFilter{Statuses: []core.Status{core.StatusStopped}}); n != 1 {
+	if n := count(core.RunFilter{
+		Statuses: []core.Status{core.StatusStopped},
+	}); n != 1 {
 		t.Errorf("stopped: %d", n)
 	}
-	if n := count(core.RunFilter{ParentID: &root.ID, Statuses: []core.Status{core.StatusRunning}}); n != 2 {
+	if n := count(core.RunFilter{
+		ParentID: &root.ID,
+		Statuses: []core.Status{core.StatusRunning},
+	}); n != 2 {
 		t.Errorf("children: %d", n)
 	}
 	kids, err := st.ChildCounts(ctx, d, []int64{root.ID, other.ID})
@@ -168,7 +199,10 @@ func TestOpenRebuildsAnOldSQLiteStatusCheck(t *testing.T) {
 	if ok, err := st.FinishRun(ctx, d, 2, core.StatusStopped, "", "stopped by me"); err != nil || !ok {
 		t.Fatalf("stopped is still refused: %v %v", ok, err)
 	}
-	next := &core.Run{UserID: "u1", Topic: "next"}
+	next := &core.Run{
+		UserID: "u1",
+		Topic:  "next",
+	}
 	if err := st.CreateRun(ctx, d, next); err != nil || next.ID != 3 {
 		t.Fatalf("next run: %+v %v", next, err)
 	}

@@ -83,7 +83,11 @@ func EnvOf(st investigate_core.State) hostfn.Env {
 	if cs == nil {
 		cs = []map[string]any{}
 	}
-	return hostfn.Env{Notes: investigate_core.Render(st.Notes), Questions: qs, Claims: cs}
+	return hostfn.Env{
+		Notes:     investigate_core.Render(st.Notes),
+		Questions: qs,
+		Claims:    cs,
+	}
 }
 
 // FormatCodeResult is what the model reads of a run: "ok", the value and the stdout, or "error: kind: message"; capped at max chars
@@ -139,14 +143,22 @@ func newCode(cfg *CodeConfig, external []agent.Tool) (*code, error) {
 	reg = reg.Filter(func(s hostfn.Spec) bool { t := hostfn.ToolOf(s.Name); return t == "" || has(t) })
 	c := *cfg
 	c.Settings = c.Settings.WithDefaults()
-	return &code{cfg: c, reg: reg}, nil
+	return &code{
+		cfg: c,
+		reg: reg,
+	}, nil
 }
 
 func (c *code) tool(r *runner) agent.Tool {
 	desc, schema := CodeToolSpec(c.reg)
-	return agent.Tool{Name: ToolRunCode, Description: desc, Schema: schema, Run: func(ctx context.Context, input json.RawMessage) (string, error) {
-		return r.runCode(ctx, input)
-	}}
+	return agent.Tool{
+		Name:        ToolRunCode,
+		Description: desc,
+		Schema:      schema,
+		Run: func(ctx context.Context, input json.RawMessage) (string, error) {
+			return r.runCode(ctx, input)
+		},
+	}
 }
 
 // externals are the tools of the agent and, when code is on, run_code.
@@ -178,7 +190,9 @@ func (r *runner) runCode(ctx context.Context, input json.RawMessage) (string, er
 	if err != nil {
 		return "", err
 	}
-	run := &codeTrace{code: in.Code}
+	run := &codeTrace{
+		code: in.Code,
+	}
 	env := EnvOf(st)
 	env.Fetch = func(ctx context.Context, tool string, in map[string]any) (string, error) {
 		return r.codeFetch(ctx, st, tool, in)
@@ -192,8 +206,16 @@ func (r *runner) runCode(ctx context.Context, input json.RawMessage) (string, er
 		return r.code.reg.Call(ctx, env, name, args, kwargs, s.MaxResultChars)
 	}
 	res, err := r.code.cfg.Runner.Run(ctx, monty.Request{
-		Code: in.Code, Inputs: in.Inputs, Functions: r.code.reg.Names(), Stubs: r.code.reg.Stubs(), TypeCheck: s.TypeCheck,
-		Limits: monty.Limits{MaxDurationS: float64(s.TimeoutS), MaxMemoryMB: s.MaxMemoryMB, MaxRecursion: s.MaxRecursion},
+		Code:      in.Code,
+		Inputs:    in.Inputs,
+		Functions: r.code.reg.Names(),
+		Stubs:     r.code.reg.Stubs(),
+		TypeCheck: s.TypeCheck,
+		Limits: monty.Limits{
+			MaxDurationS: float64(s.TimeoutS),
+			MaxMemoryMB:  s.MaxMemoryMB,
+			MaxRecursion: s.MaxRecursion,
+		},
 	}, host)
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return "", ctxErr
@@ -218,7 +240,11 @@ func (r *runner) codeFetch(ctx context.Context, st investigate_core.State, tool 
 		if err != nil {
 			return "", err
 		}
-		out, isErr := r.runExternal(ctx, t, st, investigate_core.Call{ID: "code", Name: tool, Input: input})
+		out, isErr := r.runExternal(ctx, t, st, investigate_core.Call{
+			ID:    "code",
+			Name:  tool,
+			Input: input,
+		})
 		if isErr {
 			return "", errors.New(out)
 		}
@@ -268,7 +294,12 @@ func WorkerCodeTool(cfg *CodeConfig, tools []agent.Tool) (tool agent.Tool, ok bo
 	run := func(ctx context.Context, input json.RawMessage) (string, error) {
 		return runWorkerCode(ctx, c, tools, int(calls.Add(1)), input)
 	}
-	return agent.Tool{Name: ToolRunCode, Description: desc, Schema: schema, Run: run}, true, nil
+	return agent.Tool{
+		Name:        ToolRunCode,
+		Description: desc,
+		Schema:      schema,
+		Run:         run,
+	}, true, nil
 }
 
 // runWorkerCode runs one program of a worker; n is the number of this call among the worker's.
@@ -289,7 +320,8 @@ func runWorkerCode(ctx context.Context, c *code, tools []agent.Tool, n int, inpu
 	}
 	hostCalls := 0
 	env := hostfn.Env{
-		Questions: []map[string]any{}, Claims: []map[string]any{},
+		Questions: []map[string]any{},
+		Claims:    []map[string]any{},
 		Fetch: func(ctx context.Context, tool string, args map[string]any) (string, error) {
 			for _, t := range tools {
 				if t.Name != tool {
@@ -312,8 +344,16 @@ func runWorkerCode(ctx context.Context, c *code, tools []agent.Tool, n int, inpu
 		return c.reg.Call(ctx, env, name, args, kwargs, s.MaxResultChars)
 	}
 	res, err := c.cfg.Runner.Run(ctx, monty.Request{
-		Code: in.Code, Inputs: in.Inputs, Functions: c.reg.Names(), Stubs: c.reg.Stubs(), TypeCheck: s.TypeCheck,
-		Limits: monty.Limits{MaxDurationS: float64(s.TimeoutS), MaxMemoryMB: s.MaxMemoryMB, MaxRecursion: s.MaxRecursion},
+		Code:      in.Code,
+		Inputs:    in.Inputs,
+		Functions: c.reg.Names(),
+		Stubs:     c.reg.Stubs(),
+		TypeCheck: s.TypeCheck,
+		Limits: monty.Limits{
+			MaxDurationS: float64(s.TimeoutS),
+			MaxMemoryMB:  s.MaxMemoryMB,
+			MaxRecursion: s.MaxRecursion,
+		},
 	}, host)
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return "", ctxErr

@@ -50,25 +50,30 @@ func TestInvestigativeRunThroughTheManager(t *testing.T) { runOnBackends(t, test
 
 func testInvestigativeRun(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	ctx := context.Background()
-	fake := &fakeAnthropic{main: []string{
-		toolReply([2]any{"add_question", kv{"parent_id": "q_001", "question": "Why are batteries good?", "priority": 0.8, "validation_criteria": "a reason"}}),
-		toolReply(
-			[2]any{"notes_append", kv{"section": "Sources", "entries": []kv{{"url": "https://a.example/x", "title": "A"}}}},
-			[2]any{"resolve_question", kv{"id": "q_002", "answer": "they store energy", "reason": "shallow"}},
-			[2]any{"resolve_question", kv{"id": "q_001", "answer": "batteries are good", "reason": "shallow"}},
-			[2]any{"notes_scratch", kv{"text": "Conclusion: batteries are good."}},
-			[2]any{"challenge", kv{"target_type": "conclusion", "negation": "batteries are not good", "strategy": "negation", "expected_if_false": "e", "query": "batteries not good official"}},
-			[2]any{"web_search", kv{"query": "batteries not good official"}},
-			[2]any{"record_challenge_result", kv{"challenge_id": "ch_001", "outcome": "survived"}},
-		),
-		toolReply([2]any{"finalize_report", kv{"report": "# Report\nBatteries are good (s_001)."}}),
-	}}
+	fake := &fakeAnthropic{
+		main: []string{
+			toolReply([2]any{"add_question", kv{"parent_id": "q_001", "question": "Why are batteries good?", "priority": 0.8, "validation_criteria": "a reason"}}),
+			toolReply(
+				[2]any{"notes_append", kv{"section": "Sources", "entries": []kv{{"url": "https://a.example/x", "title": "A"}}}},
+				[2]any{"resolve_question", kv{"id": "q_002", "answer": "they store energy", "reason": "shallow"}},
+				[2]any{"resolve_question", kv{"id": "q_001", "answer": "batteries are good", "reason": "shallow"}},
+				[2]any{"notes_scratch", kv{"text": "Conclusion: batteries are good."}},
+				[2]any{"challenge", kv{"target_type": "conclusion", "negation": "batteries are not good", "strategy": "negation", "expected_if_false": "e", "query": "batteries not good official"}},
+				[2]any{"web_search", kv{"query": "batteries not good official"}},
+				[2]any{"record_challenge_result", kv{"challenge_id": "ch_001", "outcome": "survived"}},
+			),
+			toolReply([2]any{"finalize_report", kv{"report": "# Report\nBatteries are good (s_001)."}}),
+		},
+	}
 	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
 	m.NotesDir = filepath.Join(t.TempDir(), "notes")
 	if err := m.UseAgentDefs(writeDefs(t, map[string]string{"deep.toml": investigativeDef})); err != nil {
 		t.Fatal(err)
 	}
-	started, err := m.Start(ctx, "u/1", agent_research.Options{Topic: "batteries", Agent: "deep"})
+	started, err := m.Start(ctx, "u/1", agent_research.Options{
+		Topic: "batteries",
+		Agent: "deep",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,10 +125,29 @@ func TestInvestigativeOptions(t *testing.T) {
 		opts agent_research.Options
 		want string
 	}{
-		"knobs with the simple loop": {agent_research.Options{Topic: "t", Investigate: &agent_defs.Investigate{MaxIterations: 5}}, "only take effect with the investigative loop"},
-		"max_steps":                  {agent_research.Options{Topic: "t", Agent: "deep", MaxSteps: 5}, "max_steps does not apply"},
-		"bad knob":                   {agent_research.Options{Topic: "t", Agent: "deep", Investigate: &agent_defs.Investigate{SynthesisReserve: 0.9}}, "synthesis_reserve"},
-		"modal":                      {agent_research.Options{Topic: "t", Agent: "deep", Runner: "modal"}, "runs locally"},
+		"knobs with the simple loop": {agent_research.Options{
+			Topic: "t",
+			Investigate: &agent_defs.Investigate{
+				MaxIterations: 5,
+			},
+		}, "only take effect with the investigative loop"},
+		"max_steps": {agent_research.Options{
+			Topic:    "t",
+			Agent:    "deep",
+			MaxSteps: 5,
+		}, "max_steps does not apply"},
+		"bad knob": {agent_research.Options{
+			Topic: "t",
+			Agent: "deep",
+			Investigate: &agent_defs.Investigate{
+				SynthesisReserve: 0.9,
+			},
+		}, "synthesis_reserve"},
+		"modal": {agent_research.Options{
+			Topic:  "t",
+			Agent:  "deep",
+			Runner: "modal",
+		}, "runs locally"},
 	} {
 		_, err := m.Start(ctx, "u", c.opts)
 		if err == nil || !strings.Contains(err.Error(), c.want) {
@@ -137,9 +161,15 @@ func TestInvestigativeOptions(t *testing.T) {
 func TestSimpleLoopFirstRequestGolden(t *testing.T) {
 	ctx := context.Background()
 	d := dbtest.OpenSQLite(t)
-	fake := &fakeAnthropic{main: []string{finalReport}}
+	fake := &fakeAnthropic{
+		main: []string{finalReport},
+	}
 	m := agent_research.NewManager(ctx, d, agent_research.SQLiteOps, fake.start(t))
-	if _, err := m.Start(ctx, "u1", agent_research.Options{Topic: "solid state batteries", MaxSteps: 3, Model: "my-model"}); err != nil {
+	if _, err := m.Start(ctx, "u1", agent_research.Options{
+		Topic:    "solid state batteries",
+		MaxSteps: 3,
+		Model:    "my-model",
+	}); err != nil {
 		t.Fatal(err)
 	}
 	m.Wait()
@@ -216,7 +246,11 @@ func TestMigrationAddsPhaseAndStopReason(t *testing.T) {
 				ops = agent_research.PostgresOps
 			}
 			ctx := context.Background()
-			run := &core.Run{UserID: "u", Topic: "t", State: core.StateStarting}
+			run := &core.Run{
+				UserID: "u",
+				Topic:  "t",
+				State:  core.StateStarting,
+			}
 			if err := ops.Store.CreateRun(ctx, d, run); err != nil {
 				t.Fatal(err)
 			}
@@ -232,9 +266,14 @@ func TestMigrationAddsPhaseAndStopReason(t *testing.T) {
 			}
 
 			// The simple loop still runs on the upgraded database.
-			fake := &fakeAnthropic{main: []string{finalReport}}
+			fake := &fakeAnthropic{
+				main: []string{finalReport},
+			}
 			m := agent_research.NewManager(ctx, d, ops, fake.start(t))
-			started, err := m.Start(ctx, "u2", agent_research.Options{Topic: "batteries", MaxSteps: 2})
+			started, err := m.Start(ctx, "u2", agent_research.Options{
+				Topic:    "batteries",
+				MaxSteps: 2,
+			})
 			if err != nil {
 				t.Fatal(err)
 			}

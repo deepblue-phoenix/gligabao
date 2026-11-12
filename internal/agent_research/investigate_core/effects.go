@@ -110,7 +110,12 @@ func (s Session) Load(ctx context.Context) (State, error) {
 	if root, ok := l.Frontier.Root(); ok && notes.Objective == "" {
 		notes.Objective = clean(root.Question)
 	}
-	return State{Limits: s.Limits, Frontier: l.Frontier, Notes: notes, Challenges: l.Challenges}, nil
+	return State{
+		Limits:     s.Limits,
+		Frontier:   l.Frontier,
+		Notes:      notes,
+		Challenges: l.Challenges,
+	}, nil
 }
 
 // Call runs the tool name with the arguments. An error from the tool or the store is returned (the text of a tool error is what the model

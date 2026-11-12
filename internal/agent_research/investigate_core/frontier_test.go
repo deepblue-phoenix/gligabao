@@ -21,7 +21,11 @@ func mustRoot(t *testing.T) Frontier {
 }
 
 func in(text string, p float64) AddInput {
-	return AddInput{Question: text, Priority: p, ValidationCriteria: "criteria for " + text}
+	return AddInput{
+		Question:           text,
+		Priority:           p,
+		ValidationCriteria: "criteria for " + text,
+	}
 }
 
 func mustAdd(t *testing.T, f Frontier, parent string, i AddInput) (Frontier, string) {
@@ -60,11 +64,22 @@ func TestAddRejections(t *testing.T) {
 		{"depth cap", c, in("fourth", 0.5), ErrDepthCap, limits},
 		{"duplicate normalized", "q_001", in("  FIRST?! ", 0.5), ErrDuplicateQuestion, limits},
 		{"unknown parent", "q_099", in("x", 0.5), ErrUnknownQuestion, limits},
-		{"unknown dep", "q_001", AddInput{Question: "y", Priority: 0.5, DependsOn: []string{"q_099"}}, ErrUnknownQuestion, limits},
+		{"unknown dep", "q_001", AddInput{
+			Question:  "y",
+			Priority:  0.5,
+			DependsOn: []string{"q_099"},
+		}, ErrUnknownQuestion, limits},
 		{"empty", "q_001", in(" ", 0.5), ErrInvalid, limits},
 		{"priority", "q_001", in("z", 1.5), ErrInvalid, limits},
-		{"kind", "q_001", AddInput{Question: "k", Priority: 0.5, Kind: "wish"}, ErrInvalid, limits},
-		{"too many", "q_001", in("one more", 0.5), ErrTooManyQuestions, Limits{MaxDepth: 3, MaxQuestions: 4}},
+		{"kind", "q_001", AddInput{
+			Question: "k",
+			Priority: 0.5,
+			Kind:     "wish",
+		}, ErrInvalid, limits},
+		{"too many", "q_001", in("one more", 0.5), ErrTooManyQuestions, Limits{
+			MaxDepth:     3,
+			MaxQuestions: 4,
+		}},
 	}
 	for _, tc := range cases {
 		_, _, err := Add(f, tc.parent, tc.in, tc.limits)
@@ -80,9 +95,18 @@ func TestAddRejections(t *testing.T) {
 func TestAddCycle(t *testing.T) {
 	f := mustRoot(t)
 	f, a := mustAdd(t, f, "q_001", in("a", 0.5))
-	f, b := mustAdd(t, f, "q_001", AddInput{Question: "b", Priority: 0.5, DependsOn: []string{a}})
+	f, b := mustAdd(t, f, "q_001", AddInput{
+		Question:  "b",
+		Priority:  0.5,
+		DependsOn: []string{a},
+	})
 	// a child of a that blocks a and depends on b, which depends on a: a -> child -> b -> a
-	_, _, err := Add(f, a, AddInput{Question: "c", Priority: 0.5, DependsOn: []string{b}, BlocksParent: true}, DefaultLimits())
+	_, _, err := Add(f, a, AddInput{
+		Question:     "c",
+		Priority:     0.5,
+		DependsOn:    []string{b},
+		BlocksParent: true,
+	}, DefaultLimits())
 	if !errors.Is(err, ErrCycle) {
 		t.Fatalf("want cycle, got %v", err)
 	}
@@ -98,7 +122,12 @@ func TestBlocksParent(t *testing.T) {
 	f := mustRoot(t)
 	f, a := mustAdd(t, f, "q_001", in("a", 0.7))
 	f, _, _ = Select(f)
-	f, ts, err := Add(f, a, AddInput{Question: "prerequisite", Priority: 0.2, ValidationCriteria: "c", BlocksParent: true}, DefaultLimits())
+	f, ts, err := Add(f, a, AddInput{
+		Question:           "prerequisite",
+		Priority:           0.2,
+		ValidationCriteria: "c",
+		BlocksParent:       true,
+	}, DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +163,9 @@ func TestSelectOrder(t *testing.T) {
 		if q.Status != StatusInProgress {
 			t.Fatalf("status %s", q.Status)
 		}
-		f, _, _ = Resolve(f, q.ID, ResolveInput{Answer: "done"})
+		f, _, _ = Resolve(f, q.ID, ResolveInput{
+			Answer: "done",
+		})
 	}
 	if _, q, _ := Select(f); q != nil {
 		t.Fatalf("nothing left, got %+v", q)
@@ -144,7 +175,11 @@ func TestSelectOrder(t *testing.T) {
 func TestSelectTakesDependencyAndRaisesIt(t *testing.T) {
 	f := mustRoot(t)
 	f, dep := mustAdd(t, f, "q_001", in("dep", 0.1))
-	f, ts0, err := Add(f, "q_001", AddInput{Question: "top", Priority: 0.9, DependsOn: []string{dep}}, DefaultLimits())
+	f, ts0, err := Add(f, "q_001", AddInput{
+		Question:  "top",
+		Priority:  0.9,
+		DependsOn: []string{dep},
+	}, DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +204,11 @@ func TestSelectTakesDependencyAndRaisesIt(t *testing.T) {
 func TestSelectSkipsWhatWaitsOnInProgress(t *testing.T) {
 	f := mustRoot(t)
 	f, dep := mustAdd(t, f, "q_001", in("dep", 0.9))
-	f, _ = mustAdd(t, f, "q_001", AddInput{Question: "waits", Priority: 0.95, DependsOn: []string{dep}})
+	f, _ = mustAdd(t, f, "q_001", AddInput{
+		Question:  "waits",
+		Priority:  0.95,
+		DependsOn: []string{dep},
+	})
 	f, other := mustAdd(t, f, "q_001", in("other", 0.2))
 	f, q, _ := Select(f) // takes dep (for waits)
 	if q.ID != dep {
@@ -190,14 +229,20 @@ func inProgress(t *testing.T, f Frontier, id string) Frontier {
 func TestResolve(t *testing.T) {
 	f := mustRoot(t)
 	f, a := mustAdd(t, f, "q_001", in("a", 0.5))
-	if _, _, err := Resolve(f, a, ResolveInput{Answer: "x"}); !errors.Is(err, ErrBadStatus) {
+	if _, _, err := Resolve(f, a, ResolveInput{
+		Answer: "x",
+	}); !errors.Is(err, ErrBadStatus) {
 		t.Fatalf("pending cannot be resolved: %v", err)
 	}
 	f = inProgress(t, f, a)
 	if _, _, err := Resolve(f, a, ResolveInput{}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("empty answer: %v", err)
 	}
-	f, ts, err := Resolve(f, a, ResolveInput{Answer: "yes", ClaimIDs: []string{"c_001", "c_002"}, Reason: "why not"})
+	f, ts, err := Resolve(f, a, ResolveInput{
+		Answer:   "yes",
+		ClaimIDs: []string{"c_001", "c_002"},
+		Reason:   "why not",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,9 +254,14 @@ func TestResolve(t *testing.T) {
 		t.Fatalf("refs %v", refs)
 	}
 	// No criteria, no resolution.
-	f, b := mustAdd(t, f, "q_001", AddInput{Question: "b", Priority: 0.5})
+	f, b := mustAdd(t, f, "q_001", AddInput{
+		Question: "b",
+		Priority: 0.5,
+	})
 	f = inProgress(t, f, b)
-	if _, _, err := Resolve(f, b, ResolveInput{Answer: "x"}); !errors.Is(err, ErrInvalid) {
+	if _, _, err := Resolve(f, b, ResolveInput{
+		Answer: "x",
+	}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("criteria: %v", err)
 	}
 }
@@ -266,7 +316,9 @@ func TestReopen(t *testing.T) {
 		t.Fatalf("pending: %v", err)
 	}
 	f = inProgress(t, f, a)
-	f, _, _ = Resolve(f, a, ResolveInput{Answer: "yes"})
+	f, _, _ = Resolve(f, a, ResolveInput{
+		Answer: "yes",
+	})
 	f, ts, err := Reopen(f, a, "contradicted", 0, "ch_001")
 	if err != nil {
 		t.Fatal(err)
@@ -283,7 +335,11 @@ func TestReopen(t *testing.T) {
 func TestSetPriorityRaisesDependencies(t *testing.T) {
 	f := mustRoot(t)
 	f, dep := mustAdd(t, f, "q_001", in("dep", 0.2))
-	f, top := mustAdd(t, f, "q_001", AddInput{Question: "top", Priority: 0.3, DependsOn: []string{dep}})
+	f, top := mustAdd(t, f, "q_001", AddInput{
+		Question:  "top",
+		Priority:  0.3,
+		DependsOn: []string{dep},
+	})
 	f, ts, err := SetPriority(f, top, 0.8, "important")
 	if err != nil {
 		t.Fatal(err)
@@ -305,7 +361,11 @@ func TestPruneBranchAndReblock(t *testing.T) {
 	f, a := mustAdd(t, f, "q_001", in("a", 0.5))
 	f, a1 := mustAdd(t, f, a, in("a1", 0.5))
 	f, a11 := mustAdd(t, f, a1, in("a11", 0.5))
-	f, other := mustAdd(t, f, "q_001", AddInput{Question: "other", Priority: 0.5, DependsOn: []string{a1}})
+	f, other := mustAdd(t, f, "q_001", AddInput{
+		Question:  "other",
+		Priority:  0.5,
+		DependsOn: []string{a1},
+	})
 	f = inProgress(t, f, a)
 	f, ts, err := PruneBranch(f, a, "irrelevant")
 	if err != nil {
@@ -353,7 +413,11 @@ func TestSummary(t *testing.T) {
 	f := mustRoot(t)
 	f, a := mustAdd(t, f, "q_001", in("alpha question", 0.9))
 	f, _ = mustAdd(t, f, "q_001", in("beta question", 0.6))
-	f, c := mustAdd(t, f, "q_001", AddInput{Question: "gamma question", Priority: 0.5, DependsOn: []string{a}})
+	f, c := mustAdd(t, f, "q_001", AddInput{
+		Question:  "gamma question",
+		Priority:  0.5,
+		DependsOn: []string{a},
+	})
 	f = inProgress(t, f, a)
 	f, _, _ = Retry(f, a, "q one", "meh", "", DefaultLimits())
 	f = inProgress(t, f, a)
@@ -379,7 +443,12 @@ func TestSummary(t *testing.T) {
 func TestTransitionInvariantRandomOperations(t *testing.T) {
 	for seed := int64(0); seed < 200; seed++ {
 		r := rand.New(rand.NewSource(seed))
-		limits := Limits{MaxDepth: 3, MaxAttempts: 3, MaxQuestions: 25, NotesMaxTokens: 6000}
+		limits := Limits{
+			MaxDepth:       3,
+			MaxAttempts:    3,
+			MaxQuestions:   25,
+			NotesMaxTokens: 6000,
+		}
 		f, ts, _ := NewRoot("objective")
 		log := ts
 		pick := func() string { return f.Questions[r.Intn(len(f.Questions))].ID }
@@ -395,15 +464,22 @@ func TestTransitionInvariantRandomOperations(t *testing.T) {
 				if r.Intn(3) == 0 {
 					deps = []string{pick()}
 				}
-				apply(Add(f, pick(), AddInput{Question: fmt.Sprintf("question %d %d", seed, step), Priority: r.Float64(), DependsOn: deps,
-					BlocksParent: r.Intn(4) == 0, ValidationCriteria: "c"}, limits))
+				apply(Add(f, pick(), AddInput{
+					Question:           fmt.Sprintf("question %d %d", seed, step),
+					Priority:           r.Float64(),
+					DependsOn:          deps,
+					BlocksParent:       r.Intn(4) == 0,
+					ValidationCriteria: "c",
+				}, limits))
 			case 2, 3:
 				nf, q, nts := Select(f)
 				if q != nil {
 					f, log = nf, append(log, nts...)
 				}
 			case 4:
-				apply(Resolve(f, pick(), ResolveInput{Answer: "a"}))
+				apply(Resolve(f, pick(), ResolveInput{
+					Answer: "a",
+				}))
 			case 5:
 				apply(Retry(f, pick(), fmt.Sprintf("query %d", step), "why", "assume", limits))
 			case 6:

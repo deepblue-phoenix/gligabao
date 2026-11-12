@@ -76,7 +76,11 @@ func NewNotesS3WithClient(client S3API, cfg NotesS3Config) *NotesS3 {
 	if prefix == "" {
 		prefix = DefaultNotesS3Prefix
 	}
-	return &NotesS3{client: client, bucket: cfg.Bucket, prefix: prefix}
+	return &NotesS3{
+		client: client,
+		bucket: cfg.Bucket,
+		prefix: prefix,
+	}
 }
 
 // Key is the object key of a notes file of a user: <prefix>/<sanitized user>/<file name>. "" for a run without notes file.
@@ -90,7 +94,11 @@ func (n *NotesS3) Key(user, localPath string) string {
 // Mirror returns the NotesStore of a user's runs: the local files stay the working copy, every write is also put to the bucket, and a
 // read of a file missing locally (a container restarted with an empty disk) is served from the bucket.
 func (n *NotesS3) Mirror(local investigate_core.NotesStore, user string) investigate_core.NotesStore {
-	return notesMirror{local: local, s3: n, user: user}
+	return notesMirror{
+		local: local,
+		s3:    n,
+		user:  user,
+	}
 }
 
 // Write writes the local file (an error there is the error of the write), then the object. A failure of the bucket is logged and does not
@@ -124,7 +132,9 @@ func (n *NotesS3) put(key, text string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), s3Timeout)
 	defer cancel()
 	_, err := n.client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(n.bucket), Key: aws.String(key), Body: bytes.NewReader([]byte(text)),
+		Bucket:      aws.String(n.bucket),
+		Key:         aws.String(key),
+		Body:        bytes.NewReader([]byte(text)),
 		ContentType: aws.String("text/markdown; charset=utf-8"),
 	})
 	if err != nil {
@@ -139,7 +149,10 @@ func (n *NotesS3) get(key string) (string, bool) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), s3Timeout)
 	defer cancel()
-	out, err := n.client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(n.bucket), Key: aws.String(key)})
+	out, err := n.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(n.bucket),
+		Key:    aws.String(key),
+	})
 	if err != nil {
 		var missing *s3types.NoSuchKey
 		if !errors.As(err, &missing) {

@@ -50,7 +50,13 @@ func NewState(objective string, limits Limits) (State, []Transition, error) {
 	if err != nil {
 		return State{}, nil, err
 	}
-	return State{Limits: limits, Frontier: f, Notes: Notes{Objective: clean(objective)}}, ts, nil
+	return State{
+		Limits:   limits,
+		Frontier: f,
+		Notes: Notes{
+			Objective: clean(objective),
+		},
+	}, ts, nil
 }
 
 // Effect is a change to the database or the notes file that a handler asks the effect layer to make. The handlers do not make them.
@@ -79,44 +85,63 @@ func Diff(before, after State, transitions []Transition, notesReason string) []E
 	for _, q := range after.Frontier.Questions {
 		old, existed := before.Frontier.Get(q.ID)
 		if !existed || !reflect.DeepEqual(row(old), row(q)) {
-			effects = append(effects, UpsertQuestion{Question: q})
+			effects = append(effects, UpsertQuestion{
+				Question: q,
+			})
 		}
 	}
 	for _, q := range after.Frontier.Questions {
 		old, _ := before.Frontier.Get(q.ID)
 		for _, d := range q.DependsOn {
 			if !slices.Contains(old.DependsOn, d) {
-				effects = append(effects, AddDependency{QuestionID: q.ID, DependsOnID: d})
+				effects = append(effects, AddDependency{
+					QuestionID:  q.ID,
+					DependsOnID: d,
+				})
 			}
 		}
 	}
 	for _, q := range after.Frontier.Questions {
 		old, _ := before.Frontier.Get(q.ID)
 		for _, a := range q.Attempts[min(len(old.Attempts), len(q.Attempts)):] {
-			effects = append(effects, InsertAttempt{QuestionID: q.ID, Attempt: a})
+			effects = append(effects, InsertAttempt{
+				QuestionID: q.ID,
+				Attempt:    a,
+			})
 		}
 	}
 	if len(transitions) > 0 {
-		effects = append(effects, RecordTransitions{Transitions: slices.Clone(transitions)})
+		effects = append(effects, RecordTransitions{
+			Transitions: slices.Clone(transitions),
+		})
 	}
 	for _, s := range after.Notes.Sources {
 		if old, ok := findSource(before.Notes.Sources, s.ID); !ok || old != s {
-			effects = append(effects, UpsertSource{Source: s})
+			effects = append(effects, UpsertSource{
+				Source: s,
+			})
 		}
 	}
 	for _, c := range append(slices.Clone(after.Notes.Claims), after.Notes.Datapoints...) {
 		if old, ok := before.Notes.Claim(c.ID); !ok || !reflect.DeepEqual(old, c) {
-			effects = append(effects, UpsertClaim{Claim: c})
+			effects = append(effects, UpsertClaim{
+				Claim: c,
+			})
 		}
 	}
 	for _, c := range after.Challenges {
 		i := slices.IndexFunc(before.Challenges, func(o Challenge) bool { return o.ID == c.ID })
 		if i < 0 || !reflect.DeepEqual(before.Challenges[i], c) {
-			effects = append(effects, UpsertChallenge{Challenge: c})
+			effects = append(effects, UpsertChallenge{
+				Challenge: c,
+			})
 		}
 	}
 	if text := Render(after.Notes); notesReason != "" && text != Render(before.Notes) {
-		effects = append(effects, WriteNotes{Text: text, Reason: notesReason})
+		effects = append(effects, WriteNotes{
+			Text:   text,
+			Reason: notesReason,
+		})
 	}
 	return effects
 }

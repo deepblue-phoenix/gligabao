@@ -82,7 +82,12 @@ func TestSelectBatch(t *testing.T) {
 		t.Errorf("min priority: %s", got)
 	}
 	// A question that waits on another, one in progress, a blocked one and the root are not taken.
-	f, _, err := Add(s.Frontier, "q_001", AddInput{Question: "e", Priority: 0.95, ValidationCriteria: "c", DependsOn: []string{"q_002"}}, s.Limits)
+	f, _, err := Add(s.Frontier, "q_001", AddInput{
+		Question:           "e",
+		Priority:           0.95,
+		ValidationCriteria: "c",
+		DependsOn:          []string{"q_002"},
+	}, s.Limits)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +96,10 @@ func TestSelectBatch(t *testing.T) {
 		t.Errorf("dependencies and in progress: %s", got)
 	}
 	// One without validation criteria cannot be resolved by anyone: it is not delegated.
-	f, _, err = Add(f, "q_001", AddInput{Question: "no criteria", Priority: 1}, s.Limits)
+	f, _, err = Add(f, "q_001", AddInput{
+		Question: "no criteria",
+		Priority: 1,
+	}, s.Limits)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,28 +125,53 @@ func TestDelegateMarksInProgress(t *testing.T) {
 func TestWorkerBriefHasTheSliceOfTheNotes(t *testing.T) {
 	s := stateWith(t, [3]any{"q_001", "dep", 0.9})
 	f := inProgress(t, s.Frontier, "q_002")
-	f, _, err := Resolve(f, "q_002", ResolveInput{Answer: "dep answer"})
+	f, _, err := Resolve(f, "q_002", ResolveInput{
+		Answer: "dep answer",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	s.Frontier = f
-	n, _, err := Append(s.Notes, SectionSources, []Entry{{URL: "https://a.example/x"}})
+	n, _, err := Append(s.Notes, SectionSources, []Entry{{
+		URL: "https://a.example/x",
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Notes, _, err = Append(n, SectionUnverified, []Entry{{Text: "known claim", QuestionID: "q_002", Sources: []Link{{SourceID: "s_001"}}}})
+	s.Notes, _, err = Append(n, SectionUnverified, []Entry{{
+		Text:       "known claim",
+		QuestionID: "q_002",
+		Sources: []Link{{
+			SourceID: "s_001",
+		}},
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Notes, _, err = Append(s.Notes, SectionUnverified, []Entry{{Text: "other claim", QuestionID: "q_009", Sources: []Link{{SourceID: "s_001"}}}})
+	s.Notes, _, err = Append(s.Notes, SectionUnverified, []Entry{{
+		Text:       "other claim",
+		QuestionID: "q_009",
+		Sources: []Link{{
+			SourceID: "s_001",
+		}},
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Frontier, _, err = Add(s.Frontier, "q_001", AddInput{Question: "target", Rationale: "why", Priority: 0.5, ValidationCriteria: "crit", TargetSources: []string{"arxiv"}, DependsOn: []string{"q_002"}}, s.Limits)
+	s.Frontier, _, err = Add(s.Frontier, "q_001", AddInput{
+		Question:           "target",
+		Rationale:          "why",
+		Priority:           0.5,
+		ValidationCriteria: "crit",
+		TargetSources:      []string{"arxiv"},
+		DependsOn:          []string{"q_002"},
+	}, s.Limits)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Frontier, _, _ = AddAttempt(s.Frontier, "q_003", Attempt{Query: "old query"})
+	s.Frontier, _, _ = AddAttempt(s.Frontier, "q_003", Attempt{
+		Query: "old query",
+	})
 	brief := WorkerBrief(s, "q_003", 1500)
 	for _, want := range []string{"Does X fit in 16 GB of VRAM?", "(q_003, question): target", "Why it matters: why", "It is answered when: crit", "Look at: arxiv", "old query", "q_002 answer: dep answer", "known claim"} {
 		if !strings.Contains(brief, want) {
@@ -291,18 +324,29 @@ func TestReduceDropsWhatCannotBeRecordedAndKeepsOpenGaps(t *testing.T) {
 
 func TestDelegateBudgetAndCostShare(t *testing.T) {
 	l := DefaultLimits()
-	if !DelegateBudgetOK(LoopState{CostUSD: 100, Tokens: 1 << 30}, l) {
+	if !DelegateBudgetOK(LoopState{
+		CostUSD: 100,
+		Tokens:  1 << 30,
+	}, l) {
 		t.Error("no limits: always ok")
 	}
 	l.MaxCostUSD = 10 // exploration may spend 8.5; 60% of it is 5.1
-	if !DelegateBudgetOK(LoopState{CostUSD: 5}, l) || DelegateBudgetOK(LoopState{CostUSD: 5.2}, l) {
+	if !DelegateBudgetOK(LoopState{
+		CostUSD: 5,
+	}, l) || DelegateBudgetOK(LoopState{
+		CostUSD: 5.2,
+	}, l) {
 		t.Error("cost")
 	}
 	l.MaxTotalTokens = 1000
-	if DelegateBudgetOK(LoopState{Tokens: 600}, l) { // 60% of 850 = 510
+	if DelegateBudgetOK(LoopState{
+		Tokens: 600,
+	}, l) { // 60% of 850 = 510
 		t.Error("tokens")
 	}
-	if got := WorkerCostShare(LoopState{CostUSD: 2}, l, 3); got < 2.1 || got > 2.2 { // (8.5-2)/3
+	if got := WorkerCostShare(LoopState{
+		CostUSD: 2,
+	}, l, 3); got < 2.1 || got > 2.2 { // (8.5-2)/3
 		t.Errorf("share: %v", got)
 	}
 	if WorkerCostShare(LoopState{}, DefaultLimits(), 3) != 0 {

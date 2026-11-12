@@ -23,13 +23,21 @@ func (f *fakeS3) GetObject(_ context.Context, in *s3.GetObjectInput, _ ...func(*
 	if !ok {
 		return nil, io.EOF
 	}
-	return &s3.GetObjectOutput{Body: io.NopCloser(strings.NewReader(v))}, nil
+	return &s3.GetObjectOutput{
+		Body: io.NopCloser(strings.NewReader(v)),
+	}, nil
 }
 
 func TestNotesS3Mirror(t *testing.T) {
-	fake := &fakeS3{objs: map[string]string{}}
-	n := NewNotesS3WithClient(fake, NotesS3Config{Bucket: "b"})
-	files := NotesFile{Dir: t.TempDir()}
+	fake := &fakeS3{
+		objs: map[string]string{},
+	}
+	n := NewNotesS3WithClient(fake, NotesS3Config{
+		Bucket: "b",
+	})
+	files := NotesFile{
+		Dir: t.TempDir(),
+	}
 	p := files.Path("a/b", 7, "abc")
 	m := n.Mirror(files, "a/b")
 	if err := m.Write(p, "hello"); err != nil {
@@ -40,7 +48,9 @@ func TestNotesS3Mirror(t *testing.T) {
 		t.Fatalf("objects: %v", fake.objs)
 	}
 	// local copy lost: served from the bucket
-	other := n.Mirror(NotesFile{Dir: t.TempDir()}, "a/b")
+	other := n.Mirror(NotesFile{
+		Dir: t.TempDir(),
+	}, "a/b")
 	if got, err := other.Read(p); err != nil || got != "hello" {
 		t.Fatalf("read: %q %v", got, err)
 	}

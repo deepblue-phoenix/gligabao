@@ -5,6 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org/) (while below 1.0
 
 Newest entry first; its version must equal the contents of `VERSION` (checked by `go test`). See [AGENTS.md](AGENTS.md).
 
+## [0.195.1] - 2026-11-12
+
+### Changed
+- Struct literals in the research agents (`internal/agent_research`) are pretty printed: every key/value has its own line instead of the whole struct on one line. Formatting only, no behaviour change.
+
 ## [0.195.0] - 2026-11-13
 
 ### Added

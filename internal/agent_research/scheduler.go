@@ -31,12 +31,17 @@ const maxScheduleSleep = time.Minute
 
 // newScheduler makes the scheduler of the definitions of m, with the first due time of each after from.
 func newScheduler(m *Manager, from time.Time) *scheduler {
-	s := &scheduler{m: m}
+	s := &scheduler{
+		m: m,
+	}
 	for _, d := range m.registry().List() {
 		if d.Schedule == nil || d.Schedule.Paused {
 			continue
 		}
-		e := &scheduled{def: d, next: d.Schedule.Next(from)}
+		e := &scheduled{
+			def:  d,
+			next: d.Schedule.Next(from),
+		}
 		s.entries = append(s.entries, e)
 		log.WithFields(log.Fields{"agent": d.Name, "cron": d.Schedule.Cron, "timezone": d.Schedule.Timezone, "user": d.Schedule.User, "next": e.next}).Info("agent research: scheduled agent")
 	}
@@ -73,7 +78,10 @@ func (s *scheduler) fire(e *scheduled, due time.Time) {
 		l.WithError(err).Error("agent research: scheduled run skipped, the topic cannot be made")
 		return
 	}
-	run, err := s.m.Start(s.m.ctx, sc.User, Options{Topic: topic, Agent: e.def.Name})
+	run, err := s.m.Start(s.m.ctx, sc.User, Options{
+		Topic: topic,
+		Agent: e.def.Name,
+	})
 	if err != nil {
 		l.WithError(err).Error("agent research: scheduled run could not be started")
 		return

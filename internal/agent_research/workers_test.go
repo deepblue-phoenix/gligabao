@@ -75,7 +75,10 @@ func startDeep(t *testing.T, d *sql.DB, ops agent_research.Ops, fake *teamFake) 
 	if err := m.UseAgentDefs(writeDefs(t, map[string]string{"deep.toml": workersDef})); err != nil {
 		t.Fatal(err)
 	}
-	started, err := m.Start(ctx, "u1", agent_research.Options{Topic: "batteries", Agent: "deep"})
+	started, err := m.Start(ctx, "u1", agent_research.Options{
+		Topic: "batteries",
+		Agent: "deep",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +118,9 @@ func testWorkers(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 		t.Errorf("supervisor calls: %d", fake.calls["root"])
 	}
 	// The workers are runs with a parent and the name of their question.
-	subs, err := m.List(ctx, "u1", agent_research.ListOptions{ParentID: root.ID})
+	subs, err := m.List(ctx, "u1", agent_research.ListOptions{
+		ParentID: root.ID,
+	})
 	if err != nil || len(subs) != 4 { // the two questions, and the two that verify their claims
 		t.Fatalf("workers: %+v %v", subs, err)
 	}
@@ -170,7 +175,9 @@ func testStopWorkers(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	if root.Status != core.StatusStopped {
 		t.Fatalf("root: %+v", root)
 	}
-	subs, _ := m.List(ctx, "", agent_research.ListOptions{ParentID: started.ID})
+	subs, _ := m.List(ctx, "", agent_research.ListOptions{
+		ParentID: started.ID,
+	})
 	if len(subs) != 2 {
 		t.Fatalf("workers: %+v", subs)
 	}
@@ -194,7 +201,9 @@ func testStopWorker(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	fake.hang["q_002"] = true
 	m, started := startDeep(t, d, ops, fake)
 	waitFor(t, "the worker to work", func() bool { fake.mu.Lock(); defer fake.mu.Unlock(); return fake.calls["q_002"] == 1 })
-	subs, _ := m.List(ctx, "", agent_research.ListOptions{ParentID: started.ID})
+	subs, _ := m.List(ctx, "", agent_research.ListOptions{
+		ParentID: started.ID,
+	})
 	var stopID int64
 	for _, w := range subs {
 		if w.Name == "q_002" {
@@ -241,7 +250,10 @@ func testMergedTrajectories(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 		got[id] = tr
 		mu.Unlock()
 	})
-	started, err := m.Start(ctx, "u1", agent_research.Options{Topic: "batteries", Agent: "deep"})
+	started, err := m.Start(ctx, "u1", agent_research.Options{
+		Topic: "batteries",
+		Agent: "deep",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

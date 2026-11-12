@@ -78,13 +78,20 @@ func (f *fakeAnthropic) start(t *testing.T) *ai.Client {
 
 func TestResearchRecordsTheRunAndEveryState(t *testing.T) { runOnBackends(t, testResearch) }
 
-func TestResearchWithoutAModelRecordsTheServerDefault(t *testing.T) { runOnBackends(t, testDefaultModel) }
+func TestResearchWithoutAModelRecordsTheServerDefault(t *testing.T) {
+	runOnBackends(t, testDefaultModel)
+}
 
 func testDefaultModel(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	ctx := context.Background()
-	fake := &fakeAnthropic{main: []string{finalReport}}
+	fake := &fakeAnthropic{
+		main: []string{finalReport},
+	}
 	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
-	started, err := m.Start(ctx, "u1", agent_research.Options{Topic: "default model", MaxSteps: 4})
+	started, err := m.Start(ctx, "u1", agent_research.Options{
+		Topic:    "default model",
+		MaxSteps: 4,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,10 +109,16 @@ func testResearch(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	ctx := context.Background()
 	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }))
 	defer page.Close()
-	fake := &fakeAnthropic{main: []string{toolUseSearch, toolUseFetch(page.URL + "/gone"), finalReport}}
+	fake := &fakeAnthropic{
+		main: []string{toolUseSearch, toolUseFetch(page.URL + "/gone"), finalReport},
+	}
 	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
 
-	started, err := m.Start(ctx, "u1", agent_research.Options{Topic: "  solid state batteries  ", MaxSteps: 4, Model: "my-model"})
+	started, err := m.Start(ctx, "u1", agent_research.Options{
+		Topic:    "  solid state batteries  ",
+		MaxSteps: 4,
+		Model:    "my-model",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,9 +172,14 @@ func TestLastStepWritesTheReport(t *testing.T) { runOnBackends(t, testLastStep) 
 
 func testLastStep(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	ctx := context.Background()
-	fake := &fakeAnthropic{main: []string{toolUseSearch, finalReport}}
+	fake := &fakeAnthropic{
+		main: []string{toolUseSearch, finalReport},
+	}
 	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
-	run, err := m.Start(ctx, "u1", agent_research.Options{Topic: "t", MaxSteps: 2})
+	run, err := m.Start(ctx, "u1", agent_research.Options{
+		Topic:    "t",
+		MaxSteps: 2,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,9 +197,13 @@ func TestAFailedModelCallFailsTheRun(t *testing.T) { runOnBackends(t, testFailed
 
 func testFailedRun(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	ctx := context.Background()
-	fake := &fakeAnthropic{status: 500}
+	fake := &fakeAnthropic{
+		status: 500,
+	}
 	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
-	run, err := m.Start(ctx, "u1", agent_research.Options{Topic: "t"})
+	run, err := m.Start(ctx, "u1", agent_research.Options{
+		Topic: "t",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +215,9 @@ func testFailedRun(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	if stateNames(got.States) != "starting,thinking,failed" || got.States[1].Error != got.Error || got.States[2].Error != got.Error {
 		t.Fatalf("states: %+v", got.States)
 	}
-	if active, _ := m.List(ctx, "u1", agent_research.ListOptions{Active: true}); len(active) != 0 {
+	if active, _ := m.List(ctx, "u1", agent_research.ListOptions{
+		Active: true,
+	}); len(active) != 0 {
 		t.Fatalf("active: %+v", active)
 	}
 }
@@ -203,30 +227,43 @@ func TestListsTheActiveAgentsAndLimitsThePerUser(t *testing.T) { runOnBackends(t
 func testActive(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	ctx := context.Background()
 	gate := make(chan struct{})
-	fake := &fakeAnthropic{main: []string{finalReport, finalReport, finalReport}, gate: gate}
+	fake := &fakeAnthropic{
+		main: []string{finalReport, finalReport, finalReport},
+		gate: gate,
+	}
 	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
 	m.MaxActivePerUser = 1
 
-	first, err := m.Start(ctx, "u1", agent_research.Options{Topic: "one"})
+	first, err := m.Start(ctx, "u1", agent_research.Options{
+		Topic: "one",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// One agent of u1 is working: a second one of u1 is refused, one of u2 is not.
-	_, err = m.Start(ctx, "u1", agent_research.Options{Topic: "two"})
+	_, err = m.Start(ctx, "u1", agent_research.Options{
+		Topic: "two",
+	})
 	var e *agent_research.Error
 	if !errors.As(err, &e) || e.Kind != agent_research.KindConflict {
 		t.Fatalf("second start: %v", err)
 	}
 	// u2's agent is the second call of the fake: the first (held) one is u1's.
-	if _, err := m.Start(ctx, "u2", agent_research.Options{Topic: "three"}); err != nil {
+	if _, err := m.Start(ctx, "u2", agent_research.Options{
+		Topic: "three",
+	}); err != nil {
 		t.Fatal(err)
 	}
 
-	active, err := m.List(ctx, "u1", agent_research.ListOptions{Active: true})
+	active, err := m.List(ctx, "u1", agent_research.ListOptions{
+		Active: true,
+	})
 	if err != nil || len(active) != 1 || active[0].ID != first.ID || active[0].Status != core.StatusRunning {
 		t.Fatalf("active of u1: %+v %v", active, err)
 	}
-	if all, _ := m.List(ctx, "", agent_research.ListOptions{Active: true}); len(all) != 2 {
+	if all, _ := m.List(ctx, "", agent_research.ListOptions{
+		Active: true,
+	}); len(all) != 2 {
 		t.Fatalf("active of all: %+v", all)
 	}
 	// Whatever u1 asks, it does not see u2's.
@@ -239,10 +276,14 @@ func testActive(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 
 	close(gate)
 	m.Wait()
-	if active, _ := m.List(ctx, "", agent_research.ListOptions{Active: true}); len(active) != 0 {
+	if active, _ := m.List(ctx, "", agent_research.ListOptions{
+		Active: true,
+	}); len(active) != 0 {
 		t.Fatalf("active after: %+v", active)
 	}
-	done, _ := m.List(ctx, "u1", agent_research.ListOptions{Status: "completed"})
+	done, _ := m.List(ctx, "u1", agent_research.ListOptions{
+		Status: "completed",
+	})
 	if len(done) != 1 || done[0].Status != core.StatusCompleted {
 		t.Fatalf("completed: %+v", done)
 	}
@@ -250,7 +291,9 @@ func testActive(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	fake.mu.Lock()
 	fake.main = append(fake.main, finalReport)
 	fake.mu.Unlock()
-	if _, err := m.Start(ctx, "u1", agent_research.Options{Topic: "four"}); err != nil {
+	if _, err := m.Start(ctx, "u1", agent_research.Options{
+		Topic: "four",
+	}); err != nil {
 		t.Fatalf("start after the end: %v", err)
 	}
 	m.Wait()
@@ -265,9 +308,14 @@ func TestStopOfTheServerFailsTheRunningAgents(t *testing.T) { runOnBackends(t, t
 
 func testStop(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	ctx, stop := context.WithCancel(context.Background())
-	fake := &fakeAnthropic{main: []string{finalReport}, gate: make(chan struct{})} // never opened
+	fake := &fakeAnthropic{
+		main: []string{finalReport},
+		gate: make(chan struct{}),
+	} // never opened
 	m := agent_research.NewManager(ctx, d, ops, fake.start(t))
-	run, err := m.Start(ctx, "u1", agent_research.Options{Topic: "t"})
+	run, err := m.Start(ctx, "u1", agent_research.Options{
+		Topic: "t",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +325,9 @@ func testStop(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	if got.Status != core.StatusFailed || !strings.Contains(got.Error, "interrupted") || stateNames(got.States) != "starting,thinking,failed" {
 		t.Fatalf("run: %+v", got)
 	}
-	if _, err := m.Start(context.Background(), "u1", agent_research.Options{Topic: "t"}); !isKind(err, agent_research.KindUnavailable) {
+	if _, err := m.Start(context.Background(), "u1", agent_research.Options{
+		Topic: "t",
+	}); !isKind(err, agent_research.KindUnavailable) {
 		t.Fatalf("start after stop: %v", err)
 	}
 }
@@ -286,7 +336,11 @@ func TestRunsLeftWorkingByADeadProcessAreFailedOnStart(t *testing.T) { runOnBack
 
 func testRestart(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	ctx := context.Background()
-	run := &core.Run{UserID: "u1", Topic: "t", State: core.StateStarting}
+	run := &core.Run{
+		UserID: "u1",
+		Topic:  "t",
+		State:  core.StateStarting,
+	}
 	if err := ops.Store.CreateRun(ctx, d, run); err != nil {
 		t.Fatal(err)
 	}
@@ -307,11 +361,24 @@ func testStartRejects(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	ctx := context.Background()
 	m := agent_research.NewManager(ctx, d, ops, (&fakeAnthropic{}).start(t))
 	for name, opts := range map[string]agent_research.Options{
-		"no topic":         {Topic: "   "},
-		"long topic":       {Topic: strings.Repeat("é", agent_research.MaxTopicLen+1)},
-		"negative steps":   {Topic: "t", MaxSteps: -1},
-		"too many steps":   {Topic: "t", MaxSteps: agent_research.MaxMaxSteps + 1},
-		"model with space": {Topic: "t", Model: "a b"},
+		"no topic": {
+			Topic: "   ",
+		},
+		"long topic": {
+			Topic: strings.Repeat("é", agent_research.MaxTopicLen+1),
+		},
+		"negative steps": {
+			Topic:    "t",
+			MaxSteps: -1,
+		},
+		"too many steps": {
+			Topic:    "t",
+			MaxSteps: agent_research.MaxMaxSteps + 1,
+		},
+		"model with space": {
+			Topic: "t",
+			Model: "a b",
+		},
 	} {
 		if _, err := m.Start(ctx, "u1", opts); !isKind(err, agent_research.KindInvalid) {
 			t.Errorf("%s: %v", name, err)
@@ -321,10 +388,17 @@ func testStartRejects(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 		t.Errorf("rejected requests were recorded: %+v", runs)
 	}
 	// Without an LLM there is no agent.
-	if _, err := agent_research.NewManager(ctx, d, ops, nil).Start(ctx, "u1", agent_research.Options{Topic: "t"}); !isKind(err, agent_research.KindUnavailable) {
+	if _, err := agent_research.NewManager(ctx, d, ops, nil).Start(ctx, "u1", agent_research.Options{
+		Topic: "t",
+	}); !isKind(err, agent_research.KindUnavailable) {
 		t.Errorf("no client: %v", err)
 	}
-	for _, o := range []agent_research.ListOptions{{Active: true, Status: "failed"}, {Status: "bogus"}} {
+	for _, o := range []agent_research.ListOptions{{
+		Active: true,
+		Status: "failed",
+	}, {
+		Status: "bogus",
+	}} {
 		if _, err := m.List(ctx, "u1", o); !isKind(err, agent_research.KindInvalid) {
 			t.Errorf("list %+v: %v", o, err)
 		}
@@ -335,7 +409,10 @@ func testStartRejects(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 }
 
 func TestRunJSON(t *testing.T) {
-	b, err := json.Marshal(core.Run{ID: 1, Status: core.StatusRunning})
+	b, err := json.Marshal(core.Run{
+		ID:     1,
+		Status: core.StatusRunning,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

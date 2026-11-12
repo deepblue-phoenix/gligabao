@@ -184,7 +184,11 @@ func (p workerPool) Run(ctx context.Context, req investigate.WorkerRequest) (inv
 		<-w.self.done // it is cancelled with the supervisor: wait for its record to be closed
 		return investigate.WorkerResult{}, ctx.Err()
 	}
-	res := investigate.WorkerResult{InputTokens: w.total.InputTokens, OutputTokens: w.total.OutputTokens, CostUSD: w.total.CostUSD}
+	res := investigate.WorkerResult{
+		InputTokens:  w.total.InputTokens,
+		OutputTokens: w.total.OutputTokens,
+		CostUSD:      w.total.CostUSD,
+	}
 	if out := w.self.out; out.status != core.StatusCompleted {
 		return res, fmt.Errorf("the worker %s did not finish: %s", w.self.name, out.err)
 	}
@@ -228,9 +232,18 @@ func (m *Manager) startWorker(parent *researcher, name, reason, task string, max
 	def := parent.def
 	parentID := parent.run.ID
 	run := &core.Run{
-		UserID: parent.run.UserID, ParentID: &parentID, Name: name, Reason: strings.TrimSpace(reason), Topic: strings.TrimSpace(task),
-		Status: core.StatusRunning, State: core.StateStarting, Model: parent.opts.Model, MaxSteps: maxSteps,
-		AgentName: def.Name, AgentVersion: def.Version, AgentHash: def.Hash,
+		UserID:       parent.run.UserID,
+		ParentID:     &parentID,
+		Name:         name,
+		Reason:       strings.TrimSpace(reason),
+		Topic:        strings.TrimSpace(task),
+		Status:       core.StatusRunning,
+		State:        core.StateStarting,
+		Model:        parent.opts.Model,
+		MaxSteps:     maxSteps,
+		AgentName:    def.Name,
+		AgentVersion: def.Version,
+		AgentHash:    def.Hash,
 	}
 	dbCtx := context.WithoutCancel(m.ctx)
 	err := m.tx(dbCtx, func(q db.Execer) error {
@@ -244,7 +257,13 @@ func (m *Manager) startWorker(parent *researcher, name, reason, task string, max
 		log.WithError(err).WithField("parent_id", parentID).Error("agent research: recording the worker failed")
 		return nil, errors.New("could not record the worker")
 	}
-	opts := Options{Topic: run.Topic, MaxSteps: maxSteps, Model: parent.opts.Model, Dataset: parent.opts.Dataset, Agent: def.Name}
+	opts := Options{
+		Topic:    run.Topic,
+		MaxSteps: maxSteps,
+		Model:    parent.opts.Model,
+		Dataset:  parent.opts.Dataset,
+		Agent:    def.Name,
+	}
 	sub := newResearcher(m, run, opts, parent.mem, parent, def)
 	sub.costCap = costCap
 	sub.onTrajectory = parent.onTrajectory

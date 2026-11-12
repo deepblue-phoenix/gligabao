@@ -198,7 +198,11 @@ func Append(n Notes, section Section, entries []Entry) (Notes, []string, error) 
 		case SectionContradictions:
 			id, err = "", checkContradiction(n, e)
 			if err == nil {
-				n.Contradictions = append(slices.Clone(n.Contradictions), Contradiction{A: e.A, B: e.B, QuestionID: e.QuestionID})
+				n.Contradictions = append(slices.Clone(n.Contradictions), Contradiction{
+					A:          e.A,
+					B:          e.B,
+					QuestionID: e.QuestionID,
+				})
 				id = e.A + " vs " + e.B
 			}
 		case SectionAssumptions:
@@ -206,7 +210,10 @@ func Append(n Notes, section Section, entries []Entry) (Notes, []string, error) 
 			if text == "" {
 				err = fmt.Errorf("%w: the text is empty", ErrInvalid)
 			} else {
-				n.Assumptions = append(slices.Clone(n.Assumptions), Assumption{QuestionID: e.QuestionID, Text: text})
+				n.Assumptions = append(slices.Clone(n.Assumptions), Assumption{
+					QuestionID: e.QuestionID,
+					Text:       text,
+				})
 				id = "assumption"
 			}
 		case SectionVerified:
@@ -230,7 +237,14 @@ func appendClaim(n Notes, e Entry) (Notes, string, error) {
 	if err := n.checkLinks(e.Sources); err != nil {
 		return n, "", err
 	}
-	c := Claim{ID: NextClaimID(claimIDsOf(n.Claims)), Kind: KindClaim, Text: text, Status: ClaimUnverified, QuestionID: e.QuestionID, Check: clean(e.Check)}
+	c := Claim{
+		ID:         NextClaimID(claimIDsOf(n.Claims)),
+		Kind:       KindClaim,
+		Text:       text,
+		Status:     ClaimUnverified,
+		QuestionID: e.QuestionID,
+		Check:      clean(e.Check),
+	}
 	c, err := withLinks(c, e.Sources, n.Sources)
 	if err != nil {
 		return n, "", err
@@ -250,8 +264,16 @@ func appendDatapoint(n Notes, e Entry) (Notes, string, error) {
 	if err := n.checkLinks(e.Sources); err != nil {
 		return n, "", err
 	}
-	d := Claim{ID: NextDatapointID(claimIDsOf(n.Datapoints)), Kind: KindDatapoint, Text: context, Value: value, Unit: clean(e.Unit),
-		Status: ClaimUnverified, QuestionID: e.QuestionID, Check: clean(e.Check)}
+	d := Claim{
+		ID:         NextDatapointID(claimIDsOf(n.Datapoints)),
+		Kind:       KindDatapoint,
+		Text:       context,
+		Value:      value,
+		Unit:       clean(e.Unit),
+		Status:     ClaimUnverified,
+		QuestionID: e.QuestionID,
+		Check:      clean(e.Check),
+	}
 	d, err := withLinks(d, e.Sources, n.Sources)
 	if err != nil {
 		return n, "", err
@@ -530,7 +552,11 @@ func Parse(text string) (Notes, []error) {
 			}
 		case SectionContradictions:
 			if m := contradLine.FindStringSubmatch(line); m != nil {
-				n.Contradictions = append(n.Contradictions, Contradiction{A: m[1], B: m[2], QuestionID: m[3]})
+				n.Contradictions = append(n.Contradictions, Contradiction{
+					A:          m[1],
+					B:          m[2],
+					QuestionID: m[3],
+				})
 			} else {
 				err = fmt.Errorf("not a contradiction line (- c_001 vs c_002 -> q_003)")
 			}
@@ -538,9 +564,14 @@ func Parse(text string) (Notes, []error) {
 			err = parseSource(line, &n)
 		case SectionAssumptions:
 			if m := assumpLine.FindStringSubmatch(line); m != nil {
-				n.Assumptions = append(n.Assumptions, Assumption{QuestionID: m[1], Text: m[2]})
+				n.Assumptions = append(n.Assumptions, Assumption{
+					QuestionID: m[1],
+					Text:       m[2],
+				})
 			} else if m := gapLine.FindStringSubmatch(line); m != nil {
-				n.Assumptions = append(n.Assumptions, Assumption{Text: m[1]})
+				n.Assumptions = append(n.Assumptions, Assumption{
+					Text: m[1],
+				})
 			} else {
 				err = fmt.Errorf("not an assumption line (- q_001 unresolvable: text, or - gap: text)")
 			}
@@ -565,7 +596,11 @@ func parseClaim(line string, section Section) (Claim, error) {
 	if m == nil {
 		return Claim{}, fmt.Errorf("not a claim line (- [c_001] UNVERIFIED  text | src: s_1 | q: q_1)")
 	}
-	c := Claim{ID: m[1], Status: ClaimStatus(m[2]), Kind: KindClaim}
+	c := Claim{
+		ID:     m[1],
+		Status: ClaimStatus(m[2]),
+		Kind:   KindClaim,
+	}
 	rest := segs[1:]
 	if c.ID[0] == 'd' {
 		c.Kind = KindDatapoint
@@ -598,9 +633,16 @@ func parseClaim(line string, section Section) (Claim, error) {
 				if lm == nil {
 					return Claim{}, fmt.Errorf("bad source link %q", tok)
 				}
-				l := Link{SourceID: lm[1], Stance: StanceSupports, Independent: lm[2] == "independent"}
+				l := Link{
+					SourceID:    lm[1],
+					Stance:      StanceSupports,
+					Independent: lm[2] == "independent",
+				}
 				if lm[2] == "contradicts" {
-					l = Link{SourceID: lm[1], Stance: StanceContradicts}
+					l = Link{
+						SourceID: lm[1],
+						Stance:   StanceContradicts,
+					}
 				}
 				c.Links = append(c.Links, l)
 			}
@@ -623,7 +665,12 @@ func parseSource(line string, n *Notes) error {
 	if m == nil {
 		return fmt.Errorf(`not a source line (- [s_001] https://... "Title" (domain))`)
 	}
-	s := Source{ID: m[1], URL: m[2], Title: m[3], Domain: m[4]}
+	s := Source{
+		ID:     m[1],
+		URL:    m[2],
+		Title:  m[3],
+		Domain: m[4],
+	}
 	if hasNote {
 		s.Note = note
 	}

@@ -158,7 +158,9 @@ func (q Question) AttemptCount() int { return len(q.Attempts) }
 func NewFrontier(questions []Question) Frontier {
 	qs := slices.Clone(questions)
 	slices.SortFunc(qs, func(a, b Question) int { return idCompare(a.ID, b.ID) })
-	return Frontier{Questions: qs}
+	return Frontier{
+		Questions: qs,
+	}
 }
 
 // Get returns the question with that id.
@@ -227,7 +229,9 @@ func (f Frontier) with(q Question) Frontier {
 	} else {
 		qs = append(qs, q)
 	}
-	return Frontier{Questions: qs}
+	return Frontier{
+		Questions: qs,
+	}
 }
 
 // Normalize is the form of a text that is compared to find duplicates: lower case, letters and digits only, single spaces.
@@ -239,8 +243,18 @@ func Normalize(s string) string {
 
 // move returns q in the status to, and the transition that records it.
 func move(q Question, to Status, trigger Trigger, actor Actor, reason, causedBy string) (Question, Transition) {
-	t := Transition{QuestionID: q.ID, Seq: q.TransSeq + 1, From: q.Status, To: to, Trigger: trigger, Actor: actor, Reason: reason,
-		Priority: q.Priority, Attempts: len(q.Attempts), CausedBy: causedBy}
+	t := Transition{
+		QuestionID: q.ID,
+		Seq:        q.TransSeq + 1,
+		From:       q.Status,
+		To:         to,
+		Trigger:    trigger,
+		Actor:      actor,
+		Reason:     reason,
+		Priority:   q.Priority,
+		Attempts:   len(q.Attempts),
+		CausedBy:   causedBy,
+	}
 	q.Status = to
 	q.TransSeq++
 	return q, t
@@ -249,8 +263,18 @@ func move(q Question, to Status, trigger Trigger, actor Actor, reason, causedBy 
 // reprioritize returns q with priority p, and the transition (from and to are the current status).
 func reprioritize(q Question, p float64, actor Actor, reason, causedBy string) (Question, Transition) {
 	q.Priority = p
-	t := Transition{QuestionID: q.ID, Seq: q.TransSeq + 1, From: q.Status, To: q.Status, Trigger: TriggerReprioritized, Actor: actor, Reason: reason,
-		Priority: p, Attempts: len(q.Attempts), CausedBy: causedBy}
+	t := Transition{
+		QuestionID: q.ID,
+		Seq:        q.TransSeq + 1,
+		From:       q.Status,
+		To:         q.Status,
+		Trigger:    TriggerReprioritized,
+		Actor:      actor,
+		Reason:     reason,
+		Priority:   p,
+		Attempts:   len(q.Attempts),
+		CausedBy:   causedBy,
+	}
 	q.TransSeq++
 	return q, t
 }
@@ -259,8 +283,17 @@ func reprioritize(q Question, p float64, actor Actor, reason, causedBy string) (
 func created(q Question, actor Actor, reason string) (Question, Transition) {
 	q.Status = StatusPending
 	q.TransSeq = 1
-	return q, Transition{QuestionID: q.ID, Seq: 1, From: "", To: StatusPending, Trigger: TriggerCreated, Actor: actor, Reason: reason,
-		Priority: q.Priority, Attempts: 0}
+	return q, Transition{
+		QuestionID: q.ID,
+		Seq:        1,
+		From:       "",
+		To:         StatusPending,
+		Trigger:    TriggerCreated,
+		Actor:      actor,
+		Reason:     reason,
+		Priority:   q.Priority,
+		Attempts:   0,
+	}
 }
 
 // NewRoot creates the root question q_001 (the objective) and selects it: the objective is always being worked on, and its children are
@@ -269,9 +302,14 @@ func NewRoot(objective string) (Frontier, []Transition, error) {
 	if strings.TrimSpace(objective) == "" {
 		return Frontier{}, nil, fmt.Errorf("%w: the objective is empty", ErrInvalid)
 	}
-	q, t1 := created(Question{ID: NextQuestionID(nil), Kind: KindQuestion, Question: strings.TrimSpace(objective), Priority: 1,
+	q, t1 := created(Question{
+		ID:                 NextQuestionID(nil),
+		Kind:               KindQuestion,
+		Question:           strings.TrimSpace(objective),
+		Priority:           1,
 		Rationale:          "the objective of the run",
-		ValidationCriteria: "the objective is answered by verified claims, with the gaps and assumptions stated"}, ActorCode, "root question: the objective")
+		ValidationCriteria: "the objective is answered by verified claims, with the gaps and assumptions stated",
+	}, ActorCode, "root question: the objective")
 	q, t2 := move(q, StatusInProgress, TriggerSelected, ActorCode, "the objective is always in progress", "")
 	return Frontier{}.with(q), []Transition{t1, t2}, nil
 }
@@ -330,9 +368,18 @@ func Add(f Frontier, parentID string, in AddInput, limits Limits) (Frontier, []T
 	if in.BlocksParent {
 		priority = max(priority, parent.Priority)
 	}
-	child := Question{ID: NextQuestionID(f.IDs()), ParentID: parentID, Depth: parent.Depth + 1, Kind: kind, Question: text,
-		Rationale: strings.TrimSpace(in.Rationale), Priority: priority, ValidationCriteria: strings.TrimSpace(in.ValidationCriteria),
-		TargetSources: slices.Clone(in.TargetSources), DependsOn: deps}
+	child := Question{
+		ID:                 NextQuestionID(f.IDs()),
+		ParentID:           parentID,
+		Depth:              parent.Depth + 1,
+		Kind:               kind,
+		Question:           text,
+		Rationale:          strings.TrimSpace(in.Rationale),
+		Priority:           priority,
+		ValidationCriteria: strings.TrimSpace(in.ValidationCriteria),
+		TargetSources:      slices.Clone(in.TargetSources),
+		DependsOn:          deps,
+	}
 	actor := in.Actor
 	if actor == "" {
 		actor = ActorAgent
@@ -571,7 +618,11 @@ func Retry(f Frontier, id, newQuery, why, assumption string, limits Limits) (Fro
 			return f, nil, fmt.Errorf("%w: that query was already tried (attempt %d); formulate a different one", ErrDuplicateQuestion, a.Seq)
 		}
 	}
-	q.Attempts = append(slices.Clone(q.Attempts), Attempt{Seq: len(q.Attempts) + 1, Query: strings.TrimSpace(newQuery), Outcome: why})
+	q.Attempts = append(slices.Clone(q.Attempts), Attempt{
+		Seq:     len(q.Attempts) + 1,
+		Query:   strings.TrimSpace(newQuery),
+		Outcome: why,
+	})
 	q, t := move(q, StatusPending, TriggerRetried, ActorAgent, why, "")
 	return f.with(q), []Transition{t}, nil
 }

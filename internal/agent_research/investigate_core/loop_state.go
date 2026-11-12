@@ -116,7 +116,11 @@ type LoopState struct {
 }
 
 // StartLoop is the state of a run that starts: exploration, nothing spent.
-func StartLoop() LoopState { return LoopState{Phase: PhaseExploration} }
+func StartLoop() LoopState {
+	return LoopState{
+		Phase: PhaseExploration,
+	}
+}
 
 // AfterModel counts a model call and what it spent (the tools' spending is added with Spend).
 func (ls LoopState) AfterModel(inputTokens, outputTokens int, costUSD float64) LoopState {
@@ -228,7 +232,14 @@ func PendingOf(t Turn, questionID string) []Pending {
 		if c.IsErr || !IsRawTool(c.Name) {
 			continue
 		}
-		out = append(out, Pending{CallID: c.ID, Tool: c.Name, Arg: ArgOf(c), QuestionID: questionID, Size: len([]rune(c.Output)), Turn: t.N})
+		out = append(out, Pending{
+			CallID:     c.ID,
+			Tool:       c.Name,
+			Arg:        ArgOf(c),
+			QuestionID: questionID,
+			Size:       len([]rune(c.Output)),
+			Turn:       t.N,
+		})
 	}
 	return out
 }

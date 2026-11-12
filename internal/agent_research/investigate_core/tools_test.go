@@ -179,9 +179,21 @@ func TestResolveChecks(t *testing.T) {
 		t.Fatalf("reason replaces the searches: %v", err)
 	}
 	q, _ := s.Frontier.Get("q_003")
-	q.Attempts = []Attempt{{Seq: 1, Query: "confirming query"}, {Seq: 2, Query: "refuting query"}}
+	q.Attempts = []Attempt{{
+		Seq:   1,
+		Query: "confirming query",
+	}, {
+		Seq:   2,
+		Query: "refuting query",
+	}}
 	s.Frontier = s.Frontier.with(q)
-	s.Challenges = []Challenge{{ID: "ch_001", QuestionID: "q_003", AttemptSeq: 2, Status: ChallengeClosed, Outcome: OutcomeSurvived}}
+	s.Challenges = []Challenge{{
+		ID:         "ch_001",
+		QuestionID: "q_003",
+		AttemptSeq: 2,
+		Status:     ChallengeClosed,
+		Outcome:    OutcomeSurvived,
+	}}
 	if _, _, err := call(t, s, "resolve_question", m{"id": "q_003", "answer": "confirmed"}); err != nil {
 		t.Fatalf("both searches in the log: %v", err)
 	}
@@ -192,7 +204,15 @@ func TestResolveChecks(t *testing.T) {
 	if _, _, err := call(t, s, "resolve_question", m{"id": "q_002", "answer": "ok", "reason": "trivial lookup"}); err != nil {
 		t.Fatalf("reason: %v", err)
 	}
-	s.Challenges = append(s.Challenges, Challenge{ID: "ch_002", QuestionID: "q_002", TargetType: TargetQuestionAnswer, TargetID: "q_002", Status: ChallengeClosed, Outcome: OutcomeSurvived, AttemptSeq: 1})
+	s.Challenges = append(s.Challenges, Challenge{
+		ID:         "ch_002",
+		QuestionID: "q_002",
+		TargetType: TargetQuestionAnswer,
+		TargetID:   "q_002",
+		Status:     ChallengeClosed,
+		Outcome:    OutcomeSurvived,
+		AttemptSeq: 1,
+	})
 	if _, _, err := call(t, s, "resolve_question", m{"id": "q_002", "answer": "ok"}); err != nil {
 		t.Fatalf("closed challenge: %v", err)
 	}

@@ -97,20 +97,28 @@ func (r *researcher) codeConfig() (*investigate.CodeConfig, error) {
 		log.Warnf("agent research: the agent %q has [code] enabled but the code sandbox is not available (Monty is not installed): it runs without run_code", r.def.Name)
 		return nil, nil
 	}
-	return &investigate.CodeConfig{Runner: sb, Settings: *r.def.Code, Registry: hostfn.Standard()}, nil
+	return &investigate.CodeConfig{
+		Runner:   sb,
+		Settings: *r.def.Code,
+		Registry: hostfn.Standard(),
+	}, nil
 }
 
 // runInvestigative runs the investigative loop of the agent and returns its outcome in the shape of the simple loop's.
 func (r *researcher) runInvestigative() (*agent.Result, error) {
 	limits := investigateLimits(r.opts.investigateKnobs(r.def), lowestCap(r.def.Limits.MaxCostUSD, r.opts.treeCostCap))
-	local := investigate.NotesFile{Dir: r.mgr.notesDir()}
+	local := investigate.NotesFile{
+		Dir: r.mgr.notesDir(),
+	}
 	var files investigate_core.NotesStore = local
 	if r.mgr.NotesS3 != nil {
 		files = r.mgr.NotesS3.Mirror(local, r.run.UserID)
 	}
 	sess := investigate_core.Session{
 		Env: investigate_core.Env{
-			Store: r.mgr.Ops.Investigate(r.db), Files: files, RunID: r.run.ID,
+			Store:     r.mgr.Ops.Investigate(r.db),
+			Files:     files,
+			RunID:     r.run.ID,
 			NotesPath: local.Path(r.run.UserID, r.run.ID, r.run.NotesID),
 		},
 		Registry: investigate_core.LoopRegistry(),
@@ -123,8 +131,14 @@ func (r *researcher) runInvestigative() (*agent.Result, error) {
 	knobs := r.opts.investigateKnobs(r.def)
 	usage := func(t investigate.Totals) { r.saveUsage(totalsOf(t)) }
 	cfg := investigate.Config{
-		Session: sess, Model: r.client.Raw, ModelName: r.opts.Model, MaxTokens: r.agent.MaxTokens,
-		System: r.agent.System, Task: r.opts.Topic, External: r.agent.Tools, Code: code,
+		Session:   sess,
+		Model:     r.client.Raw,
+		ModelName: r.opts.Model,
+		MaxTokens: r.agent.MaxTokens,
+		System:    r.agent.System,
+		Task:      r.opts.Topic,
+		External:  r.agent.Tools,
+		Code:      code,
 		Hooks: investigate.Hooks{
 			BeforeModel: func(turn int, state, detail string) { r.enter(state, turn, detail) },
 			Entered:     func(turn int, state, detail string) { r.enter(state, turn, detail) },
@@ -138,12 +152,22 @@ func (r *researcher) runInvestigative() (*agent.Result, error) {
 	}
 	if knobs.MaxParallelOrDefault() > 1 {
 		cfg.Delegation = investigate.Delegation{
-			Workers: workerPool{r: r, steps: knobs.WorkerStepsOrDefault()}, MaxParallel: knobs.MaxParallelOrDefault(),
-			MaxWorkers: knobs.MaxWorkersOrDefault(), MinPriority: knobs.MinPriorityToDelegate, ContextTokens: knobs.WorkerContextTokensOrDefault(),
+			Workers: workerPool{
+				r:     r,
+				steps: knobs.WorkerStepsOrDefault(),
+			},
+			MaxParallel:   knobs.MaxParallelOrDefault(),
+			MaxWorkers:    knobs.MaxWorkersOrDefault(),
+			MinPriority:   knobs.MinPriorityToDelegate,
+			ContextTokens: knobs.WorkerContextTokensOrDefault(),
 		}
 	}
 	if r.onTrajectory != nil {
-		cfg.Trajectory = &investigate.Trajectory{Name: r.agent.Name, Version: r.agent.Version, SessionID: SessionID(r.run.ID)}
+		cfg.Trajectory = &investigate.Trajectory{
+			Name:      r.agent.Name,
+			Version:   r.agent.Version,
+			SessionID: SessionID(r.run.ID),
+		}
 	}
 	res, err := investigate.Run(r.runCtx, cfg)
 	out := totalsOf(res.Totals)
@@ -152,7 +176,13 @@ func (r *researcher) runInvestigative() (*agent.Result, error) {
 }
 
 func totalsOf(t investigate.Totals) agent.Result {
-	return agent.Result{Steps: t.Turns, ToolCalls: t.ToolCalls, InputTokens: t.InputTokens, OutputTokens: t.OutputTokens, CostUSD: t.CostUSD}
+	return agent.Result{
+		Steps:        t.Turns,
+		ToolCalls:    t.ToolCalls,
+		InputTokens:  t.InputTokens,
+		OutputTokens: t.OutputTokens,
+		CostUSD:      t.CostUSD,
+	}
 }
 
 // savePhase writes the phase and the stop reason of the run. A failed write is logged and does not stop the agent.

@@ -73,8 +73,12 @@ func (r *runner) fanOut(ctx context.Context, st investigate_core.State) (bool, e
 	reqs := make([]WorkerRequest, len(batch))
 	for i, q := range batch {
 		ids[i] = q.ID
-		reqs[i] = WorkerRequest{QuestionID: q.ID, Question: q.Question, Brief: investigate_core.WorkerBrief(st, q.ID, d.ContextTokens),
-			MaxCostUSD: investigate_core.WorkerCostShare(r.ls, st.Limits, len(batch))}
+		reqs[i] = WorkerRequest{
+			QuestionID: q.ID,
+			Question:   q.Question,
+			Brief:      investigate_core.WorkerBrief(st, q.ID, d.ContextTokens),
+			MaxCostUSD: investigate_core.WorkerCostShare(r.ls, st.Limits, len(batch)),
+		}
 	}
 	if _, _, err := investigate_core.Delegate(st.Frontier, ids); err != nil {
 		return false, nil // not what the selection said (cannot happen with the state just loaded): work on it serially
@@ -119,11 +123,18 @@ func runWorkers(ctx context.Context, w Workers, reqs []WorkerRequest) []delegate
 			defer wg.Done()
 			defer func() {
 				if p := recover(); p != nil {
-					out[i] = delegated{req: req, err: fmt.Errorf("the worker panicked: %v", p)}
+					out[i] = delegated{
+						req: req,
+						err: fmt.Errorf("the worker panicked: %v", p),
+					}
 				}
 			}()
 			res, err := w.Run(ctx, req)
-			out[i] = delegated{req: req, res: res, err: err}
+			out[i] = delegated{
+				req: req,
+				res: res,
+				err: err,
+			}
 		}()
 	}
 	wg.Wait()

@@ -125,11 +125,22 @@ func (f *fakeRemote) Follow(ctx context.Context, _ string, from int, fn func(age
 }
 
 func state(agent string, seq int, name, detail, errText string) agent_research.RemoteEvent {
-	return agent_research.RemoteEvent{Type: agent_research.RemoteState, Agent: agent, StateSeq: seq, State: name, Step: 1, Detail: detail, Error: errText}
+	return agent_research.RemoteEvent{
+		Type:     agent_research.RemoteState,
+		Agent:    agent,
+		StateSeq: seq,
+		State:    name,
+		Step:     1,
+		Detail:   detail,
+		Error:    errText,
+	}
 }
 
 func status(s string) agent_research.RemoteEvent {
-	return agent_research.RemoteEvent{Type: agent_research.RemoteStatus, Status: s}
+	return agent_research.RemoteEvent{
+		Type:   agent_research.RemoteStatus,
+		Status: s,
+	}
 }
 
 func TestModalRunnerRecordsTheJobsEvents(t *testing.T) { runOnBackends(t, testModalRun) }
@@ -141,7 +152,13 @@ func testModalRun(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	m := agent_research.NewManager(ctx, d, ops, nil)
 	m.UseRemote(remote)
 
-	started, err := m.Start(ctx, "u1", agent_research.Options{Topic: "batteries", MaxSteps: 5, Model: "my-model", Dataset: "ds", Runner: "modal"})
+	started, err := m.Start(ctx, "u1", agent_research.Options{
+		Topic:    "batteries",
+		MaxSteps: 5,
+		Model:    "my-model",
+		Dataset:  "ds",
+		Runner:   "modal",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,12 +170,35 @@ func testModalRun(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 		state("main", 1, core.StateStarting, "", ""), // the run has its own starting state
 		state("main", 2, core.StateThinking, "step 1 of 5", ""),
 		state("main", 3, core.StateSearching, "solid state", ""),
-		agent_research.RemoteEvent{Type: agent_research.RemoteUsageEvent, Usage: &agent_research.RemoteUsage{Steps: 1, ToolCalls: 1, InputTokens: 10, OutputTokens: 5, CostUSD: 0.01}},
+		agent_research.RemoteEvent{
+			Type: agent_research.RemoteUsageEvent,
+			Usage: &agent_research.RemoteUsage{
+				Steps:        1,
+				ToolCalls:    1,
+				InputTokens:  10,
+				OutputTokens: 5,
+				CostUSD:      0.01,
+			},
+		},
 		state("main", 3, core.StateSearching, "solid state", "search failed"), // the state ended with an error, after it was reported
 		state("kid", 2, core.StateReading, "https://example.com", ""),
-		agent_research.RemoteEvent{Type: agent_research.RemoteLog, Message: "hello"},
-		agent_research.RemoteEvent{Type: agent_research.RemoteStatus, Status: agent_research.RemoteCompleted, Report: "# Report",
-			Usage: &agent_research.RemoteUsage{Steps: 4, ToolCalls: 3, InputTokens: 100, OutputTokens: 50, CostUSD: 0.25, Subagents: 1}},
+		agent_research.RemoteEvent{
+			Type:    agent_research.RemoteLog,
+			Message: "hello",
+		},
+		agent_research.RemoteEvent{
+			Type:   agent_research.RemoteStatus,
+			Status: agent_research.RemoteCompleted,
+			Report: "# Report",
+			Usage: &agent_research.RemoteUsage{
+				Steps:        4,
+				ToolCalls:    3,
+				InputTokens:  100,
+				OutputTokens: 50,
+				CostUSD:      0.25,
+				Subagents:    1,
+			},
+		},
 	)
 	m.Wait()
 
@@ -195,7 +235,10 @@ func testModalRun(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 		t.Errorf("the follower should resume where the stream ended: froms %v", remote.froms)
 	}
 	// The run does not count against the user's limit any more.
-	if _, err := m.Start(ctx, "u1", agent_research.Options{Topic: "again", Runner: "modal"}); err != nil {
+	if _, err := m.Start(ctx, "u1", agent_research.Options{
+		Topic:  "again",
+		Runner: "modal",
+	}); err != nil {
 		t.Errorf("start again: %v", err)
 	}
 	m.Wait() // the fake plays its whole log to the second job too, which ends as the first did
@@ -208,12 +251,19 @@ func testModalFailed(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	remote := newFakeRemote()
 	m := agent_research.NewManager(ctx, d, ops, nil)
 	m.UseRemote(remote)
-	started, err := m.Start(ctx, "u1", agent_research.Options{Topic: "t", Runner: "modal"})
+	started, err := m.Start(ctx, "u1", agent_research.Options{
+		Topic:  "t",
+		Runner: "modal",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	remote.push(state("main", 2, core.StateThinking, "step 1 of 20", ""),
-		agent_research.RemoteEvent{Type: agent_research.RemoteStatus, Status: agent_research.RemoteFailed, Error: "anthropic: 529 overloaded"})
+		agent_research.RemoteEvent{
+			Type:   agent_research.RemoteStatus,
+			Status: agent_research.RemoteFailed,
+			Error:  "anthropic: 529 overloaded",
+		})
 	m.Wait()
 	run, _ := m.Get(ctx, "u1", started.ID)
 	if run.Status != core.StatusFailed || run.Error != "anthropic: 529 overloaded" || run.Report != "" || stateNames(run.States) != "starting,thinking,failed" {
@@ -227,11 +277,18 @@ func testModalStop(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	ctx := context.Background()
 	remote := newFakeRemote()
 	remote.onCancel = func(f *fakeRemote) {
-		f.push(agent_research.RemoteEvent{Type: agent_research.RemoteStatus, Status: agent_research.RemoteCancelled, Error: "stopped"})
+		f.push(agent_research.RemoteEvent{
+			Type:   agent_research.RemoteStatus,
+			Status: agent_research.RemoteCancelled,
+			Error:  "stopped",
+		})
 	}
 	m := agent_research.NewManager(ctx, d, ops, nil)
 	m.UseRemote(remote)
-	started, err := m.Start(ctx, "u1", agent_research.Options{Topic: "t", Runner: "modal"})
+	started, err := m.Start(ctx, "u1", agent_research.Options{
+		Topic:  "t",
+		Runner: "modal",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +316,10 @@ func TestModalRunnerStopWhenTheJobCannotBeReached(t *testing.T) {
 		remote.cancelErr = errors.New("sidecar down")
 		m := agent_research.NewManager(ctx, d, ops, nil)
 		m.UseRemote(remote)
-		started, _ := m.Start(ctx, "u1", agent_research.Options{Topic: "t", Runner: "modal"})
+		started, _ := m.Start(ctx, "u1", agent_research.Options{
+			Topic:  "t",
+			Runner: "modal",
+		})
 		run, err := m.Stop(ctx, "", started.ID, "the test")
 		if err != nil {
 			t.Fatal(err)
@@ -276,7 +336,10 @@ func TestModalRunnerStopOfTheServer(t *testing.T) {
 		remote := newFakeRemote()
 		m := agent_research.NewManager(ctx, d, ops, nil)
 		m.UseRemote(remote)
-		started, err := m.Start(ctx, "u1", agent_research.Options{Topic: "t", Runner: "modal"})
+		started, err := m.Start(ctx, "u1", agent_research.Options{
+			Topic:  "t",
+			Runner: "modal",
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -294,14 +357,22 @@ func TestModalRunnerStartErrors(t *testing.T) {
 		ctx := context.Background()
 		// No remote: unavailable (also with no LLM client, which the modal runner does not need), and a bad runner is invalid.
 		m := agent_research.NewManager(ctx, d, ops, nil)
-		if _, err := m.Start(ctx, "u1", agent_research.Options{Topic: "t", Runner: "modal"}); !isKind(err, agent_research.KindUnavailable) {
+		if _, err := m.Start(ctx, "u1", agent_research.Options{
+			Topic:  "t",
+			Runner: "modal",
+		}); !isKind(err, agent_research.KindUnavailable) {
 			t.Fatalf("no remote: %v", err)
 		}
-		if _, err := m.Start(ctx, "u1", agent_research.Options{Topic: "t", Runner: "lambda"}); !isKind(err, agent_research.KindInvalid) {
+		if _, err := m.Start(ctx, "u1", agent_research.Options{
+			Topic:  "t",
+			Runner: "lambda",
+		}); !isKind(err, agent_research.KindInvalid) {
 			t.Fatalf("bad runner: %v", err)
 		}
 		// A local run still needs the LLM.
-		if _, err := m.Start(ctx, "u1", agent_research.Options{Topic: "t"}); !isKind(err, agent_research.KindUnavailable) {
+		if _, err := m.Start(ctx, "u1", agent_research.Options{
+			Topic: "t",
+		}); !isKind(err, agent_research.KindUnavailable) {
 			t.Fatalf("local without llm: %v", err)
 		}
 		// A job that cannot be started leaves no run and no active slot behind.
@@ -309,7 +380,10 @@ func TestModalRunnerStartErrors(t *testing.T) {
 		remote.startErr = errors.New("the agent is not deployed")
 		m.UseRemote(remote)
 		for i := 0; i < agent_research.DefaultMaxActivePerUser+1; i++ {
-			if _, err := m.Start(ctx, "u1", agent_research.Options{Topic: "t", Runner: "modal"}); !isKind(err, agent_research.KindUnavailable) {
+			if _, err := m.Start(ctx, "u1", agent_research.Options{
+				Topic:  "t",
+				Runner: "modal",
+			}); !isKind(err, agent_research.KindUnavailable) {
 				t.Fatalf("start %d: %v", i, err)
 			}
 		}
@@ -324,9 +398,13 @@ func TestModalRunnerStartErrors(t *testing.T) {
 func TestRunsAreLocalByDefault(t *testing.T) {
 	runOnBackends(t, func(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 		ctx := context.Background()
-		fake := &fakeAnthropic{main: []string{finalReport}}
+		fake := &fakeAnthropic{
+			main: []string{finalReport},
+		}
 		m := agent_research.NewManager(ctx, d, ops, fake.start(t))
-		started, err := m.Start(ctx, "u1", agent_research.Options{Topic: "t"})
+		started, err := m.Start(ctx, "u1", agent_research.Options{
+			Topic: "t",
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -352,11 +430,18 @@ func (f *fakeImporter) Import(_ context.Context, path string, run agent_research
 
 func exportOf(data string) *agent_research.RemoteExport {
 	sum := sha256.Sum256([]byte(data))
-	return &agent_research.RemoteExport{Bytes: int64(len(data)), SHA256: hex.EncodeToString(sum[:])}
+	return &agent_research.RemoteExport{
+		Bytes:  int64(len(data)),
+		SHA256: hex.EncodeToString(sum[:]),
+	}
 }
 
 func finalWith(status string, ex *agent_research.RemoteExport) agent_research.RemoteEvent {
-	ev := agent_research.RemoteEvent{Type: agent_research.RemoteStatus, Status: status, Export: ex}
+	ev := agent_research.RemoteEvent{
+		Type:   agent_research.RemoteStatus,
+		Status: status,
+		Export: ex,
+	}
 	switch status {
 	case agent_research.RemoteCompleted:
 		ev.Report = "# Report"
@@ -373,7 +458,10 @@ func startModal(t *testing.T, d *sql.DB, ops agent_research.Ops, remote *fakeRem
 	if imp != nil {
 		m.UseImporter(imp)
 	}
-	run, err := m.Start(context.Background(), "u1", agent_research.Options{Topic: "t", Runner: "modal"})
+	run, err := m.Start(context.Background(), "u1", agent_research.Options{
+		Topic:  "t",
+		Runner: "modal",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,7 +481,10 @@ func testModalImport(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 			m.Wait()
 
 			// The export is loaded for the run, also when the job failed (what it learned until then is kept).
-			if len(imp.content) != 1 || imp.content[0] != "PK-the-archive" || imp.runs[0] != (agent_research.ImportRun{UserID: "u1", RunID: started.ID}) {
+			if len(imp.content) != 1 || imp.content[0] != "PK-the-archive" || imp.runs[0] != (agent_research.ImportRun{
+				UserID: "u1",
+				RunID:  started.ID,
+			}) {
 				t.Fatalf("import: %q %+v", imp.content, imp.runs)
 			}
 			run, _ := m.Get(context.Background(), "u1", started.ID)
@@ -420,7 +511,9 @@ func testModalImportFails(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	defer agent_research.SetExportRetryDelay(time.Millisecond)()
 	remote := newFakeRemote()
 	remote.exportData = []byte("PK-the-archive")
-	imp := &fakeImporter{err: errors.New("disk full")}
+	imp := &fakeImporter{
+		err: errors.New("disk full"),
+	}
 	m, started := startModal(t, d, ops, remote, imp)
 	remote.push(finalWith(agent_research.RemoteCompleted, exportOf("PK-the-archive")))
 	m.Wait()

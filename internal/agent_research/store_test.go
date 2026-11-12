@@ -39,7 +39,13 @@ func testStore(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	ctx := context.Background()
 	st := ops.Store
 
-	run := &core.Run{UserID: "u1", Topic: "batteries", Model: "m1", MaxSteps: 5, State: core.StateStarting}
+	run := &core.Run{
+		UserID:   "u1",
+		Topic:    "batteries",
+		Model:    "m1",
+		MaxSteps: 5,
+		State:    core.StateStarting,
+	}
 	if err := st.CreateRun(ctx, d, run); err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +77,13 @@ func testStore(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	if _, err := st.EnterState(ctx, d, run.ID, core.StateThinking, 2, "step 2"); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UpdateUsage(ctx, d, run.ID, db.Usage{Steps: 2, ToolCalls: 1, InputTokens: 30, OutputTokens: 7, CostUSD: 0.25}); err != nil {
+	if err := st.UpdateUsage(ctx, d, run.ID, db.Usage{
+		Steps:        2,
+		ToolCalls:    1,
+		InputTokens:  30,
+		OutputTokens: 7,
+		CostUSD:      0.25,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.UpdateUsage(ctx, d, 999999, db.Usage{}); !errors.Is(err, db.ErrNotFound) {
@@ -120,7 +132,11 @@ func testStore(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	}
 
 	// A failed run puts its error on the state it failed in and on the terminal state.
-	failed := &core.Run{UserID: "u1", Topic: "other", State: core.StateStarting}
+	failed := &core.Run{
+		UserID: "u1",
+		Topic:  "other",
+		State:  core.StateStarting,
+	}
 	if err := st.CreateRun(ctx, d, failed); err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +150,10 @@ func testStore(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	}
 
 	// Listing: newest first, by user and by status.
-	other := &core.Run{UserID: "u2", Topic: "t"}
+	other := &core.Run{
+		UserID: "u2",
+		Topic:  "t",
+	}
 	if err := st.CreateRun(ctx, d, other); err != nil {
 		t.Fatal(err)
 	}
@@ -161,11 +180,22 @@ func testStore(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 		}
 	}
 	eq(ids(core.RunFilter{}, 0), other.ID, failed.ID, run.ID)
-	eq(ids(core.RunFilter{UserID: "u1"}, 0), failed.ID, run.ID)
-	eq(ids(core.RunFilter{UserID: "u1"}, 1), failed.ID)
-	eq(ids(core.RunFilter{Statuses: []core.Status{core.StatusRunning}}, 0), other.ID)
-	eq(ids(core.RunFilter{UserID: "u1", Statuses: []core.Status{core.StatusCompleted, core.StatusFailed}}, 0), failed.ID, run.ID)
-	eq(ids(core.RunFilter{UserID: "nobody"}, 0))
+	eq(ids(core.RunFilter{
+		UserID: "u1",
+	}, 0), failed.ID, run.ID)
+	eq(ids(core.RunFilter{
+		UserID: "u1",
+	}, 1), failed.ID)
+	eq(ids(core.RunFilter{
+		Statuses: []core.Status{core.StatusRunning},
+	}, 0), other.ID)
+	eq(ids(core.RunFilter{
+		UserID:   "u1",
+		Statuses: []core.Status{core.StatusCompleted, core.StatusFailed},
+	}, 0), failed.ID, run.ID)
+	eq(ids(core.RunFilter{
+		UserID: "nobody",
+	}, 0))
 
 	// The runs that were working when the process died are failed.
 	if n, err := st.FailActive(ctx, d, "restarted"); err != nil || n != 1 {
@@ -191,7 +221,10 @@ func TestEnterStateInATransactionRollsBack(t *testing.T) { runOnBackends(t, test
 
 func testRollback(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	ctx := context.Background()
-	run := &core.Run{UserID: "u1", Topic: "t"}
+	run := &core.Run{
+		UserID: "u1",
+		Topic:  "t",
+	}
 	if err := ops.Store.CreateRun(ctx, d, run); err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +248,12 @@ func TestKeepActiveRunsLeavesTheRunsOfOthersAlone(t *testing.T) { runOnBackends(
 func testKeepActive(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	run := &core.Run{UserID: "u1", Topic: "t", Status: core.StatusRunning, State: core.StateStarting}
+	run := &core.Run{
+		UserID: "u1",
+		Topic:  "t",
+		Status: core.StatusRunning,
+		State:  core.StateStarting,
+	}
 	if err := ops.Store.CreateRun(ctx, d, run); err != nil {
 		t.Fatal(err)
 	}

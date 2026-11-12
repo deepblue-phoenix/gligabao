@@ -11,7 +11,9 @@ import (
 // from a successful call of finish_exploration or finalize_report that the phase ended; the handlers only run the gates.
 func LoopRegistry() Registry {
 	r := InvestigativeRegistry()
-	return Registry{tools: append(r.Tools(), finishExplorationTool, finalizeReportTool)}
+	return Registry{
+		tools: append(r.Tools(), finishExplorationTool, finalizeReportTool),
+	}
 }
 
 func problemsError(head string, problems []string) error {
@@ -26,7 +28,10 @@ var finishExplorationTool = Tool{
 		if missing := ExplorationGate(s); len(missing) > 0 {
 			return Result{}, problemsError("the exploration is not finished", missing)
 		}
-		return Result{State: s, Text: "exploration finished: the report is written next, from the notes and the frontier"}, nil
+		return Result{
+			State: s,
+			Text:  "exploration finished: the report is written next, from the notes and the frontier",
+		}, nil
 	},
 }
 
@@ -44,6 +49,9 @@ var finalizeReportTool = Tool{
 		if problems := FinalizationGate(s, a.Report); len(problems) > 0 {
 			return Result{}, problemsError("the report cannot be accepted", problems)
 		}
-		return Result{State: s, Text: fmt.Sprintf("report accepted (%d characters)", len([]rune(a.Report)))}, nil
+		return Result{
+			State: s,
+			Text:  fmt.Sprintf("report accepted (%d characters)", len([]rune(a.Report))),
+		}, nil
 	},
 }

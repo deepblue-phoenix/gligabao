@@ -48,11 +48,13 @@ func (r Registry) Names() []string {
 
 // InvestigativeRegistry is the registry of "the tools of the investigative loop": the frontier, notes and challenge tools of stage 1.
 func InvestigativeRegistry() Registry {
-	return Registry{tools: []Tool{
-		frontierNextTool, frontierViewTool, addQuestionTool, retryQuestionTool, resolveQuestionTool, reopenQuestionTool, setPriorityTool, pruneBranchTool,
-		notesReadTool, notesAppendTool, notesUpdateTool, notesScratchTool,
-		challengeTool, recordChallengeResultTool, challengesViewTool,
-	}}
+	return Registry{
+		tools: []Tool{
+			frontierNextTool, frontierViewTool, addQuestionTool, retryQuestionTool, resolveQuestionTool, reopenQuestionTool, setPriorityTool, pruneBranchTool,
+			notesReadTool, notesAppendTool, notesUpdateTool, notesScratchTool,
+			challengeTool, recordChallengeResultTool, challengesViewTool,
+		},
+	}
 }
 
 type props map[string]any
@@ -85,7 +87,11 @@ func decode(raw json.RawMessage, into any) error {
 
 // done builds the result of a handler from the old and new state.
 func done(before, after State, ts []Transition, notesReason, text string) Result {
-	return Result{State: after, Text: text, Effects: Diff(before, after, ts, notesReason)}
+	return Result{
+		State:   after,
+		Text:    text,
+		Effects: Diff(before, after, ts, notesReason),
+	}
 }
 
 // questionLine is the compact one-line form of a question.
@@ -180,7 +186,10 @@ var frontierNextTool = Tool{
 		}
 		f, q, ts := Select(s.Frontier)
 		if q == nil {
-			return Result{State: s, Text: "No actionable question left.\n" + Summary(s.Frontier, root.ID, s.Limits)}, nil
+			return Result{
+				State: s,
+				Text:  "No actionable question left.\n" + Summary(s.Frontier, root.ID, s.Limits),
+			}, nil
 		}
 		next = s.with(f)
 		return done(s, next, ts, "", "Selected:\n"+questionView(*q)+"\n"+Summary(f, q.ID, s.Limits)), nil
@@ -205,7 +214,10 @@ var frontierViewTool = Tool{
 			if !ok {
 				return Result{}, fmt.Errorf("unknown question %q", a.ID)
 			}
-			return Result{State: s, Text: questionView(q)}, nil
+			return Result{
+				State: s,
+				Text:  questionView(q),
+			}, nil
 		}
 		var lines []string
 		for _, q := range s.Frontier.Questions {
@@ -221,7 +233,10 @@ var frontierViewTool = Tool{
 				text = "no " + a.Status + " questions"
 			}
 		}
-		return Result{State: s, Text: text}, nil
+		return Result{
+			State: s,
+			Text:  text,
+		}, nil
 	},
 }
 
@@ -268,8 +283,16 @@ var addQuestionTool = Tool{
 			}
 			parent = cur.ID
 		}
-		f, ts, err := Add(s.Frontier, parent, AddInput{Kind: a.Kind, Question: a.Question, Rationale: a.Rationale, Priority: *a.Priority,
-			ValidationCriteria: a.ValidationCriteria, TargetSources: a.TargetSources, DependsOn: a.DependsOn, BlocksParent: a.BlocksParent}, s.Limits)
+		f, ts, err := Add(s.Frontier, parent, AddInput{
+			Kind:               a.Kind,
+			Question:           a.Question,
+			Rationale:          a.Rationale,
+			Priority:           *a.Priority,
+			ValidationCriteria: a.ValidationCriteria,
+			TargetSources:      a.TargetSources,
+			DependsOn:          a.DependsOn,
+			BlocksParent:       a.BlocksParent,
+		}, s.Limits)
 		if err != nil {
 			return Result{}, err
 		}
@@ -300,7 +323,10 @@ var retryQuestionTool = Tool{
 		q, _ := f.Get(a.ID)
 		text := changedLines(s.Frontier, f)
 		if q.Status == StatusUnresolvable {
-			next.Notes, _, err = Append(s.Notes, SectionAssumptions, []Entry{{QuestionID: q.ID, Text: q.Answer}})
+			next.Notes, _, err = Append(s.Notes, SectionAssumptions, []Entry{{
+				QuestionID: q.ID,
+				Text:       q.Answer,
+			}})
 			if err != nil {
 				return Result{}, err
 			}
@@ -368,7 +394,11 @@ var resolveQuestionTool = Tool{
 		if !ok {
 			return Result{}, fmt.Errorf("unknown question %q", a.ID)
 		}
-		in := ResolveInput{Answer: a.Answer, ClaimIDs: a.ClaimIDs, Reason: a.Reason}
+		in := ResolveInput{
+			Answer:   a.Answer,
+			ClaimIDs: a.ClaimIDs,
+			Reason:   a.Reason,
+		}
 		if q.Status == StatusInProgress {
 			if problems := checkResolve(s, q, in); len(problems) > 0 {
 				return Result{}, fmt.Errorf("cannot resolve %s: %s", a.ID, strings.Join(problems, "; "))
@@ -458,7 +488,10 @@ var notesReadTool = Tool{
 	Description: "Read the notes: verified and unverified claims, contradictions, datapoints, sources, assumptions and gaps, and the scratch text.",
 	Schema:      obj(props{}),
 	Handler: func(s State, _ json.RawMessage) (Result, error) {
-		return Result{State: s, Text: Render(s.Notes)}, nil
+		return Result{
+			State: s,
+			Text:  Render(s.Notes),
+		}, nil
 	},
 }
 
@@ -521,12 +554,19 @@ func onRefuted(s State, claimID, why, causedBy string) (State, []Transition, []s
 	if q, ok := s.Frontier.Get(parent); !ok || q.Status == StatusPruned {
 		parent = conclusionQuestion(s.Frontier)
 	}
-	f, added, err := Add(s.Frontier, parent, AddInput{Question: fmt.Sprintf("Resolve the contradiction: claim %s (%s) was refuted: %s. What is correct?", claimID, claim.Text, why),
-		Rationale: "a refuted claim must be replaced by what the evidence supports", Priority: 0.9,
-		ValidationCriteria: "an answer supported by independent sources that settles the contradiction", Actor: ActorCode, CausedBy: orElse(causedBy, claimID)}, s.Limits)
+	f, added, err := Add(s.Frontier, parent, AddInput{
+		Question:           fmt.Sprintf("Resolve the contradiction: claim %s (%s) was refuted: %s. What is correct?", claimID, claim.Text, why),
+		Rationale:          "a refuted claim must be replaced by what the evidence supports",
+		Priority:           0.9,
+		ValidationCriteria: "an answer supported by independent sources that settles the contradiction",
+		Actor:              ActorCode,
+		CausedBy:           orElse(causedBy, claimID),
+	}, s.Limits)
 	switch {
 	case err != nil:
-		n, _, aerr := Append(s.Notes, SectionAssumptions, []Entry{{Text: clean(fmt.Sprintf("claim %s was refuted and no question could be queued to resolve it: %v", claimID, err))}})
+		n, _, aerr := Append(s.Notes, SectionAssumptions, []Entry{{
+			Text: clean(fmt.Sprintf("claim %s was refuted and no question could be queued to resolve it: %v", claimID, err)),
+		}})
 		if aerr == nil {
 			s.Notes = n
 		}
@@ -629,8 +669,14 @@ var challengeTool = Tool{
 		if err := decode(raw, &a); err != nil {
 			return Result{}, err
 		}
-		chs, ch, err := Open(s.Challenges, OpenInput{TargetType: a.TargetType, TargetID: a.TargetID, Negation: a.Negation, Strategy: a.Strategy,
-			ExpectedIfFalse: a.ExpectedIfFalse, Query: a.Query}, s.Frontier, s.Notes, s.Limits)
+		chs, ch, err := Open(s.Challenges, OpenInput{
+			TargetType:      a.TargetType,
+			TargetID:        a.TargetID,
+			Negation:        a.Negation,
+			Strategy:        a.Strategy,
+			ExpectedIfFalse: a.ExpectedIfFalse,
+			Query:           a.Query,
+		}, s.Frontier, s.Notes, s.Limits)
 		if err != nil {
 			return Result{}, err
 		}
@@ -709,7 +755,10 @@ func applyOutcome(s State, ch Challenge) (State, []Transition, []string, error) 
 		s, ts, more = onRefuted(s, c.ID, ch.Evidence, ch.ID)
 		said = append(said, more...)
 		if ch.ResultClaimID != "" {
-			if n, _, err := Append(s.Notes, SectionContradictions, []Entry{{A: c.ID, B: ch.ResultClaimID}}); err == nil {
+			if n, _, err := Append(s.Notes, SectionContradictions, []Entry{{
+				A: c.ID,
+				B: ch.ResultClaimID,
+			}}); err == nil {
 				s.Notes = n
 			}
 		}
@@ -725,9 +774,14 @@ func applyOutcome(s State, ch Challenge) (State, []Transition, []string, error) 
 			said = append(said, "the answer of "+ch.TargetID+" is refuted: do not resolve it with that answer; retry_question")
 		}
 	case (ch.Outcome == OutcomeRefuted || ch.Outcome == OutcomeWeakened) && ch.TargetType == TargetConclusion:
-		f, added, err := Add(s.Frontier, conclusionQuestion(s.Frontier), AddInput{Question: fmt.Sprintf("Settle the %s conclusion: %s", ch.Outcome, ch.Evidence),
-			Rationale: "the conclusion of the run was " + string(ch.Outcome) + " by " + ch.ID, Priority: 0.9,
-			ValidationCriteria: "the conclusion is restated so that the evidence found no longer contradicts it", Actor: ActorCode, CausedBy: ch.ID}, s.Limits)
+		f, added, err := Add(s.Frontier, conclusionQuestion(s.Frontier), AddInput{
+			Question:           fmt.Sprintf("Settle the %s conclusion: %s", ch.Outcome, ch.Evidence),
+			Rationale:          "the conclusion of the run was " + string(ch.Outcome) + " by " + ch.ID,
+			Priority:           0.9,
+			ValidationCriteria: "the conclusion is restated so that the evidence found no longer contradicts it",
+			Actor:              ActorCode,
+			CausedBy:           ch.ID,
+		}, s.Limits)
 		if err != nil {
 			said = append(said, "could not queue a question ("+err.Error()+")")
 		} else {
@@ -763,8 +817,14 @@ var challengesViewTool = Tool{
 		}
 		sort.Strings(lines)
 		if len(lines) == 0 {
-			return Result{State: s, Text: "no challenges"}, nil
+			return Result{
+				State: s,
+				Text:  "no challenges",
+			}, nil
 		}
-		return Result{State: s, Text: strings.Join(lines, "\n")}, nil
+		return Result{
+			State: s,
+			Text:  strings.Join(lines, "\n"),
+		}, nil
 	},
 }

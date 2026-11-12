@@ -91,7 +91,9 @@ func CutShort(s State, b Breaker) State {
 			if q.ParentID == "" {
 				continue
 			}
-			if n, _, err := Append(s.Notes, SectionAssumptions, []Entry{{Text: fmt.Sprintf("open gap (%s), the investigation was cut short: %s", q.ID, q.Question)}}); err == nil {
+			if n, _, err := Append(s.Notes, SectionAssumptions, []Entry{{
+				Text: fmt.Sprintf("open gap (%s), the investigation was cut short: %s", q.ID, q.Question),
+			}}); err == nil {
 				s.Notes = n
 			}
 		}

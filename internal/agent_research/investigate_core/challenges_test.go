@@ -11,7 +11,12 @@ func challengeFixture(t *testing.T) (Frontier, Notes) {
 	f := mustRoot(t)
 	f, a := mustAdd(t, f, "q_001", in("What is the memory use of the model?", 0.8))
 	f = inProgress(t, f, a)
-	n, _, err := Append(Notes{Objective: "o"}, SectionUnverified, []Entry{{Text: "The model needs 11 GB at fp16", QuestionID: a}})
+	n, _, err := Append(Notes{
+		Objective: "o",
+	}, SectionUnverified, []Entry{{
+		Text:       "The model needs 11 GB at fp16",
+		QuestionID: a,
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -19,8 +24,14 @@ func challengeFixture(t *testing.T) (Frontier, Notes) {
 }
 
 func openIn(strategy Strategy, query string) OpenInput {
-	return OpenInput{TargetType: TargetClaim, TargetID: "c_001", Negation: "the model needs substantially more than 11 GB", Strategy: strategy,
-		ExpectedIfFalse: "benchmarks report higher peak memory", Query: query}
+	return OpenInput{
+		TargetType:      TargetClaim,
+		TargetID:        "c_001",
+		Negation:        "the model needs substantially more than 11 GB",
+		Strategy:        strategy,
+		ExpectedIfFalse: "benchmarks report higher peak memory",
+		Query:           query,
+	}
 }
 
 func TestOpenValidation(t *testing.T) {
@@ -35,10 +46,20 @@ func TestOpenValidation(t *testing.T) {
 		in   OpenInput
 		want string
 	}{
-		{"unknown claim", OpenInput{TargetType: TargetClaim, TargetID: "c_009"}, "unknown claim"},
-		{"unknown question", OpenInput{TargetType: TargetQuestionAnswer, TargetID: "q_009"}, "unknown question"},
-		{"conclusion without text", OpenInput{TargetType: TargetConclusion}, "no conclusion"},
-		{"bad target type", OpenInput{TargetType: "belief"}, "target_type"},
+		{"unknown claim", OpenInput{
+			TargetType: TargetClaim,
+			TargetID:   "c_009",
+		}, "unknown claim"},
+		{"unknown question", OpenInput{
+			TargetType: TargetQuestionAnswer,
+			TargetID:   "q_009",
+		}, "unknown question"},
+		{"conclusion without text", OpenInput{
+			TargetType: TargetConclusion,
+		}, "no conclusion"},
+		{"bad target type", OpenInput{
+			TargetType: "belief",
+		}, "target_type"},
 		{"bad strategy", openIn("wishful", "x"), "strategy"},
 		{"empty negation", func() OpenInput { i := openIn(StrategyCriticism, "model problem"); i.Negation = ""; return i }(), "must not be empty"},
 		{"empty expected", func() OpenInput { i := openIn(StrategyCriticism, "model problem"); i.ExpectedIfFalse = " "; return i }(), "must not be empty"},
@@ -56,7 +77,10 @@ func TestOpenValidation(t *testing.T) {
 		t.Errorf("claim plus a new word must pass: %v", err)
 	}
 	// A query that repeats an attempt of the question is rejected.
-	f2, _, _ := AddAttempt(f, "q_002", Attempt{Query: "model memory use fp16", Tool: "web_search"})
+	f2, _, _ := AddAttempt(f, "q_002", Attempt{
+		Query: "model memory use fp16",
+		Tool:  "web_search",
+	})
 	if _, _, err := Open(nil, openIn(StrategyCriticism, "Model memory use FP16"), f2, n, limits); !errors.Is(err, ErrDuplicateQuestion) {
 		t.Errorf("attempt repeat: %v", err)
 	}
@@ -72,13 +96,25 @@ func TestOpenOtherTargets(t *testing.T) {
 	f, n := challengeFixture(t)
 	n, _ = SetScratch(n, "Conclusion: the model fits into 16 GB of memory.")
 	limits := DefaultLimits()
-	_, ch, err := Open(nil, OpenInput{TargetType: TargetQuestionAnswer, TargetID: "q_002", Negation: "the model does not fit", Strategy: StrategyNegation,
-		ExpectedIfFalse: "out of memory reports", Query: "model does not fit in 16 GB"}, f, n, limits)
+	_, ch, err := Open(nil, OpenInput{
+		TargetType:      TargetQuestionAnswer,
+		TargetID:        "q_002",
+		Negation:        "the model does not fit",
+		Strategy:        StrategyNegation,
+		ExpectedIfFalse: "out of memory reports",
+		Query:           "model does not fit in 16 GB",
+	}, f, n, limits)
 	if err != nil || ch.QuestionID != "q_002" || ch.TargetID != "q_002" {
 		t.Fatalf("%v %+v", err, ch)
 	}
-	_, ch, err = Open(nil, OpenInput{TargetType: TargetConclusion, TargetID: "ignored", Negation: "the model needs more than 16 GB", Strategy: StrategyStaleness,
-		ExpectedIfFalse: "newer versions are bigger", Query: "model newer version memory requirements"}, f, n, limits)
+	_, ch, err = Open(nil, OpenInput{
+		TargetType:      TargetConclusion,
+		TargetID:        "ignored",
+		Negation:        "the model needs more than 16 GB",
+		Strategy:        StrategyStaleness,
+		ExpectedIfFalse: "newer versions are bigger",
+		Query:           "model newer version memory requirements",
+	}, f, n, limits)
 	if err != nil || ch.QuestionID != "q_001" || ch.TargetID != "" {
 		t.Fatalf("%v %+v", err, ch)
 	}
@@ -136,11 +172,33 @@ func TestCloseRules(t *testing.T) {
 
 func TestChallengeHelpers(t *testing.T) {
 	chs := []Challenge{
-		{ID: "ch_001", TargetType: TargetQuestionAnswer, TargetID: "q_002", Status: ChallengeClosed, Outcome: OutcomeSurvived},
-		{ID: "ch_002", TargetType: TargetQuestionAnswer, TargetID: "q_003", Status: ChallengeOpen},
-		{ID: "ch_003", TargetType: TargetConclusion, Status: ChallengeClosed, Outcome: OutcomeWeakened},
+		{
+			ID:         "ch_001",
+			TargetType: TargetQuestionAnswer,
+			TargetID:   "q_002",
+			Status:     ChallengeClosed,
+			Outcome:    OutcomeSurvived,
+		},
+		{
+			ID:         "ch_002",
+			TargetType: TargetQuestionAnswer,
+			TargetID:   "q_003",
+			Status:     ChallengeOpen,
+		},
+		{
+			ID:         "ch_003",
+			TargetType: TargetConclusion,
+			Status:     ChallengeClosed,
+			Outcome:    OutcomeWeakened,
+		},
 	}
-	if !RequiresAnswerChallenge(Question{Depth: 0}) || !RequiresAnswerChallenge(Question{Depth: 1}) || RequiresAnswerChallenge(Question{Depth: 2}) {
+	if !RequiresAnswerChallenge(Question{
+		Depth: 0,
+	}) || !RequiresAnswerChallenge(Question{
+		Depth: 1,
+	}) || RequiresAnswerChallenge(Question{
+		Depth: 2,
+	}) {
 		t.Error("depth 0 and 1 need an answer challenge")
 	}
 	if !AnswerChallengeClosed(chs, "q_002") || AnswerChallengeClosed(chs, "q_003") || AnswerChallengeClosed(chs, "q_009") {

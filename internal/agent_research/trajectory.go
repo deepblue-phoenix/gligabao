@@ -63,8 +63,18 @@ func (r *researcher) finishTrajectory(res *agent.Result) {
 		return
 	}
 	info := agentInfo{
-		Agent: r.whoAmI(), RunID: r.run.ID, Depth: r.depth, AgentDef: r.def.Name, AgentVersion: r.def.Version, Status: string(r.out.status), Error: r.out.err,
-		Steps: res.Steps, ToolCalls: res.ToolCalls, InputTokens: res.InputTokens, OutputTokens: res.OutputTokens, CostUSD: res.CostUSD,
+		Agent:        r.whoAmI(),
+		RunID:        r.run.ID,
+		Depth:        r.depth,
+		AgentDef:     r.def.Name,
+		AgentVersion: r.def.Version,
+		Status:       string(r.out.status),
+		Error:        r.out.err,
+		Steps:        res.Steps,
+		ToolCalls:    res.ToolCalls,
+		InputTokens:  res.InputTokens,
+		OutputTokens: res.OutputTokens,
+		CostUSD:      res.CostUSD,
 	}
 	if r.parent != nil {
 		info.ParentRunID = r.parent.run.ID

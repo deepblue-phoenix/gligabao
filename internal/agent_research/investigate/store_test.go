@@ -34,7 +34,11 @@ func createRun(t *testing.T, d *sql.DB, user string) *core.Run {
 	if strings.HasSuffix(t.Name(), "postgres") {
 		store = postgres.Store
 	}
-	run := &core.Run{UserID: user, Topic: "does X fit", State: core.StateStarting}
+	run := &core.Run{
+		UserID: user,
+		Topic:  "does X fit",
+		State:  core.StateStarting,
+	}
 	if err := store.CreateRun(context.Background(), d, run); err != nil {
 		t.Fatal(err)
 	}
@@ -45,10 +49,18 @@ func createRun(t *testing.T, d *sql.DB, user string) *core.Run {
 }
 
 func session(t *testing.T, d *sql.DB, run *core.Run) investigate_core.Session {
-	files := investigate.NotesFile{Dir: filepath.Join(t.TempDir(), "notes")}
+	files := investigate.NotesFile{
+		Dir: filepath.Join(t.TempDir(), "notes"),
+	}
 	return investigate_core.Session{
-		Env:      investigate_core.Env{Store: storeFor(t, d), Files: files, RunID: run.ID, NotesPath: files.Path(run.UserID, run.ID, run.NotesID)},
-		Registry: investigate_core.InvestigativeRegistry(), Limits: investigate_core.DefaultLimits(),
+		Env: investigate_core.Env{
+			Store:     storeFor(t, d),
+			Files:     files,
+			RunID:     run.ID,
+			NotesPath: files.Path(run.UserID, run.ID, run.NotesID),
+		},
+		Registry: investigate_core.InvestigativeRegistry(),
+		Limits:   investigate_core.DefaultLimits(),
 	}
 }
 
@@ -260,12 +272,35 @@ func testExecuteIsAtomic(t *testing.T, d *sql.DB) {
 	if err := s.Start(ctx, "objective"); err != nil {
 		t.Fatal(err)
 	}
-	q := investigate_core.Question{ID: "q_002", ParentID: "q_001", Depth: 1, Kind: investigate_core.KindQuestion, Question: "child", Priority: 0.5, Status: investigate_core.StatusPending}
-	bad := investigate_core.Question{ID: "q_003", ParentID: "q_001", Depth: 1, Kind: investigate_core.KindQuestion, Question: "bad priority", Priority: 7, Status: investigate_core.StatusPending}
+	q := investigate_core.Question{
+		ID:       "q_002",
+		ParentID: "q_001",
+		Depth:    1,
+		Kind:     investigate_core.KindQuestion,
+		Question: "child",
+		Priority: 0.5,
+		Status:   investigate_core.StatusPending,
+	}
+	bad := investigate_core.Question{
+		ID:       "q_003",
+		ParentID: "q_001",
+		Depth:    1,
+		Kind:     investigate_core.KindQuestion,
+		Question: "bad priority",
+		Priority: 7,
+		Status:   investigate_core.StatusPending,
+	}
 	err := investigate_core.Execute(ctx, s.Env, 0, []investigate_core.Effect{
-		investigate_core.UpsertQuestion{Question: q},
-		investigate_core.WriteNotes{Text: "# Notes: x\n", Reason: "notes_append"},
-		investigate_core.UpsertQuestion{Question: bad}, // violates the CHECK on priority
+		investigate_core.UpsertQuestion{
+			Question: q,
+		},
+		investigate_core.WriteNotes{
+			Text:   "# Notes: x\n",
+			Reason: "notes_append",
+		},
+		investigate_core.UpsertQuestion{
+			Question: bad,
+		}, // violates the CHECK on priority
 	})
 	if err == nil {
 		t.Fatal("the bad row must fail")
@@ -279,10 +314,30 @@ func testExecuteIsAtomic(t *testing.T, d *sql.DB) {
 	}
 	// The database refuses a bad transition and a bad notes version too.
 	for name, e := range map[string]investigate_core.Effect{
-		"unknown status": investigate_core.RecordTransitions{Transitions: []investigate_core.Transition{{QuestionID: "q_001", To: "nowhere", Trigger: investigate_core.TriggerSelected, Actor: investigate_core.ActorCode}}},
-		"unknown actor":  investigate_core.RecordTransitions{Transitions: []investigate_core.Transition{{QuestionID: "q_001", To: investigate_core.StatusPending, Trigger: investigate_core.TriggerSelected, Actor: "god"}}},
-		"orphan dep":     investigate_core.AddDependency{QuestionID: "q_001", DependsOnID: "q_077"},
-		"self dep":       investigate_core.AddDependency{QuestionID: "q_001", DependsOnID: "q_001"},
+		"unknown status": investigate_core.RecordTransitions{
+			Transitions: []investigate_core.Transition{{
+				QuestionID: "q_001",
+				To:         "nowhere",
+				Trigger:    investigate_core.TriggerSelected,
+				Actor:      investigate_core.ActorCode,
+			}},
+		},
+		"unknown actor": investigate_core.RecordTransitions{
+			Transitions: []investigate_core.Transition{{
+				QuestionID: "q_001",
+				To:         investigate_core.StatusPending,
+				Trigger:    investigate_core.TriggerSelected,
+				Actor:      "god",
+			}},
+		},
+		"orphan dep": investigate_core.AddDependency{
+			QuestionID:  "q_001",
+			DependsOnID: "q_077",
+		},
+		"self dep": investigate_core.AddDependency{
+			QuestionID:  "q_001",
+			DependsOnID: "q_001",
+		},
 	} {
 		if err := investigate_core.Execute(ctx, s.Env, 0, []investigate_core.Effect{e}); err == nil {
 			t.Errorf("%s: accepted", name)

@@ -127,7 +127,13 @@ func AddSource(sources []Source, rawURL, title, note string) ([]Source, Source, 
 	for i, s := range sources {
 		ids[i] = s.ID
 	}
-	s := Source{ID: NextSourceID(ids), URL: u, Domain: Domain(u), Title: cleanTitle(title), Note: clean(note)}
+	s := Source{
+		ID:     NextSourceID(ids),
+		URL:    u,
+		Domain: Domain(u),
+		Title:  cleanTitle(title),
+		Note:   clean(note),
+	}
 	return append(slices.Clone(sources), s), s, nil
 }
 
@@ -151,7 +157,11 @@ func Support(c Claim, sourceID string, stance Stance, independent bool, sources 
 		return c, fmt.Errorf("%w: stance %q is not supports or contradicts", ErrInvalid, stance)
 	}
 	links := slices.DeleteFunc(slices.Clone(c.Links), func(l Link) bool { return l.SourceID == sourceID })
-	c.Links = append(links, Link{SourceID: sourceID, Stance: stance, Independent: independent})
+	c.Links = append(links, Link{
+		SourceID:    sourceID,
+		Stance:      stance,
+		Independent: independent,
+	})
 	return c, nil
 }
 

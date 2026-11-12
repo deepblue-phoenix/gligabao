@@ -34,7 +34,9 @@ func TestSanitizeUser(t *testing.T) {
 }
 
 func TestNotesFilePath(t *testing.T) {
-	f := NotesFile{Dir: "/data/notes"}
+	f := NotesFile{
+		Dir: "/data/notes",
+	}
 	id := strings.Repeat("ab", 16)
 	if got, want := f.Path("a/b", 7, id), filepath.Join("/data/notes", "notes_a_b_7_"+id+".md"); got != want {
 		t.Fatalf("%q != %q", got, want)
@@ -49,13 +51,17 @@ func TestNotesFilePath(t *testing.T) {
 
 func TestNotesFileReadWrite(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "sub", "dir")
-	f := NotesFile{Dir: dir}
+	f := NotesFile{
+		Dir: dir,
+	}
 	path := f.Path("u", 1, strings.Repeat("0", 32))
 	text, err := f.Read(path)
 	if err != nil || text != investigate_core.Render(investigate_core.Notes{}) {
 		t.Fatalf("a missing file reads as the empty notes: %q %v", text, err)
 	}
-	n := investigate_core.Notes{Objective: "Does X fit in 16 GB?"}
+	n := investigate_core.Notes{
+		Objective: "Does X fit in 16 GB?",
+	}
 	if err := f.Write(path, investigate_core.Render(n)); err != nil { // creates the directory
 		t.Fatal(err)
 	}

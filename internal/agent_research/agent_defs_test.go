@@ -66,7 +66,10 @@ func freeFinal(text string) string {
 
 // pricedClient prices the fake model "m" at 1 USD per token, so that a call of the fakes above (1 token in, 1 out) costs 2 USD.
 func pricedClient(t *testing.T, f *teamFake) *ai.Client {
-	return f.startWith(t, ai.WithPrices(ai.NewPriceTable(map[string]ai.Price{"m": {Input: 1e6, Output: 1e6}})))
+	return f.startWith(t, ai.WithPrices(ai.NewPriceTable(map[string]ai.Price{"m": {
+		Input:  1e6,
+		Output: 1e6,
+	}})))
 }
 
 // The cap on the cost of the whole research counts what the workers spend: the supervisor's own calls are free here, the two workers cost 2 USD
@@ -90,7 +93,11 @@ func testTreeCap(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	if err := m.UseAgentDefs(writeDefs(t, map[string]string{"deep.toml": workersDef})); err != nil {
 		t.Fatal(err)
 	}
-	started, err := m.Start(ctx, "u1", agent_research.Options{Topic: "batteries", Agent: "deep", MaxCostUSD: 4.4})
+	started, err := m.Start(ctx, "u1", agent_research.Options{
+		Topic:      "batteries",
+		Agent:      "deep",
+		MaxCostUSD: 4.4,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +109,9 @@ func testTreeCap(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	if root.CostUSD != 0 {
 		t.Errorf("the cost of the workers is not the supervisor's own: %v", root.CostUSD)
 	}
-	subs, _ := m.List(ctx, "u1", agent_research.ListOptions{ParentID: root.ID})
+	subs, _ := m.List(ctx, "u1", agent_research.ListOptions{
+		ParentID: root.ID,
+	})
 	if len(subs) != 2 || subs[0].CostUSD != 2 || subs[1].CostUSD != 2 {
 		t.Fatalf("workers: %+v", subs)
 	}
@@ -125,7 +134,10 @@ max_cost_usd = 1
 	if err := m.UseAgentDefs(reg); err != nil {
 		t.Fatal(err)
 	}
-	started, err := m.Start(ctx, "u1", agent_research.Options{Topic: "the topic", Agent: "frugal"})
+	started, err := m.Start(ctx, "u1", agent_research.Options{
+		Topic: "the topic",
+		Agent: "frugal",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +150,10 @@ max_cost_usd = 1
 	// With the cap out of reach nothing is said and nothing is cut.
 	fake = newTeamFake(map[string][]string{"root": {call([2]string{"no_such_tool", `{}`}), final("full report")}})
 	m = agent_research.NewManager(ctx, d, ops, pricedClient(t, fake))
-	started, err = m.Start(ctx, "u1", agent_research.Options{Topic: "the topic", MaxCostUSD: 1000})
+	started, err = m.Start(ctx, "u1", agent_research.Options{
+		Topic:      "the topic",
+		MaxCostUSD: 1000,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +172,10 @@ func testCeiling(t *testing.T, d *sql.DB, ops agent_research.Ops) {
 	m := agent_research.NewManager(ctx, d, ops, pricedClient(t, fake))
 	m.MaxCostUSD = 1
 	// The request asks for more than the ceiling: the ceiling wins.
-	started, err := m.Start(ctx, "u1", agent_research.Options{Topic: "the topic", MaxCostUSD: 100})
+	started, err := m.Start(ctx, "u1", agent_research.Options{
+		Topic:      "the topic",
+		MaxCostUSD: 100,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,13 +206,38 @@ dataset_locked = true
 			t.Fatal(err)
 		}
 		for name, opts := range map[string]agent_research.Options{
-			"unknown agent":     {Topic: "t", Agent: "nobody"},
-			"bad agent name":    {Topic: "t", Agent: "No Body"},
-			"version not met":   {Topic: "t", Agent: "scout", AgentVersion: ">=2.0"},
-			"bad version":       {Topic: "t", Agent: "scout", AgentVersion: "x.y"},
-			"locked dataset":    {Topic: "t", Agent: "pinned", Dataset: "other"},
-			"negative cost cap": {Topic: "t", MaxCostUSD: -1},
-			"too many steps":    {Topic: "t", Agent: "scout", MaxSteps: 41},
+			"unknown agent": {
+				Topic: "t",
+				Agent: "nobody",
+			},
+			"bad agent name": {
+				Topic: "t",
+				Agent: "No Body",
+			},
+			"version not met": {
+				Topic:        "t",
+				Agent:        "scout",
+				AgentVersion: ">=2.0",
+			},
+			"bad version": {
+				Topic:        "t",
+				Agent:        "scout",
+				AgentVersion: "x.y",
+			},
+			"locked dataset": {
+				Topic:   "t",
+				Agent:   "pinned",
+				Dataset: "other",
+			},
+			"negative cost cap": {
+				Topic:      "t",
+				MaxCostUSD: -1,
+			},
+			"too many steps": {
+				Topic:    "t",
+				Agent:    "scout",
+				MaxSteps: 41,
+			},
 		} {
 			if _, err := m.Start(ctx, "u1", opts); err == nil {
 				t.Errorf("%s: should have been refused", name)

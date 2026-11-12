@@ -38,12 +38,25 @@ func withQuestion(t *testing.T) State {
 func testPrompt() Prompt {
 	var cat []ToolSpec
 	for _, n := range []string{"web_search", "fetch_page"} {
-		cat = append(cat, ToolSpec{Name: n, Description: n, Schema: obj(props{})})
+		cat = append(cat, ToolSpec{
+			Name:        n,
+			Description: n,
+			Schema:      obj(props{}),
+		})
 	}
 	for _, tl := range LoopRegistry().Tools() {
-		cat = append(cat, ToolSpec{Name: tl.Name, Description: tl.Description, Schema: tl.Schema})
+		cat = append(cat, ToolSpec{
+			Name:        tl.Name,
+			Description: tl.Description,
+			Schema:      tl.Schema,
+		})
 	}
-	return Prompt{System: "You are a researcher.", Task: "Does X fit in 16 GB?", Catalog: cat, External: []string{"web_search", "fetch_page"}}
+	return Prompt{
+		System:   "You are a researcher.",
+		Task:     "Does X fit in 16 GB?",
+		Catalog:  cat,
+		External: []string{"web_search", "fetch_page"},
+	}
 }
 
 func names(r Request) []string {
@@ -55,11 +68,20 @@ func names(r Request) []string {
 }
 
 func turnWith(n int, calls ...Call) Turn {
-	return Turn{N: n, Content: []json.RawMessage{json.RawMessage(`{"type":"text","text":"x"}`)}, Calls: calls}
+	return Turn{
+		N:       n,
+		Content: []json.RawMessage{json.RawMessage(`{"type":"text","text":"x"}`)},
+		Calls:   calls,
+	}
 }
 
 func fetchCall(id string, size int) Call {
-	return Call{ID: id, Name: "fetch_page", Input: json.RawMessage(`{"url":"https://a.com/p"}`), Output: strings.Repeat("x", size)}
+	return Call{
+		ID:     id,
+		Name:   "fetch_page",
+		Input:  json.RawMessage(`{"url":"https://a.com/p"}`),
+		Output: strings.Repeat("x", size),
+	}
 }
 
 // --- loop state ---
@@ -73,7 +95,9 @@ func TestPhaseTransitions(t *testing.T) {
 	if ls.CanReopen(lim) {
 		t.Error("exploration cannot reopen")
 	}
-	ls = ls.AddTurn(turnWith(1, fetchCall("a", 10)), []Pending{{Turn: 1}})
+	ls = ls.AddTurn(turnWith(1, fetchCall("a", 10)), []Pending{{
+		Turn: 1,
+	}})
 	cut := ls.ToSynthesis(StopCost)
 	if cut.Phase != PhaseSynthesis || cut.StopReason != StopCost || cut.Cut != StopCost || len(cut.Window) != 0 || len(cut.Pending) != 0 {
 		t.Fatalf("breaker: %+v", cut)
@@ -124,7 +148,12 @@ func TestEvict(t *testing.T) {
 		t.Fatalf("committed turns older than keep_turns go: %+v", got.Window)
 	}
 	// An uncommitted result survives eviction; a committed one does not.
-	held := ls.AddTurn(turnWith(7, fetchCall("c", 5000)), []Pending{{CallID: "c", Tool: "fetch_page", Turn: 7, Size: 5000}})
+	held := ls.AddTurn(turnWith(7, fetchCall("c", 5000)), []Pending{{
+		CallID: "c",
+		Tool:   "fetch_page",
+		Turn:   7,
+		Size:   5000,
+	}})
 	for i := 8; i <= 11; i++ {
 		held = held.AddTurn(turnWith(i), nil)
 	}
@@ -153,7 +182,14 @@ func TestNeedsExtraction(t *testing.T) {
 	ls := StartLoop().AfterModel(1, 1, 0)
 	small := fetchCall("a", 100)
 	big := fetchCall("b", 5000)
-	if len(PendingOf(turnWith(1, small, Call{ID: "e", Name: "fetch_page", IsErr: true}, Call{ID: "n", Name: "notes_read"}), "q_002")) != 1 {
+	if len(PendingOf(turnWith(1, small, Call{
+		ID:    "e",
+		Name:  "fetch_page",
+		IsErr: true,
+	}, Call{
+		ID:   "n",
+		Name: "notes_read",
+	}), "q_002")) != 1 {
 		t.Error("only a successful raw tool result is pending")
 	}
 	ls = ls.AddTurn(turnWith(1, small), PendingOf(turnWith(1, small), "q_002"))
@@ -171,7 +207,12 @@ func TestNeedsExtraction(t *testing.T) {
 	if _, ok := NeedsExtraction(aged, 4000, 2); !ok {
 		t.Error("a small pending result about to be evicted is extracted")
 	}
-	if Commits(turnWith(3, Call{Name: "notes_append"}), TurnExplore) != true || Commits(turnWith(3, Call{Name: "notes_append", IsErr: true}), TurnExplore) {
+	if Commits(turnWith(3, Call{
+		Name: "notes_append",
+	}), TurnExplore) != true || Commits(turnWith(3, Call{
+		Name:  "notes_append",
+		IsErr: true,
+	}), TurnExplore) {
 		t.Error("a notes write that succeeded commits")
 	}
 	if !Commits(turnWith(3), TurnExtract) || Commits(turnWith(3), TurnExplore) {
@@ -233,7 +274,10 @@ func TestExplorationGate(t *testing.T) {
 	}
 	// An unaddressed contradiction and a pending question of high priority block it again.
 	c := s
-	c.Notes.Contradictions = []Contradiction{{A: "c_001", B: "c_001"}}
+	c.Notes.Contradictions = []Contradiction{{
+		A: "c_001",
+		B: "c_001",
+	}}
 	if g := strings.Join(ExplorationGate(c), "\n"); !strings.Contains(g, "contradiction c_001 vs c_001") {
 		t.Errorf("contradiction: %s", g)
 	}
@@ -274,7 +318,11 @@ func TestFinalizationGate(t *testing.T) {
 	}
 	// An unresolvable question must be in the report.
 	u := s
-	u.Frontier, _, _ = Add(u.Frontier, "q_001", AddInput{Question: "hard one", Priority: 0.5, ValidationCriteria: "c"}, u.Limits)
+	u.Frontier, _, _ = Add(u.Frontier, "q_001", AddInput{
+		Question:           "hard one",
+		Priority:           0.5,
+		ValidationCriteria: "c",
+	}, u.Limits)
 	q, _ := u.Frontier.Get("q_003")
 	q.Status = StatusUnresolvable
 	u.Frontier = u.Frontier.with(q)
@@ -311,12 +359,22 @@ func TestFinalCheckQueuesUnverifiedClaims(t *testing.T) {
 // --- breakers ---
 
 func TestCheckBreakersAndReserve(t *testing.T) {
-	lim := Limits{MaxIterations: 20, MaxTotalTokens: 1000, MaxCostUSD: 1, SynthesisReserve: 0.2}
+	lim := Limits{
+		MaxIterations:    20,
+		MaxTotalTokens:   1000,
+		MaxCostUSD:       1,
+		SynthesisReserve: 0.2,
+	}
 	if n := ExplorationTurns(20, 0.2); n != 16 {
 		t.Fatalf("reserve of turns: %d", n)
 	}
 	explore := func(turns, tokens int, cost float64) LoopState {
-		return LoopState{Phase: PhaseExploration, Turns: turns, Tokens: tokens, CostUSD: cost}
+		return LoopState{
+			Phase:   PhaseExploration,
+			Turns:   turns,
+			Tokens:  tokens,
+			CostUSD: cost,
+		}
 	}
 	if bs := CheckBreakers(explore(15, 799, 0.79), lim); len(bs) != 0 {
 		t.Fatalf("below every limit: %v", bs)
@@ -334,7 +392,12 @@ func TestCheckBreakersAndReserve(t *testing.T) {
 	}
 	// Synthesis uses the whole limit: the same counts that stop exploration do not stop it.
 	syn := func(turns, tokens int, cost float64) LoopState {
-		return LoopState{Phase: PhaseSynthesis, Turns: turns, Tokens: tokens, CostUSD: cost}
+		return LoopState{
+			Phase:   PhaseSynthesis,
+			Turns:   turns,
+			Tokens:  tokens,
+			CostUSD: cost,
+		}
 	}
 	if bs := CheckBreakers(syn(16, 800, 0.8), lim); len(bs) != 0 {
 		t.Errorf("the reserve is spendable by synthesis: %v", bs)
@@ -353,7 +416,11 @@ func TestCheckBreakersAndReserve(t *testing.T) {
 func TestCutShortNotesTheGaps(t *testing.T) {
 	s := withQuestion(t)
 	s = callRaw(t, s, "add_question", m{"parent_id": "q_001", "question": "left over", "priority": 0.3, "validation_criteria": "c"})
-	cut := CutShort(s, Breaker{Name: "cost", Limit: 1, Used: 1.2})
+	cut := CutShort(s, Breaker{
+		Name:  "cost",
+		Limit: 1,
+		Used:  1.2,
+	})
 	if !strings.Contains(cut.Notes.Scratch, "cut short by breaker: cost") {
 		t.Errorf("scratch: %q", cut.Notes.Scratch)
 	}
@@ -373,11 +440,19 @@ func TestBuildRequestIsBoundedByTheWindow(t *testing.T) {
 	short := StartLoop()
 	long := StartLoop()
 	for i := 1; i <= 200; i++ { // a long history: committed turns
-		long = long.AfterModel(1, 1, 0).AddTurn(turnWith(i, Call{ID: fmt.Sprintf("c%d", i), Name: "notes_read", Output: strings.Repeat("old output ", 50)}), nil)
+		long = long.AfterModel(1, 1, 0).AddTurn(turnWith(i, Call{
+			ID:     fmt.Sprintf("c%d", i),
+			Name:   "notes_read",
+			Output: strings.Repeat("old output ", 50),
+		}), nil)
 		long = Evict(long, 2)
 	}
 	for i := 199; i <= 200; i++ {
-		short = short.AddTurn(turnWith(i, Call{ID: fmt.Sprintf("c%d", i), Name: "notes_read", Output: strings.Repeat("old output ", 50)}), nil)
+		short = short.AddTurn(turnWith(i, Call{
+			ID:     fmt.Sprintf("c%d", i),
+			Name:   "notes_read",
+			Output: strings.Repeat("old output ", 50),
+		}), nil)
 	}
 	a, b := BuildRequest(p, TurnExplore, short, s), BuildRequest(p, TurnExplore, long, s)
 	if a.Size() != b.Size() {
@@ -428,7 +503,9 @@ func TestBuildRequestContents(t *testing.T) {
 	}
 	// Synthesis: no search tool, the gaps and the cut are in the prompt, the last turn is forced.
 	cutState := StartLoop().ToSynthesis(StopCost)
-	s2 := CutShort(s, Breaker{Name: "cost"})
+	s2 := CutShort(s, Breaker{
+		Name: "cost",
+	})
 	syn := BuildRequest(p, TurnSynthesize, cutState, s2)
 	if n := names(syn); slices.Contains(n, "web_search") || slices.Contains(n, "fetch_page") || slices.Contains(n, "challenge") || !slices.Contains(n, ToolFinalizeReport) || !slices.Contains(n, "reopen_question") {
 		t.Errorf("synthesis tools: %v", n)

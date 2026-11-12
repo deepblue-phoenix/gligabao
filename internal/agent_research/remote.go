@@ -231,16 +231,33 @@ func (m *Manager) startRemote(ctx context.Context, userID string, opts Options, 
 	}
 	startCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), remoteStartTimeout)
 	defer cancel()
-	jobID, err := remote.Start(startCtx, RemoteRequest{Topic: opts.Topic, MaxSteps: opts.MaxSteps, Model: opts.Model, Dataset: opts.Dataset,
-		Agent: def.Name, Bundle: bundle, MaxCostUSD: opts.treeCostCap})
+	jobID, err := remote.Start(startCtx, RemoteRequest{
+		Topic:      opts.Topic,
+		MaxSteps:   opts.MaxSteps,
+		Model:      opts.Model,
+		Dataset:    opts.Dataset,
+		Agent:      def.Name,
+		Bundle:     bundle,
+		MaxCostUSD: opts.treeCostCap,
+	})
 	if err != nil {
 		release()
 		log.WithError(err).WithField("user_id", userID).Warn("agent research: starting the job in Modal failed")
 		return nil, unavailableErr("could not start the research in Modal: " + err.Error())
 	}
 
-	run := &core.Run{UserID: userID, Topic: opts.Topic, Status: core.StatusRunning, State: core.StateStarting, Model: opts.Model, MaxSteps: opts.MaxSteps, Runner: core.RunnerModal,
-		AgentName: def.Name, AgentVersion: def.Version, AgentHash: def.Hash}
+	run := &core.Run{
+		UserID:       userID,
+		Topic:        opts.Topic,
+		Status:       core.StatusRunning,
+		State:        core.StateStarting,
+		Model:        opts.Model,
+		MaxSteps:     opts.MaxSteps,
+		Runner:       core.RunnerModal,
+		AgentName:    def.Name,
+		AgentVersion: def.Version,
+		AgentHash:    def.Hash,
+	}
 	dbCtx := context.WithoutCancel(ctx)
 	err = m.tx(dbCtx, func(q db.Execer) error {
 		if err := m.Ops.Store.CreateRun(dbCtx, q, run); err != nil {
@@ -283,7 +300,13 @@ func (m *Manager) startRemote(ctx context.Context, userID string, opts Options, 
 
 func newRemoteRun(m *Manager, run *core.Run, remote Remote, jobID string, capUSD float64) *remoteRun {
 	rr := &remoteRun{
-		m: m, run: run, remote: remote, jobID: jobID, capUSD: capUSD, dbCtx: context.WithoutCancel(m.ctx), done: make(chan struct{}),
+		m:      m,
+		run:    run,
+		remote: remote,
+		jobID:  jobID,
+		capUSD: capUSD,
+		dbCtx:  context.WithoutCancel(m.ctx),
+		done:   make(chan struct{}),
 		logf:   log.WithFields(log.Fields{"run_id": run.ID, "user_id": run.UserID, "runner": core.RunnerModal, "job_id": jobID}),
 		states: map[remoteStateKey]int64{},
 	}
@@ -294,7 +317,10 @@ func newRemoteRun(m *Manager, run *core.Run, remote Remote, jobID string, capUSD
 // requestStop asks the job to end, for Manager.Stop. If the job cannot be reached the follower ends the run as stopped at once
 // (the job may go on in Modal until its own timeout, which the error of the run says).
 func (rr *remoteRun) requestStop(ctx context.Context, by string) {
-	cause := &stopCause{runID: rr.run.ID, by: by}
+	cause := &stopCause{
+		runID: rr.run.ID,
+		by:    by,
+	}
 	rr.cause.Store(cause)
 	cancelCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), remoteCancelTimeout)
 	defer cancel()
@@ -406,7 +432,10 @@ func (rr *remoteRun) checkCap(costUSD float64) {
 		return
 	}
 	rr.logf.Warnf("agent research: the job in Modal spent $%.4f, over its cost cap of $%.2f: ending it", costUSD, rr.capUSD)
-	rr.cause.Store(&stopCause{runID: rr.run.ID, by: fmt.Sprintf("the cost cap ($%.2f): the agent went well over it", rr.capUSD)})
+	rr.cause.Store(&stopCause{
+		runID: rr.run.ID,
+		by:    fmt.Sprintf("the cost cap ($%.2f): the agent went well over it", rr.capUSD),
+	})
 	rr.cancelJob()
 }
 
@@ -507,7 +536,10 @@ func (rr *remoteRun) fetchAndImport(importer Importer, ex RemoteExport) (string,
 	if err := f.Close(); err != nil {
 		return "", err
 	}
-	return importer.Import(ctx, f.Name(), ImportRun{UserID: rr.run.UserID, RunID: rr.run.ID})
+	return importer.Import(ctx, f.Name(), ImportRun{
+		UserID: rr.run.UserID,
+		RunID:  rr.run.ID,
+	})
 }
 
 // download writes the export to f (from its start) and checks its size and SHA-256.
@@ -599,7 +631,13 @@ func (rr *remoteRun) saveUsage(u RemoteUsage) {
 }
 
 func usageOfRemote(u RemoteUsage) db.Usage {
-	return db.Usage{Steps: u.Steps, ToolCalls: u.ToolCalls, InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, CostUSD: u.CostUSD}
+	return db.Usage{
+		Steps:        u.Steps,
+		ToolCalls:    u.ToolCalls,
+		InputTokens:  u.InputTokens,
+		OutputTokens: u.OutputTokens,
+		CostUSD:      u.CostUSD,
+	}
 }
 
 // meta is the debugging parameters common to the GBerrors of the run.

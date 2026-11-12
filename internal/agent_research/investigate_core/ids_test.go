@@ -24,9 +24,23 @@ func TestNextIDs(t *testing.T) {
 
 func TestDefaultLimits(t *testing.T) {
 	l := DefaultLimits()
-	want := Limits{MaxDepth: 3, MaxAttempts: 4, MaxQuestions: 40, NotesMaxTokens: 6000, MinSources: 5, MinDomains: 3, MinIndependentSources: 2,
-		MinChallenges: 1, MaxChallengesPerTarget: 3, MaxReopens: 1, GatePriority: 0.5, KeepTurns: 2, ExtractionThreshold: 4000,
-		MaxIterations: 60, SynthesisReserve: 0.15}
+	want := Limits{
+		MaxDepth:               3,
+		MaxAttempts:            4,
+		MaxQuestions:           40,
+		NotesMaxTokens:         6000,
+		MinSources:             5,
+		MinDomains:             3,
+		MinIndependentSources:  2,
+		MinChallenges:          1,
+		MaxChallengesPerTarget: 3,
+		MaxReopens:             1,
+		GatePriority:           0.5,
+		KeepTurns:              2,
+		ExtractionThreshold:    4000,
+		MaxIterations:          60,
+		SynthesisReserve:       0.15,
+	}
 	if l != want {
 		t.Fatalf("limits: %+v", l)
 	}

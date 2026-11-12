@@ -368,7 +368,11 @@ func Reduce(s State, qid string, fs Findings) (State, []Transition, Reduction) {
 			continue
 		}
 		tool := orElse(strings.TrimSpace(fq.Tool), "web_search")
-		if nf, _, err := AddAttempt(f, qid, Attempt{Query: strings.TrimSpace(fq.Query), Tool: tool, Outcome: orElse(clean(fq.Outcome), "(worker)")}); err == nil {
+		if nf, _, err := AddAttempt(f, qid, Attempt{
+			Query:   strings.TrimSpace(fq.Query),
+			Tool:    tool,
+			Outcome: orElse(clean(fq.Outcome), "(worker)"),
+		}); err == nil {
 			f = nf
 		}
 	}
@@ -376,11 +380,21 @@ func Reduce(s State, qid string, fs Findings) (State, []Transition, Reduction) {
 	var ts []Transition
 	for _, g := range fs.DiscoveredGaps {
 		kind := Kind(strings.ToLower(strings.TrimSpace(g.Kind)))
-		nf, gts, err := Add(f, qid, AddInput{Kind: kind, Question: g.Question, Rationale: g.Rationale, Priority: min(1, max(0, g.Priority)),
-			ValidationCriteria: "answered with sourced claims", Actor: ActorCode, CausedBy: qid}, s.Limits)
+		nf, gts, err := Add(f, qid, AddInput{
+			Kind:               kind,
+			Question:           g.Question,
+			Rationale:          g.Rationale,
+			Priority:           min(1, max(0, g.Priority)),
+			ValidationCriteria: "answered with sourced claims",
+			Actor:              ActorCode,
+			CausedBy:           qid,
+		}, s.Limits)
 		if err != nil {
 			out.GapsOpen = append(out.GapsOpen, strings.TrimSpace(g.Question))
-			if nn, _, aerr := Append(s.Notes, SectionAssumptions, []Entry{{QuestionID: qid, Text: "open gap (found by the worker of " + qid + "): " + g.Question}}); aerr == nil {
+			if nn, _, aerr := Append(s.Notes, SectionAssumptions, []Entry{{
+				QuestionID: qid,
+				Text:       "open gap (found by the worker of " + qid + "): " + g.Question,
+			}}); aerr == nil {
 				s.Notes = nn
 			}
 			continue
@@ -404,9 +418,16 @@ func finishQuestion(s State, qid string, fs Findings, keyIDs map[string]string, 
 	answer := substituteKeys(fs.Answer, keyIDs)
 	switch fs.Status {
 	case FindingAnswered:
-		in := ResolveInput{Answer: answer, ClaimIDs: out.ClaimIDs}
+		in := ResolveInput{
+			Answer:   answer,
+			ClaimIDs: out.ClaimIDs,
+		}
 		if problems := checkResolve(s, q, in); len(problems) > 0 {
-			f, _, _ := AddAttempt(s.Frontier, qid, Attempt{Query: "worker's answer", Tool: "worker", Outcome: Excerpt(answer, 200)})
+			f, _, _ := AddAttempt(s.Frontier, qid, Attempt{
+				Query:   "worker's answer",
+				Tool:    "worker",
+				Outcome: Excerpt(answer, 200),
+			})
 			s.Frontier = f
 			out.Status, out.Note = StatusInProgress, "left in progress for the supervisor: "+strings.Join(problems, "; ")
 			return s, nil, out
@@ -430,7 +451,9 @@ func finishQuestion(s State, qid string, fs Findings, keyIDs map[string]string, 
 // pending with the failure logged as an attempt, and becomes unresolvable at the attempt cap.
 func WorkerFailed(s State, qid, why string) (State, []Transition, Reduction) {
 	if q, ok := s.Frontier.Get(qid); !ok || q.Status != StatusInProgress {
-		return s, nil, Reduction{Note: fmt.Sprintf("%s is not in progress", qid)}
+		return s, nil, Reduction{
+			Note: fmt.Sprintf("%s is not in progress", qid),
+		}
 	}
 	return retryQuestion(s, qid, "worker failed: "+clean(why), Reduction{})
 }
@@ -448,7 +471,10 @@ func retryQuestion(s State, qid, why string, out Reduction) (State, []Transition
 	q, _ = f.Get(qid)
 	out.Status = q.Status
 	if q.Status == StatusUnresolvable {
-		if n, _, aerr := Append(s.Notes, SectionAssumptions, []Entry{{QuestionID: qid, Text: q.Answer}}); aerr == nil {
+		if n, _, aerr := Append(s.Notes, SectionAssumptions, []Entry{{
+			QuestionID: qid,
+			Text:       q.Answer,
+		}}); aerr == nil {
 			s.Notes = n
 		}
 	}
@@ -466,7 +492,10 @@ func markUnresolvable(s State, qid, assumption string, out Reduction) (State, []
 	q, t := move(q, StatusUnresolvable, TriggerAttemptsExhausted, ActorCode, truncate(assumption, 200), "")
 	f, more := Reblock(s.Frontier.with(q))
 	s.Frontier = f
-	if n, _, aerr := Append(s.Notes, SectionAssumptions, []Entry{{QuestionID: qid, Text: assumption}}); aerr == nil {
+	if n, _, aerr := Append(s.Notes, SectionAssumptions, []Entry{{
+		QuestionID: qid,
+		Text:       assumption,
+	}}); aerr == nil {
 		s.Notes = n
 	}
 	out.Status = StatusUnresolvable
@@ -490,13 +519,21 @@ func recordClaims(n Notes, qid string, claims []FindingClaim, out *Reduction) (N
 			if strings.EqualFold(strings.TrimSpace(fs.Stance), "contradicts") {
 				stance = StanceContradicts
 			}
-			links = append(links, Link{SourceID: src.ID, Stance: stance, Independent: fs.Independent})
+			links = append(links, Link{
+				SourceID:    src.ID,
+				Stance:      stance,
+				Independent: fs.Independent,
+			})
 		}
 		if err != nil {
 			out.Dropped = append(out.Dropped, fmt.Sprintf("%s: %v", c.Key, err))
 			continue
 		}
-		entry := Entry{Text: c.Text, QuestionID: qid, Sources: links}
+		entry := Entry{
+			Text:       c.Text,
+			QuestionID: qid,
+			Sources:    links,
+		}
 		section := SectionUnverified
 		if strings.EqualFold(strings.TrimSpace(c.Kind), "datapoint") {
 			value := strings.TrimSpace(c.Value)

@@ -67,7 +67,12 @@ func (f *teamFake) startWith(t *testing.T, opts ...ai.Option) *ai.Client {
 }
 
 func newTeamFake(scripts map[string][]string) *teamFake {
-	return &teamFake{scripts: scripts, calls: map[string]int{}, bodies: map[string][]string{}, hang: map[string]bool{}}
+	return &teamFake{
+		scripts: scripts,
+		calls:   map[string]int{},
+		bodies:  map[string][]string{},
+		hang:    map[string]bool{},
+	}
 }
 
 // call is an answer of the model that uses tools: pairs of name and input.

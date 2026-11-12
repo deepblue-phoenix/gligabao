@@ -96,9 +96,12 @@ func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent 
 		mgr:    m,
 		mem:    mem,
 		parent: parent,
-		tree:   &tree{max: opts.investigateKnobs(def).MaxWorkersOrDefault(), costCap: opts.treeCostCap},
-		kids:   &family{},
-		done:   make(chan struct{}),
+		tree: &tree{
+			max:     opts.investigateKnobs(def).MaxWorkersOrDefault(),
+			costCap: opts.treeCostCap,
+		},
+		kids: &family{},
+		done: make(chan struct{}),
 	}
 	parentCtx := m.ctx
 	if parent != nil {
@@ -107,7 +110,12 @@ func newResearcher(m *Manager, run *core.Run, opts Options, mem *Memory, parent 
 	r.runCtx, r.stop = context.WithCancelCause(parentCtx)
 	if parent != nil {
 		r.depth, r.tree = parent.depth+1, parent.tree
-		r.self = &member{id: run.ID, name: run.Name, reason: run.Reason, done: make(chan struct{})}
+		r.self = &member{
+			id:     run.ID,
+			name:   run.Name,
+			reason: run.Reason,
+			done:   make(chan struct{}),
+		}
 	}
 	r.kidCtx, r.kidCancel = context.WithCancel(r.runCtx)
 	var kb agent.Knowledge // a nil Memory must become a nil Knowledge
@@ -297,7 +305,11 @@ func (r *researcher) meta() gberrors.Meta {
 
 // finish ends the run's record: the final usage, the status, the report or the error, and the terminal state.
 func (r *researcher) finish(status core.Status, report, errText string) {
-	r.out = outcome{status: status, report: report, err: errText}
+	r.out = outcome{
+		status: status,
+		report: report,
+		err:    errText,
+	}
 	err := r.tx(func(q db.Execer) error {
 		if err := r.store.UpdateUsage(r.dbCtx, q, r.run.ID, usageOf(r.total)); err != nil {
 			return err
@@ -345,7 +357,13 @@ func toolState(name string, input json.RawMessage) (state, detail string) {
 }
 
 func usageOf(r agent.Result) db.Usage {
-	return db.Usage{Steps: r.Steps, ToolCalls: r.ToolCalls, InputTokens: r.InputTokens, OutputTokens: r.OutputTokens, CostUSD: r.CostUSD}
+	return db.Usage{
+		Steps:        r.Steps,
+		ToolCalls:    r.ToolCalls,
+		InputTokens:  r.InputTokens,
+		OutputTokens: r.OutputTokens,
+		CostUSD:      r.CostUSD,
+	}
 }
 
 // truncate cuts s to n characters.

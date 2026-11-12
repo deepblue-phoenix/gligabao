@@ -2,6 +2,8 @@
 
 **All new code must be written in the functional-programming style.** Use pure functions, immutable data, and explicit data transformations; avoid mutable shared state, hidden side effects, and imperative loops where a functional form fits. This is mandatory, not a preference.
 
+**Struct literals are pretty printed.** When constructing a struct, write every key/value on its own line, never the whole struct on one line. One-line struct construction is hard to read.
+
 ## Versioning and changelog (required for every change)
 
 This repo is versioned on its own (separately from `../gligabao_int`). The version lives in two files at the repo root

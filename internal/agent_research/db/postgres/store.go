@@ -98,7 +98,13 @@ func EnterState(ctx context.Context, q db.Execer, runID int64, state string, ste
 		at, runID); err != nil {
 		return nil, fmt.Errorf("enter state %q of agent research run %d: %w", state, runID, err)
 	}
-	s := &core.State{RunID: runID, State: state, Step: step, Detail: detail, StartedAt: at}
+	s := &core.State{
+		RunID:     runID,
+		State:     state,
+		Step:      step,
+		Detail:    detail,
+		StartedAt: at,
+	}
 	if err := q.QueryRowContext(ctx, `
 		INSERT INTO gb_agent_research_states (run_id, seq, state, step, detail, started_at)
 		VALUES ($1, (SELECT COALESCE(MAX(seq), 0) + 1 FROM gb_agent_research_states WHERE run_id = $1), $2, $3, $4, $5)

@@ -13,7 +13,10 @@ func TestNoTrajectoriesByDefault(t *testing.T) {
 		ctx := context.Background()
 		fake := newTeamFake(map[string][]string{"root": {final("report")}})
 		m := agent_research.NewManager(ctx, d, ops, fake.start(t))
-		if _, err := m.Start(ctx, "u1", agent_research.Options{Topic: "the topic", MaxSteps: 5}); err != nil {
+		if _, err := m.Start(ctx, "u1", agent_research.Options{
+			Topic:    "the topic",
+			MaxSteps: 5,
+		}); err != nil {
 			t.Fatal(err)
 		}
 		m.Wait() // nothing to receive; it must not panic

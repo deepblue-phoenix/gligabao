@@ -167,9 +167,17 @@ func Open(challenges []Challenge, in OpenInput, f Frontier, n Notes, limits Limi
 	for i, c := range challenges {
 		ids[i] = c.ID
 	}
-	ch := Challenge{ID: NextChallengeID(ids), QuestionID: questionID, TargetType: in.TargetType, TargetID: in.TargetID,
-		Negation: strings.TrimSpace(in.Negation), Strategy: in.Strategy, ExpectedIfFalse: strings.TrimSpace(in.ExpectedIfFalse),
-		Query: strings.TrimSpace(in.Query), Status: ChallengeOpen}
+	ch := Challenge{
+		ID:              NextChallengeID(ids),
+		QuestionID:      questionID,
+		TargetType:      in.TargetType,
+		TargetID:        in.TargetID,
+		Negation:        strings.TrimSpace(in.Negation),
+		Strategy:        in.Strategy,
+		ExpectedIfFalse: strings.TrimSpace(in.ExpectedIfFalse),
+		Query:           strings.TrimSpace(in.Query),
+		Status:          ChallengeOpen,
+	}
 	return append(slices.Clone(challenges), ch), ch, nil
 }
 
@@ -232,7 +240,11 @@ func LinkAttempt(f Frontier, challenges []Challenge, id, tool, outcome string) (
 	if c.Status != ChallengeOpen || c.AttemptSeq != 0 {
 		return f, challenges, fmt.Errorf("%w: challenge %s is not open and unexecuted", ErrBadStatus, id)
 	}
-	f, a, err := AddAttempt(f, c.QuestionID, Attempt{Query: c.Query, Tool: tool, Outcome: outcome})
+	f, a, err := AddAttempt(f, c.QuestionID, Attempt{
+		Query:   c.Query,
+		Tool:    tool,
+		Outcome: outcome,
+	})
 	if err != nil {
 		return f, challenges, err
 	}
